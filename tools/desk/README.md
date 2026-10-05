@@ -4904,6 +4904,39 @@ skills and desk sessions bind to this **CLI surface**. That is the dependency di
 ends prose-vs-binary drift — prose → CLI → engine — and it is what lets the engine's
 internals (and even its module home) change without a rewrite anywhere else.
 
+**Stamp after the PR opens.** A worker dispatched before its PR exists leaves the model
+stamp PENDING. The original dispatcher supplies the actual selection after receiving the
+new PR number:
+
+```sh
+deskdispatch --stamp-only --repo example-org/project --pr 42 --model gpt-6.1-sol --tier strong
+```
+
+Pass the original `--kit` for a non-default kit. The session's bound dispatcher role must
+match that kit's dispatcher; worker sessions cannot self-attest. This path acquires no
+claim, allocates no worktree, invokes no lifecycle hook, registers no roster entry and
+launches no worker. It does not revive a released review claim. `--model` and `--tier`
+are explicit, never inferred from an old stamp or a model-name lookup.
+
+The model slug vocabulary remains open. `gpt-6-astra` and `gpt-6.1-sol` are preserved;
+`gpt-6-1-sol` is a distinct accepted literal, not an alias. Use the exact harness selection.
+Existing label normalization (lowercase and trim) remains shared with ordinary dispatch.
+
+The existing stamp step owns both modes: absent stamps are applied, an identical accepted
+pair is a verified no-op, and partial/conflicting/foreign/unattributed stamps are repaired
+from the supplied selection through `ReStampRemovals`. A failed label or timeline read
+returns unverifiable before mutation. Writes are followed by label and timeline readback;
+only the exact pair accepted by `AttestedModelStampOf` produces an applied-and-verified
+receipt. Failed or unobserved writes return exit 6; retry with the same selection after
+investigating the failure. No receipt claims execution surveillance or invented provenance.
+`--dry-run` prints the read-derived plan without mutation or audit append.
+
+Real invocations record `verb=stamp-only` in the standard desk audit log, including the
+repo, PR, requested model/tier/kit and the verified result or refusal. The downstream
+capability floor (including review posting and ready-flip) and auto-lane reader retain
+their existing shared applier-aware semantics. Legacy `deskrestamp` remains the separate,
+cutoff-gated migration that preserves existing content; its provenance rules are unchanged.
+
 **Re-review preserves earlier evidence.** Every `deskdispatch --kit review` allocates a
 fresh detached worktree with a bounded random directory suffix, even in the same desk session.
 The original PR/lane claim key stays unchanged, so a live holder still blocks a second dispatch.

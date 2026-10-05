@@ -112,6 +112,30 @@ func (s *glStampServer) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		enc(s.mrJSON())
 	case r.Method == http.MethodPut && path == mrPath:
+		var payload struct {
+			Add    string `json:"add_labels"`
+			Remove string `json:"remove_labels"`
+		}
+		_ = json.Unmarshal(body, &payload)
+		for _, l := range strings.Split(payload.Remove, ",") {
+			if l == "" {
+				continue
+			}
+			var keep []string
+			for _, v := range s.labels {
+				if v != l {
+					keep = append(keep, v)
+				}
+			}
+			s.labels = keep
+			s.events = append(s.events, glLabelEvt{Action: "remove", Label: l, User: "example-desk-bot[bot]"})
+		}
+		for _, l := range strings.Split(payload.Add, ",") {
+			if l != "" && !labelsPresent(s.labels, []string{l}) {
+				s.labels = append(s.labels, l)
+				s.events = append(s.events, glLabelEvt{Action: "add", Label: l, User: "example-desk-bot[bot]"})
+			}
+		}
 		enc(s.mrJSON())
 	case r.Method == http.MethodPost && path == "/api/v4/projects/example-org%2Fexample-project/labels":
 		w.WriteHeader(http.StatusCreated)

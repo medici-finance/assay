@@ -42,12 +42,18 @@ type ghStampServer struct {
 	srv      *httptest.Server
 	requests []ghStampReq
 
-	labels   []string     // the labels currently on PR 77
-	timeline []ghStampEvt // its label timeline, in order
-	failPR   bool         // the change read answers 500
-	failTL   bool         // the timeline read answers 500
-	minted   []mintCall   // every custody request the resolver made
-	mintErr  error        // when set, the custody minter refuses
+	labels     []string     // the labels currently on PR 77
+	timeline   []ghStampEvt // its label timeline, in order
+	dropWrites bool
+	failAfter  bool
+	wrongActor bool
+	failWrite  bool
+	state      string
+	writes     int
+	failPR     bool       // the change read answers 500
+	failTL     bool       // the timeline read answers 500
+	minted     []mintCall // every custody request the resolver made
+	mintErr    error      // when set, the custody minter refuses
 }
 
 type ghStampReq struct {
@@ -100,7 +106,7 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	switch {
 	case r.Method == http.MethodGet && strings.HasSuffix(path, "/pulls/77"):
-		if s.failPR {
+		if s.failPR || (s.failAfter && s.writes > 0) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -109,7 +115,12 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 			labels = append(labels, map[string]any{"name": l})
 		}
 		enc(map[string]any{
-			"number": 77, "state": "open", "draft": true, "node_id": "PR_example_node",
+			"number": 77, "state": func() string {
+				if s.state != "" {
+					return s.state
+				}
+				return "open"
+			}(), "draft": true, "node_id": "PR_example_node",
 			"labels": labels, "head": map[string]any{"sha": "abc123", "ref": "feat/x"},
 			"base": map[string]any{"ref": "main"}, "user": map[string]any{"login": "example-bot[bot]", "id": 1},
 		})
@@ -131,10 +142,53 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		enc(evs)
 	case r.Method == http.MethodPost && strings.HasSuffix(path, "/labels"):
-		// Both the repo-level ensure (POST /labels) and the apply (POST /issues/77/labels).
+		// Model the standing set and append-only history for readback.
+		if strings.HasSuffix(path, "/issues/77/labels") {
+			s.writes++
+			if s.failWrite {
+				w.WriteHeader(500)
+				return
+			}
+			if !s.dropWrites {
+				var payload struct {
+					Labels []string `json:"labels"`
+				}
+				_ = json.Unmarshal([]byte(body.String()), &payload)
+				role := deskkit.DispatcherRole
+				if len(s.minted) > 0 {
+					role = s.minted[len(s.minted)-1].role
+				}
+				actor, _ := deskkit.RoleAppLogin(role)
+				if s.wrongActor {
+					actor = "example-worker[bot]"
+				}
+				for _, l := range payload.Labels {
+					if !labelsPresent(s.labels, []string{l}) {
+						s.labels = append(s.labels, l)
+						s.timeline = append(s.timeline, ghStampEvt{Event: "labeled", Label: l, Actor: actor})
+					}
+				}
+			}
+		}
 		w.WriteHeader(http.StatusCreated)
 		enc([]map[string]any{})
 	case r.Method == http.MethodDelete && strings.Contains(path, "/issues/77/labels/"):
+		s.writes++
+		if s.failWrite {
+			w.WriteHeader(500)
+			return
+		}
+		if !s.dropWrites {
+			_, l, _ := strings.Cut(path, "/issues/77/labels/")
+			var keep []string
+			for _, v := range s.labels {
+				if v != l {
+					keep = append(keep, v)
+				}
+			}
+			s.labels = keep
+			s.timeline = append(s.timeline, ghStampEvt{Event: "unlabeled", Label: l, Actor: "example-dispatcher"})
+		}
 		w.WriteHeader(http.StatusOK)
 	default:
 		w.WriteHeader(http.StatusNotFound)

@@ -75,6 +75,8 @@ USAGE:
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
                [--branch NAME] [--brief PATH] [--gate-human] [--pr N] [--rework]
                [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
+  deskdispatch --stamp-only --repo OWNER/NAME --pr N --model SLUG --tier strong|any
+               [--kit worker|worker-objective|review|verifier] [--dry-run]
   deskdispatch --kits
   deskdispatch --version
 
@@ -88,6 +90,25 @@ prompt's item key stay on the ORIGINAL key.
 For review kits with --pr N, the resulting claim key must be <configured-alias>--pr-N
 or <repo-basename>--pr-N, optionally followed by --<lane>. Unknown historical aliases
 and keys for another PR are refused before claim acquisition; accepted keys are unchanged.
+
+STAMP AFTER OPEN. When a worker was dispatched before its PR existed, the ORIGINAL
+DISPATCHER runs --stamp-only with the actual model and tier it selected. Both are required;
+no model is inferred from existing labels. The original kit selects the same dispatcher
+role as ordinary dispatch. The session role must match it and be roster-bound; the worker
+cannot self-attest. No item key, claim, worktree, roster registration, hook, queue label or
+prompt is involved. This does not launch an agent or renew review-claim authority.
+
+The shared model vocabulary is open: gpt-6-astra and gpt-6.1-sol round-trip unchanged.
+gpt-6-1-sol is also a valid opaque slug, not an alias for gpt-6.1-sol. Use the identifier
+actually selected by the harness, never a guessed provider/model mapping.
+
+The shared stamp step reads current labels and their standing appliers, repairs partial,
+conflicting or foreign/unattributed stamps using the explicitly selected pair, and leaves
+an identical accepted stamp unchanged. Read failures stop before writes. After a write it
+re-reads labels AND timeline with the capability-floor reader; only the exact accepted pair
+returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
+change is required for --stamp-only. Its --dry-run reads and prints the removal/application
+plan without writes or a local audit append; a plan is not a verified stamp.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 

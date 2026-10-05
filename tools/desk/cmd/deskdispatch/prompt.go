@@ -155,6 +155,9 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		writeWorkerAssignment(&b, o, plan, repo)
 	}
 
+	if o.pr <= 0 && strings.TrimSpace(o.model) != "" && !review && !verifier {
+		fmt.Fprintf(&b, "\n## Pending model stamp\n\nAfter opening the draft PR, return its number to the ORIGINAL DISPATCHER. It must run:\n\n```\ndeskdispatch --stamp-only --repo %s --pr <N> --model %s --tier %s --kit %s\n```\n\nThe model and tier are the dispatcher's selection. Do not run this command as the worker or change your session identity to apply it. A stamp-only receipt does not renew a review claim.\n", repo, o.model, o.tier, o.kit)
+	}
 	if strings.EqualFold(o.tier, "strong") {
 		fmt.Fprintf(&b, "\n%s\n", tierClause)
 	}
