@@ -109,7 +109,7 @@ func readRulingSignOff(path string) (string, error) {
 // Forge.ListComments (which carries the author's login AND — since the write-verbs-C extension —
 // numeric id, the pair the blessing-authority pin requires).
 type ghComment struct {
-	ID      int64  // the comment's numeric (database) id
+	ID      int64 // the comment's numeric (database) id
 	HTMLURL string
 	Body    string
 	User    struct {

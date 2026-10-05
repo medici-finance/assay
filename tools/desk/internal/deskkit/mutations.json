@@ -538,8 +538,8 @@
     {
       "name": "#2022 — read FileSources on every write kind, not only kind `file` (a PR body or comment carrying one passes)",
       "file": "internal/deskkit/outbound.go",
-      "old": "\t\tif w.Kind == OutboundKindFile {\n\t\t\tif src, ok := w.FileSources[fd.Name]; ok {",
-      "new": "\t\tif true {\n\t\t\tif src, ok := w.FileSources[fd.Name]; ok {"
+      "old": "\t\t\topts.InFile = fd.Name != OutboundFieldCommitMessage\n\t\t\tif src, ok := w.FileSources[fd.Name]; ok {",
+      "new": "\t\t\topts.InFile = fd.Name != OutboundFieldCommitMessage\n\t\t}\n\t\t{\n\t\t\tif src, ok := w.FileSources[fd.Name]; ok {"
     },
     {
       "name": "#2022 class — plant a second kind-`file` check site that carries no FileSources (the WriteFile shape before #2022)",

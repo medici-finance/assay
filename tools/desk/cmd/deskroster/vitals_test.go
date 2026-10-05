@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -40,6 +41,12 @@ func TestSetRefusesMultiSegmentSessionName(t *testing.T) {
 		}
 		if de.Code != deskkit.ExitRefused {
 			t.Fatalf("cmdSet with --session %q: exit code = %d, want %d (refused)", name, de.Code, deskkit.ExitRefused)
+		}
+		// The refusal must be deskroster's OWN, before any beacon path is built. Since
+		// #2155, AckBeaconPath refuses the same names one layer down, so a check on the
+		// exit code alone stays green with this layer deleted.
+		if !strings.Contains(de.Msg, "refusing to join it into the beacon path") {
+			t.Fatalf("cmdSet with --session %q: refusal %q is not deskroster's session-shape check", name, de.Msg)
 		}
 		// The rejected name must never have been joined into a beacon path.
 		if name != ".." && name != "." {
