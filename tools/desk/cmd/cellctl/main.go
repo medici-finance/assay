@@ -130,6 +130,10 @@ func run() (code int) {
 		cmdCadence(needCell(rest), rest[1:])
 	case "scratch":
 		cmdScratch(needCell(rest), rest[1:])
+	case "cache":
+		cmdCache(needCell(rest), rest[1:])
+	case "cache-run":
+		cmdCacheRun(rest)
 	case "comms":
 		cmdComms(needCell(rest), rest[1:])
 	case "desk":

@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 )
 
 const pipeWait = 500 * time.Millisecond
@@ -32,17 +34,21 @@ type processTree interface {
 // dirty ownership state and refuse further turns. Windows needs native runtime
 // verification in addition to cross-compilation.
 func Run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer) (exitCode int, uncertain bool, err error) {
-	return run(ctx, argv, env, dir, stdout, stderr, newProcessTree)
+	return withCache(env, func() (int, bool, error) {
+		return run(ctx, argv, env, dir, stdout, stderr, newProcessTree)
+	})
 }
 
 // RunInteractive preserves stdin and terminal foreground ownership in addition
 // to Run's containment guarantees. It imposes no execution deadline.
 func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer) (int, bool, error) {
-	return run(ctx, argv, env, dir, stdout, stderr, func(cmd *exec.Cmd) (processTree, error) {
-		if stdin != nil {
-			cmd.Stdin = stdin
-		}
-		return newInteractiveProcessTree(cmd)
+	return withCache(env, func() (int, bool, error) {
+		return run(ctx, argv, env, dir, stdout, stderr, func(cmd *exec.Cmd) (processTree, error) {
+			if stdin != nil {
+				cmd.Stdin = stdin
+			}
+			return newInteractiveProcessTree(cmd)
+		})
 	})
 }
 
@@ -64,6 +70,18 @@ func observeLaunch(ctx context.Context, started func(int) error) context.Context
 		return ctx
 	}
 	return context.WithValue(ctx, observerKey{}, started)
+}
+
+// One custody boundary covers cadence, interactive and detached tmux wrappers.
+// A crash or uncertain child cleanup leaves a durable active-cache record.
+func withCache(env []string, child func() (int, bool, error)) (int, bool, error) {
+	lease, err := cellcache.Acquire(env)
+	if err != nil {
+		return -1, false, err
+	}
+	code, uncertain, err := child()
+	finishErr := lease.Finish(!uncertain)
+	return code, uncertain || finishErr != nil, errors.Join(err, finishErr)
 }
 
 func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error)) (int, bool, error) {

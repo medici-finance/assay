@@ -30,7 +30,7 @@ import (
 const usage = `deskwt — add, remove, or prune git worktrees, only under sanctioned prefixes.
 
 USAGE:
-  deskwt add <name> [--branch B | --detach] [--base origin/main] [--role R]
+  deskwt add <name> [--branch B | --detach] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]
   deskwt remove <path>
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
@@ -61,6 +61,13 @@ the working directory). The shared checkout's index and user.* config are never 
 the identity lands in the NEW worktree's own config, and the one shared-config write is
 enabling extensions.worktreeConfig (once, idempotent) so that scoping takes effect.
 --no-fetch cuts from the local origin/main as-is.
+
+add --base <full-commit> --upstream <full-remote-ref> checks that the remote ref
+resolves to that commit before allocating. It checks out the immutable commit with
+--no-track, then sets branch tracking separately; a failed tracking setup rolls back
+the new worktree. --upstream requires a fully qualified refs/remotes/ ref and is
+incompatible with --detach. Without --upstream, the existing track-the-base behavior
+is unchanged. Worker resume dispatches supply both values.
 
 add STAMPS or CLEARS the new worktree's commit identity so it never INHERITS the shared
 checkout's. With --role R (a token role or a loop name, folded the same way role-init folds

@@ -13,6 +13,7 @@ func usage(code int) {
 	fmt.Print(usageText)
 	fmt.Print(cadenceUsage)
 	fmt.Print("\n  scratch <cell> run|ack|sweep|inventory [options]\n    Managed task scratch and evidence handoff; see docs/cellctl-scratch.md.\n")
+	fmt.Print(cacheUsage)
 	fmt.Print("\n  comms <cell> check|run|recover --confirm-stopped\n    Configure with CELL_COMMS_CONFIG; see docs/cellctl-comms.md.\n")
 	exitWith(code)
 }
