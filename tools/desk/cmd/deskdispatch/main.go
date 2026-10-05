@@ -113,7 +113,9 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       is the claim tool refusing the invocation itself and is reported as
                       that error, never as a collision.
   2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
-                      refs/remotes/origin/main. Cross-repo is the default case, not the
+                      refs/remotes/origin/main for fresh/read-only dispatches; worker
+                      resumes use the verified source branch and head described below.
+                      Cross-repo is the default case, not the
                       exception: an item belongs to a repo, and a worker handed the wrong
                       one recreates the work where nobody asked for it. The new worktree is
                       then STAMPED with the DISPATCHED agent's own role commit identity
@@ -180,6 +182,13 @@ merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and th
 (resume it with --pr). A MERGED PR refuses as DELIVERED — unless --rework says the row awaits
 implementer rework, in which case the dispatch becomes a FOLLOW-UP on a new branch
 (feat/<item>-followup-<N>), never a resume of the merged branch.
+
+WORKER RESUME. --pr reads the open change through the resolved forge, including in a
+dry run. Its source branch supplies --branch; an explicit different --branch is refused.
+The source must be confirmed in the target repository, with a readable full head SHA.
+A real dispatch refreshes that origin branch and requires its tip to match the forge head
+before claiming anything, then allocates from the verified commit. Missing, stale or
+unreadable source/head never falls back to main. Review/verifier lanes remain detached.
 
 --kits lists the prompt kits this binary carries and exits 0.
 --dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt

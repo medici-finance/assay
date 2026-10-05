@@ -4704,6 +4704,15 @@ cannot be read, or whose length does not match the forge's own changed-file coun
 dispatch as could-not-check (exit 6); it is never read as "authoring". A set-aside PR is named
 in a `NOTICE` line on stderr.
 
+**Worker resume (`--pr N`).** The forge's open change supplies the source branch
+and head, including in a dry-run plan. An explicit `--branch` must match it.
+A real dispatch refreshes that branch on `origin`, verifies the tip equals the
+reported head, and allocates from that immutable commit before continuing.
+An unreadable or missing source/head, a failed refresh, a differing tip, or a
+fork/unknown source repository refuses before the claim; none falls back to main.
+Fresh dispatch still derives `feat/<item>` and starts at main; review and verifier
+worktrees keep their detached mainline start. Dry runs read the forge but do not fetch.
+
 **`--dry-run --worktree PATH` renders against an operator-stated home, verified — never
 predicted.** A dry run normally shows the agent's home worktree as a not-yet-known
 placeholder, on purpose: the worktree verb owns where a worktree lands, and a predicted path

@@ -61,7 +61,7 @@ func resumeDispatch(t *testing.T, remoteBranchSHA string, args ...string) (*stub
 func TestResumeDispatchCutsFromTheChangesOwnRemoteBranch(t *testing.T) {
 	const sha = "1111111111111111111111111111111111111111"
 	s, argv := resumeDispatch(t, sha, "--pr", "42")
-	if !strings.Contains(argv, "--base refs/remotes/origin/feat/item-1") {
+	if !strings.Contains(argv, "--base "+sha) {
 		t.Errorf("a resume dispatch did not cut from the change's own remote branch:\nargv: %s", argv)
 	}
 	if strings.Contains(argv, "--base refs/remotes/origin/main") {
@@ -72,15 +72,6 @@ func TestResumeDispatchCutsFromTheChangesOwnRemoteBranch(t *testing.T) {
 	// checkout never fetched is not the change's real tip either.
 	if !s.ran("fetch") {
 		t.Error("the resume did not refresh the change's branch before cutting from its remote-tracking ref")
-	}
-}
-
-// (b) A resume whose branch does NOT exist on the remote falls back to the mainline rather
-// than handing `deskwt` a ref that does not resolve.
-func TestResumeWithNoRemoteBranchFallsBackToTheMainline(t *testing.T) {
-	_, argv := resumeDispatch(t, "", "--pr", "42")
-	if !strings.Contains(argv, "--base refs/remotes/origin/main") {
-		t.Errorf("a resume with no remote branch did not fall back to the mainline:\nargv: %s", argv)
 	}
 }
 

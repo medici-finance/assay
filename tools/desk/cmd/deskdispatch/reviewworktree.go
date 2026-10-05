@@ -25,12 +25,16 @@ func freshReviewName(base string) (string, error) {
 // Every worktree allocation crosses this seam. Review lanes always allocate
 // detached; the plan cannot accidentally route a reviewer through a branch arm.
 func createDispatchWorktree(o dispatchOpts, plan dispatchPlan) runResult {
+	base, err := dispatchBase(o, plan)
+	if err != nil {
+		return runResult{err: err}
+	}
 	args := []string{"add", plan.wtName}
 	if plan.detached || reviewKit(o.kit) {
 		args = append(args, "--detach")
 	} else {
 		args = append(args, "--branch", plan.branch)
 	}
-	args = append(args, "--base", worktreeBase(o, plan.branch), "--role", plan.identityRole)
+	args = append(args, "--base", base, "--role", plan.identityRole)
 	return runCmd(o.root, "deskwt", args...)
 }
