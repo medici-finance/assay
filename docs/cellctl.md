@@ -1,5 +1,7 @@
 # `cellctl` — running one Assay cell on a laptop
 
+For opt-in stable Go caches and disk budgets, see [Managed Go caches](cellctl-go-cache.md).
+
 `topology.yaml` (see `docs/adopting-assay.md` §5) says what a **cell** *is*: one lead plus its agent
 fleet, accountable for its own repo set. This document is the other half — how that cell **runs** on
 one machine: a persistent `deskd`, one window per desk role, and each of those windows resolving the
