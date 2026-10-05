@@ -241,6 +241,8 @@ hide what an earlier layer wrote there. `scripts/layer-secret-scan.test.sh` is
 its mutation proof: it bakes an obviously-fake key into throwaway fixture
 images, including keys that a later layer overwrites or replaces, and asserts
 the scan goes red, so the scan is known to fire and is not a control that only
-ever passes. `scripts/layer-secret-scan.mutate.sh` runs that test against a
-merged-view copy of the scan and requires every one of the overwrite fixtures
-to fail there.
+ever passes. The scan is fail-closed: an image it cannot read in full exits 2,
+never clean, and the test holds it to that with fixtures it must refuse.
+`scripts/layer-secret-scan.mutate.sh` runs that test against mutated copies of
+the scan, a merged-view scan and one per fail-closed step, and requires each
+fixture to fail against its own mutant.

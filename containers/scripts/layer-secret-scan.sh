@@ -13,9 +13,9 @@
 #   3. every layer's filesystem     — a COPYed / RUN-written credential file.
 #      Each layer is extracted into its OWN directory and scanned there, never
 #      merged into one shared tree (#2256): in a merged tree a later layer that
-#      overwrites a path, replaces it with a directory, or deletes it hides the
-#      earlier layer's file from the scan, although that earlier layer still
-#      ships in the image with the key in it.
+#      overwrites a path or replaces it with a directory hides the earlier
+#      layer's file from the scan, although that earlier layer still ships in
+#      the image with the key in it.
 #
 # Patterns (key material actually held by this project):
 #   * PEM private-key blocks (App signing key, mounted GCP/WIF key files).
@@ -54,7 +54,11 @@
 # hit LOOKS like, only which already-verified-safe *paths* are exempt.
 #
 # Fail-closed: any hit exits 1; a surface that cannot be read (no image, no
-# docker) exits 2 — "could not scan" is never reported as clean.
+# docker) exits 2 — "could not scan" is never reported as clean. That covers
+# every step, not only the docker calls: a save or a layer that does not
+# extract completely, a compressed blob tar cannot open, an image with no
+# layer, a file or directory the scan cannot read, a path whose name the hit
+# report cannot carry, a grep that errors, and a signal mid-scan all exit 2.
 #
 # Usage:  sh layer-secret-scan.sh <image-ref>
 set -u
@@ -171,8 +175,30 @@ allow_path() {
   esac
 }
 
+# cannot_scan <reason>: the one fail-closed exit for a surface the scan could
+# not read in full.
+cannot_scan() {
+  echo "layer-secret-scan: $1 — cannot scan '$IMG' (fail-closed)" >&2
+  exit 2
+}
+
+# compressed <file>: true when the file's magic bytes are gzip, bzip2, xz or
+# zstd. Such a blob is a compressed layer; if tar cannot list it, its content
+# is unreadable here, and grepping the compressed bytes proves nothing.
+compressed() {
+  _mg="$(od -An -tx1 -N6 "$1" 2>/dev/null | tr -d ' \n')"
+  case "$_mg" in
+    1f8b*|425a68*|fd377a585a00|28b52ffd*) return 0 ;;
+  esac
+  return 1
+}
+
 WORK="$(mktemp -d 2>/dev/null || mktemp -d -t layerscan)"
-trap 'rm -rf "$WORK"' EXIT INT TERM
+# EXIT cleans up; a signal ENDS the scan with exit 2. A trap that only removed
+# $WORK on INT/TERM would let the script carry on over an empty tree and
+# report it clean.
+trap 'chmod -R u+rwX "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
+trap 'exit 2' HUP INT TERM
 HITS="$WORK/hits"
 : > "$HITS"
 
@@ -195,7 +221,9 @@ if ! docker save "$IMG" -o "$WORK/img.tar" 2>"$WORK/err"; then
   exit 2
 fi
 mkdir -p "$WORK/img" "$WORK/layers"
-tar -xf "$WORK/img.tar" -C "$WORK/img" 2>/dev/null || true
+if ! tar -xf "$WORK/img.tar" -C "$WORK/img" 2>"$WORK/err"; then
+  cannot_scan "the saved image does not unpack: $(head -3 "$WORK/err")"
+fi
 # Extract every nested layer tar (docker save nests each layer as its own tar,
 # gzipped or not — tar auto-detects) into a directory of its OWN,
 # $WORK/layers/<n>/, numbered in discovery order. A blob that IS a layer tar is
@@ -215,19 +243,59 @@ tar -xf "$WORK/img.tar" -C "$WORK/img" 2>/dev/null || true
 # failed the same image depending on content hashes. Each layer extracted alone
 # has nothing to collide with, so every file every layer carries is scanned.
 # layer-index maps each <n> back to its blob, for the hit report.
+#
+# Fail-closed extraction: a layer tar must extract with exit 0, since a member
+# tar refused is a file never scanned; a blob whose magic says it is
+# compressed but that tar cannot list is a layer that cannot be read; and an
+# image with no layer at all was not scanned. Each of these exits 2. The loop
+# reads its list from a file, not a pipe, so its exit ends the script.
 : > "$WORK/nontar-blobs"
 : > "$WORK/layer-index"
 n=0
-find "$WORK/img" -type f 2>/dev/null | while IFS= read -r blob; do
+if ! find "$WORK/img" -type f > "$WORK/blobs" 2>"$WORK/err"; then
+  cannot_scan "cannot list the saved image: $(head -3 "$WORK/err")"
+fi
+while IFS= read -r blob; do
   if tar -tf "$blob" >/dev/null 2>&1; then
     n=$((n + 1))
     mkdir -p "$WORK/layers/$n"
-    tar -xf "$blob" -C "$WORK/layers/$n" 2>/dev/null || true
+    if ! tar -xf "$blob" -C "$WORK/layers/$n" 2>"$WORK/err"; then
+      cannot_scan "layer ${blob#"$WORK/img/"} does not extract in full: $(head -3 "$WORK/err")"
+    fi
     printf '%s\t%s\n' "$n" "${blob#"$WORK/img/"}" >> "$WORK/layer-index"
+  elif compressed "$blob"; then
+    cannot_scan "${blob#"$WORK/img/"} is compressed but tar cannot read it"
   else
     printf '%s\n' "$blob" >> "$WORK/nontar-blobs"
   fi
-done
+done < "$WORK/blobs"
+if [ "$n" -eq 0 ]; then
+  cannot_scan "no layer tar found in the saved image"
+fi
+
+# Every extracted file must be readable, and every path must fit on one line
+# of the hit list. chmod -R does not follow symlinks, so it only touches what
+# the extraction wrote. A file or directory still unreadable after it, or a
+# path with a newline in its name (the hit list is newline-separated, so such
+# a name would split into fragments the report cannot attribute), exits 2.
+if ! chmod -R u+rX "$WORK/layers" 2>"$WORK/err"; then
+  cannot_scan "cannot make the extracted layers readable: $(head -3 "$WORK/err")"
+fi
+if ! find "$WORK/layers" ! -type l \( ! -perm -400 -o \( -type d ! -perm -100 \) \) \
+     > "$WORK/unreadable" 2>"$WORK/err"; then
+  cannot_scan "cannot walk the extracted layers: $(head -3 "$WORK/err")"
+fi
+if [ -s "$WORK/unreadable" ]; then
+  cannot_scan "an extracted file or directory is not readable"
+fi
+NL='
+'
+if ! find "$WORK/img" "$WORK/layers" -name "*${NL}*" > "$WORK/nlpaths" 2>"$WORK/err"; then
+  cannot_scan "cannot walk the extracted image: $(head -3 "$WORK/err")"
+fi
+if [ -s "$WORK/nlpaths" ]; then
+  cannot_scan "an image path has a newline in its name"
+fi
 
 # --- scan all collected surfaces ----------------------------------------------
 # -l: just the file names; the masked sample is pulled separately so a real
@@ -243,15 +311,27 @@ done
 # history.txt/inspect.json/layers are searched recursively (-r); nontar-blobs
 # has no directory to recurse (see the extraction step above), so each listed
 # blob is checked individually.
+#
+# grep exits 0 on a match, 1 on none, and 2 on an error (a file it could not
+# open or read). Exit 2 is could-not-scan, never "no match".
 : > "$WORK/hitfiles"
 collect() { # <grep binary-handling flag: a|I> <pattern>
-  bf="$1" pat="$2"
+  bf="$1" pat="$2" rc=0
   grep "-${bf}Erl" "$pat" \
     "$WORK/history.txt" "$WORK/inspect.json" "$WORK/layers" \
-    2>/dev/null >> "$WORK/hitfiles" || true
+    2>"$WORK/grep-err" >> "$WORK/hitfiles" || rc=$?
+  if [ "$rc" -gt 1 ]; then
+    cannot_scan "grep could not read every file: $(head -3 "$WORK/grep-err")"
+  fi
   if [ -s "$WORK/nontar-blobs" ]; then
     while IFS= read -r blob; do
-      grep "-${bf}Eq" "$pat" "$blob" 2>/dev/null && printf '%s\n' "$blob" >> "$WORK/hitfiles"
+      rc=0
+      grep "-${bf}Eq" "$pat" "$blob" 2>"$WORK/grep-err" || rc=$?
+      case "$rc" in
+        0) printf '%s\n' "$blob" >> "$WORK/hitfiles" ;;
+        1) ;;
+        *) cannot_scan "grep could not read ${blob#"$WORK/img/"}" ;;
+      esac
     done < "$WORK/nontar-blobs"
   fi
 }

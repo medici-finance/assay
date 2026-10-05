@@ -1,26 +1,33 @@
 #!/bin/sh
-# layer-secret-scan.mutate.sh — the negative control for the layered fixtures
-# (E, F, G) in layer-secret-scan.test.sh (#2256).
+# layer-secret-scan.mutate.sh — the negative controls for the layered fixtures
+# (E, F, G, #2256) and the fail-closed fixtures (H to O) in
+# layer-secret-scan.test.sh.
 #
-# The defect class: the scan reads a MERGED view of the image filesystem, so
-# a file one layer carries and a later layer shadows (overwrites, replaces with
-# a directory, or deletes) is never read, although it ships in the image.
+# Each mutant is a copy of layer-secret-scan.sh with one defect planted. The
+# test is run against every mutant, and the fixtures that pin that defect must
+# fail there while every other assertion still passes. That shows each fixture
+# can fail on its own, and that each mutant changes only what it claims to.
 #
-# This script plants a second instance of that class, separate from the one
-# that was reported. The reported instance merged layers in blob discovery
-# order. The mutant here merges them in true LAYER order, read from the save's
-# manifest.json, which is how a union filesystem shows the image and how a
-# careful merged scan would be written. The fixtures must catch this mutant
-# too, or they only pin one way of getting the merge wrong.
+# The mutants:
+#   merged     reads a MERGED view of the image filesystem, so a file one layer
+#              carries and a later layer overwrites or replaces with a
+#              directory is never read, although it ships in the image. The
+#              reported instance merged in blob discovery order; this mutant
+#              merges in true LAYER order, read from the save's manifest.json,
+#              which is how a union filesystem shows the image and how a
+#              careful merged scan would be written. The fixtures must catch it
+#              too, or they only pin one way of getting the merge wrong.
+#   save       goes on after the saved image fails to unpack in full.
+#   layer      goes on after a layer tar fails to extract in full.
+#   nolayer    goes on with no layer extracted.
+#   compressed raw-greps a compressed blob tar cannot list.
+#   unread     skips making the extracted files readable.
+#   newline    goes on past a path with a newline in its name.
+#   signal     cleans up on TERM but does not exit.
 #
-# It runs layer-secret-scan.test.sh twice:
-#   1. against the real scan — every assertion must pass (exit 0);
-#   2. against the mutant — every E/F/G fixture must FAIL by name, while every
-#      older assertion still passes, which shows the mutant changes only the
-#      merge and that each fixture can fail on its own.
-#
-# Exit 0 = the control holds. Exit 1 = a fixture survived the mutant (or the
-# baseline was red). Exit 2 = could not mutate or could not run.
+# Exit 0 = every control holds. Exit 1 = a fixture survived its mutant, an
+# unrelated assertion broke, or the baseline was red. Exit 2 = could not
+# mutate or could not run.
 #
 # Run:  sh containers/scripts/layer-secret-scan.mutate.sh
 set -u
@@ -30,21 +37,74 @@ SCAN="$HERE/layer-secret-scan.sh"
 TEST="$HERE/layer-secret-scan.test.sh"
 
 WORK=$(mktemp -d 2>/dev/null || mktemp -d -t layerscanmut)
-trap 'rm -rf "$WORK"' EXIT INT TERM
-MUTANT="$WORK/layer-secret-scan.merged.sh"
+trap 'rm -rf "$WORK"' EXIT
+trap 'exit 2' HUP INT TERM
 
-# --- build the mutant ----------------------------------------------------------
-# Three exact-line rewrites. Each must match exactly once: if the scan is
-# refactored so a line no longer matches, this fails as could-not-mutate rather
-# than running an unchanged copy and calling it a mutant.
+# One pass line per assertion in layer-secret-scan.test.sh. A mutant KILLS an
+# assertion when its pass line is missing from the test output.
+CHECKS="RED on baked-key fixture
+GREEN on clean fixture
+RED on false-positive fixture's real secret
+GREEN on all five allowlisted-path mimics
+RED on the generic sk--in-binary regression fixture
+RED on overwrite fixture 1 —
+RED on overwrite fixture 2 —
+RED on overwrite fixture 3 —
+RED on overwrite fixture 4 —
+RED on overwrite fixture 5 —
+RED on overwrite fixture 6 —
+RED on sandwich fixture 1 —
+RED on sandwich fixture 2 —
+RED on sandwich fixture 3 —
+RED on directory-swap fixture —
+RED on directory-swap fixture's whited-out /app/gone.pem
+GREEN on stand-in clean control —
+CLOSED on bad save fixture —
+CLOSED on partial save fixture —
+CLOSED on refused member fixture —
+CLOSED on no layer fixture —
+CLOSED on truncated gzip fixture —
+CLOSED on zstd blob fixture —
+CLOSED on newline name fixture —
+CLOSED on signal fixture —
+RED on unreadable fixture —"
+
+# --- build the mutants ---------------------------------------------------------
+# Every rewrite is exact-line and must match exactly the expected number of
+# times: if the scan is refactored so a line no longer matches, this fails as
+# could-not-mutate rather than running an unchanged copy and calling it a
+# mutant.
+mutated() { # <mutant-file> <awk exit status>
+  if [ "$2" -ne 0 ] || cmp -s "$SCAN" "$1"; then
+    echo "COULD-NOT-MUTATE: the rewrite did not apply to $SCAN for $1 (awk exit $2)" >&2
+    exit 2
+  fi
+  if ! sh -n "$1"; then
+    echo "COULD-NOT-MUTATE: $1 is not valid sh" >&2
+    exit 2
+  fi
+}
+
+# swap <name> <from-line> <to-line>: replace one exact line. The lines travel
+# through the environment, so awk applies no escape processing to them.
+swap() {
+  FROM="$2" TO="$3" awk '
+    $0 == ENVIRON["FROM"] { print ENVIRON["TO"]; hits++; next }
+    { print }
+    END { if (hits != 1) { print "mutate: expected 1 rewrite, made " hits+0 > "/dev/stderr"; exit 3 } }
+  ' "$SCAN" > "$WORK/$1.sh"
+  mutated "$WORK/$1.sh" "$?"
+}
+
+# merged: three exact-line rewrites.
 awk '
   $0 == "    mkdir -p \"$WORK/layers/$n\"" {
     print "    mkdir -p \"$WORK/layers/1\""; hits++; next
   }
-  $0 == "    tar -xf \"$blob\" -C \"$WORK/layers/$n\" 2>/dev/null || true" {
-    print "    tar -xf \"$blob\" -C \"$WORK/layers/1\" 2>/dev/null || true"; hits++; next
+  $0 == "    if ! tar -xf \"$blob\" -C \"$WORK/layers/$n\" 2>\"$WORK/err\"; then" {
+    print "    if ! tar -xf \"$blob\" -C \"$WORK/layers/1\" 2>\"$WORK/err\"; then"; hits++; next
   }
-  $0 == "find \"$WORK/img\" -type f 2>/dev/null | while IFS= read -r blob; do" {
+  $0 == "if ! find \"$WORK/img\" -type f > \"$WORK/blobs\" 2>\"$WORK/err\"; then" {
     # Non-tar blobs first (their order does not matter), then the layer tars
     # in manifest order, so the LAST layer is extracted last and wins.
     print "merged_order() {"
@@ -54,75 +114,109 @@ awk '
     print "  sed \"s/.*\\\"Layers\\\":\\[\\([^]]*\\)\\].*/\\1/\" \"$WORK/img/manifest.json\" \\"
     print "    | tr \",\" \"\\n\" | tr -d \"\\\"\" | sed \"s#^#$WORK/img/#\""
     print "}"
-    print "merged_order | while IFS= read -r blob; do"
+    print "if ! merged_order > \"$WORK/blobs\" 2>\"$WORK/err\"; then"
     hits++; next
   }
   { print }
   END { if (hits != 3) { print "mutate: expected 3 rewrites, made " hits > "/dev/stderr"; exit 3 } }
-' "$SCAN" > "$MUTANT"
-rc=$?
-if [ "$rc" -ne 0 ] || cmp -s "$SCAN" "$MUTANT"; then
-  echo "COULD-NOT-MUTATE: the merged-view rewrite did not apply to $SCAN (awk exit $rc)" >&2
-  exit 2
-fi
-if ! sh -n "$MUTANT"; then
-  echo "COULD-NOT-MUTATE: the merged-view mutant is not valid sh" >&2
-  exit 2
-fi
+' "$SCAN" > "$WORK/merged.sh"
+mutated "$WORK/merged.sh" "$?"
+
+# shellcheck disable=SC2016  # the lines are scan source, not to be expanded
+{
+  swap save \
+    '  cannot_scan "the saved image does not unpack: $(head -3 "$WORK/err")"' \
+    '  :'
+  swap layer \
+    '      cannot_scan "layer ${blob#"$WORK/img/"} does not extract in full: $(head -3 "$WORK/err")"' \
+    '      :'
+  swap nolayer \
+    '  cannot_scan "no layer tar found in the saved image"' \
+    '  :'
+  swap compressed \
+    '    cannot_scan "${blob#"$WORK/img/"} is compressed but tar cannot read it"' \
+    '    printf '"'"'%s\n'"'"' "$blob" >> "$WORK/nontar-blobs"'
+  swap unread \
+    'if ! chmod -R u+rX "$WORK/layers" 2>"$WORK/err"; then' \
+    'if false; then'
+  swap newline \
+    'if [ -s "$WORK/nlpaths" ]; then' \
+    'if false; then'
+  swap signal \
+    "trap 'exit 2' HUP INT TERM" \
+    "trap 'rm -rf \"\$WORK\"' HUP INT TERM"
+}
 
 # --- 1. baseline: the real scan passes every assertion -------------------------
 sh "$TEST" > "$WORK/out.real" 2>&1
 RC_REAL=$?
 if [ "$RC_REAL" -ne 0 ]; then
-  echo "FAIL: baseline — layer-secret-scan.test.sh is red against the real scan (exit $RC_REAL); the mutant result would mean nothing" >&2
+  echo "FAIL: baseline — layer-secret-scan.test.sh is red against the real scan (exit $RC_REAL); the mutant results would mean nothing" >&2
   cat "$WORK/out.real" >&2
   exit 1
 fi
 echo "baseline: layer-secret-scan.test.sh exit 0 against the real scan"
 
-# --- 2. the mutant -------------------------------------------------------------
-LAYER_SECRET_SCAN="$MUTANT" sh "$TEST" > "$WORK/out.mutant" 2>&1
-RC_MUT=$?
+# --- 2. the mutants ------------------------------------------------------------
 fail=0
-if [ "$RC_MUT" -eq 0 ]; then
-  echo "FAIL: layer-secret-scan.test.sh passed against the merged-view mutant — no fixture caught it" >&2
-  fail=1
-elif [ "$RC_MUT" -ne 1 ]; then
-  echo "COULD-NOT-CHECK: the test exited $RC_MUT (not 1) against the mutant — it did not run to its assertions" >&2
-  cat "$WORK/out.mutant" >&2
-  exit 2
-fi
-
-# Every layered fixture must fail BY NAME under the mutant.
-for f in "overwrite fixture 1" "overwrite fixture 2" "overwrite fixture 3" \
-         "overwrite fixture 4" "overwrite fixture 5" "overwrite fixture 6" \
-         "sandwich fixture 1" "sandwich fixture 2" "sandwich fixture 3" \
-         "directory-swap fixture"; do
-  if grep -qF "FAIL: $f — the key an earlier layer wrote at /app/key.pem was NOT caught" "$WORK/out.mutant"; then
-    echo "killed: $f fails under the merged-view mutant"
-  else
-    echo "FAIL: $f survived the merged-view mutant" >&2
+# run_mutant <name> <killed pass lines, one per line>
+run_mutant() {
+  LAYER_SECRET_SCAN="$WORK/$1.sh" sh "$TEST" > "$WORK/out.$1" 2>&1
+  _rc=$?
+  if [ "$_rc" -eq 0 ]; then
+    echo "FAIL: $1 mutant — the test passed against it; no fixture caught it" >&2
     fail=1
+    return
+  elif [ "$_rc" -ne 1 ]; then
+    echo "COULD-NOT-CHECK: the test exited $_rc (not 1) against the $1 mutant — it did not run to its assertions" >&2
+    cat "$WORK/out.$1" >&2
+    exit 2
   fi
-done
-
-# Every older assertion must still hold, so the mutant is the merge and only it.
-for ok in "RED on baked-key fixture" "GREEN on clean fixture" \
-          "RED on false-positive fixture's real secret" \
-          "GREEN on all five allowlisted-path mimics" \
-          "RED on the generic sk--in-binary regression fixture" \
-          "RED on directory-swap fixture's whited-out /app/gone.pem"; do
-  if grep -qF "$ok" "$WORK/out.mutant"; then
-    echo "held: $ok"
-  else
-    echo "FAIL: under the mutant, an assertion unrelated to the merge also broke: $ok" >&2
+  _bad=0
+  while IFS= read -r _c; do
+    if printf '%s\n' "$2" | grep -qxF "$_c"; then
+      if grep -qF "$_c" "$WORK/out.$1"; then
+        echo "FAIL: $1 mutant — survived by: $_c" >&2
+        _bad=1
+      else
+        echo "killed: $1 mutant fails: $_c"
+      fi
+    elif ! grep -qF "$_c" "$WORK/out.$1"; then
+      echo "FAIL: $1 mutant — an assertion it should not touch also broke: $_c" >&2
+      _bad=1
+    fi
+  done <<EOF
+$CHECKS
+EOF
+  if [ "$_bad" -ne 0 ]; then
+    cat "$WORK/out.$1" >&2
     fail=1
+  else
+    echo "held: every other assertion passes under the $1 mutant"
   fi
-done
+}
+
+run_mutant merged "RED on overwrite fixture 1 —
+RED on overwrite fixture 2 —
+RED on overwrite fixture 3 —
+RED on overwrite fixture 4 —
+RED on overwrite fixture 5 —
+RED on overwrite fixture 6 —
+RED on sandwich fixture 1 —
+RED on sandwich fixture 2 —
+RED on sandwich fixture 3 —
+RED on directory-swap fixture —"
+run_mutant save "CLOSED on partial save fixture —"
+run_mutant layer "CLOSED on refused member fixture —"
+run_mutant nolayer "CLOSED on no layer fixture —"
+run_mutant compressed "CLOSED on truncated gzip fixture —
+CLOSED on zstd blob fixture —"
+run_mutant unread "RED on unreadable fixture —"
+run_mutant newline "CLOSED on newline name fixture —"
+run_mutant signal "CLOSED on signal fixture —"
 
 if [ "$fail" -ne 0 ]; then
-  cat "$WORK/out.mutant" >&2
   exit 1
 fi
-echo "PASS: every layered fixture fails against a merged-view scan, and only those fixtures do"
+echo "PASS: every fixture fails against its mutant, and only those fixtures do"
 exit 0

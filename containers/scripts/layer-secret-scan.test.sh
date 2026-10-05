@@ -15,6 +15,14 @@
 # key. layer-secret-scan.mutate.sh runs this test against a merged-view mutant
 # of the scan and requires every one of those fixtures to fail under it.
 #
+# The fail-closed fixtures (H to O) hold the scan to its exit-2 contract: an
+# image it cannot read in full is never reported clean. Most are fed through a
+# stand-in `docker` on PATH, since docker itself will not build or save them;
+# a stand-in clean image is the control that the stand-in alone reads clean.
+# Fixture N (unreadable modes) is a real BuildKit build and must go RED with
+# the hidden keys named. layer-secret-scan.mutate.sh reverts each fail-closed
+# step on its own and requires its fixture, and only its fixture, to fail.
+#
 # The synthetic secrets are CONSTRUCTED AT RUNTIME (the PEM fence and the key
 # prefix are assembled from fragments), so no real-looking key material is ever
 # committed to this file — the repository leak-sweep sees only the fragments.
@@ -44,14 +52,16 @@ FALSEPOS="${TAG}-falsepos:test"
 OVERWRITE_NS="1 2 3 4 5 6"   # fixture E variants
 SANDWICH_NS="1 2 3"          # fixture F variants
 DIRSWAP="${TAG}-dirswap:test" # fixture G
+UNREAD="${TAG}-unreadable:test" # fixture N
 ow_tag() { printf '%s-overwrite-%s:test' "$TAG" "$1"; }
 sw_tag() { printf '%s-sandwich-%s:test' "$TAG" "$1"; }
 
 WORK=$(mktemp -d 2>/dev/null || mktemp -d -t layerscantest)
 # shellcheck disable=SC2329  # invoked indirectly via trap
 cleanup() {
+  chmod -R u+rwX "$WORK" 2>/dev/null
   rm -rf "$WORK"
-  docker rmi -f "$BAKED_LAYER" "$BAKED_ENV" "$CLEAN" "$FALSEPOS" "$DIRSWAP" >/dev/null 2>&1 || true
+  docker rmi -f "$BAKED_LAYER" "$BAKED_ENV" "$CLEAN" "$FALSEPOS" "$DIRSWAP" "$UNREAD" >/dev/null 2>&1 || true
   for _n in $OVERWRITE_NS; do docker rmi -f "$(ow_tag "$_n")" >/dev/null 2>&1 || true; done
   for _n in $SANDWICH_NS; do docker rmi -f "$(sw_tag "$_n")" >/dev/null 2>&1 || true; done
 }
@@ -314,6 +324,132 @@ if ! docker load -i "$G/image.tar" > "$WORK/load.log" 2>&1; then
   exit 2
 fi
 
+# --- fixtures H-O: the scan fails closed on what it cannot read ---------------
+# A stand-in `docker` serves a hand-built save tar ($STUB_SAVE) for the cases
+# docker will not produce. Its history and image config are benign, so only
+# the layer surface decides each result.
+STUB="$WORK/stub"
+SIGSTUB="$WORK/sigstub"
+mkdir -p "$STUB" "$SIGSTUB"
+cat > "$STUB/docker" <<'SH'
+#!/bin/sh
+case "$1" in
+  history) echo 'COPY stub /' ;;
+  inspect) echo '[{"Config":{"Env":[]}}]' ;;
+  save)
+    while [ $# -gt 0 ]; do
+      [ "$1" = -o ] && exec cp "$STUB_SAVE" "$2"
+      shift
+    done
+    exit 1 ;;
+  *) exit 1 ;;
+esac
+SH
+# The signal fixture's stand-in `sort` (the scan calls sort once, after every
+# grep): it sends TERM to the scan, its parent, then sorts as usual.
+cat > "$SIGSTUB/sort" <<'SH'
+#!/bin/sh
+kill -TERM "$PPID"
+exec "$REAL_SORT" "$@"
+SH
+chmod +x "$STUB/docker" "$SIGSTUB/sort"
+REAL_SORT=$(command -v sort)
+export REAL_SORT
+
+pem_to() { # <file>: write the fake PEM there
+  mkdir -p "$(dirname "$1")"
+  {
+    printf '%s\n' "$PEM_HDR"
+    printf '%s\n' "$PEM_BODY"
+    printf '%s\n' "$PEM_FTR"
+  } > "$1"
+}
+benign_layer() { # <layer.tar>: a layer holding one benign file
+  mkdir -p "$WORK/benign/app" "$(dirname "$1")"
+  printf 'not a key\n' > "$WORK/benign/app/readme.txt"
+  COPYFILE_DISABLE=1 tar -cf "$1" -C "$WORK/benign" app
+}
+stub_save() { # <dir> <layer>...: <dir>.save.tar from <dir>'s layer tars
+  _d="$1"; shift
+  _l=""
+  for _p in "$@"; do _l="${_l:+$_l,}\"$_p\""; done
+  printf '{"os":"linux","rootfs":{"type":"layers"}}\n' > "$_d/config.json"
+  printf '[{"Config":"config.json","RepoTags":["stub:test"],"Layers":[%s]}]\n' \
+    "$_l" > "$_d/manifest.json"
+  (cd "$_d" && COPYFILE_DISABLE=1 tar -cf "$_d.save.tar" manifest.json config.json "$@")
+}
+
+# H0 — control: a stand-in image with one benign layer must scan clean.
+mkdir -p "$WORK/h0"
+benign_layer "$WORK/h0/l1/layer.tar"
+stub_save "$WORK/h0" l1/layer.tar
+
+# H1 — the save is not a tar at all.
+printf 'not a tar archive\n' > "$WORK/h1.save.tar"
+
+# H2 — the save extracts only in part: l1 (benign) unpacks, then l2/layer.tar,
+# which holds the key, sits under a symlink tar refuses to write through.
+mkdir -p "$WORK/h2/l1" "$WORK/h2lnk" "$WORK/h2key/l2"
+benign_layer "$WORK/h2/l1/layer.tar"
+ln -s /nonexistent-layerscan-fixture "$WORK/h2lnk/l2"
+pem_to "$WORK/h2k/app/key.pem"
+COPYFILE_DISABLE=1 tar -cf "$WORK/h2key/l2/layer.tar" -C "$WORK/h2k" app
+stub_save "$WORK/h2" l1/layer.tar
+COPYFILE_DISABLE=1 tar -cf "$WORK/h2.save.tar" -C "$WORK/h2" manifest.json \
+  config.json l1/layer.tar -C "$WORK/h2lnk" l2 -C "$WORK/h2key" l2/layer.tar
+
+# I — a layer whose key member tar refuses to extract (it sits under the
+# layer's own symlink to a path outside the layer).
+mkdir -p "$WORK/i/l1" "$WORK/ilnk" "$WORK/ikey"
+ln -s /nonexistent-layerscan-fixture "$WORK/ilnk/lnk"
+pem_to "$WORK/ikey/lnk/key.pem"
+COPYFILE_DISABLE=1 tar -cf "$WORK/i/l1/layer.tar" -C "$WORK/ilnk" lnk \
+  -C "$WORK/ikey" lnk/key.pem
+stub_save "$WORK/i" l1/layer.tar
+
+# J — a save with no layer at all.
+mkdir -p "$WORK/j"
+stub_save "$WORK/j"
+
+# K — a benign layer, then a gzip layer holding the key, cut short so tar
+# cannot list it.
+mkdir -p "$WORK/k/l1" "$WORK/k/l2" "$WORK/kk"
+benign_layer "$WORK/k/l1/layer.tar"
+pem_to "$WORK/kk/app/key.pem"
+COPYFILE_DISABLE=1 tar -czf "$WORK/kk.tgz" -C "$WORK/kk" app
+head -c 40 "$WORK/kk.tgz" > "$WORK/k/l2/layer.tar"
+stub_save "$WORK/k" l1/layer.tar l2/layer.tar
+
+# L — a benign layer, then a zstd-framed blob tar cannot list.
+mkdir -p "$WORK/l/l1" "$WORK/l/l2"
+benign_layer "$WORK/l/l1/layer.tar"
+printf '\050\265\057\375not-a-readable-frame' > "$WORK/l/l2/layer.tar"
+stub_save "$WORK/l" l1/layer.tar l2/layer.tar
+
+# M — the key in a file whose name is an allowlisted path plus a newline.
+mkdir -p "$WORK/m/l1" "$WORK/mm/usr/bin"
+NLNAME=$(printf 'gpgv\nx')
+NLNAME=${NLNAME%x}
+pem_to "$WORK/mm/usr/bin/$NLNAME"
+COPYFILE_DISABLE=1 tar -cf "$WORK/m/l1/layer.tar" -C "$WORK/mm" usr
+stub_save "$WORK/m" l1/layer.tar
+
+# N — a real build: a key in a mode-000 file, and a key under a directory with
+# no search bit. The scan must read both and go RED with each named.
+mkdir -p "$WORK/n/locked"
+printf 'not a key\n' > "$WORK/n/readme.txt"
+pem_to "$WORK/n/secret.txt"
+pem_to "$WORK/n/locked/key.pem"
+cat > "$WORK/n/Dockerfile" <<'DF'
+FROM scratch
+COPY readme.txt /app/readme.txt
+COPY --chmod=000 secret.txt /app/key.pem
+COPY --chmod=600 locked /app/locked
+DF
+build "$UNREAD" "$WORK/n"
+
+# O — a signal mid-scan (the stand-in sort, over the clean H0 image).
+
 # --- run the scan against each fixture ----------------------------------------
 sh "$SCAN" "$BAKED_LAYER" > "$WORK/out.baked-layer" 2>&1; RC_BAKED_LAYER=$?
 sh "$SCAN" "$BAKED_ENV"   > "$WORK/out.baked-env"   2>&1; RC_BAKED_ENV=$?
@@ -328,6 +464,21 @@ for n in $SANDWICH_NS; do
   sh "$SCAN" "$(sw_tag "$n")" > "$WORK/out.sandwich-$n" 2>&1
   echo "$?" > "$WORK/rc.sandwich-$n"
 done
+sh "$SCAN" "$UNREAD" > "$WORK/out.unread" 2>&1; RC_UNREAD=$?
+stub_scan() { # <fixture> <save.tar> [<extra PATH dir>]: scan via the stand-in
+  PATH="${3:+$3:}$STUB:$PATH" STUB_SAVE="$2" sh "$SCAN" stub:test \
+    > "$WORK/out.$1" 2>&1
+  echo "$?" > "$WORK/rc.$1"
+}
+stub_scan h0 "$WORK/h0.save.tar"
+stub_scan h1 "$WORK/h1.save.tar"
+stub_scan h2 "$WORK/h2.save.tar"
+stub_scan i "$WORK/i.save.tar"
+stub_scan j "$WORK/j.save.tar"
+stub_scan k "$WORK/k.save.tar"
+stub_scan l "$WORK/l.save.tar"
+stub_scan m "$WORK/m.save.tar"
+stub_scan o "$WORK/h0.save.tar" "$SIGSTUB"
 
 fail=0
 
@@ -427,6 +578,48 @@ if grep -q 'layer file: /app/gone\.pem ' "$WORK/out.dirswap"; then
 else
   echo "FAIL: directory-swap fixture — the key at /app/gone.pem, deleted by a later layer's whiteout, was NOT caught" >&2
   cat "$WORK/out.dirswap" >&2
+  fail=1
+fi
+
+# --- H-O: fail-closed. The control must be clean (exit 0), or every exit 2
+# below could be the stand-in's fault rather than the scan's.
+printf '  stand-in clean control     -> scan exit %s\n' "$(cat "$WORK/rc.h0")"
+if [ "$(cat "$WORK/rc.h0")" -eq 0 ]; then
+  echo "GREEN on stand-in clean control — the stand-in alone reads clean"
+else
+  echo "FAIL: stand-in clean control — expected exit 0 (scan exit $(cat "$WORK/rc.h0"))" >&2
+  cat "$WORK/out.h0" >&2
+  fail=1
+fi
+closed() { # <fixture> <label>: exit 2 and no "clean" line
+  _rc=$(cat "$WORK/rc.$1")
+  printf '  %-26s -> scan exit %s\n' "$2" "$_rc"
+  if [ "$_rc" -eq 2 ] && ! grep -q '^clean:' "$WORK/out.$1"; then
+    echo "CLOSED on $2 — exit 2, not reported clean"
+  else
+    echo "FAIL: $2 — the scan did not fail closed (scan exit $_rc)" >&2
+    cat "$WORK/out.$1" >&2
+    fail=1
+  fi
+}
+closed h1 "bad save fixture"
+closed h2 "partial save fixture"
+closed i "refused member fixture"
+closed j "no layer fixture"
+closed k "truncated gzip fixture"
+closed l "zstd blob fixture"
+closed m "newline name fixture"
+closed o "signal fixture"
+
+# N: both unreadable keys are read and named — detection, not just exit 2.
+printf '  unreadable fixture         -> scan exit %s\n' "$RC_UNREAD"
+if [ "$RC_UNREAD" -eq 1 ] \
+   && grep -q 'layer file: /app/key\.pem ' "$WORK/out.unread" \
+   && grep -q 'layer file: /app/locked/key\.pem ' "$WORK/out.unread"; then
+  echo "RED on unreadable fixture — both keys read and named"
+else
+  echo "FAIL: unreadable fixture — a key in a mode-000 file or untraversable directory was NOT caught (scan exit $RC_UNREAD)" >&2
+  cat "$WORK/out.unread" >&2
   fail=1
 fi
 
