@@ -2,8 +2,9 @@
 stream: iso-9001
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P2
+spec: docs/streams/iso-9001/reactivation.md
 track: platform
 issues: []
 board: generated
@@ -11,10 +12,10 @@ board: generated
 
 # iso-9001 Stream — make the artifacts an ISO 9001 adopter needs actually shippable
 
-**Parked** (2026-09-25, relayed by the desk at the driver's direction): shelved to
-free attention-budget for higher-priority work; briefs are kept as authored.
-Re-activate by flipping this README's `status:` back to `active` when priority
-allows.
+**Active at P2** (2026-10-06, at the driver's direction). The stream was parked
+on 2026-09-25 to free attention for higher-priority work and is now reactivated.
+[Reactivation scope](reactivation.md) records the prioritization decision; existing
+brief dependencies and human gates still apply.
 
 [`docs/iso9001-mapping.md`](../../iso9001-mapping.md) reads this repo's shipped artifacts
 against the ISO 9001 clause skeleton and says, per clause, what exists, whether it is
@@ -199,7 +200,7 @@ Wave 10: [11] ← 10
 
 ## Project assurance extension — proposed 2026-10-03
 
-[Project assurance specification](project-assurance-spec.md) adds a versioned source/applicability link, a review procedure over existing control exports, selective source-change reassessment and an offline qualification corpus. It adds no QMS, scheduler, vendor dependency or compliance claim. **This stream remains parked.**
+[Project assurance specification](project-assurance-spec.md) adds a versioned source/applicability link, a review procedure over existing control exports, selective source-change reassessment and an offline qualification corpus. It adds no QMS, scheduler, vendor dependency or compliance claim. **This stream is active at P2 following the 2026-10-06 reactivation.**
 
 New briefs: **08 → 09 → 10 → 11**, waves 0, 8, 9, 10. Brief 08 can use existing requirements and synthetic sources immediately after prioritization. Brief 09 also requires graph-execution/02, /03, /15 and iso-9001/03–04. The full delivery path is consequently held by the existing graph instance/experiment/run-record/control-export chain and corrective-action effectiveness, not by any external product. No dependency is removed.
 
