@@ -277,10 +277,9 @@ unreadable root in as an empty one.
 
 ## Un-briefed issues — trusted, work-ready, on NO board (human:<name> 2026-08-13)
 
-An issue can be real, trusted, implementable work and still sit stranded merely because it is
-issue-shaped. Beside the board queue and the orphan sweep, the pool draws on **§Sources of work row
-6**: open issues across SCAN REPOS, trusted + work-ready but represented by NO brief and NO
-placeholder on any board.
+A real, trusted, implementable issue can sit stranded merely because it is issue-shaped. Beside the
+board queue and the orphan sweep, the pool draws on **§Sources of work row 6**: open issues across
+SCAN REPOS, trusted + work-ready but represented by NO brief and NO placeholder on any board.
 
 **Sweep it with `issueboard issues`, not a hand-rolled list.** The verb resolves the scan scope from
 the same roster key the placeholder scanner reads, applies the trust gate itself (untrusted, unblessed
@@ -293,16 +292,14 @@ or one unreadable repo, is exit 6 COULD-NOT-CHECK for the WHOLE board, never a s
    quarantine is the reading, and an EXTERNAL / UNBLESSED row is never dispatched. No new exception.
 2. **Un-represented** — no `issue-loop/issue-<NN>` placeholder (stream root or `done/` archive), no
    brief citing it, no open PR working it. **Absence from the board is NOT absence of representation**
-   (staleness, the caps or a board defect can suppress a real placeholder): check the FILES and the
-   open PRs, never what the board shows. Work that persistently fails to surface is a board defect —
-   FILE IT, never route around it here.
+   (staleness, the caps or a board defect can hide a real placeholder): check the FILES and open PRs,
+   never the board. Work persistently failing to surface is a board defect — FILE IT, never route around it.
 3. **Work-ready on its face** — an implementable spec by the placeholder lane's standard, carrying
    none of `question` / `needs-decision` / `help wanted`, not parked awaiting a reply.
-4. **Needs no triage judgment** — single-repo, no open design fork, no risk-bearing surface
-   (public-repo copy, security, prod-deploy, irreversible actions). Anything needing scoping,
-   splitting, a decision or a risk call is **intake's job**. When in doubt, leave it to intake AND
-   LEAVE A TRACE (a `question` on the issue naming the fork) — intake's strong tier picks the default
-   a reversible fork then proceeds on.
+4. **Needs no triage judgment** — single-repo, no open design fork, no risk-bearing surface (public-repo
+   copy, security, prod-deploy, irreversible actions). Anything needing scoping, splitting, a decision
+   or a risk call is **intake's job**. When in doubt, leave it to intake AND LEAVE A TRACE (a `question`
+   on the issue naming the fork) — intake's strong tier picks the default a reversible fork proceeds on.
 
 **Priority is LOWEST of the dispatch sources** (WIP-draining work → board rows → un-briefed issues),
 but the ordering is a tie-break, not a hold: an empty slot with a qualifying issue and nothing above
@@ -312,6 +309,9 @@ sweep that repeatedly surfaces issues failing rule 4 is an intake-coverage signa
 widen this lane. A `design-owed` `error-class` issue is not this lane's (its placeholder fails rule 2):
 intake unparks that row at the trigger, never past rule 4's risk-bearing-surface test (`intake-desk`
 step 1); it dispatches at **strong** tier, and its deliverable is the one its body line names, never code.
+A class also labelled `brittle` dispatches at the same **strong** tier with `docs/brittle-investigation-template.md`
+as its deliverable's shape: the design brief follows only on `redesign`, and `reconcile` yields a fix
+brief whose `retires:` is the investigation's deletion bundle (`accept` and `clear` code nothing).
 
 ## The loop
 
