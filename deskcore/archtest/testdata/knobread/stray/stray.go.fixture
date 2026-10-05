@@ -1,0 +1,5 @@
+package stray
+
+import "os"
+
+func TTL() string { return os.Getenv("ASSAY_DESK_LEASE_TTL") }

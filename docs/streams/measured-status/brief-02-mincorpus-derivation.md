@@ -84,14 +84,69 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusDerivedFromFeatureCount -count=1` | exit 0; output contains "ok" | check +dereference |
-| 2 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusGovernsLearnedSwitch -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | exit 0 (the test's own `--- PASS:` line is present, so a renamed or missing test cannot pass vacuously) | check +dereference |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
 | 3 | `cd qualgen && go build ./riskscore/` | exit 0 | check |
 | 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | exit 0 (a written derivation exists next to the value) | check |
 | 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | exit 0; output does not contain "DISPROVED" (the fixed-here consumer routing is corroborated, not contradicted) | check |
 
 ## Evidence
-<!-- appended at implementation time by a non-implementer -->
+Option taken (implementer record, 2026-10-02): **Task 1 — derive the floor.**
+`EventsPerVariable = 10` and `DerivedMinCorpus()` = `EventsPerVariable * len(FeatureNames())`
+= 10 x 15 = 150; `DefaultConfig().MinCorpus` calls it. The `// Derivation:` comments on the
+constant and on `DerivedMinCorpus` state that the floor counts total labeled examples (both
+classes) per predictor, so meeting it is a necessary, weaker condition than the EPV rule,
+which counts rarer-outcome events per predictor; a rarer-outcome event floor is not added
+here (#1171 stays open for that question).
+
+Fail-first (Task 5), implementer's hand-mutations of `qualgen/riskscore/learned.go`, run from
+`qualgen/` against the working tree on top of `d67b2128b4c7`, each restored from a saved
+copy (`cmp` identical) before the next:
+
+| Mutation | Test | Red (quoted) | Green after restore |
+|---|---|---|---|
+| A — `EventsPerVariable` 10 -> 9 (the derived value one below its correct output) | `TestMinCorpusDerivedFromFeatureCount` | `--- FAIL: TestMinCorpusDerivedFromFeatureCount` / `learned_test.go:330: EventsPerVariable = 9, documented derivation says 10` | `--- PASS` |
+| B — `Train` gate `len(examples) < 40` instead of `< cfg.MinCorpus` | `TestMinCorpusGovernsLearnedSwitch` | `--- FAIL: TestMinCorpusGovernsLearnedSwitch` / `learned_test.go:358: Train with 149 examples (floor 150) must refuse as under-corpus, got <nil>` | `--- PASS` |
+
+After restoring, the full package passes (`go test ./riskscore/ -count=1`: `ok`), and
+`go vet ./riskscore/` and `gofmt -l riskscore` are clean.
+
+Verify row 2 re-authored (check-definition fix, same assertion, narrower match): as first
+written, `... -v 2>&1 | grep -q 'PASS'` exits 141 on 3 of 3 runs under `bash -o pipefail`,
+the shell `verifyrun` runs every row in — `grep -q` exits at the first match and `go test`
+takes SIGPIPE. The row now reads the whole stream with `grep -c` and matches the test's own
+`--- PASS:` line: exit 0 on 3 of 3 runs at this head, and exit 1 with mutation B applied
+(prints `0`), so the row goes red when the switch is not governed by the floor.
+
+Implementer's run of the Verify table follows as an execution witness (`statusgen
+verifyrun`). The independent verifier re-runs on merged main; this record does not set
+`verified`.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusDerivedFromFeatureCount -count=1` | pass exit=0 | sha256:19a150b66c99 | 2026-10-02 | assay-worker-app[bot] @ ecca15f0e94d (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd qualgen && go test ./riskscore/ -run TestMinCorpusGovernsLearnedSwitch -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-worker-app[bot] @ ecca15f0e94d (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd qualgen && go build ./riskscore/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-worker-app[bot] @ ecca15f0e94d (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-worker-app[bot] @ ecca15f0e94d (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | pass exit=0 | sha256:024a79653f52 | 2026-10-02 | assay-worker-app[bot] @ ecca15f0e94d (on-behalf-of human:ian) (forge-identity) |
+
+Verify rows 1 and 2 re-authored again (same class, check-definition): `statusgen --root .
+--lint` raised `gotest-run-vacuous` on row 1 — `go test -run <name>` exits 0 with `[no tests
+to run]` when the test is missing. Reproduced: with `TestMinCorpusDerivedFromFeatureCount`
+renamed in a scratch edit, the old row 1 printed `ok ... [no tests to run]` and exited 0.
+Row 1 now asserts the test's own `--- PASS:` line like row 2, and both selectors are
+anchored (`^...$`). Under `bash -o pipefail`: row 1 exit 0 at this head, exit 1 with
+mutation A applied, exit 1 with the test renamed; row 2 exit 0 at this head, exit 1 with
+mutation B applied. Every scratch edit was restored before the witness below, which
+supersedes the table above for rows 1 and 2 (that table stays as the log of what ran).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd qualgen && go build ./riskscore/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | pass exit=0 | sha256:b1e69629fd94 | 2026-10-02 | assay-worker-app[bot] @ 65ea85b7ff98 (on-behalf-of human:ian) (forge-identity) |
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

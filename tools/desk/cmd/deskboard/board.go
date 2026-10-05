@@ -489,8 +489,15 @@ func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bo
 	return set, complete, nil
 }
 
-// changedFilesBetween returns files changed between two commits (compare API), for the
-// MERGE-CURR benign-merge check. Unlike v1 this fails CLOSED: a compare error is exit 6.
+// changedFilesBetween unions the files touched by each commit on the branch's
+// FIRST-PARENT chain from head back to the reviewed head. A non-merge edit on
+// that chain cannot disappear behind a later merge or revert, and a merge on it
+// is read against its first parent, so its main-side delta and any own-file
+// conflict resolution stay visible. Commits reachable only through a merge's
+// second parent (main's own history, including other branches' catch-up merges)
+// are never read: their changes reach the branch only through that merge.
+// Missing history or files, or a chain that does not reach the reviewed head
+// (a rewind, a force-push, a merge with main as first parent), degrades CLOSED.
 func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if base == "" || head == "" {
 		return nil, deskkit.Unverifiable("compare needs both base and head", nil)
@@ -503,13 +510,59 @@ func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare %s %s...%s", repo, short(base), short(head)), err)
 	}
+	if cmp == nil || !cmp.CommitsComplete {
+		return nil, deskkit.Unverifiable("the reviewed-head interval's commit list is incomplete", nil)
+	}
+	chain, err := firstParentChain(cmp.Commits, base, head)
+	if err != nil {
+		return nil, err
+	}
 	set := map[string]bool{}
-	for _, cf := range cmp.Files {
-		if cf.Filename != "" {
-			set[cf.Filename] = true
+	for _, sha := range chain {
+		detail, err := f.GetCommit(fr, sha)
+		if err != nil {
+			return nil, deskkit.Unverifiable("cannot read interval commit "+short(sha), err)
+		}
+		if detail == nil || !detail.FilesComplete {
+			return nil, deskkit.Unverifiable("interval commit's file list is incomplete", nil)
+		}
+		for _, cf := range detail.Files {
+			if cf.Filename != "" {
+				set[cf.Filename] = true
+			}
+			if cf.PreviousFilename != "" {
+				set[cf.PreviousFilename] = true
+			}
 		}
 	}
 	return set, nil
+}
+
+// firstParentChain walks head's first parents through the compare interval until
+// it reaches base, returning the SHAs walked (head first). It uses only the parent
+// lists the compare already returned. A commit without SHA or parent evidence, or a
+// walk that leaves the interval before reaching base, is could-not-check.
+func firstParentChain(commits []deskkit.RepoCommit, base, head string) ([]string, error) {
+	byID := make(map[string]deskkit.RepoCommit, len(commits))
+	for _, c := range commits {
+		if c.Parents == nil || c.SHA == "" {
+			return nil, deskkit.Unverifiable("interval commit has no SHA or parent evidence", nil)
+		}
+		byID[c.SHA] = c
+	}
+	var chain []string
+	for cur := head; cur != base; {
+		c, ok := byID[cur]
+		if !ok || len(chain) >= len(byID) {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("first-parent chain from %s does not reach the reviewed head %s", short(head), short(base)), nil)
+		}
+		if len(c.Parents) == 0 {
+			return nil, deskkit.Unverifiable("first-parent chain reached a root commit before the reviewed head", nil)
+		}
+		chain = append(chain, cur)
+		cur = c.Parents[0]
+	}
+	return chain, nil
 }
 
 // isResolutionLabel reports whether a label name plausibly RESOLVES a standing review
@@ -1343,7 +1396,7 @@ func classify(in classifyInput) (action, note string) {
 		// SEC-REVIEW-REQUIRED regardless of the CI-zero reason.
 		if in.riskClassed && !in.securityPass {
 			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
-				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
+				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP or merge"
 		}
 		switch in.zeroCI {
 		case zeroCINeverRan:
@@ -1362,7 +1415,11 @@ func classify(in classifyInput) (action, note string) {
 			"so CI green is NOT established; deskpost `ready` refuses this same state (exit 6). Confirm the " +
 			"checks actually ran before any flip"
 	// approved at head + CI green → MERGE-NOW (ranks above READY/FLIP).
-	// Risk-classed drafts without security pass stay blocked (SEC-REVIEW-REQUIRED).
+	// A risk-classed row without a security pass at head stays blocked
+	// (SECURITY-REVIEW-REQUIRED), draft OR ready (#2158): a ready PR that took a new head
+	// and a correctness re-approval there, but no fresh security pass, must not read
+	// MERGE-NOW. securityPass is head-bound by reduceReviews (sameHead), so a pass
+	// recorded at an older head never satisfies this check.
 	case in.approvedAtHead && in.ciGreen && !in.mergeConflict:
 		// #400 N9: "CI green" is a VERDICT, and on a repo the policy marks as running no
 		// PR CI (deskkit.CIRequired false) with nothing in the rollup, no check ran to
@@ -1373,9 +1430,9 @@ func classify(in classifyInput) (action, note string) {
 		if in.pass == 0 {
 			ciPhrase = "no PR CI configured for this repo and nothing ran (not a green verdict)"
 		}
-		if in.draft && in.riskClassed && !in.securityPass {
+		if in.riskClassed && !in.securityPass {
 			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
-				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
+				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP or merge"
 		}
 		// #1652: on a CI-less repo with a probed no-checks zero the green is
 		// vacuous — say so, so "CI green" never silently includes it.
@@ -2259,9 +2316,9 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 		}
 	}
 
-	// Risk classification (#216) only matters at the FLIP decision: bot
-	// APPROVED at head, CI green, still draft, not blocking. Fetch changed
-	// files there to test the path triggers.
+	// Risk classification feeds review dispatch as well as the FLIP decision.
+	// Compute it for every trusted action row, independently of reviews and CI;
+	// the ready gate still re-reads its own inputs before authorizing a flip.
 	// Resolve the owning brief from the PR body's `Brief:` trailer and read its own
 	// gate/risk frontmatter (deskkit.BriefRiskFromBody) — the authoritative owner edge and
 	// a risk term. Branch-as-claim is the fallback for a body that names no brief.
@@ -2269,37 +2326,39 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 
 	riskClassed := false
 	riskReason := ""
-	if rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail == 0 && pending == 0 {
-		// change-level: this PR's changed files, for the risk-path trigger scan. Reuse the
-		// EXISTING changed-files degrade shape rather than a second one — a hard read
-		// failure gets the same fail-closed treatment the `!complete` case below already
-		// gives a truncated diff, because both mean the same thing to this gate: the
-		// trigger it exists to catch might be in the part that could not be read.
-		files, complete, rcErr := fetchChangedFiles(repo, p.Number)
-		if rcErr != nil {
-			complete = false
-			degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
-				"fail closed to risk-classed", rcErr))
-		}
-		// UNION (only widens); the FIRST term that fires also names the reason the row shows.
-		// A diff we could not read in full — the trigger we did not see is exactly the one this
-		// gate exists to catch — OR a changed path in the trigger set OR the owning brief term
-		// (a frontmatter-declared sensitive change, or a DECLARED-but-unreadable brief, fail
-		// closed) OR the #587 trailer-absent-App anomaly: a role-App-authored PR with no
-		// Brief:/Issue: trailer is a change deskpr cannot produce, so it risk-classes and the
-		// board must say so rather than let the flip look clean. A body with no trailer leaves
-		// the brief term silent, which is exactly the gap the App term fills.
-		switch {
-		case !complete:
-			riskClassed, riskReason = true, "the diff could not be read in full — fail closed"
-		case anyRiskPath(repo, files):
-			riskClassed, riskReason = true, "touches a security path"
-		case briefRisk.RiskClassed:
-			riskClassed, riskReason = true, briefRisk.Reason
-		case deskkit.TrailerAbsentAppAnomaly(p.Author.Login, []byte(p.Body)):
-			riskClassed, riskReason = true, "trailer absent on App-authored PR"
-		}
+	// change-level: this PR's changed files, for the risk-path trigger scan. Reuse the
+	// EXISTING changed-files degrade shape rather than a second one — a hard read
+	// failure gets the same fail-closed treatment the `!complete` case below already
+	// gives a truncated diff, because both mean the same thing to this gate: the
+	// trigger it exists to catch might be in the part that could not be read.
+	files, complete, rcErr := fetchChangedFiles(repo, p.Number)
+	if rcErr != nil {
+		complete = false
+		degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
+			"fail closed to risk-classed", rcErr))
 	}
+	// UNION (only widens); the FIRST term that fires also names the reason the row shows.
+	// Public/unknown visibility OR a diff we could not read in full — the trigger
+	// we did not see is exactly the one this
+	// gate exists to catch — OR a changed path in the trigger set OR the owning brief term
+	// (a frontmatter-declared sensitive change, or a DECLARED-but-unreadable brief, fail
+	// closed) OR the #587 trailer-absent-App anomaly: a role-App-authored PR with no
+	// Brief:/Issue: trailer is a change deskpr cannot produce, so it risk-classes and the
+	// board must say so rather than let the flip look clean. A body with no trailer leaves
+	// the brief term silent, which is exactly the gap the App term fills.
+	switch {
+	case deskkit.VisibilityRiskClassed(repo):
+		riskClassed, riskReason = true, "public or unknown repository visibility"
+	case !complete:
+		riskClassed, riskReason = true, "the diff could not be read in full — fail closed"
+	case anyRiskPath(repo, files):
+		riskClassed, riskReason = true, "touches a security path"
+	case briefRisk.RiskClassed:
+		riskClassed, riskReason = true, briefRisk.Reason
+	case deskkit.TrailerAbsentAppAnomaly(p.Author.Login, []byte(p.Body)):
+		riskClassed, riskReason = true, "trailer absent on App-authored PR"
+	}
+
 	in.riskClassed = riskClassed
 	in.riskReason = riskReason
 

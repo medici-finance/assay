@@ -248,7 +248,7 @@ func TestFloorRunnerGitIsolation(t *testing.T) {
 		t.Skip("POSIX runner: check-floor.sh is the Linux/macOS entrypoint")
 	}
 	victim := HostileGitDir(t)
-	before := TreeDigest(t, victim)
+	before := SnapshotTree(t, victim)
 	manifest, err := filepath.Abs(filepath.Join("testdata", "runner-manifest.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -261,8 +261,8 @@ func TestFloorRunnerGitIsolation(t *testing.T) {
 		"GIT_INDEX_FILE="+filepath.Join(victim, ".git", "index"))
 	cmd.WaitDelay = time.Second
 	out, err := cmd.CombinedOutput()
-	if after := TreeDigest(t, victim); after != before {
-		t.Fatalf("floor runner let a row write to the GIT_DIR-named repository %s\n%s", victim, out)
+	if changes := before.Changes(SnapshotTree(t, victim)); changes != "" {
+		t.Fatalf("floor runner let a row write to the GIT_DIR-named repository\n%s\n%s", changes, out)
 	}
 	if err != nil || !strings.Contains(string(out), "seed passes=1") {
 		t.Fatalf("floor runner over the planted manifest: %v\n%s", err, out)

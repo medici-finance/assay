@@ -269,6 +269,9 @@ func cmdDesk(cell string, args []string) {
 	}
 
 	dryRun := c.Env.Get("DRY_RUN") == "1"
+	if _, err := c.deskCommsEnv(role, nil); err != nil {
+		die("desk comms: %v", err)
+	}
 
 	if c.Kind == "container" {
 		if persist && !dryRun {
@@ -332,6 +335,7 @@ func cmdDesk(cell string, args []string) {
 	}
 
 	if dryRun {
+		c.printCachePolicy()
 		if c.Cadence != nil {
 			fmt.Printf("[cadence] interval=%s budget=%s owner=cellctl (planned; not armed)\n", c.Cadence.Interval, c.Cadence.Budget)
 		}
@@ -368,6 +372,7 @@ func cmdDesk(cell string, args []string) {
 		return
 	}
 
+	c.printCachePolicy()
 	if c.Kind == "house" {
 		lease, err := cellcadence.Acquire(c.cadenceDir(role))
 		if err != nil {

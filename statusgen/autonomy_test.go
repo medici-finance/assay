@@ -281,7 +281,9 @@ func TestRunAutonomyExitsZeroAndNeverSilentZero(t *testing.T) {
 	// Force every source offline/absent so the whole report degrades.
 	oa, og := autonomyMergedAuthors, autonomyGates
 	autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonomyAuthor, bool) { return nil, false }
-	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool) { return nil, false }
+	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool, string) {
+		return nil, false, gateCauseGHFailed
+	}
 	t.Cleanup(func() { autonomyMergedAuthors, autonomyGates = oa, og })
 	fixedNow(t, "2026-07-15T00:00:00Z")
 
@@ -305,8 +307,8 @@ func TestRunAutonomyJSONShape(t *testing.T) {
 	autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonomyAuthor, bool) {
 		return []autonomyAuthor{{Login: "assay-worker-app[bot]", IsBot: true}}, true
 	}
-	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool) {
-		return []autonomyGatePR{{Number: 1, CheckNames: []string{"go-test"}}}, true
+	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool, string) {
+		return []autonomyGatePR{{Number: 1, CheckNames: []string{"go-test"}}}, true, ""
 	}
 	t.Cleanup(func() { autonomyMergedAuthors, autonomyGates = oa, og })
 	fixedNow(t, "2026-07-15T00:00:00Z")

@@ -1039,7 +1039,9 @@ func TestOwnRepoForRejectsInvalidSelfRepo(t *testing.T) {
 func TestRoadmapNextUpHonorsSiblingMergeHold(t *testing.T) {
 	oa, og := autonomyMergedAuthors, autonomyGates
 	autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonomyAuthor, bool) { return nil, false }
-	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool) { return nil, false }
+	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool, string) {
+		return nil, false, gateCauseGHFailed
+	}
 	t.Cleanup(func() { autonomyMergedAuthors, autonomyGates = oa, og })
 
 	const pick = `href="docs/streams/example-stream/brief-02.md"`

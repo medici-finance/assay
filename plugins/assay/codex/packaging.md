@@ -35,6 +35,7 @@ harness-portability/14 Verify table.
 adopt
 ask-decision
 author-brief
+cut-release
 human-runsheet
 install
 intake-desk

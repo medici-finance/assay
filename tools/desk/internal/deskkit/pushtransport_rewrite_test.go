@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitversion"
 )
 
 // rewriteRepo is a throwaway repository whose git config is isolated from the host's
@@ -359,11 +361,17 @@ func TestPushTransportNoURLRealGit(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		set  [][]string
+		// emptyResets marks a case that relies on git reading an empty remote.origin.url as a
+		// list reset (git 2.46 or later); an older git keeps the empty string as the url.
+		emptyResets bool
 	}{
-		{"fetch refspec only", [][]string{{"remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"}}},
-		{"url set empty", [][]string{{"remote.origin.url", ""}}},
+		{"fetch refspec only", [][]string{{"remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"}}, false},
+		{"url set empty", [][]string{{"remote.origin.url", ""}}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.emptyResets {
+				gitversion.RequireGit(t, 2, 46, "an empty remote.origin.url read as a list reset (no url configured)")
+			}
 			dir := rewriteRepo(t)
 			for _, kv := range tc.set {
 				rewriteGit(t, "-C", dir, "config", kv[0], kv[1])

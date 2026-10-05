@@ -33,12 +33,13 @@ import (
 // body that parses here parses there.
 type FindingRecord struct {
 	Seq     int    `json:"seq"`
-	Kind    string `json:"kind"`    // "review" | "reply"
-	Role    string `json:"role"`    // "reviewer" | "worker" — from the authenticated event
-	Actor   string `json:"actor"`   // authenticated login
-	Head    string `json:"head"`    // head SHA the record was authored against
-	Verdict string `json:"verdict"` // review records: approve | request-changes | comment
-	Body    string `json:"body"`    // the raw forge body carrying the finding block (if any)
+	Kind    string `json:"kind"`           // "review" | "reply"
+	Role    string `json:"role"`           // "reviewer" | "worker" — from the authenticated event
+	Actor   string `json:"actor"`          // authenticated login
+	Lane    string `json:"lane,omitempty"` // review lane ("correctness" | "security"); empty = not established
+	Head    string `json:"head"`           // head SHA the record was authored against
+	Verdict string `json:"verdict"`        // review records: approve | request-changes | comment
+	Body    string `json:"body"`           // the raw forge body carrying the finding block (if any)
 }
 
 // FindingRecordsReport is the injected records payload for one PR's review thread.
@@ -89,6 +90,7 @@ func ReadRecords(data []byte) (*FindingRecordsReport, []deskkit.ForgeRecord, err
 			Actor:   r.Actor,
 			Head:    r.Head,
 			Verdict: deskkit.Verdict(r.Verdict),
+			Lane:    r.Lane,
 			Block:   block,
 		})
 	}
@@ -104,10 +106,10 @@ func DeriveContinuity(records []deskkit.ForgeRecord) *deskkit.FindingLedger {
 
 // CompactRecord is the compact finding summary the desk injects into a reviewer or worker
 // prompt so a replacement agent resumes from the ledger. It is deterministic (sorted) and
-// carries exactly what continuity needs: each outstanding finding's ID, class, state and
-// blocker kind; the per-class round count and the cap; and the shared repairs. It never
-// carries prose to re-litigate — a successor reads what is disputed and what would resolve
-// it, not a retelling of the thread.
+// carries exactly what continuity needs: each outstanding finding's bare ID, its lane (when
+// established), bare class, state and blocker kind; the per-class round count and the cap;
+// and the shared repairs. It never carries prose to re-litigate — a successor reads what is
+// disputed and what would resolve it, not a retelling of the thread.
 func CompactRecord(l *deskkit.FindingLedger) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "review-finding ledger (derived; survives agent replacement and restart):\n")
@@ -117,7 +119,10 @@ func CompactRecord(l *deskkit.FindingLedger) string {
 	}
 	for _, id := range open {
 		f := l.Findings[id]
-		fmt.Fprintf(&b, "  - %s [class=%s state=%s blocker=%s rounds=%d/%d]", id, f.Class, f.State, f.Blocker, l.Rounds[f.Class], deskkit.RoundCap)
+		// The id and class print BARE, with the lane in its own field: a successor copies
+		// them into a new record's id/class/lane fields, so the internal lane-scoped ledger
+		// key must never appear where an id or class belongs (it would fork the finding).
+		fmt.Fprintf(&b, "  - %s [%sclass=%s state=%s blocker=%s rounds=%d/%d]", f.ID, laneField(f.Lane), f.Class, f.State, f.Blocker, l.Rounds[f.ClassKey], deskkit.RoundCap)
 		if f.Blocker == deskkit.BlockerExternalPrereq && f.SharedRepair != "" {
 			fmt.Fprintf(&b, " sharedRepair=%s", f.SharedRepair)
 		}
@@ -133,7 +138,12 @@ func CompactRecord(l *deskkit.FindingLedger) string {
 		if l.Held[c] {
 			held = " HELD (awaiting-arbitration)"
 		}
-		fmt.Fprintf(&b, "  class %q: %d/%d rounds%s\n", c, l.Rounds[c], deskkit.RoundCap, held)
+		ref := l.ClassOf(c)
+		lane := ""
+		if ref.Lane != "" {
+			lane = " (lane " + ref.Lane + ")"
+		}
+		fmt.Fprintf(&b, "  class %q%s: %d/%d rounds%s\n", ref.Class, lane, l.Rounds[c], deskkit.RoundCap, held)
 	}
 	return b.String()
 }
@@ -157,8 +167,8 @@ func RenderFindings(w io.Writer, rep *FindingRecordsReport, l *deskkit.FindingLe
 				note = " (shared repair " + f.SharedRepair + " — not a per-PR content defect; ready-flip still requires the applicable checks)"
 			}
 		}
-		fmt.Fprintf(w, "    - %-10s class=%-16s state=%-22s rounds=%d/%d%s\n",
-			id, f.Class, f.State, l.Rounds[f.Class], deskkit.RoundCap, note)
+		fmt.Fprintf(w, "    - %-10s %sclass=%-16s state=%-22s rounds=%d/%d%s\n",
+			f.ID, laneField(f.Lane), f.Class, f.State, l.Rounds[f.ClassKey], deskkit.RoundCap, note)
 	}
 
 	if repairs := l.SharedRepairs(); len(repairs) > 0 {
@@ -168,7 +178,16 @@ func RenderFindings(w io.Writer, rep *FindingRecordsReport, l *deskkit.FindingLe
 	if len(l.Arbiter) > 0 {
 		fmt.Fprintf(w, "  ARBITER PACKETS (one per class at the %d-round cap — filed to the human decision lane, never an auto-overrule):\n", deskkit.RoundCap)
 		for _, p := range l.Arbiter {
-			fmt.Fprintf(w, "    - class=%s rounds=%d findings=%s\n      %s\n", p.Class, p.Rounds, strings.Join(p.FindingIDs, ","), p.Summary)
+			ref := l.ClassOf(p.Class)
+			ids := make([]string, 0, len(p.FindingIDs))
+			for _, k := range p.FindingIDs {
+				if lf := l.Findings[k]; lf != nil {
+					ids = append(ids, lf.ID)
+				} else {
+					ids = append(ids, k)
+				}
+			}
+			fmt.Fprintf(w, "    - %sclass=%s rounds=%d findings=%s\n      %s\n", laneField(ref.Lane), ref.Class, p.Rounds, strings.Join(ids, ","), p.Summary)
 		}
 	}
 
@@ -178,6 +197,15 @@ func RenderFindings(w io.Writer, rep *FindingRecordsReport, l *deskkit.FindingLe
 			fmt.Fprintf(w, "    - %s\n", r)
 		}
 	}
+}
+
+// laneField is the "lane=<name> " field a rendered finding or class carries when its lane is
+// established, and nothing otherwise, so a single-lane thread renders exactly as before.
+func laneField(lane string) string {
+	if lane == "" {
+		return ""
+	}
+	return "lane=" + lane + " "
 }
 
 func firstNonEmptyHead(h string) string {

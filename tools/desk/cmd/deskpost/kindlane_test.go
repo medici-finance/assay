@@ -136,3 +136,65 @@ func lastState(f *fakeGH) string {
 	}
 	return "<none>"
 }
+
+// TestReviewRefusesForeignFindingLane — a verdict verb speaks for one lane, so a finding
+// block naming another lane refuses before any network: `security-review` may state only
+// `security`, and `review` only `correctness` — a deep-set lane stated through `review`
+// would be keyed under correctness and read back as could-not-check, so it is refused at
+// the write rather than admitted. The ledger already keys a reviewer record under its own
+// lane; this is the independent write-time layer.
+func TestReviewRefusesForeignFindingLane(t *testing.T) {
+	block := func(lane string) string {
+		return "\n" + deskkit.RenderFindingBlock(deskkit.FindingBlockV1{Findings: []deskkit.Finding{{
+			ID: "A1", Lane: lane, Class: "c", Severity: deskkit.SeverityAdvisory,
+			Blocker: deskkit.BlockerCodeContent, State: deskkit.StateOpen}}}) + "\n"
+	}
+	cases := []struct {
+		name string
+		args func(bf string) []string
+		body string
+		ok   bool
+	}{
+		{"security-review stating correctness", func(bf string) []string {
+			return secReviewArgs("example-org/tracker", "1", "pass", testHead, bf)
+		}, okSecurityBody + block("correctness"), false},
+		{"review stating security", func(bf string) []string {
+			return reviewArgs("example-org/tracker", "1", "approve", testHead, bf)
+		}, okReviewBody + block("Security"), false},
+		{"security-review stating security", func(bf string) []string {
+			return secReviewArgs("example-org/tracker", "1", "pass", testHead, bf)
+		}, okSecurityBody + block("security"), true},
+		{"review stating correctness", func(bf string) []string {
+			return reviewArgs("example-org/tracker", "1", "approve", testHead, bf)
+		}, okReviewBody + block(" Correctness "), true},
+		{"review stating fact-check", func(bf string) []string {
+			return reviewArgs("example-org/tracker", "1", "approve", testHead, bf)
+		}, okReviewBody + block("fact-check"), false},
+		{"review stating fail-first", func(bf string) []string {
+			return reviewArgs("example-org/tracker", "1", "approve", testHead, bf)
+		}, okReviewBody + block("fail-first"), false},
+		{"security-review stating fact-check", func(bf string) []string {
+			return secReviewArgs("example-org/tracker", "1", "pass", testHead, bf)
+		}, okSecurityBody + block("fact-check"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _ := setupFake(t)
+			f.pullHeads = []string{testHead}
+			bf := writeBody(t, "lane.md", tc.body)
+			code := run(tc.args(bf))
+			if tc.ok {
+				if code != 0 || f.postedReview != 1 {
+					t.Fatalf("exit = %d, posted = %d; want a posted review", code, f.postedReview)
+				}
+				return
+			}
+			if code != deskkit.ExitRefused {
+				t.Fatalf("exit = %d, want %d", code, deskkit.ExitRefused)
+			}
+			if len(f.hits) != 0 {
+				t.Fatalf("expected ZERO network hits on a lane refusal, got %v", f.hits)
+			}
+		})
+	}
+}

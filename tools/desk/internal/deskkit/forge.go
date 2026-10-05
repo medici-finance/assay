@@ -117,9 +117,11 @@ type PullRequest struct {
 	// the reply's location and records it in the audit detail.
 	URL string
 	// HeadRef is the SOURCE branch name (GitHub head.ref ↔ GitLab source_branch), as
-	// distinct from HeadSHA. Consumer: the own-PR guard deskkit.CheckOwnPR (cmd/deskreply,
-	// `deskpr edit --pr`), which refuses when the worktree's checked-out branch is not the
-	// branch the change is built from AND its HEAD is not the change's head commit (#1901).
+	// distinct from HeadSHA. Consumers: the own-PR guard deskkit.CheckOwnPR (cmd/deskreply,
+	// and `deskpr edit --pr`'s first admission rule), which refuses when the worktree's
+	// checked-out branch is not the branch the change is built from AND its HEAD is not the
+	// change's head commit (#1901); and `deskpr update --pr/--branch`, which pushes HEAD to
+	// this branch once CrossRepo says it is in the base repository (#2085).
 	HeadRef string
 	// BaseRef is the TARGET branch name (GitHub base.ref ↔ GitLab target_branch) — the branch
 	// whose protection rules gate the merge. Consumer: cmd/deskflip's checks-green condition,
@@ -935,7 +937,11 @@ const forgeFileCommitsMax = 100
 // Consumers: cmd/deskboard's fetchHeadCommit (the stall clock reads CommittedDate and the
 // committer/author login) and fetchRecentCommits (branch-health reads only SHA) — freeze
 // rule: these land with their call sites.
+// Review-history evidence is internal; it must not expand existing JSON result contracts.
 type RepoCommit struct {
+	Parents        []string      `json:"-"` // nil means the parent list was not read
+	Files          []ChangedFile `json:"-"`
+	FilesComplete  bool          `json:"-"` // a complete per-commit file read, including renames
 	SHA            string
 	CommittedDate  string // RFC3339, "" when the forge reported none
 	AuthorLogin    string // rendered account login, "" when unattributed / not resolved
@@ -948,13 +954,15 @@ type RepoCommit struct {
 // is the forge's own divergence word (GitHub: identical | ahead | behind | diverged) — EMPTY
 // where the forge does not report one, which a caller reads as could-not-check rather than
 // inventing a verdict. Consumers: cmd/deskboard's changedFilesBetween (the MERGE-CURR
-// benign-merge check reads Files) and fetchBehindMain (the close-candidate hint reads BehindBy
+// benign-merge check reads complete commit history) and fetchBehindMain (the close-candidate hint reads BehindBy
 // and refuses on an empty Status) — freeze rule: this lands with its call sites.
 type RefComparison struct {
-	Files    []ChangedFile
-	AheadBy  int
-	BehindBy int
-	Status   string // "" when the forge reported none
+	Commits         []RepoCommit `json:"-"` // commits reachable from head but not base
+	CommitsComplete bool         `json:"-"` // all commits in the interval were read
+	Files           []ChangedFile
+	AheadBy         int
+	BehindBy        int
+	Status          string // "" when the forge reported none
 }
 
 // ChangeSearchResult is one open change (PR ↔ MR) found by an owner-wide search, carrying the
@@ -1544,10 +1552,12 @@ type Forge interface {
 	// failure the caller surfaces as could-not-check. Consumer: cmd/deskboard's
 	// fetchRecentCommits (freeze rule).
 	ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit, error)
-	// GetCommit reads ONE commit's committed date and attributed author/committer accounts
+	// GetCommit reads ONE commit's committed date, attributed author/committer accounts,
+	// and (where available) parents and complete file paths for review currency.
 	// (GitHub `/repos/{o}/{r}/commits/{sha}` ↔ GitLab `/projects/:id/repository/commits/:sha`).
 	// The account-login fields are a per-field could-not-check where the forge resolves no
-	// account (see RepoCommit). Consumer: cmd/deskboard's fetchHeadCommit (freeze rule).
+	// account (see RepoCommit). Consumers: cmd/deskboard's fetchHeadCommit and
+	// changedFilesBetween (freeze rule).
 	GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	// ListFileCommits returns up to limit commits reachable from ref that touched file, newest
 	// first (GitHub `/repos/{o}/{r}/commits?sha=&path=` ↔ GitLab `/projects/:id/repository/

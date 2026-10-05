@@ -105,6 +105,13 @@ type SelfContainOpts struct {
 	// commit message, ref and title) means no exemption: the scan is what it always was.
 	FilePath   string
 	FileSource string
+	// InFile is set ONLY by the outbound check, for a kind-`file` write's content and path
+	// fields (whether or not FileSources has an entry for them) and never for its commit
+	// message (OutboundFieldCommitMessage): the scanned text is a file's content or path. It
+	// feeds exactly one decision — the session-id arm's synthetic-fixture
+	// exemption (isSyntheticFixtureUUID) — so false (every body, commit message, ref and
+	// title) means that exemption does not apply.
+	InFile bool
 }
 
 var (
@@ -160,6 +167,16 @@ var (
 	// reSessionUUID matches the session id shape the agent tooling mints (a lowercase hex
 	// UUID). Anchored on the full 8-4-4-4-12 grouping so an ordinary hyphenated word or a
 	// git SHA cannot match it.
+	//
+	// Two exemptions, both on this arm only, both decided in selfContainFindings: the brief-v2
+	// frontmatter `id:` line of a brief file (#2022, briefIDExemptLine), and — in a FILE's
+	// content only (SelfContainOpts.InFile) — a match whose FIRST group is exactly eight
+	// zeros (#2217, isSyntheticFixtureUUID). The second is safe by content alone, with no
+	// path condition: the agent tooling mints random v4 session ids, and a minted id has an
+	// all-zero first group with probability about 2^-32, so that shape is a synthetic
+	// fixture marker (test files, testdata, schema examples, spec text), never a leaked
+	// session. A first group with any non-zero digit — all zeros but one included — is not
+	// exempt, and a body, commit message, ref or title never is.
 	reSessionUUID = regexp.MustCompile(`\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
 	// reAgentID matches the dispatch tooling's agent-directory id (`agent-<hex>`).
 	reAgentID = regexp.MustCompile(`\bagent-[0-9a-f]{8,}\b`)
@@ -238,6 +255,19 @@ func briefIDExemptLine(filePath, source, scanned string) int {
 		return 0
 	}
 	return idx + 1
+}
+
+// syntheticFixtureUUIDHead is the ONE first group the synthetic-fixture exemption admits:
+// exactly eight zeros (#2217). It is spelled as a constant so the exemption is an exact
+// comparison against it, never a pattern that could widen.
+const syntheticFixtureUUIDHead = "00000000-"
+
+// isSyntheticFixtureUUID reports whether m, a reSessionUUID match, is a synthetic fixture id:
+// its first group is exactly eight zeros. reSessionUUID's leading `\b` and fixed 8-digit
+// group mean the match's first nine bytes are the whole first group and its dash, so a
+// prefix comparison is the exact test — `00000001-…` and every other first group fail it.
+func isSyntheticFixtureUUID(m string) bool {
+	return strings.HasPrefix(m, syntheticFixtureUUIDHead)
 }
 
 // isBriefPath reports whether p, a repo-relative slash path, is `docs/streams/**/brief-*.md`.
@@ -490,11 +520,14 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// none of them can be a legitimate part of a public body. They are checked FIRST so the
 	// refusal a worker sees names the span that is easiest to fix.
 	//
-	// ONE exemption, on the session-id arm only (#2022): the brief-v2 frontmatter `id:` line
-	// of a brief file, established against the file's full content by briefIDExemptLine. A
-	// brief id is a public identifier the board resolves, not a session. The arm still
-	// refuses every other UUID in the same text — the first NON-exempt match is reported —
-	// and every surface that is not a brief file's content has no exempt line at all.
+	// TWO exemptions, on the session-id arm only. (1) #2022: the brief-v2 frontmatter `id:`
+	// line of a brief file, established against the file's full content by
+	// briefIDExemptLine. A brief id is a public identifier the board resolves, not a session.
+	// (2) #2217: in a file's content only (o.InFile), a UUID whose first group is exactly
+	// eight zeros (isSyntheticFixtureUUID) — a synthetic fixture id, decided by content alone
+	// (see reSessionUUID's comment for why that is safe). The arm still refuses every other
+	// UUID in the same text — the first NON-exempt match is reported — and a body, commit
+	// message, ref or title gets neither exemption.
 	exemptLine := briefIDExemptLine(o.FilePath, o.FileSource, s)
 	for _, m := range [...]struct {
 		re       machineShapeFinder
@@ -508,6 +541,9 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	} {
 		for _, loc := range m.re.FindAllStringIndex(s, -1) {
 			if m.re == reSessionUUID && exemptLine > 0 && lineOf(s, loc[0]) == exemptLine {
+				continue
+			}
+			if m.re == reSessionUUID && o.InFile && isSyntheticFixtureUUID(s[loc[0]:loc[1]]) {
 				continue
 			}
 			refuse(m.category, s[loc[0]:loc[1]], m.why, loc[0], false)

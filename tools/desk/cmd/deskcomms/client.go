@@ -92,14 +92,12 @@ func loadSigner() (comms.Signer, error) {
 			"could-not-mint: no signing key configured — set %s to this desk-role's "+
 				"custody-managed ed25519 key (mode 0600)", envKey), nil)
 	}
-	fi, err := os.Stat(path)
+	_, fi, err := deskkit.LstatCustody(path, deskkit.CustodyNoLinks)
 	if err != nil {
 		return nil, deskkit.Unverifiable("could-not-mint: signing key is not readable", err)
 	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		return nil, deskkit.Refused(fmt.Sprintf(
-			"refused: signing key %s is mode %o — a comms signing key must be 0600 "+
-				"(custody rule), never group- or world-readable", path, fi.Mode().Perm()))
+	if err := deskkit.VerifyCustodyOwnerOnly(path, fi); err != nil {
+		return nil, deskkit.Refused("refused: comms signing key custody: " + err.Error())
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -158,7 +156,7 @@ func buildDeps(stdin io.Reader, stdout io.Writer) (*deps, error) {
 		cell:    cell,
 		self:    self,
 		signer:  nil, // loaded lazily by runSend (send.go step 7) via loadSigner(), after every refusal check
-		gateway: socketGateway{network: "unix", addr: strings.TrimSpace(os.Getenv(envGateway))},
+		gateway: socketGateway{addr: strings.TrimSpace(os.Getenv(envGateway))},
 		rateCheck: func(bucket string) error {
 			// pr==0: a cell message carries no PR; the destination lane is the bucket.
 			return deskkit.AllowWrite("deskcomms", bucket, 0)

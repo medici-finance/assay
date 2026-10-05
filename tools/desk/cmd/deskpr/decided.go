@@ -84,8 +84,8 @@ var applyDeskDecidedLabel = func(fg deskkit.Forge, fr deskkit.ForgeRepo, number 
 		Target: deskkit.TargetChange,
 		Add: []deskkit.LabelSpec{{
 			Name:        deskkit.DeskDecidedLabel,
-			Color:       "5319e7",
-			Description: "A desk took a reversible default here — see the PR's Desk-decided block",
+			Color:       deskkit.DeskDecidedLabelColor,
+			Description: deskkit.DeskDecidedLabelDescription,
 		}},
 	})
 	return err

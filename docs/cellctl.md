@@ -1,5 +1,7 @@
 # `cellctl` — running one Assay cell on a laptop
 
+For opt-in stable Go caches and disk budgets, see [Managed Go caches](cellctl-go-cache.md).
+
 `topology.yaml` (see `docs/adopting-assay.md` §5) says what a **cell** *is*: one lead plus its agent
 fleet, accountable for its own repo set. This document is the other half — how that cell **runs** on
 one machine: a persistent `deskd`, one window per desk role, and each of those windows resolving the
@@ -15,6 +17,8 @@ against, never the launcher (see [Parity with the shell oracle](#parity-with-the
 
 `cellctl` is **optional**, in the same sense as the desk-tools binaries: it automates a pipeline you
 can also stand up by hand. Nothing else in Assay depends on it.
+
+For local messages between desk roles, see [Host desk communications](cellctl-comms.md).
 
 For an existing container deployment, the **container** kind provides registration and lifecycle
 delegation instead of host worktrees and credential symlinks. See [Container cells](#container-cells).
@@ -118,7 +122,11 @@ one. A checkout build needs a Go toolchain; a tarball install does not.
 A packaged copy reports the umbrella release tag it shipped at via `cellctl --version` (or
 `cellctl version`) — the same contract `statusgen --version` uses, so a stale copy is detectable.
 The tag is stamped at link time (`-ldflags -X main.cellctlVersion=<tag>`) exactly as every other
-desk binary's is; a plain source build honestly reports `dev`.
+desk binary's is. A plain source build carries no tag and reports `dev-<commit>` instead — the
+first 12 hex characters of the commit it was built from, taken from the Go toolchain's embedded
+VCS stamp, plus `-dirty` when the tree had uncommitted changes (e.g. `dev-1a2b3c4d5e6f-dirty`) —
+so a stale checkout build is distinguishable from a fresh one. With no VCS stamp (`go run`,
+`-buildvcs=false`, a build outside a git tree) it reports a bare `dev`.
 
 **Windows.** The tarball's `windows-amd64` / `windows-arm64` legs carry a real `cellctl.exe`
 rather than a shell script no Windows shell runs — the package itself cross-compiles for
@@ -1579,3 +1587,12 @@ five-minute interval and 20-minute pass budget. `--cadence off` selects interact
 mode; explicit intervals and budgets override the defaults. Other harnesses retain
 their existing defaults; Orca/Cursor can opt in with `--cadence`. See [Host desk cadence](cellctl-cadence.md) for setup, status,
 stop/recovery and process-lifetime limits.
+
+### Configured comms startup
+
+For a house cell, `cellctl set <cell> CELL_COMMS_CONFIG=<absolute-manifest-path>`
+selects the existing comms manifest. `cellctl up` starts one configured interim
+gateway/drain supervisor in its own cockpit surface; absent or disabled config
+keeps desk-only startup. `cellctl down` stops the supervisor before closing its
+owned surface and preserves mailbox data. See [host desk communications](cellctl-comms.md)
+for configuration, quoting, recovery and cockpit requirements.

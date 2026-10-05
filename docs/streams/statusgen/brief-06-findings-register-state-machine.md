@@ -9,6 +9,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: []
 schema: brief-v2
+decision-issue: 2012
 authored: 2026-08-20 (authored clean for the statusgen board)
 exec-tier: strong
 exec-tier-why: >-
@@ -44,7 +45,7 @@ why: >-
   identically whether a finding is neglected or consciously parked, so "park" as a disposition does
   nothing. A register that cannot distinguish a silenced finding from a resolved one, nor a parked
   finding from a neglected one, is not a register you can orient on.
-version: 1
+version: 2
 id: 9976ad4e-63f3-4359-907b-f07b6f5fdf3d
 ---
 
@@ -86,6 +87,31 @@ facts:
 - a login map (`corroborate.go`) maps a human name to a GitHub login; adding a name to this map is
   itself a reviewed change (the map IS the name=login claim).
 
+## Human decision
+
+**2026-10-04 — ruled: option 2, approve with changes**
+([ruling](https://github.com/medici-finance/assay/issues/2012#issuecomment-5977123755) on the
+decision gate #2012, approving the
+[recommendation](https://github.com/medici-finance/assay/issues/2012#issuecomment-5977069464) as
+written). The changes, folded into the design and Task below:
+
+1. **Bounded park horizon.** `parked-until` may be at most **90 days** after the date of the commit
+   that sets or extends it; a later value is a `--lint` PROBLEM, and MISSING in the online lane,
+   however the park is authorized (§A, §B).
+2. **Only `parked-by` authorizes a park.** `authorized-by` keeps authorizing `resolved` / `affects` /
+   `ack` transitions, never a park add or extension — offline and online (§B). This settles the
+   comment/code mismatch reported in #1855 (F4) in the comment's direction.
+3. **No-base fails closed offline too.** When the exact base ref cannot be resolved, `--lint`
+   refuses register transitions instead of comparing against HEAD with a NOTICE (#1855 F3; §B).
+4. **The online check runs a guard built from the PR's base side** (the merge commit's first
+   parent), never from the PR's own tree. The CI wiring (Task 7) therefore lands as a follow-up
+   after the code PR merges, and the remaining question of which merge-base the online lane trusts
+   is judged against that wiring.
+5. **Unchanged:** shelving and the guard ship together.
+
+Left as is: the definition of "acted on the PR" stays the stamp lane's existing one; any change to it
+is its own item.
+
 ## Ground rules
 - NEVER git push / trigger workflows. Feature branch + draft PR only.
 - Stop at `implemented` — you do not set verified/done. This is `gate: human`: a human signs off
@@ -121,6 +147,12 @@ open ──park(until, by, reason)──▶ parked ──expiry──▶ open (r
 A park is a **snooze, not a mute**, and must be bounded:
 - `parked-until: <YYYY-MM-DD>` — REQUIRED. No open-ended parks (an unbounded park is a disguised
   resolve). Missing/empty on a parked finding → `--lint` PROBLEM.
+- **Horizon (Human decision, item 1):** a park that is ADDED or EXTENDED may run at most **90 days**
+  past the date of the commit that sets that `parked-until` value (a value not yet committed counts
+  as set today; a commit dated in the future counts as today, so post-dating cannot stretch it). A
+  later date is a PROBLEM offline and MISSING online whoever authorized it — no approval buys a
+  longer snooze; a park still needed at expiry is extended again, a fresh guarded transition. A
+  landed park left as it is, or narrowed, is not re-judged.
 - `parked-by: <authority>` — REQUIRED. The authorizing party (`human:<name>` form, same vocabulary
   as lifecycle stamps).
 - `parked-reason: <prose>` — REQUIRED. Why it is accepted-deferred.
@@ -142,11 +174,21 @@ applies to `human:<name>` lifecycle stamps:
   `parked-by`/resolver corroborated against the PR's reviews/comments (the existing APPROVED-review /
   approval-phrase path), OR a `Verified-by`-style trailer. An agent **cannot self-park or
   self-resolve**.
+- **Authority per transition (Human decision, item 2):** a `resolved` / `affects` / `ack` move is
+  authorized by a mapped human under `authorized-by:`; a park add/extend by a mapped human under
+  `parked-by:` and nothing else. `authorized-by` never authorizes a park, offline or online.
 - In-place mutation of these fields is guarded exactly like deletion is (the tombstone guard's
   sibling). The guard diffs the finding's `resolved`/`affects`/`parked-*` against the merge-base
   version and **hard-fails an unattributed change**.
 - **Fail-closed:** if corroboration cannot be evaluated (no PR context, gh unavailable), the guard
-  fails closed on a register-field change — never green-by-default.
+  fails closed on a register-field change — never green-by-default. The same holds offline (Human
+  decision, item 3): when the exact base ref (`refs/remotes/origin/main`, resolved exactly, never by
+  git's short-name rules) does not resolve to a merge-base, `--lint` refuses register transitions
+  with one PROBLEM that no `--changed` scope removes, rather than comparing against HEAD — where a
+  committed transition compares with itself and passes.
+- **Guard provenance (Human decision, item 4):** the online check in CI runs a statusgen built from
+  the PR's BASE side (the merge commit's first parent), never from the PR's own tree, so a PR that
+  edits `statusgen/` cannot run its own version of the guard that judges it.
 
 > **Load-bearing dependency (state it in the PR, do not split):** shipping shelving WITHOUT the guard
 > makes the gutting hole strictly WORSE — it hands the attacker a perfect silent kill
@@ -181,22 +223,30 @@ mechanism lands; do not resolve it in this brief.
 5. `alarms.go`: shelving suppression + louder re-annunciation on expiry + flood accounting
    (design §A). Add `--lint` PROBLEM for a park missing any required field.
 6. `corroborate.go`: extend the guard to `resolved`/`affects`/`parked-*` transitions against the
-   merge-base, fail-closed (design §B).
+   merge-base, fail-closed (design §B), with the Human-decision rules in both the offline `--lint`
+   gate and the online lane:
+   - the 90-day park horizon, measured from the commit that sets or extends the park (item 1);
+   - `parked-by` as the only authority for a park add/extend (item 2);
+   - offline, an unresolvable exact base refuses register transitions instead of falling back to
+     HEAD (item 3).
 7. CI: invoke the extended guard on register-touching PRs (there is no such CI step today — add one;
-   mirror the pinned/built-binary discipline).
+   mirror the pinned/built-binary discipline). Per the Human decision (item 4) the step builds the
+   guard from the PR's base side, and it lands as a follow-up PR after the code PR merges.
 8. Tests for every new branch: authorized park suppresses; unauthorized park PROBLEMs; expired park
-   re-annunciates; self-resolve fails; self-gut of `affects` fails; corroborated resolve passes.
+   re-annunciates; self-resolve fails; self-gut of `affects` fails; corroborated resolve passes; a
+   park added or extended past 90 days fails however it is authorized; `authorized-by` alone does
+   not authorize a park; an unresolvable base refuses offline.
 
 ## Verify (executable — no prose-only DoD items)
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `grep -rl '^parked-until:' docs/streams/findings/ 2>/dev/null; echo done` | lists every bounded-parked file (none on a fresh board) then `done` — parks use the bounded `parked-until` form, not the free-text `parked:` marker |
-| 2 | `grep -rn -e '^parked:' docs/streams/findings/ 2>/dev/null; echo rc=$?` | no free-text `parked:` key survives the migration |
-| 3 | `statusgen --root . --lint` | exit 0; a park missing `parked-until` PROBLEMs; an expired park emits the louder re-annunciation NOTICE |
-| 4 | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | empty output — STATUS.md NOT modified on the branch |
-| 5 | `cd statusgen && GOWORK=off go test .` | exit 0 with the new park tests present: authorized park suppresses the standing NOTICE, a park missing a required field PROBLEMs, an expired park re-annunciates, self-park / self-resolve / self-gut FAIL, corroborated transitions PASS |
-| 6 | inject `resolved: no→yes` on a merge-base finding with no corroboration, run the guard | exit 1 (hard-fail, fail-closed) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `grep -rl '^parked-until:' docs/streams/findings/ 2>/dev/null; echo done` | lists every bounded-parked file (none on a fresh board) then `done` — parks use the bounded `parked-until` form, not the free-text `parked:` marker |
+| 2 | check | `grep -rn -e '^parked:' docs/streams/findings/ 2>/dev/null; echo rc=$?` | no free-text `parked:` key survives the migration |
+| 3 | check | `statusgen --root . --lint` | exit 0; a park missing `parked-until` PROBLEMs; an expired park emits the louder re-annunciation NOTICE |
+| 4 | check | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | empty output — STATUS.md NOT modified on the branch |
+| 5 | check +flow | `cd statusgen && GOWORK=off go test .` | exit 0 with the new park tests present: authorized park suppresses the standing NOTICE, a park missing a required field PROBLEMs, an expired park re-annunciates, self-park / self-resolve / self-gut FAIL, a park past the 90-day horizon FAILs, `authorized-by` alone never authorizes a park, an unresolvable base refuses register transitions offline, corroborated transitions PASS |
+| 6 | check +mutation | inject `resolved: no→yes` on a merge-base finding with no corroboration, run the guard | exit 1 (hard-fail, fail-closed) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. This is

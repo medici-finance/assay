@@ -1,2 +1,0 @@
-### Fixed
-- `statusgen verifyrun`: the `check:ci` network-off sandbox now brings loopback up inside its fresh network namespace, so rows whose tests start a local server (`httptest`, a fixture listener on 127.0.0.1) no longer fail with `connect: network is unreachable`. Nothing else is opened: the in-namespace helper proves the namespace is not the caller's and that no non-loopback interface is up or addressed before it runs the row, and any failure there makes the row could-not-run — never a run outside the sandbox.

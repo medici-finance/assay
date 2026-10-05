@@ -55,6 +55,13 @@ func cmdDown(cell string, args []string) {
 			die("down: unexpected argument '%s'", a)
 		}
 	}
+	if c.Env.Get("DRY_RUN") == "1" {
+		fmt.Println("[dry-run] down: would stop comms and role supervisors, then close owned cockpit surfaces")
+		return
+	}
+	if err := c.stopComms(); err != nil {
+		die("down comms: %v", err)
+	}
 	if err := c.stopCadences(); err != nil {
 		die("down: %v", err)
 	}

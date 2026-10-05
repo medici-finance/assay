@@ -1,0 +1,7 @@
+package zone
+
+import "time"
+
+func London() (*time.Location, error) {
+	return time.LoadLocation("Europe/London")
+}

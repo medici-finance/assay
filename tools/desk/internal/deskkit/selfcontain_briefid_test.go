@@ -371,7 +371,9 @@ func TestBriefIDForgeWriteFile(t *testing.T) {
 //     also sets FileSources (a bare `o.check(repo, OutboundKindFile, …)` call is exactly the
 //     shape the WriteFile seam had before #2022);
 //   - every use of SelfContainOpts.FileSource outside outbound.go and selfcontain.go, so the
-//     exemption's evidence can only come from the outbound check's kind-`file` arm.
+//     exemption's evidence can only come from the outbound check's kind-`file` arm;
+//   - every use of SelfContainOpts.InFile outside those two files (#2217), so the
+//     synthetic-fixture exemption likewise reaches only a kind-`file` write, never a body.
 func fileKindOffenders(fset *token.FileSet, f *ast.File, base string) []string {
 	allowed := map[*ast.Ident]bool{}
 	identOf := func(e ast.Expr) *ast.Ident {
@@ -443,6 +445,8 @@ func fileKindOffenders(fset *token.FileSet, f *ast.File, base string) []string {
 				out = append(out, fset.Position(x.Pos()).String()+": OutboundKindFile check without FileSources")
 			case x.Name == "FileSource" && !allowed[x] && base != "outbound.go" && base != "selfcontain.go":
 				out = append(out, fset.Position(x.Pos()).String()+": SelfContainOpts.FileSource set outside the outbound check")
+			case x.Name == "InFile" && !allowed[x] && base != "outbound.go" && base != "selfcontain.go":
+				out = append(out, fset.Position(x.Pos()).String()+": SelfContainOpts.InFile set outside the outbound check")
 			}
 		}
 		return true
@@ -459,6 +463,7 @@ func f() {
 	_ = deskkit.OutboundCheck(deskkit.OutboundWrite{Kind: deskkit.OutboundKindFile, Fields: nil})
 	_ = o.check(repo, OutboundKindFile, x)
 	_ = SelfContainOpts{FileSource: "x"}
+	_ = SelfContainOpts{InFile: true}
 	_ = OutboundCheck(OutboundWrite{Kind: OutboundKindFile, FileSources: m})
 	_ = k == OutboundKindFile
 }
@@ -468,8 +473,8 @@ func f() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fileKindOffenders(fset, pf, "planted.go"); len(got) != 3 {
-		t.Fatalf("positive control: the guard flagged %d planted sites, want 3 (the compliant "+
+	if got := fileKindOffenders(fset, pf, "planted.go"); len(got) != 4 {
+		t.Fatalf("positive control: the guard flagged %d planted sites, want 4 (the compliant "+
 			"literal and the comparison must pass): %v", len(got), got)
 	}
 

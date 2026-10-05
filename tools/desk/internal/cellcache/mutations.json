@@ -1,0 +1,89 @@
+{
+  "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch -run 'TestCache|TestStorage' -count=1 -timeout=60s",
+  "mutations": [
+    {
+      "name": "wrong default budget",
+      "file": "internal/cellcache/policy.go",
+      "old": "Budget: 8 << 30",
+      "new": "Budget: 1 << 30"
+    },
+    {
+      "name": "accept foreign cache owner",
+      "file": "internal/cellcache/cache.go",
+      "old": "string(b) != schema+\"\\n\"+p.Domain+\"\\n\"",
+      "new": "string(b) != string(b)"
+    },
+    {
+      "name": "clear active caches",
+      "file": "internal/cellcache/cache.go",
+      "old": "len(r.SkippedActive) == 0",
+      "new": "true"
+    },
+    {
+      "name": "hide measurement failure",
+      "file": "internal/cellcache/cache.go",
+      "old": "r.Outcome = \"could-not-check\"",
+      "new": "r.Outcome = \"checked-clean\""
+    },
+    {
+      "name": "lose uncertain custody",
+      "file": "internal/cellcache/cache.go",
+      "old": "if l == nil || !clean {",
+      "new": "if l == nil {"
+    },
+    {
+      "name": "discard warm build cache",
+      "file": "internal/cellcache/cache.go",
+      "old": "return m.r.Remove(l.record)",
+      "new": "_ = m.r.RemoveAll(\"build\"); return m.r.Remove(l.record)"
+    },
+    {
+      "name": "omit scrubbed propagation",
+      "file": "cmd/cellctl/env.go",
+      "old": "ce.Pairs = c.cacheEnv(ce.Pairs)",
+      "new": "// cache propagation omitted"
+    },
+    {
+      "name": "omit dispatch storage gate",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "if err := storageAdmission(o.dryRun); err != nil {",
+      "new": "if err := storageAdmission(o.dryRun); false && err != nil {"
+    },
+    {
+      "name": "lose process custody",
+      "file": "internal/cellprocess/run.go",
+      "old": "lease, err := cellcache.Acquire(env)",
+      "new": "lease, err := cellcache.Acquire(nil)"
+    },
+    {
+      "name": "dry run creates cache",
+      "file": "internal/cellcache/cache.go",
+      "old": "open(p, !dry)",
+      "new": "open(p, true)"
+    },
+    {
+      "name": "accept unmanaged cache env",
+      "file": "internal/cellcache/cache.go",
+      "old": "if kv != want {",
+      "new": "if false && kv != want {"
+    },
+    {
+      "name": "planted second raw launch",
+      "file": "internal/cellprocess/run.go",
+      "old": "const pipeWait =",
+      "new": "func secondSite() { _, _, _ = run(context.Background(), nil, nil, \"\", nil, nil, newProcessTree) }\n\nconst pipeWait ="
+    },
+    {
+      "name": "follow replaced cache root outside custody",
+      "file": "internal/cellcache/cache.go",
+      "old": "func (m *manager) removeTree(name string) error {",
+      "new": "func (m *manager) removeTree(name string) error {\n if target, err := m.r.Readlink(name); err == nil { return os.RemoveAll(target) }"
+    },
+    {
+      "name": "omit prefetch storage admission",
+      "file": "cmd/cellctl/launch.go",
+      "old": "if err := c.cacheAdmission(); err != nil {",
+      "new": "if err := c.cacheAdmission(); false && err != nil {"
+    }
+  ]
+}

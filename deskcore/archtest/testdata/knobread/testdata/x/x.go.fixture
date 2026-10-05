@@ -1,0 +1,5 @@
+package x
+
+import "os"
+
+func F() string { return os.Getenv("X") }

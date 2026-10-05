@@ -1,0 +1,5 @@
+package sc
+
+import "syscall"
+
+func F() (string, bool) { return syscall.Getenv("X") }

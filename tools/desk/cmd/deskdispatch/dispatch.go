@@ -156,7 +156,7 @@ func cmdDispatch(args []string) error {
 		"item's own repo does not (default: --root). The claim still lands in --repo's own ref namespace — this "+
 		"names only where the TOOL lives, never where the worktree is cut from")
 	model := fs.String("model", "", "lowercase slug of the model being launched, for the dispatcher's attestation stamp")
-	branch := fs.String("branch", "", "branch name for the agent's worktree (default: derived from the item key)")
+	branch := fs.String("branch", "", "branch name (fresh: derived from item; resume: must match the forge source branch)")
 	brief := fs.String("brief", "", "path to the item's specification file, for the decision-issue gate and the prompt")
 	gateHuman := fs.Bool("gate-human", false, "the item is human-gated: ensure its decision issue exists before dispatch")
 	pr := fs.Int("pr", 0, "an ALREADY-OPEN PR for this item; enables the roster work entry and the label stamp")
@@ -198,6 +198,9 @@ func cmdDispatch(args []string) error {
 }
 
 func dispatch(o dispatchOpts) error {
+	if err := storageAdmission(o.dryRun); err != nil {
+		return err
+	}
 	// --brief is resolved ONCE, first, to the absolute path every later reader uses (resolveBrief):
 	// a brief found only under --claim-root must gate, file its decision issue and scope its writes
 	// from the SAME file the deliverable resolution read.
@@ -210,6 +213,9 @@ func dispatch(o dispatchOpts) error {
 	// a tidiness preference.
 	plan, err := validateCallerPreconditions(o)
 	if err != nil {
+		return err
+	}
+	if err := resolveResume(o, &plan); err != nil {
 		return err
 	}
 	repo, branch, wtName := plan.repo, plan.branch, plan.wtName
@@ -352,11 +358,9 @@ func dispatch(o dispatchOpts) error {
 	// this step delegates rather than re-deriving any of it — INCLUDING where the
 	// worktree lands: the path the prompt names is the one deskwt printed, never one this
 	// verb predicted.
-	// Both arms take the SAME base expression: worktreeBase already answers mainlineRef for a
-	// verifier kit (o.pr<=0 || reviewKit || verifierKit), so the detached lane is unchanged by
-	// using it, while the branch lane keeps the PR-resume base main introduced. The only
-	// difference between the arms is --detach vs --branch, which is the verifier's whole point:
-	// it reads merged main and touches no feature branch.
+	// Fresh and read-only allocations use mainlineRef. Worker resumes require the
+	// source branch and immutable head verified before the claim (resolveResume).
+	// The single allocation boundary refuses a resume lacking that proof.
 	//
 	// --role names the DISPATCHED agent's role (plan.identityRole, resolved pre-claim), so
 	// deskwt stamps that role's commit identity AND replaces the transport the worktree would
@@ -537,6 +541,7 @@ func dispatch(o dispatchOpts) error {
 // re-derives a value the validation was performed against. Re-deriving is how a check and
 // the thing it checked drift apart.
 type dispatchPlan struct {
+	resume *resumeSource
 	repo   string
 	branch string
 	wtName string
@@ -808,13 +813,13 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.detached = true
 	} else {
 		plan.branch = o.branch
-		if plan.branch == "" {
+		if plan.branch == "" && o.pr == 0 {
 			plan.branch = "feat/" + sanitizeSegment(o.item)
 		}
 		// The worktree verb is the AUTHORITY on what branch and worktree names it accepts; this
 		// is a pre-check, deliberately no looser than its constraint, whose only job is to keep
 		// a name it would reject from costing a held claim. It does not replace that check.
-		if !branchNameRe.MatchString(plan.branch) || strings.Contains(plan.branch, "..") {
+		if plan.branch != "" && (!branchNameRe.MatchString(plan.branch) || strings.Contains(plan.branch, "..")) {
 			return plan, deskkit.Refused(fmt.Sprintf(
 				"step %s: --branch %q is not a plain branch name (letters, digits, dot, dash, underscore, "+
 					"slash; no leading dash, no '..'), so the worktree verb would refuse it.",

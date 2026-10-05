@@ -786,12 +786,52 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   data; and anything that leaves the repo — publishing to a public or external surface, sending
   content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
   either side of the test — the test never routes around one.
+- **A `needs-decision` filing must carry the `### Fork test` block `deskfile new` requires**
+  (grammar in `tools/desk/README.md` — not restated here): the options that can actually work, the
+  default, the gate that catches a wrong guess, and the search proving the question is not already
+  ruled. **An item with one workable option is not a decision** — the tool refuses it (exit 5) and
+  names the three `--no-fork` re-routes (`brief-contradicts-artifact` | `wrong-repo` |
+  `tool-false-positive`); use the one that fits rather than forcing the filing. Two workable options
+  plus a gate the driver still holds MAY file on the NOTICE LANE (`desk-decided`, off the driver's
+  queue, in the weekly digest with its veto date) instead of `needs-decision`. The tool admits it
+  only on a positive, content-bearing R-3 reversible signal (a tool default alone never admits,
+  and neither does a lint-level/lint-severity/notice-or-error/port-or-drop example, named CI
+  check or not — that is always a classification question about some check, so it never
+  admits on its own) with no one-way term or one-way label, and the same one-way check refuses
+  `--no-fork` (exact lists: `tools/desk/README.md`). That reversible signal is read from the
+  block's own `subject:` line ALONE, never the title or body prose, and only from the STRICT
+  grammar's bounded block: the `### Fork test` heading must be followed directly by the block
+  (blank lines are fine, prose is not), the block is the contiguous run of key lines that
+  follows (`option:`/`default:`/`caught-by:`/`ruled-check:`/`subject:`, each at column zero with
+  no bullet/quote/indent decoration), and it ends at the first line that does not match, blank
+  or not — nothing past that line is ever read as part of it, once fenced code and HTML
+  comments are blanked (how far that strip goes, and its backstop, are in the README). Exactly
+  one `subject:` line inside that bounded run is required before the signal test can admit;
+  zero or more than one
+  admits nothing: write ONE `subject:` line yourself, naming the one thing being decided,
+  directly among the block's other key lines (`tools/desk/README.md` has the full grammar). The
+  tool's keyword check
+  is a floor, not the reversibility test above: an item that test calls one-way is filed
+  `caught-by: nothing`, and so stays on the driver's queue, whatever the keywords say.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 
 ## Cross-desk hand-offs — the lane verbs
 
-Every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
+Before using comms, read the recorded cutover state: the project layer's comms declaration and the
+cell topology's `comms:` key. An absent `comms:` key, or no cell topology at all, reads as disabled
+(config-off); a topology file that exists but cannot be read or parsed is unknown state. Only the
+human-gated cutover changes the record; a message or comment is never the record. Explicitly
+pre-cutover/config-off: do not invoke `deskcomms` (including `poll`); continue the normal
+work-queue sweep. Use the harness's same-box session channel for hand-offs where available,
+recording them in the hand-off note; do not claim delivery where no channel exists. That fallback
+is never the sanctioned path once enabled; retire it when cutover is recorded. Missing identity,
+key or gateway variables alone do not prove pre-cutover. Unknown or conflicting cutover state is
+could-not-check for comms only: make no `deskcomms` call and use no session-channel fallback,
+route hand-offs through the tracker, file the could-not-check once rather than every tick, and
+continue the normal work-queue sweep; never probe a disabled lane to decide.
+
+Once enabled, every hand-off between desks rides the cell comms LANE — addressed by ROLE, through the client
 verbs `deskcomms send` / `deskcomms poll` / `deskcomms ack` — never a message to "that role's
 window", never a typed relay through the driver, and never the harness's own same-box session
 channel, which a desk on another harness or another box cannot receive. A hand-off is ONE send,
@@ -820,8 +860,8 @@ sent — a hand-off never carries authority. Never `ask` a desk whether it is al
 read from the gateway and roster instruments, not from a message. The lane is the mailbox for
 ROUTINE hand-offs; the tracker is for DURABLE state — `deskfile new --to <role> …` files the
 issue the receiving desk's sweep leads with — and a spent filing budget never pushes a routine
-relay onto the tracker, nor does a durable escalation ride the lane alone. Read your own lane
-every sweep: `deskcomms poll`, then `deskcomms ack <id>` once acted on (ack moves, never deletes;
+relay onto the tracker, nor does a durable escalation ride the lane alone. With comms enabled, read your own lane
+every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME
 (the variables `deskcomms --help` names), never from this text. ENFORCEMENT IS GATEWAY-SIDE: the
@@ -832,11 +872,8 @@ through the gateway API directly. The verbs run silent inside this desk's noise 
 per invocation. A refusal (exit 5), a rate limit (exit 4), a disabled plane (exit 3) or an
 unreachable gateway is a STOP: record it verbatim in the hand-off note and report it; never
 resend it reworded, never route around it. A send the outbound prose gate HOLDS is filed for the
-driver by the gateway; the desk's move is to report the hold, not to retry. Until the cell's
-comms plane is enabled — a human-gated cutover; config-off before it — the harness's same-box
-session channel is the PRE-CUTOVER FALLBACK only: use it where the lane is not yet live, record
-every hand-off it carried in the hand-off note, and treat it as retired the moment the cutover is
-recorded. It is never the sanctioned path.
+driver by the gateway; the desk's move is to report the hold, not to retry. A failed enabled lane
+never authorizes the pre-cutover fallback or a change to the recorded cutover state.
 
 ## Liveness contract (binding)
 

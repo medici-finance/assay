@@ -127,7 +127,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 16 | [Verification wake conditions — stop repeating unchanged blocked checks](brief-16-verification-wake-conditions.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1396 @ e78d34ef8482d8daa0423f231fda1a06f6e3b959) |
 | 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | implemented | — | — |
 | 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | implemented | — | — |
-| 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | implemented | — | — |
+| 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | verified | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | implemented | — | — |
 | 21 | [Reverify changed external prerequisites without a synthetic push](brief-21-external-prerequisite-reverification.md) | 1 | M | implemented | — | — |
 | 22 | [Configure provider, model and effort per cell role](brief-22-cell-model-policy.md) | 0 | M | implemented | — | — |
@@ -172,6 +172,13 @@ All three cite [`DR-workflow-app-landing`](../decisions/DR-workflow-app-landing.
 The chain touches no engine code and is independent of the `01 → 02 → 03` supervision path —
 its head, brief 10, is the App's ground truth (installed? correctly scoped?), which is a
 provisioning question a human may have to answer before 11 and 12 can proceed.
+Brief 10's gate is ruled on #1245: option 2 in the brief, provision then confirm (the ratified
+relay letters it "option A"). The ruling adds `pull_requests: write` to the existing workflow App,
+and a human merges the workflow-only PR. Its scope and the sole-holder invariant are recorded in
+[`workflow-app-scope.md`](workflow-app-scope.md). Row 10 stays `blocked` until the ruling is
+recorded in the DR (status and `decided-by`; `lifecycle-v1.md` §4.4 and the DR's own flip rule)
+and Verify rows 5 and 6 pass against the live installations (the ratified relay on #1245).
+Briefs 11 and 12 stay `blocked` on their own gates.
 
 **The vitals delta rides a third, independent chain off 07.** Briefs 13-15 do not change the
 original head — they hang off the built machinery, and they are unrelated to the workflow-landing

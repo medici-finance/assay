@@ -16,6 +16,7 @@ import (
 func TestMergeResourceVitalsPreservesAcks(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	if _, err := AppendAck("s-vitals-acks", AckRecord{Role: "worker-desk", Restatement: "a receipt"}); err != nil {
 		t.Fatalf("AppendAck: %v", err)
@@ -84,6 +85,7 @@ func readResource(t *testing.T, session string) resourceRaw {
 func TestUnsetVitalIsNullNotZero(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	rv := ResourceVitals{Tokens: MeasuredInt(500)} // everything else left unset
 	if _, err := MergeResourceVitals("s-vitals-unset", rv); err != nil {
@@ -112,6 +114,7 @@ func TestUnsetVitalIsNullNotZero(t *testing.T) {
 func TestMeasuredZeroSubagentsRoundTrips(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	rv := ResourceVitals{SubagentsSpawned: MeasuredInt(0)}
 	if _, err := MergeResourceVitals("s-vitals-zero", rv); err != nil {
@@ -130,6 +133,7 @@ func TestMeasuredZeroSubagentsRoundTrips(t *testing.T) {
 func TestCouldNotCheckVitalIsDistinctFromNullAndZero(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	rv := ResourceVitals{ContextPctUsed: CouldNotCheckVital()}
 	if _, err := MergeResourceVitals("s-vitals-cnc", rv); err != nil {
@@ -148,6 +152,7 @@ func TestCouldNotCheckVitalIsDistinctFromNullAndZero(t *testing.T) {
 func TestMergeResourceVitalsMalformedBeaconFailsClosed(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	path, _ := AckBeaconPath("s-vitals-corrupt")
 	if err := os.MkdirAll(dirOf(path), 0o700); err != nil {
 		t.Fatal(err)

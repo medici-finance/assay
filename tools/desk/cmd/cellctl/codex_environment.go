@@ -45,7 +45,7 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.
-	for _, key := range []string{"DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
+	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOPATH", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
 		for _, kv := range env {
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {

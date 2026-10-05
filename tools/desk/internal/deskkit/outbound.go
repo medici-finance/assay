@@ -54,6 +54,12 @@ const (
 	OutboundKindRef     = "ref"
 )
 
+// OutboundFieldCommitMessage names the one field of a kind-`file` write that is NOT a file's
+// content or path: the commit message the Forge file-write seam carries beside the file
+// (outboundForge.WriteFile). The synthetic-fixture exemption (#2217, SelfContainOpts.InFile)
+// is for file content only, so this field never gets it.
+const OutboundFieldCommitMessage = "commit"
+
 // Rule ids. Compiled and generic: none names a deployment value.
 const (
 	// RuleSecretPrefix prefixes the credential scan's own rule id ("secret.github-token",
@@ -336,6 +342,9 @@ func outboundScanField(w OutboundWrite, fd OutboundField, public bool) (refusals
 	if public {
 		opts := SelfContainOpts{Repo: w.Repo, NumberHint: w.NumberHint}
 		if w.Kind == OutboundKindFile {
+			// A file write's content and path fields get the synthetic-fixture exemption
+			// (#2217), with or without a FileSources entry; its commit message does not.
+			opts.InFile = fd.Name != OutboundFieldCommitMessage
 			if src, ok := w.FileSources[fd.Name]; ok {
 				opts.FilePath, opts.FileSource = fd.Name, src
 			}

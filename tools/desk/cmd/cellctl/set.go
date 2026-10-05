@@ -19,7 +19,7 @@ import (
 var cellEnvKnownKeys = strings.Fields(`CELL CELL_KIND CELL_CONTAINER_CONFIG CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default CURSOR_MODEL_default
-CELL_CADENCE CELL_TICK_BUDGET CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION
+CELL_CADENCE CELL_TICK_BUDGET CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION CELL_COMMS_CONFIG
 TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE
 TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX
 TIER_MODEL_TOP_CURSOR TIER_MODEL_MID_CURSOR TIER_MODEL_FAST_CURSOR`)
@@ -175,7 +175,11 @@ func effectiveCellEnv(envfile string, kvs []string) *Env {
 	}
 	for _, kv := range kvs {
 		if k, v, ok := splitKV(kv); ok {
-			e.Put(k, unquoteShellValue(v, e))
+			if k == "CELL_COMMS_CONFIG" {
+				e.Put(k, v)
+			} else {
+				e.Put(k, unquoteShellValue(v, e))
+			}
 		}
 	}
 	return e
@@ -239,6 +243,12 @@ func setEnvKey(envfile, key, value string, force bool) {
 	if err != nil {
 		die("set: cannot read %s: %v", envfile, err)
 	}
+	// The comms argument is a literal manifest path. Encode it in the existing
+	// cell.env grammar so apostrophes, dollars and backslashes survive reload.
+	stored := value
+	if key == "CELL_COMMS_CONFIG" {
+		stored = bashQuote(value)
+	}
 	trailingNewline := strings.HasSuffix(string(raw), "\n")
 	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 	before, has := "", false
@@ -254,12 +264,12 @@ func setEnvKey(envfile, key, value string, force bool) {
 		replaced := false
 		for i, l := range lines {
 			if !replaced && strings.HasPrefix(l, key+"=") {
-				lines[i] = key + "=" + value
+				lines[i] = key + "=" + stored
 				replaced = true
 			}
 		}
 	} else {
-		lines = append(lines, key+"="+value)
+		lines = append(lines, key+"="+stored)
 	}
 	out := strings.Join(lines, "\n")
 	if trailingNewline || !has {

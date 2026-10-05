@@ -1,0 +1,5 @@
+package helper
+
+import "os"
+
+func Save(b []byte) error { return os.WriteFile("out", b, 0o600) }

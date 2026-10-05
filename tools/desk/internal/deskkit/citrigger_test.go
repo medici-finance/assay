@@ -221,6 +221,14 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"ci/staged-workflows", ".github/workflows"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "every staged workflow and live base must trigger the undeclared drift guard",
+		},
+		{
 			test:   "tools/desk/internal/regression/manifest_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
 			prJob: floorJob, pushJob: floorJob,
@@ -235,6 +243,17 @@ func ciCrossModuleRegistry() []ciEntry {
 			reads:      []string{"tools/create-fleet-gitlab.sh", "tools/create-fleet-gitlab_test.sh", "tools/cellctl"},
 			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
 			why:        "the floor runs offline shell fixtures outside the desk module; script changes must run the entry points",
+		},
+		{
+			test:   "tools/desk/internal/clicontract/inventory_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads: []string{
+				"docs/streams/desktools-v2/cli-migration.json", "docs/streams",
+				".github/workflows/release.yml", "Makefile", "plugins", "tools", "statusgen",
+			},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the CLI routing inventory discovers every entrypoint in the tree and checks owner briefs; a new command or brief edit anywhere must run it (desktools-v2/15)",
 		},
 
 		{
