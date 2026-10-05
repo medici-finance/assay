@@ -2,7 +2,9 @@
 # Run from statusgen/. Plant a second unclassified route and require the class
 # guard to name it. The trap removes only the source file minted by this run.
 set -euo pipefail
-plant=$(mktemp "./planted_route_XXXXXX.go")
+seed=$(mktemp "./planted_route_XXXXXX")
+plant="$seed.go"
+mv "$seed" "$plant"
 log=$(mktemp)
 trap 'rm -f "$plant" "$log"' EXIT
 cat > "$plant" <<'GO'
