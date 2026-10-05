@@ -247,7 +247,7 @@ func setEnvKey(envfile, key, value string, force bool) {
 	// cell.env grammar so apostrophes, dollars and backslashes survive reload.
 	stored := value
 	if key == "CELL_COMMS_CONFIG" {
-		stored = cockpitQuote(value)
+		stored = bashQuote(value)
 	}
 	trailingNewline := strings.HasSuffix(string(raw), "\n")
 	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
