@@ -1,0 +1,7 @@
+package facts
+
+import (
+	_ "time"
+
+	_ "example.com/planted/witness"
+)

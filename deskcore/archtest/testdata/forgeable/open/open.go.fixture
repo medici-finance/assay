@@ -1,0 +1,14 @@
+package open
+
+import "errors"
+
+type Grant struct {
+	Doc string
+}
+
+func NewGrant(doc string) (Grant, error) {
+	if doc == "" {
+		return Grant{}, errors.New("empty")
+	}
+	return Grant{Doc: doc}, nil
+}

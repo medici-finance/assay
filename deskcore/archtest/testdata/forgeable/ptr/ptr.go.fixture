@@ -1,0 +1,8 @@
+package ptr
+
+type Lease struct {
+	gen uint64
+	Holder string
+}
+
+func NewLease(holder string) *Lease { return &Lease{gen: 1, Holder: holder} }

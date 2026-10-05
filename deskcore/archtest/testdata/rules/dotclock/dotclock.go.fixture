@@ -1,0 +1,5 @@
+package dotclock
+
+import . "time"
+
+var _ = Second

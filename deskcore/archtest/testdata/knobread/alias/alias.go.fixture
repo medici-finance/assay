@@ -1,0 +1,5 @@
+package alias
+
+import sys "os"
+
+func F() bool { _, ok := sys.LookupEnv("X"); return ok }
