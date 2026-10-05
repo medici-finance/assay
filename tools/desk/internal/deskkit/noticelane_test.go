@@ -570,3 +570,31 @@ func TestNoticeLaneCICheckBackstopCollapsesSeparators(t *testing.T) {
 		}
 	}
 }
+
+// TestNoticeLaneShapeOnlyVetoCoversPlurals — round 7.2 (security review sec-1688-S1 advisory,
+// veto evasion): "lint levels" never matched the needle "lint level" on a word boundary, so the
+// plural slipped past the veto and the paired content needle "wording" admitted. Each fixture
+// carries no other shape-only phrase and names no CI check or job, so the plural veto is the
+// only thing refusing it.
+//
+// FAIL-FIRST (mutation: subjectContainsVetoNeedle reduced to subjectContainsNeedle): every row
+// admits through "wording".
+func TestNoticeLaneShapeOnlyVetoCoversPlurals(t *testing.T) {
+	for _, subject := range []string{
+		"wording of the pin-consistency lint levels",
+		"wording of the flag defaults",
+		"wording of the tool defaults",
+	} {
+		if namesCICheckOrJob(subject) {
+			t.Fatalf("fixture %q names a CI check or job — it must pin the veto alone", subject)
+		}
+		for _, n := range NoticeLaneShapeOnlyNeedles {
+			if subjectContainsNeedle(subject, n) {
+				t.Fatalf("fixture %q matches shape-only needle %q exactly — it must pin the plural reading", subject, n)
+			}
+		}
+		if admit, why := NoticeLaneVerdict(subject, "", subject, nil); admit {
+			t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused — a plural shape-only phrase must still veto", subject, why)
+		}
+	}
+}

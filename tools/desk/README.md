@@ -3204,7 +3204,9 @@ way).
   `port or drop`) and still missed whatever spelling was not enumerated. The CI check/job
   backstop (`ciCheckOrJobRe`) reads the collapsed subject too, not only the raw one
   (`deskkit.namesCICheckOrJob`, round 7.2), so `leak_sweep`, `leak.sweep` and `ci_checks` are
-  caught alongside `leak-sweep`.
+  caught alongside `leak-sweep`. The veto also matches each shape-only needle's plural
+  (`lint levels`, `tool defaults`; `deskkit.subjectContainsVetoNeedle`, round 7.2), so a
+  plural spelling cannot slip past it to a paired content needle.
 
   **Any non-ASCII character anywhere in the subject fails closed, before any needle or
   `ciCheckOrJobRe` check runs** (`deskkit.hasNonASCIIByte`, round 7.1, security review

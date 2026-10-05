@@ -44,7 +44,8 @@
 - The notice lane reads its reversible signal from the block's own `subject:` line alone,
   never the title or body prose, and only when the bounded block carries exactly one such
   line; none or several admit nothing. A shape-only needle (`lint level`, `lint severity`,
-  `notice or error`, `port-or-drop`) never admits and vetoes any content needle beside it.
+  `notice or error`, `port-or-drop`) never admits and vetoes any content needle beside it,
+  in its plural spelling too.
   Needles match on word boundaries, with runs of spaces, underscores, dots, slashes and
   hyphens treated as one space. The CI check/job backstop reads the subject the same way, and
   any non-ASCII character in the subject fails closed.

@@ -348,6 +348,18 @@ func subjectContainsNeedle(subject, needle string) bool {
 	return wordBoundaryContains(collapseSeparators(subject), collapseSeparators(needle))
 }
 
+// subjectContainsVetoNeedle is subjectContainsNeedle for the shape-only VETO, widened to the
+// needle's plural ("lint levels", "tool defaults", "notice or errors"). Round 7.2 (security
+// review sec-1688-S1 advisory, veto evasion): the word-boundary match refused "lint level"
+// inside "lint levels", so a plural spelling slipped past the veto and admitted through a
+// paired content needle. Widening only the veto is the fail-closed direction: a broader veto
+// can only keep more subjects with the driver, never admit one.
+func subjectContainsVetoNeedle(subject, needle string) bool {
+	return subjectContainsNeedle(subject, needle) ||
+		subjectContainsNeedle(subject, needle+"s") ||
+		subjectContainsNeedle(subject, needle+"es")
+}
+
 // ciCheckOrJobRe names a CI check or job by the nouns this codebase's own CI surfaces use
 // (check/checks, job/jobs, workflow/workflows, pipeline/pipelines) and the "<word>-sweep" /
 // "<word> check" compounds those surfaces are actually named with (leak-sweep, control-sweep,
@@ -397,7 +409,7 @@ func FirstNoticeLaneSignal(subject string) *Signal {
 		return nil
 	}
 	for _, n := range NoticeLaneShapeOnlyNeedles {
-		if subjectContainsNeedle(subject, n) {
+		if subjectContainsVetoNeedle(subject, n) {
 			return nil
 		}
 	}
