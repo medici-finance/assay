@@ -144,6 +144,12 @@
       "file": "decisiongatehold.go",
       "old": "if b := s[k]; b.Gate == gateHumanValue && gateStatusRank(b.Status) >= 1 {",
       "new": "if b := s[k]; false && b.Gate == gateHumanValue && gateStatusRank(b.Status) >= 1 {"
+    },
+    {
+      "name": "archived boards dropped from the PR lane's board paths (an archive-only change is not judged)",
+      "file": "decisiongatehold.go",
+      "old": "`^docs/(streams|archive)/",
+      "new": "`^docs/(streams)/"
     }
   ]
 }

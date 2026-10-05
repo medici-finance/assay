@@ -638,6 +638,33 @@ func TestDecisionGatePRLaneUnresolvedBase(t *testing.T) {
 	}
 }
 
+// The PR lane judges a change that touches only an archived board: an unruled
+// gate: human brief under docs/archive/ moved to done is refused, and the
+// refusal comes from the binary's own file listing, not a workflow path filter.
+func TestDecisionGatePRLaneArchiveOnlyChangeRefused(t *testing.T) {
+	dhSeams(t, nil)
+	archReadme := "docs/archive/" + dhStream + "/README.md"
+	archBrief := "docs/archive/" + dhStream + "/done/brief-18.md"
+	root := dhFixture(t, map[string]string{
+		archReadme: dhReadme(dhRow("18", "verified")),
+		archBrief:  dhFM("gate: human", "decision-issue: 41\n"),
+	})
+	baseOut, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := strings.TrimSpace(string(baseOut))
+	dhWrite(t, root, map[string]string{archReadme: dhReadme(dhRow("18", "done"))})
+	gitRun(t, root, "commit", "-q", "-am", "close an archived brief")
+	rs := decisionGatePRLane(root, rlRepo, []ghPRFile{{Filename: archReadme}}, base, nil)
+	if !decisionGateRefused(rs) {
+		t.Fatalf("PR lane did not refuse an unruled move of an archived gate: human brief: %+v", rs)
+	}
+	if p := dhLayerOne(t, root); len(p) != 1 {
+		t.Fatalf("layer one: %d problems, want 1: %v", len(p), p)
+	}
+}
+
 // The PR lane with a resolved merge-base judges the checkout against it.
 func TestDecisionGatePRLaneJudgesAgainstMergeBase(t *testing.T) {
 	dhSeams(t, nil)
