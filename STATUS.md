@@ -76,7 +76,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 6e47cee 2026-10-05T11:27:35+11:00_
+_last regen: baea30c 2026-10-05T00:28:56Z_
 
 **Progress:** 8/13 brief items done.
 
@@ -98,7 +98,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 6e47cee 2026-10-05T11:27:35+11:00_
+_last regen: baea30c 2026-10-05T00:28:56Z_
 
 **Progress:** 15/71 brief items done.
 
