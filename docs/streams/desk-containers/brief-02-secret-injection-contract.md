@@ -32,7 +32,7 @@ consumers:
   - "containers/desk-run.sh (mount + env-file flags): follow-up desk-containers/04"
   - "containers/compose.yaml (secrets: + env_file): follow-up desk-containers/05"
   - "containers/k8s/ (Secret volume + envFrom): follow-up desk-containers/06"
-version: 1
+version: 2
 id: 73c2a9fd-dcdf-44a3-b79f-8bfb88f2bcae
 ---
 
@@ -100,8 +100,8 @@ facts:
 | 2 | `grep -c '/run/secrets/assay/app.pem' containers/secrets.md` | exit 0; count ≥ 1 |
 | 3 | `grep -ci 'no secret in any image layer' containers/secrets.md` | exit 0; count ≥ 1 |
 | 4 | `sh containers/scripts/layer-secret-scan.test.sh` | exit 0; prints `RED on baked-key fixture` and `GREEN on clean fixture` — the mutation test proves the scan detects a baked key (dereferencing row: the scan's central claim is exercised, not counted) |
-| 5 | `docker build -t assay-desk-base:dev containers/base && sh containers/scripts/layer-secret-scan.sh assay-desk-base:dev` | exit 0 — the real base image scans clean (run once brief 01 has landed; before that, the clean fixture in row 4 stands in) |
-| 6 | `statusgen --consumers --brief desk-containers/02 --root .` | exit 0; the four follow-up entries (03/04/05/06) listed for the reviewer to weigh |
+| 5 | `docker build --platform linux/amd64 -f containers/base/Dockerfile -t assay-desk-base:dev . && sh containers/scripts/layer-secret-scan.sh assay-desk-base:dev` | exit 0; output is `clean: no key-shaped material found in image 'assay-desk-base:dev'` (the real base image builds and scans clean). Run from the repository root: the base Dockerfile COPYs `plugins/assay/` from the build context, so the context must be the repo root (`.`); with `containers/base` as the context the build stops at `"/plugins/assay": not found` and the scan never runs. `--platform linux/amd64` builds the image the Dockerfile's `TARGETARCH=amd64` default targets, so an arm64 host (under emulation) builds the same image as an amd64 host. A build that cannot pull its pinned parent image is COULD-NOT-CHECK, never a pass. The scan does not yet catch a key written in one layer and overwritten at the same path by a later layer (#2256), so a clean result does not cover that case. Re-authored per #2257 |
+| 6 | `statusgen --consumers --brief desk-containers/02 --root . --base 709c223eff6d~1` | exit 0; output is `summary: 4 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing`, with a `CORROBORATED` line for each follow-up entry (03/04/05/06). `--consumers` judges only briefs that sit inside the diff it reads, and `709c223eff6d` is the commit that authored this brief and its `consumers:` list, so pinning the base to its parent keeps the brief in scope on merged main. The diff only decides scope here: all four entries are `follow-up` routings, which are judged against the CURRENT tree (each target must be a brief listed in its stream README, and must reference this brief back). So the row reads main as it stands: a `consumers:` entry retargeted to a brief that does not exist, or a target dropped from its stream README, is DISPROVED (exit 1), and a target that stops referencing this brief is UNCHECKED, which the summary line no longer matches. The diff runs from that parent to the working tree, uncommitted edits included, so run the row on a clean checkout of merged main. Run without `--base` on merged main, the check reports COULD-NOT-CHECK because the brief is not in the diff. Needs full history: a clone that cannot resolve `709c223eff6d` is COULD-NOT-CHECK. Re-authored per #2257 |
 | 7 | `shellcheck containers/scripts/layer-secret-scan.sh` | exit 0 |
 
 ## Definition of Done
