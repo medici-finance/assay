@@ -6,7 +6,7 @@ package main
 // worker kit verbatim; nothing checked that promise, so a clause strengthened in one kit
 // could silently stay weak in the other. This pins the bug-fix defect-class clause: its body
 // must be byte-identical in the worker kit and the worker-objective kit, and must still carry
-// the three obligations (name the class, guard the class, fail-first against a planted second
+// the three obligations (name the class, close the class, fail-first against a planted second
 // instance).
 
 import (
@@ -53,7 +53,7 @@ func TestDefectClassClauseIsOneWordingAcrossImplementerKits(t *testing.T) {
 			t.Fatalf("kit %q carries no %q clause — a worker dispatched on it fixes the instance and "+
 				"leaves the class open", kit, defectClassHeading)
 		}
-		for _, must := range []string{"## Defect class", "ALLOW-LIST", "PLANTED SECOND", "## Fail-first"} {
+		for _, must := range []string{"## Defect class", "unrepresentable", "PLANTED SECOND", "## Fail-first"} {
 			if !strings.Contains(body, must) {
 				t.Errorf("kit %q defect-class clause lost %q — one of its three obligations is gone", kit, must)
 			}

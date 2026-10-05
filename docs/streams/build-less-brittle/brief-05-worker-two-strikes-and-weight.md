@@ -26,9 +26,9 @@ exec-tier: strong
 exec-tier-why: "(b) the same clause wording must land byte-identical in two kits under a parity test, and the worker-desk re-dispatch tier rule must agree with it."
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskdispatch/references/worker-prompt.md: follow-up build-less-brittle/05 (this brief)"
-  - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md: follow-up build-less-brittle/05 (this brief)"
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up build-less-brittle/05 (this brief)"
+  - "tools/desk/cmd/deskdispatch/references/worker-prompt.md: fixed-here (clauses 8 and 14 amended)"
+  - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md: fixed-here (the same wording, verbatim)"
+  - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here (re-dispatch tier; strike-two routing; defect-class summary aligned)"
   - "installed deskdispatch binaries (kits are embedded): out-of-scope (reach consumers on the next desk-tools release and pin bump)"
 ---
 
