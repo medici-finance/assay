@@ -1,5 +1,7 @@
 # `cellctl` — running one Assay cell on a laptop
 
+For opt-in stable Go caches and disk budgets, see [Managed Go caches](cellctl-go-cache.md).
+
 `topology.yaml` (see `docs/adopting-assay.md` §5) says what a **cell** *is*: one lead plus its agent
 fleet, accountable for its own repo set. This document is the other half — how that cell **runs** on
 one machine: a persistent `deskd`, one window per desk role, and each of those windows resolving the
@@ -1585,3 +1587,12 @@ five-minute interval and 20-minute pass budget. `--cadence off` selects interact
 mode; explicit intervals and budgets override the defaults. Other harnesses retain
 their existing defaults; Orca/Cursor can opt in with `--cadence`. See [Host desk cadence](cellctl-cadence.md) for setup, status,
 stop/recovery and process-lifetime limits.
+
+### Configured comms startup
+
+For a house cell, `cellctl set <cell> CELL_COMMS_CONFIG=<absolute-manifest-path>`
+selects the existing comms manifest. `cellctl up` starts one configured interim
+gateway/drain supervisor in its own cockpit surface; absent or disabled config
+keeps desk-only startup. `cellctl down` stops the supervisor before closing its
+owned surface and preserves mailbox data. See [host desk communications](cellctl-comms.md)
+for configuration, quoting, recovery and cockpit requirements.
