@@ -48,12 +48,21 @@ func staleAnchors(root string) (int, []string, error) {
 		if err != nil {
 			return err
 		}
+		rel, _ := filepath.Rel(root, path)
 		var s spec
-		if json.Unmarshal(data, &s) != nil || !looksLikeSpec(s) {
+		if err := json.Unmarshal(data, &s); err != nil {
+			// A JSON object carrying a spec's keys that no longer decodes as a spec is
+			// a spec muhar would refuse — report it rather than drop it from the count.
+			var obj map[string]json.RawMessage
+			if json.Unmarshal(data, &obj) == nil && (obj["mutations"] != nil || obj["control"] != nil) {
+				problems = append(problems, fmt.Sprintf("%s: carries spec keys but does not decode as a muhar spec: %v", rel, err))
+			}
+			return nil
+		}
+		if !looksLikeSpec(s) {
 			return nil
 		}
 		specs++
-		rel, _ := filepath.Rel(root, path)
 		modDir, ok := moduleDir(root, filepath.Dir(path))
 		if !ok {
 			problems = append(problems, fmt.Sprintf("%s: no go.mod above the spec to resolve its files against", rel))
@@ -77,7 +86,12 @@ func staleAnchors(root string) (int, []string, error) {
 				problems = append(problems, fmt.Sprintf("%s: %q: cannot read %s: %v", rel, m.Name, m.File, err))
 				continue
 			}
-			if _, err := applyEdit(string(src), m); err != nil {
+			// Specs are authored against LF sources; a Windows checkout may hand this
+			// test CRLF files (.gitattributes pins only some paths to LF), and muhar
+			// itself never runs there. Normalise so the guard answers the same question
+			// on every platform instead of reporting every multi-line anchor stale.
+			content := strings.ReplaceAll(string(src), "\r\n", "\n")
+			if _, err := applyEdit(content, m); err != nil {
 				problems = append(problems, fmt.Sprintf("%s: %v", rel, err))
 			}
 		}
@@ -157,7 +171,8 @@ func TestSpecAnchorsLand(t *testing.T) {
 
 // TestAnchorCheckFlagsStale is the guard's own positive control: a spec whose
 // mutation names text the source no longer holds MUST be reported, a spec that
-// lands must not, and non-spec JSON is ignored.
+// lands must not (CRLF source included), non-spec JSON is ignored, and an orphan,
+// control-less or undecodable spec is reported.
 func TestAnchorCheckFlagsStale(t *testing.T) {
 	root := t.TempDir()
 	mod := filepath.Join(root, "mod")
@@ -179,15 +194,20 @@ func TestAnchorCheckFlagsStale(t *testing.T) {
 	write("pkg/stale-mutations.json", `{"test":"true",
 	  "control":{"name":"ctl","file":"pkg/guard.go","old":"\treturn true\n","new":"\treturn false\n"},
 	  "mutations":[{"name":"guard off (pre-refactor text)","file":"pkg/guard.go","old":"if n <= -1 {","new":"if false {"}]}`)
-	write("pkg/config.json", `{"mutations":"not a spec","other":[1,2,3]}`)
+	write("pkg/config.json", `{"name":"not a spec","other":[1,2,3]}`)
+	// A CRLF checkout of the source (a default Windows clone) still lands a
+	// multi-line LF anchor: the guard normalises line endings before matching.
+	write("pkg/crlf.go", "package pkg\r\n\r\nfunc two() int {\r\n\treturn 2\r\n}\r\n")
+	write("pkg/crlf-mutations.json", `{"test":"true",
+	  "control":{"name":"ctl","file":"pkg/crlf.go","old":"func two() int {\n\treturn 2\n","new":"func two() int {\n\treturn 3\n"}}`)
 	write("pkg/array.json", `[{"test":"x","file":"pkg/guard.go","old":"a","new":"b"}]`)
 
 	specs, problems, err := staleAnchors(root)
 	if err != nil {
 		t.Fatalf("staleAnchors: %v", err)
 	}
-	if specs != 2 {
-		t.Errorf("found %d specs, want 2 (good + stale; config and array JSON are not specs)", specs)
+	if specs != 3 {
+		t.Errorf("found %d specs, want 3 (good, stale, crlf; config and array JSON are not specs)", specs)
 	}
 	if len(problems) != 1 {
 		t.Fatalf("problems = %q, want exactly the stale spec's one edit", problems)
@@ -212,6 +232,16 @@ func TestAnchorCheckFlagsStale(t *testing.T) {
 	write("pkg/nocontrol-mutations.json", `{"test":"true","mutations":[{"name":"guard off","file":"pkg/guard.go","old":"if n < 0 {","new":"if false {"}]}`)
 	if _, problems, err = staleAnchors(root); err != nil || len(problems) != 2 || !anyHas(problems, "nocontrol-mutations.json: no positive control") {
 		t.Fatalf("with a control-less spec: problems = %q, err = %v; want it named plus the stale edit", problems, err)
+	}
+	if err := os.Remove(filepath.Join(mod, "pkg", "nocontrol-mutations.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	// A file carrying spec keys that no longer decodes as a spec is reported, not
+	// silently dropped from the count.
+	write("pkg/broken-mutations.json", `{"test":"true","mutations":"one string where an array belongs"}`)
+	if _, problems, err = staleAnchors(root); err != nil || len(problems) != 2 || !anyHas(problems, "broken-mutations.json: carries spec keys but does not decode") {
+		t.Fatalf("with an undecodable spec: problems = %q, err = %v; want it named plus the stale edit", problems, err)
 	}
 }
 
