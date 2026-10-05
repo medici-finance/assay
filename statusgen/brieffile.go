@@ -1877,9 +1877,8 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// — noticing every gated todo floods the register with items
 				// nobody is waiting on; the brief's "top-of-Next-up"
 				// case is covered by the Next-up-pick check in run() instead.
-				if bf.Gate == "human" && bf.DecisionIssue == 0 &&
-					(row.Status == "in-progress" || row.Status == "implemented" || row.Status == "verified") {
-					notice("%s: brief %s is gate:human at %s but has no decision-issue — file one via --decision-issues", path, bf.Brief, row.Status)
+				if message := waitingBriefNotice(s.Root, path, bf, row.Status); message != "" {
+					notice("%s", message)
 				}
 				// Decision-issue linkage, part (b): a done brief still carrying a
 				// decision-issue whose outcome is NOT recorded in the brief body
