@@ -80,12 +80,13 @@ facts:
    red-then-green run under `## Evidence`.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1` | exit 0; output contains "ok" |
-| 2 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (all three fixture-state assertions ran and passed) |
-| 3 | `ls statusgen/testdata/*stale*fail* statusgen/testdata/*missing*card* >/dev/null 2>&1` | exit 0 (a fixture tree exists per state) |
-| 4 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'stale FAIL'` | exit 0 (the stale-FAIL branch's message is exercised) |
+| # | Command | Expect | Class |
+|---|---------|--------|-------|
+| 1 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1` | exit 0; output contains "ok" | check |
+| 2 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (all three fixture-state assertions ran and passed) | check |
+| 3 | `ls statusgen/testdata/*stale*fail* statusgen/testdata/*missing*card* >/dev/null 2>&1` | exit 0 (a fixture tree exists per state) | check |
+| 4 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'stale FAIL'` | exit 0 (the stale-FAIL branch's message is exercised) | check |
+| 5 | `cd statusgen && bash testdata/stalefail-mutation.sh` | exit 0; planted second route is detected | check +mutation |
 
 ## Evidence
 Implementer validation (2026-10-05); independent verification remains pending.
@@ -105,6 +106,7 @@ Implementer validation (2026-10-05); independent verification remains pending.
 | 2 | checked-clean: verbose test log contains `PASS`, grep exit 0 |
 | 3 | checked-clean: stale-fail and missing-card fixture directory glob, exit 0; current-fail fixture also present |
 | 4 | checked-clean: verbose test log contains `stale FAIL`, grep exit 0 |
+| 5 | checked-clean: committed mutation script names the planted second route and exits 0 |
 
 The unchanged fallback is retained for a current FAIL or empty Evidence. Day-only
 Evidence compares against later UTC days, because same-day ordering is unknown.
