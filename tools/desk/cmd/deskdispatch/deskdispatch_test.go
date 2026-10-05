@@ -75,6 +75,9 @@ func (s *stub) install(t *testing.T) (home, root string) {
 				return exec.Command("/bin/sh", "-c", "cat <<'STUBEOF'\n"+r.stdout+"\nSTUBEOF")
 			}
 		}
+		if strings.Contains(joined, "rev-parse --verify --quiet refs/remotes/origin/") {
+			return exec.Command("/bin/sh", "-c", "echo "+resumeSHA)
+		}
 		return exec.Command("/bin/sh", "-c", "exit 0")
 	}
 	t.Cleanup(func() { execCommand = old })
@@ -103,6 +106,15 @@ func isolateClaimTool(t *testing.T, home string) {
 	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	t.Cleanup(func() { lookPath = oldLook })
 
+	oldResume := readResumeChange
+	readResumeChange = func(o dispatchOpts, _ string) (deskkit.PullRequest, error) {
+		branch := o.branch
+		if branch == "" {
+			branch = "feat/" + sanitizeSegment(o.item)
+		}
+		return deskkit.PullRequest{State: "open", HeadRef: branch, HeadSHA: resumeSHA, CrossRepo: deskkit.CrossRepoSame}, nil
+	}
+	t.Cleanup(func() { readResumeChange = oldResume })
 	t.Setenv("GH_TOKEN", "")
 	oldMint := mintTokenFn
 	mintTokenFn = func(role, repo string) (string, string, error) {
