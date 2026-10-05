@@ -74,9 +74,9 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: measured-status
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 56ed2b7 2026-10-04T23:26:48Z_
+_last regen: f627b69 2026-10-05T10:59:17+11:00_
 
-**Progress:** 6/13 brief items done.
+**Progress:** 7/13 brief items done.
 
 **In-flight:**
 
@@ -85,7 +85,6 @@ _none_
 **Blocked on review:**
 
 - build-less-brittle/04
-- build-less-brittle/06
 
 **Frontier next:**
 
@@ -96,7 +95,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 56ed2b7 2026-10-04T23:26:48Z_
+_last regen: f627b69 2026-10-05T10:59:17+11:00_
 
 **Progress:** 15/71 brief items done.
 
@@ -128,7 +127,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 92 total — 85 at implemented, 7 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 92 total — 84 at implemented, 8 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -149,7 +148,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
 | windows-port | 00 | implemented | 5000 | 8 | — | — | — |
-| build-less-brittle | 06 [exec:strong] | implemented | 4500 | 3 | — | — | — |
+| build-less-brittle | 06 [exec:strong] | verified | 4500 | 3 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | — | — |
 | build-less-brittle | 10 [exec:strong] | verified | 4000 | 2 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
@@ -310,7 +309,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — verified (wave 1)
 - 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — implemented (wave 2)
 - 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — todo (wave 3)
-- 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — implemented (wave 2)
+- 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — verified (wave 2)
 - 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — todo (wave 3)
 - 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — verified (wave 2)
 - 11 Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge — todo (wave 4)

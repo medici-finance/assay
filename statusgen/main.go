@@ -369,6 +369,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// that has not adopted the field.
 	rootRepoName, repoProblems := rootRepo(streams)
 	problems = append(problems, repoProblems...)
+	// Optional authored `mission:` block (docs/stream-view-contract.md): a
+	// present-but-invalid block is a PROBLEM, never silently dropped or
+	// replaced by README prose. Inert for streams without the block.
+	problems = append(problems, missionProblems(streams)...)
 	// Register-integrity check, path-scoped by the CI-supplied --changed set the
 	// same way the DAR/product-scope checks already are. With NO --changed set (a
 	// full-tree / main-side regen) this is unchanged: every register defect is a
