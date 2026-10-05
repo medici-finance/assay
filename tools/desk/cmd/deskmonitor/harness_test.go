@@ -281,10 +281,13 @@ type ghStub struct {
 
 const ghStubScript = `#!/bin/sh
 # parity stub gh — replays the recorded answer for --repo from $PARITY_CYCLE_DIR.
+# It honours the --limit the poller actually passed, exactly as gh does: at most that many rows.
 repo=""
+limit=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo) repo="$2"; shift 2 ;;
+    --limit) limit="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -295,7 +298,9 @@ if [ ! -f "$d/$key.rc" ]; then
   echo "HTTP 500: the fixture recorded no answer for $repo this cycle" >&2
   exit 1
 fi
-[ -f "$d/$key.out" ] && cat "$d/$key.out"
+if [ -f "$d/$key.out" ]; then
+  if [ -n "$limit" ]; then jq -c ".[:$limit]" "$d/$key.out"; else cat "$d/$key.out"; fi
+fi
 [ -f "$d/$key.err" ] && cat "$d/$key.err" >&2
 exit "$(cat "$d/$key.rc")"
 `
@@ -331,12 +336,10 @@ func (g *ghStub) render(t *testing.T, kind string, c fixtureCycle, limit int) {
 		}
 		var payload []byte
 		if kind == "inbound" {
-			// gh issue list keeps the newest `--limit` (issue creation order; the fixture lists
-			// newest first) — only the COUNT matters to the poller once it is at the limit.
+			// The whole recorded set: the stub cuts it to the --limit the poller actually passed
+			// (gh issue list keeps the newest `--limit`; the fixture lists newest first) — only the
+			// COUNT matters to the poller once a read is past its ceiling.
 			iss := rd.Issues
-			if len(iss) > limit {
-				iss = iss[:limit]
-			}
 			if iss == nil {
 				iss = []fixtureIssue{}
 			}

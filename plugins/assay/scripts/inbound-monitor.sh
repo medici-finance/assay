@@ -40,9 +40,12 @@
 #        · a repo that returns ZERO when it previously had issues is treated the
 #          same way (retain + MONITOR-DEGRADED) — a repo is never allowed to go
 #          empty silently, even on a "successful" read;
-#        · a read that comes back AT the --limit is TRUNCATED (`gh` keeps only
-#          the newest LIMIT and gives no truncation signal), so it is a moving
-#          window, not ground truth: retain + MONITOR-DEGRADED, never diffed;
+#        · the read pages through the whole open set up to a CEILING (--limit),
+#          and asks `gh` for ONE row past it: a read that holds MORE than the
+#          ceiling is TRUNCATED (`gh` keeps only the newest it was asked for and
+#          gives no truncation signal of its own), so it is a moving window, not
+#          ground truth: retain + MONITOR-DEGRADED, never diffed. A set of
+#          exactly the ceiling is the whole set;
 #        · a read that COLLAPSES below the retain floor (a partial read — the
 #          middle of the range the bare zero-check misses, and exactly what a
 #          silent truncation or half-parse produces) is retained too;
@@ -78,7 +81,11 @@ set -uo pipefail
 # line "<owner>/<name>#<num> <updatedAt>". The presence of the file is the seed
 # marker: no file => this repo has never been polled => SEED it silently.
 STATE_DIR="${INBOUND_MONITOR_STATE_DIR:-${TMPDIR:-/tmp}/assay-inbound-monitor}"
-LIMIT="${INBOUND_MONITOR_LIMIT:-500}"
+# LIMIT is the per-repo read CEILING, not a page window. The default is the Go
+# verb's forge-client open-issue page ceiling (100 pages of 100) — the real API
+# cap. It replaced a fixed 500 that sat at the same number as the truncation
+# threshold: a repo past 500 open issues read as TRUNCATED on every cycle.
+LIMIT="${INBOUND_MONITOR_LIMIT:-10000}"
 BURST_CAP="${INBOUND_MONITOR_BURST_CAP:-25}"
 # Retain floor: a read that returns fewer than this PERCENT of the repo's
 # previous count is treated as a partial/could-not-check read (retain + go loud),
@@ -108,8 +115,10 @@ It never silently goes blind:
     other repo as the keyring account;
   · a repo whose read fails, or which returns zero when it previously had issues,
     RETAINS its previous state and prints `MONITOR-DEGRADED: <slug> ...`;
-  · a read that comes back AT the --limit is TRUNCATED (gh gives no truncation
-    signal of its own), so it is treated as could-not-check: retain + go loud;
+  · the read pages through the whole open set; a repo holding MORE than the
+    --limit ceiling is TRUNCATED (gh gives no truncation signal of its own), so
+    it is treated as could-not-check: retain + go loud (a set of exactly the
+    ceiling is the whole set);
   · a read that collapses below the retain floor of its previous count is a
     partial read: retain + go loud, so the recovery cycle absorbs it instead of
     flooding;
@@ -126,7 +135,8 @@ Options:
 
 Environment:
   INBOUND_MONITOR_STATE_DIR   where per-repo state lives (default $TMPDIR/assay-inbound-monitor).
-  INBOUND_MONITOR_LIMIT       per-repo fetch cap passed to `gh issue list` (default 500).
+  INBOUND_MONITOR_LIMIT       per-repo read ceiling; `gh issue list` is asked for one
+                              row past it (default 10000).
   INBOUND_MONITOR_BURST_CAP   new-items-per-repo-per-cycle listing cap (default 25).
   INBOUND_MONITOR_RETAIN_FLOOR percent-of-previous below which a read is treated as
                               partial (retain + degrade); 0 disables (default 50).
@@ -155,6 +165,9 @@ for _kv in "LIMIT=$LIMIT" "BURST_CAP=$BURST_CAP" "RETAIN_FLOOR=$RETAIN_FLOOR" "P
     exit 1
   fi
 done
+# FETCH — what `gh issue list` is asked for: one row past the ceiling, so a set
+# of exactly LIMIT is told apart from a set clipped at LIMIT.
+FETCH=$((LIMIT + 1))
 
 # lower <s> — ASCII lowercase (bash 3.2 has no ${v,,}). Owners compare
 # case-insensitively, as the forge does.
@@ -346,13 +359,13 @@ for repo in "${REPOS[@]}"; do
   _rtok=$(token_for "$repo")
   if [[ -n "$_rtok" ]]; then
     if hits=$(GH_TOKEN="$_rtok" gh issue list --repo "$repo" --state open \
-        --limit "$LIMIT" --json number,updatedAt 2>"$TMP_ERR"); then
+        --limit "$FETCH" --json number,updatedAt 2>"$TMP_ERR"); then
       read_ok=1
     else
       read_ok=0
     fi
   elif hits=$(gh issue list --repo "$repo" --state open \
-      --limit "$LIMIT" --json number,updatedAt 2>"$TMP_ERR"); then
+      --limit "$FETCH" --json number,updatedAt 2>"$TMP_ERR"); then
     read_ok=1
   else
     read_ok=0
@@ -380,12 +393,13 @@ for repo in "${REPOS[@]}"; do
       | jq -r --arg repo "$repo" '.[] | "\($repo)#\(.number) \(.updatedAt)"' \
       | LC_ALL=C sort > "$TMP_CUR"
     cur_n=$(countlines "$TMP_CUR")
-    # A read that comes back at EXACTLY the limit is TRUNCATED: `gh` keeps only
-    # the newest LIMIT and drops the rest, and gives no truncation signal of its
-    # own — "came back at the limit" is the only signal available. An at-limit
-    # read is a moving window: it hides everything past the cap AND fires false
-    # INBOUND when the window shifts, so it cannot be trusted as ground truth.
-    [[ "$cur_n" -ge "$LIMIT" ]] && at_limit=1
+    # A read that holds MORE than the ceiling is TRUNCATED: `gh` keeps only the
+    # newest FETCH (= LIMIT + 1) and drops the rest, and gives no truncation
+    # signal of its own — the one extra row is the signal. A set of exactly
+    # LIMIT is the whole set. A truncated read is a moving window: it hides
+    # everything past the cap AND fires false INBOUND when the window shifts, so
+    # it cannot be trusted as ground truth.
+    [[ "$cur_n" -gt "$LIMIT" ]] && at_limit=1
   else
     cur_n=0
   fi
@@ -399,8 +413,8 @@ for repo in "${REPOS[@]}"; do
       # whole repo. Refuse it — establish no baseline, go loud, retry next cycle
       # (raise INBOUND_MONITOR_LIMIT above this repo's open count).
       degraded=1
-      printf 'MONITOR-DEGRADED: %s seed returned %s == --limit %s — results TRUNCATED, no baseline established; raise INBOUND_MONITOR_LIMIT and retry\n' \
-        "$repo" "$cur_n" "$LIMIT"
+      printf 'MONITOR-DEGRADED: %s seed returned more than --limit %s — results TRUNCATED, no baseline established; raise INBOUND_MONITOR_LIMIT and retry\n' \
+        "$repo" "$LIMIT"
     elif [[ "$read_ok" -eq 1 ]]; then
       cp "$TMP_CUR" "$sf"
       armed_total=$((armed_total + cur_n))
@@ -440,8 +454,8 @@ for repo in "${REPOS[@]}"; do
     # slice (which would both blind us past the cap and fire false INBOUND when
     # the window shifts). Same fail-closed direction as the zero case.
     degraded=1
-    printf 'MONITOR-DEGRADED: %s returned %s == --limit %s — results TRUNCATED, treating as could-not-check; keeping its previous %s issue(s)\n' \
-      "$repo" "$cur_n" "$LIMIT" "$prev_n"
+    printf 'MONITOR-DEGRADED: %s returned more than --limit %s — results TRUNCATED, treating as could-not-check; keeping its previous %s issue(s)\n' \
+      "$repo" "$LIMIT" "$prev_n"
     continue
   fi
 

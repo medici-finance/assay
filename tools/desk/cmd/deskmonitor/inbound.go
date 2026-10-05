@@ -8,9 +8,11 @@ package main
 //
 //	A. EXPLICIT IDENTITY — identity.go.
 //	B. PER-SOURCE STATE WITH RETENTION. State is one file per repo, and liveness is judged per
-//	   repo: a read that FAILS, returns ZERO where the repo had issues, comes back AT the --limit
-//	   (a moving window, not ground truth), or COLLAPSES below the retain floor of its previous
-//	   count RETAINS the previous baseline and prints `MONITOR-DEGRADED: <slug> …`. Because the
+//	   repo: a read that FAILS, returns ZERO where the repo had issues, holds MORE than the
+//	   --limit ceiling (a moving window, not ground truth), or COLLAPSES below the retain floor of
+//	   its previous count RETAINS the previous baseline and prints `MONITOR-DEGRADED: <slug> …`.
+//	   The ceiling is not a fixed page window: the read walks pages until the open set is
+//	   exhausted, and only a set past the ceiling is truncated (see inboundDefaultLimit). Because the
 //	   untrusted read's baseline is retained, the next good cycle diffs against the real baseline
 //	   and the outage is absorbed — zero phantom INBOUND events.
 //	C. BURST CAP. More than INBOUND_MONITOR_BURST_CAP new keys for one repo in one cycle collapse to
@@ -44,8 +46,9 @@ It never silently goes blind:
     other repo as this session's App token (resolved from $DESK_LOOP);
   · a repo whose read fails, or which returns zero when it previously had issues,
     RETAINS its previous state and prints MONITOR-DEGRADED: <slug> ...;
-  · a read that comes back AT the --limit is TRUNCATED, so it is treated as
-    could-not-check: retain + go loud;
+  · the read walks pages until the open set is exhausted; a repo holding MORE
+    than the --limit ceiling is TRUNCATED, so it is treated as could-not-check:
+    retain + go loud (a set of exactly the ceiling is the whole set);
   · a read that collapses below the retain floor of its previous count is a
     partial read: retain + go loud, so the recovery cycle absorbs it;
   · a burst of more than the cap new items for one repo collapses to a single
@@ -59,7 +62,8 @@ Options:
 
 Environment:
   INBOUND_MONITOR_STATE_DIR    per-repo state (default <temp dir>/assay-inbound-monitor).
-  INBOUND_MONITOR_LIMIT        per-repo read cap (default 500).
+  INBOUND_MONITOR_LIMIT        per-repo read ceiling (default 10000 — the forge
+                               client's own open-issue page ceiling).
   INBOUND_MONITOR_BURST_CAP    new-items-per-repo-per-cycle listing cap (default 25).
   INBOUND_MONITOR_RETAIN_FLOOR percent-of-previous below which a read is partial
                                (retain + degrade); 0 disables (default 50).
@@ -72,6 +76,13 @@ Exit codes:
   2  at least one repo went DEGRADED (read failed, truncated, collapsed or
      rate-limited) — state RETAINED
 `
+
+// inboundDefaultLimit is the default per-repo read CEILING. It is the forge client's own
+// open-issue page ceiling (100 pages of 100, deskkit's forgeMaxIssuePages × forgeIssuePerPage) —
+// the real API cap, past which the forge read itself refuses as could-not-check. It replaced a
+// fixed 500-issue window that sat at the same number as the truncation threshold: a repo whose
+// open set grew past 500 read as TRUNCATED on every cycle, and nothing could clear it.
+const inboundDefaultLimit = 10000
 
 // inboundConfig is one inbound cycle's resolved inputs.
 type inboundConfig struct {
@@ -117,7 +128,7 @@ func runInbound(args []string, stdout, stderr io.Writer) int {
 
 	var cfg inboundConfig
 	var err error
-	if cfg.limit, err = knob("INBOUND_MONITOR_LIMIT", "LIMIT", 500); err != nil {
+	if cfg.limit, err = knob("INBOUND_MONITOR_LIMIT", "LIMIT", inboundDefaultLimit); err != nil {
 		return fail(err)
 	}
 	if cfg.burstCap, err = knob("INBOUND_MONITOR_BURST_CAP", "BURST_CAP", 25); err != nil {
@@ -201,14 +212,14 @@ func inboundCycle(cfg inboundConfig, repos []string, out io.Writer) (bool, error
 		var cur []string
 		curN, atLimit := 0, false
 		if readOK {
-			// The forge client reads the WHOLE open set; the script's `gh --limit` keeps only the
-			// newest LIMIT. A set at or past the limit is reported exactly as the script sees it —
-			// LIMIT rows, TRUNCATED — so the fail-closed rule and its line are the same.
+			// The forge client walks the WHOLE open set (and refuses as could-not-check past its own
+			// page ceiling); the script asks `gh` for one row past the ceiling. Either way a set is
+			// TRUNCATED only when it holds MORE than the ceiling — a set of exactly LIMIT is the
+			// whole set, never a moving window — so the fail-closed rule and its line are the same.
 			cur = sortC(keys)
 			curN = len(cur)
-			if curN >= cfg.limit {
+			if curN > cfg.limit {
 				atLimit = true
-				curN = cfg.limit
 			}
 		}
 
@@ -218,8 +229,8 @@ func inboundCycle(cfg inboundConfig, repos []string, out io.Writer) (bool, error
 			switch {
 			case readOK && atLimit:
 				degraded = true
-				fmt.Fprintf(out, "MONITOR-DEGRADED: %s seed returned %d == --limit %d — results TRUNCATED, no baseline established; raise INBOUND_MONITOR_LIMIT and retry\n",
-					repo, curN, cfg.limit)
+				fmt.Fprintf(out, "MONITOR-DEGRADED: %s seed returned more than --limit %d — results TRUNCATED, no baseline established; raise INBOUND_MONITOR_LIMIT and retry\n",
+					repo, cfg.limit)
 			case readOK:
 				if err := writeState(cfg.stateDir, repo, cur); err != nil {
 					return degraded, precondition("cannot write state file '%s': %v", sf, err)
@@ -253,8 +264,8 @@ func inboundCycle(cfg inboundConfig, repos []string, out io.Writer) (bool, error
 			continue
 		case atLimit:
 			degraded = true
-			fmt.Fprintf(out, "MONITOR-DEGRADED: %s returned %d == --limit %d — results TRUNCATED, treating as could-not-check; keeping its previous %d issue(s)\n",
-				repo, curN, cfg.limit, prevN)
+			fmt.Fprintf(out, "MONITOR-DEGRADED: %s returned more than --limit %d — results TRUNCATED, treating as could-not-check; keeping its previous %d issue(s)\n",
+				repo, cfg.limit, prevN)
 			continue
 		case cfg.retainFloor > 0 && prevN > 0 && curN*100 < prevN*cfg.retainFloor:
 			// PARTIAL read — non-empty, but collapsed under the floor of the prior count.

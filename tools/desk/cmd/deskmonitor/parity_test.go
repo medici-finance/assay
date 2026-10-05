@@ -102,7 +102,7 @@ func runParity(t *testing.T, script string, fx fixture) (oracle, verb []cycleRes
 		limitEnv, limitDef = "PR_MONITOR_LIMIT", 100
 	}
 	limit := limitDef
-	if v, ok := fx.Env[limitEnv]; ok {
+	if v, ok := fx.Env[limitEnv]; ok && v != "" { // "" is the script's ${VAR:-default}
 		n, err := strconv.Atoi(v)
 		if err != nil {
 			t.Fatalf("fixture %s=%q", limitEnv, v)
