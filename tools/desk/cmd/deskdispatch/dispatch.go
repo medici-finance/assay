@@ -198,6 +198,9 @@ func cmdDispatch(args []string) error {
 }
 
 func dispatch(o dispatchOpts) error {
+	if err := storageAdmission(o.dryRun); err != nil {
+		return err
+	}
 	// --brief is resolved ONCE, first, to the absolute path every later reader uses (resolveBrief):
 	// a brief found only under --claim-root must gate, file its decision issue and scope its writes
 	// from the SAME file the deliverable resolution read.
