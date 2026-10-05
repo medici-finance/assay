@@ -55,10 +55,12 @@
 #
 # Fail-closed: any hit exits 1; a surface that cannot be read (no image, no
 # docker) exits 2 — "could not scan" is never reported as clean. That covers
-# every step, not only the docker calls: a save or a layer that does not
-# extract completely, a compressed blob tar cannot open, an image with no
-# layer, a file or directory the scan cannot read, a path whose name the hit
-# report cannot carry, a grep that errors, and a signal mid-scan all exit 2.
+# every step, not only the docker calls: a save that does not unpack, a layer
+# list in manifest.json that cannot be read or lists no layer, a listed layer
+# that is missing, does not match the digest it is named by, or does not
+# extract completely, a compressed blob tar cannot open, a file or directory
+# the scan cannot read, a path whose name the hit report cannot carry, a grep
+# that errors, and a signal mid-scan all exit 2.
 #
 # Usage:  sh layer-secret-scan.sh <image-ref>
 set -u
@@ -198,9 +200,7 @@ WORK="$(mktemp -d 2>/dev/null || mktemp -d -t layerscan)"
 # $WORK on INT/TERM would let the script carry on over an empty tree and
 # report it clean.
 trap 'chmod -R u+rwX "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
-trap 'exit 2' HUP INT TERM
-HITS="$WORK/hits"
-: > "$HITS"
+trap 'cannot_scan "interrupted by a signal"' HUP INT TERM
 
 # --- surface 1: build history -------------------------------------------------
 if ! docker history --no-trunc --format '{{.CreatedBy}}' "$IMG" \
@@ -224,54 +224,121 @@ mkdir -p "$WORK/img" "$WORK/layers"
 if ! tar -xf "$WORK/img.tar" -C "$WORK/img" 2>"$WORK/err"; then
   cannot_scan "the saved image does not unpack: $(head -3 "$WORK/err")"
 fi
-# Extract every nested layer tar (docker save nests each layer as its own tar,
-# gzipped or not — tar auto-detects) into a directory of its OWN,
-# $WORK/layers/<n>/, numbered in discovery order. A blob that IS a layer tar is
-# recorded only via its extracted contents from here on — scanning the raw tar
-# too would report the same file twice (#908: "each filesystem hit is reported
-# twice, once as layer file: and once as image blob:"). Blobs that are NOT a
-# tar (the config/manifest JSON, where ENV defaults live) are listed in
-# nontar-blobs and scanned raw below, since they have no extracted counterpart.
+# Extract every layer tar (gzipped or not — tar auto-detects) into a directory
+# of its OWN, $WORK/layers/<n>/. A blob that IS a layer tar is recorded only
+# via its extracted contents from here on — scanning the raw tar too would
+# report the same file twice (#908: "each filesystem hit is reported twice,
+# once as layer file: and once as image blob:"). Blobs that are NOT a tar (the
+# config/manifest JSON, where ENV defaults live) are listed in nontar-blobs and
+# scanned raw below, since they have no extracted counterpart.
 #
 # One directory per layer, never one merged tree (#2256). Merging the layers
-# into a single tree lets whichever blob is extracted last win every path they
+# into a single tree lets whichever layer is extracted last win every path they
 # share: a key an earlier layer wrote at /app/key.pem is overwritten by a later
 # layer's file at the same path, or removed when a later layer puts a directory
 # there, and is then never scanned — although the earlier layer still ships in
-# the image with the key in it. The blob discovery order is not even the layer
-# order (it follows the save's on-disk listing), so a merged scan passed or
-# failed the same image depending on content hashes. Each layer extracted alone
-# has nothing to collide with, so every file every layer carries is scanned.
-# layer-index maps each <n> back to its blob, for the hit report.
+# the image with the key in it. Each layer extracted alone has nothing to
+# collide with, so every file every layer carries is scanned. layer-index maps
+# each <n> back to its blob, for the hit report.
 #
-# Fail-closed extraction: a layer tar must extract with exit 0, since a member
-# tar refused is a file never scanned; a blob whose magic says it is
-# compressed but that tar cannot list is a layer that cannot be read; and an
-# image with no layer at all was not scanned. Each of these exits 2. The loop
-# reads its list from a file, not a pipe, so its exit ends the script.
+# Fail-closed extraction. The layers are the ones the save's manifest.json
+# lists, not whatever happens to be in the save: tar exits 0 on a save cut at
+# a member boundary, so only the list shows a layer is missing. Every listed
+# layer must be in the save, must match the sha256 it is named by (when it is
+# named by one: a layer cut at a member boundary also extracts with exit 0),
+# and must extract with exit 0, since a member tar refused is a file never
+# scanned. A listed layer is never grepped raw. A blob the manifest does not
+# list is still scanned: as a layer if tar reads it, or raw if it is not a tar.
+# One that is compressed but tar cannot read exits 2: its raw bytes prove
+# nothing.
+# Each loop reads its list from a file, not a pipe, so its exit ends the script.
 : > "$WORK/nontar-blobs"
 : > "$WORK/layer-index"
 n=0
+# layer_list: print each layer path manifest.json lists, or fail.
+layer_list() {
+  [ -f "$WORK/img/manifest.json" ] || return 1
+  awk '
+    { s = s $0 }
+    END {
+      gsub(/[ \t\r]/, "", s)
+      if (index(s, "\"Layers\":[") == 0) exit 3
+      while ((i = index(s, "\"Layers\":[")) > 0) {
+        s = substr(s, i + 10)
+        j = index(s, "]")
+        if (j == 0) exit 3
+        a = substr(s, 1, j - 1)
+        s = substr(s, j + 1)
+        if (a == "") continue
+        m = split(a, f, ",")
+        for (k = 1; k <= m; k++) {
+          if (f[k] !~ /^"[^"\\]+"$/) exit 3
+          print substr(f[k], 2, length(f[k]) - 2)
+        }
+      }
+    }
+  ' "$WORK/img/manifest.json"
+}
+# listed <path in the save>: true when manifest.json lists it as a layer.
+listed() {
+  while IFS= read -r _p; do
+    [ "$_p" = "$1" ] && return 0
+  done < "$WORK/listed"
+  return 1
+}
+# digest_ok <file> <path in the save>: a blob named blobs/sha256/<hex> must
+# hash to <hex>. A path not named by a digest (the older save format) has
+# nothing to check against; such a layer is still held to the other checks.
+digest_ok() {
+  case "$2" in
+    blobs/sha256/*) ;;
+    *) return 0 ;;
+  esac
+  if command -v sha256sum >/dev/null 2>&1; then
+    _sum="$(sha256sum < "$1")" || return 1
+  else
+    _sum="$(shasum -a 256 < "$1")" || return 1
+  fi
+  [ "${_sum%% *}" = "${2#blobs/sha256/}" ]
+}
+# extract_layer <file> <path in the save>: extract one layer into its own dir.
+extract_layer() {
+  n=$((n + 1))
+  mkdir -p "$WORK/layers/$n"
+  if ! tar -xf "$1" -C "$WORK/layers/$n" 2>"$WORK/err"; then
+    cannot_scan "layer $2 does not extract in full: $(head -3 "$WORK/err")"
+  fi
+  printf '%s\t%s\n' "$n" "$2" >> "$WORK/layer-index"
+}
+if ! layer_list > "$WORK/listed" 2>"$WORK/err"; then
+  cannot_scan "cannot read the layer list in manifest.json: $(head -3 "$WORK/err")"
+fi
+while IFS= read -r p; do
+  if [ ! -f "$WORK/img/$p" ]; then
+    cannot_scan "layer $p, listed in manifest.json, is not in the saved image"
+  fi
+  if ! digest_ok "$WORK/img/$p" "$p"; then
+    cannot_scan "layer $p does not match the digest it is named by"
+  fi
+  extract_layer "$WORK/img/$p" "$p"
+done < "$WORK/listed"
+if [ "$n" -eq 0 ]; then
+  cannot_scan "manifest.json lists no layer"
+fi
 if ! find "$WORK/img" -type f > "$WORK/blobs" 2>"$WORK/err"; then
   cannot_scan "cannot list the saved image: $(head -3 "$WORK/err")"
 fi
 while IFS= read -r blob; do
+  rel="${blob#"$WORK/img/"}"
+  listed "$rel" && continue
   if tar -tf "$blob" >/dev/null 2>&1; then
-    n=$((n + 1))
-    mkdir -p "$WORK/layers/$n"
-    if ! tar -xf "$blob" -C "$WORK/layers/$n" 2>"$WORK/err"; then
-      cannot_scan "layer ${blob#"$WORK/img/"} does not extract in full: $(head -3 "$WORK/err")"
-    fi
-    printf '%s\t%s\n' "$n" "${blob#"$WORK/img/"}" >> "$WORK/layer-index"
+    extract_layer "$blob" "$rel"
   elif compressed "$blob"; then
-    cannot_scan "${blob#"$WORK/img/"} is compressed but tar cannot read it"
+    cannot_scan "$rel is compressed but tar cannot read it"
   else
     printf '%s\n' "$blob" >> "$WORK/nontar-blobs"
   fi
 done < "$WORK/blobs"
-if [ "$n" -eq 0 ]; then
-  cannot_scan "no layer tar found in the saved image"
-fi
 
 # Every extracted file must be readable, and every path must fit on one line
 # of the hit list. chmod -R does not follow symlinks, so it only touches what
@@ -313,11 +380,12 @@ fi
 # blob is checked individually.
 #
 # grep exits 0 on a match, 1 on none, and 2 on an error (a file it could not
-# open or read). Exit 2 is could-not-scan, never "no match".
+# open or read). Exit 2 is could-not-scan, never "no match". -D skip: a FIFO or
+# device carries no content, and reading one can block grep forever.
 : > "$WORK/hitfiles"
 collect() { # <grep binary-handling flag: a|I> <pattern>
   bf="$1" pat="$2" rc=0
-  grep "-${bf}Erl" "$pat" \
+  grep "-${bf}Erl" -D skip "$pat" \
     "$WORK/history.txt" "$WORK/inspect.json" "$WORK/layers" \
     2>"$WORK/grep-err" >> "$WORK/hitfiles" || rc=$?
   if [ "$rc" -gt 1 ]; then
@@ -330,14 +398,13 @@ collect() { # <grep binary-handling flag: a|I> <pattern>
       case "$rc" in
         0) printf '%s\n' "$blob" >> "$WORK/hitfiles" ;;
         1) ;;
-        *) cannot_scan "grep could not read ${blob#"$WORK/img/"}" ;;
+        *) cannot_scan "grep could not read blob ${blob#"$WORK/img/"}" ;;
       esac
     done < "$WORK/nontar-blobs"
   fi
 }
 collect a "$STRICT"
 collect a "$LOOSE"
-sort -u "$WORK/hitfiles" -o "$WORK/hitfiles" 2>/dev/null || true
 
 mask() {
   # Report that a hit occurred and its length, without printing the value.
@@ -362,18 +429,23 @@ label() {
   esac
 }
 
+# The verdict is counted in the shell, not read back from a file: a write that
+# failed (a full disk) must never turn a hit into "clean". A file both pattern
+# classes matched is listed twice in hitfiles and reported once.
+nhits=0
+seen="$NL"
 while IFS= read -r hf; do
   [ -n "$hf" ] || continue
+  case "$seen" in *"$NL$hf$NL"*) continue ;; esac
+  seen="$seen$hf$NL"
   allow_path "$hf" && continue
   sample="$(grep -aoE "$PAT" "$hf" 2>/dev/null | head -1)"
-  printf '%s\t%s\n' "$(label "$hf")" "$(mask "$sample")" >> "$HITS"
+  [ "$nhits" -eq 0 ] && echo "FAIL: key-shaped material detected in image '$IMG'" >&2
+  nhits=$((nhits + 1))
+  printf '  hit: %s (%s)\n' "$(label "$hf")" "$(mask "$sample")" >&2
 done < "$WORK/hitfiles"
 
-if [ -s "$HITS" ]; then
-  echo "FAIL: key-shaped material detected in image '$IMG'" >&2
-  while IFS='	' read -r loc m; do
-    printf '  hit: %s (%s)\n' "$loc" "$m" >&2
-  done < "$HITS"
+if [ "$nhits" -gt 0 ]; then
   exit 1
 fi
 

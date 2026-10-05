@@ -15,8 +15,10 @@
 # key. layer-secret-scan.mutate.sh runs this test against a merged-view mutant
 # of the scan and requires every one of those fixtures to fail under it.
 #
-# The fail-closed fixtures (H to R) hold the scan to its exit-2 contract: an
-# image it cannot read in full is never reported clean. Most are fed through a
+# The fail-closed fixtures (H to W) hold the scan to its exit-2 contract: an
+# image it cannot read in full is never reported clean. Each must exit 2 with
+# its own reason, so a later check cannot stand in for the one it pins. Most
+# are fed through a
 # stand-in `docker` on PATH, since docker itself will not build or save them;
 # a stand-in clean image is the control that the stand-in alone reads clean.
 # Fixture N (unreadable modes) is a real BuildKit build and must go RED with
@@ -348,12 +350,12 @@ case "$1" in
   *) exit 1 ;;
 esac
 SH
-# The signal fixture's stand-in `sort` (the scan calls sort once, after every
-# grep): it sends TERM to the scan, its parent, then sorts as usual.
-cat > "$SIGSTUB/sort" <<'SH'
+# The signal fixture's stand-in `docker`, in front of the other one: it sends
+# TERM to the scan, its parent, then answers as the other one does.
+cat > "$SIGSTUB/docker" <<'SH'
 #!/bin/sh
 kill -TERM "$PPID"
-exec "$REAL_SORT" "$@"
+exec "$STUB_DOCKER" "$@"
 SH
 # The backstop fixtures' stand-ins (P, Q, R). The scan's grep calls differ by
 # their first argument: -aErl walks the layers, -aEq reads one non-tar blob.
@@ -378,10 +380,10 @@ esac
 exec "$REAL_GREP" "$@"
 SH
 printf '#!/bin/sh\nexit 0\n' > "$CHMODSTUB/chmod"
-chmod +x "$STUB/docker" "$SIGSTUB/sort" "$GREPSTUB/grep" "$CHMODSTUB/chmod"
-REAL_SORT=$(command -v sort)
+chmod +x "$STUB/docker" "$SIGSTUB/docker" "$GREPSTUB/grep" "$CHMODSTUB/chmod"
+STUB_DOCKER="$STUB/docker"
 REAL_GREP=$(command -v grep)
-export REAL_SORT REAL_GREP
+export STUB_DOCKER REAL_GREP
 
 pem_to() { # <file>: write the fake PEM there
   mkdir -p "$(dirname "$1")"
@@ -447,11 +449,13 @@ COPYFILE_DISABLE=1 tar -czf "$WORK/kk.tgz" -C "$WORK/kk" app
 head -c 40 "$WORK/kk.tgz" > "$WORK/k/l2/layer.tar"
 stub_save "$WORK/k" l1/layer.tar l2/layer.tar
 
-# L — a benign layer, then a zstd-framed blob tar cannot list.
+# L — a benign layer, and a zstd-framed blob tar cannot list that the manifest
+# does not list as a layer.
 mkdir -p "$WORK/l/l1" "$WORK/l/l2"
 benign_layer "$WORK/l/l1/layer.tar"
 printf '\050\265\057\375not-a-readable-frame' > "$WORK/l/l2/layer.tar"
-stub_save "$WORK/l" l1/layer.tar l2/layer.tar
+stub_save "$WORK/l" l1/layer.tar
+(cd "$WORK/l" && COPYFILE_DISABLE=1 tar -rf "$WORK/l.save.tar" l2/layer.tar)
 
 # M — the key in a file whose name is an allowlisted path plus a newline.
 mkdir -p "$WORK/m/l1" "$WORK/mm/usr/bin"
@@ -475,7 +479,58 @@ COPY --chmod=600 locked /app/locked
 DF
 build "$UNREAD" "$WORK/n"
 
-# O — a signal mid-scan (the stand-in sort, over the clean H0 image).
+# O — a signal mid-scan (the stand-in docker, over the clean H0 image).
+
+# S — a benign layer, then an uncompressed layer holding a benign file and the
+# key, cut inside the benign file's data so the key's bytes are gone.
+mkdir -p "$WORK/s/l1" "$WORK/s/l2" "$WORK/sk/app"
+benign_layer "$WORK/s/l1/layer.tar"
+head -c 4096 /dev/zero | tr '\0' 'b' > "$WORK/sk/app/a-benign.txt"
+pem_to "$WORK/sk/app/key.pem"
+COPYFILE_DISABLE=1 tar -cf "$WORK/sk.tar" -C "$WORK/sk" app/a-benign.txt app/key.pem
+head -c 2048 "$WORK/sk.tar" > "$WORK/s/l2/layer.tar"
+stub_save "$WORK/s" l1/layer.tar l2/layer.tar
+
+# T — a save that, as tar sees it, was cut at a member boundary: it unpacks
+# with exit 0, but the second layer its manifest lists, the one with the key,
+# is not in it.
+mkdir -p "$WORK/t/l1"
+benign_layer "$WORK/t/l1/layer.tar"
+stub_save "$WORK/t" l1/layer.tar
+printf '[{"Config":"config.json","RepoTags":["stub:test"],"Layers":["l1/layer.tar","l2/layer.tar"]}]\n' \
+  > "$WORK/t/manifest.json"
+(cd "$WORK/t" && COPYFILE_DISABLE=1 tar -cf "$WORK/t.save.tar" manifest.json config.json l1/layer.tar)
+
+# U — a layer named by its sha256, cut at a member boundary: it lists and
+# extracts with exit 0, but has lost the key, so it no longer hashes to its
+# name.
+mkdir -p "$WORK/u/l1" "$WORK/u/blobs/sha256" "$WORK/uk/app"
+benign_layer "$WORK/u/l1/layer.tar"
+printf 'not a key\n' > "$WORK/uk/app/a-readme.txt"
+pem_to "$WORK/uk/app/key.pem"
+COPYFILE_DISABLE=1 tar -cf "$WORK/uk-full.tar" -C "$WORK/uk" app/a-readme.txt app/key.pem
+COPYFILE_DISABLE=1 tar -cf "$WORK/uk-cut.tar" -C "$WORK/uk" app/a-readme.txt
+if command -v sha256sum >/dev/null 2>&1; then
+  UHEX=$(sha256sum < "$WORK/uk-full.tar")
+else
+  UHEX=$(shasum -a 256 < "$WORK/uk-full.tar")
+fi
+UHEX=${UHEX%% *}
+cp "$WORK/uk-cut.tar" "$WORK/u/blobs/sha256/$UHEX"
+stub_save "$WORK/u" l1/layer.tar "blobs/sha256/$UHEX"
+
+# V — a save with a layer but no manifest.json.
+mkdir -p "$WORK/v/l1"
+benign_layer "$WORK/v/l1/layer.tar"
+printf '{"os":"linux","rootfs":{"type":"layers"}}\n' > "$WORK/v/config.json"
+(cd "$WORK/v" && COPYFILE_DISABLE=1 tar -cf "$WORK/v.save.tar" config.json l1/layer.tar)
+
+# W — a manifest.json whose layer list is not in the expected shape.
+mkdir -p "$WORK/w/l1"
+benign_layer "$WORK/w/l1/layer.tar"
+stub_save "$WORK/w" l1/layer.tar
+printf '[{"Config":"config.json","Layers":[l1/layer.tar]}]\n' > "$WORK/w/manifest.json"
+(cd "$WORK/w" && COPYFILE_DISABLE=1 tar -cf "$WORK/w.save.tar" manifest.json config.json l1/layer.tar)
 
 # P, Q, R — the backstops. Each check below sits behind an earlier step that
 # normally catches its case first, so it only fires when that step is stood in
@@ -522,6 +577,11 @@ stub_scan j "$WORK/j.save.tar"
 stub_scan k "$WORK/k.save.tar"
 stub_scan l "$WORK/l.save.tar"
 stub_scan m "$WORK/m.save.tar"
+stub_scan s "$WORK/s.save.tar"
+stub_scan t "$WORK/t.save.tar"
+stub_scan u "$WORK/u.save.tar"
+stub_scan v "$WORK/v.save.tar"
+stub_scan w "$WORK/w.save.tar"
 stub_scan o "$WORK/h0.save.tar" "$SIGSTUB"
 GREP_STUB=walk-error; export GREP_STUB
 stub_scan p "$WORK/h0.save.tar" "$GREPSTUB"
@@ -646,28 +706,36 @@ else
   cat "$WORK/out.h0" >&2
   fail=1
 fi
-closed() { # <fixture> <label>: exit 2 and no "clean" line
+# Each fixture must exit 2 for ITS reason: a later check that also exits 2 must
+# not stand in for the one the fixture is there to pin.
+closed() { # <fixture> <label> <reason the scan must give>
   _rc=$(cat "$WORK/rc.$1")
   printf '  %-26s -> scan exit %s\n' "$2" "$_rc"
-  if [ "$_rc" -eq 2 ] && ! grep -q '^clean:' "$WORK/out.$1"; then
+  if [ "$_rc" -eq 2 ] && ! grep -q '^clean:' "$WORK/out.$1" \
+     && grep -qF -- "$3" "$WORK/out.$1"; then
     echo "CLOSED on $2 — exit 2, not reported clean"
   else
-    echo "FAIL: $2 — the scan did not fail closed (scan exit $_rc)" >&2
+    echo "FAIL: $2 — the scan did not fail closed with: $3 (scan exit $_rc)" >&2
     cat "$WORK/out.$1" >&2
     fail=1
   fi
 }
-closed h1 "bad save fixture"
-closed h2 "partial save fixture"
-closed i "refused member fixture"
-closed j "no layer fixture"
-closed k "truncated gzip fixture"
-closed l "zstd blob fixture"
-closed m "newline name fixture"
-closed o "signal fixture"
-closed p "grep walk error fixture"
-closed q "grep blob error fixture"
-closed r "unreadable backstop fixture"
+closed h1 "bad save fixture" "the saved image does not unpack"
+closed h2 "partial save fixture" "the saved image does not unpack"
+closed i "refused member fixture" "does not extract in full"
+closed j "no layer fixture" "manifest.json lists no layer"
+closed k "truncated gzip fixture" "does not extract in full"
+closed l "zstd blob fixture" "is compressed but tar cannot read it"
+closed m "newline name fixture" "has a newline in its name"
+closed o "signal fixture" "interrupted by a signal"
+closed p "grep walk error fixture" "grep could not read every file"
+closed q "grep blob error fixture" "grep could not read blob"
+closed r "unreadable backstop fixture" "is not readable"
+closed s "truncated layer fixture" "does not extract in full"
+closed t "missing layer fixture" "listed in manifest.json, is not in the saved image"
+closed u "layer digest fixture" "does not match the digest it is named by"
+closed v "no manifest fixture" "cannot read the layer list"
+closed w "bad manifest fixture" "cannot read the layer list"
 
 # N: both unreadable keys are read and named — detection, not just exit 2.
 printf '  unreadable fixture         -> scan exit %s\n' "$RC_UNREAD"
