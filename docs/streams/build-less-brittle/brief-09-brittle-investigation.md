@@ -31,8 +31,8 @@ exec-tier: strong
 exec-tier-why: "(a) the template asks for judgement (which of three divergences holds) and must tell a strong-tier session precisely what evidence settles each; (b) it spans the brief spec, the registers, the class issues and git history."
 domain: complicated
 consumers:
-  - "docs/brittle-investigation-template.md: follow-up build-less-brittle/09 (this brief)"
-  - "plugins/assay/skills/worker-desk/SKILL.md §Un-briefed issues: follow-up build-less-brittle/09 (this brief; ≤ 3 lines beside build-less-brittle/04's design-owed line)"
+  - "docs/brittle-investigation-template.md: fixed-here"
+  - "plugins/assay/skills/worker-desk/SKILL.md §Un-briefed issues: fixed-here (3 lines beside build-less-brittle/04's design-owed line, offset in the same section)"
   - "docs/contracts.md §Brittle marks (investigation column): follow-up build-less-brittle/08 (the column exists; this brief fills it)"
   - "installed deskdispatch binaries: out-of-scope (no kit text changes; the template is read from the tree at dispatch time)"
 ---
