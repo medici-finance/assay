@@ -1,0 +1,3 @@
+### Added
+- The App inventory in `docs/adopting-assay.md` now records the **workflow App**: the single identity holding `workflows: write`, scoped to exactly `contents: write` + `workflows: write` + `pull_requests: write` + `metadata: read` with zero webhook events, and with `administration`, `actions`, `checks`/`statuses: write`, `members` and secrets/variables withheld. It stands beside the desk-role Apps as a capability, not a desk role or a tier.
+- `docs/streams/desk-supervision/workflow-app-scope.md` states that App's granted and withheld permissions, its duty (author a workflow-only PR, which a human merges), and the invariant that no other App holds `workflows: write`, with the two checks that prove it.

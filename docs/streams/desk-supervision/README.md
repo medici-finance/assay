@@ -118,7 +118,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 07 | [Runtime snapshot — `desksupervise status` for operators and the console](brief-07-runtime-snapshot.md) | 1 | M | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #352 @ 496796982b573be17a032163cd3f6423e58be239) |
 | 08 | [Objectives over transitions — measure an objective-style worker kit with skillbench](brief-08-objectives-over-transitions.md) | 1 | M | implemented | — | — |
 | 09 | [Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build](brief-09-ci-fanout-per-push.md) | 0 | S | implemented | — | — |
-| 10 | [Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven](brief-10-workflow-app-wiring.md) | 0 | M | blocked | — | — |
+| 10 | [Confirm or repair the workflow App wiring — one identity holding workflows:write, installed and scope-proven](brief-10-workflow-app-wiring.md) | 0 | M | implemented | — | — |
 | 11 | [The single-workflow-only-PR contract, and the verb by which the workflow App writes and lands it](brief-11-workflow-only-pr-contract.md) | 1 | M | blocked | — | — |
 | 12 | [Retire the staged-copy hand-landing once the workflow App PR path is proven](brief-12-retire-staged-copy-landing.md) | 2 | M | blocked | — | — |
 | 13 | [Worker-operations vitals — the self-report resource block](brief-13-worker-operations-vitals.md) | 2 | M | implemented | — | — |
@@ -172,6 +172,10 @@ All three cite [`DR-workflow-app-landing`](../decisions/DR-workflow-app-landing.
 The chain touches no engine code and is independent of the `01 → 02 → 03` supervision path —
 its head, brief 10, is the App's ground truth (installed? correctly scoped?), which is a
 provisioning question a human may have to answer before 11 and 12 can proceed.
+Brief 10's gate is ruled on #1245 (option A, ratified by the driver: provision, then confirm —
+`pull_requests: write` added to the existing workflow App; a human merges the workflow-only PR).
+Its scope and the sole-holder invariant are recorded in
+[`workflow-app-scope.md`](workflow-app-scope.md). Briefs 11 and 12 stay `blocked` on their own gates.
 
 **The vitals delta rides a third, independent chain off 07.** Briefs 13-15 do not change the
 original head — they hang off the built machinery, and they are unrelated to the workflow-landing

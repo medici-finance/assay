@@ -44,7 +44,7 @@ sources:
   - "docs/streams/apps-installer/README.md and design.md — the app-scopes-vs-duties preflight (granted-vs-declared) that is the dereferencing check here, and the tier model the workflow App sits beside as a capability, not a tier."
   - "freshness-checked 2026-09-16 @ e9fa19d3"
 consumers:
-  - "docs/adopting-assay.md: follow-up desk-supervision/10 (this brief; flips to fixed-here when the implementation records the workflow App in the App inventory)"
+  - "docs/adopting-assay.md: fixed-here (the workflow App is recorded in the §2 App inventory)"
   - "the desk App-scopes-vs-duties preflight: out-of-scope (it reads the LIVE granted permission set from the forge, not this doc; Verify row 5 exercises it against the live App rather than this brief changing what it reads)"
 ---
 
