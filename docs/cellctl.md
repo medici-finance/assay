@@ -120,7 +120,11 @@ one. A checkout build needs a Go toolchain; a tarball install does not.
 A packaged copy reports the umbrella release tag it shipped at via `cellctl --version` (or
 `cellctl version`) — the same contract `statusgen --version` uses, so a stale copy is detectable.
 The tag is stamped at link time (`-ldflags -X main.cellctlVersion=<tag>`) exactly as every other
-desk binary's is; a plain source build honestly reports `dev`.
+desk binary's is. A plain source build carries no tag and reports `dev-<commit>` instead — the
+first 12 hex characters of the commit it was built from, taken from the Go toolchain's embedded
+VCS stamp, plus `-dirty` when the tree had uncommitted changes (e.g. `dev-1a2b3c4d5e6f-dirty`) —
+so a stale checkout build is distinguishable from a fresh one. With no VCS stamp (`go run`,
+`-buildvcs=false`, a build outside a git tree) it reports a bare `dev`.
 
 **Windows.** The tarball's `windows-amd64` / `windows-arm64` legs carry a real `cellctl.exe`
 rather than a shell script no Windows shell runs — the package itself cross-compiles for

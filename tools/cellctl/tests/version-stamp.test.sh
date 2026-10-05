@@ -3,8 +3,9 @@
 # stamp (#850: ship cellctl in desk-tools-<platform>.tar.gz with a --version stamp).
 #
 # What it proves (each an `assert` below):
-#   source tree   `cellctl --version` and `cellctl version` both print "dev" — a checkout install
-#                 (docs/cellctl.md) is honest about not being a pinned release
+#   source tree   `cellctl --version` and `cellctl version` both report an unstamped version — a
+#                 checkout install (docs/cellctl.md) is honest about not being a pinned release:
+#                 "dev" from the shell oracle; "dev" or "dev-<12 hex>[-dirty]" from a Go build
 #   sole-arg only a version query combined with any other argument is NOT recognised (falls
 #                 through to normal dispatch), mirroring statusgen's contract
 #   packaging     re-running the EXACT sed/grep one-liner release.yml's "Build and package
@@ -37,10 +38,18 @@ fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 
 echo "[source tree]"
+# The shell oracle reports a bare "dev". An unstamped Go build reports "dev-<12 hex>[-dirty]" when
+# the toolchain embedded a VCS stamp, and a bare "dev" when it did not (go run, -buildvcs=false, a
+# build outside a git tree) — tools/desk/cmd/cellctl/version.go, versionString.
+if is_shell_impl; then
+  source_re='^dev$'
+else
+  source_re='^dev(-[0-9a-f]{1,12}(-dirty)?)?$'
+fi
 out="$("$CELLCTL" --version)"
-assert '--version prints "dev" in a source checkout' '[[ "$out" == "dev" ]]'
+assert '--version prints the unstamped source-tree version' '[[ "$out" =~ $source_re ]]'
 out="$("$CELLCTL" version)"
-assert 'version prints "dev" in a source checkout' '[[ "$out" == "dev" ]]'
+assert 'version prints the unstamped source-tree version' '[[ "$out" =~ $source_re ]]'
 
 echo "[sole-arg only]"
 out="$("$CELLCTL" --version --lint 2>&1)" && rc=0 || rc=$?
