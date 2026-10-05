@@ -24,9 +24,11 @@ import (
 //
 //	go build -ldflags '-X main.cellctlVersion=v1.2.3' ./cmd/cellctl
 //
-// A source build honestly reports "dev", the same convention the shell script's CELLCTL_VERSION
-// and `var statusgenVersion = "dev"` use, so a stale copy is detectable.
-var cellctlVersion = "dev"
+// A source build leaves it "dev", the same convention the shell script's CELLCTL_VERSION and
+// `var statusgenVersion = "dev"` use. `--version` then reports "dev-<commit>[-dirty]" from the
+// toolchain's embedded VCS stamp when one exists (version.go, versionString), so two source builds
+// from different commits — a stale copy and a fresh one — print different versions.
+var cellctlVersion = unstampedVersion
 
 // exitCode is the panic payload die() raises; main recovers it so every exit path runs deferred
 // cleanup (the session lock, above all) instead of calling os.Exit from deep in a call tree.
@@ -90,7 +92,7 @@ func run() (code int) {
 	// answered before any other parsing, so a stale copy is detectable exactly the way
 	// `statusgen --version` makes a stale statusgen detectable.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
-		fmt.Println(cellctlVersion)
+		fmt.Println(versionString(cellctlVersion, readBuildInfo))
 		return 0
 	}
 
