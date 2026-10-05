@@ -33,6 +33,11 @@
     },
     {
       "class": "test",
+      "pattern": "tests/stream-brief/**",
+      "reason": "offline acceptance runners for stream contracts; CI and verifiers run them, never an operator entrypoint"
+    },
+    {
+      "class": "test",
       "pattern": "tools/desk/scripts/forge-ban-probe.sh",
       "reason": "positive control for forge-ban.sh; plants a probe file and asserts the counter moves"
     },
