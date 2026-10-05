@@ -307,11 +307,35 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
 4. **needs-decision.** An issue or brief that hits a human gate — but the reversibility test runs
    first: a REVERSIBLE fork is scoped on its best-guess default and rides Next-up NOW (the merge gate
    catches a wrong default), and its `needs-decision` issue is a NOTIFICATION naming the default, not
-   a park; only a genuinely one-way gate parks the item. File (or confirm) a
-   `needs-decision` issue per the **brief-06 template**: self-contained (Situation / Options 2–4
-   with pros-cons at the mm/12 trade-off bar / What-happens-on-each-answer / Links). The decider is
-   the human, and only a verified human account is honored. This is the SINGLE decision queue
-   — the intake lane routes into it too, never a second one.
+   a park; only a genuinely one-way gate parks the item. File (or confirm) a `needs-decision` issue
+   whose body carries the `### Fork test` block `deskfile new` requires — the grammar (the `option:` /
+   `default:` / `caught-by:` / `ruled-check:` lines) is defined ONCE, in `tools/desk/README.md`; this
+   skill does not restate it. **An item with one workable option is not a decision** — the tool
+   refuses it (exit 5) and names the three `--no-fork` re-routes
+   (`brief-contradicts-artifact` | `wrong-repo` | `tool-false-positive`); use the one that fits
+   instead of forcing a `needs-decision` filing over a question that never had a fork. Two workable
+   options plus a gate you still hold (a draft PR, a flip, an issue close) MAY file on the NOTICE
+   LANE instead — `desk-decided`, off the queue, in the weekly digest with its veto date. The tool
+   admits it only on a positive, content-bearing R-3 reversible signal (a tool default alone
+   never admits, and neither does a lint-level/lint-severity/notice-or-error/port-or-drop
+   example, named CI check or not — that is always a classification question about some
+   check, so it never admits on its own) with no one-way term or one-way label, and the same
+   one-way check refuses `--no-fork`; the exact lists are in `tools/desk/README.md`. That
+   reversible signal is read from the block's own `subject:` line ALONE, never the title or
+   body prose, and only from the STRICT grammar's bounded block: the `### Fork test` heading
+   must be followed directly by the block (blank lines are fine, prose is not), the block is
+   the contiguous run of key lines that follows (each at column zero, no bullet/quote/indent
+   decoration), and it ends at the first line that does not match, blank or not — nothing past
+   that line is ever read as part of it, once fenced code and HTML comments are blanked (how
+   far that strip goes is in the README). Exactly one `subject:` line inside that bounded run
+   is required before the signal test can admit; zero or more than one admits nothing: write
+   ONE `subject:` line yourself, among the
+   block's other key lines, naming the one thing being decided (`tools/desk/README.md` has the
+   full grammar). Any
+   item that is one-way to you stays on the human queue whatever the tool would admit — file it
+   `caught-by: nothing`.
+   The decider is the human, and only a verified human account is honored. This is the SINGLE
+   decision queue — the intake lane routes into it too, never a second one.
 5. **DUPLICATE — merge the evidence first, and this desk never closes it** (human:<name>, 2026-08-02).
    Spotting a duplicate is not authority to close one: the loser's non-overlapping evidence dies
    with it. Issues and PRs alike:
