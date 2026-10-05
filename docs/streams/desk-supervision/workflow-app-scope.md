@@ -41,6 +41,12 @@ repository the installation covers, so this is part of the concentration claim. 
 installation's `repository_selection` (`selected` or `all`) in Verify row 5 and recorded with that
 row's Evidence.
 
+**Open reading: key custody.** The ruling does not say who holds the App's private key, and
+neither does the DR. Read that silence as an open question, not as permission: it neither allows
+nor forbids a desk role holding the key. Who may mint the workflow App's token decides whether its
+credentialled path is really human-initiated (duty 3 below), so the question is routed to
+desk-supervision/11's gate, beside the enforcement question the DR's note raises.
+
 ## Duties
 
 1. **Author the workflow-only PR.** A workflow change travels as one PR whose diff touches
@@ -55,8 +61,9 @@ row's Evidence.
 3. **Run only under a human-initiated invocation.** Its credentialled path runs only under an
    operator/desk run or an explicit `workflow_dispatch` (DR, accepted entry 6), never from a
    trigger an outside contributor can fire (`pull_request`, `pull_request_target`,
-   `issue_comment`, `workflow_run`). A `workflow_dispatch` is not by itself proof that a human
-   started the run; the DR's note on this says where that property has to be enforced.
+   `issue_comment`, `workflow_run`). Neither a `workflow_dispatch` nor a desk run is by itself
+   proof that a human started the run; the DR's note on this says where that property has to be
+   enforced.
 
 ## The sole-holder invariant
 
@@ -74,23 +81,33 @@ auditable; held by one App, there is a single actor of record for every CI chang
 ## How it is checked
 
 GitHub has no `/installation/permissions` endpoint. An installation's granted set is read in
-one of two places:
+one of these places:
 
 - `GET /app/installations/{installation_id}`, called under the App's JWT. Its `.permissions`
   is the accepted grant, `.events` the subscribed webhook events, and `.repository_selection`
-  the installation scope.
+  the installation scope. The App finds `{installation_id}` for a repository with
+  `GET /repos/{owner}/{repo}/installation`, under the same JWT.
+- `GET /orgs/{org}/installations`, read by an organization owner (it needs an org-owner read).
+  Each entry carries the same `.permissions`, `.events` and `.repository_selection`, plus
+  `.app_slug`, so one call both enumerates and reads every App installed in the organization,
+  third-party Apps included, without holding any of their keys.
 - The `permissions` object in the response to `POST /app/installations/{installation_id}/access_tokens`,
-  the call that mints an installation token. A token minter can record it beside the token.
+  the call that mints an installation token, but **only for an un-narrowed mint**: a request
+  that carries no `permissions` or `repositories` body. A narrowed mint returns just the subset
+  it asked for, so its `permissions` object can omit `workflows` while the installation holds
+  `workflows: write`. A token minter that mints un-narrowed can record the object beside the
+  token as a reading of the grant.
 
 The two checks:
 
 - **The grant (brief 10, Verify row 5).** For the workflow App's installation, `.permissions` is
   exactly the four grants above with none of the withheld set, `.events` is empty, and
-  `.repository_selection` is recorded. Only the first instrument returns `.events`, so the
-  zero-events half of the scope needs it.
+  `.repository_selection` is recorded. The mint response carries no `.events`, so the
+  zero-events half of the scope needs one of the two `GET` readings.
 - **The negative (brief 10, Verify row 6).** For every other App installed on the repository
   (each desk-role App, and any inbound-lane, loop or single-purpose App), the granted set has no
-  `workflows` key.
+  `workflows` key. The org-wide listing is the enumeration source; a reading from a narrowed mint
+  does not count, and a set that cannot be enumerated is could-not-check, not a pass.
 - The two checks fail in different components: row 5 catches a widened grant on the workflow App;
   row 6 catches a second holder appearing elsewhere in the fleet.
 

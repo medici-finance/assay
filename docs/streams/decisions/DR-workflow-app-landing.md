@@ -97,26 +97,34 @@ once the path is proven.
   same surface the mixed-PR guard's required-check placement lives on above — and is left to the
   wiring brief's human gate to decide, not silently assumed.
 
-## Note — `workflow_dispatch` is not by itself human-initiated
+## Note — neither `workflow_dispatch` nor a desk run is by itself human-initiated
 
 This note records a review finding against the sixth `accepted:` entry. It changes neither that
 entry nor this record's status, which stays `proposed` until a ruling is recorded above.
 
-That entry counts "an explicit `workflow_dispatch`" as a human-initiated invocation. The equation
-does not hold on its own. Any identity holding `actions: write` can fire `workflow_dispatch`,
-including an App such as the release-runner App in the App inventory. And a branch pushed with
-`contents: write` + `workflows: write` already runs that branch's own workflow files on push-type
-triggers, before any human merge. So human-merges does not contain the power to rewrite CI; the
-boundary where the workflow App's credential is minted does.
+That entry counts "an operator/desk run or an explicit `workflow_dispatch`" as a human-initiated
+invocation. Neither leg holds on its own. Any identity holding `actions: write` can fire
+`workflow_dispatch`, including an App such as the release-runner App in the App inventory. A desk
+loop's run is likewise not evidence that a human started it: a loop runs on its own schedule. And
+a branch pushed with `contents: write` + `workflows: write` already runs that branch's own
+workflow files on push-type triggers, before any human merge. So human-merges does not contain the
+power to rewrite CI; the boundary where the workflow App's credential is minted does.
 
 The human-initiated property therefore has to be enforced at the verb's credential boundary
-(desk-supervision/11), not assumed from the trigger name. Two ways to make it hold:
+(desk-supervision/11), not assumed from the trigger name or the caller. Two ways to make it hold:
 
-- an actor check that refuses a dispatch whose initiator is not a human account; or
+- an actor check that refuses a dispatch whose initiator is not a human account, which covers
+  the `workflow_dispatch` leg but not a desk run; or
 - the App's key held in an environment-scoped secret with required human reviewers, so that
-  neither an App-fired dispatch nor a branch-push workflow can reach it.
+  neither an App-fired dispatch, a desk run nor a branch-push workflow can reach it without a
+  human approving that run. This covers both legs.
 
 Which of these, if either, is for the gate of desk-supervision/11 to decide.
+
+**Open reading: key custody.** This record makes no statement about who holds the workflow App's
+private key, and this note does not supply one. Custody decides whether either leg above can be
+made human-initiated, so it is recorded as an open reading routed to desk-supervision/11's gate,
+not as a ruling.
 
 ## Open question — if the workflow App turns out unwired or missing
 
