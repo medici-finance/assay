@@ -249,6 +249,16 @@ func TestActFenceMatcher(t *testing.T) {
 			"- rotate the key\n\n      " + fence + "sh\n      run-it\n      " + fence + "\n", false},
 		{"sh fence four in after the list ended",
 			"- rotate the key\n\nback in prose\n\n    " + fence + "sh\n    run-it\n    " + fence + "\n", false},
+		// List-marker edges: five or more spaces after a marker put the content one space past
+		// it (so the rest is indented code); `)` is an ordered marker like `.`; a line back at an
+		// item's content column after a blank line stays in the item; a marker needs a space.
+		{"five spaces past a marker is indented code",
+			"-      " + fence + "sh\n       run-it\n       " + fence + "\n", false},
+		{"sh fence in a paren-ordered list item", "1) rotate the key\n\n    " + fence + "sh\n    run-it\n    " + fence + "\n", true},
+		{"sh fence at a wide item's content column",
+			"10. rotate the key\n\n    " + fence + "sh\n    run-it\n    " + fence + "\n", true},
+		{"marker without a space opens no item",
+			"-not a list item\n\n    " + fence + "sh\n    run-it\n    " + fence + "\n", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := bodyHasActFence(c.body); got != c.want {

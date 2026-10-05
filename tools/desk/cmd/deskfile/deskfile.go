@@ -957,8 +957,9 @@ func cmdNew(args []string) (err error) {
 				"refused: this filing is a human-only hand-off (label " + humanOnlyLabel + ", or a body whose " +
 					"first non-blank line opens with " + blockedOnHumanMarker + ") and its body carries no act block. Put the act the " +
 					"driver must perform in a fenced ```sh block that runs top to bottom (a dry run on paste, live only " +
-					"on that act's own opt-in; the zsh comment guard first; one plain-text comment per step; `# fill:` " +
-					"for values only the driver can supply), " +
+					"on that act's own opt-in; one plain-text comment per step, the only control on a first zsh paste; " +
+					"the zsh comment guard first, for later pastes; a per-act function name; `# fill:` " +
+					"for values only the driver can supply, each secret read as `NAME=; read -rs NAME || exit 1`), " +
 					"or, for a browser step, a fenced ```url block with the one URL and the field values — the " +
 					"Act block the ask-decision skill defines. A prose description of the act makes the driver " +
 					"reconstruct the command. Override with --force-new --reason only if the act genuinely " +

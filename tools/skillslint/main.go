@@ -222,10 +222,12 @@ func main() {
 		fmt.Printf("ENFORCEMENT-BLOCK: PASS — the generated block in %s byte-matches `statusgen enforcement-status`\n", enforcementSitePath)
 	}
 
-	// act-block: HARD. Every example Act block under plugins/ opens with the zsh
-	// comment guard and keeps its comment lines free of shell metacharacters, so
-	// pasting it into an interactive zsh never runs a comment (actblock.go). No act
-	// block at all is could-not-check, never a quiet pass.
+	// act-block: HARD. Every example Act block under plugins/ keeps its comments
+	// plain text on their own lines (the rule that makes a first paste into an
+	// interactive zsh safe), opens with the zsh comment guard (later pastes),
+	// names its act function per act, and reads secrets in the clear-first,
+	// stop-on-failure shape (actblock.go). No act block at all is
+	// could-not-check, never a quiet pass.
 	abBlocks, abIssues, abErr := ActBlockIssues(*root)
 	switch {
 	case abErr != nil:
@@ -243,7 +245,7 @@ func main() {
 			exit = 1
 		}
 	default:
-		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ open with the zsh comment guard and carry plain-text comments only\n", abBlocks)
+		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments, the zsh guard, a per-act name and the safe secret read\n", abBlocks)
 	}
 
 	// posix-token: advisory (never exit-affecting, per the lint-debt cadence a hard

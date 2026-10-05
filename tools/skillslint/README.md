@@ -25,7 +25,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
-| Act blocks paste safely in zsh (hard) | every act block (`sh` fence defining `driver_act()`) in a `*.md` under `plugins/` | `actblock.go` |
+| Act blocks paste safely in zsh (hard) | every act block (an `sh`, `bash`, `zsh` or `shell` fence defining a `driver_act…()` function) in a `*.md` under `plugins/` | `actblock.go` |
 
 ### 1. Skill-file structure
 
@@ -300,22 +300,39 @@ read-compute-write race that let concurrent `--sync` runs corrupt a file
 
 ### 5. Act blocks paste safely in zsh
 
-An act block is the fenced `sh` block the `ask-decision` skill's §Act tells a
+An act block is the fenced shell block the `ask-decision` skill's §Act tells a
 desk to hand the driver: pasting it must only print what it would do. zsh, the
 default macOS login shell, does not treat `#` as a comment at an interactive
 prompt unless `interactive_comments` is set, and it is unset by default. There a
-comment line is a command: a `;` ends it, and a backtick span or `$(...)` after
-it runs. Two independent rules close that, and the `ACT-BLOCK` check holds both
-on every act block under `plugins/`:
+comment line is part of a command: a `;` ends it, and a backtick span or `$(...)`
+after it runs. The same goes for text after a `#` on a code line.
 
-1. the block's first non-blank line is the zsh comment guard
-   `[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments`;
-2. every comment line holds only letters, digits, spaces, tabs and
-   `. , : - / _ + = #`, so it runs nothing even in a shell that reads it as a
-   command.
+The control on a block's first paste is the plain-text comment rule. A terminal
+hands zsh a paste as one bracketed paste, and zsh reads all of it before running
+its first line, so the zsh comment guard
+`[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments` covers only later
+pastes and lines typed after it, never the paste that carries it. The
+`ACT-BLOCK` check holds every act block under `plugins/` (an `sh`, `bash`, `zsh`
+or `shell` fence that defines a function named `driver_act…`) to four rules:
+
+1. every full-line comment holds only letters, digits, spaces, tabs and
+   `. , : - / _ + = #`, indented or not, and no code line carries a trailing
+   `#` comment, so a comment runs nothing even where zsh reads it as a command;
+2. the block's first non-blank line is the zsh comment guard;
+3. the act function has a per-act name, `driver_act_<id>`, never the bare
+   `driver_act`, so a block that fails to parse leaves no earlier act's
+   function under the name the driver is told to type;
+4. every `read` clears its variable first and stops on a failed read
+   (`NAME=; read -rs NAME || { ...; exit 1; }`): a shell whose `read` has no
+   `-s` fails without assigning, and an inherited value would pass as the
+   secret.
 
 A violation is exit 1, naming the file and line. Finding no act block at all is
 could-not-check (exit 2), never a pass: the `ask-decision` example must exist.
+The check reads only the examples the plugin ships. An act block a desk writes
+at run time gets no lint. Its fence finder matches the opening character and a
+closing run at least as long, but applies no indentation or list rule, so a
+four-space-indented example is still checked, which errs strict.
 
 ## Fixtures
 
