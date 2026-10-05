@@ -108,7 +108,7 @@ func writeBriefV1(t *testing.T, root, stream, file string) {
 // it must NOT report success: exit 0 there is indistinguishable from a completed
 // migration, and the operator moves on with an unmigrated tree.
 //
-// Fail-first: against the pre-fix run() — which printed "no migrations for … 
+// Fail-first: against the pre-fix run() — which printed "no migrations for …
 // (clean no-op)" and returned ExitOK the moment len(selected)==0 — this test
 // fails on the very first assertion (exit = 0, want 5).
 func TestDeskmigrate_EmptySelectionOnUnmigratedTreeRefuses(t *testing.T) {
