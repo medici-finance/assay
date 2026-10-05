@@ -9,11 +9,11 @@ import (
 
 // actgate_test.go — the human-only act gate on `deskfile new`.
 //
-// A human-only hand-off (label `human-only`, or a body whose first line is BLOCKED-ON-HUMAN)
-// hands the driver an ACT, so its body must carry that act in runnable form: a fenced `sh`
-// block, or a fenced `url` block for a browser step (the ask-decision skill's Act block).
-// Without one the filing is REFUSED (exit 5); `--force-new --reason` is the only bypass, and
-// it is audited. `attach` is a separate verb and is unaffected.
+// A human-only hand-off (label `human-only`, or a body whose first non-blank line opens with
+// BLOCKED-ON-HUMAN) hands the driver an ACT, so its body must carry that act in runnable form:
+// a fenced `sh` block, or a fenced `url` block for a browser step (the ask-decision skill's
+// Act block). Without one the filing is REFUSED (exit 5); `--force-new --reason` is the only
+// bypass, and it is audited. `attach` is a separate verb and is unaffected.
 
 const fence = "```"
 
@@ -232,6 +232,23 @@ func TestActFenceMatcher(t *testing.T) {
 		{"short run does not close a longer fence", "````sh\nrun-it\n" + fence + "\n", false},
 		{"tilde run does not close a backtick fence", fence + "sh\nrun-it\n~~~\n", false},
 		{"act fence after a closed text fence", fence + "text\nx\n" + fence + "\n\n" + fence + "sh\nrun-it\n" + fence + "\n", true},
+		// Run length: three is the minimum, so a two-character run neither opens nor closes.
+		{"two-backtick run is not a fence", "``sh\nrun-it\n``\n", false},
+		{"two-tilde run is not a fence", "~~sh\nrun-it\n~~\n", false},
+		// Indentation: up to three columns opens or closes a fence; four or more is indented
+		// code, relative to the list item the line sits in (zero outside a list).
+		{"three-space sh fence", "   " + fence + "sh\n   run-it\n   " + fence + "\n", true},
+		{"four-space sh fence is indented code", "prose\n\n    " + fence + "sh\n    run-it\n    " + fence + "\n", false},
+		{"tab-indented sh fence is indented code", "prose\n\n\t" + fence + "sh\n\trun-it\n\t" + fence + "\n", false},
+		{"four-space opener with a margin closer", "prose\n\n    " + fence + "sh\n    run-it\n" + fence + "\n", false},
+		{"four-space closer is content", fence + "sh\nrun-it\n    " + fence + "\n", false},
+		{"sh fence in an ordered list item", "1. rotate the key\n\n    " + fence + "sh\n    run-it\n    " + fence + "\n", true},
+		{"sh fence in a bullet item", "- rotate the key\n\n  " + fence + "sh\n  run-it\n  " + fence + "\n", true},
+		{"sh fence opening a bullet item", "- " + fence + "sh\n  run-it\n  " + fence + "\n", true},
+		{"sh fence four past a bullet item is indented code",
+			"- rotate the key\n\n      " + fence + "sh\n      run-it\n      " + fence + "\n", false},
+		{"sh fence four in after the list ended",
+			"- rotate the key\n\nback in prose\n\n    " + fence + "sh\n    run-it\n    " + fence + "\n", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := bodyHasActFence(c.body); got != c.want {

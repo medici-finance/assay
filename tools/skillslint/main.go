@@ -9,6 +9,8 @@
 //	                 (hidden.go)
 //	house values     EVERY *.md under plugins/, at any depth (housevalue.go)
 //	guardrails       derive-or-diff of every shared-guardrail copy (guardrail.go)
+//	act blocks       every example Act block under plugins/ opens with the zsh
+//	                 comment guard and keeps plain-text comments (actblock.go)
 //
 // The house-value half is deliberately wider than the other two: the references
 // and READMEs under plugins/ are as adopter-facing as a skill body, and a
@@ -218,6 +220,30 @@ func main() {
 		}
 	default:
 		fmt.Printf("ENFORCEMENT-BLOCK: PASS — the generated block in %s byte-matches `statusgen enforcement-status`\n", enforcementSitePath)
+	}
+
+	// act-block: HARD. Every example Act block under plugins/ opens with the zsh
+	// comment guard and keeps its comment lines free of shell metacharacters, so
+	// pasting it into an interactive zsh never runs a comment (actblock.go). No act
+	// block at all is could-not-check, never a quiet pass.
+	abBlocks, abIssues, abErr := ActBlockIssues(*root)
+	switch {
+	case abErr != nil:
+		fmt.Fprintf(os.Stderr, "skillslint: %v\n", abErr)
+		fmt.Fprintf(os.Stderr, "ACT-BLOCK: COULD-NOT-CHECK — no act block was read; a check that read nothing proved nothing\n")
+		if exit < 2 {
+			exit = 2
+		}
+	case len(abIssues) > 0:
+		for _, is := range abIssues {
+			fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", is.Path, is.Msg)
+		}
+		fmt.Fprintf(os.Stderr, "ACT-BLOCK: FAIL — %d violation(s) across %d act block(s) under plugins/\n", len(abIssues), abBlocks)
+		if exit < 1 {
+			exit = 1
+		}
+	default:
+		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ open with the zsh comment guard and carry plain-text comments only\n", abBlocks)
 	}
 
 	// posix-token: advisory (never exit-affecting, per the lint-debt cadence a hard

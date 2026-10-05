@@ -25,6 +25,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
+| Act blocks paste safely in zsh (hard) | every act block (`sh` fence defining `driver_act()`) in a `*.md` under `plugins/` | `actblock.go` |
 
 ### 1. Skill-file structure
 
@@ -296,6 +297,25 @@ original read, and the write itself goes through a temp file plus atomic
 rename rather than an in-place truncate-then-write. This closes a
 read-compute-write race that let concurrent `--sync` runs corrupt a file
 (medici-finance/assay#1692).
+
+### 5. Act blocks paste safely in zsh
+
+An act block is the fenced `sh` block the `ask-decision` skill's §Act tells a
+desk to hand the driver: pasting it must only print what it would do. zsh, the
+default macOS login shell, does not treat `#` as a comment at an interactive
+prompt unless `interactive_comments` is set, and it is unset by default. There a
+comment line is a command: a `;` ends it, and a backtick span or `$(...)` after
+it runs. Two independent rules close that, and the `ACT-BLOCK` check holds both
+on every act block under `plugins/`:
+
+1. the block's first non-blank line is the zsh comment guard
+   `[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments`;
+2. every comment line holds only letters, digits, spaces, tabs and
+   `. , : - / _ + = #`, so it runs nothing even in a shell that reads it as a
+   command.
+
+A violation is exit 1, naming the file and line. Finding no act block at all is
+could-not-check (exit 2), never a pass: the `ask-decision` example must exist.
 
 ## Fixtures
 

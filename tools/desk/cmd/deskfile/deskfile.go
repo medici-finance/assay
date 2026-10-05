@@ -129,14 +129,14 @@ func isEvidenceHeading(line string) bool {
 //
 // The gate is the TOOL half of a two-layer rule (the skills carry the other): `deskfile new`
 // REFUSES (exit 5) a filing that is a human-only hand-off — labelled `human-only`, or whose
-// body's first line is `BLOCKED-ON-HUMAN` — when the body carries no act fence. It is
-// DISTINCT from the blocker-evidence gate above: that one asks a CLAIM for its evidence; this
-// one asks an ACT for its runnable form. The only bypass is `--force-new --reason`, and a
+// body's first non-blank line opens with `BLOCKED-ON-HUMAN` — when the body carries no act
+// fence. It is DISTINCT from the blocker-evidence gate above: that one asks a CLAIM for its
+// evidence; this one asks an ACT for its runnable form. The only bypass is `--force-new --reason`, and a
 // filing that takes it is audited with actGateBypassNote so the bypass is visible on the line.
 const (
 	// humanOnlyLabel is the label that marks a filing as an act owed to the driver.
 	humanOnlyLabel = "human-only"
-	// blockedOnHumanMarker is the first-line marker of a BLOCKED-ON-HUMAN report.
+	// blockedOnHumanMarker opens the first non-blank line of a BLOCKED-ON-HUMAN report.
 	blockedOnHumanMarker = "BLOCKED-ON-HUMAN"
 	// actGateBypassNote is appended to the audit detail of a filing that was a human-only
 	// hand-off with no act fence and was filed anyway under --force-new --reason.
@@ -171,37 +171,118 @@ func isHumanOnlyHandoff(labels []string, body string) bool {
 // Fences follow CommonMark: any run of three or more backticks or tildes opens one, whatever
 // its info string, and only a bare run of the SAME character at least as long closes it. So
 // an ```sh line quoted inside another fence (a ```text block showing an example) is content,
-// not an act block, and an ```sh line inside an open block does not close it.
+// not an act block, and an ```sh line inside an open block does not close it. A fence line
+// may be indented at most three columns past the list item it sits in (past the margin,
+// outside a list); one indented four or more is indented code, not a fence. List items are
+// tracked only as far as that rule needs: a marker line (`-`, `*`, `+`, `1.`, `1)`) opens
+// one, and a less-indented line after a blank line, a fence line or another marker closes it.
 func bodyHasActFence(body string) bool {
 	var (
 		open, act, content bool
 		char               byte
-		width              int
+		width, base        int
+		items              []int // content column of each enclosing list item, innermost last
+		prevBlank          = true
 	)
 	for _, ln := range strings.Split(body, "\n") {
-		t := strings.TrimSpace(ln)
-		c, n := fenceRun(t)
-		if !open {
-			if n == 0 {
+		col, rest := indentOf(ln)
+		t := strings.TrimSpace(rest)
+		if open {
+			c, n := fenceRun(t)
+			if n >= width && c == char && col-base <= 3 && strings.TrimSpace(t[n:]) == "" {
+				if act && content {
+					return true
+				}
+				open, prevBlank = false, false
 				continue
 			}
-			info := strings.Fields(t[n:])
-			open, char, width, content = true, c, n, false
-			act = len(info) > 0 && (strings.EqualFold(info[0], "sh") || strings.EqualFold(info[0], "url"))
-			continue
-		}
-		if n >= width && c == char && strings.TrimSpace(t[n:]) == "" {
-			if act && content {
-				return true
+			if t != "" {
+				content = true
 			}
-			open = false
 			continue
 		}
-		if t != "" {
-			content = true
+		if t == "" {
+			prevBlank = true
+			continue
 		}
+		_, n := fenceRun(t)
+		_, _, marker := listMarker(rest, col)
+		for len(items) > 0 && col < items[len(items)-1] && (prevBlank || n > 0 || marker) {
+			items = items[:len(items)-1]
+		}
+		prevBlank = false
+		top := 0
+		if len(items) > 0 {
+			top = items[len(items)-1]
+		}
+		// Each marker on the line opens an item; what follows the last one is its content.
+		for col-top <= 3 {
+			mcol, mrest, ok := listMarker(rest, col)
+			if !ok {
+				break
+			}
+			items = append(items, mcol)
+			extra, r := indentOf(mrest)
+			col, rest, top = mcol+extra, r, mcol
+		}
+		t = strings.TrimSpace(rest)
+		c, n := fenceRun(t)
+		if n == 0 || col-top > 3 {
+			continue
+		}
+		info := strings.Fields(t[n:])
+		open, char, width, base, content = true, c, n, top, false
+		act = len(info) > 0 && (strings.EqualFold(info[0], "sh") || strings.EqualFold(info[0], "url"))
 	}
 	return false
+}
+
+// indentOf returns the indentation of line ln in columns (a tab advances to the next multiple
+// of four) and the line with that indentation removed.
+func indentOf(ln string) (int, string) {
+	col := 0
+	for i := 0; i < len(ln); i++ {
+		switch ln[i] {
+		case ' ':
+			col++
+		case '\t':
+			col += 4 - col%4
+		default:
+			return col, ln[i:]
+		}
+	}
+	return col, ""
+}
+
+// listMarker reports whether rest (a line's text after its indentation, which sits at column
+// col) opens with a list-item marker, and if so returns the column the item's content starts
+// at and the text from there on. The content column follows CommonMark: one to four spaces
+// after the marker count, more than four means the content is one space past the marker.
+func listMarker(rest string, col int) (int, string, bool) {
+	m := 0
+	switch {
+	case rest != "" && (rest[0] == '-' || rest[0] == '*' || rest[0] == '+'):
+		m = 1
+	default:
+		for m < len(rest) && m < 9 && rest[m] >= '0' && rest[m] <= '9' {
+			m++
+		}
+		if m == 0 || m >= len(rest) || (rest[m] != '.' && rest[m] != ')') {
+			return 0, "", false
+		}
+		m++
+	}
+	if m == len(rest) {
+		return col + m + 1, "", true
+	}
+	if rest[m] != ' ' && rest[m] != '\t' {
+		return 0, "", false
+	}
+	scol, after := indentOf(rest[m:])
+	if after == "" || scol > 4 {
+		return col + m + 1, strings.TrimPrefix(rest[m:], rest[m:m+1]), true
+	}
+	return col + m + scol, after, true
 }
 
 // fenceRun returns the fence character and the length of the run of it that opens line t,
@@ -866,17 +947,18 @@ func cmdNew(args []string) (err error) {
 	}
 
 	// Human-only act gate: a human-only hand-off (label `human-only`, or a body whose first
-	// line is BLOCKED-ON-HUMAN) must carry the act in runnable form — a ```sh or ```url fence
-	// (the ask-decision skill's Act block). Refuse (exit 5) when it carries neither. The only
-	// bypass is --force-new --reason, and a bypassed filing is audited with actGateBypassNote.
-	// attach is a separate verb and unaffected.
+	// non-blank line opens with BLOCKED-ON-HUMAN) must carry the act in runnable form — a
+	// ```sh or ```url fence (the ask-decision skill's Act block). Refuse (exit 5) when it
+	// carries neither. The only bypass is --force-new --reason, and a bypassed filing is
+	// audited with actGateBypassNote. attach is a separate verb and unaffected.
 	if isHumanOnlyHandoff(labels, string(body)) && !bodyHasActFence(string(body)) {
 		if !*forceNew {
 			return deskkit.Refused(
 				"refused: this filing is a human-only hand-off (label " + humanOnlyLabel + ", or a body whose " +
-					"first line is " + blockedOnHumanMarker + ") and its body carries no act block. Put the act the " +
+					"first non-blank line opens with " + blockedOnHumanMarker + ") and its body carries no act block. Put the act the " +
 					"driver must perform in a fenced ```sh block that runs top to bottom (a dry run on paste, live only " +
-					"on that act's own opt-in; one comment per step; `# fill:` for values only the driver can supply), " +
+					"on that act's own opt-in; the zsh comment guard first; one plain-text comment per step; `# fill:` " +
+					"for values only the driver can supply), " +
 					"or, for a browser step, a fenced ```url block with the one URL and the field values — the " +
 					"Act block the ask-decision skill defines. A prose description of the act makes the driver " +
 					"reconstruct the command. Override with --force-new --reason only if the act genuinely " +
