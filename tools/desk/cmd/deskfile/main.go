@@ -77,6 +77,10 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          a browser step), closed and non-empty. That is the Act block the ask-decision
          skill defines. --force-new --reason is the only bypass, and the audit line of a
          bypassed filing carries act-gate=bypassed:force-new. attach is unaffected.
+         The flag is not scoped to one gate: one --force-new --reason waives the dedupe
+         search, the blocker-evidence gate AND this act gate together. A pure ruling with
+         no act to run is not a hand-off: file it under needs-decision with its Evidence,
+         not with a BLOCKED-ON-HUMAN first line or the human-only label.
 
          CORRECTION CAPTURE: --correction "<the human's message>" switches new into skill-bug
          composition mode. With --label skill-bug --section "<skill+section>" --reading

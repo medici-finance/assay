@@ -55,7 +55,10 @@ ENFILE incident, 2026-07-23: sprawl exhausted the system open-file table).
 - **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
   `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
   runsheet is the exact command the driver runs. The issue body carries the same act as an Act
-  block (`ask-decision` §"Act — the shape of the fifth part"), which `deskfile new` requires (exit 5).
+  block (`ask-decision` §"Act — the shape of the fifth part"). `deskfile new` enforces that (exit 5)
+  only when the filing is labelled `human-only` or its body's first non-blank line opens with
+  `BLOCKED-ON-HUMAN`; filed under `question`, `help wanted` or `needs-decision` alone, the Act block
+  rests on this rule, with no tool backstop.
 
 ## Boundary — what is not here yet
 

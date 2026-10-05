@@ -176,3 +176,67 @@ func TestActGateAttachUnaffected(t *testing.T) {
 		t.Fatal("the attach observation was not posted")
 	}
 }
+
+// TestActGateRunsBeforeDedupe — the act gate runs BEFORE the dedupe search, so a fence-less
+// hand-off whose title matches an open issue is refused by the act gate, never by dedupe: its
+// refusal must not read as "already filed". The second half is the positive control: the same
+// search hit DOES refuse a hand-off that carries its act block, so the hit is live and the
+// first half's assertion can fail.
+func TestActGateRunsBeforeDedupe(t *testing.T) {
+	const title = "rotate the release deploy key"
+	file := func(body string) (int, string) {
+		t.Setenv("FAKEGH_SEARCH_HITS", searchHitsJSON(t, title))
+		t.Setenv("FAKEGH_LABELS", labelsJSON(t, humanOnlyLabel))
+		return runCapture([]string{"new", "-R", allowedRepo, "--title", title,
+			"--body-file", bodyFileWith(t, body), "--label", humanOnlyLabel})
+	}
+
+	withEnv(t)
+	rc, out := file(actProseOnly)
+	if rc != deskkit.ExitRefused || !strings.Contains(out, "human-only hand-off") {
+		t.Fatalf("fence-less hand-off with a dedupe hit: rc=%d, want the act-gate refusal; out=%s", rc, out)
+	}
+	if strings.Contains(out, deskkit.DedupeRefusalPrefix) {
+		t.Fatalf("the act gate ran after dedupe: the refusal reads as 'already filed'; out=%s", out)
+	}
+
+	withEnv(t)
+	rc, out = file(actShBody)
+	if rc != deskkit.ExitRefused || !strings.Contains(out, deskkit.DedupeRefusalPrefix) {
+		t.Fatalf("control: the hand-off with its act block was not refused by dedupe (rc=%d), so "+
+			"the hit is not live and the first half proves nothing; out=%s", rc, out)
+	}
+}
+
+// TestActFenceMatcher — bodyHasActFence follows CommonMark fences: a fence is opened by any
+// run of three or more backticks or tildes, and closed only by a bare run of the SAME
+// character at least as long. So an ```sh line quoted inside another fence is content, and an
+// ```sh line inside an open act fence does not close it.
+func TestActFenceMatcher(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"plain sh fence", fence + "sh\nrun-it\n" + fence + "\n", true},
+		{"plain url fence", fence + "url\nhttps://example.com/x\n" + fence + "\n", true},
+		{"tilde sh fence", "~~~sh\nrun-it\n~~~\n", true},
+		{"longer fence closes on longer run", "````sh\nrun-it\n````\n", true},
+		{"sh fence quoted inside a text fence", fence + "text\n" + fence + "sh\nrun-it\n" + fence + "\n", false},
+		{"sh fence quoted inside a longer text fence",
+			"````text\n" + fence + "sh\nrun-it\n" + fence + "\n````\n", false},
+		{"sh fence quoted inside a tilde fence", "~~~\n" + fence + "sh\nrun-it\n" + fence + "\n~~~\n", false},
+		{"info-string line inside an open act fence is content",
+			fence + "sh\n" + fence + "bash\n" + fence + "\n", true},
+		{"info-string line is not a closer", fence + "sh\n" + fence + "text\n", false},
+		{"short run does not close a longer fence", "````sh\nrun-it\n" + fence + "\n", false},
+		{"tilde run does not close a backtick fence", fence + "sh\nrun-it\n~~~\n", false},
+		{"act fence after a closed text fence", fence + "text\nx\n" + fence + "\n\n" + fence + "sh\nrun-it\n" + fence + "\n", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := bodyHasActFence(c.body); got != c.want {
+				t.Fatalf("bodyHasActFence = %v, want %v; body=%q", got, c.want, c.body)
+			}
+		})
+	}
+}

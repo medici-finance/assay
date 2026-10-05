@@ -164,25 +164,34 @@ func isHumanOnlyHandoff(labels []string, body string) bool {
 	return false
 }
 
-// bodyHasActFence reports whether body carries an act block: a fence opened by a line whose
-// info string is `sh` or `url` (```sh, ```url), closed by a later ``` line, with at least one
-// non-blank line between them. An unclosed or empty fence is not a block a driver can run.
+// bodyHasActFence reports whether body carries an act block: a fenced block whose info string
+// is `sh` or `url` (```sh, ```url), closed, with at least one non-blank line inside. An
+// unclosed or empty fence is not a block a driver can run.
+//
+// Fences follow CommonMark: any run of three or more backticks or tildes opens one, whatever
+// its info string, and only a bare run of the SAME character at least as long closes it. So
+// an ```sh line quoted inside another fence (a ```text block showing an example) is content,
+// not an act block, and an ```sh line inside an open block does not close it.
 func bodyHasActFence(body string) bool {
-	open, content := false, false
+	var (
+		open, act, content bool
+		char               byte
+		width              int
+	)
 	for _, ln := range strings.Split(body, "\n") {
 		t := strings.TrimSpace(ln)
+		c, n := fenceRun(t)
 		if !open {
-			if !strings.HasPrefix(t, "```") {
+			if n == 0 {
 				continue
 			}
-			info := strings.Fields(strings.TrimPrefix(t, "```"))
-			if len(info) > 0 && (strings.EqualFold(info[0], "sh") || strings.EqualFold(info[0], "url")) {
-				open, content = true, false
-			}
+			info := strings.Fields(t[n:])
+			open, char, width, content = true, c, n, false
+			act = len(info) > 0 && (strings.EqualFold(info[0], "sh") || strings.EqualFold(info[0], "url"))
 			continue
 		}
-		if strings.HasPrefix(t, "```") {
-			if content {
+		if n >= width && c == char && strings.TrimSpace(t[n:]) == "" {
+			if act && content {
 				return true
 			}
 			open = false
@@ -193,6 +202,22 @@ func bodyHasActFence(body string) bool {
 		}
 	}
 	return false
+}
+
+// fenceRun returns the fence character and the length of the run of it that opens line t,
+// or (0, 0) when t does not open with a run of three or more backticks or tildes.
+func fenceRun(t string) (byte, int) {
+	if t == "" || (t[0] != '`' && t[0] != '~') {
+		return 0, 0
+	}
+	n := 0
+	for n < len(t) && t[n] == t[0] {
+		n++
+	}
+	if n < 3 {
+		return 0, 0
+	}
+	return t[0], n
 }
 
 // composeSkillBugTitle renders the deterministic skill-bug title from the section the desk
@@ -676,7 +701,7 @@ func cmdNew(args []string) (err error) {
 		"passed; refuses if no receipt was recorded in the last "+skillBugReceiptWindow.String()+")")
 	section := fs.String("section", "", "the skill + section the desk was following (composed into the skill-bug body; requires --correction)")
 	reading := fs.String("reading", "", "the desk's one-line reading of what the skill should have said (composed into the skill-bug body; requires --correction)")
-	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search, the blocker-evidence gate AND the human-only act gate (escape hatch; requires --reason)")
+	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search, the blocker-evidence gate AND the human-only act gate, all three on the one --reason (escape hatch; requires --reason)")
 	forceFile := fs.Bool("force-file", false, "raise the new-issue RATE for this ONE filing so it files even when the "+
 		"rate is spent (escape hatch; requires --reason). Distinct from --force-new, which bypasses dedupe; "+
 		"--force-file does NOT weaken dedupe and does NOT reset the rate count (the filing is still audited and charged).")
@@ -850,12 +875,12 @@ func cmdNew(args []string) (err error) {
 			return deskkit.Refused(
 				"refused: this filing is a human-only hand-off (label " + humanOnlyLabel + ", or a body whose " +
 					"first line is " + blockedOnHumanMarker + ") and its body carries no act block. Put the act the " +
-					"driver must perform in a fenced ```sh block that runs top to bottom (honour --dry-run, or " +
-					"guard with DRY_RUN=1; one comment per step; `# fill:` for values only the driver can supply), " +
+					"driver must perform in a fenced ```sh block that runs top to bottom (a dry run on paste, live only " +
+					"on that act's own opt-in; one comment per step; `# fill:` for values only the driver can supply), " +
 					"or, for a browser step, a fenced ```url block with the one URL and the field values — the " +
 					"Act block the ask-decision skill defines. A prose description of the act makes the driver " +
 					"reconstruct the command. Override with --force-new --reason only if the act genuinely " +
-					"cannot be written as a block (audited).")
+					"cannot be written as a block (audited; it also waives the dedupe search and the blocker-evidence gate).")
 		}
 		ac.actGate = actGateBypassNote
 	}

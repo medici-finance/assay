@@ -209,9 +209,12 @@ This is enforced in two INDEPENDENT layers that fail on different signals in dif
 neither is the single point of failure: the skill clause here, AND — should a desk skip the clause —
 `deskfile new`, which **REFUSES (exit 5)** any filing labelled `needs-decision`, `help wanted` or
 `question` whose body has no `### Evidence` heading followed by a fenced block, naming the missing
-section. `human-only` is not in that set (it is an ACT, not a claim): a `BLOCKED-ON-HUMAN` report or a
-`human-only` filing carries the act itself, as the runnable **Act block** `ask-decision` §"Act — the shape of the fifth part"
-defines, and `deskfile new` refuses one with no ` ```sh ` or ` ```url ` fence (exit 5). `attach`
+section. `human-only` is not in that set (it is an ACT, not a claim). A `BLOCKED-ON-HUMAN` report is
+still a blocker claim, so it carries BOTH the `### Evidence` section above AND the act itself, as the
+runnable **Act block** `ask-decision` §"Act — the shape of the fifth part" defines. `deskfile new`
+refuses (exit 5) a filing with no ` ```sh ` or ` ```url ` fence when it is labelled `human-only` or its
+body's first non-blank line opens with `BLOCKED-ON-HUMAN`; a marker in the title or after an opening
+paragraph is not caught, and there the Act block rests on this clause alone. `attach`
 observations are not claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
 refusal does, for a blocker whose evidence genuinely cannot be produced.
 
