@@ -221,7 +221,8 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 				"verify-outcome record was NOT landed", side), nil)
 	}
 
-	pr, perr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
+	// CreateHeldDraftChange, never the raw CreateDraftChange — see landEvidenceAsChange (#2254).
+	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
 		Body: "Verify-outcome record for `" + brief + "`, landed on branch `" + side + "` and opened as a " +
 			"draft change because the default branch `" + base + "` takes no direct write on this forge.",
@@ -229,6 +230,10 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 		Base: base,
 	})
 	if perr != nil {
+		if pr != nil {
+			ac.detail = fmt.Sprintf("landed %s on %s in %s via draft change #%d, but its merge-hold was NOT opened",
+				target, repoSlug, side, pr.Number)
+		}
 		return perr
 	}
 
