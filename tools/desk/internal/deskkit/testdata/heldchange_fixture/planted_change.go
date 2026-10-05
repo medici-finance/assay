@@ -23,3 +23,9 @@ func openViaMethodValue(fg forge) (int, error) {
 	create := fg.CreateDraftChange
 	return create("example-org/tracker", "side-branch")
 }
+
+// openChangeFn is the third planted violation: the package-level `var xFn = func(...)` seam shape,
+// a GenDecl rather than a FuncDecl, which a walker over func bodies alone would never visit.
+var openChangeFn = func(fg forge) (int, error) {
+	return fg.CreateDraftChange("example-org/tracker", "side-branch")
+}

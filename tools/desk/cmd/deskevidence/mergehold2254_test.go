@@ -85,3 +85,20 @@ func TestOutcomeHoldFailIsLoud(t *testing.T) {
 		t.Fatalf("stderr does not name the change and its missing merge-hold: %q", errBuf.String())
 	}
 }
+
+func TestDraftChangeLabelNeverHashZero(t *testing.T) {
+	cases := []struct {
+		pr   deskkit.PullRef
+		want string
+	}{
+		{deskkit.PullRef{Number: 7, URL: "https://forge.example/change/7"}, "draft change #7"},
+		{deskkit.PullRef{URL: "https://forge.example/change/x"}, "draft change https://forge.example/change/x"},
+		{deskkit.PullRef{}, "a draft change the forge returned no number for"},
+	}
+	for _, c := range cases {
+		pr := c.pr
+		if got := draftChangeLabel(&pr); got != c.want {
+			t.Errorf("draftChangeLabel(%+v) = %q, want %q", c.pr, got, c.want)
+		}
+	}
+}

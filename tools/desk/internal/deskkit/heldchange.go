@@ -11,9 +11,10 @@ package deskkit
 // Evidence draft came out permanently unflippable, approve or no approve.
 //
 // The defect class is "a CreateDraftChange call not paired with OpenMergeHold". This file is the
-// pairing, and TestDraftChangeOnlyViaHeld fails on any CreateDraftChange call outside it (the
-// checking decorator's own delegation excepted), so the next verb that opens a change cannot
-// repeat the defect by calling the raw seam.
+// pairing. TestDraftChangeOnlyViaHeld fails on any CreateDraftChange selector — a call or a
+// method value, in a func body or a package-level var initializer — in a non-test Go file of
+// the tools/desk module outside it (the checking decorator's own delegation excepted), so the
+// next verb that opens a change cannot repeat the defect by reaching the raw seam.
 
 import "fmt"
 

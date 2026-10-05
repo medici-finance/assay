@@ -231,8 +231,8 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 	})
 	if perr != nil {
 		if pr != nil {
-			ac.detail = fmt.Sprintf("landed %s on %s in %s via draft change #%d, but its merge-hold was NOT opened",
-				target, repoSlug, side, pr.Number)
+			ac.detail = fmt.Sprintf("landed %s on %s in %s via %s, but its merge-hold was NOT opened",
+				target, repoSlug, side, draftChangeLabel(pr))
 		}
 		return perr
 	}
@@ -256,4 +256,16 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 	fmt.Fprintf(stdout, "landed %s on %s: %s takes no direct write, so wrote branch %s and opened draft %s — %s\n",
 		target, repoSlug, base, side, loc, attr)
 	return nil
+}
+
+// draftChangeLabel names a draft change in an audit detail: "draft change #N" when the forge
+// returned a number, else its URL, else a plain statement that the forge returned no number.
+func draftChangeLabel(pr *deskkit.PullRef) string {
+	switch {
+	case pr.Number > 0:
+		return fmt.Sprintf("draft change #%d", pr.Number)
+	case pr.URL != "":
+		return "draft change " + pr.URL
+	}
+	return "a draft change the forge returned no number for"
 }

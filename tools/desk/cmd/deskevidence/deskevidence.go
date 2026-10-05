@@ -669,8 +669,8 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 	})
 	if perr != nil {
 		if pr != nil {
-			ac.detail = fmt.Sprintf("landed %s on %s in %s via draft change #%d, but its merge-hold was NOT opened",
-				target, repoSlug, side, pr.Number)
+			ac.detail = fmt.Sprintf("landed %s on %s in %s via %s, but its merge-hold was NOT opened",
+				target, repoSlug, side, draftChangeLabel(pr))
 		}
 		return perr
 	}

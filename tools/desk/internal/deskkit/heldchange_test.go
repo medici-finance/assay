@@ -143,24 +143,70 @@ func draftChangeCallSites(walkRoot, relRoot string) ([]string, error) {
 			return rerr
 		}
 		rel = filepath.ToSlash(rel)
+		// Walk every top-level declaration, not only func bodies: a package-level
+		// `var xFn = func(...) {...}` seam is a GenDecl, and its func literal reaches the raw seam
+		// just as a method body does. Match every selector naming CreateDraftChange, not only call
+		// expressions, so a method value (open := fg.CreateDraftChange) is flagged too. Interface
+		// method fields and backend method declarations are not selector expressions, so they
+		// never match.
 		for _, decl := range f.Decls {
-			fd, ok := decl.(*ast.FuncDecl)
-			if !ok {
-				continue
-			}
-			// Match every selector naming CreateDraftChange, not only call expressions: a method
-			// value (f := fg.CreateDraftChange; f(...)) or a method expression reaches the raw seam
-			// just as a direct call does.
-			ast.Inspect(fd, func(n ast.Node) bool {
-				if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "CreateDraftChange" {
-					sites = append(sites, rel+":"+fd.Name.Name)
+			for _, name := range declSiteNames(decl) {
+				if declReachesDraftChange(name.node) {
+					sites = append(sites, rel+":"+name.label)
 				}
-				return true
-			})
+			}
 		}
 		return nil
 	})
 	return sites, err
+}
+
+// declSite is one attributable unit of a top-level declaration: a func, or one var/const spec.
+type declSite struct {
+	label string
+	node  ast.Node
+}
+
+// declSiteNames splits a top-level declaration into attributable units. A FuncDecl is one unit
+// named after the func. A GenDecl yields one unit per value spec, labelled "var <names>"; any
+// other GenDecl (types, imports) is one unit labelled by its token, so a selector hidden there
+// is still flagged rather than skipped.
+func declSiteNames(decl ast.Decl) []declSite {
+	switch d := decl.(type) {
+	case *ast.FuncDecl:
+		return []declSite{{label: d.Name.Name, node: d}}
+	case *ast.GenDecl:
+		var out []declSite
+		for _, spec := range d.Specs {
+			if vs, ok := spec.(*ast.ValueSpec); ok {
+				names := make([]string, 0, len(vs.Names))
+				for _, n := range vs.Names {
+					names = append(names, n.Name)
+				}
+				out = append(out, declSite{label: d.Tok.String() + " " + strings.Join(names, ","), node: vs})
+				continue
+			}
+			out = append(out, declSite{label: d.Tok.String(), node: spec})
+		}
+		return out
+	}
+	return []declSite{{label: "decl", node: decl}}
+}
+
+// declReachesDraftChange reports whether any selector expression under n names CreateDraftChange.
+func declReachesDraftChange(n ast.Node) bool {
+	found := false
+	ast.Inspect(n, func(x ast.Node) bool {
+		if found {
+			return false
+		}
+		if sel, ok := x.(*ast.SelectorExpr); ok && sel.Sel.Name == "CreateDraftChange" {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 func TestDraftChangeOnlyViaHeld(t *testing.T) {
@@ -202,9 +248,9 @@ func TestDraftChangeOnlyViaHeld(t *testing.T) {
 		t.Fatalf("fixture scan: %v", err)
 	}
 	sort.Strings(planted)
-	want := []string{"planted_change.go:openUnheldChange", "planted_change.go:openViaMethodValue"}
+	want := []string{"planted_change.go:openUnheldChange", "planted_change.go:openViaMethodValue", "planted_change.go:var openChangeFn"}
 	if strings.Join(planted, ",") != strings.Join(want, ",") {
 		t.Fatalf("positive control: fixture sites = %v, want exactly %v — the matcher is not live "+
-			"(both the direct call and the method-value reach must be flagged)", planted, want)
+			"(the direct call, the method-value reach and the package-level var func literal must all be flagged)", planted, want)
 	}
 }
