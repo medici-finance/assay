@@ -78,8 +78,16 @@ func newTestSigstore(t *testing.T) *testSigstore {
 // SAME parser production uses.
 func (s *testSigstore) trustedRoot(t *testing.T) []byte {
 	t.Helper()
+	start := time.Now().Add(-48 * time.Hour)
+	return s.trustedRootAt(t, start, start)
+}
+
+// trustedRootAt is trustedRoot with the log key's and the CA's validFor start
+// set separately, so a test can make either one not yet valid when the entry
+// was logged.
+func (s *testSigstore) trustedRootAt(t *testing.T, tlogStart, caStart time.Time) []byte {
+	t.Helper()
 	logID := sha256.Sum256(s.rekorDER)
-	start := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
 	doc := map[string]any{
 		"mediaType": "application/vnd.dev.sigstore.trustedroot+json;version=0.1",
 		"tlogs": []any{map[string]any{
@@ -88,7 +96,7 @@ func (s *testSigstore) trustedRoot(t *testing.T) []byte {
 			"publicKey": map[string]any{
 				"rawBytes":   base64.StdEncoding.EncodeToString(s.rekorDER),
 				"keyDetails": "PKIX_ECDSA_P256_SHA_256",
-				"validFor":   map[string]any{"start": start},
+				"validFor":   map[string]any{"start": tlogStart.UTC().Format(time.RFC3339)},
 			},
 			"logId": map[string]any{"keyId": base64.StdEncoding.EncodeToString(logID[:])},
 		}},
@@ -97,7 +105,7 @@ func (s *testSigstore) trustedRoot(t *testing.T) []byte {
 			"certChain": map[string]any{"certificates": []any{
 				map[string]any{"rawBytes": base64.StdEncoding.EncodeToString(s.caDER)},
 			}},
-			"validFor": map[string]any{"start": start},
+			"validFor": map[string]any{"start": caStart.UTC().Format(time.RFC3339)},
 		}},
 	}
 	b, err := json.Marshal(doc)
@@ -118,6 +126,15 @@ type bundleOpts struct {
 	timeShift     time.Duration      // shifts integratedTime relative to the leaf's validity
 	subjects      map[string]string  // name -> sha256 hex
 	mutate        func(b *bundleDoc) // last-step mutation of the bundle document
+
+	// The fields below change what gets SIGNED, not what is tampered with
+	// afterwards, so each one reaches exactly one check of the verifier.
+	statementType string                 // statement _type; default in-toto v1
+	payloadType   string                 // DSSE payloadType, used for the PAE too; default in-toto
+	flipSig       bool                   // envelope sig made invalid; the log body records the same bad sig
+	mutateBody    func(b map[string]any) // edits the log body BEFORE the SET is signed over it
+	ekus          []x509.ExtKeyUsage     // leaf extended key usages; default code signing
+	extraURIs     []string               // URI SANs added after the signer SAN
 }
 
 // bundleDoc is the v0.3 bundle shape, built as plain maps so a test can
@@ -142,6 +159,15 @@ func (s *testSigstore) bundle(t *testing.T, tag string, o bundleOpts) []byte {
 	if o.signer == nil {
 		o.signer, o.signerCert = s.caKey, s.caCert
 	}
+	if o.statementType == "" {
+		o.statementType = inTotoStatementV1
+	}
+	if o.payloadType == "" {
+		o.payloadType = inTotoPayloadType
+	}
+	if o.ekus == nil {
+		o.ekus = []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning}
+	}
 
 	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -151,9 +177,13 @@ func (s *testSigstore) bundle(t *testing.T, tag string, o bundleOpts) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	uri, err := url.Parse(o.san)
-	if err != nil {
-		t.Fatal(err)
+	uris := []*url.URL{}
+	for _, raw := range append([]string{o.san}, o.extraURIs...) {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		uris = append(uris, u)
 	}
 	notBefore := time.Now().Add(-1 * time.Minute).Truncate(time.Second)
 	leafTmpl := &x509.Certificate{
@@ -161,8 +191,8 @@ func (s *testSigstore) bundle(t *testing.T, tag string, o bundleOpts) []byte {
 		NotBefore:    notBefore,
 		NotAfter:     notBefore.Add(10 * time.Minute),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
-		URIs:         []*url.URL{uri},
+		ExtKeyUsage:  o.ekus,
+		URIs:         uris,
 		ExtraExtensions: []pkix.Extension{
 			{Id: oidIssuerV2, Value: issuerExt},
 		},
@@ -177,7 +207,7 @@ func (s *testSigstore) bundle(t *testing.T, tag string, o bundleOpts) []byte {
 		subjects = append(subjects, map[string]any{"name": name, "digest": map[string]any{"sha256": d}})
 	}
 	statement := map[string]any{
-		"_type":         inTotoStatementV1,
+		"_type":         o.statementType,
 		"subject":       subjects,
 		"predicateType": o.predicateType,
 		"predicate":     map[string]any{"buildDefinition": map[string]any{"buildType": "https://actions.github.io/buildtypes/workflow/v1"}},
@@ -186,11 +216,16 @@ func (s *testSigstore) bundle(t *testing.T, tag string, o bundleOpts) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pae := dssePAE(inTotoPayloadType, payload)
+	pae := dssePAE(o.payloadType, payload)
 	h := sha256.Sum256(pae)
 	sig, err := ecdsa.SignASN1(rand.Reader, leafKey, h[:])
 	if err != nil {
 		t.Fatal(err)
+	}
+	if o.flipSig {
+		// The last byte of an ASN.1 ECDSA signature is the low byte of s: the
+		// result still parses, it just does not verify.
+		sig[len(sig)-1] ^= 0x01
 	}
 
 	leafPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER})
@@ -206,6 +241,9 @@ func (s *testSigstore) bundle(t *testing.T, tag string, o bundleOpts) []byte {
 				"verifier":  base64.StdEncoding.EncodeToString(leafPEM),
 			}},
 		},
+	}
+	if o.mutateBody != nil {
+		o.mutateBody(body)
 	}
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
@@ -245,7 +283,7 @@ func (s *testSigstore) bundle(t *testing.T, tag string, o bundleOpts) []byte {
 		},
 		"dsseEnvelope": map[string]any{
 			"payload":     base64.StdEncoding.EncodeToString(payload),
-			"payloadType": inTotoPayloadType,
+			"payloadType": o.payloadType,
 			"signatures":  []any{map[string]any{"sig": base64.StdEncoding.EncodeToString(sig)}},
 		},
 	}
@@ -351,8 +389,7 @@ func assertNothingPlaced(t *testing.T, dest string) {
 	}
 }
 
-// TestRefusesBadAttestation — brief sdlc/20 Verify row 1. A tampered bundle
-// is refused before placement; a valid one places; perturbing one byte of the
+// TestRefusesBadAttestation: a tampered bundle is refused before placement; a valid one places; perturbing one byte of the
 // binary after attestation is refused even when the sha256 pin is re-pinned to
 // the perturbed bytes (the attestation layer catches what a bad re-pin lets
 // through, so the two checks fail for different reasons).
@@ -469,7 +506,7 @@ func TestRefusesBadAttestation(t *testing.T) {
 	})
 }
 
-// TestNoAttestFlagAbsent — brief sdlc/20 Verify row 2. There is no opt-out:
+// TestNoAttestFlagAbsent: there is no opt-out:
 // --no-attest (and its obvious respellings) is an unknown argument, refused
 // before anything is fetched, and the usage text states the check is
 // mandatory.
@@ -527,11 +564,29 @@ func TestRealProvenanceBundle(t *testing.T) {
 	}
 }
 
-// TestAttestRefusalCases pins each remaining refusal branch of the verifier
-// against a generated bundle, one perturbation at a time.
+// TestAttestRefusalCases pins each refusal branch of the verifier against a
+// generated bundle, one perturbation at a time. Every case is built so that
+// exactly ONE check stands between it and acceptance, and each want string is
+// that check's own refusal text, so deleting that check alone turns its case
+// red (attest-mutations.json runs those deletions).
+//
+// The log-body cases edit the body BEFORE the signed entry timestamp (SET) is
+// signed over it: the SET verifies, and only checkLogBody's comparison can
+// catch the edit. The "log body edited after SET" case is the opposite: it is
+// caught by the SET check, not by checkLogBody.
 func TestAttestRefusalCases(t *testing.T) {
 	ss := newTestSigstore(t)
 	tm, err := parseTrustedRoot(ss.trustedRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(time.Hour)
+	past := time.Now().Add(-48 * time.Hour)
+	tmLogKeyLater, err := parseTrustedRoot(ss.trustedRootAt(t, future, past))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmCALater, err := parseTrustedRoot(ss.trustedRootAt(t, past, future))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,33 +594,90 @@ func TestAttestRefusalCases(t *testing.T) {
 	art := []byte("artifact")
 	subj := map[string]string{"a": sum(art)}
 	rogue := newTestSigstore(t)
+	caPEM := base64.StdEncoding.EncodeToString(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ss.caDER}))
+	logSig := func(b map[string]any) map[string]any {
+		return b["spec"].(map[string]any)["signatures"].([]any)[0].(map[string]any)
+	}
+	entry := func(b *bundleDoc) map[string]any {
+		vm := (*b)["verificationMaterial"].(map[string]any)
+		return vm["tlogEntries"].([]any)[0].(map[string]any)
+	}
 
 	cases := map[string]struct {
 		o    bundleOpts
+		tm   *trustedMaterial // nil: the default trust root
 		want string
 	}{
-		"untrusted CA":             {bundleOpts{signer: rogue.caKey, signerCert: rogue.caCert}, "certificate"},
-		"wrong OIDC issuer":        {bundleOpts{issuer: "https://issuer.test.invalid"}, "issuer"},
-		"other repository":         {bundleOpts{san: "https://github.com/example/fork/" + attestSignerWorkflow + "@refs/tags/" + tag}, "signer"},
-		"other tag":                {bundleOpts{san: releaseSAN("v9.9.9")}, "signer"},
-		"not SLSA provenance":      {bundleOpts{predicateType: "https://example.test/predicate/v1"}, "predicateType"},
-		"logged after cert expiry": {bundleOpts{timeShift: time.Hour}, "validity"},
-		"payload hash mismatch in log body": {bundleOpts{mutate: func(b *bundleDoc) {
-			vm := (*b)["verificationMaterial"].(map[string]any)
-			e := vm["tlogEntries"].([]any)[0].(map[string]any)
+		// Signer identity and statement.
+		"untrusted CA":             {o: bundleOpts{signer: rogue.caKey, signerCert: rogue.caCert}, want: "does not chain to a trusted CA"},
+		"wrong OIDC issuer":        {o: bundleOpts{issuer: "https://issuer.test.invalid"}, want: "OIDC issuer"},
+		"other repository":         {o: bundleOpts{san: "https://github.com/example/fork/" + attestSignerWorkflow + "@refs/tags/" + tag}, want: "attestation signer"},
+		"other tag":                {o: bundleOpts{san: releaseSAN("v9.9.9")}, want: "attestation signer"},
+		"not SLSA provenance":      {o: bundleOpts{predicateType: "https://example.test/predicate/v1"}, want: "predicateType"},
+		"logged after cert expiry": {o: bundleOpts{timeShift: time.Hour}, want: "outside the signing certificate's validity window"},
+		"statement _type v0.1": {o: bundleOpts{statementType: "https://in-toto.io/Statement/v0.1"},
+			want: "attestation statement _type"},
+		"payloadType not in-toto": {o: bundleOpts{payloadType: "application/json"},
+			want: "attestation payload type"},
+		"leaf without code-signing EKU": {o: bundleOpts{ekus: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}},
+			want: "incompatible key usage"},
+		"two URI SANs": {o: bundleOpts{extraURIs: []string{"https://example.test/second"}},
+			want: "carries 2 URI SANs, want exactly 1"},
+		"unknown bundle media type": {o: bundleOpts{mutate: func(b *bundleDoc) {
+			(*b)["mediaType"] = "application/json"
+		}}, want: "media type"},
+
+		// Envelope signature: invalid, and the log body records the same bad
+		// signature, so the log binding agrees and only verifySig catches it.
+		"envelope signature invalid, log agrees": {o: bundleOpts{flipSig: true},
+			want: "attestation envelope signature does not verify"},
+
+		// Log body edited BEFORE the SET is signed: one case per comparison.
+		"log body payload hash differs": {o: bundleOpts{mutateBody: func(b map[string]any) {
+			b["spec"].(map[string]any)["payloadHash"] = map[string]any{"algorithm": "sha256", "value": strings.Repeat("ab", 32)}
+		}}, want: "log entry payload hash does not match the envelope payload"},
+		"log body signature differs": {o: bundleOpts{mutateBody: func(b map[string]any) {
+			logSig(b)["signature"] = base64.StdEncoding.EncodeToString([]byte("another signature"))
+		}}, want: "log entry signature does not match the envelope signature"},
+		"log body verifier is another certificate": {o: bundleOpts{mutateBody: func(b map[string]any) {
+			logSig(b)["verifier"] = caPEM
+		}}, want: "log entry verifier is not the bundle's signing certificate"},
+		"log body apiVersion disagrees with entry": {o: bundleOpts{mutateBody: func(b map[string]any) {
+			b["apiVersion"] = "0.0.2"
+		}}, want: "log entry body kind/version disagrees"},
+		// The entry's kindVersion is not covered by the SET, and the body is
+		// re-labelled to match it, so only the dsse/0.0.1 kind check catches it.
+		"unsupported entry kind": {o: bundleOpts{
+			mutateBody: func(b map[string]any) { b["kind"] = "hashedrekord" },
+			mutate: func(b *bundleDoc) {
+				entry(b)["kindVersion"] = map[string]any{"kind": "hashedrekord", "version": "0.0.1"}
+			},
+		}, want: "log entry kind hashedrekord/0.0.1 is not supported"},
+
+		// Log body edited AFTER the SET was signed: the SET check catches it.
+		"log body edited after SET": {o: bundleOpts{mutate: func(b *bundleDoc) {
+			e := entry(b)
 			body, _ := base64.StdEncoding.DecodeString(e["canonicalizedBody"].(string))
 			body = bytes.Replace(body, []byte(`"payloadHash":{"algorithm":"sha256","value":"`), []byte(`"payloadHash":{"algorithm":"sha256","value":"f`), 1)
 			e["canonicalizedBody"] = base64.StdEncoding.EncodeToString(body)
-		}}, "attestation"},
-		"unknown bundle media type": {bundleOpts{mutate: func(b *bundleDoc) {
-			(*b)["mediaType"] = "application/json"
-		}}, "media type"},
+		}}, want: "signed entry timestamp does not verify"},
+		"no signed entry timestamp": {o: bundleOpts{mutate: func(b *bundleDoc) {
+			delete(entry(b), "inclusionPromise")
+		}}, want: "entry carries no signed entry timestamp"},
+
+		// Trust-root validity windows, evaluated at the logged time.
+		"log key not yet valid": {tm: tmLogKeyLater, want: "log key not valid at the entry's integrated time"},
+		"CA not yet valid":      {tm: tmCALater, want: "no trusted CA was valid at the logged time"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			c.o.subjects = subj
 			b := ss.bundle(t, tag, c.o)
-			err := verifyAttestation(b, sum(art), releasePolicy(tag), tm)
+			use := tm
+			if c.tm != nil {
+				use = c.tm
+			}
+			err := verifyAttestation(b, sum(art), releasePolicy(tag), use)
 			if err == nil {
 				t.Fatalf("SECURITY: %s was accepted", name)
 			}
@@ -573,6 +685,12 @@ func TestAttestRefusalCases(t *testing.T) {
 				t.Errorf("refusal %q does not name %q", err, c.want)
 			}
 		})
+	}
+
+	// An oversized bundle is refused before it is parsed.
+	if err := verifyAttestation(make([]byte, maxBundleBytes+1), sum(art), releasePolicy(tag), tm); err == nil ||
+		!strings.Contains(err.Error(), "-byte bound") {
+		t.Errorf("oversized bundle: got %v, want a refusal naming the byte bound", err)
 	}
 
 	// The unperturbed bundle verifies, so each refusal above is caused by its

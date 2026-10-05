@@ -73,7 +73,10 @@ const (
 	inTotoPayloadType = "application/vnd.in-toto+json"
 
 	// maxBundleBytes bounds what a single bundle download may be; a real one is
-	// a few KiB to a few tens of KiB.
+	// a few KiB to a few tens of KiB. The production fetch reads the bundle
+	// through readBounded (install.go), so a larger response is refused without
+	// being buffered; verifyAttestation re-checks the bound on whatever bytes an
+	// injected Fetcher hands it.
 	maxBundleBytes = 1 << 20
 )
 
@@ -102,6 +105,16 @@ type signerPolicy struct {
 
 // releasePolicy is the policy for an asset pinned at tag: this repo's release
 // workflow, run either by the tag push or by workflow_dispatch from main.
+//
+// INVARIANT — accepting refs/heads/main is safe only while release.yml's `on:`
+// triggers stay EXACTLY a tag push plus workflow_dispatch. This verifier does
+// not read the Fulcio Build Trigger extension (OID 1.3.6.1.4.1.57264.1.20), so
+// it cannot tell a workflow_dispatch run from main apart from any other run of
+// release.yml at the default branch. If release.yml ever gains a trigger that
+// runs at refs/heads/main (schedule, workflow_run, pull_request_target, a push
+// to main), that run's attestations would pass this policy for EVERY pinned
+// tag. Adding such a trigger must come with pinning the Build Trigger
+// extension here (to push or workflow_dispatch) or dropping refs/heads/main.
 func releasePolicy(tag string) signerPolicy {
 	return signerPolicy{
 		repo:     attestSignerRepo,

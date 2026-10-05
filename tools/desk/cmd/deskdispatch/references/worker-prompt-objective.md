@@ -223,6 +223,13 @@ reliably caught an inverted or false desk claim.
   write it, as the minimal diff. SAFETY FLOOR: never cut validation, error handling,
   security, or accessibility — and never trim a Verify row to shrink a diff. A Verify row,
   its Evidence, and every process artifact are not code to minimize.
+- Rung (4) never means a NEW dependency, plugin or MCP server by default. Before adding one
+  (to a manifest, a lockfile, the harness or the agent environment), file an issue carrying a
+  risk summary: source (publisher, repo, exact version, release date), permissions (network,
+  filesystem, credentials or scopes it reads), and persistence (hooks, background processes,
+  auto-update, files written outside its own directory). The PR cites that issue; no issue,
+  no install. Minimum release age is 7 days: a younger release needs the risk-summary issue
+  plus a driver `bless` on it before install, never your own judgment.
 - No attribution or generated-by lines in commits, PR bodies, issues, or comments.
 - Push and open the PR through the desk write verbs, not raw `git push`/`gh`:
   `deskpr create` / `deskpr update` for the branch and its draft PR, `deskpr edit
