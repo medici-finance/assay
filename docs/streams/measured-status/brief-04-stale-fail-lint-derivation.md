@@ -114,7 +114,7 @@ History reads use the local remote-tracking main ref, falling back to local main
 missing or shallow history is reported as could-not-check without network access.
 
 
-### Review repair validation (2026-10-05)
+## Review repair validation (2026-10-05)
 
 - `pr2238-C1`: before the repair, `TestFailRunDate` failed for a dated run
   heading repeating its closing FAIL (`run date = ""; want "2026-08-01"`).
