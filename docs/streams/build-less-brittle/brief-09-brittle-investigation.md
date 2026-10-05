@@ -31,8 +31,8 @@ exec-tier: strong
 exec-tier-why: "(a) the template asks for judgement (which of three divergences holds) and must tell a strong-tier session precisely what evidence settles each; (b) it spans the brief spec, the registers, the class issues and git history."
 domain: complicated
 consumers:
-  - "docs/brittle-investigation-template.md: follow-up build-less-brittle/09 (this brief)"
-  - "plugins/assay/skills/worker-desk/SKILL.md §Un-briefed issues: follow-up build-less-brittle/09 (this brief; ≤ 3 lines beside build-less-brittle/04's design-owed line)"
+  - "docs/brittle-investigation-template.md: fixed-here"
+  - "plugins/assay/skills/worker-desk/SKILL.md §Un-briefed issues: fixed-here (3 lines beside build-less-brittle/04's design-owed line, offset in the same section)"
   - "docs/contracts.md §Brittle marks (investigation column): follow-up build-less-brittle/08 (the column exists; this brief fills it)"
   - "installed deskdispatch binaries: out-of-scope (no kit text changes; the template is read from the tree at dispatch time)"
 ---
@@ -178,6 +178,17 @@ dereferences the command the template tells sessions to run, rows 7–8 are the 
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+| 1 | Verify row 1 as written | pass exit=0 | `6` | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 2 | Verify row 2 as written | pass exit=0 | `6` (≥ 6) | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 3 | Verify row 3 as written | pass exit=0 | `6` | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 4 | Verify row 4 as written | pass exit=0 | `3` (≥ 1) | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 5 | Verify row 5 as written | pass exit=0 | `2` | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 6 | Verify row 6 as written | pass exit=0 | `1` (the extracted `git log --follow --reverse` read on `tools/desk/internal/forgeban/allowlist.go` yields a 40-hex originating commit) | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 7 | Verify row 7 as written | pass exit=0 | `1` (≥ 1) | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 8 | Verify row 8 as written (pre-merge: base = merge-base with `refs/remotes/origin/main`, tip = HEAD) | pass exit=0 | `NET-OK` (worker-desk SKILL.md 923 → 923 lines) | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 9 | Verify row 9 as written | pass exit=0 | `1` (≥ 1) | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 10 | Verify row 10 as written | pass | `summary: 2 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing`; `exit=0` | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
+| 11 | Verify row 11 as written | pass exit=0 | `SOURCE-CHANGE-EXAMPLE` | 2026-10-06 | assay-worker-app[bot] @ f479471da001 (on-behalf-of human:ian) (implementer, self-run) |
 
 The reviewer also walks the amendment's worked case through the existing deliverables and
 records the source links, gap handling and outcome interpretation in the review. These are
