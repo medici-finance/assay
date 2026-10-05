@@ -27,10 +27,10 @@ func TestRoleCmdPOSIXBytesPinned(t *testing.T) {
 	c := &Cell{Name: "o'brien cell", Dir: filepath.Join("cells", "o'brien cell"), KindOverride: "house",
 		Cadence: &cadenceOptions{Interval: 5 * time.Minute, Budget: 20 * time.Minute}}
 	o := upOverrides{Model: "m'x", Harness: "claude", Provider: "glm", Cockpit: "tmux"}
-	got := c.roleCmdIn(shellPOSIX, "/opt/assay/bin/cell ctl", "worker-desk", "/home/a b/.claude", o)
+	got := c.roleCmdIn(shellPOSIX, "/opt/assay/bin/cell ctl", "worker-desk", "/cfg/a b/.claude", o)
 	want := `'/opt/assay/bin/cell ctl' --cells-root 'cells' desk 'o'\''brien cell' 'worker-desk'` +
 		` --kind 'house' --model 'm'\''x' --harness 'claude' --provider 'glm' --cockpit 'tmux'` +
-		` --cadence '5m0s' --tick-budget '20m0s' '/home/a b/.claude'`
+		` --cadence '5m0s' --tick-budget '20m0s' '/cfg/a b/.claude'`
 	if got != want {
 		t.Fatalf("POSIX roleCmd drifted:\n got %s\nwant %s", got, want)
 	}
@@ -69,8 +69,8 @@ func TestPSQuote(t *testing.T) {
 		{"plain", "'plain'"},
 		{"work's folder", "'work''s folder'"},
 		{"''", "''''''"},
-		{`C:\Users\Jane Doe\AppData\Local\Assay\bin\cellctl.exe`, `'C:\Users\Jane Doe\AppData\Local\Assay\bin\cellctl.exe'`},
-		{`\\server\share\a b`, `'\\server\share\a b'`},
+		{`D:\Tools\Jane Doe\Assay\bin\cellctl.exe`, `'D:\Tools\Jane Doe\Assay\bin\cellctl.exe'`},
+		{`rel\sub dir\trailing\`, `'rel\sub dir\trailing\'`},
 		{"$env:HOME `n $(whoami); & x", "'$env:HOME `n $(whoami); & x'"},
 		{"it\u2019s \u2018q\u2018 \u201a \u201b", "'it\u2019\u2019s \u2018\u2018q\u2018\u2018 \u201a\u201a \u201b\u201b'"},
 		{"bad\xffbyte", "'bad\xffbyte'"},
@@ -93,11 +93,11 @@ func TestRoleCmdPowerShell(t *testing.T) {
 
 	c = &Cell{Name: "o'brien cell", KindOverride: "house"}
 	self := `C:\Program Files\Jane's Tools\cellctl.exe`
-	cfg := `C:\Users\Jane O'Neil\.claude`
+	cfg := `D:\cfg\Jane O'Neil\.claude`
 	o := upOverrides{Model: "m'x", Provider: "glm", Cockpit: "orca", Cadence: "5m"}
 	got = c.roleCmdIn(shellPowerShell, self, "worker-desk", cfg, o)
 	want = `& 'C:\Program Files\Jane''s Tools\cellctl.exe' --cells-root '.' desk 'o''brien cell' 'worker-desk'` +
-		` --kind 'house' --model 'm''x' --provider 'glm' --cockpit 'orca' --cadence '5m' 'C:\Users\Jane O''Neil\.claude'`
+		` --kind 'house' --model 'm''x' --provider 'glm' --cockpit 'orca' --cadence '5m' 'D:\cfg\Jane O''Neil\.claude'`
 	if got != want {
 		t.Fatalf("PowerShell roleCmd:\n got %s\nwant %s", got, want)
 	}
@@ -215,7 +215,7 @@ func TestPaneLinesParseInRealPowerShell(t *testing.T) {
 		t.Skip("could-not-check: no pwsh/powershell on PATH to parse the PowerShell pane lines")
 	}
 	self := `C:\Program Files\Jane's Tools\cellctl.exe`
-	cfg := `C:\Users\Jane O'Neil\.claude`
+	cfg := `D:\cfg\Jane O'Neil\.claude`
 	c := &Cell{Name: "o'brien cell"}
 	role := c.roleCmdIn(shellPowerShell, self, "worker-desk", cfg, upOverrides{Model: "m'x", Cockpit: "herdr"})
 	script := `$t = $null; $e = $null
