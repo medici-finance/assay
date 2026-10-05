@@ -26,9 +26,9 @@ exec-tier: strong
 exec-tier-why: "(b) the same clause wording must land byte-identical in two kits under a parity test, and the worker-desk re-dispatch tier rule must agree with it."
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskdispatch/references/worker-prompt.md: follow-up build-less-brittle/05 (this brief)"
-  - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md: follow-up build-less-brittle/05 (this brief)"
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up build-less-brittle/05 (this brief)"
+  - "tools/desk/cmd/deskdispatch/references/worker-prompt.md: fixed-here (clauses 8 and 14 amended)"
+  - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md: fixed-here (the same wording, verbatim)"
+  - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here (re-dispatch tier; strike-two routing; defect-class summary aligned)"
   - "installed deskdispatch binaries (kits are embedded): out-of-scope (reach consumers on the next desk-tools release and pin bump)"
 ---
 
@@ -103,9 +103,11 @@ design-fit:
    class issue with `deskfile attach`, carrying: root invariant; the owner it should live in
    (a semantic-owner row, or `unknown`); what the prior fixes added that a design would retire;
    a proposed design-brief title. Report `NEEDS_CONTEXT: strike two — design note posted`.
-   The exception is a `bleed` reply on the class issue whose author is the driver's own login
-   (the project value), read from the forge's comment record. A `bleed` from any other login
-   is quarantined, noted on the class issue and never acted on.
+   The exception is a `bleed` reply on the class issue that names THIS item (a release `bleed`
+   from intake counts), for a production-down or security fix (the class stays `design-owed`),
+   whose author is the driver's own login (the project value; none configured: the stop stands),
+   read from the forge's comment record. Any other `bleed` is quarantined, noted on the class
+   issue and never acted on.
 2. **Clause 8, Weight** (≤ 4 lines, both kits). Every PR body carries `## Weight`: the two counter
    lines and the shortstat. A positive delta in any ratcheted dimension also carries
    `why-add:`. The section is a material claim: a wrong line is a review finding.
@@ -124,7 +126,7 @@ design-fit:
 ## Verify (executable — no prose-only DoD items)
 
 Rows run from the root of `medici-finance/assay`. Row 2 is the neighbour/guard row: the parity
-test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net ≤ 0 weight rows. Row 10 checks the pinned token moved.
+test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net ≤ 0 weight rows. Row 10 checks the pinned token moved. Row 13 checks the `bleed` lift is bound to the item and to D-B's scope in each kit.
 
 | # | Command | Expect |
 |---|---------|--------|
@@ -140,6 +142,7 @@ test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net �
 | 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | `MOVED` (the pinned token moved with the retired obligation) |
 | 11 | `statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?"` | output is `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim makes the command print `exit=1` and names the claim. Expect re-written 2026-10-03 (#1862). |
 | 12 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c "driver's own login" "$f"; done \| grep -c '^[1-9]'` | `2` (both kits state that only a `bleed` from the driver's own login lifts strike two; the check is procedure the worker runs, not code, so this row gates its presence in each kit) |
+| 13 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c 'THIS item, for a production-down or security fix' "$f"; done \| grep -c '^[1-9]'` | `2` (both kits bind a `bleed` to the item it names and to D-B's production-down/security scope; a class-wide or unscoped `bleed` lifts nothing) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,

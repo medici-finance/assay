@@ -486,23 +486,18 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   per-invocation scratch-file body files (desk-shell.md §Scratch files), stop-at-`implemented` + the bare-token board-row shape, lineage
   self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
   fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one,
-  the defect-class guard for a bug fix) —
+  the defect-class rule for a bug fix, strike two, `## Weight`) —
   both shipped
   inside the binary from `tools/desk/cmd/deskdispatch/references/`. `--kits`
   lists what the installed binary carries; `--dry-run` prints the prompt it WOULD emit. **Never
   paraphrase, summarise or "improve" a kit clause at dispatch time**: each is a rule that has already
   failed in the field, and the wording is the fix.
 - **A bug fix closes the defect CLASS, not the one instance** — the worker's fix obligation the kit
-  carries. When the dispatched item fixes a defect, the worker's PR names the class under a
-  `## Defect class` heading (the shape every instance shares, plus the earlier fix's issue or commit
-  when the defect has been fixed before), adds a guard that fails if ANY other site repeats it, and
-  shows that guard red against a deliberately PLANTED second instance at a site the fix does not
-  touch. The model guard is an allow-list structural test: every caller of a hazardous primitive
-  (`exampleRawToken()`) is enumerated and any caller outside the committed allow-list
-  (`exampleSafeToken()`) fails CI. A test of the reported instance alone does not discharge it. A
-  PR that fixes a defect with no `## Defect class` section — neither a class guard nor a stated
-  reason the defect has no checkable shape — is INCOMPLETE, the same as one missing its fail-first
-  run. The kit asks for a guard over ONE class, never a standing regression suite.
+  carries: name the class under a `## Defect class` heading (plus the earlier fix when there was
+  one), close it by removing the hazardous path or making it unrepresentable — a guard only when
+  removal is infeasible, reported as weight in `## Weight` and a rule-register row — and show it red
+  against a deliberately PLANTED second instance at a site the fix does not touch. A defect-fix PR
+  with no `## Defect class` section is INCOMPLETE, the same as one missing its fail-first run.
 - **Cross-repo is the default case.** The verb cuts the worktree in the item's own repo off
   `refs/remotes/origin/main`; dispatch the agent with `capability:isolate-workspace` too, so its
   payload cwd is never the shared checkout — a /tmp clone does NOT isolate that cwd, and a
@@ -510,6 +505,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
   session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
   to a cheap tier behind the review/verify gates.
+  A re-dispatch or shepherd pass on a PR whose open finding class is at round ≥ 2 runs at **strong**
+  tier. A worker's `NEEDS_CONTEXT: strike two` (kit clause 8) returns the item to intake as
+  `design-owed` — not a failure to retry.
 - **Budget checkpoint — `budget:` is a filing threshold, never a gate.** A brief may declare
   `budget:` beside `effort:` — an amount with its unit (`400k tokens`, `25 USD`); absent = no
   checkpoint. The worker reads it from the brief it was dispatched on. When the worker's own
