@@ -85,12 +85,14 @@ func TestEscalationWithEvidenceFencePasses(t *testing.T) {
 
 // TestHumanOnlyNotEvidenceGated — Verify row 3 (neighbour). `human-only` is an ACT, not a
 // claim (brief 05 of its tracking stream), so it is NOT in the escalation set: an evidence-less
-// human-only filing files (exit 0).
+// human-only filing files (exit 0). The body carries the act as a ```sh block and NO
+// `### Evidence` heading — the act gate (actgate_test.go) is satisfied, the evidence gate is
+// not asked.
 func TestHumanOnlyNotEvidenceGated(t *testing.T) {
 	withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, "human-only"))
-	body := bodyFileWith(t, bodyNoEvidence)
+	body := bodyFileWith(t, actShBody)
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
 		"--title", "a human act to perform on the roster repos", "--body-file", body,

@@ -2,8 +2,8 @@
 name: ask-decision
 description: >-
   Put the pending human decisions to the driver ONE AT A TIME, each with its context, its
-  options with a recommended default first, the exact shape of the reply, and how the desk
-  verifies the act afterwards. Use when the driver says "ask me 1-by-1", "walk me through the
+  options with a recommended default first, the exact shape of the reply, and the act itself as a
+  runnable block with how the desk verifies it afterwards. Use when the driver says "ask me 1-by-1", "walk me through the
   decisions", "what do you need from me", "what's blocked on me", "go through the
   needs-decision queue", or when a desk has more than one human gate open and would otherwise
   dump them all into one message. Also renders the same queue as a self-contained page for
@@ -122,8 +122,11 @@ each question.
 
 ## The format — five parts for every GENUINE item
 
-The script renders exactly this for every item it classifies genuine; when you compose
-an item by hand, compose the same shape.
+The script renders this shape for every item it classifies genuine; when you compose an item
+by hand, compose the same shape. One difference: the renderers cannot know the act a ruling
+authorises, so they print only the fifth part's post-act check, still under its older label
+`Verification`. Before putting an item whose ruling leads to an act, the desk writes the Act
+block itself (below).
 
 1. **Header** — `<repo>#<N> — question k of n`. The position is load-bearing: it tells the
    driver how long this will take, which is what makes it possible to say yes to starting.
@@ -143,9 +146,57 @@ an item by hand, compose the same shape.
 4. **Reply shape** — exactly what the answer must contain: a letter, a name, "done", "merge
    it". **The driver should be able to answer in one word.** If your question cannot be
    answered in one word, it is two questions or an unfinished one.
-5. **Verification** — what the desk checks after acting (the API read, the file, the run id,
-   the label state) and what it moves to next. This is the promise that the answer will not
-   evaporate into a transcript.
+5. **Act** — the act the answer sets off, in runnable form, then the post-act check: what the
+   desk checks after the act (the API read, the file, the run id, the label state) and what it
+   moves to next. The check is the promise that the answer will not evaporate into a
+   transcript; the runnable block is the promise that nobody has to rebuild a command from a
+   paragraph. The block's shape is defined once, in the next section. An item whose answer
+   sets off no act a person runs (a pure ruling the desk then carries out) keeps only the
+   check.
+
+### Act — the shape of the fifth part
+
+This is the one definition of an act block. The desk skills that hand the driver an act (a
+`BLOCKED-ON-HUMAN` report, a verify-gate card, a `human-only` filing) point here and do not
+restate it.
+
+- **A fenced `sh` block that runs top to bottom.** Copied whole and pasted into a shell, it
+  performs the act. No step lives outside the fence, and no step depends on the reader
+  running only part of it.
+- **Dry run by default.** Where the underlying tool has a `--dry-run`, the block passes it;
+  where the tool has none, a `DRY_RUN=1` guard wraps the mutating line. Either way the first
+  run of the block only reports what it would do, and the driver acts by running the same
+  block again with `DRY_RUN=0`.
+- **One comment per step.** Each step opens with one `#` line saying what it does, so the
+  driver can read the block before running it.
+- **A browser-click step** is exactly one URL line plus the field values to set, in a fenced
+  `url` block — one per page. Never "go to the settings and find…".
+- **`# fill:` markers** for a value only the human can supply (a one-time code, a choice made
+  at the console, a secret typed at the prompt). Every other value is already resolved. A
+  credential never appears in the block — the marker names it and the driver supplies it at
+  run time.
+
+```sh
+# 0. dry run unless DRY_RUN=0 is set: the first run only prints
+DRY_RUN="${DRY_RUN:-1}"
+run() { if [ "$DRY_RUN" = 1 ]; then echo "would run: $*"; else "$@"; fi; }
+# 1. push the parked branch (git push has its own --dry-run)
+if [ "$DRY_RUN" = 1 ]; then git push --dry-run origin parked-branch; else git push origin parked-branch; fi
+# 2. take the decision label off the issue (no --dry-run, so the guard covers it)
+run gh issue edit 123 -R owner/repo --remove-label needs-decision
+```
+
+```url
+https://github.com/owner/repo/settings/actions
+Workflow permissions: Read repository contents and packages permissions
+Confirmation code: # fill: the code the page shows
+```
+
+The tool half: `deskfile new` refuses (exit 5) a filing labelled `human-only`, or one whose
+body's first line is `BLOCKED-ON-HUMAN`, when the body carries neither a fenced `sh` block nor
+a fenced `url` block. The only bypass is `--force-new --reason`, and the filing's audit line
+records it. The `human-runsheet` skill's `! <command>` entry carries an act in a session's own
+runsheet; that skill owns its entry shape.
 
 ### One question per turn
 

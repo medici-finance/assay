@@ -66,8 +66,17 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          BLOCKER-EVIDENCE GATE: a new filing labelled needs-decision, help wanted or
          question is a blocker claim and is REFUSED (exit 5) unless its body carries an
          "### Evidence" heading followed by a fenced block (the verbatim output of a command
-         run this tick). human-only is NOT in the set (an act, not a claim) and attach is
-         unaffected. The refusal takes the audited --force-new --reason bypass.
+         run this tick). human-only is NOT in the set (an act, not a claim — it has its own
+         gate, below) and attach is unaffected. The refusal takes the audited
+         --force-new --reason bypass.
+
+         HUMAN-ONLY ACT GATE: a new filing that hands the driver an act — labelled
+         human-only, or with a body whose first line is BLOCKED-ON-HUMAN — is REFUSED
+         (exit 5) unless its body carries the act in runnable form: a fenced block whose
+         info string is sh (runs top to bottom) or url (one URL plus the field values, for
+         a browser step), closed and non-empty. That is the Act block the ask-decision
+         skill defines. --force-new --reason is the only bypass, and the audit line of a
+         bypassed filing carries act-gate=bypassed:force-new. attach is unaffected.
 
          CORRECTION CAPTURE: --correction "<the human's message>" switches new into skill-bug
          composition mode. With --label skill-bug --section "<skill+section>" --reading

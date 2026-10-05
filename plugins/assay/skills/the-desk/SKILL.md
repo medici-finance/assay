@@ -224,6 +224,8 @@ not own.
   own identity.
 - **Driver-act runsheet entry** — an escalation that is an ACT only the driver can perform: see
   [`../../references/desk-common.md`](../../references/desk-common.md) §Driver-act runsheet entry.
+  Its `BLOCKED-ON-HUMAN` report or `human-only` filing carries the act as an Act block
+  (`ask-decision` §"Act — the shape of the fifth part"); `deskfile new` refuses one without it (exit 5).
 - **File-and-exit, never block — the pod-loop contract (desk-hardening/13).** File (or confirm
   already-filed) the escalation, then **exit the run**; never hold it open for the answer, resumption
   is event-driven. A blocked state must be an at-rest filed issue anyone can inspect, never a hung

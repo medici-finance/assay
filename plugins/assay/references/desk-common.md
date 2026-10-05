@@ -54,7 +54,8 @@ ENFILE incident, 2026-07-23: sprawl exhausted the system open-file table).
 
 - **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
   `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
-  runsheet is the exact command the driver runs.
+  runsheet is the exact command the driver runs. The issue body carries the same act as an Act
+  block (`ask-decision` §"Act — the shape of the fifth part"), which `deskfile new` requires (exit 5).
 
 ## Boundary — what is not here yet
 

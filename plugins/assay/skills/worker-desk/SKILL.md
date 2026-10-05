@@ -209,8 +209,10 @@ This is enforced in two INDEPENDENT layers that fail on different signals in dif
 neither is the single point of failure: the skill clause here, AND — should a desk skip the clause —
 `deskfile new`, which **REFUSES (exit 5)** any filing labelled `needs-decision`, `help wanted` or
 `question` whose body has no `### Evidence` heading followed by a fenced block, naming the missing
-section. `human-only` is not in that set (it is an ACT, not a claim); `attach` observations are not
-claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
+section. `human-only` is not in that set (it is an ACT, not a claim): a `BLOCKED-ON-HUMAN` report or a
+`human-only` filing carries the act itself, as the runnable **Act block** `ask-decision` §"Act — the shape of the fifth part"
+defines, and `deskfile new` refuses one with no ` ```sh ` or ` ```url ` fence (exit 5). `attach`
+observations are not claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
 refusal does, for a blocker whose evidence genuinely cannot be produced.
 
 ## THE REPO SET — derived once, consumed by every sweep
@@ -609,7 +611,8 @@ DECISION-BLOCK READY, and **this desk** then re-runs ensure `--at spec` against 
 (subagent issue-writes get classifier-denied); **5** = self-containment refusal, repair the brief,
 never hand-file around it; **6** = could-not-check, do not file, retry next cycle. Record the issue in
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
-step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
+step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN —
+the report carrying the step the human runs as an Act block (`ask-decision` §"Act — the shape of the fifth part").
 
 **Security-gate removal is gate:human BEFORE the commit, not only at approval**: such a diff
 erases the red-check signal that makes the decision visible downstream, so "a worker behind a draft PR
