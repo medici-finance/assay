@@ -248,7 +248,7 @@ func TestStampReadbackBothPaths(t *testing.T) {
 			s := &stub{}
 			_, root := s.install(t)
 			plantScripts(t, root)
-			s.replies = happyReplies("/private/tmp/worker-home")
+			s.replies = happyReplies(t.TempDir())
 			t.Setenv("DESK_LOOP", "the-desk")
 			gh := installGHStamp(t)
 			gh.dropWrites = true
