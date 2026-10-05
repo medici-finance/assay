@@ -21,7 +21,8 @@ func deskcorePolicy(mod string, pure ...string) Policy {
 		Pure:              pure,
 		ForbiddenStd:      []string{"os/exec", "net", "net/http/..."},
 		ForbiddenInternal: []string{"ports", "collect", "adapters", "custody", "identity", "runtime", "witness"},
-		ForbiddenDirect:   []string{"os", "syscall", "os/signal", "os/user", "io/ioutil", "plugin", "unsafe"},
+		AllowedStd: []string{"bytes", "crypto/sha256", "encoding/hex", "encoding/json", "errors", "fmt", "io",
+			"reflect", "regexp", "strconv", "strings", "time"},
 	}
 }
 
@@ -76,8 +77,7 @@ var purePackages = []string{module + "/domain", module + "/facts", module + "/po
 
 // TestPurePackagesHaveNoEffectfulTransitiveImports: domain, facts, policy and config reach no
 // process, network or HTTP package, no effectful module package and no third-party package, by
-// any transitive path, and import no effect-capable standard package (os, syscall and the rest
-// of ForbiddenDirect) themselves.
+// any transitive path, and import directly no standard package outside AllowedStd.
 func TestPurePackagesHaveNoEffectfulTransitiveImports(t *testing.T) {
 	pkgs := goList(t, "..", "./domain", "./facts", "./policy", "./config")
 	for _, v := range Check(pkgs, deskcorePolicy(module, purePackages...)) {
@@ -107,16 +107,23 @@ func TestArchtestCatchesPlantedImport(t *testing.T) {
 	dir := fixture(t, "planted")
 	pkgs := goList(t, dir, "./...")
 	got := Check(pkgs, deskcorePolicy(mod, mod+"/domain", mod+"/facts", mod+"/policy", mod+"/clean",
-		mod+"/direct", mod+"/viahelper"))
+		mod+"/direct", mod+"/viahelper", mod+"/glob", mod+"/tmpl", mod+"/goparse", mod+"/coverage"))
 	want := map[string]bool{
 		mod + "/domain -> " + mod + "/mid -> os/exec": true,
 		mod + "/facts -> " + mod + "/witness":         true,
 		mod + "/policy -> net/http/httptest":          true,
-		// os.StartProcess and syscall.Exec, with no os/exec import anywhere.
+		// os.StartProcess and syscall.Exec, with no os/exec import anywhere: neither os nor syscall
+		// is on the allow list.
 		mod + "/direct -> os":      true,
 		mod + "/direct -> syscall": true,
 		// A clean pure package whose module helper writes a file.
 		mod + "/viahelper -> " + mod + "/helper -> os": true,
+		// Filesystem reads and writes through standard packages a deny list would have to name one
+		// by one; the allow list refuses them without naming them.
+		mod + "/glob -> path/filepath":        true,
+		mod + "/tmpl -> text/template":        true,
+		mod + "/goparse -> go/parser":         true,
+		mod + "/coverage -> runtime/coverage": true,
 	}
 	for _, v := range got {
 		c := strings.Join(v.Chain, " -> ")
@@ -159,10 +166,11 @@ func TestArchtestCatchesCycleAndLoadErrors(t *testing.T) {
 
 func TestArchtestCatchesThirdParty(t *testing.T) {
 	pkgs := []Package{
-		{ImportPath: "m/a", Imports: []string{"github.com/other/lib", "strings", "runtime"}},
+		{ImportPath: "m/a", Imports: []string{"github.com/other/lib", "strings", "fmt"}},
 		{ImportPath: "github.com/other/lib", Module: &struct{ Path string }{"github.com/other/lib"}},
 		{ImportPath: "strings", Standard: true},
-		{ImportPath: "runtime", Standard: true},
+		{ImportPath: "fmt", Standard: true, Imports: []string{"os"}},
+		{ImportPath: "os", Standard: true},
 	}
 	got := Check(pkgs, deskcorePolicy("m", "m/a"))
 	if len(got) != 1 || got[0].Bad != "github.com/other/lib" {
@@ -224,8 +232,13 @@ func deskcoreRules() []Rule {
 	return []Rule{
 		{
 			Pkg:   "time",
-			Funcs: []string{"Now", "Since", "Until", "After", "AfterFunc", "Tick", "NewTimer", "NewTicker", "Sleep"},
-			Why:   "a pure package reads no clock; the caller passes the time in",
+			Funcs: []string{"Now", "Since", "Until", "After", "AfterFunc", "Tick", "NewTimer", "NewTicker", "Sleep", "LoadLocation"},
+			Why:   "a pure package reads no clock and no zoneinfo file; the caller passes the time in",
+		},
+		{
+			Pkg:   "fmt",
+			Funcs: []string{"Print", "Printf", "Println", "Scan", "Scanf", "Scanln"},
+			Why:   "a pure package does no console I/O; it writes to and reads from what the caller passes in",
 		},
 		{
 			Pkg:   "encoding/json",
@@ -239,6 +252,18 @@ func deskcoreRules() []Rule {
 			Why:    "an age is computed only by facts.ageAt, which refuses a future time",
 		},
 	}
+}
+
+// ruleFor returns the deskcore call rule for package pkg.
+func ruleFor(t *testing.T, pkg string) Rule {
+	t.Helper()
+	for _, r := range deskcoreRules() {
+		if r.Pkg == pkg {
+			return r
+		}
+	}
+	t.Fatalf("deskcore has no call rule for %s", pkg)
+	return Rule{}
 }
 
 // TestPurePackagesFollowTheCallRules: no clock read in a pure package, one strict JSON decoder,
@@ -257,11 +282,12 @@ func TestPurePackagesFollowTheCallRules(t *testing.T) {
 func TestCallRulesCatchPlantedCalls(t *testing.T) {
 	fsys := os.DirFS(fixture(t, "rules"))
 	rules := []Rule{
-		deskcoreRules()[0],
+		ruleFor(t, "time"),
+		ruleFor(t, "fmt"),
 		{Pkg: "encoding/json", Funcs: []string{"Unmarshal"}, Allow: []string{"decode/decode.go:Strict"}, Why: "one decoder"},
 		{Method: "Sub", Allow: []string{"age/age.go:ageAt"}, Why: "one age"},
 	}
-	found, err := ScanRules(fsys, []string{"clock", "dotclock", "decode", "age"}, rules)
+	found, err := ScanRules(fsys, []string{"clock", "dotclock", "decode", "age", "zone", "console"}, rules)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,6 +298,9 @@ func TestCallRulesCatchPlantedCalls(t *testing.T) {
 		"dotclock/dotclock.go:3: dot-import of time":          true,
 		"decode/decode.go:9: encoding/json.Unmarshal in Load": true,
 		"age/age.go:10: call of method Sub in window.Fresh":   true,
+		"zone/zone.go:6: time.LoadLocation in London":         true,
+		"console/console.go:7: fmt.Println in Ask":            true,
+		"console/console.go:8: fmt.Scanln in Ask":             true,
 	}
 	for _, f := range found {
 		key := ""

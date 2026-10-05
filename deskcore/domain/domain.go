@@ -4,10 +4,18 @@
 // It imports only the standard library and performs no effect. Nothing here reads the process
 // environment, the filesystem, the network or a clock; a caller that needs "now" passes it in.
 // The archtest package's tests check this: no process, network or effectful package along any
-// import chain, no direct import of os, syscall or the other effect-capable packages it lists,
-// no environment read, and no clock read. A change that breaks one of those fails `go test` in
-// deskcore/archtest. CI does not run that suite yet (medici-finance/assay#2208), so until it
-// does the check holds only where the suite is run.
+// import chain; no direct standard import outside a short allow list (bytes, crypto/sha256,
+// encoding/hex, encoding/json, errors, fmt, io, reflect, regexp, strconv, strings, time), so
+// os, syscall, path/filepath and every other package that can touch the filesystem are refused
+// without being named; no environment read; and no call of the allowed packages' effectful
+// entry points (the clock, time.LoadLocation, fmt's console reads and writes). A change that
+// breaks one of those fails `go test` in deskcore/archtest. CI does not run that suite yet
+// (medici-finance/assay#2208), so until it does the check holds only where the suite is run.
+//
+// One read happens inside the standard library and is outside these checks: the first time a
+// timestamp with a numeric UTC offset is decoded, package time loads the local zone once (TZ,
+// /etc/localtime) to name that offset. It changes only the zone name attached to the value,
+// never the instant that freshness checks compare.
 package domain
 
 import (

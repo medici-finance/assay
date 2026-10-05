@@ -295,6 +295,36 @@ func TestFutureDatedSourceIsNotFresh(t *testing.T) {
 	}
 }
 
+// TestAgeAtRefusesAFutureTime isolates ageAt from the bundle-level check in Query. Load's
+// Validate bounds every source by the bundle time, so a loaded bundle never reaches ageAt with a
+// future source unless the bundle is future too; a Bundle built in Go with no bundle time does,
+// and only ageAt stands between it and a fresh answer.
+func TestAgeAtRefusesAFutureTime(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		t      time.Time
+		want   time.Duration
+		wantOK bool
+	}{
+		{"past", t0.Add(-time.Minute), time.Minute, true},
+		{"now", t0, 0, true},
+		{"one nanosecond ahead", t0.Add(time.Nanosecond), 0, false},
+		{"an hour ahead", t0.Add(time.Hour), 0, false},
+	} {
+		got, ok := ageAt(t0, c.t)
+		if got != c.want || ok != c.wantOK {
+			t.Errorf("ageAt(%s): got (%s, %v), want (%s, %v)", c.name, got, ok, c.want, c.wantOK)
+		}
+	}
+	b := &Bundle{Sources: []Source{{Identity: "s", Completeness: Complete, PaginationDone: true, CollectedAt: t0.Add(time.Hour)}}}
+	if b.CollectedAt.After(t0) {
+		t.Fatal("the bundle time must be zero so that only ageAt can refuse")
+	}
+	if got := b.Query(Query{"s", "issue.open", "7", time.Minute}, t0); got.State != CouldNotCheck {
+		t.Errorf("a Go-built bundle with a source collected after now: %s (%s), want could-not-check", got.State, got.Reason)
+	}
+}
+
 // TestLoadRefusesOversizedInput: Load reads at most MaxBundleBytes and refuses anything larger,
 // so an unbounded input cannot exhaust memory.
 func TestLoadRefusesOversizedInput(t *testing.T) {

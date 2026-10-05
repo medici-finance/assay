@@ -8,15 +8,19 @@
 //     every pure package that reaches a forbidden package by any transitive path: a process,
 //     network or HTTP package from the standard library, an effectful package of the module
 //     itself, or any third-party package. It also reports every module package, reachable from a
-//     pure one, that directly imports an effect-capable standard package such as os or syscall,
-//     which the standard library itself reaches and a transitive ban therefore cannot cover. Each
-//     violation carries the import chain, so the fix is obvious.
+//     pure one, that directly imports a standard package outside an allow list. The standard
+//     library itself reaches os and syscall, so a transitive ban cannot cover them; the allow
+//     list does, together with every other standard package that can touch the filesystem
+//     (path/filepath, text/template, go/parser, runtime/coverage), without naming any of them.
+//     Each violation carries the import chain, so the fix is obvious.
 //   - ScanKnobReads parses Go source and reports every read of the process environment, and
 //     every hard-coded copy of a knob's earlier literal value, outside the config package. A
 //     knob has exactly one reader; a second one would let the resolver's precedence and bounds
 //     be bypassed.
-//   - ScanRules reports calls a rule forbids outside the functions it allows: a clock read in a
-//     pure package, or a second place that decodes untrusted JSON or computes a time difference.
+//   - ScanRules reports calls a rule forbids outside the functions it allows. An allowed
+//     package can still have entry points with an effect (time.Now and time.LoadLocation,
+//     fmt.Println and fmt.Scan); the rules forbid those in a pure package, and forbid a second
+//     place that decodes untrusted JSON or computes a time difference.
 //   - ScanForgeable reports a struct type that has a constructor and an exported field, so a
 //     composite literal could build one without the constructor's checks.
 //
@@ -80,12 +84,13 @@ type Policy struct {
 	// ForbiddenInternal lists module-relative directories (for example "adapters") a pure
 	// package may not reach, including every package below them.
 	ForbiddenInternal []string
-	// ForbiddenDirect lists standard-library packages that neither a pure package nor any module
-	// package it reaches may import directly. The standard library reaches these itself (fmt
-	// imports os, os imports syscall), so a transitive ban cannot cover them; a direct import is
-	// what would let a package start a process, open a socket or write a file without os/exec
-	// or net.
-	ForbiddenDirect []string
+	// AllowedStd lists the only standard-library packages that a pure package, and every module
+	// package it reaches, may import directly; an empty list allows none. The standard library
+	// reaches os and syscall itself (fmt imports os), so a transitive ban cannot cover them, and
+	// a deny list of direct imports would have to name every package that touches the
+	// filesystem (path/filepath, text/template, go/parser, runtime/coverage and more). An allow
+	// list needs no such enumeration: a new standard import is refused until it is added here.
+	AllowedStd []string
 }
 
 // Violation is one broken rule.
@@ -143,9 +148,12 @@ func Check(pkgs []Package, p Policy) []Violation {
 			}
 			if isInternal(cur, p.Module) {
 				for _, imp := range cp.Imports {
-					if contains(p.ForbiddenDirect, imp) {
+					ip := byPath[imp]
+					std := (ip != nil && ip.Standard) || (ip == nil && isStdPath(imp))
+					// A package the transitive check forbids is reported once, by that check.
+					if std && !isInternal(imp, p.Module) && !contains(p.AllowedStd, imp) && forbidden(imp, ip, p) == "" {
 						out = append(out, Violation{Pure: root, Bad: imp, Chain: append(chain(parent, cur), imp),
-							Why: "imports effect-capable standard package " + imp + " directly"})
+							Why: "imports standard package " + imp + " directly, which is not on the allow list"})
 					}
 				}
 			}

@@ -1,6 +1,6 @@
 package clean
 
 import (
-	_ "runtime"
+	_ "fmt"
 	_ "strings"
 )
