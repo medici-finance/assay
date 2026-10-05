@@ -52,8 +52,11 @@ out="$("$CELLCTL" version)"
 assert 'version prints the unstamped source-tree version' '[[ "$out" =~ $source_re ]]'
 
 echo "[sole-arg only]"
-out="$("$CELLCTL" --version --lint 2>&1)" && rc=0 || rc=$?
-assert '--version combined with another arg falls through (not treated as a bare version query)' '[[ "$rc" -ne 0 || "$out" != "dev" ]]'
+# stdout only: the Go build echoes its effective roster config on stderr on every run, and a
+# multi-line capture could never match the anchored version pattern, so the assertion below
+# would pass even if `--version --lint` were wrongly answered as a version query.
+out="$("$CELLCTL" --version --lint 2>/dev/null)" && rc=0 || rc=$?
+assert '--version combined with another arg falls through (not treated as a bare version query)' '[[ "$rc" -ne 0 || ! "$out" =~ $source_re ]]'
 
 if is_shell_impl; then
   echo "[packaging: the release.yml one-liner, byte-for-byte]"
