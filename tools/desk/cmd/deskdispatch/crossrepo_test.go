@@ -805,6 +805,16 @@ func TestTagNeverWidens(t *testing.T) {
 	fenced := "# Example brief\n\nAn entry looks like:\n\n```markdown\nfiles:\n" +
 		"- `[example-tool]` `../example-deliverable/x.go`\n```\n\n" +
 		"## Context\n\nfiles:\n- `docs/streams/example-stream/README.md`\n"
+	// A fence closes only on its OWN character: a `~~~` line inside a backtick fence leaves it open,
+	// so the tagged list after it is still inside the example.
+	otherKind := "# Example brief\n\n```markdown\n~~~\nfiles:\n" +
+		"- `[example-tool]` `../example-deliverable/x.go`\n```\n\n" +
+		"## Context\n\nfiles:\n- `docs/streams/example-stream/README.md`\n"
+	// A fence closes only on a bare run: a ```go line (an info string) inside a fence opens nothing
+	// and closes nothing, so the tagged list after it is still inside the example.
+	infoString := "# Example brief\n\n```\n```go\nfiles:\n" +
+		"- `[example-tool]` `../example-deliverable/x.go`\n```\n\n" +
+		"## Context\n\nfiles:\n- `docs/streams/example-stream/README.md`\n"
 	for _, c := range []struct {
 		name, mdBody, repo string
 		front              []string
@@ -817,6 +827,8 @@ func TestTagNeverWidens(t *testing.T) {
 		{"tag not at entry head", notAtHead, "medici-finance/assay", nil},
 		{"tag in a second files: list", secondList, "medici-finance/assay", nil},
 		{"tag in a fenced example", fenced, "medici-finance/assay", nil},
+		{"fence not closed by the other kind", otherKind, "medici-finance/assay", nil},
+		{"fence not closed by a run with an info string", infoString, "medici-finance/assay", nil},
 		{"tag in frontmatter", "# Example brief\n", "medici-finance/assay",
 			[]string{"files:", "- `[example-tool]` `../example-deliverable/x.go`"}},
 		{"explicit deliverable wins", taggedBody("example-tool"), "medici-finance/assay",
@@ -849,8 +861,11 @@ func TestTagNeverWidens(t *testing.T) {
 
 // TestDeclaredTagAfterFencedExample — a fenced example `files:` block ahead of the real list is
 // skipped, not read as the brief's list, so the real `## Context` list's tag still declares. The
-// example uses a tilde fence whose body holds a shorter backtick run, so the fence closes only on its
-// own kind and length.
+// example is a four-tilde fence holding a three-tilde line, so it pins the closer's LENGTH check: a
+// shorter run of the same character does not close the fence. (Its inner backtick run is also
+// shorter than the opener, so this fixture cannot separate the closer's character check from its
+// length check; TestTagNeverWidens' "fence not closed by the other kind" row pins the character
+// check, and "fence not closed by a run with an info string" pins the nothing-after check.)
 func TestDeclaredTagAfterFencedExample(t *testing.T) {
 	s := &stub{}
 	home, root := s.install(t)

@@ -126,6 +126,24 @@
       "file": "cmd/deskdispatch/deliverable.go",
       "old": "\t\treturn tags\n\t}\n\treturn nil\n}",
       "new": "\t\tcontinue\n\t}\n\treturn tags\n}"
+    },
+    {
+      "name": "F3: a fence closes on a run of the OTHER character (the closer's same-character check is dropped); TestTagNeverWidens/fence_not_closed_by_the_other_kind must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
+      "new": "\t\t\tcase len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":"
+    },
+    {
+      "name": "F3: a fence closes on a run followed by an info string (the closer's nothing-after check is dropped); TestTagNeverWidens/fence_not_closed_by_a_run_with_an_info_string must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
+      "new": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence):"
+    },
+    {
+      "name": "F3: a fence closes on a SHORTER run of its character (the closer's length check is dropped); TestDeclaredTagAfterFencedExample must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
+      "new": "\t\t\tcase f[0] == fence[0] && strings.TrimSpace(t[len(f):]) == \"\":"
     }
   ]
 }
