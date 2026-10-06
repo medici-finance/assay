@@ -2,7 +2,7 @@
 brief: assay:assay:forge-neutral:33
 title: Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind
 why: >-
-  statusgen still runs `gh` at 31 places, and forge-neutral/18 cannot finish because some of
+  statusgen still runs `gh` at 32 places, and forge-neutral/18 cannot finish because some of
   them ask the forge something the seam has no way to ask: a closed issue's closer, a change's
   own commits, its merge commit, its author, whether it came from a fork. Until those reads exist
   on the seam, with a GitLab mapping and a refusal where GitLab cannot answer, those statusgen
@@ -25,7 +25,7 @@ sources:
   - "#2025 comment 5945992401: the precheck of forge-neutral/18's remaining slices. It stopped before building because at least five of the 31 sites need a read the frozen surface lacks (change commits, change author, cross-repo head, all-state issues with timestamps), and it named the `gh auth token` site as a credential and not a read"
   - "#2025 comment 5946009835: the routing this brief implements. The default was that 18's goal stands and a separate brief adds the missing reads, with 18's row 3 depending on it and not narrowed. That brief is authoring work that arrives as its own draft PR, where the choice can be declined at merge"
   - "#2025 comment 6013927144: 18's progress note (#2312 meets row 13 and removes one site, 31 → 30). It lists the reads still missing: closed-state lists with closedAt, merge-commit SHA, PR commits, file patches, timeline events, check rollup and closed_by. This brief re-checks that list against code; check rollup is already served (see Context)"
-  - "#2253 and its comment 6013956713: the CI read-identity question (which credential the CI-only statusgen modes read under). It is a SEPARATE pending decision. This brief neither decides it nor depends on it; see Context, 'Why this brief is independent of #2253'"
+  - "#2253 and its comment 6013956713: the CI read-identity question (which credential the CI-only statusgen modes read under). It is a SEPARATE decision, ruled (option a, comment 6014356117) after this brief was drafted; forge-neutral/34 carries that ruling's work. This brief neither decides it nor depends on it; see Context, 'Why this brief is independent of #2253'"
   - "#2312 (draft): forge-neutral/18's in-flight PR. It deletes the `doratiming.go` repo-view fallback and leaves every site this brief serves untouched"
   - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: its ground rule 'Add no operation to `Forge` … a later call site that genuinely needs one … is a separate brief under the freeze rule' (this is that brief), its Verify row 3 (zero `exec.Command(\"gh\"` in non-test statusgen) and its row 15 (`TestForgeSurfaceUnchangedByDeskread`)"
   - "docs/streams/forge-neutral/README.md, 'Shared conventions the briefs inherit': refusal not fallback; the surface stays closed and a new operation joins the frozen inventory with its consuming verb; negative-path rows are mandatory; no hand-built API call is evidence"
@@ -48,9 +48,9 @@ consumers:
   - "tools/desk/internal/deskkit/forge_surface_deskread_test.go: follow-up forge-neutral/33 (this brief's implementation: its `want` list gains exactly the four new names, in this change, as the test's own failure message directs)"
   - "tools/desk/cmd/deskread: follow-up forge-neutral/33 (this brief's implementation: the new read kinds that consume each addition)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/33 (this brief's implementation: inventory rows 55–58 and an 'added by' note)"
-  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph)"
+  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph; its `forge.go` consumers entry and its 'Add no operation' ground rule name this brief as the source of the new reads; Verify row 3's grep widens to count the `exec.CommandContext` launch and its Expect is re-measured to 32; row 15's Expect moves from 7 to 6 to match `allowedInvocationCeiling`; §6 gains a re-measure note pointing at this census)"
   - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/claimdecay.go, statusgen/corroborate.go, statusgen/decisiongateanchor.go, statusgen/issues.go, statusgen/selfimprovement.go, statusgen/transcribescan.go, statusgen/transcribeverdict.go: follow-up forge-neutral/18 (moving each site onto `deskread` is 18's Task and Verify row 3; this brief adds the reads and touches no statusgen file)"
-  - "statusgen/decisionruling.go: out-of-scope (`:643` runs `gh auth token`. That is credential acquisition, not a read, and where a CI or local statusgen run gets its credential is the question #2253 holds open)"
+  - "statusgen/decisionruling.go: out-of-scope (`:643` runs `gh auth token`. That is credential acquisition, not a read, and where a CI or local statusgen run gets its credential is the question #2253 decided; forge-neutral/34 carries that work)"
   - "statusgen/ghfetch.go: out-of-scope (statusgen's own native HTTP client, which row 3's grep does not see; it is not a forge-CLI site and is not in this brief's census)"
   - ".github/workflows/assay-statusgen.yml: out-of-scope (the CI read identity, which is #2253's decision)"
 ---
@@ -63,8 +63,8 @@ forge-neutral/18 moves statusgen off `gh` and onto `deskread`, the seam's read h
 as a process. Its ground rule is that **18 adds no operation to `Forge`**: every read it moves
 must already exist on the seam with both backends. 18's precheck on #2025 found that this is
 false for part of the remaining work. Some sites ask for a read, or a result field, that the
-frozen surface does not carry, so 18's Verify row 3 (zero `exec.Command("gh"` in non-test
-statusgen) cannot reach 0 under 18's own rules. The routing on #2025 kept 18's goal, did not
+frozen surface does not carry, so 18's Verify row 3 (zero forge-CLI launches, `exec.Command` or
+`exec.CommandContext`, in non-test statusgen) cannot reach 0 under 18's own rules. The routing on #2025 kept 18's goal, did not
 narrow row 3, and made the missing reads a separate brief. This is that brief.
 
 That routing is a **reversible default, not a ruling**: widening the surface was chosen over
@@ -182,7 +182,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
 | `corroborate.go:1195` | reviews + comments | exists: `ReviewsAtHead` + `ListCommentsTyped` | `--corroborate` |
 | `briefdecision.go:41` | label-filtered issues by state, with createdAt, **closedAt** | **new** `ListIssues` (op 55) | — |
 | `autonomy.go:491` | merged changes with **author + bot flag** | `ListChanges` + **new** `ChangeRef.Author` | — |
-| `autonomy.go:539` (not matched by row 3's grep) | merged changes in a date window, then each one's check rollup | exists: `ListChanges(Merged)` filtered on `MergedAt` (`Incomplete` is could-not-check), then `ChecksAtHead(HeadSHA)` | — |
+| `autonomy.go:539` (an `exec.CommandContext` launch, counted by row 3's widened grep) | merged changes in a date window, then each one's check rollup | exists: `ListChanges(Merged)` filtered on `MergedAt` (`Incomplete` is could-not-check), then `ChecksAtHead(HeadSHA)` | — |
 | `trustgate.go:208` | issue trust events | exists: `IssueTrustEvents` (`deskread trust`) | transcribe |
 | `briefflowreview.go:72` | closed changes **into main** with body, merged_at | `ListChanges(Merged)` + **new** `ChangeRef.BaseRef` | — |
 | `briefflowreview.go:103` | reviews | exists: `ReviewsAtHead` | — |
@@ -252,7 +252,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
      - GitHub: the GraphQL `repository.issues(states:[OPEN|CLOSED], labels:[…], first:100,
        after:…, orderBy:{field:CREATED_AT, direction:DESC})` connection, which lists issues
        and never pull requests. Fields: `number title state createdAt closedAt url
-       labels(first:100){nodes{name}}` and `author{login __typename ... on User{databaseId}
+       labels(first:100){nodes{name} pageInfo{hasNextPage}}` and `author{login __typename ... on User{databaseId}
        ... on Bot{databaseId}}`. Ceiling: `forgeMaxIssuePages` (100) pages of 100, so 10,000
        issues, the same ceiling the open-issue walk already uses. A `labels` connection with
        `hasNextPage` on any issue also sets `Incomplete`.

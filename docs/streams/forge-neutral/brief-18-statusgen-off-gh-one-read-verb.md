@@ -300,7 +300,7 @@ A scoped lint for a local pre-push check, built on `run()`'s existing `changed` 
 ### 6. Every remaining forge-CLI call site, migrated — this brief's own completion test
 
 Not a follow-on and not a forward reference: the sites below are this brief's deliverable, and
-Verify row 3 (zero `exec.Command("gh", …)` in `statusgen/`) is what says the brief is finished.
+Verify row 3 (zero forge-CLI launches, `exec.Command` or `exec.CommandContext`, in `statusgen/`) is what says the brief is finished.
 Each moves onto a `forgeReader` method added WITH its consuming call site, never ahead of it.
 
 | File | Sites at the freshness base | The read kind it needs |
