@@ -934,8 +934,8 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // trackers, so the markdown state the read lines are judged in is the
 // document's own. Every held line is collected; the earlier-entry ones are
 // dropped only when scope.supersedes them all — each a keyed results row the
-// last entry, closing on its own live strict PASS, re-ran — and otherwise the
-// first held line in the whole section refuses, as before.
+// last entry, closing on its own live strict PASS, re-ran to a clean outcome
+// — and otherwise the first held line in the whole section refuses, as before.
 func unroutedHeldLine(evidence string) (bool, string) {
 	inFence := false
 	var codeScan inlineCodeScan
@@ -1685,9 +1685,12 @@ func closeVerifyPlan(root, briefID string, now time.Time) (readme string, update
 // Supersession is inferred at ONE granularity only (#1894, heldScanScope rule
 // 3): a held row in an earlier `### ` entry is not read when the last entry,
 // closing on its own live strict **VERIFY: PASS**, re-ran that row — the same
-// row key, with a result, in a results table of its own — and every other
-// earlier hold is such a row too. A later entry that re-ran nothing, or other
-// rows, replaces nothing; an earlier hold in prose keeps every entry read.
+// row key under the same key-column name, in a results table of its own, with
+// result cells that read as a recognised clean outcome (heldOutcome) — and
+// every other earlier hold is such a row too. A later entry that re-ran
+// nothing, re-ran other rows, or wrote a placeholder, carry-forward or unclean
+// result for the held row replaces nothing; an earlier hold in prose keeps
+// every entry read.
 // Inside one entry it is NOT inferred: a
 // HELD/could-not-check row under the same heading stays live after a later
 // table runs that row green, because nothing ties the later row to the earlier
