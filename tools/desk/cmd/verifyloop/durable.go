@@ -49,7 +49,7 @@ func (d dryRunDurable) FileBug(it loopengine.Item, detail string) (string, error
 // redesign is a follow-on) and `push` the injectable push, so the retry loop is unit-testable
 // without a live remote — and so the reference build's tests never actually push.
 //
-// The PUSH is in-process (desktools-go-git/06): pushHeadToMain sends HEAD to refs/heads/main
+// The PUSH is in-process: pushHeadToMain sends HEAD to refs/heads/main
 // with gitcore.Push and the role's in-memory credential — no git child, no credential helper,
 // no token in a URL or the environment — after the checkout's pre-push hook has run.
 type gitDurable struct {
@@ -85,13 +85,18 @@ func newGitDurable(root, repo, role string) *gitDurable {
 // refspec source is the RESOLVED commit, never "HEAD" (go-git silently skips a symbolic
 // source), it carries no "+", and Force is never set: a push main has moved past is refused
 // as non-fast-forward — the race the caller's retry loop resolves. The checkout's pre-push
-// hook runs first (run answers its path), and its refusal stops the push.
+// hook runs first (run answers its path and origin's resolved URL), and its refusal stops the push.
 func pushHeadToMain(root string, endpoint func(originURL string) (deskkit.ForgeGitEndpoint, error), run func(args ...string) (string, error)) error {
 	repo, err := gitcore.Open(root)
 	if err != nil {
 		return err
 	}
-	origin, _ := repo.RemoteURL("origin")
+	// The forge-kind hint is origin as git itself resolves it (insteadOf applied), the same
+	// value deskpr passes; a checkout with no origin simply gives no hint.
+	origin := ""
+	if out, gerr := run("git", "-C", root, "remote", "get-url", "origin"); gerr == nil {
+		origin = strings.TrimSpace(out)
+	}
 	ep, err := endpoint(origin)
 	if err != nil {
 		return err

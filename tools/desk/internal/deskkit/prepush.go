@@ -3,7 +3,7 @@ package deskkit
 // prepush.go — running a repository's pre-push hook for an IN-PROCESS push.
 //
 // gitcore.Push runs no hooks. Where a desk tool replaces a `git push` child with it
-// (desktools-go-git/06: deskpr's branch push, verifyloop's durable push), the repository's
+// (deskpr's branch push, verifyloop's durable push), the repository's
 // configured pre-push hook — the deskpushguard shim wherever the guard is installed — would
 // silently stop guarding that push. PrePushHook keeps it in the path: it resolves the hook
 // the way git does and runs it with git's own contract before any byte is sent, and a

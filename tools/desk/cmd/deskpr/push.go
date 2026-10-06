@@ -1,6 +1,6 @@
 package main
 
-// push.go — deskpr's push, IN-PROCESS (desktools-go-git/06).
+// push.go — deskpr's push, IN-PROCESS.
 //
 // The push used to be `git push -u origin <branch>`: a git child that authenticated with
 // whatever the environment carried — a credential helper, a keychain entry, an insteadOf
