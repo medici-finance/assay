@@ -870,7 +870,7 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   the worker needs it to fix; apply R7 and redact genuinely secret MATERIAL (tokens/keys/PII), never a
   defect description. **On a PUBLIC repo** redact exploit recipes and route sensitive detail per
   boot step 2. Check the destination venue and visibility first; R7 also protects internal locators
-  on cross-boundary issues and comments, including private-to-private transfers.
+  on cross-boundary issues and comments, including transfers between private venues.
 - **Outward-facing diffs additionally get the leak + audience axes**, verbatim
   (`references/leak-audience-check.md`); on a purely internal diff both are silent — say so rather
   than omitting them. **The verdict itself is a real GitHub review by the reviewer App**, posted via

@@ -19,7 +19,7 @@ for every out-of-scope discovery.
 
 Before submitting an upstream issue or attaching a cross-boundary comment, apply R7: remove
 internal locators from the title, body and evidence; use opaque role+number refs. This also
-binds private-to-private transfers. Preserve a self-contained defect mechanism; real URLs stay
+binds transfers between private venues. Preserve a self-contained defect mechanism; real URLs stay
 inside the original trust boundary, and same-venue same-visibility links remain valid.
 
 `deskfile check -R <repo> --title "<t>"` first — a dry run over the repo's open issues, same dedupe
