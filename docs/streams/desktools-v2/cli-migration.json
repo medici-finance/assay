@@ -47,6 +47,11 @@
       "reason": "cellcache developer mutation runner for issue #2228; temporarily mutates source in an isolated checkout and runs bounded Go tests, not an installed operator CLI"
     },
     {
+      "class": "test",
+      "pattern": "containers/scripts/layer-secret-scan.mutate.sh",
+      "reason": "developer mutation runner for the layer-secret-scan fixtures (issue #2256); runs layer-secret-scan.test.sh against mutated copies of the scan, not an operator entrypoint"
+    },
+    {
       "class": "fixture",
       "pattern": "**/testdata/**",
       "reason": "Go testdata convention: the go tool ignores these packages; they are inputs to tests"

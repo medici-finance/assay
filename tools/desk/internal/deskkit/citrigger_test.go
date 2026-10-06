@@ -1036,6 +1036,18 @@ func ciCrossModuleRegistry() []ciEntry {
 				"is exactly how it stayed invisible the first time",
 		},
 		{
+			test:     "tools/desk/cmd/deskdispatch/triagecontract_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/ci.yml",
+			prJob:    ciJobRef{id: "build-test", check: "build-test"},
+			pushJob:  ciJobRef{id: "build-test", check: "build-test"},
+			reads: []string{
+				"plugins/assay/skills/worker-desk/SKILL.md",
+				"plugins/assay/skills/worker-desk/references/dispatch-runbook.md",
+			},
+			why: "resume triage contracts read the worker method and its references; unconditional ci.yml runs the desk suite on prose-only changes too",
+		},
+		{
 			// Registered when the desk skills moved into
 			// THIS repo's .claude/skills/ and added the skillslint check that closes
 			// #452's `.claude/**` gap. The `skills` job in statusgen.yml runs

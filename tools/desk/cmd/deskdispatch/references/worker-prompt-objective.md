@@ -519,4 +519,23 @@ this order: `## Plan`, `## Acceptance criteria`, `## Validation`, `## Notes`. Th
 copyable template is in `deskreply --help`, section WORKPAD BODY. Rehearse with
 `--dry-run` first: it reads the forge and posts nothing. A template is body data, never
 posting authorization.
+
+## C7. Managed task scratch and evidence handoff
+
+Use the runtime's owned scratch environment for disposable bodies, snapshots and build
+output; keep source changes in the assigned Git worktree. House-cell launches enroll
+scratch automatically. For a bounded standalone command, use `cellctl scratch <cell> run`
+with its source revision, snapshot/input budget and command. Never recursively copy a
+working directory containing generated output; use the bounded tracked snapshot and
+explicit required inputs. Git worktree pruning remains with `deskwt`.
+
+Before the final completion message, persist required outcomes/evidence at their canonical
+destination and read them back. If this session owns `ASSAY_SCRATCH_ID`, and every task
+sharing it has finished, call `cellctl scratch <ASSAY_SCRATCH_CELL> ack --id
+<ASSAY_SCRATCH_ID> --receipt <canonical-evidence-reference>`. Do not acknowledge a parent's
+scratch from a delegated worker. Pending evidence and resumable tasks remain protected;
+acknowledgment never overrides live ownership. The runtime alone reclaims disposable data
+and bounds failed-run diagnostics. No role adds a shell deletion hook. Older unmarked or
+harness owned scratch remains inventory-only until its ownership and evidence are proved.
+See `docs/cellctl-scratch.md` and the shipped desk-shell reference, "Managed task scratch".
 <!-- common-clauses:end -->

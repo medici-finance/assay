@@ -39,6 +39,9 @@ fires within one observer interval instead of relying on a worker to remember it
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
+
+
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
 > Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
@@ -327,12 +330,13 @@ could-not-check, never "no repos".
 - **Read the DISPOSITIONS first, before any staleness arithmetic**: `SUPERSEDED` /
   `RESOLVED-ELSEWHERE` is a deskclose item, never an orphan; `NEEDS-REBASE` is live work; exit 6 or a
   failed read means that repo is BLIND this tick, not empty.
-- A PR is **ORPHANED** when its disposition reads checked-clean AND the worker owes it action
+- A PR is **ORPHANED** when its disposition is dispatch-eligible AND the worker owes it action
   (`CHANGES_REQUESTED` at current head, CI red, findings unanswered) AND no commit/comment for **>4h**
-  AND no live dispatch claim. **Write the verdict with `deskdisposition set`** when the sweep DERIVED
-  a new one — eight of ten orphan dispatches in one 2026-08-12 cycle re-derived a conclusion an
-  earlier pass had already posted — and **re-write nothing when nothing changed** (§WIP-capped: a
-  no-change tick makes no write at all).
+  AND no live dispatch claim. **Advisory comments do not establish disposition**: apply the
+  runbook's label, evidence and supersession guards. Write `deskdisposition set` only for a supported
+  derived outcome; `NEEDS-REBASE` requires an established base/conflict defect. Still-actionable
+  work without that defect needs **no disposition write**; progress belongs in the PR workpad.
+  Re-write nothing when nothing changed (§WIP-capped: a no-change tick makes no write at all).
 - **A `SUPERSEDED` record is a PROPOSAL, never a close.** After `deskdisposition set --verdict
   SUPERSEDED --evidence <target>`, the worker runs `deskclose superseded -R <repo> <N> --by
   <target>`: under a worker-bound token the tool applies `superseded?`, posts the proposal naming

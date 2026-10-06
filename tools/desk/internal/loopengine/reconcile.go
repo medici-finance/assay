@@ -120,7 +120,7 @@ func IneligibleTerminal(reason string) EligibilityVerdict {
 // fresh worker re-dispatch straight into the held state, or (for claim-reassigned) DELETE a
 // claim ref a DIFFERENT live holder now owns, re-freeing an item that holder is actively
 // working — a double-dispatch. reason is one of superseded, resolved-elsewhere, needs-decision,
-// question, claim-reassigned, board-row-blocked.
+// question, help-wanted, claim-reassigned, board-row-blocked.
 func IneligibleHeld(reason string) EligibilityVerdict {
 	return EligibilityVerdict{kind: kindIneligibleHeld, Reason: reason}
 }
@@ -233,6 +233,9 @@ func Eligibility(c ClaimRecord, r EligibilityReaders) (EligibilityVerdict, error
 	}
 	if hasLabel(pr.Labels, "question") {
 		return IneligibleHeld("question"), nil
+	}
+	if hasLabel(pr.Labels, "help wanted") {
+		return IneligibleHeld("help-wanted"), nil
 	}
 	return Eligible, nil
 }

@@ -688,7 +688,10 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 				"row was NOT landed", side), nil)
 	}
 
-	pr, perr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
+	// CreateHeldDraftChange, never the raw CreateDraftChange: the draft must carry the desk's
+	// merge-hold marker thread, or deskflip's reviewer-approved condition has nothing to release
+	// and refuses the Evidence change however it was reviewed (#2254).
+	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
 		Body: "Verification Evidence row for `" + target + "`, landed on branch `" + side + "` and opened " +
 			"as a draft change because the default branch `" + base + "` takes no direct write on this forge. " +
@@ -697,6 +700,10 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		Base: base,
 	})
 	if perr != nil {
+		if pr != nil {
+			ac.detail = fmt.Sprintf("landed %s on %s in %s via %s, but its merge-hold was NOT opened",
+				target, repoSlug, side, draftChangeLabel(pr))
+		}
 		return perr
 	}
 

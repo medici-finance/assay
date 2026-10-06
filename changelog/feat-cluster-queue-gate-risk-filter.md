@@ -1,0 +1,2 @@
+### Changed
+- `statusgen --cluster-pending-queue` now marks each entry with a `completion` mode and echoes its `gate`: only a `gate: model` brief with no risk axis answered `yes` is `flip` (the pod runner may land Evidence and complete the verified flip); a `gate: human` or risk-flagged brief is `evidence-only` (the runner lands Evidence and the human signs). Unknown or missing gate/risk shapes fail closed to `evidence-only`.
