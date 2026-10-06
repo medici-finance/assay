@@ -1,0 +1,161 @@
+{
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
+    "file": "heldscope.go",
+    "old": "\tif s.from < 0 {\n\t\treturn false\n\t}",
+    "new": "\tif s.from < 0 {\n\t\treturn false\n\t}\n\treturn true"
+  },
+  "mutations": [
+    {
+      "name": "S3a: the entry split ignores rendering (a heading in fenced code or HTML splits)",
+      "file": "heldscope.go",
+      "old": "if i > 0 && live[i] && heldEntryHeading(l) {",
+      "new": "if i > 0 && heldEntryHeading(l) {"
+    },
+    {
+      "name": "S3a: liveness ignores fenced code (a heading and PASS inside one fence count)",
+      "file": "heldscope.go",
+      "old": "if lax || open != nil || isBlankLine(l) {",
+      "new": "if isBlankLine(l) {"
+    },
+    {
+      "name": "S3b: any ATX level opens an entry (a #### sub-heading splits)",
+      "file": "heldscope.go",
+      "old": "return t == \"###\" || strings.HasPrefix(t, \"### \") || strings.HasPrefix(t, \"###\\t\")",
+      "new": "return strings.HasPrefix(t, \"#\")"
+    },
+    {
+      "name": "S1: an earlier hold is dropped whether or not the last entry re-ran its row",
+      "file": "heldscope.go",
+      "old": "if k := s.lines[i].key; k == \"\" || !s.covered[k] {",
+      "new": "if false {"
+    },
+    {
+      "name": "S1: an earlier hold with no row key (prose, misaligned row) is dropped",
+      "file": "heldscope.go",
+      "old": "k == \"\" || !s.covered[k]",
+      "new": "k != \"\" && !s.covered[k]"
+    },
+    {
+      "name": "S1: a covering row needs no result",
+      "file": "heldscope.go",
+      "old": "\t\t\tif ran {",
+      "new": "\t\t\tif true {"
+    },
+    {
+      "name": "S1: an earlier entry's own table covers its rows",
+      "file": "heldscope.go",
+      "old": "if tb.header <= last {",
+      "new": "if false {"
+    },
+    {
+      "name": "S2: a covering table need not render live",
+      "file": "heldscope.go",
+      "old": "allLive = allLive && live[i] && strings.HasPrefix(lines[i], \"|\")",
+      "new": "allLive = true"
+    },
+    {
+      "name": "S2: a covering table may continue a blockquote",
+      "file": "heldscope.go",
+      "old": "if prev := tb.header - 1; prev != last && !isBlankLine(lines[prev]) {",
+      "new": "if prev := tb.header - 1; false && prev != last {"
+    },
+    {
+      "name": "S2: the PASS marker need not render live",
+      "file": "heldscope.go",
+      "old": "if m == nil || m[0] != 0 || lines[i][m[2]:m[3]] != \"PASS\" || !live[i] {",
+      "new": "if m == nil || m[0] != 0 || lines[i][m[2]:m[3]] != \"PASS\" {"
+    },
+    {
+      "name": "S2: the PASS marker may sit anywhere on its line",
+      "file": "heldscope.go",
+      "old": "if m == nil || m[0] != 0 || lines[i][m[2]:m[3]] != \"PASS\" || !live[i] {",
+      "new": "if m == nil || lines[i][m[2]:m[3]] != \"PASS\" || !live[i] {"
+    },
+    {
+      "name": "S2: the PASS marker may wrap code, HTML or a strike",
+      "file": "heldscope.go",
+      "old": "if strings.ContainsAny(lines[i][m[0]:m[1]], \"`<[\\\\~|\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "S2: the PASS marker may continue the paragraph above",
+      "file": "heldscope.go",
+      "old": "if i-1 != lo && !isBlankLine(lines[i-1]) {",
+      "new": "if false {"
+    },
+    {
+      "name": "S2: a verdict after the PASS marker is ignored",
+      "file": "heldscope.go",
+      "old": "if i == at && n > 1 || i > at && n > 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "S2: a CommonMark/scan fence disagreement is ignored",
+      "file": "heldscope.go",
+      "old": "if toggle != strict {",
+      "new": "if false && toggle != strict {"
+    },
+    {
+      "name": "S2: HTML blocks render live",
+      "file": "heldscope.go",
+      "old": "if h, end := heldHTMLOpen(l); h {",
+      "new": "if h, end := heldHTMLOpen(l); false && h {"
+    },
+    {
+      "name": "over-strict: an HTML paragraph never ends (no line after it is live)",
+      "file": "heldscope.go",
+      "old": "\t\t\t\thtml = false",
+      "new": "\t\t\t\thtml = true"
+    },
+    {
+      "name": "over-strict: a multi-line HTML comment never ends",
+      "file": "heldscope.go",
+      "old": "\t\t\t\thtmlEnd = \"\"",
+      "new": "\t\t\t\thtmlEnd = htmlEnd"
+    },
+    {
+      "name": "A1: header names match by prefix again",
+      "file": "heldscope.go",
+      "old": "case heldOtherColumns[n]:",
+      "new": "case heldOtherColumns[n] || strings.HasPrefix(n, \"runner\"):"
+    },
+    {
+      "name": "A2: an exit mapping that names a row is exempt",
+      "file": "heldscope.go",
+      "old": "if heldNamesRowRe.MatchString(clean) {",
+      "new": "if false {"
+    },
+    {
+      "name": "A5: a table with no row-key column is a results table",
+      "file": "heldscope.go",
+      "old": "if tb.keyCol >= 0 && hasResult {",
+      "new": "if hasResult {"
+    },
+    {
+      "name": "A5: a table with no separator row is a results table",
+      "file": "heldscope.go",
+      "old": "if j-i >= 2 && heldSeparatorRow(lines[i+1]) {",
+      "new": "if j-i >= 2 {"
+    },
+    {
+      "name": "rule 1: a misaligned row is blanked by header position",
+      "file": "heldscope.go",
+      "old": "if len(cells) != len(header) {",
+      "new": "if len(cells) < len(header) {"
+    },
+    {
+      "name": "rule 2: exit mappings are exempt with no results table",
+      "file": "verifyissues.go",
+      "old": "if read.prose && heldExitMapping(clean, h) {",
+      "new": "if heldExitMapping(clean, h) {"
+    },
+    {
+      "name": "S1: the scan drops every earlier hit without the cover check",
+      "file": "verifyissues.go",
+      "old": "if superseded && i < scope.from {",
+      "new": "if scope.from >= 0 && i < scope.from {"
+    }
+  ]
+}

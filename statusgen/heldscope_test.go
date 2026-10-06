@@ -21,14 +21,17 @@ func scopeRow(n, expect, observed string) string {
 	return "| " + n + " | `tool check` | " + expect + " | " + observed + " | 2026-10-03 | fixture-verifier |\n"
 }
 
-// heldRun is an earlier verifier run whose row 2 was HELD.
+// heldRun is an earlier verifier run whose row 2 was HELD in its result cell.
 const heldRun = "### Run 1 — 2026-10-01\n\n" +
 	"| # | Command | Exit | Result | Date | Runner |\n" +
 	"|---|---------|------|--------|------|--------|\n" +
 	"| 1 | `go test ./...` | 0 | ok | 2026-10-01 | fixture-verifier |\n" +
 	"| 2 | `go test ./integration/...` | — | HELD — no runner online | 2026-10-01 | fixture-verifier |\n\n" +
-	"Row 2 is HELD until a runner is online.\n\n" +
 	"**VERIFY: PASS** (model) — row 1 green.\n\n"
+
+// passTable is a later run's results table, rows 1 and 2 green.
+const passTable = scopeHdr + "| 1 | `tool check` | exit 0 | exit 0, ok | 2026-10-03 | fixture-verifier |\n" +
+	"| 2 | `tool check` | exit 0 | exit 0, ok | 2026-10-03 | fixture-verifier |\n"
 
 // passRun is a later run of its own with every row green and a closing verdict.
 func passRun(verdict string) string {
@@ -74,16 +77,26 @@ func TestHeldScopeExpectCellAdmitted(t *testing.T) {
 	})
 }
 
-// TestHeldScopeSupersededAdmitted: HELD in an earlier entry is admitted once
-// a later entry records its own strict PASS.
+// TestHeldScopeSupersededAdmitted: a row HELD in an earlier entry is admitted
+// once the last entry re-runs that row in a results table of its own and
+// records its own strict PASS.
 func TestHeldScopeSupersededAdmitted(t *testing.T) {
 	runHeldScanCases(t, []heldScanCase{
-		{"held row and prose in an earlier entry",
+		{"held row in an earlier entry",
 			heldRun + passRun("**VERIFY: PASS**"), false},
-		{"held preamble before the first entry",
-			"Row 2 HELD — no runner online.\n\n" + passRun("**VERIFY: PASS** — all rows green."), false},
+		{"held row in the preamble table",
+			strings.TrimPrefix(heldRun, "### Run 1 — 2026-10-01\n\n") + passRun("**VERIFY: PASS** — all rows green."), false},
 		{"three entries, last one passes",
 			heldRun + heldRun + passRun("**VERIFY: PASS**"), false},
+		{"heading straight after a paragraph",
+			strings.TrimSuffix(heldRun, "\n") + passRun("**VERIFY: PASS**"), false},
+		{"HTML comment in the preamble",
+			"<!-- one entry per verifier run -->\n\n" + heldRun + passRun("**VERIFY: PASS**"), false},
+		{"multi-line comment in the preamble",
+			"<!--\none entry per verifier run\n-->\n\n" + heldRun + passRun("**VERIFY: PASS**"), false},
+		{"later run re-keys the row",
+			heldRun + "### Run 2\n\n| # | Command | Exit | Result | Date | Runner |\n|---|---|---|---|---|---|\n" +
+				"| **2** | `go test ./integration/...` | 0 | ok | 2026-10-03 | fixture-verifier |\n\n**VERIFY: PASS**\n", false},
 	})
 }
 
@@ -108,14 +121,72 @@ func TestHeldScopeFailClosed(t *testing.T) {
 				"\nOnline runner, same table:\n\n" + scopeHdr + scopeRow("2", "exit 0", "ok") + "\n**VERIFY: PASS**\n", true},
 		{"heading inside a fence does not split",
 			"### Run 1\n\n" + scopeHdr + scopeRow("2", "exit 0", "HELD — offline") +
-				"\n```\n### Run 2\n```\n\n**VERIFY: PASS**\n", true},
+				"\n```\n### Run 2\n```\n\n" + passTable + "\n**VERIFY: PASS**\n", true},
+		// The later entry must re-run every row that held (S1).
+		{"later entry re-ran nothing",
+			heldRun + "### Run 2\n\n**VERIFY: PASS**\n", true},
+		{"later entry re-ran row 1 only",
+			heldRun + "### Run 2\n\n" + scopeHdr + scopeRow("1", "exit 0", "ok") + "\n**VERIFY: PASS**\n", true},
+		{"later row records no result",
+			heldRun + "### Run 2\n\n" + scopeHdr + scopeRow("1", "exit 0", "ok") + scopeRow("2", "exit 0", "~~ok~~") +
+				"\n**VERIFY: PASS**\n", true},
+		{"later table keyed by command",
+			heldRun + "### Run 2\n\n| Command | Result |\n|---|---|\n| `go test ./integration/...` | ok |\n\n**VERIFY: PASS**\n", true},
+		{"earlier hold in prose",
+			heldRun + "Row 2 is HELD until a runner is online.\n\n" + passRun("**VERIFY: PASS**"), true},
+		{"earlier held row misaligned",
+			"### Run 1\n\n" + scopeHdr + "| 2 | a | b | c | HELD — offline | 2026-10-01 | fixture-verifier |\n\n" +
+				passRun("**VERIFY: PASS**"), true},
+		// Heading, marker and covering table count only where they render (S2, S3).
+		{"heading and PASS in one fence",
+			heldRun + "```\n### Run 2\n\n" + passTable + "\n**VERIFY: PASS**\n```\n", true},
+		{"level-4 heading with a PASS",
+			heldRun + "#### Run 2\n\n" + passTable + "\n**VERIFY: PASS**\n", true},
+		{"entry inside an HTML comment",
+			heldRun + "<!--\n### Run 2\n\n" + passTable + "\n**VERIFY: PASS**\n-->\n", true},
+		{"table inside an HTML comment",
+			heldRun + "### Run 2\n\n<!--\n" + passTable + "-->\n\n**VERIFY: PASS**\n", true},
+		{"PASS inside an HTML block",
+			heldRun + "### Run 2\n\n" + passTable + "\n<div>\n**VERIFY: PASS**\n</div>\n", true},
+		{"short fence inside a long one",
+			heldRun + "````\n```\n### Run 2\n\n" + passTable + "\n**VERIFY: PASS**\n````\n", true},
+		{"tilde line inside a backtick fence",
+			heldRun + "```\n~~~\n### Run 2\n\n" + passTable + "\n**VERIFY: PASS**\n```\n", true},
+		{"info string cannot close a fence",
+			heldRun + "```\n```text\n### Run 2\n\n" + passTable + "\n**VERIFY: PASS**\n```\n", true},
+		{"PASS continues a blockquote",
+			heldRun + "### Run 2\n\n" + passTable + "\n> runner note\n**VERIFY: PASS**\n", true},
+		{"PASS inside a code span",
+			heldRun + "### Run 2\n\n" + passTable + "\n`quoted\n**VERIFY: PASS**`\n", true},
+		{"PASS inside a strike",
+			heldRun + "### Run 2\n\n" + passTable + "\n~~retracted\n**VERIFY: PASS**~~\n", true},
+		{"PASS paragraph in a fence",
+			heldRun + "### Run 2\n\n" + passTable + "\n```\n\n**VERIFY: PASS**\n```\n", true},
+		{"PASS paragraph in a comment",
+			heldRun + "### Run 2\n\n" + passTable + "\n<!--\n\n**VERIFY: PASS**\n-->\n", true},
+		{"PASS as indented code",
+			heldRun + "### Run 2\n\n" + passTable + "\n    **VERIFY: PASS**\n", true},
+		{"PASS marker wraps a code span",
+			heldRun + passRun("**VERIFY: PASS `tool** --x`"), true},
+		{"table continues a blockquote",
+			heldRun + "### Run 2\n\n> runner note\n" + passTable + "\n**VERIFY: PASS**\n", true},
+		{"table as indented code",
+			heldRun + "### Run 2\n\n    " + strings.ReplaceAll(strings.TrimSuffix(passTable, "\n"), "\n", "\n    ") + "\n\n**VERIFY: PASS**\n", true},
+		{"quoted FAIL after the PASS",
+			heldRun + passRun("**VERIFY: PASS**\n\n> VERIFY: FAIL — row 2 regressed."), true},
 		{"misaligned row is read whole",
 			"**VERIFY: PASS**\n\n" + scopeHdr +
 				"| 4 | grep a | wc -l | could-not-check exit 6 | exit 0 | 2026-10-03 | fixture-verifier |\n", true},
+		{"keyless table is read whole",
+			"**VERIFY: PASS**\n\n| Check | Expect | Note |\n|---|---|---|\n| floor | could-not-check | ok |\n", true},
+		{"table with no separator row",
+			"**VERIFY: PASS**\n\n| # | Command | Expect | Observed |\n| 2 | `probe` | could-not-check | ok |\n", true},
 		{"unrecognised table is read whole",
 			"**VERIFY: PASS**\n\n| Check | Note |\n|---|---|\n| floor | expected could-not-check |\n", true},
 		{"exit prose with no results table",
 			"**VERIFY: PASS** — exit codes: could-not-check → exit 6.\n", true},
+		{"longer header name is a result",
+			"**VERIFY: PASS**\n\n| # | Command | Exit | Runner verdict |\n|---|---|---|---|\n| 2 | `probe` | 0 | HELD — offline |\n", true},
 	})
 }
 
@@ -130,6 +201,8 @@ func TestHeldScopeExitProse(t *testing.T) {
 			"**VERIFY: PASS**\n\n" + tbl + "\nNote: HELD -> exit 3; could-not-check = exit code 6.\n", false},
 		{"parenthesised meaning",
 			"**VERIFY: PASS**\n\n" + tbl + "\nThe guard exits 0 (clean), exit 2 (could-not-check).\n", false},
+		{"mapping that names a row",
+			"**VERIFY: PASS**\n\n" + tbl + "\nrow 3 could-not-check → exit 6, runner offline.\n", true},
 		{"mapping beside a live hold refuses",
 			"**VERIFY: PASS**\n\n" + tbl + "\ncould-not-check → exit 6; row 3 HELD, runner offline.\n", true},
 	})

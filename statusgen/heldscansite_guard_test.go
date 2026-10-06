@@ -144,12 +144,19 @@ func TestHeldRegexSingleScanSite(t *testing.T) {
 //
 // DEFECT CLASS: a HELD/could-not-check scan that reads Evidence text outside
 // heldScanScope's read scope — an Expect or Command cell, exit-code prose, or
-// an Evidence entry a later strict-PASS entry has replaced — and so refuses a
-// clean pass on text that is not a live row disposition. The instance was the
-// one scan site, unroutedHeldLine, reading the whole Evidence section. The
-// class is any scan site (heldScanSites) that does not take its scope from
-// heldScanScope. Together with TestHeldRegexSingleScanSite (one site may read
-// the marker), this pins every HELD read to the one scope decision.
+// an Evidence row a later strict-PASS entry re-ran — and so refuses a clean
+// pass on text that is not a live row disposition; or, the other way, a scan
+// site that calls heldScanScope and ignores its decision. The instance was
+// the one scan site, unroutedHeldLine, reading the whole Evidence section.
+// The class is any scan site (heldScanSites) that does not take its scope
+// from heldScanScope AND read it. Together with TestHeldRegexSingleScanSite
+// (one site may read the marker), this pins every HELD read to the one scope
+// decision.
+//
+// heldScopeCallersIn returns each function in file that binds the result of
+// a heldScanScope call to a named variable and then reads that variable
+// through a selector or an index (scope.lines, scope.supersedes): a call
+// whose result is discarded, or bound and never consulted, does not count.
 func heldScopeCallersIn(file *ast.File) map[string]bool {
 	out := map[string]bool{}
 	for _, d := range file.Decls {
@@ -157,11 +164,33 @@ func heldScopeCallersIn(file *ast.File) map[string]bool {
 		if !ok || fd.Body == nil {
 			continue
 		}
+		bound := map[string]bool{}
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
-			if c, ok := n.(*ast.CallExpr); ok {
-				if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "heldScanScope" {
-					out[fd.Name.Name] = true
-				}
+			as, ok := n.(*ast.AssignStmt)
+			if !ok || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
+				return true
+			}
+			c, ok := as.Rhs[0].(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			fn, ok := c.Fun.(*ast.Ident)
+			lhs, ok2 := as.Lhs[0].(*ast.Ident)
+			if ok && ok2 && fn.Name == "heldScanScope" && lhs.Name != "_" {
+				bound[lhs.Name] = true
+			}
+			return true
+		})
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			var x ast.Expr
+			switch n := n.(type) {
+			case *ast.SelectorExpr:
+				x = n.X
+			case *ast.IndexExpr:
+				x = n.X
+			}
+			if id, ok := x.(*ast.Ident); ok && bound[id.Name] {
+				out[fd.Name.Name] = true
 			}
 			return true
 		})
@@ -170,7 +199,7 @@ func heldScopeCallersIn(file *ast.File) map[string]bool {
 }
 
 // heldScopeMissing returns each heldScanSites function defined in the
-// non-test .go files of dir that never calls heldScanScope, and how many
+// non-test .go files of dir that never binds and reads heldScanScope, and how many
 // sites it found defined at all.
 func heldScopeMissing(t *testing.T, dir string) (missing []string, defined int) {
 	t.Helper()
@@ -202,21 +231,26 @@ func heldScopeMissing(t *testing.T, dir string) (missing []string, defined int) 
 }
 
 // TestHeldScopeGuardSeesPlant is the scope guard's positive control: a
-// planted site that reads without heldScanScope is reported, its twin that
-// calls it is not.
+// planted site that reads without heldScanScope, one that discards its
+// result and one that binds it but never reads it are reported; the twin
+// that consults the result is not.
 func TestHeldScopeGuardSeesPlant(t *testing.T) {
 	const src = `package main
 
 func plantedBare(ev string) bool { return heldOrCouldNotCheckRe.MatchString(ev) }
 
-func plantedScoped(ev string) bool { _ = heldScanScope(ev); return false }
+func plantedDiscard(ev string) bool { _ = heldScanScope(ev); return false }
+
+func plantedUnread(ev string) bool { s := heldScanScope(ev); _ = s; return false }
+
+func plantedScoped(ev string) bool { s := heldScanScope(ev); return s.supersedes(nil) }
 `
 	file, err := parser.ParseFile(token.NewFileSet(), "plant.go", src, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := heldScopeCallersIn(file)
-	if got["plantedBare"] || !got["plantedScoped"] {
+	if got["plantedBare"] || got["plantedDiscard"] || got["plantedUnread"] || !got["plantedScoped"] {
 		t.Fatalf("scope guard walker reported %v, want only plantedScoped", got)
 	}
 }
@@ -227,6 +261,6 @@ func TestHeldScanSitesUseScope(t *testing.T) {
 		t.Fatalf("guard found %d of the %d heldScanSites defined — the matcher is broken, not the tree clean", defined, len(heldScanSites))
 	}
 	for _, m := range missing {
-		t.Errorf("%s reads HELD/could-not-check without heldScanScope — it would read Expect cells, exit-code prose and superseded Evidence entries as live dispositions again (#1894); take the read scope from heldScanScope", m)
+		t.Errorf("%s reads HELD/could-not-check without consulting heldScanScope — it would read Expect cells, exit-code prose and re-run Evidence rows as live dispositions again (#1894); bind heldScanScope's result and read it", m)
 	}
 }

@@ -927,16 +927,21 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // the pass — so that caller's read cannot be switched off by how (or
 // whether) the marker was written.
 //
-// What it reads is heldScanScope's decision (#1894): the latest Evidence
-// entry once that entry records its own strict PASS; in an entry with a
+// What it reads is heldScanScope's decision (#1894): in an entry with a
 // results table, only the rows' result cells, plus the prose around the
-// table minus exit-code mappings ("could-not-check → exit 6"). Lines outside that scope still
-// pass through the fence and inline-code trackers, so the markdown state the
-// read lines are judged in is the document's own.
+// table minus exit-code mappings that name no row ("could-not-check → exit
+// 6"). Lines outside that scope still pass through the fence and inline-code
+// trackers, so the markdown state the read lines are judged in is the
+// document's own. Every held line is collected; the earlier-entry ones are
+// dropped only when scope.supersedes them all — each a keyed results row the
+// last entry, closing on its own live strict PASS, re-ran — and otherwise the
+// first held line in the whole section refuses, as before.
 func unroutedHeldLine(evidence string) (bool, string) {
 	inFence := false
 	var codeScan inlineCodeScan
 	scope := heldScanScope(evidence)
+	var hits []int
+	var quotes []string
 	for i, line := range strings.Split(evidence, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
@@ -962,7 +967,8 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		// masker, so a backtick or "<" in it leaves the scan as uncertain as
 		// it is in the rendered text.
 		masked := codeScan.mask(line)
-		if strings.HasPrefix(trimmed, ">") || scope[i].skip {
+		read := scope.lines[i]
+		if strings.HasPrefix(trimmed, ">") || read.skip {
 			continue
 		}
 		// A results-table row is read in its result cells only: the
@@ -972,7 +978,7 @@ func unroutedHeldLine(evidence string) (bool, string) {
 		// it as when the whole row was read.
 		// The refusal message still quotes the whole row.
 		_, whole, _ := stripStruck(line, masked)
-		line, masked = heldBlankRanges(line, scope[i].blank), heldBlankRanges(masked, scope[i].blank)
+		line, masked = heldBlankRanges(line, read.blank), heldBlankRanges(masked, read.blank)
 		clean, view, cuts := stripStruck(line, masked)
 		heldLocs := heldOrCouldNotCheckRe.FindAllStringIndex(clean, -1)
 		if heldLocs == nil {
@@ -1015,8 +1021,8 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			}
 			// Prose beside a results table that says what an exit code
 			// means ("could-not-check → exit 6") is not a disposition; the
-			// row's own result cell is (heldScanScope rule 3, #1894).
-			if scope[i].prose && heldExitMapping(clean, h) {
+			// row's own result cell is (heldScanScope rule 2, #1894).
+			if read.prose && heldExitMapping(clean, h) {
 				continue
 			}
 			keywordAfter := false
@@ -1036,8 +1042,16 @@ func unroutedHeldLine(evidence string) (bool, string) {
 			if keywordAfter && refAfter {
 				continue // knowingly routed to a named follow-up — excluded from the PASS, not contradicting it
 			}
-			return true, strings.TrimSpace(whole)
+			hits, quotes = append(hits, i), append(quotes, strings.TrimSpace(whole))
+			break
 		}
+	}
+	superseded := scope.supersedes(hits)
+	for k, i := range hits {
+		if superseded && i < scope.from {
+			continue
+		}
+		return true, quotes[k]
 	}
 	return false, ""
 }
@@ -1668,10 +1682,13 @@ func closeVerifyPlan(root, briefID string, now time.Time) (readme string, update
 // paths, so the two can never drift into refusing differently; the
 // no-strict-marker variant is reachable from the verified path only.
 //
-// Supersession is inferred at ONE granularity only (#1894, heldScanScope):
-// when the Evidence holds two or more `### ` entries and the last one records
-// its own strict **VERIFY: PASS** as its last verdict, the earlier entries are
-// not read — that run replaced them. Inside one entry it is NOT inferred: a
+// Supersession is inferred at ONE granularity only (#1894, heldScanScope rule
+// 3): a held row in an earlier `### ` entry is not read when the last entry,
+// closing on its own live strict **VERIFY: PASS**, re-ran that row — the same
+// row key, with a result, in a results table of its own — and every other
+// earlier hold is such a row too. A later entry that re-ran nothing, or other
+// rows, replaces nothing; an earlier hold in prose keeps every entry read.
+// Inside one entry it is NOT inferred: a
 // HELD/could-not-check row under the same heading stays live after a later
 // table runs that row green, because nothing ties the later row to the earlier
 // one. There the verifier who resolves a hold strikes the earlier line through
