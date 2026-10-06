@@ -577,6 +577,24 @@ func ciCrossModuleRegistry() []ciEntry {
 				"on tools/** alone it would never run on any of them",
 		},
 		{
+			test:     "tools/harnessgen/redaction_test.go",
+			module:   "tools/harnessgen",
+			workflow: ".github/workflows/ci.yml",
+			prJob:    ciJobRef{id: "build-test", check: "build-test"},
+			pushJob:  ciJobRef{id: "build-test", check: "build-test"},
+			reads: []string{
+				"plugins/assay/resident-rules.md",
+				"plugins/assay/skills/the-desk/SKILL.md",
+				"plugins/assay/references/desk-shell.md",
+				"tools/desk/cmd/deskdispatch/references/worker-prompt.md",
+				".claude/guardrails/GUARDRAILS.md",
+			},
+			runInvokes: []string{`*/tools/harnessgen|tools/harnessgen) extra="go test ./..."`},
+			why: "the redaction instruction guard reads R7 and walks the skill, reference, " +
+				"dispatch-kit and shared-guardrail corpora; ci.yml runs the harnessgen suite " +
+				"on unfiltered pull_request and push events, covering every scanned path",
+		},
+		{
 			// The resident-rules single-source guard. harnessgen single-sources the resident
 			// operating rules: plugins/assay/resident-rules.md is the ONE home,
 			// and the committed delivery artifacts — the Claude SessionStart

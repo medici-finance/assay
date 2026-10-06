@@ -743,6 +743,8 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering
   evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
+  Before submitting an upstream issue or attaching a cross-boundary comment, apply R7: remove
+  internal locators from the title, body and evidence; use opaque role+number refs instead.
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
   driver or a stronger-tier model — the item PARKS only when the fork is one-way; a reversible item proceeds on its
   stated default with the label riding on it) or `help wanted` (the desk hit its capability/authority edge). Both are
