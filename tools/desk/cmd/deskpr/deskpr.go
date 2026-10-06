@@ -377,34 +377,35 @@ func cmdCreate(args []string) (err error) {
 		return oerr
 	}
 
-	// CreateDraftChange opens the change as a DRAFT — the frozen property of the seam; there
-	// is no path on which it opens ready. The body goes straight to the backend, so there is
-	// no temp file and no `--body-file` argv any more.
-	ref, cErr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
+	// CreateHeldDraftChange opens the change as a DRAFT — the frozen property of the seam;
+	// there is no path on which it opens ready — and then opens the desk's merge-hold marker
+	// thread on it (the forge-gitlab merge-hold brief): a resolvable discussion thread that
+	// blocks GitLab's merge button (only_allow_merge_if_all_discussions_are_resolved) until the
+	// reviewer's approve verdict releases it at the current head. GitHub returns the typed
+	// not-applicable (its twin control is server-side branch protection), a no-op there. The
+	// pairing lives in deskkit so every verb that opens a change gets it (#2254). A hold-open
+	// failure is LOUD: the change already exists, and an operator who is not told it is
+	// missing its gate would not find out until a ready-flip refuses for a reason that reads
+	// like a different problem. The body goes straight to the backend, so there is no temp
+	// file and no `--body-file` argv any more.
+	ref, cErr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: *title, Body: string(prBody), Head: facts.branch, Base: *base,
 	})
 	if cErr != nil {
-		return deskkit.Unverifiable("create draft change failed", cErr)
+		if ref == nil {
+			return deskkit.Unverifiable("create draft change failed", cErr)
+		}
+		if ref.Number > 0 {
+			n := ref.Number
+			ac.pr = &n
+		}
+		return cErr
 	}
 	url := ref.URL
 	detail := "created " + url
 	if ref.Number > 0 {
 		n := ref.Number
 		ac.pr = &n
-		// Open the desk's merge-hold marker thread (the forge-gitlab merge-hold brief): a
-		// resolvable discussion thread that blocks GitLab's merge button
-		// (only_allow_merge_if_all_discussions_are_resolved) until the reviewer's approve
-		// verdict releases it at the current head. GitHub returns the typed not-applicable
-		// (its twin control is server-side branch protection) and this is a no-op there.
-		// Failure to open is LOUD: the change already exists, and an operator who is not
-		// told it is missing its gate would not find out until a ready-flip refuses for a
-		// reason that reads like a different problem.
-		if hErr := openMergeHoldFn(fg, fr, n); hErr != nil {
-			return deskkit.Unverifiable(fmt.Sprintf(
-				"%s was created, but opening its merge-hold marker thread failed: %v — the change exists "+
-					"WITHOUT its server-side merge gate armed. Open one by hand (or re-run this step) before "+
-					"the PR is reviewed.", url, hErr), hErr)
-		}
 		// --decided (attention-budget/19): the block is already IN the body the create call
 		// just published — this only mirrors it as the at-a-glance label. A PR with no
 		// --decided applies no label at all (the transcribe-only shape stays byte-for-byte
@@ -423,18 +424,6 @@ func cmdCreate(args []string) (err error) {
 	}
 	ac.detail = detail
 	fmt.Println(url)
-	return nil
-}
-
-// openMergeHoldFn is the seam for deskpr create's merge-hold open step, a package var so
-// tests can observe the call without a live GitLab instance. Production calls
-// deskkit.Forge.OpenMergeHold directly and treats the typed not-applicable (GitHub: the twin
-// control is server-side branch protection) as success — there is nothing to open there.
-var openMergeHoldFn = func(fg deskkit.Forge, fr deskkit.ForgeRepo, number int) error {
-	_, err := fg.OpenMergeHold(fr, number)
-	if err != nil && !deskkit.IsMergeHoldNotApplicable(err) {
-		return err
-	}
 	return nil
 }
 
