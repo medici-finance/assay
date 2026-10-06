@@ -52,6 +52,26 @@ func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *
 	})
 }
 
+// RunInteractiveObserved enrolls a child before accepting its completion.
+func RunInteractiveObserved(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
+	return RunInteractive(observeLaunch(ctx, started), argv, env, dir, stdin, stdout, stderr)
+}
+
+// RunObserved goes through Run's public custody boundary. Observation must never
+// create a second route around launch admission or cache ownership.
+func RunObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
+	return Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)
+}
+
+type observerKey struct{}
+
+func observeLaunch(ctx context.Context, started func(int) error) context.Context {
+	if ctx == nil || started == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, observerKey{}, started)
+}
+
 // One custody boundary covers cadence, interactive and detached tmux wrappers.
 // A crash or uncertain child cleanup leaves a durable active-cache record.
 func withCache(env []string, child func() (int, bool, error)) (int, bool, error) {
@@ -65,6 +85,14 @@ func withCache(env []string, child func() (int, bool, error)) (int, bool, error)
 }
 
 func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error)) (int, bool, error) {
+	var started func(int) error
+	if ctx != nil {
+		started, _ = ctx.Value(observerKey{}).(func(int) error)
+	}
+	return runObserved(ctx, argv, env, dir, stdout, stderr, setup, started)
+}
+
+func runObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error), started func(int) error) (int, bool, error) {
 	if ctx == nil || len(argv) == 0 || argv[0] == "" {
 		return -1, false, errors.New("process launch requires a context and executable")
 	}
@@ -93,6 +121,9 @@ func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.
 		return -1, false, errors.Join(err, tree.close())
 	}
 	startErr := tree.started(cmd.Process)
+	if startErr == nil && started != nil {
+		startErr = started(cmd.Process.Pid)
+	}
 	close(ready)
 	var abortErr error
 	if startErr != nil {
