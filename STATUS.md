@@ -72,7 +72,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 52af19f 2026-10-06T23:51:02Z_
+_last regen: e6a92c3 2026-10-06T23:53:24Z_
 
 **Progress:** 8/13 brief items done.
 
@@ -94,7 +94,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 52af19f 2026-10-06T23:51:02Z_
+_last regen: e6a92c3 2026-10-06T23:53:24Z_
 
 **Progress:** 15/71 brief items done.
 
@@ -126,14 +126,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (58 desk-actionable of 96 total — 87 at implemented, 9 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 96 total — 87 at implemented, 9 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (58)
+### Desk-actionable (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -146,7 +146,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
-| windows-port | 00 | implemented | 5000 | 8 | — | — | — |
 | build-less-brittle | 05 [exec:strong] | implemented | 4500 | 3 | — | — | — |
 | build-less-brittle | 06 [exec:strong] | verified | 4500 | 3 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | — | — |
@@ -215,11 +214,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 | windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting implementer rework (24)
+### Awaiting implementer rework (25)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
+| windows-port | 00 | implemented | 5000 | 8 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
 | build-less-brittle | 09 [exec:strong] | implemented | 4000 | 2 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
