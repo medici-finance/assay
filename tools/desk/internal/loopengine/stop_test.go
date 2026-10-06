@@ -40,7 +40,7 @@ func TestStopFlagMidDrain(t *testing.T) {
 	var first string
 	select {
 	case first = <-dispatched:
-	case <-time.After(3 * time.Second):
+	case <-time.After(engineTestTimeout):
 		t.Fatal("no dispatch within deadline")
 	}
 	if first != "in-flight-1" {
@@ -68,7 +68,7 @@ func TestStopFlagMidDrain(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run returned error on clean stop: %v", err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(engineTestTimeout):
 		t.Fatal("engine did not exit after stop flag + in-flight land completed")
 	}
 

@@ -16,8 +16,8 @@
     {
       "name": "resolver hands the client the environment's GH_TOKEN instead of the mint",
       "file": "internal/deskkit/forgeresolve.go",
-      "old": "\t\treturn &GitHubForge{Token: tok, BaseURL: base}, res, nil",
-      "new": "\t\treturn &GitHubForge{Token: os.Getenv(\"GH_TOKEN\"), BaseURL: base}, res, nil"
+      "old": "\t\treturn OutboundChecked(&GitHubForge{Token: tok, BaseURL: base}, role), res, nil",
+      "new": "\t\treturn OutboundChecked(&GitHubForge{Token: os.Getenv(\"GH_TOKEN\"), BaseURL: base}, role), res, nil"
     },
     {
       "name": "GitHub custody mints for the account GH_REPO names, not the repo being read (#628 shape)",

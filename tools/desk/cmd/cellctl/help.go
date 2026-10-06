@@ -13,7 +13,7 @@ func usage(code int) {
 	fmt.Print(usageText)
 	fmt.Print(cadenceUsage)
 	fmt.Print(cacheUsage)
-	fmt.Print("\n  comms <cell> check|run|recover --confirm-stopped\n    Configure with CELL_COMMS_CONFIG; see docs/cellctl-comms.md.\n")
+	fmt.Print("\n  comms <cell> check|run|recover --confirm-stopped\n    Set the manifest: cellctl set <cell> CELL_COMMS_CONFIG=<absolute-path>\n    up opens one configured interim service window; down stops it.\n    See docs/cellctl-comms.md.\n")
 	exitWith(code)
 }
 
