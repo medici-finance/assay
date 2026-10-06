@@ -67,6 +67,9 @@ func TestHeldScopeCoverOutcome(t *testing.T) {
 	}
 	cases = append(cases,
 		heldScanCase{"exit 0 beside a dash", heldRun + coverRun("0", "—"), true},
+		heldScanCase{"dash exit, empty result", heldRun + coverRun("—", ""), true},
+		heldScanCase{"dash exit, BLOCKED", heldRun + coverRun("—", "BLOCKED — runner offline"), true},
+		heldScanCase{"exit 1, FAIL", heldRun + coverRun("1", "FAIL"), true},
 		heldScanCase{"exit 0 beside a note", heldRun + coverRun("0", "same as Run 1"), true},
 		heldScanCase{"note table covers nothing",
 			heldRun + "### Run 2\n\n| # | Note |\n|---|---|\n| 1 | ok |\n| 2 | runner still offline |\n\n**VERIFY: PASS**\n", true},
