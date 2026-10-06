@@ -167,11 +167,16 @@ var UnresolvedArgv = []Allowance{
 			"no forge permit or runtime activation, and leaves the owner gate in place.",
 	},
 	{
-		Key: "internal/cellprocess/run.go::run::<unresolved>",
-		Reason: "the bounded host-harness runner. Its production caller is cellctl's cadence supervisor, " +
-			"which supplies the resolved claude, codex, or Cursor agent argv from the registered harness " +
-			"launch builders. It executes that argv directly with process-tree containment, never a shell " +
-			"or a forge CLI; tests supply compiled process fixtures.",
+		Key: "internal/cellprocess/run.go::runObserved::<unresolved>",
+		Reason: "the shared process-tree runner for cadence and interactive host harnesses and the " +
+			"explicit cellctl scratch run command. Harness callers supply registered claude, codex, or " +
+			"Cursor launch argv; scratch run accepts the operator-selected task executable directly, " +
+			"which can include a shell or a forge CLI. This dynamic task surface cannot be certified " +
+			"forge-free by this scanner: retain could-not-check, not a forge permit. The runner does not " +
+			"mint credentials or build forge commands; callers remain responsible for authorized argv " +
+			"and environments. Observation callbacks add ownership recording, not executable admission. " +
+			"Tests supply compiled local fixtures. The ledger declares this blind spot and leaves the " +
+			"forge assertion and credential boundaries intact.",
 	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
