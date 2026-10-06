@@ -66,14 +66,13 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | measured-status | 01 — Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test | 0 | 2000 |
 | desktools-go-git | 05 — migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge) | 4 | 1500 |
-| desktools-go-git | 06 — migrate push + retire ambient-credential machinery + preflight transport probe | 4 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 08a3fb1 2026-10-06T17:45:27+11:00_
+_last regen: 437c9ca 2026-10-06T21:24:50+11:00_
 
 **Progress:** 8/13 brief items done.
 
@@ -95,7 +94,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 08a3fb1 2026-10-06T17:45:27+11:00_
+_last regen: 437c9ca 2026-10-06T21:24:50+11:00_
 
 **Progress:** 15/71 brief items done.
 

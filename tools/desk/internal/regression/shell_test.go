@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // shellBudget is the one finite deadline every wrapped shell suite runs under. It is a
@@ -37,7 +39,7 @@ func shellFloor(t *testing.T, relative string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := runShellFixture(filepath.Join(root, filepath.FromSlash(relative)), t.TempDir(), shellBudget)
+	out, err := runShellFixture(t, filepath.Join(root, filepath.FromSlash(relative)), t.TempDir(), shellBudget)
 	if err != nil {
 		t.Fatalf("fixture suite %s: %v\n%s", relative, err, out)
 	}
@@ -59,12 +61,18 @@ func TestReg1145ShimCredential(t *testing.T) {
 // assertions are unchanged. The wrapped suites run git, so the child never inherits
 // the caller's GIT_* variables, and null global and system config keep a caller's
 // hooks out of their repositories. A run the budget cut short reports the deadline.
-func runShellFixture(path, tmp string, budget time.Duration) ([]byte, error) {
+// Dropping the inherited GIT_* variables also drops the GIT_TEMPLATE_DIR gitquiet.Run
+// set, so the child gets the fixture's OWN quiet template explicitly: every repository
+// the suite creates under TMPDIR then forks no background maintenance to race the
+// t.TempDir cleanup.
+func runShellFixture(t testing.TB, path, tmp string, budget time.Duration) ([]byte, error) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", path)
 	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null", "TMPDIR="+tmp,
-		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull,
+		"GIT_TEMPLATE_DIR="+gitquiet.TemplateDir(t))
 	cmd.WaitDelay = time.Second
 	out, err := cmd.CombinedOutput()
 	if err != nil && ctx.Err() != nil {
@@ -88,7 +96,7 @@ func TestShellDeadline(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#!/usr/bin/env bash\nexec sleep 1\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := runShellFixture(path, dir, 20*time.Millisecond)
+	_, err := runShellFixture(t, path, dir, 20*time.Millisecond)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("deadline fixture completed without cancellation: err=%v", err)
 	}
@@ -118,11 +126,11 @@ func shellBudgetFaults(name string, src []byte) (int, []string) {
 				return true
 			}
 			sites++
-			if len(call.Args) != 3 {
+			if len(call.Args) != 4 {
 				faults = append(faults, fmt.Sprintf("%s: runShellFixture with %d arguments", fset.Position(call.Pos()), len(call.Args)))
 				return true
 			}
-			if id, ok := call.Args[2].(*ast.Ident); !ok || id.Name != "shellBudget" {
+			if id, ok := call.Args[3].(*ast.Ident); !ok || id.Name != "shellBudget" {
 				faults = append(faults, fmt.Sprintf("%s: runShellFixture budget is not shellBudget", fset.Position(call.Pos())))
 			}
 			return true
@@ -151,14 +159,14 @@ func TestShellBudgetNamed(t *testing.T) {
 			t.Errorf("%s", strings.Join(faults, "\n"))
 		}
 	}
-	if sites < 2 {
-		t.Errorf("examined %d runShellFixture sites, want at least 2 (shellFloor and the git-isolation test)", sites)
+	if sites < 3 {
+		t.Errorf("examined %d runShellFixture sites, want at least 3 (shellFloor, the git-isolation test and the quiet-repositories test)", sites)
 	}
 	planted := `package p
-func literal() { _, _ = runShellFixture(p, d, 60*time.Second) }
-func other() { _, _ = runShellFixture(p, d, budget) }
-func healthy() { _, _ = runShellFixture(p, d, shellBudget) }
-func TestShellDeadline() { _, _ = runShellFixture(p, d, time.Millisecond) }
+func literal() { _, _ = runShellFixture(t, p, d, 60*time.Second) }
+func other() { _, _ = runShellFixture(t, p, d, budget) }
+func healthy() { _, _ = runShellFixture(t, p, d, shellBudget) }
+func TestShellDeadline() { _, _ = runShellFixture(t, p, d, time.Millisecond) }
 `
 	n, faults := shellBudgetFaults("plant.go", []byte(planted))
 	got := strings.Join(faults, "\n")
@@ -186,11 +194,50 @@ func TestShellGitIsolation(t *testing.T) {
 	if err := os.WriteFile(path, []byte(script), 0600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := runShellFixture(path, dir, shellBudget)
+	out, err := runShellFixture(t, path, dir, shellBudget)
 	if changes := before.Changes(SnapshotTree(t, victim)); changes != "" {
 		t.Fatalf("shell fixture wrote to the GIT_DIR-named repository\n%s\n%s", changes, out)
 	}
 	if err != nil {
 		t.Fatalf("planted fixture failed in its own repository: %v\n%s", err, out)
+	}
+}
+
+// TestShellFixtureReposQuiet — every repository a wrapped suite creates under TMPDIR
+// (init, init --bare, and a clone of the bare one) carries gitquiet's settings in its
+// own config, although the child's environment drops every inherited GIT_* variable.
+// Without them each commit or push in the suite forks a detached `git maintenance run
+// --auto` that races the t.TempDir cleanup.
+func TestShellFixtureReposQuiet(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX fixture")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "quiet.sh")
+	script := "#!/usr/bin/env bash\nset -u\n" +
+		"git init -q \"$TMPDIR/work\" && git init -q --bare \"$TMPDIR/origin.git\" &&\n" +
+		"git clone -q \"$TMPDIR/origin.git\" \"$TMPDIR/clone\" 2>/dev/null || exit 1\n" +
+		"for r in work origin.git clone; do\n" +
+		"  for k in maintenance.auto gc.auto; do\n" +
+		"    printf '%s %s=%s\\n' \"$r\" \"$k\" \"$(git -C \"$TMPDIR/$r\" config --local --get \"$k\")\"\n" +
+		"  done\ndone\n"
+	if err := os.WriteFile(path, []byte(script), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runShellFixture(t, path, dir, shellBudget)
+	if err != nil {
+		t.Fatalf("planted fixture: %v\n%s", err, out)
+	}
+	var missing []string
+	for _, r := range []string{"work", "origin.git", "clone"} {
+		for _, kv := range gitquiet.Settings {
+			if want := r + " " + kv[0] + "=" + kv[1]; !strings.Contains(string(out), want+"\n") {
+				missing = append(missing, want)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("repositories the shell fixture created lack, in their own config: %s\n%s",
+			strings.Join(missing, ", "), out)
 	}
 }
