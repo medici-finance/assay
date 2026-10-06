@@ -346,8 +346,14 @@ func (c *Cell) checkK8s(k *checker) {
 // installed, and the assay plugin is enabled for the checkout the windows will open in.
 func (c *Cell) checkHouse(k *checker, cfgArg string) {
 	k.chk(isGitCheckout(c.Repo), "cell.env CELL_REPO is a git checkout: %s", c.Repo)
-	link, _ := os.Readlink(c.Config)
-	k.chk(link == realConfigHome(c.Env), "config home linked to the operator's: %s -> %s", c.Config, realConfigHome(c.Env))
+	// Compare existing directories by identity: relative links and aliases can
+	// name the same resource without sharing a spelling. Still require a link.
+	real := realConfigHome(c.Env)
+	linked, linkErr := os.Stat(c.Config)
+	target, targetErr := os.Stat(real)
+	k.chk(isSymlink(c.Config) && linkErr == nil && targetErr == nil &&
+		linked.IsDir() && target.IsDir() && os.SameFile(linked, target),
+		"config home linked to the operator's: %s -> %s", c.Config, real)
 	k.chk(exists(filepath.Join(c.Home, ".gitconfig")), "gitconfig linked: %s/.gitconfig", c.Home)
 	k.chk(exists(filepath.Join(c.Home, ghConfigRelPath)), "gh config linked: %s/.config/gh", c.Home)
 	k.chk(c.rosterParses(), "roster parses under the cell home: deskroster repos --scope scan")
