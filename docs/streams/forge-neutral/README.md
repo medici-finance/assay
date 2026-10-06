@@ -287,13 +287,17 @@ job token, for read-only kinds only.
 token, bound to the job's own repository, built on a default-deny forge that refuses every write
 method, and recorded in the envelope's identity. Under the flag in CI, `deskread` activates from
 the job's environment roster. Its threat model is accidental or ambient use in an honest CI job:
-against a caller who forges the CI environment, only the read-only forge and the closed kind set
-hold, and the identity record's repository and run id are unverified. It is gated human because
-it relaxes the no-ambient-token rule (ratchet 4 → 5), and it touches no statusgen file and no
-workflow, so `34 → 18`. 18 inherits three hand-offs: add each CI-lane kind to the closed
-`ciTransportKinds` set by reviewed diff, narrow the adopter scaffold's `permissions:` to
-read-only wherever the token is handed over, and route cross-repository reads (which land in
-`partial`) to custody or could-not-check.
+against a caller who forges the CI environment, only the read-only forge and the closed
+`ciTransportKinds` read-kind set hold, and the identity record's repository and run id are
+unverified. It is gated human because it relaxes the no-ambient-token rule (ratchet 4 → 5),
+and it touches no statusgen file and no workflow, so `34 → 18`. 18 inherits five hand-offs,
+each named in 34's `consumers:`: move each CI-lane site onto `deskread --ci-workflow-token`;
+add each kind those sites need to the closed `ciTransportKinds` set by reviewed diff; edit this
+repository's statusgen workflow to hand the job token over in the dedicated variable with the
+roster variables, never in a `pull_request_target` or `workflow_run` job; give each scaffolded
+adopter job that hands the token to `deskread` a read-only `permissions:` block (the
+release-download steps and the `regen` job, which commits the board, keep their scopes); and
+route cross-repository reads (which land in `partial`) to custody or could-not-check.
 
 The chain is real, not conventional. 08's auto-flip has to recognise a reviewer identity on the
 configured forge, which is 07's roster-parity deliverable inside statusgen; 07's actor matching
