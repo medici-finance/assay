@@ -72,7 +72,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: e6a92c3 2026-10-06T23:53:24Z_
+_last regen: b7adb95 2026-10-06T23:54:52Z_
 
 **Progress:** 8/13 brief items done.
 
@@ -94,7 +94,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: e6a92c3 2026-10-06T23:53:24Z_
+_last regen: b7adb95 2026-10-06T23:54:52Z_
 
 **Progress:** 15/71 brief items done.
 
