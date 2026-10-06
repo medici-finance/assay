@@ -44,7 +44,7 @@ func TestDecisionHelperAbsentRefuses(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t) // no scripts in the target repo
 	withGoClaimOnPath(t)    // the claim resolves; only the decision helper is missing
-	s.replies = happyReplies("/private/tmp/worker-home")
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 
 	err := cmdDispatch([]string{"item-1", "--root", root, "--repo", allowedRepo,
 		"--gate-human", "--brief", "spec.md"})
@@ -79,7 +79,7 @@ func TestDecisionClaimRootStrict(t *testing.T) {
 	plantOnly(t, root, decisionScriptRel) // the target repo HAS it ...
 	trk := t.TempDir()                    // ... the authoritative --claim-root does not
 	withGoClaimOnPath(t)
-	s.replies = happyReplies("/private/tmp/worker-home")
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 
 	err := cmdDispatch([]string{"item-1", "--root", root, "--claim-root", trk, "--repo", allowedRepo,
 		"--gate-human", "--brief", "spec.md"})
@@ -105,7 +105,7 @@ func TestDecisionHelperViaClaimRoot(t *testing.T) {
 	_, root := s.install(t) // the target repo carries neither script
 	trk := t.TempDir()
 	plantOnly(t, trk, claimScriptRel, decisionScriptRel)
-	s.replies = append(happyReplies("/private/tmp/worker-home"),
+	s.replies = append(happyReplies(filepath.Join(t.TempDir(), "worker-home")),
 		reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #4"})
 
 	if err := cmdDispatch([]string{"item-1", "--root", root, "--claim-root", trk, "--repo", allowedRepo,
@@ -176,7 +176,7 @@ func TestHelperRefusalsNameAll(t *testing.T) {
 				}
 			}
 			plantOnly(t, root, others...)
-			s.replies = happyReplies("/private/tmp/worker-home")
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 
 			err := cmdDispatch(append([]string{"item-1", "--root", root, "--repo", allowedRepo}, args...))
 			if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
