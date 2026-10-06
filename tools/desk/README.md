@@ -4982,9 +4982,14 @@ attested tree (same paths, modes and blobs, no staged change) and renders each f
 the attested commit with that commit's own attributes (`--attr-source`) and the checkout
 conversion pinned in the dispatch record; a home carrying its own attributes file refuses,
 and the global and system attributes files, a configured attribute tree and later
-conversion config are not read. Rendering a converted file needs git 2.41 or later; an
-older git refuses any file that differs from its blob rather than render it from
-attributes the home could move. Inherited `GIT_*` variables are dropped for every
+conversion config are not read. The home must be its own git work tree: git's resolved
+work tree must be the home, and a configured work tree (`core.worktree`, at any scope,
+including the worktree's own config) or a bare setting refuses, so a row's git cannot read
+files other than the ones admission compared. Rendering a converted file needs git 2.41 or
+later; an older git refuses any file that differs from its blob rather than render it from
+attributes the home could move. That refusal says the home cannot be admitted on this git
+(which cannot tell a converted file from a changed one); re-run on git 2.41 or later, where
+only a real change refuses, never relax the check. Inherited `GIT_*` variables are dropped for every
 admission read. Out of scope: config that changes how a Verify row presents or matches
 content (diff drivers, pagers, aliases, grep settings) and refs other than `HEAD`, which
 the refresh flow moves by design.

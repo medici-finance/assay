@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -330,7 +331,7 @@ func TestAttestActorSeparation(t *testing.T) {
 // The same reader is used before execution and before Evidence landing. Each
 // fixture alters the real dispatched home, leaving the immutable record intact.
 func TestAttestSourceClosure(t *testing.T) {
-	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter", "attr-tree-filter", "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "local-eol", "attributes-file", "attr-tree", "stream-index", "index-removed", "index-swapped", "index-added", "index-attributes", "index-redirect"} {
+	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter", "attr-tree-filter", "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "local-eol", "attributes-file", "attr-tree", "stream-index", "index-removed", "index-swapped", "index-added", "index-attributes", "index-redirect", "core-worktree", "worktree-config-worktree", "core-worktree-link", "core-bare"} {
 		t.Run(mode, func(t *testing.T) {
 			var extra map[string]string
 			switch {
@@ -354,6 +355,8 @@ func TestAttestSourceClosure(t *testing.T) {
 			case "index-removed", "index-swapped", "index-added", "index-attributes", "index-redirect":
 				name = indexChange(t, root, mode)
 				want = "source files changed since verifier dispatch: " + name
+			case "core-worktree", "worktree-config-worktree", "core-worktree-link", "core-bare":
+				want = workTreeChange(t, root, mode)
 			case "attr-tree-filter":
 				// An unattested attribute tree unsets the attested filter for the
 				// attribute query alone; the driver then renders the planted bytes.
@@ -361,9 +364,6 @@ func TestAttestSourceClosure(t *testing.T) {
 			case "local-autocrlf", "local-eol", "attributes-file", "attr-tree":
 				name = convertTrackedChange(t, root, mode)
 				want = "source files changed since verifier dispatch: " + name
-				if !gitHasAttrSource(t, root) {
-					want += " (its checkout form"
-				}
 			case "branch":
 				attestGit(t, root, "checkout", "-b", "fixture-branch")
 				want = "attested detached source"
@@ -414,6 +414,14 @@ func TestAttestSourceClosure(t *testing.T) {
 				}
 				if mode == "untracked" || mode == "ignored" || mode == "second-site" {
 					want = "unattested worktree file: " + name
+				}
+			}
+			switch mode {
+			case "tracked", "assume-unchanged", "skip-worktree", "clean-filter", "smudge-filter", "stream-index", "local-autocrlf", "local-eol", "attributes-file":
+				if !gitHasAttrSource(t, root) {
+					// A git without --attr-source cannot tell a converted file
+					// from a changed one, so either refuses as this git's limit.
+					want = "cannot be admitted on this git: " + name + " differs from its blob"
 				}
 			}
 			// Check once before execution, then again with allowed Evidence edits.
@@ -521,16 +529,16 @@ func convertTrackedChange(t *testing.T, root, mode string) string {
 		blob := strings.TrimSpace(attestIn(t, root, name+" text eol=crlf\n", "hash-object", "-w", "--stdin"))
 		tree := strings.TrimSpace(attestIn(t, root, "100644 blob "+blob+"\t.gitattributes\n", "mktree"))
 		attestGit(t, root, "config", "attr.tree", tree)
+		if out := strings.TrimSpace(attestOut(t, root, "check-attr", "eol", "--", name)); !strings.HasSuffix(out, ": crlf") {
+			// attr.tree arrived in git 2.46; an older git never reads it, so this
+			// route does not exist there. Every other mode runs on any git.
+			t.Skip("this git does not read attr.tree")
+		}
 	default:
 		t.Fatalf("unknown conversion mode %s", mode)
 	}
 	attested := attestOut(t, root, "cat-file", "blob", "HEAD:"+name)
 	planted := attestOut(t, root, "cat-file", "--filters", "--path="+name, "HEAD:"+name)
-	if planted == attested && mode == "attr-tree" {
-		// attr.tree arrived in git 2.46; an older git never reads it, so this
-		// route does not exist there. Every other mode runs on any git.
-		t.Skip("this git does not read attr.tree")
-	}
 	if planted == attested {
 		t.Fatalf("%s: conversion did not change the checkout form", mode)
 	}
@@ -541,6 +549,98 @@ func convertTrackedChange(t *testing.T, root, mode string) string {
 		t.Fatalf("%s: change not hidden from git diff: %q", mode, diff)
 	}
 	return name
+}
+
+// workTreeChange leaves the home's files and index as attested and changes only
+// which work tree git resolves for the home, then asserts the plant: what a
+// Verify row's own git reads no longer follows from the home's files. It
+// returns the refusal the mode must produce.
+func workTreeChange(t *testing.T, root, mode string) string {
+	t.Helper()
+	home, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	switch mode {
+	case "core-worktree", "worktree-config-worktree":
+		// A copy of the home with one file changed, named as the work tree.
+		other := t.TempDir()
+		for _, name := range []string{"brief.md", "README.md", ".gitignore", "source.txt"} {
+			b, err := os.ReadFile(filepath.Join(root, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if name == "source.txt" {
+				b = []byte("TAMPERED source")
+			}
+			if err := os.WriteFile(filepath.Join(other, name), b, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if mode == "worktree-config-worktree" {
+			attestGit(t, root, "config", "extensions.worktreeConfig", "true")
+			attestGit(t, root, "config", "--worktree", "core.worktree", other)
+		} else {
+			attestGit(t, root, "config", "core.worktree", other)
+		}
+		if got := attestOut(t, root, "grep", "-l", "TAMPERED"); got != "source.txt\n" {
+			t.Fatalf("%s: redirected work tree not visible to git grep: %q", mode, got)
+		}
+		if b, err := os.ReadFile(filepath.Join(root, "source.txt")); err != nil || string(b) != "attested source" {
+			t.Fatalf("%s: home changed: %q %v", mode, b, err)
+		}
+		// git's resolved view refuses first; the configured work tree would
+		// also refuse, so the assertion pins which signal answers.
+		return "git work tree is not the home itself"
+	case "core-worktree-link":
+		// A configured work tree that resolves to the home today: git's own
+		// view matches, but the link can be re-pointed after admission.
+		link := filepath.Join(t.TempDir(), "link")
+		if err := os.Symlink(home, link); err != nil {
+			t.Fatal(err)
+		}
+		attestGit(t, root, "config", "core.worktree", link)
+		if got := strings.TrimSpace(attestOut(t, root, "rev-parse", "--show-toplevel")); got != home {
+			t.Fatalf("core-worktree-link: work tree %q does not resolve to the home %q", got, home)
+		}
+		return "configures its git work tree"
+	case "core-bare":
+		// No work tree at all: every row's git then fails, and a negated row
+		// (! git grep -q X) reads that failure as a pass.
+		attestGit(t, root, "config", "extensions.worktreeConfig", "true")
+		attestGit(t, root, "config", "--worktree", "core.bare", "true")
+		cmd := exec.Command("git", "-C", root, "grep", "-q", "attested source")
+		if err := cmd.Run(); err == nil || cmd.ProcessState.ExitCode() == 1 {
+			t.Fatalf("core-bare: row git still reads a work tree: %v", err)
+		}
+		return "no git work tree of its own"
+	}
+	t.Fatalf("unknown work tree mode %s", mode)
+	return ""
+}
+
+// TestVerifierEnvStrip pins the environment strip one variable at a time: each
+// inherited GIT_* variable that can redirect the repository, work tree, index,
+// object store, config, attributes or replace-ref base is absent from every
+// admission git read, whatever its case, and the two admission settings are
+// present.
+func TestVerifierEnvStrip(t *testing.T) {
+	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_REPLACE_REF_BASE", "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_ATTR_SOURCE", "GIT_NAMESPACE", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "Git_Dir"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(name, "fixture-value")
+			env := verifierEnv()
+			for _, kv := range env {
+				if key, _, _ := strings.Cut(kv, "="); strings.EqualFold(key, name) {
+					t.Fatalf("%s reaches admission git reads", name)
+				}
+			}
+			for _, want := range []string{"GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1"} {
+				if !slices.Contains(env, want) {
+					t.Fatalf("admission environment lacks %s", want)
+				}
+			}
+		})
+	}
 }
 
 // gitHasAttrSource reports whether this git takes --attr-source (git 2.41 and
@@ -729,7 +829,7 @@ func TestVerifierSourceClosureCheckoutForms(t *testing.T) {
 		// A git without --attr-source cannot render a converted file from
 		// the attested attributes alone, so the converted file is refused
 		// rather than rendered from attributes the home could have moved.
-		if err := verifierSourceClosure(home, commit, co, nil); err == nil || !strings.Contains(err.Error(), "run.ps1 (its checkout form") {
+		if err := verifierSourceClosure(home, commit, co, nil); err == nil || !strings.Contains(err.Error(), "run.ps1 differs from its blob (its checkout form") {
 			t.Fatalf("converted checkout on a git without --attr-source: %v, want a run.ps1 refusal", err)
 		}
 		return

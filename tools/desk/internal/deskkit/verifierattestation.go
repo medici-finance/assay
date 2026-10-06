@@ -189,6 +189,9 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 	if head != b.Source || branch != "HEAD" {
 		return Refused("verifier requires its attested detached source commit")
 	}
+	if err := verifierOwnWorkTree(home); err != nil {
+		return err
+	}
 	// Admission compares the bytes a Verify row will read, never git's own view
 	// of the worktree: index flags, replacement objects, clean filters and the
 	// home's own attributes or conversion config can all make that view report

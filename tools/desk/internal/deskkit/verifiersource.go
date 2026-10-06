@@ -24,7 +24,10 @@ import (
 // not establish that: index flags (assume-unchanged, skip-worktree), replacement
 // objects and clean filters each change git's answer without changing the files.
 // So admission reads the commit's tree with replacements disabled and compares
-// every path under the home, byte for byte, against it.
+// every path under the home, byte for byte, against it. That comparison only
+// holds if a row's git reads the same directory, so the home must be its own git
+// work tree: git's resolved work tree is the home, and no work tree is configured
+// (core.worktree) nor switched off (core.bare).
 //
 // A Verify row reads the index as well as the files (git grep and git ls-files
 // skip a path the index drops; git diff --cached and git grep --cached read its
@@ -74,6 +77,35 @@ func verifierNoReplacements(home string) error {
 		return Refused("verifier home carries replacement objects (info/grafts); a Verify row would not read the attested commit")
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return Unverifiable("cannot inspect verifier grafts", err)
+	}
+	return nil
+}
+
+// verifierOwnWorkTree refuses a home whose git does not resolve the home itself
+// as its work tree. Admission compares the home's files and index, while a Verify
+// row's git reads the work tree git resolves, so the two must be one directory.
+// Two independent signals: git's own resolved view must be the home (a home with
+// no work tree, core.bare, refuses: every row's git would fail, and a negated row
+// reads that failure as a pass), and no work tree may be configured
+// (core.worktree, at any scope including the worktree's own config), since a
+// configured one that resolves to the home today can be re-pointed after
+// admission.
+func verifierOwnWorkTree(home string) error {
+	top, err := verifierGitBytes(home, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return Refused("verifier home has no git work tree of its own (core.bare); a Verify row's git would fail instead of reading the home")
+	}
+	resolved, err := filepath.EvalSymlinks(strings.TrimSuffix(string(top), "\n"))
+	if err != nil || resolved != home {
+		return Refused("verifier home's git work tree is not the home itself; a Verify row would read " + strings.TrimSpace(string(top)))
+	}
+	_, err = verifierGitBytes(home, "config", "--get-all", "core.worktree")
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return Refused("verifier home configures its git work tree (core.worktree); a Verify row would read whatever it names, not the home")
+	case !errors.As(err, &exit) || exit.ExitCode() != 1: // 1: not set
+		return Unverifiable("cannot inspect verifier work tree config", err)
 	}
 	return nil
 }
@@ -381,9 +413,14 @@ func verifierRender(home, rel, object string, checkout verifierCheckout) ([]byte
 	}
 	attr, err := verifierGit(home, checkout.args("check-attr", "-z", "filter", "--", rel)...)
 	if err != nil {
-		// Also how a git without --attr-source answers: such a git cannot
-		// render from the attested attributes, so the changed file refuses.
-		return nil, Refused(fmt.Sprintf("source files changed since verifier dispatch: %s (its checkout form cannot be rendered from the attested attributes: %v; rendering needs git 2.41 or later)", rel, err))
+		if _, probe := verifierGitBytes(home, "--attr-source="+checkout.source, "version"); probe != nil {
+			// A git without --attr-source cannot render from the attested
+			// attributes, so it cannot tell a converted file from a changed
+			// one: any file that differs from its blob refuses there, and the
+			// refusal names the git rather than claiming a change.
+			return nil, Refused(fmt.Sprintf("verifier home cannot be admitted on this git: %s differs from its blob (its checkout form cannot be rendered from the attested attributes; rendering needs git 2.41 or later, and this git cannot tell a converted file from a changed one, so re-run on a newer git)", rel))
+		}
+		return nil, Unverifiable("cannot read attested attributes of "+rel, err)
 	}
 	if f := strings.Split(attr, "\x00"); len(f) < 3 || (f[2] != "unspecified" && f[2] != "unset") {
 		return nil, Refused("source files changed since verifier dispatch: " + rel + " (filter driver)")

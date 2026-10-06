@@ -45,8 +45,11 @@ including ignored files, refuse admission at execution and landing. Admission bi
 home's index to the attested tree and compares file bytes against the attested commit,
 rendered with the commit's own attributes and the checkout conversion pinned at
 dispatch; index edits, index flags, replacement objects, filter drivers, the home's own
-attributes and later conversion config do not hide a change. A converted file needs git
-2.41 or later to render; an older git refuses the home. Land Evidence only for the attested
+attributes and later conversion config do not hide a change. The home must be its own
+git work tree; a configured work tree (`core.worktree`) or a bare setting refuses. A
+converted file needs git 2.41 or later to render; an older git refuses the home, because
+it cannot tell a converted file from a changed one. Report that refusal as this git's
+limit (never as a VERIFY FAIL) so the run moves to git 2.41 or later. Land Evidence only for the attested
 brief (the brief, its own stream-index row, or its outcome record); any other target
 refuses.
 

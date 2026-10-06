@@ -145,8 +145,13 @@ files, refuse admission at execution and landing. Admission binds the home's ind
 attested tree and compares every file's bytes against the attested commit, rendered with
 that commit's own attributes and the checkout conversion pinned at dispatch, so index
 edits, index flags, replacement objects and filter drivers cannot hide a changed input.
+The home must be its own git work tree: a configured work tree (`core.worktree`, at any
+scope) or none at all (`core.bare`) refuses, since a row's git would read elsewhere.
 Rendering a converted file (an eol or encoding attribute) needs git 2.41 or later; an
 older git refuses such a home rather than render it from attributes the home could move.
+That refusal names the git, not a VERIFY FAIL: such a git cannot tell a converted file
+from a changed one. Report it and re-run on git 2.41 or later (an upgraded verifier
+image), where only a real change refuses; never relax admission to get past it.
 A change to any other row of the stream index after dispatch, such as another brief's
 landing, also refuses the home: re-dispatch from fresh main, which costs a new record
 and stamp but no Evidence already landed. The record admits
