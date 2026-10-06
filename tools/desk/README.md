@@ -5073,7 +5073,13 @@ registry does not define is refused naming it (exit 5); a resolved repo that is 
 not `--root`'s own origin is a HARD FAIL (exit 5) naming both repos, with nothing claimed and no
 worktree cut. The resolved repo is the claim repo and the token's repo, a cross-repo claim key
 carries the tracking alias, and the worker prompt says to run `deskpr create --root <tracking
-checkout>` so the PR's `Brief:` trailer resolves against the tracking board. An item that
+checkout>` so the PR's `Brief:` trailer resolves against the tracking board. One narrow
+acceptance: a brief with no `deliverable_repo`/`homed-in` may DECLARE a sibling deliverable repo
+with an `[<alias>]` tag on an entry of its body's `files:` list (``- `[<alias>]` `../<sibling>/path` ``);
+a `--repo` equal to a repo so declared — the tag resolved through the same registry, published
+there — is accepted in place of the tracking repo, and `--root` must still be a checkout of it.
+Every other mismatch (an undeclared `--repo`, an unknown or unpublished tag, a tag outside the
+`files:` list or in a fenced example block, no `--repo` at all) keeps the HARD FAIL. An item that
 declares no alias keeps the path above unchanged.
 
 **The phantom check is a dispatcher precondition.** A fresh worker dispatch is reconciled against
