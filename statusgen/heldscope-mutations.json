@@ -40,8 +40,8 @@
     {
       "name": "S1: a covering row needs no result",
       "file": "heldscope.go",
-      "old": "\t\t\tif ran && !other {",
-      "new": "\t\t\tif true || ran && !other {"
+      "old": "\t\t\tif verified && ran && !other {",
+      "new": "\t\t\tif verified && (true || ran && !other) {"
     },
     {
       "name": "S1: an earlier entry's own table covers its rows",
@@ -52,8 +52,8 @@
     {
       "name": "S2: a covering table need not render live",
       "file": "heldscope.go",
-      "old": "allLive = allLive && live[i] && strings.HasPrefix(lines[i], \"|\")",
-      "new": "allLive = true"
+      "old": "verified = verified && live[i] && strings.HasPrefix(lines[i], \"|\")",
+      "new": "verified = verified && len(lines[i]) >= 0"
     },
     {
       "name": "S2: a covering table may continue a blockquote",
@@ -160,32 +160,20 @@
     {
       "name": "S1-r2: any visible result covers, beside a placeholder or note",
       "file": "heldscope.go",
-      "old": "\t\t\tif ran && !other {",
-      "new": "\t\t\tif ran && (!other || true) {"
+      "old": "\t\t\tif verified && ran && !other {",
+      "new": "\t\t\tif verified && ran && (!other || true) {"
     },
     {
-      "name": "S1-r2: carry-forward and unclean words are not checked",
+      "name": "S1-r3: any text after a clean outcome is accepted",
       "file": "heldscope.go",
-      "old": "if heldCarryRe.MatchString(n) || !heldOutcomeRe.MatchString(n) {",
-      "new": "if !heldOutcomeRe.MatchString(n) {"
+      "old": "if m == \"\" || !heldDetailsClean(n[len(m):]) {",
+      "new": "if m == \"\" {"
     },
     {
-      "name": "S1-r2: any text not carrying a carry-forward word is an outcome",
+      "name": "S1-r2: any text is an outcome",
       "file": "heldscope.go",
-      "old": "if heldCarryRe.MatchString(n) || !heldOutcomeRe.MatchString(n) {",
-      "new": "if heldCarryRe.MatchString(n) {"
-    },
-    {
-      "name": "S2-r2: markup that may render as nothing counts",
-      "file": "heldscope.go",
-      "old": "\tif heldMarkupRe.MatchString(cell) {\n\t\treturn heldCellOther\n\t}",
-      "new": "\tif false && heldMarkupRe.MatchString(cell) {\n\t\treturn heldCellOther\n\t}"
-    },
-    {
-      "name": "S2-r2: invisible format characters count",
-      "file": "heldscope.go",
-      "old": "\t\tif unicode.Is(unicode.Cf, r) {",
-      "new": "\t\tif false && unicode.Is(unicode.Cf, r) {"
+      "old": "if m == \"\" || !heldDetailsClean(n[len(m):]) {",
+      "new": "if false && (m == \"\" || !heldDetailsClean(n[len(m):])) {"
     },
     {
       "name": "over-strict: an empty result cell blocks the row",
@@ -196,14 +184,74 @@
     {
       "name": "over-strict: struck text in a covering cell is read",
       "file": "heldscope.go",
-      "old": "\tcell = strikethroughRe.ReplaceAllString(cell, \"\")\n\tif heldMarkupRe",
-      "new": "\tif heldMarkupRe"
+      "old": "\tcell = heldStrikeRe.ReplaceAllString(cell, \"\")\n\tn :=",
+      "new": "\tn :="
     },
     {
       "name": "A6: row keys ignore the key column's name",
       "file": "heldscope.go",
       "old": "return heldNorm(header) + \"\\x1f\" + k",
       "new": "return k"
+    },
+    {
+      "name": "S1-r3: a bare 0 is an outcome in any column",
+      "file": "heldscope.go",
+      "old": "if exit && n == \"0\" {",
+      "new": "if n == \"0\" {"
+    },
+    {
+      "name": "S1-r3: a zero count of things that ran is clean",
+      "file": "heldscope.go",
+      "old": "if n, err := strconv.Atoi(s); err != nil || n == 0 {",
+      "new": "if n, err := strconv.Atoi(s); err != nil || n < 0 {"
+    },
+    {
+      "name": "S1-r3: a ratio need not have passed all it ran",
+      "file": "heldscope.go",
+      "old": "return len(nums) < 2 || nums[0] == nums[1]",
+      "new": "return len(nums) >= 0"
+    },
+    {
+      "name": "S1-r3: one clean row covers its key whatever the other rows of it say",
+      "file": "heldscope.go",
+      "old": "\t\tif !bad[k] {",
+      "new": "\t\tif true || !bad[k] {"
+    },
+    {
+      "name": "S1-r3: a results table that is not verified live is ignored, not counted against its keys",
+      "file": "heldscope.go",
+      "old": "\t\theader := heldCellRanges(lines[tb.header])\n",
+      "new": "\t\tif !verified {\n\t\t\tcontinue\n\t\t}\n\t\theader := heldCellRanges(lines[tb.header])\n"
+    },
+    {
+      "name": "S1-r3: an unaligned row in the last entry is skipped",
+      "file": "heldscope.go",
+      "old": "\t\t\t\treturn nil // a row that cannot be aligned (fail closed)",
+      "new": "\t\t\t\tcontinue // a row that cannot be aligned (fail closed)"
+    },
+    {
+      "name": "S1-r3: an expectation column supplies the outcome",
+      "file": "heldscope.go",
+      "old": "\t\t\t\tif role == heldColExpect {\n\t\t\t\t\tcontinue\n\t\t\t\t}",
+      "new": "\t\t\t\tif false && role == heldColExpect {\n\t\t\t\t\tcontinue\n\t\t\t\t}"
+    },
+    {
+      "name": "S1-r3: an unrecognised column supplies the outcome",
+      "file": "heldscope.go",
+      "old": "\t\t\t\tif role == heldColOther && st != heldCellEmpty {",
+      "new": "\t\t\t\tif false && role == heldColOther && st != heldCellEmpty {"
+    },
+    {
+      "name": "over-strict: an expectation column blocks the row",
+      "file": "heldscope.go",
+      "old": "\tcase heldExpectColumnRe.MatchString(n):\n\t\treturn heldColExpect",
+      "new": "\tcase false && heldExpectColumnRe.MatchString(n):\n\t\treturn heldColExpect"
+    },
+    {
+      "name": "A8: a span GFM does not strike is removed as struck",
+      "file": "heldscope.go",
+      "old": "\tcell = heldStrikeRe.ReplaceAllString(cell, \"\")\n",
+      "new": "\tcell = strikethroughRe.ReplaceAllString(cell, \"\")\n"
     }
   ]
 }

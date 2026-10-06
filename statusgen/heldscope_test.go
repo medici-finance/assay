@@ -49,6 +49,64 @@ func coverRun(exit, result string) string {
 		"| 2 | `go test ./integration/...` | " + exit + " | " + result + " |\n\n**VERIFY: PASS**\n"
 }
 
+// coverTable is a later run whose results table has the given header and
+// rows (row 1 is green) and closes on a strict PASS.
+func coverTable(header string, rows ...string) string {
+	sep := "|" + strings.Repeat("---|", strings.Count(header, "|")-1) + "\n"
+	cells := strings.Count(header, "|") - 1
+	row1 := "| 1 |" + strings.Repeat(" ok |", cells-1) + "\n"
+	return "### Run 2\n\n" + header + "\n" + sep + row1 + strings.Join(rows, "\n") + "\n\n**VERIFY: PASS**\n"
+}
+
+// TestHeldScopeCoverWholeCell: a covering row is clean only when the WHOLE of
+// each outcome cell reads as a clean outcome, every row of the key in the last
+// entry is clean, and the outcome comes from an Exit or Result column, never
+// an expectation (S1-r3, F1 round 3).
+func TestHeldScopeCoverWholeCell(t *testing.T) {
+	refuse := []string{
+		"PASS (no re-run)", "PASS — no rerun this round", "PASS without re-running", "ok (never re-run)",
+		"PASS (Run #1)", "PASS (r1)", "PASS (ditto)", "PASS (last run)", "PASS (from the first run)",
+		"PASS (as last time)", "PASS (couldn’t reach runner)", "PASS — unable to reach host",
+		"PASS (runner unavailable)", "PASS (unverified)", "ok — partial", "ok — inconclusive", "ok? unclear",
+		"green (flaky)", "exit 0 (probe exit 6)", "exit 0; inner check exit 6",
+		"ok (as in run #1)", "PASS (from 2026-10-01 run)", "ok (Run-1 output)", "ok (copied)",
+		"ok — last run's result", "ok — didn’t re-run",
+		"0", "0/3", "0/3 passed", "0 of 3 passed", "0 of 5 passed", "0 checks run", "0 rows executed",
+		"0 — runner unavailable", "0 — cannot check",
+		"PASS: 0 tests run", "PASS 2/3", "ok — 2 of 3 passed", "ok, 3 tests, 1 failed",
+		"ok ~~ HELD ~~", "~~HELD ~~ ok",
+	}
+	var cases []heldScanCase
+	for _, r := range refuse {
+		cases = append(cases, heldScanCase{"result " + strconv.Quote(r), heldRun + coverRun("", r), true})
+	}
+	cases = append(cases,
+		heldScanCase{"expected exit, empty result",
+			heldRun + coverTable("| # | Command | Expected exit | Result |", "| 2 | `go test ./integration/...` | 0 |  |"), true},
+		heldScanCase{"expected outcome, empty actual",
+			heldRun + coverTable("| # | Command | Expected outcome | Actual |", "| 2 | `go test ./integration/...` | exit 0 |  |"), true},
+		heldScanCase{"pass criteria, empty result",
+			heldRun + coverTable("| # | Command | Pass criteria | Result |", "| 2 | `go test ./integration/...` | ok |  |"), true},
+		heldScanCase{"note column says PASS, empty result",
+			heldRun + coverTable("| # | Command | Note | Result |", "| 2 | `go test ./integration/...` | PASS |  |"), true},
+		heldScanCase{"note column beside ok",
+			heldRun + coverTable("| # | Exit | Result | Notes |", "| 2 | 0 | ok | not re-run |"), true},
+		heldScanCase{"duplicate key, one line skipped",
+			heldRun + coverTable("| # | Command | Exit | Result |",
+				"| 2 | `go test ./integration/...` | — | skipped |", "| 2 | `go vet ./...` | 0 | ok |"), true},
+		heldScanCase{"second table re-runs the key",
+			heldRun + "### Run 2\n\n| # | Command | Exit | Result |\n|---|---|---|---|\n| 1 | `go test ./...` | 0 | ok |\n" +
+				"| 2 | `go test ./integration/...` | — | not re-run |\n\n| # | Exit | Result |\n|---|---|---|\n| 2 | 0 | ok |\n\n**VERIFY: PASS**\n", true},
+		heldScanCase{"table after a paragraph lists the key",
+			heldRun + "### Run 2\n\n| # | Command | Exit | Result |\n|---|---|---|---|\n| 1 | `go test ./...` | 0 | ok |\n" +
+				"| 2 | `go test ./integration/...` | 0 | ok |\n\nRow 2 again:\n| # | Exit | Result |\n|---|---|---|\n| 2 | — | skipped |\n\n**VERIFY: PASS**\n", true},
+		heldScanCase{"unaligned row in the last entry",
+			heldRun + coverTable("| # | Command | Exit | Result |",
+				"| 2 | `go test ./integration/...` | 0 | ok |", "| 2 | `a | b` | — | skipped |"), true},
+	)
+	runHeldScanCases(t, cases)
+}
+
 // TestHeldScopeCoverOutcome: a covering row 2 re-runs the earlier HELD row
 // only when its result reads as a recognised clean outcome. A placeholder, a
 // carry-forward, an unrun outcome, a note, or a cell that renders empty
@@ -77,6 +135,14 @@ func TestHeldScopeCoverOutcome(t *testing.T) {
 			heldRun + "### Run 2\n\n| Row | Command | Exit | Result |\n|---|---|---|---|\n| 1 | `go test ./...` | 0 | ok |\n" +
 				"| 2 | `go test ./integration/...` | 0 | ok |\n\n**VERIFY: PASS**\n", true},
 		heldScanCase{"result ok", heldRun + coverRun("", "ok"), false},
+		heldScanCase{"PASS with counts and no failures", heldRun + coverRun("0", "PASS — 12 tests, 0 failures"), false},
+		heldScanCase{"ok with no errors", heldRun + coverRun("", "ok (no errors)"), false},
+		heldScanCase{"passed with a duration", heldRun + coverRun("0", "passed in 1.2s"), false},
+		heldScanCase{"ok with a full ratio", heldRun + coverRun("", "ok — 3/3 passed"), false},
+		heldScanCase{"PASS with n of n", heldRun + coverRun("", "PASS: 3 of 3 checks passed"), false},
+		heldScanCase{"check mark and PASS", heldRun + coverRun("0", "✅ PASS"), false},
+		heldScanCase{"expected exit beside a result",
+			heldRun + coverTable("| # | Command | Expected exit | Result |", "| 2 | `go test ./integration/...` | 0 | ok |"), false},
 		heldScanCase{"struck note beside ok", heldRun + coverRun("0", "ok ~~pending~~"), false},
 		heldScanCase{"exit 0 alone", heldRun + coverRun("0", ""), false},
 		heldScanCase{"bold PASS with detail", heldRun + coverRun("0", "**PASS**: 12 tests"), false},

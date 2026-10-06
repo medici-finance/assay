@@ -1685,12 +1685,14 @@ func closeVerifyPlan(root, briefID string, now time.Time) (readme string, update
 // Supersession is inferred at ONE granularity only (#1894, heldScanScope rule
 // 3): a held row in an earlier `### ` entry is not read when the last entry,
 // closing on its own live strict **VERIFY: PASS**, re-ran that row — the same
-// row key under the same key-column name, in a results table of its own, with
-// result cells that read as a recognised clean outcome (heldOutcome) — and
-// every other earlier hold is such a row too. A later entry that re-ran
-// nothing, re-ran other rows, or wrote a placeholder, carry-forward or unclean
-// result for the held row replaces nothing; an earlier hold in prose keeps
-// every entry read.
+// row key under the same key-column name, in a results table of its own, and
+// every row of that key in the entry reads, cell by whole cell, as a
+// recognised clean outcome (heldCovered, heldOutcome) — and every other
+// earlier hold is such a row too. A later entry that re-ran nothing, re-ran
+// other rows, or wrote anything but a clean outcome for the held row (a
+// placeholder, a carry-forward, a note after the outcome, a zero count, an
+// expectation in place of a result) replaces nothing; an earlier hold in
+// prose keeps every entry read.
 // Inside one entry it is NOT inferred: a
 // HELD/could-not-check row under the same heading stays live after a later
 // table runs that row green, because nothing ties the later row to the earlier

@@ -2,8 +2,8 @@ package main
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
-	"unicode"
 )
 
 // The read scope of the held/could-not-check scan (#1894).
@@ -58,13 +58,19 @@ import (
 //     row, a table of another shape — leaves every entry read;
 //     - the last entry has live results tables (heldCovered) with a row of
 //     the same key (heldRowKey: key-column name and key text) for every one
-//     of those rows, whose result cells read as a recognised clean outcome
-//     (heldOutcome): at least one opens with ok, PASS, exit 0 or the like,
-//     and none is a placeholder (—, n/a), a carry-forward (same as Run 1,
-//     unchanged, see above), an unrun, failed or held outcome, markup that
-//     may render as nothing (<!-- -->, <br>, &nbsp;, a backslash escape) or
-//     unrecognised text. A later run that re-ran nothing, re-ran other rows,
-//     or wrote anything but a clean outcome for a row replaces nothing.
+//     of those rows, and EVERY row of that key in the last entry is clean:
+//     its Exit and Result-type columns (heldCoverColumn) hold at least one
+//     cell that reads, as a whole, as a recognised clean outcome (heldOutcome:
+//     ok, PASS, exit 0 or the like, followed only by neutral details such as
+//     a non-zero test count or a duration; a bare 0 only as a whole Exit
+//     cell), and no other cell of them or of any unrecognised column holds
+//     visible text. An expectation column (Expected exit, Pass criteria) is
+//     never read for the outcome. A placeholder (—, n/a), a carry-forward
+//     (same as Run 1), a note after the outcome (PASS (no re-run)), a zero
+//     count (0 checks run), markup or a format character, or any text outside
+//     that closed grammar is not clean. A later run that re-ran nothing,
+//     re-ran other rows, or wrote anything but a clean outcome for a row
+//     replaces nothing; so does a last entry with a row it cannot align.
 //     Supersession is never inferred inside one entry: a later table under
 //     the same heading does not clear an earlier row in it. It is
 //     POSITIONAL, not dated: the entry written last in the file is the
@@ -505,30 +511,39 @@ func heldScanScope(evidence string) heldScope {
 }
 
 // heldCovered returns the row keys the last entry (from line last on)
-// re-ran clean: the keys of the aligned rows of its live results tables
-// whose result cells hold at least one recognised clean outcome and nothing
-// else that is visible (heldOutcome). A table counts only when it opens its own block (the line
-// before it is blank or the entry heading, so it cannot continue a blockquote
-// or a list item), and every line of it is at column 0 and renders live.
+// re-ran clean. A key is covered only when EVERY keyed row of it in the last
+// entry's results tables is clean, so a Verify row that ran two commands, or
+// a second table that lists the same key, cannot cover a row the other line
+// says was skipped. A row is clean only in a table that opens its own block
+// (the line before it is blank or the entry heading, so it cannot continue a
+// blockquote or a list item) with every line at column 0 and rendered live;
+// a keyed row of any other results table in the entry counts as not clean.
+// One row in the entry's results tables that cannot be aligned with its
+// header leaves nothing covered: its key cannot be read, so it cannot be ruled
+// out as a second line of a held row.
+//
+// A row is clean when its outcome columns (heldCoverColumn) carry at least
+// one recognised clean outcome and nothing else that is visible (heldOutcome).
+// An expectation column ("Expected exit", "Pass criteria") is never read for
+// the outcome. Any other result column must be empty: a note, a check name or
+// any text the cover cannot classify keeps the row from covering.
 func heldCovered(lines []string, live []bool, out []heldLineRead, tables []heldTable, last int) map[string]bool {
-	covered := map[string]bool{}
+	clean, bad := map[string]bool{}, map[string]bool{}
 	for _, tb := range tables {
 		if tb.header <= last {
 			continue
 		}
+		verified := true
 		if prev := tb.header - 1; prev != last && !isBlankLine(lines[prev]) {
-			continue
+			verified = false
 		}
-		allLive := true
 		for i := tb.header; i < tb.end; i++ {
-			allLive = allLive && live[i] && strings.HasPrefix(lines[i], "|")
+			verified = verified && live[i] && strings.HasPrefix(lines[i], "|")
 		}
-		if !allLive {
-			continue
-		}
+		header := heldCellRanges(lines[tb.header])
 		for r := tb.header + 2; r < tb.end; r++ {
 			if out[r].key == "" {
-				continue
+				return nil // a row that cannot be aligned (fail closed)
 			}
 			cells := heldCellRanges(lines[r])
 			ran, other := false, false
@@ -536,19 +551,70 @@ func heldCovered(lines []string, live []bool, out []heldLineRead, tables []heldT
 				if tb.notResult[c] {
 					continue
 				}
-				switch heldOutcome(lines[r][rg[0]:rg[1]]) {
+				role := heldCoverColumn(lines[tb.header][header[c][0]:header[c][1]])
+				if role == heldColExpect {
+					continue
+				}
+				st := heldOutcome(lines[r][rg[0]:rg[1]], role == heldColExit)
+				if role == heldColOther && st != heldCellEmpty {
+					st = heldCellOther
+				}
+				switch st {
 				case heldCellPass:
 					ran = true
 				case heldCellOther:
 					other = true
 				}
 			}
-			if ran && !other {
-				covered[out[r].key] = true
+			if verified && ran && !other {
+				clean[out[r].key] = true
+			} else {
+				bad[out[r].key] = true
 			}
 		}
 	}
+	covered := map[string]bool{}
+	for k := range clean {
+		if !bad[k] {
+			covered[k] = true
+		}
+	}
 	return covered
+}
+
+// heldColRole is what a result column of a covering table holds
+// (heldCoverColumn).
+type heldColRole int
+
+const (
+	heldColOther  heldColRole = iota // a note, a check name, any header the cover does not recognise
+	heldColExit                      // an exit code: Exit, Exit code, rc
+	heldColResult                    // the row's actual result: Result, Observed, Output, Outcome, Status
+	heldColExpect                    // an expectation or criterion, never the outcome
+)
+
+var (
+	// heldExitColumns and heldResultColumns are the exact header names
+	// (heldNorm) the cover reads a row's outcome from.
+	heldExitColumns   = map[string]bool{"exit": true, "exit code": true, "exit status": true, "rc": true}
+	heldResultColumns = map[string]bool{"result": true, "results": true, "observed": true, "output": true,
+		"outcome": true, "status": true, "actual": true, "actual result": true, "observed result": true, "verdict": true}
+	// heldExpectColumnRe is a header that names an expectation or a criterion.
+	heldExpectColumnRe = regexp.MustCompile(`\bexpect|\bcriteri`)
+)
+
+// heldCoverColumn classifies a result-column header for the cover.
+func heldCoverColumn(header string) heldColRole {
+	n := heldNorm(header)
+	switch {
+	case heldExitColumns[n]:
+		return heldColExit
+	case heldResultColumns[n]:
+		return heldColResult
+	case heldExpectColumnRe.MatchString(n):
+		return heldColExpect
+	}
+	return heldColOther
 }
 
 // heldCellState is what a covering row's result cell says (heldOutcome).
@@ -561,46 +627,98 @@ const (
 )
 
 var (
-	// heldOutcomeRe is a recognised clean outcome at the start of a result
-	// cell: "ok", "PASS: …", "passed", "green", "exit 0", "rc=0", a bare
-	// "0", a check mark.
-	heldOutcomeRe = regexp.MustCompile(`(?i)^(?:ok|pass(?:ed|es)?|green|clean|success(?:ful)?|exit(?:[ \t]+code)?[ \t]*[:=]?[ \t]*0|rc[ \t]*[:=]?[ \t]*0|0|✓|✔|✅)(?:$|[^\p{L}\p{N}.]|\.(?:[ \t]|$))`)
-	// heldCarryRe is a word that says the row was not run afresh, or did not
-	// come out clean, anywhere in the cell: a placeholder, a carry-forward,
-	// an unrun or negated outcome, a failure.
-	heldCarryRe = regexp.MustCompile(`(?i)\b(?:not|n/a|none|pending|same|see|unchanged|carr(?:y|ied|ies)|previous(?:ly)?|prior|earlier|above|before|skip\w*|unrun|deferred|todo|tbd|wait\w*|unknown|cached|reused|omitted|fail\w*|held|hold|blocked|could-not-check|errors?|timeout|timed|offline|run[ \t]+\d+|\w+n't)\b`)
-	// heldMarkupRe is markup whose rendering the scan does not model in a
-	// result cell: an HTML tag or comment, a character reference, a
-	// backslash escape.
-	heldMarkupRe = regexp.MustCompile(`<[A-Za-z!/?]|&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);|\\`)
+	// heldOutcomeRe is a recognised clean outcome at the start of what is
+	// left of a result cell: "ok", "PASS", "passed", "green", "exit 0",
+	// "rc=0", a check mark. A bare "0" is an outcome only as a whole Exit
+	// cell (heldOutcome).
+	heldOutcomeRe = regexp.MustCompile(`^(?:ok|pass(?:ed|es)?|green|clean|success(?:ful)?|exit(?:[ \t]+code)?[ \t]*[:=]?[ \t]*0|rc[ \t]*[:=]?[ \t]*0|✓|✔|✅)`)
+	// heldDetailRes are the neutral details a clean outcome may carry after
+	// it, the closed set heldDetailsClean accepts: a count of things that ran
+	// (its numbers checked by heldDetailCounts), a count of zero failures, a
+	// duration, or the clean outcome again ("exit 0, ok").
+	heldDetailRes = []*regexp.Regexp{
+		regexp.MustCompile(`^(\d+)[ \t]+(?:tests?|subtests?|checks?|cases?|files?|rows?|assertions?|packages?)(?:[ \t]+(?:passed|passing|ok|green|run|ran))?`),
+		regexp.MustCompile(`^(\d+)[ \t]+(?:passed|passing)`),
+		regexp.MustCompile(`^(\d+)[ \t]*/[ \t]*(\d+)(?:[ \t]+(?:passed|passing|ok|green))?`),
+		regexp.MustCompile(`^(\d+)[ \t]+of[ \t]+(\d+)(?:[ \t]+(?:tests?|subtests?|checks?|cases?|rows?))?[ \t]+(?:passed|passing|ok|green)`),
+		regexp.MustCompile(`^(?:0[ \t]+(?:failures?|failed|fails|errors?|findings?)|no[ \t]+(?:failures|errors|findings))`),
+		regexp.MustCompile(`^(?:in[ \t]+)?\d+(?:\.\d+)?[ \t]*(?:minutes?|mins?|ms|m|seconds?|secs?|s)`),
+		heldOutcomeRe,
+	}
+	// heldStrikeRe is a struck span as GFM renders one: the text between the
+	// tildes neither starts nor ends with a space. "~~ HELD ~~" is not a
+	// strike on GitHub, so the cover keeps it.
+	heldStrikeRe = regexp.MustCompile(`~~[^~ \t](?:[^~]*[^~ \t])?~~`)
+	// heldDetailSepRe is the punctuation, emphasis and space between details.
+	heldDetailSepRe = regexp.MustCompile("^[ \t,;:.()\\[\\]·—–*_`-]+")
 )
 
-// heldOutcome classifies one result cell of a covering row by what it renders
-// as. Struck spans are removed first. A cell carrying markup the scan does
-// not render (heldMarkupRe) or an invisible format character (a zero-width
-// space, a joiner) is heldCellOther: it may render as nothing, so it is
-// never read as a result. Otherwise the cell is heldCellPass only when it
-// opens with a recognised outcome (heldOutcomeRe) and carries no
-// carry-forward or unclean word (heldCarryRe); anything else — a placeholder
-// (—, n/a), a note, unrecognised text — is heldCellOther.
-func heldOutcome(cell string) heldCellState {
-	cell = strikethroughRe.ReplaceAllString(cell, "")
-	if heldMarkupRe.MatchString(cell) {
-		return heldCellOther
-	}
-	for _, r := range cell {
-		if unicode.Is(unicode.Cf, r) {
-			return heldCellOther
-		}
-	}
+// heldOutcome classifies one outcome cell of a covering row by what it renders
+// as; exit says the cell is in an Exit column. Struck spans that render as a
+// strike (heldStrikeRe) are removed first.
+// The WHOLE rest of the cell must then read as a clean outcome: a bare "0" as
+// a whole Exit cell, or a recognised outcome (heldOutcomeRe) followed only by
+// neutral details (heldDetailsClean). The grammar is closed — letters, digits,
+// spaces, a few punctuation marks and the check marks — so anything else is
+// heldCellOther: a placeholder (—, n/a), a carry-forward (same as Run 1), a
+// note after the outcome ("PASS (no re-run)"), a zero count ("0 checks run"),
+// unrecognised text, and markup or an invisible format character that may
+// render as nothing or hide text (<!-- -->, <br>, &nbsp;, a backslash escape,
+// a zero-width space), none of which the grammar admits.
+func heldOutcome(cell string, exit bool) heldCellState {
+	cell = heldStrikeRe.ReplaceAllString(cell, "")
 	n := strings.Trim(heldNorm(cell), "`*_ ")
 	if n == "" {
 		return heldCellEmpty
 	}
-	if heldCarryRe.MatchString(n) || !heldOutcomeRe.MatchString(n) {
+	if exit && n == "0" {
+		return heldCellPass
+	}
+	m := heldOutcomeRe.FindString(n)
+	if m == "" || !heldDetailsClean(n[len(m):]) {
 		return heldCellOther
 	}
 	return heldCellPass
+}
+
+// heldDetailsClean reports whether t, the text after a clean outcome, is
+// nothing but neutral details (heldDetailRes), optionally separated by
+// punctuation, emphasis and space. Whatever is left after the last detail
+// must itself be a detail, so text outside the closed set never passes.
+func heldDetailsClean(t string) bool {
+	for {
+		t = heldDetailSepRe.ReplaceAllString(t, "")
+		if t == "" {
+			return true
+		}
+		matched := false
+		for _, re := range heldDetailRes {
+			m := re.FindStringSubmatch(t)
+			if m == nil {
+				continue
+			}
+			if !heldDetailCounts(m[1:]) {
+				return false
+			}
+			t, matched = t[len(m[0]):], true
+			break
+		}
+		if !matched {
+			return false
+		}
+	}
+}
+
+// heldDetailCounts checks the numbers a count detail carries: every count of
+// things that ran is above zero, and a ratio ("3/3", "3 of 3 passed") passed
+// all it ran.
+func heldDetailCounts(nums []string) bool {
+	for _, s := range nums {
+		if n, err := strconv.Atoi(s); err != nil || n == 0 {
+			return false
+		}
+	}
+	return len(nums) < 2 || nums[0] == nums[1]
 }
 
 var (
