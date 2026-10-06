@@ -1,0 +1,2 @@
+### Fixed
+- `deskdispatch`: a human-gated dispatch from a repo that does not carry `tools/decision-issue.sh` still refuses (exit 6, before the claim), but the refusal now names every location tried — the helper path under `--root` or the authoritative `--claim-root`, and that no pure-Go port exists on PATH — plus the `--claim-root` way out. The claim tool's refusal is phrased through the same helper, and a class guard fails if a new wrapped `tools/*.sh` helper skips it.

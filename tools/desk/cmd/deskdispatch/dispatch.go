@@ -912,11 +912,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 	default:
 		return plan, deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: no claim tool is available — the pure-Go %s binary is not on PATH and %s is not "+
-				"present in %s, so no durable claim can be taken. A claim this verb cannot place is NOT "+
-				"permission to proceed: a machine-local lock would serialise two dispatchers on one machine "+
-				"and nothing at all across two, which is the case that double-dispatches%s.",
-			stepClaimAcquire, goClaimBinary, claimScriptRel, scriptsRoot, claimRootHint(o)), goErr)
+			"step %s: no claim tool is available — %s, so no durable claim can be taken. A claim this "+
+				"verb cannot place is NOT permission to proceed: a machine-local lock would serialise two "+
+				"dispatchers on one machine and nothing at all across two, which is the case that "+
+				"double-dispatches%s.",
+			stepClaimAcquire, helperLocationsTried(o, claimScriptRel, scriptsRoot), claimRootHint(o)), goErr)
 	}
 
 	// The human-decision gate's own preconditions: the flag pairing AND the script's
@@ -939,11 +939,19 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.gateHuman = true
 	}
 	if plan.gateHuman {
+		// The decision helper resolves the way the claim tool does: under the resolved root
+		// (--claim-root when given, else --root), then PATH. Unlike the claim tool it has NO
+		// PATH port today (see consumerHelpers), so a missing file is the end of the order and
+		// this REFUSES — it never skips the gate. The refusal names every location in that
+		// order and the --claim-root way out: the claim tool's PATH port means a dispatch from
+		// a repo without the scripts no longer needs --claim-root to CLAIM, so this step is
+		// where such a dispatch first learns it needs one.
 		if _, err := os.Stat(plan.decisionScript); err != nil {
 			return plan, deskkit.Unverifiable(fmt.Sprintf(
-				"step %s: %s is not present in %s, so the human-decision gate cannot be ensured. Dispatching "+
-					"a human-gated item with nothing in front of the human is the failure this gate exists to "+
-					"close.", stepDecisionGate, decisionScriptRel, scriptsRoot), err)
+				"step %s: no decision helper is available, so the human-decision gate cannot be ensured — %s. "+
+					"Dispatching a human-gated item with nothing in front of the human is the failure this "+
+					"gate exists to close, so this refuses rather than skip the gate%s.",
+				stepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o)), err)
 		}
 	}
 
@@ -1785,6 +1793,52 @@ func validTier(t string) bool {
 		}
 	}
 	return false
+}
+
+// consumerHelper is one consumer script this verb wraps, with the PATH port that stands in
+// for it when the resolved root does not carry it ("" = no port ships, so the file under the
+// resolved root is the ONLY location and its absence is a refusal).
+type consumerHelper struct {
+	rel      string
+	pathPort string
+}
+
+// consumerHelpers is EVERY consumer script this verb wraps. It is the one list the
+// missing-helper refusals read their PATH half from, and the class guard in
+// decisionhelper_test.go fails if a wrapped `tools/*.sh` is declared without joining it — so
+// a new helper cannot ship with a refusal that names one directory and leaves the operator to
+// guess whether anywhere else was consulted (the shape the decision gate's refusal had).
+//
+// The decision helper has no PATH port: there is no pure-Go `ensure` equivalent of
+// tools/decision-issue.sh yet (statusgen renders decision bodies but files nothing). Until
+// one ships, a target repo that does not carry the script dispatches human-gated items only
+// with --claim-root pointing at a checkout that does.
+var consumerHelpers = []consumerHelper{
+	{rel: claimScriptRel, pathPort: goClaimBinary},
+	{rel: decisionScriptRel, pathPort: ""},
+}
+
+// helperLocationsTried states every location this verb looked for the consumer helper rel, for
+// a missing-helper refusal: the file under the resolved root (naming which flag chose that
+// root, and that an explicit --claim-root is authoritative) and PATH — the port that was
+// looked up, or that no port exists to look up. Both refusals (the claim tool's and the
+// decision gate's) are phrased through this one function.
+func helperLocationsTried(o dispatchOpts, rel, scriptsRoot string) string {
+	under := "under --root, since no --claim-root was given"
+	if strings.TrimSpace(o.claimRoot) != "" {
+		under = "under --claim-root, which is authoritative: --root is not consulted when it is given"
+	}
+	file := fmt.Sprintf("%s is not present (%s)", filepath.Join(scriptsRoot, filepath.FromSlash(rel)), under)
+	port := ""
+	for _, h := range consumerHelpers {
+		if h.rel == rel {
+			port = h.pathPort
+		}
+	}
+	if port != "" {
+		return fmt.Sprintf("the pure-Go %s binary is not on PATH, and %s", port, file)
+	}
+	return fmt.Sprintf("%s, and no pure-Go port of %s ships, so PATH holds no fallback", file, rel)
 }
 
 // claimRootHint names the way out of a missing-claim-script failure when no --claim-root
