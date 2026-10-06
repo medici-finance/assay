@@ -119,11 +119,21 @@ func pushHeadToMain(root string, endpoint func(originURL string) (deskkit.ForgeG
 	if herr := hook.Run("origin", ep.Opts.URL, "HEAD", head.String(), "refs/heads/main"); herr != nil {
 		return herr
 	}
-	return repo.Push(gitcore.PushOpts{
+	if perr := repo.Push(gitcore.PushOpts{
 		URL:      ep.Opts.URL,
 		RefSpecs: []string{head.String() + ":refs/heads/main"},
 		Auth:     ep.Opts.Auth,
-	})
+	}); perr != nil {
+		return perr
+	}
+	// `git push origin HEAD:main` moved origin's remote-tracking ref for main; the transient
+	// remote gitcore.Push uses writes nothing locally, so record it here, after the push
+	// landed and at the pushed hash, locally only. A failure only warns: the push has already
+	// landed, and the next fetch corrects the ref.
+	if _, terr := repo.UpdateRemoteTracking("origin", "refs/heads/main", head.String()); terr != nil {
+		fmt.Fprintf(os.Stderr, "verifyloop: WARNING — pushed, but could not record origin's tracking ref for main: %v\n", terr)
+	}
+	return nil
 }
 
 // commitPushRace commits the given paths on main and pushes, retrying the documented race

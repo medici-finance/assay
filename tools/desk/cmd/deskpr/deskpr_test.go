@@ -584,6 +584,11 @@ func TestCreateSuccessAlwaysDraftNeverForce(t *testing.T) {
 	if anyGitForce(*calls) {
 		t.Fatalf("a git argv carried --force; draft-only-by-construction requires none: %v", gitCalls(*calls))
 	}
+	// create left the branch's upstream (what `git push -u` left), so `deskwt remove`'s
+	// pushed-commits guard can prove the worktree is pushed.
+	if up := mustGit(t, work, "rev-parse", "--symbolic-full-name", "@{u}"); up != "refs/remotes/origin/feature/test-branch" {
+		t.Fatalf("upstream after create = %q, want refs/remotes/origin/feature/test-branch", up)
+	}
 	// gh pr create --draft is ALWAYS present (the always-draft argv assertion).
 	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
 		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))

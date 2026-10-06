@@ -366,7 +366,7 @@ func cmdCreate(args []string) (err error) {
 	// so a push that would need force is refused by the protocol; no caller flag reaches it.
 	if pushErr := pushFn(pushSpec{
 		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
-		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch,
+		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch, setUpstream: true,
 	}); pushErr != nil {
 		return pushErr
 	}
@@ -744,7 +744,8 @@ func cmdUpdate(args []string) (err error) {
 	}
 	if override {
 		// Explicit refspec: HEAD onto the PR's head branch. The worktree's own branch has a
-		// different name; the in-process push never touches local upstream config either way.
+		// different name, so its upstream config is left alone (git push <src>:<dst> never set
+		// one); the tracking ref for the PR head branch is still recorded (push.go recordPushed).
 		spec.srcRef, spec.dstBranch = "HEAD", pushDest
 	}
 	if pushErr := pushFn(spec); pushErr != nil {

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // pushFixture is newBaseFixture (work tree on feature/test-branch, push URL = the local
@@ -106,6 +107,67 @@ func TestPushAttachedHeadLands(t *testing.T) {
 	}
 	if got, want := mustGit(t, bare, "rev-parse", "refs/heads/feature/elsewhere"), mustGit(t, work, "rev-parse", "HEAD"); got != want {
 		t.Fatalf("bare feature/elsewhere = %q, want HEAD %s", got, want)
+	}
+}
+
+// TestPushRecordsUpstream — the create push leaves what `git push -u` left: the
+// remote-tracking ref at the pushed commit and the branch's upstream config. It runs the same
+// two reads `deskwt remove`'s pushed-commits guard runs (UpstreamRef, then AheadCount from the
+// upstream to HEAD), which refuse a worktree with no upstream.
+func TestPushRecordsUpstream(t *testing.T) {
+	work, _ := pushFixture(t)
+	s := branchSpec(work)
+	s.setUpstream = true
+	if err := pushBranch(s); err != nil {
+		t.Fatalf("create push: %v", err)
+	}
+	head := mustGit(t, work, "rev-parse", "HEAD")
+	if got := mustGit(t, work, "rev-parse", "refs/remotes/origin/feature/test-branch"); got != head {
+		t.Fatalf("tracking ref = %q, want the pushed HEAD %s", got, head)
+	}
+	r, err := gitcore.Open(work)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	up, err := r.UpstreamRef()
+	if err != nil {
+		t.Fatalf("no upstream after the create push (deskwt remove would refuse): %v", err)
+	}
+	if up != "refs/remotes/origin/feature/test-branch" {
+		t.Fatalf("upstream = %q, want refs/remotes/origin/feature/test-branch", up)
+	}
+	if n, aerr := r.AheadCount(up, "HEAD"); aerr != nil || n != 0 {
+		t.Fatalf("ahead of upstream = %d (%v), want 0", n, aerr)
+	}
+}
+
+// TestPushRecordsTrackingRef — the update push (no upstream write, as `git push origin
+// <src>:<dst>` never set one) still moves the destination's remote-tracking ref to the pushed
+// commit, which deskpr update's offline identity anchor reads. A rejected push records nothing.
+func TestPushRecordsTrackingRef(t *testing.T) {
+	work, _ := pushFixture(t)
+	s := branchSpec(work)
+	s.srcRef, s.dstBranch = "HEAD", "feature/pr-head"
+	if err := pushBranch(s); err != nil {
+		t.Fatalf("update push: %v", err)
+	}
+	head := mustGit(t, work, "rev-parse", "HEAD")
+	if got := mustGit(t, work, "rev-parse", "refs/remotes/origin/feature/pr-head"); got != head {
+		t.Fatalf("tracking ref = %q, want the pushed HEAD %s", got, head)
+	}
+	if out, _ := git(work, "config", "--get-regexp", `^branch\.`); strings.TrimSpace(out) != "" {
+		t.Fatalf("update push wrote upstream config %q; only create sets one", out)
+	}
+	// A force-requiring push is rejected and leaves the tracking ref where it was.
+	mustGit(t, work, "reset", "--hard", "HEAD~1")
+	writeFile(t, filepath.Join(work, "diverged.txt"), "x\n")
+	mustGit(t, work, "add", "diverged.txt")
+	mustGit(t, work, "commit", "-m", "diverged")
+	if err := pushBranch(s); err == nil {
+		t.Fatal("force-requiring push succeeded")
+	}
+	if got := mustGit(t, work, "rev-parse", "refs/remotes/origin/feature/pr-head"); got != head {
+		t.Fatalf("rejected push moved the tracking ref to %s", got)
 	}
 }
 

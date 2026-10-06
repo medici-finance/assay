@@ -28,6 +28,7 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
@@ -42,6 +43,10 @@ type pushSpec struct {
 	originURL string // origin's fetch URL as git resolves it — a forge-kind hint only
 	srcRef    string // "refs/heads/<branch>" or "HEAD"
 	dstBranch string // the remote branch name (no refs/heads/ prefix)
+	// setUpstream also records the pushed branch as srcRef's upstream (branch.<b>.remote and
+	// branch.<b>.merge) — what `git push -u` did on create. Only meaningful when srcRef is a
+	// refs/heads/ branch.
+	setUpstream bool
 }
 
 // pushFn is the push seam. Production binds pushBranch; a test that needs to observe or fail
@@ -121,7 +126,37 @@ func pushBranch(s pushSpec) error {
 	}); perr != nil {
 		return deskkit.Unverifiable("git push failed", perr)
 	}
+	recordPushed(repo, s, dstRef, hash.String())
 	return nil
+}
+
+// recordPushed writes back the local state a `git push` used to leave and an in-process push
+// does not (gitcore.Push goes through a transient remote, so go-git updates no tracking ref):
+//
+//   - refs/remotes/origin/<dst> at the pushed commit (through origin's own fetch refspec), as
+//     every `git push origin` did. deskpr update's offline publish-identity anchor
+//     (remoteTrackingTip) reads it, and so does `deskwt remove`'s pushed-commits guard through
+//     the upstream;
+//   - on create (setUpstream), branch.<b>.remote=origin and branch.<b>.merge=refs/heads/<dst>,
+//     as `git push -u` did. Without them `deskwt remove` refuses the worktree ("no upstream").
+//
+// The push has already landed, so a failure here is reported, never turned into a push
+// failure. A missing tracking ref or upstream leaves both readers on their fail-closed side
+// (deskwt refuses to remove; the identity gate judges the whole range).
+func recordPushed(repo *gitcore.Repo, s pushSpec, dstRef, hash string) {
+	if _, err := repo.UpdateRemoteTracking("origin", dstRef, hash); err != nil {
+		fmt.Fprintf(deskprStderr, "deskpr: WARNING — pushed, but could not record the remote-tracking ref for %s: %v\n", dstRef, err)
+	}
+	if !s.setUpstream || !strings.HasPrefix(s.srcRef, "refs/heads/") {
+		return
+	}
+	b := strings.TrimPrefix(s.srcRef, "refs/heads/")
+	for _, kv := range [][2]string{{"branch." + b + ".remote", "origin"}, {"branch." + b + ".merge", dstRef}} {
+		if _, err := git(s.dir, "config", kv[0], kv[1]); err != nil {
+			fmt.Fprintf(deskprStderr, "deskpr: WARNING — pushed, but could not set %s: %v\n", kv[0], err)
+			return
+		}
+	}
 }
 
 // runPrePushHook runs the repository's pre-push hook (deskkit.PrePushHook) for this push:

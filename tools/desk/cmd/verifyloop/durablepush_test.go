@@ -71,8 +71,13 @@ func TestDurablePushLandsMain(t *testing.T) {
 	if err := pushHeadToMain(work, localEndpoint(bare), execRun); err != nil {
 		t.Fatalf("durable push: %v", err)
 	}
-	if got, want := gitT(t, bare, "rev-parse", "refs/heads/main"), gitT(t, work, "rev-parse", "HEAD"); got != want {
+	want := gitT(t, work, "rev-parse", "HEAD")
+	if got := gitT(t, bare, "rev-parse", "refs/heads/main"); got != want {
 		t.Fatalf("remote main = %s, want %s", got, want)
+	}
+	// As `git push origin HEAD:main` would, the push moves origin's tracking ref for main.
+	if got := gitT(t, work, "rev-parse", "refs/remotes/origin/main"); got != want {
+		t.Fatalf("origin/main = %s after the push, want %s", got, want)
 	}
 }
 
@@ -87,7 +92,11 @@ func TestDurablePushRaceRejected(t *testing.T) {
 	theirs := gitT(t, bare, "rev-parse", "refs/heads/main")
 
 	commitIn(t, work, "ours.md")
+	tracked := gitT(t, work, "rev-parse", "refs/remotes/origin/main")
 	err := pushHeadToMain(work, localEndpoint(bare), execRun)
+	if got := gitT(t, work, "rev-parse", "refs/remotes/origin/main"); got != tracked {
+		t.Fatalf("a rejected push moved origin/main to %s", got)
+	}
 	if err == nil || !strings.Contains(err.Error(), "non-fast-forward") {
 		t.Fatalf("racing push = %v, want a non-fast-forward rejection", err)
 	}
