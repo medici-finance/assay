@@ -233,6 +233,32 @@ Review-support findings (semantic checks the brief's Review section asks for; th
 **VERIFY: FAIL — row 6 exits 141 under the repo's execution witness (bash -o pipefail SIGPIPE on `git log … | head -1`; output `1` matches the Expect, but the row as written cannot record a clean exit); row 10 is COULD-NOT-CHECK (exit=2) on merged main 56140a33d and reaches `exit=0` only at the PR head 8f64ec2fb, so the witness records it failed. Rows 1–5, 7–9 and 11 pass on merged main 56140a33d. The deliverables match the brief; the fix belongs in the Verify table.**
 
 Execution witness: `statusgen verifyrun` ran for real on merged main 56140a33d (9 pass; row 6 fail, exit 141 under pipefail; row 10 fail, the at-main COULD-NOT-CHECK above; `verifyrun --check` agrees, exit 1). The witness table is not landed here because that run stamped no on-behalf-of principal. It is re-run under the stamped write path once the rows are re-authored. Status stays `implemented` with no flip. Row re-authoring is routed to #1915 (https://github.com/medici-finance/assay/issues/1915#issuecomment-6004541583).
+2026-10-06 non-implementer re-verification on merged main 11228951d (confirmed by rev-parse and the commits API; delivered by #2249, squash 4329640e7) — VERIFY: FAIL, check-definition. Same two rows as the earlier pass (#2261); re-authoring tracked in #1915 (open). The deliverables are correct.
+
+| # | Command | Exit | Observed output | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Verify row 1 as written | 0 | 6. PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written | 0 | 6 (at least 6). PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written | 0 | 6. PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written | 0 | 3 (at least 1). PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written | 0 | 2. PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | Verify row 6 as written, in plain bash and under bash -o pipefail | 0 plain; 141 under pipefail and in the verifyrun witness | prints 1 in both shells, matching the Expect, but head -1 closes the pipe while git log --follow --reverse is still writing its 27-commit list, so git dies of SIGPIPE. Under pipefail the exit is 141 and the witness records fail. FAIL (as the witness runs it) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | Verify row 7 as written | 0 | 1 (at least 1). PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written | 0 | NET-OK. Impl resolves to 4329640e7 with base at its parent e77868565; worker-desk SKILL.md is 921 lines at base and at tip (925 on main today from the later #2278, which this row does not measure). PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written | 0 | 1 (at least 1). PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | Verify row 10 as written on merged main; supplement at the delivering commit with its parent as base | exit=2 on main; 0 at 4329640e7 | On main: "COULD-NOT-CHECK: assay:assay:build-less-brittle:09 is not in the diff against 11228951d", exit=2, which the witness records as fail. At the delivering commit: "summary: 2 corroborated, 0 disproved, 2 unchecked", exit 0. The row as written cannot decide on merged main (#1915) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | Verify row 11 as written, in a subshell | 0 | SOURCE-CHANGE-EXAMPLE. PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Execution witness: statusgen verifyrun --dry-run, built from this tree's statusgen module, exits 1 with 9 pass and 2 fail (rows 6 and 10); nothing written back.
+
+RISK-VALUE: DERIVED — counted instance kinds = confirmed-defect and false-positive, deduped by incident group @ docs/brittle-investigation-template.md:190-191; matches the spec's counting rule at spec.md:114.
+RISK-VALUE: DERIVED — fix-window = 90 days before mark-date @ docs/brittle-investigation-template.md:201; matches spec.md:94 and :264 and the hotspot report's default window.
+RISK-VALUE: DERIVED — fix-subject pattern @ docs/brittle-investigation-template.md:200; byte-identical to FixPattern at tools/desk/internal/hotspot/hotspot.go:48 (case-insensitive in both).
+RISK-VALUE: DERIVED — originating-commit read depth = head -3 @ docs/brittle-investigation-template.md:117; fixed by the brief's facts, input 1.
+RISK-VALUE: DERIVED — tier = strong @ docs/brittle-investigation-template.md:10 and plugins/assay/skills/worker-desk/SKILL.md:315; from the brief's exec-tier.
+RISK-VALUE: NAMED, NOT DERIVED — a deletion-bundle entry that is a security control is human-gated (needs-decision) @ docs/brittle-investigation-template.md:72-73; neither brief nor spec states this binding. It only adds a gate. Reversible.
+
+**VERIFY: FAIL** — check-definition. Row 6 exits 141 under the witness's pipefail although its output matches; row 10 is could-not-check (exit=2) on merged main and passes only at the delivering commit. Rows 1-5, 7-9 and 11 pass. Status stays implemented. Both rows need re-authoring: #1915.
 
 ## Review
 Gate: model (from frontmatter). The reviewer runs the template's `## Intent` reads against one

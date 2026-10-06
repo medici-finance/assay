@@ -188,6 +188,53 @@ RISK-VALUE: DERIVED — round threshold = 2 @ plugins/assay/skills/worker-desk/S
 Execution witness: `statusgen verifyrun` ran for real on merged main 56140a33d (11 pass; row 6 could-not-run, an Expect-parser limit, with the output hash matching `1
 COUNTER-EXISTS
 `; row 11 fail, the at-main COULD-NOT-CHECK above). The witness table is not landed here because that run stamped no on-behalf-of principal. It is re-run under the stamped write path once the rows are re-authored. Status stays `implemented` with no flip. Row re-authoring is routed to #1915 (https://github.com/medici-finance/assay/issues/1915#issuecomment-6004541583).
+2026-10-06 non-implementer re-verification on merged main 11228951d (confirmed by rev-parse and the commits API). Delivered by #2245, squash e77868565 (parent 9cd7271bb). statusgen v1.0.32. — VERIFY: PASS, 13/13.
+
+| # | Command | Exit | Observed output | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | cd tools/desk && go test ./cmd/deskdispatch/ -count=1 | 0 | ok for the deskdispatch package (15.4s) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | cd tools/desk && go test ./cmd/deskdispatch/ -run (the row's named kit-parity test) -count=1 -v | 0 | RUN then PASS for the named parity test, then ok. The named test ran; not vacuous | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written (mutate "unrepresentable" in the objective kit, re-run the parity test, restore) | 0 | RED-ON-DRIFT. The mutant failed at kitparity_test.go:58 (clause lost "unrepresentable") and :64 (the two kits' clauses differ); kit restored, git status clean | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written (strike two in both kits) | 0 | 2 (per-kit counts 2 and 2) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written (## Weight in both kits) | 0 | 2 | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | Verify row 6 as written (weight counter invocation plus test file exists) | 0 | 1, then COUNTER-EXISTS; the named counter test is defined in the weight package test file (line 301) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | Verify row 7 as written (worker kit net lines) | 0 | NET-OK (impl e77868565, base 9cd7271bb; 388 before and 388 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written (objective kit net lines) | 0 | NET-OK (522 before and 522 after; 541 on main from later changes) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written (worker-desk skill net lines) | 0 | NET-OK (923 before and 921 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | Verify row 10 as written (parity token moved) | 0 | MOVED | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?" — judged at the PR head as the Expect specifies | 0 | On merged main it prints exit=2 COULD-NOT-CHECK (brief not in the diff against main), no evidence either way. The tool's prescribed re-run at the implementing commit e77868565 with --base 9cd7271bb: 3 corroborated, 0 disproved, 1 unchanged since the merge-base, exit=0. PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | Verify row 12 as written (driver's own login in both kits) | 0 | 2 | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | Verify row 13 as written (production-down or security fix scope in both kits) | 0 | 2 | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Review-gate check: clause 14 keeps obligations 1 and 3 and the positive-control sentence in both kits; the clause 8 strike-two and Weight blocks are byte-identical between the kits on merged main.
+
+RISK-VALUE: DERIVED — strike threshold = 2 (one prior merged fix in the class record) @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:155 (objective kit :227); the spec defines strike detection as "the class issue already records a merged fix", the earliest point a same-class repeat is observable. Reversible.
+RISK-VALUE: DERIVED — round threshold = 2 @ plugins/assay/skills/worker-desk/SKILL.md:512; spec D5 "Round-two work and design work run at strong tier". Reversible.
+
+**VERIFY: PASS**
+2026-10-06 execution witness for the pass above (statusgen v1.0.32 `verifyrun --brief`, non-dry, verifier worktree at merged main 11228951d0a8). verifyrun exit 2: 11 pass, row 6 could-not-run, row 11 fail. Neither non-pass row is a defect in the delivered work; both are row-authoring limits:
+- Row 6: the Expect cell asks for "a count ≥ 1", but the command's output is `1` followed by `COUNTER-EXISTS`. verifyrun cannot read a count from that output, so the row is could-not-run. This matches the witness hash at 56140a33d.
+- Row 11: `statusgen --consumers --brief` without --base on merged main prints `exit=2` (COULD-NOT-CHECK, brief not in the diff against main). The Expect can only be decided at the PR head. A manual run with --base at the implementing parent printed `exit=0`, 3 corroborated, 0 disproved. This is the #1915 class.
+
+The `+dirty` stamp is from the verifier's untracked scratch directory in its worktree (no tracked change before the run). The `(forge-identity)` tag is as stamped.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | row 1 | pass exit=0 | sha256:81773de0ad27 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | row 2 | pass exit=0 | sha256:69ac4b91cba0 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | row 3 | pass exit=0 | sha256:cd183bfd8e84 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 4 | row 4 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 5 | row 5 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 6 | row 6 | could-not-run exit=0 — Expect requires a count ≥ 1 but the output carries no number to read | sha256:bd8115622356 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 7 | row 7 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 8 | row 8 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 9 | row 9 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 10 | row 10 | pass exit=0 | sha256:24896b079790 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 11 | row 11 | fail exit=0 | sha256:ed637df28bc4 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 12 | row 12 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 13 | row 13 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+
+**VERIFY: BLOCKED** — every row passes by hand (13/13 above), but the execution witness cannot pass until rows 6 and 11 are re-authored (#1915). Status stays implemented; the same-day status flip was reverted.
 
 ## Review
 Gate: model (from frontmatter). The reviewer confirms the clause 14 rewrite keeps the planted-

@@ -250,3 +250,29 @@ RISK-VALUE: N/A — no irreversible literal in the #2004 or #2081 diffs; every l
 Open hold, not a Verify row: the statusgen half of the floor is still build/vet-only in PR CI; the staged CI patch for statusgen go test is present but not applied to the CI workflow (recorded on #1836). #2077 (row 8 Expect re-author) is resolved by #2081 but still reads open.
 
 VERIFY: PASS — all 9 Verify rows pass on merged main 37d5eb00c and the execution witness exits 0 with 9/9 rows pass
+2026-10-06 non-implementer re-verification on merged main 11228951d (confirmed by rev-parse and the commits API; delivered by #2004 as b6a5223b). Third pass, the first after #2160 changed the regression package. — VERIFY: PASS, 9/9.
+
+| # | Command | Exit | Observed output | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Verify row 1 as written (floor-go.sh go test of the manifest test, anchored PASS grep) | 0 | the manifest test PASS (0.75s); package ok | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written (TestReg rows over the regression package and the claim-ref command, count vs MANIFEST) | 0 | pass=3 manifest=3 (the 786, 1145 and 727 regression tests: 29.40s, 3.86s, 0.08s); both packages ok | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written (four anchored statusgen go test runs through floor-go.sh) | 0 | four top-level PASS lines (shallow-clone consumed-fragment, relPath separator style, native-forge scan read, WSL-launcher bootstrap witness); four ok lines | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written (seed-row count in MANIFEST vs Evidence-row count) | 0 | manifest=26 evidence=26 | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written (Regression floor heading in the stream README) | 0 | heading present at README line 171; states the port-not-delete rule | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | statusgen --consumers --root . (v1.0.32) | 0 | "no brief files in the diff against 11228951d0a8 ... nothing to corroborate" (vacuous on merged main). Supplement with --base at the parent of the #2004 merge and --brief desktools-v2/14: exit 0, 0 corroborated, 0 disproved, 5 unchecked | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | bash check-floor.sh in the regression package | 0 | seed passes=26; 26 top-level PASS lines, 0 FAIL | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written (mutate_guard.py in seven modes) | 0 | controls=7; worktree git status empty before and after | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written (TestFloor rows in the regression package, anchored PASS count) | 0 | pass=2 (runner git isolation 0.32s, go choke point 0.00s); package ok | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Run conditions: macOS arm64, go 1.27.1, offline, KUBECONFIG=/dev/null, no GIT_* or token variables. The changelog fragment named in Context was folded into the v1.0.32 changelog by cb4105ba (expected release behaviour).
+
+RISK-VALUE: N/A — no irreversible literal in the #2004 diff or the #2160 regression-package change. Every literal enumerated (sha length 7 to 40, name ceiling 31, starter set 22, seed floor 18, test deadlines 60s/30s/120s, WaitDelay 1s, per-test timeout 90s, mutation timeouts 60s/90s, fixture-only git maintenance and gc off) is a reversible test-harness bound.
+
+Open hold, not a Verify row: the statusgen half of the floor still does not run in PR CI (statusgen go test is only in the release workflow; the staged patch is recorded on #1836).
+
+**VERIFY: PASS**
+2026-10-06 execution witness for the pass above (statusgen v1.0.32 `verifyrun --brief`, non-dry, at 11228951d0a8, host 1-minute load about 27 to 35): exit 1. Rows 1, 3, 4, 5, 6, 8 and 9 pass; rows 2 and 7 are red.
+
+The row 2 failure was reproduced by hand straight after: the fleet-hardening seed test (#786) was killed at its 60s shell-fixture deadline (`signal: killed`, 60.27s). Every fixture assertion printed before the kill read ok. A hand re-run of row 7 at load about 35 exited 0 (seed passes=26; the #786 test took 43.74s).
+
+This is a load-sensitive deadline, not a behaviour regression. It is the thin-headroom concern flagged on 2026-10-03. The witness is being re-run at lower load. The status does not change until a passing witness lands.
