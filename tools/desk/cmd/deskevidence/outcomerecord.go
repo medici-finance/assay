@@ -66,6 +66,11 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: --outcome-record target failed the path-prefix guard: " + perr.Error())
 	}
 	ac.file = targetRepoPath
+	// Pre-work admission, bound to this record's brief key: the record's target is
+	// derived from its brief, so an attestation for another brief refuses here.
+	if _, aerr := admitVerifierEvidence(root, repoSlug, targetRepoPath, ac); aerr != nil {
+		return aerr
+	}
 	commitContent := deskkit.CanonicalBytes(rec.Raw)
 
 	if len(commitContent) > maxBytes {
@@ -174,7 +179,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		File:    targetRepoPath,
 		Branch:  branch,
 		Content: commitContent,
-		Message: "Evidence: verify-outcome record for " + wr.Brief + commitSuffix,
+		Message: "Evidence: verify-outcome record for " + wr.Brief + ac.attestationTrailer() + commitSuffix,
 	})
 	if werr != nil {
 		return werr
@@ -209,7 +214,7 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 		File:        target,
 		Branch:      side,
 		Content:     content,
-		Message:     "Evidence: verify-outcome record for " + brief + commitSuffix,
+		Message:     "Evidence: verify-outcome record for " + brief + ac.attestationTrailer() + commitSuffix,
 		StartBranch: base,
 	})
 	if werr != nil {

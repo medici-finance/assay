@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -33,8 +34,27 @@ type verifierLocal struct {
 }
 
 func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+
+// verifierEnv is the environment for every admission git read: inherited GIT_*
+// variables (which can redirect the repository, index, object store, config or
+// replace-ref base) are dropped, and replacement objects are disabled, so the
+// reads resolve the dispatched commit's own objects in the home itself.
+func verifierEnv() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(kv), "GIT_") {
+			env = append(env, kv)
+		}
+	}
+	return append(env, "GIT_NO_REPLACE_OBJECTS=1")
+}
+func verifierGitBytes(root string, args ...string) ([]byte, error) {
+	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)
+	cmd.Env = verifierEnv()
+	return cmd.Output()
+}
 func verifierGit(root string, args ...string) (string, error) {
-	out, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
+	out, err := verifierGitBytes(root, args...)
 	if err != nil {
 		return "", Unverifiable("cannot establish verifier source: git "+strings.Join(args, " "), err)
 	}
@@ -151,31 +171,19 @@ func verifierLocalCheck(root, brief string, r verifierLocal) error {
 	if head != b.Source || branch != "HEAD" {
 		return Refused("verifier requires its attested detached source commit")
 	}
-	changed, err := verifierGit(home, "diff", "--no-ext-diff", "--ignore-submodules=none", "--name-only", "-z", b.Source, "--")
-	if err != nil {
+	// Admission compares the bytes a Verify row will read, never git's own view
+	// of the worktree: index flags, replacement objects and clean filters can all
+	// make that view report no change. Evidence and status edits target the
+	// brief and its stream index; other outputs belong outside this home.
+	if err := verifierNoReplacements(home); err != nil {
 		return err
 	}
 	index := filepath.ToSlash(filepath.Join(filepath.Dir(b.Brief), "README.md"))
-	for _, name := range strings.Split(changed, "\x00") {
-		if name != "" && name != b.Brief && name != index {
-			return Refused("source files changed since verifier dispatch: " + name)
-		}
-	}
-
-	// Enumerate every additional path, including ignored files. Evidence and
-	// status edits target tracked files; other outputs belong outside this home.
-	// A suffix allow-list would miss a new input type consumed by a Verify row.
-	extra, err := verifierGit(home, "ls-files", "--others", "-z", "--")
-	if err != nil {
+	if err := verifierSourceClosure(home, b.Source, map[string]bool{b.Brief: true, index: true}); err != nil {
 		return err
 	}
-	for _, name := range strings.Split(extra, "\x00") {
-		if name != "" {
-			return Refused("unattested worktree file: " + name)
-		}
-	}
 
-	source, err := exec.Command("git", "-C", home, "show", b.Source+":"+b.Brief).Output()
+	source, err := verifierGitBytes(home, "cat-file", "blob", b.Source+":"+b.Brief)
 	if err != nil {
 		return Unverifiable("cannot read attested brief at source", err)
 	}
@@ -429,8 +437,11 @@ func IsVerifierAttestation(title, author string) bool {
 	return strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)
 }
 
-// CheckVerifierEvidence reuses pre-work admission after Evidence/status edits.
-func CheckVerifierEvidence(root, repo string) (VerifierReceipt, error) {
+// CheckVerifierEvidence reuses pre-work admission after Evidence/status edits
+// and binds the landing target to the attested brief: an attestation for one
+// brief never admits Evidence, a stream-index edit or an outcome record for
+// another.
+func CheckVerifierEvidence(root, repo, target string) (VerifierReceipt, error) {
 	if root == "" {
 		root = "."
 	}
@@ -441,11 +452,65 @@ func CheckVerifierEvidence(root, repo string) (VerifierReceipt, error) {
 	if r.Binding.Repo != repo {
 		return r.VerifierReceipt, Refused("evidence repository differs from attested run")
 	}
+	if err := r.VerifierReceipt.CheckEvidenceTarget(target); err != nil {
+		return r.VerifierReceipt, err
+	}
 	return CheckVerifierAttestation(root, r.Binding.Brief)
 }
-func (r VerifierReceipt) CheckEvidenceContent(target string, content []byte) error {
-	if filepath.ToSlash(target) == r.Binding.Brief && verifierDigest(withoutEvidence(content)) != r.Binding.PlanSHA256 {
+
+// verifierBriefKey returns the attested brief's <stream> and <NN> when it sits
+// at docs/streams/<stream>/brief-<NN>-*.md.
+func (r VerifierReceipt) verifierBriefKey() (stream, nn string, ok bool) {
+	dir, base := path.Split(cleanRepoPath(r.Binding.Brief))
+	stream, ok = strings.CutPrefix(strings.TrimSuffix(dir, "/"), "docs/streams/")
+	if !ok || stream == "" || strings.Contains(stream, "/") || !isBriefFileName(base) {
+		return "", "", false
+	}
+	nn, _, _ = strings.Cut(strings.TrimPrefix(base, "brief-"), "-")
+	return stream, nn, true
+}
+
+// CheckEvidenceTarget admits only the attested brief itself, its stream index,
+// or a verify-outcome record keyed to that brief's <stream>/<NN>.
+func (r VerifierReceipt) CheckEvidenceTarget(target string) error {
+	t, brief := cleanRepoPath(target), cleanRepoPath(r.Binding.Brief)
+	if t == "" || brief == "" || strings.HasPrefix(t, "/") || strings.HasPrefix(t, "../") {
+		return Refused("Evidence target " + target + " is not bound to the attested brief")
+	}
+	if t == brief || t == path.Join(path.Dir(brief), "README.md") {
+		return nil
+	}
+	if rest, ok := strings.CutPrefix(t, OutcomeRecordsDir+"/"); ok {
+		recStream, file, _ := strings.Cut(rest, "/")
+		recNN, _, _ := strings.Cut(file, "-")
+		if stream, nn, ok := r.verifierBriefKey(); ok && recStream == stream && recNN == nn && !strings.Contains(file, "/") {
+			return nil
+		}
+	}
+	return Refused("Evidence target " + target + " is not bound to the attested brief " + r.Binding.Brief)
+}
+
+// CheckEvidenceContent refuses a landing that would change the attested brief's
+// inputs, and binds a stream-index landing to the attested brief's own row:
+// rows names the index rows the landing may touch, and each must be that row.
+func (r VerifierReceipt) CheckEvidenceContent(target string, content []byte, rows []string) error {
+	if r.Binding.Brief == "" {
+		return nil
+	}
+	t, brief := cleanRepoPath(target), cleanRepoPath(r.Binding.Brief)
+	if t == brief && verifierDigest(withoutEvidence(content)) != r.Binding.PlanSHA256 {
 		return Refused("Evidence landing would change attested brief inputs or Verify commands")
+	}
+	if t == path.Join(path.Dir(brief), "README.md") {
+		_, nn, ok := r.verifierBriefKey()
+		if !ok || len(rows) == 0 {
+			return Refused("stream-index landing for an attested run must name the attested brief's row")
+		}
+		for _, row := range rows {
+			if strings.TrimSpace(row) != nn {
+				return Refused("stream-index row " + row + " is not the attested brief's row " + nn)
+			}
+		}
 	}
 	return nil
 }

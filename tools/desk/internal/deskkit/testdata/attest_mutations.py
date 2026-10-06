@@ -5,29 +5,49 @@ import subprocess
 
 pkg = Path(__file__).resolve().parents[1]
 module = pkg.parents[1]
-path = pkg / "verifierattestation.go"
+ATTEST = "internal/deskkit/verifierattestation.go"
+SOURCE = "internal/deskkit/verifiersource.go"
+EVIDENCE = "cmd/deskevidence/deskevidence.go"
+KIT = "./internal/deskkit"
+CLOSURE = "TestAttestSourceClosure"
+TARGET = "TestVerifierEvidenceTargetBinding"
+# (name, [(file, before, after), ...], package, test regex)
 mutations = [
-    ("typed-issue-author", 'strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)', 'strings.HasPrefix(title, VerifierAttestationTitle)', "TestAttestationExcludedDuringOpenWindowBothForges"),
-    ("qualified-source", '"rev-parse", "refs/remotes/origin/main"', '"rev-parse", "origin/main"', "TestAttestRemoteRef"),
-    ("actor-separation", "!SameActor(desk, verifier)", 'verifier != ""', "TestAttestActorSeparation"),
-    ("detached-head", 'head != b.Source || branch != "HEAD"', 'head != b.Source || (false && branch != \"HEAD\")', "TestAttestSourceClosure/branch"),
-    ("source-commit", 'head != b.Source || branch != "HEAD"', '(false && head != b.Source) || branch != "HEAD"', "TestAttestSourceClosure/commit"),
-    ("tracked-source", 'name != "" && name != b.Brief && name != index', 'false && name != "" && name != b.Brief && name != index', "TestAttestSourceClosure/(tracked|staged)"),
-    ("all-additional-files", 'if name != "" {', 'if false && name != "" {', "TestAttestSourceClosure/(untracked|ignored|second-site)"),
-    ("ignored-files", '"ls-files", "--others", "-z", "--"', '"ls-files", "--others", "--exclude-standard", "-z", "--"', "TestAttestSourceClosure/ignored"),
+    ("typed-issue-author", [(ATTEST, 'strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)', 'strings.HasPrefix(title, VerifierAttestationTitle)')], KIT, "TestAttestationExcludedDuringOpenWindowBothForges"),
+    ("qualified-source", [(ATTEST, '"rev-parse", "refs/remotes/origin/main"', '"rev-parse", "origin/main"')], KIT, "TestAttestRemoteRef"),
+    ("actor-separation", [(ATTEST, "!SameActor(desk, verifier)", 'verifier != ""')], KIT, "TestAttestActorSeparation"),
+    ("detached-head", [(ATTEST, 'head != b.Source || branch != "HEAD"', 'head != b.Source || (false && branch != "HEAD")')], KIT, CLOSURE + "/branch"),
+    ("source-commit", [(ATTEST, 'head != b.Source || branch != "HEAD"', '(false && head != b.Source) || branch != "HEAD"')], KIT, CLOSURE + "/commit"),
+    ("tracked-content", [(SOURCE, "if verifierBlobID(newHash, data) == object {", "if true || verifierBlobID(newHash, data) == object {")], KIT, CLOSURE + "/(tracked|staged|assume-unchanged|skip-worktree|clean-filter)$"),
+    ("all-additional-files", [(SOURCE, 'return Refused("unattested worktree file: " + rel)', "return nil")], KIT, CLOSURE + "/(untracked|ignored|second-site)$"),
+    ("missing-files", [(SOURCE, "if len(missing) > 0 {", "if false && len(missing) > 0 {")], KIT, CLOSURE + "/deleted$"),
+    ("replace-refs", [(SOURCE, 'if refs != "" {', 'if false && refs != "" {')], KIT, CLOSURE + "/replace-ref$"),
+    ("no-replace-objects", [(ATTEST, '"--no-replace-objects", "-C", root', '"-C", root'), (ATTEST, 'return append(env, "GIT_NO_REPLACE_OBJECTS=1")', "return env")], KIT, "TestVerifierTreeIgnoresReplacements"),
+    ("filter-driver", [(SOURCE, 'len(f) < 3 || (f[2] != "unspecified" && f[2] != "unset")', "len(f) < 0")], KIT, CLOSURE + "/smudge-filter$"),
+    ("evidence-target", [(ATTEST, 'return Refused("Evidence target " + target + " is not bound to the attested brief " + r.Binding.Brief)', "return nil")], KIT, TARGET),
+    ("outcome-key", [(ATTEST, "recStream == stream && recNN == nn", "recStream == stream && (recNN == nn || nn != recNN)")], KIT, TARGET),
+    ("index-rows", [(ATTEST, "if strings.TrimSpace(row) != nn {", "if false {")], KIT, TARGET),
+    ("target-in-admission", [(ATTEST, "if err := r.VerifierReceipt.CheckEvidenceTarget(target); err != nil {", "if err := error(nil); err != nil {")], KIT, TARGET),
+    ("landing-target", [(EVIDENCE, "admitVerifierEvidence(*root, repoSlug, targetRepoPath, ac)", "admitVerifierEvidence(*root, repoSlug, evidenceRepoPath, ac)")], "./cmd/deskevidence", "TestVerifierEvidenceTargetBoundToAttestedBrief/brief-path"),
+    ("commit-binding", [(EVIDENCE, '"Evidence: verification row for " + targetRepoPath + ac.attestationTrailer() + commitSuffix', '"Evidence: verification row for " + targetRepoPath + commitSuffix')], "./cmd/deskevidence", "TestVerifierEvidenceTargetBoundToAttestedBrief/bound-direct-commit"),
 ]
-for name, before, after, tests in mutations:
-    original = path.read_text()
-    if original.count(before) != 1:
-        raise SystemExit(f"{name}: mutation anchor absent/ambiguous")
+for name, edits, package, tests in mutations:
+    originals = {}
     try:
-        path.write_text(original.replace(before, after))
-        run = subprocess.run(["go", "test", "./internal/deskkit", "-run", tests, "-count=1", "-timeout", "60s"], cwd=module, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        for rel, before, after in edits:
+            path = module / rel
+            text = path.read_text()
+            originals.setdefault(path, text)
+            if text.count(before) != 1:
+                raise SystemExit(f"{name}: mutation anchor absent/ambiguous in {rel}")
+            path.write_text(text.replace(before, after))
+        run = subprocess.run(["go", "test", package, "-run", tests, "-count=1", "-timeout", "120s"], cwd=module, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if run.returncode == 0 or "--- FAIL:" not in run.stdout or "build failed" in run.stdout:
             raise SystemExit(f"{name}: no assertion failure\n{run.stdout}")
         print(f"{name}: killed")
         for line in run.stdout.splitlines():
-            if "--- FAIL:" in line or "want refusal" in line or "actor admitted" in line:
+            if "--- FAIL:" in line or "want refusal" in line or "admitted" in line or "landed" in line or "lost" in line:
                 print(line)
     finally:
-        path.write_text(original)
+        for path, text in originals.items():
+            path.write_text(text)

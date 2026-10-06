@@ -179,10 +179,10 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			if !strings.Contains(string(after), receipt.EvidenceBinding()) {
 				t.Fatalf("Evidence lost exact run/source/model binding: %s", after)
 			}
-			if _, err := deskkit.CheckVerifierEvidence(home, allowedRepo); err != nil {
+			if _, err := deskkit.CheckVerifierEvidence(home, allowedRepo, "spec.md"); err != nil {
 				t.Fatalf("normal Evidence preparation deadlocked: %v", err)
 			}
-			if err := receipt.CheckEvidenceContent("spec.md", after); err != nil {
+			if err := receipt.CheckEvidenceContent("spec.md", after, nil); err != nil {
 				t.Fatal(err)
 			}
 		})

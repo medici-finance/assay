@@ -134,6 +134,10 @@ changed Verify commands stops the run. Evidence and stream-index status edits ar
 Verifier output files (logs, binaries and scratch results) belong outside the admitted
 source worktree. Only tracked Evidence and stream-index status edits preserve admission;
 additional files, including ignored files, refuse admission at execution and landing.
+Admission compares every file's bytes against the attested commit, so index flags,
+replacement objects and filter drivers cannot hide a changed input. The record admits
+Evidence only for its own brief: that brief, its stream-index row, or an outcome record
+keyed to it. Landing Evidence for any other brief refuses, even with a valid record.
 
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator

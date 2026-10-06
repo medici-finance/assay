@@ -576,8 +576,9 @@ boot, before the first sweep.
 
 ### Verification attestation records
 
-Issues with the reserved `[verification-attestation] ` title are dispatcher run records,
-not intake or work items. The typed issue-list tools exclude them even before they close.
+Issues with the reserved `[verification-attestation] ` title AND authored by the bound
+dispatcher identity are dispatcher run records, not intake or work items. The title alone
+is not enough: an issue with that title from anyone else is ordinary intake. The typed issue-list tools exclude them even before they close.
 If inspecting raw forge results, keep these records out of intake and work scans; use a
 direct issue read only to audit or recover the exact dispatch. Closing a record attests
 the pre-work stamp, never that the brief was verified.

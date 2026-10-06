@@ -4,3 +4,5 @@
 - Add dispatcher-owned pre-work verifier attestation with exact run/source/brief/model binding, fail-closed execution and Evidence admission, and recovery of the same record.
 - Document and test the worker-desk to coordinator post-open handoff without granting child workers stamp authority.
 - Pin actor separation and detached-source admission with guard-removal mutations; keep verifier outputs outside the admitted source tree and bind intake record filtering to the dispatcher author.
+- Verifier admission compares every worktree file's bytes and mode with the attested commit, read with replacement objects disabled, and refuses a home that carries replacement objects or a filter driver on a changed path. Index flags and clean filters can no longer hide an edited input.
+- Evidence admission is bound to its landing target. A run attested for one brief admits only that brief, its own stream-index row, or an outcome record keyed to it, and a direct Evidence commit carries the run binding in its message and audit line.

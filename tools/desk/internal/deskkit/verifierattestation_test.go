@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -154,7 +155,7 @@ func TestVerifierAttestationRoundTrip(t *testing.T) {
 			if _, err := CheckVerifierAttestationWithForge(root, "brief.md", f); err != nil {
 				t.Fatalf("legitimate Evidence/status edit deadlocked: %v", err)
 			}
-			if err := receipt.CheckEvidenceContent("brief.md", b); err != nil {
+			if err := receipt.CheckEvidenceContent("brief.md", b, nil); err != nil {
 				t.Fatal(err)
 			}
 			b = []byte(strings.Replace(string(b), "| 1 | true", "| 1 | false", 1))
@@ -162,7 +163,7 @@ func TestVerifierAttestationRoundTrip(t *testing.T) {
 			if _, err := CheckVerifierAttestationWithForge(root, "brief.md", f); err == nil {
 				t.Fatal("changed Verify row admitted")
 			}
-			if err := receipt.CheckEvidenceContent("brief.md", b); err == nil {
+			if err := receipt.CheckEvidenceContent("brief.md", b, nil); err == nil {
 				t.Fatal("changed Verify command allowed at Evidence landing")
 			}
 		})
@@ -312,7 +313,7 @@ func TestAttestActorSeparation(t *testing.T) {
 // The same reader is used before execution and before Evidence landing. Each
 // fixture alters the real dispatched home, leaving the immutable record intact.
 func TestAttestSourceClosure(t *testing.T) {
-	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site"} {
+	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter"} {
 		t.Run(mode, func(t *testing.T) {
 			root, f := verifierFixture(t, "gpt-6-astra")
 			receipt, err := IssueVerifierAttestation(root, f)
@@ -328,6 +329,17 @@ func TestAttestSourceClosure(t *testing.T) {
 			case "commit":
 				attestGit(t, root, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-m", "other commit")
 				want = "attested detached source"
+			case "deleted":
+				if err := os.Remove(filepath.Join(root, name)); err != nil {
+					t.Fatal(err)
+				}
+			case "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter":
+				// Each mode changes a tracked input and hides the change from
+				// git's own worktree comparison; the plant is asserted to land.
+				hideTrackedChange(t, root, name, mode)
+				if mode == "replace-ref" {
+					want = "replacement objects"
+				}
 			default:
 				switch mode {
 				case "untracked":
@@ -370,6 +382,85 @@ func TestAttestSourceClosure(t *testing.T) {
 	}
 }
 
+// hideTrackedChange writes inert bytes into a tracked file, then applies one
+// mechanism that makes git's worktree comparison report no difference. It
+// asserts both that the bytes changed and that git diff is now silent, so a
+// passing admission check could only mean the change was hidden.
+func hideTrackedChange(t *testing.T, root, name, mode string) {
+	t.Helper()
+	path := filepath.Join(root, name)
+	switch mode {
+	case "assume-unchanged", "skip-worktree":
+		attestGit(t, root, "update-index", "--"+mode, name)
+		if err := os.WriteFile(path, []byte("attested SOURCE"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	case "replace-ref":
+		source := strings.TrimSpace(attestOut(t, root, "rev-parse", "HEAD"))
+		if err := os.WriteFile(path, []byte("attested SOURCE"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		attestGit(t, root, "add", name)
+		tree := strings.TrimSpace(attestOut(t, root, "write-tree"))
+		other := strings.TrimSpace(attestOut(t, root, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit-tree", tree, "-p", source, "-m", "replacement"))
+		attestGit(t, root, "reset", "-q")
+		attestGit(t, root, "replace", source, other)
+	case "clean-filter", "smudge-filter":
+		attrs := strings.TrimSpace(attestOut(t, root, "rev-parse", "--path-format=absolute", "--git-path", "info/attributes"))
+		if err := os.MkdirAll(filepath.Dir(attrs), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(attrs, []byte(name+" filter=fixture\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		attestGit(t, root, "config", "filter.fixture.clean", "tr A-Z a-z")
+		if mode == "smudge-filter" {
+			// The driver renders the attested blob as the planted bytes, so the
+			// checkout form itself is no longer the attested content.
+			attestGit(t, root, "config", "filter.fixture.smudge", "sed s/source/SOURCE/")
+		}
+		if err := os.WriteFile(path, []byte("attested SOURCE"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatalf("unknown hiding mode %s", mode)
+	}
+	if b, err := os.ReadFile(path); err != nil || string(b) != "attested SOURCE" {
+		t.Fatalf("%s: plant did not land: %q %v", mode, b, err)
+	}
+	if diff := attestOut(t, root, "diff", "--name-only", "HEAD", "--"); diff != "" {
+		t.Fatalf("%s: change not hidden from git diff: %q", mode, diff)
+	}
+}
+
+func attestOut(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return string(out)
+}
+
+// The tree reader must resolve the dispatched commit's real objects even when a
+// replacement exists; the separate replace-ref refusal is pinned above.
+func TestVerifierTreeIgnoresReplacements(t *testing.T) {
+	root, _ := verifierFixture(t, "gpt-6-astra")
+	source := strings.TrimSpace(attestOut(t, root, "rev-parse", "HEAD"))
+	want, err := verifierTree(root, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hideTrackedChange(t, root, "source.txt", "replace-ref")
+	got, err := verifierTree(root, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["source.txt"] != want["source.txt"] {
+		t.Fatalf("replacement object read as the attested source: %v != %v", got["source.txt"], want["source.txt"])
+	}
+}
+
 func TestAttestRemoteRef(t *testing.T) {
 	root, f := verifierFixture(t, "gpt-6-astra")
 	receipt, err := IssueVerifierAttestation(root, f)
@@ -388,5 +479,92 @@ func TestAttestRemoteRef(t *testing.T) {
 	}
 	if err := PrepareVerifierAttestation(root, "example-org/one", "brief.md", "gpt-6-astra", "strong"); err != nil {
 		t.Fatalf("stray local ref shadowed remote source: %v", err)
+	}
+}
+
+// Control for the byte comparison: a fresh checkout that converts line endings,
+// carries an executable and a link is admitted; changing the mode or a converted
+// file's bytes is refused.
+func TestVerifierSourceClosureCheckoutForms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("modes and links are compared on platforms that carry them")
+	}
+	src := t.TempDir()
+	for name, body := range map[string]string{".gitattributes": "*.ps1 text eol=crlf\n", "run.ps1": "one\ntwo\n", "tool.sh": "#!/bin/sh\n", "plain.txt": "plain\n"} {
+		if err := os.WriteFile(filepath.Join(src, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Join(src, "tool.sh"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("plain.txt", filepath.Join(src, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	attestGit(t, src, "init", "-q")
+	attestGit(t, src, "add", ".")
+	attestGit(t, src, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "-m", "fixture")
+	commit := strings.TrimSpace(attestOut(t, src, "rev-parse", "HEAD"))
+	home := filepath.Join(t.TempDir(), "home")
+	if out, err := exec.Command("git", "clone", "-q", src, home).CombinedOutput(); err != nil {
+		t.Fatalf("clone: %s %v", out, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, "run.ps1")); string(b) != "one\r\ntwo\r\n" {
+		t.Fatalf("checkout did not convert: %q", b)
+	}
+	if err := verifierSourceClosure(home, commit, nil); err != nil {
+		t.Fatalf("clean converted checkout refused: %v", err)
+	}
+	if err := os.Chmod(filepath.Join(home, "tool.sh"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifierSourceClosure(home, commit, nil); err == nil || !strings.Contains(err.Error(), "tool.sh") {
+		t.Fatalf("mode change admitted: %v", err)
+	}
+	if err := os.Chmod(filepath.Join(home, "tool.sh"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "run.ps1"), []byte("one\r\nTWO\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifierSourceClosure(home, commit, nil); err == nil || !strings.Contains(err.Error(), "run.ps1") {
+		t.Fatalf("converted file change admitted: %v", err)
+	}
+}
+
+// An attestation for one brief admits Evidence only for that brief: the brief
+// itself, its stream index (and only its own row there), or an outcome record
+// keyed to its <stream>/<NN>.
+func TestVerifierEvidenceTargetBinding(t *testing.T) {
+	r := VerifierReceipt{Binding: VerifierBinding{Brief: "docs/streams/x/brief-01-attested.md"}}
+	for target, ok := range map[string]bool{
+		"docs/streams/x/brief-01-attested.md":                       true,
+		"./docs/streams/x/brief-01-attested.md":                     true,
+		"docs/streams/x/README.md":                                  true,
+		"docs/streams/verify-outcomes/x/01-20261006T000000Z-a.json": true,
+		"docs/streams/y/brief-02-never-attested.md":                 false,
+		"docs/streams/x/brief-02-sibling.md":                        false,
+		"docs/streams/y/README.md":                                  false,
+		"docs/streams/verify-outcomes/x/02-20261006T000000Z-a.json": false,
+		"docs/streams/verify-outcomes/y/01-20261006T000000Z-a.json": false,
+		"docs/streams/x/../y/brief-02-never-attested.md":            false,
+		"": false,
+	} {
+		if err := r.CheckEvidenceTarget(target); (err == nil) != ok {
+			t.Errorf("target %q: admitted=%v, want %v (%v)", target, err == nil, ok, err)
+		}
+	}
+	for _, c := range []struct {
+		rows []string
+		ok   bool
+	}{{nil, false}, {[]string{"02"}, false}, {[]string{"01", "02"}, false}, {[]string{"01"}, true}} {
+		if err := r.CheckEvidenceContent("docs/streams/x/README.md", []byte("index"), c.rows); (err == nil) != c.ok {
+			t.Errorf("index rows %v: admitted=%v, want %v (%v)", c.rows, err == nil, c.ok, err)
+		}
+	}
+
+	root, _ := verifierFixture(t, "gpt-6-astra")
+	if _, err := CheckVerifierEvidence(root, "example-org/one", "other.md"); err == nil || !strings.Contains(err.Error(), "not bound to the attested brief") {
+		t.Fatalf("Evidence for an unattested brief admitted: %v", err)
 	}
 }

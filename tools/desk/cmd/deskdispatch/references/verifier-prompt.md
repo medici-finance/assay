@@ -37,6 +37,10 @@ Evidence/status edits do not change the attested source or Verify commands.
 Verifier output files (logs, binaries and scratch results) belong outside the admitted
 source worktree. Only tracked Evidence and stream-index status edits preserve admission;
 additional files, including ignored files, refuse admission at execution and landing.
+Admission compares file bytes against the attested commit; index flags, replacement
+objects and filter drivers do not hide a change. Land Evidence only for the attested
+brief (the brief, its own stream-index row, or its outcome record); any other target
+refuses.
 
 ## 2. Run every row — command, exit code, real output
 

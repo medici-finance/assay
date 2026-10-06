@@ -76,6 +76,26 @@ func refuseAppendedOutcomesLog(targetRepoPath string) error {
 // re-open #227.
 var verifierEvidenceAdmissionFn = deskkit.CheckVerifierEvidence
 
+// admitVerifierEvidence runs pre-work admission for the exact path this landing
+// writes, so the attested brief is part of what admits the landing, never only
+// of what is recorded about it.
+func admitVerifierEvidence(root, repo, target string, ac *auditCtx) (deskkit.VerifierReceipt, error) {
+	receipt, err := verifierEvidenceAdmissionFn(root, repo, target)
+	if err != nil {
+		return receipt, err
+	}
+	ac.attestation = receipt.EvidenceBinding()
+	return receipt, nil
+}
+
+// attestationTrailer carries the admitting run's binding into the landed commit.
+func (a *auditCtx) attestationTrailer() string {
+	if a.attestation == "" {
+		return ""
+	}
+	return "\n\n" + a.attestation
+}
+
 func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// Skip the tool name prefix that run() already removed.
 	rest := args
@@ -173,12 +193,6 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return oerr
 	}
 
-	receipt, aerr := verifierEvidenceAdmissionFn(*root, repoSlug)
-	if aerr != nil {
-		return aerr
-	}
-	ac.attestation = receipt.EvidenceBinding()
-
 	// --outcome-record is a SEPARATE landing shape from --evidence-file/--brief-path: it
 	// commits a brand-new per-file verify-outcome record at the path RecordName derives,
 	// rather than merging into or replacing an existing whole file. Checked (and mutual
@@ -231,6 +245,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		targetRepoPath = evidenceRepoPath
 	}
 	ac.file = targetRepoPath
+
+	// Pre-work admission, bound to the exact target this landing writes. Placed
+	// before any read or network call the landing itself makes.
+	receipt, aerr := admitVerifierEvidence(*root, repoSlug, targetRepoPath, ac)
+	if aerr != nil {
+		return aerr
+	}
 
 	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
 	// from that checkout (#1709) rather than the process cwd; the target repo path committed
@@ -433,7 +454,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// The scan is the ONE outbound-write check (desktools-v2/10), run here as a pre-flight on
 	// the bytes this landing adds; the checking Forge re-runs it on the same added lines at
 	// the write itself.
-	if err := receipt.CheckEvidenceContent(targetRepoPath, commitContent); err != nil {
+	if err := receipt.CheckEvidenceContent(targetRepoPath, commitContent, rowScopeRows); err != nil {
 		return err
 	}
 	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, scanTarget, commitContent); berr != nil {
@@ -581,7 +602,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		File:        targetRepoPath,
 		Branch:      branch,
 		Content:     commitContent,
-		Message:     "Evidence: verification row for " + targetRepoPath + commitSuffix,
+		Message:     "Evidence: verification row for " + targetRepoPath + ac.attestationTrailer() + commitSuffix,
 		AppendOnly:  appendOnly,
 		AllowShrink: *allowShrink,
 		ExpectedSHA: rowScopeSHA,
@@ -650,7 +671,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		File:        target,
 		Branch:      side,
 		Content:     content,
-		Message:     "Evidence: verification row for " + target + commitSuffix,
+		Message:     "Evidence: verification row for " + target + ac.attestationTrailer() + commitSuffix,
 		StartBranch: base,
 		AppendOnly:  appendOnly,
 		AllowShrink: allowShrink,
@@ -822,6 +843,9 @@ type auditCtx struct {
 }
 
 func (a *auditCtx) log(result, detail string) {
+	if a.attestation != "" {
+		detail += " " + a.attestation
+	}
 	_ = deskkit.Log(deskkit.Entry{
 		Tool:       toolName,
 		Verb:       a.verb,
