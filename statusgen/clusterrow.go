@@ -202,12 +202,55 @@ func clusterRowProblems(streams []*Stream) []string {
 // clusterPendingEntry is one brief on the pod runner's worklist: a brief that is
 // code-verified but cluster-pending. Probes is the sorted set of cluster probes
 // the pod runner still has to run for it.
+//
+// Completion tells the runner how far it may take the brief once its cluster rows
+// are green (see clusterCompletion): "flip" — land the Evidence AND complete the
+// verified flip; "evidence-only" — land the Evidence and stop, the flip stays
+// with the human gate. Gate echoes the brief's front-matter gate so a consumer
+// can show why an entry is evidence-only.
 type clusterPendingEntry struct {
-	Brief  string   `json:"brief"`  // "<stream>/<NN>"
-	Stream string   `json:"stream"` //
-	Status string   `json:"status"` // always "implemented" — the parked state
-	Repo   string   `json:"repo,omitempty"`
-	Probes []string `json:"probes"` // the cluster probes still pending
+	Brief      string   `json:"brief"`  // "<stream>/<NN>"
+	Stream     string   `json:"stream"` //
+	Status     string   `json:"status"` // always "implemented" — the parked state
+	Repo       string   `json:"repo,omitempty"`
+	Probes     []string `json:"probes"`     // the cluster probes still pending
+	Gate       string   `json:"gate"`       // the brief's gate: model | human
+	Completion string   `json:"completion"` // clusterCompletionFlip | clusterCompletionEvidenceOnly
+}
+
+// The two completion modes a cluster-pending entry can carry.
+const (
+	clusterCompletionFlip         = "flip"
+	clusterCompletionEvidenceOnly = "evidence-only"
+)
+
+// clusterCompletion decides whether the pod runner may complete the verified
+// flip for a brief, or only land its Evidence. It is the ONE place that decision
+// is made — TestCluster_CompletionOnlyViaHelper pins that every
+// clusterPendingEntry literal takes its Completion from here.
+//
+// The pod runner is a check-class runner, not a new authority: it may complete
+// the flip only where no human sign-off is owed. So a brief is flip-eligible
+// only when BOTH hold:
+//
+//   - its gate is exactly `model` (a `human` gate, or any other / missing value,
+//     is not flip-eligible — the same test the gate:model auto-flip applies); and
+//   - no risk axis is answered `yes`, and the risk block is present at all (a
+//     brief whose risk answers cannot be read is not shown to be risk-free).
+//
+// Everything else is evidence-only: the runner lands the cluster-row Evidence
+// and the human signs. It fails CLOSED — an unrecognised shape narrows to
+// evidence-only, never widens to flip.
+func clusterCompletion(bf *BriefFile) string {
+	if bf == nil || bf.Gate != "model" || len(bf.Risk) == 0 {
+		return clusterCompletionEvidenceOnly
+	}
+	for _, v := range bf.Risk {
+		if v == "yes" {
+			return clusterCompletionEvidenceOnly
+		}
+	}
+	return clusterCompletionFlip
 }
 
 // clusterPendingQueue derives the pod runner's worklist: the briefs the offline
@@ -223,6 +266,11 @@ type clusterPendingEntry struct {
 //     offline lane never reached does not count as pending-for-the-pod); and
 //   - the Evidence records no VERIFY:FAIL — a failing non-cluster row is rework
 //     the implementer owns, not work for the pod (lastVerifyVerdict).
+//
+// Gate and risk do NOT decide membership — a human-gated brief still needs its
+// cluster rows run — they decide each entry's Completion (clusterCompletion):
+// only a gate:model brief with no risk axis `yes` is marked "flip"; every other
+// entry is "evidence-only".
 //
 // It is DETERMINISTIC and READ-ONLY. The result is sorted by brief id.
 func clusterPendingQueue(streams []*Stream) []clusterPendingEntry {
@@ -279,11 +327,13 @@ func clusterPendingQueue(streams []*Stream) []clusterPendingEntry {
 			}
 			sort.Strings(probes)
 			out = append(out, clusterPendingEntry{
-				Brief:  s.Name + "/" + num,
-				Stream: s.Name,
-				Status: "implemented",
-				Repo:   repo,
-				Probes: probes,
+				Brief:      s.Name + "/" + num,
+				Stream:     s.Name,
+				Status:     "implemented",
+				Repo:       repo,
+				Probes:     probes,
+				Gate:       bf.Gate,
+				Completion: clusterCompletion(bf),
 			})
 		}
 	}
