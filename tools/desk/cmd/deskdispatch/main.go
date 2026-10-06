@@ -169,8 +169,11 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
-                      human), runs the repo's tools/decision-issue.sh ensure so the human
-                      has something concrete to decide. Idempotent by the script's own
+                      human), runs tools/decision-issue.sh ensure from the resolved root
+                      (--claim-root when given, else --root) so the human has something
+                      concrete to decide. No pure-Go port of it ships, so a resolved root
+                      without it REFUSES pre-claim (exit 6), naming the path tried and
+                      the --claim-root way out. Idempotent by the script's own
                       marker dedupe. The script runs under the dispatching role's
                       credential (GH_TOKEN in its environment, from the same resolution
                       the claim uses), never the ambient login; with none it refuses.
