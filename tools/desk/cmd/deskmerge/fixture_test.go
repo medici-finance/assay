@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // fixture_test.go — a REAL git world, on purpose.
@@ -33,7 +34,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "cannot install the fixture roster:", err)
 		os.Exit(1)
 	}
-	code := m.Run()
+	code := gitquiet.Run(m)
 	cleanup()
 	os.Exit(code)
 }

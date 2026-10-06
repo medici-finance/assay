@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // fakeGHSource is compiled in TestMain into a temp dir placed first on PATH.
@@ -79,7 +80,7 @@ func runTests(m *testing.M) int {
 		return 1
 	}
 	fakeGHDir = dir
-	return m.Run()
+	return gitquiet.Run(m)
 }
 
 func withFakeGH(t *testing.T) {
