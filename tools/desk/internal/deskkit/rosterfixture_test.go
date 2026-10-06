@@ -24,6 +24,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // The fixture roster's identities, named so tests read against the fixture rather
@@ -98,7 +100,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())
 	}
-	code := m.Run()
+	code := gitquiet.Run(m)
 	cleanup()
 	uninstallGuard()
 	if reportStateDirHits(os.Stderr) && code == 0 {
