@@ -330,12 +330,13 @@ could-not-check, never "no repos".
 - **Read the DISPOSITIONS first, before any staleness arithmetic**: `SUPERSEDED` /
   `RESOLVED-ELSEWHERE` is a deskclose item, never an orphan; `NEEDS-REBASE` is live work; exit 6 or a
   failed read means that repo is BLIND this tick, not empty.
-- A PR is **ORPHANED** when its disposition reads checked-clean AND the worker owes it action
+- A PR is **ORPHANED** when its disposition is dispatch-eligible AND the worker owes it action
   (`CHANGES_REQUESTED` at current head, CI red, findings unanswered) AND no commit/comment for **>4h**
-  AND no live dispatch claim. **Write the verdict with `deskdisposition set`** when the sweep DERIVED
-  a new one — eight of ten orphan dispatches in one 2026-08-12 cycle re-derived a conclusion an
-  earlier pass had already posted — and **re-write nothing when nothing changed** (§WIP-capped: a
-  no-change tick makes no write at all).
+  AND no live dispatch claim. **Advisory comments do not establish disposition**: apply the
+  runbook's label, evidence and supersession guards. Write `deskdisposition set` only for a supported
+  derived outcome; `NEEDS-REBASE` requires an established base/conflict defect. Still-actionable
+  work without that defect needs **no disposition write**; progress belongs in the PR workpad.
+  Re-write nothing when nothing changed (§WIP-capped: a no-change tick makes no write at all).
 - **A `SUPERSEDED` record is a PROPOSAL, never a close.** After `deskdisposition set --verdict
   SUPERSEDED --evidence <target>`, the worker runs `deskclose superseded -R <repo> <N> --by
   <target>`: under a worker-bound token the tool applies `superseded?`, posts the proposal naming
