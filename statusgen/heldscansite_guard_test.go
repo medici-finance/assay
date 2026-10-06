@@ -139,3 +139,94 @@ func TestHeldRegexSingleScanSite(t *testing.T) {
 		t.Fatalf("guard matched no reference in unroutedHeldLine (refs=%v) — the matcher is broken, not the tree clean", refs)
 	}
 }
+
+// Class guard for #1894.
+//
+// DEFECT CLASS: a HELD/could-not-check scan that reads Evidence text outside
+// heldScanScope's read scope — an Expect or Command cell, exit-code prose, or
+// an Evidence entry a later strict-PASS entry has replaced — and so refuses a
+// clean pass on text that is not a live row disposition. The instance was the
+// one scan site, unroutedHeldLine, reading the whole Evidence section. The
+// class is any scan site (heldScanSites) that does not take its scope from
+// heldScanScope. Together with TestHeldRegexSingleScanSite (one site may read
+// the marker), this pins every HELD read to the one scope decision.
+func heldScopeCallersIn(file *ast.File) map[string]bool {
+	out := map[string]bool{}
+	for _, d := range file.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Body == nil {
+			continue
+		}
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok {
+				if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "heldScanScope" {
+					out[fd.Name.Name] = true
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// heldScopeMissing returns each heldScanSites function defined in the
+// non-test .go files of dir that never calls heldScanScope, and how many
+// sites it found defined at all.
+func heldScopeMissing(t *testing.T, dir string) (missing []string, defined int) {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, f, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		callers := heldScopeCallersIn(file)
+		for _, d := range file.Decls {
+			if fd, ok := d.(*ast.FuncDecl); ok && heldScanSites[fd.Name.Name] {
+				defined++
+				if !callers[fd.Name.Name] {
+					missing = append(missing, filepath.Base(f)+":"+fd.Name.Name)
+				}
+			}
+		}
+	}
+	sort.Strings(missing)
+	return missing, defined
+}
+
+// TestHeldScopeGuardSeesPlant is the scope guard's positive control: a
+// planted site that reads without heldScanScope is reported, its twin that
+// calls it is not.
+func TestHeldScopeGuardSeesPlant(t *testing.T) {
+	const src = `package main
+
+func plantedBare(ev string) bool { return heldOrCouldNotCheckRe.MatchString(ev) }
+
+func plantedScoped(ev string) bool { _ = heldScanScope(ev); return false }
+`
+	file, err := parser.ParseFile(token.NewFileSet(), "plant.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := heldScopeCallersIn(file)
+	if got["plantedBare"] || !got["plantedScoped"] {
+		t.Fatalf("scope guard walker reported %v, want only plantedScoped", got)
+	}
+}
+
+func TestHeldScanSitesUseScope(t *testing.T) {
+	missing, defined := heldScopeMissing(t, ".")
+	if defined != len(heldScanSites) {
+		t.Fatalf("guard found %d of the %d heldScanSites defined — the matcher is broken, not the tree clean", defined, len(heldScanSites))
+	}
+	for _, m := range missing {
+		t.Errorf("%s reads HELD/could-not-check without heldScanScope — it would read Expect cells, exit-code prose and superseded Evidence entries as live dispositions again (#1894); take the read scope from heldScanScope", m)
+	}
+}
