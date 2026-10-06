@@ -701,7 +701,7 @@ func TestDeclaredTagAdmitsRepo(t *testing.T) {
 			s := &stub{}
 			home, root := s.install(t) // --root's origin is medici-finance/assay (alias example-tool)
 			trk := trackingCheckoutBody(t, exampleRegistry, taggedBody("example-tool"), exampleV2ID)
-			s.replies = happyReplies("/private/tmp/worker-home")
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 			mints := recordMint(t, home, nil)
 			promptFile := filepath.Join(t.TempDir(), "p.md")
 			err := cmdDispatch([]string{item, "--repo", "medici-finance/assay", "--root", root, "--claim-root", trk,
@@ -744,7 +744,7 @@ func TestUndeclaredRepoStillFails(t *testing.T) {
 	s := &stub{}
 	home, root := s.install(t)
 	trk := trackingCheckoutBody(t, exampleRegistry, taggedBody("example-con"), exampleV2ID)
-	s.replies = happyReplies("/private/tmp/worker-home")
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 	mints := recordMint(t, home, nil)
 	err := cmdDispatch([]string{"example-stream/05", "--repo", "medici-finance/assay", "--root", root,
 		"--claim-root", trk, "--brief", exampleBriefRel, "--quiet"})
@@ -768,7 +768,7 @@ func TestUntaggedBriefIsLegacy(t *testing.T) {
 		s := &stub{}
 		_, root := s.install(t)
 		trk := trackingCheckoutBody(t, exampleRegistry, mdBody, exampleV2ID)
-		s.replies = happyReplies("/private/tmp/worker-home")
+		s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 		err := cmdDispatch([]string{"example-stream/05", "--repo", "medici-finance/assay", "--root", root,
 			"--claim-root", trk, "--brief", exampleBriefRel, "--quiet"})
 		if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "HARD FAIL") {
@@ -814,7 +814,7 @@ func TestTagNeverWidens(t *testing.T) {
 			s := &stub{}
 			home, root := s.install(t)
 			trk := trackingCheckoutBody(t, exampleRegistry, c.mdBody, append([]string{exampleV2ID}, c.front...)...)
-			s.replies = happyReplies("/private/tmp/worker-home")
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 			mints := recordMint(t, home, nil)
 			args := []string{"example-stream/05", "--root", root, "--claim-root", trk, "--brief", exampleBriefRel, "--quiet"}
 			if c.repo != "" {
