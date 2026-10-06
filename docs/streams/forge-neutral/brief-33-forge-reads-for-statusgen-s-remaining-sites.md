@@ -25,9 +25,9 @@ sources:
   - "#2025 comment 5945992401: the precheck of forge-neutral/18's remaining slices. It stopped before building because at least five of the 31 sites need a read the frozen surface lacks (change commits, change author, cross-repo head, all-state issues with timestamps), and it named the `gh auth token` site as a credential and not a read"
   - "#2025 comment 5946009835: the routing this brief implements. The default was that 18's goal stands and a separate brief adds the missing reads, with 18's row 3 depending on it and not narrowed. That brief is authoring work that arrives as its own draft PR, where the choice can be declined at merge"
   - "#2025 comment 6013927144: 18's progress note (#2312 meets row 13 and removes one site, 31 → 30). It lists the reads still missing: closed-state lists with closedAt, merge-commit SHA, PR commits, file patches, timeline events, check rollup and closed_by. This brief re-checks that list against code; check rollup is already served (see Context)"
-  - "#2253 and its comment 6013956713: the CI read-identity question (which credential the CI-only statusgen modes read under). It is a SEPARATE decision, ruled (option a, comment 6014356117) after this brief was drafted; forge-neutral/34 carries that ruling's work. This brief neither decides it nor depends on it; see Context, 'Why this brief is independent of #2253'"
+  - "#2253 and its comment 6013956713: the CI read-identity question (which credential the CI-only statusgen modes read under). It is a SEPARATE decision, ruled (option a, comment 6014356117) after this brief was drafted; the CI-transport brief in #2314 carries that ruling's work. This brief neither decides it nor depends on it; see Context, 'Why this brief is independent of #2253'"
   - "#2312 (draft): forge-neutral/18's in-flight PR. It deletes the `doratiming.go` repo-view fallback and leaves every site this brief serves untouched"
-  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: its ground rule 'Add no operation to `Forge` … a later call site that genuinely needs one … is a separate brief under the freeze rule' (this is that brief), its Verify row 3 (zero `exec.Command(\"gh\"` in non-test statusgen) and its row 15 (`TestForgeSurfaceUnchangedByDeskread`)"
+  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: its ground rule 'Add no operation to `Forge` … a later call site that genuinely needs one … is a separate brief under the freeze rule' (this is that brief), its Verify row 3 (zero non-comment `\"gh\"` literals in non-test statusgen) and its row 15 (`TestForgeSurfaceUnchangedByDeskread`)"
   - "docs/streams/forge-neutral/README.md, 'Shared conventions the briefs inherit': refusal not fallback; the surface stays closed and a new operation joins the frozen inventory with its consuming verb; negative-path rows are mandatory; no hand-built API call is evidence"
   - "docs/streams/forge-gitlab/inventory.md: the frozen method-set table (55 method rows numbered 1–54 at the freshness base, because number 27 is used twice: `IssueContentEvents` at `:78` and `ListRecentCommits` at `:96`; the new rows are 55–58) that `TestForgeGitlabCoverage` reconciles the seam against (`tools/desk/internal/deskkit/forge_gitlab_test.go:2605-2672`, discovery of `docs/streams/*/inventory.md`)"
   - "tools/desk/internal/deskkit/forge.go: the `Forge` interface (`:1370`), `Account` (`:65`), `PullRequest` (`:86`), `Issue` (`:286`), `ChangedFile` (`:330`), `ChangeRef` (`:853`), `IssueSummary` (`:890`)"
@@ -50,7 +50,7 @@ consumers:
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/33 (this brief's implementation: inventory rows 55–58 and an 'added by' note)"
   - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph; its `forge.go` consumers entry and its 'Add no operation' ground rule name this brief as the source of the new reads; Verify row 3 becomes a count of non-comment `\"gh\"` literals, which also counts the `exec.CommandContext` launch, and its Expect is re-measured to 32; row 15's Expect moves from 7 to 6 to match `allowedInvocationCeiling`; §6 gains a re-measure note pointing at this census)"
   - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/claimdecay.go, statusgen/corroborate.go, statusgen/decisiongateanchor.go, statusgen/issues.go, statusgen/selfimprovement.go, statusgen/transcribescan.go, statusgen/transcribeverdict.go: follow-up forge-neutral/18 (moving each site onto `deskread` is 18's Task and Verify row 3; this brief adds the reads and touches no statusgen file)"
-  - "statusgen/decisionruling.go: out-of-scope (`:643` runs `gh auth token`. That is credential acquisition, not a read, and where a CI or local statusgen run gets its credential is the question #2253 decided; forge-neutral/34 carries that work)"
+  - "statusgen/decisionruling.go: out-of-scope (`:643` runs `gh auth token`. That is credential acquisition, not a read, and where a CI or local statusgen run gets its credential is the question #2253 decided; the CI-transport brief in #2314 carries that work)"
   - "statusgen/ghfetch.go: out-of-scope (statusgen's own native HTTP client, which row 3's grep does not see; it is not a forge-CLI site and is not in this brief's census)"
   - ".github/workflows/assay-statusgen.yml: out-of-scope (the CI read identity, which is #2253's decision)"
 ---
@@ -273,8 +273,10 @@ and which seam read serves it after this brief. **New** marks this brief's addit
        with actor `login __typename ... on User{databaseId} ... on Bot{databaseId}` (the `Actor`
        interface carries no `databaseId`, so the id is read through the concrete-type fragments), plus
        `closedByPullRequestsReferences(includeClosedPrs: true)` with each node's
-       `repository{nameWithOwner}`. This is the same shape `selfimprovement.go:381-388` sends today. `Complete=false`
-       when either connection reports `hasNextPage`.
+       `repository{nameWithOwner}`, and each connection's `pageInfo{hasNextPage}`. `selfimprovement.go:381-388`
+       sends the same two connections today but reads only `actor{login __typename}`; the id
+       fragments and `pageInfo` are new. `Complete=false` when either connection reports
+       `hasNextPage`.
      - GitLab: `GET /projects/:id/issues/:iid/resource_state_events` (state `closed`/`reopened`,
        `user`, `created_at`) and `GET /projects/:id/issues/:iid/closed_by` (the merge requests
        that close it, with `state`, `author` and `project_id`, resolved to the project path
