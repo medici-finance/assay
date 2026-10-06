@@ -1093,7 +1093,7 @@ func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 			return nil, g.mapErr(http.MethodGet, listPath, lerr)
 		}
 		for _, iss := range chunk {
-			if iss == nil || IsVerifierAttestation(iss.Title) {
+			if iss == nil || (iss.Author != nil && IsVerifierAttestation(iss.Title, iss.Author.Username)) {
 				continue
 			}
 			s := IssueSummary{

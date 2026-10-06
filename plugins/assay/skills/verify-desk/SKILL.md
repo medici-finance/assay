@@ -131,6 +131,9 @@ Before any Verify row or model-attested result, the verifier runs `deskdispatch
 and Evidence verb enforce the same check. Retain the returned exact run/source/model/tier
 binding in Evidence and the Evidence draft handoff. An edited record, changed source or
 changed Verify commands stops the run. Evidence and stream-index status edits are allowed.
+Verifier output files (logs, binaries and scratch results) belong outside the admitted
+source worktree. Only tracked Evidence and stream-index status edits preserve admission;
+additional files, including ignored files, refuse admission at execution and landing.
 
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator

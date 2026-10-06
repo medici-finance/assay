@@ -38,6 +38,11 @@ func verifierGit(root string, args ...string) (string, error) {
 	if err != nil {
 		return "", Unverifiable("cannot establish verifier source: git "+strings.Join(args, " "), err)
 	}
+	for _, arg := range args {
+		if arg == "-z" {
+			return string(out), nil
+		}
+	}
 	return strings.TrimSpace(string(out)), nil
 }
 func verifierRecordPath(root string) (string, error) {
@@ -146,14 +151,27 @@ func verifierLocalCheck(root, brief string, r verifierLocal) error {
 	if head != b.Source || branch != "HEAD" {
 		return Refused("verifier requires its attested detached source commit")
 	}
-	changed, err := verifierGit(home, "diff", "--name-only", b.Source, "--")
+	changed, err := verifierGit(home, "diff", "--no-ext-diff", "--ignore-submodules=none", "--name-only", "-z", b.Source, "--")
 	if err != nil {
 		return err
 	}
 	index := filepath.ToSlash(filepath.Join(filepath.Dir(b.Brief), "README.md"))
-	for _, name := range strings.Split(changed, "\n") {
+	for _, name := range strings.Split(changed, "\x00") {
 		if name != "" && name != b.Brief && name != index {
 			return Refused("source files changed since verifier dispatch: " + name)
+		}
+	}
+
+	// Enumerate every additional path, including ignored files. Evidence and
+	// status edits target tracked files; other outputs belong outside this home.
+	// A suffix allow-list would miss a new input type consumed by a Verify row.
+	extra, err := verifierGit(home, "ls-files", "--others", "-z", "--")
+	if err != nil {
+		return err
+	}
+	for _, name := range strings.Split(extra, "\x00") {
+		if name != "" {
+			return Refused("unattested worktree file: " + name)
 		}
 	}
 
@@ -208,7 +226,7 @@ func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
 	if err != nil {
 		return err
 	}
-	main, err := verifierGit(home, "rev-parse", "origin/main")
+	main, err := verifierGit(home, "rev-parse", "refs/remotes/origin/main")
 	if err != nil {
 		return err
 	}
@@ -407,8 +425,8 @@ func RecoverVerifierAttestation(root string) (VerifierReceipt, error) {
 func (r VerifierReceipt) EvidenceBinding() string {
 	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", r.Binding.Repo, r.Issue, r.Binding.Run, r.Binding.Source, r.Binding.Brief, r.Binding.Model, r.Binding.Tier)
 }
-func IsVerifierAttestation(title string) bool {
-	return strings.HasPrefix(title, VerifierAttestationTitle)
+func IsVerifierAttestation(title, author string) bool {
+	return strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)
 }
 
 // CheckVerifierEvidence reuses pre-work admission after Evidence/status edits.

@@ -1047,7 +1047,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 		for _, is := range chunk {
 			// The REST /issues endpoint serves PRs too, distinguished by a non-nil
 			// pull_request member — the issue lane wants issues only, so a change is dropped.
-			if is.PullRequest != nil || IsVerifierAttestation(is.Title) {
+			if is.PullRequest != nil || IsVerifierAttestation(is.Title, is.User.Login) {
 				continue
 			}
 			labels := make([]string, 0, len(is.Labels))

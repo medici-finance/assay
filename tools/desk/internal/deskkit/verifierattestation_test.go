@@ -110,7 +110,12 @@ func verifierFixture(t *testing.T, model string) (string, *verifierForge) {
 	if err := os.WriteFile(filepath.Join(root, "brief.md"), []byte("# Fixture\n\n## Verify\n\n| 1 | true | exit 0 |\n| 2 | true | exit 0 |\n\n## Evidence\n\nPending.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	git("add", "brief.md")
+	for name, body := range map[string]string{"README.md": "implemented", "source.txt": "attested source", ".gitignore": "ignored/\n"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("add", "brief.md", "README.md", "source.txt", ".gitignore")
 	git("commit", "-m", "fixture")
 	git("update-ref", "refs/remotes/origin/main", "HEAD")
 	git("checkout", "--detach")
@@ -280,5 +285,108 @@ func TestVerifierAttestationDryPlanRequiresExistingBinding(t *testing.T) {
 	}
 	if err := PlanVerifierAttestation(t.TempDir(), ""); err == nil {
 		t.Fatal("missing run preview succeeded")
+	}
+}
+
+func attestGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+	if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %s %v", args, out, err)
+	}
+}
+
+func TestAttestActorSeparation(t *testing.T) {
+	root, f := verifierFixture(t, "gpt-6-astra")
+	if _, err := IssueVerifierAttestation(root, f); err != nil {
+		t.Fatal(err)
+	}
+	plantRoster(t, "ASSAY_BLESS_LOGIN=example-human:2001\nASSAY_TRUSTED_LOGINS=example-human:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:1,verifier=example-desk:1\nASSAY_ALLOWED_REPOS=example-org/one:ci:private\n")
+	if _, err := CheckVerifierAttestationWithForge(root, "brief.md", f); err == nil {
+		t.Fatal("same desk and verifier actor admitted")
+	}
+	if err := PrepareVerifierAttestation(root, "example-org/one", "brief.md", "gpt-6-astra", "strong"); err == nil || !strings.Contains(err.Error(), "distinct configured") {
+		t.Fatalf("same actor not refused at preparation: %v", err)
+	}
+}
+
+// The same reader is used before execution and before Evidence landing. Each
+// fixture alters the real dispatched home, leaving the immutable record intact.
+func TestAttestSourceClosure(t *testing.T) {
+	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site"} {
+		t.Run(mode, func(t *testing.T) {
+			root, f := verifierFixture(t, "gpt-6-astra")
+			receipt, err := IssueVerifierAttestation(root, f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			name := "source.txt"
+			want := "source files changed"
+			switch mode {
+			case "branch":
+				attestGit(t, root, "checkout", "-b", "fixture-branch")
+				want = "attested detached source"
+			case "commit":
+				attestGit(t, root, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-m", "other commit")
+				want = "attested detached source"
+			default:
+				switch mode {
+				case "untracked":
+					name = "extra.txt"
+				case "ignored":
+					name = "ignored/extra.txt"
+				case "second-site":
+					name = "nested/second.txt"
+				}
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, name), []byte("fixture change"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if mode == "staged" {
+					attestGit(t, root, "add", name)
+				}
+				if mode == "untracked" || mode == "ignored" || mode == "second-site" {
+					want = "unattested worktree file: " + name
+				}
+			}
+			// Check once before execution, then again with allowed Evidence edits.
+			for _, phase := range []string{"execution", "evidence"} {
+				if phase == "evidence" {
+					path := filepath.Join(root, "brief.md")
+					b, err := os.ReadFile(path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(path, []byte(strings.Replace(string(b), "Pending.", receipt.EvidenceBinding(), 1)), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := CheckVerifierAttestationWithForge(root, "brief.md", f); err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("%s %s: want refusal %q, got %v", phase, mode, want, err)
+				}
+			}
+		})
+	}
+}
+
+func TestAttestRemoteRef(t *testing.T) {
+	root, f := verifierFixture(t, "gpt-6-astra")
+	receipt, err := IssueVerifierAttestation(root, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attestGit(t, root, "commit", "--allow-empty", "-m", "stray ref")
+	attestGit(t, root, "branch", "origin/main", "HEAD")
+	attestGit(t, root, "checkout", "--detach", receipt.Binding.Source)
+	path, err := verifierRecordPath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := PrepareVerifierAttestation(root, "example-org/one", "brief.md", "gpt-6-astra", "strong"); err != nil {
+		t.Fatalf("stray local ref shadowed remote source: %v", err)
 	}
 }

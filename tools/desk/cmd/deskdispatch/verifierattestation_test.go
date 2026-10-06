@@ -94,7 +94,9 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			git("remote", "add", "origin", "https://github.com/"+allowedRepo+".git")
 			git("config", "user.name", "fixture")
 			git("config", "user.email", "fixture@example.invalid")
-			body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + string(rune(96)) + "touch row-one" + string(rune(96)) + " | exit 0 |\n| 2 | " + string(rune(96)) + "touch row-two" + string(rune(96)) + " | exit 0 |\n\n## Evidence\n\nPending.\n"
+			outputHome := t.TempDir()
+			t.Setenv("VERIFY_OUTPUT", outputHome)
+			body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + string(rune(96)) + "touch \"$VERIFY_OUTPUT/row-one\"" + string(rune(96)) + " | exit 0 |\n| 2 | " + string(rune(96)) + "touch \"$VERIFY_OUTPUT/row-two\"" + string(rune(96)) + " | exit 0 |\n\n## Evidence\n\nPending.\n"
 			os.WriteFile(filepath.Join(home, "spec.md"), []byte(body), 0600)
 			git("add", "spec.md")
 			git("commit", "-m", "fixture")
@@ -160,7 +162,7 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 				t.Fatalf("missing stamp ran Verify: %s", out)
 			}
 			for _, name := range []string{"row-one", "row-two"} {
-				if _, err := os.Stat(filepath.Join(home, name)); err == nil {
+				if _, err := os.Stat(filepath.Join(outputHome, name)); err == nil {
 					t.Fatalf("row ran without admission: %s", name)
 				}
 			}
@@ -169,7 +171,7 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 				t.Fatalf("admitted Verify failed: %s %v", out, err)
 			}
 			for _, name := range []string{"row-one", "row-two"} {
-				if _, err := os.Stat(filepath.Join(home, name)); err != nil {
+				if _, err := os.Stat(filepath.Join(outputHome, name)); err != nil {
 					t.Fatalf("admitted row did not run: %s", name)
 				}
 			}

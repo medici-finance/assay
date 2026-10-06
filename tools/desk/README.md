@@ -4951,8 +4951,9 @@ and verifier to the same actor refuse this attestation. Existing PR self-stamp r
 unchanged. No record claims execution surveillance or a verification result.
 
 Successful readback closes the record before the prompt is emitted. `ListOpenIssues`
-excludes its reserved typed title from issueboard, deskread, deskinbox, deskmonitor and
-deskboard intake/work scans, including the create-to-close window. Direct typed reads
+excludes its reserved typed title only when authored by the bound dispatcher, across
+issueboard, deskread, deskinbox, deskmonitor and deskboard intake/work scans, including
+the create-to-close window. Direct typed reads
 and exact-run recovery search remain available for audit. The record uses the existing
 model/tier labels, not a second model vocabulary.
 
@@ -4963,8 +4964,10 @@ existing witnesses. The native verifier adapter gates before spawning; the inter
 requires an already-attested worktree before invoking its feeder. Both check again before
 landing. `deskevidence` also reads the same binding before any outcome or Evidence write,
 and carries `Verification-Attestation` into its Evidence draft. Evidence edits and stream
-index status edits preserve admission; changing the source commit or Verify commands does
-not. Missing tools, absent/PENDING stamps, stale sources, edited records and unreadable
+index status edits on tracked files preserve admission. Write logs, binaries and other
+outputs outside the admitted source worktree; additional files (including ignored files)
+refuse admission at execution and Evidence landing. Keep the worktree detached; changing
+the source commit or Verify commands refuses admission. Missing tools, absent/PENDING stamps, stale sources, edited records and unreadable
 provenance are non-success. Container verification needs the same readable worktree binding;
 no environment override or caller-supplied receipt bypasses it.
 

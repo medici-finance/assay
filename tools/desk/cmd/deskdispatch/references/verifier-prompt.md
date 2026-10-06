@@ -34,6 +34,9 @@ unreadable means no admission. Never substitute an implementation PR, self-stamp
 write a verification result to obtain admission. Carry the returned
 `Verification-Attestation` binding into Evidence and check it again before landing;
 Evidence/status edits do not change the attested source or Verify commands.
+Verifier output files (logs, binaries and scratch results) belong outside the admitted
+source worktree. Only tracked Evidence and stream-index status edits preserve admission;
+additional files, including ignored files, refuse admission at execution and landing.
 
 ## 2. Run every row — command, exit code, real output
 
