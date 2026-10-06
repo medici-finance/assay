@@ -104,40 +104,92 @@ func TestTemplateConfigParses(t *testing.T) {
 	}
 }
 
+// TestTemplateDirExplicit — a child whose environment has every inherited GIT_* variable
+// removed (Run's GIT_TEMPLATE_DIR with them) still creates quiet repositories when the
+// fixture passes TemplateDir's directory explicitly, and does not without it.
+func TestTemplateDirExplicit(t *testing.T) {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(kv), "GIT_") {
+			env = append(env, kv)
+		}
+	}
+	env = append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	get := func(env []string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	root := t.TempDir()
+	quiet, plain := filepath.Join(root, "quiet"), filepath.Join(root, "plain")
+	explicit := append(append([]string{}, env...), "GIT_TEMPLATE_DIR="+TemplateDir(t))
+	get(explicit, "init", "-q", "--bare", quiet)
+	get(env, "init", "-q", "--bare", plain)
+	for _, kv := range Settings {
+		if got := get(env, "-C", quiet, "config", "--local", "--default", "", "--get", kv[0]); got != kv[1] {
+			t.Errorf("with TemplateDir: %s = %q in the repository's own config, want %q", kv[0], got, kv[1])
+		}
+		if got := get(env, "-C", plain, "config", "--local", "--default", "", "--get", kv[0]); got != "" {
+			t.Errorf("control: without TemplateDir %s = %q; the stripped env still reaches a template", kv[0], got)
+		}
+	}
+}
+
 // --- class guard ------------------------------------------------------------------
 
-// gitTestPackage reports whether the code compiled only into a package's test binary — its
-// _test.go files, and any non-test file that imports "testing" — names the git binary (a
-// "git" string literal) or builds fixtures with the shared gittest harness.
+// namesGit reports whether a file names the git binary (a "git" string literal).
+func namesGit(f *ast.File) bool {
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+			if s, err := strconv.Unquote(lit.Value); err == nil && s == "git" {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// gitTestPackage reports whether a package's test binary runs git. Either the code compiled
+// only into the test binary (its _test.go files, and any non-test file that imports
+// "testing") names the git binary or builds fixtures with the shared gittest harness, or
+// the package has tests and its own non-test code names the git binary. The second arm is
+// a package whose tests reach git through the package's own launcher (internal/gitexec's
+// Run): the only "git" literal is outside the test files, so the first arm never sees it.
+// It over-approximates (a launcher package whose tests never call the launcher is counted
+// too); the cost of that is one TestMain line. A package whose tests reach git only through
+// ANOTHER package's launcher is not matched: following imports would count most of the
+// module, and that reach stays outside this static guard.
 func gitTestPackage(files []*ast.File, names []string) bool {
+	hasTests, launches := false, false
 	for i, f := range files {
-		testOnly := strings.HasSuffix(names[i], "_test.go")
-		uses := false
+		isTest := strings.HasSuffix(names[i], "_test.go")
+		hasTests = hasTests || isTest
+		testOnly, harness := isTest, false
 		for _, imp := range f.Imports {
 			p, _ := strconv.Unquote(imp.Path.Value)
 			if p == "testing" {
 				testOnly = true
 			}
 			if strings.HasSuffix(p, "/internal/gittest") {
-				uses = true
+				harness = true
 			}
 		}
 		if !testOnly {
+			launches = launches || namesGit(f)
 			continue
 		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-				if s, err := strconv.Unquote(lit.Value); err == nil && s == "git" {
-					uses = true
-				}
-			}
-			return !uses
-		})
-		if uses {
+		if harness || namesGit(f) {
 			return true
 		}
 	}
-	return false
+	return hasTests && launches
 }
 
 // installsQuiet reports whether a _test.go file declares a TestMain that calls
@@ -269,15 +321,16 @@ func TestGitPackagesInstallQuiet(t *testing.T) {
 // runs git with no TestMain (must be flagged), one whose TestMain calls m.Run directly
 // (must be flagged), one that installs the template (must pass), one that installs it
 // through a runTests helper (must pass), one whose helper calls m.Run (must be flagged),
-// one that uses the gittest harness without it (must be flagged), and one that never runs
-// git (ignored).
+// one that uses the gittest harness without it (must be flagged), one whose tests reach
+// git only through the package's own non-test launcher (must be flagged), one with that
+// launcher but no tests (ignored), and one that never runs git (ignored).
 func TestGuardControl(t *testing.T) {
 	missing, examined, err := uncovered(filepath.Join("testdata", "guard"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"harness", "helpernorun", "plainmain", "uncovered"}
-	if strings.Join(missing, ",") != strings.Join(want, ",") || examined != 6 {
-		t.Fatalf("guard over testdata/guard flagged %v of %d git-test packages; want %v of 6", missing, examined, want)
+	want := []string{"harness", "helpernorun", "plainmain", "uncovered", "wrapper"}
+	if strings.Join(missing, ",") != strings.Join(want, ",") || examined != 7 {
+		t.Fatalf("guard over testdata/guard flagged %v of %d git-test packages; want %v of 7", missing, examined, want)
 	}
 }

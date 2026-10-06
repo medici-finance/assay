@@ -25,7 +25,8 @@
 //
 // A child started with an environment that drops GIT_TEMPLATE_DIR (a literal env list,
 // or one with every GIT_* key removed) is outside this cover; such a fixture sets the
-// keys itself, as `-c` flags or written into the repository's config.
+// keys itself, as `-c` flags or written into the repository's config, or passes its own
+// template explicitly with TemplateDir.
 package gitquiet
 
 import (
@@ -54,11 +55,25 @@ func templateConfig() string {
 	return b.String()
 }
 
+// writeTemplate writes the template into the existing directory dir. It keeps the
+// hooks/ and info/exclude a default template provides (without the sample hooks), so a
+// fixture that writes a hook or an exclude finds the directory it expects.
+func writeTemplate(dir string) error {
+	for _, sub := range []string{"hooks", "info"} {
+		if err := os.Mkdir(filepath.Join(dir, sub), 0o755); err != nil {
+			return err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "info", "exclude"), []byte("# git ls-files --others --exclude-from=.git/info/exclude\n"), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "config"), []byte(templateConfig()), 0o644)
+}
+
 // Install writes the template into a fresh temporary directory and points
 // GIT_TEMPLATE_DIR at it for this process and every child that inherits its
-// environment. The template keeps the hooks/ and info/exclude a default template
-// provides (without the sample hooks), so a fixture that writes a hook or an exclude
-// finds the directory it expects. The returned func restores the previous GIT_TEMPLATE_DIR and removes the template.
+// environment. The returned func restores the previous GIT_TEMPLATE_DIR and removes the
+// template.
 func Install() (restore func(), err error) {
 	dir, err := os.MkdirTemp("", "gitquiet-template-")
 	if err != nil {
@@ -68,15 +83,7 @@ func Install() (restore func(), err error) {
 		_ = os.RemoveAll(dir)
 		return nil, e
 	}
-	for _, sub := range []string{"hooks", "info"} {
-		if e := os.Mkdir(filepath.Join(dir, sub), 0o755); e != nil {
-			return fail(e)
-		}
-	}
-	if e := os.WriteFile(filepath.Join(dir, "info", "exclude"), []byte("# git ls-files --others --exclude-from=.git/info/exclude\n"), 0o644); e != nil {
-		return fail(e)
-	}
-	if e := os.WriteFile(filepath.Join(dir, "config"), []byte(templateConfig()), 0o644); e != nil {
+	if e := writeTemplate(dir); e != nil {
 		return fail(e)
 	}
 	prev, had := os.LookupEnv("GIT_TEMPLATE_DIR")
@@ -103,4 +110,23 @@ func Run(m *testing.M) int {
 	}
 	defer restore()
 	return m.Run()
+}
+
+// TemplateDir writes the template into a new directory under t.TempDir() and returns
+// it. It is for a fixture whose child environment is built WITHOUT the inherited
+// GIT_* variables (an isolation env that drops every one of them, so Run's
+// GIT_TEMPLATE_DIR never reaches the child): the fixture appends
+// "GIT_TEMPLATE_DIR="+TemplateDir(t) to that env explicitly. The value is the
+// fixture's own directory, never one read from the caller's environment, so the
+// isolation rule that drops inherited GIT_* variables is unchanged.
+func TemplateDir(t testing.TB) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "gitquiet-template")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTemplate(dir); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
