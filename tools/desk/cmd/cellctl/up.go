@@ -6,8 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // upOverrides are the values `role_cmd` threads onto every role's own `cellctl desk`
@@ -16,6 +18,7 @@ import (
 // there is deliberately no per-role `--model-<role>` form, because that case is already
 // `cellctl desk <cell> <role> --model <m>` on the one window that needs it.
 type upOverrides struct {
+	Comms       bool
 	Model       string
 	Harness     string
 	Provider    string
@@ -30,8 +33,62 @@ type upOverrides struct {
 
 // roleCmd is the one command a role window runs, identical in every cockpit. Order is fixed
 // (--model, then --harness, then --provider, then --cockpit) so a printed command is stable to
-// grep against.
+// grep against. It is the POSIX rendering; a cockpit arm never calls it directly, it calls
+// paneRoleCmd, which picks the rendering the pane's own shell can parse.
 func (c *Cell) roleCmd(role, cfg string, o upOverrides) string {
+	return c.roleCmdIn(shellPOSIX, selfPath(), role, cfg, o)
+}
+
+// paneShell is the shell a cockpit pane hands a command line to. The command is one argv —
+// the same words in every shell — but the line that spells it differs: POSIX single quotes
+// are not PowerShell syntax, and in PowerShell a leading quoted path is a string expression,
+// not an invocation, so the line needs the `&` call operator in front of it.
+type paneShell int
+
+const (
+	shellPOSIX paneShell = iota
+	shellPowerShell
+)
+
+// paneShellFor decides which shell a cockpit's pane runs the command in. tmux hosts a POSIX
+// shell on every platform it runs on (including an MSYS/Cygwin build on Windows), so its arm is
+// POSIX unconditionally. herdr and orca open the platform's default terminal shell, which on
+// Windows is PowerShell; everywhere else it is a POSIX shell. Anything else — including an
+// unresolved cockpit — keeps the POSIX rendering.
+func paneShellFor(goos, cockpit string) paneShell {
+	if goos == "windows" && (cockpit == "herdr" || cockpit == "orca") {
+		return shellPowerShell
+	}
+	return shellPOSIX
+}
+
+// quote renders one argv word for this shell.
+func (sh paneShell) quote(s string) string {
+	if sh == shellPowerShell {
+		return psQuote(s)
+	}
+	return cockpitQuote(s)
+}
+
+// invoke renders a command line that RUNS the already-quoted program word: bare in POSIX, behind
+// the `&` call operator in PowerShell.
+func (sh paneShell) invoke(quotedProgram string) string {
+	if sh == shellPowerShell {
+		return "& " + quotedProgram
+	}
+	return quotedProgram
+}
+
+// paneRoleCmd is roleCmd rendered for the shell the resolved cockpit's pane runs on this host.
+// Every cockpit arm, dry-run line and hand-start NOTICE goes through it, so the line a pane is
+// handed and the line an operator is told to paste are the same line.
+func (c *Cell) paneRoleCmd(role, cfg string, o upOverrides) string {
+	return c.roleCmdIn(paneShellFor(runtime.GOOS, o.Cockpit), selfPath(), role, cfg, o)
+}
+
+// roleCmdIn renders the role command for one shell. self is the program word — selfPath() in
+// production — taken as a parameter so a test can pin the whole line.
+func (c *Cell) roleCmdIn(sh paneShell, self, role, cfg string, o upOverrides) string {
 	// Cockpits accept a command string today. Quote every argument independently;
 	// no model, path or configuration value is executable shell syntax.
 	cadence := c.Cadence
@@ -42,20 +99,47 @@ func (c *Cell) roleCmd(role, cfg string, o upOverrides) string {
 		o.Cadence = cadence.Interval.String()
 		o.TickBudget = cadence.Budget.String()
 	}
-	out := cockpitQuote(selfPath())
+	out := sh.invoke(sh.quote(self))
 	if cadence != nil || o.Cadence != "" {
-		out += " --cells-root " + cockpitQuote(filepath.Dir(c.Dir))
+		out += " --cells-root " + sh.quote(filepath.Dir(c.Dir))
 	}
-	out += " desk " + cockpitQuote(c.Name) + " " + cockpitQuote(role)
+	out += " desk " + sh.quote(c.Name) + " " + sh.quote(role)
 	for _, pair := range [][2]string{{"--kind", c.KindOverride}, {"--model", o.Model}, {"--harness", o.Harness}, {"--provider", o.Provider}, {"--cockpit", o.Cockpit}, {"--cadence", o.Cadence}, {"--tick-budget", o.TickBudget}} {
 		if pair[1] != "" {
-			out += " " + pair[0] + " " + cockpitQuote(pair[1])
+			out += " " + pair[0] + " " + sh.quote(pair[1])
 		}
 	}
-	return out + " " + cockpitQuote(cfg)
+	return out + " " + sh.quote(cfg)
 }
 
 func cockpitQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+
+// psQuote renders s as one PowerShell single-quoted string literal. Inside single quotes
+// PowerShell takes every character verbatim — `$`, backtick, backslash, spaces — except a
+// single-quote character, which is escaped by doubling it. PowerShell counts the typographic
+// quotes U+2018..U+201B as single-quote characters too, so each of those is doubled as well:
+// the rule PowerShell's own EscapeSingleQuotedStringContent applies. Bytes that are not valid
+// UTF-8 pass through untouched.
+//
+// Known limit, not a quoting one: Windows PowerShell 5.1 (and pwsh before 7.3) mangles an
+// embedded double quote when it builds a NATIVE program's command line from the argument. No
+// value roleCmd passes can carry one — a Windows path cannot, and the flag values are names and
+// durations — so the literal here stays exact rather than guessing at that legacy behaviour.
+func psQuote(s string) string {
+	var b strings.Builder
+	b.WriteByte('\'')
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		b.WriteString(s[i : i+size])
+		switch r {
+		case '\'', '\u2018', '\u2019', '\u201a', '\u201b':
+			b.WriteString(s[i : i+size])
+		}
+		i += size
+	}
+	b.WriteByte('\'')
+	return b.String()
+}
 
 // selfPath is the absolute path of this binary. The windows `up` opens re-invoke cellctl from
 // the CELL directory, where a relative argv[0] does not resolve — so the re-invocation uses
@@ -81,21 +165,61 @@ func selfPath() string {
 // Attended means one of two POSITIVE signals: a terminal on stdin, or CELL_ATTENDED=1 already in
 // the environment. A cron or CI invocation has neither, and there `up` stands the role windows
 // but NOT deskd, and says so. It is never silent in either direction.
-func (c *Cell) firstWindow() (name, cmd string) {
+//
+// The first window lands in the same pane shell as the role windows (paneShellFor), so every
+// line it is handed is rendered for that shell too; the POSIX lines are the ones the tmux arm
+// has always run.
+func (c *Cell) firstWindow(sh paneShell) (name, cmd string) {
 	switch {
 	case c.Deskd != "1":
-		return "cell", fmt.Sprintf("echo '[cell] %s is a %s cell with no deskd (DESKD=1 in cell.env to stand one)'", c.Name, c.Kind)
+		return "cell", sh.echo(fmt.Sprintf("[cell] %s is a %s cell with no deskd (DESKD=1 in cell.env to stand one)", c.Name, c.Kind))
 	case c.deskdUp():
-		return "deskd", fmt.Sprintf("echo '[deskd] already up on %s — watching /healthz every 60s'; while :; do date -u +%%H:%%MZ; curl -s --max-time 5 http://%s/healthz | head -c 240; echo; sleep 60; done", c.DeskdAddr, c.DeskdAddr)
+		return "deskd", deskdWatchCmd(sh, c.DeskdAddr)
 	case isTTY(os.Stdin) || c.Env.GetOr("CELL_ATTENDED", "0") == "1":
 		fmt.Printf("[cell] deskd is not up — standing it in-session, carrying YOUR attended affirmation (cellctl up ran attended)\n")
-		return "deskd", fmt.Sprintf("CELL_ATTENDED=1 '%s' deskd '%s'", selfPath(), c.Name)
+		return "deskd", deskdStandCmd(sh, selfPath(), c.Name)
 	default:
 		fmt.Fprintln(os.Stderr, "[cell] deskd is not up, and this 'cellctl up' is UNATTENDED (no terminal on stdin, CELL_ATTENDED unset).")
 		fmt.Fprintln(os.Stderr, "[cell] role windows will open; deskd will NOT be stood, because minting tokens needs an affirmation this invocation cannot make.")
-		fmt.Fprintf(os.Stderr, "[cell] stand it yourself: CELL_ATTENDED=1 cellctl deskd %s\n", c.Name)
-		return "deskd", fmt.Sprintf("echo '[deskd] NOT stood — cellctl up ran unattended. Run: CELL_ATTENDED=1 cellctl deskd %s'", c.Name)
+		fmt.Fprintf(os.Stderr, "[cell] stand it yourself: %s\n", deskdHandStart(sh, c.Name))
+		return "deskd", sh.echo(fmt.Sprintf("[deskd] NOT stood — cellctl up ran unattended. Run: %s", deskdHandStart(sh, c.Name)))
 	}
+}
+
+// echo renders a line that prints msg. The POSIX form keeps the bare single quotes the tmux arm
+// has always run; the PowerShell form quotes msg as one literal.
+func (sh paneShell) echo(msg string) string {
+	if sh == shellPowerShell {
+		return "Write-Output " + psQuote(msg)
+	}
+	return "echo '" + msg + "'"
+}
+
+// deskdWatchCmd is the first window when a deskd is already up: poll its /healthz once a minute.
+func deskdWatchCmd(sh paneShell, addr string) string {
+	if sh == shellPowerShell {
+		// curl.exe, never curl: in Windows PowerShell 5.1 `curl` is an alias of Invoke-WebRequest.
+		return sh.echo("[deskd] already up on "+addr+" — watching /healthz every 60s") +
+			"; while ($true) { (Get-Date).ToUniversalTime().ToString('HH:mm') + 'Z'; $h = (curl.exe -s --max-time 5 " + psQuote("http://"+addr+"/healthz") +
+			" | Out-String); if ($h.Length -gt 240) { $h = $h.Substring(0, 240) }; $h; Start-Sleep -Seconds 60 }"
+	}
+	return fmt.Sprintf("echo '[deskd] already up on %s — watching /healthz every 60s'; while :; do date -u +%%H:%%MZ; curl -s --max-time 5 http://%s/healthz | head -c 240; echo; sleep 60; done", addr, addr)
+}
+
+// deskdStandCmd stands deskd in the window, carrying the attended affirmation into it.
+func deskdStandCmd(sh paneShell, self, cell string) string {
+	if sh == shellPowerShell {
+		return "$env:CELL_ATTENDED='1'; " + sh.invoke(psQuote(self)) + " deskd " + psQuote(cell)
+	}
+	return fmt.Sprintf("CELL_ATTENDED=1 '%s' deskd '%s'", self, cell)
+}
+
+// deskdHandStart is the command an operator types to stand deskd by hand.
+func deskdHandStart(sh paneShell, cell string) string {
+	if sh == shellPowerShell {
+		return "$env:CELL_ATTENDED='1'; cellctl deskd " + cell
+	}
+	return "CELL_ATTENDED=1 cellctl deskd " + cell
 }
 
 func cmdUp(cell string, args []string) {
@@ -299,7 +423,11 @@ func cmdUp(cell string, args []string) {
 		}
 	}
 
-	firstName, firstCmd := c.firstWindow()
+	o.Comms, err = c.commsPreflight()
+	if err != nil {
+		die("up comms: %v; no windows launched", err)
+	}
+	firstName, firstCmd := c.firstWindow(paneShellFor(runtime.GOOS, res.Cockpit))
 
 	if c.Env.Get("DRY_RUN") == "1" {
 		kindShown := c.Kind
@@ -321,19 +449,27 @@ func cmdUp(cell string, args []string) {
 		if o.Provider != "" {
 			fmt.Printf("[dry-run] provider=%s (override) — applied to every role window below\n", o.Provider)
 		}
+		if o.Comms {
+			fmt.Printf("[dry-run] comms: %s\n", c.commsCmdIn(paneShellFor(runtime.GOOS, res.Cockpit), selfPath()))
+		}
 		fmt.Printf("[dry-run] %s: %s\n", firstName, firstCmd)
 		for _, r := range roles {
 			if automate != "" {
 				fmt.Printf("[dry-run] %s: orca automations create --name %s-%s --repo path:%s --trigger '%s' --precheck '%s check %s' --provider claude --prompt /assay:%s\n",
 					r, c.Name, r, c.Repo, automate, selfPath(), c.Name, r)
 			} else {
-				fmt.Printf("[dry-run] %s: %s\n", r, c.roleCmd(r, cfg, o))
+				fmt.Printf("[dry-run] %s: %s\n", r, c.paneRoleCmd(r, cfg, o))
 			}
 		}
 		return
 	}
 	if persist {
 		applyEnvKVs(c.Env, c.Dir+"/cell.env", false, persistKVs)
+	}
+	if o.Comms && res.Cockpit != "tmux" {
+		if err := c.startComms(res.Cockpit); err != nil {
+			die("up comms: %v", err)
+		}
 	}
 	switch res.Cockpit {
 	case "tmux":
@@ -351,6 +487,11 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		die("tmux not installed")
 	}
 	if exec.Command("tmux", "has-session", "-t", c.Session).Run() == nil {
+		if o.Comms {
+			if err := c.startComms("tmux"); err != nil {
+				die("up comms: %v", err)
+			}
+		}
 		fmt.Printf("[cell] %s already running — attaching\n", c.Session)
 		if attach {
 			runForeground([]string{"tmux", "attach", "-t", c.Session}, os.Environ(), "")
@@ -359,6 +500,11 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 	}
 	_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", firstName, "-c", c.Dir,
 		firstCmd+"; echo '["+firstName+"] exited'; exec $SHELL").Run()
+	if o.Comms {
+		if err := c.startComms("tmux"); err != nil {
+			die("up comms: %v", err)
+		}
+	}
 	for _, role := range roles {
 		name := strings.TrimSuffix(role, "-desk")
 		switch role {
@@ -368,7 +514,7 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 			name = "the-desk"
 		}
 		_ = exec.Command("tmux", "new-window", "-t", c.Session, "-n", name, "-c", c.Dir,
-			c.roleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL").Run()
+			c.paneRoleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL").Run()
 		// Stagger the windows: each one fetches the shared .git, and starting them at once puts
 		// every window into the fetch lock's retry loop at the same moment.
 		time.Sleep(2 * time.Second)
@@ -405,7 +551,7 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 	}
 	c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
 	for _, role := range roles {
-		c.herdrWindow(c.Name+"-"+role, c.roleCmd(role, cfg, o), newWsID)
+		c.herdrWindow(c.Name+"-"+role, c.paneRoleCmd(role, cfg, o), newWsID)
 		time.Sleep(2 * time.Second)
 	}
 	// The freshly-created workspace's own default tab is never wanted — dropped now that the
@@ -543,9 +689,9 @@ func (c *Cell) upOrca(cfg string, roles []string, automate, firstCmd string, o u
 		if hasName {
 			args = append(args, nameflag, c.Name+"-"+role)
 		}
-		args = append(args, cmdflag, c.roleCmd(role, cfg, o))
+		args = append(args, cmdflag, c.paneRoleCmd(role, cfg, o))
 		if exec.Command("orca", args...).Run() != nil {
-			fmt.Fprintf(os.Stderr, "NOTICE: 'orca %s' failed — run it by hand: %s\n", strings.Join(args, " "), c.roleCmd(role, cfg, o))
+			fmt.Fprintf(os.Stderr, "NOTICE: 'orca %s' failed — run it by hand: %s\n", strings.Join(args, " "), c.paneRoleCmd(role, cfg, o))
 		}
 		time.Sleep(2 * time.Second)
 	}
@@ -567,7 +713,7 @@ func (c *Cell) orcaByHand(why, cfg string, roles []string, o upOverrides) {
 	fmt.Fprintf(os.Stderr, "NOTICE: %s\n", why)
 	fmt.Fprintf(os.Stderr, "NOTICE: open these by hand (one terminal each, in %s):\n", c.Dir)
 	for _, role := range roles {
-		fmt.Fprintf(os.Stderr, "  %s\n", c.roleCmd(role, cfg, o))
+		fmt.Fprintf(os.Stderr, "  %s\n", c.paneRoleCmd(role, cfg, o))
 	}
 	die("orca is the resolved cockpit but this build cannot be driven to open the windows — the commands above are the whole of what a cockpit runs, and --cockpit tmux opens them for you")
 }

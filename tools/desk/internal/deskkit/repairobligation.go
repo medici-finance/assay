@@ -110,8 +110,8 @@ type RepairObligation struct {
 	LeaseTS string `json:"lease_ts,omitempty"` // RFC3339 — when the current lease was taken
 
 	// The repair itself.
-	RepairPR  string `json:"repair_pr,omitempty"`  // linked repair PR (owner/repo#N)
-	RepairSHA string `json:"repair_sha,omitempty"` // the revision the repair produced/merged at
+	RepairPR   string `json:"repair_pr,omitempty"`   // linked repair PR (owner/repo#N)
+	RepairSHA  string `json:"repair_sha,omitempty"`  // the revision the repair produced/merged at
 	RepairedBy string `json:"repaired_by,omitempty"` // the worker identity that produced the repair
 
 	// The original (failed) deliverable. When the original PR is MERGED, repair needs a NEW

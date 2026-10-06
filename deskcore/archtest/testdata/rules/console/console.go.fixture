@@ -1,0 +1,10 @@
+package console
+
+import "fmt"
+
+func Ask() string {
+	var s string
+	fmt.Println("name?")
+	_, _ = fmt.Scanln(&s)
+	return s
+}

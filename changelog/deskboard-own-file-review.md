@@ -1,2 +1,0 @@
-### Fixed
-- Deskboard requests another review when any commit on a PR branch's first-parent chain after its reviewed head touches the PR's own files, including fixes next to keep-current merges, edits later reverted, and own-file conflict resolutions in the branch's merges. Main-side commits brought in by a keep-current merge, including other branches' catch-up merges, are not read, so a pure keep-current merge stays merge-current. Incomplete history, or a chain that does not reach the reviewed head, degrades to another review.

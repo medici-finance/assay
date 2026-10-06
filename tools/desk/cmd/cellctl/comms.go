@@ -207,23 +207,22 @@ func cmdComms(cell string, args []string) {
 	if cfg == nil {
 		die("comms is disabled; configure CELL_COMMS_CONFIG for this cell before starting it")
 	}
-	var commands [][]string
-	for _, name := range []string{"commsgw", "commsloop"} {
-		suffix := ""
-		if runtime.GOOS == "windows" {
-			suffix = ".exe"
-		}
-		path := filepath.Join(deskToolsBin(c.Env), name+suffix)
-		if err := commsBinary(path); err != nil {
-			die("comms: %v", err)
-		}
-		commands = append(commands, []string{path})
+	commands, err := c.commsCommands()
+	if err != nil {
+		die("comms: %v", err)
 	}
 	if args[0] == "check" {
 		fmt.Printf("[comms] cell=%s mode=interim config=valid binaries=present (gateway reachability and model credentials not probed)\n", c.Name)
 		return
 	}
-	lease, err := cellcadence.Acquire(filepath.Join(c.Dir, "run", "comms"))
+	if recovering {
+		launch, err := c.acquireCommsLaunch()
+		if err != nil {
+			die("comms recovery: %v", err)
+		}
+		defer launch.Close()
+	}
+	lease, err := cellcadence.Acquire(c.commsDir())
 	if err != nil {
 		die("comms ownership: %v", err)
 	}
@@ -245,8 +244,15 @@ func cmdComms(cell string, args []string) {
 		if err := os.Remove(filepath.Join(c.Dir, "run", "comms", "checkpoint.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
 			die("comms recovery: %v", err)
 		}
+		// Confirmation also covers a prior cockpit command that has not started.
+		if err := os.Remove(filepath.Join(c.commsLaunchDir(), "surface.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			die("comms recovery: %v", err)
+		}
 		fmt.Println("[comms] recovery recorded; run the service to start it")
 		return
+	}
+	if err := os.Remove(filepath.Join(c.commsDir(), "STOP")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		die("comms stop request: %v", err)
 	}
 	for _, dir := range []string{cfg.QueueDir} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
@@ -268,7 +274,7 @@ func cmdComms(cell string, args []string) {
 	defer stop()
 	fmt.Printf("[comms] cell=%s mode=interim endpoint=%s; starting gateway and mailbox drain\n", c.Name, cfg.Socket)
 	err = lease.RunInteractive(ctx, c.Name, "comms", func(ctx context.Context) cellcadence.Result {
-		result := runCommsPair(ctx, commands, c.commsServiceEnv(cfg))
+		result := c.runCommsUntilStop(ctx, commands, c.commsServiceEnv(cfg))
 		removeStoppedEndpoint(result, cfg.Socket)
 		return result
 	})
@@ -331,4 +337,20 @@ func runCommsPair(ctx context.Context, commands [][]string, env []string) cellca
 		}
 	}
 	return first
+}
+
+func (c *Cell) commsCommands() ([][]string, error) {
+	var commands [][]string
+	for _, name := range []string{"commsgw", "commsloop"} {
+		suffix := ""
+		if runtime.GOOS == "windows" {
+			suffix = ".exe"
+		}
+		path := filepath.Join(deskToolsBin(c.Env), name+suffix)
+		if err := commsBinary(path); err != nil {
+			return nil, err
+		}
+		commands = append(commands, []string{path})
+	}
+	return commands, nil
 }

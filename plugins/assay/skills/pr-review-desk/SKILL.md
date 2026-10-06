@@ -26,6 +26,9 @@ link. Bindings for your harness — which mechanism each `capability:*` names �
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
+
+
 > Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 **References**, each carrying text the reviewer prompt needs verbatim:
@@ -517,7 +520,10 @@ the evidence for it. Structured disagreement, not a transcript dump — the huma
 | `<file:line> — <one-line defect>` | `<claim>` — `<commit/PR-comment link>` | `<claim>` — `<review/PR-comment link>` |
 
 File via `deskfile new --raised-by reviewer`, label `needs-decision`, body = the packet table
-plus the PR link, then comment on the PR pointing at the filed issue
+plus the PR link plus the `### Fork test` block `deskfile new` requires of every
+`needs-decision` filing (grammar in `tools/desk/README.md`), with one `option:` per side and
+**`caught-by: nothing`** — the arbiter's call is the human's, so no gate catches a wrong guess
+and the packet never takes the notice lane — then comment on the PR pointing at the filed issue
 (`references/out-of-scope-filing.md`'s dual-track dedupe applies if a packet for this class is
 already open). `authorization-needed` stays on the PR — the packet is a human fork, not a flip,
 and does not touch ready-flip ownership, human merge, or the security carve-out.

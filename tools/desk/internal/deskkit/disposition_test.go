@@ -231,3 +231,32 @@ func TestReadDispositionIndex(t *testing.T) {
 		}
 	})
 }
+
+// These comments can follow an unresolved current-head finding. Their marker
+// shape conveys no terminal verdict and must not overwrite an earlier real one.
+func TestAdvisoryDisposition(t *testing.T) {
+	advisories := []string{
+		"<!-- assay:surface-tier -->\nAdvisory surface estimate; gates nothing.",
+		"<!-- assay:workpad -->\nReview finding remains open; implementation in progress.",
+	}
+	for _, advisory := range advisories {
+		t.Run(strings.Split(advisory, "\n")[0], func(t *testing.T) {
+			comments := []string{"CHANGES_REQUESTED: current-head finding remains unresolved", advisory}
+			r := ReadDisposition(nil, comments, nil)
+			if r.State != DispositionCheckedClean || !r.DispatchEligible() || r.Record.Verdict != "" {
+				t.Fatalf("advisory must leave disposition absent and eligible: %+v", r)
+			}
+			for _, verdict := range []DispositionVerdict{DispositionSuperseded, DispositionResolvedElsewhere} {
+				record := Disposition{Verdict: verdict, Evidence: "https://github.com/example-org/project/pull/2", RecordedAt: "2026-01-01"}
+				r = ReadDisposition([]string{verdict.Label()}, []string{record.Marker(), advisory}, nil)
+				if r.DispatchEligible() || r.Record.Verdict != verdict {
+					t.Fatalf("advisory erased terminal record: %+v", r)
+				}
+			}
+			r = ReadDisposition(nil, comments, errors.New("comments truncated"))
+			if r.State != DispositionCouldNotCheck || r.DispatchEligible() {
+				t.Fatalf("unread evidence admitted: %+v", r)
+			}
+		})
+	}
+}

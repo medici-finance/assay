@@ -100,6 +100,7 @@ func plantGitLabCustody(t *testing.T, role, value string) string {
 }
 
 func TestRoleInitGitLabReadsCustodyNeverGitHubMinter(t *testing.T) {
+	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv(deskkit.EnvConfigHome, "")
@@ -138,6 +139,7 @@ func TestRoleInitGitLabReadsCustodyNeverGitHubMinter(t *testing.T) {
 }
 
 func TestRoleInitGitLabMissingCustodyFailsClosed(t *testing.T) {
+	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv(deskkit.EnvConfigHome, "")
@@ -167,6 +169,7 @@ func TestRoleInitGitLabMissingCustodyFailsClosed(t *testing.T) {
 }
 
 func TestRoleInitGitHubStillUsesAppMinter(t *testing.T) {
+	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv(deskkit.EnvConfigHome, "")
@@ -207,6 +210,7 @@ func TestRoleInitGitHubStillUsesAppMinter(t *testing.T) {
 // the roster silent (the unresolved default) or naming the forge "github", such an origin is
 // REFUSED (exit 5) before the GitHub minter runs, and no helper is wired.
 func TestRoleInitNonGitHubOriginHostRefusedBeforeMint(t *testing.T) {
+	requireGitListReset(t)
 	for i, tc := range []struct{ rosterForge, origin string }{
 		{"", "https://" + gitlabFixtureHost + "/example-org/tracker.git"},
 		{"", "https://github.com.evil.test/example-org/tracker.git"},

@@ -890,8 +890,9 @@ func checkMergeHoldApproved(hold *deskkit.MergeHold, fg deskkit.Forge, fr deskki
 	case deskkit.MergeHoldAbsent:
 		return deskkit.Refused(fmt.Sprintf(
 			"condition %s: PR #%d carries no merge-hold marker thread — the server-side merge gate has "+
-				"nothing to release. `deskpr create` opens one when the change is created; if this change "+
-				"predates that, open one by hand or re-create the change.",
+				"nothing to release. Every desk verb that opens a change (`deskpr create`, and `deskevidence`'s "+
+				"draft lane) opens one when the change is created; if this change predates "+
+				"that, open one by hand or re-create the change.",
 			condReviewerApproved, pr))
 	case deskkit.MergeHoldUnresolved:
 		return deskkit.Refused(fmt.Sprintf(

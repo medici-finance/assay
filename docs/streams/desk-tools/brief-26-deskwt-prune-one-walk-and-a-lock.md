@@ -708,6 +708,107 @@ The brief is gate: model with all four risk answers no. Status is left where it 
 
 VERIFY: BLOCKED — 20 of 21 rows pass by hand, including the SPOF row 2, the fail-closed row 3 and 16/16 mutations CAUGHT; row 20 is could-not-check on merged main by construction (check-definition, #1281, open), and the hermetic witness for the 19 check:ci rows could not run on this darwin host (2 of 21 witnessed).
 
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-04 claude-opus-5-5-verifier
+
+Runner is a NON-implementer: assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian), dispatched by verify-desk against merged main fe12ee0c90b9e39e78afc291e5b17111844356cb. Deliverable squash b02ea2b35 (PR #1064) is an ancestor of the commit under test.
+
+Why this re-run: the 2026-10-02 receipt (blocked at cf31c3241, 20/21) went stale because three declared inputs changed on main. Between cf31c3241 and fe12ee0c9: prune.go and deskwt.go each gained the same 4-line early return in their flag-parse error branch (#2051, "tier-two --help writes no audit row"). It returns deskkit.ErrHelpRequested when the parse error is a help request, before any sweep, gate, singleton or removal code runs. The rest of prune.go is unchanged, and line numbers below the hunk shift by 4. The desk README hunks (#2051, #2059, #2117, #2120, #2135, #2138, #2155) cover role-init fetch credentials, cellctl, deskpr, deskboard and roster; none touches the prune singleton, its flags or the read-only dry-run text. prunesingleton.go, lockreclaim.go, the prune, singleton and perf tests, prune-mutations.json and every gitcore file are byte-identical to cf31c3241. Conclusion: no change touches the prune behaviour this brief verifies.
+
+How the rows were run:
+
+- **Hand runs.** Every row ran sequentially from a detached worktree at fe12ee0c9, on darwin/arm64 with go1.27.1 and git 2.56.0. HOME was a throwaway (a copy of the roster only), TMPDIR and GOCACHE pointed into the runner's own scratch directory, and GOPROXY was off. Rows 16 and 18 write their output file into that scratch directory rather than the system temp directory; the commands are otherwise unchanged. Row 11 mutates and restores the source tree; the tree was clean before and after it.
+- **Execution witness.** `statusgen verifyrun` (built from this same commit, reporting version "dev") ran non-dry inside a throwaway golang:1.25-trixie container that was already cached locally. Its settings:
+  - Go 1.25.14 (the go.mod floor) and git 2.47.3.
+  - `--network none`, with GOPROXY=off and GOSUMDB=off.
+  - The host module cache mounted read-only.
+  - The target was a clone pinned to fe12ee0c9, with that clone's refs/remotes/origin/main also pinned to fe12ee0c9 and a clean tree, so the stamp carries no +dirty.
+  - Per-row timeout raised to 40m.
+
+  **Disclosure:** the container ran with `--security-opt seccomp=unconfined`, which statusgen's own `unshare --net --map-root-user` sandbox needs inside Docker. The desk authorized this for this throwaway, network-off container only. No image was pulled.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0; no output | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneRemovalSetUnchanged$' -count=1 -timeout 300s` | exit 0, removed set equals the recorded literal | exit 0; ok cmd/deskwt 12.490s; verbose re-run: --- PASS: TestPruneRemovalSetUnchanged (1.95s) | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneHoldsAll' -count=1` | exit 0, fail-closed: zero removed | exit 0; ok cmd/deskwt 8.856s; verbose re-run: --- PASS: TestPruneHoldsAllNoAncestorSet and --- PASS: TestPruneHoldsAllWhenTheMainlineWalkFails | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestMergeGateBeforeStatus$' -count=1` | exit 0 | exit 0; ok cmd/deskwt 4.744s; verbose re-run: --- PASS: TestMergeGateBeforeStatus (0.79s) | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSkips' -count=1 && go test ./cmd/deskwt/ -run '^TestPruneRefusesSharedCheckout$' -count=1` | exit 0, every existing hold | exit 0; ok 18.050s then ok 2.973s; verbose re-run: 7 TestPruneSkips tests --- PASS (incl. TestPruneSkipsUnpushedCommit and TestPruneSkipsCleanUnmergedBranch), --- PASS: TestPruneRefusesSharedCheckout | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneDryRunIsReadOnly$' -count=1` | exit 0 | exit 0; ok cmd/deskwt 5.511s; verbose re-run: --- PASS: TestPruneDryRunIsReadOnly (0.98s) | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneBatch' -count=1` | exit 0 | exit 0; ok cmd/deskwt 14.016s; verbose re-run: --- PASS: TestPruneBatchesRemoval and --- PASS: TestPruneBatchDemotesStrandedPath | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRemove' -count=1` | exit 0 | exit 0; ok cmd/deskwt 20.939s; verbose re-run: 11 TestRemove tests --- PASS | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | `cd tools/desk && go test ./internal/gitcore/ -run '^TestOpenWithShares' -count=1 && go test ./internal/gitcore/ -run '^TestOpenStillBuilds' -count=1` | exit 0 | exit 0; ok 1.009s then ok 0.959s; verbose re-run: --- PASS: TestOpenWithSharesCache and --- PASS: TestOpenStillBuildsItsOwnCache | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSingleton' -count=1 -timeout 120s` | exit 0 | exit 0; ok cmd/deskwt 29.019s; verbose re-run: 5 TestPruneSingleton tests --- PASS (held-by-live-sweep, recent-sweep, TTL-zero-and-no-singleton, bad-stamp, missing-stamp) | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskwt/prune-mutations.json` | exit 0, baseline GREEN, control CAUGHT, every mutation CAUGHT | exit 0 (1279s); "Harness healthy: baseline GREEN, positive control CAUGHT." and "Totals: 16 caught, 0 NOT CAUGHT, 0 could-not-mutate."; tree clean after | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneInterval' -count=1 -timeout 120s` | exit 0 | exit 0; ok cmd/deskwt 6.458s; verbose re-run: 3 TestPruneInterval tests --- PASS incl. TestPruneIntervalReleasesLockPerTick | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | `cd tools/desk && DESKWT_PERF_N=50 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 600s` | exit 0, walk count 1, wall inside budget | exit 0; ok cmd/deskwt 3.079s | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 14 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s && DESKWT_PERF_N=600 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s` | exit 0, N=600 sweep under 30 s, walk count 1 | exit 0; ok 5.168s then ok 9.970s; verbose N=600 re-run: "N=600 commits=5000 sweep=1.956s walks=1 removed=0 held=601" (Linux container: sweep=2.037s walks=1) | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 15 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestConcurrentPrunes' -count=1 -timeout 900s` | exit 0, one sweeps, four held, total wall under 1.5x a single sweep | exit 0; ok cmd/deskwt 10.586s; verbose re-run: "N=200 single=837ms five-concurrent=879ms (1 swept, 4 held)", --- PASS: TestConcurrentPrunesCostOne (ratio 1.05x; Linux container: 713ms vs 788ms, 1.11x) | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 16 | `cd tools/desk && go test -bench '^BenchmarkPruneSweepPer' -benchtime 10x -run '^$' ./cmd/deskwt/ > /tmp/dt26-bench.out 2>&1; grep -q 'BenchmarkPruneSweepPerCandidate' /tmp/dt26-bench.out` | exit 0, benchmark exists and runs | exit 0 (output file redirected to runner scratch); "BenchmarkPruneSweepPerCandidate-16 10 1650833162 ns/op 33.02 ms/candidate" | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 16b | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestLegacyPerCandidate' -count=1 -timeout 600s` | exit 0, baseline measured | exit 0; ok cmd/deskwt 23.199s; verbose re-run: "legacy=6.658s (332.909ms/candidate); WHOLE current sweep (all gates, same fixture)=414ms", --- PASS: TestLegacyPerCandidateWalkCost | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 17 | `cd tools/desk && go test -timeout 600s ./cmd/deskwt/... ./internal/gitcore/... -count=1` | exit 0 | exit 0 on the second hand run (ok cmd/deskwt 123.031s; ok internal/gitcore 29.277s) and exit 0 in the Linux witness (ok 50.900s, ok 12.955s). The first hand run exited 1 on one test, TestBranchHoldersPropagatesAGitError ("branchHolders outside a repo returned no error"). Cause: the runner had pointed TMPDIR inside its own git worktree, so the test's temp directory was not outside a repo. Re-run with git discovery capped at that temp root (GIT_CEILING_DIRECTORIES): that test passes alone, and the whole row exits 0. Runner-environment artifact, not a code fault | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 18 | `cd tools/desk && gofmt -l cmd/deskwt internal/gitcore > /tmp/dt26-fmt.out; test ! -s /tmp/dt26-fmt.out` | exit 0 | exit 0 (output file redirected to runner scratch); gofmt list is 0 bytes | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | exit 0; "LINT: PASS", printed 0 | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 20 | `cd statusgen && go run . --root .. --consumers --brief assay:assay:desk-tools:26; echo $?` | 0 (exit 2 is COULD-NOT-CHECK, reported as itself) | COULD-NOT-CHECK; does not meet Expect: printed 1, not 0. Tool output: "--consumers: COULD-NOT-CHECK: assay:assay:desk-tools:26 is not in the diff against fe12ee0c90b9e39e78afc291e5b17111844356cb, so this run carries no evidence about its claims — no entry was corroborated and none was disproved." then "exit status 2" (go run reports the child's exit 2 as its own 1) | 2026-10-04 assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+By hand: 20 of 21 rows meet their Expect. Row 20 is could-not-check.
+
+Execution witness: `statusgen verifyrun` in the Linux container described above, network-off, non-dry, written at a clean tree pinned to fe12ee0c9. It exited 1 because row 20 records a failure.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 2 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneRemovalSetUnchanged$' -count=1 -timeout 300s` | pass exit=0 | sha256:94072c530011 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 3 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneHoldsAll' -count=1` | pass exit=0 | sha256:0a523a0a67bc | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 4 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestMergeGateBeforeStatus$' -count=1` | pass exit=0 | sha256:18179e892f6b | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 5 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSkips' -count=1 && go test ./cmd/deskwt/ -run '^TestPruneRefusesSharedCheckout$' -count=1` | pass exit=0 | sha256:a234f312da39 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 6 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneDryRunIsReadOnly$' -count=1` | pass exit=0 | sha256:3e91a89f24f8 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 7 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneBatch' -count=1` | pass exit=0 | sha256:ef1630928be1 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 8 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRemove' -count=1` | pass exit=0 | sha256:38d180c59859 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 9 | `cd tools/desk && go test ./internal/gitcore/ -run '^TestOpenWithShares' -count=1 && go test ./internal/gitcore/ -run '^TestOpenStillBuilds' -count=1` | pass exit=0 | sha256:9683b10b69de | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 10 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneSingleton' -count=1 -timeout 120s` | pass exit=0 | sha256:c03ced4addfd | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 11 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskwt/prune-mutations.json` | pass exit=0 | sha256:2cef7e8079e3 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 12 | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestPruneInterval' -count=1 -timeout 120s` | pass exit=0 | sha256:f5461c4784b0 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 13 | `cd tools/desk && DESKWT_PERF_N=50 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 600s` | pass exit=0 | sha256:290ac98f13dc | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 14 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s && DESKWT_PERF_N=600 go test ./cmd/deskwt/ -run '^TestPruneSweepScalesAtN$' -count=1 -timeout 900s` | pass exit=0 | sha256:2f2187a18645 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 15 | `cd tools/desk && DESKWT_PERF_N=200 go test ./cmd/deskwt/ -run '^TestConcurrentPrunes' -count=1 -timeout 900s` | pass exit=0 | sha256:1b878346a2b5 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 16 | `cd tools/desk && go test -bench '^BenchmarkPruneSweepPer' -benchtime 10x -run '^$' ./cmd/deskwt/ > /tmp/dt26-bench.out 2>&1; grep -q 'BenchmarkPruneSweepPerCandidate' /tmp/dt26-bench.out` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 16b | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestLegacyPerCandidate' -count=1 -timeout 600s` | pass exit=0 | sha256:fb4d17b4bf76 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 17 | `cd tools/desk && go test -timeout 600s ./cmd/deskwt/... ./internal/gitcore/... -count=1` | pass exit=0 | sha256:02cde06ebc99 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 18 | `cd tools/desk && gofmt -l cmd/deskwt internal/gitcore > /tmp/dt26-fmt.out; test ! -s /tmp/dt26-fmt.out` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 | sha256:d772997bb1b9 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+| 20 | `cd statusgen && go run . --root .. --consumers --brief assay:assay:desk-tools:26; echo $?` | fail exit=0 | sha256:aee00550ba47 | 2026-10-04 | assay-verifier-app[bot] @ fe12ee0c90b9 (on-behalf-of human:ian) (git-config) |
+
+`statusgen verifyrun --check` over that witness (same container) exited 1 and printed: "docs/streams/desk-tools/brief-26-deskwt-prune-one-walk-and-a-lock.md: 20 pass, 1 fail, 0 could-not-run/missing (of 21 Verify rows)". The one fail is row 20: "the witness records a failure".
+
+Previously failing rows:
+
+- **Row 17** failed on 2026-09-27 under a bookworm container with git 2.39.5. It now passes in the hermetic witness, on trixie with git 2.47.3, which meets the 2.46 floor the add --role transport tests assume; the verbose re-run in the container shows TestAddRoleReplacesInheritedSSHPushUnderBotLoop and its siblings --- PASS. This is the first network-off witness of row 17 passing. No source change was needed.
+- **Row 20** still cannot decide on merged main, for the same structural reason as before. The brief file is absent from the diff the consumers gate takes, and the implementing squash (PR #1064) does not touch the brief file, so no single diff carries both the brief and its consumer targets. The witness records "fail exit=0" because the trailing echo forces the row's exit to 0 while the tool reads "exit 2" from the Expect cell. The hand run shows the real state: COULD-NOT-CHECK. This is check-definition, the case #1281 describes, and #1281 is OPEN (checked 2026-10-04). Supporting spot check, unchanged from the prior pass: the squash touches all three fixed-here files (prune.go, deskwt.go, gitcore.go) and none of the out-of-scope sites.
+
+Findings:
+
+- **Row 15's Expect is tighter than its test.** The Expect says the concurrent wall is gated under 1.5x a single sweep, but the test's actual gate is 2*single + 5s (pruneperf_test.go:332). The observed ratios (1.05x on darwin, 1.11x in the Linux container) satisfy both. Check-definition note, carried over.
+- **One test assumes TMPDIR is not inside a git repo.** TestBranchHoldersPropagatesAGitError (branchcollision_test.go) assumes a t.TempDir() is not inside any git repository, and fails when TMPDIR sits under a checkout. That is a test-portability gap in the branch-collision tests, not in anything this brief ships; noted, not raised.
+
+Risk-bearing value. The enumeration covers the non-test files of squash b02ea2b35 (prune.go, prunesingleton.go, deskwt.go, lockreclaim.go, gitcore.go) plus the test gates the Deliverables name, read at fe12ee0c9. Line numbers in prune.go are shifted by +4 from the prior pass by the #2051 help-request hunk.
+
+- merge-gate baseline ref = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:488 (the one walk), also @ prune.go:995 (the tip guard's resolve)
+- defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57
+- pruneStampSchema = "deskwt-prune-singleton-v1" @ prunesingleton.go:51
+- stamp dir mode 0o700 @ prunesingleton.go:177; stamp file mode 0o600 @ prunesingleton.go:182
+- lock-ttl flag default "0" @ prune.go:141
+- perf budget at N>=600 = 30 * time.Second @ tools/desk/cmd/deskwt/pruneperf_test.go:58; concurrency budget = 2*single + 5*time.Second @ pruneperf_test.go:332 (test gates only)
+
+Ranked by irreversibility, the baseline ref is the only entry whose error deletes work: an unmerged worktree read as merged gets removed. Every other entry is a reversible efficiency, hygiene or test-budget knob, undone by an edit and a redeploy.
+
+RISK-VALUE: DERIVED — merge-gate baseline = "refs/remotes/origin/main" @ tools/desk/cmd/deskwt/prune.go:488 — HEAD is an ancestor of origin/main exactly when it is in the set of commits reachable from origin/main, and the single Log walk returns that set, tip included. Set membership therefore equals the ancestor test it replaces. The ref must be spelled in full because git resolves refs/heads/ ahead of refs/remotes/, so a stray local branch named origin/main would otherwise become the baseline (#885). A walk that fails leaves the set nil, and every candidate is then held as unverifiable (prune.go:517 and prune.go:600). A partial set can only shrink membership, which holds worktrees rather than removing them. Corroborated this run by rows 2 and 3 and by row 11's inversion and empty-set mutations, both CAUGHT.
+
+RISK-VALUE: DERIVED (reversible, ranks last) — defaultSingletonTTL = 10 * time.Minute @ tools/desk/cmd/deskwt/prunesingleton.go:57 — this is a debounce only. A wrong value delays or duplicates a sweep by at most one TTL and never removes anything. Bad, missing and future-dated stamps all proceed (row 10; row 11's fail-closed-TTL mutation CAUGHT).
+
+The brief is gate: model, with all four risk answers no. Status is left where it is.
+
+VERIFY: BLOCKED — 20 of 21 rows pass by hand and 20 of 21 pass in the network-off Linux witness. That includes the SPOF row 2, the fail-closed row 3, 16/16 mutations CAUGHT, and row 17 green under the hermetic witness for the first time. Row 20 is could-not-check on merged main by construction (check-definition, blocker #1281, open).
+
 ## Review
 
 Gate: model (all four risk answers no). Model-gated because the destructive hazard is

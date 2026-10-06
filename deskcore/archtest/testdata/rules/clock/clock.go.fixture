@@ -1,0 +1,13 @@
+package clock
+
+import (
+	"time"
+	t "time"
+)
+
+var started = time.Since
+
+func Wait() time.Time {
+	t.Sleep(time.Second)
+	return time.Now()
+}

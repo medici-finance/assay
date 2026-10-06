@@ -17,7 +17,9 @@
 #   D  DESK-TOOLS — the tarball arm: verified tarball installs its binaries; a mismatch
 #      installs none.
 #   P  PIN — manifest → pin file: absent line appended; identical line untouched; scaffold
-#      placeholder replaced; a DIFFERENT real line refused with the file byte-identical.
+#      placeholder replaced; a DIFFERENT real line refused with the file byte-identical; the
+#      bare `statusgen` line filled from the manifest's linux-amd64 line by name (any
+#      --platform), and refused when the manifest has none.
 #   C  CLASSIFY — fresh / partial / adopted; adopted refuses (the refuse-not-clobber property).
 #   R  REHEARSE — the whole flow against a GitLab-remote target with no forge CLI on PATH,
 #      using a stub statusgen: exit 0, the real target untouched; an adopted target refuses
@@ -370,6 +372,8 @@ MAN3="$TMP/manifest3.yaml"
   done
   printf '    %s: %s %s %s\n' "$plat" "$SG_ASSET" "$TAG" "$GOOD"
 } > "$MAN3"
+# The bare `statusgen` line takes the manifest's linux-amd64 digest by name, never this host's.
+if [ "$plat" = linux-amd64 ]; then LSHA=$GOOD; else LSHA=$(printf '%064d' 3); fi
 d=$(case_dir P5)
 init_placeholder "$d/pins"
 if ! grep -q '^statusgen  *REPLACE_WITH_TAG' "$d/pins"; then
@@ -378,8 +382,8 @@ else
   runp "$NOCLI" "$d/r" pin --manifest "$MAN3" --pins "$d/pins"; rc=$?
   ntags=$(awk '$0 !~ /^[[:space:]]*#/ && NF {print $2}' "$d/pins" | sort -u | wc -l | tr -d ' ')
   if [ "$rc" -eq 0 ] && ! grep -v '^[[:space:]]*#' "$d/pins" | grep -q REPLACE_WITH \
-     && grep -qx "statusgen $TAG $GOOD" "$d/pins" && grep -qx "$SG_ASSET $TAG $GOOD" "$d/pins" && [ "$ntags" = 1 ]; then
-    ok "P5 init's four-line placeholder is filled whole (every platform line + the bare line, one tag)"
+     && grep -qx "statusgen $TAG $LSHA" "$d/pins" && grep -qx "$SG_ASSET $TAG $GOOD" "$d/pins" && [ "$ntags" = 1 ]; then
+    ok "P5 init's four-line placeholder is filled whole (every platform line + the bare line from linux-amd64, one tag)"
   else
     no "P5 init's four-line placeholder is filled whole" "rc=$rc tags=$ntags pins=$(grep -v '^#' "$d/pins" | tr '\n' '|') err=$(tr '\n' '|' < "$d/r.err")"
   fi
@@ -391,6 +395,36 @@ if [ "$rc" -eq 5 ] && cmp -s "$d/pins" "$d/pins.before" && grep -q 'statusgen-pl
   ok "P6 a placeholder the manifest cannot fill refuses, naming it, file untouched"
 else
   no "P6 an unfillable placeholder refuses" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
+fi
+
+# P7 — the bare line is chosen by NAME, whatever --platform is: every platform carries a
+# distinct digest, the pin runs as darwin-arm64, and the bare line must still be the
+# statusgen-linux-amd64 digest (never darwin-arm64's, the platform being pinned).
+MAN7="$TMP/manifest7.yaml"
+D1=$(printf '1%.0s' $(seq 64)); D2=$(printf '2%.0s' $(seq 64)); D6=$(printf '6%.0s' $(seq 64))
+printf 'statusgen:\n  release_home: %s\n  tag: %s\n  platforms:\n    darwin-arm64: statusgen-darwin-arm64 %s %s\n    darwin-amd64: statusgen-darwin-amd64 %s %s\n    linux-amd64: statusgen-linux-amd64 %s %s\n' \
+  "$HOME_REPO" "$TAG" "$TAG" "$D1" "$TAG" "$D2" "$TAG" "$D6" > "$MAN7"
+d=$(case_dir P7)
+init_placeholder "$d/pins"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN7" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 0 ] && grep -qx "statusgen $TAG $D6" "$d/pins" && grep -qx "statusgen-darwin-arm64 $TAG $D1" "$d/pins" \
+   && ! grep -qx "statusgen $TAG $D1" "$d/pins"; then
+  ok "P7 the bare line takes the statusgen-linux-amd64 digest by name, not the pinned platform's"
+else
+  no "P7 the bare line takes the linux-amd64 digest by name" "rc=$rc pins=$(grep -v '^#' "$d/pins" | tr '\n' '|') err=$(tr '\n' '|' < "$d/r.err")"
+fi
+# P8 — a manifest with no statusgen-linux-amd64 line cannot fill the bare line: the pin refuses
+# naming it, the file stays byte-identical, and no other platform's digest is borrowed.
+MAN8="$TMP/manifest8.yaml"
+printf 'statusgen:\n  release_home: %s\n  tag: %s\n  platforms:\n    darwin-arm64: statusgen-darwin-arm64 %s %s\n' \
+  "$HOME_REPO" "$TAG" "$TAG" "$D1" > "$MAN8"
+d=$(case_dir P8)
+printf 'statusgen-darwin-arm64  REPLACE_WITH_TAG  REPLACE_WITH_SHA256\nstatusgen  REPLACE_WITH_TAG  REPLACE_WITH_SHA256\n' > "$d/pins"; cp "$d/pins" "$d/pins.before"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN8" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 5 ] && cmp -s "$d/pins" "$d/pins.before" && grep -q 'statusgen-linux-amd64' "$d/r.err"; then
+  ok "P8 no statusgen-linux-amd64 in the manifest: the bare line refuses, naming it, file untouched"
+else
+  no "P8 a bare line without a linux-amd64 manifest line refuses" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
 fi
 
 # ------------------------------------------------------------------ C classify

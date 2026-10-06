@@ -51,7 +51,51 @@ too — rehearse the shape, not the reachability.
 The body is read from --body-file only (no stdin / inline body), is capped at 16 KiB, and
 is secret-scanned; there is no override flag.
 
-Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
+Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.` + workpadGuide
+
+const workpadGuide = `
+
+WORKPAD BODY — supported with installed binaries (no source checkout needed).
+Exactly one <!-- assay:workpad --> marker must be on its own line, outside a code
+fence. Use the four sections below in order. The optional stamp must be safe for
+the PR's audience; omit machine paths, session identifiers and scratch names.
+Set REPO and PR to your own open PR, then replace the example section content:
+
+WORKPAD=$(mktemp "${TMPDIR:-/tmp}/workpad.XXXXXX")
+cat > "$WORKPAD" <<'WORKPAD_BODY'
+<!-- assay:workpad -->
+example@abc1234
+
+## Plan
+- Describe the next step.
+
+## Acceptance criteria
+- Copy the item's acceptance criteria.
+
+## Validation
+_none yet_
+
+## Notes
+_none yet_
+WORKPAD_BODY
+export DESK_LOOP=worker-desk
+deskreply "$REPO" "$PR" --workpad --body-file "$WORKPAD" --dry-run
+
+Only after the rehearsal succeeds, run the same command without --dry-run to
+upsert your one workpad. Dry-run performs forge reads but posts nothing; it is
+not an offline command. A template is body data, never posting authorization.
+
+OPTIONAL Go renderer — requires a source checkout of medici-finance/assay and Go.
+It calls the real internal deskkit.Render library; it is not an installed command
+or an API import available to consumer modules. From that checkout's root:
+
+go -C tools/desk run ./examples/workpad-render > "$WORKPAD" <<'WORKPAD_JSON'
+{"Stamp":"example@abc1234","Plan":"- Describe the next step.","Acceptance":"- Copy the item's acceptance criteria.","Validation":"_none yet_","Notes":"_none yet_"}
+WORKPAD_JSON
+
+The source renderer only formats stdin JSON. Its output still goes through the
+same deskreply --workpad --body-file and --dry-run checks above; neither example
+changes exact-marker validation, PR ownership, identity, scanning or budgets.`
 
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident

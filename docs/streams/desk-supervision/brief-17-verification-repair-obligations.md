@@ -215,6 +215,65 @@ VERIFY: PASS
 
 Desk landing note (verify-desk, 2026-10-02): the rows pass and the outcome record for this run is `blocked`. The status does not move on it while #1897 is open: the 45-minute repair lease is named but not derived, and that question is the hold on this brief.
 
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-04 claude-opus-5-5-verifier
+
+Runner is not the implementer (implementing commit ebd3e8637, PR #1399, authored by the worker App). Detached worktree at merged main ade741f44372ccdc0986c2b0973f621745fbced7, read-only, offline envelope (KUBECONFIG=/dev/null). Host: darwin/arm64, go1.27.1. `gate: model`; risk answers regulatory / customer / irreversible / sensitive-data all `no`.
+
+Why this re-run: the 2026-10-02 outcome record (blocked at e1d99484f, blocker #1897) went stale because three declared inputs changed on main: the verify-desk and worker-desk skill bodies and the tools/desk README. None of those changes touches the repair-obligation text. Between e1d99484f and ade741f44, no added or removed line in the three files mentions repair, obligation or rework. The lines matching "repair obligation" / "repair-obligation" are identical at both revisions (verify-desk 3, worker-desk 4, README 8). The hunks are about comms routing through cellctl, roster beacons, the CLI foundation, deskpr and receipt recovery (commits 3a47c06e4, 704711ad3, b8ef5c794, 854ba7207, 29488116b and others). The code the rows compile and run (fanoutloop, verifyloop, deskkit repairobligation.go) is byte-identical between the two revisions. The desk module's go.mod / go.sum did change (dependency additions), so the rows were run again rather than carried forward.
+
+Revisions: the by-hand rows in the table below ran on the darwin host at ade741f44372. The execution witness further down ran at 70deba75a577, four commits later on main. Every declared input of this brief's outcome record is byte-identical between the two revisions except tools/desk/README.md. Only e2b845bfe (#2135) changed it, and that change rewords the `deskpr update` / `deskpr edit --decided` usage text and does not touch the repair-obligation text. `git diff --stat ade741f44 70deba75a --` over the 16 declared inputs (the brief, repair-obligation-v1.md, the verify-desk and worker-desk SKILL.md, tools/desk/README.md, deskdispatch dispatch.go / prompt.go / repairadmission.go, fanoutloop adapter.go / board.go / repair.go / repair_test.go, verifyloop land.go / repair.go, deskkit/repairobligation.go, loopengine/doc.go) prints only:
+
+```
+ tools/desk/README.md | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+```
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---|---|---|---|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1` | exit 0; named PASS for TestRepairObligationFailToWorker; one verifier failure creates exactly one rework item with its reproduction and target repository | exit 0 — "--- PASS: TestRepairObligationFailToWorker (0.00s)", "ok github.com/medici-finance/assay/tools/desk/cmd/fanoutloop 0.341s" (host, darwin). Linux network-off witness at 70deba75a577: pass exit=0, sha256:c9c8309610cc | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1` | exit 0; named PASS for TestRepairObligationRestartAndDuplicate; duplicate delivery and lost response reconcile to one obligation; replacement worker resumes after dead claim | exit 0 — "--- PASS: TestRepairObligationRestartAndDuplicate (0.00s)", "ok ... 0.143s" (host, darwin). Linux network-off witness at 70deba75a577: pass exit=0, sha256:71f52877fc99 | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1` | exit 0; named PASS for TestRepairObligationMergeIsNotResolved; merge wakes verification only; same-actor / wrong-revision pass refused; independent pass resolves | exit 0 — "--- PASS: TestRepairObligationMergeIsNotResolved (0.00s)", "ok ... 0.105s" (host, darwin). Linux network-off witness at 70deba75a577: pass exit=0, sha256:e90cdc750731 | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1` | exit 0; named PASS for TestRepairObligationCrossRepoFollowUp; sibling deliverable repo, fresh follow-up branch, linked repair, no duplicate | exit 0 — "--- PASS: TestRepairObligationCrossRepoFollowUp (0.01s)", "ok ... 0.119s" (host, darwin). Linux network-off witness at 70deba75a577: pass exit=0, sha256:c7b0e9e9cd5d | 2026-10-04 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Execution witness: `statusgen verifyrun --brief` (write mode, `--timeout 300s`, GOFLAGS=-count=1, GOPROXY=off), run inside golang:1.25-trixie (go1.25.14 linux/arm64) with `docker --network none`. The checkout was a throwaway clone detached at merged main 70deba75a5775d50574695d2fb24efeb757c552f, with origin/main pinned to the same sha. statusgen was built inside the container from the clone's own `statusgen/` source. The host module cache and the roster (`roster.env`) were mounted read-only; no credential, token or key was mounted. The table is copied byte-for-byte from the clone's brief, where verifyrun appended it. 4/4 pass, exit 0:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1` | pass exit=0 | sha256:c9c8309610cc | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1` | pass exit=0 | sha256:71f52877fc99 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1` | pass exit=0 | sha256:e90cdc750731 | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1` | pass exit=0 | sha256:c7b0e9e9cd5d | 2026-10-04 | assay-verifier-app[bot] @ 70deba75a577 (on-behalf-of human:ian) (forge-identity) |
+
+Correction: an earlier copy of this witness had the on-behalf-of annotation inserted by hand; this table is the unedited output of a re-run with the roster mounted read-only.
+
+On the darwin host, `statusgen verifyrun --brief` (v1.0.31, write mode) produced 4 could-not-run rows (exit 2): check:ci hermetic execution needs `unshare --net`, which is Linux-only. That host table is NOT the witness to land. `verifyrun --check` reads the newest witness table. On the brief with the darwin table appended, it reports "0 pass, 0 fail, 4 could-not-run/missing (of 4 Verify rows)", exit 2. That darwin table would shadow both the 2026-09-30 Linux witness and this one.
+
+verifyrun --check summary: brief as on main (2026-09-30 Linux witness newest): "4 pass, 0 fail, 0 could-not-run/missing (of 4 Verify rows)", exit 0. Brief at 70deba75a plus the 70deba75a577 Linux witness table above (checked in the same container, right after the witness run): "4 pass, 0 fail, 0 could-not-run/missing (of 4 Verify rows)", exit 0.
+
+Findings:
+
+- No row passes vacuously. Each `-run` pattern matched exactly one test, and each printed its own named PASS line under `-v`. The test file's only commit is ebd3e8637. The tests assert the stated behavior: exactly one item from a duplicated delivery, a live lease is not stolen while a dead lease re-queues the same id, a merge leads to awaiting-reverification and same-actor or wrong-revision passes are refused, and a sibling repo case gets a follow-up branch and a prompt that forbids resuming the merged branch.
+- #1897 (question, raised-by:desk) is still OPEN with 0 comments. The 45-minute repair lease derivation has not been answered.
+- Carried forward, still true at this revision, none a Verify row: the obligation sink is dry-run by default, and a record error is only a NOTE. So "inability to file is an unlanded obligation" is enforced only at cutover. The source receipt id is a stand-in content hash. The same-actor refusal applies only when the repairer is set.
+
+Risk-bearing values: enumerated over the non-test Go files of ebd3e8637 plus the Deliverables. The literals and line numbers are the same at ade741f44:
+
+1. RepairObligationID truncation = hex(sha256(...))[:16] @ tools/desk/internal/deskkit/repairobligation.go:137 — persisted key; changing it needs a migration.
+2. repairReceiptID truncation = hex(sha256(...))[:16] @ tools/desk/cmd/verifyloop/repair.go:136 — feeds entry 1; same stickiness.
+3. SchemaRepairV1 = "repair-obligation-v1" @ tools/desk/internal/deskkit/repairobligation.go:37 — persisted schema tag.
+4. FollowUpBranch = "repair/" + slug + "-followup-" + attempt @ tools/desk/internal/deskkit/repairobligation.go:329 — naming; reversible.
+5. repairSidecarName = "repair-obligations.jsonl" @ tools/desk/cmd/fanoutloop/repair.go:40 — projection file name; reversible.
+6. repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46 (twin repairObligationLeaseTTL @ tools/desk/cmd/deskdispatch/repairadmission.go:66) — reversible operational knob; ranks last.
+
+RISK-VALUE: DERIVED — RepairObligationID truncation = 16 hex chars (64 bits) @ tools/desk/internal/deskkit/repairobligation.go:137 — the key only has to be unique within one projection. The birthday bound n^2/2^65 stays below 1e-9 up to about 190,000 obligations. The inputs are trimmed, the rows sorted and the parts NUL-joined, so one failure always yields one key. That is the idempotency the Interface contract requires.
+RISK-VALUE: DERIVED — repairReceiptID truncation = 16 hex chars (64 bits) @ tools/desk/cmd/verifyloop/repair.go:136 — same bound. It is keyed on (repo, brief, sha, verdict), so a re-land at the same revision reconciles to the same receipt, and a failure at a new revision gets a new one.
+RISK-VALUE: DERIVED — SchemaRepairV1 = "repair-obligation-v1" @ tools/desk/internal/deskkit/repairobligation.go:37 — it equals the name of the contract document in this stream (repair-obligation-v1.md) and meets the "versioned structured repair marker" rule.
+RISK-VALUE: NAMED, NOT DERIVED — repairLeaseTTL = 45 * time.Minute @ tools/desk/cmd/fanoutloop/repair.go:46 — its comment says it "mirrors the dispatch-claim lease horizon". The claim horizons in the tree are claimedClaimTTL = 20 * time.Minute (tools/desk/cmd/deskdispatch/dispatch.go:1364) and DefaultStaleClaim = 120 * time.Minute (tools/desk/internal/deskkit/claim.go:49). The only other 45-minute value in the tree is roleTokenMemoMaxAge (tools/desk/internal/deskkit/roletoken.go:186), a token-cache bound that is unrelated to claim leases. No contract states 45 minutes for a repair lease. This is routed as #1897, which is still open.
+
+Summary: 4/4 rows pass, on the host at ade741f44372 and in a fresh Linux network-off execution witness at 70deba75a577. Every declared input except tools/desk/README.md (#2135 only) is byte-identical between those two revisions. The changed inputs do not touch the repair-obligation text, and the code under test is unchanged. Under the desk's 2026-10-02 landing ruling, the only hold is the open derivation question for the reversible 45-minute lease.
+
+VERIFY: BLOCKED — rows 4/4 pass; held on medici-finance/assay#1897 (open): repairLeaseTTL = 45m is named but not derived.
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.

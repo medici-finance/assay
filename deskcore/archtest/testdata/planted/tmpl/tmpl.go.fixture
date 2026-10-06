@@ -1,0 +1,9 @@
+// Package tmpl reads a file through text/template, with no os import.
+package tmpl
+
+import "text/template"
+
+func Read() error {
+	_, err := template.ParseFiles("/etc/hosts")
+	return err
+}
