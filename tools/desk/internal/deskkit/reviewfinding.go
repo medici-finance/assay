@@ -168,6 +168,14 @@ type Finding struct {
 
 func (f Finding) blocking() bool { return f.Severity == SeverityBlocking }
 
+// StandingBlocker reports whether the finding still blocks: blocking severity AND not
+// resolved. It is the ONE predicate every reader outside this file uses to classify a
+// block's findings — a re-review CR lists the findings it now records as resolved beside the
+// ones still open, and a classifier that reads severity alone counts those resolved entries
+// as live blockers (#1985). The severity constant and blocking() are referenced only in this
+// file; a guard test (TestStandingBlockerIsTheOnlyReader) pins that.
+func (f Finding) StandingBlocker() bool { return f.blocking() && f.State != StateResolved }
+
 // StatedLane is the lane the finding's block states, case-folded and trimmed the way the
 // ledger compares lanes; empty when the block states none.
 func (f Finding) StatedLane() string { return normLane(f.Lane) }

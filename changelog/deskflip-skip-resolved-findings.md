@@ -1,0 +1,2 @@
+### Fixed
+- `deskflip` (and the `deskboard` view of the same decision) no longer reads a re-review CHANGES_REQUESTED as a mixed rejection when its typed finding block lists earlier code findings as `resolved` beside the one open body finding, so a documented same-head re-approve after a body-only fix clears the block without a human dismissal. `deskpost ready`'s external-prerequisite exemption reads the block the same way. Only `resolved` retires an entry; every other finding state still blocks.

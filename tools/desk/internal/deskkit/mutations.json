@@ -482,6 +482,18 @@
       "new": "\t\treturn d"
     },
     {
+      "name": "body-edit class: count a RESOLVED blocking code finding as standing (a re-review CR listing its resolved findings reads as mixed — reddens TestBodyEdit_ResolvedCodeFindingsDoNotMakeItMixed)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\t\t\tif !f.StandingBlocker() {",
+      "new": "\t\t\tif f.Severity != SeverityBlocking {"
+    },
+    {
+      "name": "standing-blocker predicate: retire every non-open state, not only resolved (a worker-asserted fix or a dispute stops blocking — reddens TestBodyEdit_NearMiss_UnresolvedCodeFindingStillMixed)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "func (f Finding) StandingBlocker() bool { return f.blocking() && f.State != StateResolved }",
+      "new": "func (f Finding) StandingBlocker() bool { return f.blocking() && f.State == StateOpen }"
+    },
+    {
       "name": "the stamp-authority allowance vouches for ANY login (the widening becomes a silent default over every login)",
       "file": "internal/deskkit/modelstamp.go",
       "old": "\t_, ok := c.StampLogins[want]\n\treturn ok\n}",

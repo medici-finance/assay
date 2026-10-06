@@ -120,6 +120,38 @@ func TestBodyEdit_TypedBlockWithOnlyTheBodyFindingIsAdmitted(t *testing.T) {
 	}
 }
 
+// A RE-REVIEW CR lists the earlier code findings it now records as resolved beside the one
+// still-open body finding. A resolved entry is not a standing blocker, so the CR is
+// body-only and a documented same-head re-approve clears it (#1985).
+func TestBodyEdit_ResolvedCodeFindingsDoNotMakeItMixed(t *testing.T) {
+	in := beInput()
+	in.CRBody = beCR() + "\n\n" + RenderFindingBlock(FindingBlockV1{Findings: []Finding{
+		{ID: "f-code-1", Class: "retry-loop", Severity: SeverityBlocking, Blocker: BlockerCodeContent, State: StateResolved, Failure: "loop never exits"},
+		{ID: "f-code-2", Class: "nil-deref", Severity: SeverityBlocking, Blocker: BlockerCodeContent, State: StateResolved, Failure: "nil deref at handler.go:12"},
+		{ID: beFinding, Class: "pr-body", Severity: SeverityBlocking, Blocker: BlockerCodeContent, State: StateOpen, Failure: "body claim"},
+	}})
+	if dec := EvaluateBodyEditReverification(in); !dec.Cleared {
+		t.Fatalf("resolved code findings beside the one open body finding: %s", dec.Reason)
+	}
+}
+
+// CODE CHANGE STILL NEEDED — only `resolved` retires an entry. A blocking code finding in any
+// other state (a worker's asserted fix, a dispute, a capped class) still stands, so the CR
+// stays mixed.
+func TestBodyEdit_NearMiss_UnresolvedCodeFindingStillMixed(t *testing.T) {
+	for _, st := range []FindingState{StateOpen, StateFixedAwaitingReview, StateDisputed, StateAwaitingArbitration} {
+		t.Run(string(st), func(t *testing.T) {
+			in := beInput()
+			in.CRBody = beCR() + "\n\n" + RenderFindingBlock(FindingBlockV1{Findings: []Finding{
+				{ID: "f-code-1", Class: "retry-loop", Severity: SeverityBlocking, Blocker: BlockerCodeContent, State: StateResolved, Failure: "loop never exits"},
+				{ID: "f-code-2", Class: "nil-deref", Severity: SeverityBlocking, Blocker: BlockerCodeContent, State: st, Failure: "nil deref at handler.go:12"},
+				{ID: beFinding, Class: "pr-body", Severity: SeverityBlocking, Blocker: BlockerCodeContent, State: StateOpen, Failure: "body claim"},
+			}})
+			refused(t, in, "blocking finding f-code-2")
+		})
+	}
+}
+
 // UNDOCUMENTED EDIT — each of the three documented elements dropped in turn.
 func TestBodyEdit_NearMiss_UndocumentedApprove(t *testing.T) {
 	cases := map[string]string{

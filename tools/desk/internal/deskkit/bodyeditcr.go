@@ -52,8 +52,8 @@ package deskkit
 //     over an unedited body;
 //   - the APPROVE cites the finding id the CR declared, and the head;
 //   - the CR's declaration is the whole of its blocking findings (a typed finding block that
-//     carries any OTHER blocking finding makes the CR mixed, and mixed never qualifies — a
-//     code finding needs a code change). With no typed block, "the body is the sole blocker"
+//     carries any OTHER standing blocking finding — blocking and not `resolved` — makes the CR
+//     mixed, and mixed never qualifies — a code finding needs a code change). With no typed block, "the body is the sole blocker"
 //     rests on the reviewer's own declaration — the same trust model as `Blocked-On-Check:`.
 //
 // (iii)'s citation is checked for SHAPE and HEAD here; whether CI actually IS green stays the
@@ -158,7 +158,9 @@ func ParseBodyEditDeclaration(crBody string) BodyEditDeclaration {
 	}
 	if present {
 		for _, f := range block.Findings {
-			if f.Severity != SeverityBlocking {
+			// A re-review CR lists the code findings it now records as resolved beside the
+			// still-open body finding; only a STANDING blocker makes the CR mixed (#1985).
+			if !f.StandingBlocker() {
 				continue
 			}
 			if strings.TrimSpace(f.ID) != d.FindingID || f.Blocker != BlockerCodeContent {

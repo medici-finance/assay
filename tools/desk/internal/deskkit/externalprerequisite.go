@@ -155,7 +155,10 @@ func ParsePrereqDeclaration(crBody string) PrereqDeclaration {
 		return d
 	}
 	for _, f := range block.Findings {
-		if f.Severity != SeverityBlocking {
+		// Only a STANDING blocker counts: a re-review CR lists the findings it now records
+		// as resolved beside the open ones, and a resolved entry is neither a content
+		// blocker that makes the CR mixed nor a prerequisite the CR still rests on (#1985).
+		if !f.StandingBlocker() {
 			continue
 		}
 		switch f.Blocker {
