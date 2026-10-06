@@ -10,7 +10,7 @@ package main
 //
 //	cd statusgen && muhar -spec clusterrow-mutations.json
 //
-// The captured red run (baseline GREEN, control CAUGHT, 4 mutations CAUGHT / 0
+// The captured red run (baseline GREEN, control CAUGHT, 8 mutations CAUGHT / 0
 // survivors) shows each assertion observed red before it was trusted green:
 //   - CONTROL  probe resolver first-vs-last  → TestCluster_ProbeExtraction red
 //     (clusterProbe("run a.sh then b.sh") = "a.sh", want "b.sh").
@@ -20,10 +20,19 @@ package main
 //     red (state "fail", want "could-not-run"; marker absent from the table).
 //   - queue drops the VERIFY:FAIL exclusion / the all-parked gate →
 //     TestCluster_PendingQueueDerivation red (a FAIL / an unparked brief queues).
+//   - queue marks every entry flip (the pre-fix behaviour) →
+//     TestCluster_QueueCompletionMode + TestCluster_CompletionViaHelper red.
+//   - clusterCompletion ignores the gate / the risk axes / an absent risk block →
+//     TestCluster_QueueCompletionMode and/or TestCluster_CompletionClosed red.
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +46,17 @@ import (
 // with the given `## Verify` and `## Evidence` bodies, and returns its path.
 func briefV1WithVerifyEvidence(t *testing.T, dir, num, verifyBody, evidenceBody string) string {
 	t.Helper()
+	return briefV1Gated(t, dir, num, "model", "{regulatory: no, customer: no, irreversible: no, sensitive-data: no}", verifyBody, evidenceBody)
+}
+
+// briefV1Gated is briefV1WithVerifyEvidence with the gate and risk block chosen
+// by the caller (risk is the flow-mapping YAML after `risk: `).
+func briefV1Gated(t *testing.T, dir, num, gate, risk, verifyBody, evidenceBody string) string {
+	t.Helper()
+	gateWhy := "" // the default model/no-risk fixture stays exactly as before
+	if gate != "model" || strings.Contains(risk, "yes") {
+		gateWhy = "gate-why: fixture\n"
+	}
 	fm := "---\n" +
 		"brief: t/" + num + "\n" +
 		"title: fixture\n" +
@@ -44,8 +64,9 @@ func briefV1WithVerifyEvidence(t *testing.T, dir, num, verifyBody, evidenceBody 
 		"depends: []\n" +
 		"unblocks: []\n" +
 		"effort: S\n" +
-		"gate: model\n" +
-		"risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n" +
+		"gate: " + gate + "\n" +
+		gateWhy +
+		"risk: " + risk + "\n" +
 		"issues: []\n" +
 		"authored: 2026-08-26 by test\n" +
 		"sources: [\"fixture\"]\n" +
@@ -324,5 +345,213 @@ func TestCluster_PendingQueueDerivation(t *testing.T) {
 	s.Briefs[0].Status = "verified"
 	if q := clusterPendingQueue([]*Stream{s}); len(q) != 0 {
 		t.Errorf("verified brief still queued: %+v", q)
+	}
+}
+
+// TestCluster_QueueCompletionMode pins the gate/risk split on the pod runner's
+// worklist: every qualifying brief is still QUEUED (its cluster rows still need
+// running), but only a gate:model brief with no risk axis `yes` is marked "flip";
+// a gate:human brief, or any risk-flagged brief, is "evidence-only" — the runner
+// lands the Evidence and the human signs.
+func TestCluster_QueueCompletionMode(t *testing.T) {
+	root := t.TempDir()
+	streamDir := filepath.Join(root, "docs", "streams", "t")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writePodProbes(t, root, "probe-participant.sh")
+	verify := strings.Join([]string{
+		"| # | Class | Command | Expect |",
+		"|---|-------|---------|--------|",
+		"| 1 | check:ci | `true` | exit 0 |",
+		"| 2 | check:cluster | probe-participant.sh | ok |",
+	}, "\n")
+	ev := "VERIFY: PASS row 1\n" + clusterPendingMarker("probe-participant.sh")
+	noRisk := "{regulatory: no, customer: no, irreversible: no, sensitive-data: no}"
+	custYes := "{regulatory: no, customer: yes, irreversible: no, sensitive-data: no}"
+
+	cases := []struct {
+		num, gate, risk, want string
+	}{
+		{"01", "model", noRisk, clusterCompletionFlip},          // flip-eligible
+		{"02", "human", noRisk, clusterCompletionEvidenceOnly},  // human gate
+		{"03", "human", custYes, clusterCompletionEvidenceOnly}, // human + risk
+		// model + a yes risk axis is lint-invalid, but the queue must still
+		// fail closed on it rather than trust the lint ran.
+		{"04", "model", custYes, clusterCompletionEvidenceOnly},
+	}
+	s := &Stream{Name: "t", Dir: streamDir, Root: root}
+	for _, c := range cases {
+		briefV1Gated(t, streamDir, c.num, c.gate, c.risk, verify, ev)
+		s.Briefs = append(s.Briefs, Brief{Num: c.num, Status: "implemented"})
+	}
+
+	q := clusterPendingQueue([]*Stream{s})
+	if len(q) != len(cases) {
+		t.Fatalf("queue = %+v, want all %d briefs queued (gate/risk set the mode, not membership)", q, len(cases))
+	}
+	for i, c := range cases {
+		if q[i].Brief != "t/"+c.num {
+			t.Fatalf("queue[%d] = %q, want t/%s", i, q[i].Brief, c.num)
+		}
+		if q[i].Gate != c.gate {
+			t.Errorf("t/%s gate = %q, want %q", c.num, q[i].Gate, c.gate)
+		}
+		if q[i].Completion != c.want {
+			t.Errorf("t/%s (gate %s, risk %s) completion = %q, want %q", c.num, c.gate, c.risk, q[i].Completion, c.want)
+		}
+	}
+}
+
+// TestCluster_CompletionClosed pins clusterCompletion on the shapes a
+// queue fixture cannot reach: a nil brief, a missing gate, an unknown gate, and
+// an absent risk block all narrow to evidence-only.
+func TestCluster_CompletionClosed(t *testing.T) {
+	allNo := map[string]string{"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
+	cases := []struct {
+		name string
+		bf   *BriefFile
+		want string
+	}{
+		{"nil brief", nil, clusterCompletionEvidenceOnly},
+		{"no gate", &BriefFile{Risk: allNo}, clusterCompletionEvidenceOnly},
+		{"unknown gate", &BriefFile{Gate: "Model", Risk: allNo}, clusterCompletionEvidenceOnly},
+		{"no risk block", &BriefFile{Gate: "model"}, clusterCompletionEvidenceOnly},
+		{"irreversible yes", &BriefFile{Gate: "model", Risk: map[string]string{"regulatory": "no", "customer": "no", "irreversible": "yes", "sensitive-data": "no"}}, clusterCompletionEvidenceOnly},
+		{"model, all no", &BriefFile{Gate: "model", Risk: allNo}, clusterCompletionFlip},
+	}
+	for _, c := range cases {
+		if got := clusterCompletion(c.bf); got != c.want {
+			t.Errorf("%s: clusterCompletion = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// ---- the class guard ------------------------------------------------------------
+//
+// Defect class: a cluster-pending entry whose completion mode is set anywhere
+// but clusterCompletion — a literal "flip", a hand-rolled gate test, or no
+// Completion at all — so a human-gated or risk-flagged brief can reach the pod
+// runner marked for a flip. The guard walks every clusterPendingEntry literal in
+// the package's non-test source and requires `Completion: clusterCompletion(…)`.
+
+// scanClusterEntryLits parses every non-test Go file directly in dir and returns
+// one problem per clusterPendingEntry literal whose Completion does not come from
+// clusterCompletion, plus the number of non-empty literals it examined.
+func scanClusterEntryLits(dir string) (problems []string, seen int, err error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, 0, err
+	}
+	fset := token.NewFileSet()
+	check := func(lit *ast.CompositeLit) {
+		seen++
+		pos := fset.Position(lit.Pos())
+		where := fmt.Sprintf("%s:%d", filepath.Base(pos.Filename), pos.Line)
+		for _, el := range lit.Elts {
+			kv, ok := el.(*ast.KeyValueExpr)
+			if !ok {
+				problems = append(problems, where+": positional clusterPendingEntry literal — use keyed fields with Completion: clusterCompletion(bf)")
+				return
+			}
+			if k, ok := kv.Key.(*ast.Ident); !ok || k.Name != "Completion" {
+				continue
+			}
+			if call, ok := kv.Value.(*ast.CallExpr); ok {
+				if fn, ok := call.Fun.(*ast.Ident); ok && fn.Name == "clusterCompletion" {
+					return
+				}
+			}
+			problems = append(problems, where+": clusterPendingEntry Completion is not set by clusterCompletion(bf)")
+			return
+		}
+		problems = append(problems, where+": clusterPendingEntry literal has no Completion — set Completion: clusterCompletion(bf)")
+	}
+	isEntry := func(e ast.Expr) bool {
+		id, ok := e.(*ast.Ident)
+		return ok && id.Name == "clusterPendingEntry"
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, perr := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+		if perr != nil {
+			return nil, 0, perr
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			lit, ok := n.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			switch typ := lit.Type.(type) {
+			case *ast.Ident:
+				if isEntry(typ) {
+					check(lit)
+				}
+			case *ast.ArrayType: // []clusterPendingEntry{{…}} — elided element types
+				if isEntry(typ.Elt) {
+					for _, el := range lit.Elts {
+						if inner, ok := el.(*ast.CompositeLit); ok && inner.Type == nil {
+							check(inner)
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	sort.Strings(problems)
+	return problems, seen, nil
+}
+
+// TestCluster_CompletionViaHelper is the class guard over this package.
+func TestCluster_CompletionViaHelper(t *testing.T) {
+	problems, seen, err := scanClusterEntryLits(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen == 0 {
+		t.Fatal("found no clusterPendingEntry literal — this guard is looking in the wrong place")
+	}
+	for _, p := range problems {
+		t.Error(p)
+	}
+}
+
+// TestCluster_CompletionGuardCtl is the guard's own control: planted entries
+// with a literal "flip", a hand-rolled gate test, no Completion, and a positional
+// literal are each reported; the helper-backed literal is not.
+func TestCluster_CompletionGuardCtl(t *testing.T) {
+	dir := t.TempDir()
+	src := "package main\n\n" +
+		"type clusterPendingEntry struct{ Brief, Completion string }\n\n" +
+		"func clusterCompletion(g string) string { return g }\n\n" +
+		"func good(g string) clusterPendingEntry { return clusterPendingEntry{Brief: \"ok\", Completion: clusterCompletion(g)} }\n\n" +
+		"func literal() clusterPendingEntry { return clusterPendingEntry{Brief: \"a\", Completion: \"flip\"} }\n\n" +
+		"func handRolled(g string) []clusterPendingEntry {\n" +
+		"\tc := \"evidence-only\"\n\tif g == \"model\" {\n\t\tc = \"flip\"\n\t}\n" +
+		"\treturn []clusterPendingEntry{{Brief: \"b\", Completion: c}}\n}\n\n" +
+		"func missing() clusterPendingEntry { return clusterPendingEntry{Brief: \"c\"} }\n\n" +
+		"func positional() clusterPendingEntry { return clusterPendingEntry{\"d\", \"flip\"} }\n"
+	if err := os.WriteFile(filepath.Join(dir, "planted.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	problems, seen, err := scanClusterEntryLits(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen != 5 {
+		t.Errorf("examined %d literals, want 5", seen)
+	}
+	if len(problems) != 4 {
+		t.Fatalf("problems = %d, want 4 (every plant but the helper-backed one):\n%s", len(problems), strings.Join(problems, "\n"))
+	}
+	joined := strings.Join(problems, "\n")
+	for _, want := range []string{"not set by clusterCompletion", "has no Completion", "positional"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("no problem mentions %q; got:\n%s", want, joined)
+		}
 	}
 }
