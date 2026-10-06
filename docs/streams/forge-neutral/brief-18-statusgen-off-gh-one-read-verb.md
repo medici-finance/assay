@@ -127,9 +127,10 @@ single-point-of-failure: for the offline default, the one control between "this 
 because it looked" and "this lint is green because it stopped looking" is the three-state
 report — every forge-backed check must render could-not-check as itself when the verb was not
 invoked. Two independent layers stand behind it. First, the offline stub implementation is the
-DEFAULT wiring, so a forge-backed check that forgets to handle could-not-check fails at compile
-time against a reader whose every method returns one, rather than at runtime against a live
-forge that happens to answer. Second, the CI gate asserts the process made zero network calls
+DEFAULT wiring, so a forge-backed check that forgets to handle could-not-check meets one on
+every test run, against a reader whose every method returns one, rather than at runtime against
+a live forge that happens to answer. Go does not make a caller handle a returned value, so this
+layer holds through the checks' own tests, not through the compiler. Second, the CI gate asserts the process made zero network calls
 (row 4), which trips on a different signal — an observed connection attempt — in a different
 place (the test harness's network layer) from the report the checks render. For
 `--changed-only` the single control is the CI-gate refusal, and its second layer is that the
@@ -287,8 +288,9 @@ Two implementations, and **the offline one is the default**:
 - `deskreadReader` runs `deskread`, parses the envelope, and maps `partial` entries onto
   per-repo could-not-check values.
 
-A caller that has not handled could-not-check does not compile against the offline reader's
-signature, which is why the three-state result is a return VALUE and not a logged warning.
+The three-state result is a return VALUE and not a logged warning, so every test run against the
+offline reader hands each caller a could-not-check. Go does not make a caller handle a returned
+value, so a caller that drops it is caught by those tests, not by the compiler.
 
 ### 3. `--lint` is offline by default
 
