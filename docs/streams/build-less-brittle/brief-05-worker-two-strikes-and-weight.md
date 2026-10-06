@@ -212,6 +212,29 @@ RISK-VALUE: DERIVED — strike threshold = 2 (one prior merged fix in the class 
 RISK-VALUE: DERIVED — round threshold = 2 @ plugins/assay/skills/worker-desk/SKILL.md:512; spec D5 "Round-two work and design work run at strong tier". Reversible.
 
 **VERIFY: PASS**
+2026-10-06 execution witness for the pass above (statusgen v1.0.32 `verifyrun --brief`, non-dry, verifier worktree at merged main 11228951d0a8). verifyrun exit 2: 11 pass, row 6 could-not-run, row 11 fail. Neither non-pass row is a defect in the delivered work; both are row-authoring limits:
+- Row 6: the Expect cell asks for "a count ≥ 1", but the command's output is `1` followed by `COUNTER-EXISTS`. verifyrun cannot read a count from that output, so the row is could-not-run. This matches the witness hash at 56140a33d.
+- Row 11: `statusgen --consumers --brief` without --base on merged main prints `exit=2` (COULD-NOT-CHECK, brief not in the diff against main). The Expect can only be decided at the PR head. A manual run with --base at the implementing parent printed `exit=0`, 3 corroborated, 0 disproved. This is the #1915 class.
+
+The `+dirty` stamp is from the verifier's untracked scratch directory in its worktree (no tracked change before the run). The `(forge-identity)` tag is as stamped.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | row 1 | pass exit=0 | sha256:81773de0ad27 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | row 2 | pass exit=0 | sha256:69ac4b91cba0 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | row 3 | pass exit=0 | sha256:cd183bfd8e84 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 4 | row 4 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 5 | row 5 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 6 | row 6 | could-not-run exit=0 — Expect requires a count ≥ 1 but the output carries no number to read | sha256:bd8115622356 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 7 | row 7 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 8 | row 8 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 9 | row 9 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 10 | row 10 | pass exit=0 | sha256:24896b079790 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 11 | row 11 | fail exit=0 | sha256:ed637df28bc4 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 12 | row 12 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 13 | row 13 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+
+**VERIFY: BLOCKED** — every row passes by hand (13/13 above), but the execution witness cannot pass until rows 6 and 11 are re-authored (#1915). Status stays implemented; the same-day status flip was reverted.
 
 ## Review
 Gate: model (from frontmatter). The reviewer confirms the clause 14 rewrite keeps the planted-
