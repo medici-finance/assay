@@ -35,11 +35,16 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	if err != nil {
 		return nil, err
 	}
+	operatorConfig, err := captureOperatorConfig(c.Env)
+	if err != nil {
+		return nil, err
+	}
 	values := map[string]string{
 		"HOME":              c.Home,
 		"USERPROFILE":       c.Home,
 		"ZDOTDIR":           c.Home,
 		"ASSAY_CONFIG_HOME": c.Config,
+		operatorConfigKey:   operatorConfig,
 		"CODEX_HOME":        codexHome,
 		"GH_CONFIG_DIR":     ghConfig,
 		// Rechecks may include Claude routes even from a Codex desk. Resolve

@@ -55,10 +55,10 @@ func TestConfigReplayClass(t *testing.T) {
 	if len(planted) != 1 || planted[0] != "planted" {
 		t.Fatalf("inventory missed planted resolver: %v", planted)
 	}
-	for _, overrides := range []bool{false, true} {
-		t.Run(map[bool]string{false: "defaults", true: "overrides"}[overrides], func(t *testing.T) {
+	for _, mode := range []string{"defaults", "overrides", "alias"} {
+		t.Run(mode, func(t *testing.T) {
 			c := codexEnvironmentCell(t)
-			if overrides {
+			if mode != "defaults" {
 				for _, key := range []string{"ASSAY_CONFIG_HOME", "GH_CONFIG_DIR", "CLAUDE_CONFIG_DIR", "CODEX_HOME"} {
 					c.Env.Put(key, filepath.Join(t.TempDir(), key))
 				}
@@ -70,12 +70,37 @@ func TestConfigReplayClass(t *testing.T) {
 				must(t, os.MkdirAll(p, 0700))
 				before[name] = p
 			}
+			if mode == "alias" {
+				alias := filepath.Join(t.TempDir(), "operator-config")
+				must(t, os.Symlink(before["configHomeFor"], alias))
+				c.Env.Put("ASSAY_CONFIG_HOME", alias)
+			}
 			must(t, os.MkdirAll(filepath.Dir(c.Config), 0700))
 			must(t, os.Symlink(before["configHomeFor"], c.Config))
 			values, err := c.codexCommandEnvironment(nil)
 			must(t, err)
 			if values["HOME"] != c.Home || values["USERPROFILE"] != c.Home || values["ASSAY_CONFIG_HOME"] != c.Config {
 				t.Fatal("cell isolation changed")
+			}
+			captured := values["CELLCTL_OPERATOR_CONFIG_HOME"]
+			if captured == "" || captured == c.Config {
+				t.Fatalf("operator target not captured independently: %q", captured)
+			}
+			wantConfig, err := os.Stat(before["configHomeFor"])
+			must(t, err)
+			gotConfig, err := os.Stat(realConfigHome(envWith(values)))
+			must(t, err)
+			if !os.SameFile(wantConfig, gotConfig) {
+				t.Fatal("operator resolver changed the captured resource")
+			}
+			nested := *c
+			nested.Env = envWith(values)
+			nested.Home = t.TempDir()
+			nested.Config = filepath.Join(nested.Home, ".config", "assay")
+			next, err := nested.codexCommandEnvironment(nil)
+			must(t, err)
+			if next["CELLCTL_OPERATOR_CONFIG_HOME"] != captured || next["ASSAY_CONFIG_HOME"] != nested.Config {
+				t.Fatal("nested launch replaced operator context or lost cell isolation")
 			}
 			after := envWith(values)
 			for name, resolve := range resolvers {

@@ -72,6 +72,44 @@ func TestLaunchedHouseCheck(t *testing.T) {
 			t.Fatalf("launched check: %v\n%s", err, out)
 		}
 	})
+	t.Run("missing-operator-context", func(t *testing.T) {
+		env := map[string]string{}
+		for k, v := range values {
+			if k != "CELLCTL_OPERATOR_CONFIG_HOME" {
+				env[k] = v
+			}
+		}
+		out, err := run(env, claude)
+		if err == nil || !strings.Contains(out, "MISS  config home linked") {
+			t.Fatalf("self-referential target accepted: %v\n%s", err, out)
+		}
+	})
+	t.Run("misdirected-link-launched", func(t *testing.T) {
+		foreign := t.TempDir()
+		raw, err := os.ReadFile(filepath.Join(cfg, "roster.env"))
+		must(t, err)
+		must(t, os.WriteFile(filepath.Join(foreign, "roster.env"), raw, 0600))
+		must(t, os.Remove(cellConfig))
+		must(t, os.Symlink(foreign, cellConfig))
+		t.Cleanup(func() {
+			must(t, os.Remove(cellConfig))
+			must(t, os.Symlink(cfg, cellConfig))
+		})
+		// Recomposition must preserve the original expectation too, including
+		// after a resource stops matching it. Keep the first environment intact.
+		nested := *c
+		nested.Env = envWith(values)
+		nestedValues, err := nested.codexCommandEnvironment(nil)
+		must(t, err)
+		for name, env := range map[string]map[string]string{"launched": values, "nested": nestedValues} {
+			t.Run(name, func(t *testing.T) {
+				out, err := run(env, claude)
+				if err == nil || !strings.Contains(out, "MISS  config home linked") {
+					t.Fatalf("misdirected config link accepted: %v\n%s", err, out)
+				}
+			})
+		}
+	})
 	t.Run("explicit-claude", func(t *testing.T) {
 		out, err := run(values, claude)
 		if err != nil {
