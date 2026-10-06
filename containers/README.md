@@ -34,7 +34,8 @@ The base carries everything a desk session needs that is common across desks:
 
 - **Go toolchain**, pinned to the `go` line in `tools/desk/go.mod`.
 - **Python 3 + pip**.
-- **git, the `gh` CLI, and CA certificates**.
+- **git 2.41 or later**, built from a pinned upstream release (see below), plus
+  the **`gh` CLI** and **CA certificates**.
 - The **desk-tools binary suite + `statusgen`**, copied from the already-published
   `ghcr.io/medici-finance/assay/desk-tools` image (`COPY --from`) rather than
   recompiled — the compiled, version-stamped static binaries are reused.
@@ -130,6 +131,30 @@ interactive agent CLI (a Node program with native components) and installs
 Python wheels (manylinux, glibc). musl breaks both native Node modules and
 manylinux wheels, so the base uses a **glibc** distro (`debian:bookworm-slim`).
 The reused desk-tools binaries are static and run unchanged on Debian.
+
+### git: 2.41 or later, built from a pinned release
+
+Verifier admission renders a file that carries an `eol` or
+`working-tree-encoding` conversion from the attested commit's own attributes,
+using `git --attr-source`. That option arrived in git 2.41, and an older git
+refuses the home (#2318). bookworm ships git 2.39.5, and bookworm-backports
+carries no `git` package. So the base builds git in its own `gitbuild` stage
+from the upstream release tarball, pinned by version like the Go, `gh` and
+Node tarballs and, unlike them, checked against a sha256. Only the install tree reaches the final image; the
+compiler and `-dev` packages stay in the build stage.
+
+A build-time step runs `containers/scripts/git-floor-check.sh`, which is also
+kept in the image as `/usr/local/bin/git-floor-check`. It fails the build if any
+`git` on `PATH` is older than 2.41, or if `--attr-source` does not render a
+converted file from a committed tree. To check an image that is already built:
+
+```sh
+containers/scripts/git-floor-check.sh <image-ref>   # 0 met, 1 not met, 2 could-not-check
+```
+
+Moving the base to trixie (git 2.47) was the other option. It was not taken
+because the release layer-secret scan flags a file that trixie's base ships,
+and allowlisting it would loosen that scan.
 
 ### Interactive agent CLI: installed at first run, not baked
 

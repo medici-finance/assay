@@ -10,7 +10,8 @@
 #     desk-tools image (the Go tree is NOT re-compiled here — the compiled,
 #     version-stamped binaries are reused).
 #   - git, the gh CLI, and CA certificates — enough to drive the desk loops
-#     against GitHub from inside the container.
+#     against GitHub from inside the container. git is built from a pinned
+#     upstream release (see GIT FLOOR below), not taken from bookworm.
 #   - The assay plugin (skills, commands, hooks) baked from this repo's
 #     plugins/assay/ into /opt/assay/plugin, so a desk session finds its skill
 #     by public desk name.
@@ -33,6 +34,15 @@
 #   stay on Alpine because it ships only static, CGO-off Go binaries with no such
 #   needs. Rationale is recorded in containers/README.md.
 #
+# GIT FLOOR — git 2.41 or later (#2318). Verifier admission renders a file with
+#   an eol or encoding conversion from the attested commit's own attributes via
+#   `git --attr-source`, which arrived in git 2.41; an older git refuses the
+#   home. bookworm ships git 2.39.5 and bookworm-backports carries no git, so
+#   git is built from the upstream release tarball (version + sha256 pinned) in
+#   the `gitbuild` stage, and only its install tree reaches the final image.
+#   The git-floor-check step fails the build if the git on PATH is below the
+#   floor or cannot render a converted file from a committed tree.
+#
 # PLATFORM: linux/amd64 first (single-arch by default); the arch-parameterised
 #   RUN steps also build linux/arm64 under buildx.
 # =============================================================================
@@ -42,6 +52,48 @@
 # suite + statusgen) are copied into the final stage rather than recompiled.
 ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v0.1.0
 FROM ${DESK_TOOLS_IMAGE} AS desktools
+
+# ---- git, built from a pinned upstream release ---------------------------
+# Its own stage, so the compiler and the -dev packages never reach the final
+# image. The tarball is checked against a pinned sha256 before it is unpacked.
+# To bump: verify the signature on
+# https://www.kernel.org/pub/software/scm/git/sha256sums.asc (kernel.org's
+# checksum autosigner key), or the release's own `git-<version>.tar.sign`
+# (made over the uncompressed tar, by the git maintainer's release key), BEFORE
+# copying anything from it. Then set both ARGs from the release's entry and add
+# the same pair to knownGitTarballs in
+# tools/desk/internal/deskkit/gitfloor_test.go.
+FROM debian:bookworm-slim AS gitbuild
+ARG GIT_VERSION=2.56.0
+ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+ENV DEBIAN_FRONTEND=noninteractive
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gcc \
+        libc6-dev \
+        libcurl4-gnutls-dev \
+        libexpat1-dev \
+        libpcre2-dev \
+        make \
+        xz-utils \
+        zlib1g-dev; \
+    rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    curl -fsSL --proto '=https' --proto-redir '=https' \
+        "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" -o /tmp/git.txz; \
+    echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \
+    tar -C /tmp -xJf /tmp/git.txz; \
+    cd "/tmp/git-${GIT_VERSION}"; \
+    # NO_OPENSSL: hashing uses git's own sha1dc/sha256 code and https goes
+    # through libcurl (GnuTLS), so no OpenSSL is linked or shipped. NO_RUST:
+    # Rust is still optional in this release, so no cargo toolchain is fetched.
+    opts="prefix=/usr/local NO_OPENSSL=YesPlease NO_RUST=YesPlease NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease NO_PYTHON=YesPlease USE_LIBPCRE2=YesPlease"; \
+    make -j"$(nproc)" $opts all; \
+    make $opts DESTDIR=/out install; \
+    /out/usr/local/bin/git version
 
 # ---- Base -----------------------------------------------------------------
 FROM debian:bookworm-slim
@@ -66,26 +118,37 @@ ARG BUILT_AT=unknown
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# System packages: CA certs, curl (to fetch pinned toolchains), git, Python 3 +
-# pip + venv, and xz-utils (to unpack the Node tarball). No third-party apt repo
-# and no key material is added.
+# System packages: CA certs, curl (to fetch pinned toolchains), the shared
+# libraries the source-built git links against, Python 3 + pip + venv, and
+# xz-utils (to unpack the Node tarball). bookworm's own `git` package is NOT
+# installed: it is 2.39.5, below the floor. No third-party apt repo and no key
+# material is added.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
-        git \
+        libcurl3-gnutls \
+        libexpat1 \
+        libpcre2-8-0 \
         python3 \
         python3-pip \
         python3-venv \
-        xz-utils; \
+        xz-utils \
+        zlib1g; \
     rm -rf /var/lib/apt/lists/*
+
+# git from the gitbuild stage. The check script stays in the image so a running
+# home can re-check itself. The floor is proven by the LAST RUN of this stage
+# (GIT FLOOR CHECK below), so no later layer can bring in a git unchecked.
+COPY --from=gitbuild /out/usr/local/ /usr/local/
+COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
 
 # Go toolchain, pinned, from the official distribution tarball.
 RUN set -eux; \
     url="https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz"; \
     curl -fsSL "$url" -o /tmp/go.tgz; \
-    tar -C /usr/local -xzf /tmp/go.tgz; \
+    tar -C /usr/local --no-same-owner -xzf /tmp/go.tgz; \
     rm /tmp/go.tgz; \
     /usr/local/go/bin/go version
 
@@ -111,7 +174,10 @@ RUN set -eux; \
     dir="node-v${NODE_VERSION}-linux-${narch}"; \
     url="https://nodejs.org/dist/v${NODE_VERSION}/${dir}.tar.xz"; \
     curl -fsSL "$url" -o /tmp/node.txz; \
-    tar -C /usr/local --strip-components=1 -xJf /tmp/node.txz; \
+    # --no-same-owner: the tarball's files belong to uid 1001; without it they
+    # (and the /usr/local directories they land in, git's among them) would
+    # keep that owner.
+    tar -C /usr/local --no-same-owner --strip-components=1 -xJf /tmp/node.txz; \
     rm /tmp/node.txz; \
     node --version; \
     npm --version
@@ -171,6 +237,28 @@ ENV HOME=/work \
 RUN set -eux; \
     mkdir -p /work; \
     chown desk:desk /work
+
+# GIT FLOOR CHECK: the last RUN of the final stage, on the final PATH, so no
+# later layer can bring in a git unchecked. It proves every git on PATH is 2.41
+# or later and that `--attr-source` renders a converted file from a committed
+# tree; a change that brings an older git fails HERE, at build time, instead of
+# shipping verifier homes that refuse admission. The test -x lines make a
+# missing binary fail (ldd alone would print its error to stderr and let the
+# grep pass); the ldd check catches a shared library the apt list above stopped
+# providing (git-remote-http carries the libcurl link). /usr/local must be
+# root-owned throughout, since git now lives there.
+RUN set -eux; \
+    test -x /usr/local/bin/git; \
+    test -x /usr/local/libexec/git-core/git-remote-http; \
+    if ldd /usr/local/bin/git /usr/local/libexec/git-core/git-remote-http | grep 'not found'; then \
+        echo "source-built git is missing a shared library" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/local -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "/usr/local holds files not owned by root:root" >&2; \
+        exit 1; \
+    fi; \
+    git-floor-check
 VOLUME /work
 
 # OCI labels — same pattern as the root Dockerfile.

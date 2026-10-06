@@ -1640,6 +1640,23 @@
       "state": "pending"
     },
     {
+      "executable": "git-floor-check.sh",
+      "path": "containers/scripts/git-floor-check.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; baked into the base image as /usr/local/bin/git-floor-check",
+      "consumers": [
+        "containers/base/Dockerfile",
+        "containers/README.md",
+        "tools/desk/internal/deskkit/gitfloor_test.go"
+      ],
+      "parser": "none (no flags)",
+      "complexity": "simple",
+      "basis": "167 lines at 73434c9469ab",
+      "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
       "executable": "inject-board-state.sh",
       "path": "plugins/assay/hooks/inject-board-state.sh",
       "kind": "script",
