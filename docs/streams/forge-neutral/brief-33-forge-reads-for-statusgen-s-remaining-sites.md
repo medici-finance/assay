@@ -46,13 +46,14 @@ consumers:
   - "tools/desk/internal/deskkit/forge_github.go, tools/desk/internal/deskkit/forge_gitlab.go: follow-up forge-neutral/33 (this brief's implementation: both backends of every addition)"
   - "tools/desk/internal/deskkit/forge_github_golden_test.go, tools/desk/internal/deskkit/forge_gitlab_test.go, tools/desk/internal/deskkit/testdata/: follow-up forge-neutral/33 (this brief's implementation: golden cases on both backends)"
   - "tools/desk/internal/deskkit/forge_surface_deskread_test.go: follow-up forge-neutral/33 (this brief's implementation: its `want` list gains exactly the four new names, in this change, as the test's own failure message directs)"
-  - "tools/desk/cmd/deskread: follow-up forge-neutral/33 (this brief's implementation: the new read kinds that consume each addition)"
+  - "tools/desk/cmd/deskread: follow-up forge-neutral/33 (this brief's implementation: the new read kinds that consume each addition, and the existing `comments` kind's new fields and its change target, `--change owner/name#N`, which reads `ListCommentsTyped(…, TargetChange)`)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/33 (this brief's implementation: inventory rows 55–58 and an 'added by' note)"
-  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph; its `forge.go` consumers entry and its 'Add no operation' ground rule name this brief as the source of the new reads; Verify row 3 becomes a count of non-comment `\"gh\"` literals, which also counts the `exec.CommandContext` launch, and its Expect is re-measured to 31 (32 less the `decisionruling.go` site the path filter below excludes); row 15's Expect moves from 7 to 6 to match `allowedInvocationCeiling`; §6 gains a re-measure note pointing at this census; row 3 excludes `statusgen/decisionruling.go` by path, because the ruling resolver and its `gh auth token` fallback at `:643` move in forge-neutral/35, and its completion Expect is `1`, the line in `transcribescan.go`'s `ghCommentResolver` that a new row 19 pins and 35 also moves; 18's risk note, ground rules, Task 6 and Review name both resolvers as 35's, and Task 6 gains a table of the control-feeding reads 18 moves with each one's old and new signal source; 18 adds `issue` to `deskread`'s CI-transport kind set)"
-  - "docs/streams/forge-neutral/brief-35-ruling-resolver-onto-the-read-verb.md: fixed-here (new brief, split from 18 on review: it moves both human-ruling resolvers onto the read verb. The ruling resolver's two reads move onto the `comments` and `issue` kinds this brief adds, and `rulingForgeClient` goes with its `gh auth token` fallback at `:643`, with no replacement credential. The transcribe lanes' sign-off resolver, `ghCommentResolver` in `transcribescan.go`, moves onto the `comments` kind's new fields. It is human-gated because each move rewrites the inputs of a human-ruling control)"
-  - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/claimdecay.go, statusgen/corroborate.go, statusgen/decisiongateanchor.go, statusgen/issues.go, statusgen/selfimprovement.go, statusgen/transcribescan.go, statusgen/transcribeverdict.go: follow-up forge-neutral/18 (moving each site onto `deskread` is 18's Task and Verify row 3; this brief adds the reads and touches no statusgen file. `transcribescan.go`'s `ghCommentResolver` and the call at `corroborate.go:1481` are forge-neutral/35's)"
+  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph; its `forge.go` consumers entry and its 'Add no operation' ground rule name this brief as the source of the new reads; Verify row 3 becomes a count of non-comment `\"gh\"` literals, which also counts the `exec.CommandContext` launch, and its Expect is re-measured to 31 (32 less the `decisionruling.go` site the path filter below excludes); row 15's Expect moves from 7 to 6 to match `allowedInvocationCeiling`; §6 gains a re-measure note pointing at this census; row 3 excludes `statusgen/decisionruling.go` by path, because the ruling resolver and its `gh auth token` fallback at `:643` move in forge-neutral/35, and its completion Expect is `2`, the lines in `transcribescan.go`'s `ghCommentResolver` and `transcribeverdict.go`'s `ghVerdictIssueResolver` that new rows 19 and 20 pin and 35 also moves; 18's risk note, ground rules, Task 6 and Review name both resolvers and the verdict-issue read as 35's, and Task 6 gains a table of the control-feeding reads 18 moves with each one's old and new signal source; 18 adds `issue` to `deskread`'s CI-transport kind set)"
+  - "docs/streams/forge-neutral/brief-35-ruling-resolver-onto-the-read-verb.md: fixed-here (new brief, split from 18 on review: it moves both human-ruling resolvers onto the read verb. The ruling resolver's two reads move onto the `comments` and `issue` kinds this brief adds, and `rulingForgeClient` goes with its `gh auth token` fallback at `:643`, with no replacement credential. The transcribe lanes' sign-off resolver, `ghCommentResolver` in `transcribescan.go`, moves onto the `comments` kind's new fields and its change target, so a sign-off posted on a pull request keeps arming. The verdict-issue read, `ghVerdictIssueResolver` in `transcribeverdict.go`, moves onto the `issue` and `trust` kinds; its old source never set the edit flag, so that move turns the edited-issue refusals on. It is human-gated because each move rewrites the inputs of a control)"
+  - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/claimdecay.go, statusgen/corroborate.go, statusgen/decisiongateanchor.go, statusgen/issues.go, statusgen/selfimprovement.go, statusgen/transcribescan.go, statusgen/transcribeverdict.go: follow-up forge-neutral/18 (moving each site onto `deskread` is 18's Task and Verify row 3; this brief adds the reads and touches no statusgen file. `transcribescan.go`'s `ghCommentResolver`, `transcribeverdict.go`'s `ghVerdictIssueResolver` and the call at `corroborate.go:1481` are forge-neutral/35's)"
   - "statusgen/decisionruling.go: follow-up forge-neutral/35 (the ruling resolver reads one issue comment by id at `:262` and one issue by number at `:354` through statusgen's own HTTP client, whose token comes from the environment or, failing that, from `gh auth token` at `:643`. 35 moves both reads onto `deskread`'s `comments` and `issue` kinds and deletes `rulingForgeClient` and its fallback with no replacement, so `:643` disappears with the move. This brief adds the comment fields those reads consume, Task 2.8 and Task 3, and touches no statusgen file)"
-  - "statusgen/transcribescan.go `ghCommentResolver`: follow-up forge-neutral/35 (the transcribe lanes' sign-off resolver at `:109` reads one comment by URL; 35 moves it onto `deskread comments`, selecting by `databaseId`, with the `databaseId` and `authorType` fields this brief adds to the kind in Task 3. This brief touches no statusgen file)"
+  - "statusgen/transcribescan.go `ghCommentResolver`: follow-up forge-neutral/35 (the transcribe lanes' sign-off resolver at `:109` reads one comment by URL; 35 moves it onto `deskread comments`, selecting by `databaseId`, with the `databaseId` and `authorType` fields this brief adds to the kind in Task 3, and with the issue or change target the URL's path names, through the change target this brief also adds in Task 3. This brief touches no statusgen file)"
+  - "statusgen/transcribeverdict.go `ghVerdictIssueResolver`: follow-up forge-neutral/35 (the verdict-issue read at `:506` feeds the verdict and scan-delta lanes' author pins and edited-issue refusals; 35 moves it onto `deskread issue`, with the author type this brief adds, and `deskread trust` for the edit time, and owns every mapping of those values to an outcome. This brief touches no statusgen file)"
   - "statusgen/ghfetch.go: out-of-scope (statusgen's own native HTTP client, which row 3's grep does not see; it is not a forge-CLI site and is not in this brief's census)"
   - ".github/workflows/assay-statusgen.yml: out-of-scope (the CI read identity, which is #2253's decision)"
 ---
@@ -121,7 +122,11 @@ facts:
   - on `deskread comments`, the comment's `databaseId`, author type and URL. `CommentJSON`
     (`deskread/main.go:432-437`) emits only author login and id, `createdAt` and body, so the
     sites that select one comment by id or read the author type (`transcribescan.go:109`,
-    `scanissues.go:953`, `decisionruling.go:262`) cannot be served by the kind as it stands.
+    `scanissues.go:953`, `decisionruling.go:262`) cannot be served by the kind as it stands;
+  - on `deskread comments`, a change's conversation thread. The kind reads the issue target
+    only (`deskread/main.go:15`, `:526`), so a comment posted on a pull request cannot be read
+    through it, although `ListCommentsTyped` already takes `TargetChange` on both backends
+    (`forge.go:989-990`).
 - No `Forge` method reads one comment by id. The house pattern is `ListCommentsTyped` on the
   comment's issue, selecting by `DatabaseID`: that read returns the whole thread or an error,
   so an id that is not in a complete thread is an observed absence, not a could-not-check.
@@ -153,17 +158,23 @@ guard, `claimdecay.go:126-170`, which treats a missing signal as unattributed), 
 in the decision-gate anchor (`decisiongateanchor.go:157`, `:226-245`), the closing change's merge
 state in self-improvement's human-touch count (`selfimprovement.go:492-501`), and a comment's
 update time and author type in the ruling resolver (`decisionruling.go:296-313`). That is why
-their **absent** values are specified, and why Verify rows 5–10 and 21–28 test the negative
+their **absent** values are specified, and why Verify rows 5–10 and 21–29 test the negative
 path for each.
 
-Two consumers' moves rewrite a control's inputs, and forge-neutral/35 makes both; it is
-human-gated (`sensitive-data: yes`) for them. In the ruling resolver, the deleted comment, the
+Three consumers' moves rewrite a control's inputs, and forge-neutral/35 makes all three; it
+is human-gated (`sensitive-data: yes`) for them. In the ruling resolver, the deleted comment, the
 comment-to-issue binding, the edit check and the bot check all change source. The transcribe
 lanes' sign-off resolver (`transcribescan.go:109`), which both enactment gates read their
 sign-off check from, goes from one comment read by id to a thread read selected by
-`databaseId`, and its author type comes from the kind's new field. This brief stays
+`databaseId`, and its author type comes from the kind's new field; the URL's path names the
+issue or change target it reads, through the change target Task 3 adds. The verdict-issue read
+(`transcribeverdict.go:506`), behind the verdict and scan-delta lanes' author pins and
+edited-issue refusals, never set its edit flag from its old source, so its move turns those
+refusals on. This brief stays
 model-gated because it changes no consumer: it adds reads and specifies what each absent value
-means, and the decision about how a control uses them sits with the brief that wires it. If a
+means, and the decision about how a control uses them sits with the brief that wires it. This brief adds
+transport only: kinds, targets and envelope fields. Every mapping of an author type or an edit
+flag to an accept-or-refuse outcome stays in forge-neutral/35. If a
 reviewer reads any of these fields as a control change in itself rather than a read, the right
 move is to flip `sensitive-data` and gate this brief on a human, not to drop the rows.
 
@@ -199,7 +210,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
 |---|---|---|---|
 | `doratiming.go:631` | repo name fallback | none (deleted by #2312) | — |
 | `transcribescan.go:77` | issue author login/id/**type** | `GetIssueTyped` + **new** author type on GitHub (Task 2.6) | transcribe |
-| `transcribescan.go:109` | one comment by URL: author + type + body | owned by forge-neutral/35 (it is the transcribe lanes' sign-off resolver, `ghCommentResolver`, split from 18 with the ruling resolver because both enactment gates read their sign-off check from it): exists: `ListCommentsTyped` on the URL's number, select by `DatabaseID`, with the `comments` kind's **new** id and type fields (Task 3) | transcribe |
+| `transcribescan.go:109` | one comment by URL: author + type + body | owned by forge-neutral/35 (it is the transcribe lanes' sign-off resolver, `ghCommentResolver`, split from 18 with the ruling resolver because both enactment gates read their sign-off check from it): exists: `ListCommentsTyped` on the URL's number, on the issue or change target the URL's path names, select by `DatabaseID`, with the `comments` kind's **new** id and type fields and its **new** change target (Task 3) | transcribe |
 | `issues.go:577` | **all-state** issues: number, state, createdAt, **closedAt**, author, labels, title | **new** `ListIssues` (op 55), which lists issues only (Task 1, op 55) so its ceiling is spent on issues. Today's `--limit 1000` truncates silently; the new read serves up to 10,000 and says `Incomplete` beyond that | — |
 | `claimdecay.go:63` | all-state changes: head ref, state, **cross-repo, head repository** | `ListChanges` + **new** `ChangeRef.CrossRepo`/`HeadRepo`. `ListChanges` walks at most 500 changes (`forgeListChangesMaxPages` × 100) and reports `Incomplete` beyond; this repository is past that, so 18 must treat the overflow as could-not-check (a follow-up for 18, not this brief) | — (plain `--lint`) |
 | `decisiongateanchor.go:229` | issue state, body, **closed_by** | `GetIssueTyped` + **new** `Issue.ClosedBy` | `--corroborate` |
@@ -217,7 +228,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
 | `citationcorroborate.go:461` | change reviews | exists: `ReviewsAtHead` | — |
 | `scanissues.go:116` | open issues | exists: `ListOpenIssues` (`deskread issues`) | transcribe |
 | `scanissues.go:953` | issue comments with author id/type | exists: `ListCommentsTyped` (`deskread comments`) | transcribe |
-| `transcribeverdict.go:506` | issue author login/id/**type**, body, edited | `GetIssueTyped` + **new** author type; edited from `IssueTrustEvents.BodyEdited` | transcribe |
+| `transcribeverdict.go:506` | issue author login/id/**type**, body, edited | owned by forge-neutral/35 (the verdict-issue read, `ghVerdictIssueResolver`: its old source never set the edit flag, so the move turns the edited-issue refusals on): `GetIssueTyped` (`deskread issue`) + **new** author type, then edited from `IssueTrustEvents.BodyEdited` (`deskread trust`), read after the issue | transcribe |
 | `transcribeverdict.go:579` | open issues with createdAt | exists: `ListOpenIssues` | transcribe |
 | `autoflip.go:1197` | changes behind a commit with **merge-commit SHA** and head | `ListCommitChanges` + `GetPullRequest` + **new** `PullRequest.MergeCommitSHA` | `--auto-flip-model` |
 | `autoflip.go:1277` | a change's **own commits** | **new** `ListChangeCommits` (op 57) | `--auto-flip-model` |
@@ -241,8 +252,9 @@ and which seam read serves it after this brief. **New** marks this brief's addit
   identity does.
 - If anything is unclear or contradicts repo state, report NEEDS_CONTEXT. Don't guess.
 - **Touch no file under `statusgen/` and no workflow file.** Moving the sites is
-  forge-neutral/18's Task, and forge-neutral/35's for `decisionruling.go` and
-  `transcribescan.go`'s `ghCommentResolver`. The CI read identity
+  forge-neutral/18's Task, and forge-neutral/35's for `decisionruling.go`,
+  `transcribescan.go`'s `ghCommentResolver` and `transcribeverdict.go`'s
+  `ghVerdictIssueResolver`. The CI read identity
   is #2253's decision.
 - **Do not change `deskread`'s identity.** `ciEligible` stays `false`, there is no
   environment-token path, and there is no ambient-CLI fallback.
@@ -256,6 +268,10 @@ and which seam read serves it after this brief. **New** marks this brief's addit
   unmerged change.
 - **Recorded fixtures only.** No live GitHub or GitLab call in the suite, and no `curl`
   evidence.
+- **Transport only; no outcome mapping.** This brief adds kinds, targets and envelope fields.
+  It maps no author type and no edit flag into an accept or refuse outcome, and no kind or
+  field it adds carries a verdict. Every such mapping, such as the Bot pin, the edited-issue
+  refusal and the sign-off author check, stays in forge-neutral/35.
 
 ## Task
 
@@ -423,6 +439,18 @@ and which seam read serves it after this brief. **New** marks this brief's addit
      and the envelope stays schema 1. An empty `authorType` or `updatedAt` is
      could-not-check for the consumer, never "User" or "unedited". These are the fields the
      `transcribescan.go:109`, `scanissues.go:953` and `decisionruling.go:262` sites read.
+   - The existing `comments` kind gains a change target. `comments --issue owner/name#N`
+     keeps reading `ListCommentsTyped(…, TargetIssue)`, and `comments --change owner/name#N`
+     reads `ListCommentsTyped(…, TargetChange)`, a pull or merge request's conversation
+     thread. The caller names the target. The kind never guesses it, never infers it from the
+     number, and never retries under the other target. Both flags, or neither, exit 5 with zero
+     forge calls. The envelope, the item shape and the fields are the same as for the issue
+     target. A number of the other kind gets the seam's own answer, unchanged: on GitHub a
+     `TargetChange` read of an issue number is `deskkit.Unverifiable` and lands in `partial`,
+     never an empty thread; on GitLab, where issue and merge-request numbers are separate
+     sequences, the same number names a different thread under each target, which is why the
+     caller must name it. `trust` stays issue-only. No `Forge` operation is added:
+     `TargetChange` is already on the seam.
    - `issue-states --issue owner/name#N` → op 56.
    - `changes --repo … --state merged|closed|all` → `ListChanges`, carrying 2.2–2.4.
    - `change --change owner/name#N` → `GetPullRequest`, carrying `MergeCommitSHA`.
@@ -434,9 +462,14 @@ and which seam read serves it after this brief. **New** marks this brief's addit
    - Replace "IT ADDS NO OPERATION TO Forge" with the accurate statement: the verb's
      migrations add none, and ops 55–58 were added under the freeze rule by forge-neutral/33
      with these kinds as their consumers.
+   - Replace "`comments` is deskkit.Forge.ListCommentsTyped on an ISSUE, and nothing else"
+     with: `comments` is `ListCommentsTyped` on the issue or change target its address flag
+     names. Amend "TWO ADDRESSING SHAPES" so `comments` takes exactly one of `--issue` and
+     `--change`.
    - Name forge-neutral/18 as the statusgen consumer that each new kind is waiting for, and
      forge-neutral/35 as the consumer of `issue` and the new `comments` fields in the ruling
-     resolver, and of the new `comments` fields in the transcribe lanes' sign-off resolver.
+     resolver, of the new `comments` fields and change target in the transcribe lanes' sign-off
+     resolver, and of `issue` and `trust` in the verdict-issue read.
 4. **Register the surface change.**
    - Add inventory rows 55–58 to `docs/streams/forge-gitlab/inventory.md`, in its existing
      column shape, all `implemented`, plus one "added by forge-neutral brief 33" note naming
@@ -445,7 +478,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
      one-line comment citing this brief.
    - Do not change `allowedInvocationCeiling`.
 5. **Goldens on both backends** for every operation and every field, on recorded fixtures,
-   including the negative cases Verify rows 5–10 and 21–28 name.
+   including the negative cases Verify rows 5–10 and 21–29 name.
 
 ## Verify (executable — no prose-only DoD items)
 
@@ -472,6 +505,8 @@ Test names are this brief's planned deliverables:
 - `TestCommentUpdatedAtUnreadableStaysEmpty` (planned)
 - `TestDeskreadCommentsCarryIdentityFields` (planned)
 - `TestIssueStateEventsMergedUnreadableIsIncomplete` (planned)
+- `TestDeskreadCommentsChangeTarget` (planned)
+- `TestCommentFieldsOnChangeTarget` (planned)
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
@@ -494,7 +529,7 @@ Test names are this brief's planned deliverables:
 | 17 | check | `git diff --name-only "$(git merge-base refs/remotes/origin/main HEAD)" HEAD -- statusgen/ .github/workflows/`, run on the brief's implementation branch before merge | empty output. No statusgen site and no workflow moved here; both are 18's and #2253's |
 | 18 | check | `statusgen --root . --lint` | `LINT: PASS`, rc 0 |
 | 19 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/33 --base "$(git merge-base refs/remotes/origin/main HEAD)"`, on the implementation branch | exit 0. Every `consumers:` claim is corroborated against the diff |
-| 20 | check | GitLab live row | **could-not-check by design**: this repository has no CI-reachable GitLab project. Rows 2, 5–10 and 21–28 pin the GitLab mapping against recorded fixtures; a live read is the GitLab conformance work's job, not this brief's |
+| 20 | check | GitLab live row | **could-not-check by design**: this repository has no CI-reachable GitLab project. Rows 2, 5–10 and 21–29 pin the GitLab mapping against recorded fixtures; a live read is the GitLab conformance work's job, not this brief's |
 | 21 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestListIssuesServesIssuePopulation$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r21.out" 2>&1 && grep -F -e '--- PASS: TestListIssuesServesIssuePopulation' "${TMPDIR:-/tmp}/b33-r21.out"` | exit 0, `--- PASS:` printed. A GitHub fixture of 1,200 issues across 12 pages, on a repository whose fixture also holds 1,500 changes, returns all 1,200 issues with `Incomplete=false` and no change in the list, and the recorded request is the GraphQL `issues` connection, never REST `/issues`. A GitLab fixture of 1,200 issues returns all of them with `Incomplete=false`. Each issue carries `State`, `CreatedAt`, `ClosedAt` (empty while open), author login and numeric `ID`, labels and title: every field `issues.go:577` reads |
 | 22 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestChangeRefCrossRepoUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r22.out" 2>&1 && grep -F -e '--- PASS: TestChangeRefCrossRepoUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r22.out"` | **negative path**: a GitHub change whose fixture carries `isCrossRepository: null` and `headRepository: null` (a deleted fork) reads back `CrossRepo == ""` and `HeadRepo == ""`, never `CrossRepoSame` or the base repository. A GitHub change whose fixture carries `isCrossRepository: true` and `headRepository: null` (the realistic deleted fork) reads back `CrossRepo == CrossRepoFork` and `HeadRepo == ""`. A GitLab merge request whose `source_project_id` differs from `target_project_id` reads back `CrossRepo == CrossRepoFork` and `HeadRepo == ""`, and one with either id missing reads back both empty |
 | 23 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestClosedByEmptyUnlessClosed$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r23.out" 2>&1 && grep -F -e '--- PASS: TestClosedByEmptyUnlessClosed' "${TMPDIR:-/tmp}/b33-r23.out"` | **negative path**: an OPEN issue (closed, then reopened) whose fixture still carries a `closed_by` account reads back a zero `ClosedBy` on both backends. A closed issue whose `closed_by` is `null` reads back a zero `ClosedBy`, never the issue's author |
@@ -503,6 +538,8 @@ Test names are this brief's planned deliverables:
 | 26 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCommentUpdatedAtUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r26a.out" 2>&1 && grep -F -e '--- PASS: TestCommentUpdatedAtUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r26a.out" && go test ./cmd/deskread/ -run '^TestDeskreadCommentsCarryIdentityFields$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r26b.out" 2>&1 && grep -F -e '--- PASS: TestDeskreadCommentsCarryIdentityFields' "${TMPDIR:-/tmp}/b33-r26b.out"` | **negative path**: a GitHub comment whose fixture carries no `updatedAt`, and a GitLab note with no `updated_at`, read back `UpdatedAt == ""` with `CreatedAt` set, never `UpdatedAt == CreatedAt`. An edited comment reads back the two times as they differ. `deskread comments` emits `databaseId`, `authorType`, `url` and `updatedAt` when the seam has them and omits each when empty, so a comment with none of the four reads byte-identical to the pre-change output |
 | 27 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestIssueStateEventsMergedUnreadableIsIncomplete$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r27.out" 2>&1 && grep -F -e '--- PASS: TestIssueStateEventsMergedUnreadableIsIncomplete' "${TMPDIR:-/tmp}/b33-r27.out"` | **negative path**: a GitHub closing change whose fixture carries `merged: null`, one with `merged: false` and `state: MERGED`, and one with no `state`, each return `Complete=false`, never `Merged=false` with `Complete=true`. A GitLab closing merge request with a missing or unknown `state` does the same. A merged closer reads back with its `Number`, `Repo` and author |
 | 28 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCommentUpdatedAtUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r28a.out" 2>&1 && grep -F -e '--- PASS: TestCommentUpdatedAtUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r28a.out" && go test ./internal/deskkit/ -run '^TestIssueStateEventsMergedUnreadableIsIncomplete$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r28b.out" 2>&1 && grep -F -e '--- PASS: TestIssueStateEventsMergedUnreadableIsIncomplete' "${TMPDIR:-/tmp}/b33-r28b.out"`. **Mutation:** in the GitHub comment mapping, fill an absent `updatedAt` from `createdAt`; separately, in the GitHub `IssueStateEvents` mapping, read a `null` `merged` as `false` without touching `Complete`; run the command after each, then restore the file and re-run | exit 0 unmutated. Exit **1** on each mutant (a `--- PASS:` line missing), with the test naming the absent-update-time or null-merged case |
+| 29 | check:ci +flow +dereference | `cd tools/desk && go test ./cmd/deskread/ -run '^TestDeskreadCommentsChangeTarget$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r29a.out" 2>&1 && grep -F -e '--- PASS: TestDeskreadCommentsChangeTarget' "${TMPDIR:-/tmp}/b33-r29a.out" && go test ./internal/deskkit/ -run '^TestCommentFieldsOnChangeTarget$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r29b.out" 2>&1 && grep -F -e '--- PASS: TestCommentFieldsOnChangeTarget' "${TMPDIR:-/tmp}/b33-r29b.out"` | **positive and negative path.** The `deskread` leg, on the recording fake `Forge`: `comments --change o/n#7` records exactly one `ListCommentsTyped` call at 7 with `TargetChange`, and `comments --issue o/n#7` exactly one with `TargetIssue`. Both emit schema 1 with the same item shape and the four Task 3 fields. Both flags, neither flag, or `--change` on `trust` exits 5 with zero forge calls. A refusal or not-found from the seam lands in `partial` with exit 0 and is never retried under the other target. The deskkit leg, on recorded fixtures for BOTH real backends: a GitHub pull-request conversation thread and a GitLab merge-request note thread each read back under `TargetChange`, every comment carrying `DatabaseID`, `URL`, `UpdatedAt` and the author `Type` (empty where unresolved), and GitHub `TargetChange` at an issue number returns `deskkit.Unverifiable`, never an empty thread. The fake leg shows only that the kind passes the stated target. The deskkit leg is what shows the real backends serve a change thread with these fields, and forge-neutral/35's sign-off move depends on it |
+| 30 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskread/ -run '^TestDeskreadCommentsChangeTarget$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r30.out" 2>&1 && grep -F -e '--- PASS: TestDeskreadCommentsChangeTarget' "${TMPDIR:-/tmp}/b33-r30.out"`. **Mutation:** in `deskread`'s `comments` case, pass `TargetIssue` whatever the flag; separately, retry a seam refusal under `--change` as a `TargetIssue` read; run the command after each, then restore the file and re-run | exit 0 unmutated. Exit **1** on each mutant (no `--- PASS:` line), with the test naming the change-target case |
 
 ## Named mutations
 
@@ -520,6 +557,10 @@ Test names are this brief's planned deliverables:
   unreadable closing-change merge state read as unmerged. The first would present an edited
   ruling comment as unedited to the ruling resolver; the second would count a fixed issue's
   close as a manual human touch in self-improvement.
+- **M6**, row 30: the change target read as the issue target, or a refused change read retried
+  as an issue read. On GitLab the issue with the same number is a different thread, so a
+  sign-off posted on a merge request would be looked up on an unrelated issue. On GitHub a
+  sign-off posted on a pull request would refuse where it should arm.
 
 ## Pre-mortem → detection map
 
@@ -540,6 +581,9 @@ Test names are this brief's planned deliverables:
 | A comment's unreadable update time is filled from its creation time, so an edited ruling comment passes the ruling resolver's unedited check | rows 26, 28 |
 | `deskread comments` still lacks the id, author type or URL, so 18 cannot select a comment by id or tell a bot's comment from a human's | row 26 |
 | A closing change whose `merged` is `null` or disagrees with its `state` reads as unmerged, so self-improvement counts a fixed issue's close as manual | rows 27, 28 |
+| `comments` reads only the issue target, so a sign-off posted on a pull request cannot be read and forge-neutral/35's move either refuses it or falls back to another read | rows 29, 30 |
+| The change target is shown only against the recording fake, so no test shows the real backends serve a change thread with the four fields | row 29's deskkit leg, on both backends' recorded fixtures |
+| This brief maps an author type or an edit flag into an outcome (a bot or edited verdict on the envelope), moving a control decision under a model gate | ground rule "Transport only; no outcome mapping"; Review reads the envelope diff |
 | A new kind grows a generic `--query`/`--path` flag, reopening the passthrough | rows 3, 12 |
 | This brief quietly starts moving statusgen sites or edits a workflow, pre-deciding #2253 | row 17; Review reads the diff |
 | `TestForgeSurfaceUnchangedByDeskread` is weakened (`want` loosened, or the test skipped) instead of extended by four names | row 4; Review reads the test diff |
@@ -552,8 +596,11 @@ Test names are this brief's planned deliverables:
 
 ## Review
 Gate: model (from frontmatter; all four risk answers no). The reviewer records the verdict
-and date in the stream README table. The reviewer also confirms two things from the diff:
+and date in the stream README table. The reviewer also confirms three things from the diff:
 - no file under `statusgen/` or `.github/workflows/` changed;
-- `deskread`'s identity resolution is untouched.
+- `deskread`'s identity resolution is untouched;
+- no kind or field maps an author type or an edit flag into an accept or refuse outcome, and
+  the change target only selects which thread is read.
 
-Together these keep this brief independent of #2253.
+The first two keep this brief independent of #2253. The third keeps every control decision in
+forge-neutral/35, under its human gate.
