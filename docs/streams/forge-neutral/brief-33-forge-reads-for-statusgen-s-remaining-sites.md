@@ -48,7 +48,7 @@ consumers:
   - "tools/desk/internal/deskkit/forge_surface_deskread_test.go: follow-up forge-neutral/33 (this brief's implementation: its `want` list gains exactly the four new names, in this change, as the test's own failure message directs)"
   - "tools/desk/cmd/deskread: follow-up forge-neutral/33 (this brief's implementation: the new read kinds that consume each addition)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/33 (this brief's implementation: inventory rows 55–58 and an 'added by' note)"
-  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph; its `forge.go` consumers entry and its 'Add no operation' ground rule name this brief as the source of the new reads; Verify row 3's grep widens to count the `exec.CommandContext` launch and its Expect is re-measured to 32; row 15's Expect moves from 7 to 6 to match `allowedInvocationCeiling`; §6 gains a re-measure note pointing at this census)"
+  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph; its `forge.go` consumers entry and its 'Add no operation' ground rule name this brief as the source of the new reads; Verify row 3 becomes a count of non-comment `"gh"` literals, which also counts the `exec.CommandContext` launch, and its Expect is re-measured to 32; row 15's Expect moves from 7 to 6 to match `allowedInvocationCeiling`; §6 gains a re-measure note pointing at this census)"
   - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/claimdecay.go, statusgen/corroborate.go, statusgen/decisiongateanchor.go, statusgen/issues.go, statusgen/selfimprovement.go, statusgen/transcribescan.go, statusgen/transcribeverdict.go: follow-up forge-neutral/18 (moving each site onto `deskread` is 18's Task and Verify row 3; this brief adds the reads and touches no statusgen file)"
   - "statusgen/decisionruling.go: out-of-scope (`:643` runs `gh auth token`. That is credential acquisition, not a read, and where a CI or local statusgen run gets its credential is the question #2253 decided; forge-neutral/34 carries that work)"
   - "statusgen/ghfetch.go: out-of-scope (statusgen's own native HTTP client, which row 3's grep does not see; it is not a forge-CLI site and is not in this brief's census)"
@@ -270,7 +270,8 @@ and which seam read serves it after this brief. **New** marks this brief's addit
        Complete bool}`. `Repo` is the closing change's own `owner/name`: a change in another
        repository can close the issue, and a bare number would then name the wrong change.
      - GitHub: one GraphQL read of `timelineItems(itemTypes:[CLOSED_EVENT,REOPENED_EVENT])`
-       with actor `login`/`__typename`/`databaseId`, plus
+       with actor `login __typename ... on User{databaseId} ... on Bot{databaseId}` (the `Actor`
+       interface carries no `databaseId`, so the id is read through the concrete-type fragments), plus
        `closedByPullRequestsReferences(includeClosedPrs: true)` with each node's
        `repository{nameWithOwner}`. This is the same shape `selfimprovement.go:381-388` sends today. `Complete=false`
        when either connection reports `hasNextPage`.
@@ -317,7 +318,10 @@ and which seam read serves it after this brief. **New** marks this brief's addit
       - GitHub: `isCrossRepository` + `headRepository{nameWithOwner}`.
       - GitHub null handling: a `null` `isCrossRepository` leaves `CrossRepo` empty, and a
         `null` `headRepository` leaves `HeadRepo` empty. Neither is ever filled as
-        `CrossRepoSame` or as the base repository.
+        `CrossRepoSame` or as the base repository. `isCrossRepository` is non-null in
+        GitHub's schema, so the realistic deleted fork is `isCrossRepository: true` with
+        `headRepository: null`: `CrossRepo` = `CrossRepoFork`, `HeadRepo` empty. The null
+        `isCrossRepository` branch stays as the defensive case.
       - GitLab: `source_project_id` vs `target_project_id`. Equal gives `CrossRepoSame` and
         `HeadRepo` = the target path. Different gives `CrossRepoFork` and `HeadRepo` empty
         (the source project's path is not read). Either id missing leaves both empty.
@@ -422,10 +426,10 @@ Test names are this brief's planned deliverables:
 | 19 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/33 --base "$(git merge-base refs/remotes/origin/main HEAD)"`, on the implementation branch | exit 0. Every `consumers:` claim is corroborated against the diff |
 | 20 | check | GitLab live row | **could-not-check by design**: this repository has no CI-reachable GitLab project. Rows 2, 5–10 and 21–25 pin the GitLab mapping against recorded fixtures; a live read is the GitLab conformance work's job, not this brief's |
 | 21 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestListIssuesServesIssuePopulation$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r21.out" 2>&1 && grep -F -e '--- PASS: TestListIssuesServesIssuePopulation' "${TMPDIR:-/tmp}/b33-r21.out"` | exit 0, `--- PASS:` printed. A GitHub fixture of 1,200 issues across 12 pages, on a repository whose fixture also holds 1,500 changes, returns all 1,200 issues with `Incomplete=false` and no change in the list, and the recorded request is the GraphQL `issues` connection, never REST `/issues`. A GitLab fixture of 1,200 issues returns all of them with `Incomplete=false`. Each issue carries `State`, `CreatedAt`, `ClosedAt` (empty while open), author login and numeric `ID`, labels and title: every field `issues.go:577` reads |
-| 22 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestChangeRefCrossRepoUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r22.out" 2>&1 && grep -F -e '--- PASS: TestChangeRefCrossRepoUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r22.out"` | **negative path**: a GitHub change whose fixture carries `isCrossRepository: null` and `headRepository: null` (a deleted fork) reads back `CrossRepo == ""` and `HeadRepo == ""`, never `CrossRepoSame` or the base repository. A GitLab merge request whose `source_project_id` differs from `target_project_id` reads back `CrossRepo == CrossRepoFork` and `HeadRepo == ""`, and one with either id missing reads back both empty |
+| 22 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestChangeRefCrossRepoUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r22.out" 2>&1 && grep -F -e '--- PASS: TestChangeRefCrossRepoUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r22.out"` | **negative path**: a GitHub change whose fixture carries `isCrossRepository: null` and `headRepository: null` (a deleted fork) reads back `CrossRepo == ""` and `HeadRepo == ""`, never `CrossRepoSame` or the base repository. A GitHub change whose fixture carries `isCrossRepository: true` and `headRepository: null` (the realistic deleted fork) reads back `CrossRepo == CrossRepoFork` and `HeadRepo == ""`. A GitLab merge request whose `source_project_id` differs from `target_project_id` reads back `CrossRepo == CrossRepoFork` and `HeadRepo == ""`, and one with either id missing reads back both empty |
 | 23 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestClosedByEmptyUnlessClosed$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r23.out" 2>&1 && grep -F -e '--- PASS: TestClosedByEmptyUnlessClosed' "${TMPDIR:-/tmp}/b33-r23.out"` | **negative path**: an OPEN issue (closed, then reopened) whose fixture still carries a `closed_by` account reads back a zero `ClosedBy` on both backends. A closed issue whose `closed_by` is `null` reads back a zero `ClosedBy`, never the issue's author |
 | 24 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestClosedByEmptyUnlessClosed$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r24.out" 2>&1 && grep -F -e '--- PASS: TestClosedByEmptyUnlessClosed' "${TMPDIR:-/tmp}/b33-r24.out"`. **Mutation:** in the GitHub `GetIssue` mapping, and then separately in the GitLab one, fill `ClosedBy` from `closed_by` regardless of state; run the command after each, then restore the file and re-run | exit 0 unmutated. Exit **1** on each mutant (no `--- PASS:` line), with the test naming the reopened-issue case |
-| 25 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestChangeRefCrossRepoUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r25.out" 2>&1 && grep -F -e '--- PASS: TestChangeRefCrossRepoUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r25.out"`. **Mutation:** in the GitHub `ListChanges` mapping, read a `null` `isCrossRepository` as `false` (so it maps to `CrossRepoSame`); separately, in the GitLab mapping, fill `HeadRepo` with the target path when the project ids differ; run the command after each, then restore the file and re-run | exit 0 unmutated. Exit **1** on each mutant (no `--- PASS:` line), with the test naming the null-fork case |
+| 25 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestChangeRefCrossRepoUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r25.out" 2>&1 && grep -F -e '--- PASS: TestChangeRefCrossRepoUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r25.out"`. **Mutation:** in the GitHub `ListChanges` mapping, read a `null` `isCrossRepository` as `false` (so it maps to `CrossRepoSame`); separately, in the GitLab mapping, fill `HeadRepo` with the target path when the project ids differ; separately, in the GitHub mapping, fill a `null` `headRepository` with the base repository; run the command after each, then restore the file and re-run | exit 0 unmutated. Exit **1** on each mutant (no `--- PASS:` line), with the test naming the null-fork case |
 
 ## Named mutations
 
@@ -437,7 +441,8 @@ Test names are this brief's planned deliverables:
 - **M3**, row 24: `ClosedBy` filled regardless of state. A reopened issue would then still
   present its former closer to the decision-gate anchor as the authority that closed it.
 - **M4**, row 25: an unreadable fork read as same-repository, or a fork's head credited to the
-  base repository. Claim decay would then attribute a fork's branch to this repository.
+  base repository. Row 25 mutates it three ways: the GitHub null `isCrossRepository`, the
+  GitLab differing project ids, and the GitHub null `headRepository` filled as the base. Claim decay would then attribute a fork's branch to this repository.
 
 ## Pre-mortem → detection map
 
