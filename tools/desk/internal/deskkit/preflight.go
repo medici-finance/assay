@@ -47,6 +47,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
@@ -368,9 +371,10 @@ type PreflightProbes struct {
 	// the token was minted for. tokenPath is what ColdMint returned; an empty
 	// tokenPath means the mint produced nothing to read scopes from.
 	GrantedScopes func(role, tokenPath string) (map[string]string, error)
-	// WriteTransport performs ONE read-only probe of the landing path.
+	// WriteTransport performs ONE read-only probe of the landing path: can the
+	// role (its in-memory custody credential) reach repo's landing remote?
 	// Called at most once per preflight — see the ProbeRejected doc.
-	WriteTransport func(l Landing) (ProbeVerdict, string, error)
+	WriteTransport func(l Landing, role, repo string) (ProbeVerdict, string, error)
 	// CommitEmail returns the commit author email this worktree would commit under.
 	CommitEmail func(dir string) (string, error)
 	// AppIDFor returns the role's GitHub App id — the value that must NOT appear
@@ -493,7 +497,7 @@ func (req PreflightRequest) Run() PreflightReport {
 	rep.Checks = append(rep.Checks,
 		mint,
 		checkAppScopes(p, role, tokenPath, forge),
-		checkWriteTransport(p, l),
+		checkWriteTransport(p, l, role, repo),
 		checkCommitIdentity(p, role, l.Dir),
 		checkSiblings(p, root, req.ClaimedBrief),
 		checkAmbientIdentity(p, l, tokenPath, forge),
@@ -1004,83 +1008,151 @@ func parsePermsJSON(s string) (map[string]string, error) {
 
 // checkWriteTransport probes the role's LANDING path before the pass starts,
 // rather than discovering at landing time that no outward write transport is
-// permitted (#823 — a pass verified two briefs to a clean PASS and could land
+// reachable (#823 — a pass verified two briefs to a clean PASS and could land
 // neither).
 //
 // The probe is READ-ONLY by construction (see writeTransportProbe) and a
 // rejection is a STOP: this function reports it and returns. There is no branch
 // that tries a second credential — AGENTS.md, "A scope rejection is a STOP —
 // never re-push the change under a different identity."
-func checkWriteTransport(p PreflightProbes, l Landing) Check {
+func checkWriteTransport(p PreflightProbes, l Landing, role, repo string) Check {
 	const refs = "#823"
-	verdict, detail, err := p.WriteTransport(l)
+	verdict, detail, err := p.WriteTransport(l, role, repo)
 	if err != nil {
 		return unchecked(CheckWriteTransport, oneLine(err.Error()),
-			"run the landing probe by hand (`git -C "+orDot(l.Dir)+" push --dry-run "+l.Remote+" HEAD`) and read the transport error", refs)
+			"list the landing repo by hand as this role (`git ls-remote https://<forge>/"+orRepo(repo)+".git` "+
+				"with the role's minted token) and read the transport error", refs)
 	}
 	switch verdict {
 	case ProbePermitted:
-		return clean(CheckWriteTransport, "landing transport permitted for "+l.Remote+" "+orCurrent(l.Branch)+
+		return clean(CheckWriteTransport, "landing transport reachable for "+orRepo(repo)+
 			" ("+oneLine(detail)+")", refs)
 	case ProbeRejected:
-		return failed(CheckWriteTransport, "landing transport REJECTED for "+l.Remote+" "+orCurrent(l.Branch)+
+		return failed(CheckWriteTransport, "landing transport REJECTED for "+orRepo(repo)+
 			": "+oneLine(detail),
-			"STOP — do not retry under another identity. Obtain the write permission for THIS identity "+
+			"STOP — do not retry under another identity. Obtain the access for THIS identity "+
 				"(or run in a permission mode that admits the desk's landing verbs) and re-run preflight", refs)
 	default:
 		return unchecked(CheckWriteTransport, "probe inconclusive: "+oneLine(detail),
-			"ensure a git remote named "+l.Remote+" exists and this worktree is on a branch (a detached HEAD has no landing ref)", refs)
+			"ensure the landing repo is named (a "+l.Remote+" remote naming owner/name, or an explicit repo), "+
+				"its forge is listed in ASSAY_REPO_FORGES, and the role's credential can be minted", refs)
 	}
 }
 
-// writeTransportProbe is the real, NON-MUTATING write-transport probe:
-// `git push --dry-run`.
-//
-// --dry-run does everything except send the update: it authenticates, contacts
-// the remote's receive-pack and evaluates the ref update, then stops. That is
-// exactly the read-only "would this land?" question, and it is NOT the
-// permission LISTING that AGENTS.md warns is neither grant nor bar — a listing
-// says what the docs claim, this says what the transport does.
-//
-// It runs ONCE. Every failure path below returns; none re-invokes git with a
-// different credential.
-func writeTransportProbe(l Landing) (ProbeVerdict, string, error) {
-	dir := orDot(l.Dir)
-	if _, err := exec.LookPath("git"); err != nil {
-		return ProbeInconclusive, "git is not on PATH", nil
+// orRepo renders an unresolved repo slug readably in a check line.
+func orRepo(repo string) string {
+	if strings.TrimSpace(repo) == "" {
+		return "(unresolved repo)"
 	}
-	probeRepo, err := gitcore.Open(dir)
-	if err != nil {
-		return ProbeInconclusive, "cannot open " + dir + " as a git repository", nil
-	}
-	branch := strings.TrimSpace(l.Branch)
-	if branch == "" {
-		out, err := probeRepo.SymbolicRefShortHEAD()
-		if err != nil {
-			return ProbeInconclusive, "detached HEAD: no landing branch to probe", nil
-		}
-		branch = strings.TrimSpace(out)
-	}
-	if _, err := probeRepo.RemoteURL(l.Remote); err != nil {
-		return ProbeInconclusive, "no remote named " + l.Remote, nil
-	}
+	return repo
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "push", "--dry-run", "--porcelain",
-		l.Remote, "HEAD:refs/heads/"+branch)
-	// GIT_TERMINAL_PROMPT=0: a probe must never block on an interactive
-	// credential prompt — an unauthenticated transport has to FAIL, loudly.
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	out, err := cmd.CombinedOutput()
-	text := oneLine(string(out))
-	if err == nil {
-		return ProbePermitted, text, nil
+// forgeGitEndpointFn is the seam the default write-transport probe resolves the
+// landing repo's git endpoint through — ForgeGitEndpointForCheckout in production:
+// the canonical https URL of the RESOLVED forge plus the role's in-memory custody
+// credential (the landing remote's URL is only a forge-KIND hint when the roster is
+// silent, never the host dialled). Tests point it at a local fixture remote.
+var forgeGitEndpointFn = ForgeGitEndpointForCheckout
+
+// writeTransportProbe is the real, NON-MUTATING write-transport probe: an
+// authenticated, in-process gitcore.List of the landing repo AS THE ROLE.
+//
+// The transport is explicit, so there is nothing ambient left to discover: the
+// URL is the resolved forge's canonical https URL for repo and the credential is
+// the role's custody token, held in memory and presented to that one URL only —
+// no external git process, no credential helper, no insteadOf rewrite, no
+// interactive prompt that could block. A List that answers proves transport and
+// authentication reach the landing repo as this identity; the forge refusing the
+// identity is a REJECTION. Whether the identity may also WRITE is check 2's
+// question (the installation's granted scopes), answered from the grant itself.
+//
+// It runs ONCE. Every failure path below returns; none re-invokes the List with a
+// different credential.
+func writeTransportProbe(l Landing, role, repo string) (ProbeVerdict, string, error) {
+	if strings.TrimSpace(repo) == "" {
+		return ProbeInconclusive, "no landing repo resolved (no owner/name slug from the remote or the request)", nil
 	}
-	if rejectionRe.MatchString(text) {
+	ep, err := forgeGitEndpointFn(repo, role, landingRemoteURL(l))
+	if err != nil {
+		return ProbeInconclusive, "no git endpoint for " + repo + " as " + role + ": " + err.Error(), nil
+	}
+	return listReachability(ep.Opts)
+}
+
+// landingRemoteURL is the landing remote's RAW configured URL, or "" when it cannot be
+// read. It is consulted only as the forge-kind hint ForgeGitEndpointForCheckout takes.
+func landingRemoteURL(l Landing) string {
+	repo, err := gitcore.Open(orDot(l.Dir))
+	if err != nil {
+		return ""
+	}
+	u, err := repo.RemoteURL(l.Remote)
+	if err != nil {
+		return ""
+	}
+	return u
+}
+
+// listTimeout bounds the reachability List: a probe must FAIL, loudly, rather
+// than hold a desk's boot on a transport that never answers.
+var listTimeout = 45 * time.Second
+
+// listReachability turns one in-process List into the probe's three-state
+// verdict: an answer is PERMITTED, a forge refusing the presented identity
+// (401/403, or a denial in the transport's own wording) is REJECTED, and every
+// other failure — unreachable host, timeout, a server error, a repo the forge
+// reports as absent — is INCONCLUSIVE. The detail never carries the credential:
+// gitcore's errors name the URL, which is built without userinfo.
+func listReachability(opts gitcore.ListOpts) (ProbeVerdict, string, error) {
+	type listed struct {
+		refs []*plumbing.Reference
+		err  error
+	}
+	done := make(chan listed, 1)
+	go func() {
+		refs, err := gitcore.List(opts)
+		done <- listed{refs, err}
+	}()
+	var res listed
+	select {
+	case res = <-done:
+	case <-time.After(listTimeout):
+		return ProbeInconclusive, "List of " + redactURLCredential(opts.URL) + " did not answer within " + listTimeout.String(), nil
+	}
+	if res.err == nil {
+		return ProbePermitted, listedDetail(res.refs), nil
+	}
+	text := oneLine(res.err.Error())
+	if errors.Is(res.err, transport.ErrAuthenticationRequired) ||
+		errors.Is(res.err, transport.ErrAuthorizationFailed) ||
+		rejectionRe.MatchString(text) {
 		return ProbeRejected, text, nil
 	}
 	return ProbeInconclusive, text, nil
+}
+
+// listedDetail summarises a successful List: how many refs answered and, when the
+// remote advertises one, the default branch it points at.
+func listedDetail(refs []*plumbing.Reference) string {
+	head := ""
+	for _, r := range refs {
+		if r.Name() == plumbing.HEAD && r.Type() == plumbing.SymbolicReference {
+			head = r.Target().String()
+		}
+	}
+	if head == "" {
+		for _, r := range refs {
+			if r.Name().IsBranch() {
+				head = r.Name().String()
+				break
+			}
+		}
+	}
+	d := fmt.Sprintf("authenticated List answered: %d refs", len(refs))
+	if head != "" {
+		d += ", " + head
+	}
+	return d
 }
 
 // rejectionRe matches the transport answers that mean DENIED, as opposed to
@@ -1802,8 +1874,8 @@ func storedAmbientCredential(out []byte, runErr, ctxErr error) error {
 }
 
 // credHelperMatchesAppProbe reports whether EVERY credential source git consults for the
-// landing remote's PUSH URL (the URL `git push` — and the write-transport probe's
-// `push --dry-run` — authenticate against) is the minted App token. The judgement is
+// landing remote's PUSH URL (the URL a git-binary push from this checkout authenticates
+// against) is the minted App token. The judgement is
 // credTransportMatchesApp (credhelperchain.go): the ordered helper chain across every config
 // scope, not the single last value --get-urlmatch returns. It is READ-ONLY: it never runs a
 // helper and never contacts the remote — a probe that authenticated would be the mutating

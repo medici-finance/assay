@@ -264,15 +264,16 @@ func TestCommitPushRace_RetriesThenSucceeds(t *testing.T) {
 		root:     "/repo",
 		maxRetry: 5,
 		run: func(args ...string) (string, error) {
-			joined := strings.Join(args, " ")
-			calls = append(calls, joined)
-			if strings.Contains(joined, "push") {
-				pushAttempts++
-				if pushAttempts < 3 {
-					return "! [rejected] main -> main (fetch first)", os.ErrPermission // simulate race
-				}
-			}
+			calls = append(calls, strings.Join(args, " "))
 			return "", nil
+		},
+		push: func() error {
+			calls = append(calls, "<push>")
+			pushAttempts++
+			if pushAttempts < 3 {
+				return os.ErrPermission // simulate the race: main moved, non-fast-forward
+			}
+			return nil
 		},
 	}
 	if err := g.commitPushRace([]string{"STATUS-source.md"}, "verify(x): evidence"); err != nil {

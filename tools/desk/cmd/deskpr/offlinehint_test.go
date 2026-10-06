@@ -120,9 +120,9 @@ func TestCheckIsOfflineAndGatesRatherThanPreviews(t *testing.T) {
 		// never call a method the fake does not override, and a call would panic loudly
 		// rather than pass silently). --check must never reach it.
 		//
-		// The git stub: execCommand already records every argv; asserting none of them
-		// is "push" (and none is "desktoken", the token mint) is the "refuses any push"
-		// stub in effect — a --check that reached either would fail this test, not
+		// The git stub: execCommand already records every argv and the push recorder every
+		// in-process push; asserting there is no push (and no "desktoken", the token mint)
+		// is the "refuses any push" stub in effect — a --check that reached either would fail this test, not
 		// silently succeed.
 		rc := run([]string{"create", "--title", "add feature", "--body-min", "x\nBrief: fixture/01", "--check"})
 		if rc != deskkit.ExitOK {
@@ -136,7 +136,7 @@ func TestCheckIsOfflineAndGatesRatherThanPreviews(t *testing.T) {
 			if base == "desktoken" {
 				t.Fatalf("--check minted a token: %v", c)
 			}
-			if base == "git" && anyCall([][]string{c}, "push") {
+			if c[0] == pushMark {
 				t.Fatalf("--check pushed: %v", c)
 			}
 		}

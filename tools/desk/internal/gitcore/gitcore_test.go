@@ -1358,6 +1358,37 @@ func TestDeleteLocalRefRemovesAndIsNoopOnAbsent(t *testing.T) {
 	}
 }
 
+// TestUpdateRemoteTracking — the tracking ref is the one origin's fetch refspec maps the
+// pushed ref to (here a non-default layout, so the default is not assumed); an unmapped ref
+// writes nothing, and a short or malformed hash is refused.
+func TestUpdateRemoteTracking(t *testing.T) {
+	f := gittest.NewFixture(t)
+	sha := mustGitOutput(t, f, "rev-parse", "HEAD")
+	mustGit2(t, f, "remote", "add", "origin", "https://example.invalid/o/r.git")
+	mustGit2(t, f, "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/up/*")
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.UpdateRemoteTracking("origin", "refs/heads/feat/x", sha)
+	if err != nil || got != "refs/remotes/up/feat/x" {
+		t.Fatalf("UpdateRemoteTracking = %q, %v; want refs/remotes/up/feat/x", got, err)
+	}
+	if at := mustGitOutput(t, f, "rev-parse", "refs/remotes/up/feat/x"); at != sha {
+		t.Fatalf("tracking ref at %s, want %s", at, sha)
+	}
+	if got, err := repo.UpdateRemoteTracking("origin", "refs/tags/v1", sha); err != nil || got != "" {
+		t.Fatalf("unmapped ref: got %q, %v; want \"\", nil", got, err)
+	}
+	if _, err := repo.UpdateRemoteTracking("origin", "refs/heads/feat/x", sha[:7]); err == nil {
+		t.Fatal("a short hash was accepted")
+	}
+	if _, err := repo.UpdateRemoteTracking("nope", "refs/heads/feat/x", sha); err == nil {
+		t.Fatal("an unconfigured remote was accepted")
+	}
+}
+
 // mustGitOutput is mustGit's expression form: run and return trimmed stdout, failing
 // the test on error.
 func mustGitOutput(t *testing.T, f *gittest.Fixture, args ...string) string {
