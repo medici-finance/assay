@@ -40,8 +40,8 @@
     {
       "name": "S1: a covering row needs no result",
       "file": "heldscope.go",
-      "old": "\t\t\tif ran {",
-      "new": "\t\t\tif ran || true {"
+      "old": "\t\t\tif ran && !other {",
+      "new": "\t\t\tif true || ran && !other {"
     },
     {
       "name": "S1: an earlier entry's own table covers its rows",
@@ -156,6 +156,54 @@
       "file": "verifyissues.go",
       "old": "if superseded && i < scope.from {",
       "new": "if (superseded || scope.from >= 0) && i < scope.from {"
+    },
+    {
+      "name": "S1-r2: any visible result covers, beside a placeholder or note",
+      "file": "heldscope.go",
+      "old": "\t\t\tif ran && !other {",
+      "new": "\t\t\tif ran && (!other || true) {"
+    },
+    {
+      "name": "S1-r2: carry-forward and unclean words are not checked",
+      "file": "heldscope.go",
+      "old": "if heldCarryRe.MatchString(n) || !heldOutcomeRe.MatchString(n) {",
+      "new": "if !heldOutcomeRe.MatchString(n) {"
+    },
+    {
+      "name": "S1-r2: any text not carrying a carry-forward word is an outcome",
+      "file": "heldscope.go",
+      "old": "if heldCarryRe.MatchString(n) || !heldOutcomeRe.MatchString(n) {",
+      "new": "if heldCarryRe.MatchString(n) {"
+    },
+    {
+      "name": "S2-r2: markup that may render as nothing counts",
+      "file": "heldscope.go",
+      "old": "\tif heldMarkupRe.MatchString(cell) {\n\t\treturn heldCellOther\n\t}",
+      "new": "\tif false && heldMarkupRe.MatchString(cell) {\n\t\treturn heldCellOther\n\t}"
+    },
+    {
+      "name": "S2-r2: invisible format characters count",
+      "file": "heldscope.go",
+      "old": "\t\tif unicode.Is(unicode.Cf, r) {",
+      "new": "\t\tif false && unicode.Is(unicode.Cf, r) {"
+    },
+    {
+      "name": "over-strict: an empty result cell blocks the row",
+      "file": "heldscope.go",
+      "old": "\tif n == \"\" {\n\t\treturn heldCellEmpty\n\t}",
+      "new": "\tif n == \"\" {\n\t\treturn heldCellOther\n\t}"
+    },
+    {
+      "name": "over-strict: struck text in a covering cell is read",
+      "file": "heldscope.go",
+      "old": "\tcell = strikethroughRe.ReplaceAllString(cell, \"\")\n\tif heldMarkupRe",
+      "new": "\tif heldMarkupRe"
+    },
+    {
+      "name": "A6: row keys ignore the key column's name",
+      "file": "heldscope.go",
+      "old": "return heldNorm(header) + \"\\x1f\" + k",
+      "new": "return k"
     }
   ]
 }

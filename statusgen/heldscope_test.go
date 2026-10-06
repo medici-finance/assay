@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +39,47 @@ func passRun(verdict string) string {
 	return "### Run 2 — 2026-10-03\n\n" + scopeHdr +
 		scopeRow("1", "exit 0", "exit 0, ok") +
 		scopeRow("2", "exit 0", "exit 0, ok") + "\n" + verdict + "\n"
+}
+
+// coverRun is a later run whose row 1 is green and whose row 2 has an empty
+// Exit cell and the given Result cell, closing on a strict PASS.
+func coverRun(exit, result string) string {
+	return "### Run 2\n\n| # | Command | Exit | Result |\n|---|---|---|---|\n" +
+		"| 1 | `go test ./...` | 0 | ok |\n" +
+		"| 2 | `go test ./integration/...` | " + exit + " | " + result + " |\n\n**VERIFY: PASS**\n"
+}
+
+// TestHeldScopeCoverOutcome: a covering row 2 re-runs the earlier HELD row
+// only when its result reads as a recognised clean outcome. A placeholder, a
+// carry-forward, an unrun outcome, a note, or a cell that renders empty
+// leaves the earlier hold read (S1-r2, S2-r2).
+func TestHeldScopeCoverOutcome(t *testing.T) {
+	refuse := []string{
+		"—", "-", "n/a", "pending", "unchanged", "same as Run 1", "see Run 1",
+		"not re-run", "not run", "skipped", "pass (same as Run 1)", "ok, carried",
+		"exit 6", "runner offline", "FAIL", "HELD — deferred to #12",
+		"<!-- ok -->", "<br>", "&nbsp;", "<span></span>", "\\ ", "\u200b",
+		"ok\u200b", "<b>ok</b>", "&#111;k", "~~ok~~", "ok<br>", "ok &nbsp;",
+	}
+	var cases []heldScanCase
+	for _, r := range refuse {
+		cases = append(cases, heldScanCase{"result " + strconv.Quote(r), heldRun + coverRun("", r), true})
+	}
+	cases = append(cases,
+		heldScanCase{"exit 0 beside a dash", heldRun + coverRun("0", "—"), true},
+		heldScanCase{"exit 0 beside a note", heldRun + coverRun("0", "same as Run 1"), true},
+		heldScanCase{"note table covers nothing",
+			heldRun + "### Run 2\n\n| # | Note |\n|---|---|\n| 1 | ok |\n| 2 | runner still offline |\n\n**VERIFY: PASS**\n", true},
+		heldScanCase{"key column renamed",
+			heldRun + "### Run 2\n\n| Row | Command | Exit | Result |\n|---|---|---|---|\n| 1 | `go test ./...` | 0 | ok |\n" +
+				"| 2 | `go test ./integration/...` | 0 | ok |\n\n**VERIFY: PASS**\n", true},
+		heldScanCase{"result ok", heldRun + coverRun("", "ok"), false},
+		heldScanCase{"struck note beside ok", heldRun + coverRun("0", "ok ~~pending~~"), false},
+		heldScanCase{"exit 0 alone", heldRun + coverRun("0", ""), false},
+		heldScanCase{"bold PASS with detail", heldRun + coverRun("0", "**PASS**: 12 tests"), false},
+		heldScanCase{"exit 0 and passed", heldRun + coverRun("exit 0", "passed (12 tests)"), false},
+	)
+	runHeldScanCases(t, cases)
 }
 
 // TestHeldScopeCurrentHeldRefuses: a genuine held row in the current entry

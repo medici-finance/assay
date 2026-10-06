@@ -3,6 +3,7 @@ package main
 import (
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // The read scope of the held/could-not-check scan (#1894).
@@ -55,10 +56,15 @@ import (
 //     of an aligned row of a results table (rule 1) with a non-empty row key
 //     (heldRowKey). One held occurrence anywhere else — prose, a misaligned
 //     row, a table of another shape — leaves every entry read;
-//     - the last entry has live results tables (heldCovered) whose rows,
-//     each carrying a result, have the same key text as every one of those
-//     rows. A later run that re-ran nothing, or re-ran other rows, replaces
-//     nothing.
+//     - the last entry has live results tables (heldCovered) with a row of
+//     the same key (heldRowKey: key-column name and key text) for every one
+//     of those rows, whose result cells read as a recognised clean outcome
+//     (heldOutcome): at least one opens with ok, PASS, exit 0 or the like,
+//     and none is a placeholder (—, n/a), a carry-forward (same as Run 1,
+//     unchanged, see above), an unrun, failed or held outcome, markup that
+//     may render as nothing (<!-- -->, <br>, &nbsp;, a backslash escape) or
+//     unrecognised text. A later run that re-ran nothing, re-ran other rows,
+//     or wrote anything but a clean outcome for a row replaces nothing.
 //     Supersession is never inferred inside one entry: a later table under
 //     the same heading does not clear an earlier row in it. It is
 //     POSITIONAL, not dated: the entry written last in the file is the
@@ -375,11 +381,17 @@ func heldColumn(header string) (key, notResult bool) {
 	return false, false
 }
 
-// heldRowKey reads a row-key cell (rule 3): its normalised text (heldNorm).
-// Rows correspond only when their key texts are equal, so two rows that
-// render alike but are written differently never match. An empty key cell is
-// not a key ("").
-func heldRowKey(cell string) string { return heldNorm(cell) }
+// heldRowKey reads a row key (rule 3): the key column's header name and the
+// row's key cell, each normalised (heldNorm). Rows correspond only when both
+// are equal, so a `#`-keyed row never matches a Command-keyed one, and two
+// rows that render alike but are written differently never match. An empty
+// key cell is not a key ("").
+func heldRowKey(header, cell string) string {
+	if k := heldNorm(cell); k != "" {
+		return heldNorm(header) + "\x1f" + k
+	}
+	return ""
+}
 
 // heldSeparatorRow reports whether line is a table's header separator.
 func heldSeparatorRow(line string) bool {
@@ -463,7 +475,8 @@ func heldScanScope(evidence string) heldScope {
 							}
 						}
 						kc := cells[tb.keyCol]
-						out[r].key = heldRowKey(lines[r][kc[0]:kc[1]])
+						hc := header[tb.keyCol]
+						out[r].key = heldRowKey(lines[i][hc[0]:hc[1]], lines[r][kc[0]:kc[1]])
 					}
 				}
 			}
@@ -492,8 +505,9 @@ func heldScanScope(evidence string) heldScope {
 }
 
 // heldCovered returns the row keys the last entry (from line last on)
-// re-ran: the keys of the aligned rows, each carrying a result, of its live
-// results tables. A table counts only when it opens its own block (the line
+// re-ran clean: the keys of the aligned rows of its live results tables
+// whose result cells hold at least one recognised clean outcome and nothing
+// else that is visible (heldOutcome). A table counts only when it opens its own block (the line
 // before it is blank or the entry heading, so it cannot continue a blockquote
 // or a list item), and every line of it is at column 0 and renders live.
 func heldCovered(lines []string, live []bool, out []heldLineRead, tables []heldTable, last int) map[string]bool {
@@ -517,22 +531,76 @@ func heldCovered(lines []string, live []bool, out []heldLineRead, tables []heldT
 				continue
 			}
 			cells := heldCellRanges(lines[r])
-			ran := false
+			ran, other := false, false
 			for c, rg := range cells {
 				if tb.notResult[c] {
 					continue
 				}
-				cell := strikethroughRe.ReplaceAllString(lines[r][rg[0]:rg[1]], "")
-				if heldNorm(cell) != "" {
+				switch heldOutcome(lines[r][rg[0]:rg[1]]) {
+				case heldCellPass:
 					ran = true
+				case heldCellOther:
+					other = true
 				}
 			}
-			if ran {
+			if ran && !other {
 				covered[out[r].key] = true
 			}
 		}
 	}
 	return covered
+}
+
+// heldCellState is what a covering row's result cell says (heldOutcome).
+type heldCellState int
+
+const (
+	heldCellEmpty heldCellState = iota // renders as nothing a reader could see
+	heldCellPass                       // a recognised clean outcome
+	heldCellOther                      // anything else: a placeholder, a carry-forward, markup, unrecognised text
+)
+
+var (
+	// heldOutcomeRe is a recognised clean outcome at the start of a result
+	// cell: "ok", "PASS: …", "passed", "green", "exit 0", "rc=0", a bare
+	// "0", a check mark.
+	heldOutcomeRe = regexp.MustCompile(`(?i)^(?:ok|pass(?:ed|es)?|green|clean|success(?:ful)?|exit(?:[ \t]+code)?[ \t]*[:=]?[ \t]*0|rc[ \t]*[:=]?[ \t]*0|0|✓|✔|✅)(?:$|[^\p{L}\p{N}.]|\.(?:[ \t]|$))`)
+	// heldCarryRe is a word that says the row was not run afresh, or did not
+	// come out clean, anywhere in the cell: a placeholder, a carry-forward,
+	// an unrun or negated outcome, a failure.
+	heldCarryRe = regexp.MustCompile(`(?i)\b(?:not|n/a|none|pending|same|see|unchanged|carr(?:y|ied|ies)|previous(?:ly)?|prior|earlier|above|before|skip\w*|unrun|deferred|todo|tbd|wait\w*|unknown|cached|reused|omitted|fail\w*|held|hold|blocked|could-not-check|errors?|timeout|timed|offline|run[ \t]+\d+|\w+n't)\b`)
+	// heldMarkupRe is markup whose rendering the scan does not model in a
+	// result cell: an HTML tag or comment, a character reference, a
+	// backslash escape.
+	heldMarkupRe = regexp.MustCompile(`<[A-Za-z!/?]|&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);|\\`)
+)
+
+// heldOutcome classifies one result cell of a covering row by what it renders
+// as. Struck spans are removed first. A cell carrying markup the scan does
+// not render (heldMarkupRe) or an invisible format character (a zero-width
+// space, a joiner) is heldCellOther: it may render as nothing, so it is
+// never read as a result. Otherwise the cell is heldCellPass only when it
+// opens with a recognised outcome (heldOutcomeRe) and carries no
+// carry-forward or unclean word (heldCarryRe); anything else — a placeholder
+// (—, n/a), a note, unrecognised text — is heldCellOther.
+func heldOutcome(cell string) heldCellState {
+	cell = strikethroughRe.ReplaceAllString(cell, "")
+	if heldMarkupRe.MatchString(cell) {
+		return heldCellOther
+	}
+	for _, r := range cell {
+		if unicode.Is(unicode.Cf, r) {
+			return heldCellOther
+		}
+	}
+	n := strings.Trim(heldNorm(cell), "`*_ ")
+	if n == "" {
+		return heldCellEmpty
+	}
+	if heldCarryRe.MatchString(n) || !heldOutcomeRe.MatchString(n) {
+		return heldCellOther
+	}
+	return heldCellPass
 }
 
 var (
