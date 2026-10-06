@@ -168,6 +168,12 @@
       "file": "internal/cellscratch/source.go",
       "old": "// SourceRevision admits",
       "new": "func secondSourceReader(source string) { sourceGitCmd(context.Background(), source, \"ls-tree\") }\n\n// SourceRevision admits"
+    },
+    {
+      "name": "reject valid source roots",
+      "file": "internal/cellscratch/source.go",
+      "old": "if !os.SameFile(sourceInfo, rootInfo) {",
+      "new": "if os.SameFile(sourceInfo, rootInfo) {"
     }
   ]
 }
