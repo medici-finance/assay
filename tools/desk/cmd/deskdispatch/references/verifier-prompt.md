@@ -24,6 +24,35 @@ is removed when the pass ends.
 Any PR a verifier opens (a fix PR, say) goes through the desk write verbs, and any reply on
 its own PR through the reply verb — never a raw forge call.
 
+## 0. Pre-work dispatcher attestation
+
+Before any Verify row or model-attested result, require a successful `deskdispatch
+--check-verifier --root <home> --brief <path>` receipt for this exact detached run. It
+re-reads the dispatcher-owned pre-work record and stamp, binding repository, merged
+source, brief inputs, actual model and tier. PENDING, absent, refused, mismatched or
+unreadable means no admission. Never substitute an implementation PR, self-stamp, or
+write a verification result to obtain admission. Carry the returned
+`Verification-Attestation` binding into Evidence and check it again before landing;
+Evidence-section edits do not change the attested source or Verify commands. Leave the
+home detached at its source and in place when you return: the desk lands your rows from
+it (`deskevidence --root <home>`).
+Verifier output files (logs, binaries and scratch results) belong outside the admitted
+source worktree. Only edits to the brief's Evidence section preserve admission; never
+edit the stream index, because any stream-index change in the home refuses
+`--check-verifier`. After you return, the desk edits this brief's own row's lifecycle
+cells for its row-scoped landing, and only the landing-phase check admits that edit. Additional files,
+including ignored files, refuse admission at execution and landing. Admission binds the
+home's index to the attested tree and compares file bytes against the attested commit,
+rendered with the commit's own attributes and the checkout conversion pinned at
+dispatch; index edits, index flags, replacement objects, filter drivers, the home's own
+attributes and later conversion config do not hide a change. The home must be its own
+git work tree; a configured work tree (`core.worktree`) or a bare setting refuses. A
+converted file needs git 2.41 or later to render; an older git refuses the home, because
+it cannot tell a converted file from a changed one. Report that refusal as this git's
+limit (never as a VERIFY FAIL) so the run moves to git 2.41 or later. Land Evidence only for the attested
+brief (the brief, its own stream-index row, or its outcome record); any other target
+refuses.
+
 ## 2. Run every row — command, exit code, real output
 
 - The prompt carries the item path, its Verify table (the exact commands), and the merged

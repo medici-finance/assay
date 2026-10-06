@@ -4904,6 +4904,111 @@ skills and desk sessions bind to this **CLI surface**. That is the dependency di
 ends prose-vs-binary drift — prose → CLI → engine — and it is what lets the engine's
 internals (and even its module home) change without a rewrite anywhere else.
 
+**Stamp after the PR opens.** A worker dispatched before its PR exists leaves the model
+stamp PENDING. The dispatching worker-desk sends the new PR number and the actual selected
+model/tier from its real dispatch receipt to the coordinator desk (`the-desk`). The coordinator
+runs the following command; both worker-desk and its child worker are refused directly:
+
+```sh
+deskdispatch --stamp-only --repo example-org/project --pr 42 --model gpt-6.1-sol --tier strong
+```
+
+Pass the original `--kit` for a non-default kit. The session's bound dispatcher role must
+match that kit's stamp writer; worker sessions cannot self-attest. Sharing a `DESK_SESSION`
+for claim custody does not establish dispatcher authority. Never change session identity to
+make this command pass. This path acquires no
+claim, allocates no worktree, invokes no lifecycle hook, registers no roster entry and
+launches no worker. It does not revive a released review claim. `--model` and `--tier`
+are explicit, never inferred from an old stamp or a model-name lookup.
+
+The model slug vocabulary remains open. `gpt-6-astra` and `gpt-6.1-sol` are preserved;
+`gpt-6-1-sol` is a distinct accepted literal, not an alias. Use the exact harness selection.
+Existing label normalization (lowercase and trim) remains shared with ordinary dispatch.
+
+The existing stamp step owns both modes: absent stamps are applied, an identical accepted
+pair is a verified no-op, and partial/conflicting/foreign/unattributed stamps are repaired
+from the supplied selection through `ReStampRemovals`. A failed label or timeline read
+returns unverifiable before mutation. Writes are followed by label and timeline readback;
+only the exact pair accepted by `AttestedModelStampOf` produces an applied-and-verified
+receipt. Failed or unobserved writes return exit 6; retry with the same selection after
+investigating the failure. No receipt claims execution surveillance or invented provenance.
+`--dry-run` prints the read-derived plan without mutation or audit append.
+
+Real invocations record `verb=stamp-only` in the standard desk audit log, including the
+repo, PR, requested model/tier/kit and the verified result or refusal. The downstream
+capability floor (including review posting and ready-flip) and auto-lane reader retain
+their existing shared applier-aware semantics. Legacy `deskrestamp` remains the separate,
+cutoff-gated migration that preserves existing content; its provenance rules are unchanged.
+
+**Verifier pre-work admission.** A verifier has no result yet and needs no PR to start.
+`deskdispatch <item> --kit verifier --model gpt-6-astra --tier strong --brief <path>`
+creates a typed, dispatcher-authored attestation issue for the allocated detached worktree.
+Its immutable body binds a random run identifier digest, repository, exact merged-main
+commit, brief/content digest and selected model/tier. Existing desk custody owns both
+issue creation and the shared stamp applier; the verifier desk and child may share the
+verifier App, but that App never becomes stamp authority. Configurations binding desk
+and verifier to the same actor refuse this attestation. Existing PR self-stamp rules stay
+unchanged. No record claims execution surveillance or a verification result.
+
+Successful readback closes the record before the prompt is emitted. `ListOpenIssues`
+excludes its reserved typed title only when authored by the bound dispatcher, across
+issueboard, deskread, deskinbox, deskmonitor and deskboard intake/work scans, including
+the create-to-close window. Direct typed reads
+and exact-run recovery search remain available for audit. The record uses the existing
+model/tier labels, not a second model vocabulary.
+
+Before any Verify row, run `deskdispatch --check-verifier --root <home> --brief <path>`.
+`statusgen verifyrun` does this automatically in a verifier session or an attested worktree;
+its dry-run still executes commands and therefore needs admission. `--check` only audits
+existing witnesses. The native verifier adapter gates before spawning; the interim adapter
+requires its `--root` (the scan root) to be the already-attested verifier home before
+invoking its feeder. Both check again before landing. `deskevidence` also reads the same
+binding, at its `--root`, before any outcome or Evidence write, and carries
+`Verification-Attestation` into its Evidence draft. Land from the dispatched verifier home:
+`deskevidence <owner/repo> <branch> --root <home> --brief-path <brief> --evidence-file
+<absolute fragment outside the home>`; the stream-index flip lands from the same `--root`
+after the desk (never the verifier, whose `--check-verifier` refuses any stream-index
+change) edits this brief's own row in the home's tracked index file, and an outcome record
+names an absolute file outside the home. Before an outcome record, refresh only the brief in
+the home from the target branch; moving the home's HEAD refuses admission. With
+`statusgen --in-container`, admission runs on the host before the handoff, so the inner
+witness output carries no binding line. Edits to the brief's Evidence section preserve
+admission. The stream index is a source file until Evidence landing, when it may carry only
+this brief's own row's lifecycle cells (Status, Verified, Reviewed); another row, prose or
+this row's authoring cells refuse, and if another row moved on the target branch after
+dispatch the outcome record refuses and the brief is re-dispatched (a new record and stamp
+from fresh main; Evidence already landed is kept). Admission binds the home's index to the
+attested tree (same paths, modes and blobs, no staged change) and renders each file from
+the attested commit with that commit's own attributes (`--attr-source`) and the checkout
+conversion pinned in the dispatch record; a home carrying its own attributes file refuses,
+and the global and system attributes files, a configured attribute tree and later
+conversion config are not read. The home must be its own git work tree: git's resolved
+work tree must be the home, and a configured work tree (`core.worktree`, at any scope,
+including the worktree's own config) or a bare setting refuses, so a row's git cannot read
+files other than the ones admission compared. Rendering a converted file needs git 2.41 or
+later; an older git refuses any file that differs from its blob rather than render it from
+attributes the home could move. That refusal says the home cannot be admitted on this git
+(which cannot tell a converted file from a changed one); re-run on git 2.41 or later, where
+only a real change refuses, never relax the check. Inherited `GIT_*` variables are dropped for every
+admission read. Out of scope: config that changes how a Verify row presents or matches
+content (diff drivers, pagers, aliases, grep settings) and refs other than `HEAD`, which
+the refresh flow moves by design.
+Write logs, binaries and other
+outputs outside the admitted source worktree; additional files (including ignored files)
+refuse admission at execution and Evidence landing. Keep the worktree detached; changing
+the source commit or Verify commands refuses admission. Missing tools, absent/PENDING stamps, stale sources, edited records and unreadable
+provenance are non-success. Container verification needs the same readable worktree binding;
+no environment override or caller-supplied receipt bypasses it.
+
+Failed dispatch emits no verifier prompt, releases the claim and retains the worktree and
+run metadata for recovery. The coordinator can run `deskdispatch --attest-verifier --root
+<home>` without claim acquisition, allocation or launch. It reuses the exact record and
+selection. A lost create response is recovered by the persisted run identifier; if that
+record is not yet readable, recovery refuses instead of creating a duplicate. Recover,
+reacquire the original claim, then admit and launch the same run. Abandoning a failed run
+requires reconciling its typed record before deleting the retained worktree. `--dry-run`
+mutates nothing and grants no admission. A genuinely new pass gets a new run identifier.
+
 **Re-review preserves earlier evidence.** Every `deskdispatch --kit review` allocates a
 fresh detached worktree with a bounded random directory suffix, even in the same desk session.
 The original PR/lane claim key stays unchanged, so a live holder still blocks a second dispatch.

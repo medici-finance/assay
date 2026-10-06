@@ -120,12 +120,57 @@ exit reserve) and the summary-line grammar are stated once in
 executable form at `../../scripts/tick-summary.sh`. This section states no rule that file does
 not own.
 
+## Pre-work admission
+
+A verifier starts only after the dispatcher has produced a successful pre-work stamp
+receipt for its exact run. `deskdispatch --kit verifier` creates a typed attestation
+record before emitting the prompt; it uses the existing desk custody even when this
+standing desk and its child both use the verifier App. The record is dispatch provenance,
+never verification evidence. Do not stamp an unrelated implementation PR or wait for
+a future Evidence PR to establish admission. PENDING is not admission.
+
+Before any Verify row or model-attested result, the verifier runs `deskdispatch
+--check-verifier --root <home> --brief <path>` and requires success. The witness runner
+enforces that same execution-phase check; the Evidence verb runs the landing-phase check
+at its `--root`, so the desk lands from the dispatched verifier home (see **Landing**
+below), never from its own checkout. Retain the returned exact run/source/model/tier
+binding in Evidence and the Evidence draft handoff. An edited record, changed source or
+changed Verify commands stops the run. The verifier edits only the brief's Evidence
+section and never the stream index: any stream-index change in the home refuses the
+execution-phase check, so a verifier that edits its own row loses the run. After the
+verifier returns, the desk edits the brief's own row's lifecycle cells in the home for the
+row-scoped landing, and only the landing-phase check admits that edit. Verifier output files (logs, binaries and scratch
+results) belong outside the admitted source worktree; additional files, including ignored
+files, refuse admission at execution and landing. Admission binds the home's index to the
+attested tree and compares every file's bytes against the attested commit, rendered with
+that commit's own attributes and the checkout conversion pinned at dispatch, so index
+edits, index flags, replacement objects and filter drivers cannot hide a changed input.
+The home must be its own git work tree: a configured work tree (`core.worktree`, at any
+scope) or none at all (`core.bare`) refuses, since a row's git would read elsewhere.
+Rendering a converted file (an eol or encoding attribute) needs git 2.41 or later; an
+older git refuses such a home rather than render it from attributes the home could move.
+That refusal names the git, not a VERIFY FAIL: such a git cannot tell a converted file
+from a changed one. Report it and re-run on git 2.41 or later (an upgraded verifier
+image), where only a real change refuses; never relax admission to get past it.
+A change to any other row of the stream index after dispatch, such as another brief's
+landing, also refuses the home: re-dispatch from fresh main, which costs a new record
+and stamp but no Evidence already landed. The record admits
+Evidence only for its own brief: that brief, its stream-index row, or an outcome record
+keyed to it. Landing Evidence for any other brief refuses, even with a valid record.
+
+On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
+Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator
+desk, which runs `deskdispatch --attest-verifier --root <home>`. This creates no replacement
+claim, worktree or worker. Recover the same record, reacquire the original claim, then
+check admission before launching. If an uncertain create cannot be found, hold recovery;
+never create a new run to evade the missing receipt. Do not change identity to recover it.
+
 ## The loop
 
 1. **`verifyloop plan --root <repo>`** from `$WT`: the deterministic scheduler prints the Awaiting
    queue, each item's tier, and the exact dispatch instruction (or human-route note). It spawns nothing
    and writes nothing. **Do not hand-compute the queue** — the plan IS the worklist.
-2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier`
+2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier --model <actual-model> --tier <selected-tier> --brief <path>`
    (claim → worktree → roster → decision gate → model stamp → prompt). Tier 1 (`implemented`, empty
    Evidence) before Tier 2 (`verified → done` closes), oldest-first within a tier; Tier 2 is never
    hidden — a filtered-out free close becomes permanent debt. A brief whose Verify table carries ≥4
@@ -355,9 +400,17 @@ IS the report. **In addition** write one outcome record with `deskevidence --out
 desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
 computable from prose). On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
-landed on the target branch and `statusgen --lint` accepts that same tree. Refresh the local
-checkout before writing; `deskevidence` checks the closure and compares the brief and stream README
-with the target branch. Evidence-only landings that leave Status `implemented` MUST NOT record a
+landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
+refresh only the brief in the verifier home from the target branch
+(`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`);
+never check out, pull or merge in the home, because moving its detached HEAD refuses
+admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
+row's lifecycle cells, which the row-scoped landing already put on the target branch. Admission
+refuses any other change to it (another row, prose, or this row's authoring cells), and before
+execution it refuses any change at all. `deskevidence --root <home>` checks the closure and compares
+the brief and stream README with the target branch; if another row of that README moved on the
+target branch after dispatch, the outcome record refuses, and the brief is re-dispatched from the
+current target branch rather than the README being refreshed. Evidence-only landings that leave Status `implemented` MUST NOT record a
 verified outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
 recording is unchanged. Records are immutable — a correction is a NEW record (a fresh `ts`), never an
 edit of one already landed.
@@ -395,7 +448,12 @@ class, not another desk, not a wider branch grant.
 Interface: `deskevidence --help` — positional `<owner/repo> <branch>`, `--evidence-file` required (plus
 `--brief-path` to merge a row into a brief's Evidence section), ONE file per invocation, and it **mints
 its own verifier App token in-process and does NOT read `GH_TOKEN`** (prefixing it with a token `cat`
-only misleads). Set `VERIFIER_MAIN_OK=1`.
+only misleads). Set `VERIFIER_MAIN_OK=1`. Every landing passes `--root <the dispatched verifier home>`,
+where admission is checked. The admitted forms are:
+- Evidence rows: `--brief-path <brief> --evidence-file <absolute fragment path>`, with the fragment written to the desk's own scratch OUTSIDE the home (a fragment inside the home is an untracked file and refuses admission).
+- Stream-index flip: edit the home's tracked `README.md` row, then `--evidence-file docs/streams/<stream>/README.md --row <NN>`.
+- Outcome record: `--outcome-record <absolute file outside the home>`.
+Release the home only after the last landing for its run.
 
 **A sanctioned channel is not a way around a blocked write.** `deskevidence` is where the real guards
 live and fire — `VERIFIER_MAIN_OK`, the repo allowlist, the BodyCheck secret/impersonation scan, the
@@ -460,7 +518,8 @@ a branch as the target instead of `main`:
    commit.
 
 1. **`deskevidence <owner/repo> verify-desk/<stream>-<NN>-evidence-<YYYYMMDD>`, ONE invocation per
-   file** — the same one-file-per-call interface, just aimed at the branch: first the brief's
+   file** — the same one-file-per-call interface and `--root <verifier home>` landing forms as
+   **Interface** above, just aimed at the branch: first the brief's
    `## Evidence` rows (`--evidence-file` plus `--brief-path`), then the stream README row flip
    `implemented → verified`. **Both land on the SAME branch and ride in the SAME PR** — an Evidence PR
    that carries the rows but not the flip leaves the board lying, and a flip without the rows is a

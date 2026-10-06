@@ -228,6 +228,9 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 // stdout/stderr.
 func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Helper()
+	oldAdmission := verifierEvidenceAdmissionFn
+	verifierEvidenceAdmissionFn = func(string, string, string) (deskkit.VerifierReceipt, error) { return deskkit.VerifierReceipt{}, nil }
+	t.Cleanup(func() { verifierEvidenceAdmissionFn = oldAdmission })
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)

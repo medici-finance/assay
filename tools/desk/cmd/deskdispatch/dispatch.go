@@ -113,20 +113,22 @@ var worktreeNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var branchNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 
 type dispatchOpts struct {
-	item       string
-	tier       string
-	kit        string
-	repo       string
-	root       string
-	claimRoot  string
-	model      string
-	branch     string
-	brief      string
-	gateHuman  bool
-	pr         int
-	promptFile string
-	quiet      bool
-	dryRun     bool
+	stampReceipt string
+	stampOnly    bool
+	item         string
+	tier         string
+	kit          string
+	repo         string
+	root         string
+	claimRoot    string
+	model        string
+	branch       string
+	brief        string
+	gateHuman    bool
+	pr           int
+	promptFile   string
+	quiet        bool
+	dryRun       bool
 	// itemAlias is the `<alias>:` prefix split off the item key (deliverable.go) — the alias the
 	// brief is TRACKED under. item carries the key WITHOUT it, so every derivation below (claim
 	// key, branch, worktree name) sees the ordinary grammar.
@@ -146,6 +148,12 @@ type dispatchOpts struct {
 }
 
 func cmdDispatch(args []string) error {
+	if len(args) > 0 && (args[0] == "--check-verifier" || args[0] == "--attest-verifier") {
+		return cmdVerifierAttestation(args[0], args[1:])
+	}
+	if len(args) > 0 && args[0] == "--stamp-only" {
+		return cmdStampOnly(args[1:])
+	}
 	fs := flag.NewFlagSet("deskdispatch", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
 	tier := fs.String("tier", "any", "execution tier the item demands: strong|any")
@@ -517,8 +525,18 @@ func dispatch(o dispatchOpts) error {
 	o.say("%s %s", stepDecisionGate, gate)
 
 	// 5 — the dispatcher's model attestation.
-	stamp, serr := stepStamp(o, repo)
+	var stamp string
+	var serr error
+	if o.kit == "verifier" {
+		stamp, serr = attestVerifierDispatchFn(o, repo, home)
+	} else {
+		stamp, serr = stepStamp(o, repo)
+	}
 	if serr != nil {
+		if o.kit == "verifier" {
+			released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
+			return deskkit.Unverifiable(fmt.Sprintf("verifier attestation failed; NO prompt emitted. Claim %s; retained worktree %s for recovery (deskdispatch --attest-verifier --root <home>). Reacquire the original claim before launching a recovered run: %v", released, home, serr), serr)
+		}
 		return serr
 	}
 	o.say("%s %s", stepModelStamp, stamp)
@@ -633,6 +651,18 @@ type dispatchPlan struct {
 // of bad inputs and asserts NOTHING was executed.
 func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	var plan dispatchPlan
+	if o.kit == "verifier" {
+		role, _, err := deskkit.SessionTokenRole(toolName)
+		if err != nil {
+			return plan, err
+		}
+		if role != deskkit.DispatcherRole && role != "verifier" {
+			return plan, deskkit.Refused("verifier dispatch requires a dispatching desk session")
+		}
+	}
+	if o.kit == "verifier" && (o.model == "" || o.brief == "" || o.pr != 0) {
+		return plan, deskkit.Refused("verifier dispatch requires explicit --model and a source brief; --pr is not a pre-work attestation target")
+	}
 
 	// --worktree is accepted ONLY together with --dry-run. On a real dispatch the home is the
 	// path deskwt printed and nothing else, so an operator-stated one must never reach it —
@@ -1421,6 +1451,9 @@ func holderIsStale(showOut string) (stale bool, state string, ageMin int) {
 // becomes the AGENT's first act after its PR opens, and the exact command is carried in
 // the prompt. This step says which of the two happened; it never goes silent.
 func stepRoster(o dispatchOpts, repo string) string {
+	if o.kit == "verifier" {
+		return "VERIFIER: pre-work attestation is the run target; no PR roster entry is fabricated"
+	}
 	if o.pr <= 0 {
 		return "DEFERRED: no PR yet — the agent self-registers the instant its draft PR opens " +
 			"(the exact command is in the emitted prompt)"
@@ -1508,7 +1541,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	}
 	if o.pr <= 0 {
 		return "PENDING: apply " + strings.Join(labels, " + ") +
-			" under the DISPATCHER's identity the instant the draft PR opens", nil
+			fmt.Sprintf("; send the opened PR and this dispatch selection to the coordinator desk; coordinator runs deskdispatch --stamp-only --repo %s --pr <N> --model %s --tier %s --kit %s after the draft PR opens; never run this as the worker", repo, o.model, o.tier, o.kit), nil
 	}
 	// The identity comes FIRST, before any label is written. The role is the one deskkit
 	// declares as the dispatcher — the same declaration the floor's reader resolves the
@@ -1583,6 +1616,12 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 				"so stamping blind would report success on a PR that stays refused.",
 			stepModelStamp, repo, o.pr, forge, firstLine(perr.Error())), perr)
 	}
+	if change == nil {
+		return "", deskkit.Unverifiable("model-stamp: forge returned no change", nil)
+	}
+	if o.stampOnly && (change.State != "open" || change.MergedAt != "") {
+		return "", deskkit.Refused("stamp-only requires an open change")
+	}
 	events, eerr := fg.ListLabelEvents(fr, o.pr)
 	if eerr != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
@@ -1593,48 +1632,18 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
 	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
+	if o.dryRun {
+		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s); nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge), nil
+	}
 	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
 		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
 		// removed and nothing is re-applied, so a re-dispatch neither churns the label
 		// history nor leaves the PR briefly unstamped.
-		return fmt.Sprintf("OK: %s already standing on %s#%d under the %s App, the identity the capability "+
-			"floor accepts (%s) — an identical stamp is a no-op, nothing was written",
-			strings.Join(labels, " + "), repo, o.pr, stampRole, forge), nil
+		return fmt.Sprintf("OK: verified %s already standing on %s#%d under accepted stamp authority (%s) — an identical stamp is a no-op, nothing was written",
+			strings.Join(labels, " + "), repo, o.pr, forge), nil
 	}
-	if len(stale) > 0 {
-		// The removal is its OWN write, ahead of the application, on purpose: a label named in
-		// both halves of one LabelChange is skipped by the backends as a caller bug, and a
-		// single reconciliation that removed and re-added the same name would leave the forge's
-		// label set unchanged — no new application event, so the standing applier would not
-		// change and the PR would stay refused. Two writes are two events.
-		if _, aerr := fg.ApplyLabels(fr, o.pr, deskkit.LabelChange{
-			Target: deskkit.TargetChange,
-			Remove: stale,
-		}); aerr != nil {
-			return "", deskkit.Unverifiable(fmt.Sprintf(
-				"step %s: could not remove the stamp label(s) %s from %s#%d through the %s backend (%s) — "+
-					"re-applying the intended stamp on top would be a no-op, leaving the PR carrying labels "+
-					"the floor refuses.",
-				stepModelStamp, strings.Join(stale, " + "), repo, o.pr, forge, firstLine(aerr.Error())), aerr)
-		}
-	}
-
-	// Both halves in ONE reconciliation: the backend ensures each label exists (an
-	// already-exists is the success case, so two dispatchers stamping in parallel both end up
-	// with the label present) and applies the pair in one request, so the stamp can never land
-	// half-applied on a forge that writes the set atomically.
-	add := make([]deskkit.LabelSpec, 0, len(labels))
-	for _, l := range labels {
-		add = append(add, deskkit.LabelSpec{Name: l, Color: stampLabelColorHex, Description: stampLabelDescription})
-	}
-	if _, aerr := fg.ApplyLabels(fr, o.pr, deskkit.LabelChange{
-		Target: deskkit.TargetChange,
-		Add:    add,
-	}); aerr != nil {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: could not apply %s to %s#%d through the %s backend (%s) — an INCOMPLETE or absent "+
-				"stamp reads as indeterminate, and one half of a stamp is worse than no stamp at all.",
-			stepModelStamp, strings.Join(labels, " + "), repo, o.pr, forge, firstLine(aerr.Error())), aerr)
+	if err := deskkit.ApplyVerifiedModelStamp(fg, fr, o.pr, deskkit.TargetChange, labels, deskkit.IsStampAuthorityLogin); err != nil {
+		return "", err
 	}
 	// BOTH events are reported. A silent removal is a label disappearing from a PR with no
 	// record of why; the removal is half the repair and belongs in the step report next to
@@ -1645,7 +1654,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			"stamp the floor cannot read — before applying the intended stamp, since adding over a "+
 			"present label is a no-op)", strings.Join(stale, " + "))
 	}
-	return fmt.Sprintf("OK: applied %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
+	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
 		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
 }
 
@@ -1942,8 +1951,15 @@ func emitPrompt(o dispatchOpts, prompt string) error {
 }
 
 func audit(o dispatchOpts, err error) {
+	verb := "dispatch"
+	if o.stampOnly {
+		verb = "stamp-only"
+	}
 	result := deskkit.ResultOK
 	detail := "dispatch prepared item=" + o.item + " tier=" + o.tier + " kit=" + o.kit
+	if o.stampOnly {
+		detail = fmt.Sprintf("repo=%s pr=%d model=%s tier=%s kit=%s: %s", o.repo, o.pr, o.model, o.tier, o.kit, o.stampReceipt)
+	}
 	if o.dryRun {
 		detail = "dry-run item=" + o.item
 	}
@@ -1956,9 +1972,19 @@ func audit(o dispatchOpts, err error) {
 		}
 		detail = firstLine(err.Error())
 	}
+	var auditPR *int
+	var auditRepo string
+	if o.stampOnly {
+		auditRepo = o.repo
+		if o.pr > 0 {
+			auditPR = &o.pr
+		}
+	}
 	if lerr := deskkit.Log(deskkit.Entry{
+		Repo:   auditRepo,
+		PR:     auditPR,
 		Tool:   toolName,
-		Verb:   "dispatch",
+		Verb:   verb,
 		Result: result,
 		Detail: detail,
 		Title:  o.item,

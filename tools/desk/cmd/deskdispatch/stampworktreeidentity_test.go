@@ -68,7 +68,7 @@ func TestVerifierDispatchStampsWorktreeIdentityNotTheSharedCheckouts(t *testing.
 	}
 	t.Cleanup(func() { execCommand = old })
 
-	rc := run([]string{"verdict-lane--05", "--root", root, "--kit", "verifier",
+	rc := run([]string{"verdict-lane--05", "--root", root, "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md",
 		"--tier", "strong", "--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("verifier dispatch rc = %d, want 0", rc)
@@ -106,7 +106,7 @@ func TestVerifierKitUnboundIdentityRefusedPreClaim(t *testing.T) {
 
 	s.replies = happyReplies("/private/tmp/worker-home")
 	rc, stderr := runCapturingStderr(t, []string{"verdict-lane--05", "--root", root,
-		"--kit", "verifier", "--tier", "strong", "--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+		"--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md", "--tier", "strong", "--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("unbound verifier identity rc = %d, want 5 (refused); stderr:\n%s", rc, stderr)

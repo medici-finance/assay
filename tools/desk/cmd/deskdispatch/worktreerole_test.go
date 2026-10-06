@@ -30,7 +30,7 @@ func TestWorktreeCreatePassesTheDispatchedRole(t *testing.T) {
 			s.replies = happyReplies("/private/tmp/role-home")
 			args := []string{"example-stream/07", "--root", root, "--prompt-file", filepath.Join(t.TempDir(), "p.md")}
 			if tc.kit != "" {
-				args = append(args, "--kit", tc.kit)
+				args = append(args, "--kit", tc.kit, "--model", "gpt-6-astra", "--brief", "spec.md")
 			}
 			if rc := run(args); rc != deskkit.ExitOK {
 				t.Fatalf("dispatch rc = %d, want 0", rc)
