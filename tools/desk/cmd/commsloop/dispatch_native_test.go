@@ -15,6 +15,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
 	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -31,7 +32,7 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	before, berr := sourceTreeFiles(".")
-	code := m.Run()
+	code := gitquiet.Run(m)
 	after, aerr := sourceTreeFiles(".")
 	switch {
 	case berr != nil || aerr != nil:

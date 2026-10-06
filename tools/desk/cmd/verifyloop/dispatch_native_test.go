@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/acp"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -25,7 +26,7 @@ func TestMain(m *testing.M) {
 		runFakeACPAgent(mode)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	os.Exit(gitquiet.Run(m))
 }
 
 // runFakeACPAgent implements just enough of the ACP agent side to drive verifyloop's native

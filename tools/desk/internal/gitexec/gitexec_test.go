@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 func TestAllowlistRefusesUnknownToolVerb(t *testing.T) {
@@ -82,10 +84,13 @@ func TestRunExecutesAllowlistedVerbInFixture(t *testing.T) {
 	if _, err := Run("deskadvisory", dir, init...); err != nil {
 		t.Fatalf("fixture init: %v", err)
 	}
-	for _, kv := range [][2]string{
+	// Run scrubs GIT_TEMPLATE_DIR with every other GIT_* variable, so the init above
+	// did not take gitquiet's template; the fixture writes the settings itself, or
+	// the commit below forks automatic maintenance into t.TempDir.
+	for _, kv := range append([][2]string{
 		{"user.name", "test"},
 		{"user.email", "test@example.invalid"},
-	} {
+	}, gitquiet.Settings...) {
 		if _, err := Run("deskwt", dir, "config", kv[0], kv[1]); err != nil {
 			t.Fatalf("fixture config: %v", err)
 		}

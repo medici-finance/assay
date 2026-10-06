@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // The exec-boundary tests run the shim as a REAL PROCESS reached through a
@@ -29,7 +31,7 @@ func TestMain(m *testing.M) {
 	if os.Getenv(shimTestModeEnv) == "1" {
 		os.Exit(run(os.Args, os.Stdout, os.Stderr))
 	}
-	os.Exit(m.Run())
+	os.Exit(gitquiet.Run(m))
 }
 
 // --- harness -----------------------------------------------------------------
