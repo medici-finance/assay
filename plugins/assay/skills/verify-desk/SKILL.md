@@ -387,11 +387,16 @@ desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-bac
 computable from prose). On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
 landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
-refresh only the brief and stream README files in the verifier home from the target branch
-(`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`
-for each); never check out, pull or merge in the home, because moving its detached HEAD refuses
-admission. `deskevidence --root <home>` checks the closure and compares the brief and stream README
-with the target branch. Evidence-only landings that leave Status `implemented` MUST NOT record a
+refresh only the brief in the verifier home from the target branch
+(`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`);
+never check out, pull or merge in the home, because moving its detached HEAD refuses
+admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
+row's lifecycle cells, which the row-scoped landing already put on the target branch. Admission
+refuses any other change to it (another row, prose, or this row's authoring cells), and before
+execution it refuses any change at all. `deskevidence --root <home>` checks the closure and compares
+the brief and stream README with the target branch; if another row of that README moved on the
+target branch after dispatch, the outcome record refuses, and the brief is re-dispatched from the
+current target branch rather than the README being refreshed. Evidence-only landings that leave Status `implemented` MUST NOT record a
 verified outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
 recording is unchanged. Records are immutable — a correction is a NEW record (a fresh `ts`), never an
 edit of one already landed.

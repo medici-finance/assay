@@ -96,6 +96,13 @@ func (f *verifierForge) SearchIssues(ForgeRepo, SearchIssuesInput) ([]IssueSearc
 }
 func verifierFixture(t *testing.T, model string) (string, *verifierForge) {
 	t.Helper()
+	return verifierFixtureWith(t, model, "brief.md", nil)
+}
+
+// verifierFixtureWith commits the base fixture plus extra files, then prepares
+// the brief at briefPath (one of them) from the detached origin/main commit.
+func verifierFixtureWith(t *testing.T, model, briefPath string, extra map[string]string) (string, *verifierForge) {
+	t.Helper()
 	plantRoster(t, "ASSAY_BLESS_LOGIN=example-human:2001\nASSAY_TRUSTED_LOGINS=example-human:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:1,verifier=example-verifier:2\nASSAY_ALLOWED_REPOS=example-org/one:ci:private\n")
 	root := t.TempDir()
 	git := func(args ...string) {
@@ -116,11 +123,19 @@ func verifierFixture(t *testing.T, model string) (string, *verifierForge) {
 			t.Fatal(err)
 		}
 	}
-	git("add", "brief.md", "README.md", "source.txt", ".gitignore")
+	for name, body := range extra {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("add", "-A")
 	git("commit", "-m", "fixture")
 	git("update-ref", "refs/remotes/origin/main", "HEAD")
 	git("checkout", "--detach")
-	if err := PrepareVerifierAttestation(root, "example-org/one", "brief.md", model, "strong"); err != nil {
+	if err := PrepareVerifierAttestation(root, "example-org/one", briefPath, model, "strong"); err != nil {
 		t.Fatal(err)
 	}
 	return root, &verifierForge{actor: "example-desk[bot]"}
@@ -151,9 +166,11 @@ func TestVerifierAttestationRoundTrip(t *testing.T) {
 			b, _ := os.ReadFile(path)
 			b = []byte(strings.Replace(string(b), "Pending.", "Two observed rows.\n\n"+receipt.EvidenceBinding(), 1))
 			os.WriteFile(path, b, 0600)
-			os.WriteFile(filepath.Join(root, "README.md"), []byte("implemented -> verified"), 0600)
 			if _, err := CheckVerifierAttestationWithForge(root, "brief.md", f); err != nil {
-				t.Fatalf("legitimate Evidence/status edit deadlocked: %v", err)
+				t.Fatalf("legitimate Evidence edit deadlocked: %v", err)
+			}
+			if _, err := CheckVerifierEvidenceWithForge(root, "example-org/one", "brief.md", f); err != nil {
+				t.Fatalf("legitimate Evidence edit deadlocked at landing: %v", err)
 			}
 			if err := receipt.CheckEvidenceContent("brief.md", b, nil); err != nil {
 				t.Fatal(err)
@@ -313,9 +330,14 @@ func TestAttestActorSeparation(t *testing.T) {
 // The same reader is used before execution and before Evidence landing. Each
 // fixture alters the real dispatched home, leaving the immutable record intact.
 func TestAttestSourceClosure(t *testing.T) {
-	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter"} {
+	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter", "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "attributes-file", "attr-tree", "stream-index"} {
 		t.Run(mode, func(t *testing.T) {
-			root, f := verifierFixture(t, "gpt-6-astra")
+			var extra map[string]string
+			if strings.HasSuffix(mode, "-filter") {
+				// The filter attribute is attested; only the driver is local.
+				extra = map[string]string{".gitattributes": "source.txt filter=fixture\n"}
+			}
+			root, f := verifierFixtureWith(t, "gpt-6-astra", "brief.md", extra)
 			receipt, err := IssueVerifierAttestation(root, f)
 			if err != nil {
 				t.Fatal(err)
@@ -333,6 +355,22 @@ func TestAttestSourceClosure(t *testing.T) {
 				if err := os.Remove(filepath.Join(root, name)); err != nil {
 					t.Fatal(err)
 				}
+			case "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "attributes-file", "attr-tree":
+				// Each mode makes the home's own, unattested attributes or config
+				// convert a tracked file on checkout; the planted bytes are what
+				// git renders under that conversion, so git diff stays silent.
+				name = convertTrackedChange(t, root, mode)
+				want = "source files changed since verifier dispatch: " + name
+				if strings.HasPrefix(mode, "info-attributes") {
+					want = "info/attributes"
+				}
+			case "stream-index":
+				// The stream index is a source file a Verify row may read.
+				name = "README.md"
+				if err := os.WriteFile(filepath.Join(root, name), []byte("rewritten"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				want = "source files changed since verifier dispatch: " + name
 			case "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter":
 				// Each mode changes a tracked input and hides the change from
 				// git's own worktree comparison; the plant is asserted to land.
@@ -364,7 +402,15 @@ func TestAttestSourceClosure(t *testing.T) {
 			}
 			// Check once before execution, then again with allowed Evidence edits.
 			for _, phase := range []string{"execution", "evidence"} {
+				check := func() error {
+					_, err := CheckVerifierAttestationWithForge(root, "brief.md", f)
+					return err
+				}
 				if phase == "evidence" {
+					check = func() error {
+						_, err := CheckVerifierEvidenceWithForge(root, "example-org/one", "brief.md", f)
+						return err
+					}
 					path := filepath.Join(root, "brief.md")
 					b, err := os.ReadFile(path)
 					if err != nil {
@@ -374,7 +420,7 @@ func TestAttestSourceClosure(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if _, err := CheckVerifierAttestationWithForge(root, "brief.md", f); err == nil || !strings.Contains(err.Error(), want) {
+				if err := check(); err == nil || !strings.Contains(err.Error(), want) {
 					t.Fatalf("%s %s: want refusal %q, got %v", phase, mode, want, err)
 				}
 			}
@@ -406,13 +452,6 @@ func hideTrackedChange(t *testing.T, root, name, mode string) {
 		attestGit(t, root, "reset", "-q")
 		attestGit(t, root, "replace", source, other)
 	case "clean-filter", "smudge-filter":
-		attrs := strings.TrimSpace(attestOut(t, root, "rev-parse", "--path-format=absolute", "--git-path", "info/attributes"))
-		if err := os.MkdirAll(filepath.Dir(attrs), 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(attrs, []byte(name+" filter=fixture\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
 		attestGit(t, root, "config", "filter.fixture.clean", "tr A-Z a-z")
 		if mode == "smudge-filter" {
 			// The driver renders the attested blob as the planted bytes, so the
@@ -431,6 +470,65 @@ func hideTrackedChange(t *testing.T, root, name, mode string) {
 	if diff := attestOut(t, root, "diff", "--name-only", "HEAD", "--"); diff != "" {
 		t.Fatalf("%s: change not hidden from git diff: %q", mode, diff)
 	}
+}
+
+// convertTrackedChange makes an unattested conversion apply to .gitignore, then
+// writes the file as git renders the attested blob under it. It asserts the
+// bytes differ from the attested blob and that git diff reports no change.
+func convertTrackedChange(t *testing.T, root, mode string) string {
+	t.Helper()
+	name := ".gitignore"
+	writeAttrs := func(path, body string) {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	info := strings.TrimSpace(attestOut(t, root, "rev-parse", "--path-format=absolute", "--git-path", "info/attributes"))
+	switch mode {
+	case "info-attributes-crlf":
+		writeAttrs(info, name+" text eol=crlf\n")
+	case "info-attributes-encoding":
+		writeAttrs(info, name+" working-tree-encoding=UTF-16\n")
+	case "local-autocrlf":
+		attestGit(t, root, "config", "core.autocrlf", "true")
+	case "attributes-file":
+		file := filepath.Join(t.TempDir(), "attributes")
+		writeAttrs(file, name+" text eol=crlf\n")
+		attestGit(t, root, "config", "core.attributesFile", file)
+	case "attr-tree":
+		// An unattested tree named as the attribute source.
+		blob := strings.TrimSpace(attestIn(t, root, name+" text eol=crlf\n", "hash-object", "-w", "--stdin"))
+		tree := strings.TrimSpace(attestIn(t, root, "100644 blob "+blob+"\t.gitattributes\n", "mktree"))
+		attestGit(t, root, "config", "attr.tree", tree)
+	default:
+		t.Fatalf("unknown conversion mode %s", mode)
+	}
+	attested := attestOut(t, root, "cat-file", "blob", "HEAD:"+name)
+	planted := attestOut(t, root, "cat-file", "--filters", "--path="+name, "HEAD:"+name)
+	if planted == attested {
+		t.Fatalf("%s: conversion did not change the checkout form", mode)
+	}
+	if err := os.WriteFile(filepath.Join(root, name), []byte(planted), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if diff := attestOut(t, root, "diff", "--name-only", "HEAD", "--"); diff != "" {
+		t.Fatalf("%s: change not hidden from git diff: %q", mode, diff)
+	}
+	return name
+}
+
+func attestIn(t *testing.T, root, stdin string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return string(out)
 }
 
 func attestOut(t *testing.T, root string, args ...string) string {
@@ -512,13 +610,17 @@ func TestVerifierSourceClosureCheckoutForms(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(home, "run.ps1")); string(b) != "one\r\ntwo\r\n" {
 		t.Fatalf("checkout did not convert: %q", b)
 	}
-	if err := verifierSourceClosure(home, commit, nil); err != nil {
+	co, err := readVerifierCheckout(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifierSourceClosure(home, commit, co, nil); err != nil {
 		t.Fatalf("clean converted checkout refused: %v", err)
 	}
 	if err := os.Chmod(filepath.Join(home, "tool.sh"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifierSourceClosure(home, commit, nil); err == nil || !strings.Contains(err.Error(), "tool.sh") {
+	if err := verifierSourceClosure(home, commit, co, nil); err == nil || !strings.Contains(err.Error(), "tool.sh") {
 		t.Fatalf("mode change admitted: %v", err)
 	}
 	if err := os.Chmod(filepath.Join(home, "tool.sh"), 0700); err != nil {
@@ -527,7 +629,7 @@ func TestVerifierSourceClosureCheckoutForms(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "run.ps1"), []byte("one\r\nTWO\r\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifierSourceClosure(home, commit, nil); err == nil || !strings.Contains(err.Error(), "run.ps1") {
+	if err := verifierSourceClosure(home, commit, co, nil); err == nil || !strings.Contains(err.Error(), "run.ps1") {
 		t.Fatalf("converted file change admitted: %v", err)
 	}
 }
@@ -566,5 +668,135 @@ func TestVerifierEvidenceTargetBinding(t *testing.T) {
 	root, _ := verifierFixture(t, "gpt-6-astra")
 	if _, err := CheckVerifierEvidence(root, "example-org/one", "other.md"); err == nil || !strings.Contains(err.Error(), "not bound to the attested brief") {
 		t.Fatalf("Evidence for an unattested brief admitted: %v", err)
+	}
+}
+
+// The stream index is source before execution, and at Evidence time may carry
+// only the attested brief's own row's lifecycle edit. Each case edits the real
+// dispatched home; the attested row is 01.
+func TestAttestStreamIndex(t *testing.T) {
+	const brief = "docs/streams/x/brief-01-attested.md"
+	const index = "docs/streams/x/README.md"
+	const table = "# Stream x\n\nProse a Verify row may grep.\n\n" + TableMarkerBegin + "\n" +
+		"| # | Brief | Status | Verified | Reviewed |\n|---|---|---|---|---|\n" +
+		"| 01 | attested | implemented | — | — |\n| 02 | sibling | todo | — | — |\n" + TableMarkerEnd + "\n"
+	edit := func(base, from, to string) string {
+		if strings.Count(base, from) != 1 {
+			t.Fatalf("fixture anchor %q", from)
+		}
+		return strings.Replace(base, from, to, 1)
+	}
+	own := edit(table, "| 01 | attested | implemented | — | — |", "| 01 | attested | verified | 2026-10-06 | — |")
+	for _, c := range []struct {
+		name, content       string
+		remove              bool
+		execution, evidence bool // admitted at each checkpoint
+	}{
+		{name: "unchanged", content: table, execution: true, evidence: true},
+		{name: "own-row-lifecycle", content: own, evidence: true},
+		{name: "rewritten", content: "rewritten\n"},
+		{name: "prose", content: edit(table, "Prose a Verify row may grep.", "Prose changed.")},
+		{name: "foreign-row", content: edit(table, "| 02 | sibling | todo |", "| 02 | sibling | verified |")},
+		{name: "own-row-authoring", content: edit(table, "| 01 | attested | implemented |", "| 01 | renamed | implemented |")},
+		{name: "own-row-and-prose", content: edit(own, "Prose a Verify row may grep.", "Prose changed.")},
+		{name: "deleted", remove: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root, f := verifierFixtureWith(t, "gpt-6-astra", brief, map[string]string{
+				brief: "# Brief\n\n## Verify\n\n| 1 | true | exit 0 |\n\n## Evidence\n\nPending.\n",
+				index: table,
+			})
+			if _, err := IssueVerifierAttestation(root, f); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, filepath.FromSlash(index))
+			if c.remove {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(path, []byte(c.content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := CheckVerifierAttestationWithForge(root, brief, f)
+			if (err == nil) != c.execution || (err != nil && !strings.Contains(err.Error(), index)) {
+				t.Fatalf("execution: admitted=%v, want %v (%v)", err == nil, c.execution, err)
+			}
+			for _, target := range []string{brief, index} {
+				_, err = CheckVerifierEvidenceWithForge(root, "example-org/one", target, f)
+				if (err == nil) != c.evidence || (err != nil && !strings.Contains(err.Error(), index)) {
+					t.Fatalf("evidence %s: admitted=%v, want %v (%v)", target, err == nil, c.evidence, err)
+				}
+			}
+		})
+	}
+}
+
+// The checkout conversion is pinned at dispatch in the immutable record: a home
+// checked out with autocrlf is admitted, and changing the home's config after
+// dispatch changes nothing admission renders with.
+func TestVerifierCheckoutConversionPinned(t *testing.T) {
+	plantRoster(t, "ASSAY_BLESS_LOGIN=example-human:2001\nASSAY_TRUSTED_LOGINS=example-human:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:1,verifier=example-verifier:2\nASSAY_ALLOWED_REPOS=example-org/one:ci:private\n")
+	src := t.TempDir()
+	for name, body := range map[string]string{
+		".gitattributes": "*.md text eol=lf\n",
+		"brief.md":       "# Brief\n\n## Verify\n\n| 1 | true | exit 0 |\n\n## Evidence\n\nPending.\n",
+		"data.txt":       "one\ntwo\n",
+	} {
+		if err := os.WriteFile(filepath.Join(src, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	attestGit(t, src, "init", "-q", "-b", "main")
+	attestGit(t, src, "add", ".")
+	attestGit(t, src, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "-m", "fixture")
+	home := filepath.Join(t.TempDir(), "home")
+	if out, err := exec.Command("git", "clone", "-q", "-c", "core.autocrlf=true", src, home).CombinedOutput(); err != nil {
+		t.Fatalf("clone: %s %v", out, err)
+	}
+	attestGit(t, home, "checkout", "-q", "--detach")
+	if b, _ := os.ReadFile(filepath.Join(home, "data.txt")); string(b) != "one\r\ntwo\r\n" {
+		t.Fatalf("checkout did not convert: %q", b)
+	}
+	if err := PrepareVerifierAttestation(home, "example-org/one", "brief.md", "gpt-6-astra", "strong"); err != nil {
+		t.Fatalf("converted home refused: %v", err)
+	}
+	f := &verifierForge{actor: "example-desk[bot]"}
+	receipt, err := IssueVerifierAttestation(home, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Binding.Checkout != "autocrlf=true eol=native" || !strings.Contains(f.issue.Body, receipt.Binding.Checkout) {
+		t.Fatalf("conversion not pinned in the immutable record: %+v", receipt.Binding)
+	}
+	attestGit(t, home, "config", "core.autocrlf", "false")
+	if _, err := CheckVerifierAttestationWithForge(home, "brief.md", f); err != nil {
+		t.Fatalf("pinned conversion not used after a config change: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "data.txt"), []byte("one\r\nTWO\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CheckVerifierAttestationWithForge(home, "brief.md", f); err == nil || !strings.Contains(err.Error(), "data.txt") {
+		t.Fatalf("converted file change admitted: %v", err)
+	}
+	for _, bad := range []string{"", "autocrlf=true", "autocrlf=yes eol=native", "eol=native autocrlf=true", "autocrlf=true eol=native x"} {
+		if _, err := parseVerifierCheckout(bad); err == nil {
+			t.Errorf("checkout %q accepted", bad)
+		}
+	}
+}
+
+// System attributes cannot be planted from a test, so the switch that turns
+// them off is pinned directly, even when the caller's environment enables them.
+func TestVerifierEnvIgnoresSystemAttributes(t *testing.T) {
+	t.Setenv("GIT_ATTR_NOSYSTEM", "0")
+	env := verifierEnv()
+	last := ""
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "GIT_ATTR_NOSYSTEM=") {
+			last = kv
+		}
+	}
+	if last != "GIT_ATTR_NOSYSTEM=1" {
+		t.Fatalf("system attributes enabled: %q", last)
 	}
 }

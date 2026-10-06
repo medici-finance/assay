@@ -440,7 +440,7 @@ func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 			brief = rel
 		}
 	}
-	fmt.Fprintf(b, "## Pre-work admission\n\nBefore any Verify row or model-attested result, run `deskdispatch --check-verifier --root %s --brief %s`. Only a successfully verified dispatcher receipt admits this exact run. PENDING, missing, refused or unreadable records admit no work. Repeat the check before Evidence landing and carry its Verification-Attestation binding. Never stamp an implementation PR or self-stamp to pass this gate.\n\n", home, brief)
+	fmt.Fprintf(b, "## Pre-work admission\n\nBefore any Verify row or model-attested result, run `deskdispatch --check-verifier --root %s --brief %s`. Only a successfully verified dispatcher receipt admits this exact run. PENDING, missing, refused or unreadable records admit no work. Do not edit any file in the home before the check; afterwards edit only the brief's Evidence section, and the stream index only for this brief's own row at Evidence time. Repeat the check before Evidence landing and carry its Verification-Attestation binding. Never stamp an implementation PR or self-stamp to pass this gate.\n\n", home, brief)
 	b.WriteString("## Run the Verify table against merged main — READ-ONLY, no PR\n\n")
 	fmt.Fprintf(b, "You are VERIFYING `%s` in `%s`. This is a VERIFY pass, not an implementation: you run "+
 		"the item's Verify table against MERGED main and produce a written VERDICT (Evidence rows plus "+

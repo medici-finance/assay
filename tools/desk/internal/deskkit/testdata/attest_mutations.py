@@ -11,6 +11,7 @@ EVIDENCE = "cmd/deskevidence/deskevidence.go"
 KIT = "./internal/deskkit"
 CLOSURE = "TestAttestSourceClosure"
 TARGET = "TestVerifierEvidenceTargetBinding"
+INDEX = "TestAttestStreamIndex"
 # (name, [(file, before, after), ...], package, test regex)
 mutations = [
     ("typed-issue-author", [(ATTEST, 'strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)', 'strings.HasPrefix(title, VerifierAttestationTitle)')], KIT, "TestAttestationExcludedDuringOpenWindowBothForges"),
@@ -22,8 +23,17 @@ mutations = [
     ("all-additional-files", [(SOURCE, 'return Refused("unattested worktree file: " + rel)', "return nil")], KIT, CLOSURE + "/(untracked|ignored|second-site)$"),
     ("missing-files", [(SOURCE, "if len(missing) > 0 {", "if false && len(missing) > 0 {")], KIT, CLOSURE + "/deleted$"),
     ("replace-refs", [(SOURCE, 'if refs != "" {', 'if false && refs != "" {')], KIT, CLOSURE + "/replace-ref$"),
-    ("no-replace-objects", [(ATTEST, '"--no-replace-objects", "-C", root', '"-C", root'), (ATTEST, 'return append(env, "GIT_NO_REPLACE_OBJECTS=1")', "return env")], KIT, "TestVerifierTreeIgnoresReplacements"),
+    ("no-replace-objects", [(ATTEST, '"--no-replace-objects", "-C", root', '"-C", root'), (ATTEST, '"GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1"', '"GIT_ATTR_NOSYSTEM=1"')], KIT, "TestVerifierTreeIgnoresReplacements"),
     ("filter-driver", [(SOURCE, 'len(f) < 3 || (f[2] != "unspecified" && f[2] != "unset")', "len(f) < 0")], KIT, CLOSURE + "/smudge-filter$"),
+    ("info-attributes", [(SOURCE, "if _, err := os.Lstat(attrs); err == nil {", "if _, err := os.Lstat(attrs); false && err == nil {")], KIT, CLOSURE + "/info-attributes-(crlf|encoding)$"),
+    ("pinned-autocrlf", [(SOURCE, '"-c", "core.autocrlf=" + c.autocrlf, ', "")], KIT, CLOSURE + "/local-autocrlf$"),
+    ("global-attributes", [(SOURCE, '"-c", "core.attributesFile=" + os.DevNull, ', "")], KIT, CLOSURE + "/attributes-file$"),
+    ("attribute-source", [(SOURCE, ', "-c", "attr.tree=" + c.source}', "}")], KIT, CLOSURE + "/attr-tree$"),
+    ("system-attributes", [(ATTEST, '"GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1"', '"GIT_NO_REPLACE_OBJECTS=1"')], KIT, "TestVerifierEnvIgnoresSystemAttributes"),
+    ("checkout-from-binding", [(ATTEST, "checkout, err := parseVerifierCheckout(b.Checkout)", "checkout, err := readVerifierCheckout(home)")], KIT, "TestVerifierCheckoutConversionPinned"),
+    ("index-at-execution", [(ATTEST, "if phase == verifierEvidence {\n\t\tallowed[index] = true", "if true {\n\t\tallowed[index] = true")], KIT, INDEX),
+    ("index-edit-check", [(ATTEST, "if phase == verifierEvidence {\n\t\t_, nn, _", "if false {\n\t\t_, nn, _")], KIT, INDEX),
+    ("index-own-row-only", [(SOURCE, "if rebased, _, _, err := RebaseNamedRows(base, data, []string{nn}); err == nil && bytes.Equal(rebased, data) {", "if _ = base; true {")], KIT, INDEX),
     ("evidence-target", [(ATTEST, 'return Refused("Evidence target " + target + " is not bound to the attested brief " + r.Binding.Brief)', "return nil")], KIT, TARGET),
     ("outcome-key", [(ATTEST, "recStream == stream && recNN == nn", "recStream == stream && (recNN == nn || nn != recNN)")], KIT, TARGET),
     ("index-rows", [(ATTEST, "if strings.TrimSpace(row) != nn {", "if false {")], KIT, TARGET),

@@ -18,10 +18,23 @@ const verifierRecordName = "assay-verifier-attestation.json"
 
 // VerifierBinding identifies one selected runner against one immutable source.
 // This is dispatch provenance, NEVER a Verify result or evidence of execution.
+// Checkout pins the line-ending conversion the home was checked out with, so
+// admission renders attested blobs from the commit and this record only.
 type VerifierBinding struct {
-	Version                                                                    int
-	Run, Repo, Source, Brief, BriefSHA256, PlanSHA256, HomeSHA256, Model, Tier string
+	Version                                                                              int
+	Run, Repo, Source, Brief, BriefSHA256, PlanSHA256, HomeSHA256, Model, Tier, Checkout string
 }
+
+// verifierPhase names the admission checkpoint. Before execution every source
+// file, the stream index included, must hold its attested bytes; at Evidence
+// time the stream index may also carry the attested brief's own lifecycle edit.
+type verifierPhase int
+
+const (
+	verifierExecution verifierPhase = iota
+	verifierEvidence
+)
+
 type VerifierReceipt struct {
 	Binding VerifierBinding
 	Issue   int
@@ -37,8 +50,9 @@ func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeT
 
 // verifierEnv is the environment for every admission git read: inherited GIT_*
 // variables (which can redirect the repository, index, object store, config or
-// replace-ref base) are dropped, and replacement objects are disabled, so the
-// reads resolve the dispatched commit's own objects in the home itself.
+// replace-ref base) are dropped, replacement objects are disabled and system
+// attributes are ignored, so the reads resolve the dispatched commit's own
+// objects in the home itself.
 func verifierEnv() []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -46,7 +60,7 @@ func verifierEnv() []string {
 			env = append(env, kv)
 		}
 	}
-	return append(env, "GIT_NO_REPLACE_OBJECTS=1")
+	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1")
 }
 func verifierGitBytes(root string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)
@@ -123,7 +137,7 @@ func withoutEvidence(b []byte) []byte {
 	}
 	return []byte(strings.TrimSpace(strings.Join(out, "\n")))
 }
-func verifierLocalCheck(root, brief string, r verifierLocal) error {
+func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase) error {
 	home, err := filepath.Abs(root)
 	if err != nil {
 		return err
@@ -143,6 +157,10 @@ func verifierLocalCheck(root, brief string, r verifierLocal) error {
 		return Refused("invalid verifier run identifier")
 	}
 	if _, err := ModelStampLabels(b.Model, b.Tier); err != nil {
+		return err
+	}
+	checkout, err := parseVerifierCheckout(b.Checkout)
+	if err != nil {
 		return err
 	}
 	path := brief
@@ -172,15 +190,30 @@ func verifierLocalCheck(root, brief string, r verifierLocal) error {
 		return Refused("verifier requires its attested detached source commit")
 	}
 	// Admission compares the bytes a Verify row will read, never git's own view
-	// of the worktree: index flags, replacement objects and clean filters can all
-	// make that view report no change. Evidence and status edits target the
-	// brief and its stream index; other outputs belong outside this home.
+	// of the worktree: index flags, replacement objects, clean filters and the
+	// home's own attributes or conversion config can all make that view report
+	// no change. Evidence edits target the brief's Evidence section; the stream
+	// index is source until Evidence time, when only the attested brief's own
+	// row may move. Other outputs belong outside this home.
 	if err := verifierNoReplacements(home); err != nil {
 		return err
 	}
-	index := filepath.ToSlash(filepath.Join(filepath.Dir(b.Brief), "README.md"))
-	if err := verifierSourceClosure(home, b.Source, map[string]bool{b.Brief: true, index: true}); err != nil {
+	if err := verifierNoLocalAttributes(home); err != nil {
 		return err
+	}
+	allowed := map[string]bool{b.Brief: true}
+	index := filepath.ToSlash(filepath.Join(filepath.Dir(b.Brief), "README.md"))
+	if phase == verifierEvidence {
+		allowed[index] = true
+	}
+	if err := verifierSourceClosure(home, b.Source, checkout, allowed); err != nil {
+		return err
+	}
+	if phase == verifierEvidence {
+		_, nn, _ := r.VerifierReceipt.verifierBriefKey()
+		if err := verifierIndexEdit(home, b.Source, index, nn, checkout); err != nil {
+			return err
+		}
 	}
 
 	source, err := verifierGitBytes(home, "cat-file", "blob", b.Source+":"+b.Brief)
@@ -245,11 +278,15 @@ func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
 	if err != nil {
 		return err
 	}
+	checkout, err := readVerifierCheckout(home)
+	if err != nil {
+		return err
+	}
 	nonce := make([]byte, 16)
 	if _, err = rand.Read(nonce); err != nil {
 		return err
 	}
-	r := verifierLocal{Home: home, VerifierReceipt: VerifierReceipt{Binding: VerifierBinding{Version: 1, Run: verifierDigest(nonce), HomeSHA256: verifierDigest([]byte(home)), Repo: repo, Source: head, Brief: filepath.ToSlash(rel), BriefSHA256: verifierDigest(original), PlanSHA256: verifierDigest(withoutEvidence(original)), Model: stamp.Model, Tier: stamp.Tier}}}
+	r := verifierLocal{Home: home, VerifierReceipt: VerifierReceipt{Binding: VerifierBinding{Version: 1, Run: verifierDigest(nonce), HomeSHA256: verifierDigest([]byte(home)), Repo: repo, Source: head, Brief: filepath.ToSlash(rel), BriefSHA256: verifierDigest(original), PlanSHA256: verifierDigest(withoutEvidence(original)), Model: stamp.Model, Tier: stamp.Tier, Checkout: checkout.String()}}}
 	record, err := verifierRecordPath(home)
 	if err != nil {
 		return err
@@ -259,7 +296,7 @@ func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	if err = verifierLocalCheck(home, rel, r); err != nil {
+	if err = verifierLocalCheck(home, rel, r, verifierExecution); err != nil {
 		return err
 	}
 	return verifierSave(home, r)
@@ -306,7 +343,7 @@ func IssueVerifierAttestation(root string, f Forge) (VerifierReceipt, error) {
 	if err != nil {
 		return r.VerifierReceipt, err
 	}
-	if err = verifierLocalCheck(root, r.Binding.Brief, r); err != nil {
+	if err = verifierLocalCheck(root, r.Binding.Brief, r, verifierExecution); err != nil {
 		return r.VerifierReceipt, err
 	}
 	repo, err := verifierRepo(r.Binding.Repo)
@@ -368,12 +405,17 @@ func IssueVerifierAttestation(root string, f Forge) (VerifierReceipt, error) {
 	return CheckVerifierAttestationWithForge(root, r.Binding.Brief, f)
 }
 
+// CheckVerifierAttestationWithForge is pre-execution admission: every source
+// file, the stream index included, holds its attested bytes.
 func CheckVerifierAttestationWithForge(root, brief string, f Forge) (VerifierReceipt, error) {
+	return checkVerifierAttestation(root, brief, f, verifierExecution)
+}
+func checkVerifierAttestation(root, brief string, f Forge, phase verifierPhase) (VerifierReceipt, error) {
 	r, err := verifierLoad(root)
 	if err != nil {
 		return r.VerifierReceipt, err
 	}
-	if err = verifierLocalCheck(root, brief, r); err != nil {
+	if err = verifierLocalCheck(root, brief, r, phase); err != nil {
 		return r.VerifierReceipt, err
 	}
 	if r.Issue <= 0 {
@@ -440,8 +482,15 @@ func IsVerifierAttestation(title, author string) bool {
 // CheckVerifierEvidence reuses pre-work admission after Evidence/status edits
 // and binds the landing target to the attested brief: an attestation for one
 // brief never admits Evidence, a stream-index edit or an outcome record for
-// another.
+// another. The stream index may differ from its attested bytes only in the
+// attested brief's own row's lifecycle cells.
 func CheckVerifierEvidence(root, repo, target string) (VerifierReceipt, error) {
+	return CheckVerifierEvidenceWithForge(root, repo, target, nil)
+}
+
+// CheckVerifierEvidenceWithForge is CheckVerifierEvidence against f; a nil f
+// resolves the verifier's own forge.
+func CheckVerifierEvidenceWithForge(root, repo, target string, f Forge) (VerifierReceipt, error) {
 	if root == "" {
 		root = "."
 	}
@@ -459,7 +508,16 @@ func CheckVerifierEvidence(root, repo, target string) (VerifierReceipt, error) {
 	if err := r.VerifierReceipt.CheckEvidenceTarget(target); err != nil {
 		return r.VerifierReceipt, err
 	}
-	return CheckVerifierAttestation(root, r.Binding.Brief)
+	if f == nil {
+		fr, err := verifierRepo(r.Binding.Repo)
+		if err != nil {
+			return r.VerifierReceipt, err
+		}
+		if f, _, err = ResolveForge(fr, "verifier"); err != nil {
+			return r.VerifierReceipt, err
+		}
+	}
+	return checkVerifierAttestation(root, r.Binding.Brief, f, verifierEvidence)
 }
 
 // verifierBriefKey returns the attested brief's <stream> and <NN> when it sits
@@ -528,5 +586,5 @@ func PlanVerifierAttestation(root, brief string) error {
 	if brief == "" {
 		brief = r.Binding.Brief
 	}
-	return verifierLocalCheck(root, brief, r)
+	return verifierLocalCheck(root, brief, r, verifierExecution)
 }

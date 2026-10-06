@@ -37,10 +37,13 @@ Evidence/status edits do not change the attested source or Verify commands. Leav
 home detached at its source and in place when you return: the desk lands your rows from
 it (`deskevidence --root <home>`).
 Verifier output files (logs, binaries and scratch results) belong outside the admitted
-source worktree. Only tracked Evidence and stream-index status edits preserve admission;
-additional files, including ignored files, refuse admission at execution and landing.
-Admission compares file bytes against the attested commit; index flags, replacement
-objects and filter drivers do not hide a change. Land Evidence only for the attested
+source worktree. Only edits to the brief's Evidence section preserve admission before
+execution; at Evidence landing the stream index may also carry this brief's own row's
+lifecycle cells, and nothing else of it. Additional files, including ignored files,
+refuse admission at execution and landing. Admission compares file bytes against the
+attested commit, rendered with the commit's own attributes and the checkout conversion
+pinned at dispatch; index flags, replacement objects, filter drivers, the home's own
+attributes and later conversion config do not hide a change. Land Evidence only for the attested
 brief (the brief, its own stream-index row, or its outcome record); any other target
 refuses.
 
