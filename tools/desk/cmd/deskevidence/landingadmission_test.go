@@ -103,6 +103,8 @@ func TestVerifierEvidenceLandingFormAdmitted(t *testing.T) {
 	t.Cleanup(func() { deskkit.SetGitHubCustodyMinter(nil) })
 
 	const repo, brief, index = "example-org/tracker", "docs/streams/x/brief-01-source.md", "docs/streams/x/README.md"
+	// Forge selection belongs to the fixture, not the enclosing checkout's origin.
+	pinFixtureForge(t, os.Getenv("HOME"), repo)
 	briefBody := "# Source\n\n## Verify\n\n| 1 | `true` | exit 0 |\n\n## Evidence\n\nPending.\n"
 	home := t.TempDir()
 	git := func(args ...string) {
@@ -217,4 +219,21 @@ func TestVerifierEvidenceLandingFormAdmitted(t *testing.T) {
 	if len(api.unexpected) != 0 {
 		t.Fatalf("unexpected forge calls: %v", api.unexpected)
 	}
+}
+
+// pinFixtureForge names the fixture repository's forge in the fixture roster,
+// so admission never falls back to the forge of the enclosing checkout's origin.
+func pinFixtureForge(t *testing.T, home, repo string) {
+	t.Helper()
+	path := filepath.Join(home, ".config", "assay", "roster.env")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents = append(contents, []byte("\nASSAY_REPO_FORGES="+repo+"=github\n")...)
+	if err := os.WriteFile(path, contents, 0600); err != nil {
+		t.Fatal(err)
+	}
+	deskkit.ReloadConfig()
+	t.Cleanup(deskkit.ReloadConfig)
 }

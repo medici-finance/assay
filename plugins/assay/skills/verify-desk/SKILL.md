@@ -131,16 +131,25 @@ a future Evidence PR to establish admission. PENDING is not admission.
 
 Before any Verify row or model-attested result, the verifier runs `deskdispatch
 --check-verifier --root <home> --brief <path>` and requires success. The witness runner
-and Evidence verb enforce the same check; `deskevidence` checks it at its `--root`, so the
-desk lands from the dispatched verifier home (see **Landing** below), never from its own
-checkout. Retain the returned exact run/source/model/tier
+enforces that same execution-phase check; the Evidence verb runs the landing-phase check
+at its `--root`, so the desk lands from the dispatched verifier home (see **Landing**
+below), never from its own checkout. Retain the returned exact run/source/model/tier
 binding in Evidence and the Evidence draft handoff. An edited record, changed source or
-changed Verify commands stops the run. Evidence and stream-index status edits are allowed.
-Verifier output files (logs, binaries and scratch results) belong outside the admitted
-source worktree. Only tracked Evidence and stream-index status edits preserve admission;
-additional files, including ignored files, refuse admission at execution and landing.
-Admission compares every file's bytes against the attested commit, so index flags,
-replacement objects and filter drivers cannot hide a changed input. The record admits
+changed Verify commands stops the run. The verifier edits only the brief's Evidence
+section and never the stream index: any stream-index change in the home refuses the
+execution-phase check, so a verifier that edits its own row loses the run. After the
+verifier returns, the desk edits the brief's own row's lifecycle cells in the home for the
+row-scoped landing, and only the landing-phase check admits that edit. Verifier output files (logs, binaries and scratch
+results) belong outside the admitted source worktree; additional files, including ignored
+files, refuse admission at execution and landing. Admission binds the home's index to the
+attested tree and compares every file's bytes against the attested commit, rendered with
+that commit's own attributes and the checkout conversion pinned at dispatch, so index
+edits, index flags, replacement objects and filter drivers cannot hide a changed input.
+Rendering a converted file (an eol or encoding attribute) needs git 2.41 or later; an
+older git refuses such a home rather than render it from attributes the home could move.
+A change to any other row of the stream index after dispatch, such as another brief's
+landing, also refuses the home: re-dispatch from fresh main, which costs a new record
+and stamp but no Evidence already landed. The record admits
 Evidence only for its own brief: that brief, its stream-index row, or an outcome record
 keyed to it. Landing Evidence for any other brief refuses, even with a valid record.
 

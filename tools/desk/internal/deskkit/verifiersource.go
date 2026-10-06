@@ -26,23 +26,34 @@ import (
 // So admission reads the commit's tree with replacements disabled and compares
 // every path under the home, byte for byte, against it.
 //
+// A Verify row reads the index as well as the files (git grep and git ls-files
+// skip a path the index drops; git diff --cached and git grep --cached read its
+// blobs), so the index must list exactly the attested tree: every path, mode and
+// blob at stage 0, nothing more. The index is read from the home itself, never
+// from a GIT_INDEX_FILE the caller names.
+//
 // Every input to that comparison is the attested commit or the immutable
 // binding. A file may differ from its blob only by the checkout conversion, and
 // the conversion is rendered from the commit's own .gitattributes files and the
 // line-ending settings pinned at dispatch. The attribute source is pinned to the
-// attested commit (attr.tree, so a tree the home names, or its index, is never
-// read; on a git without attr.tree the worktree files read are themselves
-// compared). The home's own attributes (info/attributes refuses; the global and
-// system files and the GIT_ATTR_SOURCE environment are switched off) and its
-// current conversion config never take part, and a filter driver's output is
-// never accepted as attested bytes. Nothing in the replace namespace
+// attested commit with --attr-source, which outranks the GIT_ATTR_SOURCE
+// environment and attr.tree, so no worktree, index or other tree supplies
+// attributes. A git without --attr-source (older than 2.41) rejects the option,
+// so there a file that differs from its blob refuses rather than being rendered
+// with attributes admission cannot pin. The home's own attributes
+// (info/attributes refuses; the global and system files are switched off) and
+// its current conversion config never take part, and a filter driver's output
+// is never accepted as attested bytes. Nothing in the replace namespace
 // participates either.
 //
 // Out of scope, stated so it is not overclaimed: the brief's own Evidence
 // section (written by the witness runner during the run, bound only by the plan
-// digest), and repository configuration that changes how a Verify row's own git
-// commands PRESENT content (diff drivers, pagers, aliases). The binding covers
-// the bytes on disk, not what a command chooses to print about them.
+// digest); repository configuration that changes how a Verify row's own git
+// commands PRESENT or MATCH content (diff drivers, pagers, aliases, grep
+// settings); and refs other than HEAD, which a shared repository's other
+// worktrees and the refresh before an outcome record move by design. The
+// binding covers the attested bytes on disk and in the index, not what a
+// command chooses to print about them or which other commit a row names.
 
 // verifierNoReplacements refuses a home whose repository carries replacement
 // objects or grafts. Admission itself ignores them, but a Verify row's own git
@@ -92,11 +103,12 @@ type verifierCheckout struct{ autocrlf, eol, source string }
 
 func (c verifierCheckout) String() string { return "autocrlf=" + c.autocrlf + " eol=" + c.eol }
 
-// args pins the conversion and the attribute source for one git call and
+// args pins the attribute source and the conversion for one git call and
 // switches off the global attributes file; system attributes are off in
-// verifierEnv. Command-line values outrank every config file.
+// verifierEnv. Command-line values outrank every config file and the
+// environment.
 func (c verifierCheckout) args(rest ...string) []string {
-	return append([]string{"-c", "core.autocrlf=" + c.autocrlf, "-c", "core.eol=" + c.eol, "-c", "core.attributesFile=" + os.DevNull, "-c", "attr.tree=" + c.source}, rest...)
+	return append([]string{"--attr-source=" + c.source, "-c", "core.autocrlf=" + c.autocrlf, "-c", "core.eol=" + c.eol, "-c", "core.attributesFile=" + os.DevNull}, rest...)
 }
 
 func parseVerifierCheckout(s string) (verifierCheckout, error) {
@@ -199,6 +211,9 @@ func verifierSourceClosure(home, commit string, checkout verifierCheckout, allow
 	if err != nil {
 		return err
 	}
+	if err := verifierIndexMatches(home, tree); err != nil {
+		return err
+	}
 	newHash, err := verifierObjectHash(home)
 	if err != nil {
 		return err
@@ -252,6 +267,43 @@ func verifierSourceClosure(home, commit string, checkout verifierCheckout, allow
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		return Refused("source files changed since verifier dispatch: " + missing[0] + " (missing)")
+	}
+	return nil
+}
+
+// verifierIndexMatches refuses unless the home's index lists exactly tree:
+// each path with its attested mode and blob at stage 0, and no other entry.
+// Index flags (assume-unchanged, skip-worktree) change no content and are left
+// to the file comparison.
+func verifierIndexMatches(home string, tree map[string]string) error {
+	out, err := verifierGit(home, "ls-files", "--stage", "--full-name", "-z")
+	if err != nil {
+		return err
+	}
+	var changed []string
+	seen := map[string]bool{}
+	for _, rec := range strings.Split(out, "\x00") {
+		if rec == "" {
+			continue
+		}
+		meta, name, ok := strings.Cut(rec, "\t")
+		f := strings.Fields(meta)
+		if !ok || len(f) != 3 {
+			return Unverifiable("cannot read verifier index", fmt.Errorf("malformed entry %q", rec))
+		}
+		if seen[name] || f[2] != "0" || tree[name] != f[0]+" "+f[1] {
+			changed = append(changed, name)
+		}
+		seen[name] = true
+	}
+	for name := range tree {
+		if !seen[name] {
+			changed = append(changed, name)
+		}
+	}
+	if len(changed) > 0 {
+		sort.Strings(changed)
+		return Refused("source files changed since verifier dispatch: " + changed[0] + " (index)")
 	}
 	return nil
 }
@@ -329,7 +381,9 @@ func verifierRender(home, rel, object string, checkout verifierCheckout) ([]byte
 	}
 	attr, err := verifierGit(home, checkout.args("check-attr", "-z", "filter", "--", rel)...)
 	if err != nil {
-		return nil, err
+		// Also how a git without --attr-source answers: such a git cannot
+		// render from the attested attributes, so the changed file refuses.
+		return nil, Refused(fmt.Sprintf("source files changed since verifier dispatch: %s (its checkout form cannot be rendered from the attested attributes: %v; rendering needs git 2.41 or later)", rel, err))
 	}
 	if f := strings.Split(attr, "\x00"); len(f) < 3 || (f[2] != "unspecified" && f[2] != "unset") {
 		return nil, Refused("source files changed since verifier dispatch: " + rel + " (filter driver)")
@@ -375,24 +429,28 @@ func verifierIndexEdit(home, commit, index, nn string, checkout verifierCheckout
 	if mode == "120000" {
 		return changed
 	}
-	rendered, err := verifierRender(home, index, object, checkout)
-	if err != nil {
-		return err
-	}
-	if bytes.Equal(rendered, data) {
-		return nil
-	}
-	if nn == "" {
-		return changed
+	// The own-row edit of an unconverted checkout needs no rendering, so it is
+	// admitted even on a git that cannot pin the attribute source.
+	ownRowEdit := func(base []byte) bool {
+		if nn == "" {
+			return false
+		}
+		rebased, _, _, err := RebaseNamedRows(base, data, []string{nn})
+		return err == nil && bytes.Equal(rebased, data)
 	}
 	raw, err := verifierGitBytes(home, "cat-file", "blob", object)
 	if err != nil {
 		return Unverifiable("cannot read attested stream index", err)
 	}
-	for _, base := range [][]byte{raw, rendered} {
-		if rebased, _, _, err := RebaseNamedRows(base, data, []string{nn}); err == nil && bytes.Equal(rebased, data) {
-			return nil
-		}
+	if ownRowEdit(raw) {
+		return nil
+	}
+	rendered, err := verifierRender(home, index, object, checkout)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(rendered, data) || ownRowEdit(rendered) {
+		return nil
 	}
 	return changed
 }

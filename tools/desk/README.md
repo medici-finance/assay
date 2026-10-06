@@ -4967,7 +4967,8 @@ binding, at its `--root`, before any outcome or Evidence write, and carries
 `Verification-Attestation` into its Evidence draft. Land from the dispatched verifier home:
 `deskevidence <owner/repo> <branch> --root <home> --brief-path <brief> --evidence-file
 <absolute fragment outside the home>`; the stream-index flip lands from the same `--root`
-after editing this brief's own row in the home's tracked index file, and an outcome record
+after the desk (never the verifier, whose `--check-verifier` refuses any stream-index
+change) edits this brief's own row in the home's tracked index file, and an outcome record
 names an absolute file outside the home. Before an outcome record, refresh only the brief in
 the home from the target branch; moving the home's HEAD refuses admission. With
 `statusgen --in-container`, admission runs on the host before the handoff, so the inner
@@ -4975,10 +4976,18 @@ witness output carries no binding line. Edits to the brief's Evidence section pr
 admission. The stream index is a source file until Evidence landing, when it may carry only
 this brief's own row's lifecycle cells (Status, Verified, Reviewed); another row, prose or
 this row's authoring cells refuse, and if another row moved on the target branch after
-dispatch the outcome record refuses and the brief is re-dispatched. Admission renders each
-file from the attested commit with that commit's own attributes and the checkout
+dispatch the outcome record refuses and the brief is re-dispatched (a new record and stamp
+from fresh main; Evidence already landed is kept). Admission binds the home's index to the
+attested tree (same paths, modes and blobs, no staged change) and renders each file from
+the attested commit with that commit's own attributes (`--attr-source`) and the checkout
 conversion pinned in the dispatch record; a home carrying its own attributes file refuses,
-and the global and system attributes files and later conversion config are not read.
+and the global and system attributes files, a configured attribute tree and later
+conversion config are not read. Rendering a converted file needs git 2.41 or later; an
+older git refuses any file that differs from its blob rather than render it from
+attributes the home could move. Inherited `GIT_*` variables are dropped for every
+admission read. Out of scope: config that changes how a Verify row presents or matches
+content (diff drivers, pagers, aliases, grep settings) and refs other than `HEAD`, which
+the refresh flow moves by design.
 Write logs, binaries and other
 outputs outside the admitted source worktree; additional files (including ignored files)
 refuse admission at execution and Evidence landing. Keep the worktree detached; changing

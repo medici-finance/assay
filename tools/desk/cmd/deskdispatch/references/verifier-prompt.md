@@ -33,17 +33,20 @@ source, brief inputs, actual model and tier. PENDING, absent, refused, mismatche
 unreadable means no admission. Never substitute an implementation PR, self-stamp, or
 write a verification result to obtain admission. Carry the returned
 `Verification-Attestation` binding into Evidence and check it again before landing;
-Evidence/status edits do not change the attested source or Verify commands. Leave the
+Evidence-section edits do not change the attested source or Verify commands. Leave the
 home detached at its source and in place when you return: the desk lands your rows from
 it (`deskevidence --root <home>`).
 Verifier output files (logs, binaries and scratch results) belong outside the admitted
-source worktree. Only edits to the brief's Evidence section preserve admission before
-execution; at Evidence landing the stream index may also carry this brief's own row's
-lifecycle cells, and nothing else of it. Additional files, including ignored files,
-refuse admission at execution and landing. Admission compares file bytes against the
-attested commit, rendered with the commit's own attributes and the checkout conversion
-pinned at dispatch; index flags, replacement objects, filter drivers, the home's own
-attributes and later conversion config do not hide a change. Land Evidence only for the attested
+source worktree. Only edits to the brief's Evidence section preserve admission; never
+edit the stream index, because any stream-index change in the home refuses
+`--check-verifier`. After you return, the desk edits this brief's own row's lifecycle
+cells for its row-scoped landing, and only the landing-phase check admits that edit. Additional files,
+including ignored files, refuse admission at execution and landing. Admission binds the
+home's index to the attested tree and compares file bytes against the attested commit,
+rendered with the commit's own attributes and the checkout conversion pinned at
+dispatch; index edits, index flags, replacement objects, filter drivers, the home's own
+attributes and later conversion config do not hide a change. A converted file needs git
+2.41 or later to render; an older git refuses the home. Land Evidence only for the attested
 brief (the brief, its own stream-index row, or its outcome record); any other target
 refuses.
 

@@ -52,7 +52,7 @@ func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeT
 // variables (which can redirect the repository, index, object store, config or
 // replace-ref base) are dropped, replacement objects are disabled and system
 // attributes are ignored, so the reads resolve the dispatched commit's own
-// objects in the home itself.
+// objects, and the index the Verify rows read, in the home itself.
 func verifierEnv() []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -479,11 +479,14 @@ func IsVerifierAttestation(title, author string) bool {
 	return strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)
 }
 
-// CheckVerifierEvidence reuses pre-work admission after Evidence/status edits
-// and binds the landing target to the attested brief: an attestation for one
-// brief never admits Evidence, a stream-index edit or an outcome record for
-// another. The stream index may differ from its attested bytes only in the
-// attested brief's own row's lifecycle cells.
+// CheckVerifierEvidence reuses pre-work admission at landing time, after the
+// verifier's edit to the attested brief's Evidence section, and binds the
+// landing target to the attested brief: an attestation for one brief never
+// admits Evidence, a stream-index edit or an outcome record for another. Only
+// at this phase may the home's stream index differ from its attested bytes,
+// and then only in the attested brief's own row's lifecycle cells (the
+// row-scoped landing writes them); execution-phase admission refuses any
+// stream-index change.
 func CheckVerifierEvidence(root, repo, target string) (VerifierReceipt, error) {
 	return CheckVerifierEvidenceWithForge(root, repo, target, nil)
 }

@@ -79,8 +79,10 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			}
 			t.Setenv("GOMODCACHE", strings.TrimSpace(string(cache)))
 			s := &stub{}
-			_, root := s.install(t)
+			deskHome, root := s.install(t)
 			plantScripts(t, root)
+			// Forge selection belongs to the fixture, not the enclosing checkout's origin.
+			pinFixtureForge(t, deskHome, allowedRepo)
 			t.Setenv("DESK_LOOP", "verify-desk") // the real standing caller, same verifier App as its worker
 			t.Setenv("DESK_SESSION", "fixture-shared-claim-owner")
 			attestVerifierDispatchFn = attestVerifierDispatch
@@ -253,4 +255,21 @@ func TestWorkerDeskPostOpenCoordinatorHandoff(t *testing.T) {
 	if rc := run(onlyArgs("gpt-6.1-sol")); rc != 0 {
 		t.Fatal(rc)
 	}
+}
+
+// pinFixtureForge names the fixture repository's forge in the fixture roster,
+// so admission never falls back to the forge of the enclosing checkout's origin.
+func pinFixtureForge(t *testing.T, home, repo string) {
+	t.Helper()
+	path := filepath.Join(home, ".config", "assay", "roster.env")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents = append(contents, []byte("\nASSAY_REPO_FORGES="+repo+"=github\n")...)
+	if err := os.WriteFile(path, contents, 0600); err != nil {
+		t.Fatal(err)
+	}
+	deskkit.ReloadConfig()
+	t.Cleanup(deskkit.ReloadConfig)
 }

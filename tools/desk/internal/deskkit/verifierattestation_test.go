@@ -330,12 +330,18 @@ func TestAttestActorSeparation(t *testing.T) {
 // The same reader is used before execution and before Evidence landing. Each
 // fixture alters the real dispatched home, leaving the immutable record intact.
 func TestAttestSourceClosure(t *testing.T) {
-	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter", "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "attributes-file", "attr-tree", "stream-index"} {
+	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter", "attr-tree-filter", "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "local-eol", "attributes-file", "attr-tree", "stream-index", "index-removed", "index-swapped", "index-added", "index-attributes", "index-redirect"} {
 		t.Run(mode, func(t *testing.T) {
 			var extra map[string]string
-			if strings.HasSuffix(mode, "-filter") {
+			switch {
+			case strings.HasSuffix(mode, "-filter"):
 				// The filter attribute is attested; only the driver is local.
 				extra = map[string]string{".gitattributes": "source.txt filter=fixture\n"}
+			case mode == "local-eol":
+				// The attested attributes make the file text; only core.eol is local.
+				extra = map[string]string{".gitattributes": ".gitignore text\n"}
+			case mode == "index-attributes":
+				extra = map[string]string{".gitattributes": "sub/data.txt filter=fixture\n", "sub/data.txt": "attested line\n"}
 			}
 			root, f := verifierFixtureWith(t, "gpt-6-astra", "brief.md", extra)
 			receipt, err := IssueVerifierAttestation(root, f)
@@ -345,6 +351,19 @@ func TestAttestSourceClosure(t *testing.T) {
 			name := "source.txt"
 			want := "source files changed"
 			switch mode {
+			case "index-removed", "index-swapped", "index-added", "index-attributes", "index-redirect":
+				name = indexChange(t, root, mode)
+				want = "source files changed since verifier dispatch: " + name
+			case "attr-tree-filter":
+				// An unattested attribute tree unsets the attested filter for the
+				// attribute query alone; the driver then renders the planted bytes.
+				attrTreeUnsetsFilter(t, root, name)
+			case "local-autocrlf", "local-eol", "attributes-file", "attr-tree":
+				name = convertTrackedChange(t, root, mode)
+				want = "source files changed since verifier dispatch: " + name
+				if !gitHasAttrSource(t, root) {
+					want += " (its checkout form"
+				}
 			case "branch":
 				attestGit(t, root, "checkout", "-b", "fixture-branch")
 				want = "attested detached source"
@@ -355,15 +374,12 @@ func TestAttestSourceClosure(t *testing.T) {
 				if err := os.Remove(filepath.Join(root, name)); err != nil {
 					t.Fatal(err)
 				}
-			case "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "attributes-file", "attr-tree":
+			case "info-attributes-crlf", "info-attributes-encoding":
 				// Each mode makes the home's own, unattested attributes or config
 				// convert a tracked file on checkout; the planted bytes are what
 				// git renders under that conversion, so git diff stays silent.
 				name = convertTrackedChange(t, root, mode)
-				want = "source files changed since verifier dispatch: " + name
-				if strings.HasPrefix(mode, "info-attributes") {
-					want = "info/attributes"
-				}
+				want = "info/attributes"
 			case "stream-index":
 				// The stream index is a source file a Verify row may read.
 				name = "README.md"
@@ -494,6 +510,8 @@ func convertTrackedChange(t *testing.T, root, mode string) string {
 		writeAttrs(info, name+" working-tree-encoding=UTF-16\n")
 	case "local-autocrlf":
 		attestGit(t, root, "config", "core.autocrlf", "true")
+	case "local-eol":
+		attestGit(t, root, "config", "core.eol", "crlf")
 	case "attributes-file":
 		file := filepath.Join(t.TempDir(), "attributes")
 		writeAttrs(file, name+" text eol=crlf\n")
@@ -508,6 +526,11 @@ func convertTrackedChange(t *testing.T, root, mode string) string {
 	}
 	attested := attestOut(t, root, "cat-file", "blob", "HEAD:"+name)
 	planted := attestOut(t, root, "cat-file", "--filters", "--path="+name, "HEAD:"+name)
+	if planted == attested && mode == "attr-tree" {
+		// attr.tree arrived in git 2.46; an older git never reads it, so this
+		// route does not exist there. Every other mode runs on any git.
+		t.Skip("this git does not read attr.tree")
+	}
 	if planted == attested {
 		t.Fatalf("%s: conversion did not change the checkout form", mode)
 	}
@@ -518,6 +541,94 @@ func convertTrackedChange(t *testing.T, root, mode string) string {
 		t.Fatalf("%s: change not hidden from git diff: %q", mode, diff)
 	}
 	return name
+}
+
+// gitHasAttrSource reports whether this git takes --attr-source (git 2.41 and
+// later). An older git cannot render a checkout from the attested attributes,
+// so admission refuses any file whose bytes differ from its blob there.
+func gitHasAttrSource(t *testing.T, root string) bool {
+	t.Helper()
+	return exec.Command("git", "-C", root, "--attr-source=HEAD", "version").Run() == nil
+}
+
+// indexChange alters the home's index and nothing on disk except what a mode
+// names, then asserts the plant: what a Verify row reading the index sees
+// (git grep, git ls-files) no longer follows from the attested commit.
+func indexChange(t *testing.T, root, mode string) string {
+	t.Helper()
+	blob := func(body string) string {
+		return strings.TrimSpace(attestIn(t, root, body, "hash-object", "-w", "--stdin"))
+	}
+	listed := func(name string) bool { return attestOut(t, root, "ls-files", "--", name) != "" }
+	switch mode {
+	case "index-removed", "index-redirect":
+		attestGit(t, root, "rm", "-q", "--cached", "source.txt")
+		if listed("source.txt") || exec.Command("git", "-C", root, "grep", "-q", "attested source").Run() == nil {
+			t.Fatalf("%s: removal not visible to a row reading the index", mode)
+		}
+		if b, err := os.ReadFile(filepath.Join(root, "source.txt")); err != nil || string(b) != "attested source" {
+			t.Fatalf("%s: worktree changed: %q %v", mode, b, err)
+		}
+		if mode == "index-redirect" {
+			// An attested-looking index elsewhere, named by the caller's
+			// environment; the home's own index is the one a row reads.
+			clean := filepath.Join(t.TempDir(), "index")
+			cmd := exec.Command("git", "-C", root, "read-tree", "HEAD")
+			cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+clean)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("read-tree: %s %v", out, err)
+			}
+			t.Setenv("GIT_INDEX_FILE", clean)
+		}
+		return "source.txt"
+	case "index-swapped":
+		attestGit(t, root, "update-index", "--cacheinfo", "100644,"+blob("attested SOURCE")+",source.txt")
+		if attestOut(t, root, "grep", "--cached", "-l", "SOURCE") != "source.txt\n" {
+			t.Fatal("index-swapped: swapped blob not visible to git grep --cached")
+		}
+		return "source.txt"
+	case "index-added":
+		attestGit(t, root, "update-index", "--add", "--cacheinfo", "100644,"+blob("planted")+",planted.txt")
+		if _, err := os.Lstat(filepath.Join(root, "planted.txt")); !listed("planted.txt") || err == nil {
+			t.Fatalf("index-added: plant did not land in the index only (%v)", err)
+		}
+		return "planted.txt"
+	case "index-attributes":
+		// An index-only attributes file unsets the attested filter for a git
+		// that reads attributes from the index; the driver's output is planted.
+		attestGit(t, root, "config", "filter.fixture.smudge", "sed s/attested/TAMPERED/")
+		attestGit(t, root, "update-index", "--add", "--cacheinfo", "100644,"+blob("data.txt -filter\n")+",sub/.gitattributes")
+		if err := os.WriteFile(filepath.Join(root, "sub", "data.txt"), []byte("TAMPERED line\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, "sub", ".gitattributes")); !listed("sub/.gitattributes") || err == nil {
+			t.Fatalf("index-attributes: plant did not land in the index only (%v)", err)
+		}
+		return "sub/.gitattributes"
+	}
+	t.Fatalf("unknown index mode %s", mode)
+	return ""
+}
+
+// attrTreeUnsetsFilter names an unattested attribute tree that unsets the
+// attested filter, configures the driver, and plants its output. Only the
+// attribute query is exposed to the tree: rendering itself reads the attested
+// attributes and so writes exactly the planted bytes through the driver.
+func attrTreeUnsetsFilter(t *testing.T, root, name string) {
+	t.Helper()
+	attestGit(t, root, "config", "filter.fixture.smudge", "sed s/source/SOURCE/")
+	blob := strings.TrimSpace(attestIn(t, root, name+" -filter\n", "hash-object", "-w", "--stdin"))
+	tree := strings.TrimSpace(attestIn(t, root, "100644 blob "+blob+"\t.gitattributes\n", "mktree"))
+	attestGit(t, root, "config", "attr.tree", tree)
+	if out := strings.TrimSpace(attestOut(t, root, "check-attr", "filter", "--", name)); !strings.HasSuffix(out, ": unset") {
+		t.Skip("this git does not read attr.tree") // git 2.46 and later do
+	}
+	if err := os.WriteFile(filepath.Join(root, name), []byte("attested SOURCE"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := attestOut(t, root, "--attr-source=HEAD", "cat-file", "--filters", "--path="+name, "HEAD:"+name); got != "attested SOURCE" {
+		t.Fatalf("attr-tree-filter: driver output %q is not the plant", got)
+	}
 }
 
 func attestIn(t *testing.T, root, stdin string, args ...string) string {
@@ -613,6 +724,15 @@ func TestVerifierSourceClosureCheckoutForms(t *testing.T) {
 	co, err := readVerifierCheckout(home)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !gitHasAttrSource(t, home) {
+		// A git without --attr-source cannot render a converted file from
+		// the attested attributes alone, so the converted file is refused
+		// rather than rendered from attributes the home could have moved.
+		if err := verifierSourceClosure(home, commit, co, nil); err == nil || !strings.Contains(err.Error(), "run.ps1 (its checkout form") {
+			t.Fatalf("converted checkout on a git without --attr-source: %v, want a run.ps1 refusal", err)
+		}
+		return
 	}
 	if err := verifierSourceClosure(home, commit, co, nil); err != nil {
 		t.Fatalf("clean converted checkout refused: %v", err)
@@ -756,6 +876,14 @@ func TestVerifierCheckoutConversionPinned(t *testing.T) {
 	attestGit(t, home, "checkout", "-q", "--detach")
 	if b, _ := os.ReadFile(filepath.Join(home, "data.txt")); string(b) != "one\r\ntwo\r\n" {
 		t.Fatalf("checkout did not convert: %q", b)
+	}
+	if !gitHasAttrSource(t, home) {
+		// A git without --attr-source cannot render from the attested
+		// attributes, so a converted checkout fails closed there.
+		if err := PrepareVerifierAttestation(home, "example-org/one", "brief.md", "gpt-6-astra", "strong"); err == nil || !strings.Contains(err.Error(), "its checkout form") {
+			t.Fatalf("converted home on a git without --attr-source: %v", err)
+		}
+		return
 	}
 	if err := PrepareVerifierAttestation(home, "example-org/one", "brief.md", "gpt-6-astra", "strong"); err != nil {
 		t.Fatalf("converted home refused: %v", err)
