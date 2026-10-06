@@ -590,6 +590,38 @@ Pre-mortem → detection map:
 | # | Exit | Key observed output |
 |---|------|---------------------|
 | — | — | not yet run — this brief is authored, not implemented |
+### 2026-10-06 non-implementer verify-desk run on merged main 1fbf1153f — VERIFY: FAIL (check-definition: six rows name tests absent on main; rows 3 and 6 uncovered) — tracked in #2293
+
+Offline container (go1.25.14 linux/arm64, network none, GOPROXY=off, KUBECONFIG=/dev/null), module mode. Every `go test` row re-run with `-v` added so a `-run` that matches nothing is visible: such a row exits 0 with "[no tests to run]" and is recorded here as vacuous, never as a pass. Row 11 ran on a `git archive` export (muhar mutates sources in place). The delivered code is sound: every test that exists passes, mutations included; the FAIL is the Verify table's contract with the tests.
+
+| # | Command | Exit | Output | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | 0 | clean, no output | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | row 2 as written, with -v | 0 | VACUOUS — "testing: warning: no tests to run"; TestPooledSweepsFailClosedNamingTheRepo absent on main | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | row 3 as written, with -v | 0 | VACUOUS — "[no tests to run]"; TestPooledSweepsAreByteIdenticalToSerial absent; no covering test under any name | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | row 4 as written, with -v | 0 | first half VACUOUS (TestPRsOutOfInstallCarveOut absent; renamed coverage TestOutOfInstallationRepoIsCouldNotCheck); second half "--- PASS: TestPolicyDriftNeverFailsTheRun" | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | row 5 as written, with -v | 0 | VACUOUS — TestPerRootPoolMatchesSerialAndFailsClosed absent; TestPerRootPoolFailsClosed exists but has no serial-equality case | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | row 6 as written, with -v | 0 | VACUOUS — TestThroughputResolvesRootsExactlyOnce absent; no counting-seam test anywhere | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | row 7 as written, with -v | 0 | VACUOUS — TestThroughputBlindStageIsNeverACountedZero absent; partial coverage TestThroughputSharedRootFailureBlindsBothStages | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | row 8 as written, with -v | 0 | "--- PASS: TestStalePinResolvesPerPlatformArtifact" | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | row 9 as written, with -v | 0 | "--- PASS: TestConditionListIsTheDocumentedContract"; full deskflip suite ok 39.6s. Note: flipConditions on main has ten entries (a later desk-decided condition); this brief's nine keep their order | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | row 10 as written, with -v | 0 | all three named tests print their own --- PASS line | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | row 11 as written (archive export) | 0 | both harnesses baseline GREEN + positive control CAUGHT; deskboard 30 caught / 0 NOT CAUGHT; deskflip 31 caught / 0 NOT CAUGHT | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | row 12 as written | 0 | ok deskboard 103.2s; ok deskflip 31.8s | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | row 13 as written, with -v | 0 | "--- PASS: TestHelpOnlyHasNoFalsePositive" | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 14 | row 14 as written, with -v | 0 | deskpr "--- PASS: TestHelpWritesNoAuditRow"; the other five packages VACUOUS (the test lives as TestTierTwoHelpNoRow in three of them; deskwt and deskfile have only a static source scan) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 15 | row 15 as written, with -v | 0 | deskpr and deskreply PASS; the deskpost package VACUOUS (same-named test lives in its internal bodycheck subpackage) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 16 | row 16 as written, with -v | 0 | "--- PASS: TestCheckIsOfflineAndGatesRatherThanPreviews" | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 17 | row 17 as written | 0 | gofmt output file empty | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 18 | row 18 (live deskboard timings) | n/a | could-not-check — needs live forge reads under App credentials; an offline verify pass contacts no endpoint; no timing recorded or invented | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | LINT: PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 20 | `cd statusgen && go run . --root .. --consumers --brief assay:assay:desk-tools:27; echo $?` | 2 | could-not-check — "not in the diff against" the merged tree (structural, #1281 class); a manual comparison of the two delivery commits against the consumers list found no mis-routing (supplementary, not the row) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+RISK-VALUE: DERIVED — flipConditions = [caller-role, app-token, pr-open-draft, mergeable, reviewer-approved, checks-green, desk-decided, model-floor, security-verdict, head-stable] @ tools/desk/cmd/deskflip/flip.go:85-96 — every condition is individually necessary, so order selects only which refusal fires first; mergeable reads the PR document pr-open-draft already fetched, so it cannot precede its own read; mutation-backed (row 11).
+RISK-VALUE: DERIVED — help tokens = {"-h","-help","--help"} @ tools/desk/internal/deskkit/helprequest.go:52-54 — a strict subset of what Go's flag package treats as ErrHelp, matched only as the sole token after a subcommand; a miss falls through to normal parsing (the safe direction, never skipping a Guard).
+rootConcurrency = 4 @ tools/desk/cmd/deskboard/roots.go:41 — reversible operational knob, ranked last, no derivation required.
+
+**VERIFY: FAIL** — check-definition: re-point rows 2, 4, 5, 7, 14, 15 to the real test names/packages (a Verify-row change by PR, never an Evidence rewording) and add tests for rows 3 and 6; then re-verify. Status stays `implemented`. Bug: #2293.
 
 ## Review
 
