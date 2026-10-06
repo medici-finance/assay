@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework|TestBriefThatResolves'",
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework|TestBriefThatResolves|TestDeclaredTag|TestUndeclaredRepo|TestUntaggedBrief|TestTagNeverWidens'",
   "control": {
     "name": "CONTROL \u2014 drop the HARD FAIL on a deliverable repo that is not --root's origin; the worktree would be cut in the wrong repo. TestCrossRepoMismatchHardFailsBeforeAnything must go red",
     "file": "cmd/deskdispatch/deliverable.go",
@@ -78,6 +78,24 @@
       "file": "cmd/deskdispatch/deliverable.go",
       "old": "\tp := resolveBriefPath(o)\n\tif p == \"\" {",
       "new": "\tp := resolveBriefPath(o)\n\tif p == \"\" && false {"
+    },
+    {
+      "name": "a --repo the brief's files: list declares is still hard-failed (the declared-deliverable acceptance is dropped); TestDeclaredTagAdmitsRepo must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif tag == \"\" {\n\t\t\treturn d, mismatch(d, \"--repo\", r)",
+      "new": "\t\tif true {\n\t\t\treturn d, mismatch(d, \"--repo\", r)"
+    },
+    {
+      "name": "a files: tag overrides an explicit deliverable_repo/homed-in; TestTagNeverWidens/explicit_deliverable_wins must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif declDeliverable == \"\" && declHomedIn == \"\" {\n\t\t\ttag = declaredTagFor(",
+      "new": "\t\tif true {\n\t\t\ttag = declaredTagFor("
+    },
+    {
+      "name": "the files: list is not closed by a blank line, so a tagged entry AFTER the list declares a repo; TestTagNeverWidens/tag_after_the_list must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tif lt == \"\" {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tif strings.HasPrefix(lt, \"- \") {\n\t\t\t\ttake(",
+      "new": "\t\t\tif lt == \"\" {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif strings.HasPrefix(lt, \"- \") {\n\t\t\t\ttake("
     }
   ]
 }

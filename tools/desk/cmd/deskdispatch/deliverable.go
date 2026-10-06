@@ -31,6 +31,16 @@ package main
 //     naming the alias, the resolved repo and the checkout's actual repo. It runs before the claim,
 //     so no claim is taken and no worktree is cut.
 //
+// ONE NARROW ACCEPTANCE (declared deliverable repos). A brief with no deliverable_repo/homed-in is
+// tracked AND delivered in its home repo — unless its own `files:` list says otherwise: an entry
+// tagged `[<alias>]` (e.g. "- `[<alias>]` `../<sibling>/path`") declares that the brief changes
+// files in <alias>'s repo. When --repo is given and equals a repo so declared — the tag resolved
+// through the SAME registry, published there — --repo is accepted as the deliverable repo. Every
+// other witness is unchanged: --root's origin must still be that repo, the claim key keeps the
+// TRACKING alias, and the claim, token and worktree land in --repo exactly as for deliverable_repo.
+// An unknown or unpublished tag, a tag outside the brief's `files:` list, a --repo no tag names, an
+// absent --repo, or a brief that declares deliverable_repo/homed-in explicitly → the HARD FAIL above.
+//
 // WHERE THE REGISTRY IS READ. Under --claim-root when given, else --root. --claim-root is the
 // tracking checkout — the one that carries the brief, its board and the full registry copy — and it
 // is already authoritative for the claim tool; the registry follows it for the same reason. The
@@ -314,7 +324,7 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 
 	// --brief was resolved to an absolute path by resolveBrief before this runs (an unresolvable one
 	// is already refused), so an unreadable file here is a could-not-check, never "no declaration".
-	var declDeliverable, declHomedIn, declV2Alias string
+	var declDeliverable, declHomedIn, declV2Alias, briefText string
 	if strings.TrimSpace(o.brief) != "" {
 		raw, err := os.ReadFile(o.brief)
 		if err != nil {
@@ -322,7 +332,8 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 				"step %s: --brief %s could not be read (%v), so whether it declares a deliverable repo cannot be "+
 					"established. Nothing was claimed.", stepClaimAcquire, o.brief, err), err)
 		}
-		front := briefFrontmatterBlock(string(raw))
+		briefText = string(raw)
+		front := briefFrontmatterBlock(briefText)
 		declDeliverable = briefField(front, briefDeliverableRe)
 		declHomedIn = briefField(front, briefHomedInRe)
 		declV2Alias = briefV2Alias(briefField(front, briefIDRe))
@@ -438,7 +449,18 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 
 	// HARD FAIL on a mismatch — the check the whole class turns on. Two witnesses, both pre-claim.
 	if r := strings.TrimSpace(o.repo); r != "" && !strings.EqualFold(r, repo) {
-		return d, mismatch(d, "--repo", r)
+		// The one narrow acceptance: --repo is a repo the brief's own files: list declares. Only when
+		// the deliverable was NOT declared explicitly — an explicit deliverable_repo/homed-in names
+		// exactly one repo, and a tag never overrides it.
+		tag := ""
+		if declDeliverable == "" && declHomedIn == "" {
+			tag = declaredTagFor(briefText, reg, r)
+		}
+		if tag == "" {
+			return d, mismatch(d, "--repo", r)
+		}
+		repo, _ = reg.repoOf(tag)
+		d.alias, d.source, d.repo = tag, "the ["+tag+"] tag on the brief's files: list", repo
 	}
 	origin := runCmd(o.root, "git", "remote", "get-url", "origin")
 	if origin.err != nil {
@@ -461,6 +483,70 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	// one spelling the forge actually serves.
 	d.repo = actual
 	return d, nil
+}
+
+// filesTagRe reads the `[<alias>]` declaration at the head of one `files:` entry, bare or in its own
+// backticks: "- [alias] ../x/y" or "- `[alias]` `../x/y`". The alias half is the registry grammar.
+var filesTagRe = regexp.MustCompile("^`?\\[([a-z][a-z0-9_-]{0,31})\\]`?(?:\\s|$)")
+
+// briefFilesTags returns the `[alias]` tags on the entries of the brief BODY's first `files:` list —
+// the same list the write-scope reader takes (frontmatter skipped; a block list of `- ` entries,
+// indented continuation lines ignored, closed by a blank line or a left-margin line). A tag anywhere
+// else — prose, the frontmatter, after the list — declares nothing.
+func briefFilesTags(text string) []string {
+	lines := strings.Split(text, "\n")
+	start := 0
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				start = i + 1
+				break
+			}
+		}
+	}
+	var tags []string
+	take := func(entry string) {
+		if m := filesTagRe.FindStringSubmatch(strings.TrimSpace(entry)); m != nil {
+			tags = append(tags, m[1])
+		}
+	}
+	for i := start; i < len(lines); i++ {
+		t := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(t, "files:") {
+			continue
+		}
+		if rest := strings.TrimSpace(strings.TrimPrefix(t, "files:")); rest != "" {
+			take(rest) // the inline form: one entry on the files: line itself
+			return tags
+		}
+		for j := i + 1; j < len(lines); j++ {
+			lt := strings.TrimSpace(lines[j])
+			if lt == "" {
+				break
+			}
+			if strings.HasPrefix(lt, "- ") {
+				take(strings.TrimPrefix(lt, "- "))
+				continue
+			}
+			if !strings.HasPrefix(lines[j], " ") && !strings.HasPrefix(lines[j], "\t") {
+				break
+			}
+		}
+		return tags
+	}
+	return nil
+}
+
+// declaredTagFor returns the alias of a `files:` tag that resolves, through reg, to a PUBLISHED repo
+// equal to repo (case-insensitive) — or "" when no tag declares repo. An unknown or unpublished tag
+// never matches: the registry is the only resolution path, here as everywhere in this file.
+func declaredTagFor(text string, reg *aliasRegistry, repo string) string {
+	for _, tag := range briefFilesTags(text) {
+		if got, _ := reg.repoOf(tag); got != "" && strings.EqualFold(got, repo) {
+			return tag
+		}
+	}
+	return ""
 }
 
 func unregisteredAlias(alias, source string, reg *aliasRegistry) error {
