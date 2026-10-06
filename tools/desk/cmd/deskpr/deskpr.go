@@ -362,10 +362,13 @@ func cmdCreate(args []string) (err error) {
 		return gerr
 	}
 
-	// Plain push. argv is constructed literally: no --force / --force-with-lease can
-	// ever be emitted, and no caller flag is forwarded to git.
-	if _, pushErr := git(facts.dir, "push", "-u", "origin", facts.branch); pushErr != nil {
-		return deskkit.Unverifiable("git push failed", pushErr)
+	// Plain push, in-process (push.go): the refspec is built here with no "+" and no Force,
+	// so a push that would need force is refused by the protocol; no caller flag reaches it.
+	if pushErr := pushFn(pushSpec{
+		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
+		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch,
+	}); pushErr != nil {
+		return pushErr
 	}
 
 	// On-behalf-of trailer (multi-principal/01), appended to the body sent to the forge
@@ -735,14 +738,17 @@ func cmdUpdate(args []string) (err error) {
 		return gerr
 	}
 
-	pushArgs := []string{"push", "-u", "origin", facts.branch}
-	if override {
-		// Explicit refspec: HEAD onto the PR's head branch. No -u — the worktree's own branch
-		// has a different name and must not be re-pointed at the PR head's upstream.
-		pushArgs = []string{"push", "origin", "HEAD:refs/heads/" + pushDest}
+	spec := pushSpec{
+		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
+		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch,
 	}
-	if _, pushErr := git(facts.dir, pushArgs...); pushErr != nil {
-		return deskkit.Unverifiable("git push failed", pushErr)
+	if override {
+		// Explicit refspec: HEAD onto the PR's head branch. The worktree's own branch has a
+		// different name; the in-process push never touches local upstream config either way.
+		spec.srcRef, spec.dstBranch = "HEAD", pushDest
+	}
+	if pushErr := pushFn(spec); pushErr != nil {
+		return pushErr
 	}
 	// Post-update mergeable check (#1264): the push moved the head, so GitHub recomputes
 	// mergeability. A push that lands the PR in CONFLICTING gets zero pull_request runs at

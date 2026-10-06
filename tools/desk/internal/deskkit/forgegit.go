@@ -58,6 +58,31 @@ type ForgeGitEndpoint struct {
 // none yields a usable ListOpts, and none presents a credential to a host derived from an
 // untrusted or unrelated source.
 func ForgeGitEndpointFor(repoSlug, role string) (ForgeGitEndpoint, error) {
+	return forgeGitEndpoint(repoSlug, role, "")
+}
+
+// ForgeGitEndpointForCheckout is ForgeGitEndpointFor for a caller acting on the checkout it
+// sits IN — deskpr pushing that checkout's own branch, the preflight probing its own landing
+// repo — rather than sweeping an unrelated repo. Only the forge KIND may additionally come from
+// originRemoteURL: when the roster names no forge for repoSlug, the origin's host is mapped
+// through the unambiguous well-known host table (github.com → GitHub, gitlab.com → GitLab), the
+// same fallback ForgeFor's resolver takes for that checkout, so the push lands under the forge
+// the API calls already resolved. A host outside that table answers nothing (could-not-check,
+// never a guess). The host the credential is PRESENTED to is unchanged: still the resolved
+// kind's own canonical instance (gitHostForKind), never the origin's host — so a checkout whose
+// origin names some other server can steer which forge software is assumed only within the
+// well-known table, and never where the token goes.
+func ForgeGitEndpointForCheckout(repoSlug, role, originRemoteURL string) (ForgeGitEndpoint, error) {
+	host := ""
+	if h, err := hostOfRemote(originRemoteURL); err == nil {
+		host = h
+	}
+	return forgeGitEndpoint(repoSlug, role, host)
+}
+
+// forgeGitEndpoint is the shared body: kindHost is the ONLY non-roster input to the forge-kind
+// decision ("" ⇒ the roster alone answers) and is never used to build the URL.
+func forgeGitEndpoint(repoSlug, role, kindHost string) (ForgeGitEndpoint, error) {
 	owner, name, ok := strings.Cut(strings.TrimSpace(repoSlug), "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return ForgeGitEndpoint{}, Unverifiable(fmt.Sprintf(
@@ -65,10 +90,12 @@ func ForgeGitEndpointFor(repoSlug, role string) (ForgeGitEndpoint, error) {
 	}
 	repo := ForgeRepo{Owner: owner, Name: name}
 
-	// WHICH forge — from the roster ONLY (host "" ⇒ ASSAY_REPO_FORGES answers, else refuse).
-	// The checkout's origin is deliberately NOT consulted: it names an unrelated repo's forge
-	// in the cross-repo sweep, and a mis-resolution there would pick the wrong credential.
-	res, err := resolveForgeKindWithHost(repo, "")
+	// WHICH forge — from the roster (ASSAY_REPO_FORGES), else refuse. ForgeGitEndpointFor passes
+	// kindHost "": the checkout's origin is deliberately NOT consulted there, since it names an
+	// unrelated repo's forge in the cross-repo sweep and a mis-resolution would pick the wrong
+	// credential. ForgeGitEndpointForCheckout passes its OWN origin's host, which can only map
+	// through the well-known table.
+	res, err := resolveForgeKindWithHost(repo, kindHost)
 	if err != nil {
 		return ForgeGitEndpoint{}, err
 	}

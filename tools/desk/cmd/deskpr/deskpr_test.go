@@ -419,6 +419,17 @@ func withEnv(t *testing.T, work string) *[][]string {
 	}
 	t.Cleanup(func() { execCommand = oldExec })
 
+	// The push is in-process (push.go) — no argv to record — so the recorder notes each one
+	// as a pushMark entry in the same call log and then runs the REAL push against the
+	// fixture's local bare. A push assertion reads the entry; a behaviour assertion reads the
+	// bare (pushedTo).
+	oldPush := pushFn
+	pushFn = func(s pushSpec) error {
+		*calls = append(*calls, []string{pushMark, s.srcRef, "refs/heads/" + s.dstBranch})
+		return oldPush(s)
+	}
+	t.Cleanup(func() { pushFn = oldPush })
+
 	oldGate := publicRepoGateFn
 	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
@@ -493,6 +504,46 @@ func callContainsAll(c []string, want ...string) bool {
 	return true
 }
 
+// pushMark heads a call-log entry recording one in-process push: {pushMark, srcRef, dstRef}.
+const pushMark = "<in-process push>"
+
+// anyPush reports whether ANY push was attempted (successful or not).
+func anyPush(calls [][]string) bool {
+	for _, c := range calls {
+		if len(c) > 0 && c[0] == pushMark {
+			return true
+		}
+	}
+	return false
+}
+
+// pushedFrom reports whether a push of srcRef onto refs/heads/<branch> was attempted.
+func pushedFrom(calls [][]string, srcRef, branch string) bool {
+	for _, c := range calls {
+		if len(c) == 3 && c[0] == pushMark && c[1] == srcRef && c[2] == "refs/heads/"+branch {
+			return true
+		}
+	}
+	return false
+}
+
+// pushedTo reports whether the checkout's own branch was pushed to the same-named remote
+// branch — the old `git push -u origin <branch>` shape.
+func pushedTo(calls [][]string, branch string) bool {
+	return pushedFrom(calls, "refs/heads/"+branch, branch)
+}
+
+// bareHolds fails the test unless the fixture's local bare (the push destination) holds
+// refs/heads/<branch> at the work tree's HEAD — the push LANDED, not merely ran.
+func bareHolds(t *testing.T, work, branch string) {
+	t.Helper()
+	bare := filepath.Join(filepath.Dir(work), "origin.git")
+	head := mustGit(t, work, "rev-parse", "HEAD")
+	if got := mustGit(t, bare, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); got != head {
+		t.Fatalf("bare refs/heads/%s = %q, want the pushed HEAD %s", branch, got, head)
+	}
+}
+
 func anyCall(calls [][]string, want ...string) bool {
 	for _, c := range calls {
 		if callContainsAll(c, want...) {
@@ -524,10 +575,12 @@ func TestCreateSuccessAlwaysDraftNeverForce(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0", rc)
 	}
-	// git push happened, argv constructed literally, NEVER --force (core assertion).
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("expected a plain `git push -u origin feature/test-branch`; git calls: %v", gitCalls(*calls))
+	// The push happened and LANDED (in-process, no "+" refspec, no Force), and no git argv
+	// carries --force either (core assertion).
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("expected the branch push; calls: %v", *calls)
 	}
+	bareHolds(t, work, "feature/test-branch")
 	if anyGitForce(*calls) {
 		t.Fatalf("a git argv carried --force; draft-only-by-construction requires none: %v", gitCalls(*calls))
 	}
@@ -649,9 +702,10 @@ func TestUpdateConflictingPRWarnsLoudly(t *testing.T) {
 		t.Fatalf("update rc = %d, want 0 — a CONFLICTING mergeable state is advisory, never a failure", rc)
 	}
 	// The push happened AND the post-update mergeable probe ran on the listed PR (#42).
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("update did not push the branch: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("update did not push the branch: %v", *calls)
 	}
+	bareHolds(t, work, "feature/test-branch")
 	if !anyCall(ghCalls(*calls), "pr", "view", "42") {
 		t.Fatalf("expected a post-update `gh pr view 42 --json mergeable,...`; gh calls: %v", ghCalls(*calls))
 	}
@@ -987,8 +1041,8 @@ func TestUpdateRefusesNoTrailer(t *testing.T) {
 	if !strings.Contains(err.Error(), "Brief: <stream>/<NN>") {
 		t.Fatalf("refusal must name the missing line; got: %v", err)
 	}
-	if anyCall(gitCalls(*calls), "push") {
-		t.Fatalf("no push on trailer refusal: %v", gitCalls(*calls))
+	if anyPush(*calls) {
+		t.Fatalf("no push on trailer refusal: %v", *calls)
 	}
 }
 
@@ -1005,8 +1059,8 @@ func TestCreateIdempotentNoopWhenPRExists(t *testing.T) {
 	if anyCall(ghCalls(*calls), "pr", "create") {
 		t.Fatalf("a PR was created despite an existing open PR: %v", ghCalls(*calls))
 	}
-	if anyCall(gitCalls(*calls), "push") {
-		t.Fatalf("a push happened on the idempotent noop path: %v", gitCalls(*calls))
+	if anyPush(*calls) {
+		t.Fatalf("a push happened on the idempotent noop path: %v", *calls)
 	}
 }
 
@@ -1094,8 +1148,8 @@ func TestCreateStrayLocalOriginMainBranchStillCreates(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create with stray local origin/main rc = %d, want 0 (regression #840)", rc)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("expected a plain `git push -u origin feature/test-branch`; git calls: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("expected the branch push; calls: %v", *calls)
 	}
 	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
 		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
@@ -1141,8 +1195,8 @@ func TestCreateNonDefaultBaseCountsAgainstThatBase(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create --base stacked-base rc = %d, want 0 (#55: must not false-refuse a branch ahead of its --base)", rc)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("expected a plain `git push -u origin feature/test-branch`; git calls: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("expected the branch push; calls: %v", *calls)
 	}
 	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
 		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
@@ -1290,8 +1344,8 @@ func TestUpdateReadyPRPushes(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("update on a ready (non-draft) open PR rc = %d, want 0; git calls: %v", rc, gitCalls(*calls))
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("update did not push the branch to the ready PR: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("update did not push the branch to the ready PR: %v", *calls)
 	}
 	if anyGitForce(*calls) {
 		t.Fatalf("update emitted a git --force: %v", gitCalls(*calls))
@@ -1333,8 +1387,8 @@ func TestUpdateDraftPRPushes(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("update on draft PR rc = %d, want 0", rc)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("update did not push the branch: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("update did not push the branch: %v", *calls)
 	}
 	if anyGitForce(*calls) {
 		t.Fatalf("update emitted a git --force: %v", gitCalls(*calls))
@@ -1343,8 +1397,8 @@ func TestUpdateDraftPRPushes(t *testing.T) {
 
 func assertNoPushNoCreate(t *testing.T, calls [][]string) {
 	t.Helper()
-	if anyCall(gitCalls(calls), "push") {
-		t.Fatalf("a git push happened on a refusal path: %v", gitCalls(calls))
+	if anyPush(calls) {
+		t.Fatalf("a push happened on a refusal path: %v", calls)
 	}
 	if anyCall(ghCalls(calls), "pr", "create") {
 		t.Fatalf("a gh pr create happened on a refusal path: %v", ghCalls(calls))
@@ -1705,8 +1759,8 @@ func TestCreateGateCountsItsOwnSuccessfulWrites(t *testing.T) {
 	if anyCall(ghCalls(*calls), "pr", "create") {
 		t.Fatalf("a PR was created past an exhausted budget: %v", ghCalls(*calls))
 	}
-	if anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("a push happened past an exhausted budget: %v", gitCalls(*calls))
+	if pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("a push happened past an exhausted budget: %v", *calls)
 	}
 }
 
@@ -1766,7 +1820,7 @@ func TestUpdateGateCountsItsOwnWrites(t *testing.T) {
 	if rc != deskkit.ExitRateLimited {
 		t.Fatalf("update rc = %d, want %d — PR #42's budget is spent", rc, deskkit.ExitRateLimited)
 	}
-	if anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("a push happened past an exhausted budget: %v", gitCalls(*calls))
+	if pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("a push happened past an exhausted budget: %v", *calls)
 	}
 }

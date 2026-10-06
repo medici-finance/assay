@@ -25,7 +25,7 @@ func TestDeskLoopUnsetRefusesTheOutwardVerb(t *testing.T) {
 	if got := ghCalls(*calls); len(got) != 0 {
 		t.Fatalf("the refusal still made %d forge call(s): %v", len(got), got)
 	}
-	if anyCall(gitCalls(*calls), "push") {
+	if anyPush(*calls) {
 		t.Fatal("the refusal still pushed")
 	}
 }
