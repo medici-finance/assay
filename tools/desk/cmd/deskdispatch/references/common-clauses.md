@@ -90,6 +90,15 @@ stay visible in the thread on its own. Everything that is this agent's own runni
 what it intends to do, what it has verified, what is blocking it — belongs in the ONE
 workpad, edited, never appended as a new comment.
 
+### C6a. Workpad body shape
+
+The body carries exactly one `<!-- assay:workpad -->` line on its own, outside a code
+fence, then an optional stamp line safe for the PR's audience, then four sections in
+this order: `## Plan`, `## Acceptance criteria`, `## Validation`, `## Notes`. The one
+copyable template is in `deskreply --help`, section WORKPAD BODY. Rehearse with
+`--dry-run` first: it reads the forge and posts nothing. A template is body data, never
+posting authorization.
+
 ## C7. Managed task scratch and evidence handoff
 
 Use the runtime's owned scratch environment for disposable bodies, snapshots and build

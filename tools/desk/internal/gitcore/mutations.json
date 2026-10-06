@@ -1,10 +1,10 @@
 {
   "test": "go test ./internal/gitcore/ -run 'Refusal|Verdict|RemoteText|CapturesServerMessages|RemoteCaptureGuard|PushRefUpdate' -count=1 -timeout 300s && go test ./cmd/deskclaim-ref/ -run 'CauseCarriesServerMessage' -count=1 -timeout 300s",
   "control": {
-    "name": "CONTROL \u2014 a create the server refused is reported as applied",
-    "file": "internal/gitcore/claimref.go",
-    "old": "\t\t\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}, nil",
-    "new": "\t\t\t\treturn RefUpdateVerdict{Result: RefUpdateApplied}, nil"
+    "name": "CONTROL \u2014 an update the server refused is reported as applied (create and delete share receiveClaim's verdict since #2010)",
+    "file": "internal/gitcore/claimack.go",
+    "old": "\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(status), Remote: remoteText(remote)}, nil",
+    "new": "\t\treturn RefUpdateVerdict{Result: RefUpdateApplied}, nil"
   },
   "mutations": [
     {
@@ -14,16 +14,16 @@
       "new": "\tdefault:"
     },
     {
-      "name": "the create verdict drops the captured server message",
-      "file": "internal/gitcore/claimref.go",
-      "old": "\t\t\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}, nil",
-      "new": "\t\t\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(cs.Status)}, nil"
+      "name": "the refusal verdict drops the captured server message (receiveClaim, shared by create and delete since #2010)",
+      "file": "internal/gitcore/claimack.go",
+      "old": "\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(status), Remote: remoteText(remote)}, nil",
+      "new": "\t\treturn RefUpdateVerdict{Result: RefUpdateRejected, Status: strings.TrimSpace(status)}, nil"
     },
     {
       "name": "the delete refusal drops the captured server message",
       "file": "internal/gitcore/claimref.go",
-      "old": "Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}\n",
-      "new": "Status: strings.TrimSpace(cs.Status)}\n"
+      "old": "Status: v.Status, Remote: v.Remote}\n",
+      "new": "Status: v.Status}\n"
     },
     {
       "name": "the delete refusal forgets the value it was CAS'd against",
@@ -34,8 +34,8 @@
     {
       "name": "the delete refusal is an untyped error again",
       "file": "internal/gitcore/claimref.go",
-      "old": "\t\t\t\treturn 0, &RefRejectedError{Ref: ref, Old: current, Status: strings.TrimSpace(cs.Status), Remote: remoteText(remote)}",
-      "new": "\t\t\t\treturn 0, fmt.Errorf(\"gitcore: delete of %s rejected: %s\", ref, rejectionText(cs.Status, remoteText(remote)))"
+      "old": "\t\treturn 0, &RefRejectedError{Ref: ref, Old: current, Status: v.Status, Remote: v.Remote}",
+      "new": "\t\treturn 0, fmt.Errorf(\"gitcore: delete of %s rejected: %s\", ref, rejectionText(v.Status, v.Remote))"
     },
     {
       "name": "the scrubber keeps C1 control characters",

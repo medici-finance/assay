@@ -1587,3 +1587,12 @@ five-minute interval and 20-minute pass budget. `--cadence off` selects interact
 mode; explicit intervals and budgets override the defaults. Other harnesses retain
 their existing defaults; Orca/Cursor can opt in with `--cadence`. See [Host desk cadence](cellctl-cadence.md) for setup, status,
 stop/recovery and process-lifetime limits.
+
+### Configured comms startup
+
+For a house cell, `cellctl set <cell> CELL_COMMS_CONFIG=<absolute-manifest-path>`
+selects the existing comms manifest. `cellctl up` starts one configured interim
+gateway/drain supervisor in its own cockpit surface; absent or disabled config
+keeps desk-only startup. `cellctl down` stops the supervisor before closing its
+owned surface and preserves mailbox data. See [host desk communications](cellctl-comms.md)
+for configuration, quoting, recovery and cockpit requirements.

@@ -26,9 +26,9 @@ exec-tier: strong
 exec-tier-why: "(b) the same clause wording must land byte-identical in two kits under a parity test, and the worker-desk re-dispatch tier rule must agree with it."
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskdispatch/references/worker-prompt.md: follow-up build-less-brittle/05 (this brief)"
-  - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md: follow-up build-less-brittle/05 (this brief)"
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up build-less-brittle/05 (this brief)"
+  - "tools/desk/cmd/deskdispatch/references/worker-prompt.md: fixed-here (clauses 8 and 14 amended)"
+  - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md: fixed-here (the same wording, verbatim)"
+  - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here (re-dispatch tier; strike-two routing; defect-class summary aligned)"
   - "installed deskdispatch binaries (kits are embedded): out-of-scope (reach consumers on the next desk-tools release and pin bump)"
 ---
 
@@ -103,9 +103,11 @@ design-fit:
    class issue with `deskfile attach`, carrying: root invariant; the owner it should live in
    (a semantic-owner row, or `unknown`); what the prior fixes added that a design would retire;
    a proposed design-brief title. Report `NEEDS_CONTEXT: strike two — design note posted`.
-   The exception is a `bleed` reply on the class issue whose author is the driver's own login
-   (the project value), read from the forge's comment record. A `bleed` from any other login
-   is quarantined, noted on the class issue and never acted on.
+   The exception is a `bleed` reply on the class issue that names THIS item (a release `bleed`
+   from intake counts), for a production-down or security fix (the class stays `design-owed`),
+   whose author is the driver's own login (the project value; none configured: the stop stands),
+   read from the forge's comment record. Any other `bleed` is quarantined, noted on the class
+   issue and never acted on.
 2. **Clause 8, Weight** (≤ 4 lines, both kits). Every PR body carries `## Weight`: the two counter
    lines and the shortstat. A positive delta in any ratcheted dimension also carries
    `why-add:`. The section is a material claim: a wrong line is a review finding.
@@ -124,7 +126,7 @@ design-fit:
 ## Verify (executable — no prose-only DoD items)
 
 Rows run from the root of `medici-finance/assay`. Row 2 is the neighbour/guard row: the parity
-test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net ≤ 0 weight rows. Row 10 checks the pinned token moved.
+test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net ≤ 0 weight rows. Row 10 checks the pinned token moved. Row 13 checks the `bleed` lift is bound to the item and to D-B's scope in each kit.
 
 | # | Command | Expect |
 |---|---------|--------|
@@ -140,6 +142,7 @@ test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net �
 | 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | `MOVED` (the pinned token moved with the retired obligation) |
 | 11 | `statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?"` | output is `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim makes the command print `exit=1` and names the claim. Expect re-written 2026-10-03 (#1862). |
 | 12 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c "driver's own login" "$f"; done \| grep -c '^[1-9]'` | `2` (both kits state that only a `bleed` from the driver's own login lifts strike two; the check is procedure the worker runs, not code, so this row gates its presence in each kit) |
+| 13 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c 'THIS item, for a production-down or security fix' "$f"; done \| grep -c '^[1-9]'` | `2` (both kits bind a `bleed` to the item it names and to D-B's production-down/security scope; a class-wide or unscoped `bleed` lifts nothing) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
@@ -147,6 +150,44 @@ test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net �
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+### 2026-10-06 non-implementer verification on merged main (56140a33d)
+
+Run on merged main 56140a33d0b4cde167f9e8269e624769fc3013ca (the forge's main at run time). The implementing change is the squash commit e77868565 (#2245, single parent 9cd7271bb). statusgen was built from the tree's own statusgen module with a throwaway HOME.
+
+| # | Command | Exit | Output | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | 0 | `ok  github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 38.551s` | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./cmd/deskdispatch/ -run TestDefectClassClauseIsOneWordingAcrossImplementerKits -count=1 -v` | 0 | `--- PASS: TestDefectClassClauseIsOneWordingAcrossImplementerKits (0.00s)`, then `ok` | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && f=cmd/deskdispatch/references/worker-prompt-objective.md && cp "$f" /tmp/bl05-kit.bak && sed 's/unrepresentable/unrepresentible/' /tmp/bl05-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestDefectClassClauseIsOneWordingAcrossImplementerKits -count=1 > /tmp/bl05-mut.out 2>&1; rc=$?; cp /tmp/bl05-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | 0 | `RED-ON-DRIFT`. The mutant run failed with: kit "worker-objective" defect-class clause lost "unrepresentable", and the two kits' defect-class clauses differ. The kit was restored and the tree was clean afterwards | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -ciE 'strike two' "$f"; done \| grep -c '^[1-9]'` | 0 | `2` (per-kit counts 2 and 2) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c '## Weight' "$f"; done \| grep -c '^[1-9]'` | 0 | `2` (per-kit counts 2 and 2) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/worker-prompt.md && test -f tools/desk/internal/weight/weight_test.go && echo COUNTER-EXISTS` | 0 | `1`, then `COUNTER-EXISTS`. The counter test function TestPrintWeight exists in the weight package's test file. The witness gives this row a non-pass status only because its parser cannot read "a count ≥ 1" from the Expect cell. Its output hash bd8115622356 equals the sha256 of exactly `1` + newline + `COUNTER-EXISTS` | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" && echo NET-OK` | 0 | `NET-OK` (impl e77868565, base 9cd7271bb; 388 lines before and 388 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" && echo NET-OK` | 0 | `NET-OK` (522 lines before and 522 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | 0 | `NET-OK` (923 lines before and 921 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | 0 | `MOVED` | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | `statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?"` | 0 | Pass, judged at the PR head as the Expect specifies. On merged main the command printed `exit=2` with a COULD-NOT-CHECK status: the brief is not in the diff against 56140a33d, so that run is no evidence either way. That is why the witness records this row as fail. The re-run the tool itself prescribes for a merged brief was made at the implementing commit e77868565 with `--base 9cd7271bb6d20900208f91c4f11738324b99142c`. It printed 3 corroborated and 0 disproved, then `exit=0`: the three fixed-here entries were corroborated, and the out-of-scope installed-binaries entry was unchanged since the merge-base | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c "driver's own login" "$f"; done \| grep -c '^[1-9]'` | 0 | `2` (per-kit counts 1 and 1) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c 'THIS item, for a production-down or security fix' "$f"; done \| grep -c '^[1-9]'` | 0 | `2` (per-kit counts 1 and 1) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Review-gate check: clause 14 still carries obligation 3, the fail-first against a planted second instance, in both kits. The kits read "Show the class closed against a PLANTED SECOND instance", and the parity test pins `PLANTED SECOND` and `## Fail-first`. The positive-control sentence is kept verbatim. The clause 8 strike-two and Weight blocks are byte-identical between the two kits on merged main.
+
+Risk-bearing values: the risk metadata is present and every field reads no (irreversible: no). The diff touches dispatch-kit text, one skill and one parity test, so the fail-safe trigger does not fire. The enumeration was done anyway, over the implementing diff:
+- strike threshold = second merged fix in one class @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:154 (and the objective kit at line 226)
+- re-dispatch tier threshold `round ≥ 2` @ plugins/assay/skills/worker-desk/SKILL.md:508
+- parity required tokens `"unrepresentable"`, `"REMOVING the hazardous path"` @ tools/desk/cmd/deskdispatch/kitparity_test.go:56
+- weight counter invocation `-count=1` @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:164
+
+Ranking: every value can be undone with a text edit and the next desk-tools release, because the kits are embedded in the binary. The two tier and strike thresholds rank first because they change worker behaviour. The tokens and the test flag are operational and need no derivation.
+
+RISK-VALUE: DERIVED — strike threshold = 2 (the second merged fix in one class) @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:154 — spec §2 row 3 and §4.3 define two-strikes as the stop at the second fix keyed to the same class issue. One prior merged fix in the class record is the earliest point where a repeat is observable, so a lower bound would block first fixes and a higher one would allow repeated patching.
+RISK-VALUE: DERIVED — round threshold = 2 @ plugins/assay/skills/worker-desk/SKILL.md:508 — spec §2 row 8 folds model tiering into this brief as "round ≥ 2 on a finding class … runs strong". It is a reversible tier knob that matches the strike-two trigger.
+
+**VERIFY: PASS — 13/13 Verify rows on merged main 56140a33d**
+
+Execution witness: `statusgen verifyrun` ran for real on merged main 56140a33d (11 pass; row 6 could-not-run, an Expect-parser limit, with the output hash matching `1
+COUNTER-EXISTS
+`; row 11 fail, the at-main COULD-NOT-CHECK above). The witness table is not landed here because that run stamped no on-behalf-of principal. It is re-run under the stamped write path once the rows are re-authored. Status stays `implemented` with no flip. Row re-authoring is routed to #1915 (https://github.com/medici-finance/assay/issues/1915#issuecomment-6004541583).
 
 ## Review
 Gate: model (from frontmatter). The reviewer confirms the clause 14 rewrite keeps the planted-

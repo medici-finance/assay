@@ -18,6 +18,7 @@ import (
 // there is deliberately no per-role `--model-<role>` form, because that case is already
 // `cellctl desk <cell> <role> --model <m>` on the one window that needs it.
 type upOverrides struct {
+	Comms       bool
 	Model       string
 	Harness     string
 	Provider    string
@@ -422,6 +423,10 @@ func cmdUp(cell string, args []string) {
 		}
 	}
 
+	o.Comms, err = c.commsPreflight()
+	if err != nil {
+		die("up comms: %v; no windows launched", err)
+	}
 	firstName, firstCmd := c.firstWindow(paneShellFor(runtime.GOOS, res.Cockpit))
 
 	if c.Env.Get("DRY_RUN") == "1" {
@@ -444,6 +449,9 @@ func cmdUp(cell string, args []string) {
 		if o.Provider != "" {
 			fmt.Printf("[dry-run] provider=%s (override) — applied to every role window below\n", o.Provider)
 		}
+		if o.Comms {
+			fmt.Printf("[dry-run] comms: %s\n", c.commsCmdIn(paneShellFor(runtime.GOOS, res.Cockpit), selfPath()))
+		}
 		fmt.Printf("[dry-run] %s: %s\n", firstName, firstCmd)
 		for _, r := range roles {
 			if automate != "" {
@@ -457,6 +465,11 @@ func cmdUp(cell string, args []string) {
 	}
 	if persist {
 		applyEnvKVs(c.Env, c.Dir+"/cell.env", false, persistKVs)
+	}
+	if o.Comms && res.Cockpit != "tmux" {
+		if err := c.startComms(res.Cockpit); err != nil {
+			die("up comms: %v", err)
+		}
 	}
 	switch res.Cockpit {
 	case "tmux":
@@ -474,6 +487,11 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		die("tmux not installed")
 	}
 	if exec.Command("tmux", "has-session", "-t", c.Session).Run() == nil {
+		if o.Comms {
+			if err := c.startComms("tmux"); err != nil {
+				die("up comms: %v", err)
+			}
+		}
 		fmt.Printf("[cell] %s already running — attaching\n", c.Session)
 		if attach {
 			runForeground([]string{"tmux", "attach", "-t", c.Session}, os.Environ(), "")
@@ -482,6 +500,11 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 	}
 	_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", firstName, "-c", c.Dir,
 		firstCmd+"; echo '["+firstName+"] exited'; exec $SHELL").Run()
+	if o.Comms {
+		if err := c.startComms("tmux"); err != nil {
+			die("up comms: %v", err)
+		}
+	}
 	for _, role := range roles {
 		name := strings.TrimSuffix(role, "-desk")
 		switch role {

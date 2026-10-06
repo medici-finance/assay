@@ -201,7 +201,7 @@ func cmdReply(args []string) (err error) {
 	// every other cheap body check above it.
 	if *workpad && !deskkit.HasWorkpadMarker(string(body)) {
 		return deskkit.SchemaRefusal("deskreply", "--dry-run", "refused: --workpad body does not carry the exact-match workpad marker "+
-			"line ("+deskkit.WorkpadMarker+") — render it with deskkit.Render before posting")
+			"line ("+deskkit.WorkpadMarker+") — copy the template in `deskreply --help` (WORKPAD BODY) before posting.")
 	}
 
 	// This must be the worker's OWN PR. Establish the worktree facts, then
