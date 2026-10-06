@@ -939,10 +939,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.gateHuman = true
 	}
 	if plan.gateHuman {
-		// The decision helper resolves the way the claim tool does: under the resolved root
-		// (--claim-root when given, else --root), then PATH. Unlike the claim tool it has NO
-		// PATH port today (see consumerHelpers), so a missing file is the end of the order and
-		// this REFUSES — it never skips the gate. The refusal names every location in that
+		// The decision helper resolves from the same resolved root as the claim tool's script
+		// (--claim-root when given, else --root). The claim tool tries its PATH port FIRST and the
+		// script second (above); the decision helper has NO PATH port today (see consumerHelpers),
+		// so the file under the resolved root is its only location, and a missing file REFUSES —
+		// it never skips the gate. The refusal names every location in that
 		// order and the --claim-root way out: the claim tool's PATH port means a dispatch from
 		// a repo without the scripts no longer needs --claim-root to CLAIM, so this step is
 		// where such a dispatch first learns it needs one.
@@ -1795,9 +1796,11 @@ func validTier(t string) bool {
 	return false
 }
 
-// consumerHelper is one consumer script this verb wraps, with the PATH port that stands in
-// for it when the resolved root does not carry it ("" = no port ships, so the file under the
-// resolved root is the ONLY location and its absence is a refusal).
+// consumerHelper is one consumer script this verb wraps, with its PATH port: the binary the
+// resolver looks up BEFORE the file under the resolved root (the claim tool's order, issue
+// 1151). "" = no port ships, so the file under the resolved root is the ONLY location and its
+// absence is a refusal. pathPort must name a lookup the resolver really performs —
+// TestHelperPathPortsAreLookedUp fails if an entry claims a port no lookup honours.
 type consumerHelper struct {
 	rel      string
 	pathPort string
@@ -1821,14 +1824,21 @@ var consumerHelpers = []consumerHelper{
 // helperLocationsTried states every location this verb looked for the consumer helper rel, for
 // a missing-helper refusal: the file under the resolved root (naming which flag chose that
 // root, and that an explicit --claim-root is authoritative) and PATH — the port that was
-// looked up, or that no port exists to look up. Both refusals (the claim tool's and the
+// looked up, or that no port exists to look up. Locations are named in the resolver's order:
+// the PATH port first when one exists, then the file. Both refusals (the claim tool's and the
 // decision gate's) are phrased through this one function.
 func helperLocationsTried(o dispatchOpts, rel, scriptsRoot string) string {
 	under := "under --root, since no --claim-root was given"
 	if strings.TrimSpace(o.claimRoot) != "" {
 		under = "under --claim-root, which is authoritative: --root is not consulted when it is given"
 	}
-	file := fmt.Sprintf("%s is not present (%s)", filepath.Join(scriptsRoot, filepath.FromSlash(rel)), under)
+	// Named absolute: --root defaults to "." and is never made absolute, and a refusal that
+	// reads "tools/x.sh is not present" does not say which directory was searched.
+	path := filepath.Join(scriptsRoot, filepath.FromSlash(rel))
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	file := fmt.Sprintf("%s is not present (%s)", path, under)
 	port := ""
 	for _, h := range consumerHelpers {
 		if h.rel == rel {

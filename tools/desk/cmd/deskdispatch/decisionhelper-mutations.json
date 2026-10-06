@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestDecisionHelper|TestDecisionClaimRoot|TestHelperRefusals|TestMissingDecision|TestBriefMetadataGateHumanWithMissing'",
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestDecisionHelper|TestDecisionClaimRoot|TestDecisionDefaultRoot|TestHelperRefusals|TestHelperPathPorts|TestMissingDecision|TestBriefMetadataGateHumanWithMissing'",
   "control": {
     "name": "CONTROL — a human-gated dispatch with no decision helper SKIPS the gate instead of refusing; TestDecisionHelperAbsentRefuses must go red",
     "file": "cmd/deskdispatch/dispatch.go",
@@ -48,6 +48,30 @@
       "file": "cmd/deskdispatch/decisionhelper_test.go",
       "old": "var helperConstRe = regexp.MustCompile(`^tools/[A-Za-z0-9._-]+\\.sh$`)",
       "new": "var helperConstRe = regexp.MustCompile(`^tools/[A-Za-z0-9._-]+\\.bash$`)"
+    },
+    {
+      "name": "a defaulted or relative --root is named as given, not absolute; TestDecisionDefaultRootAbsolute must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif abs, err := filepath.Abs(path); err == nil {",
+      "new": "\tif abs, err := filepath.Abs(path); false && err == nil {"
+    },
+    {
+      "name": "the claim refusal names the file before the PATH port, against the resolver's order; TestHelperRefusalsNameAll/dispatch-claim.sh must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\treturn fmt.Sprintf(\"the pure-Go %s binary is not on PATH, and %s\", port, file)",
+      "new": "\t\treturn fmt.Sprintf(\"%s, and the pure-Go %s binary is not on PATH\", file, port)"
+    },
+    {
+      "name": "the claim-tool refusal drops the --claim-root way out; TestHelperRefusalsNameAll/dispatch-claim.sh must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\t\tstepClaimAcquire, helperLocationsTried(o, claimScriptRel, scriptsRoot), claimRootHint(o)), goErr)",
+      "new": "\t\t\tstepClaimAcquire, helperLocationsTried(o, claimScriptRel, scriptsRoot), \"\"), goErr)"
+    },
+    {
+      "name": "the decision helper is listed with a PATH port the resolver never looks up; TestHelperPathPortsAreLookedUp/decision-issue.sh must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t{rel: decisionScriptRel, pathPort: \"\"},",
+      "new": "\t{rel: decisionScriptRel, pathPort: \"deskdecision-ref\"},"
     }
   ]
 }

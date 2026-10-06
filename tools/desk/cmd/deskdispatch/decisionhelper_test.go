@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -15,9 +16,10 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// decisionhelper_test.go — the decision helper (tools/decision-issue.sh) resolves the way the
-// claim tool does: under the resolved root (--claim-root when given, else --root), then PATH.
-// It has no PATH port, so a target repo that does not carry the script and was dispatched with
+// decisionhelper_test.go — the decision helper (tools/decision-issue.sh) resolves from the same
+// root as the claim tool's script: --claim-root when given, else --root. The claim tool tries its
+// PATH port first and that file second; the decision helper has no PATH port, so the file is its
+// only location, and a target repo that does not carry the script and was dispatched with
 // no --claim-root must still REFUSE a human-gated item — never skip the gate — and the refusal
 // must name every location tried plus the --claim-root way out. The field failure: a
 // human-gated dispatch from a repo without the script claimed fine through the PATH claim
@@ -98,6 +100,39 @@ func TestDecisionClaimRootStrict(t *testing.T) {
 	}
 }
 
+// The field shape passes no --root at all, so it defaults to "." — the refusal must still name
+// the ABSOLUTE path searched, not "tools/decision-issue.sh is not present", which says nothing
+// about which directory that was.
+func TestDecisionDefaultRootAbsolute(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	withGoClaimOnPath(t)
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+	t.Chdir(root) // --root omitted below: it defaults to "."
+
+	err := cmdDispatch([]string{"item-1", "--repo", allowedRepo, "--gate-human", "--brief", "spec.md"})
+	if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
+		t.Fatalf("a defaulted --root without the helper must fail closed (exit 6): %v", err)
+	}
+	m := notPresentRe.FindStringSubmatch(err.Error())
+	if m == nil {
+		t.Fatalf("the refusal names no path that is not present:\n%s", err.Error())
+	}
+	named := m[1]
+	suffix := string(filepath.Separator) + filepath.FromSlash(decisionScriptRel)
+	if !filepath.IsAbs(named) || !strings.HasSuffix(named, suffix) {
+		t.Fatalf("the refusal names %q, want the absolute path of %s:\n%s", named, decisionScriptRel, err.Error())
+	}
+	gotDir, _ := filepath.EvalSymlinks(strings.TrimSuffix(named, suffix))
+	wantDir, _ := filepath.EvalSymlinks(root)
+	if gotDir != wantDir {
+		t.Errorf("the refusal names the helper under %q, want it under the defaulted --root %q", gotDir, wantDir)
+	}
+}
+
+// notPresentRe captures the path a missing-helper refusal says is not present.
+var notPresentRe = regexp.MustCompile(`(\S+) is not present \(`)
+
 // POSITIVE. The helper is found through --claim-root while --root lacks it, and the ensure call
 // runs THAT file.
 func TestDecisionHelperViaClaimRoot(t *testing.T) {
@@ -130,12 +165,7 @@ func TestDecisionHelperViaClaimRoot(t *testing.T) {
 //  2. behavioural: for EVERY entry, a dispatch where that helper alone is missing refuses
 //     (exit 6) and names the absolute path tried, PATH, and --claim-root.
 func TestHelperRefusalsNameAll(t *testing.T) {
-	// How to make each helper REQUIRED in a dispatch. A helper with no case fails the guard.
-	required := map[string][]string{
-		claimScriptRel:    nil,                                    // the claim is always taken
-		decisionScriptRel: {"--gate-human", "--brief", "spec.md"}, // only a human-gated item needs it
-	}
-
+	required := helperRequiredArgs
 	declared := declaredHelperConsts(t)
 	// Positive control: the matcher must see the two helpers known to exist, or a broken
 	// matcher would report "nothing undeclared" and pass.
@@ -182,13 +212,90 @@ func TestHelperRefusalsNameAll(t *testing.T) {
 			if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
 				t.Fatalf("missing %s must fail closed (exit 6): %v", h.rel, err)
 			}
-			for _, want := range []string{filepath.Join(root, filepath.FromSlash(h.rel)), "PATH", "--claim-root"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("the refusal for a missing %s does not name %q:\n%s", h.rel, want, err.Error())
+			msg := err.Error()
+			file := filepath.Join(root, filepath.FromSlash(h.rel))
+			for _, want := range []string{file, "PATH", helperWayOut} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("the refusal for a missing %s does not name %q:\n%s", h.rel, want, msg)
 				}
+			}
+			// The locations are named in the order the resolver tries them: a PATH port is
+			// looked up BEFORE the file (issue 1151's order); with no port, the file is the
+			// only location and the PATH statement follows it.
+			fileAt := strings.Index(msg, file)
+			if h.pathPort != "" {
+				if portAt := strings.Index(msg, h.pathPort); portAt < 0 || portAt > fileAt {
+					t.Errorf("the refusal for a missing %s does not name the PATH port %s before the file "+
+						"(the resolver tries the port first):\n%s", h.rel, h.pathPort, msg)
+				}
+			} else if pathAt := strings.Index(msg, "PATH"); pathAt < fileAt {
+				t.Errorf("the refusal for a missing %s names PATH before the file, but %s has no PATH "+
+					"port — the file is the only location tried:\n%s", h.rel, h.rel, msg)
 			}
 			if len(s.calls) != 0 {
 				t.Errorf("the refusal came after %d child process(es): %v", len(s.calls), s.calls)
+			}
+		})
+	}
+}
+
+// helperRequiredArgs says how to make each consumer helper REQUIRED in a dispatch. A
+// consumerHelpers entry with no case here fails the class guard.
+var helperRequiredArgs = map[string][]string{
+	claimScriptRel:    nil,                                    // the claim is always taken
+	decisionScriptRel: {"--gate-human", "--brief", "spec.md"}, // only a human-gated item needs it
+}
+
+// helperWayOut is the --claim-root way out every missing-helper refusal must state (with no
+// --claim-root given). The bare flag name is not enough: "no --claim-root was given" carries it.
+const helperWayOut = "point --claim-root at the checkout that does"
+
+// TIE TO THE RESOLVER — consumerHelpers[].pathPort is what the refusal SAYS was looked up on
+// PATH; this proves the resolver really honours it. For an entry with a port, a PATH holding only
+// that port must carry a dispatch whose tree lacks the file. For an entry with none, a PATH that
+// resolves EVERY name must still not stand in for the missing file, so "PATH holds no fallback"
+// is true. A pathPort added without its lookup (or a lookup added with no list entry) goes red.
+func TestHelperPathPortsAreLookedUp(t *testing.T) {
+	for _, h := range consumerHelpers {
+		t.Run(filepath.Base(h.rel), func(t *testing.T) {
+			s := &stub{}
+			_, root := s.install(t)
+			var others []string
+			for _, o := range consumerHelpers {
+				if o.rel != h.rel {
+					others = append(others, o.rel)
+				}
+			}
+			plantOnly(t, root, others...)
+			s.replies = append(happyReplies(filepath.Join(t.TempDir(), "worker-home")),
+				reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #4"})
+			old := lookPath
+			t.Cleanup(func() { lookPath = old })
+			args := append([]string{"item-1", "--root", root, "--repo", allowedRepo}, helperRequiredArgs[h.rel]...)
+
+			if h.pathPort != "" {
+				lookPath = func(name string) (string, error) {
+					if name == h.pathPort {
+						return "/opt/desk-tools/bin/" + name, nil
+					}
+					return "", exec.ErrNotFound
+				}
+				args = append(args, "--quiet", "--prompt-file", filepath.Join(t.TempDir(), "p.md"))
+				if err := cmdDispatch(args); err != nil {
+					t.Fatalf("consumerHelpers names %s as the PATH port for %s, but with only it on PATH and "+
+						"the file absent the dispatch failed — the refusal would claim a lookup the resolver "+
+						"does not perform: %v", h.pathPort, h.rel, err)
+				}
+				return
+			}
+			lookPath = func(name string) (string, error) { return "/opt/desk-tools/bin/" + name, nil }
+			err := cmdDispatch(args)
+			if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
+				t.Fatalf("%s has no PATH port, yet with every name on PATH and the file absent the dispatch "+
+					"did not refuse (exit 6): %v", h.rel, err)
+			}
+			if !strings.Contains(err.Error(), filepath.Join(root, filepath.FromSlash(h.rel))) {
+				t.Errorf("the refusal is not the missing-%s refusal:\n%s", h.rel, err.Error())
 			}
 		})
 	}
