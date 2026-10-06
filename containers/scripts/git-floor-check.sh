@@ -60,11 +60,18 @@ if [ "$#" -eq 1 ]; then
   ref=$1
   command -v docker >/dev/null 2>&1 || cnc "docker is not on PATH, so ${ref} was not checked"
   # --entrypoint overrides a desk image's boot entrypoint, which would demand
-  # runtime credentials before it ran anything.
-  docker run --rm -i --entrypoint /bin/sh "$ref" -s <"$0"
+  # runtime credentials before it ran anything. --network none: the probe needs
+  # no network. `--` ends docker's options, so a ref that starts with `-` is
+  # read as an image name, never as a flag.
+  out=$(docker run --rm -i --network none --entrypoint /bin/sh -- "$ref" -s <"$0")
   rc=$?
+  [ -z "$out" ] || printf '%s\n' "$out"
   case "$rc" in
     0)
+      # Exit 0 alone is not a pass: the in-image check must have printed its
+      # own OK line, or whatever ran was not this check.
+      printf '%s\n' "$out" | grep -q '^OK: git version ' ||
+        cnc "${ref} exited 0 without the check's OK line, so it was not checked"
       echo "OK: ${ref} meets the git floor"
       exit 0
       ;;
@@ -82,9 +89,12 @@ command -v git >/dev/null 2>&1 || fail "git is not on PATH"
 for v in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do
   unset "$v"
 done
+# The user's and the system's config and the system attributes file could do
+# the same (attr.tree, a commit hook, signing), so none of them is read.
 GIT_CONFIG_NOSYSTEM=1
 GIT_CONFIG_GLOBAL=/dev/null
-export GIT_CONFIG_NOSYSTEM GIT_CONFIG_GLOBAL
+GIT_ATTR_NOSYSTEM=1
+export GIT_CONFIG_NOSYSTEM GIT_CONFIG_GLOBAL GIT_ATTR_NOSYSTEM
 
 # check_version <git>: fail or could-not-check unless <git> reports the floor.
 check_version() {
@@ -101,13 +111,13 @@ check_version() {
 check_version git
 line=$vline
 
-# Every other git on PATH. An empty PATH entry means the current directory.
-oldifs=$IFS
-IFS=:
-# shellcheck disable=SC2086 # split PATH on ':' on purpose
-set -- $PATH
-IFS=$oldifs
-for d in "$@"; do
+# Every other git on PATH. An empty PATH entry (leading, doubled or trailing
+# ':') means the current directory. PATH is walked by hand, not field-split,
+# because field splitting drops a trailing empty entry.
+rest=$PATH:
+while [ -n "$rest" ]; do
+  d=${rest%%:*}
+  rest=${rest#*:}
   [ -n "$d" ] || d=.
   if [ -f "$d/git" ] && [ -x "$d/git" ]; then
     check_version "$d/git"

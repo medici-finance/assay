@@ -28,10 +28,11 @@ import (
 //   - the SHIPPED script passes on a capable git and FAILS on each kind of
 //     incapable one: too old, rejecting the option, and accepting the option
 //     but ignoring it (TestGitFloorRefusesWeakGits is the positive control);
-//   - the base Dockerfile still builds git from a sha256-checked tarball, keeps
-//     bookworm's apt git out, and runs the script after git is in place in the
-//     final stage (TestBaseImageRunsGitFloor), so a base change cannot drop the
-//     build-time check without going red here.
+//   - the base Dockerfile still builds git from a reviewed, sha256-checked
+//     tarball, keeps bookworm's apt git out, and runs the script, fail-closed,
+//     as the last layer-writing step of the final stage
+//     (TestBaseImageRunsGitFloor), so a base change cannot drop, mask or
+//     outrun the build-time check without going red here.
 
 const (
 	gitFloorScriptPath  = fixtureRepoRoot + "/containers/scripts/git-floor-check.sh"
@@ -66,16 +67,32 @@ func gitFloorTools(t *testing.T) (sh, git string) {
 // the WHOLE of PATH when only is true) and returns its exit code and output.
 func runGitFloor(t *testing.T, sh, pathDir string, only bool, args ...string) (int, string) {
 	t.Helper()
-	script, err := filepath.Abs(gitFloorScriptPath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	path := pathDir + string(os.PathListSeparator) + os.Getenv("PATH")
 	if only {
 		path = pathDir
 	}
+	return runGitFloorIn(t, sh, "", path, nil, args...)
+}
+
+// runGitFloorIn runs the shipped script in dir (the test's own directory when
+// empty) with exactly path as PATH and env overriding the inherited
+// environment.
+func runGitFloorIn(t *testing.T, sh, dir, path string, env map[string]string, args ...string) (int, string) {
+	t.Helper()
+	script, err := filepath.Abs(gitFloorScriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command(sh, append([]string{script}, args...)...)
-	cmd.Env = append(envWithout(os.Environ(), "PATH"), "PATH="+path)
+	cmd.Dir = dir
+	base := envWithout(os.Environ(), "PATH")
+	for k := range env {
+		base = envWithout(base, k)
+	}
+	cmd.Env = append(base, "PATH="+path)
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 	out, err := cmd.CombinedOutput()
 	var ee *exec.ExitError
 	switch {
@@ -138,6 +155,36 @@ func TestGitFloorPassesCapableGit(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "OK:") {
 		t.Fatalf("capable git: exit %d, want 0 with an OK line\n%s", code, out)
 	}
+
+	// A hostile user config must not reach the probe. Each setting below,
+	// if read, breaks it: attr.tree makes the control render CRLF, and the
+	// signing and hook settings make the probe's commit fail. Both end in
+	// could-not-check, so a script that stops isolating the user's config
+	// (drops GIT_CONFIG_GLOBAL=/dev/null) goes red here.
+	t.Run("hostile user config ignored", func(t *testing.T) {
+		home := t.TempDir()
+		hooks := standIn(t, "pre-commit", "exit 1\n")
+		hostile := "[attr]\n\ttree = HEAD\n[commit]\n\tgpgSign = true\n[gpg]\n\tprogram = false\n[core]\n\thooksPath = " + hooks + "\n"
+		xdg := filepath.Join(home, "xdg")
+		if err := os.MkdirAll(filepath.Join(xdg, "git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range []string{filepath.Join(home, ".gitconfig"), filepath.Join(xdg, "git", "config")} {
+			if err := os.WriteFile(p, []byte(hostile), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		env := map[string]string{
+			"HOME":              home,
+			"XDG_CONFIG_HOME":   xdg,
+			"GIT_CONFIG_GLOBAL": filepath.Join(home, ".gitconfig"),
+			"GIT_ATTR_SOURCE":   "HEAD",
+		}
+		code, out := runGitFloorIn(t, sh, "", os.Getenv("PATH"), env)
+		if code != 0 || !strings.Contains(out, "OK:") {
+			t.Fatalf("capable git under a hostile user config: exit %d, want 0 with an OK line\n%s", code, out)
+		}
+	})
 }
 
 // TestGitFloorRefusesWeakGits is the positive control: every stand-in below is
@@ -185,6 +232,24 @@ exec '` + git + `' "$@"
 		}
 	})
 
+	// An empty PATH entry means the current directory. An older git there is
+	// reachable, so it must be swept, wherever the empty entry sits. Field
+	// splitting drops a TRAILING empty entry, which is why that case is here.
+	sep := string(os.PathListSeparator)
+	for name, path := range map[string]func(first string) string{
+		"older git in a trailing empty PATH entry": func(first string) string { return first + sep + os.Getenv("PATH") + sep },
+		"older git in a doubled empty PATH entry":  func(first string) string { return first + sep + sep + os.Getenv("PATH") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			first := standIn(t, "git", "exec '"+git+"' \"$@\"\n")
+			cwd := standIn(t, "git", fakeVersionGit(git, "git version 2.39.5", true))
+			code, out := runGitFloorIn(t, sh, cwd, path(first), nil)
+			if code != 1 || !strings.Contains(out, "./git: git version 2.39.5 is older than 2.41") {
+				t.Fatalf("older git in the current directory, reached by an empty PATH entry: exit %d, want 1 naming ./git\n%s", code, out)
+			}
+		})
+	}
+
 	t.Run("git absent", func(t *testing.T) {
 		code, out := runGitFloor(t, sh, t.TempDir(), true)
 		if code != 1 || !strings.Contains(out, "git is not on PATH") {
@@ -203,15 +268,23 @@ func TestGitFloorImageForm(t *testing.T) {
 	gitversion.RequireGit(t, 2, 41, "the image-form passing case")
 
 	oldGit := standIn(t, "git", fakeVersionGit(git, "git version 2.39.5", true))
+	// The passing stand-in also pins the docker argv: no network, the boot
+	// entrypoint overridden, and `--` before the ref so a ref cannot be read
+	// as a docker flag.
+	wantArgv := `[ "$*" = "run --rm -i --network none --entrypoint /bin/sh -- example/desk-base:test -s" ] || { echo "unexpected docker argv: $*" >&2; exit 3; }
+`
 	cases := []struct {
 		name     string
 		docker   string
 		wantCode int
 		wantText string
 	}{
-		{"image meets floor", "exec '" + sh + "' -s\n", 0, "meets the git floor"},
+		{"image meets floor", wantArgv + "exec '" + sh + "' -s\n", 0, "meets the git floor"},
 		{"image below floor", "PATH='" + oldGit + "':$PATH exec '" + sh + "' -s\n", 1, "is older than 2.41"},
 		{"image not runnable", "echo 'Unable to find image' >&2; exit 125\n", 2, "COULD-NOT-CHECK"},
+		// Exit 0 is not enough: whatever ran must be the check, and print its
+		// OK line.
+		{"image exits 0 without the check", "cat >/dev/null; exit 0\n", 2, "without the check's OK line"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -272,19 +345,53 @@ func parseDockerfile(text string) []dfInstr {
 }
 
 func hasWord(args []string, w string) bool {
-	for _, a := range args {
+	return wordAt(args, w) >= 0
+}
+
+func wordAt(args []string, w string) int {
+	for i, a := range args {
 		if a == w {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
+}
+
+// knownGitTarballs is the reviewed record of each upstream git release the
+// base image may build, each sha256 checked against the release signature
+// when it was added. The Dockerfile's (GIT_VERSION, GIT_TARBALL_SHA256) pair
+// must be one of these, so swapping either ARG alone goes red here. A bump
+// adds a row in the same change as the Dockerfile (see its "To bump" note).
+var knownGitTarballs = map[string]string{
+	"2.56.0": "26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3",
+}
+
+// failClosedProblem returns why a RUN step could let a failing command pass:
+// it does not start with `set -e…`, turns -e off, or masks a status with ||.
+func failClosedProblem(args []string) string {
+	if len(args) < 2 || args[0] != "set" || !strings.HasPrefix(args[1], "-") || !strings.Contains(args[1], "e") {
+		return "does not start with `set -e`"
+	}
+	for _, a := range args {
+		if strings.Contains(a, "||") {
+			return "masks a status with ||"
+		}
+		if strings.HasPrefix(a, "+") && strings.Contains(a, "e") {
+			return "turns `set -e` off"
+		}
+	}
+	return ""
 }
 
 // dockerfileFloorProblem returns why a base Dockerfile does not hold the git
-// floor, or "" when it does. It requires: the gitbuild stage checks the
-// tarball's sha256; the final stage takes git from gitbuild, never from apt
-// (bookworm's apt git is 2.39.5); and the final stage runs git-floor-check
-// after both git and the script are in place.
+// floor, or "" when it does. It requires:
+//   - the gitbuild stage pins a known (version, sha256) pair and downloads,
+//     then checks the sha256, then unpacks, in one fail-closed RUN;
+//   - the final stage takes git from gitbuild, never from apt (bookworm's apt
+//     git is 2.39.5);
+//   - the final stage runs git-floor-check, fail-closed, after git and the
+//     script are in place, as its last RUN, COPY or ADD, so no later layer can
+//     bring in a git unchecked.
 func dockerfileFloorProblem(dockerfile string) string {
 	ins := parseDockerfile(dockerfile)
 	lastFrom, gitbuild := -1, -1
@@ -303,18 +410,51 @@ func dockerfileFloorProblem(dockerfile string) string {
 	if gitbuild == lastFrom {
 		return "gitbuild is the final stage"
 	}
-	verified := false
+	args := map[string]string{}
+	verified := ""
 	for i := gitbuild + 1; i < len(ins) && ins[i].op != "FROM"; i++ {
-		if ins[i].op == "RUN" && hasWord(ins[i].args, "sha256sum") && hasWord(ins[i].args, "-c") {
-			verified = true
+		in := ins[i]
+		if in.op == "ARG" && len(in.args) == 1 {
+			if k, v, ok := strings.Cut(in.args[0], "="); ok {
+				args[k] = v
+			}
+		}
+		sha := wordAt(in.args, "sha256sum")
+		if in.op != "RUN" || sha < 0 {
+			continue
+		}
+		joined := strings.Join(in.args, " ")
+		curl, tar := wordAt(in.args, "curl"), wordAt(in.args, "tar")
+		switch {
+		case verified != "":
+			return "the gitbuild stage has more than one sha256 RUN"
+		case sha+1 >= len(in.args) || in.args[sha+1] != "-c":
+			verified = "the gitbuild sha256sum is not a check (-c)"
+		case !strings.Contains(joined, "${GIT_TARBALL_SHA256}") || !strings.Contains(joined, "git-${GIT_VERSION}.tar"):
+			verified = "the gitbuild sha256 check is not tied to the GIT_VERSION and GIT_TARBALL_SHA256 ARGs"
+		case curl < 0 || tar < 0 || !(curl < sha && sha < tar):
+			verified = "the gitbuild RUN does not download, then check the sha256, then unpack"
+		case failClosedProblem(in.args) != "":
+			verified = "the gitbuild sha256 RUN " + failClosedProblem(in.args)
+		default:
+			verified = "ok"
 		}
 	}
-	if !verified {
+	if verified == "" {
 		return "the gitbuild stage never checks the tarball's sha256"
 	}
-	gitIn, copyCheck, runCheck := -1, -1, -1
+	if verified != "ok" {
+		return verified
+	}
+	if want, ok := knownGitTarballs[args["GIT_VERSION"]]; !ok || args["GIT_TARBALL_SHA256"] != want {
+		return "the gitbuild ARGs pin GIT_VERSION=" + args["GIT_VERSION"] + " GIT_TARBALL_SHA256=" + args["GIT_TARBALL_SHA256"] + ", which is not a reviewed pair in knownGitTarballs"
+	}
+	gitIn, copyCheck, runCheck, lastLayer := -1, -1, -1, -1
 	for i := lastFrom + 1; i < len(ins); i++ {
 		in := ins[i]
+		if in.op == "RUN" || in.op == "COPY" || in.op == "ADD" {
+			lastLayer = i
+		}
 		switch {
 		case in.op == "RUN" && hasWord(in.args, "apt-get") && hasWord(in.args, "install") && hasWord(in.args, "git"):
 			return "the final stage apt-installs git (bookworm's is 2.39.5, below the floor)"
@@ -335,6 +475,10 @@ func dockerfileFloorProblem(dockerfile string) string {
 		return "the final stage never runs git-floor-check"
 	case runCheck < gitIn || runCheck < copyCheck:
 		return "git-floor-check runs before git or the script is in place"
+	case runCheck != lastLayer:
+		return "a RUN, COPY or ADD follows git-floor-check in the final stage, so its layer ships unchecked"
+	case failClosedProblem(ins[runCheck].args) != "":
+		return "the git-floor-check RUN " + failClosedProblem(ins[runCheck].args)
 	}
 	return ""
 }
@@ -343,6 +487,11 @@ func dockerfileFloorProblem(dockerfile string) string {
 // holds the floor, and each mutant that drops or misplaces a piece of it is
 // caught.
 func TestBaseImageRunsGitFloor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// The mutant anchors below are LF-terminated; a CRLF checkout would
+		// miss them. The Dockerfile is built on Linux only.
+		t.Skip("the base Dockerfile is a Linux build input; its mutant anchors assume an LF checkout")
+	}
 	skipIfFixtureAbsent(t, baseDockerfilePath, "containers/ is not part of this repository's published file set")
 	raw, err := os.ReadFile(baseDockerfilePath)
 	if err != nil {
@@ -357,21 +506,33 @@ func TestBaseImageRunsGitFloor(t *testing.T) {
 	checkCopy := "COPY containers/scripts/git-floor-check.sh " + gitFloorScriptInImg + "\n"
 	runTail := "    fi; \\\n    git-floor-check\n"
 	shaLine := `    echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \` + "\n"
+	tarLine := "    tar -C /tmp -xJf /tmp/git.txz; \\\n"
+	shaArg := "ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.0"] + "\n"
+	verArg := "ARG GIT_VERSION=2.56.0\n"
+	testX := "    test -x /usr/local/bin/git; \\\n"
 	aptAnchor := "        libcurl3-gnutls \\\n"
-	goAnchor := "# Go toolchain, pinned"
-	for _, anchor := range []string{gitCopy, checkCopy, runTail, shaLine, aptAnchor, goAnchor} {
+	volAnchor := "VOLUME /work\n"
+	for _, anchor := range []string{gitCopy, checkCopy, runTail, shaLine, tarLine, shaArg, verArg, testX, aptAnchor, volAnchor} {
 		if strings.Count(text, anchor) != 1 {
 			t.Fatalf("the mutants below need %q exactly once in the Dockerfile", anchor)
 		}
 	}
 	mutants := map[string]string{
-		"run step dropped":      strings.Replace(text, runTail, "    fi\n", 1),
-		"check copy dropped":    strings.Replace(text, checkCopy, "", 1),
-		"git copy dropped":      strings.Replace(text, gitCopy, "", 1),
-		"sha256 check dropped":  strings.Replace(text, shaLine, "", 1),
-		"apt git reinstated":    strings.Replace(text, aptAnchor, "        git \\\n"+aptAnchor, 1),
-		"git copied after test": strings.Replace(strings.Replace(text, gitCopy, "", 1), goAnchor, gitCopy+goAnchor, 1),
-		"check only in earlier": text + "\nFROM scratch\n",
+		"run step dropped":          strings.Replace(text, runTail, "    fi\n", 1),
+		"check copy dropped":        strings.Replace(text, checkCopy, "", 1),
+		"git copy dropped":          strings.Replace(text, gitCopy, "", 1),
+		"sha256 check dropped":      strings.Replace(text, shaLine, "", 1),
+		"apt git reinstated":        strings.Replace(text, aptAnchor, "        git \\\n"+aptAnchor, 1),
+		"git copied after test":     strings.Replace(strings.Replace(text, gitCopy, "", 1), volAnchor, gitCopy+volAnchor, 1),
+		"check only in earlier":     text + "\nFROM scratch\n",
+		"sha256 check masked":       strings.Replace(text, shaLine, strings.Replace(shaLine, "sha256sum -c -;", "sha256sum -c - || true;", 1), 1),
+		"floor check masked":        strings.Replace(text, runTail, "    fi; \\\n    git-floor-check || true\n", 1),
+		"floor RUN set +e":          strings.Replace(text, testX, "    set +e; \\\n"+testX, 1),
+		"hash checked after unpack": strings.Replace(strings.Replace(text, tarLine, "", 1), shaLine, tarLine+shaLine, 1),
+		"tarball sha swapped":       strings.Replace(text, shaArg, "ARG GIT_TARBALL_SHA256="+strings.Repeat("0", 64)+"\n", 1),
+		"git version swapped":       strings.Replace(text, verArg, "ARG GIT_VERSION=2.39.5\n", 1),
+		"later layer copies a git":  strings.Replace(text, volAnchor, "COPY --from=desktools /usr/local/bin/git /usr/local/bin/git\n"+volAnchor, 1),
+		"later RUN after check":     strings.Replace(text, volAnchor, "RUN apt-get update\n"+volAnchor, 1),
 	}
 	for name, m := range mutants {
 		if m == text {

@@ -56,8 +56,13 @@ FROM ${DESK_TOOLS_IMAGE} AS desktools
 # ---- git, built from a pinned upstream release ---------------------------
 # Its own stage, so the compiler and the -dev packages never reach the final
 # image. The tarball is checked against a pinned sha256 before it is unpacked.
-# To bump: set both ARGs from the release's entry in
-# https://www.kernel.org/pub/software/scm/git/sha256sums.asc.
+# To bump: verify the signature on
+# https://www.kernel.org/pub/software/scm/git/sha256sums.asc (kernel.org's
+# checksum autosigner key), or the release's own `git-<version>.tar.sign`
+# (made over the uncompressed tar, by the git maintainer's release key), BEFORE
+# copying anything from it. Then set both ARGs from the release's entry and add
+# the same pair to knownGitTarballs in
+# tools/desk/internal/deskkit/gitfloor_test.go.
 FROM debian:bookworm-slim AS gitbuild
 ARG GIT_VERSION=2.56.0
 ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
@@ -77,7 +82,8 @@ RUN set -eux; \
         zlib1g-dev; \
     rm -rf /var/lib/apt/lists/*
 RUN set -eux; \
-    curl -fsSL "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" -o /tmp/git.txz; \
+    curl -fsSL --proto '=https' --proto-redir '=https' \
+        "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" -o /tmp/git.txz; \
     echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \
     tar -C /tmp -xJf /tmp/git.txz; \
     cd "/tmp/git-${GIT_VERSION}"; \
@@ -132,27 +138,17 @@ RUN set -eux; \
         zlib1g; \
     rm -rf /var/lib/apt/lists/*
 
-# git from the gitbuild stage, then prove it meets the verifier-admission
-# floor: every git on PATH is 2.41 or later, and `--attr-source` renders a
-# converted file from a committed tree. A change that brings an older git
-# fails HERE, at build time, instead of shipping verifier homes that refuse
-# admission. The ldd check catches a shared library the apt list above stopped
-# providing (git-remote-http carries the libcurl link). The check script stays
-# in the image so a running home can re-check itself.
+# git from the gitbuild stage. The check script stays in the image so a running
+# home can re-check itself. The floor is proven by the LAST RUN of this stage
+# (GIT FLOOR CHECK below), so no later layer can bring in a git unchecked.
 COPY --from=gitbuild /out/usr/local/ /usr/local/
 COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
-RUN set -eux; \
-    if ldd /usr/local/bin/git /usr/local/libexec/git-core/git-remote-http | grep 'not found'; then \
-        echo "source-built git is missing a shared library" >&2; \
-        exit 1; \
-    fi; \
-    git-floor-check
 
 # Go toolchain, pinned, from the official distribution tarball.
 RUN set -eux; \
     url="https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz"; \
     curl -fsSL "$url" -o /tmp/go.tgz; \
-    tar -C /usr/local -xzf /tmp/go.tgz; \
+    tar -C /usr/local --no-same-owner -xzf /tmp/go.tgz; \
     rm /tmp/go.tgz; \
     /usr/local/go/bin/go version
 
@@ -178,7 +174,10 @@ RUN set -eux; \
     dir="node-v${NODE_VERSION}-linux-${narch}"; \
     url="https://nodejs.org/dist/v${NODE_VERSION}/${dir}.tar.xz"; \
     curl -fsSL "$url" -o /tmp/node.txz; \
-    tar -C /usr/local --strip-components=1 -xJf /tmp/node.txz; \
+    # --no-same-owner: the tarball's files belong to uid 1001; without it they
+    # (and the /usr/local directories they land in, git's among them) would
+    # keep that owner.
+    tar -C /usr/local --no-same-owner --strip-components=1 -xJf /tmp/node.txz; \
     rm /tmp/node.txz; \
     node --version; \
     npm --version
@@ -238,6 +237,28 @@ ENV HOME=/work \
 RUN set -eux; \
     mkdir -p /work; \
     chown desk:desk /work
+
+# GIT FLOOR CHECK: the last RUN of the final stage, on the final PATH, so no
+# later layer can bring in a git unchecked. It proves every git on PATH is 2.41
+# or later and that `--attr-source` renders a converted file from a committed
+# tree; a change that brings an older git fails HERE, at build time, instead of
+# shipping verifier homes that refuse admission. The test -x lines make a
+# missing binary fail (ldd alone would print its error to stderr and let the
+# grep pass); the ldd check catches a shared library the apt list above stopped
+# providing (git-remote-http carries the libcurl link). /usr/local must be
+# root-owned throughout, since git now lives there.
+RUN set -eux; \
+    test -x /usr/local/bin/git; \
+    test -x /usr/local/libexec/git-core/git-remote-http; \
+    if ldd /usr/local/bin/git /usr/local/libexec/git-core/git-remote-http | grep 'not found'; then \
+        echo "source-built git is missing a shared library" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/local -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "/usr/local holds files not owned by root:root" >&2; \
+        exit 1; \
+    fi; \
+    git-floor-check
 VOLUME /work
 
 # OCI labels — same pattern as the root Dockerfile.
