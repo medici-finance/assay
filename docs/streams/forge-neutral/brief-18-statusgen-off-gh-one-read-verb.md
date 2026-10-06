@@ -51,7 +51,7 @@ consumers:
   - "statusgen/linkcheck.go: fixed-here (the source index scoped to docs/)"
   - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/citationcorroborate.go, statusgen/claimdecay.go: fixed-here (the remaining call sites, enumerated in Task 6. They are THIS brief's own deliverable, not a follow-on: Verify row 3 — zero forge-CLI sites in `statusgen/` — is this brief's completion test, so the board row stays `in-progress` until every one of them is on the reader. There is no follow-on brief and deliberately no forward reference to one)"
   - "docs/telemetry.md: fixed-here (the contract for what `--lint` may reach)"
-  - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated and already has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
+  - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated, or added by forge-neutral/33, and has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (statusgen is a separate module and has never had a permit row; the register counts desk-tools call sites, and this brief adds none)"
 version: 2
 id: 6ccc64a7-c32b-48ba-b6ac-d3a8165f15f9
@@ -177,8 +177,8 @@ facts — all measured on this repository at `e428134c`, 24 streams and 165 brie
   instructions only.
 - Stop at `implemented` — you do not set verified/done.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
-- **Add no operation to `Forge`.** Every read named here is already enumerated with both
-  backends. If a later call site genuinely needs one that is not, that is a separate brief
+- **Add no operation to `Forge`.** Every read named here is already enumerated, or added by
+  forge-neutral/33, with both backends. If a later call site genuinely needs one that is not, that is a separate brief
   under the freeze rule, not a widening slipped in behind a read verb.
 - **Offline must never mean green.** A forge-backed check that did not reach the forge reports
   could-not-check as itself. Rounding it up to a pass is the exact failure this stream was
@@ -324,6 +324,9 @@ affect the gate, so none of them gates the offline-lint half.
 sites in the gate group plus 8 files × 13 sites in the report group is 15 files and 26 sites —
 the same 26/15 the freshness line and Verify row 3 state. A reader who greps the tree and gets a
 different total has found either a drifted brief or a new call site, and either is worth knowing.
+(Re-measured 2026-10-06 at `11228951d`: 31 grep matches across 16 files plus the
+`exec.CommandContext` launch at `autonomy.go:539`. The current per-site list is forge-neutral/33's
+census.)
 
 ### 7. The reach contract
 
@@ -342,7 +345,7 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 |---|-------|---------|--------|
 | 1 | check:ci | `cd statusgen && go build ./... && go test ./... -count=1` | exit 0 |
 | 2 | check:ci | `cd tools/desk && go build ./... && go test ./... -count=1` | exit 0 |
-| 3 | check +dereference | `test -d statusgen/ && { grep -rn 'exec.Command("gh"' statusgen/ --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — statusgen shells no forge CLI. Measured at the freshness base: 26 sites across 15 non-test files. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
+| 3 | check +dereference | `test -d statusgen/ && { grep -rn 'exec.Command("gh"' statusgen/ --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — statusgen shells no forge CLI. Measured at the freshness base: 26 sites across 15 non-test files. Re-measured 2026-10-06 at `11228951d`: this command prints `31` (31 matches across 16 non-test files). It does not match the one `exec.CommandContext(ctx, "gh", …)` launch at `autonomy.go:539`, so the tree has 32 forge-CLI launch sites in all; forge-neutral/33's census lists each one. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
 | 4 | check:ci +flow | `cd statusgen && go test ./... -run TestLintOfflineMakesNoNetworkCall -count=1 -v` | **negative path**: a full `--lint` with no `--forge`, run against a harness whose network dial hook FAILS the test on any attempt and whose `PATH` contains no `gh` and no `deskread`, completes with the same verdict as a networked run. Fails if any connection is attempted or any forge process is started |
 | 5 | check:ci +mutation | `cd statusgen && go test ./... -run TestForgeBackedChecksReportCouldNotCheckOffline -count=1 -v` | **negative path**: with the offline reader wired, every forge-backed check renders could-not-check AS ITSELF. The test fails if any of them renders clean, and it enumerates the checks so a newly-added one that forgets is caught rather than skipped |
 | 6 | check:ci +mutation | `cd statusgen && go test ./... -run TestIssueDebtNoticeOptInOnly -count=1 -v` | **negative path**: `--lint` alone emits no issue-debt line and starts no process; `--lint --forge` emits it from the verb's JSON. The test fails if the notice appears without `--forge` |
@@ -354,7 +357,7 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 | 12 | check +dereference | git-subprocess count per `--lint`, counted with a `PATH` shim that logs every `git` argv | ≤ 100 after. Measured before on this repository: **254** (144 log, 62 blame, 30 show, 9 merge-base, 3 rev-parse, 2 ls-tree, 5 others) |
 | 13 | check +dereference | wall time of `--lint` on a tree of 400 briefs or more, offline, best of three | at least 60 % faster than the same tree's pre-change offline time. Measured before on this 165-brief repository: 6.05 s offline, 23.66 s with `gh` on `PATH` |
 | 14 | check:ci | `cd statusgen && go test ./... -run TestActingIdentityUnchanged -count=1 -v` | exit 0 — `forge-neutral/07`'s Evidence-actor and witness behaviour is byte-identical before and after. The reads moved; who is recorded as having acted did not |
-| 15 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeSurfaceUnchangedByDeskread -count=1 -v` | exit 0 — the `Forge` interface gains no method; `.github/workflows/forge-surface-control.yml`'s three controls stay green and `allowedInvocationCeiling` is unchanged at 7 |
+| 15 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeSurfaceUnchangedByDeskread -count=1 -v` | exit 0 — the `Forge` interface gains no method; `.github/workflows/forge-surface-control.yml`'s three controls stay green and `allowedInvocationCeiling` is unchanged at 6 (`tools/desk/internal/forgeban/allowlist.go:94`, re-checked 2026-10-06 at `11228951d`; the freshness base had 7) |
 | 16 | check | `statusgen --root . --lint` | `LINT: PASS`, exit 0 |
 | 17 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/18` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff. Note: a repo-wide brief-id format mismatch is open against `--consumers` (#954) and has produced a could-not-check on sibling briefs' equivalent row; this row is satisfied by exit 0 OR by that same could-not-check citing #954, not by a silent skip |
 

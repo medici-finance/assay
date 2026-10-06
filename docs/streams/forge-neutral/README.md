@@ -430,6 +430,9 @@ findings and do not exist yet.
 
 - **Wave 1** — `forge-neutral/01`. The resolver, the per-forge custody binding, and the
   refusal contract. Everything else depends on it.
+- **Wave 1 (beside 01)** — `forge-neutral/33` (the `Forge` reads statusgen's remaining sites
+  need; depends on nothing, since the seam it extends already exists on `main`). 18 now depends
+  on 08 and 33 and stays in wave 5.
 - **Wave 2** — `forge-neutral/02`, `03`, `04`, `05` (all depend only on 01, all
   parallelizable): identity, the two write-verb wiring briefs, and the claim layer.
 - **Wave 3** — `forge-neutral/06` (reads; depends on 01 + 03 for the established wiring
@@ -443,10 +446,6 @@ findings and do not exist yet.
   re-homes onto the desk-tools read verb). 18 sits in wave 5 rather than 4 by the tree's own
   derivation rule — a brief's `depends:` must point to strictly-earlier waves
   (`statusgen/brieffile.go:1492-1522`), and 08 is wave 4.
-
-- **Wave 1 (beside 01)** — `forge-neutral/33` (the `Forge` reads statusgen's remaining sites
-  need; depends on nothing, since the seam it extends already exists on `main`). 18 now depends
-  on 08 and 33 and stays in wave 5.
 
 One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `33 → 18`.
 

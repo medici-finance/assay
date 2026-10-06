@@ -29,10 +29,10 @@ sources:
   - "#2312 (draft): forge-neutral/18's in-flight PR. It deletes the `doratiming.go` repo-view fallback and leaves every site this brief serves untouched"
   - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: its ground rule 'Add no operation to `Forge` … a later call site that genuinely needs one … is a separate brief under the freeze rule' (this is that brief), its Verify row 3 (zero `exec.Command(\"gh\"` in non-test statusgen) and its row 15 (`TestForgeSurfaceUnchangedByDeskread`)"
   - "docs/streams/forge-neutral/README.md, 'Shared conventions the briefs inherit': refusal not fallback; the surface stays closed and a new operation joins the frozen inventory with its consuming verb; negative-path rows are mandatory; no hand-built API call is evidence"
-  - "docs/streams/forge-gitlab/inventory.md: the frozen method-set table (rows 1–54 at the freshness base) that `TestForgeGitlabCoverage` reconciles the seam against (`tools/desk/internal/deskkit/forge_gitlab_test.go:2605-2672`, discovery of `docs/streams/*/inventory.md`)"
+  - "docs/streams/forge-gitlab/inventory.md: the frozen method-set table (55 method rows numbered 1–54 at the freshness base, because number 27 is used twice: `IssueContentEvents` at `:78` and `ListRecentCommits` at `:96`; the new rows are 55–58) that `TestForgeGitlabCoverage` reconciles the seam against (`tools/desk/internal/deskkit/forge_gitlab_test.go:2605-2672`, discovery of `docs/streams/*/inventory.md`)"
   - "tools/desk/internal/deskkit/forge.go: the `Forge` interface (`:1370`), `Account` (`:65`), `PullRequest` (`:86`), `Issue` (`:286`), `ChangedFile` (`:330`), `ChangeRef` (`:853`), `IssueSummary` (`:890`)"
   - "tools/desk/cmd/deskread/main.go: the closed `readKinds` set (`:74`), `perIssueKinds` (`:81`), envelope schema 1, and the minted-App-role identity (`ciEligible=false`)"
-  - "freshness-checked 2026-10-06 @ 11228951d (origin/main): 31 matches of row 3's grep across 16 non-test statusgen files, plus one `exec.CommandContext(ctx, \"gh\", …)` at `autonomy.go:539` that the grep does not match. `allowedInvocationCeiling = 6` (`tools/desk/internal/forgeban/allowlist.go:94`). The Forge interface has 54 methods"
+  - "freshness-checked 2026-10-06 @ 11228951d (origin/main): 31 matches of row 3's grep across 16 non-test statusgen files, plus one `exec.CommandContext(ctx, \"gh\", …)` at `autonomy.go:539` that the grep does not match. `allowedInvocationCeiling = 6` (`tools/desk/internal/forgeban/allowlist.go:94`). The Forge interface has 55 methods (`forge.go:1370`, `PushTransportHint` included), matching the inventory's 55 rows. `forgeMaxIssuePages = 100` × `forgeIssuePerPage = 100` (`forge_github.go:667-672`); `forgeListChangesMaxPages = 5` × 100 (`:680-681`); `gitlabMaxIssuePage = 25` (`forge_gitlab.go:450`)"
 exec-tier: strong
 exec-tier-why: >-
   Question (c), silent failure toward a pass. Almost every field added here has an "absent"
@@ -67,6 +67,11 @@ frozen surface does not carry, so 18's Verify row 3 (zero `exec.Command("gh"` in
 statusgen) cannot reach 0 under 18's own rules. The routing on #2025 kept 18's goal, did not
 narrow row 3, and made the missing reads a separate brief. This is that brief.
 
+That routing is a **reversible default, not a ruling**: widening the surface was chosen over
+narrowing 18's row 3 to the sites the existing surface serves. It is declared in this PR's
+`## Desk-decided` block, with the alternative and the cost of reversing it, so it can be
+declined at merge.
+
 The brief **adds the reads and stops**. It adds the operations and fields to `deskkit`, gives
 each a GitLab mapping (or a stated could-not-check), pins both backends with goldens, records
 the operations in the frozen inventory, and exposes each addition through a new `deskread`
@@ -89,7 +94,7 @@ files:
 - `docs/streams/forge-gitlab/inventory.md`: rows 55–58.
 
 facts:
-- The seam today has 54 methods. Among the reads statusgen's sites need, these already exist:
+- The seam today has 55 methods. Among the reads statusgen's sites need, these already exist:
   - `GetPullRequest` (base ref, changed-file count, head, state, merged time);
   - `ListChanges(states)` (bounded, `Incomplete` on overflow);
   - `ListOpenIssues` (open only);
@@ -128,8 +133,10 @@ against the paths and not just copied from 18:
 
 That is the same answer as the stream's other read briefs (06, 12, 18). Several fields feed
 controls once 18 consumes them: actor type in trust and transcription, merge commit and branch
-commits in the auto-flip, cross-repo in claim decay. That is why their **absent** values are
-specified, and why Verify rows 5–10 test the negative path for each. If a reviewer reads any of
+commits in the auto-flip, cross-repo and head repository in claim decay (the fork-spoof guard,
+`claimdecay.go:126-170`, which treats a missing signal as unattributed), and the issue closer in
+the decision-gate anchor (`decisiongateanchor.go:157`, `:226-245`). That is why their **absent**
+values are specified, and why Verify rows 5–10 and 21–25 test the negative path for each. If a reviewer reads any of
 these as a control change rather than a read, the right move is to flip `sensitive-data` and gate
 this brief on a human, not to drop the rows.
 
@@ -166,8 +173,8 @@ and which seam read serves it after this brief. **New** marks this brief's addit
 | `doratiming.go:631` | repo name fallback | none (deleted by #2312) | — |
 | `transcribescan.go:77` | issue author login/id/**type** | `GetIssueTyped` + **new** author type on GitHub (Task 2.6) | transcribe |
 | `transcribescan.go:109` | one comment by URL: author + type + body | exists: `ListCommentsTyped` on the URL's number, select by `DatabaseID` | transcribe |
-| `issues.go:577` | **all-state** issues: number, state, createdAt, **closedAt**, author, labels, title | **new** `ListIssues` (op 55) | — |
-| `claimdecay.go:63` | all-state changes: head ref, state, **cross-repo, head repository** | `ListChanges` + **new** `ChangeRef.CrossRepo`/`HeadRepo` | — (plain `--lint`) |
+| `issues.go:577` | **all-state** issues: number, state, createdAt, **closedAt**, author, labels, title | **new** `ListIssues` (op 55), which lists issues only (Task 1, op 55) so its ceiling is spent on issues. Today's `--limit 1000` truncates silently; the new read serves up to 10,000 and says `Incomplete` beyond that | — |
+| `claimdecay.go:63` | all-state changes: head ref, state, **cross-repo, head repository** | `ListChanges` + **new** `ChangeRef.CrossRepo`/`HeadRepo`. `ListChanges` walks at most 500 changes (`forgeListChangesMaxPages` × 100) and reports `Incomplete` beyond; this repository is past that, so 18 must treat the overflow as could-not-check (a follow-up for 18, not this brief) | — (plain `--lint`) |
 | `decisiongateanchor.go:229` | issue state, body, **closed_by** | `GetIssueTyped` + **new** `Issue.ClosedBy` | `--corroborate` |
 | `corroborate.go:863` | base ref | exists: `GetPullRequest.BaseRef` | `--corroborate` |
 | `corroborate.go:1149` | file list **with patches** | `ListChangedFiles` + **new** `ChangedFile.Patch` | `--corroborate` |
@@ -179,7 +186,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
 | `trustgate.go:208` | issue trust events | exists: `IssueTrustEvents` (`deskread trust`) | transcribe |
 | `briefflowreview.go:72` | closed changes **into main** with body, merged_at | `ListChanges(Merged)` + **new** `ChangeRef.BaseRef` | — |
 | `briefflowreview.go:103` | reviews | exists: `ReviewsAtHead` | — |
-| `citationcorroborate.go:435` | issue comments + existence | exists: `ListComments` | — |
+| `citationcorroborate.go:435` | issue comments + existence | exists: `GetIssue` (existence and kind) + `ListCommentsTyped` (the full thread) | — |
 | `citationcorroborate.go:461` | change reviews | exists: `ReviewsAtHead` | — |
 | `scanissues.go:116` | open issues | exists: `ListOpenIssues` (`deskread issues`) | transcribe |
 | `scanissues.go:953` | issue comments with author id/type | exists: `ListCommentsTyped` (`deskread comments`) | transcribe |
@@ -189,7 +196,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
 | `autoflip.go:1277` | a change's **own commits** | **new** `ListChangeCommits` (op 57) | `--auto-flip-model` |
 | `autoflip.go:1330` | body, changed files, base ref, **repo default branch** | `GetPullRequest` + **new** `RepoDefaultBranch` (op 58) | `--auto-flip-model` |
 | `autoflip.go:1341` | file names + renames | exists: `ListChangedFiles` | `--auto-flip-model` |
-| `autoflip.go:1389` | merged changes whose body names a brief | exists: `ListChanges(Merged)` + body filter (`Incomplete` is could-not-check) | `--auto-flip-model` |
+| `autoflip.go:1389` | merged changes whose body names a brief | exists: `ListChanges(Merged)` + body filter (`Incomplete` is could-not-check). Same 500-change window as `claimdecay.go:63`, so on this repository it reads `Incomplete` (a follow-up for 18) | `--auto-flip-model` |
 | `autoflip.go:1415` | body last-edited time | exists: `PRTrustEvents.BodyEdited` | `--auto-flip-model` |
 | `autoflip.go:1488` | head, state, merged time | exists: `GetPullRequest` | `--auto-flip-model` |
 | `autoflip.go:1498` | reviews with commit id | exists: `ReviewsAtHead` | `--auto-flip-model` |
@@ -229,26 +236,48 @@ and which seam read serves it after this brief. **New** marks this brief's addit
    - **55 `ListIssues(repo, in IssueListQuery) (*IssueList, error)`**
      - Query: `IssueListQuery{State: open|closed|all, Label: string (optional, one label)}`.
        An unknown state is refused.
-     - Result: `IssueList{Issues []IssueSummary, Incomplete bool}`, bounded by the same
-       page-count ceiling `ListChanges` uses. `Incomplete=true` when the ceiling is hit with
-       the forge still paginating.
+     - A `Label` containing a comma is refused: both backends read a comma as a list of
+       labels, so it would silently widen the filter. The label is sent as one encoded query
+       value (GraphQL variable on GitHub, URL-encoded `labels` parameter on GitLab), never
+       spliced into a path or query string by hand.
+     - Result: `IssueList{Issues []IssueSummary, Incomplete bool, PageCap int}`.
+       `Incomplete=true` when the page ceiling is hit with the forge still paginating.
+     - **The ceiling is spent on issues only.** The REST `GET /repos/{o}/{r}/issues` endpoint
+       is NOT used: it returns changes as well, so on a repository with more changes than
+       issues a page ceiling is consumed by entries the read then drops, and `issues.go:577`
+       would become a permanent could-not-check. Each backend below excludes changes on the
+       server side.
      - `IssueSummary` gains `State` (`open`/`closed`) and `ClosedAt` (RFC3339, empty while
        open), both `omitempty` so existing goldens stay byte-identical.
-     - GitHub: `GET /repos/{o}/{r}/issues?state=…&labels=…&per_page=100`. Drop entries
-       carrying `pull_request`, because the issues endpoint lists changes too.
-     - GitLab: `GET /projects/:id/issues?state=opened|closed|all&labels=…&per_page=100`, with
-       `opened` normalised to `open`.
+     - GitHub: the GraphQL `repository.issues(states:[OPEN|CLOSED], labels:[…], first:100,
+       after:…, orderBy:{field:CREATED_AT, direction:DESC})` connection, which lists issues
+       and never pull requests. Fields: `number title state createdAt closedAt url
+       labels(first:100){nodes{name}}` and `author{login __typename ... on User{databaseId}
+       ... on Bot{databaseId}}`. Ceiling: `forgeMaxIssuePages` (100) pages of 100, so 10,000
+       issues, the same ceiling the open-issue walk already uses. A `labels` connection with
+       `hasNextPage` on any issue also sets `Incomplete`.
+     - GitLab: `GET /projects/:id/issues?state=opened|closed|all&labels=…&per_page=100`,
+       which lists issues only (merge requests have their own endpoint), with `opened`
+       normalised to `open`. Ceiling: `gitlabMaxIssuePage` (25) pages of 100, so 2,500 issues,
+       the same ceiling the GitLab open-issue walk uses. The two ceilings differ and each is
+       reported in `PageCap`.
+     - Author `ID` is the forge's numeric account id (GraphQL `databaseId`, GitLab
+       `author.id`). An author the forge does not report (a deleted account, GitHub's
+       `ghost`) keeps `ID == 0` and `Type == ""`, which is could-not-check, never a match.
    - **56 `IssueStateEvents(repo, number) (*IssueStateHistory, error)`**
      - Result: `IssueStateHistory{Events []IssueStateEvent{Kind closed|reopened, Actor Account,
-       CreatedAt}, ClosingChanges []ClosingChange{Number, Merged bool, Author Account},
-       Complete bool}`.
+       CreatedAt}, ClosingChanges []ClosingChange{Repo, Number, Merged bool, Author Account},
+       Complete bool}`. `Repo` is the closing change's own `owner/name`: a change in another
+       repository can close the issue, and a bare number would then name the wrong change.
      - GitHub: one GraphQL read of `timelineItems(itemTypes:[CLOSED_EVENT,REOPENED_EVENT])`
-       with actor `login`/`__typename`, plus `closedByPullRequestsReferences(includeClosedPrs:
-       true)`. This is the same shape `selfimprovement.go:381-388` sends today. `Complete=false`
+       with actor `login`/`__typename`/`databaseId`, plus
+       `closedByPullRequestsReferences(includeClosedPrs: true)` with each node's
+       `repository{nameWithOwner}`. This is the same shape `selfimprovement.go:381-388` sends today. `Complete=false`
        when either connection reports `hasNextPage`.
      - GitLab: `GET /projects/:id/issues/:iid/resource_state_events` (state `closed`/`reopened`,
        `user`, `created_at`) and `GET /projects/:id/issues/:iid/closed_by` (the merge requests
-       that close it, with `state` and `author`).
+       that close it, with `state`, `author` and `project_id`, resolved to the project path
+       for `Repo`; an unresolvable project leaves `Repo` empty).
      - Actor and author `Type` follow Task 2.6.
    - **57 `ListChangeCommits(repo, number) (*ChangeCommits, error)`**
      - Result: `ChangeCommits{SHAs []string, Complete bool}`. These are the commits the change
@@ -269,11 +298,14 @@ and which seam read serves it after this brief. **New** marks this brief's addit
    1. **`PullRequest.MergeCommitSHA`**
       - GitHub: `merge_commit_sha`, filled **only when `merged` is true**. GitHub also reports
         a test-merge SHA on open changes, and that must not leak through.
-      - GitLab: `merge_commit_sha`, else `squash_commit_sha` when the merge request was
-        squashed. Empty otherwise, for example on a fast-forward merge.
+      - GitLab: filled **only when `state == merged`**: `merge_commit_sha`, else
+        `squash_commit_sha` when the merge request was squashed. Empty otherwise, for example
+        on a fast-forward merge or on any merge request not yet merged.
       - Empty means could-not-check.
    2. **`ChangeRef.Author`** (`Account`, with `Type` per 2.6):
-      - GitHub: GraphQL `author{login __typename}` in `ListChanges`' existing query.
+      - GitHub: GraphQL `author{login __typename ... on User{databaseId} ... on
+        Bot{databaseId}}` in `ListChanges`' existing query, so `ID` is the numeric account
+        id. An author the forge does not report keeps `ID == 0`, which is could-not-check.
       - GitLab: the merge request's `author`.
    3. **`ChangeRef.BaseRef`**:
       - GitHub: `baseRefName`.
@@ -283,8 +315,16 @@ and which seam read serves it after this brief. **New** marks this brief's addit
         `PullRequest.CrossRepo` (`forge.go:175-183`), empty meaning could-not-check.
       - `HeadRepo` is `owner/name`, empty when unreadable, for example a deleted fork.
       - GitHub: `isCrossRepository` + `headRepository{nameWithOwner}`.
-      - GitLab: `source_project_id` vs `target_project_id`. `HeadRepo` is the target path when
-        they are equal and empty otherwise.
+      - GitHub null handling: a `null` `isCrossRepository` leaves `CrossRepo` empty, and a
+        `null` `headRepository` leaves `HeadRepo` empty. Neither is ever filled as
+        `CrossRepoSame` or as the base repository.
+      - GitLab: `source_project_id` vs `target_project_id`. Equal gives `CrossRepoSame` and
+        `HeadRepo` = the target path. Different gives `CrossRepoFork` and `HeadRepo` empty
+        (the source project's path is not read). Either id missing leaves both empty.
+      - On GitLab the two fields come from **one** signal, the project-id comparison, while on
+        GitHub they are two independent fields. `claimdecay.go:126-170` treats them as two
+        signals; the doc comment on `ChangeRef.HeadRepo` states that on GitLab they are one,
+        so 18 does not count agreement between them as corroboration.
    5. **`ChangedFile.Patch` and `ChangedFile.PatchAbsent`**:
       - GitHub: the file entry's `patch`. `PatchAbsent=true` when the entry has no `patch` key
         (binary or oversized).
@@ -300,9 +340,14 @@ and which seam read serves it after this brief. **New** marks this brief's addit
         users API, once per distinct account id per call.
       - An account that cannot be resolved keeps `Type` empty, which the `Account` doc
         already defines as could-not-check (`forge.go:68-73`).
-   7. **`Issue.ClosedBy`** (`Account`), filled only when the issue is closed:
-      - GitHub: `closed_by`.
-      - GitLab: `closed_by`.
+   7. **`Issue.ClosedBy`** (`Account`), filled **only when the issue's state is closed**.
+      The decision-gate anchor (`decisiongateanchor.go:157`) reads the closer as the anchor's
+      authority, so a closer reported on an issue that is open again (closed, then reopened)
+      must not survive into the result:
+      - GitHub: `closed_by`, ignored unless `state == closed`.
+      - GitLab: `closed_by`, ignored unless `state == closed`.
+      - An unreadable or `null` closer on a closed issue leaves `ClosedBy` zero-valued, which
+        is could-not-check, never the issue's author.
 3. **Add the consuming `deskread` kinds** to `readKinds` (`main.go:74`), each with its own
    addressing flag. Each kind refuses the other addressing flags, exactly as the existing kinds
    do. The envelope stays schema 1, and partial-is-a-result semantics apply unchanged.
@@ -329,7 +374,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
      one-line comment citing this brief.
    - Do not change `allowedInvocationCeiling`.
 5. **Goldens on both backends** for every operation and every field, on recorded fixtures,
-   including the negative cases Verify rows 5–10 name.
+   including the negative cases Verify rows 5–10 and 21–25 name.
 
 ## Verify (executable — no prose-only DoD items)
 
@@ -350,14 +395,17 @@ Test names are this brief's planned deliverables:
 - `TestIssueStateEventsOverflowIsIncomplete` (planned)
 - `TestDeskreadNewKindsRoundTrip` (planned)
 - `TestDeskreadNewKindsAddressingRefusals` (planned)
+- `TestListIssuesServesIssuePopulation` (planned)
+- `TestChangeRefCrossRepoUnreadableStaysEmpty` (planned)
+- `TestClosedByEmptyUnlessClosed` (planned)
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check:ci | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
 | 2 | check:ci +dereference | `cd tools/desk && go test ./internal/deskkit/ -run '^TestForgeGithubGolden$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r2a.out" 2>&1 && grep -F -e '--- PASS: TestForgeGithubGolden' "${TMPDIR:-/tmp}/b33-r2a.out" && go test ./internal/deskkit/ -run '^TestForgeGitlabGolden$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r2b.out" 2>&1 && grep -F -e '--- PASS: TestForgeGitlabGolden' "${TMPDIR:-/tmp}/b33-r2b.out" && go test ./internal/deskkit/ -run '^TestForgeGitlabCoverage$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r2c.out" 2>&1 && grep -F -e '--- PASS: TestForgeGitlabCoverage' "${TMPDIR:-/tmp}/b33-r2c.out"` | exit 0, each `--- PASS:` line printed. Both backends' wire is pinned for ops 55–58 and every Task 2 field, and coverage reconciles the seam against inventory rows 55–58 |
 | 3 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestForgeNoPassthrough$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r3a.out" 2>&1 && grep -F -e '--- PASS: TestForgeNoPassthrough' "${TMPDIR:-/tmp}/b33-r3a.out" && go test ./internal/deskkit/ -run '^TestNoForgeCLIShellout$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r3b.out" 2>&1 && grep -F -e '--- PASS: TestNoForgeCLIShellout' "${TMPDIR:-/tmp}/b33-r3b.out" && go test ./internal/deskkit/ -run '^TestForgeSingleConstructionSite$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r3c.out" 2>&1 && grep -F -e '--- PASS: TestForgeSingleConstructionSite' "${TMPDIR:-/tmp}/b33-r3c.out"` | exit 0, each `--- PASS:` line printed. The seam grows four typed reads and stays closed |
-| 4 | check:ci +dereference | `cd tools/desk && go test ./internal/deskkit/ -run '^TestForgeSurfaceUnchangedByDeskread$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r4.out" 2>&1 && grep -F -e '--- PASS: TestForgeSurfaceUnchangedByDeskread' "${TMPDIR:-/tmp}/b33-r4.out"` | exit 0, `--- PASS:` printed. The pinned method set is the base's 54 plus exactly `ListIssues`, `IssueStateEvents`, `ListChangeCommits` and `RepoDefaultBranch` |
-| 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestListIssuesIncompleteIsNotAbsence$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r5.out" 2>&1 && grep -F -e '--- PASS: TestListIssuesIncompleteIsNotAbsence' "${TMPDIR:-/tmp}/b33-r5.out"` | **negative path**: a population beyond the page ceiling returns `Incomplete=true` on both backends, never a short list presented as the whole |
+| 4 | check:ci +dereference | `cd tools/desk && go test ./internal/deskkit/ -run '^TestForgeSurfaceUnchangedByDeskread$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r4.out" 2>&1 && grep -F -e '--- PASS: TestForgeSurfaceUnchangedByDeskread' "${TMPDIR:-/tmp}/b33-r4.out"` | exit 0, `--- PASS:` printed. The pinned method set is the base's 55 plus exactly `ListIssues`, `IssueStateEvents`, `ListChangeCommits` and `RepoDefaultBranch`: 59 names |
+| 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestListIssuesIncompleteIsNotAbsence$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r5.out" 2>&1 && grep -F -e '--- PASS: TestListIssuesIncompleteIsNotAbsence' "${TMPDIR:-/tmp}/b33-r5.out"` | **negative path**: a population beyond the page ceiling (GitHub 100 pages of 100, GitLab 25 pages of 100) returns `Incomplete=true` with `PageCap` set on both backends, never a short list presented as the whole. A label containing a comma is refused with zero forge calls |
 | 6 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestListChangeCommitsOverCapIsIncomplete$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r6.out" 2>&1 && grep -F -e '--- PASS: TestListChangeCommitsOverCapIsIncomplete' "${TMPDIR:-/tmp}/b33-r6.out"` | **negative path**: a GitHub change whose `commits` count (300) exceeds the listed 250 returns `Complete=false`. GitLab at the page ceiling does the same |
 | 7 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestMergeCommitSHAEmptyUnlessMerged$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r7.out" 2>&1 && grep -F -e '--- PASS: TestMergeCommitSHAEmptyUnlessMerged' "${TMPDIR:-/tmp}/b33-r7.out"` | **negative path**: an OPEN GitHub change whose fixture carries a test-merge `merge_commit_sha` reads back `MergeCommitSHA == ""`. A GitLab fast-forward merge with no merge or squash SHA reads back empty |
 | 8 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestAccountTypeUnresolvedStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r8.out" 2>&1 && grep -F -e '--- PASS: TestAccountTypeUnresolvedStaysEmpty' "${TMPDIR:-/tmp}/b33-r8.out"` | **negative path**: a GitLab author whose users-API read fails keeps `Type == ""` on `GetIssue`, `ChangeRef.Author` and op 56, never `"User"` |
@@ -369,10 +417,15 @@ Test names are this brief's planned deliverables:
 | 14 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestMergeCommitSHAEmptyUnlessMerged$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r14.out" 2>&1 && grep -F -e '--- PASS: TestMergeCommitSHAEmptyUnlessMerged' "${TMPDIR:-/tmp}/b33-r14.out"`. **Mutation:** in the GitHub `GetPullRequest` mapping, fill `MergeCommitSHA` from `merge_commit_sha` unconditionally, run the command, then restore the file and re-run | exit 0 unmutated. Exit **1** on the mutant (no `--- PASS:` line) |
 | 15 | check +dereference | `grep -c -E '^[\|] 5[5-8] [\|]' docs/streams/forge-gitlab/inventory.md` | `4`. Rows 55–58 exist in the inventory the coverage test discovers |
 | 16 | check | `grep -o 'allowedInvocationCeiling = [0-9]*' tools/desk/internal/forgeban/allowlist.go` | a value ≤ `6`. No forge-CLI permit was added |
-| 17 | check | `git diff --name-only "$(git merge-base origin/main HEAD)" HEAD -- statusgen/ .github/workflows/`, run on the brief's implementation branch before merge | empty output. No statusgen site and no workflow moved here; both are 18's and #2253's |
+| 17 | check | `git diff --name-only "$(git merge-base refs/remotes/origin/main HEAD)" HEAD -- statusgen/ .github/workflows/`, run on the brief's implementation branch before merge | empty output. No statusgen site and no workflow moved here; both are 18's and #2253's |
 | 18 | check | `statusgen --root . --lint` | `LINT: PASS`, rc 0 |
-| 19 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/33 --base "$(git merge-base origin/main HEAD)"`, on the implementation branch | exit 0. Every `consumers:` claim is corroborated against the diff |
-| 20 | check | GitLab live row | **could-not-check by design**: this repository has no CI-reachable GitLab project. Rows 2 and 5–10 pin the GitLab mapping against recorded fixtures; a live read is the GitLab conformance work's job, not this brief's |
+| 19 | check +dereference | `statusgen --root . --consumers --brief forge-neutral/33 --base "$(git merge-base refs/remotes/origin/main HEAD)"`, on the implementation branch | exit 0. Every `consumers:` claim is corroborated against the diff |
+| 20 | check | GitLab live row | **could-not-check by design**: this repository has no CI-reachable GitLab project. Rows 2, 5–10 and 21–25 pin the GitLab mapping against recorded fixtures; a live read is the GitLab conformance work's job, not this brief's |
+| 21 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestListIssuesServesIssuePopulation$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r21.out" 2>&1 && grep -F -e '--- PASS: TestListIssuesServesIssuePopulation' "${TMPDIR:-/tmp}/b33-r21.out"` | exit 0, `--- PASS:` printed. A GitHub fixture of 1,200 issues across 12 pages, on a repository whose fixture also holds 1,500 changes, returns all 1,200 issues with `Incomplete=false` and no change in the list, and the recorded request is the GraphQL `issues` connection, never REST `/issues`. A GitLab fixture of 1,200 issues returns all of them with `Incomplete=false`. Each issue carries `State`, `CreatedAt`, `ClosedAt` (empty while open), author login and numeric `ID`, labels and title: every field `issues.go:577` reads |
+| 22 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestChangeRefCrossRepoUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r22.out" 2>&1 && grep -F -e '--- PASS: TestChangeRefCrossRepoUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r22.out"` | **negative path**: a GitHub change whose fixture carries `isCrossRepository: null` and `headRepository: null` (a deleted fork) reads back `CrossRepo == ""` and `HeadRepo == ""`, never `CrossRepoSame` or the base repository. A GitLab merge request whose `source_project_id` differs from `target_project_id` reads back `CrossRepo == CrossRepoFork` and `HeadRepo == ""`, and one with either id missing reads back both empty |
+| 23 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestClosedByEmptyUnlessClosed$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r23.out" 2>&1 && grep -F -e '--- PASS: TestClosedByEmptyUnlessClosed' "${TMPDIR:-/tmp}/b33-r23.out"` | **negative path**: an OPEN issue (closed, then reopened) whose fixture still carries a `closed_by` account reads back a zero `ClosedBy` on both backends. A closed issue whose `closed_by` is `null` reads back a zero `ClosedBy`, never the issue's author |
+| 24 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestClosedByEmptyUnlessClosed$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r24.out" 2>&1 && grep -F -e '--- PASS: TestClosedByEmptyUnlessClosed' "${TMPDIR:-/tmp}/b33-r24.out"`. **Mutation:** in the GitHub `GetIssue` mapping, and then separately in the GitLab one, fill `ClosedBy` from `closed_by` regardless of state; run the command after each, then restore the file and re-run | exit 0 unmutated. Exit **1** on each mutant (no `--- PASS:` line), with the test naming the reopened-issue case |
+| 25 | check:ci +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestChangeRefCrossRepoUnreadableStaysEmpty$' -count=1 -v > "${TMPDIR:-/tmp}/b33-r25.out" 2>&1 && grep -F -e '--- PASS: TestChangeRefCrossRepoUnreadableStaysEmpty' "${TMPDIR:-/tmp}/b33-r25.out"`. **Mutation:** in the GitHub `ListChanges` mapping, read a `null` `isCrossRepository` as `false` (so it maps to `CrossRepoSame`); separately, in the GitLab mapping, fill `HeadRepo` with the target path when the project ids differ; run the command after each, then restore the file and re-run | exit 0 unmutated. Exit **1** on each mutant (no `--- PASS:` line), with the test naming the null-fork case |
 
 ## Named mutations
 
@@ -381,6 +434,10 @@ Test names are this brief's planned deliverables:
   that lies beyond the page.
 - **M2**, row 14: `MergeCommitSHA` filled on an open change. A test-merge SHA would then match
   a commit no merge produced.
+- **M3**, row 24: `ClosedBy` filled regardless of state. A reopened issue would then still
+  present its former closer to the decision-gate anchor as the authority that closed it.
+- **M4**, row 25: an unreadable fork read as same-repository, or a fork's head credited to the
+  base repository. Claim decay would then attribute a fork's branch to this repository.
 
 ## Pre-mortem → detection map
 
@@ -393,7 +450,11 @@ Test names are this brief's planned deliverables:
 | The 250-commit cap or a page-capped list reads as the whole population | rows 5, 6, 13 |
 | A binary or oversized file's missing patch reads as "no change in this file" | row 10 |
 | An unknown default branch defaults to `main`, so a change into a non-default branch is credited | row 9 |
-| The `ListIssues` GitHub mapping keeps pull requests in the issue list, inflating issue metrics | row 2 (the golden fixture carries a `pull_request` entry that must not appear) |
+| The `ListIssues` GitHub mapping keeps pull requests in the issue list, inflating issue metrics | rows 2, 21 (the read is the issues-only connection, and the fixture's changes must not appear) |
+| `ListIssues` spends its page ceiling on changes it then drops, so `issues.go:577` is a permanent could-not-check on a repository with more changes than issues | row 21 (1,200 issues beside 1,500 changes come back whole) |
+| A deleted fork's `null` cross-repo or head-repository field reads as same-repository, so claim decay attributes a fork's branch to this repository | rows 22, 25 |
+| A reopened issue keeps its former closer in `ClosedBy`, so the decision-gate anchor credits a close that no longer stands | rows 23, 24 |
+| A label with a comma silently widens `ListIssues`' filter to several labels | row 5 |
 | A new kind grows a generic `--query`/`--path` flag, reopening the passthrough | rows 3, 12 |
 | This brief quietly starts moving statusgen sites or edits a workflow, pre-deciding #2253 | row 17; Review reads the diff |
 | `TestForgeSurfaceUnchangedByDeskread` is weakened (`want` loosened, or the test skipped) instead of extended by four names | row 4; Review reads the test diff |
