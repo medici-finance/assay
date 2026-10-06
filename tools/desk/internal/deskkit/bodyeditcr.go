@@ -127,8 +127,10 @@ type BodyEditDeclaration struct {
 	Problem string
 }
 
-// ParseBodyEditDeclaration reads a CHANGES_REQUESTED body's body-edit declaration.
-func ParseBodyEditDeclaration(crBody string) BodyEditDeclaration {
+// ParseBodyEditDeclaration reads a CHANGES_REQUESTED body's body-edit declaration. head is the
+// head the CR is pinned to: a finding the block records as resolved retires only when its
+// evidence is at that head (Finding.StandingBlockerAt).
+func ParseBodyEditDeclaration(crBody, head string) BodyEditDeclaration {
 	d := BodyEditDeclaration{Declared: BodyEditDeclared(crBody)}
 	if !d.Declared {
 		return d
@@ -159,8 +161,9 @@ func ParseBodyEditDeclaration(crBody string) BodyEditDeclaration {
 	if present {
 		for _, f := range block.Findings {
 			// A re-review CR lists the code findings it now records as resolved beside the
-			// still-open body finding; only a STANDING blocker makes the CR mixed (#1985).
-			if !f.StandingBlocker() {
+			// still-open body finding; only a STANDING blocker makes the CR mixed — and a
+			// resolution at a stale evidence head still stands (#1985).
+			if !f.StandingBlockerAt(head) {
 				continue
 			}
 			if strings.TrimSpace(f.ID) != d.FindingID || f.Blocker != BlockerCodeContent {
@@ -209,7 +212,7 @@ type BodyEditDecision struct {
 // EvaluateBodyEditReverification decides whether a standing CHANGES_REQUESTED clears at the
 // unchanged head under the documented body-edit class. PURE: same inputs, same decision.
 func EvaluateBodyEditReverification(in BodyEditInput) BodyEditDecision {
-	d := ParseBodyEditDeclaration(in.CRBody)
+	d := ParseBodyEditDeclaration(in.CRBody, in.Head)
 	dec := BodyEditDecision{Declared: d.Declared}
 	if !d.Declared {
 		dec.Reason = "no `Blocked-On-Body:` declaration on the standing CHANGES_REQUESTED — the unchanged-head rule stands"

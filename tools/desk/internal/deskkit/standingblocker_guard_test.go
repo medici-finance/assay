@@ -14,7 +14,7 @@ import (
 // A typed finding's severity alone never says whether it still blocks: a re-review CR lists
 // the findings it now records as resolved beside the open ones. A classifier that reads
 // severity without the lifecycle state counts those resolved entries as live blockers
-// (#1985). Finding.StandingBlocker is the one predicate; outside reviewfinding.go (the
+// (#1985). Finding.StandingBlockerAt is the one predicate; outside reviewfinding.go (the
 // ALLOW-LIST), no non-test file under tools/desk may read a finding's Severity field, name
 // SeverityBlocking, or call blocking().
 const standingBlockerHome = "internal/deskkit/reviewfinding.go"
@@ -66,7 +66,7 @@ func TestStandingBlockerIsTheOnlyReader(t *testing.T) {
 			return err
 		}
 		for _, at := range found {
-			t.Errorf("raw finding-severity read at %s; classify with Finding.StandingBlocker (severity AND not resolved)", at)
+			t.Errorf("raw finding-severity read at %s; classify with Finding.StandingBlockerAt (severity AND not resolved)", at)
 		}
 		return nil
 	})
