@@ -23,7 +23,7 @@ package main
 //   - queue marks every entry flip (the pre-fix behaviour) →
 //     TestCluster_QueueCompletionMode + TestCluster_CompletionViaHelper red.
 //   - clusterCompletion ignores the gate / the risk axes / an absent risk block →
-//     TestCluster_QueueCompletionMode and/or TestCluster_CompletionFailsClosed red.
+//     TestCluster_QueueCompletionMode and/or TestCluster_CompletionClosed red.
 
 import (
 	"fmt"
@@ -403,10 +403,10 @@ func TestCluster_QueueCompletionMode(t *testing.T) {
 	}
 }
 
-// TestCluster_CompletionFailsClosed pins clusterCompletion on the shapes a
+// TestCluster_CompletionClosed pins clusterCompletion on the shapes a
 // queue fixture cannot reach: a nil brief, a missing gate, an unknown gate, and
 // an absent risk block all narrow to evidence-only.
-func TestCluster_CompletionFailsClosed(t *testing.T) {
+func TestCluster_CompletionClosed(t *testing.T) {
 	allNo := map[string]string{"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 	cases := []struct {
 		name string
@@ -520,10 +520,10 @@ func TestCluster_CompletionViaHelper(t *testing.T) {
 	}
 }
 
-// TestCluster_CompletionGuardPlant is the guard's own control: planted entries
+// TestCluster_CompletionGuardCtl is the guard's own control: planted entries
 // with a literal "flip", a hand-rolled gate test, no Completion, and a positional
 // literal are each reported; the helper-backed literal is not.
-func TestCluster_CompletionGuardPlant(t *testing.T) {
+func TestCluster_CompletionGuardCtl(t *testing.T) {
 	dir := t.TempDir()
 	src := "package main\n\n" +
 		"type clusterPendingEntry struct{ Brief, Completion string }\n\n" +
