@@ -1,0 +1,3 @@
+### Fixed
+- `statusgen` coverage no longer refuses a Verify witness as `wrong-revision` because an unrelated file changed (a changelog fragment, a release stamp): with no dependency manifest, a row whose command's text establishes exactly what it reads (a closed set of read-only commands on plain repository paths) is judged by those paths and their `.gitattributes`; every other row keeps the conservative scope, and the reason says why.
+- A witness taken on a branch head is credited after a squash merge only when some commit on the item's history carries its tree outside `docs/streams/**` and `STATUS.md`; a branch squash-merged after its base moved, or never merged, is `wrong-revision`, and a shallow clone or an incomplete search is `could-not-check`.

@@ -110,12 +110,25 @@ equality is all the comparison shows: not that the witness commit was merged or 
 and not that its run happened — the Evidence row remains the only record of the run. A
 witness commit absent from the evaluating clone (an unfetched squash-merged branch commit,
 a hand-edited sha), or an item revision that names no commit, leaves the comparison
-without footing, and the witness is not credited. Reusing another tree's
+without footing, and the witness is not credited. The witness's tree must also have
+landed: some commit on the item's history since the two share an ancestor (the witness
+commit itself when it is on that history, the squash commit when its branch was
+squash-merged) has a tree identical to the witness's outside `docs/streams/**` and
+`STATUS.md`. A witness whose branch was squash-merged after its base moved, or never
+merged, ran against code the item never carried as a whole and is `wrong-revision`; a
+clone too shallow to read that history, or a search that cannot complete, is
+`could-not-check`. Reusing another tree's
 result needs an explicit applicability derivation (the work-input amendment): a `files:` declaration by itself never narrows
 what a witness speaks for, because file non-overlap alone is not proof. Without a
-complete work-input dependency manifest for the brief, a witness speaks for every path
+complete work-input dependency manifest for the brief, a witness speaks for the paths its
+row's command reads when the command's text establishes them exactly — a closed grammar
+of read-only commands whose operands are plain repository paths, plus every
+`.gitattributes` on the way to each, with no expansion, glob, redirection, symbolic link,
+submodule, or file verify and regeneration write on the path — and the derivation is that
+none of those paths changed. Any command whose reads its text does not establish (a test
+runner, a script, a substitution) gets no derived scope: its witness speaks for every path
 outside the board's own bookkeeping (`docs/streams/**` and the generated `STATUS.md`),
-and the derivation is that none of those paths changed. Only a complete manifest licenses
+and the derivation is that none of those paths changed. Otherwise only a complete manifest licenses
 a narrower scope: the brief's declared `files:` entries plus the claim's source
 dependencies (a declared directory covers everything under it), taken as the union of the
 declaration now and as it stood at the witness's commit, so narrowing `files:` after the
