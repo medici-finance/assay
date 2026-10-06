@@ -11,7 +11,7 @@ why: >-
   completion test.
 wave: 1
 depends: []
-unblocks: ["forge-neutral/18"]
+unblocks: ["forge-neutral/18", "forge-neutral/35"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -48,9 +48,10 @@ consumers:
   - "tools/desk/internal/deskkit/forge_surface_deskread_test.go: follow-up forge-neutral/33 (this brief's implementation: its `want` list gains exactly the four new names, in this change, as the test's own failure message directs)"
   - "tools/desk/cmd/deskread: follow-up forge-neutral/33 (this brief's implementation: the new read kinds that consume each addition)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/33 (this brief's implementation: inventory rows 55–58 and an 'added by' note)"
-  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph; its `forge.go` consumers entry and its 'Add no operation' ground rule name this brief as the source of the new reads; Verify row 3 becomes a count of non-comment `\"gh\"` literals, which also counts the `exec.CommandContext` launch, and its Expect is re-measured to 32; row 15's Expect moves from 7 to 6 to match `allowedInvocationCeiling`; §6 gains a re-measure note pointing at this census; it takes ownership of `decisionruling.go`, moving the ruling resolver's two reads onto the `comments` and `issue` kinds and deleting `rulingForgeClient` with its `gh auth token` fallback at `:643`, with no replacement credential)"
+  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, so the edge the #2025 routing promised is in the graph; its `forge.go` consumers entry and its 'Add no operation' ground rule name this brief as the source of the new reads; Verify row 3 becomes a count of non-comment `\"gh\"` literals, which also counts the `exec.CommandContext` launch, and its Expect is re-measured to 32; row 15's Expect moves from 7 to 6 to match `allowedInvocationCeiling`; §6 gains a re-measure note pointing at this census; row 3 excludes `statusgen/decisionruling.go` by path, because the ruling resolver and its `gh auth token` fallback at `:643` move in forge-neutral/35, and 18 adds `issue` to `deskread`'s CI-transport kind set)"
+  - "docs/streams/forge-neutral/brief-35-ruling-resolver-onto-the-read-verb.md: fixed-here (new brief, split from 18 on review: it moves the ruling resolver's two reads onto the `comments` and `issue` kinds this brief adds and deletes `rulingForgeClient` with its `gh auth token` fallback at `:643`, with no replacement credential. It is human-gated because the move rewrites the inputs of the ruling-authenticity control)"
   - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/claimdecay.go, statusgen/corroborate.go, statusgen/decisiongateanchor.go, statusgen/issues.go, statusgen/selfimprovement.go, statusgen/transcribescan.go, statusgen/transcribeverdict.go: follow-up forge-neutral/18 (moving each site onto `deskread` is 18's Task and Verify row 3; this brief adds the reads and touches no statusgen file)"
-  - "statusgen/decisionruling.go: follow-up forge-neutral/18 (the ruling resolver reads one issue comment by id at `:262` and one issue by number at `:354` through statusgen's own HTTP client, whose token comes from the environment or, failing that, from `gh auth token` at `:643`. 18 moves both reads onto `deskread`'s `comments` and `issue` kinds and deletes `rulingForgeClient` and its fallback with no replacement, so `:643` disappears with the move. This brief adds the comment fields those reads consume, Task 2.8 and Task 3, and touches no statusgen file)"
+  - "statusgen/decisionruling.go: follow-up forge-neutral/35 (the ruling resolver reads one issue comment by id at `:262` and one issue by number at `:354` through statusgen's own HTTP client, whose token comes from the environment or, failing that, from `gh auth token` at `:643`. 35 moves both reads onto `deskread`'s `comments` and `issue` kinds and deletes `rulingForgeClient` and its fallback with no replacement, so `:643` disappears with the move. This brief adds the comment fields those reads consume, Task 2.8 and Task 3, and touches no statusgen file)"
   - "statusgen/ghfetch.go: out-of-scope (statusgen's own native HTTP client, which row 3's grep does not see; it is not a forge-CLI site and is not in this brief's census)"
   - ".github/workflows/assay-statusgen.yml: out-of-scope (the CI read identity, which is #2253's decision)"
 ---
@@ -142,17 +143,24 @@ against the paths and not just copied from 18:
 - No addition mints, stores, forwards or widens a credential, and none writes to a forge.
 - No addition touches a payment, customer record or irreversible action.
 
-That is the same answer as the stream's other read briefs (06, 12, 18). Several fields feed
-controls once 18 consumes them: actor type in trust and transcription, merge commit and branch
-commits in the auto-flip, cross-repo and head repository in claim decay (the fork-spoof guard,
-`claimdecay.go:126-170`, which treats a missing signal as unattributed), the issue closer in
-the decision-gate anchor (`decisiongateanchor.go:157`, `:226-245`), the closing change's merge
+That is the same answer as the stream's other read briefs (06, 12, and 18, which moves
+statusgen's sites onto these reads without changing any control's inputs). Several fields feed
+controls once a consumer reads them: actor type in trust and transcription, merge commit and
+branch commits in the auto-flip, cross-repo and head repository in claim decay (the fork-spoof
+guard, `claimdecay.go:126-170`, which treats a missing signal as unattributed), the issue closer
+in the decision-gate anchor (`decisiongateanchor.go:157`, `:226-245`), the closing change's merge
 state in self-improvement's human-touch count (`selfimprovement.go:492-501`), and a comment's
 update time and author type in the ruling resolver (`decisionruling.go:296-313`). That is why
 their **absent** values are specified, and why Verify rows 5–10 and 21–28 test the negative
-path for each. If a reviewer reads any of
-these as a control change rather than a read, the right move is to flip `sensitive-data` and gate
-this brief on a human, not to drop the rows.
+path for each.
+
+The ruling resolver is the one consumer whose move rewrites a control's inputs: the deleted
+comment, the comment-to-issue binding, the edit check and the bot check all change source. That
+move is forge-neutral/35, and 35 is human-gated (`sensitive-data: yes`) for it. This brief stays
+model-gated because it changes no consumer: it adds reads and specifies what each absent value
+means, and the decision about how a control uses them sits with the brief that wires it. If a
+reviewer reads any of these fields as a control change in itself rather than a read, the right
+move is to flip `sensitive-data` and gate this brief on a human, not to drop the rows.
 
 ### Why this brief is independent of #2253
 
@@ -215,7 +223,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
 | `autoflip.go:1488` | head, state, merged time | exists: `GetPullRequest` | `--auto-flip-model` |
 | `autoflip.go:1498` | reviews with commit id | exists: `ReviewsAtHead` | `--auto-flip-model` |
 | `selfimprovement.go:400` | comment authors + types; **close/reopen actors; closing changes (merged, author)** | `ListCommentsTyped` + **new** `IssueStateEvents` (op 56) | — |
-| `decisionruling.go:643` | `gh auth token`, the token fallback for the ruling resolver's two reads (one comment by id at `:262`, one issue by number at `:354`) | owned by forge-neutral/18: both reads move onto `deskread comments` (with **new** `Comment.UpdatedAt` and the kind's id, type and URL fields, Task 2.8 and Task 3) and `deskread issue`, and the fallback is deleted with no replacement, so this line disappears with the move | `--corroborate` |
+| `decisionruling.go:643` | `gh auth token`, the token fallback for the ruling resolver's two reads (one comment by id at `:262`, one issue by number at `:354`) | owned by forge-neutral/35 (split from 18 because the move rewrites the ruling control's inputs): both reads move onto `deskread comments` (with **new** `Comment.UpdatedAt` and the kind's id, type and URL fields, Task 2.8 and Task 3) and `deskread issue`, and the fallback is deleted with no replacement, so this line disappears with the move | `--corroborate` |
 
 **This corrects the list in 18's progress note:** "check rollup" is already served by
 `ChecksAtHead` and is not missing.
@@ -228,7 +236,8 @@ and which seam read serves it after this brief. **New** marks this brief's addit
   identity does.
 - If anything is unclear or contradicts repo state, report NEEDS_CONTEXT. Don't guess.
 - **Touch no file under `statusgen/` and no workflow file.** Moving the sites is
-  forge-neutral/18's Task. The CI read identity is #2253's decision.
+  forge-neutral/18's Task, and forge-neutral/35's for `decisionruling.go`. The CI read identity
+  is #2253's decision.
 - **Do not change `deskread`'s identity.** `ciEligible` stays `false`, there is no
   environment-token path, and there is no ambient-CLI fallback.
 - **The surface stays closed.** Each addition is a typed read with a fixed endpoint per
@@ -391,7 +400,7 @@ and which seam read serves it after this brief. **New** marks this brief's addit
         is could-not-check, never the issue's author.
    8. **`Comment.UpdatedAt`** (RFC3339). The ruling resolver refuses a ruling comment edited
       after it was posted by comparing creation and update times (`decisionruling.go:296-307`),
-      so 18 cannot move that read without it:
+      so forge-neutral/35 cannot move that read without it:
       - GitHub: `updatedAt` in every comment query `ListCommentsTyped` walks.
       - GitLab: the note's `updated_at`.
       - An unreadable update time leaves `UpdatedAt` empty, which is could-not-check. It is
@@ -419,7 +428,9 @@ and which seam read serves it after this brief. **New** marks this brief's addit
    - Replace "IT ADDS NO OPERATION TO Forge" with the accurate statement: the verb's
      migrations add none, and ops 55–58 were added under the freeze rule by forge-neutral/33
      with these kinds as their consumers.
-   - Name forge-neutral/18 as the statusgen consumer that each new kind is waiting for.
+   - Name forge-neutral/18 as the statusgen consumer that each new kind is waiting for, and
+     forge-neutral/35 as the consumer of `issue` and the new `comments` fields in the ruling
+     resolver.
 4. **Register the surface change.**
    - Add inventory rows 55–58 to `docs/streams/forge-gitlab/inventory.md`, in its existing
      column shape, all `implemented`, plus one "added by forge-neutral brief 33" note naming

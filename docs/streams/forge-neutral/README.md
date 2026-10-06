@@ -237,6 +237,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 31 | [Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live](brief-31-remaining-roles-write-audit.md) | 8 | M | todo | — | — |
 | 32 | [Release-N+1 deletion — the forge claim store is removed and an unset store key is refused](brief-32-forge-store-deletion.md) | 8 | M | todo | — | — |
 | 33 | [Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind](brief-33-forge-reads-for-statusgen-s-remaining-sites.md) | 1 | L | todo | — | — |
+| 35 | [Ruling resolver onto the read verb — the decision-record ruling check reads through deskread, accepts only a User author, and holds no credential of its own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -286,6 +287,15 @@ put those reads in their own brief under the freeze rule. 33 adds them as four o
 result fields, each with both backends, goldens, inventory rows 55–58 and a `deskread` kind as its
 consumer, so `33 → 18`. 33 touches no statusgen file and no workflow, and it does not decide which
 identity CI reads under (#2253).
+
+**35 sits behind 18 and 33.** The one forge-CLI site 18 does not move is
+`decisionruling.go:643`, the ruling resolver's `gh auth token` fallback. Moving the resolver's
+two reads onto `deskread` rewrites the inputs of the ruling-authenticity control (deleted-comment
+detection, the comment-to-issue binding, edit detection, the bot check) and the credential it
+reads under, so it is its own brief, human-gated, and needs an approved design record before
+dispatch. It consumes 33's comment fields and `issue` kind and the `issue` entry 18 adds to
+`deskread`'s CI-transport kind set, so `{18, 33} → 35`. 18's row 3 excludes that one file by
+path; 35's row runs the same count with no exclusion and takes it to 0.
 
 The chain is real, not conventional. 08's auto-flip has to recognise a reviewer identity on the
 configured forge, which is 07's roster-parity deliverable inside statusgen; 07's actor matching
@@ -446,8 +456,10 @@ findings and do not exist yet.
   re-homes onto the desk-tools read verb). 18 sits in wave 5 rather than 4 by the tree's own
   derivation rule — a brief's `depends:` must point to strictly-earlier waves
   (`statusgen/brieffile.go:1492-1522`), and 08 is wave 4.
+- **Wave 6** — `forge-neutral/35` (the ruling resolver onto the read verb, human-gated; its
+  `depends:` names `forge-neutral/18` and `forge-neutral/33`).
 
-One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `33 → 18`.
+One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `33 → 18` and `{18, 33} → 35`.
 
 **Reviewer write boundary (briefs 20–25, 28–32)** — waves are derived from `depends:` like
 every other brief here, so they interleave with the numbers above rather than restarting:

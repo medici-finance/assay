@@ -14,7 +14,7 @@ why: >-
   CI stops reaching the network at all.
 wave: 5
 depends: ["forge-neutral/08", "forge-neutral/33"]
-unblocks: []
+unblocks: ["forge-neutral/35"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -49,8 +49,9 @@ consumers:
   - "statusgen/brieffile.go: fixed-here (the parse memo)"
   - "statusgen/main.go: fixed-here (the single history read, the `--forge` and `--changed-only` flags)"
   - "statusgen/linkcheck.go: fixed-here (the source index scoped to docs/)"
-  - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/citationcorroborate.go, statusgen/claimdecay.go: fixed-here (the remaining call sites, enumerated in Task 6. They are THIS brief's own deliverable, not a follow-on: Verify row 3 — zero forge-CLI sites in `statusgen/` — is this brief's completion test, so the board row stays `in-progress` until every one of them is on the reader. There is no follow-on brief and deliberately no forward reference to one)"
-  - "statusgen/decisionruling.go, statusgen/decisionruling_test.go, statusgen/decisionruling-mutations.json, statusgen/ghfetch.go, statusgen/corroborate.go: fixed-here (the ruling resolver, Task 6: its two reads, one issue comment by id at `decisionruling.go:262` and one issue by number at `:354`, move onto the `comments` and `issue` kinds; `rulingForgeClient` (`:633-648`) and its `gh auth token` fallback at `:643` are deleted with no replacement; the call at `corroborate.go:1481` passes the reader instead; `GetIssueComment` and `GetIssue` (`ghfetch.go:193-207`) are deleted once nothing calls them; the mutation manifest is re-pointed so every entry still reddens)"
+  - "statusgen/autoflip.go, statusgen/autonomy.go, statusgen/briefdecision.go, statusgen/briefflowreview.go, statusgen/citationcorroborate.go, statusgen/claimdecay.go: fixed-here (the remaining call sites, enumerated in Task 6. They are THIS brief's own deliverable, not a follow-on: Verify row 3 — zero forge-CLI sites in `statusgen/` — is this brief's completion test, so the board row stays `in-progress` until every one of them is on the reader. There is no follow-on brief for these sites. The one site row 3 excludes, `decisionruling.go:643`, is a credential fallback inside a control and is forge-neutral/35's)"
+  - "statusgen/decisionruling.go, statusgen/decisionruling_test.go, statusgen/decisionruling-mutations.json, statusgen/ghfetch.go: follow-up forge-neutral/35 (the ruling resolver, and the `gh auth token` fallback at `decisionruling.go:643`, move in their own human-gated brief because the move rewrites the inputs of the ruling-authenticity control; this brief does not touch them, and its row 3 excludes `statusgen/decisionruling.go` by path)"
+  - "tools/desk/cmd/deskread/main.go `ciTransportKinds`: follow-up forge-neutral/18 (this brief; flips to fixed-here when the implementation edits the path — it adds `issue`, and every other kind its CI-lane sites need, one reviewed entry per kind)"
   - "docs/telemetry.md: fixed-here (the contract for what `--lint` may reach)"
   - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated, or added by forge-neutral/33, and has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (statusgen is a separate module and has never had a permit row; the register counts desk-tools call sites, and this brief adds none)"
@@ -86,29 +87,29 @@ files:
 - `statusgen/main.go` — `run()`'s existing `changed []string` plumbing (`:32,84,111,114,334,422,474`),
   the three `LoadHistory` calls on one path (`:662,772,978`).
 - `statusgen/linkcheck.go` — `buildSourceIndex` at `:651`.
-- `statusgen/decisionruling.go` — the ruling resolver's comment read at `:262` and issue read
-  at `:354`, and `rulingForgeClient` (`:633-648`), whose `gh auth token` fallback is at `:643`;
-  `statusgen/decisionruling_test.go` and `statusgen/decisionruling-mutations.json`, its tests
-  and mutation manifest; `statusgen/corroborate.go:1481`, its one caller;
-  `statusgen/ghfetch.go:193-207`, the two raw reads it uses today.
+- `tools/desk/cmd/deskread/main.go` — `ciTransportKinds`, the CI-transport kind set the
+  CI-transport brief in #2314 opens at `issues`, `trust` and `comments`.
 - `docs/telemetry.md` — the style this brief's `--lint` reach contract follows.
 
 **Why the risk answers are all `no`.** This brief adds no credential, mints nothing, and
-takes no trust decision. It removes one ambient fallback: the ruling resolver's `gh auth token`
-read at `decisionruling.go:643` is deleted with no replacement (Task 6). Afterwards a local run
-reads the ruling links under `deskread`'s minted App role, and a CI run under the opt-in
-workflow-token transport that #2253's ruling chose (the CI-transport brief in #2314); with
-neither available, every ruling resolves to `unresolvable-link`, a refusal, never a pass. That
-moves the inputs of one control, the ruling check `--corroborate` applies to decision records,
-without loosening any of its refusals, and Verify rows 18–19 pin that. The reads it re-homes
-are reads; the identity that performs them is
-resolved by the verb through `forge-neutral/07`'s roster parity and `forge-neutral/01`'s
-resolver, unchanged. What it does change is the REACH of a check — and the two places that
-could go wrong are the offline default and the scope-narrowed mode. Neither removes a control:
-the issue-debt line is a NOTICE that is already `gh`-guarded and already degrades to the empty
-string on any failure (`issues.go:769-780`), so making it opt-in retires an advisory, not an
-assertion; and `--changed-only` is specified as REFUSING outright in the CI gate rather than
-narrowing quietly. Both are guarded by mandatory negative-path rows (5, 6, 11).
+changes no control's accept or refuse rule or its inputs. Every site it moves is a read: the
+same data, fetched through `deskread` instead of `gh`, under the identity the verb resolves —
+`forge-neutral/07`'s roster parity and `forge-neutral/01`'s resolver locally, and in CI the
+opt-in workflow-token transport that #2253's ruling chose (the CI-transport brief in #2314).
+For the CI-lane reads that identity is new: today they run under the job's own `gh` login, and
+afterwards under the transport, which is why this brief depends on that brief and adds `issue`,
+plus each further kind its CI-lane sites need, to `ciTransportKinds` by reviewed diff. The
+acting identity statusgen RECORDS is unchanged (row 14). One site is deliberately not here: the
+ruling resolver in `decisionruling.go`, with its `gh auth token` fallback at `:643`. Moving it
+rewrites the inputs of the ruling-authenticity control (deleted-comment detection, the
+comment-to-issue binding, edit detection, the bot check) and the credential it reads under, so
+it is forge-neutral/35, human-gated, and row 3 excludes that one file by path. What this brief
+does change is the REACH of a check, and the two places that could go wrong are the offline
+default and the scope-narrowed mode. Neither removes a control: the issue-debt line is a NOTICE
+that is already `gh`-guarded and already degrades to the empty string on any failure
+(`issues.go:769-780`), so making it opt-in retires an advisory, not an assertion; and
+`--changed-only` is specified as REFUSING outright in the CI gate rather than narrowing quietly.
+Both are guarded by mandatory negative-path rows (5, 6, 11).
 
 single-point-of-failure: for the offline default, the one control between "this lint is green
 because it looked" and "this lint is green because it stopped looking" is the three-state
@@ -201,6 +202,8 @@ facts — all measured on this repository at `e428134c`, 24 streams and 165 brie
   a file that changes mid-run is re-read. Speed bought with a stale answer is not speed.
 - Do not weaken a lint to make it faster. Every check that runs today still runs; what changes
   is how it gets its inputs and what it reports when it cannot.
+- **Do not touch `statusgen/decisionruling.go`** or the ruling resolver's call at
+  `corroborate.go:1481`. They are forge-neutral/35's.
 
 ## Task
 
@@ -313,7 +316,8 @@ A scoped lint for a local pre-push check, built on `run()`'s existing `changed` 
 ### 6. Every remaining forge-CLI call site, migrated — this brief's own completion test
 
 Not a follow-on and not a forward reference: the sites below are this brief's deliverable, and
-Verify row 3 (zero forge-CLI launches, `exec.Command` or `exec.CommandContext`, in `statusgen/`) is what says the brief is finished.
+Verify row 3 (zero forge-CLI launches, `exec.Command` or `exec.CommandContext`, in `statusgen/`
+outside `decisionruling.go`) is what says the brief is finished.
 Each moves onto a `forgeReader` method added WITH its consuming call site, never ahead of it.
 
 | File | Sites at the freshness base | The read kind it needs |
@@ -341,42 +345,25 @@ different total has found either a drifted brief or a new call site, and either 
 `exec.CommandContext` launch at `autonomy.go:539`. The current per-site list is forge-neutral/33's
 census.)
 
-**The ruling resolver, `decisionruling.go`.** Its one census site, `:643`, is not a read: it is
-`gh auth token`, the last-resort token for `rulingForgeClient` (`:633-648`), which hands
-statusgen's own HTTP client to the two reads `resolveRuling` makes, one issue comment by id
-(`:262`) and the decision issue by number (`:354`). This brief owns it, and it is moved like
-every other site, by moving the reads, not the credential:
-- The comment read becomes `deskread comments` on the link's issue, selecting the comment by
-  `databaseId`; the issue read becomes `deskread issue`. Both use the fields forge-neutral/33
-  adds (Task 2.8 `Comment.UpdatedAt`, and the comment id, author type and URL on the
-  `comments` kind).
-- `rulingForgeClient` is deleted with its `GH_TOKEN`/`GITHUB_TOKEN` reads and the `gh auth
-  token` fallback, and nothing replaces it. The resolver holds no credential of its own: it
-  reads under whatever identity the reader resolves, the minted App role locally and the
-  #2253 transport in CI.
-- `resolveRuling` today keys on HTTP status (`404`/`410` is a deleted comment, any other
-  non-`200` is unresolvable). The reader has no status code, so the mapping moves to the
-  envelope, and every unknown still refuses:
-  - the verb exits non-zero, its output does not parse, its schema is not 1, or the item is
-    in `partial` → `unresolvable-link`, with the partial reason in the detail;
-  - the comment thread read completely, without the linked id → `deleted-comment`. The
-    `comments` kind returns a whole thread or a `partial`, so a missing id in a complete
-    thread is an observed absence. A comment that exists on a different issue now reads the
-    same way, where today it is `unrelated-issue`; both refuse;
-  - the linked number is a change, not an issue → the `issue` kind reports the kind mismatch
-    in `partial` → `unresolvable-link`, where today it is `unrelated-issue`; both refuse;
-  - an empty author login or author type → `unresolvable-link`; author type `Bot` →
-    `bot-author` (GraphQL renders a bot's login without the `[bot]` suffix, so the type is
-    the signal; the suffix check stays);
-  - an empty or unparseable `createdAt` or `updatedAt` → `unresolvable-link`; the two
-    differing → `edited-comment`;
-  - under the offline reader every ruling is `unresolvable-link`.
+**The ruling resolver, `decisionruling.go`, is not here.** Its one census site, `:643`, is not
+a read: it is `gh auth token`, the last-resort credential for the client the resolver builds for
+its own two reads. Moving those reads rewrites the inputs of the ruling-authenticity control, so
+that move is forge-neutral/35, a human-gated brief whose `depends:` names forge-neutral/18. Row 3 excludes
+`statusgen/decisionruling.go` by path, and 35's own row runs row 3 with no exclusion.
 
-  No outcome moves from refused to accepted. The two test expectations that change
-  (`TestRuling_CommentOnDifferentIssue`, `TestRuling_PullRequestNotIssue`) change from one
-  refusal reason to another, and the manifest entries keyed on the HTTP-status lines are
-  re-pointed at the envelope mapping so each still reddens. Ruling links are a GitHub URL
-  grammar, so a GitLab ruling link stays out of scope and is refused as malformed, as today.
+**The CI transport.** The `--corroborate`, `--auto-flip-model` and transcribe sites read under
+the CI-transport brief's workflow-token transport (#2314) in CI, so this brief depends on it.
+That brief opens `ciTransportKinds` at `issues`, `trust` and `comments`. This brief adds `issue`
+(first consumed by `decisiongateanchor.go:229` under `--corroborate`, and later by
+forge-neutral/35), and every other kind a CI-lane site needs, one reviewed entry per kind, in
+the diff that moves the site. Row 18 asserts the `issue` entry.
+
+**Not in this brief: a structural guard behind row 3.** Row 3 is a text count, and its Expect
+lists the launch forms it cannot see. A guard that closes them is a follow-up, not part of this
+brief's DoD: an AST test over non-test statusgen that refuses any `exec.Command*`,
+`os.StartProcess` or `syscall.Exec` whose program argument is not on an allow-list, or row 4's
+no-`gh`-on-`PATH` harness widened beyond `--lint` to every mode. The same follow-up re-points
+the older unanchored grep in `docs/statusgen-lint-reach.md` (`:43`, `:72`) at row 3's command.
 
 ### 7. The reach contract
 
@@ -395,7 +382,7 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 |---|-------|---------|--------|
 | 1 | check:ci | `cd statusgen && go build ./... && go test ./... -count=1` | exit 0 |
 | 2 | check:ci | `cd tools/desk && go build ./... && go test ./... -count=1` | exit 0 |
-| 3 | check +dereference | `test -d statusgen/ && { grep -rnF '"gh"' statusgen/ --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+_test\.go:' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`. A `0` proves one thing: no line outside test files and `//` comment lines carries the double-quoted literal `"gh"`. That covers `exec.Command`, `exec.CommandContext` with any context argument, a variable or constant in statusgen holding the name, a call split across lines, and an aliased import. It does NOT see a launch whose name is: a back-quoted raw string; an escaped literal (hex or octal); an absolute path ending in `gh`; inside a shell command (`sh -c "gh …"`); derived at run time (case conversion, bytes, concatenation); or supplied from outside the file (another package, an imported module, linker flags, an embedded or config file, the environment). A `0` is therefore necessary, not sufficient: 18's reviewer confirms every site in forge-neutral/33's census, `decisionruling.go:643` included, was moved onto a forge read rather than re-expressed in one of those forms. The comment filter drops only lines that begin with `//`, so a `"gh"` inside a block comment or in a comparison is still counted, which errs toward a non-zero count. The test-file filter matches the path field only. Measured at the freshness base: 26 sites across 15 non-test files. Re-measured 2026-10-06 at `11228951d`: this command prints `32`, one line per forge-CLI launch site. The earlier `exec.Command("gh"` form printed `31` (16 non-test files) because it missed the one `exec.CommandContext(ctx, "gh", …)` launch at `autonomy.go:539`. The one comment line naming `"gh"` (`doratiming.go:48`) is excluded by the comment filter, and forge-neutral/33's census lists each one. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
+| 3 | check +dereference | `test -d statusgen/ && { grep -rnF '"gh"' statusgen/ --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+_test\.go:' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^statusgen/decisionruling\.go:' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`. A `0` proves one thing: no line outside test files, `//` comment lines and `statusgen/decisionruling.go` carries the double-quoted literal `"gh"`. That covers `exec.Command`, `exec.CommandContext` with any context argument, a variable or constant in statusgen holding the name, a call split across lines, and an aliased import. It does NOT see a launch whose name is: a back-quoted raw string; an escaped literal (hex, octal or Unicode); a path ending in `gh`, absolute or relative; inside a shell command (`sh -c "gh …"`); derived at run time (case conversion, bytes, concatenation); or supplied from outside the file (another package, an imported module, linker flags, an embedded or config file, the environment). A `0` is therefore necessary, not sufficient: 18's reviewer confirms every site in forge-neutral/33's census except `decisionruling.go:643` was moved onto a forge read rather than re-expressed in one of those forms. A structural guard for those forms is a named follow-up (Task 6), not part of this row. **The path filter excludes `statusgen/decisionruling.go`, and only that file.** Its one site, `:643`, is the ruling resolver's `gh auth token` fallback, which forge-neutral/35 owns because moving it rewrites the inputs of the ruling-authenticity control. 35's own row runs this command without the filter and takes the full count to `0`. The filter is anchored at the start of the path field, like the test-file filter, so it cannot drop a line from any other file. The comment filter drops only lines that begin with `//`, so a `"gh"` inside a block comment or in a comparison is still counted, which errs toward a non-zero count. The test-file filter matches the path field only. Measured at the freshness base: 26 sites across 15 non-test files. Re-measured 2026-10-06 at `11228951d`: the command without the decisionruling filter printed `32`, one line per forge-CLI launch site. The earlier `exec.Command("gh"` form printed `31` (16 non-test files) because it missed the one `exec.CommandContext(ctx, "gh", …)` launch at `autonomy.go:539`. The one comment line naming `"gh"` (`doratiming.go:48`) is excluded by the comment filter, and forge-neutral/33's census lists each site. Re-measured 2026-10-06 at `35c303e47` with BSD and GNU grep: this command prints `31`, the same 32 less the one line at `decisionruling.go:643`. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
 | 4 | check:ci +flow | `cd statusgen && go test ./... -run TestLintOfflineMakesNoNetworkCall -count=1 -v` | **negative path**: a full `--lint` with no `--forge`, run against a harness whose network dial hook FAILS the test on any attempt and whose `PATH` contains no `gh` and no `deskread`, completes with the same verdict as a networked run. Fails if any connection is attempted or any forge process is started |
 | 5 | check:ci +mutation | `cd statusgen && go test ./... -run TestForgeBackedChecksReportCouldNotCheckOffline -count=1 -v` | **negative path**: with the offline reader wired, every forge-backed check renders could-not-check AS ITSELF. The test fails if any of them renders clean, and it enumerates the checks so a newly-added one that forgets is caught rather than skipped |
 | 6 | check:ci +mutation | `cd statusgen && go test ./... -run TestIssueDebtNoticeOptInOnly -count=1 -v` | **negative path**: `--lint` alone emits no issue-debt line and starts no process; `--lint --forge` emits it from the verb's JSON. The test fails if the notice appears without `--forge` |
@@ -410,8 +397,7 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 | 15 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeSurfaceUnchangedByDeskread -count=1 -v` | exit 0 — the `Forge` interface gains no method; `.github/workflows/forge-surface-control.yml`'s three controls stay green and `allowedInvocationCeiling` is unchanged at 6 (`tools/desk/internal/forgeban/allowlist.go:94`, re-checked 2026-10-06 at `11228951d`; the freshness base had 7) |
 | 16 | check | `statusgen --root . --lint` | `LINT: PASS`, exit 0 |
 | 17 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/18` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff. Note: a repo-wide brief-id format mismatch is open against `--consumers` (#954) and has produced a could-not-check on sibling briefs' equivalent row; this row is satisfied by exit 0 OR by that same could-not-check citing #954, not by a silent skip |
-| 18 | check:ci +mutation | `cd statusgen && go test . -run '^TestRulingReaderMappingRefuses$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r18.out" 2>&1 && grep -F -e '--- PASS: TestRulingReaderMappingRefuses' "${TMPDIR:-/tmp}/b18-r18.out" && muhar -spec decisionruling-mutations.json` | **negative path**: `TestRulingReaderMappingRefuses` (planned) drives `resolveRuling` through a fake reader, and each envelope case in Task 6's ruling-resolver mapping yields its refusal: verb failure, bad schema and a `partial` item give `unresolvable-link`; a complete thread without the id gives `deleted-comment`; a change number gives `unresolvable-link`; an empty author type or update time gives `unresolvable-link`; type `Bot` gives `bot-author`; differing times give `edited-comment`; the offline reader gives `unresolvable-link` for every ruling. No case that refuses at the base passes after the move. The `muhar` leg (the harness built from `tools/desk/cmd/muhar`) reports the baseline green, the control caught and every entry of the re-pointed manifest caught, with none not caught |
-| 19 | check | `test -f statusgen/decisionruling.go && ! grep -q -F -e rulingForgeClient -e '"auth", "token"' statusgen/decisionruling.go` | exit 0 after the move: the resolver builds no client and fetches no token. Exit 1 at the base, where both strings are present |
+| 18 | check:ci | `cd tools/desk && go test ./cmd/deskread/ -run '^TestCITransportKindsIssue$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r18.out" 2>&1 && grep -F -e '--- PASS: TestCITransportKindsIssue' "${TMPDIR:-/tmp}/b18-r18.out"` | exit 0, `--- PASS:` printed. `TestCITransportKindsIssue` (planned) asserts that `issue` is on `ciTransportKinds` and on `readKinds`, and that a `deskread issue` call under the CI transport for the job's own repository reads, while the same call without the transport's opt-in does not use the job token. It also asserts every other kind this brief added to `ciTransportKinds` is on `readKinds` |
 
 ### Named mutations for the `+mutation` rows
 
@@ -425,7 +411,6 @@ never observed reddening is a control whose strength is asserted, not shown.
 | 9 | delete the memo lookup in `parseBriefFile`. Distinct parses then equal CALL count and the row fails |
 | 10 | swap the two assignments in the authorship walk (take the first sighting as the introducing commit). The multi-author fixture file must then resolve first and last inverted |
 | 11 | drop the CI-gate detection from `--changed-only` so it merely warns. The row must fail on the exit code |
-| 18 | read a thread that could not be read completely (`partial`) as a thread without the linked comment, so the outcome is `deleted-comment` where it must be `unresolvable-link`; separately, treat an empty `updatedAt` as equal to `createdAt`. The row must fail on the reason, and the manifest run must redden its own entries |
 
 ## Pre-mortem → detection map
 
@@ -444,8 +429,8 @@ never observed reddening is a control whose strength is asserted, not shown.
 | `--changed-only` is merely NOISY rather than refusing in CI, so the banner scrolls past in a green log | row 11 asserts a non-zero exit, not a warning |
 | The perf work changes a check's RESULT, not just its speed — a batched `cat-file` reads a different object than the per-path `git show` did | row 10's equality assertion; row 16's end-to-end verdict on this repository |
 | `forge-neutral/07`'s acting identity is disturbed because the reads that name an identity moved | row 14 |
-| The ruling resolver's move turns a could-not-check into an accepted ruling: a `partial` comment read taken as absence, an unreadable update time taken as unedited, a bot whose GraphQL login lacks `[bot]` taken as human | row 18 and its mutations |
-| `gh auth token` is removed but re-expressed, or another token source is added for the resolver, so the brief quietly keeps or swaps an ambient credential | row 19; Review confirms the resolver holds no credential |
+| A CI-lane site is moved onto `deskread` but its kind is not on `ciTransportKinds`, so the read refuses in CI and the check reads could-not-check there | row 18 for `issue`; each further kind lands with its site in one diff, and the CI-transport brief's own test pins every entry to `readKinds` |
+| The ruling resolver is moved here after all, so a change to a control's inputs lands under a model gate | row 3's path filter names `decisionruling.go` and nothing else; Review confirms this brief's diff does not touch it (forge-neutral/35 owns it) |
 | A new `Forge` operation is added because one call site was awkward, widening a frozen surface behind a read verb | row 15 + `allowedInvocationCeiling` unchanged |
 | The remaining call sites are left on `gh` but the row is flipped to implemented anyway | row 3's `0` is the completion test for the whole brief; slice 1 leaves it non-zero and the row stays `in-progress` by construction |
 | The measured win is claimed from a warm-cache run against a cold-cache baseline | row 13 specifies best-of-three on one tree, both sides offline |
@@ -462,6 +447,6 @@ Gate: **model** (from frontmatter; all four risk answers are `no` — see the no
 `## Context`). Reviewer records verdict + date in the stream README table, and confirms two
 things beyond the rows: that the offline default cannot render a forge-backed check clean, and
 that `--changed-only` has no path — flag, environment variable or argument order — by which it
-can serve as the CI gate. The reviewer also confirms that the ruling resolver holds no credential
-of its own after Task 6: no token read, no `gh auth token`, no client built in
-`decisionruling.go`.
+can serve as the CI gate. The reviewer also confirms that this brief's diff does not touch
+`statusgen/decisionruling.go` or the call at `corroborate.go:1481`, and that row 3's path
+filter excludes that one file and nothing else. Both belong to forge-neutral/35.
