@@ -623,6 +623,35 @@ func TestDepScopeFoldCollisionWidens(t *testing.T) {
 			[]string{"\u212a.md", "ok\n"}, []string{"\u212a.md", "changed\n"})
 		wantClaim(t, got, covWrongRevision, "differs", "also tracks \u212a.md")
 	})
+	// Security review S1b, round 3: full case folding maps one rune to
+	// SEVERAL letters (sharp s to ss, the ligatures to ff, fi, fl, ffi, ffl,
+	// st), and an APFS case-insensitive clone opens ss.md for \u00df.md. A
+	// one-rune-one-byte comparison never lines these up.
+	t.Run("sharp s folds to two letters", func(t *testing.T) {
+		got := dsIndexScenario(t, "grep -c ok ss.md", writes("ss.md", "ok\n"),
+			[]string{"\u00df.md", "ok\n"}, []string{"\u00df.md", "changed\n"})
+		wantClaim(t, got, covWrongRevision, "differs", "also tracks \u00df.md")
+	})
+	t.Run("fi ligature folds to two letters", func(t *testing.T) {
+		got := dsIndexScenario(t, "grep -c ok file.md", writes("file.md", "ok\n"),
+			[]string{"\ufb01le.md", "ok\n"}, []string{"\ufb01le.md", "changed\n"})
+		wantClaim(t, got, covWrongRevision, "differs", "also tracks \ufb01le.md")
+	})
+	t.Run("ffi ligature folds to three letters", func(t *testing.T) {
+		got := dsIndexScenario(t, "grep -c ok office.md", writes("office.md", "ok\n"),
+			[]string{"o\ufb03ce.md", "ok\n"}, []string{"o\ufb03ce.md", "changed\n"})
+		wantClaim(t, got, covWrongRevision, "differs", "also tracks o\ufb03ce.md")
+	})
+	t.Run("multi-letter fold under a directory read", func(t *testing.T) {
+		got := dsIndexScenario(t, "wc -l strasse", writes("strasse/c.go", "c\n"),
+			[]string{"stra\u00dfe/c.go", "c\n"}, []string{"stra\u00dfe/c.go", "c2\n"})
+		wantClaim(t, got, covWrongRevision, "differs", "also tracks stra\u00dfe/c.go")
+	})
+	t.Run("a code point some checkouts ignore", func(t *testing.T) {
+		got := dsIndexScenario(t, "grep -c ok readme.md", writes("readme.md", "ok\n"),
+			[]string{"\u200creadme.md", "ok\n"}, []string{"\u200creadme.md", "changed\n"})
+		wantClaim(t, got, covWrongRevision, "differs", "also tracks \u200creadme.md")
+	})
 	t.Run("non-ASCII operand", func(t *testing.T) {
 		setup := writes("caf\u00e9.md", "ok\n", ".assay-versions", "v1\n")
 		got := dsScenario(t, "grep -c ok caf\u00e9.md", setup, writes(".assay-versions", "v2\n"))

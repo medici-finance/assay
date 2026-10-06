@@ -196,8 +196,26 @@
     {
       "name": "S1b: a non-ASCII rune in a tree entry compared byte-exactly instead of as a fold candidate (the Kelvin sign is not seen as k)",
       "file": "coverage_inputs.go",
-      "old": "\t\tif r >= utf8.RuneSelf {\n\t\t\tif in[i] == '/' {\n\t\t\t\treturn false\n\t\t\t}\n\t\t}",
-      "new": "\t\tif r >= utf8.RuneSelf {\n\t\t\treturn false\n\t\t}"
+      "old": "\t\t\tif r >= utf8.RuneSelf {\n\t\t\t\tfor k := j; ; k++ {",
+      "new": "\t\t\tif r >= utf8.RuneSelf {\n\t\t\t\tcontinue\n\t\t\t\tfor k := j; ; k++ {"
+    },
+    {
+      "name": "S1b round 3: the one-rune-one-byte match restored (a non-ASCII rune matches exactly one byte, so ß.md beside ss.md and the ligature spellings never line up, and the pass stands)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\t\tfor k := j; ; k++ {\n\t\t\t\t\tnext[k] = true\n\t\t\t\t\tif k == len(in) || in[k] == '/' {\n\t\t\t\t\t\tbreak\n\t\t\t\t\t}\n\t\t\t\t}",
+      "new": "\t\t\t\tif j < len(in) && in[j] != '/' {\n\t\t\t\t\tnext[j+1] = true\n\t\t\t\t}"
+    },
+    {
+      "name": "S1b round 3: a non-ASCII rune never matches zero bytes (a tree entry carrying a code point a checkout ignores is not seen as the input)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\t\t\tnext[k] = true\n\t\t\t\t\tif k == len(in) || in[k] == '/' {",
+      "new": "\t\t\t\t\tif k > j {\n\t\t\t\t\t\tnext[k] = true\n\t\t\t\t\t}\n\t\t\t\t\tif k == len(in) || in[k] == '/' {"
+    },
+    {
+      "name": "S1b round 3: a folded entry under a directory input not matched (SRC/c.go and straße/c.go beside a read of src or strasse)",
+      "file": "coverage_inputs.go",
+      "old": "\t\tif r == '/' && at[len(in)] {",
+      "new": "\t\tif false && r == '/' && at[len(in)] {"
     },
     {
       "name": "S1b: a non-ASCII derived input not widened (its canonically equivalent spellings are never compared)",

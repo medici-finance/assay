@@ -128,7 +128,8 @@ of read-only commands whose operands are plain repository paths, plus every
 `.gitattributes` on the way to each, with no expansion, glob, redirection, symbolic link,
 submodule, or file verify and regeneration write on the path, every path tracked
 under exactly that spelling in both the witness's tree and the item's, no other tracked
-name that a case- or normalisation-insensitive checkout opens as the same file, and no
+name that a case- or normalisation-insensitive checkout opens as the same file (under full
+case folding, where one character can fold to several, such as ß to ss), and no
 non-ASCII operand — and the derivation is that
 none of those paths changed. The trees name paths from the repository's toplevel, while a
 row opens its operands in the directory it ran in, which the witness does not record. So

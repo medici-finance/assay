@@ -70,9 +70,12 @@ package main
 //     scope widens there (coverageRootPrefix).
 //   - TWO NAMES, ONE FILE. A tree that tracks two names a case- or
 //     normalisation-insensitive checkout opens as one file (README.md and
-//     readme.md) leaves only one of them on disk, so the row may have read
-//     the other: such a collision widens, and so does a non-ASCII input,
-//     whose canonically equivalent spellings are not compared here.
+//     readme.md, or ss.md and ß.md under full case folding) leaves only one
+//     of them on disk, so the row may have read the other: such a collision
+//     widens (foldCovers, where a non-ASCII rune stands for any run of
+//     letters, so one-to-one, one-to-many and ignorable folds are all
+//     caught), and so does a non-ASCII input, whose canonically equivalent
+//     spellings are not compared here.
 //
 // A row that reads its own brief
 // or a file verify and regen write (isVerifyWrittenPath) keeps the
@@ -597,27 +600,47 @@ func inputCovers(in, p string) bool {
 }
 
 // foldCovers is inputCovers under case folding, for an ASCII input in (a
-// non-ASCII input widens before this is asked): an ASCII byte of p matches
-// in's byte case-insensitively, and any non-ASCII rune of p matches any one
-// byte of in other than `/` — a rune that folds or normalises to an ASCII
-// letter (the Kelvin sign to k) is caught, and the over-match only ever
-// widens the scope.
+// non-ASCII input widens before this is asked). An ASCII byte of p matches
+// in's byte case-insensitively. A non-ASCII rune of p is a wildcard for ANY
+// run of bytes of in — none, one or several — within one path component (it
+// never matches a `/`). So every way a checkout can fold or normalise one
+// rune onto ASCII is covered: to one letter (the Kelvin sign to k), to
+// several (full case folding takes ß to ss and the ligatures to ff, fi, fl,
+// ffi, ffl, st), or to nothing (a code point a checkout ignores). The
+// wildcard over-matches, and an over-match only ever widens the scope.
 func foldCovers(in, p string) bool {
-	i := 0
+	// at[j]: some prefix of p read so far matches in[:j].
+	at := make([]bool, len(in)+1)
+	at[0] = true
 	for _, r := range p {
-		if i == len(in) {
-			return r == '/'
+		if r == '/' && at[len(in)] {
+			return true // p sits under in, a directory
 		}
-		if r >= utf8.RuneSelf {
-			if in[i] == '/' {
-				return false
+		next := make([]bool, len(in)+1)
+		alive := false
+		for j, ok := range at {
+			if !ok {
+				continue
 			}
-		} else if lowerASCII(byte(r)) != lowerASCII(in[i]) {
+			if r >= utf8.RuneSelf {
+				for k := j; ; k++ {
+					next[k] = true
+					if k == len(in) || in[k] == '/' {
+						break
+					}
+				}
+				alive = true
+			} else if j < len(in) && lowerASCII(byte(r)) == lowerASCII(in[j]) {
+				next[j+1] = true
+				alive = true
+			}
+		}
+		if !alive {
 			return false
 		}
-		i++
+		at = next
 	}
-	return i == len(in)
+	return at[len(in)]
 }
 
 func lowerASCII(c byte) byte {
