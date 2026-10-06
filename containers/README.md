@@ -139,9 +139,10 @@ Verifier admission renders a file that carries an `eol` or
 using `git --attr-source`. That option arrived in git 2.41, and an older git
 refuses the home (#2318). bookworm ships git 2.39.5, and bookworm-backports
 carries no `git` package. So the base builds git in its own `gitbuild` stage
-from the upstream release tarball, pinned by version like the Go, `gh` and
-Node tarballs and, unlike them, checked against a sha256. Only the install tree reaches the final image; the
-compiler and `-dev` packages stay in the build stage.
+from the upstream release tarball, pinned by version and checked against a
+sha256 like the Go, `gh` and Node tarballs (see "Pins and checksums" below).
+Only the install tree reaches the final image; the compiler and `-dev` packages
+stay in the build stage.
 
 A build-time step runs `containers/scripts/git-floor-check.sh`, which is also
 kept in the image as `/usr/local/bin/git-floor-check`. It fails the build if any
@@ -155,6 +156,60 @@ containers/scripts/git-floor-check.sh <image-ref>   # 0 met, 1 not met, 2 could-
 Moving the base to trixie (git 2.47) was the other option. It was not taken
 because the release layer-secret scan flags a file that trixie's base ships,
 and allowlisting it would loosen that scan.
+
+### Pins and checksums
+
+Everything `containers/base/Dockerfile` pulls from outside this repository is
+pinned to exact bytes, so a re-pushed tag or a swapped download fails the build
+instead of changing what ships:
+
+| Input | Pinned as | Checked by |
+|-------|-----------|------------|
+| `debian:bookworm-slim` (the `gitbuild` stage and the final stage) | tag + multi-arch index digest, the **same** digest in both stages (git built in one stage links against the other's libraries) | the registry pull, by digest |
+| `ghcr.io/medici-finance/assay/desk-tools` (`DESK_TOOLS_IMAGE`) | tag + digest | the registry pull, by digest |
+| git source tarball | `GIT_VERSION` + `GIT_TARBALL_SHA256` | `sha256sum -c` before unpacking |
+| Go toolchain tarball | `GO_VERSION` + `GO_SHA256_AMD64` + `GO_SHA256_ARM64` | `sha256sum -c` before unpacking |
+| `gh` CLI tarball | `GH_VERSION` + `GH_SHA256_AMD64` + `GH_SHA256_ARM64` | `sha256sum -c` before unpacking |
+| Node.js tarball | `NODE_VERSION` + `NODE_SHA256_AMD64` + `NODE_SHA256_ARM64` | `sha256sum -c` before unpacking |
+
+Every tarball is fetched over https only (`--proto '=https' --proto-redir
+'=https'`), and its RUN picks the sha256 for `TARGETARCH` (amd64 or arm64) from
+its own ARGs. The tag next to each digest is for the reader; the digest is what
+is pulled.
+
+Two static tests in `tools/desk/internal/deskkit` hold these pins on every PR,
+since the image itself is built only on release. `TestBaseImageRunsGitFloor`
+covers the git tarball. `TestBaseImagePinsTarballs` covers the image digests
+and the Go, `gh` and Node tarballs. Each keeps the reviewed values in a table
+(`knownGitTarballs`, `knownToolTarballs`): a Dockerfile version or sha256 that
+is not a reviewed row, a FROM without a digest, or a check that is dropped,
+masked or moved after the unpack goes red.
+
+**Bump procedure.**
+
+1. *A tarball.* Take the new sha256 for each architecture from the vendor's own
+   checksum list, never from a mirror or a third-party page:
+   - Go: `https://go.dev/dl/?mode=json&include=all`, the `sha256` of
+     `go<version>.linux-amd64.tar.gz` and `…linux-arm64.tar.gz`;
+   - `gh`: the release asset `gh_<version>_checksums.txt` on
+     `github.com/cli/cli/releases`;
+   - Node: `https://nodejs.org/dist/v<version>/SHASUMS256.txt`, after checking
+     `SHASUMS256.txt.asc` with `gpgv` against the Node release keys
+     (`github.com/nodejs/release-keys`);
+   - git: as in the "To bump" note above the `gitbuild` stage.
+
+   Download both architectures' tarballs and confirm `sha256sum` of each matches
+   the list. Then set the version and sha256 ARGs in the Dockerfile and add the
+   same values as a row in `knownToolTarballs` (`basepins_test.go`) or
+   `knownGitTarballs` (`gitfloor_test.go`) in the same change. Go also stays
+   level with the `go` line in `tools/desk/go.mod`.
+2. *An image digest.* Read the digest of the tag you mean to pin with
+   `docker buildx imagetools inspect <image>:<tag>`: the top-level `Digest:`,
+   which is the multi-arch index and so covers both architectures. Write it as
+   `<image>:<tag>@sha256:<digest>`. Both debian FROM lines take the same value.
+3. Run `go test ./internal/deskkit/ -run 'TestBaseImage'` from `tools/desk`, and
+   build the image for `linux/amd64` and `linux/arm64`. A wrong sha256 fails the
+   build at its `sha256sum -c` step.
 
 ### Interactive agent CLI: installed at first run, not baked
 
