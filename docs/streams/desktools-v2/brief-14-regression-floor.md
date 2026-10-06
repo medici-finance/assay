@@ -271,3 +271,8 @@ RISK-VALUE: N/A — no irreversible literal in the #2004 diff or the #2160 regre
 Open hold, not a Verify row: the statusgen half of the floor still does not run in PR CI (statusgen go test is only in the release workflow; the staged patch is recorded on #1836).
 
 **VERIFY: PASS**
+2026-10-06 execution witness for the pass above (statusgen v1.0.32 `verifyrun --brief`, non-dry, at 11228951d0a8, host 1-minute load about 27 to 35): exit 1. Rows 1, 3, 4, 5, 6, 8 and 9 pass; rows 2 and 7 are red.
+
+The row 2 failure was reproduced by hand straight after: the fleet-hardening seed test (#786) was killed at its 60s shell-fixture deadline (`signal: killed`, 60.27s). Every fixture assertion printed before the kill read ok. A hand re-run of row 7 at load about 35 exited 0 (seed passes=26; the #786 test took 43.74s).
+
+This is a load-sensitive deadline, not a behaviour regression. It is the thin-headroom concern flagged on 2026-10-03. The witness is being re-run at lower load. The status does not change until a passing witness lands.
