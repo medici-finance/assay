@@ -119,3 +119,17 @@ func TestRunReportsStderrOnFailure(t *testing.T) {
 		t.Fatalf("unexpected error shape: %v", err)
 	}
 }
+
+// TestBrief06PushVerbsRetired is brief 06's golden: deskpr's push, verifyloop's durable
+// push and deskkit's preflight probe moved to gitcore (Push / List), so none of the three
+// tools may spawn `git push` any more. deskmerge's push stays (brief 07's exception).
+func TestBrief06PushVerbsRetired(t *testing.T) {
+	for _, tool := range []string{"deskpr", "verifyloop", "deskkit"} {
+		if Allowed(tool, "push") {
+			t.Fatalf("%s:push migrated to gitcore in brief 06 — must no longer be allowlisted", tool)
+		}
+	}
+	if !Allowed("deskmerge", "push") {
+		t.Fatal("deskmerge:push stays paired with its trial merge (brief 07)")
+	}
+}
