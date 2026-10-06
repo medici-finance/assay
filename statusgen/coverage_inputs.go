@@ -52,7 +52,13 @@ package main
 // `.gitattributes` on the way down to each input (a filter or eol rule changes
 // the bytes a command reads without changing the blob), and the absence of a
 // symbolic link or submodule on any input's path (a link reads its target,
-// which can change without the link changing). A row that reads its own brief
+// which can change without the link changing), and every input TRACKED,
+// byte-exactly, in both the witness's tree and the item's — the staleness diff
+// can only name tracked paths, so an untracked or ignored file (a build
+// output), a case or normalisation variant of a tracked name (which a
+// case-insensitive checkout opens as the tracked file), or a path the command
+// never read there (verifyrun --root below the repository root) would never go
+// stale. A row that reads its own brief
 // or a file verify and regen write (isVerifyWrittenPath) keeps the
 // conservative scope: those files move with every Evidence write.
 //
@@ -510,6 +516,31 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 		if err != nil {
 			return sc, fmt.Sprintf("the tree at %s could not be listed (git ls-tree failed), so what the row reads cannot be established", rev)
 		}
+		// Every derived input (never the `.gitattributes` added above) must be
+		// TRACKED, byte-exactly, in both trees: a blob at that path, or a
+		// directory some entry sits under. The staleness diff can only ever
+		// name tracked paths, so an input it cannot name could change without
+		// staling the witness: an untracked or ignored file (a build output, a
+		// file an earlier row writes), a case or Unicode-normalisation variant
+		// of a tracked name that a case-insensitive checkout opens as the
+		// tracked file, or a path the command never read there because it ran
+		// in another directory (verifyrun --root below the repository root).
+		which := "the witness's"
+		if rev != base {
+			which = "the item's"
+		}
+		for _, p := range sc.inputs {
+			found := false
+			for _, e := range entries {
+				if inputCovers(p, e.path) || ((e.mode == "120000" || e.mode == "160000") && strings.HasPrefix(p, e.path+"/")) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return widen(fmt.Sprintf("the row reads %s, which is not tracked under that exact path in %s tree, so a change to what it opens cannot show in the trees' diff", p, which)), ""
+			}
+		}
 		for _, e := range entries {
 			for _, p := range sc.inputs {
 				covered := inputCovers(p, e.path)
@@ -583,7 +614,37 @@ var maxLandingCandidates = 1000
 // onto a main that had moved, or never merged) is a mismatch. why is set when
 // the search cannot be completed (a shallow clone, a git failure, more than
 // maxLandingCandidates commits to compare): the caller resolves could-not-check.
+// A completed search is cached per (root, w, t, bound): many rows share one
+// witness commit, and an unlanded one costs up to the bound's worth of diffs.
 func witnessLanded(root, w, t string) (landedAt string, landed bool, why string) {
+	key := root + "\x00" + w + "\x00" + t + "\x00" + strconv.Itoa(maxLandingCandidates)
+	landedMu.Lock()
+	got, ok := landedCache[key]
+	landedMu.Unlock()
+	if ok {
+		return got.at, got.landed, ""
+	}
+	landedAt, landed, why = searchLanded(root, w, t)
+	if why == "" {
+		landedMu.Lock()
+		landedCache[key] = landedResult{landedAt, landed}
+		landedMu.Unlock()
+	}
+	return landedAt, landed, why
+}
+
+type landedResult struct {
+	at     string
+	landed bool
+}
+
+var (
+	landedMu    sync.Mutex
+	landedCache = map[string]landedResult{}
+)
+
+// searchLanded is witnessLanded's uncached search.
+func searchLanded(root, w, t string) (landedAt string, landed bool, why string) {
 	if why := shallowCloneWhy(root); why != "" {
 		return "", false, why
 	}
@@ -595,7 +656,13 @@ func witnessLanded(root, w, t string) (landedAt string, landed bool, why string)
 	if len(bases) == 0 {
 		return "", false, "git merge-base --all named no common ancestor"
 	}
-	candidates := append(append([]string(nil), bases...), t)
+	// The merge bases and t need no search: compare them first, so a witness on
+	// the item's own history (its merge base is the witness itself) lands
+	// however many commits followed it. Only the search for a squash commit
+	// between them is bounded.
+	if at, ok, why := landedAmong(root, w, append(append([]string(nil), bases...), t)); ok || why != "" {
+		return at, ok, why
+	}
 	revArgs := []string{"rev-list", "--max-count=" + strconv.Itoa(maxLandingCandidates+1), "--end-of-options", t}
 	for _, b := range bases {
 		revArgs = append(revArgs, "^"+b)
@@ -608,7 +675,12 @@ func witnessLanded(root, w, t string) (landedAt string, landed bool, why string)
 	if len(more) > maxLandingCandidates {
 		return "", false, fmt.Sprintf("more than %d commits lie between the witness's merge base and the item's revision, past the bound this search compares", maxLandingCandidates)
 	}
-	candidates = append(candidates, more...)
+	return landedAmong(root, w, more)
+}
+
+// landedAmong reports the first of candidates whose tree is identical to w's
+// outside docs/streams/** and STATUS.md; why is set when git cannot compare.
+func landedAmong(root, w string, candidates []string) (landedAt string, landed bool, why string) {
 	for _, c := range candidates {
 		d, err := coverageGit(root, "diff", "--name-only", "--no-renames", "-z", "--end-of-options", w, c, "--").Output()
 		if err != nil {

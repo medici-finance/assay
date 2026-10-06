@@ -80,8 +80,15 @@ package main
 //     is on that history, the squash commit when its branch was squash-merged
 //     — has a tree identical to the witness's outside docs/streams/** and
 //     STATUS.md. Otherwise the check ran against code the item never carried
-//     as a whole, and the claim is `wrong-revision`. A shallow clone, a git
-//     failure, or a search past maxLandingCandidates is could-not-check. What
+//     as a whole, and the claim is `wrong-revision`. The merge bases and the
+//     item's revision are compared first, so a witness on the item's own
+//     history lands however many commits followed it; only the search for a
+//     squash commit between them is bounded. A shallow clone, a git failure,
+//     or a search past maxLandingCandidates is could-not-check. For a
+//     `+dirty` / `+unknown` witness the landing check reads its BASE commit,
+//     never the uncommitted edits it ran on, so such a witness never gets a
+//     derived scope (classifyRevisionDetail) and its pass says only that the
+//     base commit landed. What
 //     a witness speaks for (round-2 F2, round-3 F2/F6, #2026 cause 2):
 //     - with no dependency manifest (production today), the paths the row's
 //       command READS, derived from its text by a closed shell grammar
@@ -90,7 +97,9 @@ package main
 //       does not read no longer holds it;
 //     - conservatively, when the row's inputs cannot be derived (any command,
 //       operator or path the grammar does not establish, a symbolic link or
-//       submodule on an input's path, an input verify and regen write) or a
+//       submodule on an input's path, an input not tracked under its exact
+//       path in both trees, an input verify and regen write, a `+dirty` /
+//       `+unknown` witness) or a
 //       manifest is supplied but incomplete: every path OUTSIDE the board's
 //       bookkeeping surface: `docs/streams/**` (sibling briefs' Evidence in
 //       the same verify batch, READMEs, verify-outcome logs) and the
@@ -769,7 +778,20 @@ func classifyRevisionDetail(root string, scope witnessScope, witnessTree, target
 	if strings.EqualFold(w[:n], t[:n]) {
 		return revisionMatch, true, ""
 	}
-	rel, detail = witnessTreeApplies(root, scope, w, t)
+	// A `+dirty` / `+unknown` witness ran on uncommitted edits over w: the
+	// landing check below compares w's tree, never the tree the row read, so
+	// it is no layer behind a narrowed scope. Such a witness keeps the
+	// conservative scope (#2026: narrowing only where both layers bind).
+	landedNoun := "the witness's tree"
+	if w != witnessTree {
+		landedNoun = "the witness's base commit (not the uncommitted edits its " + strings.TrimPrefix(witnessTree, w) + " token marks)"
+		if scope.derived() {
+			scope.inputs = nil
+			scope.conservative = true
+			scope.whyConservative = "no dependency manifest, and the witness ran on a working tree with uncommitted edits (" + strings.TrimPrefix(witnessTree, w) + "), whose tree no commit holds, so the landing check cannot stand behind a scope narrowed to the row's derived inputs"
+		}
+	}
+	rel, detail = witnessTreeApplies(root, scope, w, t, landedNoun)
 	return rel, false, detail
 }
 
@@ -1202,7 +1224,7 @@ func splitNUL(out []byte) []string {
 // revision does not resolve, or git fails). Where there is no usable git
 // checkout at all the two plainly different tokens stay a mismatch, as
 // before.
-func witnessTreeApplies(root string, scope witnessScope, witnessTree, target string) (rel revisionRelation, detail string) {
+func witnessTreeApplies(root string, scope witnessScope, witnessTree, target, landedNoun string) (rel revisionRelation, detail string) {
 	if root == "" || scope.briefRel == "" {
 		return revisionMismatch, ""
 	}
@@ -1264,7 +1286,7 @@ func witnessTreeApplies(root string, scope witnessScope, witnessTree, target str
 	if !landed {
 		return revisionMismatch, fmt.Sprintf("the witness's tree never landed: no commit on the item's history since the merge base has a tree identical to it outside docs/streams/** and STATUS.md (a branch squash-merged after its base moved, or never merged), so the check did not run against code %s carries", target)
 	}
-	return revisionMatch, fmt.Sprintf("%s; the witness's tree landed at %s", eff.derivation(), landedAt[:treeSHALen])
+	return revisionMatch, fmt.Sprintf("%s; %s landed at %s", eff.derivation(), landedNoun, landedAt[:treeSHALen])
 }
 
 // tokenAbsent is resolveCommitToken's why for an object it cannot find.

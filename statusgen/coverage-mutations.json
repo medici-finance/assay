@@ -156,6 +156,24 @@
       "file": "coverage.go",
       "old": "\tif sc.derived() {\n\t\tfor _, in := range sc.inputs {",
       "new": "\tif sc.derived() {\n\t\tif p == \".assay-versions\" {\n\t\t\treturn false\n\t\t}\n\t\tfor _, in := range sc.inputs {"
+    },
+    {
+      "name": "a derived input not tracked under its exact path not widened (an ignored output, a case variant, or a row run below the repository root is judged by a diff that can never name it)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\tif !found {",
+      "new": "\t\t\tif false && !found {"
+    },
+    {
+      "name": "landing search: the bound checked before the merge bases and the item's revision are compared (an ancestor witness expires on age alone)",
+      "file": "coverage_inputs.go",
+      "old": "; ok || why != \"\" {",
+      "new": "; why != \"\" {"
+    },
+    {
+      "name": "a +dirty/+unknown witness keeps the narrowed scope (no landing check stands behind the uncommitted edits it read)",
+      "file": "coverage.go",
+      "old": "\t\tif scope.derived() {\n\t\t\tscope.inputs = nil",
+      "new": "\t\tif false && scope.derived() {\n\t\t\tscope.inputs = nil"
     }
   ]
 }

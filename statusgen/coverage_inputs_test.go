@@ -36,6 +36,13 @@ func dsScenario(t *testing.T, cmd string, setup, change func(t *testing.T, root 
 // (a clone, a deleted object) before evaluating.
 func dsRepo(t *testing.T, cmd string, setup, change func(t *testing.T, root string)) (string, *Stream) {
 	t.Helper()
+	return dsRepoTok(t, cmd, "", setup, change)
+}
+
+// dsRepoTok is dsRepo with the witness token's suffix (verifyrun's "+dirty"
+// or "+unknown"; "" for a clean witness).
+func dsRepoTok(t *testing.T, cmd, suffix string, setup, change func(t *testing.T, root string)) (string, *Stream) {
+	t.Helper()
 	s, root := mustCoverageStream(t, "cov")
 	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", tdFiles, dsVerify(cmd), "")
 	mustWriteFile(t, root, "src/a.go", "a v1\n")
@@ -43,7 +50,7 @@ func dsRepo(t *testing.T, cmd string, setup, change func(t *testing.T, root stri
 		setup(t, root)
 	}
 	w := mustGitInit(t, root)
-	ev := coverageEvidenceTable(covWitnessRow("1", cmd, statePass, w))
+	ev := coverageEvidenceTable(covWitnessRow("1", cmd, statePass, w+suffix))
 	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", tdFiles, dsVerify(cmd), ev)
 	if change != nil {
 		change(t, root)
@@ -268,6 +275,47 @@ func TestDepScopeLinkWidens(t *testing.T) {
 	}
 }
 
+// TestDepScopeAbsentWidens — a derived input that is not tracked under that
+// exact path cannot be named by the trees' diff, so a change to what the
+// command opens could never stale the witness: the scope widens to
+// conservative and an unrelated change refuses. Shapes: a path the command
+// never read there (verifyrun --root below the repository root runs `cat a.go`
+// in src/), an ignored build output, and a case variant of a tracked name
+// (which a case-insensitive checkout opens as the tracked file).
+func TestDepScopeAbsentWidens(t *testing.T) {
+	t.Run("run below the root", func(t *testing.T) {
+		got := dsScenario(t, "cat a.go", writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n", "src/a.go", "a v2\n"))
+		wantClaim(t, got, covWrongRevision, "not tracked under that exact path in the witness's tree")
+	})
+	t.Run("ignored output", func(t *testing.T) {
+		setup := writes(".gitignore", "out/\n", "out/result.txt", "ok\n")
+		got := dsScenario(t, "grep -c ok out/result.txt", setup, writes("out/result.txt", "FAIL\n", "src/a.go", "a v2\n"))
+		wantClaim(t, got, covWrongRevision, "src/a.go differs", "out/result.txt, which is not tracked")
+	})
+	t.Run("case variant", func(t *testing.T) {
+		setup := writes("README.md", "ok\n")
+		got := dsScenario(t, "grep -c ok readme.md", setup, writes("README.md", "changed\n"))
+		wantClaim(t, got, covWrongRevision, "README.md differs", "readme.md, which is not tracked")
+	})
+}
+
+// TestDepScopeDirtyHolds — a `+dirty` / `+unknown` witness ran on uncommitted
+// edits, so the landing check (which compares its base commit) is no layer
+// behind a narrowed scope: it keeps the conservative scope, and a pass says
+// only the base commit landed.
+func TestDepScopeDirtyHolds(t *testing.T) {
+	for _, sfx := range []string{"+dirty", "+unknown"} {
+		t.Run(sfx, func(t *testing.T) {
+			root, s := dsRepoTok(t, dsCmd, sfx, writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n"))
+			wantClaim(t, soleClaim(t, root, s, coverageOptions{}), covWrongRevision, ".assay-versions differs", "uncommitted edits ("+sfx+")")
+		})
+	}
+	t.Run("pass names the base", func(t *testing.T) {
+		root, s := dsRepoTok(t, dsCmd, "+dirty", nil, nil)
+		wantClaim(t, soleClaim(t, root, s, coverageOptions{}), covPass, "the witness's base commit (not the uncommitted edits its +dirty token marks) landed at")
+	})
+}
+
 // TestDepScopeBriefReadWidens — a row that reads a file verify and regen
 // write (its own brief, a stream README), directly or through a directory,
 // keeps the conservative scope.
@@ -353,8 +401,23 @@ func TestLandBoundCannotCheck(t *testing.T) {
 	old := maxLandingCandidates
 	maxLandingCandidates = 0
 	t.Cleanup(func() { maxLandingCandidates = old })
-	root, s, _ := dsSquash(t, nil, nil)
+	root, s, _ := dsSquash(t, nil, writes(".assay-versions", "v2\n"))
 	wantClaim(t, soleClaim(t, root, s, coverageOptions{}), covCouldNotCheck, "past the bound")
+}
+
+// TestLandAncestorPastBound — a witness on the item's own history is its own
+// merge base, so it has landed with no search: the bound never refuses it,
+// however many unrelated commits followed.
+func TestLandAncestorPastBound(t *testing.T) {
+	old := maxLandingCandidates
+	maxLandingCandidates = 0
+	t.Cleanup(func() { maxLandingCandidates = old })
+	root, s := dsRepo(t, dsCmd, nil, writes("changelog/x.md", "- x\n"))
+	for i := 0; i < 3; i++ {
+		mustWriteFile(t, root, ".assay-versions", strings.Repeat("v", i+1)+"\n")
+		mustGitCommitAll(t, root, "an unrelated release stamp")
+	}
+	wantClaim(t, soleClaim(t, root, s, coverageOptions{}), covPass, "derived from its text", "landed at")
 }
 
 // dsDropTree deletes the loose root-tree object of rev, so git can no longer
