@@ -1,0 +1,2 @@
+### Added
+- forge-neutral brief 34 (authoring only, human-gated): an explicit `deskread --ci-workflow-token` transport that reads with the CI job token, refused outside CI, refused for a non-installation token or a write, bound to the job's own repository, and recorded in the envelope's identity, so statusgen's CI-only modes can move their reads onto `deskread`. forge-neutral/18 now depends on it.

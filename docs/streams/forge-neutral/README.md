@@ -236,6 +236,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 30 | [Release-N cutover — ship, prove the narrowed reviewer on a live cell, then the operator narrows the grant](brief-30-cutover-and-lower-layer-proof.md) | 7 | M | todo | — | — |
 | 31 | [Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live](brief-31-remaining-roles-write-audit.md) | 8 | M | todo | — | — |
 | 32 | [Release-N+1 deletion — the forge claim store is removed and an unset store key is refused](brief-32-forge-store-deletion.md) | 8 | M | todo | — | — |
+| 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -275,6 +276,16 @@ replacing 144 `git log` plus 62 `git blame` invocations), a memo over the 3,351 
 that today re-read 172 files up to 23 times each, and a batched object read. Forge-neutrality
 and speed are the same change here, not two asks: the reads that belong to a forge leave, and
 what is left is local.
+
+**34 sits in front of 18's CI-lane sites.** Most of statusgen's remaining forge-CLI calls run
+only inside CI (`--corroborate`, `--auto-flip-model`, the transcribe lanes), under the
+workflow's own job token. `deskread` reads only as a minted desk App, and a CI runner has none
+to mint, so 18's row 3 cannot reach 0 for those sites. The driver's ruling on #2253 chose an
+explicit, opt-in `deskread` transport that reads with the job token, for read-only kinds only.
+34 adds it: a `--ci-workflow-token` flag, refused outside CI, refused for a non-installation
+token, bound to the job's own repository, built on a forge that refuses every write method,
+and recorded in the envelope's identity. It is gated human because it relaxes the no-ambient-
+token rule, and it touches no statusgen file and no workflow, so `34 → 18`.
 
 The chain is real, not conventional. 08's auto-flip has to recognise a reviewer identity on the
 configured forge, which is 07's roster-parity deliverable inside statusgen; 07's actor matching
@@ -433,7 +444,11 @@ findings and do not exist yet.
   derivation rule — a brief's `depends:` must point to strictly-earlier waves
   (`statusgen/brieffile.go:1492-1522`), and 08 is wave 4.
 
-One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`.
+- **Wave 1 (beside 01)** — `forge-neutral/34` (the CI workflow-token transport in `deskread`;
+  depends on nothing, since the read verb and the seam it builds on already exist on `main`).
+  18 now depends on 08 and 34 and stays in wave 5.
+
+One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `34 → 18`.
 
 **Reviewer write boundary (briefs 20–25, 28–32)** — waves are derived from `depends:` like
 every other brief here, so they interleave with the numbers above rather than restarting:

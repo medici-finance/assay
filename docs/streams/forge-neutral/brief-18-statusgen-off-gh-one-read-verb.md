@@ -13,7 +13,7 @@ why: >-
   reads that belong to a forge go through the desk-tools read verb, and the check that runs in
   CI stops reaching the network at all.
 wave: 5
-depends: ["forge-neutral/08"]
+depends: ["forge-neutral/08", "forge-neutral/34"]
 unblocks: []
 effort: L
 gate: model
