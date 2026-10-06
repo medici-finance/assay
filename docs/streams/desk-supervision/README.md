@@ -135,6 +135,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 24 | [One file per verify outcome — retire the shared appended outcomes log](brief-24-per-file-verify-outcomes.md) | 0 | L | implemented | — | — |
 | 25 | [Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical](brief-25-approval-carry-across-no-diff-merge.md) | 1 | L | todo | — | — |
 | 26 | [Land one verify tick's Evidence-only outcomes in one Evidence PR](brief-26-batched-evidence-landing-per-tick.md) | 1 | L | todo | — | — |
+| 27 | [Verify-outcome records carry join keys — delivering PRs, verifier tier and timing, per-row results — and every failure a blocker kind](brief-27-verify-outcome-join-keys.md) | 0 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
