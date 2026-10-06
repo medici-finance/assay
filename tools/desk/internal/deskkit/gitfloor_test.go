@@ -199,6 +199,11 @@ func TestGitFloorRefusesWeakGits(t *testing.T) {
 while [ "$i" -lt "$n" ]; do a=$1; shift; i=$((i+1)); case "$a" in --attr-source*) ;; *) set -- "$@" "$a" ;; esac; done
 exec '` + git + `' "$@"
 `
+	crlfAlways := `case " $* " in *" cat-file "*)
+  '` + git + `' "$@" | awk '{ sub(/\r$/, ""); printf "%s\r\n", $0 }'; exit 0 ;;
+esac
+exec '` + git + `' "$@"
+`
 	cases := []struct {
 		name     string
 		body     string
@@ -210,6 +215,9 @@ exec '` + git + `' "$@"
 		{"claims 2.47 rejects option", fakeVersionGit(git, "git version 2.47.3", true), 1, "was rejected"},
 		{"accepts option ignores it", stripAttr, 1, "accepted and ignored"},
 		{"unreadable version", fakeVersionGit(git, "not a git", false), 2, "COULD-NOT-CHECK"},
+		// Renders CRLF whatever --attr-source says. Only the plain-LF control
+		// tells this apart from a working option, so it pins that control.
+		{"renders CRLF without the option", crlfAlways, 2, "is not plain LF"},
 		{"boundary 2.41.0 passes", fakeVersionGit(git, "git version 2.41.0", false), 0, "OK:"},
 	}
 	for _, tc := range cases {
@@ -309,6 +317,9 @@ func TestGitFloorImageForm(t *testing.T) {
 type dfInstr struct {
 	op   string   // FROM, RUN, COPY, …
 	args []string // whitespace-split words, with a trailing ';' trimmed
+	// segs is the instruction text split on ';' into shell commands, each
+	// with its whitespace collapsed to single spaces; empty ones are dropped.
+	segs []string
 }
 
 func parseDockerfile(text string) []dfInstr {
@@ -321,12 +332,22 @@ func parseDockerfile(text string) []dfInstr {
 			return
 		}
 		args := make([]string, 0, len(f)-1)
+		words := make([]string, 0, len(f)-1)
 		for _, a := range f[1:] {
+			if a != `\` {
+				words = append(words, a)
+			}
 			if a = strings.TrimSuffix(a, ";"); a != "" && a != `\` {
 				args = append(args, a)
 			}
 		}
-		out = append(out, dfInstr{op: strings.ToUpper(f[0]), args: args})
+		var segs []string
+		for _, sg := range strings.Split(strings.Join(words, " "), ";") {
+			if sg = strings.TrimSpace(sg); sg != "" {
+				segs = append(segs, sg)
+			}
+		}
+		out = append(out, dfInstr{op: strings.ToUpper(f[0]), args: args, segs: segs})
 	}
 	for _, l := range strings.Split(text, "\n") {
 		t := strings.TrimSpace(l)
@@ -367,20 +388,85 @@ var knownGitTarballs = map[string]string{
 }
 
 // failClosedProblem returns why a RUN step could let a failing command pass:
-// it does not start with `set -e…`, turns -e off, or masks a status with ||.
+// it does not start with `set -e…`, turns -e off, masks a status with ||, or
+// can `exit` 0 (a bare `exit` or `exit 0`) before the commands after it run.
 func failClosedProblem(args []string) string {
 	if len(args) < 2 || args[0] != "set" || !strings.HasPrefix(args[1], "-") || !strings.Contains(args[1], "e") {
 		return "does not start with `set -e`"
 	}
-	for _, a := range args {
+	for i, a := range args {
 		if strings.Contains(a, "||") {
 			return "masks a status with ||"
 		}
 		if strings.HasPrefix(a, "+") && strings.Contains(a, "e") {
 			return "turns `set -e` off"
 		}
+		if a == "exit" && (i+1 == len(args) || strings.Trim(args[i+1], "0123456789") != "" || strings.Trim(args[i+1], "0") == "") {
+			return "can exit 0 before its later commands run"
+		}
 	}
 	return ""
+}
+
+// segAt returns the index of the first command in segs equal to want, or -1.
+func segAt(segs []string, want string) int {
+	for i, sg := range segs {
+		if sg == want {
+			return i
+		}
+	}
+	return -1
+}
+
+// gateProblem returns why segs lacks the build gate `<cond>; then …; exit 1;
+// fi`, which fails the build whenever cond succeeds.
+func gateProblem(segs []string, cond, name string) string {
+	i := segAt(segs, cond)
+	if i < 0 || i+1 >= len(segs) || !strings.HasPrefix(segs[i+1], "then ") {
+		return "lacks the " + name + " gate"
+	}
+	for j := i + 1; j < len(segs) && segs[j] != "fi"; j++ {
+		if segs[j] == "exit 1" || segs[j] == "then exit 1" {
+			return ""
+		}
+	}
+	return "has a " + name + " gate that does not exit 1"
+}
+
+// Commands the static check pins in the base Dockerfile. Each one is a
+// hardening step the reviews asked for; dropping it must go red.
+const (
+	floorTestGit        = "test -x /usr/local/bin/git"
+	floorTestRemoteHTTP = "test -x /usr/local/libexec/git-core/git-remote-http"
+	floorLddGate        = "if ldd /usr/local/bin/git /usr/local/libexec/git-core/git-remote-http | grep 'not found'"
+	floorOwnerGate      = `if find /usr/local -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .`
+	gitCurlHTTPSOnly    = "--proto '=https' --proto-redir '=https'"
+)
+
+// floorRunProblem returns why the final stage's floor RUN does not fail the
+// build on a missing binary, a missing shared library, a non-root file under
+// /usr/local, or a git below the floor. The check must be the RUN's last
+// command and stand bare: `&& true`, `| cat`, `!`, `&` or an `if` around it
+// would let a failing check pass.
+func floorRunProblem(in dfInstr) string {
+	if p := failClosedProblem(in.args); p != "" {
+		return p
+	}
+	segs := in.segs
+	if last := segs[len(segs)-1]; last != "git-floor-check" && last != gitFloorScriptInImg {
+		return "does not end with a bare `git-floor-check` (its last command is `" + last + "`)"
+	}
+	tg, tr := segAt(segs, floorTestGit), segAt(segs, floorTestRemoteHTTP)
+	if tg < 0 || tr < 0 {
+		return "lacks `" + floorTestGit + "` or `" + floorTestRemoteHTTP + "` (ldd alone lets a missing binary pass)"
+	}
+	if l := segAt(segs, floorLddGate); l < 0 || l < tg || l < tr {
+		return "lacks the ldd gate after the test -x lines"
+	}
+	if p := gateProblem(segs, floorLddGate, "ldd"); p != "" {
+		return p
+	}
+	return gateProblem(segs, floorOwnerGate, "root-ownership")
 }
 
 // dockerfileFloorProblem returns why a base Dockerfile does not hold the git
@@ -419,21 +505,31 @@ func dockerfileFloorProblem(dockerfile string) string {
 				args[k] = v
 			}
 		}
-		sha := wordAt(in.args, "sha256sum")
-		if in.op != "RUN" || sha < 0 {
+		if in.op != "RUN" || !hasWord(in.args, "sha256sum") {
 			continue
 		}
-		joined := strings.Join(in.args, " ")
-		curl, tar := wordAt(in.args, "curl"), wordAt(in.args, "tar")
+		// The check's own command must be `echo "<sha>  <file>" | sha256sum
+		// -c -` and nothing more: a pipeline's status is its last command's,
+		// so a trailing `| cat`, `&& true` or `&`, a leading `!`, or an `if`
+		// around it would let a mismatch pass.
+		curl, sha, tar := -1, -1, segAt(in.segs, "tar -C /tmp -xJf /tmp/git.txz")
+		for i, sg := range in.segs {
+			switch {
+			case strings.HasPrefix(sg, "curl ") && strings.Contains(sg, "git-${GIT_VERSION}.tar") && strings.HasSuffix(sg, "-o /tmp/git.txz"):
+				curl = i
+			case strings.HasPrefix(sg, `echo "${GIT_TARBALL_SHA256} /tmp/git.txz" |`) && strings.HasSuffix(sg, "| sha256sum -c -") && strings.Count(sg, "|") == 1:
+				sha = i
+			}
+		}
 		switch {
 		case verified != "":
 			return "the gitbuild stage has more than one sha256 RUN"
-		case sha+1 >= len(in.args) || in.args[sha+1] != "-c":
-			verified = "the gitbuild sha256sum is not a check (-c)"
-		case !strings.Contains(joined, "${GIT_TARBALL_SHA256}") || !strings.Contains(joined, "git-${GIT_VERSION}.tar"):
-			verified = "the gitbuild sha256 check is not tied to the GIT_VERSION and GIT_TARBALL_SHA256 ARGs"
+		case sha < 0:
+			verified = "the gitbuild RUN has no bare `echo \"${GIT_TARBALL_SHA256}  /tmp/git.txz\" | sha256sum -c -` command"
 		case curl < 0 || tar < 0 || !(curl < sha && sha < tar):
-			verified = "the gitbuild RUN does not download, then check the sha256, then unpack"
+			verified = "the gitbuild RUN does not download git-${GIT_VERSION}.tar, then check the sha256, then unpack"
+		case !strings.Contains(in.segs[curl], gitCurlHTTPSOnly):
+			verified = "the gitbuild curl does not carry " + gitCurlHTTPSOnly + ", so a redirect could leave https"
 		case failClosedProblem(in.args) != "":
 			verified = "the gitbuild sha256 RUN " + failClosedProblem(in.args)
 		default:
@@ -464,6 +560,15 @@ func dockerfileFloorProblem(dockerfile string) string {
 			copyCheck = i
 		case in.op == "RUN" && (hasWord(in.args, "git-floor-check") || hasWord(in.args, gitFloorScriptInImg)):
 			runCheck = i
+		case in.op == "ENV" && runCheck >= 0 && (hasWord(in.args, "PATH") || strings.Contains(" "+strings.Join(in.args, " "), " PATH=")):
+			return "an ENV after git-floor-check rewrites PATH, so the image can resolve a git the check never saw"
+		}
+		if in.op == "RUN" {
+			for _, sg := range in.segs {
+				if strings.HasPrefix(sg, "tar ") && strings.Contains(sg, "-C /usr/local ") && !strings.Contains(sg, "--no-same-owner") {
+					return "a final-stage tar unpacks into /usr/local without --no-same-owner (`" + sg + "`)"
+				}
+			}
 		}
 	}
 	switch {
@@ -477,8 +582,8 @@ func dockerfileFloorProblem(dockerfile string) string {
 		return "git-floor-check runs before git or the script is in place"
 	case runCheck != lastLayer:
 		return "a RUN, COPY or ADD follows git-floor-check in the final stage, so its layer ships unchecked"
-	case failClosedProblem(ins[runCheck].args) != "":
-		return "the git-floor-check RUN " + failClosedProblem(ins[runCheck].args)
+	case floorRunProblem(ins[runCheck]) != "":
+		return "the git-floor-check RUN " + floorRunProblem(ins[runCheck])
 	}
 	return ""
 }
@@ -512,10 +617,23 @@ func TestBaseImageRunsGitFloor(t *testing.T) {
 	testX := "    test -x /usr/local/bin/git; \\\n"
 	aptAnchor := "        libcurl3-gnutls \\\n"
 	volAnchor := "VOLUME /work\n"
-	for _, anchor := range []string{gitCopy, checkCopy, runTail, shaLine, tarLine, shaArg, verArg, testX, aptAnchor, volAnchor} {
+	testRemote := "    test -x /usr/local/libexec/git-core/git-remote-http; \\\n"
+	curlLine := "    curl -fsSL --proto '=https' --proto-redir '=https' \\\n"
+	lddGate := "    if ldd /usr/local/bin/git /usr/local/libexec/git-core/git-remote-http | grep 'not found'; then \\\n" +
+		"        echo \"source-built git is missing a shared library\" >&2; \\\n        exit 1; \\\n    fi; \\\n"
+	ownerGate := "    if find /usr/local -xdev \\( ! -user 0 -o ! -group 0 \\) -print | grep .; then \\\n" +
+		"        echo \"/usr/local holds files not owned by root:root\" >&2; \\\n        exit 1; \\\n"
+	goTar := "tar -C /usr/local --no-same-owner -xzf"
+	nodeTar := "tar -C /usr/local --no-same-owner --strip-components=1"
+	for _, anchor := range []string{gitCopy, checkCopy, runTail, shaLine, tarLine, shaArg, verArg, testX, aptAnchor, volAnchor,
+		testRemote, curlLine, lddGate, ownerGate, goTar, nodeTar} {
 		if strings.Count(text, anchor) != 1 {
 			t.Fatalf("the mutants below need %q exactly once in the Dockerfile", anchor)
 		}
+	}
+	floorTail := func(last string) string { return strings.Replace(text, runTail, "    fi; \\\n    "+last+"\n", 1) }
+	shaSwap := func(cmd string) string {
+		return strings.Replace(text, shaLine, strings.Replace(shaLine, "sha256sum -c -;", cmd, 1), 1)
 	}
 	mutants := map[string]string{
 		"run step dropped":          strings.Replace(text, runTail, "    fi\n", 1),
@@ -533,6 +651,29 @@ func TestBaseImageRunsGitFloor(t *testing.T) {
 		"git version swapped":       strings.Replace(text, verArg, "ARG GIT_VERSION=2.39.5\n", 1),
 		"later layer copies a git":  strings.Replace(text, volAnchor, "COPY --from=desktools /usr/local/bin/git /usr/local/bin/git\n"+volAnchor, 1),
 		"later RUN after check":     strings.Replace(text, volAnchor, "RUN apt-get update\n"+volAnchor, 1),
+		// #2320 item 1: shapes that keep the right words but stop a failing
+		// check from failing the build.
+		"floor check && true":       floorTail("git-floor-check && true"),
+		"floor check piped":         floorTail("git-floor-check | cat"),
+		"floor check negated":       floorTail("! git-floor-check"),
+		"floor check backgrounded":  floorTail("git-floor-check &"),
+		"floor check in an if":      floorTail("if git-floor-check; then :; fi"),
+		"exit 0 before the check":   floorTail("exit 0; \\\n    git-floor-check"),
+		"sha256 check && true":      shaSwap("sha256sum -c - && true;"),
+		"sha256 check piped":        shaSwap("sha256sum -c - | cat;"),
+		"sha256 check backgrounded": shaSwap("sha256sum -c - & wait;"),
+		"sha256 check negated":      strings.Replace(text, shaLine, strings.Replace(shaLine, "echo ", "! echo ", 1), 1),
+		"sha256 check in an if":     strings.Replace(text, shaLine, strings.Replace(strings.Replace(shaLine, "echo ", "if echo ", 1), "sha256sum -c -;", "sha256sum -c -; then :; fi;", 1), 1),
+		"exit 0 before sha256":      strings.Replace(text, shaLine, "    exit 0; \\\n"+shaLine, 1),
+		"ENV PATH after check":      strings.Replace(text, volAnchor, "ENV PATH=/opt/old-git/bin:$PATH\n"+volAnchor, 1),
+		// #2320 item 2: hardening that must not go missing unnoticed.
+		"curl https-only dropped":      strings.Replace(text, curlLine, "    curl -fsSL \\\n", 1),
+		"test -x git dropped":          strings.Replace(text, testX, "", 1),
+		"test -x remote-http dropped":  strings.Replace(text, testRemote, "", 1),
+		"ldd gate dropped":             strings.Replace(text, lddGate, "", 1),
+		"root-owner gate dropped":      strings.Replace(text, ownerGate+"    fi; \\\n", "", 1),
+		"Go --no-same-owner dropped":   strings.Replace(text, goTar, "tar -C /usr/local -xzf", 1),
+		"Node --no-same-owner dropped": strings.Replace(text, nodeTar, "tar -C /usr/local --strip-components=1", 1),
 	}
 	for name, m := range mutants {
 		if m == text {
