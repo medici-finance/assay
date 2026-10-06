@@ -139,8 +139,8 @@ Verifier admission renders a file that carries an `eol` or
 using `git --attr-source`. That option arrived in git 2.41, and an older git
 refuses the home (#2318). bookworm ships git 2.39.5, and bookworm-backports
 carries no `git` package. So the base builds git in its own `gitbuild` stage
-from the upstream release tarball, pinned by version and sha256 like the Go,
-`gh` and Node tarballs. Only the install tree reaches the final image; the
+from the upstream release tarball, pinned by version like the Go, `gh` and
+Node tarballs and, unlike them, checked against a sha256. Only the install tree reaches the final image; the
 compiler and `-dev` packages stay in the build stage.
 
 A build-time step runs `containers/scripts/git-floor-check.sh`, which is also
