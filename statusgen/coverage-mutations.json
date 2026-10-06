@@ -158,7 +158,7 @@
       "new": "\tif sc.derived() {\n\t\tif p == \".assay-versions\" {\n\t\t\treturn false\n\t\t}\n\t\tfor _, in := range sc.inputs {"
     },
     {
-      "name": "a derived input not tracked under its exact path not widened (an ignored output, a case variant, or a row run below the repository root is judged by a diff that can never name it)",
+      "name": "a derived input not tracked under its exact path not widened (an ignored output or a case variant is judged by a diff that can never name it)",
       "file": "coverage_inputs.go",
       "old": "\t\t\tif !found {",
       "new": "\t\t\tif false && !found {"
@@ -174,6 +174,36 @@
       "file": "coverage.go",
       "old": "\t\tif scope.derived() {\n\t\t\tscope.inputs = nil",
       "new": "\t\tif false && scope.derived() {\n\t\t\tscope.inputs = nil"
+    },
+    {
+      "name": "S1 round 2: the presence check kept but the root-prefix handling dropped (a row run below the toplevel is judged by a shadowing toplevel file of the same name, and a change to the file it read releases)",
+      "file": "coverage_inputs.go",
+      "old": "\tif prefix != \"\" {\n\t\treturn widen(",
+      "new": "\tif false && prefix != \"\" {\n\t\treturn widen("
+    },
+    {
+      "name": "S1 round 2: verifyrun accepts a --root below the toplevel (its rows run in a directory coverage never judges)",
+      "file": "verifyrun.go",
+      "old": "if prefix := strings.TrimSpace(string(out)); prefix != \"\" {",
+      "new": "if prefix := strings.TrimSpace(string(out)); false && prefix != \"\" {"
+    },
+    {
+      "name": "S1b: a tree entry that case-folds onto a derived input not widened (README.md and readme.md tracked, only readme.md changes, and the pass stands)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\t\tif !covered && foldCovers(p, e.path) {",
+      "new": "\t\t\t\tif false && !covered && foldCovers(p, e.path) {"
+    },
+    {
+      "name": "S1b: a non-ASCII rune in a tree entry compared byte-exactly instead of as a fold candidate (the Kelvin sign is not seen as k)",
+      "file": "coverage_inputs.go",
+      "old": "\t\tif r >= utf8.RuneSelf {\n\t\t\tif in[i] == '/' {\n\t\t\t\treturn false\n\t\t\t}\n\t\t}",
+      "new": "\t\tif r >= utf8.RuneSelf {\n\t\t\treturn false\n\t\t}"
+    },
+    {
+      "name": "S1b: a non-ASCII derived input not widened (its canonically equivalent spellings are never compared)",
+      "file": "coverage_inputs.go",
+      "old": "\t\tif !isASCII(p) {",
+      "new": "\t\tif false && !isASCII(p) {"
     }
   ]
 }

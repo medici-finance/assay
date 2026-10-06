@@ -98,7 +98,9 @@ package main
 //     - conservatively, when the row's inputs cannot be derived (any command,
 //       operator or path the grammar does not establish, a symbolic link or
 //       submodule on an input's path, an input not tracked under its exact
-//       path in both trees, an input verify and regen write, a `+dirty` /
+//       path in both trees, another tracked name a case-insensitive checkout
+//       opens as the same file, a non-ASCII input, a coverage root below the
+//       repository's toplevel, an input verify and regen write, a `+dirty` /
 //       `+unknown` witness) or a
 //       manifest is supplied but incomplete: every path OUTSIDE the board's
 //       bookkeeping surface: `docs/streams/**` (sibling briefs' Evidence in

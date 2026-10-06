@@ -278,12 +278,15 @@ func TestDepScopeLinkWidens(t *testing.T) {
 // TestDepScopeAbsentWidens — a derived input that is not tracked under that
 // exact path cannot be named by the trees' diff, so a change to what the
 // command opens could never stale the witness: the scope widens to
-// conservative and an unrelated change refuses. Shapes: a path the command
-// never read there (verifyrun --root below the repository root runs `cat a.go`
-// in src/), an ignored build output, and a case variant of a tracked name
-// (which a case-insensitive checkout opens as the tracked file).
+// conservative and an unrelated change refuses. Shapes: an operand no tree
+// tracks at that path (`cat a.go` with only src/a.go tracked), an ignored
+// build output, and a case variant of a tracked name (which a
+// case-insensitive checkout opens as the tracked file). A row run below the
+// toplevel, where the name IS tracked at the toplevel too, is not this check's
+// to catch: see TestDepScopeRootBelowToplevelWidens and
+// TestDepScopeVerifyrunBelowToplevelRefused.
 func TestDepScopeAbsentWidens(t *testing.T) {
-	t.Run("run below the root", func(t *testing.T) {
+	t.Run("operand untracked at that path", func(t *testing.T) {
 		got := dsScenario(t, "cat a.go", writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n", "src/a.go", "a v2\n"))
 		wantClaim(t, got, covWrongRevision, "not tracked under that exact path in the witness's tree")
 	})
@@ -483,4 +486,146 @@ func TestNoFixedPathExemption(t *testing.T) {
 	// release stamp is still refused when the stamp changes.
 	got := dsScenario(t, "grep -c v .assay-versions", writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n"))
 	wantClaim(t, got, covWrongRevision, ".assay-versions differs")
+}
+
+// dsShadowRepo is the shadowed-name fixture (security review S1, round 2): a
+// repository whose toplevel tracks README.md and whose subdirectory sub/ also
+// tracks README.md and carries the board. The witness W is the first commit;
+// the second records a passing witness for row cmd at W and applies change.
+// It returns the toplevel, the subdirectory and the stream (rooted at sub/).
+func dsShadowRepo(t *testing.T, cmd string, change func(t *testing.T, top string)) (string, string, *Stream) {
+	t.Helper()
+	top := t.TempDir()
+	sub := filepath.Join(top, "sub")
+	dir := filepath.Join(sub, "docs", "streams", "cov")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := &Stream{Name: "cov", Dir: dir, Root: sub}
+	writeCoverageBriefWithFiles(t, dir, "01", "cov", tdFiles, dsVerify(cmd), "")
+	mustWriteFile(t, top, "README.md", "ok\n")
+	mustWriteFile(t, sub, "README.md", "ok\n")
+	w := mustGitInit(t, top)
+	ev := coverageEvidenceTable(covWitnessRow("1", cmd, statePass, w))
+	writeCoverageBriefWithFiles(t, dir, "01", "cov", tdFiles, dsVerify(cmd), ev)
+	if change != nil {
+		change(t, top)
+	}
+	mustGitCommitAll(t, top, "record Evidence and apply the change")
+	return top, sub, s
+}
+
+// TestDepScopeRootBelowToplevelWidens — security review S1, round 2: the
+// trees and their diff name paths from the repository's TOPLEVEL, but a row
+// opens its operands relative to the directory it ran in. With the coverage
+// root below the toplevel, a row `grep -c ok README.md` may have read
+// sub/README.md while the presence check and the diff judge the toplevel's
+// README.md, so a change to the file the row read carried a pass. Where the
+// row ran is ambiguous there, so the scope widens to conservative and the
+// change refuses the witness.
+func TestDepScopeRootBelowToplevelWidens(t *testing.T) {
+	_, sub, s := dsShadowRepo(t, "grep -c ok README.md", writes("sub/README.md", "changed\n"))
+	got := soleClaim(t, sub, s, coverageOptions{})
+	wantClaim(t, got, covWrongRevision, "sub/README.md differs", "below its repository's toplevel")
+}
+
+// TestDepScopeVerifyrunBelowToplevelRefused — the verifyrun half of S1, round
+// 2: verifyrun runs rows with the working directory set to --root, while
+// coverage judges a row's operands from the repository's toplevel. A witness
+// taken with --root below the toplevel (where README.md shadows the
+// toplevel's README.md) would be judged by the wrong file, so verifyrun
+// refuses that root and writes nothing; at the toplevel it runs as before.
+func TestDepScopeVerifyrunBelowToplevelRefused(t *testing.T) {
+	top, sub, s := dsShadowRepo(t, "grep -c ok README.md", nil)
+	brief := filepath.Join(s.Dir, "brief-01.md")
+	before, err := os.ReadFile(brief)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, stderr := captureVerifyrun(t, []string{"--root", sub, "--brief", brief})
+	if res.code != verifyrunExitUsageError || !strings.Contains(stderr, "below its repository's toplevel") {
+		t.Fatalf("verifyrun --root <subdirectory> must refuse (exit %d) naming the toplevel, got exit %d: %s", verifyrunExitUsageError, res.code, stderr)
+	}
+	after, err := os.ReadFile(brief)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("a refused verifyrun must write no witness")
+	}
+	res, stderr = captureVerifyrun(t, []string{"--root", top, "--brief", brief, "--dry-run"})
+	if res.code != verifyrunExitPass {
+		t.Fatalf("verifyrun at the toplevel must run the row, got exit %d: %s", res.code, stderr)
+	}
+}
+
+// dsIndexPut stages path with content straight into root's index (no file on
+// disk), so a fixture can track two names a case-insensitive filesystem
+// cannot hold side by side.
+func dsIndexPut(t *testing.T, root, path, content string) {
+	t.Helper()
+	f := filepath.Join(t.TempDir(), "blob")
+	if err := os.WriteFile(f, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	blob := mustGitOut(t, root, "hash-object", "-w", f)
+	runGit(t, root, "update-index", "--add", "--cacheinfo", "100644,"+blob+","+path)
+}
+
+// dsIndexScenario is dsScenario with index-only paths: setup is written on
+// disk before the first commit, w is staged into the index (kv pairs) and
+// committed as the witness tree W, and change is staged the same way into the
+// commit that records the Evidence. Nothing is staged with `add -A` after the
+// first commit, so the index-only names survive on any filesystem.
+func dsIndexScenario(t *testing.T, cmd string, setup func(t *testing.T, root string), w, change []string) Claim {
+	t.Helper()
+	s, root := mustCoverageStream(t, "cov")
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", tdFiles, dsVerify(cmd), "")
+	mustWriteFile(t, root, "src/a.go", "a v1\n")
+	if setup != nil {
+		setup(t, root)
+	}
+	mustGitInit(t, root)
+	for i := 0; i+1 < len(w); i += 2 {
+		dsIndexPut(t, root, w[i], w[i+1])
+	}
+	runGit(t, root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "the witness tree")
+	wt := mustGitHeadShort(t, root)
+	ev := coverageEvidenceTable(covWitnessRow("1", cmd, statePass, wt))
+	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", tdFiles, dsVerify(cmd), ev)
+	runGit(t, root, "add", "--", filepath.Join("docs", "streams", "cov", "brief-01.md"))
+	for i := 0; i+1 < len(change); i += 2 {
+		dsIndexPut(t, root, change[i], change[i+1])
+	}
+	runGit(t, root, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "record Evidence and apply the change")
+	return soleClaim(t, root, s, coverageOptions{})
+}
+
+// TestDepScopeFoldCollisionWidens — security review S1b: two tracked names
+// that a case-insensitive (or normalisation-insensitive) checkout opens as
+// one file. Only one of them is on disk there, so a row reading README.md may
+// have read readme.md: a change to the other name widens the scope and
+// refuses. A non-ASCII operand widens too, since its canonically equivalent
+// spellings are not compared here.
+func TestDepScopeFoldCollisionWidens(t *testing.T) {
+	t.Run("case collision", func(t *testing.T) {
+		got := dsIndexScenario(t, "grep -c ok README.md", writes("README.md", "ok\n"),
+			[]string{"readme.md", "ok\n"}, []string{"readme.md", "changed\n"})
+		wantClaim(t, got, covWrongRevision, "readme.md differs", "also tracks readme.md")
+	})
+	t.Run("case collision under a directory read", func(t *testing.T) {
+		got := dsIndexScenario(t, "wc -l src", nil,
+			[]string{"SRC/c.go", "c\n"}, []string{"SRC/c.go", "c2\n"})
+		wantClaim(t, got, covWrongRevision, "SRC/c.go differs", "also tracks SRC/c.go")
+	})
+	t.Run("a letter only Unicode folds to ASCII", func(t *testing.T) {
+		got := dsIndexScenario(t, "grep -c ok K.md", writes("K.md", "ok\n"),
+			[]string{"\u212a.md", "ok\n"}, []string{"\u212a.md", "changed\n"})
+		wantClaim(t, got, covWrongRevision, "differs", "also tracks \u212a.md")
+	})
+	t.Run("non-ASCII operand", func(t *testing.T) {
+		setup := writes("caf\u00e9.md", "ok\n", ".assay-versions", "v1\n")
+		got := dsScenario(t, "grep -c ok caf\u00e9.md", setup, writes(".assay-versions", "v2\n"))
+		wantClaim(t, got, covWrongRevision, ".assay-versions differs", "non-ASCII")
+	})
 }

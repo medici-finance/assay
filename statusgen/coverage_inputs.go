@@ -55,10 +55,26 @@ package main
 // which can change without the link changing), and every input TRACKED,
 // byte-exactly, in both the witness's tree and the item's — the staleness diff
 // can only name tracked paths, so an untracked or ignored file (a build
-// output), a case or normalisation variant of a tracked name (which a
-// case-insensitive checkout opens as the tracked file), or a path the command
-// never read there (verifyrun --root below the repository root) would never go
-// stale. A row that reads its own brief
+// output) or a case or normalisation variant of a tracked name (which a
+// case-insensitive checkout opens as the tracked file) would never go stale.
+// Being tracked is not enough on its own:
+//
+//   - WHERE THE ROW RAN. The trees and their diff name paths from the
+//     repository's TOPLEVEL, but a row opens its operands relative to the
+//     directory it ran in, and the witness does not record that directory.
+//     verifyrun runs rows at its --root and refuses a --root below the
+//     toplevel (verifyrunRootBelowToplevel), so its witnesses ran at the
+//     toplevel. A coverage root below the toplevel leaves where a row ran
+//     ambiguous (a name there, sub/README.md, can shadow a tracked toplevel
+//     README.md, which the presence check would accept), so every derived
+//     scope widens there (coverageRootPrefix).
+//   - TWO NAMES, ONE FILE. A tree that tracks two names a case- or
+//     normalisation-insensitive checkout opens as one file (README.md and
+//     readme.md) leaves only one of them on disk, so the row may have read
+//     the other: such a collision widens, and so does a non-ASCII input,
+//     whose canonically equivalent spellings are not compared here.
+//
+// A row that reads its own brief
 // or a file verify and regen write (isVerifyWrittenPath) keeps the
 // conservative scope: those files move with every Evidence write.
 //
@@ -76,6 +92,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // rowInputs is what deriveRowInputs establishes: the repo-relative files and
@@ -506,9 +523,23 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 		w.conservative, w.whyConservative = true, "no dependency manifest, and "+reason
 		return w
 	}
+	// The trees below name paths from the toplevel; briefRel and the row's
+	// operands are relative to root. They agree only when root IS the
+	// toplevel, so anywhere else the derived scope widens (see this file's
+	// header, "WHERE THE ROW RAN").
+	prefix, err := coverageRootPrefix(root)
+	if err != nil {
+		return sc, "where the coverage root sits in its repository could not be read (git rev-parse --show-prefix failed), so the directory the row's paths are relative to cannot be established"
+	}
+	if prefix != "" {
+		return widen(fmt.Sprintf("the coverage root is the subdirectory %s, below its repository's toplevel: the trees name paths from the toplevel, while the row opened its operands in the directory it ran in, which the witness does not record, so a name there can shadow a different tracked file", strings.TrimSuffix(prefix, "/"))), ""
+	}
 	for _, p := range sc.inputs {
 		if p == sc.briefRel || isVerifyWrittenPath(p) {
 			return widen(fmt.Sprintf("the row reads %s, which verify and regen write with every Evidence update", p)), ""
+		}
+		if !isASCII(p) {
+			return widen(fmt.Sprintf("the row reads %s, a non-ASCII path whose canonically equivalent spellings (one file on a normalisation-insensitive checkout) are not compared here", p)), ""
 		}
 	}
 	for _, rev := range []string{base, target} {
@@ -521,10 +552,10 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 		// directory some entry sits under. The staleness diff can only ever
 		// name tracked paths, so an input it cannot name could change without
 		// staling the witness: an untracked or ignored file (a build output, a
-		// file an earlier row writes), a case or Unicode-normalisation variant
-		// of a tracked name that a case-insensitive checkout opens as the
-		// tracked file, or a path the command never read there because it ran
-		// in another directory (verifyrun --root below the repository root).
+		// file an earlier row writes), or a case or Unicode-normalisation
+		// variant of a tracked name that a case-insensitive checkout opens as
+		// the tracked file. Presence at the toplevel says nothing about a row
+		// run in another directory: that is the root-prefix check above.
 		which := "the witness's"
 		if rev != base {
 			which = "the item's"
@@ -550,6 +581,9 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 				if covered && (e.path == sc.briefRel || isVerifyWrittenPath(e.path)) {
 					return widen(fmt.Sprintf("the row reads %s, which verify and regen write with every Evidence update", e.path)), ""
 				}
+				if !covered && foldCovers(p, e.path) {
+					return widen(fmt.Sprintf("the row reads %s, and %s tree also tracks %s, which a case- or normalisation-insensitive checkout opens as the same file, so which of the two the row read is not established", p, which, e.path)), ""
+				}
 			}
 		}
 	}
@@ -560,6 +594,72 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 // in: p is in, or p is under in as a directory.
 func inputCovers(in, p string) bool {
 	return p == in || strings.HasPrefix(p, in+"/")
+}
+
+// foldCovers is inputCovers under case folding, for an ASCII input in (a
+// non-ASCII input widens before this is asked): an ASCII byte of p matches
+// in's byte case-insensitively, and any non-ASCII rune of p matches any one
+// byte of in other than `/` — a rune that folds or normalises to an ASCII
+// letter (the Kelvin sign to k) is caught, and the over-match only ever
+// widens the scope.
+func foldCovers(in, p string) bool {
+	i := 0
+	for _, r := range p {
+		if i == len(in) {
+			return r == '/'
+		}
+		if r >= utf8.RuneSelf {
+			if in[i] == '/' {
+				return false
+			}
+		} else if lowerASCII(byte(r)) != lowerASCII(in[i]) {
+			return false
+		}
+		i++
+	}
+	return i == len(in)
+}
+
+func lowerASCII(c byte) byte {
+	if 'A' <= c && c <= 'Z' {
+		return c + 'a' - 'A'
+	}
+	return c
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+var (
+	rootPrefixMu    sync.Mutex
+	rootPrefixCache = map[string]string{}
+)
+
+// coverageRootPrefix is root's path below its repository's toplevel, as `git
+// rev-parse --show-prefix` prints it ("" when root IS the toplevel, "sub/"
+// below it). An error is returned, never "", when git cannot say.
+func coverageRootPrefix(root string) (string, error) {
+	rootPrefixMu.Lock()
+	got, ok := rootPrefixCache[root]
+	rootPrefixMu.Unlock()
+	if ok {
+		return got, nil
+	}
+	out, err := coverageGit(root, "rev-parse", "--show-prefix").Output()
+	if err != nil {
+		return "", err
+	}
+	prefix := strings.TrimSpace(string(out))
+	rootPrefixMu.Lock()
+	rootPrefixCache[root] = prefix
+	rootPrefixMu.Unlock()
+	return prefix, nil
 }
 
 // treeMode is one `git ls-tree -r` entry: its mode and path.

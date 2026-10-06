@@ -126,10 +126,15 @@ complete work-input dependency manifest for the brief, a witness speaks for the 
 row's command reads when the command's text establishes them exactly — a closed grammar
 of read-only commands whose operands are plain repository paths, plus every
 `.gitattributes` on the way to each, with no expansion, glob, redirection, symbolic link,
-submodule, or file verify and regeneration write on the path, and every path tracked
-under exactly that spelling in both the witness's tree and the item's — and the
-derivation is that
-none of those paths changed. Any command whose reads its text does not establish (a test
+submodule, or file verify and regeneration write on the path, every path tracked
+under exactly that spelling in both the witness's tree and the item's, no other tracked
+name that a case- or normalisation-insensitive checkout opens as the same file, and no
+non-ASCII operand — and the derivation is that
+none of those paths changed. The trees name paths from the repository's toplevel, while a
+row opens its operands in the directory it ran in, which the witness does not record. So
+the derived scope applies only where both are the toplevel: a conforming execution-witness
+runner runs rows at the toplevel and refuses a working root below it, and an evaluation
+whose root is below the toplevel gives no row a derived scope. Any command whose reads its text does not establish (a test
 runner, a script, a substitution) gets no derived scope: its witness speaks for every path
 outside the board's own bookkeeping (`docs/streams/**` and the generated `STATUS.md`),
 and the derivation is that none of those paths changed. Otherwise only a complete manifest licenses
