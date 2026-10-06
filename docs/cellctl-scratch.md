@@ -49,6 +49,10 @@ cellctl scratch <cell> run --session <session> --task <task> \
   --snapshot-bytes 268435456 -- <executable> <args>
 ```
 
+`--source` must name the root of a non-bare Git working tree; linked worktrees
+are supported. Admission and local Git reads ignore inherited Git routing settings.
+Declared inputs must belong to that same working tree.
+
 The child runs in the disposable workspace; `ASSAY_SOURCE_ROOT` and
 `ASSAY_SOURCE_REVISION` identify its source. Without `--snapshot`, the workspace
 starts empty, suitable for bounded checks using explicit source references.

@@ -12,12 +12,9 @@ import (
 // Inputs opts specific generated/untracked files into the snapshot budget. It never
 // traverses a directory or follows an input symlink outside the source checkout.
 func (r *Run) Inputs(source string, paths []string, maxBytes int64) error {
-	source, err := filepath.EvalSymlinks(source)
+	source, err := sourceRoot(source)
 	if err != nil {
 		return err
-	}
-	if metadataPath(source) {
-		return errors.New("source must be outside repository metadata")
 	}
 	src, err := os.OpenRoot(source)
 	if err != nil {
@@ -55,6 +52,23 @@ func (r *Run) Inputs(source string, paths []string, maxBytes int64) error {
 		}
 		if filepath.IsLocal(rel) || rel == "." {
 			return errors.New("scratch output cannot be a scratch input")
+		}
+		// Each declared file must still belong to the admitted working tree:
+		// nested repositories and metadata stores are separate source domains.
+		inputRoot, err := sourceWorktree(filepath.Dir(full))
+		if err != nil {
+			return err
+		}
+		inputInfo, err := os.Stat(inputRoot)
+		if err != nil {
+			return err
+		}
+		sourceInfo, err := src.Stat(".")
+		if err != nil {
+			return err
+		}
+		if !os.SameFile(inputInfo, sourceInfo) {
+			return errors.New("input must belong to the source working tree")
 		}
 		in, st, err := openInput(src, p)
 		if err != nil {

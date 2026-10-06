@@ -132,6 +132,42 @@
       "file": "internal/cellprocess/run.go",
       "old": "return Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)",
       "new": "return runObserved(ctx, argv, env, dir, stdout, stderr, newProcessTree, started)"
+    },
+    {
+      "name": "bypass source root admission",
+      "file": "internal/cellscratch/source.go",
+      "old": "source, err := sourceRoot(source)",
+      "new": "source, err := filepath.Abs(source)"
+    },
+    {
+      "name": "bypass input source admission",
+      "file": "internal/cellscratch/inputs.go",
+      "old": "source, err := sourceRoot(source)",
+      "new": "source, err := filepath.EvalSymlinks(source)"
+    },
+    {
+      "name": "bypass snapshot source admission",
+      "file": "internal/cellscratch/snapshot.go",
+      "old": "source, err := sourceRoot(source)",
+      "new": "source, err := filepath.EvalSymlinks(source)"
+    },
+    {
+      "name": "ignore input repository boundary",
+      "file": "internal/cellscratch/inputs.go",
+      "old": "inputRoot, err := sourceWorktree(filepath.Dir(full))",
+      "new": "inputRoot, err := source, error(nil)"
+    },
+    {
+      "name": "inherit Git routing settings",
+      "file": "internal/cellscratch/source.go",
+      "old": "if !strings.HasPrefix(strings.ToUpper(entry), \"GIT_\") {",
+      "new": "if true {"
+    },
+    {
+      "name": "plant second source reader",
+      "file": "internal/cellscratch/source.go",
+      "old": "// SourceRevision admits",
+      "new": "func secondSourceReader(source string) { sourceGitCmd(context.Background(), source, \"ls-tree\") }\n\n// SourceRevision admits"
     }
   ]
 }

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,7 +20,11 @@ func (r *Run) Snapshot(ctx context.Context, source string, maxBytes int64) error
 	if maxBytes <= 0 {
 		return errors.New("snapshot byte budget must be positive")
 	}
-	list := exec.CommandContext(ctx, "git", "-C", source, "ls-tree", "-rlz", r.Record.Revision)
+	source, err := sourceRoot(source)
+	if err != nil {
+		return err
+	}
+	list := sourceGitCmd(ctx, source, "ls-tree", "-rlz", r.Record.Revision)
 	pipe, err := list.StdoutPipe()
 	if err != nil {
 		return err
@@ -75,7 +78,7 @@ func (r *Run) Snapshot(ctx context.Context, source string, maxBytes int64) error
 	defer work.Close()
 	// cat-file batch streams each blob exactly once; the destination never participates
 	// in the input traversal, even when the source is an ancestor of the scratch root.
-	cmd := exec.CommandContext(ctx, "git", "-C", source, "cat-file", "--batch")
+	cmd := sourceGitCmd(ctx, source, "cat-file", "--batch")
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return err

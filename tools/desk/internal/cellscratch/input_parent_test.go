@@ -7,7 +7,7 @@ import (
 )
 
 func TestScratchInputParents(t *testing.T) {
-	source := t.TempDir()
+	source, _ := gitFixture(t)
 	if err := os.Mkdir(filepath.Join(source, "actual"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestScratchInputParents(t *testing.T) {
 }
 
 func TestScratchInputLinks(t *testing.T) {
-	source := t.TempDir()
+	source, _ := gitFixture(t)
 	if err := os.WriteFile(filepath.Join(source, "data"), []byte("fixture"), 0600); err != nil {
 		t.Fatal(err)
 	}

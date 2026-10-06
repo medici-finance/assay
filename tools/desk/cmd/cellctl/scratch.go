@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -96,17 +95,11 @@ func cmdScratch(name string, args []string) {
 		if policy.MaxAge < 0 || policy.MaxBytes < 0 || *snapshotBytes <= 0 {
 			die("scratch budgets must be nonnegative; snapshot budget must be positive")
 		}
-		abs, err := filepath.Abs(*source)
+		// Admit the working-tree root before resolving the immutable revision.
+		abs, sha, err := cellscratch.SourceRevision(*source, *revision)
 		if err != nil {
 			die("scratch source: %v", err)
 		}
-		// Resolve once. Snapshot reads that immutable object even if the source branch moves.
-		cmd := exec.Command("git", "-C", abs, "rev-parse", "--verify", "--end-of-options", *revision+"^{commit}")
-		out, err := cmd.Output()
-		if err != nil {
-			die("scratch source revision: %v", err)
-		}
-		sha := strings.TrimSpace(string(out))
 		if _, err = s.Sweep(policy, true); err != nil {
 			die("scratch startup recovery: %v", err)
 		}
