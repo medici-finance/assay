@@ -127,9 +127,12 @@ and cadence. Scrubbed tmux sessions, container/cluster runtimes, external IDE
 sessions, and harness owned roots that ignore inherited temporary-directory
 settings require explicit `scratch run` or remain report-only. A nested managed
 task keeps its own lease and receipt; the parent must wait for it before handing
-off its own scratch. All Git checkouts (including clean clones) are conservatively
-kept: use metadata-free snapshots for disposable source copies, and `deskwt` for
-worktrees. This is not a second Git worktree pruner.
+off its own scratch. All Git repositories (including bare clones, detached metadata
+directories, and clean worktrees) are conservatively kept. The filesystem classifier recognizes
+Git markers and repository storage/reference layouts without running Git or
+following metadata links; partial or damaged layouts can therefore remain protected.
+An ordinary output file named `HEAD` alone is not a repository marker. Use
+metadata-free snapshots for disposable source copies, and `deskwt` for worktrees. This is not a second Git worktree pruner.
 
 ## Quality-history investigation
 

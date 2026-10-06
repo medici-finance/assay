@@ -398,7 +398,7 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 					row.Reason = "could-not-check tree"
 					errs = append(errs, errors.Join(sizeErr, walkErr))
 				case git || allGit:
-					row.Reason = "Git checkout/worktree present; deskwt owns pruning"
+					row.Reason = "possible Git data present; retained for its owner"
 				case r.State == "resumable":
 					row.Reason = "resumable task"
 				case receiptErr != nil:
@@ -525,7 +525,11 @@ func (s *Store) measure(name string) (int64, bool, error) {
 		if err != nil {
 			return err
 		}
-		if d.Name() == ".git" {
+		marked, err := s.gitMarker(p, d.Name())
+		if err != nil {
+			return err
+		}
+		if marked {
 			git = true
 		}
 		st, err := d.Info()
@@ -538,6 +542,30 @@ func (s *Store) measure(name string) (int64, bool, error) {
 		return nil
 	})
 	return n, git, err
+}
+
+// gitMarker is a conservative filesystem classifier, not repository admission.
+// Partial/damaged repositories still contain required data. Do not run Git,
+// follow metadata links or require config parsing to decide whether to retain it.
+func (s *Store) gitMarker(path, name string) (bool, error) {
+	if metadataPath(name) {
+		return true, nil
+	}
+	if !strings.EqualFold(name, "HEAD") {
+		return false, nil
+	}
+	// HEAD plus repository storage/reference markers identifies bare repositories
+	// and detached Git directories independently of their enclosing directory name.
+	for _, sibling := range []string{"objects", "refs", "packed-refs", "reftable", "commondir"} {
+		_, err := s.root.Lstat(filepath.Join(filepath.Dir(path), sibling))
+		if err == nil {
+			return true, nil
+		}
+		if !os.IsNotExist(err) {
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 // Inventory is intentionally read-only and has no adoption or deletion flag. Legacy
