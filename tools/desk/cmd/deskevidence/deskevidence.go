@@ -88,6 +88,23 @@ func admitVerifierEvidence(root, repo, target string, ac *auditCtx) (deskkit.Ver
 	return receipt, nil
 }
 
+// pathWithin reports whether p lies inside dir, after resolving symlinks where
+// the path exists, so an alias of the root cannot place a fragment inside it.
+func pathWithin(dir, p string) bool {
+	resolve := func(x string) string {
+		x, _ = filepath.Abs(x)
+		if r, err := filepath.EvalSymlinks(x); err == nil {
+			return r
+		}
+		if r, err := filepath.EvalSymlinks(filepath.Dir(x)); err == nil {
+			return filepath.Join(r, filepath.Base(x))
+		}
+		return x
+	}
+	rel, err := filepath.Rel(resolve(dir), resolve(p))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // attestationTrailer carries the admitting run's binding into the landed commit.
 func (a *auditCtx) attestationTrailer() string {
 	if a.attestation == "" {
@@ -146,7 +163,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	fs := flag.NewFlagSet("deskevidence", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	evidenceFile := fs.String("evidence-file", "", "repo-relative path to the evidence/brief file (required, unless --outcome-record is given)")
+	evidenceFile := fs.String("evidence-file", "", "repo-relative path to the evidence/brief file, or with --brief-path an absolute fragment path outside --root (required, unless --outcome-record is given)")
 	briefPath := fs.String("brief-path", "", "if set, merge evidence into this brief file instead of committing evidence-file directly")
 	// --outcome-record (#882) commits ONE new verify-outcome record at the
 	// path RecordName derives from its bytes, retiring the shared appended
@@ -161,7 +178,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// --root <worktree> makes a repo-relative --evidence-file resolve against that worktree
 	// wherever the process happens to be. It rebases only the LOCAL read; the path committed
 	// to the remote branch stays the repo-relative one.
-	root := fs.String("root", "", "resolve a repo-relative --evidence-file against this directory (e.g. the verifier worktree) instead of the current working directory")
+	// Verifier admission reads the same --root: a landing names the dispatched verifier
+	// home, never the desk's own checkout.
+	root := fs.String("root", "", "the dispatched verifier home: admission is checked here and a repo-relative --evidence-file resolves against it instead of the current working directory (a --brief-path fragment may be an absolute path outside it)")
 	// --append-only guards a line-oriented sidecar against a net row DELETION. #1709: the
 	// whole-file Contents-API commit model has no protection against an append-only file
 	// shrinking, so a stale-base/wrong-file mistake reverted a sidecar (25→17 rows) as a
@@ -255,18 +274,24 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
 	// from that checkout (#1709) rather than the process cwd; the target repo path committed
-	// to the branch stays evidenceRepoPath either way. An absolute --evidence-file with
-	// --root is contradictory (the join would be meaningless), so it is refused rather than
-	// silently ignoring one of them.
+	// to the branch stays evidenceRepoPath either way. An absolute --evidence-file names no
+	// repo path, so with --root it is admitted only as a --brief-path fragment that lies
+	// OUTSIDE --root: the fragment is verifier output, which never sits in the attested
+	// home (admission refuses any untracked file there), while the committed path is still
+	// the repo-relative --brief-path. Every other absolute form stays refused.
 	localReadPath := evidenceRepoPath
 	if *root != "" {
-		if filepath.IsAbs(evidenceRepoPath) {
-			return deskkit.Refused("refused: --evidence-file must be a repo-relative path when --root is set, got absolute " + evidenceRepoPath)
-		}
 		if info, serr := os.Stat(*root); serr != nil || !info.IsDir() {
 			return deskkit.Unverifiable("--root "+*root+" is not a readable directory", serr)
 		}
-		localReadPath = filepath.Join(*root, evidenceRepoPath)
+		if filepath.IsAbs(evidenceRepoPath) {
+			if *briefPath == "" || pathWithin(*root, evidenceRepoPath) {
+				return deskkit.Refused("refused: --evidence-file must be a repo-relative path when --root is set, " +
+					"or a --brief-path fragment outside --root; got absolute " + evidenceRepoPath)
+			}
+		} else {
+			localReadPath = filepath.Join(*root, evidenceRepoPath)
+		}
 	}
 
 	// Read the local evidence file.

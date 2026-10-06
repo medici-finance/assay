@@ -33,6 +33,8 @@ func verifierGHFixture(t *testing.T, gh *ghStampServer) {
 	t.Helper()
 	var title, body, state string
 	gh.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gh.mu.Lock()
+		defer gh.mu.Unlock()
 		enc := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 		issue := func() map[string]any {
 			labels := []map[string]any{}
@@ -156,8 +158,10 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 				c.Dir = home
 				return c.CombinedOutput()
 			}
+			gh.mu.Lock()
 			saved := gh.labels
 			gh.labels = nil
+			gh.mu.Unlock()
 			if out, err := execute(); err == nil {
 				t.Fatalf("missing stamp ran Verify: %s", out)
 			}
@@ -166,7 +170,9 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 					t.Fatalf("row ran without admission: %s", name)
 				}
 			}
+			gh.mu.Lock()
 			gh.labels = saved
+			gh.mu.Unlock()
 			if out, err := execute(); err != nil {
 				t.Fatalf("admitted Verify failed: %s %v", out, err)
 			}

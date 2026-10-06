@@ -131,7 +131,9 @@ a future Evidence PR to establish admission. PENDING is not admission.
 
 Before any Verify row or model-attested result, the verifier runs `deskdispatch
 --check-verifier --root <home> --brief <path>` and requires success. The witness runner
-and Evidence verb enforce the same check. Retain the returned exact run/source/model/tier
+and Evidence verb enforce the same check; `deskevidence` checks it at its `--root`, so the
+desk lands from the dispatched verifier home (see **Landing** below), never from its own
+checkout. Retain the returned exact run/source/model/tier
 binding in Evidence and the Evidence draft handoff. An edited record, changed source or
 changed Verify commands stops the run. Evidence and stream-index status edits are allowed.
 Verifier output files (logs, binaries and scratch results) belong outside the admitted
@@ -384,8 +386,11 @@ IS the report. **In addition** write one outcome record with `deskevidence --out
 desk; the `VERIFY FAIL` commit-subject convention is grep-fragile, so bounce-back rate is not
 computable from prose). On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
-landed on the target branch and `statusgen --lint` accepts that same tree. Refresh the local
-checkout before writing; `deskevidence` checks the closure and compares the brief and stream README
+landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
+refresh only the brief and stream README files in the verifier home from the target branch
+(`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`
+for each); never check out, pull or merge in the home, because moving its detached HEAD refuses
+admission. `deskevidence --root <home>` checks the closure and compares the brief and stream README
 with the target branch. Evidence-only landings that leave Status `implemented` MUST NOT record a
 verified outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
 recording is unchanged. Records are immutable — a correction is a NEW record (a fresh `ts`), never an
@@ -424,7 +429,12 @@ class, not another desk, not a wider branch grant.
 Interface: `deskevidence --help` — positional `<owner/repo> <branch>`, `--evidence-file` required (plus
 `--brief-path` to merge a row into a brief's Evidence section), ONE file per invocation, and it **mints
 its own verifier App token in-process and does NOT read `GH_TOKEN`** (prefixing it with a token `cat`
-only misleads). Set `VERIFIER_MAIN_OK=1`.
+only misleads). Set `VERIFIER_MAIN_OK=1`. Every landing passes `--root <the dispatched verifier home>`,
+where admission is checked. The admitted forms are:
+- Evidence rows: `--brief-path <brief> --evidence-file <absolute fragment path>`, with the fragment written to the desk's own scratch OUTSIDE the home (a fragment inside the home is an untracked file and refuses admission).
+- Stream-index flip: edit the home's tracked `README.md` row, then `--evidence-file docs/streams/<stream>/README.md --row <NN>`.
+- Outcome record: `--outcome-record <absolute file outside the home>`.
+Release the home only after the last landing for its run.
 
 **A sanctioned channel is not a way around a blocked write.** `deskevidence` is where the real guards
 live and fire — `VERIFIER_MAIN_OK`, the repo allowlist, the BodyCheck secret/impersonation scan, the
@@ -489,7 +499,8 @@ a branch as the target instead of `main`:
    commit.
 
 1. **`deskevidence <owner/repo> verify-desk/<stream>-<NN>-evidence-<YYYYMMDD>`, ONE invocation per
-   file** — the same one-file-per-call interface, just aimed at the branch: first the brief's
+   file** — the same one-file-per-call interface and `--root <verifier home>` landing forms as
+   **Interface** above, just aimed at the branch: first the brief's
    `## Evidence` rows (`--evidence-file` plus `--brief-path`), then the stream README row flip
    `implemented → verified`. **Both land on the SAME branch and ride in the SAME PR** — an Evidence PR
    that carries the rows but not the flip leaves the board lying, and a flip without the rows is a

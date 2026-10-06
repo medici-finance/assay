@@ -447,6 +447,10 @@ func CheckVerifierEvidence(root, repo, target string) (VerifierReceipt, error) {
 	}
 	r, err := verifierLoad(root)
 	if err != nil {
+		record, perr := verifierRecordPath(root)
+		if _, serr := os.Stat(record); perr != nil || serr != nil {
+			return r.VerifierReceipt, Refused("no pre-work verifier attestation at " + root + "; land Evidence with --root naming the dispatched verifier home, not the desk checkout, and never dispatch another run to obtain one")
+		}
 		return r.VerifierReceipt, err
 	}
 	if r.Binding.Repo != repo {

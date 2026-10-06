@@ -30,6 +30,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -40,6 +41,7 @@ import (
 // and accepts the ensure/apply/remove writes, recording each request.
 type ghStampServer struct {
 	srv      *httptest.Server
+	mu       sync.Mutex // guards fields a fixture handler shares with the test goroutine
 	requests []ghStampReq
 
 	labels     []string     // the labels currently on PR 77

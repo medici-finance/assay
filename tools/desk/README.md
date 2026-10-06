@@ -4961,9 +4961,17 @@ Before any Verify row, run `deskdispatch --check-verifier --root <home> --brief 
 `statusgen verifyrun` does this automatically in a verifier session or an attested worktree;
 its dry-run still executes commands and therefore needs admission. `--check` only audits
 existing witnesses. The native verifier adapter gates before spawning; the interim adapter
-requires an already-attested worktree before invoking its feeder. Both check again before
-landing. `deskevidence` also reads the same binding before any outcome or Evidence write,
-and carries `Verification-Attestation` into its Evidence draft. Evidence edits and stream
+requires its `--root` (the scan root) to be the already-attested verifier home before
+invoking its feeder. Both check again before landing. `deskevidence` also reads the same
+binding, at its `--root`, before any outcome or Evidence write, and carries
+`Verification-Attestation` into its Evidence draft. Land from the dispatched verifier home:
+`deskevidence <owner/repo> <branch> --root <home> --brief-path <brief> --evidence-file
+<absolute fragment outside the home>`; the stream-index flip lands from the same `--root`
+after editing the home's tracked index file, and an outcome record names an absolute file
+outside the home. Before an outcome record, refresh only the brief and stream index files
+in the home from the target branch; moving the home's HEAD refuses admission. With
+`statusgen --in-container`, admission runs on the host before the handoff, so the inner
+witness output carries no binding line. Evidence edits and stream
 index status edits on tracked files preserve admission. Write logs, binaries and other
 outputs outside the admitted source worktree; additional files (including ignored files)
 refuse admission at execution and Evidence landing. Keep the worktree detached; changing
