@@ -1,0 +1,47 @@
+{
+  "test": "go test ./internal/gitquiet/ -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the template carries no settings: every fixture repository forks automatic maintenance again (the #1608 race)",
+    "file": "internal/gitquiet/gitquiet.go",
+    "old": "\t{\"maintenance.auto\", \"false\"},\n\t{\"gc.auto\", \"0\"},\n",
+    "new": ""
+  },
+  "mutations": [
+    {
+      "name": "the template is written but GIT_TEMPLATE_DIR is never pointed at it — git init/clone fall back to the default template",
+      "file": "internal/gitquiet/gitquiet.go",
+      "old": "os.Setenv(\"GIT_TEMPLATE_DIR\", dir)",
+      "new": "os.Setenv(\"GITQUIET_UNUSED\", dir)"
+    },
+    {
+      "name": "the template config is rendered empty — repositories get no settings",
+      "file": "internal/gitquiet/gitquiet.go",
+      "old": "\treturn b.String()\n",
+      "new": "\treturn \"\"\n"
+    },
+    {
+      "name": "guard: a TestMain that never installs the template is accepted",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "\t\tif d.fn.Name.Name == \"TestMain\" && callsRun(d.f, d.fn.Body, via) {",
+      "new": "\t\tif d.fn.Name.Name == \"TestMain\" {"
+    },
+    {
+      "name": "guard: the runTests(m) indirection is not followed — a TestMain whose helper calls m.Run is accepted",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "|| via[fun.Name] {",
+      "new": "|| fun.Name == \"runTests\" {"
+    },
+    {
+      "name": "guard: the git-use matcher stops matching — no package is examined and the scan reports clean",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "s == \"git\" {",
+      "new": "s == \"git-never\" {"
+    },
+    {
+      "name": "guard: a package whose only git use is the shared gittest harness is not treated as a git-test package",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "strings.HasSuffix(p, \"/internal/gittest\")",
+      "new": "strings.HasSuffix(p, \"/internal/gittest-never\")"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+### Fixed
+- `tools/desk` tests no longer fail intermittently with `TempDir RemoveAll cleanup: ... directory not empty`. Every package whose tests run git now installs, from its `TestMain`, a git template that turns off automatic background maintenance (`maintenance.auto=false`, `gc.auto=0`) in each repository the tests create, so a detached repack can no longer race `t.TempDir` cleanup. A structural test fails any new git-using test package that skips the hook. Test-only; no tool behaviour changes.
