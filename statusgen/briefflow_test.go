@@ -334,7 +334,7 @@ func (s *countingPRSource) Reviews(repo string, pr int) ([]ghReview, error) { re
 
 // TestBFResolveTarget_Announces: bfResolveTarget must name the repo it resolved,
 // on STDERR, before the caller makes contact. These modes resolve their target
-// implicitly ($GITHUB_REPOSITORY, git remote, gh default), so an opt-in flag on
+// implicitly ($GITHUB_REPOSITORY, git remote origin), so an opt-in flag on
 // its own still leaves an operator run from the wrong directory unable to tell
 // WHICH repo's queue was read. Stderr, not stdout, because each mode also has a
 // --json shape an announcement would corrupt.

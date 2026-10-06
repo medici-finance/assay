@@ -1227,7 +1227,7 @@ func briefVerifyRows(verifySection string) []verifyRow {
 
 // briefSections reads a brief file's Verify and Evidence bodies.
 func briefSections(path string) (verify, evidence string, err error) {
-	raw, err := os.ReadFile(path)
+	raw, err := readFileMemo(path)
 	if err != nil {
 		return "", "", err
 	}
