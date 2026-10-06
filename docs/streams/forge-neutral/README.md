@@ -279,13 +279,21 @@ what is left is local.
 
 **34 sits in front of 18's CI-lane sites.** Most of statusgen's remaining forge-CLI calls run
 only inside CI (`--corroborate`, `--auto-flip-model`, the transcribe lanes), under the
-workflow's own job token. `deskread` reads only as a minted desk App, and a CI runner has none
-to mint, so 18's row 3 cannot reach 0 for those sites. The driver's ruling on #2253 chose an
-explicit, opt-in `deskread` transport that reads with the job token, for read-only kinds only.
-34 adds it: a `--ci-workflow-token` flag, refused outside CI, refused for a non-installation
-token, bound to the job's own repository, built on a forge that refuses every write method,
-and recorded in the envelope's identity. It is gated human because it relaxes the no-ambient-
-token rule, and it touches no statusgen file and no workflow, so `34 → 18`.
+workflow's own job token. `deskread` reads only as a minted desk App, and a CI job holds no
+desk-role custody for it to resolve, so 18's row 3 cannot reach 0 for those sites. The
+driver's ruling on #2253 chose an explicit, opt-in `deskread` transport that reads with the
+job token, for read-only kinds only.
+34 adds it: a `--ci-workflow-token` flag, refused outside CI, refused for a personal or OAuth
+token, bound to the job's own repository, built on a default-deny forge that refuses every write
+method, and recorded in the envelope's identity. Under the flag in CI, `deskread` activates from
+the job's environment roster. Its threat model is accidental or ambient use in an honest CI job:
+against a caller who forges the CI environment, only the read-only forge and the closed kind set
+hold, and the identity record's repository and run id are unverified. It is gated human because
+it relaxes the no-ambient-token rule (ratchet 4 → 5), and it touches no statusgen file and no
+workflow, so `34 → 18`. 18 inherits three hand-offs: add each CI-lane kind to the closed
+`ciTransportKinds` set by reviewed diff, narrow the adopter scaffold's `permissions:` to
+read-only wherever the token is handed over, and route cross-repository reads (which land in
+`partial`) to custody or could-not-check.
 
 The chain is real, not conventional. 08's auto-flip has to recognise a reviewer identity on the
 configured forge, which is 07's roster-parity deliverable inside statusgen; 07's actor matching
