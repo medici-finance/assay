@@ -41,7 +41,7 @@
       "name": "S1: a covering row needs no result",
       "file": "heldscope.go",
       "old": "\t\t\tif ran {",
-      "new": "\t\t\tif true {"
+      "new": "\t\t\tif ran || true {"
     },
     {
       "name": "S1: an earlier entry's own table covers its rows",
@@ -89,7 +89,7 @@
       "name": "S2: a verdict after the PASS marker is ignored",
       "file": "heldscope.go",
       "old": "if i == at && n > 1 || i > at && n > 0 {",
-      "new": "if false {"
+      "new": "if false && (i == at && n > 1 || i > at && n > 0) {"
     },
     {
       "name": "S2: a CommonMark/scan fence disagreement is ignored",
@@ -155,7 +155,7 @@
       "name": "S1: the scan drops every earlier hit without the cover check",
       "file": "verifyissues.go",
       "old": "if superseded && i < scope.from {",
-      "new": "if scope.from >= 0 && i < scope.from {"
+      "new": "if (superseded || scope.from >= 0) && i < scope.from {"
     }
   ]
 }

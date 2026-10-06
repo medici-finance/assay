@@ -125,6 +125,12 @@ func TestHeldScopeFailClosed(t *testing.T) {
 		// The later entry must re-run every row that held (S1).
 		{"later entry re-ran nothing",
 			heldRun + "### Run 2\n\n**VERIFY: PASS**\n", true},
+		{"verdict heading after the run",
+			strings.TrimSuffix(heldRun, "**VERIFY: PASS** (model) — row 1 green.\n\n") + "### Verdict\n\n**VERIFY: PASS**\n", true},
+		{"notes heading after a preamble",
+			"| # | Command | Exit | Result |\n|---|---|---|---|\n| 2 | `go test` | — | HELD — no runner online |\n\n### Notes\n\n**VERIFY: PASS**\n", true},
+		{"FAIL then loose PASS after it",
+			heldRun + passRun("**VERIFY: PASS**\n\nVERIFY: FAIL — row 2 regressed.\n\nVERIFY: PASS on re-run"), true},
 		{"later entry re-ran row 1 only",
 			heldRun + "### Run 2\n\n" + scopeHdr + scopeRow("1", "exit 0", "ok") + "\n**VERIFY: PASS**\n", true},
 		{"later row records no result",
