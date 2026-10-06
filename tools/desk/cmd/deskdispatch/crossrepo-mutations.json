@@ -96,6 +96,36 @@
       "file": "cmd/deskdispatch/deliverable.go",
       "old": "\t\t\tif lt == \"\" {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tif strings.HasPrefix(lt, \"- \") {\n\t\t\t\ttake(",
       "new": "\t\t\tif lt == \"\" {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif strings.HasPrefix(lt, \"- \") {\n\t\t\t\ttake("
+    },
+    {
+      "name": "F1: a files: line inside a fenced example is read as the brief's list (the fence skip is dropped); TestTagNeverWidens/tag_in_a_fenced_example must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif fence != \"\" {\n\t\t\tcontinue // inside a fenced example",
+      "new": "\t\tif false && fence != \"\" {\n\t\t\tcontinue // inside a fenced example"
+    },
+    {
+      "name": "F2: only an explicit deliverable_repo (not homed-in) stops a files: tag; TestTagNeverWidens/explicit_homed-in_wins must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif declDeliverable == \"\" && declHomedIn == \"\" {",
+      "new": "\t\tif declDeliverable == \"\" {"
+    },
+    {
+      "name": "a left-margin line no longer closes the files: list, so a tagged entry after it declares; TestTagNeverWidens/closed_by_a_left-margin_line must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tif !strings.HasPrefix(lines[j], \" \") && !strings.HasPrefix(lines[j], \"\\t\") {\n\t\t\t\tbreak",
+      "new": "\t\t\tif false && !strings.HasPrefix(lines[j], \" \") && !strings.HasPrefix(lines[j], \"\\t\") {\n\t\t\t\tbreak"
+    },
+    {
+      "name": "the tag is read anywhere in an entry, not only at its head (the ^ anchor is dropped); TestTagNeverWidens/tag_not_at_entry_head must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "regexp.MustCompile(\"^`?\\\\[(",
+      "new": "regexp.MustCompile(\"`?\\\\[("
+    },
+    {
+      "name": "every files: list is read, not only the first; TestTagNeverWidens/tag_in_a_second_files:_list must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\treturn tags\n\t}\n\treturn nil\n}",
+      "new": "\t\tcontinue\n\t}\n\treturn tags\n}"
     }
   ]
 }

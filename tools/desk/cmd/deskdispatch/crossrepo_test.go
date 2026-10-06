@@ -795,6 +795,16 @@ func TestTagNeverWidens(t *testing.T) {
 		"files:\n- `docs/streams/example-stream/README.md`\n"
 	afterList := "# Example brief\n\nfiles:\n- `docs/streams/example-stream/README.md`\n\n" +
 		"- `[example-tool]` `../example-deliverable/x.go`\n"
+	// No blank line: a left-margin line, not a blank one, closes the list.
+	leftMargin := "# Example brief\n\nfiles:\n- `docs/streams/example-stream/README.md`\n" +
+		"Then, later:\n- `[example-tool]` `../example-deliverable/x.go`\n"
+	notAtHead := "# Example brief\n\nfiles:\n- `../example-deliverable/x.go` `[example-tool]`\n"
+	secondList := "# Example brief\n\nfiles:\n- `docs/streams/example-stream/README.md`\n\n" +
+		"## Notes\n\nfiles:\n- `[example-tool]` `../example-deliverable/x.go`\n"
+	// An illustrative fenced example ahead of the real (untagged) list declares nothing.
+	fenced := "# Example brief\n\nAn entry looks like:\n\n```markdown\nfiles:\n" +
+		"- `[example-tool]` `../example-deliverable/x.go`\n```\n\n" +
+		"## Context\n\nfiles:\n- `docs/streams/example-stream/README.md`\n"
 	for _, c := range []struct {
 		name, mdBody, repo string
 		front              []string
@@ -803,10 +813,16 @@ func TestTagNeverWidens(t *testing.T) {
 		{"unpublished alias", taggedBody("example-hidden"), "medici-finance/assay", nil},
 		{"tag in prose", prose, "medici-finance/assay", nil},
 		{"tag after the list", afterList, "medici-finance/assay", nil},
+		{"closed by a left-margin line", leftMargin, "medici-finance/assay", nil},
+		{"tag not at entry head", notAtHead, "medici-finance/assay", nil},
+		{"tag in a second files: list", secondList, "medici-finance/assay", nil},
+		{"tag in a fenced example", fenced, "medici-finance/assay", nil},
 		{"tag in frontmatter", "# Example brief\n", "medici-finance/assay",
 			[]string{"files:", "- `[example-tool]` `../example-deliverable/x.go`"}},
 		{"explicit deliverable wins", taggedBody("example-tool"), "medici-finance/assay",
 			[]string{"deliverable_repo: example-con"}},
+		{"explicit homed-in wins", taggedBody("example-tool"), "medici-finance/assay",
+			[]string{"homed-in: example-org/console"}},
 		{"no --repo given", taggedBody("example-tool"), "", nil},
 		{"--root not --repo", taggedBody("example-con"), "example-org/console", nil},
 	} {
@@ -828,5 +844,28 @@ func TestTagNeverWidens(t *testing.T) {
 				t.Errorf("the hard fail must precede mint, claim and worktree; calls=%v mints=%v", s.calls, *mints)
 			}
 		})
+	}
+}
+
+// TestDeclaredTagAfterFencedExample — a fenced example `files:` block ahead of the real list is
+// skipped, not read as the brief's list, so the real `## Context` list's tag still declares. The
+// example uses a tilde fence whose body holds a shorter backtick run, so the fence closes only on its
+// own kind and length.
+func TestDeclaredTagAfterFencedExample(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	example := "# Example brief\n\nAn entry looks like:\n\n~~~~markdown\nfiles:\n- `docs/x.md`\n```\n~~~\n~~~~\n\n"
+	body := example + strings.TrimPrefix(taggedBody("example-tool"), "# Example brief\n\n")
+	trk := trackingCheckoutBody(t, exampleRegistry, body, exampleV2ID)
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+	mints := recordMint(t, home, nil)
+	err := cmdDispatch([]string{"example-stream/05", "--repo", "medici-finance/assay", "--root", root,
+		"--claim-root", trk, "--brief", exampleBriefRel, "--kit", "worker",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md"), "--quiet"})
+	if err != nil {
+		t.Fatalf("the real list's tag must still declare after a fenced example: %v", err)
+	}
+	if len(claimCalls(s)) != 1 || len(*mints) != 1 || (*mints)[0] != "medici-finance/assay" {
+		t.Errorf("want one claim and one mint for --repo; claims=%v mints=%v", claimCalls(s), *mints)
 	}
 }

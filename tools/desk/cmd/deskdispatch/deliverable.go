@@ -490,9 +490,12 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 var filesTagRe = regexp.MustCompile("^`?\\[([a-z][a-z0-9_-]{0,31})\\]`?(?:\\s|$)")
 
 // briefFilesTags returns the `[alias]` tags on the entries of the brief BODY's first `files:` list —
-// the same list the write-scope reader takes (frontmatter skipped; a block list of `- ` entries,
-// indented continuation lines ignored, closed by a blank line or a left-margin line). A tag anywhere
-// else — prose, the frontmatter, after the list — declares nothing.
+// the list grammar the write-scope reader takes (frontmatter skipped; a block list of `- ` entries,
+// indented continuation lines ignored, closed by a blank line or a left-margin line). One deliberate
+// difference: a `files:` line inside a fenced code block (three or more backticks or tildes) is an
+// illustration, not the brief's list, so it is skipped and the scan goes on to the real list. A tag
+// anywhere else — prose, the frontmatter, a fenced example, after the list — declares nothing. An
+// unclosed fence hides everything after it, so it fails closed.
 func briefFilesTags(text string) []string {
 	lines := strings.Split(text, "\n")
 	start := 0
@@ -510,8 +513,21 @@ func briefFilesTags(text string) []string {
 			tags = append(tags, m[1])
 		}
 	}
+	fence := "" // the open fence's run of backticks or tildes, "" outside a fenced block
 	for i := start; i < len(lines); i++ {
 		t := strings.TrimSpace(lines[i])
+		if f := fenceRun(t); f != "" {
+			switch {
+			case fence == "":
+				fence = f
+			case f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == "":
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" {
+			continue // inside a fenced example: its files: line is not the brief's list
+		}
 		if !strings.HasPrefix(t, "files:") {
 			continue
 		}
@@ -535,6 +551,22 @@ func briefFilesTags(text string) []string {
 		return tags
 	}
 	return nil
+}
+
+// fenceRun returns the leading run of a (trimmed) line that opens or closes a fenced code block —
+// three or more backticks, or three or more tildes — or "" when the line is not a fence line.
+func fenceRun(t string) string {
+	if len(t) < 3 || (t[0] != '`' && t[0] != '~') {
+		return ""
+	}
+	n := 1
+	for n < len(t) && t[n] == t[0] {
+		n++
+	}
+	if n < 3 {
+		return ""
+	}
+	return t[:n]
 }
 
 // declaredTagFor returns the alias of a `files:` tag that resolves, through reg, to a PUBLISHED repo

@@ -4974,8 +4974,8 @@ with an `[<alias>]` tag on an entry of its body's `files:` list (``- `[<alias>]`
 a `--repo` equal to a repo so declared — the tag resolved through the same registry, published
 there — is accepted in place of the tracking repo, and `--root` must still be a checkout of it.
 Every other mismatch (an undeclared `--repo`, an unknown or unpublished tag, a tag outside the
-`files:` list, no `--repo` at all) keeps the HARD FAIL. An item that declares no alias keeps the
-path above unchanged.
+`files:` list or in a fenced example block, no `--repo` at all) keeps the HARD FAIL. An item that
+declares no alias keeps the path above unchanged.
 
 **The phantom check is a dispatcher precondition.** A fresh worker dispatch is reconciled against
 the deliverable repo's open and merged PRs by `Brief:` trailer before admission, the mint and the
