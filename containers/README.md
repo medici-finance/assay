@@ -183,7 +183,10 @@ covers the git tarball. `TestBaseImagePinsTarballs` covers the image digests
 and the Go, `gh` and Node tarballs. Each keeps the reviewed values in a table
 (`knownGitTarballs`, `knownToolTarballs`): a Dockerfile version or sha256 that
 is not a reviewed row, a FROM without a digest, or a check that is dropped,
-masked or moved after the unpack goes red.
+masked or moved after the unpack goes red. So does any new way of pulling in
+outside bytes without a pin: another `curl` or `wget`, an `ADD <url>`, or a
+`COPY --from=<image>` without a digest. A new download needs its own sha256
+ARGs, check and reviewed row before the test passes.
 
 **Bump procedure.**
 

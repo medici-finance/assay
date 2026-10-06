@@ -106,6 +106,9 @@ func basePinProblem(dockerfile string) string {
 	if lastFrom < 0 {
 		return "no FROM"
 	}
+	if p := unpinnedFetchProblem(ins); p != "" {
+		return p
+	}
 	args := map[string]string{}
 	for _, in := range ins[lastFrom+1:] {
 		if in.op == "ARG" && len(in.args) == 1 {
@@ -140,6 +143,80 @@ func basePinProblem(dockerfile string) string {
 		}
 		if p := toolRunProblem(*run, tl); p != "" {
 			return "the " + tl.file + " RUN " + p
+		}
+	}
+	return ""
+}
+
+// checkedDownloads maps the only files a RUN may fetch to the stage allowed to
+// fetch each ("" is the final stage). Each is checked against a pinned sha256
+// in that stage before use: git by TestBaseImageRunsGitFloor, the others by
+// toolRunProblem.
+func checkedDownloads() map[string]string {
+	files := map[string]string{"/tmp/git.txz": "gitbuild"}
+	for _, tl := range basePinnedTools {
+		files[tl.file] = ""
+	}
+	return files
+}
+
+// unpinnedFetchProblem is the class guard: it returns why any instruction
+// brings in outside bytes with no pin, wherever it sits. A FROM is checked
+// above; here a COPY or ADD --from that names an image rather than a stage must
+// carry a digest, an ADD may not fetch a URL, and a RUN may fetch only with a
+// plain `curl … -o <file>` whose file checkedDownloads allows in that stage.
+func unpinnedFetchProblem(ins []dfInstr) string {
+	stages, files := map[string]bool{}, checkedDownloads()
+	lastFrom := -1
+	for i, in := range ins {
+		if in.op == "FROM" {
+			lastFrom = i
+		}
+		if n := len(in.args); in.op == "FROM" && n >= 3 && in.args[n-2] == "AS" {
+			stages[in.args[n-1]] = true
+		}
+	}
+	stage := ""
+	for i, in := range ins {
+		if in.op == "FROM" {
+			stage = "?"
+			if n := len(in.args); n >= 3 && in.args[n-2] == "AS" {
+				stage = in.args[n-1]
+			}
+			if i == lastFrom {
+				stage = ""
+			}
+		}
+		switch in.op {
+		case "COPY", "ADD":
+			for _, a := range in.args {
+				if from, ok := strings.CutPrefix(a, "--from="); ok && !stages[from] && !digestRef.MatchString(from) {
+					return in.op + " " + a + " names an image without a tag and digest"
+				}
+				if in.op == "ADD" && strings.Contains(a, "://") {
+					return "ADD fetches " + a + " with no checksum"
+				}
+			}
+		case "RUN":
+			for _, sg := range in.segs {
+				fetches := strings.HasPrefix(sg, "curl ") || strings.HasPrefix(sg, "wget ")
+				for _, w := range []string{"curl ", "wget "} {
+					for _, lead := range []string{"$(", "`", "| ", "|", "&& "} {
+						fetches = fetches || strings.Contains(sg, lead+w)
+					}
+				}
+				if !fetches {
+					continue
+				}
+				out := "\x00"
+				if j := strings.LastIndex(sg, " -o "); j >= 0 {
+					out = sg[j+len(" -o "):]
+				}
+				want, ok := files[out]
+				if !ok || want != stage || !strings.HasPrefix(sg, "curl ") || strings.ContainsAny(sg, "|`") || strings.Contains(sg, "$(") {
+					return "a RUN fetches with no pinned checksum (`" + sg + "`)"
+				}
+			}
 		}
 	}
 	return ""
@@ -254,6 +331,20 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 		"final tag dropped":         swap(finalFrom, "FROM debian@"+strings.Split(debianRef, "@")[1]+"\n"),
 		"debian stages diverge":     swap(gitbuildFrom, "FROM debian:bookworm-slim@"+otherDigest+" AS gitbuild\n"),
 		"final FROM via bare ARG":   swap(finalFrom, "ARG FINAL_BASE=debian:bookworm-slim\nFROM ${FINAL_BASE}\n"),
+	}
+	// The class guard: a new unpinned fetch planted at a site this change does
+	// not touch must go red too, not just the four pinned downloads.
+	plugin := "COPY plugins/assay/ /opt/assay/plugin/\n"
+	for name, plant := range map[string]string{
+		"new unchecked curl":         "RUN set -eux; curl -fsSL https://example.com/t.tgz -o /tmp/t.tgz; tar -C /tmp -xzf /tmp/t.tgz\n",
+		"curl piped to sh":           "RUN curl -fsSL https://example.com/i.sh | sh\n",
+		"wget download":              "RUN wget -q https://example.com/t.tgz -O /tmp/t.tgz\n",
+		"curl in a substitution":     "RUN set -eux; v=\"$(curl -fsSL https://example.com/v)\"; echo \"$v\"\n",
+		"ADD from a URL":             "ADD https://example.com/t.tgz /tmp/t.tgz\n",
+		"COPY --from unpinned image": "COPY --from=alpine:3.21 /bin/busybox /bin/busybox\n",
+		"git tarball in final stage": "RUN set -eux; curl -fsSL " + gitCurlHTTPSOnly + " https://example.com/g.txz -o /tmp/git.txz\n",
+	} {
+		mutants["class: "+name] = swap(plugin, plant+plugin)
 	}
 	for _, tl := range basePinnedTools {
 		rec := knownToolTarballs[tl.arg]
