@@ -28,8 +28,8 @@
 #      finds a clean pull request and enables auto-merge. The blast radius of
 #      being wrong is the same as case 3 — a pull request that needs a human's
 #      merge click — because nothing here merges anything.
-#      "Only failing check" is judged on the LATEST run per check name (see
-#      LATEST RUN PER NAME below), never on every run the rollup still lists.
+#      "Only failing check" is judged on the LATEST run per check (see LATEST
+#      RUN PER CHECK below), never on every run the rollup still lists.
 #   5. CLEAN STATUS — "Pull request is in clean status". The mirror of case 4 one
 #      merge-state over: a just-flipped approved pull request with every check
 #      green satisfies every requirement already, so there is nothing for
@@ -42,19 +42,27 @@
 # some OTHER check is failing is a real signal — that pull request is not
 # mergeable for a reason this workflow did not cause, and the red run says so.
 #
-# LATEST RUN PER NAME (#1959). The rollup lists EVERY run on the head commit,
+# LATEST RUN PER CHECK (#1959). The rollup lists EVERY run on the head commit,
 # superseded ones included: a check whose workflow cancels an in-flight run when
 # a newer event arrives leaves a CANCELLED run beside the later run that replaced
 # it. Judging every listed run counts that CANCELLED predecessor as "failing
 # besides our own check", reddens the benign case-4 path, and strands a ready,
 # approved pull request without auto-merge. So the rollup is first reduced to
-# the latest run per check name (a status context's context) — the rule branch
-# protection applies, and the same reduction the desk tools' own ready-flip gate
-# and board use (deskkit.LatestRunPerName): recency is completedAt, else
-# startedAt, else createdAt; a stampless run sorts OLDEST, so it never displaces
-# a run that actually ran; a tie keeps the first-seen entry; an entry with
-# neither a name nor a context is kept on its own. The reduction changes only
-# WHICH run of a name is judged, never HOW: a name whose latest run is red or
+# the latest run per CHECK, and only a SUPERSEDED run is ever dropped:
+#   - a check run is keyed on (workflowName, name). Two DIFFERENT workflows that
+#     each run a job with the same name (build, test, lint) are two checks, not
+#     one: a later SUCCESS in one workflow never hides a FAILURE in another.
+#   - a status context (no workflow) is keyed on ("status", context).
+#   - a check run with no workflowName, and any entry with neither a name nor a
+#     context, has no identity to prove "same check" with, so it is kept on its
+#     own and judged as listed — FAIL-CLOSED: nothing is de-duplicated on a
+#     guess, and a failing run without a workflowName still reddens.
+# Recency follows the desk tools' own reducer (deskkit.LatestRunPerName):
+# completedAt, else startedAt, else createdAt; a stampless run sorts OLDEST, so
+# it never displaces a run that actually ran; a tie keeps the first-seen entry.
+# (That reducer keys on name alone; this one deliberately keys finer, because
+# a coarser key here could only hide a failure.) The reduction changes only
+# WHICH run of a check is judged, never HOW: a check whose latest run is red or
 # cancelled still reddens.
 #
 # THREE-STATE, and could-not-check is a FAILURE. If the check rollup cannot be
@@ -117,8 +125,9 @@ if printf '%s' "$out" | grep -qi 'unstable status'; then
   # legacy StatusContext (`context` + `state`) — and both are read, so a failing
   # commit status is never invisible to this decision.
   #
-  # Only the LATEST run per check name is judged (#1959; see LATEST RUN PER NAME
-  # in the header): a superseded CANCELLED run is not a current failure.
+  # Only the LATEST run per check — (workflowName, name), or a status context —
+  # is judged (#1959; see LATEST RUN PER CHECK in the header): a superseded
+  # CANCELLED run is not a current failure.
   if ! failing="$(python3 - "$ROLLUP_JSON" <<'PY'
 import json, sys
 
@@ -142,18 +151,33 @@ def recency(entry):
     return ""
 
 
-def latest_run_per_name(entries):
-    # One entry per check name (a status context's context): the newest by
-    # recency(). Strictly-newer replaces, so a tie keeps the first seen; a
-    # stampless run ("") sorts oldest and never displaces a run that ran. An
-    # entry with neither a name nor a context has nothing to group on and is
-    # kept on its own. First-appearance order is preserved.
+def check_key(entry):
+    # The identity two runs must share to be "the same check", or None when it
+    # cannot be proven. A status context: ("status", context). A check run:
+    # ("run", workflowName, name) — BOTH required, so same-named jobs of two
+    # different workflows never collapse, and a check run without a
+    # workflowName is never collapsed with anything (fail-closed).
+    name = entry.get("name")
+    context = entry.get("context")
+    if entry.get("__typename") == "StatusContext" or (not name and context):
+        return ("status", str(context)) if context else None
+    workflow = entry.get("workflowName")
+    if name and isinstance(workflow, str) and workflow:
+        return ("run", workflow, str(name))
+    return None
+
+
+def latest_run_per_check(entries):
+    # One entry per check_key(): the newest by recency(). Strictly-newer
+    # replaces, so a tie keeps the first seen; a stampless run ("") sorts
+    # oldest and never displaces a run that ran. An entry with no provable key
+    # is kept on its own. First-appearance order is preserved.
     out, index = [], {}
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        key = str(entry.get("name") or entry.get("context") or "")
-        if not key:
+        key = check_key(entry)
+        if key is None:
             out.append(entry)
             continue
         if key not in index:
@@ -176,7 +200,7 @@ if not isinstance(rollup, list):                          # null, missing, wrong
     print("rollup JSON carries no statusCheckRollup list", file=sys.stderr)
     sys.exit(2)
 
-for entry in latest_run_per_name(rollup):
+for entry in latest_run_per_check(rollup):
     conclusion = str(entry.get("conclusion") or "").upper()
     state = str(entry.get("state") or "").upper()
     if conclusion in FAIL_CONCLUSIONS or state in FAIL_STATES:

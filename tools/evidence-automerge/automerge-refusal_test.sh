@@ -127,7 +127,8 @@ run_case "C11 clean-status refusal skips" 0 1 "$ERR_CLEAN" ABSENT
 # ── C12–C17: superseded runs (#1959). The rollup lists EVERY run on the head
 #    commit; a workflow that cancels an in-flight run when a newer event arrives
 #    leaves a CANCELLED run beside its replacement. Only the LATEST run per check
-#    name is judged. The pre-fix impl judges every listed run and reds C12, C13
+#    is judged, a check run keyed on (workflowName, name) and a status context on
+#    its context. The pre-fix impl judges every listed run and reds C12, C13
 #    and C17:
 #      git show <pre-fix>:tools/evidence-automerge/automerge-refusal.sh > /tmp/pre.sh
 #      CHECK_IMPL=/tmp/pre.sh ./automerge-refusal_test.sh
@@ -137,9 +138,9 @@ Z0='0001-01-01T00:00:00Z'
 # C12: a CANCELLED `changelog` run superseded by a later SUCCESS run of the same
 #      name, beside our own failed `enable` → the enable-only case → benign skip.
 ROLLUP_SUPERSEDED_DONE='{"statusCheckRollup":[
-  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-09-30T13:00:11Z","completedAt":"2026-09-30T13:00:24Z"},
-  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-09-30T13:00:04Z","completedAt":"2026-09-30T13:00:06Z"},
-  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-09-30T13:00:12Z","completedAt":"2026-09-30T13:00:25Z"},
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-09-30T13:00:11Z","completedAt":"2026-09-30T13:00:24Z"},
+  {"__typename":"CheckRun","workflowName":"changelog-check","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-09-30T13:00:04Z","completedAt":"2026-09-30T13:00:06Z"},
+  {"__typename":"CheckRun","workflowName":"changelog-check","name":"changelog","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-09-30T13:00:12Z","completedAt":"2026-09-30T13:00:25Z"},
   {"__typename":"StatusContext","context":"leak-sweep","state":"SUCCESS","startedAt":"2026-09-30T12:55:02Z"}]}'
 run_case "C12 superseded CANCELLED beside a later SUCCESS skips" 0 1 "$ERR_UNSTABLE" "$ROLLUP_SUPERSEDED_DONE"
 
@@ -148,35 +149,35 @@ run_case "C12 superseded CANCELLED beside a later SUCCESS skips" 0 1 "$ERR_UNSTA
 #      renders their completedAt as the zero time. Zero time is "no stamp", not
 #      "oldest stamp": startedAt decides, and the in-progress successor wins.
 ROLLUP_SUPERSEDED_RUNNING='{"statusCheckRollup":[
-  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T06:54:18Z","completedAt":"2026-10-04T06:54:25Z"},
-  {"__typename":"CheckRun","name":"enable","status":"IN_PROGRESS","conclusion":"","startedAt":"2026-10-04T06:59:19Z","completedAt":"'"$Z0"'"},
-  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T06:59:18Z","completedAt":"2026-10-04T06:59:19Z"},
-  {"__typename":"CheckRun","name":"changelog","status":"IN_PROGRESS","conclusion":"","startedAt":"2026-10-04T06:59:22Z","completedAt":"'"$Z0"'"}]}'
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T06:54:18Z","completedAt":"2026-10-04T06:54:25Z"},
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"IN_PROGRESS","conclusion":"","startedAt":"2026-10-04T06:59:19Z","completedAt":"'"$Z0"'"},
+  {"__typename":"CheckRun","workflowName":"changelog-check","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T06:59:18Z","completedAt":"2026-10-04T06:59:19Z"},
+  {"__typename":"CheckRun","workflowName":"changelog-check","name":"changelog","status":"IN_PROGRESS","conclusion":"","startedAt":"2026-10-04T06:59:22Z","completedAt":"'"$Z0"'"}]}'
 run_case "C13 superseded CANCELLED beside an in-progress successor skips" 0 1 "$ERR_UNSTABLE" "$ROLLUP_SUPERSEDED_RUNNING"
 
 # C14: the CANCELLED run is the LATEST of its name (an older SUCCESS precedes
 #      it) → that check's current run is cancelled → a real failure, still reds.
 ROLLUP_CANCELLED_LATEST='{"statusCheckRollup":[
-  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
-  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-04T07:00:00Z","completedAt":"2026-10-04T07:00:10Z"},
-  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:05:00Z","completedAt":"2026-10-04T07:05:01Z"}]}'
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"CheckRun","workflowName":"changelog-check","name":"changelog","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-04T07:00:00Z","completedAt":"2026-10-04T07:00:10Z"},
+  {"__typename":"CheckRun","workflowName":"changelog-check","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:05:00Z","completedAt":"2026-10-04T07:05:01Z"}]}'
 run_case "C14 CANCELLED as the latest run of its name reds" 1 1 "$ERR_UNSTABLE" "$ROLLUP_CANCELLED_LATEST"
 
 # C15: the CANCELLED run is superseded, but by a FAILURE → that check's latest
 #      run is red → still reds. The reduction picks the run; it never forgives it.
 ROLLUP_SUPERSEDED_BY_RED='{"statusCheckRollup":[
-  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
-  {"__typename":"CheckRun","name":"build-test","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:00:00Z","completedAt":"2026-10-04T07:00:01Z"},
-  {"__typename":"CheckRun","name":"build-test","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:00:05Z","completedAt":"2026-10-04T07:04:00Z"}]}'
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"CheckRun","workflowName":"ci","name":"build-test","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:00:00Z","completedAt":"2026-10-04T07:00:01Z"},
+  {"__typename":"CheckRun","workflowName":"ci","name":"build-test","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:00:05Z","completedAt":"2026-10-04T07:04:00Z"}]}'
 run_case "C15 CANCELLED superseded by a FAILURE reds" 1 1 "$ERR_UNSTABLE" "$ROLLUP_SUPERSEDED_BY_RED"
 
 # C16: the only "successor" is a QUEUED run the forge has not stamped (zero time
 #      everywhere). A stampless run sorts OLDEST and never displaces a run that
 #      actually ran, so the CANCELLED run stays the latest → reds (fail-safe).
 ROLLUP_STAMPLESS_SUCCESSOR='{"statusCheckRollup":[
-  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
-  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:05:00Z","completedAt":"2026-10-04T07:05:01Z"},
-  {"__typename":"CheckRun","name":"changelog","status":"QUEUED","conclusion":"","startedAt":"'"$Z0"'","completedAt":"'"$Z0"'"}]}'
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"CheckRun","workflowName":"changelog-check","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:05:00Z","completedAt":"2026-10-04T07:05:01Z"},
+  {"__typename":"CheckRun","workflowName":"changelog-check","name":"changelog","status":"QUEUED","conclusion":"","startedAt":"'"$Z0"'","completedAt":"'"$Z0"'"}]}'
 run_case "C16 stampless queued successor does not displace (reds)" 1 1 "$ERR_UNSTABLE" "$ROLLUP_STAMPLESS_SUCCESSOR"
 
 # C17: a REAL rollup, captured from a public Evidence PR stranded by this defect
@@ -185,12 +186,53 @@ run_case "C16 stampless queued successor does not displace (reds)" 1 1 "$ERR_UNS
 run_case "C17 real stranded-PR rollup skips" 0 1 "$ERR_UNSTABLE" \
   "$(cat "$here/testdata/rollup-superseded-cancelled.json")"
 
+# C18: two DIFFERENT workflows each run a job named `build`. Workflow A's run is
+#      an older FAILURE; workflow B's is a later SUCCESS. They are two checks, not
+#      one, so A's FAILURE is still that check's latest run → reds. A key on the
+#      job name alone would collapse them, let B's SUCCESS hide A's FAILURE and
+#      skip — a loosening.
+ROLLUP_SAME_NAME_TWO_WORKFLOWS='{"statusCheckRollup":[
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"CheckRun","workflowName":"workflow-a","name":"build","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:00:00Z","completedAt":"2026-10-04T07:02:00Z"},
+  {"__typename":"CheckRun","workflowName":"workflow-b","name":"build","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-04T07:01:00Z","completedAt":"2026-10-04T07:05:00Z"}]}'
+run_case "C18 same job name in two workflows: later SUCCESS never hides a FAILURE (reds)" 1 1 "$ERR_UNSTABLE" "$ROLLUP_SAME_NAME_TWO_WORKFLOWS"
+
+# C19: a check run WITHOUT a workflowName has no identity to prove "same check"
+#      with, so it is never de-duplicated (FAIL-CLOSED): a CANCELLED run beside a
+#      later SUCCESS of the same name, neither carrying a workflowName, is judged
+#      as listed → the CANCELLED run reds. (With workflowName this is C12, a skip.)
+ROLLUP_NO_WORKFLOW_NAME='{"statusCheckRollup":[
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-09-30T13:00:11Z","completedAt":"2026-09-30T13:00:24Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-09-30T13:00:04Z","completedAt":"2026-09-30T13:00:06Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-09-30T13:00:12Z","completedAt":"2026-09-30T13:00:25Z"}]}'
+run_case "C19 check run without workflowName is not de-duplicated (fail-closed, reds)" 1 1 "$ERR_UNSTABLE" "$ROLLUP_NO_WORKFLOW_NAME"
+
+# C20: a commit status reported twice under one context — an older ERROR, then
+#      a later SUCCESS — is one check keyed on its context: the latest is green,
+#      so with only our own `enable` red → benign skip. A status context never
+#      collides with a check run of the same name (C21).
+ROLLUP_STATUS_SUPERSEDED='{"statusCheckRollup":[
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"StatusContext","context":"leak-sweep","state":"ERROR","startedAt":"2026-10-04T07:00:00Z"},
+  {"__typename":"StatusContext","context":"leak-sweep","state":"SUCCESS","startedAt":"2026-10-04T07:15:00Z"}]}'
+run_case "C20 status context superseded by a later SUCCESS skips" 0 1 "$ERR_UNSTABLE" "$ROLLUP_STATUS_SUPERSEDED"
+
+# C21: a FAILED commit status and a later SUCCESS check run share the name
+#      `leak-sweep`. Different kinds, different keys → the status still reds.
+ROLLUP_STATUS_VS_RUN='{"statusCheckRollup":[
+  {"__typename":"CheckRun","workflowName":"evidence-automerge","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"StatusContext","context":"leak-sweep","state":"FAILURE","startedAt":"2026-10-04T07:00:00Z"},
+  {"__typename":"CheckRun","workflowName":"leak-sweep","name":"leak-sweep","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-04T07:05:00Z","completedAt":"2026-10-04T07:06:00Z"}]}'
+run_case "C21 status context and same-named check run stay separate (reds)" 1 1 "$ERR_UNSTABLE" "$ROLLUP_STATUS_VS_RUN"
+
 # ── G1–G3: CLASS GUARD for #1959. THE CLASS: a non-Go consumer of a status-check
 #    rollup (a shell or Python script, or a workflow `run:` block) that judges
 #    failing conclusions over EVERY listed run instead of the latest run per
-#    check name. A file is a CANDIDATE when it reads `statusCheckRollup` and
-#    names a failing conclusion as a quoted literal; a candidate is CLEAN only
-#    when it calls `latest_run_per_name(` (a `def` line alone is not a call).
+#    check (a check run keyed on (workflowName, name), a status context on its
+#    context; C18 and C19 pin that key). A file is a CANDIDATE when it reads
+#    `statusCheckRollup` and names a failing conclusion as a quoted literal; a
+#    candidate is CLEAN only when it calls `latest_run_per_check(` (a `def` line
+#    alone is not a call).
 #    The Go consumers reduce through deskkit.LatestRunPerName and are out of
 #    this guard's scope.
 #
@@ -204,7 +246,7 @@ scan_rollup_judges() {
     grep -q 'statusCheckRollup' "$f" 2>/dev/null || continue
     grep -qE "[\"'](FAILURE|CANCELLED|TIMED_OUT|STARTUP_FAILURE|ACTION_REQUIRED|ERROR)[\"']" "$f" 2>/dev/null || continue
     echo "CANDIDATE ${f#"$root"/}"
-    if ! grep -v 'def latest_run_per_name(' "$f" | grep -q 'latest_run_per_name('; then
+    if ! grep -v 'def latest_run_per_check(' "$f" | grep -q 'latest_run_per_check('; then
       echo "UNREDUCED ${f#"$root"/}"
     fi
   done
@@ -245,7 +287,7 @@ fi
 #     the definition left in place) is flagged — a def alone is not a call.
 mut="$WORK/mut"
 mkdir -p "$mut/tools/evidence-automerge"
-sed 's/in latest_run_per_name(rollup)/in rollup/' "$CHECK" > "$mut/tools/evidence-automerge/automerge-refusal.sh"
+sed 's/in latest_run_per_check(rollup)/in rollup/' "$CHECK" > "$mut/tools/evidence-automerge/automerge-refusal.sh"
 g3="$(scan_rollup_judges "$mut")"
 if printf '%s\n' "$g3" | grep -qxF 'UNREDUCED tools/evidence-automerge/automerge-refusal.sh'; then
   ok "G3 class guard flags the real site with its reduction call reverted"
