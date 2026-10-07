@@ -110,6 +110,12 @@ Verifier's reading: PASS, with row 6 judged against a baseline it recomputed its
 Desk adjudication: row 6's Expect says N must be below "the count recorded before this brief". The recorded count is 163 (inventory.md), and 165 is not below 163, so row 6 does not pass as written. The like-for-like recount (166 on cc0ef547^, 165 on cc0ef547) shows that the brief did remove one git spawn. The recorded baseline went stale because other desk-tool code raised the count on main before this brief merged. Desktools-v2/09 hit the same stale-baseline class on #1529, and the desk ruled there that the delta is explained first and the baseline is never refreshed blind. Rows 1-5 pass. Status stays implemented until row 6 is re-pinned to a reproducible baseline.
 
 VERIFY: FAIL
+Desk note (2026-10-07, review response on #2330, findings C1 and C3d). This note appends; it does not reword the text above.
+
+- **Row 6: FAIL as written.** Its Output cell above ends "passes on the re-derived baseline only". That phrase describes the verifier's own reading; it is not the row's result. Judged against the Expect's recorded baseline (163, inventory.md), the measured 165 is not below it, so row 6 **fails**. The like-for-like recount (166 on cc0ef547^, 165 on cc0ef547) shows the brief did remove one git spawn. The baseline re-pin is filed as #2337.
+- **Outcome record.** `docs/streams/verify-outcomes/desktools-go-git/06-20261007T125237Z-1e5a7ff16275.json` records outcome verify-fail, 5/6, rows [6], blocker_ref #2337.
+
+**VERIFY: FAIL** (unchanged)
 
 ## Review
 Gate: model (all four risk answers no — the sensitive credential path was reviewed in
