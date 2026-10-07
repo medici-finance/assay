@@ -237,6 +237,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 31 | [Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live](brief-31-remaining-roles-write-audit.md) | 8 | M | todo | — | — |
 | 32 | [Release-N+1 deletion — the forge claim store is removed and an unset store key is refused](brief-32-forge-store-deletion.md) | 8 | M | todo | — | — |
 | 33 | [Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind](brief-33-forge-reads-for-statusgen-s-remaining-sites.md) | 1 | L | todo | — | — |
+| 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | todo | — | — |
 | 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check and the transcribe lanes' sign-off check read through deskread, accept only a User author, and hold no credential of their own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
@@ -287,6 +288,28 @@ put those reads in their own brief under the freeze rule. 33 adds them as four o
 result fields, each with both backends, goldens, inventory rows 55–58 and a `deskread` kind as its
 consumer, so `33 → 18`. 33 touches no statusgen file and no workflow, and it does not decide which
 identity CI reads under (#2253).
+
+**34 sits in front of 18's CI-lane sites.** Most of statusgen's remaining forge-CLI calls run
+only inside CI (`--corroborate`, `--auto-flip-model`, the transcribe lanes), under the
+workflow's own job token. `deskread` reads only as a minted desk App, and a CI job holds no
+desk-role custody for it to resolve, so 18's row 3 cannot reach its expected count (2 until 35 lands) for those sites. The
+driver's ruling on #2253 chose an explicit, opt-in `deskread` transport that reads with the
+job token, for read-only kinds only.
+34 adds it: a `--ci-workflow-token` flag, refused outside CI, refused for a personal or OAuth
+token, bound to the job's own repository, built on a default-deny forge that refuses every write
+method, and recorded in the envelope's identity. Under the flag in CI, `deskread` activates from
+the job's environment roster. Its threat model is accidental or ambient use in an honest CI job:
+against a caller who forges the CI environment, only the read-only forge and the closed
+`ciTransportKinds` read-kind set hold, and the identity record's repository and run id are
+unverified. It is gated human because it relaxes the no-ambient-token rule (ratchet 4 → 5),
+and it touches no statusgen file and no workflow, so `34 → 18`. 18 inherits five hand-offs,
+each named in 34's `consumers:`: move each CI-lane site onto `deskread --ci-workflow-token` (the three that 35 takes move there);
+add each kind those sites need to the closed `ciTransportKinds` set by reviewed diff; edit this
+repository's statusgen workflow to hand the job token over in the dedicated variable with the
+roster variables, never in a `pull_request_target` or `workflow_run` job; give each scaffolded
+adopter job that hands the token to `deskread` a read-only `permissions:` block (the
+release-download steps and the `regen` job, which commits the board, keep their scopes); and
+route cross-repository reads (which land in `partial`) to custody or could-not-check.
 
 **35 sits behind 18 and 33.** 18 moves no human-ruling resolver; 35 moves both. The first is
 the decision-record ruling resolver in `decisionruling.go`, including its `gh auth token`
@@ -445,8 +468,10 @@ findings and do not exist yet.
 - **Wave 1** — `forge-neutral/01`. The resolver, the per-forge custody binding, and the
   refusal contract. Everything else depends on it.
 - **Wave 1 (beside 01)** — `forge-neutral/33` (the `Forge` reads statusgen's remaining sites
-  need; depends on nothing, since the seam it extends already exists on `main`). 18 now depends
-  on 08 and 33 and stays in wave 5.
+  need; depends on nothing, since the seam it extends already exists on `main`).
+- **Wave 1 (beside 01)** — `forge-neutral/34` (the CI workflow-token transport in `deskread`;
+  depends on nothing, since the read verb and the seam it builds on already exist on `main`).
+  18 depends on 08, 33 and 34 and stays in wave 5.
 - **Wave 2** — `forge-neutral/02`, `03`, `04`, `05` (all depend only on 01, all
   parallelizable): identity, the two write-verb wiring briefs, and the claim layer.
 - **Wave 3** — `forge-neutral/06` (reads; depends on 01 + 03 for the established wiring
@@ -463,7 +488,7 @@ findings and do not exist yet.
 - **Wave 6** — `forge-neutral/35` (both human-ruling resolvers onto the read verb, human-gated; its
   `depends:` names `forge-neutral/18` and `forge-neutral/33`).
 
-One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `33 → 18` and `{18, 33} → 35`.
+One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `{33, 34} → 18` and `{18, 33} → 35`.
 
 **Reviewer write boundary (briefs 20–25, 28–32)** — waves are derived from `depends:` like
 every other brief here, so they interleave with the numbers above rather than restarting:

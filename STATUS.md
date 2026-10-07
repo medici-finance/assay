@@ -23,7 +23,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-07 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/53 | 2026-10-07 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-07 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/32 | 2026-10-07 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/33 | 2026-10-07 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/27 | 2026-10-07 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-07 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-07 |  |
@@ -58,9 +58,9 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 |---|---|---|---|
 | desktools-v2 | 16 — Migrate cellctl to Cobra commands and Viper configuration [exec:strong] | 2 | 20000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 33 — Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind [exec:strong] | 1 | 3500 |
+| forge-neutral | 34 — deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default [exec:strong] | 1 | 3500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
-| desktools-v2 | 12 — platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS [exec:strong] | 2 | 1000 + 1500 (drive:desktools-v2) |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
 | measured-status | 06 — model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login [exec:strong] | 1 | 2200 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
@@ -73,7 +73,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 05e9989 2026-10-07T12:30:19+11:00_
+_last regen: e399dc8 2026-10-07T12:45:43+11:00_
 
 **Progress:** 8/13 brief items done.
 
@@ -95,13 +95,13 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 05e9989 2026-10-07T12:30:19+11:00_
+_last regen: e399dc8 2026-10-07T12:45:43+11:00_
 
 **Progress:** 15/71 brief items done.
 
 **In-flight:**
 
-_none_
+- desktools-v2/12
 
 **Blocked on review:**
 
@@ -118,7 +118,6 @@ _none_
 
 **Frontier next:**
 
-- desktools-v2/12
 - desktools-v2/16
 
 
@@ -477,7 +476,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — implemented (wave 3)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
 
-### forge-neutral (27 open)
+### forge-neutral (28 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
@@ -505,6 +504,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 31 Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live — todo (wave 8)
 - 32 Release-N+1 deletion — the forge claim store is removed and an unset store key is refused — todo (wave 8)
 - 33 Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind — todo (wave 1)
+- 34 deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default — todo (wave 1)
 - 35 Human-ruling resolvers onto the read verb — the decision-record ruling check and the transcribe lanes' sign-off check read through deskread, accept only a User author, and hold no credential of their own — todo (wave 6)
 
 ### fresh-views (6 open)
@@ -775,4 +775,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**19** active, **0** paused, **7** parked) · **106/366** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**19** active, **0** paused, **7** parked) · **106/367** briefs done · completed initiatives: see `docs/archive/`
