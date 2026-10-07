@@ -225,6 +225,12 @@ dispatched in the normal way, citing the ratified comment — `deskdispatch` is 
 its flags belong to that verb's own documentation. Until the ratifying comment lands, the
 amendment does not go out on the relay alone.
 
+**A ruling that approves a `gate: human` brief still `todo` names its re-dispatch owner.** The
+relay's what-happens-next part (part 4) names which desk dispatches the brief and the claim key
+it will appear under (`<repo>--<stream>--<NN>`); the decision issue is closed citing the ruling
+only once that dispatch lands — or once its refusal is itself filed and linked. A ruling that
+moves no status cell starves silently.
+
 ## Verification, then the next item
 
 Do not present item `k+1` until item `k`'s act is verified:
