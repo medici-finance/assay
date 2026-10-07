@@ -222,8 +222,12 @@ func TestEligibilityV2EscapesWholeWaveGate(t *testing.T) {
 	}
 
 	// --- subtest (converse): depends unsatisfied → held ---
+	// The target is `implemented` with no gate and no Evidence. Under the
+	// depends: rule pinned by TestDependsHumanGatePass below, `implemented`
+	// satisfies a depends: edge ONLY for a gate:human brief with a recorded
+	// pass — this one is neither, so it still holds.
 	blocker2 := mkStream("blocker", "active", "P1",
-		Brief{Num: "01", Wave: 0, Status: "implemented"}, // not done/verified
+		Brief{Num: "01", Wave: 0, Status: "implemented"}, // not done/verified, not gate:human-with-PASS
 	)
 	blocker2.LastTouch = day(0)
 
@@ -238,6 +242,130 @@ func TestEligibilityV2EscapesWholeWaveGate(t *testing.T) {
 		if p.Stream.Name == "target" && p.Brief.Num == "02" {
 			t.Fatalf("brief-v2 02 with unsatisfied depends should be HELD even though the wave-0 sibling is done, got %+v", picks2)
 		}
+	}
+
+	// --- subtest (rule change): the SAME implemented target, but gate:human
+	// with a recorded strict PASS → the depends: edge is satisfied → offered.
+	// Before this rule an `implemented` target held every dependent whatever
+	// its gate and verdict; this subtest is the deliberate flip of that.
+	blocker3 := mkStream("blocker", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "implemented", Gate: "human", Evidence: evPass},
+	)
+	blocker3.LastTouch = day(0)
+	target3 := mkStream("target", "active", "P1",
+		Brief{Num: "08", Wave: 0, Status: "done"},
+		Brief{Num: "02", Wave: 1, Status: "todo", Schema: "brief-v2", Depends: []string{"blocker/01"}},
+	)
+	target3.LastTouch = day(0)
+	if !pickedIn(nextUp([]*Stream{target3, blocker3}, ClaimView{}, nil).Picks, "target", "02") {
+		t.Fatalf("brief-v2 02 whose depends: target is gate:human at implemented with a recorded PASS should be eligible")
+	}
+}
+
+// Evidence bodies for the depends: rule tests below.
+const (
+	evPass      = "| Date | Runner |\n|---|---|\n| 2026-01-02 | verifier |\n\n**VERIFY: PASS**\n"
+	evFail      = "**VERIFY: FAIL** — row 2 red\n"
+	evPassFail  = "**VERIFY: PASS**\n\nre-run:\n\n**VERIFY: FAIL** — regression\n"
+	evFailPass  = "**VERIFY: FAIL** — row 2 red\n\nre-run after fix:\n\n**VERIFY: PASS**\n"
+	evLoosePass = "Non-implementer verifier run — VERIFY: PASS (no strict marker)\n"
+)
+
+func pickedIn(picks []Pick, stream, num string) bool {
+	for _, p := range picks {
+		if p.Stream.Name == stream && p.Brief.Num == num {
+			return true
+		}
+	}
+	return false
+}
+
+// TestDependsHumanGatePass pins the depends: satisfaction rule: a target at
+// done/verified satisfies a depends: edge; so does a gate:human target at
+// `implemented` whose last recorded verdict is a strict PASS. Every other
+// shape — a FAIL, a PASS later answered by a FAIL, no verdict, a loose-form
+// PASS only, a non-human gate, a status other than implemented — stays held.
+// Each case is checked through all three readers: depIsSatisfied, the
+// eligibility evaluator, and Next-up.
+func TestDependsHumanGatePass(t *testing.T) {
+	cases := []struct {
+		name   string
+		dep    Brief
+		wantOK bool
+	}{
+		{"human implemented PASS", Brief{Status: "implemented", Gate: "human", Evidence: evPass}, true},
+		{"human implemented FAIL then PASS", Brief{Status: "implemented", Gate: "human", Evidence: evFailPass}, true},
+		{"human implemented FAIL", Brief{Status: "implemented", Gate: "human", Evidence: evFail}, false},
+		{"human implemented PASS then FAIL", Brief{Status: "implemented", Gate: "human", Evidence: evPassFail}, false},
+		{"human implemented no verdict", Brief{Status: "implemented", Gate: "human"}, false},
+		{"human implemented loose PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evLoosePass}, false},
+		{"model implemented PASS", Brief{Status: "implemented", Gate: "model", Evidence: evPass}, false},
+		{"legacy implemented PASS", Brief{Status: "implemented", Evidence: evPass}, false},
+		{"human in-progress PASS", Brief{Status: "in-progress", Gate: "human", Evidence: evPass}, false},
+		{"human todo PASS", Brief{Status: "todo", Gate: "human", Evidence: evPass}, false},
+		{"model verified", Brief{Status: "verified", Gate: "model"}, true},
+		{"human done", Brief{Status: "done", Gate: "human"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dep := tc.dep
+			dep.Num, dep.Wave = "01", 0
+			blocker := mkStream("blocker", "active", "P1", dep)
+			blocker.LastTouch = day(0)
+			target := mkStream("target", "active", "P1",
+				Brief{Num: "02", Wave: 0, Status: "todo", Schema: "brief-v2", Depends: []string{"blocker/01"}},
+			)
+			target.LastTouch = day(0)
+			streams := []*Stream{target, blocker}
+
+			if got := depIsSatisfied(streams, "blocker/01"); got != tc.wantOK {
+				t.Errorf("depIsSatisfied = %v, want %v", got, tc.wantOK)
+			}
+			ev := evaluateEligibility(streams, nil, "")["target/02"]
+			if gotOK := ev.Verdict == VerdictEligible; gotOK != tc.wantOK {
+				t.Errorf("evaluator verdict = %s (holds %+v), want eligible=%v", ev.Verdict, ev.Holds, tc.wantOK)
+			}
+			if got := pickedIn(nextUp(streams, ClaimView{}, nil).Picks, "target", "02"); got != tc.wantOK {
+				t.Errorf("Next-up offers target/02 = %v, want %v", got, tc.wantOK)
+			}
+		})
+	}
+}
+
+// TestGatesNeverHumanPass pins the other half of the rule: the gate:human +
+// implemented + PASS target that satisfies a depends: edge NEVER satisfies a
+// gates: edge (still held) or a feathers: edge (still a notice). A gates:
+// edge keeps waiting for verified/done.
+func TestGatesNeverHumanPass(t *testing.T) {
+	dep := Brief{Num: "01", Wave: 0, Status: "implemented", Gate: "human", Evidence: evPass}
+	blocker := mkStream("blocker", "active", "P1", dep)
+	blocker.LastTouch = day(0)
+
+	gated := mkStream("target", "active", "P1",
+		Brief{Num: "02", Wave: 0, Status: "todo", Schema: "brief-v2",
+			Gates: []GraphEdge{{Ref: "blocker/01", Type: "ordering-gate", Reason: "must be in force first"}}},
+		Brief{Num: "03", Wave: 0, Status: "todo", Schema: "brief-v2",
+			Feathers: []GraphEdge{{Ref: "blocker/01", Type: "build-dep"}}},
+	)
+	gated.LastTouch = day(0)
+	streams := []*Stream{gated, blocker}
+
+	if state, why := resolveInRepoBriefRef("blocker/01", streams); state != StateUnsatisfied || why == "" {
+		t.Fatalf("gates:/feathers: resolution of a gate:human implemented PASS target: want unsatisfied with a reason, got %s %q", state, why)
+	}
+	elig := evaluateEligibility(streams, nil, "")
+	if ev := elig["target/02"]; ev.Verdict != VerdictHeld || len(ev.Holds) != 1 || ev.Holds[0].State != StateUnsatisfied {
+		t.Fatalf("gates: edge on a gate:human implemented PASS target must HOLD; got %+v", ev)
+	}
+	if ev := elig["target/03"]; ev.Verdict != VerdictEligibleWithNotice || len(ev.Notices) != 1 {
+		t.Fatalf("feathers: edge on a gate:human implemented PASS target must stay a notice; got %+v", ev)
+	}
+	if pickedIn(nextUp(streams, ClaimView{}, nil).Picks, "target", "02") {
+		t.Fatalf("Next-up must not offer a brief whose gates: target is only gate:human implemented PASS")
+	}
+	// Same target satisfies a depends: edge — the asymmetry is the rule.
+	if !depIsSatisfied(streams, "blocker/01") {
+		t.Fatalf("control: the same target must satisfy a depends: edge")
 	}
 }
 

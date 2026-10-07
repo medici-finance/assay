@@ -1,0 +1,2 @@
+### Changed
+- statusgen: a `gate: human` dependency at `implemented` whose last recorded verdict is a strict `**VERIFY: PASS**` (no later FAIL) now satisfies `depends:` edges, so its dependents become eligible while it waits for human sign-off. `gates:` and `feathers:` edges still wait for `verified`/`done`; a FAIL, a missing verdict, a non-human gate, or any other status stays unsatisfied. The worker-desk skill's dispatch-exclusion line states the same rule.

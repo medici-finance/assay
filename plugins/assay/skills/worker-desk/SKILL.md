@@ -385,7 +385,9 @@ never licenses dispatching past the floor. Resumes and rework (rows 3, 4, 5, 5b)
 drive picks and the floor does not hold them.
 
 **2. Merge the per-root plans** with §The interleave rule, tag every row with its repo-qualified ID,
-name every could-not-check root, and exclude items whose `depends:` are not yet `done`. A count from
+name every could-not-check root, and exclude items whose `depends:` are not yet `done` — except that a
+`gate: human` dependency at `implemented` whose last recorded verdict is `VERIFY: PASS` counts as met for
+`depends:` only, never for `gates:` (the same rule statusgen's eligibility evaluator applies). A count from
 human:<name> ("next 3") takes the top N **of the merged order** — scoping bounds THIS refill, never the loop.
 
 **3. Dispatch** each item with `deskdispatch` (below) — one `capability:dispatch-worker` per item, all
