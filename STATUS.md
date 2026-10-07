@@ -57,6 +57,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | desktools-v2 | 16 — Migrate cellctl to Cobra commands and Viper configuration [exec:strong] | 2 | 20000 + 1500 (drive:desktools-v2) |
+| build-less-brittle | 11 — Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge [exec:strong] | 4 | 4000 + 1500 (drive:build-less-brittle) |
 | forge-neutral | 33 — Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind [exec:strong] | 1 | 3500 |
 | forge-neutral | 34 — deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default [exec:strong] | 1 | 3500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
@@ -71,11 +72,11 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 ## Drive: `build-less-brittle`
 
-**State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
+**State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: e399dc8 2026-10-07T12:45:43+11:00_
+_last regen: b34a4b4 2026-10-07T23:13:24+11:00_
 
-**Progress:** 8/13 brief items done.
+**Progress:** 10/13 brief items done.
 
 **In-flight:**
 
@@ -83,30 +84,30 @@ _none_
 
 **Blocked on review:**
 
-- build-less-brittle/05
-- build-less-brittle/09
+_none_
 
 **Frontier next:**
 
-_none_
+- build-less-brittle/11
 
 
 ## Drive: `desktools-v2`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: e399dc8 2026-10-07T12:45:43+11:00_
+_last regen: b34a4b4 2026-10-07T23:13:24+11:00_
 
 **Progress:** 15/71 brief items done.
 
 **In-flight:**
 
-- desktools-v2/12
+_none_
 
 **Blocked on review:**
 
 - desktools-v2/03
 - desktools-v2/10
+- desktools-v2/12
 - desktools-v2/13
 - desktools-v2/14
 - windows-port/00
@@ -126,14 +127,14 @@ _last regen: e399dc8 2026-10-07T12:45:43+11:00_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 96 total — 87 at implemented, 9 verified awaiting review)
+## Awaiting verification / review (58 desk-actionable of 97 total — 86 at implemented, 11 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (57)
+### Desk-actionable (58)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -146,9 +147,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | — | — |
-| build-less-brittle | 05 [exec:strong] | implemented | 4500 | 3 | — | — | — |
+| build-less-brittle | 05 [exec:strong] | verified | 4500 | 3 | — | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
 | build-less-brittle | 06 [exec:strong] | verified | 4500 | 3 | — | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | — | — |
+| build-less-brittle | 09 [exec:strong] | verified | 4000 | 2 | — | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
 | build-less-brittle | 10 [exec:strong] | verified | 4000 | 2 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -221,7 +223,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | windows-port | 00 | implemented | 5000 | 8 | — | — | — |
 | desk-containers | 02 | implemented | 4500 | 7 | — | — | — |
-| build-less-brittle | 09 [exec:strong] | implemented | 4000 | 2 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | graph-execution | 07 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -237,6 +238,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 18 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 28 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desktools-v2 | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -310,9 +312,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 - 02 design-fit: in every new brief — owner, contract, retires, weight, why-add — verified (wave 1)
 - 04 Intake files by error class; a recurring class triggers a design brief, not another point fix — verified (wave 2)
-- 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — implemented (wave 3)
+- 05 Worker two-strikes: the second fix in a class becomes a design note; PR bodies report measured weight — verified (wave 3)
 - 06 Design-fit review stage: right layer, should it exist, what does it replace — before correctness; advisory at landing, blocking by a later recorded decision — verified (wave 2)
-- 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — implemented (wave 3)
+- 09 Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept — verified (wave 3)
 - 10 Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning — verified (wave 2)
 - 11 Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge — todo (wave 4)
 - 12 The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule — todo (wave 5)
@@ -424,7 +426,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 09 purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) — verified (wave 3)
 - 10 one outbound-write check at the forge write seam, keyed on the target's visibility — implemented (wave 2)
 - 11 a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools — todo (wave 3)
-- 12 platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS — todo (wave 2)
+- 12 platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS — implemented (wave 2)
 - 13 platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage — implemented (wave 2)
 - 14 regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green — implemented (wave 2)
 - 15 Cobra and Viper foundation and complete CLI migration routing — verified (wave 1)
@@ -505,7 +507,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 32 Release-N+1 deletion — the forge claim store is removed and an unset store key is refused — todo (wave 8)
 - 33 Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind — todo (wave 1)
 - 34 deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default — todo (wave 1)
-- 35 Human-ruling resolvers onto the read verb — the decision-record ruling check and the transcribe lanes' sign-off check read through deskread, accept only a User author, and hold no credential of their own — todo (wave 6)
+- 35 Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own — todo (wave 6)
 
 ### fresh-views (6 open)
 
