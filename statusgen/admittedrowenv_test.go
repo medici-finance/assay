@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -123,8 +124,24 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // the host).
 var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer"}
 
+// rowLaunchShells are the programs a Verify row's command text runs under.
+var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
+
+// implicitEnvAllowed names every function that may start a shell or a program
+// it does not name literally without setting the process environment, so the
+// process inherits the caller's: the statusgen self re-runs of the lint and
+// diff-lint audits, the forge reader binary, the merge check (which runs the
+// operator's own command line, not a Verify row) and the probes that run only
+// `exit 0` or `true` to learn what the host supports.
+var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readItem", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
+
 // environCallers returns "file: func" for every os.Environ call outside the
-// allowed functions in the given sources.
+// allowed functions in the given sources, and for every function outside
+// implicitEnvAllowed that starts a shell, or a program it does not name
+// literally, without assigning a process environment (an unset Env inherits
+// the caller's environment as surely as os.Environ does). The second check is
+// per function: it asks whether the function sets an Env at all, not which
+// command the setting belongs to.
 func environCallers(t *testing.T, files map[string]string) []string {
 	t.Helper()
 	var stray []string
@@ -139,28 +156,65 @@ func environCallers(t *testing.T, files map[string]string) []string {
 			if !ok || fn.Body == nil {
 				continue
 			}
+			launches, setsEnv := false, false
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				sel, ok := n.(*ast.SelectorExpr)
-				if ok && sel.Sel.Name == "Environ" {
-					if id, ok := sel.X.(*ast.Ident); ok && id.Name == "os" && !slices.Contains(rowEnvAllowed, fn.Name.Name) {
+				switch n := n.(type) {
+				case *ast.SelectorExpr:
+					if id, ok := n.X.(*ast.Ident); ok && id.Name == "os" && n.Sel.Name == "Environ" && !slices.Contains(rowEnvAllowed, fn.Name.Name) {
 						stray = append(stray, name+": "+fn.Name.Name)
 					}
+				case *ast.AssignStmt:
+					for _, lhs := range n.Lhs {
+						if sel, ok := lhs.(*ast.SelectorExpr); ok && sel.Sel.Name == "Env" {
+							setsEnv = true
+						}
+					}
+				case *ast.CallExpr:
+					launches = launches || shellOrUnnamedLaunch(n)
 				}
 				return true
 			})
+			if launches && !setsEnv && !slices.Contains(implicitEnvAllowed, fn.Name.Name) {
+				stray = append(stray, name+": "+fn.Name.Name+" (inherits)")
+			}
 		}
 	}
+	slices.Sort(stray)
 	return stray
+}
+
+// shellOrUnnamedLaunch reports whether call is exec.Command or
+// exec.CommandContext starting a shell or a program not named literally.
+func shellOrUnnamedLaunch(call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || (sel.Sel.Name != "Command" && sel.Sel.Name != "CommandContext") {
+		return false
+	}
+	if id, ok := sel.X.(*ast.Ident); !ok || id.Name != "exec" {
+		return false
+	}
+	at := 0
+	if sel.Sel.Name == "CommandContext" {
+		at = 1
+	}
+	if len(call.Args) <= at {
+		return false
+	}
+	lit, ok := call.Args[at].(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return true
+	}
+	program, err := strconv.Unquote(lit.Value)
+	return err != nil || slices.Contains(rowLaunchShells, program)
 }
 
 // TestRowEnvSingleSource is the class guard: a Verify row runs in the run's
 // row environment (shellPlan.rowEnv), so no other function may hand a process
-// the caller's environment, which would let a row escape the admitted one. The
-// planted second runner proves the guard sees such a site. Its limit, stated so
-// it is not overclaimed: it sees an explicit os.Environ only, so a runner that
-// leaves cmd.Env unset (and so inherits the caller's environment implicitly) is
-// not caught here; the row runner's own cmd.Env assignment is pinned by the
-// row-env-source mutation instead.
+// the caller's environment, which would let a row escape the admitted one,
+// whether explicitly (os.Environ) or by leaving the process environment unset.
+// The planted runners prove the guard sees each kind of site: one passing
+// os.Environ, one starting a shell with no Env, one starting an argv-named
+// program with no Env, beside a fixed-tool launch it must leave alone.
 func TestRowEnvSingleSource(t *testing.T) {
 	names, err := filepath.Glob("*.go")
 	if err != nil {
@@ -178,11 +232,16 @@ func TestRowEnvSingleSource(t *testing.T) {
 		files[name] = string(b)
 	}
 	if stray := environCallers(t, files); len(stray) > 0 {
-		t.Fatalf("os.Environ outside the row environment's source: %v", stray)
+		t.Fatalf("caller's environment reaches a process outside the row environment's source: %v", stray)
 	}
-	planted := map[string]string{"planted.go": "package main\nimport (\"os\"; \"os/exec\")\nfunc runRowAgain(c string) { cmd := exec.Command(\"sh\", \"-c\", c); cmd.Env = os.Environ(); _ = cmd.Run() }\n"}
-	if stray := environCallers(t, planted); !slices.Equal(stray, []string{"planted.go: runRowAgain"}) {
-		t.Fatalf("guard blind to a planted second row runner: %v", stray)
+	planted := map[string]string{"planted.go": "package main\nimport (\"context\"; \"os\"; \"os/exec\")\n" +
+		"func runRowAgain(c string) { cmd := exec.Command(\"sh\", \"-c\", c); cmd.Env = os.Environ(); _ = cmd.Run() }\n" +
+		"func runRowInherit(c string) { cmd := exec.Command(\"bash\", \"-c\", c); _ = cmd.Run() }\n" +
+		"func runArgvInherit(a []string) { _ = exec.CommandContext(context.Background(), a[0], a[1:]...).Run() }\n" +
+		"func readHead() { _ = exec.Command(\"git\", \"rev-parse\", \"HEAD\").Run() }\n"}
+	want := []string{"planted.go: runArgvInherit (inherits)", "planted.go: runRowAgain", "planted.go: runRowInherit (inherits)"}
+	if stray := environCallers(t, planted); !slices.Equal(stray, want) {
+		t.Fatalf("guard blind to a planted second row runner:\n got %q\nwant %q", stray, want)
 	}
 }
 

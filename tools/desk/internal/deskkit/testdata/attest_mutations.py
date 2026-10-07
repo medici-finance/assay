@@ -59,6 +59,7 @@ mutations = [
     ("home-same-dir", [(SOURCE, "if err != nil || !verifierSameDir(resolved, given) {", "if err != nil || resolved != given {")], KIT, "TestAttestCaseVariantRoot"),
     ("same-dir-identity", [(SOURCE, "return err == nil && os.SameFile(ai, bi)", "return err == nil && ai == bi")], KIT, "TestVerifierSameDir"),
     ("row-env-source", [(VERIFYRUN, "cmd.Env = plan.rowEnv()", "cmd.Env = os.Environ()")], ".", "TestAdmittedRows|TestRowEnvSingleSource", SG),
+    ("row-env-unset", [(VERIFYRUN, "\tcmd.Env = plan.rowEnv()\n", "")], ".", "TestRowEnvSingleSource", SG),
     ("row-env-admitted", [(VERIFYRUN, "\t\tplan.env = admittedRowEnv(os.Environ())\n", "")], ".", "TestAdmittedRows(StripGitEnv|PinGrep)/admitted", SG),
     ("row-env-strip", [(ADMISSION, 'case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv, home):', 'case false && admittedRowGlobal(kv, home):')], ".", "TestAdmittedRowsStripGitEnv/admitted|TestAdmittedRowEnvShape", SG),
     ("row-env-narrowing", [(ADMISSION, 'case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv, home):', 'case strings.HasPrefix(strings.ToUpper(key), "GIT_") && (home == "" || home != ""):')], ".", "TestAdmittedRowsKeepNarrowing/launch|TestAdmittedEnvNarrowOnly", SG),
