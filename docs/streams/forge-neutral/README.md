@@ -238,7 +238,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 32 | [Release-N+1 deletion — the forge claim store is removed and an unset store key is refused](brief-32-forge-store-deletion.md) | 8 | M | todo | — | — |
 | 33 | [Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind](brief-33-forge-reads-for-statusgen-s-remaining-sites.md) | 1 | L | todo | — | — |
 | 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | todo | — | — |
-| 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check and the transcribe lanes' sign-off check read through deskread, accept only a User author, and hold no credential of their own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
+| 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -311,18 +311,22 @@ adopter job that hands the token to `deskread` a read-only `permissions:` block 
 release-download steps and the `regen` job, which commits the board, keep their scopes); and
 route cross-repository reads (which land in `partial`) to custody or could-not-check.
 
-**35 sits behind 18 and 33.** 18 moves no human-ruling resolver; 35 moves both. The first is
+**35 sits behind 18 and 33.** 18 moves no human-ruling resolver; 35 moves both, and the transcribe lanes'
+verdict-issue read with them. The first is
 the decision-record ruling resolver in `decisionruling.go`, including its `gh auth token`
 fallback. Moving its two reads onto `deskread` rewrites the inputs of the ruling-authenticity
 control (deleted-comment detection, the comment-to-issue binding, edit detection, the bot check)
 and the credential it reads under. The second is `ghCommentResolver` in `transcribescan.go`, the
 sign-off check both transcribe lanes' enactment gates read; moving it changes how the comment is
-found and where its author type comes from. Either is enough to make the work its own brief,
+found and where its author type comes from. The verdict-issue read, `ghVerdictIssueResolver` in
+`transcribeverdict.go`, feeds both lanes' author, signature and edit checks and takes its author
+type from the same source, so it moves with the sign-off read. Either resolver is enough to make the work its own brief,
 human-gated, needing an approved design record before dispatch. 35 consumes 33's comment fields
 and `issue` kind and the `issue` entry 18 adds to `deskread`'s CI-transport kind set, so
-`{18, 33} → 35`. 18's row 3 excludes `decisionruling.go` by path and counts the one line left in
-`transcribescan.go`, which 18's row 19 pins to `ghCommentResolver`; 35's row runs the same count
-with no exclusion and takes it to 0.
+`{18, 33} → 35`. 18's row 3 excludes `decisionruling.go` by path and counts the two lines left in the transcribe
+lanes, so its completion Expect is `2`: 18's row 19 pins the one in `transcribescan.go` to
+`ghCommentResolver`, and its row 20 the one in `transcribeverdict.go` to `ghVerdictIssueResolver`.
+35's row 5 runs the same count with no exclusion and takes it to 0.
 
 The chain is real, not conventional. 08's auto-flip has to recognise a reviewer identity on the
 configured forge, which is 07's roster-parity deliverable inside statusgen; 07's actor matching
@@ -485,7 +489,7 @@ findings and do not exist yet.
   re-homes onto the desk-tools read verb). 18 sits in wave 5 rather than 4 by the tree's own
   derivation rule — a brief's `depends:` must point to strictly-earlier waves
   (`statusgen/brieffile.go:1492-1522`), and 08 is wave 4.
-- **Wave 6** — `forge-neutral/35` (both human-ruling resolvers onto the read verb, human-gated; its
+- **Wave 6** — `forge-neutral/35` (both human-ruling resolvers and the verdict-issue read onto the read verb, human-gated; its
   `depends:` names `forge-neutral/18` and `forge-neutral/33`).
 
 One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `{33, 34} → 18` and `{18, 33} → 35`.
