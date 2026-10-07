@@ -50,9 +50,11 @@ func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeT
 
 // verifierEnv is the environment for every admission git read: inherited GIT_*
 // variables (which can redirect the repository, index, object store, config or
-// replace-ref base) are dropped, replacement objects are disabled and system
-// attributes are ignored, so the reads resolve the dispatched commit's own
-// objects, and the index the Verify rows read, in the home itself.
+// replace-ref base) are dropped, replacement objects are disabled, system
+// attributes and system config are ignored, and git may not prompt or run an
+// askpass helper, so the reads resolve the dispatched commit's own objects, and
+// the index the Verify rows read, in the home itself. An admitted run's rows
+// read with the same settings, so a home admission probes is read the same way.
 func verifierEnv() []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -60,7 +62,7 @@ func verifierEnv() []string {
 			env = append(env, kv)
 		}
 	}
-	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1")
+	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=")
 }
 func verifierGitBytes(root string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)
@@ -138,11 +140,7 @@ func withoutEvidence(b []byte) []byte {
 	return []byte(strings.TrimSpace(strings.Join(out, "\n")))
 }
 func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase) error {
-	home, err := filepath.Abs(root)
-	if err != nil {
-		return err
-	}
-	home, err = filepath.EvalSymlinks(home)
+	given, home, err := verifierHome(root)
 	if err != nil {
 		return err
 	}
@@ -165,13 +163,13 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 	}
 	path := brief
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(home, path)
+		path = filepath.Join(given, path)
 	}
 	path, err = filepath.EvalSymlinks(path)
 	if err != nil {
 		return err
 	}
-	rel, err := filepath.Rel(home, path)
+	rel, err := filepath.Rel(given, path)
 	if err != nil {
 		return err
 	}
@@ -190,6 +188,9 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 		return Refused("verifier requires its attested detached source commit")
 	}
 	if err := verifierOwnWorkTree(home); err != nil {
+		return err
+	}
+	if err := verifierRowGitReads(home); err != nil {
 		return err
 	}
 	// Admission compares the bytes a Verify row will read, never git's own view
@@ -250,19 +251,15 @@ func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
 		return err
 	}
 	stamp, _ := ModelStampOf(labels)
-	home, err := filepath.Abs(root)
-	if err != nil {
-		return err
-	}
-	home, err = filepath.EvalSymlinks(home)
+	given, home, err := verifierHome(root)
 	if err != nil {
 		return err
 	}
 	path := brief
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(home, path)
+		path = filepath.Join(given, path)
 	}
-	rel, err := filepath.Rel(home, path)
+	rel, err := filepath.Rel(given, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return Refused("verifier brief must be inside its source worktree")
 	}

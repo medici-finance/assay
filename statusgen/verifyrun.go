@@ -564,9 +564,19 @@ var wslLauncherSignatureRe = regexp.MustCompile(`(?i)execvpe\(/bin/bash\)|Create
 // check (issue #1418: a Windows WSL launcher with no distro exits 1 before the
 // row runs).
 type shellPlan struct {
-	bash   string // the bash executable to invoke; "" when none is usable
-	ok     bool   // a pipefail-capable bash was found AND probed clean
-	reason string // when !ok, exactly what was tried, for the could-not-run row
+	bash   string   // the bash executable to invoke; "" when none is usable
+	ok     bool     // a pipefail-capable bash was found AND probed clean
+	reason string   // when !ok, exactly what was tried, for the could-not-run row
+	env    []string // the rows' environment; nil inherits the caller's (rowEnv)
+}
+
+// rowEnv is the environment every Verify row of the run executes in: the
+// caller's own, unless the run was admitted, when it is admittedRowEnv's.
+func (p shellPlan) rowEnv() []string {
+	if p.env != nil {
+		return p.env
+	}
+	return os.Environ()
 }
 
 // gitForWindowsBashPaths are the well-known Git-for-Windows bash locations, tried
@@ -837,7 +847,7 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	argv = append(argv, unescapePipes(command))
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = root
-	cmd.Env = os.Environ()
+	cmd.Env = plan.rowEnv()
 	// On Windows a `cmd` row's command line must be built RAW, not from
 	// os/exec's default per-argument escaping (issue #1424). See winCmdLine and
 	// applyRowCmdLine: os/exec would wrap the row (`syscall.EscapeArg`) in an
@@ -1252,12 +1262,18 @@ func briefSections(path string) (verify, evidence string, err error) {
 //     must still execute — so it does NOT skip.
 //   - everything else (legacy check off-CI, gate:*) — executed as before.
 func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
-	out := make([]witness, 0, len(rows))
 	// The shell is resolved and probed ONCE for the whole run, not once per row:
 	// the probe is a subprocess, and O(rows) probes would add real overhead while
 	// telling us nothing a single probe does not. It is threaded into every row's
-	// execution below (runVerifyCommandWith / runHermeticallyWith).
-	plan := resolveShellPlan()
+	// execution (runVerifyCommandWith / runHermeticallyWith).
+	return runWitnessesWith(resolveShellPlan(), root, rows, runner, runnerSource, tree, date, timeout, ci)
+}
+
+// runWitnessesWith is runWitnesses with the run's plan, shell and row
+// environment, resolved by the caller: an admitted run passes the admitted
+// environment here, so no row of it can run in the caller's.
+func runWitnessesWith(plan shellPlan, root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
+	out := make([]witness, 0, len(rows))
 	for _, r := range rows {
 		// A cluster row (verdict-lane/07) is env-bound to a live cluster, whose
 		// runner is the privileged pod runner. This is the OFFLINE lane — it holds
@@ -1762,7 +1778,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitCouldNot
 	}
 
-	ws := runWitnesses(root, rows, runner, runnerSource, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
+	plan := resolveShellPlan()
+	if attestation != "" {
+		plan.env = admittedRowEnv(os.Environ())
+	}
+	ws := runWitnessesWith(plan, root, rows, runner, runnerSource, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
 	target := witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
 	for i := range ws {
 		ws[i].Repo = target

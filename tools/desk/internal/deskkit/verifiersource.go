@@ -49,14 +49,20 @@ import (
 // is never accepted as attested bytes. Nothing in the replace namespace
 // participates either.
 //
+// A row's git must also be able to READ the home: configuration that makes its
+// reads fail (core.bare, or an invalid grep, diff, log or status setting) turns
+// every negated row (! git grep -q X) into a pass, so admission runs the reads a
+// row makes and refuses when git fails instead of answering (verifierRowGitReads).
+//
 // Out of scope, stated so it is not overclaimed: the brief's own Evidence
 // section (written by the witness runner during the run, bound only by the plan
 // digest); repository configuration that changes how a Verify row's own git
-// commands PRESENT or MATCH content (diff drivers, pagers, aliases, grep
-// settings); and refs other than HEAD, which a shared repository's other
-// worktrees and the refresh before an outcome record move by design. The
-// binding covers the attested bytes on disk and in the index, not what a
-// command chooses to print about them or which other commit a row names.
+// commands PRESENT or MATCH content without failing (diff drivers, pagers,
+// aliases; grep's pattern settings are pinned by the admitted row runner, not
+// here); and refs other than HEAD, which a shared repository's other worktrees
+// and the refresh before an outcome record move by design. The binding covers
+// the attested bytes on disk and in the index, not what a command chooses to
+// print about them or which other commit a row names.
 
 // verifierNoReplacements refuses a home whose repository carries replacement
 // objects or grafts. Admission itself ignores them, but a Verify row's own git
@@ -108,6 +114,99 @@ func verifierOwnWorkTree(home string) error {
 		return Unverifiable("cannot inspect verifier work tree config", err)
 	}
 	return nil
+}
+
+// verifierHome resolves root to the directory the home names (given: absolute,
+// links resolved) and to the spelling git itself reports for it (home). A
+// case-insensitive or Windows file system admits several spellings of one
+// directory (letter case, slash direction, short names) and git reports the one
+// on disk, so the home takes git's spelling whenever both name the same
+// directory: the record, every later check and git's own view then compare as
+// one string, whichever spelling a caller passed. A root git resolves to any
+// other directory keeps its own spelling, and verifierOwnWorkTree refuses it.
+func verifierHome(root string) (given, home string, err error) {
+	given, err = filepath.Abs(root)
+	if err != nil {
+		return "", "", err
+	}
+	given, err = filepath.EvalSymlinks(given)
+	if err != nil {
+		return "", "", err
+	}
+	top, err := verifierGitBytes(given, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return given, given, nil
+	}
+	resolved, err := filepath.EvalSymlinks(strings.TrimSuffix(string(top), "\n"))
+	if err != nil || !verifierSameDir(resolved, given) {
+		return given, given, nil
+	}
+	return given, resolved, nil
+}
+
+// verifierSameDir reports whether two paths name one directory: by the file
+// system's own identity, not by spelling, which differs in case on macOS and
+// in case, slash direction and short names on Windows.
+func verifierSameDir(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	return err == nil && os.SameFile(ai, bi)
+}
+
+// verifierRowReads are the git reads Verify rows make most, each over a
+// pathspec that matches nothing, so the probe reads no file and only the
+// configuration can fail it. Each of grep, log, show, diff and status dies on
+// an invalid setting of its own (grep.patternType, log.date, diff.algorithm,
+// status.showUntrackedFiles, color.ui, ...); an exit of 0 or 1 is an answer.
+// Optional locks, the file system monitor and external diff and textconv
+// drivers are off, so the probe neither writes the index nor runs a program.
+var verifierRowReads = [][]string{
+	{"grep", "-q", "-e", "assay-admission-probe", "--", verifierProbePath},
+	{"log", "-1", "--format=%H", "--", verifierProbePath},
+	{"show", "-s", "--format=%H", "HEAD"},
+	{"diff", "--quiet", "--no-ext-diff", "--no-textconv", "HEAD", "--", verifierProbePath},
+	{"status", "--porcelain", "--", verifierProbePath},
+}
+
+const verifierProbePath = ":(literal).assay-admission-probe"
+
+// verifierRowGitReads refuses a home whose git configuration makes a Verify
+// row's own git read fail. Such a row exits 128 instead of reading the home,
+// and a negated row (! git grep -q X) or an emptiness test over a read's output
+// takes that failure as a pass: the class core.bare belongs to, reached through
+// any setting a read parses. Run with the admission environment, so only the
+// home's own and the caller's global configuration take part; system config is
+// off there and in an admitted run's rows alike (verifierEnv).
+func verifierRowGitReads(home string) error {
+	for _, read := range verifierRowReads {
+		args := append([]string{"--no-optional-locks", "-c", "core.fsmonitor=false"}, read...)
+		_, err := verifierGitBytes(home, args...)
+		var exit *exec.ExitError
+		switch {
+		case err == nil:
+		case errors.As(err, &exit) && exit.ExitCode() == 1:
+		case errors.As(err, &exit) && exit.ExitCode() > 1:
+			why, _, _ := strings.Cut(strings.TrimSpace(string(exit.Stderr)), "\n")
+			return Refused(fmt.Sprintf("verifier home's git config makes a Verify row's git %s fail (exit %d: %s); a negated row would pass without reading the home", read[0], exit.ExitCode(), why))
+		default:
+			return Unverifiable("cannot probe verifier row git reads: git "+read[0], err)
+		}
+	}
+	return nil
+}
+
+// verifierLacksAttrSource reports whether a failed probe is git rejecting the
+// --attr-source option itself, as a git older than 2.41 does (exit 129, naming
+// the option), and not any other failure, which says nothing about the git.
+func verifierLacksAttrSource(err error) bool {
+	var exit *exec.ExitError
+	return errors.As(err, &exit) && exit.ExitCode() == 129 && bytes.Contains(exit.Stderr, []byte("unknown option: --attr-source"))
 }
 
 // verifierNoLocalAttributes refuses a home whose repository carries its own
@@ -413,7 +512,7 @@ func verifierRender(home, rel, object string, checkout verifierCheckout) ([]byte
 	}
 	attr, err := verifierGit(home, checkout.args("check-attr", "-z", "filter", "--", rel)...)
 	if err != nil {
-		if _, probe := verifierGitBytes(home, "--attr-source="+checkout.source, "version"); probe != nil {
+		if _, probe := verifierGitBytes(home, "--attr-source="+checkout.source, "version"); verifierLacksAttrSource(probe) {
 			// A git without --attr-source cannot render from the attested
 			// attributes, so it cannot tell a converted file from a changed
 			// one: any file that differs from its blob refuses there, and the
