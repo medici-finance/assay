@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # =============================================================================
 # assay desk-base — the shared base image every per-desk container builds FROM.
@@ -43,12 +43,15 @@
 #   The git-floor-check step fails the build if the git on PATH is below the
 #   floor or cannot render a converted file from a committed tree.
 #
-# PINS: every FROM names its image by tag AND digest (`<name>:<tag>@sha256:…`),
-#   so a re-pushed tag cannot change what is built; the tag is kept for the
-#   reader, the digest is what is pulled. Both debian stages share one digest,
-#   because the git built in `gitbuild` links against the final stage's libs.
+# PINS: every FROM, and the `# syntax=` frontend on line 1, names its image by
+#   tag AND digest (`<name>:<tag>@sha256:…`), so a re-pushed tag cannot change
+#   what is built; the tag is kept for the reader, the digest is what is
+#   pulled. Both debian stages share one digest, because the git built in
+#   `gitbuild` links against the final stage's libs.
 #   The git, Go, gh and Node tarballs are each checked with `sha256sum -c`
-#   against a pinned ARG before they are unpacked. containers/README.md
+#   against a pinned ARG, and unpacked by the very next command. The apt
+#   packages are NOT pinned to exact bytes: apt takes the versions the
+#   signed bookworm archive serves at build time. containers/README.md
 #   ("Pins and checksums") lists every pin and the bump procedure;
 #   tools/desk/internal/deskkit/basepins_test.go holds the reviewed values.
 #
