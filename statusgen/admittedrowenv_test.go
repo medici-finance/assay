@@ -104,10 +104,11 @@ func TestAdmittedRowsPinGrep(t *testing.T) {
 }
 
 // TestAdmittedRowEnvShape pins the admitted environment one variable at a
-// time: no inherited GIT_* variable survives, whatever its case, and only the
-// settings admission reads with plus the grep pins are present.
+// time: no inherited GIT_* variable outside its narrowing form survives,
+// whatever its case, no shell startup variable survives, and only the settings
+// admission reads with plus the grep pins are added.
 func TestAdmittedRowEnvShape(t *testing.T) {
-	in := []string{"PATH=/bin", "GIT_DIR=x", "GIT_WORK_TREE=x", "GIT_INDEX_FILE=x", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.worktree", "GIT_CONFIG_VALUE_0=x", "GIT_CONFIG_PARAMETERS='core.worktree'='x'", "Git_Dir=x", "GIT_CEILING_DIRECTORIES=x"}
+	in := []string{"PATH=/bin", "GIT_DIR=x", "GIT_WORK_TREE=x", "GIT_INDEX_FILE=x", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.worktree", "GIT_CONFIG_VALUE_0=x", "GIT_CONFIG_PARAMETERS='core.worktree'='x'", "Git_Dir=x", "GIT_CEILING_DIRECTORIES=x", "BASH_ENV=x", "ENV=x", "BASH_FUNC_git%%=x", "Bash_Func_ls%%=x", "SHELLOPTS=x", "BASHOPTS=x", "PS4=x"}
 	want := []string{"PATH=/bin", "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=grep.patternType", "GIT_CONFIG_VALUE_0=default", "GIT_CONFIG_KEY_1=grep.extendedRegexp", "GIT_CONFIG_VALUE_1=false"}
 	if got := admittedRowEnv(in); !slices.Equal(got, want) {
 		t.Fatalf("admitted row environment:\n got %q\nwant %q", got, want)
@@ -154,7 +155,11 @@ func environCallers(t *testing.T, files map[string]string) []string {
 // TestRowEnvSingleSource is the class guard: a Verify row runs in the run's
 // row environment (shellPlan.rowEnv), so no other function may hand a process
 // the caller's environment, which would let a row escape the admitted one. The
-// planted second runner proves the guard sees such a site.
+// planted second runner proves the guard sees such a site. Its limit, stated so
+// it is not overclaimed: it sees an explicit os.Environ only, so a runner that
+// leaves cmd.Env unset (and so inherits the caller's environment implicitly) is
+// not caught here; the row runner's own cmd.Env assignment is pinned by the
+// row-env-source mutation instead.
 func TestRowEnvSingleSource(t *testing.T) {
 	names, err := filepath.Glob("*.go")
 	if err != nil {
@@ -177,5 +182,100 @@ func TestRowEnvSingleSource(t *testing.T) {
 	planted := map[string]string{"planted.go": "package main\nimport (\"os\"; \"os/exec\")\nfunc runRowAgain(c string) { cmd := exec.Command(\"sh\", \"-c\", c); cmd.Env = os.Environ(); _ = cmd.Run() }\n"}
 	if stray := environCallers(t, planted); !slices.Equal(stray, []string{"planted.go: runRowAgain"}) {
 		t.Fatalf("guard blind to a planted second row runner: %v", stray)
+	}
+}
+
+// TestAdmittedRowsShellEnv: what the caller's environment asks the row's shell
+// to run at startup (a BASH_ENV file, an exported function) cannot point an
+// admitted row's git at another tree. The unadmitted control proves each
+// plant lands.
+func TestAdmittedRowsShellEnv(t *testing.T) {
+	const row = "git grep -q TAMPERED; test $? -eq 1"
+	for _, mode := range []string{"bash-env", "bash-func"} {
+		for _, admit := range []bool{true, false} {
+			t.Run(mode+"/"+map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
+				root, other := admittedFixture(t, admit)
+				redirect := "GIT_DIR='" + filepath.Join(root, ".git") + "' GIT_WORK_TREE='" + other + "'"
+				switch mode {
+				case "bash-env":
+					startup := filepath.Join(t.TempDir(), "startup.sh")
+					if err := os.WriteFile(startup, []byte("export "+redirect+"\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					t.Setenv("BASH_ENV", startup)
+				case "bash-func":
+					t.Setenv("BASH_FUNC_git%%", "() { "+redirect+" command git \"$@\"; }")
+				}
+				code := verifyrunRow(t, root, row)
+				if admit && code != verifyrunExitPass {
+					t.Fatalf("admitted row's shell ran the caller's %s and read another tree (exit %d)", mode, code)
+				}
+				if !admit && code != verifyrunExitFail {
+					t.Fatalf("plant did not land: unadmitted row did not run the caller's %s (exit %d)", mode, code)
+				}
+			})
+		}
+	}
+}
+
+// TestAdmittedRowsKeepNarrowing: settings a launch makes to NARROW what git
+// reads or does (no system config, one named global config, no terminal or
+// helper prompt) survive into an admitted run's rows. The row proves the
+// global config is the only one read: an XDG config beside it is not.
+func TestAdmittedRowsKeepNarrowing(t *testing.T) {
+	root, _ := admittedFixture(t, true)
+	home := t.TempDir()
+	xdg := filepath.Join(home, "xdg")
+	if err := os.MkdirAll(filepath.Join(xdg, "git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(xdg, "git", "config"), []byte("[fixture]\n\tprobe = xdg\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[fixture]\n\tprobe = global\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, ".gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_TERMINAL_PROMPT", "0")
+	t.Setenv("GIT_ASKPASS", "")
+	row := `test "$(git config --get-all fixture.probe)" = global && test "$GIT_CONFIG_NOSYSTEM" = 1 && test "$GIT_TERMINAL_PROMPT" = 0 && test "${GIT_ASKPASS-unset}" = ""`
+	if code := verifyrunRow(t, root, row); code != verifyrunExitPass {
+		t.Fatalf("admitted row lost the launch's narrowing git settings (exit %d)", code)
+	}
+}
+
+// TestAdmittedEnvNarrowOnly: an inherited GIT_* variable survives only in its
+// narrowing form; any other value of the same variable is removed.
+func TestAdmittedEnvNarrowOnly(t *testing.T) {
+	const home = "/cell/home"
+	for _, tc := range []struct {
+		kv   string
+		keep bool
+	}{
+		{"GIT_CONFIG_NOSYSTEM=1", true},
+		{"GIT_CONFIG_NOSYSTEM=true", true},
+		{"GIT_CONFIG_NOSYSTEM=0", false},
+		{"GIT_CONFIG_NOSYSTEM=bogus", false},
+		{"GIT_TERMINAL_PROMPT=0", true},
+		{"GIT_TERMINAL_PROMPT=1", false},
+		{"GIT_TERMINAL_PROMPT=bogus", false},
+		{"GIT_ASKPASS=", true},
+		{"GIT_ASKPASS=/bin/helper", false},
+		{"GIT_CONFIG_GLOBAL=/cell/home/.gitconfig", true},
+		{"GIT_CONFIG_GLOBAL=" + os.DevNull, true},
+		{"GIT_CONFIG_GLOBAL=/elsewhere/.gitconfig", false},
+		{"GIT_CONFIG_GLOBAL=.gitconfig", false},
+		{"Git_Config_NoSystem=1", false},
+	} {
+		got := slices.Contains(admittedRowEnv([]string{"HOME=" + home, tc.kv}), tc.kv)
+		if got != tc.keep {
+			t.Errorf("%s: kept=%v, want %v", tc.kv, got, tc.keep)
+		}
+	}
+	if slices.Contains(admittedRowEnv([]string{"GIT_CONFIG_GLOBAL=/.gitconfig"}), "GIT_CONFIG_GLOBAL=/.gitconfig") {
+		t.Error("GIT_CONFIG_GLOBAL kept with no HOME to compare it with")
 	}
 }
