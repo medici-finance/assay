@@ -109,8 +109,17 @@ writes `main` on the lane's behalf. Break-glass `deskevidence` keeps its own gua
 switch, repo allowlist, body scan, rate limit, attribution check), but its switch is set by the
 session (gate-why). This brief moves doctrine between the two paths and removes no guard from
 either.
+Accepted residual (driver ruling): in CI the transcriber reads its trust configuration (the
+blessed login, the verifier role binding and the verifier public key) from the repository's
+Actions configuration (statusgen/rosterconfig.go:728-729), so all three anchors are only as
+protected as write access to that configuration, and one change there moves them together.
+Write access to it is normally an administrator's, who can already bypass `main`'s protection,
+so this adds no new path for that identity; pinning the anchors is a follow-up below.
 
 follow-ups (not authored by this brief):
+- pin the transcriber's trust anchors in a committed, protected file on `main`, with a CI
+  check that the configuration copy equals the committed one, so changing an anchor takes a
+  reviewed commit (human-gated: it changes a security control);
 - gate or remove `deskevidence`'s direct `main` write, so that break-glass is enforced by a
   control the session cannot set for itself;
 - an audit signal that does not depend on the session: in a project where the lane is armed, any
@@ -219,8 +228,8 @@ real verdict the second path wrote end to end. Without that, no installation has
 Recommendation: **Option 2.** Wherever the safer path is proven, it moves routine landings off the
 widest write path, and it strands no installation that has not switched that path on. It narrows
 routine use, not the permission. The direct write stays available to any session that sets its
-switch, so until the follow-up named in `## Context` lands, break-glass is a rule the desk follows,
-not a control that stops it.
+switch, so until a follow-up gates or removes that direct write, break-glass is a rule the desk
+follows, not a control that stops it.
 
 Default if no answer: none — blocks until answered.
 
@@ -239,8 +248,11 @@ Default if no answer: none — blocks until answered.
 - Write nothing in any skill body that names a private repo, path or issue.
 
 ## Task
-Written for option 2 (the recommendation). Under option 1, drop the "where the project has armed
-the lane" qualifier and the "unarmed project" paragraph in step 1; everything else is the same.
+Written for option 2 (the recommendation). Under option 1, drop the "unarmed project" paragraph in
+step 1 and every armed/unarmed qualifier in the replacement text of steps 1, 4 and 5 ("where the
+project has armed the lane", "the verdict lane where armed, `deskevidence` otherwise", "where the
+lane is not armed it lands per its own skill's §Landing"), so the lane is the only routine route
+and `deskevidence` is break-glass everywhere. Rows that grep those qualifiers change to match.
 
 ### 1. Rewrite `## Landing` in `plugins/assay/skills/verify-desk/SKILL.md` (:435-490)
 - Retitle the heading to: ## Landing — a verdict lands by signed verdict issue; `deskevidence` is
@@ -315,8 +327,10 @@ Never hand-edit a copy.
     `gh pr create --draft`).
     **The verify desk lands verdicts through the project's verdict-transcription lane** where the
     project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
-    push; where the lane is not armed it lands per its own skill's §Landing. No push-go is needed
-    and none should be waited for. Any `main` push not covered by a standing authorization is
+    push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+    no push-go and none should be waited for; a break-glass `main` write in a project where the
+    lane is armed is NOT one of them and waits for the driver's go, whether or not the lane is
+    up. Any `main` push not covered by a standing authorization is
     gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
     push is a STOP signal — never route the same write through another tool. Each desk's own
     grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
