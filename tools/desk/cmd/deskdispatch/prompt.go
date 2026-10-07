@@ -444,7 +444,8 @@ func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 	b.WriteString("## Run the Verify table against merged main — READ-ONLY, no PR\n\n")
 	fmt.Fprintf(b, "You are VERIFYING `%s` in `%s`. This is a VERIFY pass, not an implementation: you run "+
 		"the item's Verify table against MERGED main and produce a written VERDICT (Evidence rows plus "+
-		"`VERIFY: PASS` or `VERIFY: FAIL`), never a change. Do not create a pull request, do not push a "+
+		"the BOLD marker `**VERIFY: PASS**` or `**VERIFY: FAIL**`, any qualifier after the closing "+
+		"asterisks), never a change. Do not create a pull request, do not push a "+
 		"branch for implementation changes. An Evidence-only draft follows the deskevidence lane after verification. Do not adopt the implementer's `DESK_LOOP=worker-desk` identity — those belong to the "+
 		"worker kit, not this one. A verifier never sets verified/done itself and never flips a PR ready "+
 		"(per the standing verifier clauses below).\n\n", o.item, repo)
