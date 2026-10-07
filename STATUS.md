@@ -19,7 +19,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-07 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-07 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/26 | 2026-10-07 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/28 | 2026-10-07 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/29 | 2026-10-07 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-07 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/53 | 2026-10-07 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-07 |  |
@@ -71,12 +71,13 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | measured-status | 01 — Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test | 0 | 2000 |
 | desktools-go-git | 05 — migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge) | 4 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
+| desk-tools | 29 — `verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs [exec:strong] | 1 | 1000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: c6b3a6d 2026-10-07T16:41:55Z_
+_last regen: 4e63d32 2026-10-07T13:08:31-07:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -97,7 +98,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: c6b3a6d 2026-10-07T16:41:55Z_
+_last regen: 4e63d32 2026-10-07T13:08:31-07:00_
 
 **Progress:** 16/71 brief items done.
 
@@ -396,7 +397,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 25 Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical — todo (wave 1)
 - 26 Land one verify tick's Evidence-only outcomes in one Evidence PR — todo (wave 1)
 
-### desk-tools (14 open)
+### desk-tools (15 open)
 
 - 01 Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
@@ -412,6 +413,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 26 `deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton — implemented (wave 2)
 - 27 `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check — in-progress (wave 2)
 - 28 Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path — implemented (wave 1)
+- 29 `verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs — todo (wave 1)
 
 ### desktools-go-git (3 open)
 
@@ -779,4 +781,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**19** active, **0** paused, **7** parked) · **106/367** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**19** active, **0** paused, **7** parked) · **106/368** briefs done · completed initiatives: see `docs/archive/`
