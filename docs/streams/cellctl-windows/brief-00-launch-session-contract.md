@@ -190,6 +190,13 @@ VERIFY: BLOCKED
 Reasoning. Nothing failed: both Unix rows (4 and 6) ran from the stated directory on merged main and passed with real output. Rows 1, 2, 3 and 5 are authored for pwsh on native Windows and could not execute on the only available host; they are recorded could-not-run, not rounded to pass. Four of six required rows have no witness, so the brief cannot advance. To finish: (a) a native Windows amd64 host with pwsh, Go, git and statusgen at merged main runs rows 1, 2, 3, 5 from tools/desk; (b) row 5 is re-authored to pin the implementation merge's parent as its base (under statusgen v1.0.32 the row as written exits 2 COULD-NOT-CHECK on merged main on any host).
 
 Desk note: row 5 is recorded on #1915 (issuecomment-6029842170). Rows 1, 2, 3 and 5 still need a native Windows amd64 run at merged main; the celllaunch Windows workflow runs on pull_request only, so no merged-main SHA carries that witness yet.
+Desk note (2026-10-07, review response on #2330, findings C1 and C3a/b). This note appends; it does not reword the text above.
+
+- **Which table belongs to which pass.** The six-row `| # | Command | Result | Output | Date | Runner |` table just above the "### Verification — cellctl-windows/00 (2026-10-07 …)" heading is the **2026-10-07** pass's verifyrun witness, at merged main 91f04b81ba06. It sits after the 2026-10-02 "To finish." paragraph only because the witness appends at the end of the section. It is not part of the 2026-10-02 cycle.
+- **Exact commands.** The summary table under the 2026-10-07 heading abbreviates its commands and merges Date and Runner into its result cell. The exact runnable commands are in the witness table's rows 1-6, verbatim from the Verify table. That table has split Date and Runner columns: 2026-10-07, assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity). Both tables record the same run.
+- **Outcome record.** `docs/streams/verify-outcomes/cellctl-windows/00-20261007T130245Z-8c077859f851.json` records outcome blocked, 2/6, rows [1, 2, 3, 5], blocker_kind environment, blocker_ref #2045.
+
+**VERIFY: BLOCKED** (unchanged)
 
 ## Review
 
