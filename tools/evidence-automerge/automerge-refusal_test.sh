@@ -124,6 +124,136 @@ run_case "C10 unstable with null rollup reds (could-not-check)" 1 1 "$ERR_UNSTAB
 #         decides. Run CHECK_IMPL=testdata/old-automerge-refusal.sh to see it red.
 run_case "C11 clean-status refusal skips" 0 1 "$ERR_CLEAN" ABSENT
 
+# ── C12–C17: superseded runs (#1959). The rollup lists EVERY run on the head
+#    commit; a workflow that cancels an in-flight run when a newer event arrives
+#    leaves a CANCELLED run beside its replacement. Only the LATEST run per check
+#    name is judged. The pre-fix impl judges every listed run and reds C12, C13
+#    and C17:
+#      git show <pre-fix>:tools/evidence-automerge/automerge-refusal.sh > /tmp/pre.sh
+#      CHECK_IMPL=/tmp/pre.sh ./automerge-refusal_test.sh
+#    gh renders an unset timestamp as Go's zero time; Z0 is that literal.
+Z0='0001-01-01T00:00:00Z'
+
+# C12: a CANCELLED `changelog` run superseded by a later SUCCESS run of the same
+#      name, beside our own failed `enable` → the enable-only case → benign skip.
+ROLLUP_SUPERSEDED_DONE='{"statusCheckRollup":[
+  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-09-30T13:00:11Z","completedAt":"2026-09-30T13:00:24Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-09-30T13:00:04Z","completedAt":"2026-09-30T13:00:06Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-09-30T13:00:12Z","completedAt":"2026-09-30T13:00:25Z"},
+  {"__typename":"StatusContext","context":"leak-sweep","state":"SUCCESS","startedAt":"2026-09-30T12:55:02Z"}]}'
+run_case "C12 superseded CANCELLED beside a later SUCCESS skips" 0 1 "$ERR_UNSTABLE" "$ROLLUP_SUPERSEDED_DONE"
+
+# C13: the shape at the moment the step reads the rollup — the successor of the
+#      CANCELLED run and our own `enable` are both still IN_PROGRESS, so gh
+#      renders their completedAt as the zero time. Zero time is "no stamp", not
+#      "oldest stamp": startedAt decides, and the in-progress successor wins.
+ROLLUP_SUPERSEDED_RUNNING='{"statusCheckRollup":[
+  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T06:54:18Z","completedAt":"2026-10-04T06:54:25Z"},
+  {"__typename":"CheckRun","name":"enable","status":"IN_PROGRESS","conclusion":"","startedAt":"2026-10-04T06:59:19Z","completedAt":"'"$Z0"'"},
+  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T06:59:18Z","completedAt":"2026-10-04T06:59:19Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"IN_PROGRESS","conclusion":"","startedAt":"2026-10-04T06:59:22Z","completedAt":"'"$Z0"'"}]}'
+run_case "C13 superseded CANCELLED beside an in-progress successor skips" 0 1 "$ERR_UNSTABLE" "$ROLLUP_SUPERSEDED_RUNNING"
+
+# C14: the CANCELLED run is the LATEST of its name (an older SUCCESS precedes
+#      it) → that check's current run is cancelled → a real failure, still reds.
+ROLLUP_CANCELLED_LATEST='{"statusCheckRollup":[
+  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-10-04T07:00:00Z","completedAt":"2026-10-04T07:00:10Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:05:00Z","completedAt":"2026-10-04T07:05:01Z"}]}'
+run_case "C14 CANCELLED as the latest run of its name reds" 1 1 "$ERR_UNSTABLE" "$ROLLUP_CANCELLED_LATEST"
+
+# C15: the CANCELLED run is superseded, but by a FAILURE → that check's latest
+#      run is red → still reds. The reduction picks the run; it never forgives it.
+ROLLUP_SUPERSEDED_BY_RED='{"statusCheckRollup":[
+  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"CheckRun","name":"build-test","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:00:00Z","completedAt":"2026-10-04T07:00:01Z"},
+  {"__typename":"CheckRun","name":"build-test","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:00:05Z","completedAt":"2026-10-04T07:04:00Z"}]}'
+run_case "C15 CANCELLED superseded by a FAILURE reds" 1 1 "$ERR_UNSTABLE" "$ROLLUP_SUPERSEDED_BY_RED"
+
+# C16: the only "successor" is a QUEUED run the forge has not stamped (zero time
+#      everywhere). A stampless run sorts OLDEST and never displaces a run that
+#      actually ran, so the CANCELLED run stays the latest → reds (fail-safe).
+ROLLUP_STAMPLESS_SUCCESSOR='{"statusCheckRollup":[
+  {"__typename":"CheckRun","name":"enable","status":"COMPLETED","conclusion":"FAILURE","startedAt":"2026-10-04T07:10:00Z","completedAt":"2026-10-04T07:10:09Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"COMPLETED","conclusion":"CANCELLED","startedAt":"2026-10-04T07:05:00Z","completedAt":"2026-10-04T07:05:01Z"},
+  {"__typename":"CheckRun","name":"changelog","status":"QUEUED","conclusion":"","startedAt":"'"$Z0"'","completedAt":"'"$Z0"'"}]}'
+run_case "C16 stampless queued successor does not displace (reds)" 1 1 "$ERR_UNSTABLE" "$ROLLUP_STAMPLESS_SUCCESSOR"
+
+# C17: a REAL rollup, captured from a public Evidence PR stranded by this defect
+#      (#1959's third report): four superseded CANCELLED `changelog` runs, each
+#      followed by a SUCCESS, and the latest `enable` red. Benign skip.
+run_case "C17 real stranded-PR rollup skips" 0 1 "$ERR_UNSTABLE" \
+  "$(cat "$here/testdata/rollup-superseded-cancelled.json")"
+
+# ── G1–G3: CLASS GUARD for #1959. THE CLASS: a non-Go consumer of a status-check
+#    rollup (a shell or Python script, or a workflow `run:` block) that judges
+#    failing conclusions over EVERY listed run instead of the latest run per
+#    check name. A file is a CANDIDATE when it reads `statusCheckRollup` and
+#    names a failing conclusion as a quoted literal; a candidate is CLEAN only
+#    when it calls `latest_run_per_name(` (a `def` line alone is not a call).
+#    The Go consumers reduce through deskkit.LatestRunPerName and are out of
+#    this guard's scope.
+#
+# scan_rollup_judges <root> → prints "CANDIDATE <path>" for every candidate and
+# "UNREDUCED <path>" for every candidate that does not reduce.
+scan_rollup_judges() {
+  local root="$1" f
+  find "$root" \( -name .git -o -name node_modules -o -name testdata \) -prune -o \
+       -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.py' -o -name '*.yml' -o -name '*.yaml' \) \
+       ! -name '*_test.sh' -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do
+    grep -q 'statusCheckRollup' "$f" 2>/dev/null || continue
+    grep -qE "[\"'](FAILURE|CANCELLED|TIMED_OUT|STARTUP_FAILURE|ACTION_REQUIRED|ERROR)[\"']" "$f" 2>/dev/null || continue
+    echo "CANDIDATE ${f#"$root"/}"
+    if ! grep -v 'def latest_run_per_name(' "$f" | grep -q 'latest_run_per_name('; then
+      echo "UNREDUCED ${f#"$root"/}"
+    fi
+  done
+}
+
+# G1: the real tree is clean, AND the guard still SEES the one real site (a
+#     matcher that silently stopped matching would otherwise report clean).
+repo_root="$(cd "$here/../.." && pwd)"
+g1="$(scan_rollup_judges "$repo_root")"
+if printf '%s\n' "$g1" | grep -qxF 'CANDIDATE tools/evidence-automerge/automerge-refusal.sh' \
+   && ! printf '%s\n' "$g1" | grep -q '^UNREDUCED '; then
+  ok "G1 class guard: real tree clean, real site seen ($(printf '%s\n' "$g1" | grep -c '^CANDIDATE ') candidate(s))"
+else
+  bad "G1 class guard on the real tree"
+  printf '%s\n' "$g1" | sed 's/^/       | /'
+fi
+
+# G2: a PLANTED second instance — a script the fix does not touch, judging the
+#     rollup without the reduction — is flagged, by name, beside a clean copy of
+#     the real site.
+plant="$WORK/plant"
+mkdir -p "$plant/tools/evidence-automerge" "$plant/scripts"
+cp "$CHECK" "$plant/tools/evidence-automerge/automerge-refusal.sh"
+cat > "$plant/scripts/ci-gate.sh" <<'SH'
+#!/usr/bin/env bash
+gh pr view "$1" --json statusCheckRollup |
+  jq -r '.statusCheckRollup[] | select(.conclusion == "CANCELLED" or .conclusion == "FAILURE") | .name'
+SH
+g2="$(scan_rollup_judges "$plant")"
+if [ "$(printf '%s\n' "$g2" | grep '^UNREDUCED ')" = "UNREDUCED scripts/ci-gate.sh" ]; then
+  ok "G2 class guard flags a planted second instance (scripts/ci-gate.sh)"
+else
+  bad "G2 class guard did not flag exactly the planted instance"
+  printf '%s\n' "$g2" | sed 's/^/       | /'
+fi
+
+# G3: the real site with its reduction call reverted (judging `rollup` again,
+#     the definition left in place) is flagged — a def alone is not a call.
+mut="$WORK/mut"
+mkdir -p "$mut/tools/evidence-automerge"
+sed 's/in latest_run_per_name(rollup)/in rollup/' "$CHECK" > "$mut/tools/evidence-automerge/automerge-refusal.sh"
+g3="$(scan_rollup_judges "$mut")"
+if printf '%s\n' "$g3" | grep -qxF 'UNREDUCED tools/evidence-automerge/automerge-refusal.sh'; then
+  ok "G3 class guard flags the real site with its reduction call reverted"
+else
+  bad "G3 class guard missed the reverted real site"
+  printf '%s\n' "$g3" | sed 's/^/       | /'
+fi
+
 echo
 echo "passed: $pass  failed: $fail  (impl: $CHECK)"
 [ "$fail" -eq 0 ]
