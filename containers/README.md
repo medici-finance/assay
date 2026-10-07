@@ -185,9 +185,12 @@ since the image itself is built only on release. `TestBaseImageRunsGitFloor`
 covers the git tarball. `TestBaseImagePinsTarballs` covers the image and
 frontend digests and the Go, `gh` and Node tarballs. Each keeps the reviewed
 values in a table (`knownGitTarballs`, `knownToolTarballs`). A Dockerfile
-version or sha256 that is not a reviewed row, an `ENV` that overrides one of
-those ARGs, a FROM or `# syntax=` without a digest, or a check that is dropped,
-masked, moved after the unpack or separated from it goes red.
+version or sha256 that is not a reviewed row, an `ENV` or a shell assignment in
+a RUN that overrides one of those ARGs, a FROM or `# syntax=` without a digest,
+any other parser directive (such as `# escape=`), or a check that is dropped,
+masked, moved after the unpack or separated from it goes red. "Masked" is read
+lexically: `|| true`, `&& true`, a pipe, a background `&`, a `!`, an `if`, or a
+shell function or alias named `sha256sum`, `tar`, `curl` or `echo`.
 
 `TestBaseImagePinsTarballs` also runs a class guard over every instruction, so
 some new ways of pulling in outside bytes go red too, wherever they are added:
@@ -195,19 +198,25 @@ some new ways of pulling in outside bytes go red too, wherever they are added:
 - a `curl`, `wget`, or `git clone`/`fetch`/`pull`/`submodule` anywhere in a
   RUN command, by any path or quoting (`then curl`, `timeout 60 curl`,
   `/usr/bin/curl`, `env … curl`, `sh -c 'curl …'`, exec-form `["curl", …]`),
-  unless it is one plain `curl … -o <file>` writing one of the four checked
-  files in the stage that checks it;
+  unless it is exactly `curl -fsSL --proto '=https' --proto-redir '=https'
+  "<https URL>" -o <file>` writing one of the four checked files in the stage
+  that checks it (any other flag, such as `--output`, `-O`, `-oX` or `-K`, goes
+  red, since it could write a second file or read more options);
 - an `ADD` of a URL or a git remote;
+- any `ONBUILD`, whose wrapped instruction would run in every desk image built
+  `FROM` this one;
 - a `COPY --from=`, `ADD --from=` or `RUN --mount=…,from=` naming an image
   without a tag and digest;
 - any heredoc (`RUN <<EOT`), which the test's parser does not read.
 
 The guard is lexical, so it is not complete. It has no word for other fetchers
-(`pip install`, `npm install`, `go install`, a Python or shell script that
-downloads), and it does not read scripts copied in from this repository and
-then run. A change that adds one of those needs a reviewer to read it. A new
-download needs its own sha256 ARGs, check and reviewed row before the test
-passes.
+(`pip install`, `npm install`, `go install`, `git remote update`, a Python or
+shell script that downloads), it does not see a command name built from a
+variable (`c=cu; ${c}rl …`), a curl config file such as `~/.curlrc`, or a
+`PATH` that puts another `sha256sum` first, and it does not read scripts copied
+in from this repository and then run. A change that adds one of those needs a
+reviewer to read it. A new download needs its own sha256 ARGs, check and
+reviewed row before the test passes.
 
 **Bump procedure.**
 

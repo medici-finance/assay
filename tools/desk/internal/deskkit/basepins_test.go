@@ -86,14 +86,26 @@ func basePinProblem(dockerfile string) string {
 			pinned[tl.arg+s] = true
 		}
 	}
+	names := make([]string, 0, len(pinned))
+	for k := range pinned {
+		names = append(names, k)
+	}
+	// `NAME=`, `export NAME=`, `${NAME=…}` or `${NAME:=…}` inside a RUN.
+	shellAssign := regexp.MustCompile(`(?:^|[^A-Za-z0-9_])(` + strings.Join(names, "|") + `):?=`)
 	for _, in := range ins {
-		if in.op != "ENV" {
-			continue
-		}
-		for i, a := range in.args {
-			// `ENV <key>=<value> …`, or the legacy `ENV <key> <value>`.
-			if k, _, ok := strings.Cut(a, "="); (ok || i == 0) && pinned[k] {
-				return "an ENV sets " + k + ", which overrides the reviewed ARG of that name"
+		switch in.op {
+		case "ENV":
+			for i, a := range in.args {
+				// `ENV <key>=<value> …`, or the legacy `ENV <key> <value>`.
+				if k, _, ok := strings.Cut(a, "="); (ok || i == 0) && pinned[k] {
+					return "an ENV sets " + k + ", which overrides the reviewed ARG of that name"
+				}
+			}
+		case "RUN":
+			for _, sg := range in.segs {
+				if m := shellAssign.FindStringSubmatch(sg); m != nil {
+					return "a RUN assigns " + m[1] + " (`" + sg + "`), which overrides the reviewed ARG of that name"
+				}
 			}
 		}
 	}
@@ -230,16 +242,26 @@ func fetchWords(sg string) int {
 	return n
 }
 
-// plainCurlFile returns the file a command downloads when it is one plain
-// `curl … -o <file>`: it starts with `curl`, makes no other fetch, writes one
-// file, and has no pipe, `&&`, `&`, or substitution that could run more.
+// allowedCurl is the one download shape the base image uses, word for word:
+// fixed flags, one quoted https URL (or "$url"), and one `-o <file>`. Any other
+// flag (`--output`, `-O`, `-oX`, `-K`, …) could write a second, unchecked file
+// or read more options, so it is refused rather than parsed.
+var allowedCurl = regexp.MustCompile(`^curl -fsSL ` + regexp.QuoteMeta(gitCurlHTTPSOnly) +
+	` "(?:\$url|https://[A-Za-z0-9._/${}-]+)" -o (/tmp/[A-Za-z0-9._-]+)$`)
+
+// plainCurlFile returns the file a command downloads when it is exactly the
+// allowedCurl shape and makes no other fetch.
 func plainCurlFile(sg string) (string, bool) {
-	if !strings.HasPrefix(sg, "curl ") || fetchWords(sg) != 1 || strings.Count(sg, " -o ") != 1 ||
-		strings.ContainsAny(sg, "|&`") || strings.Contains(sg, "$(") {
+	m := allowedCurl.FindStringSubmatch(sg)
+	if m == nil || fetchWords(sg) != 1 {
 		return "", false
 	}
-	return sg[strings.Index(sg, " -o ")+len(" -o "):], true
+	return m[1], true
 }
+
+// redefinesCheckCommand finds a shell function or alias named for a command
+// the download, check or unpack runs, which would mask the check.
+var redefinesCheckCommand = regexp.MustCompile(`(?:^|[\s;&|(){}])(?:function\s+)?(sha256sum|tar|curl|echo)\s*\(\s*\)|\balias\s+(sha256sum|tar|curl|echo)=`)
 
 // scpRemote is a git remote in scp form (`git@host:path`), which ADD fetches.
 var scpRemote = regexp.MustCompile(`^[^/@\s]+@[^/:\s]+:`)
@@ -248,11 +270,14 @@ var scpRemote = regexp.MustCompile(`^[^/@\s]+@[^/:\s]+:`)
 // brings in outside bytes with no pin, wherever it sits. A FROM is checked
 // above. Here a COPY or ADD --from, or a RUN --mount from=, that names an image
 // rather than a stage must carry a digest; an ADD may not fetch a URL or a git
-// remote; no instruction may carry a heredoc, which the parser cannot read; and
-// a RUN may fetch only with a plain `curl … -o <file>` whose file
+// remote; no instruction may carry a heredoc, which the parser cannot read;
+// there is no ONBUILD, whose wrapped instruction would run in every image built
+// FROM this one; a RUN may not redefine sha256sum, tar, curl or echo; and a RUN
+// may fetch only with the exact allowedCurl shape, writing a file
 // checkedDownloads allows in that stage. It is lexical: it reads the forms
 // above, and a fetcher it has no word for (a package manager, a script
-// interpreter) still needs a reviewer's eye.
+// interpreter, a command name built from a variable) still needs a reviewer's
+// eye.
 func unpinnedFetchProblem(ins []dfInstr) string {
 	stages, files := map[string]bool{}, checkedDownloads()
 	lastFrom := -1
@@ -282,6 +307,8 @@ func unpinnedFetchProblem(ins []dfInstr) string {
 			}
 		}
 		switch in.op {
+		case "ONBUILD":
+			return "ONBUILD `" + strings.Join(in.args, " ") + "` would run in every image built FROM this one, and this check does not read it"
 		case "COPY", "ADD":
 			for _, a := range in.args {
 				if from, ok := strings.CutPrefix(a, "--from="); ok && unpinnedImage(from) {
@@ -301,6 +328,9 @@ func unpinnedFetchProblem(ins []dfInstr) string {
 				}
 			}
 			for _, sg := range in.segs {
+				if m := redefinesCheckCommand.FindStringSubmatch(sg); m != nil {
+					return "a RUN redefines `" + m[1] + m[2] + "` (`" + sg + "`), which would mask the check"
+				}
 				if fetchWords(sg) == 0 {
 					continue
 				}
@@ -314,17 +344,25 @@ func unpinnedFetchProblem(ins []dfInstr) string {
 	return ""
 }
 
-// syntaxDirectiveProblem returns why a `# syntax=` parser directive at the top
-// of the file pulls its BuildKit frontend by a floating tag. With no directive,
-// BuildKit uses the frontend built into the builder and pulls nothing.
+// parserDirective is one `# key=value` parser directive, as BuildKit reads it.
+var parserDirective = regexp.MustCompile(`^#[ \t]*([A-Za-z][A-Za-z0-9]*)[ \t]*=[ \t]*(.*?)[ \t]*$`)
+
+// syntaxDirectiveProblem returns why the parser directives at the top of the
+// file are not ones this check can trust: a `# syntax=` that pulls its BuildKit
+// frontend by a floating tag, or any other directive (`escape` moves the line
+// continuation, so parseDockerfile would misread every RUN). With no `syntax`
+// directive, BuildKit uses the frontend built into the builder and pulls
+// nothing.
 func syntaxDirectiveProblem(dockerfile string) string {
 	for _, l := range strings.Split(dockerfile, "\n") {
-		l = strings.TrimSpace(l)
-		if !strings.HasPrefix(l, "#") {
-			break // parser directives end at the first line that is not a comment
+		m := parserDirective.FindStringSubmatch(strings.TrimSpace(l))
+		if m == nil {
+			break // directives end at the first line that is not one
 		}
-		k, v, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(l, "#")), "=")
-		if ok && strings.EqualFold(strings.TrimSpace(k), "syntax") && !digestRef.MatchString(strings.TrimSpace(v)) {
+		switch {
+		case !strings.EqualFold(m[1], "syntax"):
+			return "the `" + l + "` parser directive changes how the file is read, and this check assumes the defaults"
+		case !digestRef.MatchString(m[2]):
 			return "the `" + l + "` directive names its frontend without a tag and digest"
 		}
 	}
@@ -357,11 +395,10 @@ func toolRunProblem(in dfInstr, tl pinnedTool) string {
 			if curl >= 0 {
 				return "downloads more than once, so the file unpacked need not be the file checked"
 			}
+			// allowedCurl carries the https-only flags, so a redirect cannot
+			// leave https.
 			if out, ok := plainCurlFile(sg); !ok || out != tl.file {
-				return "fetches with something other than one plain curl that writes " + tl.file + " (`" + sg + "`)"
-			}
-			if !strings.Contains(sg, gitCurlHTTPSOnly) {
-				return "downloads without " + gitCurlHTTPSOnly + ", so a redirect could leave https"
+				return "fetches with something other than the one allowed curl shape writing " + tl.file + " (`" + sg + "`)"
 			}
 			curl = i
 		case strings.HasPrefix(arm, "amd64) "):
@@ -448,6 +485,9 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 		"final FROM via bare ARG":   swap(finalFrom, "ARG FINAL_BASE=debian:bookworm-slim\nFROM ${FINAL_BASE}\n"),
 		"syntax frontend floats":    swap(syntax, "# syntax=docker/dockerfile:1\n"),
 		"syntax frontend unspaced":  swap(syntax, "#syntax = docker/dockerfile:1\n"),
+		// Another parser directive changes how the file is read (`escape`
+		// moves the line continuation), so the parser below would misread it.
+		"escape directive": swap(syntax, syntax+"# escape=`\n"),
 	}
 	// The class guard: a new unpinned fetch planted at a site this change does
 	// not touch must go red too, not just the four pinned downloads.
@@ -472,6 +512,10 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 		"RUN --mount from unpinned image": "RUN --mount=type=bind,from=alpine:3.21,target=/m cp /m/bin/busybox /usr/local/bin/\n",
 		"ADD of a git remote":             "ADD git@github.com:example/r.git /opt/r\n",
 		"git clone":                       "RUN set -eux; git clone https://example.com/r.git /opt/r\n",
+		// An ONBUILD trigger runs in every image built FROM this one.
+		"ONBUILD RUN curl piped to sh": "ONBUILD RUN curl -fsSL https://example.com/i.sh | sh\n",
+		"ONBUILD ADD from a URL":       "ONBUILD ADD https://example.com/t.tgz /tmp/t.tgz\n",
+		"alias redefines tar":          "RUN set -eux; alias tar=true; tar -xzf /tmp/t.tgz\n",
 	} {
 		mutants["class: "+name] = swap(plugin, plant+plugin)
 	}
@@ -480,6 +524,11 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 	gitShaArg := once("ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.0"] + "\n")
 	mutants["class: curl chained before an allowed one"] = swap(gitShaArg, gitShaArg+
 		"RUN set -eux; curl -fsSL https://example.com/t.tgz -o /tmp/t.tgz && curl -fsSL "+gitCurlHTTPSOnly+" https://example.com/g.txz -o /tmp/git.txz\n")
+	// The gitbuild download is held to the same exact curl shape and the same
+	// no-reassignment rule as the three tool downloads.
+	gitCurl := once("    curl -fsSL " + gitCurlHTTPSOnly + " \\\n")
+	mutants["class: gitbuild curl second output -O"] = swap(gitCurl, "    curl -fsSL "+gitCurlHTTPSOnly+" -O https://example.com/t.tgz \\\n")
+	mutants["class: gitbuild shell assignment overrides sha"] = swap(gitCurl, "    GIT_TARBALL_SHA256="+strings.Repeat("0", 64)+"; \\\n"+gitCurl)
 	for _, tl := range basePinnedTools {
 		rec := knownToolTarballs[tl.arg]
 		var ver string
@@ -526,6 +575,16 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 			"curl chained before":    swap(curlLine, "    curl -fsSL https://example.com/t.tgz -o /tmp/t.tgz && "+strings.TrimPrefix(curlLine, "    ")),
 			"curl writes two files":  swap(curlLine, strings.Replace(curlLine, `"$url"`, `https://example.com/t.tgz -o /tmp/t.tgz "$url"`, 1)),
 			"ENV overrides the pins": swap(armArg, armArg+"ENV "+tl.arg+"_VERSION="+ver+"9 "+tl.arg+"_SHA256_AMD64="+strings.Repeat("0", 64)+"\n"),
+			// The allowed curl is one exact shape: any other way to name a
+			// second output, or to read more options, goes red.
+			"curl second output --output": swap(curlLine, strings.Replace(curlLine, `"$url"`, `https://example.com/t.tgz --output /tmp/t.tgz "$url"`, 1)),
+			"curl second output -O":       swap(curlLine, strings.Replace(curlLine, `"$url"`, `-O https://example.com/t.tgz "$url"`, 1)),
+			"curl second output -oX":      swap(curlLine, strings.Replace(curlLine, `"$url"`, `-o/tmp/t.tgz https://example.com/t.tgz "$url"`, 1)),
+			"curl reads a -K config":      swap(curlLine, strings.Replace(curlLine, `"$url"`, `-K /tmp/cfg "$url"`, 1)),
+			// The reviewed ARG may not be reassigned inside the RUN, and the
+			// commands the check and the unpack run may not be redefined.
+			"shell assignment overrides sha": swap(curlLine, "    "+tl.arg+"_SHA256_AMD64="+strings.Repeat("0", 64)+"; \\\n"+curlLine),
+			"sha256sum redefined":            swap(curlLine, "    sha256sum() { return 0; }; \\\n"+curlLine),
 		} {
 			mutants[p+name] = m
 		}
