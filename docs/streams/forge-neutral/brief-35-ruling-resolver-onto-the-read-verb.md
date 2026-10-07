@@ -1,6 +1,6 @@
 ---
 brief: assay:assay:forge-neutral:35
-title: Human-ruling resolvers onto the read verb — the decision-record ruling check and the transcribe lanes' sign-off check read through deskread, accept only a User author, and hold no credential of their own
+title: Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own
 why: >-
   statusgen has two resolvers that decide whether a human ruled. The ruling resolver decides
   whether a decision record's ruling link points at a real, unedited comment written by a human
@@ -219,9 +219,13 @@ not a layer the compiler enforces. The layers behind each mapping are these:
   for a non-`User` account carrying that id, and row 7's cases cover it.
 - **Verdict-issue read.** For the author, the second layer is each lane's pin on its App's
   login AND numeric id from the roster (`transcribeverdict.go:747-748`,
-  `transcribescan.go:870-871`), beside the `Bot` type check. For the edit flag there is no
-  second layer: each refusal reads `Edited` alone, so row 9's cases and mutations (j) to (m)
-  are what hold it.
+  `transcribescan.go:870-871`), beside the `Bot` type check. For the edit flag, the layer in front
+  is each lane's RS256 body-signature check, which runs before the edit check
+  (`transcribeverdict.go:754-759`, `transcribescan.go:877-882`): an edit by anyone without the
+  signing key is refused on that different signal, in a different check. What the edit flag
+  alone holds is a body replaced by another validly signed block, the case the scan-delta
+  lane's comment at `transcribescan.go:884-885` names, and row 9's cases and mutations (j) to
+  (m) are what hold that residual.
 - **All three.** The mutation manifests re-run the tests against named changes to each mapping
   (rows 3, 7 and 9). That trips on a different signal, a surviving mutant, in a different place,
   the harness, from the mapping's own tests.
@@ -268,10 +272,11 @@ facts — measured at `35c303e47`:
 - Stop at `implemented`. You do not set verified or done.
 - If anything is unclear or contradicts repo state, report NEEDS_CONTEXT. Don't guess. In
   particular: if `deskread`'s `comments` kind does not carry `databaseId`, `authorType`,
-  `createdAt` and `updatedAt`, if there is no `issue` kind, or if `issue` is not on the
-  CI-transport kind set, stop. If the `comments` kind has no change target (`--change`),
+  `createdAt` and `updatedAt`, if there is no `issue` kind, or if any of `comments`, `issue` and `trust` is not on the
+  CI-transport kind set, stop: the sign-off and verdict-issue reads run in the transcribe modes,
+  which the CI-transport brief lists as CI-lane files. If the `comments` kind has no change target (`--change`),
   stop: do not fall back to the issue target or to a REST read. If the `trust` kind does not
-  carry `bodyEditedAt`, stop. Those are forge-neutral/33's and forge-neutral/18's to land.
+  carry `bodyEditedAt`, stop. Those are forge-neutral/33's, forge-neutral/34's and forge-neutral/18's to land.
 - **No credential of the resolver's own.** Delete `rulingForgeClient` and add nothing in its
   place: no environment read, no token file, no CLI login, no client built in
   `decisionruling.go` or at its call site. The same holds for the sign-off resolver: it reads
@@ -405,7 +410,7 @@ Test names are planned, created by the implementer.
 | Row | The mutation that must redden it |
 |---|---|
 | 3 | (a) read a `partial` thread as a complete thread without the comment, so the outcome is `deleted-comment` where it must be `unresolvable-link`. (b) treat an empty `updatedAt` as equal to `createdAt`. (c) narrow the `User` requirement back to a `Bot` check, so `Organization` and `Mannequin` authors with a mapped login pass to the human map and are accepted. (d) drop the author-type check entirely, so a `Bot` author with a mapped login and no `[bot]` suffix is accepted. Each must fail the row on the reason, and (c) and (d) are added to the manifest as named entries so the `muhar` leg reddens on them too |
-| 7 | (e) fill an empty `authorType` with `User`, so a comment by the blessing authority's login and id that the forge did not classify arms the lane. (f) select the comment by author login, or take the first comment in the thread, instead of by `databaseId`, so another blessing-authority comment naming the ruling arms the lane when the linked one is missing. (g) on a verb failure or a `partial` item, return a zero identity with no error, so the resolver reports a read where none happened. (g) is caught by the resolver-level cases even though the gates' own `author.ID == 0` check would refuse it; that is the point of testing the resolver on its own. (h) read the change target as the issue target, so every URL is read with `--issue`: a `/pull/N` sign-off is then not found on GitHub, and on GitLab an unrelated issue's thread is read. (i) on a `partial` or refusal under one target, retry under the other |
+| 7 | (e) fill an empty `authorType` with `User`, so a comment by the blessing authority's login and id that the forge did not classify arms the lane. (f) select the comment by author login, or take the first comment in the thread, instead of by `databaseId`, so another blessing-authority comment naming the ruling arms the lane when the linked one is missing. (g) on a verb failure or a `partial` item, return a zero identity with no error, so the resolver reports a read where none happened. (g) is caught by the resolver-level cases even though the gates' own `author.ID == 0` check would refuse it; that is the point of testing the resolver on its own. (h) read the change target as the issue target, so every URL is read with `--issue`: a `/pull/N` sign-off is then not found on GitHub. This brief keeps GitLab sign-off URLs unparseable, so the GitLab half of this mutant (an unrelated issue's thread read) belongs to a later GitLab brief. (i) on a `partial` or refusal under one target, retry under the other |
 | 9 | (j) read `bodyEditedAt` as unedited: set `Edited` false whatever the trust read reports. (k) issue the `trust` read before the `issue` read, so an edit between the two pairs an edited body with `Edited == false`. (l) fill an empty author type as `Bot`, so an author the forge did not classify passes a pin. (m) on a `trust` read failure, `partial` or `complete: false`, return `Edited == false` with no error |
 
 ## Pre-mortem → detection map
