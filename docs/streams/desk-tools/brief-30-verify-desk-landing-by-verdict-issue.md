@@ -17,10 +17,15 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 gate-why: >-
-  This brief changes WHO may write the project's `main` branch for verify landings: the shipped
-  doctrine moves the verify desk off its standing direct-push grant and onto a signed-issue lane that
-  a workflow lands. That grant is a human authorization in the first place, so narrowing or
-  re-routing it is a human ruling, not a model call. The human confirms (1) which of the options in
+  This brief changes HOW the verify desk routinely writes the project's `main` branch for verify
+  landings: the shipped doctrine moves its routine landings off the standing direct-push path and
+  onto a signed-issue lane that a workflow lands. It narrows routine USE, not the grant. The
+  direct write's switch (`VERIFIER_MAIN_OK`, tools/desk/cmd/deskevidence/deskevidence.go:157) is
+  set by the session itself and is set routinely in the verify-desk window (the :234 comment says
+  so). After this brief, break-glass is therefore enforced by doctrine only, and it is recorded by
+  the same session it limits. Gating or removing the direct write is a separate follow-up that has
+  not been authored (named in `## Context`). The grant is a human authorization in the first place,
+  so re-routing its routine use is a human ruling, not a model call. The human confirms (1) which of the options in
   `## Human decision` the doctrine adopts; (2) the PRECONDITION: on at least one repo a verify desk
   serves, the lane is armed (its enactment sign-off resolves to the blessing authority), a verdict
   filer is bound, and that repo's remote `main` already carries at least one real verdict the lane
@@ -83,13 +88,31 @@ files: `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/skills/the-de
 `plugins/assay/skills/pr-shepherd/SKILL.md`, `tools/desk/internal/deskkit/ratelimit.go`,
 `changelog/desk-tools-30.md` (planned)
 
-single-point-of-failure: NOT a single control. The lane's landing rests on four layers that fail
-on different signals in different components: the enactment gate (a human sign-off resolved
-through the API to the blessing authority, User-typed), the RS256 signature over the verdict body
-against a public key held as a repo variable, the issue author and body-unedited timeline checks,
-and the network-off re-execution of `check:ci` rows. Break-glass `deskevidence` keeps its own,
-independent guards (main-push switch, repo allowlist, body scan, rate limit, attribution check).
-This brief moves doctrine between those two paths; it removes no guard from either.
+single-point-of-failure: custody of the verifier App credential. The author check (clause 1) and
+the RS256 signature (clause 2) both rest on it (statusgen/transcribeverdict.go:22-26, :746-758),
+so they are two checks on one anchor, not two layers. The enactment gate does not guard a single
+verdict; it only arms the lane. The one independent layer is the network-off re-execution of
+`check:ci` rows (:842-843), and `check` rows do not get it. Behind that, a forged verdict is
+bounded by the write class the lane admits:
+- at most 2048 bytes per Evidence entry;
+- no Markdown section headings;
+- no `human:` runner stamp;
+- irreversible briefs refused;
+- status flips for `gate: model` briefs only.
+The new custody point this brief adds is the push credential of the transcription workflow, which
+writes `main` on the lane's behalf. Break-glass `deskevidence` keeps its own guards (main-push
+switch, repo allowlist, body scan, rate limit, attribution check), but its switch is set by the
+session (gate-why). This brief moves doctrine between the two paths and removes no guard from
+either.
+
+follow-ups (not authored by this brief):
+- gate or remove `deskevidence`'s direct `main` write, so that break-glass is enforced by a
+  control the session cannot set for itself;
+- an audit signal that does not depend on the session: in a project where the lane is armed, any
+  verifier-authored commit on `main` that the transcription workflow did not write counts as a
+  break-glass use;
+- check the verdict payload's head and timestamp against the landing tree, so that the verifier
+  identity cannot replay a stale verdict.
 
 facts:
   - "verify-desk SKILL.md:435 — heading '## Landing — deskevidence is the SOLE main-push carve-out
@@ -171,8 +194,11 @@ Before choosing 1 or 2, confirm from the tracker itself that on at least one rep
 path is switched on, a filer exists, and that repository's main branch already holds at least one
 real verdict the second path wrote end to end. Without that, no installation has proven the path.
 
-Recommendation: **Option 2.** It narrows the widest write permission wherever the safer path is
-proven, and strands no installation that has not switched it on.
+Recommendation: **Option 2.** Wherever the safer path is proven, it moves routine landings off the
+widest write path, and it strands no installation that has not switched that path on. It narrows
+routine use, not the permission. The direct write stays available to any session that sets its
+switch, so until the follow-up named in `## Context` lands, break-glass is a rule the desk follows,
+not a control that stops it.
 
 Default if no answer: none — blocks until answered.
 
@@ -272,7 +298,7 @@ the Task lands. Run every row from the repo root.
 | 6 | check | `grep -c -F 'The verify desk lands verdicts through the project' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-same.txt"; ! grep -q -v ':1$' "${TMPDIR:-/tmp}/dt30-same.txt" && echo ok` | prints `ok`: exactly one copy of the new sentence's opening in each of the five. FAILS today: every count is 0. |
 | 7 | check | `grep -q -i 'break-glass' tools/desk/internal/deskkit/ratelimit.go && grep -q 'deskevidenceUnnumberedCap = 30' tools/desk/internal/deskkit/ratelimit.go && grep -q 'const VerdictIssueTool = "verifyloop-verdict"' tools/desk/internal/deskkit/ratelimit.go && echo ok` | prints `ok`: the carve-out is annotated, its value and the verdict-issue meter are unchanged. FAILS today: 'break-glass' appears 0 times in the file. |
 | 8 | check +neighbour | `cd tools/desk && go test -count=1 ./internal/deskkit/ ./cmd/deskevidence/ ./cmd/verifyloop/ ./cmd/deskverdict/` | exit 0: the cap, the width arm (`TestMaxWidth_IsBoundedByTheEnforcedBudget`), the per-tool override test and the break-glass tool itself are unaffected. Passes today and must still pass. |
-| 9 | check +flow | `cd tools/desk && go test -count=1 -v -run '^TestCLIRoundtrip$' ./cmd/deskverdict/ > "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && cd ../../statusgen && go test -count=1 -v -run '^TestTranscribeVerdictValidSignatureConsumed$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && go test -count=1 -v -run '^TestTranscribeVerdictInertEvaluatesNoClause$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && go test -count=1 -v -run '^TestTranscribeVerdictHumanGateEvidenceOnlyNoFlip$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && grep -q -F -e '--- PASS: TestCLIRoundtrip' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictValidSignatureConsumed' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictInertEvaluatesNoClause' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictHumanGateEvidenceOnlyNoFlip' "${TMPDIR:-/tmp}/dt30-flow.txt" && echo ok` | prints `ok` (each test PASSES by name, never vacuously): the path §Landing now names exists end to end in this repo — sign and verify round-trip; a signed verdict is consumed, its Evidence appended and the `gate: model` row flipped; an unarmed lane evaluates nothing; a `gate: human` brief gets Evidence and no flip (the limits Task 1 states). |
+| 9 | check +flow | `cd tools/desk && go test -count=1 -v -run '^TestCLIRoundtrip$' ./cmd/deskverdict/ > "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && cd ../../statusgen && go test -count=1 -v -run '^TestTranscribeVerdictValidSignatureConsumed$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && go test -count=1 -v -run '^TestTranscribeVerdictInertEvaluatesNoClause$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && go test -count=1 -v -run '^TestTranscribeVerdictHumanGateEvidenceOnlyNoFlip$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && go test -count=1 -v -run '^TestTranscribeVerdictNegativeBattery$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && grep -q -F -e '--- PASS: TestCLIRoundtrip' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictValidSignatureConsumed' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictInertEvaluatesNoClause' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictHumanGateEvidenceOnlyNoFlip' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictNegativeBattery' "${TMPDIR:-/tmp}/dt30-flow.txt" && echo ok` | prints `ok` (each test PASSES by name, never vacuously): the path §Landing now names exists end to end in this repo — sign and verify round-trip; a signed verdict is consumed, its Evidence appended and the `gate: model` row flipped; an unarmed lane evaluates nothing; a `gate: human` brief gets Evidence and no flip (the limits Task 1 states). The negative battery is the lower-layer proof: each clause refuses its own forged input with the layers above it bypassed (forged author with a valid signature, tampered signature, and so on). |
 | 10 | gate:human +flow | READ FROM THE FORGE, not from this tree: on a repo a verify desk serves, the lane's enactment sign-off resolves to the blessing authority, a verdict filer is bound, and that repo's remote `main` carries at least one commit written by the transcription workflow from a real (non-test) signed verdict issue. The human records the repo, the verdict issue and the landing commit. | Attested before option 1 or 2 is implemented; without it the brief stays at `todo`. Could-not-check at authoring: no such landing was observed from this tree (facts 4 and 6). |
 | 11 | check | `rm -f "${TMPDIR:-/tmp}/dt30-lint.txt" && cd statusgen && go build -o "${TMPDIR:-/tmp}/dt30-sg" . && "${TMPDIR:-/tmp}/dt30-sg" --root .. --lint > "${TMPDIR:-/tmp}/dt30-lint.txt" 2>&1; grep -q 'LINT: PASS' "${TMPDIR:-/tmp}/dt30-lint.txt" && test -f ../changelog/desk-tools-30.md && echo ok` | prints `ok`: the tree lints clean and the changelog fragment exists. |
 | 12 | check | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt30-sg" . && "${TMPDIR:-/tmp}/dt30-sg" --root .. --consumers --brief desk-tools/30 > "${TMPDIR:-/tmp}/dt30-cons.txt" 2>&1 && grep -q -F ' 0 disproved' "${TMPDIR:-/tmp}/dt30-cons.txt" && echo ok` | prints `ok`: every `follow-up desk-tools/30` routing is corroborated by the implementation diff and none is disproved. The two `out-of-scope` entries (`width.go`, `verdictrun.go`) report UNCHECKED by design: the reviewer confirms neither file changed and both stated reasons still hold. |
