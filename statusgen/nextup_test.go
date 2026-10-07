@@ -274,10 +274,19 @@ const (
 	// FAIL-after-strict-PASS check holds it.
 	evPassFailProsePass = "**VERIFY: PASS**\n\nre-run:\n\n**VERIFY: FAIL** — regression\n\nWill record VERIFY: PASS once green.\n"
 	// A strict PASS that appears only struck, fenced or quoted: the marker is
-	// present but no live verdict exists, so only the last-verdict check holds it.
+	// present in the raw Evidence but is a quotation, not a live verdict.
 	evStruckPass = "~~**VERIFY: PASS**~~ withdrawn\n"
 	evFencedPass = "Expected output:\n\n```\n**VERIFY: PASS**\n```\n"
 	evQuotedPass = "> **VERIFY: PASS**\n"
+	// The same three quotations plus one loose-form PASS token in live prose:
+	// the last verdict token now reads PASS and no FAIL follows, so only the
+	// live strict-marker read (hasLiveVerifyPass) holds these.
+	evStruckPassLoose = "~~**VERIFY: PASS**~~ withdrawn; will record VERIFY: PASS once green\n"
+	evFencedPassLoose = "Expected output:\n\n```\n**VERIFY: PASS**\n```\n\nWill record VERIFY: PASS once green.\n"
+	evQuotedPassLoose = "> **VERIFY: PASS**\n\nWill record VERIFY: PASS once green.\n"
+	// A live strict PASS that also quotes the marker elsewhere: the quotation
+	// does not hide the live verdict, so this still satisfies (control).
+	evPassPlusQuoted = evPass + "\nExpected output:\n\n```\n**VERIFY: PASS**\n```\n\n> **VERIFY: PASS**\n"
 )
 
 func pickedIn(picks []Pick, stream, num string) bool {
@@ -294,8 +303,8 @@ func pickedIn(picks []Pick, stream, num string) bool {
 // `implemented` whose last recorded verdict is a strict PASS. Every other
 // shape — a FAIL, a PASS later answered by a FAIL (even when prose mentions a
 // pass after it), no verdict, a loose-form PASS only, a strict PASS that is only
-// struck, fenced or quoted, a non-human gate, a status other than implemented —
-// stays held.
+// struck, fenced or quoted (with or without a loose-form PASS in live prose), a
+// non-human gate, a status other than implemented — stays held.
 // Each case is checked through all three readers: depIsSatisfied, the
 // eligibility evaluator, and Next-up.
 func TestDependsHumanGatePass(t *testing.T) {
@@ -314,6 +323,10 @@ func TestDependsHumanGatePass(t *testing.T) {
 		{"human implemented struck PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evStruckPass}, false},
 		{"human implemented fenced PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evFencedPass}, false},
 		{"human implemented quoted PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evQuotedPass}, false},
+		{"human implemented struck PASS plus loose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evStruckPassLoose}, false},
+		{"human implemented fenced PASS plus loose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evFencedPassLoose}, false},
+		{"human implemented quoted PASS plus loose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evQuotedPassLoose}, false},
+		{"human implemented live PASS plus quoted PASS", Brief{Status: "implemented", Gate: "human", Evidence: evPassPlusQuoted}, true},
 		{"model implemented PASS", Brief{Status: "implemented", Gate: "model", Evidence: evPass}, false},
 		{"legacy implemented PASS", Brief{Status: "implemented", Evidence: evPass}, false},
 		{"human in-progress PASS", Brief{Status: "in-progress", Gate: "human", Evidence: evPass}, false},
@@ -344,6 +357,41 @@ func TestDependsHumanGatePass(t *testing.T) {
 				t.Errorf("Next-up offers target/02 = %v, want %v", got, tc.wantOK)
 			}
 		})
+	}
+}
+
+// TestHumanGateReadsImplyLastVerdictPass pins why humanGatedVerifyPassed does
+// not also require lastVerifyVerdict == verdictPass: whenever a live strict
+// PASS is present (hasLiveVerifyPass) and no FAIL follows the last strict PASS
+// (verdictFailAfterStrictPass), the last live verdict token is a PASS. It walks
+// every Evidence body of up to three fragments, joined both on one line and on
+// separate lines, drawn from verdict markers in every form and every quotation
+// context the readers strip. If either reader drifts so the implication
+// breaks, this goes red and the conjunct has to come back.
+func TestHumanGateReadsImplyLastVerdictPass(t *testing.T) {
+	frags := []string{
+		"**VERIFY: PASS**", "**VERIFY: FAIL** red", "VERIFY: PASS", "VERIFY: FAIL", "VERIFY:FAIL",
+		"~~**VERIFY: PASS**~~", "~~VERIFY: FAIL~~", "```", "~~~", "> **VERIFY: PASS**", "> VERIFY: FAIL",
+		"text", "**VERIFY: PASS VERIFY: FAIL**", "**VERIFY: PASS — rows** then VERIFY: FAIL", "VERIFY: PARTIAL",
+	}
+	checked := 0
+	var walk func(ev string, depth int)
+	walk = func(ev string, depth int) {
+		checked++
+		if hasLiveVerifyPass(ev) && !verdictFailAfterStrictPass(ev) && lastVerifyVerdict(ev) != verdictPass {
+			t.Fatalf("live strict PASS with no later FAIL, but lastVerifyVerdict = %q for Evidence %q", lastVerifyVerdict(ev), ev)
+		}
+		if depth == 3 {
+			return
+		}
+		for _, f := range frags {
+			walk(ev+"\n"+f, depth+1)
+			walk(ev+" "+f, depth+1)
+		}
+	}
+	walk("", 0)
+	if checked < 27000 {
+		t.Fatalf("walked %d Evidence bodies, want the full fragment product", checked)
 	}
 }
 

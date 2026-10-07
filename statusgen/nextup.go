@@ -655,13 +655,21 @@ func targetSatisfies(b Brief, dependsEdge bool) bool {
 }
 
 // humanGatedVerifyPassed reports a gate:human brief at `implemented` whose
-// LAST recorded verdict is a pass. It makes three verdict reads, all fail
-// closed: a strict **VERIFY: PASS** marker must be present (hasVerifyPass),
-// the last verdict token must be PASS (lastVerifyVerdict), and no FAIL may
-// follow the last strict PASS (verdictFailAfterStrictPass — the FAIL read the
-// sign-off path applies when closing a `verified` row). A FAIL, a
-// loose-form-only PASS, a strict PASS that is only struck, fenced or quoted,
-// or no verdict at all leaves the brief unsatisfied.
+// LAST recorded verdict is a pass. It makes two verdict reads, both fail
+// closed: a strict **VERIFY: PASS** marker must be present as a live verdict,
+// outside fenced code blocks, blockquote lines and struck-through spans
+// (hasLiveVerifyPass), and no FAIL may follow the last strict PASS
+// (verdictFailAfterStrictPass — the FAIL read the sign-off path applies when
+// closing a `verified` row, with the same three contexts stripped). A FAIL, a
+// loose-form-only PASS, a strict PASS that is only struck, fenced or quoted
+// (whatever loose-form PASS prose sits outside it), or no verdict at all leaves
+// the brief unsatisfied.
+//
+// Together the two reads imply lastVerifyVerdict == verdictPass: with a live
+// strict PASS present and no FAIL after it, the last live verdict token is a
+// PASS. That conjunct is therefore not repeated here, where no Evidence shape
+// could ever turn it red; TestHumanGateReadsImplyLastVerdictPass pins the
+// implication instead, so a drift in either reader that breaks it goes red.
 //
 // It is deliberately NOT the full human sign-off read for an `implemented`
 // brief: an unrouted HELD or could-not-check line in the Evidence does not
@@ -669,11 +677,41 @@ func targetSatisfies(b Brief, dependsEdge bool) bool {
 // missing Date/Runner row or the verified-stamp floor. Those reads gate the
 // human approval of the target itself; this predicate only decides whether a
 // dependent may start building on a deliverable whose last verdict is a pass.
+// Two quotation contexts the stripping does not cover — HTML comments and
+// inline code spans — are read as live, as lastVerifyVerdict and
+// verdictFailAfterStrictPass also read them.
 func humanGatedVerifyPassed(b Brief) bool {
 	return b.Gate == "human" && b.Status == "implemented" &&
-		hasVerifyPass(b.Evidence) &&
-		lastVerifyVerdict(b.Evidence) == verdictPass &&
+		hasLiveVerifyPass(b.Evidence) &&
 		!verdictFailAfterStrictPass(b.Evidence)
+}
+
+// hasLiveVerifyPass reports a strict **VERIFY: PASS** marker that is a live
+// verdict, not a quotation: it applies the same per-line stripping
+// lastVerifyVerdict and verdictFailAfterStrictPass apply (fenced code blocks,
+// blockquote lines and struck-through spans are skipped) and only then looks
+// for the strict bold marker. hasVerifyPass, the sign-off gate's read, scans
+// the raw Evidence and is left unchanged; this narrower read is used only by
+// the depends: branch, so a strict marker that appears only inside one of
+// those contexts can never satisfy a depends: edge, whatever loose-form PASS
+// prose sits outside it.
+func hasLiveVerifyPass(evidence string) bool {
+	inFence := false
+	for _, line := range strings.Split(evidence, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence || strings.HasPrefix(trimmed, ">") {
+			continue
+		}
+		line = strikethroughRe.ReplaceAllString(line, "")
+		if hasVerifyPass(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // GateScore is a scored awaiting brief for gate-queue prioritization. The
