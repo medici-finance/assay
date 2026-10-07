@@ -385,7 +385,9 @@ never licenses dispatching past the floor. Resumes and rework (rows 3, 4, 5, 5b)
 drive picks and the floor does not hold them.
 
 **2. Merge the per-root plans** with §The interleave rule, tag every row with its repo-qualified ID,
-name every could-not-check root, and exclude items whose `depends:` are not yet `done`. A count from
+name every could-not-check root, and exclude items whose `depends:` are not yet `done` — except that a
+`gate: human` dependency at `implemented` whose Evidence carries a strict `**VERIFY: PASS**` (present in the raw text and not struck, fenced or
+quoted) with no later FAIL counts as met for `depends:` only, never for `gates:` (the same rule statusgen's eligibility evaluator applies). A count from
 human:<name> ("next 3") takes the top N **of the merged order** — scoping bounds THIS refill, never the loop.
 
 **3. Dispatch** each item with `deskdispatch` (below) — one `capability:dispatch-worker` per item, all
@@ -620,7 +622,13 @@ decision-trigger=spec` — the decision is only well-formed at the pickup design
 instructs the executor to author the brief's `## Human decision` section in its PR and report
 DECISION-BLOCK READY, and **this desk** then re-runs ensure `--at spec` against the branch copy
 (subagent issue-writes get classifier-denied); **5** = self-containment refusal, repair the brief,
-never hand-file around it; **6** = could-not-check, do not file, retry next cycle. Record the issue in
+never hand-file around it; **6** = could-not-check, do not file, retry next cycle — but a gate
+6 that repeats across more than one brief in one tick is a defect, not a blip: file it THAT tick as
+ONE issue naming every brief it blocked. The decision-gate step reports every helper failure as 6,
+the helper's own self-containment refusal included: where the step's message line or `DESK_TRACE`
+shows the helper itself refused (its status 5), that brief is a refusal — repair it, never count it
+toward the repeat filing. In either case, never hand-run the decision-issue helper around the
+refusal (a hand-run once landed a duplicate decision issue). Record the issue in
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
 step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
 
