@@ -77,7 +77,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 4e63d32 2026-10-07T13:08:31-07:00_
+_last regen: 8e3b0f3 2026-10-07T20:10:15Z_
 
 **Progress:** 10/13 brief items done.
 
@@ -98,7 +98,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 4e63d32 2026-10-07T13:08:31-07:00_
+_last regen: 8e3b0f3 2026-10-07T20:10:15Z_
 
 **Progress:** 16/71 brief items done.
 
