@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # =============================================================================
 # assay desk-base — the shared base image every per-desk container builds FROM.
@@ -43,6 +43,18 @@
 #   The git-floor-check step fails the build if the git on PATH is below the
 #   floor or cannot render a converted file from a committed tree.
 #
+# PINS: every FROM, and the `# syntax=` frontend on line 1, names its image by
+#   tag AND digest (`<name>:<tag>@sha256:…`), so a re-pushed tag cannot change
+#   what is built; the tag is kept for the reader, the digest is what is
+#   pulled. Both debian stages share one digest, because the git built in
+#   `gitbuild` links against the final stage's libs.
+#   The git, Go, gh and Node tarballs are each checked with `sha256sum -c`
+#   against a pinned ARG, and unpacked by the very next command. The apt
+#   packages are NOT pinned to exact bytes: apt takes the versions the
+#   signed bookworm archive serves at build time. containers/README.md
+#   ("Pins and checksums") lists every pin and the bump procedure;
+#   tools/desk/internal/deskkit/basepins_test.go holds the reviewed values.
+#
 # PLATFORM: linux/amd64 first (single-arch by default); the arch-parameterised
 #   RUN steps also build linux/arm64 under buildx.
 # =============================================================================
@@ -50,7 +62,7 @@
 # ---- Reused binary suite --------------------------------------------------
 # Pin the already-published desk-tools image; its static binaries (desk-tools
 # suite + statusgen) are copied into the final stage rather than recompiled.
-ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v0.1.0
+ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v0.1.0@sha256:f1ac3e5ab70970ab17e23347942b7e383d2ca7d46557ebaa08a0ffdb8d4925f1
 FROM ${DESK_TOOLS_IMAGE} AS desktools
 
 # ---- git, built from a pinned upstream release ---------------------------
@@ -63,7 +75,7 @@ FROM ${DESK_TOOLS_IMAGE} AS desktools
 # copying anything from it. Then set both ARGs from the release's entry and add
 # the same pair to knownGitTarballs in
 # tools/desk/internal/deskkit/gitfloor_test.go.
-FROM debian:bookworm-slim AS gitbuild
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS gitbuild
 ARG GIT_VERSION=2.56.0
 ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
 ENV DEBIAN_FRONTEND=noninteractive
@@ -96,19 +108,32 @@ RUN set -eux; \
     /out/usr/local/bin/git version
 
 # ---- Base -----------------------------------------------------------------
-FROM debian:bookworm-slim
+# Same digest as the gitbuild stage (see PINS above).
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 
 # Target arch. Defaulted so a plain `docker build` produces linux/amd64 without
 # buildx; a buildx build overrides TARGETARCH per platform.
 ARG TARGETARCH=amd64
 
-# Pinned toolchain versions.
+# Pinned toolchain versions, each with the sha256 of its linux tarball for both
+# architectures the image builds for. Every value comes from the vendor's own
+# published checksums (see containers/README.md, "Pins and checksums").
 #   GO_VERSION  — matches `go 1.25.0` in tools/desk/go.mod (and statusgen/go.mod).
+#                 Checksums: https://go.dev/dl/?mode=json&include=all
 #   GH_VERSION  — pinned gh CLI release.
+#                 Checksums: the release's gh_<version>_checksums.txt
 #   NODE_VERSION — Node LTS; the runtime the interactive agent CLI installs onto.
+#                 Checksums: https://nodejs.org/dist/v<version>/SHASUMS256.txt
+#                 (signed by the Node release keys: SHASUMS256.txt.asc)
 ARG GO_VERSION=1.25.0
+ARG GO_SHA256_AMD64=2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613
+ARG GO_SHA256_ARM64=05de75d6994a2783699815ee553bd5a9327d8b79991de36e38b66862782f54ae
 ARG GH_VERSION=2.63.2
+ARG GH_SHA256_AMD64=912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00
+ARG GH_SHA256_ARM64=0f31e2a8549c64b5c1679f0b99ce5e0dac7c91da9e86f6246adb8805b0f0b4bb
 ARG NODE_VERSION=22.11.0
+ARG NODE_SHA256_AMD64=83bf07dd343002a26211cf1fcd46a9d9534219aad42ee02847816940bf610a72
+ARG NODE_SHA256_ARM64=6031d04b98f59ff0f7cb98566f65b115ecd893d3b7870821171708cdbaf7ae6e
 
 # OCI label stamps, threaded through from CI (same pattern as the root
 # Dockerfile). Defaults keep a plain local `docker build` working.
@@ -144,36 +169,52 @@ RUN set -eux; \
 COPY --from=gitbuild /out/usr/local/ /usr/local/
 COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
 
-# Go toolchain, pinned, from the official distribution tarball.
+# Go toolchain, pinned, from the official distribution tarball, checked against
+# its pinned sha256 before it is unpacked.
 RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) sha="${GO_SHA256_AMD64}" ;; \
+        arm64) sha="${GO_SHA256_ARM64}" ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
     url="https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz"; \
-    curl -fsSL "$url" -o /tmp/go.tgz; \
+    curl -fsSL --proto '=https' --proto-redir '=https' "$url" -o /tmp/go.tgz; \
+    echo "${sha}  /tmp/go.tgz" | sha256sum -c -; \
     tar -C /usr/local --no-same-owner -xzf /tmp/go.tgz; \
     rm /tmp/go.tgz; \
     /usr/local/go/bin/go version
 
-# gh CLI, pinned, from the official release tarball.
+# gh CLI, pinned, from the official release tarball, checked against its pinned
+# sha256 before it is unpacked.
 RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) sha="${GH_SHA256_AMD64}" ;; \
+        arm64) sha="${GH_SHA256_ARM64}" ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
     dir="gh_${GH_VERSION}_linux_${TARGETARCH}"; \
     url="https://github.com/cli/cli/releases/download/v${GH_VERSION}/${dir}.tar.gz"; \
-    curl -fsSL "$url" -o /tmp/gh.tgz; \
+    curl -fsSL --proto '=https' --proto-redir '=https' "$url" -o /tmp/gh.tgz; \
+    echo "${sha}  /tmp/gh.tgz" | sha256sum -c -; \
     tar -C /tmp -xzf /tmp/gh.tgz; \
     install -m 0755 "/tmp/${dir}/bin/gh" /usr/local/bin/gh; \
     rm -rf /tmp/gh.tgz "/tmp/${dir}"; \
     gh --version
 
-# Node.js LTS, pinned, from the official distribution tarball. This is the
-# runtime for the interactive agent CLI; the CLI itself is installed at first
-# run (see /usr/local/bin/install-agent-cli), NOT baked here.
+# Node.js LTS, pinned, from the official distribution tarball, checked against
+# its pinned sha256 before it is unpacked. This is the runtime for the
+# interactive agent CLI; the CLI itself is installed at first run (see
+# /usr/local/bin/install-agent-cli), NOT baked here.
 RUN set -eux; \
     case "${TARGETARCH}" in \
-        amd64) narch=x64 ;; \
-        arm64) narch=arm64 ;; \
+        amd64) narch=x64 sha="${NODE_SHA256_AMD64}" ;; \
+        arm64) narch=arm64 sha="${NODE_SHA256_ARM64}" ;; \
         *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     dir="node-v${NODE_VERSION}-linux-${narch}"; \
     url="https://nodejs.org/dist/v${NODE_VERSION}/${dir}.tar.xz"; \
-    curl -fsSL "$url" -o /tmp/node.txz; \
+    curl -fsSL --proto '=https' --proto-redir '=https' "$url" -o /tmp/node.txz; \
+    echo "${sha}  /tmp/node.txz" | sha256sum -c -; \
     # --no-same-owner: the tarball's files belong to uid 1001; without it they
     # (and the /usr/local directories they land in, git's among them) would
     # keep that owner.
