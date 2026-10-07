@@ -270,6 +270,50 @@ Findings:
 - No credentials were minted or used. There were no forge writes, the worktree brief is unmodified, and the claim was left in place.
 
 VERIFY: BLOCKED — 5 of 5 rows pass by hand on darwin. The Linux check:ci witness at 70deba75a is 3 pass / 2 fail: rows 3 and 4 depend on host tmux/herdr and fail on a clean runner (#1927, open). #1800 remains open for darwin witnesses.
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-07
+
+Non-implementer verification on merged main 91f04b81ba064394aa121a4940cf11a138b55402, by assay-verifier-app[bot] (on-behalf-of human:ian). Gate: model; all four risk answers no.
+
+Why this re-run: docs/cellctl.md changed on main since the 2026-10-04 receipt at 70deba75a (a pointer to the managed Go caches page, #2234; the dev-commit version-stamp paragraph, #2219; a "Configured comms startup" section, #2237). None of these touches the model-policy text. Every file the Verify rows execute is byte-identical between 70deba75a and 91f04b81b: the model-policy, provider, harness, model-namespace, model-override and cell-set suites, the bash oracle, the example policy and docs/cellctl-model-policy.md. The Go policy files (policy.go, model.go, policy_enforce.go) are also unchanged. Expectations were written from the brief's Verify table before any test body was read.
+
+Hand run on a darwin host in a scrubbed environment: env -i keeping PATH, LANG and TERM; a throwaway HOME and TMPDIR; KUBECONFIG=/dev/null; a placeholder git identity. Every row ran exactly as authored.
+
+| # | Command | Expect | Observed (exit + key output line) | Date | Runner |
+|---|---------|--------|-----------------------------------|------|--------|
+| 1 | `python3 tools/cellctl/tests/model-policy.test.py` | named tests pass, including mixed-provider show/up/desk agreement and recording-harness exec arguments | exit 0. "Ran 19 tests ... OK". With -v, all 19 print ok, including test_desk_show_and_up_agree_on_mixed_providers, test_real_exec_argv_and_env, test_ban_cannot_be_removed_by_omitting_deny, test_child_mapping_allowlist_and_hooks, test_direct_and_alias_requests, test_unsupported_efforts, test_competing_allowlist_refuses_before_launch and test_up_preflights_all_roles_before_windows | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash tools/cellctl/tests/provider.test.sh` | exit 0; existing provider credential and override behavior preserved without policy | exit 0. "provider.test.sh: OK", with 76 ok lines and no failing assertion | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/harness.test.sh` | exit 0; existing Claude/Codex launch behavior preserved without policy | exit 0. "harness.test.sh: OK", with 60 ok lines and no failing assertion. The host has tmux on PATH | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `bash tools/cellctl/tests/model-namespace.test.sh && bash tools/cellctl/tests/model-override.test.sh && bash tools/cellctl/tests/cell-set.test.sh` | all three suites exit 0; no legacy pin, override or persistence regression | exit 0. "model-namespace.test.sh: OK", "model-override.test.sh: OK", "cell-set.test.sh: OK" (142 ok lines in total). The host has tmux and herdr on PATH | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash -n tools/cellctl/testdata/cellctl-shell-oracle.sh` | exit 0 | exit 0, no output | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+
+Execution witness: non-dry `statusgen verifyrun --brief` (statusgen v1.0.32) on the darwin host exited 2. All five rows came back could-not-run, because check:ci needs `unshare --net` and this host is darwin (#1800, open). The witness table is kept as a separate artifact. It adds no execution evidence beyond the 2026-10-04 Linux witness, which recorded 3 pass and 2 fail (rows 3 and 4).
+
+Risk-bearing values. Risk metadata is present, every field is "no" and irreversible is "no", so no trigger fires. The enumeration was re-checked at 91f04b81b over the bash oracle's policy arm, the example policy file and the Go launcher's policy arm:
+
+1. Oracle built-in ban: banned + ["*opus-5*", "*opus5*"] at tools/cellctl/testdata/cellctl-shell-oracle.sh:757. Reversible.
+2. Example deny: "*opus-5" at tools/cellctl/examples/model-policy.json:4. Reversible.
+3. Example strong tier: "claude-opus-4-8[1m]" at tools/cellctl/examples/model-policy.json:44. Reversible.
+4. Go alias map: {fable: top, opus: strong, sonnet: mid, haiku: fast} at tools/desk/cmd/cellctl/policy.go:32. Reversible.
+5. Go built-in ban: isBannedOpus50, major == 5 && minor == 0, at tools/desk/cmd/cellctl/model.go:61, with opusMinorMaxDigits = 2 at tools/desk/cmd/cellctl/model.go:69. Reversible.
+
+RISK-VALUE: DERIVED — oracle ban banned + ["*opus-5*", "*opus5*"] @ tools/cellctl/testdata/cellctl-shell-oracle.sh:757 — the brief says "Prohibit Opus 5, including explicit child requests". The trailing wildcard, matched against the lowercased ID with [1m] stripped, catches every Opus 5 spelling. Row 1's test_ban_cannot_be_removed_by_omitting_deny passes. The ban over-covers (it also refuses Opus 5.5), which is the safe direction for a prohibition.
+RISK-VALUE: NAMED, NOT DERIVED — Go built-in ban isBannedOpus50 (major == 5 && minor == 0, opusMinorMaxDigits = 2) @ tools/desk/cmd/cellctl/model.go:61 and :69 — no Verify row executes the Go policy path, and its completeness was not derived here (#1937, open).
+RISK-VALUE: NAMED, NOT DERIVED — example strong tier "claude-opus-4-8[1m]" @ tools/cellctl/examples/model-policy.json:44 and example deny "*opus-5" @ tools/cellctl/examples/model-policy.json:4 — these match the brief's "map the example Opus tier to 4.8". No further derivation was attempted (#1938, open).
+
+Findings:
+
+- By hand, 5 of 5 rows pass as authored on darwin in a scrubbed environment. The result is unchanged from 2026-10-02 and 2026-10-04.
+- The check-definition blocker (#1927, open) still applies, inferred from unchanged inputs. Rows 3 and 4 reach the oracle's `check`, which asserts `command -v tmux` (cellctl-shell-oracle.sh:1559). The harness and model-namespace suites do not stub tmux; cell-set stubs it only for its `up --set` case. Every file these rows execute is byte-identical to 70deba75a, where the Linux container witness failed rows 3 and 4 without tmux and passed them with no-op stubs. This pass's own attempt to re-run rows 3 and 4 with tmux and herdr removed from PATH was refused by a host safety guard. Per the no-evasion rule it was not retried, so the no-tmux arm was not re-executed at this sha. Checklist item "desk-supervision/22 rows 3 and 4 depend on host tmux" on #1927 is still unchecked.
+- #1800 (darwin has no network-off sandbox) is still open. The darwin witness executed 0 of 5 rows.
+- No workflow under .github/workflows references tools/cellctl/tests, so CI runs none of these suites.
+- The Verify table covers the bash oracle only. The shipped Go launcher's policy arm has no row (#1937, plus the open item on #1927).
+- Bug #1936 is still open although its fix (#1944) is on main and row 1 passes 19 of 19. It looks closable; that is the desk's call.
+- Task 5 (release, enable, and inspect a parent and child transcript) is a rollout check outside the Verify table. This pass did not perform it.
+- No credentials were minted or used, there were no forge writes, the worktree was restored after the witness run, and the claim was left in place.
+
+VERIFY: BLOCKED — 5 of 5 rows pass by hand on darwin. Rows 3 and 4 still depend on host tmux/herdr (#1927, open; inputs byte-identical to the 70deba75a Linux failure). The darwin check:ci witness executed 0 of 5 rows (#1800, open).
+
+Blocker re-confirmed and attached: https://github.com/medici-finance/assay/issues/1927#issuecomment-6037851838. The NAMED, NOT DERIVED values are already routed: the Go isBannedOpus50 policy arm to https://github.com/medici-finance/assay/issues/1937, and the example tier and deny pattern to https://github.com/medici-finance/assay/issues/1938.
 
 ## Review
 
