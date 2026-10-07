@@ -235,6 +235,35 @@ The `+dirty` stamp is from the verifier's untracked scratch directory in its wor
 | 13 | row 13 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
 
 **VERIFY: BLOCKED** — every row passes by hand (13/13 above), but the execution witness cannot pass until rows 6 and 11 are re-authored (#1915). Status stays implemented; the same-day status flip was reverted.
+### 2026-10-07 desk dispatch — VERIFY: PASS (build-less-brittle/05 @ fe2217521989, 13/13 rows)
+
+Non-implementer re-verification on merged main fe2217521989c9925a83e57c083fc11028990824 (confirmed by rev-parse of the fetched main and by the forge's commits API in the same run). Delivered by #2245, squash e77868565 (parent 9cd7271bb). This pass checks the rows as re-authored by #2300 (merged as 24886d98a, ahead of this main). statusgen v1.0.32.
+
+Execution witness: `statusgen verifyrun --dry-run` accepted the brief at this main and returned exit 0 with all 13 rows pass, row 6 and row 11 included. Both rows were could-not-run or fail in the 2026-10-06 witness; with the #2300 re-authoring the witness now decides them. Every row was then also run by hand for the observed output below.
+
+| # | Command | Exit | Observed | Date | Runner |
+|---|---------|------|----------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | 0 | ok for the deskdispatch package (72.8s) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written (the named kit-parity test, run with -v) | 0 | RUN then PASS for the named parity test, then ok; the named test ran, so the row is not vacuous | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written (mutate unrepresentable in the objective kit, re-run the parity test, restore) | 0 | RED-ON-DRIFT. The mutant failed at kitparity_test.go:58 (clause lost "unrepresentable") and :64 (the two kits' clauses differ); kit restored, git status clean afterwards | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written (strike two counted in both kits) | 0 | 2 (per-kit counts 2 and 2) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written (Weight section counted in both kits) | 0 | 2 (per-kit counts 2 and 2) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | Verify row 6 as written (kit names the weight counter command, counter test file exists) | 0 | 1, then COUNTER-EXISTS; the counter test function is defined at line 301 of the weight package test file. The witness now decides this row as pass (re-phrased Expect from #2300) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | Verify row 7 as written (worker kit net lines, delivering commit vs its parent) | 0 | NET-OK (impl e77868565, base 9cd7271bb; 388 lines before and 388 after) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written (objective kit net lines) | 0 | NET-OK (522 lines before and 522 after) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written (worker-desk skill net lines) | 0 | NET-OK (923 lines before and 921 after) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | 0 | MOVED | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | Verify row 11 as written (re-authored by #2300: resolve the delivering commit by its Brief trailer, check it out in a throwaway clone, run statusgen consumers with --base at its parent) | 0 | Resolved base 9cd7271bb6d2, tip e77868565. Three fixed-here entries CORROBORATED; the installed-binaries out-of-scope entry UNCHECKED (unchanged since the merge-base). Printed `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`, exit 0; the throwaway clone was removed. For comparison the old unpinned form still prints COULD-NOT-CHECK with exit 2 on this main, which is the #1915 class the re-authoring retires | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | Verify row 12 as written (driver's own login stated in both kits) | 0 | 2 (per-kit counts 1 and 1) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | Verify row 13 as written (bleed bound to THIS item and to the production-down or security scope in both kits) | 0 | 2 (per-kit counts 1 and 1) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Blocker status: #2300 clears the #1915 blocker for this brief. Row 11 now pins the delivering change and exits 0 with the exact Expect summary on merged main; row 6's Expect is an exact output line the witness decides. The witness passes 13/13 at fe2217521989.
+
+Risk-bearing values: risk metadata is present and every field reads no (irreversible: no), and the diff touches dispatch-kit text, one skill and one parity test, so the fail-safe trigger does not fire. Enumeration over the delivering diff e77868565 anyway: strike threshold = one prior merged fix in the class record (the second fix stops) @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:156 (objective kit :228); re-dispatch tier threshold round ≥ 2 @ plugins/assay/skills/worker-desk/SKILL.md:523; parity required tokens "unrepresentable" and "REMOVING the hazardous path" @ tools/desk/cmd/deskdispatch/kitparity_test.go:56; weight counter flag -count=1 @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:164. Ranking: all are reversible with a text edit and the next desk-tools release (the kits are embedded); the strike threshold ranks first because it changes when a worker stops, the round threshold second, the tokens and flag are operational.
+
+RISK-VALUE: DERIVED — strike threshold = 2 (one prior merged fix in the class record) @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:156 — the spec defines two-strikes as the stop at the second fix keyed to one class issue; one recorded merged fix is the earliest point a same-class repeat is observable, so a lower bound would block first fixes and a higher one would allow repeated patching. Reversible.
+
+**VERIFY: PASS**
 
 ## Review
 Gate: model (from frontmatter). The reviewer confirms the clause 14 rewrite keeps the planted-
