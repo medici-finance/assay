@@ -472,7 +472,7 @@ func computeCISlotSaturation(root string, forgeMode bool, ciHoursPerDay float64)
 	}
 	repo := doraTargetRepo(root)
 	if repo == "" {
-		return FlowCISlotSaturation{Status: "could-not-check", Reason: "no target repo resolved ($GITHUB_REPOSITORY, git remote, gh default all unset)"}
+		return FlowCISlotSaturation{Status: "could-not-check", Reason: "no target repo resolved ($GITHUB_REPOSITORY, git remote origin both unset)"}
 	}
 	fmt.Fprintf(os.Stderr, "flow: querying %s for ci_slot_saturation\n", repo)
 	client := newGHClient(token)
