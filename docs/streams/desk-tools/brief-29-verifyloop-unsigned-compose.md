@@ -71,7 +71,7 @@ exec-tier-why: >-
   plumbing whose dangerous failures — the unsigned branch quietly still resolving or opening the
   key, or the signer reading or writing through a link — pass every happy-path test.
 consumers:
-  - "tools/desk/cmd/deskverdict/sign.go: follow-up desk-tools/29 (the implementing change flips this entry to fixed-here and records what landed, Task 12; it gains `--expect-sha256`, `--expect-repo`, `--expect-head`, `--not-before` and `--not-after`, optional and checked only when passed; on EVERY `--payload` call, with or without them, it reads the payload only as a regular non-link file opened without following a link or blocking, from a parent directory that is not a link and that no other user can write, and creates the `.out` sibling exclusively; with none of the new flags its signed output for a regular payload file in such a directory is unchanged, which the existing tests in deskverdict_test.go prove and row 8 keeps unedited — but an existing or unwritable `.out` sibling, which used to exit 0 (overwritten, or a note printed), now exits 5)"
+  - "tools/desk/cmd/deskverdict/sign.go: follow-up desk-tools/29 (the implementing change flips this entry to fixed-here and records what landed, Task 12; it gains `--expect-sha256`, `--expect-repo`, `--expect-head`, `--not-before` and `--not-after`, optional and checked only when passed; on EVERY `--payload` call, with or without them, it reads the payload only as a regular non-link file opened without following a link or blocking, on unix from a parent directory that is not a link and that no other user can write, and creates the `.out` sibling exclusively; with none of the new flags its signed output for a regular payload file in such a directory (any directory on non-unix) is unchanged, which the existing tests in deskverdict_test.go prove with only an added chmod of their payload directory to 0700, and row 8 keeps every existing line unchanged — but an existing or unwritable `.out` sibling, which used to exit 0 (overwritten, or a note printed), now exits 5)"
   - "tools/desk/cmd/deskverdict/verify.go: out-of-scope (unchanged and read-only toward this brief; row 3 (e) proves it refuses the bare payload on structure with a public key supplied, and (f) that it accepts the host-signed body)"
   - "statusgen/transcribeverdict.go: out-of-scope (never sees the unsigned payload: it reads issue bodies, and an unsigned payload is written only to a file; a body without a signature trailer is already CouldNotCheck there)"
 ---
@@ -91,8 +91,8 @@ files:
 - `tools/desk/cmd/verifyloop/verdictunsigned_test.go` (planned) — rows 1, 3, 4
 - `tools/desk/cmd/verifyloop/verdictunsigned_unix_test.go` (planned) — row 2 (FIFO canaries, `//go:build unix`)
 - `tools/desk/cmd/deskverdict/sign.go` — the binding flags, the parent-directory check, the regular-file payload read, the exclusive `.out` write
-- `tools/desk/cmd/deskverdict/signopen_unix.go` (planned) — the no-follow, non-blocking payload open and the directory-owner check (`//go:build unix`)
-- `tools/desk/cmd/deskverdict/signopen_other.go` (planned) — the plain open and no owner check on other platforms (`//go:build !unix`)
+- `tools/desk/cmd/deskverdict/signopen_unix.go` (planned) — the no-follow, non-blocking payload open and the parent-directory check (`//go:build unix`)
+- `tools/desk/cmd/deskverdict/signopen_other.go` (planned) — the plain open and no parent-directory check on other platforms (`//go:build !unix`)
 - `tools/desk/cmd/deskverdict/main.go` — the `sign` usage line
 - `tools/desk/cmd/deskverdict/signbinding_test.go` (planned) — row 11
 - `tools/desk/cmd/deskverdict/signpaths_unix_test.go` (planned) — row 12 (links and FIFOs, `//go:build unix`)
@@ -146,8 +146,8 @@ container can be trusted to witness them, and the only outside witness would be 
 re-runs the checks — which is the combined process again.
 
 So the choice is between two risks: on the combined path, a bad check command can steal the key
-and forge anything, indefinitely; on the split path, it can forge only the results of the run it
-is part of, and the key never leaves the host.
+and forge anything, indefinitely; on the split path, it can forge results only for the repository, commit and time window the
+host recorded for the run it is part of, and the key never leaves the host.
 
 Options:
 1. **Approve with the host-side binding (recommended).** The split mode, plus a signer that,
@@ -155,8 +155,8 @@ Options:
    results file that does not match them. The checks are optional flags on the signer, so the
    host's written procedure requires it to pass all of them: the fingerprint from the composing
    step's output, everything else from its own record. On every signing call, with or without
-   those flags, the signer reads only an ordinary file (never a link or a pipe) from a directory
-   no other user can write, and never writes its output through a link — so a leftover or
+   those flags, the signer reads only an ordinary file (never a link or a pipe), on unix from a
+   directory no other user can write, and never writes its output through a link — so a leftover or
    unwritable output file next to the results file, which today is overwritten or skipped with
    a note, now makes signing fail. A hostile check command
    can still invent results for the run it is part of, but cannot get a stale or swapped file
@@ -187,7 +187,14 @@ Default if no answer: none — blocks until answered.
   `tools/desk/internal/deskkit/verdict.go`, or any existing line of
   `tools/desk/cmd/verifyloop/verdictrun_test.go` or `tools/desk/cmd/deskverdict/deskverdict_test.go`
   (row 8 checks this). The existing signed path and the existing signer tests are the baseline
-  the new behaviour is proven against.
+  the new behaviour is proven against. One kind of ADDED line is expected in
+  `deskverdict_test.go`: after each existing `t.TempDir()` that holds a payload, add
+  `if err := os.Chmod(dir, 0o700); err != nil { t.Fatal(err) }` (row 8 refuses changed or removed
+  lines, not added ones). Since Go 1.27, `t.TempDir()` honours the umask, so under umask 002 it is
+  0775 and Task 8's unix write-bit check would refuse it.
+- Every new test that signs a payload makes the payload's directory the same way: `t.TempDir()`,
+  then `os.Chmod(dir, 0o700)` (a chmod is not masked by the umask). No test relies on the
+  umask for that directory's mode.
 - No key material is committed: tests generate keys with `writeTestKey` (verifyloop) or the
   package's existing key helper (deskverdict) into `t.TempDir()`.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
@@ -254,16 +261,20 @@ Default if no answer: none — blocks until answered.
    whether a file is present: with no digest there is nothing to sign, whatever the output
    directory holds.
 8. **Signer binding (`deskverdict sign`).** In `sign.go`, with the platform-specific open and
-   owner check in `signopen_unix.go` / `signopen_other.go`. The parent-directory check, the
-   payload read and the `.out` rule apply to EVERY `sign --payload` call, with or without the
+   owner check in `signopen_unix.go` / `signopen_other.go`. The parent-directory check (unix
+   only), the payload read and the `.out` rule apply to EVERY `sign --payload` call, with or without the
    binding flags; only the binding flags are optional.
-   - **Parent directory.** `os.Lstat` the `--payload` path's `filepath.Dir`; refuse (exit 5)
-     unless it is a directory and not a link, has no group or other write bit
-     (`Mode().Perm()&0o022 == 0`) and, on unix, is owned by the signer's effective uid (the
-     `syscall.Stat_t` `Uid` equals `os.Geteuid()`). This is the part of host contract H5 the
-     signer can check: the payload and its `.out` sibling sit in a directory that only the
+   - **Parent directory (unix only).** On unix, `os.Lstat` the `--payload` path's
+     `filepath.Dir`; refuse (exit 5) unless it is a directory and not a link, has no group or
+     other write bit (`Mode().Perm()&0o022 == 0`) and is owned by the signer's effective uid
+     (the `syscall.Stat_t` `Uid` equals `os.Geteuid()`). This is the part of host contract H5
+     the signer can check: the payload and its `.out` sibling sit in a directory that only the
      host's user can change. It checks the immediate parent only; the directories above it are
-     the host's to keep (H5). On non-unix platforms the owner part is skipped.
+     the host's to keep (H5). On non-unix platforms the signer skips BOTH the write-bit and the
+     owner checks: Go derives a Windows file mode from attributes, not ACLs, so every writable
+     directory reads as 0777 and a write-bit check would refuse every `sign --payload` there
+     (and turn the existing `--payload` tests red on the native Windows suite, which row 8
+     forbids editing). On those platforms H5's directory property is wholly the host's job.
    - **Payload read.** `os.Lstat` the `--payload` path; refuse (exit 5) unless it is a regular
      file (`Mode().IsRegular()` — rejects a link, FIFO, device or directory without opening it).
      `Lstat` looks at the last path component only, so the open does not trust it: on unix,
@@ -271,6 +282,9 @@ Default if no answer: none — blocks until answered.
      `Lstat` fails the open instead of being followed, and a FIFO swapped in opens at once
      instead of blocking the signer; elsewhere, a plain read-only open. `Stat` the open file and
      refuse (exit 5) unless it is a regular file and `os.SameFile` matches the `Lstat` result.
+     An open that fails because the entry is now a link (`ELOOP` from `O_NOFOLLOW`) is also a
+     refusal (exit 5), never the exit-6 read error it maps to today (`sign.go:43-46`); any other
+     open or read failure stays exit 6.
      Read the bytes ONCE from that open file; the digest, the field checks and the signature all
      use those same bytes. A package-level `afterPayloadLstat func(path string)`, nil in
      production, runs between the `Lstat` and the open so a test can swap the entry there.
@@ -280,7 +294,9 @@ Default if no answer: none — blocks until answered.
      so Go's flag help renders `-expect-sha256 string`, `-expect-repo string`,
      `-expect-head string`, `-not-before string` and `-not-after string` (row 7 greps three of
      these). Their values are parsed and checked after `fs.Parse`, the way Task 1 pins
-     `--unsigned-out`:
+     `--unsigned-out`. A flag counts as passed when `fs.Visit` reports it, never by its value
+     being non-empty: a flag passed with an empty or unparseable value is a refusal (exit 5),
+     so `--expect-head ""` can never switch its check off:
      `--expect-sha256 <hex>` — the SHA-256 of the bytes read must equal it;
      `--expect-repo <owner/name>` and `--expect-head <sha>` — the payload must be a JSON object
      whose top-level `repo` / `head` string equals it;
@@ -304,12 +320,13 @@ Default if no answer: none — blocks until answered.
    `--unsigned-out` changelog entry; the prose carries the literal phrases `the fence has fully exited`,
    `own dispatch record`, `--expect-head` and `--not-after`, which row 7 greps. The host:
    - **H1** before it starts the fence, writes its own dispatch record, outside the fence: the
-     repo, the head sha and the dispatch time. It runs the composer with explicit `--repo` and
+     repo, the head sha and the dispatch time, in whole seconds (truncated, RFC3339 with no
+     fraction), since the payload's `ts` has whole-second precision. It runs the composer with explicit `--repo` and
      `--sha` taken from that record;
    - **H2** signs only after the composer exited 0 AND its stdout carried exactly one `sha256=`
      value — one line containing `sha256=`, once, followed by 64 lowercase hex — and only once
      the fence has fully exited with no row process left alive; it adds the time the fence
-     exited to its dispatch record. Any other exit, no `sha256=` value, or more than one, means
+     exited, in whole seconds as in H1, to its dispatch record. Any other exit, no `sha256=` value, or more than one, means
      do not sign — whatever file is present;
    - **H3** signs with `deskverdict sign --payload <file> --expect-sha256 <the digest from H2>
      --expect-repo <repo> --expect-head <sha> --not-before <dispatch time> --not-after <fence
@@ -323,8 +340,10 @@ Default if no answer: none — blocks until answered.
      the composing uid is not the signing user. After the fence has fully exited, the host moves
      the payload out of the fence's output directory into such a directory, moving the entry
      itself (a rename, not a copy of what it points to), so a link or FIFO stays one and the
-     signer refuses it. The signer checks the immediate parent (Task 8); the directories above
-     it are the host's to keep.
+     signer refuses it. If the rename fails (for example across filesystems), the host does not
+     sign; it never falls back to a copy. On non-unix platforms the signer checks no directory
+     property, so this contract is the only control there. On unix the signer checks the immediate parent (Task 8); the directories
+     above it are the host's to keep.
 10. **Docs.** Amend the package comment's invariant at `verdictrun.go:32` to "an unsigned verdict
     BODY is never emitted; an unsigned PAYLOAD is written only to an explicit `--unsigned-out`
     file". Add `[--unsigned-out <file>]` to the `verdict` usage line in `main.go`, and to the
@@ -341,8 +360,8 @@ Default if no answer: none — blocks until answered.
     one at the base as inherited and reports it UNCHECKED, never corroborated.
 13. **Changelog fragment** under `changelog/` (`### Added`): the new flag, that it reads no key,
     the five signer flags and the host contract; under `### Changed`: `deskverdict sign` now, on
-    every `--payload` call, refuses a payload that is not a regular file or sits in a directory
-    that is a link or that another user can write, opens it without following a link or blocking
+    every `--payload` call, refuses a payload that is not a regular file or, on unix, sits in a
+    directory that is a link or that another user can write, opens it without following a link or blocking
     on a FIFO, and refuses to replace an existing `.out`.
 
 ## Verify (executable — no prose-only DoD items)
@@ -359,7 +378,7 @@ Default if no answer: none — blocks until answered.
 | 9 | check:ci | `cd statusgen && go run . --root .. --lint` | exit 0, `LINT: PASS` |
 | 10 | check:ci | `cd statusgen && go build -o "${TMPDIR:-/tmp}/b29-statusgen" . && cd .. && a="$(git log -1 --format=%H --first-parent --diff-filter=A HEAD -- tools/desk/cmd/verifyloop/verdictunsigned_test.go)" && test -n "$a" && t="$(mktemp -d)" && git clone -q --shared --no-checkout . "$t/c" && git -C "$t/c" checkout -q --detach "$a" && "${TMPDIR:-/tmp}/b29-statusgen" --root "$t/c" --consumers --brief desk-tools/29 --base "$a^1" > "${TMPDIR:-/tmp}/b29-r10.out"; rc=$?; rm -rf "$t"; test "$rc" = 0 && grep -q -e '^summary: [1-9][0-9]* corroborated, 0 disproved,' "${TMPDIR:-/tmp}/b29-r10.out" && echo ok` | prints `ok`. Runs on merged main with full history; `a` is the implementing commit as in row 8, and the gate runs on a throwaway shared clone checked out at `a` against `a^1`, so it judges exactly the implementing diff (Task 12 puts this brief in it). The `sign.go` entry corroborates because Task 12 rewrites it in the implementing change (`follow-up desk-tools/29` to `fixed-here`, stating what landed): the gate reports an entry byte-identical to the one at the base as inherited and UNCHECKED (`statusgen/consumers.go:607`, `:721-723`, `:824-835`), so an unrewritten entry would leave `0 corroborated` and redden this row; rewritten, it is judged as `fixed-here` against a diff that changes `sign.go`; the other two are `out-of-scope`, which the gate reports as UNCHECKED, not passed — their truth is the reviewer's call, backed by row 8 (neither file changed) and row 3 (e) and (f) |
 | 11 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskverdict/ -run '^TestSignBindingRefusesMismatchBeforeKey$' -count=1 -v > "${TMPDIR:-/tmp}/b29-r11.out" 2>&1 && grep -F -e '--- PASS: TestSignBindingRefusesMismatchBeforeKey' "${TMPDIR:-/tmp}/b29-r11.out"` | exit 0, `--- PASS:` printed. A valid verdict-v1 payload file with known `repo`, `head` and `ts`, copied into its own `t.TempDir()` for every case, so no case meets another case's `.out` sibling (the exclusive create would refuse it). Refusal cases run with `--pem` naming a path that does NOT exist, so reaching key resolution would give 6: a wrong `--expect-sha256`, a wrong `--expect-repo`, a wrong `--expect-head`, a `--not-before` later than the payload's `ts`, a `--not-after` earlier than the payload's `ts`, and `--expect-repo` on a payload that is a JSON array each return 5 with empty stdout — the refusal comes before any key lookup. The matching case (all five flags correct, a real key) returns 0 and its stdout verifies with the matching public key; the same payload with none of the new flags also returns 0 with the identical body. Mutation M6 turns the wrong-digest case red; mutation M7 turns the wrong-head case red; mutation M12 turns the late-`ts` case red |
-| 12 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskverdict/ -run '^TestSignPathHandlingNeverFollowsLinks$' -count=1 -timeout 60s -v > "${TMPDIR:-/tmp}/b29-r12.out" 2>&1 && grep -F -e '--- PASS: TestSignPathHandlingNeverFollowsLinks' "${TMPDIR:-/tmp}/b29-r12.out"` | exit 0, `--- PASS:` printed. With a real key in every case, each payload in its own `t.TempDir()` (mode 0700) unless the case says otherwise: (i) `--payload` a symlink to a valid payload returns 5 with empty stdout; (ii) `--payload` a FIFO returns 5 with empty stdout; (iii) `<name>.out` pre-created as a symlink to a victim file returns 5, the victim's bytes are unchanged and the link is still a link; (iv) `<name>.out` pre-created as a regular file returns 5 and its bytes are unchanged; (v) a fresh directory returns 0 and `<name>.out` is a new regular file holding exactly the stdout body; (vi) `afterPayloadLstat` replaces the regular payload with a FIFO after the `Lstat`: returns 5 with empty stdout; (vii) `afterPayloadLstat` replaces it with a symlink to another valid payload: returns 5 with empty stdout; (viii) the payload's directory chmodded to 0777: returns 5 with empty stdout; (ix) `--payload` names the file through a directory symlink (`<link>/p.json`, the link pointing at a 0700 directory): returns 5 with empty stdout. **No hang, bounded:** the FIFO cases (ii) and (vi) each run `cmdSign` in a goroutine and wait at most 5 seconds for it; on timeout the test opens the FIFO's write side to release the blocked call and fails, and `-timeout 60s` bounds the whole run. The owner part of the directory check is not exercised here (a test that is not root cannot make a directory another user owns); the reviewer confirms it from the diff. Mutation M10 turns (iii) red; mutation M11 turns (i) red; mutation M13 turns (vi) red; mutation M15 turns (viii) red |
+| 12 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskverdict/ -run '^TestSignPathHandlingNeverFollowsLinks$' -count=1 -timeout 60s -v > "${TMPDIR:-/tmp}/b29-r12.out" 2>&1 && grep -F -e '--- PASS: TestSignPathHandlingNeverFollowsLinks' "${TMPDIR:-/tmp}/b29-r12.out"` | exit 0, `--- PASS:` printed. With a real key in every case, each payload in its own `t.TempDir()` chmodded to 0700 after creation unless the case says otherwise: (i) `--payload` a symlink to a valid payload returns 5 with empty stdout; (ii) `--payload` a FIFO returns 5 with empty stdout; (iii) `<name>.out` pre-created as a symlink to a victim file returns 5, the victim's bytes are unchanged and the link is still a link; (iv) `<name>.out` pre-created as a regular file returns 5 and its bytes are unchanged; (v) a fresh directory returns 0 and `<name>.out` is a new regular file holding exactly the stdout body; (vi) `afterPayloadLstat` replaces the regular payload with a FIFO after the `Lstat`: returns 5 with empty stdout; (vii) `afterPayloadLstat` replaces it with a symlink to another valid payload: returns 5 with empty stdout; (viii) the payload's directory chmodded to 0777: returns 5 with empty stdout; (ix) `--payload` names the file through a directory symlink (`<link>/p.json`, the link pointing at a directory chmodded to 0700): returns 5 with empty stdout. **No hang, bounded:** the FIFO cases (ii) and (vi) each run `cmdSign` in a goroutine and wait at most 5 seconds for it; on timeout the test opens the FIFO's write side to release the blocked call and fails, and `-timeout 60s` bounds the whole run. The owner part of the directory check is not exercised here (a test that is not root cannot make a directory another user owns); the reviewer confirms it from the diff. Mutation M10 turns (iii) red; mutation M11 turns (i) red; mutation M13 turns (vi) red; mutation M15 turns (viii) red |
 
 ### Named mutations
 Each was chosen so the row it names is the ONLY thing standing between it and a merge.
@@ -408,15 +427,16 @@ A reviewer answers both questions in the verdict:
    (M2, M5); it does not cover a path the resolver never consults. Row 3 (e) proves, with a
    public key supplied, that the consumer layer refuses the unsigned file on structure,
    independent of the fence. Rows 11 and 12 prove the signer refuses a mismatched, linked or
-   non-regular payload, or one in a directory another user can write, and does not hang on a
+   non-regular payload, or (on unix) one in a directory another user can write, and does not hang on a
    FIFO swapped in after its check, whatever the composer did; nothing proves a lower layer for a forgery
    inside the dispatched scope, because none exists.)
 
 The reviewer also confirms from the diff that `signPayload` now calls `canonicalPayloadBytes`
 and nothing else changed in the signed path's behaviour, that no stdout line in the unsigned
 mode can contain a payload fence, that the success line carries the digest and no repo, head or
-time value, that the directory owner check is present on unix, and that `deskverdict sign` with
-none of the new flags signs a regular payload file in a directory only its user can write
+time value, that the parent-directory write-bit and owner checks are present on unix and both skipped elsewhere, and that `deskverdict sign` with
+none of the new flags signs a regular payload file in a directory only its user can write (on unix; any directory
+elsewhere)
 exactly as before when no `.out` sibling exists. The one exit-code change for such a caller is
 stated in Task 8: an existing or unwritable `.out` sibling used to exit 0 (overwritten, or a note
 printed) and now exits 5.
