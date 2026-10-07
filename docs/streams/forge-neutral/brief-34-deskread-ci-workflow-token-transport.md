@@ -4,7 +4,7 @@ title: deskread CI workflow-token transport — an explicit, CI-only, read-only 
 why: >-
   statusgen's CI-only modes (the pull-request corroboration job, the model auto-flip job, and
   the transcribe lanes an adopter runs) read the forge under the workflow's own job token today,
-  through `gh`. forge-neutral/18 has to move every one of those reads onto `deskread`, but
+  through `gh`. forge-neutral/18 and forge-neutral/35 have to move every one of those reads onto `deskread`, but
   `deskread` only ever authenticates as a minted desk App role, and the CI jobs hold no desk
   role custody that `deskread` can resolve. So 18 cannot finish without either giving every CI
   job an App credential for a read role or giving `deskread` a narrow way to read under the token
@@ -51,8 +51,8 @@ sources:
   - "#2253 comment 6013956713: the question this brief answers. statusgen's CI-only modes (`--corroborate`, `--auto-flip-model`, the transcribe lanes) read under the workflow's job token, `deskread` reads only under a minted App role, so moving those reads onto `deskread` needs a decision about which credential CI reads under"
   - "#2253 comment 6014345604: the driver's ruling on #2253, option (a). `deskread` gains an explicit, opt-in transport that authenticates with the CI workflow token, for read-only kinds only, so the CI-only modes can move their `gh` reads onto it. The ruling asks for this as its own gated brief"
   - "#2315: the decision issue that puts this brief's exact shape to the human"
-  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: Verify row 3 (zero forge-CLI launch sites in non-test statusgen), which the CI-lane sites cannot meet without this transport, and row 15 (`TestForgeSurfaceUnchangedByDeskread`), which this brief must keep green because it adds no `Forge` operation"
-  - "#2313 (draft, forge-neutral/33): the `Forge` reads and `deskread` kinds statusgen's remaining sites need. Its scope fence leaves `deskread`'s identity untouched and defers the CI identity to #2253. This brief is the other half: it adds the identity, no reads"
+  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: Verify row 3 (forge-CLI launch sites in non-test statusgen: 2 until forge-neutral/35 lands, then 0), which the CI-lane sites cannot meet without this transport, and row 15 (`TestForgeSurfaceUnchangedByDeskread`), which this brief must keep green because it adds no `Forge` operation"
+  - "#2313 (merged, forge-neutral/33): the `Forge` reads and `deskread` kinds statusgen's remaining sites need. Its scope fence leaves `deskread`'s identity untouched and defers the CI identity to #2253. This brief is the other half: it adds the identity, no reads"
   - "docs/streams/forge-neutral/README.md, 'Shared conventions the briefs inherit': refusal not fallback; negative-path rows are mandatory; no hand-built API call is evidence"
   - "tools/desk/cmd/deskread/forge.go:46-51: the only identity path today, `sessionRoleFn(\"deskread\")` (= `deskkit.SessionTokenRole`) then `deskkit.ForgeFor`, with an Unverifiable refusal that names 'never an ambient forge-CLI identity'; :19-24 and :28-35: `forgeAPIBase`, a test seam that is empty in production, handed to `deskkit.SetGitHubCustodyMinter`"
   - "tools/desk/cmd/deskread/main.go:74 (`readKinds`), :81 (`perIssueKinds`), :127 (`SetToolClass(ClassForTool(false))`, roster from the config-home file only), :129 (`CheckVerbActivation` before `run`)"
@@ -85,7 +85,7 @@ consumers:
   - "tools/desk/internal/deskkit/readonlyforge.go: follow-up forge-neutral/34 (this brief's implementation: the default-deny decorator, Task 1)"
   - "tools/desk/internal/deskkit/forgeresolve_test.go, tools/desk/internal/deskkit/roletokenguard_test.go, tools/desk/internal/deskkit/ambienttoken_guard_test.go, tools/desk/internal/deskkit/toolclass_test.go: follow-up forge-neutral/34 (this brief's implementation: each guard learns the new constructor, seam, variable or report-class entry and still fails on anything else, Task 5)"
   - "tools/desk/cmd/deskread/main.go `ciTransportKinds`: follow-up forge-neutral/18 (34 opens the set at `issues`, `trust`, `comments`. Every kind a CI-lane site needs beyond those, including the pull-request kinds forge-neutral/33 adds to `readKinds`, is added to `ciTransportKinds` by 18, one reviewed entry per kind, in the same diff that moves the site, with 18's own row asserting the kind is a read on `readKinds`. 33 does not touch this set; its scope fence leaves `deskread`'s identity alone)"
-  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, because its row 3 cannot reach 0 for the CI-lane sites without this transport)"
+  - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md: fixed-here (its `depends:` gains this brief, because its row 3 cannot reach its expected count for the CI-lane sites without this transport)"
   - "docs/streams/forge-neutral/README.md: fixed-here (the board row for this brief and the critical-path note `34 → 18`)"
   - "statusgen/forgeread.go, statusgen/autoflip.go, statusgen/corroborate.go, statusgen/citationcorroborate.go, statusgen/decisiongateanchor.go, statusgen/trustgate.go, statusgen/transcribescan.go, statusgen/transcribeverdict.go, statusgen/scanissues.go: follow-up forge-neutral/18 (moving each CI-lane site onto `deskread --ci-workflow-token` is 18's Task and row 3; a read of another repository lands in `partial` and 18 routes it to custody or could-not-check; this brief touches no statusgen file; the three sites forge-neutral/35 owns, in the next row, are not 18's)"
   - "statusgen/corroborate.go `:1481` (the one call that builds the ruling client), statusgen/transcribescan.go `ghCommentResolver`, statusgen/transcribeverdict.go `ghVerdictIssueResolver`: follow-up forge-neutral/35 (the human-ruling and verdict-issue reads move onto the read verb there, not in 18; the other CI-lane sites in those three files, `ghAuthorResolver` and `ghVerdictMainHealth` among them, stay with 18)"
@@ -112,16 +112,16 @@ App role and mints that App's installation token, and it refuses everything else
 token a job mints today, the board-writer token in `model-autoflip`
 (`assay-statusgen.yml:350-355`), is that job's write identity for the regenerated board, and
 the ruling did not choose to reuse it for reads. So the CI-lane sites have nowhere to go, and
-18's row 3 cannot reach 0.
+18's row 3 cannot reach its expected count (2 until 35 lands, then 0).
 
 #2253 put that question to the driver. The driver's ruling on #2253 chose option (a):
 `deskread` gains an explicit, opt-in transport that reads with the CI job token, for read-only
 kinds only. This brief adds that transport and nothing else. It adds no `Forge` operation, no
 `deskread` read kind, and it touches no statusgen file and no workflow. Moving the sites onto
-the transport stays 18's job, and the reads statusgen still lacks are forge-neutral/33's.
+the transport stays 18's job (35's for the three ruling and transcribe sites), and the reads statusgen still lacks are forge-neutral/33's.
 
 18 inherits five hand-offs from this brief, each named in `consumers:`:
-1. move each CI-lane site onto `deskread --ci-workflow-token`;
+1. move each CI-lane site onto `deskread --ci-workflow-token` (the three that 35 takes move there);
 2. add each kind those sites need to the closed `ciTransportKinds` set, one reviewed entry per
    kind;
 3. edit this repository's statusgen workflow to hand the job token over in the dedicated
