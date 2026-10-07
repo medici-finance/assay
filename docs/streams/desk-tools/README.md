@@ -161,6 +161,19 @@ worse one), and `checks-green` is 54.9% of condition-named refusals, not ~70%. A
 rendered would then never be shown again, which is exactly the blindness `delta.go` is built to
 refuse — that needs its own brief and its own reset rule.
 
+Brief 30 is the public half of a downstream house's ruled cutover of its verify desk's landing
+path. The `verify-desk` skill still tells every adopter's verify desk to commit Evidence and
+status flips straight to `main` through `deskevidence`, with a pointer saying a signed-issue lane
+"would replace" that path. The lane is in this repo's code — `verifyloop verdict` signs and
+`statusgen --transcribe-verdict` transcribes — so the brief rewrites the skill's `## Landing` to
+name it, demotes `deskevidence` to documented break-glass (plus a residual pull-request route for
+the classes the lane refuses), rewrites the one push-policy sentence the five desk skills share,
+and annotates the rate-limit carve-out without changing its value. It is `gate: human` with a
+creation-time decision, and its precondition — a lane armed on a real repo with a real verdict
+transcribed onto `main` — is a forge fact the human attests, not a typed edge. Two gaps the read
+found are recorded rather than closed: no public tool files the signed verdict issue yet, and the
+lane's enactment gate cannot arm on this repo as it stands.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
@@ -194,6 +207,7 @@ refuse — that needs its own brief and its own reset rule.
 | 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | implemented | — | — |
 | 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | in-progress | — | — |
 | 28 | [Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path](brief-28-deskverdict-role-keys-and-scan-delta-verify.md) | 1 | M | implemented | — | — |
+| 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -211,7 +225,7 @@ stream — see each brief's Dependencies note.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /30 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
