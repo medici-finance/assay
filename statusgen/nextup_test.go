@@ -269,6 +269,15 @@ const (
 	evPassFail  = "**VERIFY: PASS**\n\nre-run:\n\n**VERIFY: FAIL** — regression\n"
 	evFailPass  = "**VERIFY: FAIL** — row 2 red\n\nre-run after fix:\n\n**VERIFY: PASS**\n"
 	evLoosePass = "Non-implementer verifier run — VERIFY: PASS (no strict marker)\n"
+	// A FAIL that answers a strict PASS, followed by a prose mention of a
+	// future pass: the last verdict token reads PASS, so only the
+	// FAIL-after-strict-PASS check holds it.
+	evPassFailProsePass = "**VERIFY: PASS**\n\nre-run:\n\n**VERIFY: FAIL** — regression\n\nWill record VERIFY: PASS once green.\n"
+	// A strict PASS that appears only struck, fenced or quoted: the marker is
+	// present but no live verdict exists, so only the last-verdict check holds it.
+	evStruckPass = "~~**VERIFY: PASS**~~ withdrawn\n"
+	evFencedPass = "Expected output:\n\n```\n**VERIFY: PASS**\n```\n"
+	evQuotedPass = "> **VERIFY: PASS**\n"
 )
 
 func pickedIn(picks []Pick, stream, num string) bool {
@@ -283,8 +292,10 @@ func pickedIn(picks []Pick, stream, num string) bool {
 // TestDependsHumanGatePass pins the depends: satisfaction rule: a target at
 // done/verified satisfies a depends: edge; so does a gate:human target at
 // `implemented` whose last recorded verdict is a strict PASS. Every other
-// shape — a FAIL, a PASS later answered by a FAIL, no verdict, a loose-form
-// PASS only, a non-human gate, a status other than implemented — stays held.
+// shape — a FAIL, a PASS later answered by a FAIL (even when prose mentions a
+// pass after it), no verdict, a loose-form PASS only, a strict PASS that is only
+// struck, fenced or quoted, a non-human gate, a status other than implemented —
+// stays held.
 // Each case is checked through all three readers: depIsSatisfied, the
 // eligibility evaluator, and Next-up.
 func TestDependsHumanGatePass(t *testing.T) {
@@ -299,6 +310,10 @@ func TestDependsHumanGatePass(t *testing.T) {
 		{"human implemented PASS then FAIL", Brief{Status: "implemented", Gate: "human", Evidence: evPassFail}, false},
 		{"human implemented no verdict", Brief{Status: "implemented", Gate: "human"}, false},
 		{"human implemented loose PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evLoosePass}, false},
+		{"human implemented PASS then FAIL then prose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evPassFailProsePass}, false},
+		{"human implemented struck PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evStruckPass}, false},
+		{"human implemented fenced PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evFencedPass}, false},
+		{"human implemented quoted PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evQuotedPass}, false},
 		{"model implemented PASS", Brief{Status: "implemented", Gate: "model", Evidence: evPass}, false},
 		{"legacy implemented PASS", Brief{Status: "implemented", Evidence: evPass}, false},
 		{"human in-progress PASS", Brief{Status: "in-progress", Gate: "human", Evidence: evPass}, false},

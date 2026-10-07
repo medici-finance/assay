@@ -655,11 +655,20 @@ func targetSatisfies(b Brief, dependsEdge bool) bool {
 }
 
 // humanGatedVerifyPassed reports a gate:human brief at `implemented` whose
-// LAST recorded verdict is a pass. It reads the Evidence the same fail-closed
-// way the human sign-off path does: a strict **VERIFY: PASS** marker must be
-// present, the last verdict token must be PASS, and no FAIL may follow the
-// last strict PASS. A FAIL, a loose-form-only PASS, or no verdict at all
-// leaves the brief unsatisfied.
+// LAST recorded verdict is a pass. It makes three verdict reads, all fail
+// closed: a strict **VERIFY: PASS** marker must be present (hasVerifyPass),
+// the last verdict token must be PASS (lastVerifyVerdict), and no FAIL may
+// follow the last strict PASS (verdictFailAfterStrictPass — the FAIL read the
+// sign-off path applies when closing a `verified` row). A FAIL, a
+// loose-form-only PASS, a strict PASS that is only struck, fenced or quoted,
+// or no verdict at all leaves the brief unsatisfied.
+//
+// It is deliberately NOT the full human sign-off read for an `implemented`
+// brief: an unrouted HELD or could-not-check line in the Evidence does not
+// hold a depends: edge here (the sign-off still refuses on it), nor does a
+// missing Date/Runner row or the verified-stamp floor. Those reads gate the
+// human approval of the target itself; this predicate only decides whether a
+// dependent may start building on a deliverable whose last verdict is a pass.
 func humanGatedVerifyPassed(b Brief) bool {
 	return b.Gate == "human" && b.Status == "implemented" &&
 		hasVerifyPass(b.Evidence) &&
