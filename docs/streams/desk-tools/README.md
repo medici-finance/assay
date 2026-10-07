@@ -164,15 +164,16 @@ refuse — that needs its own brief and its own reset rule.
 Brief 30 is the public half of a downstream house's ruled cutover of its verify desk's landing
 path. The `verify-desk` skill still tells every adopter's verify desk to commit Evidence and
 status flips straight to `main` through `deskevidence`, with a pointer saying a signed-issue lane
-"would replace" that path. The lane is in this repo's code — `verifyloop verdict` signs and
-`statusgen --transcribe-verdict` transcribes — so the brief rewrites the skill's `## Landing` to
-name it, demotes `deskevidence` to documented break-glass (plus a residual pull-request route for
-the classes the lane refuses), rewrites the one push-policy sentence the five desk skills share,
-and annotates the rate-limit carve-out without changing its value. It is `gate: human` with a
-creation-time decision, and its precondition — a lane armed on a real repo with a real verdict
-transcribed onto `main` — is a forge fact the human attests, not a typed edge. Two gaps the read
-found are recorded rather than closed: no public tool files the signed verdict issue yet, and the
-lane's enactment gate cannot arm on this repo as it stands.
+"would replace" that path. The lane is in this repo's code — `verifyloop verdict` signs (or, if
+desk-tools/29 lands first, composes and the host signs) and `statusgen --transcribe-verdict`
+transcribes — so the brief rewrites the skill's `## Landing` to name it, demotes `deskevidence` to
+documented break-glass (plus a residual pull-request route for the classes the lane refuses),
+rewrites the one push-policy sentence the five desk skills share (at its guardrail source,
+regenerated into the five copies), and annotates the rate-limit carve-out without changing its
+value. It is `gate: human` with a creation-time decision, and its precondition — a lane armed on a
+real repo with a real verdict transcribed onto `main` — is a forge fact the human attests, not a
+typed edge. Two gaps the read found are recorded rather than closed: no public tool files the
+signed verdict issue yet, and the lane's enactment gate cannot arm on this repo as it stands.
 
 ## Briefs
 

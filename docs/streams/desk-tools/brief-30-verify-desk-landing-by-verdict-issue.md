@@ -41,18 +41,23 @@ sources:
     is this brief. Not cited by path or number: a public brief cannot anchor on a private one."
   - "freshness-checked 2026-10-08 @ 36113a1dd — plugins/assay/skills/verify-desk/SKILL.md,
     plugins/assay/skills/{the-desk,pr-review-desk,worker-desk,pr-shepherd}/SKILL.md,
+    .claude/guardrails/GUARDRAILS.md, tools/skillslint/{main,guardrail}.go, Makefile,
     tools/desk/internal/deskkit/{ratelimit,width}.go, tools/desk/cmd/verifyloop/verdictrun.go,
-    statusgen/{transcribeverdict,transcribescan,main}.go and .github/workflows/ all re-read at that
-    commit before the Task text was written; every line number below is at that commit."
+    statusgen/{transcribeverdict,transcribescan,consumers,main}.go and .github/workflows/ all
+    re-read at that commit before the Task text was written; every line number below is at that
+    commit."
   - "correction carried, not repeated: the house cutover brief's claim that the lane has been landing
     real verdicts since an earlier date is stale and is not repeated here — nothing in this tree
     shows a live lane (facts 4 and 6), and the claim was found stale downstream. Whether any repo's
     lane is live TODAY is exactly the precondition the human attests."
 exec-tier: strong
-exec-tier-why: "(b) cross-artifact doctrine: one shared policy sentence is rewritten identically in five
-  skill bodies plus the desk meter's rationale, and a drift between them is invisible to every test."
+exec-tier-why: "(b) cross-artifact doctrine: one shared policy sentence is rewritten at its declared
+  guardrail source and regenerated into five skill bodies, and §Landing, two other verify-desk
+  sections and the desk meter's rationale must agree with it. Only the five copies are lint-checked
+  against each other; the rest agree only if the implementer makes them."
 consumers:
   - "plugins/assay/skills/verify-desk/SKILL.md: follow-up desk-tools/30 (this brief; Tasks 1-5)"
+  - ".claude/guardrails/GUARDRAILS.md: follow-up desk-tools/30 (this brief; Task 5, the declared source of the shared push-policy block)"
   - "plugins/assay/skills/the-desk/SKILL.md: follow-up desk-tools/30 (this brief; Task 5, the shared push-policy sentence)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up desk-tools/30 (this brief; Task 5)"
   - "plugins/assay/skills/worker-desk/SKILL.md: follow-up desk-tools/30 (this brief; Task 5)"
@@ -85,8 +90,8 @@ unauthored brief.
 ## Context
 files: `plugins/assay/skills/verify-desk/SKILL.md`, `plugins/assay/skills/the-desk/SKILL.md`,
 `plugins/assay/skills/pr-review-desk/SKILL.md`, `plugins/assay/skills/worker-desk/SKILL.md`,
-`plugins/assay/skills/pr-shepherd/SKILL.md`, `tools/desk/internal/deskkit/ratelimit.go`,
-`changelog/desk-tools-30.md` (planned)
+`plugins/assay/skills/pr-shepherd/SKILL.md`, `.claude/guardrails/GUARDRAILS.md`,
+`tools/desk/internal/deskkit/ratelimit.go`, `changelog/desk-tools-30.md` (planned)
 
 single-point-of-failure: custody of the verifier App credential. The author check (clause 1) and
 the RS256 signature (clause 2) both rest on it (statusgen/transcribeverdict.go:22-26, :746-758),
@@ -116,22 +121,32 @@ follow-ups (not authored by this brief):
 
 facts:
   - "verify-desk SKILL.md:435 — heading '## Landing — deskevidence is the SOLE main-push carve-out
-    (narrow, dated)'; :441-446 the carve-out grant (Evidence rows + status flips commit
+    (narrow, dated)'; :442-446 the carve-out grant (Evidence rows + status flips commit
     straight to `main` as the verifier App); :448-456 the `deskevidence` Interface paragraph;
-    :458-461 the guards paragraph; :492-601 `### Public repo (PR-required main) — Evidence lands by
-    PR` (the same `deskevidence`, aimed at a branch plus a draft PR)."
+    :458-462 the guards paragraph; :492-602 `### Public repo (PR-required main) — Evidence lands by
+    PR` (the same `deskevidence`, aimed at a branch plus a draft PR). Its :500-502 precondition: the
+    PR form is available for a repo only when a recorded human ruling names that repo and that
+    landing shape."
   - "verify-desk SKILL.md:488-490 — the `Standing-doctrine pointer (2026-08-17)` paragraph: the
     lane 'would replace this path'; it cites the directory docs/streams/verdict-lane/, which does not exist in
-    this tree (a dangling private path). :179 step 3 says 'Land each verdict as it returns via
-    `deskevidence`'; :196-197 says filing the signed payload 'is the autonomous cutover, `gate:
-    human`'. :815-818 (desk-specific) says the desk lands everything else 'via the push race loop
+    this tree (a dangling private path). The same path also appears at :698 in §Cluster rows, which
+    this brief does not rewrite, so a check for its absence must be scoped to §Landing. :179 step 3
+    says 'Land each verdict as it returns via `deskevidence`'; :197-198 says filing the signed
+    payload 'is the autonomous cutover, `gate: human`'. :815-818 (desk-specific) says the desk lands everything else 'via the push race loop
     (`commit → pull --rebase → push`, retry on race)'. Today the file contains 'break-glass' 0
     times and 'transcribe-verdict' 0 times."
   - "The inherited `Git push policy (ONE policy, role-keyed)` block carries one identical sentence —
     'The verify desk lands its own work: its Evidence + status flips commit straight to `main` as
     the project directs' — in five skills: the-desk SKILL.md:177-178, pr-shepherd :222-223,
-    pr-review-desk :989-990, worker-desk :773-774, verify-desk :809-810. No lint checks the five
-    copies agree; that is why this brief verifies all five (row 5)."
+    pr-review-desk :989-990, worker-desk :773-774, verify-desk :809-810. The five are generated
+    copies, not independent text. Their declared source is `.claude/guardrails/GUARDRAILS.md`
+    (§guardrail: git-push-policy, :101; the five sites :112-116; the block :119-127; the sentence
+    :122-124; the prose that names the grant, :107). `tools/skillslint` byte-compares every copy
+    against that source (`CheckGuardrails`; a gating job in .github/workflows/ci.yml runs
+    `cd tools/skillslint && go run . --root ../..`), and `make guardrail-sync` (Makefile:173-174,
+    `go run . --root ../.. --sync`) rewrites the copies from the source, locating each copy by the
+    block's unchanged first line. So the sentence is changed in the source and regenerated; a
+    hand-edit of the five copies alone fails skillslint."
   - "The lane in this repo's code: `statusgen --transcribe-verdict` (statusgen/main.go:1586, with
     `--pubkey` at :1587) is the transcriber; its header (statusgen/transcribeverdict.go:1-34) says it
     ships INERT. Its enactment gate (:423-436) reads the file docs/streams/issue-flow/rulings.md and is
@@ -155,9 +170,13 @@ facts:
     ratelimit_test.go:771 `TestUnnumberedBucketOverridePerTool`. Lowering or deleting the cap
     changes the width arm's arithmetic, so this brief ANNOTATES it and keeps the value."
   - "Classes the lane does not carry, which therefore need a named non-lane route: outcome records
-    (`deskevidence --outcome-record`, SKILL.md:255 and :398-414), Evidence for
+    (`deskevidence --outcome-record`, SKILL.md:255 and :398-416), Evidence for
     `risk.irreversible: yes` briefs (refused by cl.5; the human flips via the verify-gate issue,
-    SKILL.md:641-676), and any landing while the lane is down or unarmed."
+    SKILL.md:641-675), Evidence that is not PASS (cl.8 refuses the whole verdict on any non-PASS
+    entry, transcribeverdict.go:796-800), and any landing while the lane is down or unarmed. Two
+    verify-desk sections outside §Landing assume the direct write today: :644 ('Because this desk
+    lands status straight to main') and :704 (§Cluster rows step 1, 'Lands the passing-row Evidence
+    via `deskevidence`', with the step-2 could-not-check rows beside it)."
 
 ## Human decision
 <!-- gate: human, decision-trigger: creation — self-contained; no links, paths or brief refs. -->
@@ -170,11 +189,14 @@ then writes the result to the main branch itself. A downstream installation has 
 move its own verify desk onto that second path. This decision is what the shared instructions,
 which every installation inherits, should say.
 
-Three things the second path does not cover, whichever option is picked: results for work marked
-irreversible (a human signs those off separately), the per-verdict outcome records, and any
-landing while the second path is switched off or broken. Under options 1 and 2 those go through
-the direct-write tool's pull-request form (a branch plus a draft pull request, never a direct
-write to the main branch).
+Four things the second path does not cover, whichever option is picked: results that are not a
+pass (a failed check, or one that could not be run), results for work marked irreversible (a human
+signs those off separately), the per-verdict outcome records, and any landing while the second
+path is switched off or broken. Under options 1 and 2 those go through the direct-write tool's
+pull-request form (a branch plus a draft pull request, never a direct write to the main branch),
+which needs its own recorded ruling for that repository. The one exception is a landing while the
+second path is down: it may use the direct write as break-glass, on a human's say-so for that one
+landing.
 
 Options:
 1. **Signed-issue path everywhere.** Every installation's verify desk lands through the signed-issue
@@ -224,15 +246,20 @@ the lane" qualifier and the "unarmed project" paragraph in step 1; everything el
 - Retitle the heading to: ## Landing — a verdict lands by signed verdict issue; `deskevidence` is
   break-glass.
 - Open with the landing path, in order: the verifier session's `verifyrun` rows are composed and
-  signed by `verifyloop verdict`; the project's **verdict filer** files that signed body as a
+  signed by `verifyloop verdict` (if desk-tools/29 lands first, the body may instead be composed
+  unsigned and signed on the host; either way it is signed by the time it is filed, and this brief
+  needs nothing from desk-tools/29); the project's **verdict filer** files that signed body as a
   verify-verdict issue; the project's transcription workflow runs `statusgen --transcribe-verdict`,
   which re-checks author, signature and body-unedited, re-runs `check:ci` rows network-off, and is
   the sole writer of the resulting Evidence and `gate: model` flip on `main`. No session pushes
   `main` on this path.
-- State the lane's limits plainly: PASS only (a FAIL verdict transcribes nothing — the FAIL route
-  in §On VERIFY: FAIL is unchanged); a `gate: human` brief gets Evidence only; an
-  `risk.irreversible: yes` brief and any `human:` stamp are refused, so irreversible-brief Evidence
-  and outcome records take the residual route below.
+- State the lane's limits plainly: PASS only. Evidence that is not PASS (a FAIL row, or a
+  could-not-check or HELD row such as a cluster row's) is never put in a verdict, because one
+  non-PASS entry makes the lane refuse the whole verdict; in an armed project it takes the residual
+  route below, and the FAIL route in §On VERIFY: FAIL (bug plus outcome record) is otherwise
+  unchanged. A `gate: human` brief gets Evidence only; an `risk.irreversible: yes` brief and any
+  `human:` stamp are refused, so irreversible-brief Evidence and outcome records take the residual
+  route too.
 - Keep the "witness lands WITH the Evidence" paragraph and the "PASS is a flip signal only when its
   own Evidence agrees" paragraph; they bind the payload the lane carries as much as a direct landing.
 - Add the unarmed-project paragraph: where the project has not armed the lane (its enactment
@@ -242,66 +269,108 @@ the lane" qualifier and the "unarmed project" paragraph in step 1; everything el
 
 ### 2. Demote `deskevidence` to break-glass — documented, not deleted
 - Add a subsection headed ### Break-glass — `deskevidence`, holding the existing Interface paragraph
-  (:448-456) and guards paragraph (:458-461) verbatim, introduced by: in an armed project,
+  (:448-456) and guards paragraph (:458-462) verbatim, introduced by: in an armed project,
   `deskevidence` lands to `main` only when the lane is down, on the driver's explicit say-so for
   that landing, recorded on the brief's Evidence as break-glass.
-- Keep `### Public repo (PR-required main) — Evidence lands by PR` (:492-601) and name it as the
-  **residual route**: outcome records and irreversible-brief Evidence land through it (branch plus
-  draft PR), never a direct `main` push, in an armed project.
-- Rewrite the dated authorization sentence (:441-446) so it states the grant as break-glass plus
+- Keep `### Public repo (PR-required main) — Evidence lands by PR` (:492-602) and name it as the
+  **residual route**: in an armed project, non-PASS Evidence, outcome records and
+  irreversible-brief Evidence land through it (branch plus draft PR), never a direct `main` push.
+  Its recorded-ruling precondition (:500-502) stays as written; where no ruling names the repo,
+  the item is surfaced as awaiting a decision, as that subsection already says.
+- Rewrite the dated authorization sentence (:442-446) so it states the grant as break-glass plus
   the unarmed-project standing path, still "nothing else, nobody else".
 
 ### 3. Delete the stale pointers
 - Delete the `Standing-doctrine pointer (2026-08-17)` paragraph (:488-490), including its
-  docs/streams/verdict-lane/ path, which resolves nowhere in this repo.
+  docs/streams/verdict-lane/ path, which resolves nowhere in this repo. Leave the same path in
+  §Cluster rows (:698) alone; it is outside this brief.
 - In the desk-specific bullet (:815-818) replace "via the push race loop (`commit → pull --rebase →
   push`, retry on race)" with a pointer to §Landing. Keep the two landings the desk does NOT do.
 
-### 4. Bring §The loop into line
-- :179 step 3 → "Land each verdict as it returns, by §Landing (the verdict lane where armed,
-  `deskevidence` otherwise)".
-- :196-197 → "`verifyloop verdict` composes and signs the verdict; the project's verdict filer
-  files it (§Landing)". Delete "the autonomous cutover, `gate: human`".
+### 4. Bring the rest of the verify-desk skill into line
+- §The loop, :179 step 3 → "Land each verdict as it returns, by §Landing (the verdict lane where
+  armed, `deskevidence` otherwise)".
+- §The loop, :197-198 → "`verifyloop verdict` composes and signs the verdict; the project's verdict
+  filer files it (§Landing)". Delete "the autonomous cutover, `gate: human`".
+- §Irreversible briefs, :644-645 → replace "Because this desk lands status straight to main,
+  flipping one on a model verify would fail `--lint` and redden main CI directly." with "A model
+  flip of one would fail `--lint` and redden main CI, and the verdict lane refuses an irreversible
+  brief outright." In step 1 (:648), after "Write the Evidence rows", add "(in an armed project, by
+  the residual route in §Landing)".
+- §Cluster rows, :704-705 step 1 → "Lands the passing-row Evidence by §Landing (the verdict lane
+  where armed, `deskevidence` otherwise). In an armed project the step-2 could-not-check rows are
+  not PASS, so they land by the residual route." Steps 2 and 3 are unchanged.
 
-### 5. The shared push-policy sentence, identical in all five skills
-In `plugins/assay/skills/{the-desk,pr-review-desk,worker-desk,pr-shepherd,verify-desk}/SKILL.md`,
-replace the sentence quoted in fact 3 with this text, byte-identical in all five:
+### 5. The shared push-policy sentence: edit the source, regenerate the five copies
+The sentence quoted in fact 3 is a generated copy. Edit it ONLY in its declared source,
+`.claude/guardrails/GUARDRAILS.md`, then run `make guardrail-sync` from the repo root. That
+rewrites the copy in each of `plugins/assay/skills/{the-desk,pr-review-desk,worker-desk,pr-shepherd,verify-desk}/SKILL.md`.
+Never hand-edit a copy.
 
-> **The verify desk lands verdicts through the project's verdict-transcription lane** where the
-> project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
-> push; where the lane is not armed it lands per its own skill's §Landing. No push-go is needed and
-> none should be waited for.
+- In the `text` block (:119-127), replace everything from the line that begins
+  `` `gh pr create --draft`). **The verify desk lands its own work** `` to the end of the block
+  with these lines, exactly (two-space indent, as now):
 
-Leave every other line of each block untouched.
+  ```text
+    `gh pr create --draft`).
+    **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+    project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+    push; where the lane is not armed it lands per its own skill's §Landing. No push-go is needed
+    and none should be waited for. Any `main` push not covered by a standing authorization is
+    gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+    push is a STOP signal — never route the same write through another tool. Each desk's own
+    grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+    this block.
+  ```
+
+  The first three lines of the block are unchanged, so the sync still finds each copy by its
+  first line. Only the verify-desk sentence changes in substance; the rest is re-wrapped.
+- In the prose above the sites, :107, replace "the verify-desk `main` grant" with "the verify
+  desk's landing rule". Leave :105 alone: it quotes what the old copies said. Do not put the new
+  sentence's opening words in this prose (row 6 counts them).
+- Run `make guardrail-sync`, then confirm `cd tools/skillslint && go run . --root ../..` exits 0
+  (row 14). Leave every other line of each skill's block, and each skill's own bullets below it,
+  untouched.
 
 ### 6. Annotate the rate-limit carve-out (`tools/desk/internal/deskkit/ratelimit.go:110-127`)
 Append to the `unnumberedBucketCap` comment: in a project that has armed the verdict-transcription
-lane, `deskevidence` is break-glass plus the residual route (outcome records, irreversible-brief
-Evidence), and routine verdict landings meter under `VerdictIssueTool`; the cap stays at its
-value because it still serves unarmed projects and the width arm in `width.go` reads it. The word
-`break-glass` appears in the comment. No code change.
+lane, `deskevidence` is break-glass plus the residual route (non-PASS Evidence, outcome records,
+irreversible-brief Evidence), and routine verdict landings meter under `VerdictIssueTool`; the cap
+stays at its value because it still serves unarmed projects and the width arm in `width.go` reads
+it. The word `break-glass` appears in the comment. No code change.
 
 ### 7. Changelog
 Add `changelog/desk-tools-30.md` (planned) with a `### Changed` bullet naming the doctrine change.
 
+### 8. Flip this brief's consumer routings
+In this brief's frontmatter, change each of the seven consumer entries that route to this brief
+(the five skills, `GUARDRAILS.md` and `ratelimit.go`) from its `follow-up` routing to
+`fixed-here`, keeping the site and the parenthesised note. `statusgen --consumers` then checks
+each one against the implementation diff: a `fixed-here` entry is corroborated only when its path
+is in the diff (statusgen/consumers.go:733-760). A `follow-up` that names this brief is
+corroborated by the brief's own existence (:761-775), so before this step row 12 proves nothing.
+Leave the two `out-of-scope` entries as they are.
+
 ## Verify (executable — no prose-only DoD items)
-Rows 1-7 are discriminating: each FAILS against today's tree (at 36113a1dd) and passes only once
-the Task lands. Run every row from the repo root.
+Rows 1-7, 12 and 13 are discriminating: each FAILS against today's tree (at 36113a1dd) and passes
+only once the Task lands. Rows 8, 9 and 14 pass today and must still pass. Run every row from the repo root.
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `grep -q '^## Landing' plugins/assay/skills/verify-desk/SKILL.md && ! grep -q 'SOLE main-push carve-out' plugins/assay/skills/verify-desk/SKILL.md && echo ok` | prints `ok`. FAILS today: the heading still reads 'SOLE main-push carve-out'. |
 | 2 | check +dereference | `rm -f "${TMPDIR:-/tmp}/dt30-help.txt" && cd statusgen && go build -o "${TMPDIR:-/tmp}/dt30-sg" . && "${TMPDIR:-/tmp}/dt30-sg" --help > "${TMPDIR:-/tmp}/dt30-help.txt" 2>&1; grep -q -e '-transcribe-verdict' "${TMPDIR:-/tmp}/dt30-help.txt" && grep -q -e '--transcribe-verdict' ../plugins/assay/skills/verify-desk/SKILL.md && grep -q 'verdict filer' ../plugins/assay/skills/verify-desk/SKILL.md && grep -q 'verifyloop verdict' ../plugins/assay/skills/verify-desk/SKILL.md && echo ok` | prints `ok`: the skill names the transcriber mode AND that mode exists in the built binary's flag set (not a dangling name), plus the filer and the signer. FAILS today: the skill names `--transcribe-verdict` 0 times. |
 | 3 | check | `grep -q -i 'break-glass' plugins/assay/skills/verify-desk/SKILL.md && grep -q 'deskevidence --help' plugins/assay/skills/verify-desk/SKILL.md && grep -q 'VERIFIER_MAIN_OK' plugins/assay/skills/verify-desk/SKILL.md && grep -q 'PR-required main' plugins/assay/skills/verify-desk/SKILL.md && echo ok` | prints `ok`: demoted, NOT deleted — the Interface, the main-push switch and the PR form survive. FAILS today: 'break-glass' appears 0 times. |
-| 4 | check | `! grep -q -i 'push race' plugins/assay/skills/verify-desk/SKILL.md && ! grep -q 'Standing-doctrine pointer' plugins/assay/skills/verify-desk/SKILL.md && ! grep -q 'docs/streams/verdict-lane/' plugins/assay/skills/verify-desk/SKILL.md && ! grep -q 'the autonomous cutover' plugins/assay/skills/verify-desk/SKILL.md && echo ok` | prints `ok`. FAILS today: all four strings are present. |
-| 5 | check +neighbour | `rm -f "${TMPDIR:-/tmp}/dt30-lane.txt" && grep -L -F 'verdict-transcription lane' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-lane.txt"; ! grep -r -q 'straight to .main. as the project directs' plugins/assay/skills && test -f "${TMPDIR:-/tmp}/dt30-lane.txt" && [ ! -s "${TMPDIR:-/tmp}/dt30-lane.txt" ] && grep -l 'Git push policy (ONE policy, role-keyed)' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-pol.txt" && [ $(wc -l < "${TMPDIR:-/tmp}/dt30-pol.txt") -eq 5 ] && echo ok` | prints `ok`: the old sentence is gone from every skill, all five carry the new one, and all five still carry the policy block. FAILS today: the old sentence is in all five. |
-| 6 | check | `grep -c -F 'The verify desk lands verdicts through the project' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-same.txt"; ! grep -q -v ':1$' "${TMPDIR:-/tmp}/dt30-same.txt" && echo ok` | prints `ok`: exactly one copy of the new sentence's opening in each of the five. FAILS today: every count is 0. |
+| 4 | check | `! grep -q -i 'push race' plugins/assay/skills/verify-desk/SKILL.md && ! grep -q 'Standing-doctrine pointer' plugins/assay/skills/verify-desk/SKILL.md && ! grep -q 'the autonomous cutover' plugins/assay/skills/verify-desk/SKILL.md && awk '/^## /{f=/^## Landing/} f' plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-landing.txt" && test -s "${TMPDIR:-/tmp}/dt30-landing.txt" && ! grep -q 'docs/streams/verdict-lane/' "${TMPDIR:-/tmp}/dt30-landing.txt" && echo ok` | prints `ok`. The dangling path is checked inside §Landing only (from its heading to the next `## ` heading, subsections included), because §Cluster rows keeps its own copy of the path and no Task touches it. FAILS today: 'push race', the pointer paragraph and 'the autonomous cutover' are present, and §Landing carries the path at :488. |
+| 5 | check +neighbour | `rm -f "${TMPDIR:-/tmp}/dt30-lane.txt" && grep -L -F 'verdict-transcription lane' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/verify-desk/SKILL.md .claude/guardrails/GUARDRAILS.md > "${TMPDIR:-/tmp}/dt30-lane.txt"; ! grep -r -q 'straight to .main. as the project directs' plugins/assay/skills .claude/guardrails && test -f "${TMPDIR:-/tmp}/dt30-lane.txt" && [ ! -s "${TMPDIR:-/tmp}/dt30-lane.txt" ] && grep -l 'Git push policy (ONE policy, role-keyed)' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-pol.txt" && [ $(wc -l < "${TMPDIR:-/tmp}/dt30-pol.txt") -eq 5 ] && echo ok` | prints `ok`: the old sentence is gone from the guardrail source and every skill, the source and all five copies carry the new one, and all five skills still carry the policy block. FAILS today: the old sentence is in the source and all five. |
+| 6 | check | `grep -c -F 'The verify desk lands verdicts through the project' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/pr-shepherd/SKILL.md plugins/assay/skills/verify-desk/SKILL.md .claude/guardrails/GUARDRAILS.md > "${TMPDIR:-/tmp}/dt30-same.txt"; ! grep -q -v ':1$' "${TMPDIR:-/tmp}/dt30-same.txt" && echo ok` | prints `ok`: exactly one copy of the new sentence's opening in the guardrail source and in each of the five skills. FAILS today: every count is 0. |
 | 7 | check | `grep -q -i 'break-glass' tools/desk/internal/deskkit/ratelimit.go && grep -q 'deskevidenceUnnumberedCap = 30' tools/desk/internal/deskkit/ratelimit.go && grep -q 'const VerdictIssueTool = "verifyloop-verdict"' tools/desk/internal/deskkit/ratelimit.go && echo ok` | prints `ok`: the carve-out is annotated, its value and the verdict-issue meter are unchanged. FAILS today: 'break-glass' appears 0 times in the file. |
 | 8 | check +neighbour | `cd tools/desk && go test -count=1 ./internal/deskkit/ ./cmd/deskevidence/ ./cmd/verifyloop/ ./cmd/deskverdict/` | exit 0: the cap, the width arm (`TestMaxWidth_IsBoundedByTheEnforcedBudget`), the per-tool override test and the break-glass tool itself are unaffected. Passes today and must still pass. |
 | 9 | check +flow | `cd tools/desk && go test -count=1 -v -run '^TestCLIRoundtrip$' ./cmd/deskverdict/ > "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && cd ../../statusgen && go test -count=1 -v -run '^TestTranscribeVerdictValidSignatureConsumed$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && go test -count=1 -v -run '^TestTranscribeVerdictInertEvaluatesNoClause$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && go test -count=1 -v -run '^TestTranscribeVerdictHumanGateEvidenceOnlyNoFlip$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && go test -count=1 -v -run '^TestTranscribeVerdictNegativeBattery$' . >> "${TMPDIR:-/tmp}/dt30-flow.txt" 2>&1 && grep -q -F -e '--- PASS: TestCLIRoundtrip' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictValidSignatureConsumed' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictInertEvaluatesNoClause' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictHumanGateEvidenceOnlyNoFlip' "${TMPDIR:-/tmp}/dt30-flow.txt" && grep -q -F -e '--- PASS: TestTranscribeVerdictNegativeBattery' "${TMPDIR:-/tmp}/dt30-flow.txt" && echo ok` | prints `ok` (each test PASSES by name, never vacuously): the path §Landing now names exists end to end in this repo — sign and verify round-trip; a signed verdict is consumed, its Evidence appended and the `gate: model` row flipped; an unarmed lane evaluates nothing; a `gate: human` brief gets Evidence and no flip (the limits Task 1 states). The negative battery is the lower-layer proof: each clause refuses its own forged input with the layers above it bypassed (forged author with a valid signature, tampered signature, and so on). |
 | 10 | gate:human +flow | READ FROM THE FORGE, not from this tree: on a repo a verify desk serves, the lane's enactment sign-off resolves to the blessing authority, a verdict filer is bound, and that repo's remote `main` carries at least one commit written by the transcription workflow from a real (non-test) signed verdict issue. The human records the repo, the verdict issue and the landing commit. | Attested before option 1 or 2 is implemented; without it the brief stays at `todo`. Could-not-check at authoring: no such landing was observed from this tree (facts 4 and 6). |
 | 11 | check | `rm -f "${TMPDIR:-/tmp}/dt30-lint.txt" && cd statusgen && go build -o "${TMPDIR:-/tmp}/dt30-sg" . && "${TMPDIR:-/tmp}/dt30-sg" --root .. --lint > "${TMPDIR:-/tmp}/dt30-lint.txt" 2>&1; grep -q 'LINT: PASS' "${TMPDIR:-/tmp}/dt30-lint.txt" && test -f ../changelog/desk-tools-30.md && echo ok` | prints `ok`: the tree lints clean and the changelog fragment exists. |
-| 12 | check | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt30-sg" . && "${TMPDIR:-/tmp}/dt30-sg" --root .. --consumers --brief desk-tools/30 > "${TMPDIR:-/tmp}/dt30-cons.txt" 2>&1 && grep -q -F ' 0 disproved' "${TMPDIR:-/tmp}/dt30-cons.txt" && echo ok` | prints `ok`: every `follow-up desk-tools/30` routing is corroborated by the implementation diff and none is disproved. The two `out-of-scope` entries (`width.go`, `verdictrun.go`) report UNCHECKED by design: the reviewer confirms neither file changed and both stated reasons still hold. |
+| 12 | check | `! grep -q -e '[:] follow-up desk-tools/30' docs/streams/desk-tools/brief-30-verify-desk-landing-by-verdict-issue.md && cd statusgen && go build -o "${TMPDIR:-/tmp}/dt30-sg" . && "${TMPDIR:-/tmp}/dt30-sg" --root .. --consumers --brief desk-tools/30 > "${TMPDIR:-/tmp}/dt30-cons.txt" 2>&1 && grep -q -F 'summary: 7 corroborated, 0 disproved, 2 unchecked' "${TMPDIR:-/tmp}/dt30-cons.txt" && echo ok` | prints `ok`: no consumer entry still routes to this brief as a follow-up (Task 8; the bracket keeps the pattern from matching this row's own text), and all seven `fixed-here` entries are corroborated by paths in the implementation diff. Run it on the implementation branch (default base `origin/main`). After merge, run it from the delivering change's head with `--base` set to that change's parent, as the instrument's COULD-NOT-CHECK message says. The two `out-of-scope` entries (`width.go`, `verdictrun.go`) report UNCHECKED by design: the reviewer confirms neither file changed and both stated reasons still hold. FAILS today: seven entries still route as follow-ups. |
+| 13 | check | `awk '/^## /{f=/^## Cluster rows/} f' plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-cluster.txt" && awk '/^## /{f=/^## Irreversible briefs/} f' plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-irrev.txt" && awk '/^## /{f=/^## Landing/} f' plugins/assay/skills/verify-desk/SKILL.md > "${TMPDIR:-/tmp}/dt30-landing.txt" && grep -q 'residual route' "${TMPDIR:-/tmp}/dt30-cluster.txt" && grep -q 'residual route' "${TMPDIR:-/tmp}/dt30-irrev.txt" && grep -q 'not PASS' "${TMPDIR:-/tmp}/dt30-landing.txt" && ! grep -q 'Because this desk lands status straight to main' plugins/assay/skills/verify-desk/SKILL.md && echo ok` | prints `ok`: non-PASS Evidence has a named route. §Landing says Evidence that is not PASS stays out of the verdict (the phrase 'not PASS' on one line), and §Irreversible briefs and §Cluster rows both send their non-lane Evidence by the residual route. FAILS today: 'residual route' appears 0 times in the file and :644 still says the desk lands status straight to main. |
+| 14 | check +neighbour | `cd tools/skillslint && go run . --root ../.. > "${TMPDIR:-/tmp}/dt30-sl.txt" 2>&1 && grep -q 'GUARDRAILS: PASS' "${TMPDIR:-/tmp}/dt30-sl.txt" && echo ok` | prints `ok`: skillslint exits 0 and every shared-guardrail copy byte-matches `.claude/guardrails/GUARDRAILS.md`, so the five copies came from the edited source by `make guardrail-sync` and none was hand-edited. Passes today and must still pass; editing the copies without the source (or the source without the sync) makes it exit 1. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
@@ -314,5 +383,5 @@ the Task lands. Run every row from the repo root.
 Gate: human (from frontmatter). The reviewer answers, in the verdict: (1) does the rewritten
 §Landing anywhere imply that a public tool files the verdict issue (it must not, fact 5); (2) does
 any landing class lose its route — outcome records, irreversible-brief Evidence, FAIL verdicts,
-and lane-down landings each have a named path; (3) are the five copies of the shared sentence
-byte-identical (row 6).
+non-PASS Evidence rows (row 13) and lane-down landings each have a named path; (3) are the five
+copies of the shared sentence byte-identical to their `GUARDRAILS.md` source (rows 6 and 14).
