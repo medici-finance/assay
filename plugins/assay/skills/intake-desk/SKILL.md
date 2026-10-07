@@ -373,7 +373,11 @@ advances the count. At `design-owed` the brief copies each field with its origin
 may be closed by the desk, citing the ruling** (2026-08-24 ruling 7). Implementation still
 outstanding is not a reason to hold a decided issue open — but the close comment **must NAME the
 tracker**: the actual brief id, PR number or issue carrying the remaining work, never the assertion
-"the work is tracked"; no tracker, create it first, then close. The relabel is the load-bearing half
+"the work is tracked"; no tracker, create it first, then close. **When the named tracker is a
+`gate: human` brief still `todo`, naming it is not enough** — the close waits until that brief's
+dispatch lands (`deskdispatch` exited 0 under its claim key `<repo>--<stream>--<NN>`, or its draft
+PR is open) or until the dispatch's refusal is itself filed and linked; a decided issue closed on a
+`todo` brief id alone lets the brief starve with no open surface pointing at it. The relabel is the load-bearing half
 and is mandatory — flip `needs-decision` → `human-decided`, which is what takes it off human:<name>'s
 queue; the close is board hygiene on top, and it is the close the tracker condition gates.
 
