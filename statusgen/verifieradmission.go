@@ -50,14 +50,15 @@ func verifierAdmission(root, brief string) (string, error) {
 // the rows must read it the same way: a caller's GIT_DIR, GIT_WORK_TREE or
 // GIT_INDEX_FILE (or config injected through GIT_CONFIG_*) would otherwise
 // point a row's git at bytes admission never compared, and the run would still
-// carry the attestation. Two kinds of variable survive. A GIT_* variable that
-// only NARROWS what git reads or does, in exactly that form, is kept, as a
-// launch sets it on purpose (admittedRowNarrowing). The two settings admission
-// reads with are added, and grep's pattern settings are pinned to git's
-// defaults, so neither the home's nor the caller's config can change what a
-// row's git grep or git log --grep matches. Variables the row's shell would run
-// or act on at startup are removed (admittedRowShellStartup), since they can
-// set any of the above before the row's own command runs.
+// carry the attestation. The settings admission reads with are added: no
+// replacement objects, no system attributes, no system config, no terminal
+// prompt and no askpass helper, the last three being what a launch narrows git
+// with on purpose. Grep's pattern settings are pinned to git's defaults, so
+// neither the home's nor the caller's config can change what a row's git grep
+// or git log --grep matches. One inherited GIT_* variable survives, and only in
+// a form that narrows what git reads (admittedRowGlobal). Variables the row's
+// shell would run or act on at startup are removed (admittedRowShellStartup),
+// since they can set any of the above before the row's own command runs.
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
 // tools a row runs), HOME and XDG_CONFIG_HOME (where git finds the user's own
@@ -75,37 +76,26 @@ func admittedRowEnv(environ []string) []string {
 		key, _, _ := strings.Cut(kv, "=")
 		switch {
 		case admittedRowShellStartup(key):
-		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowNarrowing(kv, home):
+		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv, home):
 		default:
 			env = append(env, kv)
 		}
 	}
 	return append(env,
 		"GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1",
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=",
 		"GIT_CONFIG_COUNT=2",
 		"GIT_CONFIG_KEY_0=grep.patternType", "GIT_CONFIG_VALUE_0=default",
 		"GIT_CONFIG_KEY_1=grep.extendedRegexp", "GIT_CONFIG_VALUE_1=false")
 }
 
-// admittedRowNarrowing reports whether an inherited GIT_* variable, in its
-// exact form, only narrows what a row's git reads or does: no system config,
-// a global config that is the home's own ~/.gitconfig (git then skips the XDG
-// one) or none, no terminal prompt, and no askpass helper. Any other value of
-// the same variable (one git would reject, which would fail every row's git, or
-// one that widens what git reads) is removed with the rest.
-func admittedRowNarrowing(kv, home string) bool {
+// admittedRowGlobal reports whether an inherited GIT_* variable is a global
+// config setting that only narrows what a row's git reads: the home's own
+// ~/.gitconfig (git then skips the XDG one) or none. Any other value (one that
+// points git at another file) is removed with the rest.
+func admittedRowGlobal(kv, home string) bool {
 	key, value, _ := strings.Cut(kv, "=")
-	switch key {
-	case "GIT_CONFIG_NOSYSTEM":
-		return slices.Contains([]string{"1", "true", "yes", "on"}, strings.ToLower(value))
-	case "GIT_TERMINAL_PROMPT":
-		return slices.Contains([]string{"0", "false", "no", "off"}, strings.ToLower(value))
-	case "GIT_ASKPASS":
-		return value == ""
-	case "GIT_CONFIG_GLOBAL":
-		return value == os.DevNull || (filepath.IsAbs(home) && filepath.Clean(value) == filepath.Join(home, ".gitconfig"))
-	}
-	return false
+	return key == "GIT_CONFIG_GLOBAL" && (value == os.DevNull || (filepath.IsAbs(home) && filepath.Clean(value) == filepath.Join(home, ".gitconfig")))
 }
 
 // admittedRowShellStartup reports whether a variable is one a row's shell runs

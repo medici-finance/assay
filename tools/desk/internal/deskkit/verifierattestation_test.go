@@ -1074,6 +1074,28 @@ func TestVerifierCheckoutConversionPinned(t *testing.T) {
 	}
 }
 
+// System config cannot be planted from a test either, so the narrowing
+// settings admission reads with (no system config, no terminal prompt, no
+// askpass helper) are pinned directly, even when the caller's environment
+// widens them.
+func TestVerifierEnvPinsNarrowing(t *testing.T) {
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
+	t.Setenv("GIT_TERMINAL_PROMPT", "1")
+	t.Setenv("GIT_ASKPASS", "helper")
+	want := map[string]string{"GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": ""}
+	got := map[string][]string{}
+	for _, kv := range verifierEnv() {
+		if key, value, _ := strings.Cut(kv, "="); want[key] != "" || key == "GIT_ASKPASS" {
+			got[key] = append(got[key], value)
+		}
+	}
+	for key, value := range want {
+		if !slices.Equal(got[key], []string{value}) {
+			t.Errorf("admission environment carries %s=%q, want only %q", key, got[key], value)
+		}
+	}
+}
+
 // System attributes cannot be planted from a test, so the switch that turns
 // them off is pinned directly, even when the caller's environment enables them.
 func TestVerifierEnvIgnoresSystemAttributes(t *testing.T) {

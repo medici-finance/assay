@@ -50,9 +50,11 @@ func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeT
 
 // verifierEnv is the environment for every admission git read: inherited GIT_*
 // variables (which can redirect the repository, index, object store, config or
-// replace-ref base) are dropped, replacement objects are disabled and system
-// attributes are ignored, so the reads resolve the dispatched commit's own
-// objects, and the index the Verify rows read, in the home itself.
+// replace-ref base) are dropped, replacement objects are disabled, system
+// attributes and system config are ignored, and git may not prompt or run an
+// askpass helper, so the reads resolve the dispatched commit's own objects, and
+// the index the Verify rows read, in the home itself. An admitted run's rows
+// read with the same settings, so a home admission probes is read the same way.
 func verifierEnv() []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -60,7 +62,7 @@ func verifierEnv() []string {
 			env = append(env, kv)
 		}
 	}
-	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1")
+	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=")
 }
 func verifierGitBytes(root string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)

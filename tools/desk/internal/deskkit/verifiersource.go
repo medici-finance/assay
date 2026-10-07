@@ -181,7 +181,8 @@ const verifierProbePath = ":(literal).assay-admission-probe"
 // and a negated row (! git grep -q X) or an emptiness test over a read's output
 // takes that failure as a pass: the class core.bare belongs to, reached through
 // any setting a read parses. Run with the admission environment, so only the
-// home's own and the caller's global configuration take part.
+// home's own and the caller's global configuration take part; system config is
+// off there and in an admitted run's rows alike (verifierEnv).
 func verifierRowGitReads(home string) error {
 	for _, read := range verifierRowReads {
 		args := append([]string{"--no-optional-locks", "-c", "core.fsmonitor=false"}, read...)
