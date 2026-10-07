@@ -109,9 +109,11 @@ writes `main` on the lane's behalf. Break-glass `deskevidence` keeps its own gua
 switch, repo allowlist, body scan, rate limit, attribution check), but its switch is set by the
 session (gate-why). This brief moves doctrine between the two paths and removes no guard from
 either.
-Accepted residual (driver ruling): in CI the transcriber reads its trust configuration (the
+Accepted residual (named for the driver's decision at this brief's gate): in CI the transcriber reads its trust configuration (the
 blessed login, the verifier role binding and the verifier public key) from the repository's
-Actions configuration (statusgen/rosterconfig.go:728-729), so all three anchors are only as
+Actions configuration: the login and role binding through the CI branch of
+statusgen/rosterconfig.go (:728-729), the public key from `--pubkey` or `ASSAY_VERIFIER_PUBKEY`
+(statusgen/transcribeverdict.go `verdictResolvePubkey`, :339-358), so all three anchors are only as
 protected as write access to that configuration, and one change there moves them together.
 Write access to it is normally an administrator's, who can already bypass `main`'s protection,
 so this adds no new path for that identity; pinning the anchors is a follow-up below.
@@ -251,8 +253,12 @@ Default if no answer: none — blocks until answered.
 Written for option 2 (the recommendation). Under option 1, drop the "unarmed project" paragraph in
 step 1 and every armed/unarmed qualifier in the replacement text of steps 1, 4 and 5 ("where the
 project has armed the lane", "the verdict lane where armed, `deskevidence` otherwise", "where the
-lane is not armed it lands per its own skill's §Landing"), so the lane is the only routine route
-and `deskevidence` is break-glass everywhere. Rows that grep those qualifiers change to match.
+lane is not armed it lands per its own skill's §Landing"); in step 2, drop "in an armed project"
+from the break-glass introduction and the residual-route bullet, and drop "plus the
+unarmed-project standing path" from the rewritten authorization sentence; in step 6, drop "in a
+project that has armed the verdict-transcription lane" and "it still serves unarmed projects and"
+from the comment (the width-arm reason stays). The lane is then the only routine route and
+`deskevidence` is break-glass everywhere. Rows that grep those qualifiers change to match.
 
 ### 1. Rewrite `## Landing` in `plugins/assay/skills/verify-desk/SKILL.md` (:435-490)
 - Retitle the heading to: ## Landing — a verdict lands by signed verdict issue; `deskevidence` is
@@ -276,7 +282,9 @@ and `deskevidence` is break-glass everywhere. Rows that grep those qualifiers ch
   own Evidence agrees" paragraph; they bind the payload the lane carries as much as a direct landing.
 - Add the unarmed-project paragraph: where the project has not armed the lane (its enactment
   sign-off does not resolve, or no verdict filer is bound), `deskevidence` stays this desk's
-  standing landing path exactly as before; reading that state is could-not-check, never "armed".
+  standing landing path exactly as before. A read of that state that is could-not-check is
+  neither "armed" nor "unarmed": the landing HOLDS and is surfaced as could-not-check, and never
+  falls through to the direct `deskevidence` write.
 - Keep "Land as each verdict arrives" and the desk-verbs sentence.
 
 ### 2. Demote `deskevidence` to break-glass — documented, not deleted
@@ -329,8 +337,8 @@ Never hand-edit a copy.
     project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
     push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
     no push-go and none should be waited for; a break-glass `main` write in a project where the
-    lane is armed is NOT one of them and waits for the driver's go, whether or not the lane is
-    up. Any `main` push not covered by a standing authorization is
+    lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+    driver's go. Any `main` push not covered by a standing authorization is
     gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
     push is a STOP signal — never route the same write through another tool. Each desk's own
     grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
