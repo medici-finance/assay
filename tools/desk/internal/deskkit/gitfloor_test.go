@@ -528,6 +528,8 @@ func dockerfileFloorProblem(dockerfile string) string {
 			verified = "the gitbuild RUN has no bare `echo \"${GIT_TARBALL_SHA256}  /tmp/git.txz\" | sha256sum -c -` command"
 		case curl < 0 || tar < 0 || !(curl < sha && sha < tar):
 			verified = "the gitbuild RUN does not download git-${GIT_VERSION}.tar, then check the sha256, then unpack"
+		case tar != sha+1:
+			verified = "the gitbuild RUN runs `" + in.segs[sha+1] + "` between the sha256 check and the unpack"
 		case !strings.Contains(in.segs[curl], gitCurlHTTPSOnly):
 			verified = "the gitbuild curl does not carry " + gitCurlHTTPSOnly + ", so a redirect could leave https"
 		case failClosedProblem(in.args) != "":
@@ -636,21 +638,22 @@ func TestBaseImageRunsGitFloor(t *testing.T) {
 		return strings.Replace(text, shaLine, strings.Replace(shaLine, "sha256sum -c -;", cmd, 1), 1)
 	}
 	mutants := map[string]string{
-		"run step dropped":          strings.Replace(text, runTail, "    fi\n", 1),
-		"check copy dropped":        strings.Replace(text, checkCopy, "", 1),
-		"git copy dropped":          strings.Replace(text, gitCopy, "", 1),
-		"sha256 check dropped":      strings.Replace(text, shaLine, "", 1),
-		"apt git reinstated":        strings.Replace(text, aptAnchor, "        git \\\n"+aptAnchor, 1),
-		"git copied after test":     strings.Replace(strings.Replace(text, gitCopy, "", 1), volAnchor, gitCopy+volAnchor, 1),
-		"check only in earlier":     text + "\nFROM scratch\n",
-		"sha256 check masked":       strings.Replace(text, shaLine, strings.Replace(shaLine, "sha256sum -c -;", "sha256sum -c - || true;", 1), 1),
-		"floor check masked":        strings.Replace(text, runTail, "    fi; \\\n    git-floor-check || true\n", 1),
-		"floor RUN set +e":          strings.Replace(text, testX, "    set +e; \\\n"+testX, 1),
-		"hash checked after unpack": strings.Replace(strings.Replace(text, tarLine, "", 1), shaLine, tarLine+shaLine, 1),
-		"tarball sha swapped":       strings.Replace(text, shaArg, "ARG GIT_TARBALL_SHA256="+strings.Repeat("0", 64)+"\n", 1),
-		"git version swapped":       strings.Replace(text, verArg, "ARG GIT_VERSION=2.39.5\n", 1),
-		"later layer copies a git":  strings.Replace(text, volAnchor, "COPY --from=desktools /usr/local/bin/git /usr/local/bin/git\n"+volAnchor, 1),
-		"later RUN after check":     strings.Replace(text, volAnchor, "RUN apt-get update\n"+volAnchor, 1),
+		"run step dropped":             strings.Replace(text, runTail, "    fi\n", 1),
+		"check copy dropped":           strings.Replace(text, checkCopy, "", 1),
+		"git copy dropped":             strings.Replace(text, gitCopy, "", 1),
+		"sha256 check dropped":         strings.Replace(text, shaLine, "", 1),
+		"apt git reinstated":           strings.Replace(text, aptAnchor, "        git \\\n"+aptAnchor, 1),
+		"git copied after test":        strings.Replace(strings.Replace(text, gitCopy, "", 1), volAnchor, gitCopy+volAnchor, 1),
+		"check only in earlier":        text + "\nFROM scratch\n",
+		"sha256 check masked":          strings.Replace(text, shaLine, strings.Replace(shaLine, "sha256sum -c -;", "sha256sum -c - || true;", 1), 1),
+		"floor check masked":           strings.Replace(text, runTail, "    fi; \\\n    git-floor-check || true\n", 1),
+		"floor RUN set +e":             strings.Replace(text, testX, "    set +e; \\\n"+testX, 1),
+		"hash checked after unpack":    strings.Replace(strings.Replace(text, tarLine, "", 1), shaLine, tarLine+shaLine, 1),
+		"tarball replaced after check": strings.Replace(text, shaLine, shaLine+"    cp /etc/hostname /tmp/git.txz; \\\n", 1),
+		"tarball sha swapped":          strings.Replace(text, shaArg, "ARG GIT_TARBALL_SHA256="+strings.Repeat("0", 64)+"\n", 1),
+		"git version swapped":          strings.Replace(text, verArg, "ARG GIT_VERSION=2.39.5\n", 1),
+		"later layer copies a git":     strings.Replace(text, volAnchor, "COPY --from=desktools /usr/local/bin/git /usr/local/bin/git\n"+volAnchor, 1),
+		"later RUN after check":        strings.Replace(text, volAnchor, "RUN apt-get update\n"+volAnchor, 1),
 		// #2320 item 1: shapes that keep the right words but stop a failing
 		// check from failing the build.
 		"floor check && true":       floorTail("git-floor-check && true"),
