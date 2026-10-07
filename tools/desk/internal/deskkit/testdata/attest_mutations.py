@@ -9,10 +9,14 @@ ATTEST = "internal/deskkit/verifierattestation.go"
 SOURCE = "internal/deskkit/verifiersource.go"
 EVIDENCE = "cmd/deskevidence/deskevidence.go"
 KIT = "./internal/deskkit"
+# statusgen is its own module: its entries name it as their fifth field.
+SG = module.parents[1] / "statusgen"
+VERIFYRUN = "verifyrun.go"
+ADMISSION = "verifieradmission.go"
 CLOSURE = "TestAttestSourceClosure"
 TARGET = "TestVerifierEvidenceTargetBinding"
 INDEX = "TestAttestStreamIndex"
-# (name, [(file, before, after), ...], package, test regex)
+# (name, [(file, before, after), ...], package, test regex[, module dir])
 mutations = [
     ("typed-issue-author", [(ATTEST, 'strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)', 'strings.HasPrefix(title, VerifierAttestationTitle)')], KIT, "TestAttestationExcludedDuringOpenWindowBothForges"),
     ("qualified-source", [(ATTEST, '"rev-parse", "refs/remotes/origin/main"', '"rev-parse", "origin/main"')], KIT, "TestAttestRemoteRef"),
@@ -38,6 +42,26 @@ mutations = [
     ("work-tree-resolved", [(SOURCE, "if err != nil || resolved != home {", "if false && (err != nil || resolved != home) {")], KIT, CLOSURE + "/(core-worktree|worktree-config-worktree)$"),
     ("work-tree-present", [(SOURCE, 'if err != nil {\n\t\treturn Refused("verifier home has no git work tree', 'if err != nil {\n\t\treturn nil\n\t\treturn Refused("verifier home has no git work tree')], KIT, CLOSURE + "/core-bare$"),
     ("work-tree-config", [(SOURCE, '"config", "--get-all", "core.worktree"', '"config", "--get-all", "fixture.unset"')], KIT, CLOSURE + "/core-worktree-link$"),
+    ("work-tree-config-scope", [(SOURCE, '"config", "--get-all", "core.worktree"', '"config", "--local", "--get-all", "core.worktree"')], KIT, CLOSURE + "/worktree-config-link$"),
+    ("work-tree-config-includes", [(SOURCE, '"config", "--get-all", "core.worktree"', '"config", "--no-includes", "--get-all", "core.worktree"')], KIT, CLOSURE + "/include-worktree-link$"),
+    ("work-tree-config-unread", [(SOURCE, 'return Unverifiable("cannot inspect verifier work tree config", err)', "return nil")], KIT, "TestWorkTreeConfigUnread"),
+    ("work-tree-resolved-view", [(SOURCE, "if err != nil || resolved != home {", "if false && (err != nil || resolved != home) {")], KIT, "TestAttestSubdirHome"),
+    ("render-needs-source", [(SOURCE, 'return nil, Unverifiable("cannot render attested source file "+rel, errors.New("no attested attribute source"))', "return nil, nil")], KIT, "TestRenderNeedsAttrSource"),
+    ("old-git-class", [(SOURCE, '"version"); verifierLacksAttrSource(probe) {', '"version"); probe != nil {')], KIT, "TestOldGitProbeClass"),
+    ("old-git-option", [(SOURCE, 'bytes.Contains(exit.Stderr, []byte("unknown option: --attr-source"))', "true")], KIT, "TestOldGitProbeClass/other-usage"),
+    ("row-reads-called", [(ATTEST, "if err := verifierRowGitReads(home); err != nil {", "if err := error(nil); err != nil {")], KIT, CLOSURE + "/(grep|log|status)-config$"),
+    ("row-reads-exit", [(SOURCE, "case errors.As(err, &exit) && exit.ExitCode() == 1:", "case errors.As(err, &exit):")], KIT, CLOSURE + "/(grep|log|status)-config$"),
+    ("row-reads-unrunnable", [(SOURCE, 'return Unverifiable("cannot probe verifier row git reads: git "+read[0], err)', "return nil")], KIT, "TestRowReadProbeUnrunnable"),
+    ("row-read-grep", [(SOURCE, '\t{"grep", "-q", "-e", "assay-admission-probe", "--", verifierProbePath},\n', "")], KIT, CLOSURE + "/grep-config$"),
+    ("row-read-log", [(SOURCE, '\t{"log", "-1", "--format=%H", "--", verifierProbePath},\n', "")], KIT, CLOSURE + "/log-config$"),
+    ("row-read-status", [(SOURCE, '\t{"status", "--porcelain", "--", verifierProbePath},\n', "")], KIT, CLOSURE + "/status-config$"),
+    ("home-git-spelling", [(SOURCE, "\treturn given, resolved, nil\n}", "\treturn given, given, nil\n}")], KIT, "TestAttestCaseVariantRoot"),
+    ("home-same-dir", [(SOURCE, "if err != nil || !verifierSameDir(resolved, given) {", "if err != nil || resolved != given {")], KIT, "TestAttestCaseVariantRoot"),
+    ("same-dir-identity", [(SOURCE, "return err == nil && os.SameFile(ai, bi)", "return err == nil && ai == bi")], KIT, "TestVerifierSameDir"),
+    ("row-env-source", [(VERIFYRUN, "cmd.Env = plan.rowEnv()", "cmd.Env = os.Environ()")], ".", "TestAdmittedRows|TestRowEnvSingleSource", SG),
+    ("row-env-admitted", [(VERIFYRUN, "\t\tplan.env = admittedRowEnv(os.Environ())\n", "")], ".", "TestAdmittedRows(StripGitEnv|PinGrep)/admitted", SG),
+    ("row-env-strip", [(ADMISSION, 'if !strings.HasPrefix(strings.ToUpper(kv), "GIT_") {', "if true {")], ".", "TestAdmittedRowsStripGitEnv/admitted|TestAdmittedRowEnvShape", SG),
+    ("row-env-grep-pin", [(ADMISSION, '\t\t"GIT_CONFIG_COUNT=2",\n\t\t"GIT_CONFIG_KEY_0=grep.patternType", "GIT_CONFIG_VALUE_0=default",\n\t\t"GIT_CONFIG_KEY_1=grep.extendedRegexp", "GIT_CONFIG_VALUE_1=false")', ")")], ".", "TestAdmittedRowsPinGrep/admitted", SG),
     ("system-attributes", [(ATTEST, '"GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1"', '"GIT_NO_REPLACE_OBJECTS=1"')], KIT, "TestVerifierEnvIgnoresSystemAttributes"),
     ("checkout-from-binding", [(ATTEST, "checkout, err := parseVerifierCheckout(b.Checkout)", "checkout, err := readVerifierCheckout(home)")], KIT, "TestVerifierCheckoutConversionPinned"),
     ("index-at-execution", [(ATTEST, "if phase == verifierEvidence {\n\t\tallowed[index] = true", "if true {\n\t\tallowed[index] = true")], KIT, INDEX),
@@ -53,17 +77,18 @@ mutations = [
     ("landing-home-direction", [(ATTEST, 'if _, serr := os.Stat(record); perr != nil || serr != nil {', 'if _, serr := os.Stat(record); false && (perr != nil || serr != nil) {')], "./cmd/deskevidence", "TestVerifierEvidenceLandingFormAdmitted/desk-checkout"),
     ("commit-binding", [(EVIDENCE, '"Evidence: verification row for " + targetRepoPath + ac.attestationTrailer() + commitSuffix', '"Evidence: verification row for " + targetRepoPath + commitSuffix')], "./cmd/deskevidence", "TestVerifierEvidenceTargetBoundToAttestedBrief/bound-direct-commit"),
 ]
-for name, edits, package, tests in mutations:
+for name, edits, package, tests, *where in mutations:
+    cwd = where[0] if where else module
     originals = {}
     try:
         for rel, before, after in edits:
-            path = module / rel
+            path = cwd / rel
             text = path.read_text()
             originals.setdefault(path, text)
             if text.count(before) != 1:
                 raise SystemExit(f"{name}: mutation anchor absent/ambiguous in {rel}")
             path.write_text(text.replace(before, after))
-        run = subprocess.run(["go", "test", package, "-run", tests, "-count=1", "-timeout", "120s"], cwd=module, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        run = subprocess.run(["go", "test", package, "-run", tests, "-count=1", "-timeout", "120s"], cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if run.returncode == 0 or "--- FAIL:" not in run.stdout or "build failed" in run.stdout:
             raise SystemExit(f"{name}: no assertion failure\n{run.stdout}")
         print(f"{name}: killed")

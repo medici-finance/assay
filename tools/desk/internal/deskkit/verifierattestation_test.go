@@ -104,8 +104,19 @@ func verifierFixture(t *testing.T, model string) (string, *verifierForge) {
 // the brief at briefPath (one of them) from the detached origin/main commit.
 func verifierFixtureWith(t *testing.T, model, briefPath string, extra map[string]string) (string, *verifierForge) {
 	t.Helper()
-	plantRoster(t, "ASSAY_BLESS_LOGIN=example-human:2001\nASSAY_TRUSTED_LOGINS=example-human:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:1,verifier=example-verifier:2\nASSAY_ALLOWED_REPOS=example-org/one:ci:private\n")
 	root := t.TempDir()
+	verifierFixtureRepo(t, root, extra)
+	if err := PrepareVerifierAttestation(root, "example-org/one", briefPath, model, "strong"); err != nil {
+		t.Fatal(err)
+	}
+	return root, &verifierForge{actor: "example-desk[bot]"}
+}
+
+// verifierFixtureRepo builds the base fixture repository in root, detached at
+// its origin/main commit, without preparing a run.
+func verifierFixtureRepo(t *testing.T, root string, extra map[string]string) {
+	t.Helper()
+	plantRoster(t, "ASSAY_BLESS_LOGIN=example-human:2001\nASSAY_TRUSTED_LOGINS=example-human:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:1,verifier=example-verifier:2\nASSAY_ALLOWED_REPOS=example-org/one:ci:private\n")
 	git := func(args ...string) {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
@@ -136,10 +147,6 @@ func verifierFixtureWith(t *testing.T, model, briefPath string, extra map[string
 	git("commit", "-m", "fixture")
 	git("update-ref", "refs/remotes/origin/main", "HEAD")
 	git("checkout", "--detach")
-	if err := PrepareVerifierAttestation(root, "example-org/one", briefPath, model, "strong"); err != nil {
-		t.Fatal(err)
-	}
-	return root, &verifierForge{actor: "example-desk[bot]"}
 }
 func TestVerifierAttestationRoundTrip(t *testing.T) {
 	for _, model := range []string{"gpt-6-astra", "gpt-6.1-sol", "gpt-6-1-sol"} {
@@ -331,7 +338,7 @@ func TestAttestActorSeparation(t *testing.T) {
 // The same reader is used before execution and before Evidence landing. Each
 // fixture alters the real dispatched home, leaving the immutable record intact.
 func TestAttestSourceClosure(t *testing.T) {
-	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter", "attr-tree-filter", "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "local-eol", "attributes-file", "attr-tree", "stream-index", "index-removed", "index-swapped", "index-added", "index-attributes", "index-redirect", "core-worktree", "worktree-config-worktree", "core-worktree-link", "core-bare"} {
+	for _, mode := range []string{"tracked", "staged", "branch", "commit", "untracked", "ignored", "second-site", "deleted", "assume-unchanged", "skip-worktree", "replace-ref", "clean-filter", "smudge-filter", "attr-tree-filter", "info-attributes-crlf", "info-attributes-encoding", "local-autocrlf", "local-eol", "attributes-file", "attr-tree", "stream-index", "index-removed", "index-swapped", "index-added", "index-attributes", "index-redirect", "core-worktree", "worktree-config-worktree", "core-worktree-link", "worktree-config-link", "include-worktree-link", "core-bare", "grep-config", "log-config", "status-config"} {
 		t.Run(mode, func(t *testing.T) {
 			var extra map[string]string
 			switch {
@@ -355,8 +362,10 @@ func TestAttestSourceClosure(t *testing.T) {
 			case "index-removed", "index-swapped", "index-added", "index-attributes", "index-redirect":
 				name = indexChange(t, root, mode)
 				want = "source files changed since verifier dispatch: " + name
-			case "core-worktree", "worktree-config-worktree", "core-worktree-link", "core-bare":
+			case "core-worktree", "worktree-config-worktree", "core-worktree-link", "worktree-config-link", "include-worktree-link", "core-bare":
 				want = workTreeChange(t, root, mode)
+			case "grep-config", "log-config", "status-config":
+				want = rowConfigChange(t, root, mode)
 			case "attr-tree-filter":
 				// An unattested attribute tree unsets the attested filter for the
 				// attribute query alone; the driver then renders the planted bytes.
@@ -592,16 +601,41 @@ func workTreeChange(t *testing.T, root, mode string) string {
 		// git's resolved view refuses first; the configured work tree would
 		// also refuse, so the assertion pins which signal answers.
 		return "git work tree is not the home itself"
-	case "core-worktree-link":
+	case "core-worktree-link", "worktree-config-link", "include-worktree-link":
 		// A configured work tree that resolves to the home today: git's own
-		// view matches, but the link can be re-pointed after admission.
+		// view matches, but the link can be re-pointed after admission. The
+		// worktree-scope and included forms are read only by a config read
+		// that covers every scope and follows includes.
 		link := filepath.Join(t.TempDir(), "link")
 		if err := os.Symlink(home, link); err != nil {
 			t.Fatal(err)
 		}
-		attestGit(t, root, "config", "core.worktree", link)
+		switch mode {
+		case "worktree-config-link":
+			attestGit(t, root, "config", "extensions.worktreeConfig", "true")
+			attestGit(t, root, "config", "--worktree", "core.worktree", link)
+		case "include-worktree-link":
+			inc := filepath.Join(t.TempDir(), "included.cfg")
+			if err := os.WriteFile(inc, []byte("[core]\n\tworktree = "+filepath.ToSlash(link)+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			attestGit(t, root, "config", "include.path", inc)
+		default:
+			attestGit(t, root, "config", "core.worktree", link)
+		}
+		if mode != "core-worktree-link" {
+			narrow := exec.Command("git", "-C", root, "config", "--local", "--no-includes", "--get-all", "core.worktree")
+			if out, err := narrow.Output(); err == nil || narrow.ProcessState.ExitCode() != 1 {
+				t.Fatalf("%s: plant is visible to a local, include-free read: %q %v", mode, out, err)
+			}
+		}
 		if got := strings.TrimSpace(attestOut(t, root, "rev-parse", "--show-toplevel")); got != home {
 			t.Fatalf("core-worktree-link: work tree %q does not resolve to the home %q", got, home)
+		}
+		if mode != "core-worktree-link" {
+			if got := attestOut(t, root, "config", "--get-all", "core.worktree"); strings.TrimSpace(got) != link {
+				t.Fatalf("%s: plant not visible to the full config read: %q", mode, got)
+			}
 		}
 		return "configures its git work tree"
 	case "core-bare":
@@ -617,6 +651,33 @@ func workTreeChange(t *testing.T, root, mode string) string {
 	}
 	t.Fatalf("unknown work tree mode %s", mode)
 	return ""
+}
+
+// rowConfigChange sets one invalid setting that a Verify row's own git read
+// parses, then asserts the plant: that read now fails (exit 128) instead of
+// answering, so a negated row reads the failure as a pass. grep, log and
+// status are three settings of one class, each failing a different read; the
+// probe must catch every one, not the first instance found.
+func rowConfigChange(t *testing.T, root, mode string) string {
+	t.Helper()
+	var key, read string
+	var row []string
+	switch mode {
+	case "grep-config":
+		key, read, row = "grep.patternType", "grep", []string{"grep", "-q", "attested source"}
+	case "log-config":
+		key, read, row = "log.date", "log", []string{"log", "-1", "--format=%s"}
+	case "status-config":
+		key, read, row = "status.showUntrackedFiles", "status", []string{"status", "--porcelain"}
+	default:
+		t.Fatalf("unknown row config mode %s", mode)
+	}
+	attestGit(t, root, "config", key, "bogus")
+	cmd := exec.Command("git", append([]string{"-C", root}, row...)...)
+	if err := cmd.Run(); err == nil || cmd.ProcessState.ExitCode() != 128 {
+		t.Fatalf("%s: row git still answers: %v", mode, err)
+	}
+	return "makes a Verify row's git " + read + " fail"
 }
 
 // TestVerifierEnvStrip pins the environment strip one variable at a time: each
