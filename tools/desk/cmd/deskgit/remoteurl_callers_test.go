@@ -59,7 +59,8 @@ var remoteURLAllowList = map[string]struct {
 	"internal/deskkit/remoterepo.go": {1, "OriginRepoSlug reads the RAW configured value on " +
 		"purpose, so the identity is not insteadOf-expanded (see its doc comment)."},
 	"internal/deskkit/preflight.go": {2, "deriveRepoSlug only labels the mint's owner; the landing " +
-		"probe only checks the remote exists, and its `git push --dry-run` resolves the remote itself."},
+		"probe reads the remote only as a forge-KIND hint (well-known host table, roster first) and " +
+		"lists the kind's canonical URL in-process — no git verb resolves the remote after it."},
 }
 
 // remoteURLCallers walks root's cmd/ and internal/ trees (non-test Go files, testdata skipped,

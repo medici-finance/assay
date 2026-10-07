@@ -63,7 +63,7 @@ func TestUpdateCheckAcceptsMixedPR(t *testing.T) {
 	if rc := run([]string{"update", "--check"}); rc != deskkit.ExitOK {
 		t.Fatalf("update --check on a mixed-author PR adding only own commits rc = %d, want 0", rc)
 	}
-	if anyCall(gitCalls(*calls), "push") {
+	if anyPush(*calls) {
 		t.Fatal("--check pushed")
 	}
 }
@@ -77,8 +77,8 @@ func TestUpdatePushesMixedPR(t *testing.T) {
 	if rc := run([]string{"update"}); rc != deskkit.ExitOK {
 		t.Fatalf("update on a mixed-author PR adding only own commits rc = %d, want 0", rc)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("update did not push: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("update did not push: %v", *calls)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestUpdateRefusesNewForeign(t *testing.T) {
 	if rc := run([]string{"update"}); rc != deskkit.ExitRefused {
 		t.Fatalf("update adding a foreign commit rc = %d, want 5", rc)
 	}
-	if anyCall(gitCalls(*calls), "push") {
+	if anyPush(*calls) {
 		t.Fatal("a foreign NEW commit was pushed")
 	}
 }
@@ -116,7 +116,7 @@ func TestUpdateLiveHeadOverrulesRef(t *testing.T) {
 	if rc := run([]string{"update"}); rc != deskkit.ExitRefused {
 		t.Fatalf("update with a stale-ahead tracking ref rc = %d, want 5 — the live PR head must be re-judged", rc)
 	}
-	if anyCall(gitCalls(*calls), "push") {
+	if anyPush(*calls) {
 		t.Fatal("pushed a foreign commit the forge's PR head does not hold")
 	}
 }
@@ -131,7 +131,7 @@ func TestUpdateNoLiveHeadFailsClosed(t *testing.T) {
 	if rc := run([]string{"update"}); rc != deskkit.ExitRefused {
 		t.Fatalf("update with no live PR head rc = %d, want 5 (whole range judged)", rc)
 	}
-	if anyCall(gitCalls(*calls), "push") {
+	if anyPush(*calls) {
 		t.Fatal("pushed without an anchor the forge confirmed")
 	}
 }
@@ -147,7 +147,7 @@ func TestCreateJudgesWholeRange(t *testing.T) {
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("create on a branch carrying another App's commit rc = %d, want 5", rc)
 	}
-	if anyCall(gitCalls(*calls), "push") {
+	if anyPush(*calls) {
 		t.Fatal("create pushed")
 	}
 }

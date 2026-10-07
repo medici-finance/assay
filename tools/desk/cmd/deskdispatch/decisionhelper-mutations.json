@@ -1,0 +1,77 @@
+{
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestDecisionHelper|TestDecisionClaimRoot|TestDecisionDefaultRoot|TestHelperRefusals|TestHelperPathPorts|TestMissingDecision|TestBriefMetadataGateHumanWithMissing'",
+  "control": {
+    "name": "CONTROL — a human-gated dispatch with no decision helper SKIPS the gate instead of refusing; TestDecisionHelperAbsentRefuses must go red",
+    "file": "cmd/deskdispatch/dispatch.go",
+    "old": "\t\tif _, err := os.Stat(plan.decisionScript); err != nil {",
+    "new": "\t\tif _, err := os.Stat(plan.decisionScript); false && err != nil {"
+  },
+  "mutations": [
+    {
+      "name": "the decision-gate refusal names only the root again (not every location tried); TestDecisionHelperAbsentRefuses must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o)), err)",
+      "new": "\t\t\t\tstepDecisionGate, decisionScriptRel+\" is not present in \"+scriptsRoot, claimRootHint(o)), err)"
+    },
+    {
+      "name": "the decision-gate refusal drops the --claim-root way out; TestDecisionHelperAbsentRefuses must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o)), err)",
+      "new": "\t\t\t\tstepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), \"\"), err)"
+    },
+    {
+      "name": "the claim-tool refusal stops naming every location tried; TestHelperRefusalsNameAll/dispatch-claim.sh must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\t\tstepClaimAcquire, helperLocationsTried(o, claimScriptRel, scriptsRoot), claimRootHint(o)), goErr)",
+      "new": "\t\t\tstepClaimAcquire, claimScriptRel, claimRootHint(o)), goErr)"
+    },
+    {
+      "name": "an explicit --claim-root is reported as --root (the authoritative-root half lost); TestDecisionClaimRootStrict must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\tunder = \"under --claim-root, which is authoritative: --root is not consulted when it is given\"",
+      "new": "\t\tunder = \"under --root, since no --claim-root was given\""
+    },
+    {
+      "name": "a helper with no PATH port no longer says PATH was considered; TestDecisionHelperAbsentRefuses must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\treturn fmt.Sprintf(\"%s, and no pure-Go port of %s ships, so PATH holds no fallback\", file, rel)",
+      "new": "\treturn fmt.Sprintf(\"%s (%s)\", file, rel)"
+    },
+    {
+      "name": "the decision helper resolves under --root even when --claim-root is given; TestDecisionHelperViaClaimRoot must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tplan.decisionScript = filepath.Join(scriptsRoot, filepath.FromSlash(decisionScriptRel))",
+      "new": "\tplan.decisionScript = filepath.Join(o.root, filepath.FromSlash(decisionScriptRel))"
+    },
+    {
+      "name": "the class guard's const scan ignores tools/*.sh helpers (matcher broken); its positive control in TestHelperRefusalsNameAll must go red",
+      "file": "cmd/deskdispatch/decisionhelper_test.go",
+      "old": "var helperConstRe = regexp.MustCompile(`^tools/[A-Za-z0-9._-]+\\.sh$`)",
+      "new": "var helperConstRe = regexp.MustCompile(`^tools/[A-Za-z0-9._-]+\\.bash$`)"
+    },
+    {
+      "name": "a defaulted or relative --root is named as given, not absolute; TestDecisionDefaultRootAbsolute must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tif abs, err := filepath.Abs(path); err == nil {",
+      "new": "\tif abs, err := filepath.Abs(path); false && err == nil {"
+    },
+    {
+      "name": "the claim refusal names the file before the PATH port, against the resolver's order; TestHelperRefusalsNameAll/dispatch-claim.sh must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\treturn fmt.Sprintf(\"the pure-Go %s binary is not on PATH, and %s\", port, file)",
+      "new": "\t\treturn fmt.Sprintf(\"%s, and the pure-Go %s binary is not on PATH\", file, port)"
+    },
+    {
+      "name": "the claim-tool refusal drops the --claim-root way out; TestHelperRefusalsNameAll/dispatch-claim.sh must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\t\tstepClaimAcquire, helperLocationsTried(o, claimScriptRel, scriptsRoot), claimRootHint(o)), goErr)",
+      "new": "\t\t\tstepClaimAcquire, helperLocationsTried(o, claimScriptRel, scriptsRoot), \"\"), goErr)"
+    },
+    {
+      "name": "the decision helper is listed with a PATH port the resolver never looks up; TestHelperPathPortsAreLookedUp/decision-issue.sh must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t{rel: decisionScriptRel, pathPort: \"\"},",
+      "new": "\t{rel: decisionScriptRel, pathPort: \"deskdecision-ref\"},"
+    }
+  ]
+}

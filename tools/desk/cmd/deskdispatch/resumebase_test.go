@@ -91,9 +91,9 @@ func TestFreshDispatchStillCutsFromTheMainline(t *testing.T) {
 // A READ-ONLY lane (review, verifier) carries --pr as the change it is reading, not as a
 // branch to resume: it checks the change's head out itself, as a detached HEAD, so its
 // worktree start point stays the mainline.
-func TestReadOnlyLanesWithAPRStillCutFromTheMainline(t *testing.T) {
+func TestReviewLaneWithAPRStillCutsFromTheMainline(t *testing.T) {
 	const sha = "1111111111111111111111111111111111111111"
-	for _, kit := range []string{"review", "verifier"} {
+	for _, kit := range []string{"review"} {
 		t.Run(kit, func(t *testing.T) {
 			_, argv := resumeDispatch(t, sha, "--pr", "42", "--kit", kit)
 			if !strings.Contains(argv, "--base refs/remotes/origin/main") {

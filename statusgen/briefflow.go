@@ -97,7 +97,7 @@ func resolveBFWindow(since, until string, now time.Time) (sinceT, untilT time.Ti
 func bfResolveTarget(mode, root string) string {
 	repo := doraTargetRepo(root)
 	if repo == "" {
-		fmt.Fprintf(os.Stderr, "%s: no target repo resolved ($GITHUB_REPOSITORY, git remote, gh default all unset) — could-not-check\n", mode)
+		fmt.Fprintf(os.Stderr, "%s: no target repo resolved ($GITHUB_REPOSITORY, git remote origin both unset) — could-not-check\n", mode)
 		return ""
 	}
 	fmt.Fprintf(os.Stderr, "%s: querying %s\n", mode, repo)

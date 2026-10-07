@@ -1,0 +1,3 @@
+### Changed
+- `statusgen --lint` reads each unchanged brief and stream directory from disk once per run instead of once per check. Before this change it made about 11,000 file reads on a 420-brief tree; now it makes 461. Each repeat read is checked against a stat stamp (size, mtime, ctime, inode, device). A file written in the last three seconds is always read again from disk. The lint verdict and output are unchanged.
+- The `--dora-timing`, brief-flow and `--flow` target-repo lookup no longer falls back to `gh repo view`. When neither `$GITHUB_REPOSITORY` nor the checkout's `origin` resolves, the result is the existing could-not-check.

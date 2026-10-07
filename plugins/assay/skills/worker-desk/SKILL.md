@@ -432,6 +432,17 @@ window stops, hands back, or asks the driver for direction.
 5. **The tick still reports.** One line per §Output contract, and the sweep obligations of the HARD
    GATE are unaffected by a quiet queue.
 
+## Post-open stamp handoff
+
+For a dispatch made before its PR exists, retain the real dispatch receipt with the
+actual selected model and tier. When the worker returns the opened PR, send that PR and
+selection to the coordinator desk (`the-desk`), which runs the printed
+`deskdispatch --stamp-only --repo <repo> --pr <N> --model <actual-model> --tier <tier>`
+command with the original kit. Require its applied-and-verified receipt before treating
+the PR as model-attested. Both this worker-desk and its child are refused by stamp-only;
+a shared `DESK_SESSION` is claim custody, not stamp authority. Never switch identity or
+redispatch a worker just to obtain the stamp.
+
 ## Dispatch — `deskdispatch <item-key>` runs the ceremony
 
 The per-item ceremony is mechanical and lives in the verb: claim-acquire → worktree-create in the

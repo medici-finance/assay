@@ -98,7 +98,6 @@ var allowlist = map[verbTool]bool{
 	{tool: "deskscanbody", verb: "diff"}:         true,
 	{tool: "deskscanbody", verb: "clean"}:        true,
 	{tool: "deskpr", verb: "rev-parse"}:          true,
-	{tool: "deskpr", verb: "push"}:               true,
 	{tool: "deskpr", verb: "diff"}:               true,
 	{tool: "deskpr", verb: "symbolic-ref"}:       true,
 	{tool: "deskpr", verb: "rev-list"}:           true,
@@ -123,13 +122,11 @@ var allowlist = map[verbTool]bool{
 	{tool: "deskadvisory", verb: "fetch"}:        true, // third-party-fork fetch; hardening disappears with gitcore transport
 	{tool: "deskadvisory", verb: "commit"}:       true,
 	{tool: "deskadvisory", verb: "checkout"}:     true,
-	{tool: "verifyloop", verb: "push"}:           true, // durable-Evidence push half migrates; pull --rebase is a follow-on gap
 	{tool: "verifyloop", verb: "pull"}:           true, // go-git gap: rebase / non-fast-forward pull — follow-on design brief
 	{tool: "verifyloop", verb: "commit"}:         true,
 	{tool: "verifyloop", verb: "add"}:            true,
 	{tool: "deskkit", verb: "remote"}:            true, // preflight ls-remote --get-url probe; replaced by authenticated List
 	{tool: "deskkit", verb: "symbolic-ref"}:      true,
-	{tool: "deskkit", verb: "push"}:              true, // preflight transport probe
 	{tool: "deskkit", verb: "config"}:            true,
 }
 

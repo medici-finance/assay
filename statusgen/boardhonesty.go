@@ -78,7 +78,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
 )
@@ -323,7 +322,7 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 			// is still recognised as live work, not a retired pointer (statusgen #581).
 			path, briefFilePresent := pathByNum[num]
 			if briefFilePresent {
-				if raw, err := os.ReadFile(path); err != nil {
+				if raw, err := readFileMemo(path); err != nil {
 					add("could-not-check: board-honesty could not read %s (%v), so the body-keyed "+
 						"phantom classes were not checked for %s.", path, err, id)
 				} else {

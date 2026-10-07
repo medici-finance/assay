@@ -1093,7 +1093,7 @@ func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 			return nil, g.mapErr(http.MethodGet, listPath, lerr)
 		}
 		for _, iss := range chunk {
-			if iss == nil {
+			if iss == nil || (iss.Author != nil && IsVerifierAttestation(iss.Title, iss.Author.Username)) {
 				continue
 			}
 			s := IssueSummary{
@@ -1200,8 +1200,9 @@ type glGQLNoteConn struct {
 }
 
 type glGQLNoteable struct {
-	Comments glGQLNoteConn `json:"comments"`
-	Activity glGQLNoteConn `json:"activity"`
+	bodyHistoryKnown bool
+	Comments         glGQLNoteConn `json:"comments"`
+	Activity         glGQLNoteConn `json:"activity"`
 }
 
 type glGQLTrustEnvelope struct {
@@ -1326,7 +1327,7 @@ func (g *GitLabForge) trustEvents(repo ForgeRepo, number int, noteable, op strin
 	if rerr != nil {
 		return nil, Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d", repo.Slug(), number), rerr)
 	}
-	return &TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete && activityComplete}, nil
+	return &TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete && activityComplete, BodyHistoryKnown: item.bodyHistoryKnown}, nil
 }
 
 // gitlabTrustItem translates the GitLab wire shape into the reader's item shape and derives
@@ -3472,9 +3473,8 @@ func (g *GitLabForge) MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, 
 //
 // GitLab's RESOURCE LABEL EVENTS endpoint is the exact analog of the GitHub timeline read
 // this replaces: it records add/remove per label with the acting user, which is the one fact
-// the model-capability floor needs and the label LIST cannot give. Events whose action is
-// not `add` are dropped, matching the GitHub side's filter to `labeled` — a removal is not an
-// attestation.
+// the model-capability floor needs and the label LIST cannot give. Both add and remove
+// events are retained so a removed application cannot remain standing provenance.
 //
 // An event whose label GitLab has since DELETED comes back with an empty label name (the
 // documented shape: the event survives, the label record does not). It is dropped rather than
@@ -3496,16 +3496,45 @@ func (g *GitLabForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent,
 			return nil, g.mapErr(http.MethodGet, path, lerr)
 		}
 		for _, e := range chunk {
-			if e == nil || e.Action != "add" || strings.TrimSpace(e.Label.Name) == "" {
+			if e == nil || (e.Action != "add" && e.Action != "remove") || strings.TrimSpace(e.Label.Name) == "" {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt)})
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
 		}
 		if resp == nil || resp.NextPage == 0 {
-			break
+			return out, nil
 		}
 	}
-	return out, nil
+	return nil, fmt.Errorf("label timeline exceeded page bound")
+}
+
+func (g *GitLabForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/issues/%d/resource_label_events",
+		g.projectPath(repo), number)
+	var out []LabelEvent
+	for page := 1; page <= gitlabMaxNotePage; page++ {
+		chunk, resp, lerr := cl.ResourceLabelEvents.ListIssueLabelEvents(repo.Slug(), int64(number),
+			&gitlab.ListLabelEventsOptions{
+				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+			})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, path, lerr)
+		}
+		for _, e := range chunk {
+			if e == nil || (e.Action != "add" && e.Action != "remove") || strings.TrimSpace(e.Label.Name) == "" {
+				continue
+			}
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("label timeline exceeded page bound")
 }
 
 // gitlabNoteIDScheme prefixes the opaque comment id this backend mints. Like
@@ -4237,4 +4266,33 @@ func (g *GitLabForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 			"mapping does not know — not rounded to a known state", pid, repo.Slug(), StripControl(p.Status)), nil)
 	}
 	return st, nil
+}
+
+// GitLab issues do not expose lastEditedAt. The existing activity-note query is
+// the provider contract: missing nodes/pageInfo is unknown, not an empty history.
+func (g *glGQLNoteable) UnmarshalJSON(raw []byte) error {
+	type plain glGQLNoteable
+	var decoded plain
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	var activity struct {
+		Nodes    json.RawMessage
+		PageInfo map[string]json.RawMessage
+	}
+	if err := json.Unmarshal(fields["activity"], &activity); err == nil && len(activity.Nodes) > 0 && string(activity.Nodes) != "null" {
+		field, ok := activity.PageInfo["hasPreviousPage"]
+		decoded.bodyHistoryKnown = ok && (string(field) == "true" || string(field) == "false")
+		for _, note := range decoded.Activity.Nodes {
+			if note.Body == "" || note.CreatedAt == "" {
+				decoded.bodyHistoryKnown = false
+			}
+		}
+	}
+	*g = glGQLNoteable(decoded)
+	return nil
 }

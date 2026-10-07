@@ -26,10 +26,8 @@ func TestPublicRepoGateWired(t *testing.T) {
 		if rc != deskkit.ExitRefused {
 			t.Fatalf("create on a refused repo rc = %d, want 5 (refused)", rc)
 		}
-		for _, c := range *calls {
-			if len(c) >= 2 && c[0] == "git" && c[1] == "push" {
-				t.Fatalf("gate refused -- must NOT make git push call; calls: %v", *calls)
-			}
+		if anyPush(*calls) {
+			t.Fatalf("gate refused -- must NOT push; calls: %v", *calls)
 		}
 	})
 
@@ -46,10 +44,8 @@ func TestPublicRepoGateWired(t *testing.T) {
 		if rc != deskkit.ExitRefused {
 			t.Fatalf("update on a refused repo rc = %d, want 5 (refused)", rc)
 		}
-		for _, c := range *calls {
-			if len(c) >= 2 && c[0] == "git" && c[1] == "push" {
-				t.Fatalf("gate refused -- must NOT make git push call; calls: %v", *calls)
-			}
+		if anyPush(*calls) {
+			t.Fatalf("gate refused -- must NOT push; calls: %v", *calls)
 		}
 	})
 
