@@ -1,0 +1,2 @@
+### Added
+- desk-tools brief 29 is authored (authoring only, human-gated): `verifyloop verdict --unsigned-out <file>` runs a brief's check/check:ci rows and writes the canonical, unsigned verdict-v1 payload to a fresh file without resolving, opening or reading any key, so the rows can run in a fenced container that never holds the verifier key and the host signs afterwards with `deskverdict sign --payload <file>`; its Verify rows prove the mode never opens a configured key, and that the host-signed result is byte-identical to today's combined path.
