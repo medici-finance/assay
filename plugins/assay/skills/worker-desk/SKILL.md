@@ -622,7 +622,10 @@ DECISION-BLOCK READY, and **this desk** then re-runs ensure `--at spec` against 
 (subagent issue-writes get classifier-denied); **5** = self-containment refusal, repair the brief,
 never hand-file around it; **6** = could-not-check, do not file, retry next cycle — but a gate
 6 that repeats across more than one brief in one tick is a defect, not a blip: file it THAT tick as
-ONE issue naming every brief it blocked, and never hand-run the decision-issue helper around the
+ONE issue naming every brief it blocked. The decision-gate step reports every helper failure as 6,
+the helper's own self-containment refusal included: where the step's message line or `DESK_TRACE`
+shows the helper itself refused (its status 5), that brief is a refusal — repair it, never count it
+toward the repeat filing. In either case, never hand-run the decision-issue helper around the
 refusal (a hand-run once landed a duplicate decision issue). Record the issue in
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
 step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
