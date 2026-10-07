@@ -287,6 +287,20 @@ const (
 	// A live strict PASS that also quotes the marker elsewhere: the quotation
 	// does not hide the live verdict, so this still satisfies (control).
 	evPassPlusQuoted = evPass + "\nExpected output:\n\n```\n**VERIFY: PASS**\n```\n\n> **VERIFY: PASS**\n"
+	// Shapes the live read alone would admit but the raw strict read refuses.
+	// Splice: a struck FAIL inside the marker's own bold run; removing the
+	// struck span joins the rest into **VERIFY: PASS**, a marker the raw
+	// Evidence never carries. Unclosed: a **VERIFY: FAIL opener with no
+	// closing ** on its line; the raw read runs it on to the next line's
+	// opening **, so that line's PASS marker never forms as one. Only the raw
+	// hasVerifyPass conjunct holds these.
+	evSplicePass     = "**VERIFY: ~~FAIL~~PASS**\n"
+	evFailSplicePass = evFail + "\n" + evSplicePass
+	evUnclosedFail   = "**VERIFY: FAIL — row 2 red\n\n**VERIFY: PASS**\n"
+	// A retracted FAIL struck as a whole, then a strict PASS on the same line:
+	// both strict reads find the PASS, so this satisfies (control for the
+	// splice cases).
+	evStruckFailPass = "~~**VERIFY: FAIL**~~ **VERIFY: PASS**\n"
 )
 
 func pickedIn(picks []Pick, stream, num string) bool {
@@ -304,6 +318,8 @@ func pickedIn(picks []Pick, stream, num string) bool {
 // shape — a FAIL, a PASS later answered by a FAIL (even when prose mentions a
 // pass after it), no verdict, a loose-form PASS only, a strict PASS that is only
 // struck, fenced or quoted (with or without a loose-form PASS in live prose), a
+// PASS marker that forms only once a struck span is removed or that follows an
+// unclosed FAIL opener (neither is a strict marker in the raw Evidence), a
 // non-human gate, a status other than implemented — stays held.
 // Each case is checked through all three readers: depIsSatisfied, the
 // eligibility evaluator, and Next-up.
@@ -327,6 +343,10 @@ func TestDependsHumanGatePass(t *testing.T) {
 		{"human implemented fenced PASS plus loose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evFencedPassLoose}, false},
 		{"human implemented quoted PASS plus loose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evQuotedPassLoose}, false},
 		{"human implemented live PASS plus quoted PASS", Brief{Status: "implemented", Gate: "human", Evidence: evPassPlusQuoted}, true},
+		{"human implemented struck-splice PASS", Brief{Status: "implemented", Gate: "human", Evidence: evSplicePass}, false},
+		{"human implemented FAIL then struck-splice PASS", Brief{Status: "implemented", Gate: "human", Evidence: evFailSplicePass}, false},
+		{"human implemented unclosed FAIL then PASS", Brief{Status: "implemented", Gate: "human", Evidence: evUnclosedFail}, false},
+		{"human implemented struck FAIL then PASS", Brief{Status: "implemented", Gate: "human", Evidence: evStruckFailPass}, true},
 		{"model implemented PASS", Brief{Status: "implemented", Gate: "model", Evidence: evPass}, false},
 		{"legacy implemented PASS", Brief{Status: "implemented", Evidence: evPass}, false},
 		{"human in-progress PASS", Brief{Status: "in-progress", Gate: "human", Evidence: evPass}, false},

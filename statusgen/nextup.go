@@ -655,21 +655,32 @@ func targetSatisfies(b Brief, dependsEdge bool) bool {
 }
 
 // humanGatedVerifyPassed reports a gate:human brief at `implemented` whose
-// LAST recorded verdict is a pass. It makes two verdict reads, both fail
-// closed: a strict **VERIFY: PASS** marker must be present as a live verdict,
-// outside fenced code blocks, blockquote lines and struck-through spans
-// (hasLiveVerifyPass), and no FAIL may follow the last strict PASS
-// (verdictFailAfterStrictPass — the FAIL read the sign-off path applies when
-// closing a `verified` row, with the same three contexts stripped). A FAIL, a
-// loose-form-only PASS, a strict PASS that is only struck, fenced or quoted
-// (whatever loose-form PASS prose sits outside it), or no verdict at all leaves
-// the brief unsatisfied.
+// LAST recorded verdict is a pass. It makes three verdict reads, all fail
+// closed: a strict **VERIFY: PASS** marker must be present in the raw Evidence
+// (hasVerifyPass, the sign-off gate's own strict read), a strict marker must
+// also be present as a live verdict, outside fenced code blocks, blockquote
+// lines and struck-through spans (hasLiveVerifyPass), and no FAIL may follow
+// the last strict PASS (verdictFailAfterStrictPass — the FAIL read the
+// sign-off path applies when closing a `verified` row, with the same three
+// contexts stripped). A FAIL, a loose-form-only PASS, a strict PASS that is
+// only struck, fenced or quoted (whatever loose-form PASS prose sits outside
+// it), or no verdict at all leaves the brief unsatisfied.
 //
-// Together the two reads imply lastVerifyVerdict == verdictPass: with a live
-// strict PASS present and no FAIL after it, the last live verdict token is a
-// PASS. That conjunct is therefore not repeated here, where no Evidence shape
-// could ever turn it red; TestHumanGateReadsImplyLastVerdictPass pins the
-// implication instead, so a drift in either reader that breaks it goes red.
+// The raw and the live strict reads are both required because neither is a
+// subset of the other. The live read skips quotations the raw read counts;
+// the raw read refuses shapes the live read would admit: stripping a struck
+// span can splice a strict marker together that the raw Evidence never
+// carries (a struck FAIL inside the marker's own bold run), and the raw read
+// takes an unclosed **VERIFY: FAIL opener through the next line's ** so that
+// line's PASS marker never forms. Requiring both keeps this predicate inside
+// the sign-off gate's strict read.
+//
+// Together the live and FAIL reads imply lastVerifyVerdict == verdictPass:
+// with a live strict PASS present and no FAIL after it, the last live verdict
+// token is a PASS. That conjunct is therefore not repeated here, where no
+// Evidence shape could ever turn it red; TestHumanGateReadsImplyLastVerdictPass
+// pins the implication instead, so a drift in either reader that breaks it
+// goes red.
 //
 // It is deliberately NOT the full human sign-off read for an `implemented`
 // brief: an unrouted HELD or could-not-check line in the Evidence does not
@@ -682,7 +693,7 @@ func targetSatisfies(b Brief, dependsEdge bool) bool {
 // verdictFailAfterStrictPass also read them.
 func humanGatedVerifyPassed(b Brief) bool {
 	return b.Gate == "human" && b.Status == "implemented" &&
-		hasLiveVerifyPass(b.Evidence) &&
+		hasVerifyPass(b.Evidence) && hasLiveVerifyPass(b.Evidence) &&
 		!verdictFailAfterStrictPass(b.Evidence)
 }
 
@@ -691,10 +702,13 @@ func humanGatedVerifyPassed(b Brief) bool {
 // lastVerifyVerdict and verdictFailAfterStrictPass apply (fenced code blocks,
 // blockquote lines and struck-through spans are skipped) and only then looks
 // for the strict bold marker. hasVerifyPass, the sign-off gate's read, scans
-// the raw Evidence and is left unchanged; this narrower read is used only by
-// the depends: branch, so a strict marker that appears only inside one of
-// those contexts can never satisfy a depends: edge, whatever loose-form PASS
-// prose sits outside it.
+// the raw Evidence and is left unchanged. This read is used only by the
+// depends: branch, and only together with hasVerifyPass: on its own it is not
+// narrower than the raw read, because removing a struck span can join the
+// text around it into a marker the raw Evidence does not contain. With both
+// required, a strict marker that appears only inside one of the stripped
+// contexts can never satisfy a depends: edge, whatever loose-form PASS prose
+// sits outside it.
 func hasLiveVerifyPass(evidence string) bool {
 	inFence := false
 	for _, line := range strings.Split(evidence, "\n") {
