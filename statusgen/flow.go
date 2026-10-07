@@ -177,8 +177,16 @@ func briefHistory(history []HistoryEntry, id string) []HistoryEntry {
 
 // dependencySatisfiedAt returns the EARLIEST instant id first reached
 // done/verified — the same satisfying condition resolveInRepoBriefRef
-// (eligibility.go) tests, replayed against the historian instead of current
-// state.
+// (eligibility.go) tests for gates:/feathers: edges, replayed against the
+// historian instead of current state.
+//
+// Divergence (named, not aligned): the live depends: read (depIsSatisfied ->
+// targetSatisfies) is ALSO met by a gate:human target at implemented whose
+// Evidence carries a strict PASS with no later FAIL. The historian records
+// status transitions, not the instant a verdict landed in Evidence, so this
+// replay cannot see that branch and keeps done/verified only. For such a
+// target the computed eligible-at is therefore later than the live verdict
+// made the dependent eligible.
 func dependencySatisfiedAt(history []HistoryEntry, id string) (time.Time, bool) {
 	for _, e := range briefHistory(history, id) {
 		if e.To == "done" || e.To == "verified" {

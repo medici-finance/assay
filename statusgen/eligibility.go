@@ -94,7 +94,10 @@ type Eligibility struct {
 //   - a feathers: entry that is unsatisfied or could-not-check → NOTICE only
 //     (verdict eligible-with-notice), never a hold
 //   - an unsatisfied depends: entry is reported as a hold with type
-//     build-dep, so one output explains every reason a brief is not offered
+//     build-dep, so one output explains every reason a brief is not offered;
+//     a depends: target is satisfied at done/verified, or when it is
+//     gate:human at implemented with a recorded pass (targetSatisfies) — the
+//     latter never satisfies a gates: entry
 //   - eligible only when holds is empty
 func evaluateEligibility(streams []*Stream, reg *graphRepos, root string) map[string]Eligibility {
 	out := map[string]Eligibility{}
@@ -108,7 +111,7 @@ func evaluateEligibility(streams []*Stream, reg *graphRepos, root string) map[st
 						Ref:    dep,
 						Type:   "build-dep",
 						State:  StateUnsatisfied,
-						Reason: "depends: target is not done/verified",
+						Reason: "depends: target is not done/verified (nor gate:human at implemented with a recorded pass)",
 					})
 				}
 			}
@@ -191,10 +194,15 @@ func resolveGraphEdge(ref string, streams []*Stream, reg *graphRepos, root strin
 	}
 }
 
-// resolveInRepoBriefRef resolves a `<stream>/<NN>` ref against the in-hand
-// streams. A ref that cannot be found (unknown stream or brief number) is
-// could-not-check, never a silent unsatisfied — the target may simply not
-// have been loaded into this run's scope.
+// resolveInRepoBriefRef resolves a `<stream>/<NN>` gates:/feathers: ref
+// against the in-hand streams. A ref that cannot be found (unknown stream or
+// brief number) is could-not-check, never a silent unsatisfied — the target
+// may simply not have been loaded into this run's scope.
+//
+// It asks targetSatisfies with dependsEdge=false: a gate:human target at
+// `implemented` with a recorded pass satisfies a depends: edge
+// (depIsSatisfied) but NEVER a gates:/feathers: edge, which still waits for
+// verified/done.
 func resolveInRepoBriefRef(ref string, streams []*Stream) (EligibilityState, string) {
 	parts := strings.SplitN(ref, "/", 2)
 	if len(parts) != 2 {
@@ -206,8 +214,11 @@ func resolveInRepoBriefRef(ref string, streams []*Stream) (EligibilityState, str
 		}
 		for _, b := range s.Briefs {
 			if b.Num == parts[1] {
-				if b.Status == "done" || b.Status == "verified" {
+				if targetSatisfies(b, false) {
 					return StateSatisfied, ""
+				}
+				if humanGatedVerifyPassed(b) {
+					return StateUnsatisfied, "brief " + ref + " is gate:human at implemented with a recorded pass — that satisfies depends: edges only, never gates:/feathers:"
 				}
 				return StateUnsatisfied, ""
 			}
