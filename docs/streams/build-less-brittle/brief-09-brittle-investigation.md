@@ -259,6 +259,31 @@ RISK-VALUE: DERIVED — tier = strong @ docs/brittle-investigation-template.md:1
 RISK-VALUE: NAMED, NOT DERIVED — a deletion-bundle entry that is a security control is human-gated (needs-decision) @ docs/brittle-investigation-template.md:72-73; neither brief nor spec states this binding. It only adds a gate. Reversible.
 
 **VERIFY: FAIL** — check-definition. Row 6 exits 141 under the witness's pipefail although its output matches; row 10 is could-not-check (exit=2) on merged main and passes only at the delivering commit. Rows 1-5, 7-9 and 11 pass. Status stays implemented. Both rows need re-authoring: #1915.
+### 2026-10-07 desk dispatch — VERIFY: PASS (build-less-brittle/09 @ fe2217521989, 11/11 rows)
+
+Re-verification on merged main fe2217521989c9925a83e57c083fc11028990824. The commits API confirmed this was the forge's main at run time, and the worktree was detached at it. This run follows #2300 (merge 24886d98ad2a, an ancestor of this head), which re-authored rows 6 and 10. The delivering change is still squash 4329640e7 (#2249), and its parent is e77868565. Execution witness: `statusgen verifyrun --dry-run` (installed statusgen v1.0.32) exited 0, with 11 pass and 0 fail. Row 6's output hash sha256:4355a46b19d3 is the hash of `1` plus a newline. Every row was then run by hand with `bash -o pipefail`, and the results matched. Nothing was written back, and the worktree stayed clean (the row-10 throwaway clone was removed).
+
+| Row | Command | Exit | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | Verify row 1 as written | 0 | `6`. PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written | 0 | `6` (at least 6). PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written | 0 | `6`. PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written | 0 | `3` (at least 1). PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written | 0 | `2`. PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | Verify row 6 as written (re-authored by #2300: sed -n 1p in place of head -1), under pipefail and in the witness | 0 | `1`. The template's intent-read command, run on the forgeban allowlist file, yields a 40-hex originating commit. The earlier exit 141 under pipefail no longer occurs, in either the witness or the hand run. PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | Verify row 7 as written | 0 | `1` (at least 1). PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written | 0 | `NET-OK`. impl resolves to 4329640e7, so base is e77868565 and tip is 4329640e7. PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written | 0 | `1` (at least 1). PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | Verify row 10 as written (re-authored by #2300: pinned to the delivering commit with base at its parent, in a throwaway clone) | 0 | `consumers corroboration — base e77868565585…`, then `summary: 2 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing`. The CORROBORATED entries are the template and worker-desk SKILL.md §Un-briefed issues (both fixed-here). The UNCHECKED entries are contracts.md §Brittle marks (follow-up build-less-brittle/08) and installed deskdispatch binaries (out-of-scope). The Expect names exactly these. On merged main the earlier COULD-NOT-CHECK with exit=2 no longer occurs. PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | Verify row 11 as written, in a subshell | 0 | `SOURCE-CHANGE-EXAMPLE`. PASS | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+#2300 fixed both rows that failed earlier. Row 6 now exits 0 under the witness's pipefail, and row 10 decides on merged main (exit 0) instead of reporting could-not-check.
+
+Risk metadata is present and every field is `no` (irreversible: no). The diff in scope (#2249 deliverables plus #2300's Verify-table edits) touches prose, skill text and Verify rows only, so the fail-safe trigger does not fire. #2300 changes no literal value in the deliverables. Enumerated over the deliverables, the top entries are re-checked at this head and unchanged: counted kinds confirmed-defect and false-positive at docs/brittle-investigation-template.md:190 (spec.md:114); fix-window of 90 days at :201 (spec.md:94, :264); the fix-subject pattern at :200, byte-identical to FixPattern at tools/desk/internal/hotspot/hotspot.go:48; read depth head -3 at :117; tier strong at :10 and plugins/assay/skills/worker-desk/SKILL.md:315. All of them are reversible by an edit.
+
+RISK-VALUE: DERIVED — fix-window = 90 days before mark-date @ docs/brittle-investigation-template.md:201 — matches the spec's trailing-90-day hotspot window (spec.md:94 and :264) and the hotspot report's default, so the investigation reads the same window that nominated the mark.
+
+**VERIFY: PASS**
 
 ## Review
 Gate: model (from frontmatter). The reviewer runs the template's `## Intent` reads against one
