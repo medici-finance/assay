@@ -187,6 +187,37 @@ RISK-VALUE: DERIVED — EventsPerVariable = 10 @ qualgen/riskscore/learned.go:46
 Result: 4 of 5 rows pass. Row 5 fails as written: exit 2, could-not-check, because the instrument has no diff to read on merged main (class #1915). The substance holds: the floor is derived, pinned and fail-first proven, and the base-pinned diagnostic shows 0 disproved. Status stays `implemented` until row 5 is re-baselined.
 
 VERIFY: FAIL
+### Non-implementer verifier re-run — 2026-10-07 claude-opus-5-5[1m]
+
+Verified SHA: merged main `91f04b81ba064394aa121a4940cf11a138b55402` (implementation landed in a11ac4167, #2054; its parent a7b4bed48). The runner is not the implementer. It ran in its own detached temporary worktree cut from origin/main. Toolchain: host go1.27.1 darwin/arm64, statusgen v1.0.32. Offline: `KUBECONFIG=/dev/null`, no endpoint contacted. Every row ran under `bash -o pipefail`.
+
+Re-check of the previous FAIL (2026-10-06, row 5 exit 2 could-not-check): row 5 still fails as written on current main. Neither the row text nor the statusgen version changed since that run. #2300 re-derived the `--consumers` rows to the post-merge pinned form for build-less-brittle 05, 09, 11, 12 and 13 (#1915), but it did not touch this brief, so no merged fix has cleared row 5. Note for re-authoring: the delivering commit a11ac4167 carries no `Brief:` trailer, so the #2300 trailer lookup copied verbatim would resolve nothing and fail closed. The re-authored row has to resolve the delivering change another way, for example from the `(measured-status/02)` subject or from #2054.
+
+Grounding was written from the brief text and the main source before the tests were read. It expected `EventsPerVariable` of about 10 and `MinCorpus = EventsPerVariable * len(features)` = 10 x 15 = 150, with no bare 40. Main matches. EventsPerVariable = 10 is at learned.go line 46. DerivedMinCorpus() returns EventsPerVariable * len(FeatureNames()) (lines 59-61). DefaultConfig's MinCorpus calls DerivedMinCorpus() (line 81). The Train gate reads cfg.MinCorpus (line 185). FeatureNames() lists 15 names (features.go lines 161-168).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | pass exit=0 | prints `1`. Fail-first re-done by this runner: with EventsPerVariable changed from 10 to 9 (scratch edit, restored with git checkout) the test prints `0` and exits 1, with `learned_test.go:330: EventsPerVariable = 9, documented derivation says 10` and `--- FAIL: TestMinCorpusDerivedFromFeatureCount` | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | pass exit=0 | prints `1` | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd qualgen && go build ./riskscore/` | pass exit=0 | no output | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | pass exit=0 | match present; Derivation blocks are on EventsPerVariable (learned.go line 39) and on Config.MinCorpus (line 68) | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | fail exit=2 (could-not-check) | `--consumers: COULD-NOT-CHECK: assay:assay:measured-status:02 is not in the diff against 91f04b81ba06..., so this run carries no evidence about its claims — no entry was corroborated and none was disproved.` The Expect (exit 0) is not met as written, because on merged main there is no diff to read (class #1915). A separate diagnostic run, which is not the row: with the tree at a11ac4167 and `--base a7b4bed48` the tool exits 0 with `0 corroborated, 0 disproved, 1 unchecked`. The single consumers entry, the Train gate, is UNCHECKED, and nothing is disproved | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+
+Risk-bearing value. All of the brief's risk answers are present and all are `no`, and the item is not irreversible, so the fail-safe trigger does not fire. The enumeration was done anyway, over the a11ac4167 changes to the riskscore learned layer and its test plus the Deliverables:
+- `EventsPerVariable = 10` @ qualgen/riskscore/learned.go:46
+- `DerivedMinCorpus() = EventsPerVariable * len(FeatureNames())` @ qualgen/riskscore/learned.go:60. Its input is 15 names at qualgen/riskscore/features.go:162-167, so it gives 150. It replaces the removed `MinCorpus: 40`.
+- `documentedEPV = 10` @ qualgen/riskscore/learned_test.go:328 (test pin)
+- fixture sizes `floor+5` and seed `11` @ qualgen/riskscore/learned_test.go:351 (not risk-bearing)
+
+EventsPerVariable ranks first. If it is wrong, the learned model graduates too early or too late, and every downstream score inherits the error. The error can be undone with one constant edit and a redeploy.
+
+RISK-VALUE: DERIVED — EventsPerVariable = 10 @ qualgen/riskscore/learned.go:46 — the learned layer is a logistic regression (sigmoid at learned.go:396, used in Train at :221 and Score at :250). 10 events per variable is the conventional logistic-regression floor (Peduzzi et al. 1996) and is the value the brief's own fact names. 10 x 15 = 150 was recomputed from FeatureNames. Caveat: the floor counts total labeled rows, not rarer-outcome events, so it is a necessary but weaker condition. The code documents this, and #1171 tracks it.
+
+Result: 4 of 5 rows pass. Row 5 still fails as written (exit 2, could-not-check, class #1915), and no merged fix has cleared it. Status stays `implemented` until row 5 is re-authored to the post-merge pinned form.
+
+VERIFY: FAIL
+
+Filed: #1915 (row 5 instance not covered by #2300; issuecomment-6029774563)
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
