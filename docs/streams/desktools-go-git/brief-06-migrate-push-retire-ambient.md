@@ -94,6 +94,28 @@ facts:
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && go build ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/ && go vet ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | exit 0 | exit 0; build and vet printed nothing (go1.27.1 darwin/arm64) | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskpr/ ./cmd/deskreply/ ./cmd/verifyloop/ ./internal/deskkit/` | exit 0; push + List goldens pass against the local fixture remote | exit 0; ok deskpr 61.3s, ok deskreply 10.1s, ok verifyloop 3.2s, ok deskkit 196.3s (uncached). Push goldens seen PASS under -v against a local bare fixture: Push Lands Ref, Push Records Upstream, Push Records Tracking Ref, Push Attached Head Lands, Durable Push Lands Main, Durable Push Race Rejected; List goldens: Preflight Reachability Local / 401 / 403 / 503 / No Ep | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskpr/ -run ForcePushRejected` | exit 0; a force-requiring push is REJECTED, not silently forced | exit 0; ok deskpr; -v shows --- PASS: Test Force Push Rejected. Test rewrites history after a seed push, asserts the second push errors with exit-6 and "non-fast-forward", and asserts the bare remote branch is still at the seeded sha (also for the HEAD source shape) | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -cE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' tools/desk/internal/deskkit/preflight.go` | exit 1; output 0 | exit 1; output 0. Cross-check: no git LookPath or git exec spawn left in preflight.go (remaining LookPath calls are for desktoken and gh); reachability is gitcore.List in listReachability | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run PreflightReachability` | exit 0; a preflight CALLER still gets a correct reachable/unreachable verdict via List | exit 0; ok deskkit; -v shows --- PASS: Preflight Reachability Caller with subtests reachable, denied, unreachable all PASS | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `sh tools/desk/scripts/count-git-exec.sh` | prints git-exec sites N; N below the count before this brief | exit 0; git-exec sites: 165 (direct spawns: 45, seam call sites: 120). Baseline re-derived like-for-like by running this same script on the tree of the brief commit's parent (cc0ef547^): 166 (46 direct, 120 seam); on cc0ef547 itself: 165; main unchanged since. N fell by 1 (the deleted preflight git spawn). The inventory's recorded 163 was measured on an older main before concurrent desk-tool growth; 165 is not below that stale number, so this row passes on the re-derived baseline only | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+
+RISK-VALUE: DERIVED — PushOpts.Force = false (never set; refspecs carry no "+") @ tools/desk/cmd/deskpr/push.go:122-126 and tools/desk/cmd/verifyloop/durable.go:122-126 — Force is the Go zero value at both call sites, gitcore buildRefSpecs (internal/gitcore/gitcore.go:479) only prepends "+" when force is true, and go-git then refuses a non-fast-forward update in protocol; this is the brief's "no force possible is type-level" fact, and row 3 shows the remote ref unchanged after a rejected push.
+RISK-VALUE: DERIVED — listTimeout = 45 * time.Second @ tools/desk/internal/deskkit/preflight.go:1098 — carried over unchanged from the deleted dry-run probe's context.WithTimeout(45*time.Second); a timeout maps to could-not-check, never to permitted. Reversible operational knob, ranked last.
+Verifier's reading: PASS, with row 6 judged against a baseline it recomputed itself.
+
+Desk adjudication: row 6's Expect says N must be below "the count recorded before this brief". The recorded count is 163 (inventory.md), and 165 is not below 163, so row 6 does not pass as written. The like-for-like recount (166 on cc0ef547^, 165 on cc0ef547) shows that the brief did remove one git spawn. The recorded baseline went stale because other desk-tool code raised the count on main before this brief merged. Desktools-v2/09 hit the same stale-baseline class on #1529, and the desk ruled there that the delta is explained first and the baseline is never refreshed blind. Rows 1-5 pass. Status stays implemented until row 6 is re-pinned to a reproducible baseline.
+
+VERIFY: FAIL
+Desk note (2026-10-07, review response on #2330, findings C1 and C3d). This note appends; it does not reword the text above.
+
+- **Row 6: FAIL as written.** Its Output cell above ends "passes on the re-derived baseline only". That phrase describes the verifier's own reading; it is not the row's result. Judged against the Expect's recorded baseline (163, inventory.md), the measured 165 is not below it, so row 6 **fails**. The like-for-like recount (166 on cc0ef547^, 165 on cc0ef547) shows the brief did remove one git spawn. The baseline re-pin is filed as #2337.
+- **Outcome record.** `docs/streams/verify-outcomes/desktools-go-git/06-20261007T125237Z-1e5a7ff16275.json` records outcome verify-fail, 5/6, rows [6], blocker_ref #2337.
+
+**VERIFY: FAIL** (unchanged)
 
 ## Review
 Gate: model (all four risk answers no — the sensitive credential path was reviewed in
