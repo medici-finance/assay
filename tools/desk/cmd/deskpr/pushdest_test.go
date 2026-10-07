@@ -209,8 +209,8 @@ func TestPushDestLocalAndHttpsAdmitted(t *testing.T) {
 	if err := createErr(t); err != nil {
 		t.Fatalf("a single local push destination must create, got: %v", err)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("expected the push to proceed; git calls: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("expected the push to proceed; calls: %v", *calls)
 	}
 
 	hermeticGitConfig(t)

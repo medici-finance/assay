@@ -487,11 +487,9 @@ func roleInitPreflightRun(p roleInitParams, repo string) error {
 // README §"Authenticated transport"). `deskgit --as` authenticates ONE git child it spawns
 // itself, with an ephemeral GIT_ASKPASS, and persists NOTHING in config. role-init's
 // deliverable is the opposite: a provisioned worktree whose OWN later raw-`git` operations
-// authenticate — starting with the write-transport probe in the preflight this verb runs next
-// (deskkit.writeTransportProbe shells raw `git push --dry-run`), and every subsequent desk-role
-// fetch/push from the worktree. Routing those through deskgit would mean rewriting the shared,
-// forge-neutral preflight probe (and the GitLab custody arm) to call deskgit — out of this PR's
-// scope. deskgit --as also refuses unless `--as <role>` equals the SESSION's own bound loop
+// authenticate — every desk-role raw-`git` fetch/push from the worktree. (The preflight's
+// write-transport probe no longer depends on it: it lists the landing repo in-process with the
+// role's custody token, so no helper is consulted there.) deskgit --as also refuses unless `--as <role>` equals the SESSION's own bound loop
 // role, but role-init provisions ANY of the six roles (deskboot runs it per-role), so a session
 // provisioning a role other than its own would be refused. Persisting a per-host helper is the
 // only mechanism that satisfies both. Both constraints are structural, not effort.

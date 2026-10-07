@@ -1227,7 +1227,7 @@ func briefVerifyRows(verifySection string) []verifyRow {
 
 // briefSections reads a brief file's Verify and Evidence bodies.
 func briefSections(path string) (verify, evidence string, err error) {
-	raw, err := os.ReadFile(path)
+	raw, err := readFileMemo(path)
 	if err != nil {
 		return "", "", err
 	}
@@ -1595,7 +1595,8 @@ Flags:
   --check           audit an existing witness table; runs nothing
   --dry-run         run the rows and print the witness table, but do not write it back
   --timeout <dur>   per-row wall-clock limit (default 10m); a row that times out is could-not-run
-  --root <dir>      repo root the commands run in (default: the git toplevel of the cwd)
+  --root <dir>      repo root the commands run in (default: the git toplevel of the cwd);
+                    a directory below its repository's toplevel is refused
   --ci              CI context: EXPLICITLY-classed check (env-bound) rows are
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
@@ -1663,7 +1664,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
-	rootDir := fs.String("root", "", "repo root the commands run in")
+	rootDir := fs.String("root", "", "repo root the commands run in (its repository's toplevel; a subdirectory is refused)")
 	timeout := fs.Duration("timeout", witnessTimeoutDefault, "per-row wall-clock limit")
 	ci := fs.Bool("ci", false, "CI context: skip explicitly-classed env-bound `check` rows")
 	inContainer := fs.Bool("in-container", false, "run the Verify rows inside the pinned harness container (the supported witness runner on Windows) instead of on the host")
@@ -1688,6 +1689,20 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitUsageError
 	}
 
+	attestation := ""
+	if !*checkMode {
+		admissionRoot := *rootDir
+		if admissionRoot == "" {
+			admissionRoot = repoRootFor(path)
+		}
+		var admissionErr error
+		attestation, admissionErr = verifierAdmission(admissionRoot, path)
+		if admissionErr != nil {
+			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
+			return verifyrunExitCouldNot
+		}
+	}
+
 	// --in-container hands the whole run off to a `statusgen verifyrun` inside the
 	// pinned harness container (windows-port/10). The host does no Verify-row
 	// execution and does not need to parse the brief here — the inner run reads it
@@ -1697,6 +1712,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		root := *rootDir
 		if root == "" {
 			root = repoRootFor(path)
+		}
+		if why := verifyrunRootBelowToplevel(root); why != "" {
+			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			return verifyrunExitUsageError
 		}
 		ef := *envFile
 		if ef == "" {
@@ -1727,6 +1746,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if root == "" {
 		root = repoRootFor(path)
 	}
+	if why := verifyrunRootBelowToplevel(root); why != "" {
+		fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+		return verifyrunExitUsageError
+	}
 	runner, runnerSource, ok := executingRunner(root)
 	if !ok {
 		fmt.Fprintln(stderr, "statusgen verifyrun: could-not-attribute — no executing identity is available (no GITHUB_ACTOR under GitHub Actions, no git user.name/user.email in this repo). Refusing to write a witness with no runner: an unattributed witness is not a witness, and inventing a placeholder would make the one field naming who ran this the one field anybody could have written. Set the repo's git identity and re-run.")
@@ -1745,6 +1768,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		ws[i].Repo = target
 	}
 	table := witnessTable(ws)
+	if attestation != "" {
+		table += "\n" + attestation + "\n"
+	}
 
 	worst := verifyrunExitPass
 	for _, w := range ws {
@@ -1878,6 +1904,29 @@ func originOwnerRepo(url string) string {
 		return ""
 	}
 	return repo
+}
+
+// verifyrunRootBelowToplevel is non-empty, saying why, when root sits below
+// its git repository's toplevel (or where it sits cannot be read although it
+// is in a repository with a commit). Rows run with root as their working
+// directory, while coverage judges a row's operands as paths from the
+// toplevel (coverage_inputs.go, "WHERE THE ROW RAN"), and the witness does not
+// record the directory: a row `grep -c ok README.md` run in sub/ would be
+// judged by the toplevel's README.md. So a witness is only ever taken at the
+// toplevel. A root outside any repository is not refused: its witness token
+// is `no-git`, which no comparison credits.
+func verifyrunRootBelowToplevel(root string) string {
+	out, err := exec.Command("git", "-C", root, "rev-parse", "--show-prefix").Output()
+	if err != nil {
+		if gitCurrentSHA(root) != "" {
+			return fmt.Sprintf("refusing --root %s: where it sits in its git repository could not be read (git rev-parse --show-prefix failed), and a witness must be taken at the repository's toplevel", root)
+		}
+		return ""
+	}
+	if prefix := strings.TrimSpace(string(out)); prefix != "" {
+		return fmt.Sprintf("refusing --root %s: it is the subdirectory %s, below its repository's toplevel. Rows run in --root, but coverage judges their paths from the toplevel and the witness does not record where they ran, so a file there could shadow a different one at the toplevel. Run from the toplevel (omit --root, or pass the repository's root).", root, strings.TrimSuffix(prefix, "/"))
+	}
+	return ""
 }
 
 // repoRootFor resolves the repo root the commands should run in: the git

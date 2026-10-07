@@ -220,6 +220,7 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "tools/desk/cmd/deskdispatch/verifierattestation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the verifier dispatch fixture builds the actual statusgen executor and proves that two Verify rows require the shared pre-work admission"},
 		{
 			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",

@@ -377,7 +377,7 @@ func loadBriefArtifacts(s *Stream, num string) (briefArtifacts, bool) {
 		if !valid || n != num {
 			continue
 		}
-		raw, err := os.ReadFile(path)
+		raw, err := readFileMemo(path)
 		if err != nil {
 			return briefArtifacts{}, false
 		}

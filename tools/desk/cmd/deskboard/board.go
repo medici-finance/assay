@@ -1840,6 +1840,13 @@ func sweepPRsRepo(repo string, now time.Time) (prsPartial, error) {
 	return part, nil
 }
 
+// boardSweepLimit is the pool width the `prs`, `stalled` (both levels) and policy-drift
+// sweeps actually run at. It is sweepConcurrency in production and nothing in this binary
+// writes it; it is a variable only so a test can run the same verbs at a limit of 1 — the
+// serial reference their table and JSON output must match byte for byte
+// (TestPooledOutputMatchesSerial).
+var boardSweepLimit = sweepConcurrency
+
 func cmdPRs(hdr Header) (*Report, error) {
 	hdr.Scope = boardScope() // #359: a sweeping verb states its coverage
 	rep := prsReport{Header: hdr, PRs: []prRow{}, External: []externalRow{}}
@@ -1854,7 +1861,7 @@ func cmdPRs(hdr Header) (*Report, error) {
 	// runs in ROSTER order and the report is re-sorted to a total order after it, so the
 	// output is byte-identical to the old serial sweep whatever order the workers finished in.
 	repos := deskkit.AllowedRepos()
-	partials, err := sweepRepos(repos, sweepConcurrency, func(repo string) (prsPartial, error) {
+	partials, err := sweepRepos(repos, boardSweepLimit, func(repo string) (prsPartial, error) {
 		return sweepPRsRepo(repo, now)
 	})
 	if err != nil {
@@ -3335,7 +3342,7 @@ func assessPolicyDrift() policyDriftAlarm {
 
 	// Never errors, by construction: every arm below returns a nil error, so the pool's
 	// fail-closed path is unreachable from here and the discarded error cannot hide one.
-	obs, _ := sweepRepos(scope, sweepConcurrency, func(repo string) (visibilityObservation, error) {
+	obs, _ := sweepRepos(scope, boardSweepLimit, func(repo string) (visibilityObservation, error) {
 		f, fr, ferr := forgeFor(repo)
 		if ferr != nil {
 			return visibilityObservation{repo: repo}, nil // unobserved → reported NOT OBSERVED

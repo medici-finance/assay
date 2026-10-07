@@ -150,11 +150,14 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	case review:
 		writeReviewAssignment(&b, o, plan, repo, home)
 	case verifier:
-		writeVerifierAssignment(&b, o, plan, repo)
+		writeVerifierAssignment(&b, o, plan, repo, home)
 	default:
 		writeWorkerAssignment(&b, o, plan, repo)
 	}
 
+	if o.pr <= 0 && strings.TrimSpace(o.model) != "" && !review && !verifier {
+		fmt.Fprintf(&b, "\n## Pending model stamp\n\nAfter opening the draft PR, return its number to the dispatching worker-desk. That desk sends the PR and this exact dispatch model/tier selection to the coordinator desk (the-desk), which runs:\n\n```\ndeskdispatch --stamp-only --repo %s --pr <N> --model %s --tier %s --kit %s\n```\n\nThe model and tier are the original dispatcher's selection, backed by its real dispatch receipt. Both worker-desk and its child worker are refused by this verb; a shared DESK_SESSION is claim custody, not stamp authority. Do not run this command as the worker or change your session identity to apply it. A stamp-only receipt does not renew a review claim.\n", repo, o.model, o.tier, o.kit)
+	}
 	if strings.EqualFold(o.tier, "strong") {
 		fmt.Fprintf(&b, "\n%s\n", tierClause)
 	}
@@ -430,12 +433,19 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 // carried by the standing verifier clauses below, never minted here, and its dispatch claim is
 // released once the verdict LANDS (Evidence recorded, per the verifier-prompt kit's own
 // contract), not on a branch push — a verifier does not push a branch as its ordinary output.
-func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
+func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo, home string) {
+	brief := o.brief
+	if filepath.IsAbs(brief) {
+		if rel, err := filepath.Rel(o.root, brief); err == nil {
+			brief = rel
+		}
+	}
+	fmt.Fprintf(b, "## Pre-work admission\n\nBefore any Verify row or model-attested result, run `deskdispatch --check-verifier --root %s --brief %s`. Only a successfully verified dispatcher receipt admits this exact run. PENDING, missing, refused or unreadable records admit no work. Do not edit any file in the home before the check; afterwards edit only the brief's Evidence section, never the stream index (after you return, the desk edits this brief's own row for its row-scoped landing; any stream-index change in the home refuses this check). Repeat the check before Evidence landing and carry its Verification-Attestation binding. Never stamp an implementation PR or self-stamp to pass this gate.\n\n", home, brief)
 	b.WriteString("## Run the Verify table against merged main — READ-ONLY, no PR\n\n")
 	fmt.Fprintf(b, "You are VERIFYING `%s` in `%s`. This is a VERIFY pass, not an implementation: you run "+
 		"the item's Verify table against MERGED main and produce a written VERDICT (Evidence rows plus "+
 		"`VERIFY: PASS` or `VERIFY: FAIL`), never a change. Do not create a pull request, do not push a "+
-		"branch, and do not adopt the implementer's `DESK_LOOP=worker-desk` identity — those belong to the "+
+		"branch for implementation changes. An Evidence-only draft follows the deskevidence lane after verification. Do not adopt the implementer's `DESK_LOOP=worker-desk` identity — those belong to the "+
 		"worker kit, not this one. A verifier never sets verified/done itself and never flips a PR ready "+
 		"(per the standing verifier clauses below).\n\n", o.item, repo)
 	b.WriteString("Release the dispatch claim once your verdict has LANDED — Evidence recorded and the item " +
