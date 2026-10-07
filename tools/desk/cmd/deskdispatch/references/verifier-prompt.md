@@ -62,8 +62,11 @@ refuses.
 - A row that cannot run (no toolchain, no environment) is recorded as EXPLICITLY unrun,
   with the reason. It is never silently skipped and never assumed to pass.
 - The verifier is NOT the item's implementer. A fresh agent, always.
-- Report back the Evidence rows plus one clear line: `VERIFY: PASS` or `VERIFY: FAIL`
-  (with the failure detail).
+- Report back the Evidence rows plus one clear line, BOLD exactly as shown:
+  `**VERIFY: PASS**` or `**VERIFY: FAIL**`. Any qualifier — a row count, the failure
+  detail — goes AFTER the closing asterisks (`**VERIFY: FAIL** — row 3: …`), never inside
+  them. The gate that advances an item reads only the bold marker; an unbolded verdict is
+  invisible to it, so a real PASS written plain never moves the item.
 
 ## 3. Evidence format
 
@@ -144,7 +147,7 @@ mechanically, which removes the selection guess.
 
 ## 5. A FAIL is a result, not an interruption
 
-On `VERIFY: FAIL` the item does NOT advance. File the failure as a bug issue immediately —
+On `**VERIFY: FAIL**` the item does NOT advance. File the failure as a bug issue immediately —
 no permission needed — with the failing command and its real output, then CONTINUE the
 drain. The failure rate is a metric; do not bury it, and do not stop the loop to report it.
 The filed issue IS the report. A failed verify on already-merged code is exactly what the

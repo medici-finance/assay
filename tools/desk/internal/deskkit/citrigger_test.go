@@ -1127,6 +1127,25 @@ func ciCrossModuleRegistry() []ciEntry {
 				"tools/desk lets that recur silently",
 		},
 		{
+			// The verifier kit asked for an unbolded VERIFY verdict while the statusgen
+			// gate reads only the bold marker. verdictbold_test.go reads that gate's
+			// regex out of statusgen (walking up by filepath.Dir, so the stale-registry
+			// scanner below cannot see it — registered here so the read stays visible)
+			// and requires every verdict the dispatch kits ask for to match it.
+			test:     "tools/desk/cmd/deskdispatch/verdictbold_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/tools.yml",
+			prJob:    toolsDeskJob,
+			pushJob:  toolsDeskJob,
+			reads: []string{
+				"statusgen/verifyissues.go",
+			},
+			why: "the dispatch kits tell a verifier how to write its verdict and statusgen's gate " +
+				"decides whether that verdict advances the item; they disagreed once (plain vs bold) " +
+				"and a real PASS was invisible to the gate. A statusgen-only change to the marker " +
+				"must run the test that holds the kits to it",
+		},
+		{
 			// #2061: the scan-refusal scenario test reads the pr-review-desk
 			// skill's STOP section (outside this module) and binds its
 			// transcript judge to that text.
