@@ -657,6 +657,17 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// control's `<stream>/<NN>` brief reference against the FULL stream set (not
 	// the product-scoped checkStreams) so the control lands regardless of scope.
 	notices = append(notices, findingControlNotices(findings, streams, nowFunc())...)
+	// Corrective-action effectiveness (iso-9001/03): a resolved finding owes a
+	// record of the command that shows its failure mode is gone — PROBLEM when
+	// dated on or after effectivenessBoundary, NOTICE before it. The recurring-class
+	// path (findingcontrol) escalates in the same change. Presence floor only; each
+	// message states that adequacy stays with the reviewer.
+	effP, effN := effectivenessClosureMessages(findings, streams)
+	problems = append(problems, effP...)
+	notices = append(notices, effN...)
+	fcP, fcN := findingControlUnfiredMessages(findings, streams)
+	problems = append(problems, fcP...)
+	notices = append(notices, fcN...)
 	// Verification-debt alarm: the Awaiting queue
 	// is the throughput valve — fire a NOTICE when depth crosses threshold
 	// or exceeds the total done count.
