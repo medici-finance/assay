@@ -76,6 +76,8 @@ transition before requesting approval. Library choice is already settled. Human 
 covers preserved credential-source restrictions, execution admission and any explicitly
 listed command/configuration compatibility changes; silence never authorizes a weaker gate.
 
+Default if no answer: none — blocks until answered.
+
 ## Ground rules
 
 Feature branch and draft PR only. No workflow dispatch, live infrastructure contact,

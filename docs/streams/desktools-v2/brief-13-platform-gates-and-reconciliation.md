@@ -470,3 +470,47 @@ VERIFY: BLOCKED (#1281). On merged main 4f6bb6d59 all 13 rows pass by exit code 
 - Unchecked is not corroborated, so row 12 discharges on no tree. Fixing that needs a fixed base or a different row shape, which is the medici-finance/assay#1281 class and the brief owner's change.
 - Rows 1, 7 and 11 now pass on substance, since #2055 has closed.
 - Gate model, every risk answer no. Status stays `implemented`.
+### Non-implementer verifier re-run on merged main 11228951d0a8 — 2026-10-06
+
+Independent non-implementer pass on merged main 11228951d0a8. The forge main SHA matched at run time. Host darwin/arm64, go 1.27.1, installed statusgen v1.0.32. Rows 1 to 12 ran by hand under bash from the repository root, with a throwaway HOME and KUBECONFIG=/dev/null. Expectations were written from the brief before the diff was read. Commands are abbreviated; the full text is in the Verify table above.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | grep -q -F GOOS=windows and 'go test -c' in the ci workflow | pass exit=0 | ci.yml lines 44 to 46 are real run lines in the cross-compile job: windows/amd64 go vet, a per-package windows go test -c loop, and darwin/arm64 go vet. Control: the same greps on ci.yml at the parent of #2064 exit 1 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 2 | sh forge-ban.sh (tools/desk scripts) into a mktemp file; echo rc; grep the class e and class f lines | pass exit=0 | rc=0 / class e (glab subprocess): desk=0 statusgen=0 / class f (GitLab API literal): desk=45 statusgen=8 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 3 | sh forge-ban-probe.sh (tools/desk scripts) | pass exit=0 | PROBE PASS; git status --porcelain tools/desk printed nothing afterwards | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 4 | grep -E for the desktools-v2/02 line and the desktools-v2/13 glab/gitlab-literal line in the stream forge-ban-baseline.txt | pass exit=0 | desktools-v2/02 63 / desktools-v2/13 glab=0 gitlab-literal=45 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 5 | cd statusgen; go test -run on the verify-row portability test with -v into a mktemp file; anchored top-level PASS grep; then sh testdata/portability-mutation.sh | pass exit=0 | top-level PASS (0.00s). A -v re-run lists 11 subtests that ran and passed: notice-flow, tmp, sh, bash, findstr, tmpdir, marked, marked-command, go, word and tmpdir-plus-hardcode. In the mutation run, with the detector disabled, the top level fails along with notice-flow, tmp, sh, bash, findstr and tmpdir-plus-hardcode; it then prints MUTATION PASS: disabled detector was rejected. Tree clean afterwards | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 6 | cd statusgen; go build into a mktemp dir; run it with --root . --lint, output discarded; echo rc | pass exit=0 | rc=0. Re-run with output kept: LINT: PASS with 183 NOTICE lines tagged verify-row-portability. This is the NOTICE baseline at this SHA, unchanged from the 10-02, 10-03 and 10-04 passes | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 7 | awk for a 'cd tools/desk' line followed by 'go test ./...' in windows-ci-leg.yml, plus grep -q -F windows-latest | pass exit=0 | lines 78 and 79 are the pwsh step in the job that runs on windows-latest (line 69). Control: the same awk at the parent of #2064 exits 1. Triggers are still v-tag push and workflow_dispatch only, so the Windows proof is release-time only, as deliverable 4 allows | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 8 | grep -n for 1145, 1146 and 1223 in brief-06; test $? -eq 1 | pass exit=0 | nothing printed | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 9 | brief-06 contains cmd/cellctl, a gate: human line and both desktools-v2/13 trace markers | pass exit=0 | no output | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 10 | loop over the 24 section-3 issues, grep brief-13 for an owner row for each | pass exit=0 | nothing printed; all 24 owner rows present | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 11 | grep -q -E for board row 10 of the desk-containers README reading implemented, verified or done | pass exit=0 | row 10 (cellctl in Go) reads implemented. Control: the same grep at the parent of #2075 exits 1 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 12 | statusgen --consumers --root . | pass exit=0 (vacuous) | consumers: no brief files in the diff against 11228951d0a8 — nothing to corroborate. The installed v1.0.32 binary and a tree-built binary agree. VACUOUS on merged main because the diff is empty; the tool-side gap is #1281, still open. Supplemental tool run at the merge of #1996, with --base set to its first parent 3a06803b579a and --brief desktools-v2/13: exit 0, 0 corroborated, 0 disproved, 9 unchecked. All 9 were checked by hand and none is disproved: the forge-ban scripts and baseline, statusgen and brief-06 are in the #1996 diff; both workflows are in the #2064 diff; brief 06's GitLab and Windows rows are present (row 9); brief-14 pins #1145, #1146 and #1223 as regression rows; the desktools-v2/11 follow-up is open as #1841. One detail is inaccurate: board row 10 was corrected by #2075, a held act tracked by #2055, not by this brief's own PR | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 13 | loop over the 24 issues: gh api --paginate on each issue's comments, selecting bodies with the desktools-v2/13 triage marker | could-not-check | could-not-check. The verifier App credential returned 401. The only reachable read went through an ambient operator credential that the gh wrapper on PATH injected. That read is not the verifier's, so it is not counted. Re-run this row under a working verifier credential | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+
+Vacuity and findings:
+- Row 2 always prints rc=0, so its two greps carry it.
+- Row 6's rc=0 shows that the tree still lints clean. Row 5 and the 183-line count show that the NOTICE fires.
+- Row 12 is vacuous on merged main (#1281).
+- Row 4 drift (advisory): the desktools-v2/02 baseline reads 63, and the counter now prints forge reach-around sites: 70 (desk 34, statusgen 36). Classes e and f are excluded from that total, so the growth comes from classes a to d elsewhere.
+- Class f self-count: 1 of the 45 is the probe script's own planted literal, and the header declares no carve-out for it. Advisory.
+- The per-PR changelog fragments for this brief were aggregated into CHANGELOG.md by the v1.0.32 roll-up and are no longer present under changelog/. This is not a Verify row.
+
+Risk-bearing value:
+
+Risk metadata is present, all four answers are no, and the gate is model. The work touches .github/workflows (via #2064), so the enumeration was done anyway. It covered #1996, #2064 and #2066:
+- desktools-v2/13 glab=0 gitlab-literal=45 @ forge-ban-baseline.txt:2 (desktools-v2 stream). A recorded baseline; wrong in the low direction it would hide growth. Reversible with --baseline.
+- GLAB_SUBCMDS = issue, mr, api, auth, repo, release, ci, label, schedule, snippet, variable @ forge-ban.sh:172. Reversible.
+- class f pattern = /api/v4 or gitlab.com @ forge-ban.sh:178 and :186. Reversible.
+- BACKEND_EXCLUDE = forge_github, forge_gitlab @ forge-ban.sh:66. Reversible.
+- detector regexes verifyOSMarker, verifyShellC, verifyFindstr and verifyTmpPath @ statusgen verifyportability.go:11 to 14. Advisory NOTICE (StatusAdvisory @ statusgen enforcementstatus.go:111). Reversible.
+- cross-compile targets GOOS=windows GOARCH=amd64 and GOOS=darwin GOARCH=arm64 @ ci.yml:44 to 46. Reversible.
+- runs-on windows-latest @ windows-ci-leg.yml:69, and -timeout 45s @ portability-mutation.sh:17. Operational.
+
+None of these is irreversible. Top-ranked entry:
+
+RISK-VALUE: DERIVED — desktools-v2/13 glab=0 gitlab-literal=45 @ forge-ban-baseline.txt:2 — a separate recount (a different tool, not the counter) counted lines matching /api/v4 or gitlab.com in .go and .sh files under tools/desk, tools/cellctl and plugins/assay. It excluded the two forge backends, _test.go, .test.sh and the counter itself, which is the brief's class f definition. The recount gives 45 across 21 files. It also finds 0 exec.Command("glab" in non-test Go (class e) and 8 statusgen literals. All three agree with the counter at this SHA. Caveat: 1 of the 45 is the probe's own literal.
+
+VERIFY: BLOCKED — 12/13 rows pass by hand; row 13 could-not-check (credential); no clean execution witness (row 13 witness ran under an injected ambient credential and is not landed).

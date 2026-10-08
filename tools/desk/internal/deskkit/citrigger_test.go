@@ -220,6 +220,7 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "tools/desk/cmd/deskdispatch/verifierattestation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the verifier dispatch fixture builds the actual statusgen executor and proves that two Verify rows require the shared pre-work admission"},
 		{
 			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
@@ -1035,6 +1036,18 @@ func ciCrossModuleRegistry() []ciEntry {
 				"is exactly how it stayed invisible the first time",
 		},
 		{
+			test:     "tools/desk/cmd/deskdispatch/triagecontract_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/ci.yml",
+			prJob:    ciJobRef{id: "build-test", check: "build-test"},
+			pushJob:  ciJobRef{id: "build-test", check: "build-test"},
+			reads: []string{
+				"plugins/assay/skills/worker-desk/SKILL.md",
+				"plugins/assay/skills/worker-desk/references/dispatch-runbook.md",
+			},
+			why: "resume triage contracts read the worker method and its references; unconditional ci.yml runs the desk suite on prose-only changes too",
+		},
+		{
 			// Registered when the desk skills moved into
 			// THIS repo's .claude/skills/ and added the skillslint check that closes
 			// #452's `.claude/**` gap. The `skills` job in statusgen.yml runs
@@ -1112,6 +1125,25 @@ func ciCrossModuleRegistry() []ciEntry {
 				"dispatch kit's clauses; the two already diverged once (the canonical text gained the " +
 				"name-and-derive step, the Go template did not). An edit to the kit that does not run " +
 				"tools/desk lets that recur silently",
+		},
+		{
+			// The verifier kit asked for an unbolded VERIFY verdict while the statusgen
+			// gate reads only the bold marker. verdictbold_test.go reads that gate's
+			// regex out of statusgen (walking up by filepath.Dir, so the stale-registry
+			// scanner below cannot see it — registered here so the read stays visible)
+			// and requires every verdict the dispatch kits ask for to match it.
+			test:     "tools/desk/cmd/deskdispatch/verdictbold_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/tools.yml",
+			prJob:    toolsDeskJob,
+			pushJob:  toolsDeskJob,
+			reads: []string{
+				"statusgen/verifyissues.go",
+			},
+			why: "the dispatch kits tell a verifier how to write its verdict and statusgen's gate " +
+				"decides whether that verdict advances the item; they disagreed once (plain vs bold) " +
+				"and a real PASS was invisible to the gate. A statusgen-only change to the marker " +
+				"must run the test that holds the kits to it",
 		},
 		{
 			// #2061: the scan-refusal scenario test reads the pr-review-desk

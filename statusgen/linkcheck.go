@@ -525,7 +525,7 @@ func linkProblems(root string, files []string) []string {
 	var problems []string
 	fragments := &consumedFragmentIndex{root: root}
 	for _, f := range files {
-		raw, err := os.ReadFile(f)
+		raw, err := readFileMemo(f)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: %v", f, err))
 			continue
@@ -735,7 +735,7 @@ func identifierDereferenceCheck(root string, files []string) (problems, notices 
 		if !backtickPathScope(root, f) {
 			continue // narrow scope: CLAUDE.md + docs/streams/** only, unchanged.
 		}
-		raw, e := os.ReadFile(f)
+		raw, e := readFileMemo(f)
 		if e != nil {
 			emit(fmt.Sprintf("%v: identifier dereference COULD-NOT-CHECK: %v", f, e))
 			continue

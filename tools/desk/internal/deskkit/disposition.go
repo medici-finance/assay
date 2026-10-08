@@ -61,9 +61,9 @@ const (
 	DispositionResolvedElsewhere DispositionVerdict = "RESOLVED-ELSEWHERE"
 	// DispositionNeedsRebase — live work, mechanically blocked (conflicting with
 	// main, stale base). This one IS still dispatch-eligible: a worker can act on it.
-	// It is in the vocabulary so "I looked, and it is still real work" is recordable
-	// — otherwise the only recordable outcomes are terminal ones and a sweep learns
-	// nothing from an investigation that found live work.
+	// It records an established base/conflict defect, not generic unfinished work.
+	// Actionable review findings without that defect need no disposition record;
+	// routine progress and advisory comments belong in the PR workpad.
 	DispositionNeedsRebase DispositionVerdict = "NEEDS-REBASE"
 )
 

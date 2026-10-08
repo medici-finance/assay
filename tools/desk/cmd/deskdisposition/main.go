@@ -64,7 +64,10 @@ VERDICTS (closed vocabulary):
   SUPERSEDED          the work landed through a different branch/PR — evidence REQUIRED
   RESOLVED-ELSEWHERE  the outcome was reached another way (issue already closed, row
                       already advanced on main) — evidence REQUIRED
-  NEEDS-REBASE        still live work, mechanically blocked — stays dispatch-eligible
+  NEEDS-REBASE        established stale-base/conflict defect — stays dispatch-eligible
+
+Advisory comments and unfinished work alone require no disposition write.
+Waiting-on-input is represented by its hold label, not a terminal verdict.
 
 set    — writes the label AND the marker comment, in that order. Idempotent: an identical
          record already present is a no-op (exit 0), so re-running on every pass is free.

@@ -80,7 +80,9 @@ the assay plugin on hand) uses a separate family of images under
 `FROM`. It carries:
 
 - the **Go toolchain** (pinned to `tools/desk/go.mod`) and **Python 3 + pip**;
-- **git**, the **`gh` CLI**, and **CA certificates**;
+- **git 2.41 or later** (built from a pinned upstream release and checked at
+  build time by `containers/scripts/git-floor-check.sh`), the **`gh` CLI**, and
+  **CA certificates**;
 - the **desk-tools suite + `statusgen`**, reused via
   `COPY --from=ghcr.io/medici-finance/assay/desk-tools` (not recompiled);
 - the **assay plugin** (skills, commands, hooks) baked from `plugins/assay/` to

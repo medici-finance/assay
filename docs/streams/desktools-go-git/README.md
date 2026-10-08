@@ -40,7 +40,7 @@ linked-worktree replacement) is a named follow-on stream, out of scope here. See
 | 03 | [migrate read/plumbing verbs (read-heavy tools) to gitcore](brief-03-migrate-read-plumbing.md) | 3 | L | done | 2026-09-12 sonnet-5-verifier | 2026-09-13 assay-reviewer-app[bot] (approved PR #973 @ e394b38de01a82821f0ccfa591b516407579a8de) |
 | 04 | [migrate deskpushguard detection reads to gitcore (parity + mutation test)](brief-04-migrate-deskpushguard-reads.md) | 3 | M | done | 2026-09-15 sonnet-5-verifier (5/5 rows PASS incl. a real-fixture mutation test; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1121 @ 52468e4e43355ff6c2ece41cdf0438907b5fe8ad) |
 | 05 | [migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge)](brief-05-migrate-fetch-retire-hardening.md) | 4 | M | todo | — | — |
-| 06 | [migrate push + retire ambient-credential machinery + preflight transport probe](brief-06-migrate-push-retire-ambient.md) | 4 | M | todo | — | — |
+| 06 | [migrate push + retire ambient-credential machinery + preflight transport probe](brief-06-migrate-push-retire-ambient.md) | 4 | M | implemented | — | — |
 | 07 | [deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest](brief-07-deskmerge-exception-fence.md) | 3 | M | done | 2026-09-15 sonnet-5-verifier (6/6 rows PASS incl. an independently re-derived baseline; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1126 @ c0c908b5a423c4b202bc23e69d546dd237292f2c) |
 | 08 | [flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on](brief-08-flip-gate-and-cve-floor.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
