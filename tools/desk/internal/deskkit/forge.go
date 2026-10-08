@@ -181,6 +181,15 @@ type PullRequest struct {
 	// omitempty keeps every change read that predates this field byte-identical in the forge
 	// golden corpus.
 	CrossRepo string `json:",omitempty"`
+	// MergeCommitSHA is the commit the merge produced, set ONLY for a merged change and EMPTY
+	// otherwise. GitHub reports a test-merge `merge_commit_sha` on an OPEN change too; that SHA
+	// names a commit no merge produced, so the GitHub mapping fills this field only when the
+	// change is merged. GitLab fills it only for `state == merged`, from `merge_commit_sha`,
+	// else `squash_commit_sha`; a fast-forward merge reports neither and stays EMPTY. Empty is
+	// could-not-check, never "no merge commit". Consumer: cmd/deskread's `change` kind
+	// (forge-neutral brief 33), for statusgen's auto-flip owner check (forge-neutral brief 18). omitempty
+	// keeps every change read that predates this field byte-identical in the golden corpus.
+	MergeCommitSHA string `json:",omitempty"`
 }
 
 // The two values PullRequest.CrossRepo takes when the forge answered.
@@ -311,6 +320,15 @@ type Issue struct {
 	// extracts the single PR reference from a review-request issue's body. omitempty keeps a
 	// bodyless issue byte-identical in the forge golden corpus.
 	Body string `json:",omitempty"`
+	// ClosedBy is the account that closed the issue, set ONLY while the issue's state is
+	// closed. A forge keeps reporting the last closer on an issue that was closed and then
+	// reopened; that closer no longer stands, so both backends drop it unless the state is
+	// closed. A closed issue whose closer is unreadable or null leaves ClosedBy zero-valued,
+	// which is could-not-check — never the issue's author. Type follows Account.Type (empty
+	// where unresolved). Consumer: cmd/deskread's `issue` kind (forge-neutral brief 33), for
+	// statusgen's decision-gate anchor (forge-neutral brief 18). omitzero keeps every issue read that
+	// predates this field byte-identical in the golden corpus.
+	ClosedBy Account `json:",omitzero"`
 }
 
 // Review is one review/approval on a change (GitHub review ↔ GitLab MR approval). CommitID
@@ -331,6 +349,16 @@ type ChangedFile struct {
 	Filename         string
 	PreviousFilename string
 	Status           string // added | modified | removed | renamed | ...
+	// Patch is the file's unified-diff hunk text as the forge serves it in the file list.
+	// PatchAbsent is true when the forge served NO patch for the entry (GitHub omits the
+	// `patch` key for a binary or oversized file; GitLab marks the diff `too_large` or
+	// `collapsed`). An absent patch is stated by PatchAbsent, never rendered as an empty change:
+	// a consumer reads Patch == "" with PatchAbsent == false as a file whose patch is empty, and
+	// PatchAbsent == true as could-not-check. Consumer: cmd/deskread's `change-files` kind
+	// (forge-neutral brief 33), for statusgen's corroboration (forge-neutral brief 18). omitempty keeps
+	// every file list that predates these fields byte-identical in the golden corpus.
+	Patch       string `json:",omitempty"`
+	PatchAbsent bool   `json:",omitempty"`
 }
 
 // StatusContext is one entry of the legacy combined-status rollup.
@@ -557,6 +585,13 @@ type Comment struct {
 	Minimized  bool
 	CreatedAt  string
 	URL        string
+	// UpdatedAt is the comment's last-update time (RFC3339) as the forge reports it, EMPTY
+	// where the read did not report one. Empty is could-not-check, never "unedited": it is never
+	// filled from CreatedAt, which would present every comment as unedited. Consumer:
+	// cmd/deskread's `comments` kind (forge-neutral brief 33), for the ruling resolver's edited-comment
+	// check (forge-neutral brief 35). omitempty keeps every comment read that predates this field
+	// byte-identical in the golden corpus.
+	UpdatedAt string `json:",omitempty"`
 }
 
 // CommentRef identifies a comment that was just posted. ID is the SAME opaque id
@@ -858,6 +893,29 @@ type ChangeRef struct {
 	Title    string
 	Body     string
 	MergedAt string // RFC3339, "" unless State == MERGED
+	// Author is the change's author, Type per Account.Type (empty where unresolved). An author
+	// the forge does not report (a deleted account) keeps ID == 0, which is could-not-check.
+	// Consumer: cmd/deskread's `changes` kind (forge-neutral brief 33), for statusgen's autonomy
+	// authorship count (forge-neutral brief 18). omitzero keeps every list that predates this field
+	// byte-identical in the golden corpus.
+	Author Account `json:",omitzero"`
+	// BaseRef is the TARGET branch (GitHub baseRefName ↔ GitLab target_branch), EMPTY where the
+	// forge did not report one. Consumer: as Author, for statusgen's brief-flow review.
+	BaseRef string `json:",omitempty"`
+	// CrossRepo is CrossRepoSame or CrossRepoFork (the PullRequest.CrossRepo vocabulary), EMPTY
+	// where the read did not establish it — never CrossRepoSame by default.
+	CrossRepo string `json:",omitempty"`
+	// HeadRepo is the head branch's repository as `owner/name`, EMPTY when unreadable (a deleted
+	// fork, or a GitLab fork whose source project path is not read). It is never filled with the
+	// base repository by default.
+	//
+	// On GitHub CrossRepo and HeadRepo are two INDEPENDENT forge fields (isCrossRepository and
+	// headRepository). On GitLab they derive from ONE signal, the source/target project-id
+	// comparison (equal → CrossRepoSame with HeadRepo = the target path; different →
+	// CrossRepoFork with HeadRepo empty; either id missing → both empty), so a consumer must not
+	// count their agreement on GitLab as corroboration. Consumer: as Author, for statusgen's
+	// claim decay fork-spoof guard (forge-neutral brief 18).
+	HeadRepo string `json:",omitempty"`
 }
 
 // ChangeList is the result of a ListChanges read: the changes plus whether the bounded walk was
@@ -905,6 +963,90 @@ type IssueSummary struct {
 	// already carried, so the queue lane reuses ListOpenIssues (label-filtered client-side)
 	// rather than growing a redundant label-scoped list op.
 	URL string `json:",omitempty"`
+	// State is the issue's lifecycle word, `open` or `closed`, and ClosedAt its close time
+	// (RFC3339, EMPTY while open). Both are set by ListIssues (op 55) only; ListOpenIssues
+	// predates them and leaves them empty. omitempty keeps every existing golden byte-identical.
+	State    string `json:",omitempty"`
+	ClosedAt string `json:",omitempty"`
+}
+
+// The states IssueListQuery.State takes. Any other value is refused before a request exists.
+const (
+	IssueStateOpen   = "open"
+	IssueStateClosed = "closed"
+	IssueStateAll    = "all"
+)
+
+// IssueListQuery is ListIssues' (op 55) closed query: a STATED lifecycle state and at most ONE
+// label name. There is no free-form filter — the surface stays closed.
+type IssueListQuery struct {
+	State string // IssueStateOpen | IssueStateClosed | IssueStateAll
+	Label string // optional; one label, never a comma-separated list
+}
+
+// Validate refuses an unknown state and a label carrying a comma, before any request.
+func (q IssueListQuery) Validate() error {
+	switch q.State {
+	case IssueStateOpen, IssueStateClosed, IssueStateAll:
+	default:
+		return Refused(fmt.Sprintf("issue list: unknown state %q (want open, closed or all)", q.State))
+	}
+	if strings.Contains(q.Label, ",") {
+		return Refused(fmt.Sprintf("issue list: label %q contains a comma, which the forge reads as a list of labels — one label only", q.Label))
+	}
+	return nil
+}
+
+// IssueList is ListIssues' result: the issues, newest first, plus whether the bounded walk
+// reached the end. Incomplete=true means PageCap pages were read with the forge still
+// paginating, so absence from Issues is could-not-check, never a confident negative.
+type IssueList struct {
+	Issues     []IssueSummary
+	Incomplete bool
+	PageCap    int
+}
+
+// The two values IssueStateEvent.Kind takes.
+const (
+	IssueEventClosed   = "closed"
+	IssueEventReopened = "reopened"
+)
+
+// IssueStateEvent is one close or reopen of an issue. Actor.Type follows Account.Type (empty
+// where unresolved); an actor the forge does not report keeps ID == 0 (could-not-check).
+type IssueStateEvent struct {
+	Kind      string // IssueEventClosed | IssueEventReopened
+	Actor     Account
+	CreatedAt string // RFC3339
+}
+
+// ClosingChange is one change the forge records as closing an issue. Repo is the change's OWN
+// `owner/name` (a change in another repository can close the issue, and a bare number would
+// then name the wrong change), EMPTY where unresolvable. Merged is meaningful only while the
+// enclosing IssueStateHistory is Complete: an unreadable merged state clears Complete rather
+// than reading as false.
+type ClosingChange struct {
+	Repo   string
+	Number int
+	Merged bool
+	Author Account
+}
+
+// IssueStateHistory is IssueStateEvents' (op 56) result. Complete=false means a connection
+// still paginated or a closing change's merged state could not be read; the consumer then
+// reads the issue as could-not-check, never as "closed by no merged change".
+type IssueStateHistory struct {
+	Events         []IssueStateEvent
+	ClosingChanges []ClosingChange
+	Complete       bool
+}
+
+// ChangeCommits is ListChangeCommits' (op 57) result: the SHAs of the commits the change
+// introduced, in the forge's order, and whether the list is known to be whole. Consumers use
+// membership, not order; Complete=false means a SHA missing from the list is could-not-check.
+type ChangeCommits struct {
+	SHAs     []string
+	Complete bool
 }
 
 // TrustPayload is the parsed result of a trust-gate content-events read: the item's
@@ -1440,6 +1582,37 @@ type Forge interface {
 	// number, title, rendered author, labels, creation time (see IssueSummary). Consumer:
 	// cmd/issueboard's fetchOpenIssues (freeze rule).
 	ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error)
+	// ListIssues (op 55, forge-neutral brief 33) reads a repo's ISSUES in a stated state (open,
+	// closed or all), optionally filtered to ONE label, newest first, each summary carrying
+	// State and ClosedAt. It lists issues only — each backend excludes changes on the server
+	// side, so the page ceiling is spent on issues — and a walk that hits the ceiling with the
+	// forge still paginating comes back Incomplete=true with PageCap set, never a short list
+	// presented as the whole population. An unknown state, or a label containing a comma (which
+	// both forges read as a LIST of labels, silently widening the filter), is refused before any
+	// request. Consumer: cmd/deskread's `issue-list` kind; statusgen's issue metrics and
+	// decision latency are the consumers to come (forge-neutral brief 18).
+	ListIssues(repo ForgeRepo, in IssueListQuery) (*IssueList, error)
+	// IssueStateEvents (op 56, forge-neutral brief 33) reads ONE issue's close/reopen timeline (each
+	// event's kind, actor and time) and the changes the forge records as closing it (each one's
+	// own repository, number, merged flag and author). Complete=false when either connection
+	// still paginates, or when a closing change's merged state is unreadable or disagrees with
+	// its lifecycle state — Merged is never derived by default. Consumer: cmd/deskread's
+	// `issue-states` kind; statusgen's self-improvement human-touch count is the consumer to
+	// come (forge-neutral brief 18).
+	IssueStateEvents(repo ForgeRepo, number int) (*IssueStateHistory, error)
+	// ListChangeCommits (op 57, forge-neutral brief 33) reads the SHAs of the commits a change
+	// introduced, in the forge's order. Complete is true only when the read is known to hold
+	// every commit (GitHub: the listed count equals the change's own commit count, since the
+	// list stops at 250; GitLab: the walk ended below the page ceiling). Consumer: cmd/deskread's
+	// `change-commits` kind; statusgen's auto-flip owner check is the consumer to come
+	// (forge-neutral brief 18).
+	ListChangeCommits(repo ForgeRepo, number int) (*ChangeCommits, error)
+	// RepoDefaultBranch (op 58, forge-neutral brief 33) reads the repository's default branch. An
+	// empty answer is could-not-check, never "main". It is its own operation, not a
+	// PullRequest field, so GitLab's GetPullRequest does not gain a project read on every call.
+	// Consumer: cmd/deskread's `default-branch` kind; statusgen's auto-flip is the consumer to
+	// come (forge-neutral brief 18).
+	RepoDefaultBranch(repo ForgeRepo) (string, error)
 	// PRTrustEvents reads a change's trust-gate content events: the body-edit time plus every
 	// comment, review and review-comment with its author identity and edit time, bounded to a
 	// single page and reporting completeness (see TrustPayload). Consumer: cmd/deskboard's

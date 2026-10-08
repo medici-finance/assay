@@ -322,7 +322,10 @@ type ghPullWire struct {
 	UpdatedAt string `json:"updated_at"`
 	MergedAt  string `json:"merged_at"`
 	Merged    bool   `json:"merged"`
-	Labels    []struct {
+	// MergeCommitSHA is GitHub's `merge_commit_sha`, which on an OPEN pull names a TEST-merge
+	// commit no merge produced; ghPullFromWire keeps it only when Merged is true.
+	MergeCommitSHA string `json:"merge_commit_sha"`
+	Labels         []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
 	// Mergeable is GitHub's THREE-state answer rendered as a JSON tri-state: true, false,
@@ -374,7 +377,15 @@ type ghIssueWire struct {
 	User   struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
+		Type  string `json:"type"`
 	} `json:"user"`
+	// ClosedBy is the account GitHub reports as the last closer. It survives a reopen, so
+	// GetIssue keeps it only while the issue's state is closed.
+	ClosedBy *struct {
+		Login string `json:"login"`
+		ID    int64  `json:"id"`
+		Type  string `json:"type"`
+	} `json:"closed_by"`
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
@@ -400,6 +411,9 @@ type ghFileWire struct {
 	Filename         string `json:"filename"`
 	PreviousFilename string `json:"previous_filename"`
 	Status           string `json:"status"`
+	// Patch is decoded as a pointer so an ABSENT key (binary or oversized file) stays
+	// distinguishable from an empty patch.
+	Patch *string `json:"patch"`
 }
 
 type ghCombinedStatusWire struct {
@@ -529,7 +543,18 @@ func ghPullFromWire(w ghPullWire) *PullRequest {
 		HeadRef:      w.Head.Ref,
 		BaseRef:      w.Base.Ref,
 		CrossRepo:    ghCrossRepo(w.Head.Repo, w.Base.Repo),
+		// Only a merged pull has a merge commit; an open pull's merge_commit_sha is a
+		// test-merge SHA and must not leak through as one (forge-neutral brief 33 Task 2.1).
+		MergeCommitSHA: ghMergeCommitSHA(w),
 	}
+}
+
+// ghMergeCommitSHA is merge_commit_sha for a MERGED pull and empty for any other.
+func ghMergeCommitSHA(w ghPullWire) string {
+	if !w.Merged {
+		return ""
+	}
+	return w.MergeCommitSHA
 }
 
 func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
@@ -542,16 +567,22 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 	for _, l := range w.Labels {
 		labels = append(labels, l.Name)
 	}
-	return &Issue{
+	iss := &Issue{
 		Number:        w.Number,
 		Title:         w.Title,
 		State:         w.State,
-		Author:        Account{Login: w.User.Login, ID: w.User.ID},
+		Author:        Account{Login: w.User.Login, ID: w.User.ID, Type: w.User.Type},
 		IsPullRequest: w.PullRequest != nil,
 		URL:           w.HTMLURL,
 		Labels:        labels,
 		Body:          w.Body,
-	}, nil
+	}
+	// closed_by survives a reopen; a closer on an issue that is not closed no longer stands
+	// (forge-neutral brief 33 Task 2.7). A null closer on a closed issue stays zero — could-not-check.
+	if w.State == "closed" && w.ClosedBy != nil {
+		iss.ClosedBy = Account{Login: w.ClosedBy.Login, ID: w.ClosedBy.ID, Type: w.ClosedBy.Type}
+	}
+	return iss, nil
 }
 
 // GetIssueTyped is GetIssue with the caller's stated kind VALIDATED against what the number
@@ -697,8 +728,11 @@ const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repo
 // ghOpenChangesQuery's actions:read/checks:read scope surface. `$states` is a
 // `[PullRequestState!]` variable (OPEN | MERGED | CLOSED) built from the ChangeStates the caller
 // asked for; ordering is UPDATED_AT DESC so the bounded window is the changes most likely to
-// represent a currently-queued brief; pageInfo drives the bounded cursor walk.
-const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName title body mergedAt}}}}`
+// represent a currently-queued brief; pageInfo drives the bounded cursor walk. forge-neutral brief 33
+// added the base branch (baseRefName), the fork facts (isCrossRepository, headRepository) and
+// the author with its kind and numeric id (the Actor interface carries no databaseId, so the id
+// is read through the concrete-type fragments) — still no rollup.
+const ghListChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName baseRefName title body mergedAt isCrossRepository headRepository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}`
 
 // ghReviewQueueReviewsSel is the ONE selection ReviewQueueSnapshot adds to the open-changes
 // read. It is held as its own constant so a test can prove the snapshot query is EXACTLY
@@ -970,9 +1004,16 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 							State       string `json:"state"`
 							HeadRefOid  string `json:"headRefOid"`
 							HeadRefName string `json:"headRefName"`
+							BaseRefName string `json:"baseRefName"`
 							Title       string `json:"title"`
 							Body        string `json:"body"`
 							MergedAt    string `json:"mergedAt"`
+							// Pointers so a null stays distinguishable from false / absent.
+							IsCrossRepository *bool `json:"isCrossRepository"`
+							HeadRepository    *struct {
+								NameWithOwner string `json:"nameWithOwner"`
+							} `json:"headRepository"`
+							Author *gqlActor `json:"author"`
 						} `json:"nodes"`
 					} `json:"pullRequests"`
 				} `json:"repository"`
@@ -993,10 +1034,25 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 		}
 		conn := resp.Data.Repository.PullRequests
 		for _, n := range conn.Nodes {
-			out.Changes = append(out.Changes, ChangeRef{
+			ref := ChangeRef{
 				Number: n.Number, State: strings.ToUpper(n.State), HeadSHA: n.HeadRefOid,
 				HeadRef: n.HeadRefName, Title: n.Title, Body: n.Body, MergedAt: n.MergedAt,
-			})
+				Author: gqlActorAccount(n.Author), BaseRef: n.BaseRefName,
+			}
+			// A null isCrossRepository leaves CrossRepo EMPTY (could-not-check), never
+			// CrossRepoSame; a null headRepository (a deleted fork) leaves HeadRepo EMPTY,
+			// never the base repository (forge-neutral brief 33 Task 2.4).
+			if n.IsCrossRepository != nil {
+				if *n.IsCrossRepository {
+					ref.CrossRepo = CrossRepoFork
+				} else {
+					ref.CrossRepo = CrossRepoSame
+				}
+			}
+			if n.HeadRepository != nil {
+				ref.HeadRepo = n.HeadRepository.NameWithOwner
+			}
+			out.Changes = append(out.Changes, ref)
 		}
 		if !conn.PageInfo.HasNextPage {
 			return out, nil
@@ -1237,11 +1293,18 @@ func (g *GitHubForge) ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFil
 			return nil, err
 		}
 		for _, f := range chunk {
-			all = append(all, ChangedFile{
+			cf := ChangedFile{
 				Filename:         f.Filename,
 				PreviousFilename: f.PreviousFilename,
 				Status:           f.Status,
-			})
+			}
+			// No `patch` key (binary or oversized) is STATED, never an empty change.
+			if f.Patch == nil {
+				cf.PatchAbsent = true
+			} else {
+				cf.Patch = *f.Patch
+			}
+			all = append(all, cf)
 		}
 		if len(chunk) < forgeFilePerPage {
 			break
@@ -1545,7 +1608,9 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
 }`
 
 // ghChangeCommentsWalkQuery is ghCommentsQuery with the walk: a `pageInfo` and an `$after`
-// cursor, the node selection byte-identical. It serves ListCommentsTyped(…, TargetChange) — the
+// cursor, the node selection identical plus `updatedAt` (forge-neutral brief 33 Task 2.8: every
+// query ListCommentsTyped walks selects the update time; ListComments' golden-pinned first-100
+// query does not, so its comments carry an EMPTY UpdatedAt — could-not-check, never unedited). It serves ListCommentsTyped(…, TargetChange) — the
 // typed read an authorization lookup goes through (cmd/deskmerge's R-5 and cmd/deskclose's R-1
 // sign-off reads match a comment by id on the thread the permalink names, and a first-page read
 // reported a sign-off past comment 100 as absent). ListComments keeps the single first-100
@@ -1561,6 +1626,7 @@ const ghChangeCommentsWalkQuery = `query($owner:String!, $name:String!, $number:
           body
           isMinimized
           createdAt
+          updatedAt
           url
           author { login __typename ... on User { databaseId } ... on Bot { databaseId } ... on Organization { databaseId } ... on Mannequin { databaseId } }
         }
@@ -1571,8 +1637,9 @@ const ghChangeCommentsWalkQuery = `query($owner:String!, $name:String!, $number:
 
 // ghIssueCommentsQuery is ghCommentsQuery's ISSUE half. GitHub's GraphQL schema keeps
 // `issue` and `pullRequest` as separate selections on a repository, so one query cannot
-// serve both; the node selection below is byte-identical to the pull-request one, so the
-// two reads produce the same Comment shape and nothing downstream has to know which ran.
+// serve both; the node selection below is byte-identical to ghChangeCommentsWalkQuery's (both
+// carry `updatedAt`, forge-neutral brief 33), so the two reads produce the same Comment shape and
+// nothing downstream has to know which ran.
 //
 // Unlike ListComments' change read, the issue half is WALKED (as is the typed change read,
 // ghChangeCommentsWalkQuery): it carries a `pageInfo` and an `$after` cursor and
@@ -1593,6 +1660,7 @@ const ghIssueCommentsQuery = `query($owner:String!, $name:String!, $number:Int!,
           body
           isMinimized
           createdAt
+          updatedAt
           url
           author { login __typename ... on User { databaseId } ... on Bot { databaseId } ... on Organization { databaseId } ... on Mannequin { databaseId } }
         }
@@ -1608,8 +1676,11 @@ type ghCommentNodeWire struct {
 	Body        string `json:"body"`
 	IsMinimized bool   `json:"isMinimized"`
 	CreatedAt   string `json:"createdAt"`
-	URL         string `json:"url"`
-	Author      struct {
+	// UpdatedAt is "" when the query did not select it or the forge reported none; it is
+	// never filled from CreatedAt.
+	UpdatedAt string `json:"updatedAt"`
+	URL       string `json:"url"`
+	Author    struct {
 		Login      string `json:"login"`
 		Typename   string `json:"__typename"`
 		DatabaseID int64  `json:"databaseId"`
@@ -1767,6 +1838,7 @@ func (g *GitHubForge) listCommentsPage(repo ForgeRepo, number int, kind TargetKi
 			Minimized:  n.IsMinimized,
 			CreatedAt:  n.CreatedAt,
 			URL:        n.URL,
+			UpdatedAt:  n.UpdatedAt,
 		})
 	}
 	return res, nil
@@ -2991,4 +3063,292 @@ func quotedList(names []string) string {
 		q[i] = strconv.Quote(StripControl(n))
 	}
 	return strings.Join(q, ", ")
+}
+
+// --- forge-neutral brief 33: ops 55–58 (statusgen's remaining reads) ---
+
+// ghGQLErrorText joins a GraphQL response's top-level error messages.
+func ghGQLErrorText(errs []struct {
+	Message string `json:"message"`
+}) string {
+	msgs := make([]string, 0, len(errs))
+	for _, e := range errs {
+		msgs = append(msgs, e.Message)
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// ghListIssuesQuery is op 55's read: GraphQL's `repository.issues` connection, which lists
+// ISSUES and never pull requests, so the page ceiling is spent on issues only (the REST
+// /issues endpoint returns changes too and would spend the ceiling on entries the read then
+// drops). `$states` and `$labels` are typed variables — the label is never spliced into the
+// query text — and a null `$labels` is no label filter.
+const ghListIssuesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[IssueState!],$labels:[String!]){repository(owner:$owner,name:$name){issues(states:$states,labels:$labels,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title state createdAt closedAt url labels(first:100){nodes{name} pageInfo{hasNextPage}} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}`
+
+// ghIssueStates maps a validated IssueListQuery.State onto GraphQL's IssueState list.
+func ghIssueStates(state string) []string {
+	switch state {
+	case IssueStateOpen:
+		return []string{"OPEN"}
+	case IssueStateClosed:
+		return []string{"CLOSED"}
+	default:
+		return []string{"OPEN", "CLOSED"}
+	}
+}
+
+// ListIssues is op 55 (forge-neutral brief 33) on GitHub: the issues-only GraphQL connection walked
+// under forgeMaxIssuePages pages of forgeIssuePerPage. The ceiling reached with the forge still
+// paginating, or an issue whose label connection still paginates, is Incomplete — never a short
+// list presented as the whole. Unlike ListOpenIssues it drops nothing: statusgen's issue
+// metrics count every issue the forge lists.
+func (g *GitHubForge) ListIssues(repo ForgeRepo, in IssueListQuery) (*IssueList, error) {
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+	var labels any // GraphQL null: no label filter
+	if in.Label != "" {
+		labels = []string{in.Label}
+	}
+	out := &IssueList{Issues: []IssueSummary{}, PageCap: forgeMaxIssuePages}
+	var after *string
+	for page := 1; page <= forgeMaxIssuePages; page++ {
+		vars := map[string]any{
+			"owner": repo.Owner, "name": repo.Name, "first": forgeIssuePerPage,
+			"after": after, "states": ghIssueStates(in.State), "labels": labels,
+		}
+		var resp struct {
+			Data struct {
+				Repository *struct {
+					Issues struct {
+						PageInfo struct {
+							HasNextPage bool   `json:"hasNextPage"`
+							EndCursor   string `json:"endCursor"`
+						} `json:"pageInfo"`
+						Nodes []struct {
+							Number    int    `json:"number"`
+							Title     string `json:"title"`
+							State     string `json:"state"`
+							CreatedAt string `json:"createdAt"`
+							ClosedAt  string `json:"closedAt"`
+							URL       string `json:"url"`
+							Labels    struct {
+								Nodes []struct {
+									Name string `json:"name"`
+								} `json:"nodes"`
+								PageInfo gqlPageInfo `json:"pageInfo"`
+							} `json:"labels"`
+							Author *gqlActor `json:"author"`
+						} `json:"nodes"`
+					} `json:"issues"`
+				} `json:"repository"`
+			} `json:"data"`
+			Errors []struct {
+				Message string `json:"message"`
+			} `json:"errors"`
+		}
+		body := map[string]any{"query": ghListIssuesQuery, "variables": vars}
+		if err := g.doJSON(http.MethodPost, "/graphql", body, &resp); err != nil {
+			return nil, err
+		}
+		if len(resp.Errors) > 0 {
+			return nil, Unverifiable("list-issues GraphQL error: "+ghGQLErrorText(resp.Errors), nil)
+		}
+		if resp.Data.Repository == nil {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: %s resolved no repository for the issue list", repo.Slug()), nil)
+		}
+		conn := resp.Data.Repository.Issues
+		for _, n := range conn.Nodes {
+			names := make([]string, 0, len(n.Labels.Nodes))
+			for _, l := range n.Labels.Nodes {
+				names = append(names, l.Name)
+			}
+			if n.Labels.PageInfo.HasNextPage {
+				// An issue's label set is only partly read: a label filter downstream could
+				// miss it, so the list is stated as incomplete.
+				out.Incomplete = true
+			}
+			out.Issues = append(out.Issues, IssueSummary{
+				Number: n.Number, Title: n.Title, Author: gqlActorAccount(n.Author),
+				Labels: names, CreatedAt: n.CreatedAt, URL: n.URL,
+				State: strings.ToLower(n.State), ClosedAt: n.ClosedAt,
+			})
+		}
+		if !conn.PageInfo.HasNextPage {
+			return out, nil
+		}
+		if page == forgeMaxIssuePages || conn.PageInfo.EndCursor == "" {
+			// The ceiling (or a next page with no cursor to reach it) with the forge still
+			// paginating: the population is larger than what Issues holds.
+			out.Incomplete = true
+			return out, nil
+		}
+		cursor := conn.PageInfo.EndCursor
+		after = &cursor
+	}
+	return out, nil
+}
+
+// ghIssueStateEventsQuery is op 56's ONE read of an issue: its close/reopen timeline and the
+// changes that close it, each connection sized with pageInfo. The Actor interface carries no
+// databaseId, so the id is read through the concrete-type fragments.
+const ghIssueStateEventsQuery = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){issue(number:$number){timelineItems(first:100,itemTypes:[CLOSED_EVENT,REOPENED_EVENT]){pageInfo{hasNextPage} nodes{__typename ...on ClosedEvent{createdAt actor{login __typename ...on User{databaseId} ...on Bot{databaseId}}} ...on ReopenedEvent{createdAt actor{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}} closedByPullRequestsReferences(first:100,includeClosedPrs:true){pageInfo{hasNextPage} nodes{number state merged repository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}}`
+
+// ghClosingMerged reads a closing change's merged state and FAILS CLOSED: true only for
+// merged==true with state MERGED, false only for merged==false with state OPEN or CLOSED. A
+// null merged, a missing state, or a merged flag that disagrees with the state is unreadable
+// (ok=false), which clears the whole result's Complete — never "unmerged".
+func ghClosingMerged(merged *bool, state string) (value, ok bool) {
+	if merged == nil {
+		return false, false
+	}
+	switch {
+	case *merged && state == "MERGED":
+		return true, true
+	case !*merged && (state == "OPEN" || state == "CLOSED"):
+		return false, true
+	}
+	return false, false
+}
+
+// IssueStateEvents is op 56 (forge-neutral brief 33) on GitHub.
+func (g *GitHubForge) IssueStateEvents(repo ForgeRepo, number int) (*IssueStateHistory, error) {
+	var resp struct {
+		Data struct {
+			Repository *struct {
+				Issue *struct {
+					TimelineItems struct {
+						PageInfo gqlPageInfo `json:"pageInfo"`
+						Nodes    []struct {
+							Typename  string    `json:"__typename"`
+							CreatedAt string    `json:"createdAt"`
+							Actor     *gqlActor `json:"actor"`
+						} `json:"nodes"`
+					} `json:"timelineItems"`
+					ClosedBy struct {
+						PageInfo gqlPageInfo `json:"pageInfo"`
+						Nodes    []struct {
+							Number     int     `json:"number"`
+							State      *string `json:"state"`
+							Merged     *bool   `json:"merged"`
+							Repository *struct {
+								NameWithOwner string `json:"nameWithOwner"`
+							} `json:"repository"`
+							Author *gqlActor `json:"author"`
+						} `json:"nodes"`
+					} `json:"closedByPullRequestsReferences"`
+				} `json:"issue"`
+			} `json:"repository"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	body := map[string]any{"query": ghIssueStateEventsQuery, "variables": map[string]any{
+		"owner": repo.Owner, "name": repo.Name, "number": number,
+	}}
+	if err := g.doJSON(http.MethodPost, "/graphql", body, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Errors) > 0 {
+		return nil, Unverifiable("issue-state-events GraphQL error: "+ghGQLErrorText(resp.Errors), nil)
+	}
+	if resp.Data.Repository == nil || resp.Data.Repository.Issue == nil {
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %s carries no issue at number %d, so its state history could not be read",
+			repo.Slug(), number), nil)
+	}
+	iss := resp.Data.Repository.Issue
+	out := &IssueStateHistory{
+		Events:         []IssueStateEvent{},
+		ClosingChanges: []ClosingChange{},
+		Complete:       !iss.TimelineItems.PageInfo.HasNextPage && !iss.ClosedBy.PageInfo.HasNextPage,
+	}
+	for _, n := range iss.TimelineItems.Nodes {
+		var kind string
+		switch n.Typename {
+		case "ClosedEvent":
+			kind = IssueEventClosed
+		case "ReopenedEvent":
+			kind = IssueEventReopened
+		default:
+			// The read asked for these two event types only; anything else is a timeline
+			// this mapping cannot vouch for.
+			out.Complete = false
+			continue
+		}
+		out.Events = append(out.Events, IssueStateEvent{Kind: kind, Actor: gqlActorAccount(n.Actor), CreatedAt: n.CreatedAt})
+	}
+	for _, n := range iss.ClosedBy.Nodes {
+		state := ""
+		if n.State != nil {
+			state = *n.State
+		}
+		merged, ok := ghClosingMerged(n.Merged, state)
+		if !ok {
+			out.Complete = false
+		}
+		cc := ClosingChange{Number: n.Number, Merged: merged, Author: gqlActorAccount(n.Author)}
+		if n.Repository != nil {
+			cc.Repo = n.Repository.NameWithOwner
+		}
+		out.ClosingChanges = append(out.ClosingChanges, cc)
+	}
+	return out, nil
+}
+
+// forgeChangeCommitsMaxPages bounds op 57's walk. GitHub's pull-commits list stops at 250
+// commits (three pages of 100), so a fourth page never exists; the bound only keeps a
+// misbehaving upstream from walking forever, and Complete is decided by the count check.
+const forgeChangeCommitsMaxPages = 3
+
+// ListChangeCommits is op 57 (forge-neutral brief 33) on GitHub: the change's own `commits` count
+// from GET /pulls/{n}, then GET /pulls/{n}/commits paginated. The list endpoint stops at 250
+// commits, so Complete is true ONLY when the listed count equals the change's own count — a
+// 250-commit page is never read as the whole branch.
+func (g *GitHubForge) ListChangeCommits(repo ForgeRepo, number int) (*ChangeCommits, error) {
+	var pr struct {
+		Commits *int `json:"commits"`
+	}
+	if err := g.doJSON(http.MethodGet, fmt.Sprintf("/repos/%s/%s/pulls/%d", repo.Owner, repo.Name, number), nil, &pr); err != nil {
+		return nil, err
+	}
+	out := &ChangeCommits{SHAs: []string{}}
+	more := false
+	for page := 1; page <= forgeChangeCommitsMaxPages; page++ {
+		var chunk []struct {
+			SHA string `json:"sha"`
+		}
+		path := fmt.Sprintf("/repos/%s/%s/pulls/%d/commits?per_page=%d&page=%d",
+			repo.Owner, repo.Name, number, forgeFilePerPage, page)
+		hdr, err := g.doJSONHeader(http.MethodGet, path, nil, &chunk)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range chunk {
+			out.SHAs = append(out.SHAs, c.SHA)
+		}
+		more = len(chunk) == forgeFilePerPage || hasNextLink(hdr)
+		if !more {
+			break
+		}
+	}
+	out.Complete = !more && pr.Commits != nil && *pr.Commits == len(out.SHAs)
+	return out, nil
+}
+
+// RepoDefaultBranch is op 58 (forge-neutral brief 33) on GitHub: GET /repos/{o}/{r}
+// `.default_branch`. An empty value is could-not-check, never "main".
+func (g *GitHubForge) RepoDefaultBranch(repo ForgeRepo) (string, error) {
+	var info struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := g.doJSON(http.MethodGet, fmt.Sprintf("/repos/%s/%s", repo.Owner, repo.Name), nil, &info); err != nil {
+		return "", err
+	}
+	if info.DefaultBranch == "" {
+		return "", Unverifiable(fmt.Sprintf(
+			"could-not-check: %s reported no default branch — refusing to assume one", repo.Slug()), nil)
+	}
+	return info.DefaultBranch, nil
 }

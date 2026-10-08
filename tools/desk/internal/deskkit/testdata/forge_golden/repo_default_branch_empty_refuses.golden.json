@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay"
+    }
+  ],
+  "result": "",
+  "err": "could-not-check: medici-finance/assay reported no default branch — refusing to assume one",
+  "not_found": false
+}

@@ -11,16 +11,26 @@
     {
       "method": "GET",
       "path": "/api/v4/users/5"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/users/99"
     }
   ],
   "result": {
     "Number": 12,
-    "State": "open",
+    "State": "closed",
     "Author": {
       "Login": "someone",
-      "ID": 5
+      "ID": 5,
+      "Type": "User"
     },
     "IsPullRequest": false,
-    "URL": "https://gitlab.example/medici-finance/assay/-/issues/12"
+    "URL": "https://gitlab.example/medici-finance/assay/-/issues/12",
+    "ClosedBy": {
+      "Login": "worker-bot",
+      "ID": 99,
+      "Type": "Bot"
+    }
   }
 }
