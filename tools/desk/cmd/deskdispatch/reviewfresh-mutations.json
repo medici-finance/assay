@@ -32,10 +32,10 @@
       "new": "if false {"
     },
     {
-      "name": "skip releasing the claim after allocation fails",
+      "name": "skip releasing the claim after allocation fails (the release choke point heldClaim.release never calls the claim tool, so settle has nothing to back it up with)",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)\n\t\t// deskwt's OWN",
-      "new": "released := \"retained\"\n\t\t// deskwt's OWN"
+      "old": "\t\th.phrase = releaseClaim(h.o, h.tool, h.auth, h.key, h.repo)",
+      "new": "\t\th.phrase = \"retained\""
     },
     {
       "name": "omit package-level initializers from the allocation guard",
