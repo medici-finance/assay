@@ -8,7 +8,11 @@ why: >-
   three words (auth, funds, security). So an item a triage session scored as high risk is
   written `gate: model` and can be implemented and reviewed by models alone. The driver ruled
   on 2026-10-08 that `risk:high` forces the human gate and `risk:med` does not. This brief
-  makes the scanner apply that.
+  makes the scanner apply that when the label is already on the issue at the moment its
+  placeholder is first written. Triage sets the label and the scanner does not wait for triage,
+  so an item can get its placeholder first and keep `gate: model`. For that case the brief
+  adds an instruction to the triage session, not a mechanism; whether the scanner should ever
+  re-derive a stored gate is open and tracked in #2405.
 wave: 1
 depends: []
 unblocks: []
@@ -24,10 +28,11 @@ sources:
   - "ruled by the driver, 2026-10-08: a `risk:high` label on a scanned issue forces `gate: human` on its issue-loop placeholder; `risk:med` does not"
   - "statusgen/placeholder.go — `riskGateLabels`, `riskGateKeywords`, `registerRiskGateVocabulary`, `derivePlaceholderGate`: the rule this brief changes"
   - "plugins/assay/skills/intake-desk/SKILL.md §'Scored triage — the impact/risk/effort triple at exit' — the only definition of the `risk:{high,med,low}` labels"
-  - "freshness-checked 2026-10-08 @ 403b8ec8c (origin/main) — `riskGateLabels` is `funds`, `security`; no Go file reads a `risk:` issue label; no open PR touches `statusgen/placeholder.go`"
+  - "plugins/assay/skills/intake-desk/SKILL.md §'The judgment half', item 1 — the scan lane writes the placeholder and leaves triage to the session, so the placeholder can exist before the `risk:` label does"
+  - "freshness-checked 2026-10-08 @ 82caf63b2 (origin/main) — `riskGateLabels` is `funds`, `security`; no Go file reads a `risk:` issue label; no open PR touches `statusgen/placeholder.go`"
 consumers:
   - "statusgen/placeholder.go: follow-up statusgen/17 (this brief; one entry in the base label set and its comment)"
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up statusgen/17 (this brief; the scored-triage section gains the one sentence stating what `risk:high` now does)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up statusgen/17 (this brief; the scored-triage section gains one bullet: what `risk:high` does at first write, and what a triage session does when the placeholder came first)"
 ---
 
 # Brief 17 — `risk:high` label derives the human gate on a placeholder
@@ -38,16 +43,24 @@ files:
 - `statusgen/placeholder.go` — one entry in `riskGateLabels`, and the comment above it.
 - `statusgen/placeholder_test.go` — the two new unit tests named in Verify.
 - `statusgen/scanissues_test.go` — the new scan-level test named in Verify.
-- `plugins/assay/skills/intake-desk/SKILL.md` — one sentence in the scored-triage section.
+- `plugins/assay/skills/intake-desk/SKILL.md` — one bullet in the scored-triage section.
+- `docs/streams/statusgen/brief-17-risk-high-label-gate.md` — this brief's two `consumers:`
+  routings (Task 7).
 - `changelog/<branch-slug>.md` — the per-PR fragment this repo enforces.
 
 single-point-of-failure: the `risk:high` label being on the issue at the moment the scanner
-first writes its placeholder. Behind it sit two layers that fail on different signals: the
-PR-diff risk gate (path triggers, read from the change itself, not from any label), and a human
-writing `gate: human` into the placeholder by hand, which the parser honours over anything
-derived.
+first writes its placeholder. Nothing orders that. Triage sets the label at its exit and the
+scan lane writes the placeholder without waiting for triage, so an item scored after its
+placeholder exists keeps `gate: model`. One layer sits behind the control and it is an
+instruction, not a mechanism: the triage session that scores an item `risk:high` and finds its
+placeholder reading `gate: model` labels the issue `help wanted` and names the file (Task 6).
+No tool reports a session that skips it. Two other controls exist and neither catches this
+fault, because neither reads the label or the triage score: the PR-diff risk gate keys on the
+changed paths, and a hand-written `gate: human` needs a person who has been told. A second
+mechanical layer is not designed here because it would mean re-deriving or reporting on a
+stored gate, which is open question 2 below (#2405).
 
-facts (all read on main @ 403b8ec8c, 2026-10-08):
+facts (all read on main @ 82caf63b2, 2026-10-08):
 - **The rule today.** `derivePlaceholderGate(labels, title)` in `statusgen/placeholder.go`
   returns `human` in two cases and `model` otherwise. Stage 1 is an EXACT label match: each
   label is trimmed and lower-cased and looked up in `placeholderRiskLabels`, which is built
@@ -78,17 +91,34 @@ facts (all read on main @ 403b8ec8c, 2026-10-08):
   The parser treats a stored `gate:` as explicit and does not re-derive it. Two consequences
   this brief does NOT change: a `risk:high` label added AFTER the placeholder was written
   leaves the stored gate as it is, and placeholders already on the board are not rewritten.
+- **The label and the first write are unordered.** The intake-desk skill is the only place the
+  label is defined, and it is set at the exit of triage. The same skill says the scan lane
+  writes the placeholder and leaves triage to the session. No Go file sets a `risk:` label at
+  filing. So the label is on the issue at first write only when someone applied it before the
+  scan ran. Derive-once is safe in the other direction: removing the label later does not lower
+  a stored `gate: human`.
+- **A `help wanted` issue is in the human queue.** The skill's shared desk rules define the
+  label as an authority edge that needs a comment saying what is needed and from whom, and
+  count a labelled item as waiting on input. It is not one of the scanner's excluded labels, so
+  the placeholder stays where it is.
+- **Fail direction.** An issue read with no labels derives `model`. A repo whose issue list
+  cannot be read is skipped with a notice and writes no placeholder.
 - **One read-time effect.** A placeholder file with no `gate:` line and a stored
   `risk:high` label will read as `gate: human` after this change, because the parser's
   fallback uses the same function. The scanner always writes the line, so this reaches only
   hand-written or older files.
 
-Out of scope — open, NOT decided by this brief or by the ruling behind it:
+Out of scope — open, NOT decided by this brief or by the ruling behind it. Questions 2 and 3
+are tracked in #2405, which lists the options and proposes none:
 1. Whether the keyword list (`auth`, `funds`, `security`) should take more vocabulary.
 2. Whether reactivation (a reopened issue, or an excluded label removed) should re-derive a
    placeholder's gate and labels, and more generally whether a label change after the
    placeholder exists should ever update the stored gate.
 3. Back-filling `gate: human` onto placeholders that already exist for `risk:high` issues.
+
+Also not settled here: who may set or remove `risk:high`. The derivation trusts whatever labels
+the issue carries at first write, and the scanner's trust gate checks the issue's author, not
+whoever applied a label.
 
 Also unchanged: the PR-diff risk gate and its path triggers, the excluded-label set, the trust
 gate, and `derivePlaceholderEffort`.
@@ -97,13 +127,15 @@ design-fit:
   owner: `statusgen/placeholder.go` — `derivePlaceholderGate` and the base vocabulary it reads
   contract: none — placeholder gate derivation has no row in the semantic-owner index; one function owns it and its three readers call that function
   retires: []
-  weight: verbs 0, flags 0, refusals 0, base risk labels +1, rule-text lines +1 (one sentence in the intake-desk skill)
+  weight: verbs 0, flags 0, refusals 0, base risk labels +1, rule-text lines +6 (one bullet in the intake-desk skill, as wrapped in Task 6)
   why-add: >-
     The label entry goes INTO the owner; no second mechanism is added. Putting it in the
-    deployment extension instead was considered and rejected (see facts). The skill sentence
+    deployment extension instead was considered and rejected (see facts). The skill bullet
     is added because a triage label that used to be ordering data now changes who must sign
-    off, and the place the label is defined is where a triage session will look. Nothing
-    existing could be removed to pay for it: the three keywords stay, by the ruling's scope.
+    off, and the place the label is defined is where a triage session will look. Its last
+    sentence is the only thing that puts a late-scored item in front of a person, so it cannot
+    be cut to one line. Nothing existing could be removed to pay for it: the three keywords
+    stay, by the ruling's scope.
 
 ## Ground rules
 - NEVER push to main or trigger workflows by hand. Feature branch + draft PR only.
@@ -115,8 +147,10 @@ design-fit:
 - Do not change the scanner's never-overwrite rule, do not rewrite any existing placeholder
   file, and do not make the parser re-derive a stored `gate:`. Those are the open questions
   listed under Context.
-- Do not edit the existing cases of `TestDerivePlaceholderGate`; they are the proof that
-  funds, security and auth behave as before.
+- Add tests as new functions. Do not edit, reorder or delete anything inside the seven existing
+  test functions Verify row 10 names: they carry the existing human-gate cases, and row 10
+  compares their text to what main carried when this brief was written. If row 10 is red before
+  you have touched them, main changed one of them: report NEEDS_CONTEXT, do not re-pin.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
@@ -134,6 +168,8 @@ design-fit:
    - `[risk:higher]` → `model` and `[risk]` → `model` (exact match, no prefix)
    - `[bug]` with the title `raise to risk:high after triage` → `model` (label only, not text)
    - `[risk:med, security]` → `human` (the existing label still gates beside a `risk:` label)
+   - `[auth]` → `human` (a bare `auth` label is not in the label set and gates through the
+     keyword stage; no case pins that today)
 4. `TestPlaceholderGateRiskHighSurvivesExtension` (planned) in the same file, saving and
    restoring the vocabulary the way `TestRiskGateVocabularyExtension` does: after
    `registerRiskGateVocabulary` with one neutral extra word, and again after calling it with
@@ -146,30 +182,49 @@ design-fit:
      `parsePlaceholderFile`, yields the same gate;
    - a fourth issue labelled `[risk:high]` whose placeholder file ALREADY exists with
      `gate: model`: `planScan` produces no plan for it and the file reads back `model`. This
-     pins that the brief left the derive-once rule alone; it does not settle open question 2;
+     pins that the brief left the derive-once rule alone. It is the state the step 6
+     instruction exists for, and it does not settle open question 2;
    - a placeholder file with `labels: [risk:high]` and NO `gate:` line reads back `human`.
-6. In the intake-desk skill, add ONE sentence to the scored-triage section, beside "Judgment
-   recorded, not computed": a `risk:high` label present when the issue scanner first writes
-   the item's placeholder derives `gate: human` on it; `risk:med` and `risk:low` do not; a
-   label added after the placeholder exists does not change its gate. Edit only that section;
-   leave every generated block alone.
-7. Add the changelog fragment.
+6. In the intake-desk skill, add this ONE bullet to the scored-triage section, directly after
+   the "Judgment recorded, not computed" bullet. Keep the wording: Verify row 7 pins five of
+   its clauses. Re-wrap it if the file needs that. Edit only that section and leave every
+   generated block alone.
+
+   ```
+   - **`risk:high` gates the placeholder, at first write only.** A `risk:high` label that is on the
+     issue when the issue scanner first writes its placeholder derives `gate: human` on it; `risk:med`
+     and `risk:low` do not. The scanner does not wait for triage and derives the gate once, so a label
+     set after the placeholder exists does not change its gate. When you score an item `risk:high` and
+     its placeholder already reads `gate: model`, label the issue `help wanted` and comment, naming the
+     placeholder file, that human:<name> must set `gate: human` in it by hand.
+   ```
+
+   The last sentence instructs a session. Nothing checks that a session follows it; row 7
+   checks only that the skill says it.
+7. In this brief's frontmatter, change both `consumers:` entries from the `follow-up` routing
+   to `fixed-here`, keeping each site and its parenthesised note. As authored the two entries
+   point at this brief; once the change lands, both paths are fixed in the same diff. Verify
+   row 9 refuses a leftover `follow-up` and asserts that both entries are corroborated.
+8. Add the changelog fragment.
 
 ## Verify (executable — no prose-only DoD items)
 Every row that runs a named test anchors its selector, writes the output to a file and asserts
-that test's `--- PASS:` line, so a missing or renamed test fails the row.
+that test's `--- PASS:` line, so a missing or renamed test fails the row. Rows 1–8 and 10 read
+the tree and run the same before and after merge. Row 9 reads the implementing diff and is run
+on the implementing branch before merge; its Expect says what it does on merged main.
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd statusgen && GOWORK=off go build ./... && GOWORK=off go vet ./...` | exit 0 | check:ci |
-| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestPlaceholderGateRiskHighLabel$' -v . > "${TMPDIR:-/tmp}/sg17-r2.out" 2>&1 && grep -F -e '--- PASS: TestPlaceholderGateRiskHighLabel' "${TMPDIR:-/tmp}/sg17-r2.out"` | exit 0; a `risk:high` label derives `human`, including the upper-case and padded forms; `risk:med`, `risk:low`, `risk:higher`, `risk` and a title that only mentions `risk:high` all derive `model`. Mutation: with `"risk:high"` removed from `riskGateLabels` the row exits 1 on the `risk:high` case (`model`, want `human`); with it added to `riskGateKeywords` instead the row exits 1 on the title-only case | check:ci +mutation |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestPlaceholderGateRiskHighLabel$' -v . > "${TMPDIR:-/tmp}/sg17-r2.out" 2>&1 && grep -F -e '--- PASS: TestPlaceholderGateRiskHighLabel' "${TMPDIR:-/tmp}/sg17-r2.out"` | exit 0; a `risk:high` label derives `human`, including the upper-case and padded forms; `risk:med`, `risk:low`, `risk:higher`, `risk` and a title that only mentions `risk:high` all derive `model`; a bare `auth` label derives `human`. Mutation: with `"risk:high"` removed from `riskGateLabels` the row exits 1 on the `risk:high` case (`model`, want `human`); with it added to `riskGateKeywords` instead the row exits 1 on the title-only case | check:ci +mutation |
 | 3 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestPlaceholderGateRiskHighSurvivesExtension$' -v . > "${TMPDIR:-/tmp}/sg17-r3.out" 2>&1 && grep -F -e '--- PASS: TestPlaceholderGateRiskHighSurvivesExtension' "${TMPDIR:-/tmp}/sg17-r3.out"` | exit 0; with a deployment extension registered, and again with it cleared, `risk:high` still derives `human` and `risk:med` still derives `model` | check:ci |
-| 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestDerivePlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg17-r4a.out" 2>&1 && grep -F -e '--- PASS: TestDerivePlaceholderGate' "${TMPDIR:-/tmp}/sg17-r4a.out" && GOWORK=off go test -count=1 -timeout 300s -run '^TestPlaceholderGateFromConfigRiskExtra$' -v . > "${TMPDIR:-/tmp}/sg17-r4b.out" 2>&1 && grep -F -e '--- PASS: TestPlaceholderGateFromConfigRiskExtra' "${TMPDIR:-/tmp}/sg17-r4b.out" && GOWORK=off go test -count=1 -timeout 300s -run '^TestRiskGateVocabularyExtension$' -v . > "${TMPDIR:-/tmp}/sg17-r4c.out" 2>&1 && grep -F -e '--- PASS: TestRiskGateVocabularyExtension' "${TMPDIR:-/tmp}/sg17-r4c.out"` | exit 0; the three tests that exist today pass with their cases unedited: `funds` and `security` labels and the `auth` / `funds` / `security` keywords gate as before, `authored` still does not, an unregistered product word still derives `model`, and the config-driven extension still gates | check:ci |
+| 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestDerivePlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg17-r4a.out" 2>&1 && grep -F -e '--- PASS: TestDerivePlaceholderGate' "${TMPDIR:-/tmp}/sg17-r4a.out" && GOWORK=off go test -count=1 -timeout 300s -run '^TestPlaceholderGateFromConfigRiskExtra$' -v . > "${TMPDIR:-/tmp}/sg17-r4b.out" 2>&1 && grep -F -e '--- PASS: TestPlaceholderGateFromConfigRiskExtra' "${TMPDIR:-/tmp}/sg17-r4b.out" && GOWORK=off go test -count=1 -timeout 300s -run '^TestRiskGateVocabularyExtension$' -v . > "${TMPDIR:-/tmp}/sg17-r4c.out" 2>&1 && grep -F -e '--- PASS: TestRiskGateVocabularyExtension' "${TMPDIR:-/tmp}/sg17-r4c.out"` | exit 0; the three named tests run and pass as the tree carries them: `funds` and `security` labels and the `auth` / `funds` / `security` keywords gate, `authored` does not, an unregistered product word derives `model`, and the config-driven extension gates. The row runs whatever cases the file holds. It cannot see a case that was edited or deleted; row 10 does | check:ci |
 | 5 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanRiskHighPlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg17-r5.out" 2>&1 && grep -F -e '--- PASS: TestScanRiskHighPlaceholderGate' "${TMPDIR:-/tmp}/sg17-r5.out"` | exit 0; through `planScan`, the placeholder written for a `risk:high` issue carries `gate: human`, the one for a `risk:med`-only issue carries `gate: model`, the `security` one carries `gate: human`, each reads back with the same gate, an existing `gate: model` placeholder is neither re-planned nor re-read as `human`, and a gate-less file with a stored `risk:high` label reads `human` | check:ci +flow |
 | 6 | `cd statusgen && GOWORK=off go test -count=1 -timeout 600s .` | exit 0; the whole package passes, so no other test depended on `risk:high` deriving `model` | check:ci |
-| 7 | `grep -q -F -e '"risk:high"' statusgen/placeholder.go && grep -n -F -e 'risk:high' plugins/assay/skills/intake-desk/SKILL.md` | exit 0; the base vocabulary names the label, and the skill line printed is the scored-triage sentence stating that `risk:high` derives `gate: human`, that `risk:med` and `risk:low` do not, and that a later label does not change the gate | check:ci +dereference |
-| 8 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg17-skl" . && "${TMPDIR:-/tmp}/sg17-skl" --root ../..` | exit 0; the intake-desk skill still passes every skill check after the one-sentence edit, and no generated block drifted | check:ci |
-| 9 | `cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg17c" . && cd .. && "${TMPDIR:-/tmp}/sg17c" --root . --consumers --base "$(git merge-base refs/remotes/origin/main HEAD)"` | exit 0; run on the implementing branch before merge, both `consumers:` routings above are corroborated by its diff | check |
+| 7 | `grep -q -F -e '"risk:high"' statusgen/placeholder.go && awk '/^## /{f=/^## Scored triage/} f{$1=$1; printf "%s ", $0}' plugins/assay/skills/intake-desk/SKILL.md > "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e 'first writes its placeholder derives .gate: human.' "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e '.risk:med. and .risk:low. do not' "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e 'does not change its gate' "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e 'already reads .gate: model., label the issue .help wanted.' "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e 'must set .gate: human. in it by hand' "${TMPDIR:-/tmp}/sg17-r7.txt"` | exit 0; the base vocabulary names the label, and the skill's scored-triage section, read with its lines joined so that re-wrapping does not matter, carries all five clauses: the label at first write derives `gate: human`; `risk:med` and `risk:low` do not; a later label does not change the gate; a session that finds `gate: model` labels the issue `help wanted`; and what it asks for is the hand edit. A `.` in a pattern stands for a backtick. Red when the bullet is absent, sits outside that section, or lacks any one clause. The row reads the skill's text; it does not observe whether a session follows the instruction | check:ci +dereference |
+| 8 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg17-skl" . && "${TMPDIR:-/tmp}/sg17-skl" --root ../..` | exit 0; the intake-desk skill still passes every skill check after the one-bullet edit, and no generated block drifted | check:ci |
+| 9 | `! grep -q -e '[:] follow-up statusgen/17' docs/streams/statusgen/brief-17-risk-high-label-gate.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg17c" . && cd .. && "${TMPDIR:-/tmp}/sg17c" --root . --consumers --brief statusgen/17 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg17-r9.out" 2>&1 && grep -q -F -e 'summary: 2 corroborated, 0 disproved, 0 unchecked' "${TMPDIR:-/tmp}/sg17-r9.out"` | exit 0, run on the implementing branch before merge: no `consumers:` entry still routes to this brief as a follow-up, and with both rewritten to `fixed-here` both paths are in the branch's diff. Red when the routings are left as authored (the first grep), and red when either path is missing from the diff (the instrument reports `DISPROVED` and exits 1). On merged main the merge-base is HEAD and the brief is not in the diff, so the instrument exits 2, could-not-check, and the row does not pass there; a post-merge run checks out the delivering commit and passes its parent as `--base` | check |
+| 10 | `awk '/^func TestDerivePlaceholderGate\(/,/^}/ {print} /^func TestPlaceholderGateFromConfigRiskExtra\(/,/^}/ {print} /^func TestRiskGateVocabularyExtension\(/,/^}/ {print} /^func TestParsePlaceholderFileValid\(/,/^}/ {print} /^func TestPlaceholderNextUpFirstClass\(/,/^}/ {print}' statusgen/placeholder_test.go > "${TMPDIR:-/tmp}/sg17-r10.txt" && awk '/^func TestScanIssuesPlan\(/,/^}/ {print} /^func TestScanIssuesEmittedFilesRoundTrip\(/,/^}/ {print}' statusgen/scanissues_test.go >> "${TMPDIR:-/tmp}/sg17-r10.txt" && test "$(git hash-object "${TMPDIR:-/tmp}/sg17-r10.txt")" = 60bbdc98a3e2fd04a4acc263c251c3c61f95ee6a` | exit 0; the seven existing test functions that assert a human gate (five in `statusgen/placeholder_test.go`, two in `statusgen/scanissues_test.go`) are byte-identical to main at 82caf63b2, where their 308 lines hash to the value in the command. Red when a case in any of them is edited, deleted or reordered, when a line is inserted into one (an early return, a skip), and when one is renamed or removed. New test functions elsewhere in the two files do not change it. It pins those functions' text only, not the helpers they call, and it does not run them: rows 4 and 6 do | check:ci |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
