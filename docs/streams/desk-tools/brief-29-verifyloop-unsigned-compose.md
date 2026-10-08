@@ -19,6 +19,7 @@ unblocks: []
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-desk-tools-29
 gate-why: >-
   The change sits on the verifier key's custody boundary and on what a verdict signature
   attests. The Verify rows a run executes are arbitrary shell, started with `sh -c` from the repo
