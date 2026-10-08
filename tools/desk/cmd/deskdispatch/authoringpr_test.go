@@ -22,7 +22,7 @@ func authoringOpts(t *testing.T, origin string, o dispatchOpts) (dispatchPlan, *
 	s.install(t)
 	trk := trackingCheckout(t, exampleRegistry, "deliverable_repo: example-tool", "gate: human")
 	s.replies = []reply{
-		{match: "remote get-url origin", stdout: "git@github.com:" + origin + ".git"},
+		{match: "remote get-url origin", stdout: "https://github.com/" + origin + ".git"},
 		{match: "deskwt add", stdout: filepath.Join(t.TempDir(), "home")},
 	}
 	o.root, o.brief, o.tier, o.dryRun = trk, exampleBriefRel, "any", true
