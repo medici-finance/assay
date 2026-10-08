@@ -49,6 +49,8 @@ files: []
   # the key never having existed.
 
 canonical:
+  - path: skills/author-spec/SKILL.md
+    reason: Canonical home of the portable specification-authoring method; project techniques remain adopter-owned.
   # ---------------------------------------------------------------------------
   # education/04 (Phase 0 ruling 2) / assay-dogfood/07. intake-desk moved here
   # from `files:` — the convergence brief replaced the hand-scrubbed port

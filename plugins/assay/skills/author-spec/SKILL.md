@@ -29,6 +29,21 @@ Unavailable evidence stays explicit. Do not substitute absence of access for abs
 constraint. For a revision, preserve completed implementation and Evidence; identify which
 unfinished work and consumers the delta affects.
 
+Consider available quality evidence for the affected area and relevant seams: complexity,
+change churn, coupling, recurring defects, test weaknesses and existing investigations or
+brittle marks. Record the source revision/window and its relevance to this change; stale
+or unavailable measurements remain gaps, not evidence of good quality. A metric nominates
+an area for investigation; a high score alone neither proves a defect nor mandates a rewrite.
+Use the project's instruments and thresholds without inventing universal cutoffs.
+
+Choose a proportionate disposition: remediate first when safe delivery or verification
+depends on it; include a bounded improvement when it removes the mechanism this change
+would extend; route broader remediation separately with its dependency or independence
+made explicit; or proceed with a reason and residual risk when evidence does not justify
+expansion. Touching a file is not blanket authority to refactor it. For included work,
+name the expected improvement, behaviour to preserve, and an observable acceptance check.
+Judge safer delivery and reduced recurring complexity, not a lower score in isolation.
+
 ## Resolve the consequential questions
 
 Scale depth to uncertainty and impact: a small change may take a paragraph and examples;
