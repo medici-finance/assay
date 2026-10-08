@@ -317,13 +317,13 @@ func TestReconcileJobLintFailureFails(t *testing.T) {
 	}
 }
 
-// TestReconcileJobLsRemoteFailureFails is review A1's transport half: the old
+// TestReconcileJobRemoteListingFails is review A1's transport half: the old
 // step ran `git ls-remote --exit-code ... >/dev/null 2>&1`, so a transport
 // error read as "branch absent" — the tick re-cut the branch from main and
 // failed later, if at all, on an unrelated-looking push rejection with the real
 // cause discarded. A failed listing now fails the tick AT the listing, with
 // git's own error in the log, and nothing is pushed.
-func TestReconcileJobLsRemoteFailureFails(t *testing.T) {
+func TestReconcileJobRemoteListingFails(t *testing.T) {
 	r := newJobRig(t)
 	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
 		t.Fatalf("first tick exit %d:\n%s", code, out)
