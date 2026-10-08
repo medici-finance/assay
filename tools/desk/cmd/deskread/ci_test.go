@@ -342,6 +342,9 @@ func TestCustodyPathUnchangedByCITransport(t *testing.T) {
 	if !saw {
 		t.Errorf("the server did not see the minted token: %+v", srv.seen())
 	}
+	if strings.Contains(stdout, testToken) || strings.Contains(stderr, testToken) {
+		t.Error("the minted custody token appears in the output")
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(stdout), &m); err != nil {
 		t.Fatal(err)

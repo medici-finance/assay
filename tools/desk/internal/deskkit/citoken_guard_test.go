@@ -1,6 +1,6 @@
 package deskkit
 
-// citoken_guard_test.go — forge-neutral/34: the CI workflow-token constructor is confined.
+// citoken_guard_test.go — forge-neutral brief 34: the CI workflow-token constructor is confined.
 //
 // ReadOnlyForgeForCIToken builds a backend from a token its CALLER hands it, so a second caller
 // would be a second route from "some token in the environment" to a forge client. The

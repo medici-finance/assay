@@ -57,7 +57,7 @@ var ambientTokenReadPermits = map[string]string{
 		"(--token-file first, then the named variables) for adopters without the desk's minter; a claim " +
 		"ref write, outside the desk read seam.",
 	"cmd/deskread/ci.go::readCIEnv": "the CI workflow-token transport's one dedicated variable " +
-		"(forge-neutral/34): read only to feed the explicit --ci-workflow-token opt-in, whose gate then " +
+		"(forge-neutral brief 34): read only to feed the explicit --ci-workflow-token opt-in, whose gate then " +
 		"requires a CI job (GITHUB_ACTIONS, a numeric run id, an owner/name repository), refuses " +
 		"pull_request_target and any non-installation token, and hands the token to " +
 		"deskkit.ReadOnlyForgeForCIToken, a read-only, same-repository backend. Without the flag the value " +

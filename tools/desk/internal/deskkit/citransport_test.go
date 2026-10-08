@@ -1,6 +1,6 @@
 package deskkit
 
-// citransport_test.go — forge-neutral/34: the read-only decorator and the CI-token constructor,
+// citransport_test.go — forge-neutral brief 34: the read-only decorator and the CI-token constructor,
 // proven at the deskkit level against a recording forge and an httptest server.
 
 import (
