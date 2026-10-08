@@ -32,19 +32,19 @@
       "new": "deskkit.ApproveGateInput{Gate: *gate}"
     },
     {
-      "name": "forge-neutral/17 — retry ignores the resolver's refusal and proceeds for a human-bound repo (the identity rule is read but not acted on)",
+      "name": "brief 17 — retry ignores the resolver's refusal and proceeds for a human-bound repo (the identity rule is read but not acted on)",
       "file": "cmd/deskrun/verbs.go",
       "old": "\tcred, err := bindingFor(verb, fr)\n\tif err != nil {\n\t\tif cred.Human != \"\" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {",
       "new": "\tcred, err := bindingFor(verb, fr)\n\tif cred.Human != \"\" {\n\t\terr = nil\n\t}\n\tif err != nil {\n\t\tif cred.Human != \"\" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {"
     },
     {
-      "name": "forge-neutral/17 — the log role set is widened to every desk role (a verifier or desk session may read a run log)",
+      "name": "brief 17 — the log role set is widened to every desk role (a verifier or desk session may read a run log)",
       "file": "cmd/deskrun/verbs.go",
       "old": "\tif !logRoles[role] {\n\t\terr := deskkit.Refused(fmt.Sprintf(\"refused: %s log is served",
       "new": "\tif false && !logRoles[role] {\n\t\terr := deskkit.Refused(fmt.Sprintf(\"refused: %s log is served"
     },
     {
-      "name": "forge-neutral/17 — custody mints ANY role's token, not just the release-runner and the log roles",
+      "name": "brief 17 — custody mints ANY role's token, not just the release-runner and the log roles",
       "file": "cmd/deskrun/forge.go",
       "old": "\tif role != deskkit.ReleaseRunnerRole && !logRoles[role] {",
       "new": "\tif false {"

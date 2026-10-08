@@ -74,25 +74,25 @@
       "new": "\tif false && len(cfg.Problems) > 0 {"
     },
     {
-      "name": "forge-neutral/17 — GitHub retry re-runs the WHOLE run, including jobs that passed (rerun instead of rerun-failed-jobs)",
+      "name": "brief 17 — GitHub retry re-runs the WHOLE run, including jobs that passed (rerun instead of rerun-failed-jobs)",
       "file": "internal/deskkit/forge_github.go",
       "old": "/actions/runs/%d/rerun-failed-jobs\"",
       "new": "/actions/runs/%d/rerun\""
     },
     {
-      "name": "forge-neutral/17 — GitLab log reads only the FIRST job's trace of a multi-job pipeline",
+      "name": "brief 17 — GitLab log reads only the FIRST job's trace of a multi-job pipeline",
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tparts := make([]RunLogPart, 0, len(jobs))\n\tfor _, j := range jobs {",
       "new": "\tparts := make([]RunLogPart, 0, len(jobs))\n\tfor _, j := range jobs[:1] {"
     },
     {
-      "name": "forge-neutral/17 — GitLab retry re-runs every job, not only the failed ones",
+      "name": "brief 17 — GitLab retry re-runs every job, not only the failed ones",
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\tif j.Status == string(gitlab.Failed) {",
       "new": "\t\tif j.Status != \"\" {"
     },
     {
-      "name": "forge-neutral/17 — the log cap keeps the HEAD of an oversized log instead of the tail (the failure at the end is lost)",
+      "name": "brief 17 — the log cap keeps the HEAD of an oversized log instead of the tail (the failure at the end is lost)",
       "file": "internal/deskkit/forge.go",
       "old": "\treturn string(b[len(b)-RunLogPartCap:]), true",
       "new": "\treturn string(b[:RunLogPartCap]), true"
