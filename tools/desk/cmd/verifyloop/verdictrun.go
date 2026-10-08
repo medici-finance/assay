@@ -35,7 +35,7 @@ import (
 // reported loudly and NOTHING is filed — an unsigned verdict BODY is never emitted;
 // an unsigned PAYLOAD is written only to an explicit `--unsigned-out` file.
 //
-//   - `--unsigned-out <file>` (brief desk-tools/29) is the split path for a fenced runner: it
+//   - `--unsigned-out <file>` (the keyless-compose split) is the split path for a fenced runner: it
 //     runs the same rows, composes ONE payload in the same canonical form, writes it to a NEW
 //     file UNSIGNED and prints only its sha256. It never resolves, opens or reads a key — the
 //     branch is taken before resolveVerifierPEMPath (runVerdictUnsigned, below).
@@ -289,8 +289,8 @@ func emitBatch(out io.Writer, repo, head string, ts time.Time, meta sessionMeta,
 	return len(rows), nil
 }
 
-// runVerdictUnsigned is the keyless compose-only branch of runVerdict (--unsigned-out, brief
-// desk-tools/29). It runs the same rows as the signed path, composes ONE payload over all of
+// runVerdictUnsigned is the keyless compose-only branch of runVerdict (--unsigned-out, the
+// keyless-compose split). It runs the same rows as the signed path, composes ONE payload over all of
 // them in the same canonical form signPayload signs, writes it to a NEW file and prints only its
 // sha256. It never calls resolveVerifierPEMPath, signPayload or deskkit.FindConfigFile, and it
 // reads neither VERIFIER_PEM nor ASSAY_CONFIG_HOME: the rows it runs are arbitrary shell, and

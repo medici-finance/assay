@@ -17,7 +17,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// Brief desk-tools/29 — `verifyloop verdict --unsigned-out <file>` composes the verdict-v1
+// Keyless-compose brief — `verifyloop verdict --unsigned-out <file>` composes the verdict-v1
 // payload with no key. Rows 1, 3 and 4 live here; row 2 (FIFO canaries) is in
 // verdictunsigned_unix_test.go.
 

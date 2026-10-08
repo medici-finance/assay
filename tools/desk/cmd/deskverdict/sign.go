@@ -27,7 +27,7 @@ import (
 // confighome.go). It is never an Actions secret and never leaves this machine,
 // for either role.
 //
-// File handling (brief desk-tools/29), on EVERY --payload call: on unix the
+// File handling (the keyless-compose split's signer half), on EVERY --payload call: on unix the
 // payload's parent directory must be a real directory (not a link) owned by the
 // signer's effective uid with no group or other write bit; the payload must be a
 // regular file, opened without following a link and without blocking on a FIFO,

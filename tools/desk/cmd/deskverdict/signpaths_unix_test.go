@@ -12,7 +12,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// Brief desk-tools/29 row 12 — on every --payload call the signer reads only a regular file
+// Keyless-compose brief, Verify row 12 — on every --payload call the signer reads only a regular file
 // reached without following a link, from a parent directory no other user can write, and
 // never replaces or writes through its .out sibling.
 

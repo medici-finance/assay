@@ -10,7 +10,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// Brief desk-tools/29 row 11 — the binding flags refuse a mismatched payload BEFORE any key
+// Keyless-compose brief, Verify row 11 — the binding flags refuse a mismatched payload BEFORE any key
 // is resolved.
 
 const (
