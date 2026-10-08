@@ -426,7 +426,8 @@ subdir. Never one without the other — a mismatch is what `--lint` catches. New
        archive to make room. A human decides the swap; the parked stream re-activates by a README flip.
    - **`scoped → issue #NN`** — operational / bug-shaped work → file a GitHub issue (label `bug`
      when bug-shaped, per the project's own convention); record the issue number. It then enters the
-     issue lane above.
+     issue lane above. Before cross-boundary filing or attaching a comment, apply R7 to
+     internal locators in the title, body and evidence; use opaque role+number refs.
    - **`decision-needed`** — a call that is human:<name>'s BECAUSE it is one-way. A reversible fork
      instead exits `scoped` on its best-guess default, with the `needs-decision` issue linked as a
      NOTIFICATION. Requires filing (or already having) a

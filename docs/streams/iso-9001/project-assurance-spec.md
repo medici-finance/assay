@@ -27,7 +27,7 @@ The motivating professional-work pattern is reusable scope, approved playbook, s
 
 No scheduler, generic document repository, QMS, broad web crawler, standards library, vendor connector, runtime cutover or new credential broker is commissioned. Existing operator interfaces may render the exported packet. Any later adapter must call the same contracts and preserve the same gates; a visual flow is not an authority source.
 
-The ISO stream remains parked. New briefs describe work available for prioritization and do not unpark existing work. Organizational evidence and live pilots are adopter-owned and cannot become dependencies of the public mechanism.
+The ISO stream was parked when this extension was authored. The owner reactivated it at P2 on 2026-10-06; see [the reactivation scope](reactivation.md). This extension does not itself change prioritization. Organizational evidence and live pilots are adopter-owned and cannot become dependencies of the public mechanism.
 
 ## 3. Minimum records
 
@@ -106,6 +106,6 @@ Qualification reports rubric version, corpus manifest, expected and included cas
 
 New chain: **08 → 09 → 10 → 11**. Local waves: 0, 8, 9, 10, because 09 also depends on graph-execution/15 (wave 7), graph-execution/02–03 and iso-9001/03–04. 08 can be built with synthetic sources and existing requirements without any vendor product, licensed standards or graph execution. It has no dependency on a new data grant.
 
-The end-to-end path is held by existing graph work: `graph-execution/02 → 09 → 05 → 06 → 15`, with coverage/recovery branches into 05, plus iso-9001/03's effectiveness mechanism. Those dependencies were read at the baseline; their outstanding work cannot be replaced by a simulated green report. The ISO stream's parked status is a separate prioritization hold. This authoring neither bypasses it nor restarts release-by-merge brief 07.
+The end-to-end path is held by existing graph work: `graph-execution/02 → 09 → 05 → 06 → 15`, with coverage/recovery branches into 05, plus iso-9001/03's effectiveness mechanism. Those dependencies were read at the baseline; their outstanding work cannot be replaced by a simulated green report. The owner removed the stream's prioritization hold on 2026-10-06. Existing dependency holds remain; neither reactivation nor this authoring resolves the blocked release-by-merge brief 07.
 
 Implementation produces four bounded PRs, each with its own evidence and normal review. Adopters own any subsequent project pilot, organizational records, UI consumer and procurement. No public mechanism depends on an adopter's private brief.

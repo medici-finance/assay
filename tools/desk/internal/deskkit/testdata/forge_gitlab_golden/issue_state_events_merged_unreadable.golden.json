@@ -1,0 +1,33 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/12/resource_state_events",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/12/closed_by",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/users/99"
+    }
+  ],
+  "result": {
+    "Events": [],
+    "ClosingChanges": [
+      {
+        "Repo": "",
+        "Number": 7,
+        "Merged": false,
+        "Author": {
+          "Login": "worker-bot",
+          "ID": 99
+        }
+      }
+    ],
+    "Complete": false
+  }
+}

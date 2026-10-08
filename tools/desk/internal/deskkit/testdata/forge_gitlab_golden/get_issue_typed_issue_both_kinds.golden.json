@@ -3,6 +3,10 @@
     {
       "method": "GET",
       "path": "/api/v4/projects/medici-finance%2Fassay/issues/9"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/users/5"
     }
   ],
   "result": {

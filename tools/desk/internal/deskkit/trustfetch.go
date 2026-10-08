@@ -61,6 +61,17 @@ func (a *gqlActor) renderedLogin() string {
 	return a.Login
 }
 
+// gqlActorAccount maps a GraphQL actor onto an Account: the REST-rendered login (a Bot
+// re-suffixed with "[bot]"), the numeric databaseId read through the concrete-type fragments,
+// and the forge's own kind (__typename) as Type. A nil actor (a deleted account) is the zero
+// Account — ID 0 and Type "", which is could-not-check, never a match.
+func gqlActorAccount(a *gqlActor) Account {
+	if a == nil {
+		return Account{}
+	}
+	return Account{Login: a.renderedLogin(), ID: a.DatabaseID, Type: a.Typename}
+}
+
 type gqlPageInfo struct {
 	HasNextPage bool `json:"hasNextPage"`
 }

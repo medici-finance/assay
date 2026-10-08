@@ -20,6 +20,7 @@ The specification covers three domains:
 | [`registers-v1.md`](./registers-v1.md) | The append-only registers (FINDINGS, INTAKE; RETRO informative): per-entry-file storage and generated views, slug IDs, append-only and tombstone rules, deletion detection, and linter conformance. |
 | [`lifecycle-v1.md`](./lifecycle-v1.md) | The brief lifecycle (`todo` through `done`), the single-writer STATUS.md board, the Next-up work-queue semantics, review gates, and what the board does and does not measure. |
 | [`workflow-pattern-v1.md`](./workflow-pattern-v1.md) | The workflow-pattern-v1 schema: the node contract (kind, role, inputs, outputs, evidence, effects), risk class as a declared input (`risk-input`), the integration-check `join` node, and the role-to-effect-kind permission table. |
+| [`brief-flow-event-v1.md`](./brief-flow-event-v1.md) | The brief-flow event contract: stable-uuid brief identity with effective-dated aliases, canonical fact ids and corroboration, source precedence, role-only actors, the stage reducer (first milestones versus episodes), the board-historian adapter, the portable export, and report grouping and quantile rules. |
 | [`loop-admin-runner-v1.md`](./loop-admin-runner-v1.md) | The loop-admin runner protocol: start, observe, cancel and reconcile under a stable launch identity, standing-desk and workflow-stage modes, capability declarations, the generation fence on result acceptance with the caller's own recheck, and credential exclusion. |
 
 This specification does not state which repository or licence the Assay artifacts ship
