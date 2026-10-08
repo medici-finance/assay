@@ -1,6 +1,8 @@
 # project-obligations-v1 — versioned source obligations and project applicability
 
-Status: v1, implemented by `statusgen/projectobligations.go`. Descriptive schema:
+Status: v1, implemented as a tested library in `statusgen/projectobligations.go`. No lint check,
+command or workflow calls the loader yet: activating it for an adopting project waits on the
+owner decision the source brief names. Descriptive schema:
 [`schemas/project-obligations-v1.json`](../schemas/project-obligations-v1.json). Companion to
 [`registers-v1.md`](./registers-v1.md) §6 (REQUIREMENTS) and §7 (DECISIONS).
 
@@ -55,8 +57,11 @@ several REQs; conflicting mappings are never deduplicated away.
 `mappingRevision`, `source` and `profile` (the revisions decided on), `outcome` (`applicable`,
 `not-applicable` with a `reason`, or `unresolved`), `scope`, `effectiveFrom`, optional
 `effectiveTo`, `decidedAt`, `proposedBy`, `reviewer`, optional `supersedes` (an earlier decision
-id) and `acceptance`. Everything except `acceptance` is the *proposal*. A proposal with no
-acceptance link is a candidate, not a decision.
+id) and `acceptance`. Everything except `acceptance` is the *proposal*, and the subject digest
+(§3) covers all of it. A proposal with no acceptance link is a candidate, not a decision. A
+`supersedes` pointer takes effect only when the decision carrying it is itself accepted: an
+unaccepted proposal that names a predecessor retires nothing and is one more current decision on
+the mapping.
 
 **Acceptance link** (`decisions[].acceptance`). References to existing records, never a new
 approval: `decisionId` (an existing `DR-<slug>`), `subjectDigest` (§3), `disposition` (must be
@@ -66,24 +71,37 @@ anywhere is refused: a supplied JSON object is not self-authenticating.
 
 ## 3. Canonical digests
 
-Both digests are `sha256:` over UTF-8 text built by joining the listed lines with a single
-`\n`, with no trailing newline. `reqs` and `controls` are sorted lexicographically and joined
-with `,`, so their order never changes an identity.
+Both digests are `sha256:` plus the lowercase hex SHA-256 of a canonical byte string. The
+canonical string is the concatenation, in the order listed, of one **netstring** per field: the
+field's UTF-8 byte length in decimal, `:`, the bytes, then `,` (the clause `4.1` encodes as
+`3:4.1,`). A sequence of netstrings is uniquely decodable whatever the fields contain, so a
+newline, comma, `@` or `:` inside a clause, paraphrase or context value cannot move a field
+boundary and two different subjects never share a canonical string. A list field (`reqs`,
+`controls`) is sorted bytewise, each element is encoded as a netstring, and the concatenation is
+itself encoded as ONE netstring field: order never changes an identity, and `["a,b"]` differs
+from `["a","b"]`. An absent optional value is the empty string (`0:,`). An id and its revision are
+always two fields, never an `<id>@<revision>` join.
 
-Mapping digest, lines in order: `mapping`, `<id>@<revision>`, `<source id>@<source revision>`,
-`clause`, `paraphrase`, sorted `reqs`, `<profile id>@<profile revision>`, `context.entity`,
-`context.activity`, `context.jurisdiction`, sorted `controls`, `owner`.
+Mapping digest fields, in order: `project-obligations-v1/mapping`, mapping `id`, `revision`
+(decimal), source `id`, source `revision`, `clause`, `paraphrase`, `reqs` (list), profile `id`,
+profile `revision`, `context.entity`, `context.activity`, `context.jurisdiction`, `controls`
+(list), `owner`.
 
-Subject digest, lines in order: `project-obligations-v1/subject`, `source=<id>@<revision>`,
-`sourceDigest=<contentDigest or empty>`, `mapping=<id>@<revision>`,
-`mappingDigest=<mapping digest>`, `profile=<id>@<revision>`, `outcome=<outcome>`,
-`scope=<scope>`, `from=<effectiveFrom>`, `to=<effectiveTo or empty>`.
+Subject digest fields, in order: `project-obligations-v1/subject`, source `id`, source
+`revision`, source `contentDigest`, mapping `id`, mapping `revision`, the mapping digest, profile
+`id`, profile `revision`, then every field of the decision proposal: decision `id`, `outcome`,
+`reason`, `scope`, `effectiveFrom`, `effectiveTo`, `decidedAt`, `proposedBy`, `reviewer`,
+`supersedes`.
 
 The subject digest binds the exact source revision and content, the exact mapping revision and
-content, the profile revision, and the outcome, scope and period being approved. Changing any of
-them changes the digest, so an approval of one subject cannot be replayed onto another. The
-reference tests compare against digests computed by a separate script over this text, not by a
-second copy of the serializer.
+content, the profile revision, and the whole proposal being approved: outcome and not-applicable
+reason, scope and effective period, decision time, proposer, reviewer and the decision it
+supersedes. Changing any of them changes the digest, so an approval of one subject cannot be
+replayed onto another, and a reason, a decision time or a supersession pointer cannot be
+rewritten in the input after approval. The reference tests compare against digests computed by
+an independent implementation of this section
+(`statusgen/testdata/projectobligations/canonical_digest.py`, written from this text and run by
+hand, not by CI), not by a second copy of the serializer.
 
 ## 4. Acceptance rules
 
@@ -120,7 +138,7 @@ rule 10 and the semantic-correctness row of §1 are why a review reference is al
 | `accepted` | A current, accepted `applicable` decision resolves. |
 | `not-applicable` | A current, accepted `not-applicable` decision; the mapping stays in the inventory with its reason. |
 | `unresolved` | No current decision, or a pending one (rules 1, 4, 9 or 10 above, or an outcome of `unresolved`), or a cross-repo REQ the offline loader cannot read (could-not-check, not empty). |
-| `conflict` | More than one current decision on one mapping revision. None is picked. |
+| `conflict` | More than one current decision on one mapping revision, including an accepted decision and an unaccepted proposal that names it in `supersedes`. None is picked. |
 | `rejected` | A decision exists and fails a binding rule, or a referenced REQ is unknown or withdrawn. |
 | `superseded` | A prior revision. Kept as history; a decision bound to a superseded revision is history, never carried forward to the new revision. |
 
@@ -162,8 +180,9 @@ digest; require trusted corroboration, an approved disposition, a distinct revie
 reference before accepting; never accept a decision bound to a stale revision; hold on a
 cross-repo or unreadable reference rather than report an empty result; and never report complete
 coverage for an empty set. The reference implementation's mutation spec
-(`statusgen/projectobligations-mutations.json`) disarms each of these in turn and requires the
-suite to catch it.
+(`statusgen/projectobligations-mutations.json`) carries at least one single-site mutation for each
+of these obligations and for each refusal reason in §4 and §5, and requires the
+`TestAssurance` suite to catch every one. It is a local harness (`muhar`); no workflow runs it.
 
 Out of scope and deliberately absent: a scheduler, a document store, packet preparation
 (iso-9001/09), change-impact propagation (iso-9001/10) and qualification (iso-9001/11).

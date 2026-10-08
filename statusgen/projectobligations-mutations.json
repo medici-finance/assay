@@ -114,6 +114,156 @@
       "file": "projectobligations.go",
       "old": "hold = append(hold, \"req-cross-repo-unchecked:\"+q)",
       "new": "_ = q"
+    },
+    {
+      "name": "decision dated after as-of no longer refused",
+      "file": "projectobligations.go",
+      "old": "} else if d.DecidedAt > asOf {",
+      "new": "} else if false {"
+    },
+    {
+      "name": "boundary: not-applicable without a reason accepted",
+      "file": "projectobligations.go",
+      "old": "add(\"not-applicable-needs-reason\")",
+      "new": "_ = \"not-applicable-needs-reason\""
+    },
+    {
+      "name": "boundary: unknown outcome accepted",
+      "file": "projectobligations.go",
+      "old": "add(\"unknown-outcome\")",
+      "new": "_ = \"unknown-outcome\""
+    },
+    {
+      "name": "boundary: malformed dates accepted",
+      "file": "projectobligations.go",
+      "old": "add(\"bad-date\")",
+      "new": "_ = \"bad-date\""
+    },
+    {
+      "name": "boundary: empty scope accepted",
+      "file": "projectobligations.go",
+      "old": "add(\"scope-missing\")",
+      "new": "_ = \"scope-missing\""
+    },
+    {
+      "name": "boundary: missing actor accepted",
+      "file": "projectobligations.go",
+      "old": "add(\"actor-missing\")",
+      "new": "_ = \"actor-missing\""
+    },
+    {
+      "name": "boundary: unknown source no longer rejects",
+      "file": "projectobligations.go",
+      "old": "reject = append(reject, \"source-unknown:\"+m.Source.key())",
+      "new": "_ = m"
+    },
+    {
+      "name": "boundary: duplicate source revision not reported",
+      "file": "projectobligations.go",
+      "old": "res.Problems = append(res.Problems, \"duplicate source revision \"+s.key())",
+      "new": "_ = s"
+    },
+    {
+      "name": "receipt: seam bypassed (first linked issue taken)",
+      "file": "projectobligations.go",
+      "old": "iss, _, ok := decisionGateCorroboratingIssue(file, gates)",
+      "new": "iss, ok := decisionGateIssue{}, len(gates[file]) > 0; for _, x := range gates[file] { iss = x; break }"
+    },
+    {
+      "name": "receipt: record id no longer has to equal its file",
+      "file": "projectobligations.go",
+      "old": "if id, ok := decisionRecordID(file); !ok || id != e.ID {",
+      "new": "if false {"
+    },
+    {
+      "name": "seam: blessed-closer condition removed",
+      "file": "decisiongateanchor.go",
+      "old": "if !strings.EqualFold(iss.ClosedBy, blessLogin) { // (a) closed by the blessed human",
+      "new": "if false {"
+    },
+    {
+      "name": "supersession counted from an unaccepted decision",
+      "file": "projectobligations.go",
+      "old": "if d.Supersedes != \"\" && d.Supersedes != d.ID && len(verdicts[i]) == 0 {",
+      "new": "if d.Supersedes != \"\" && d.Supersedes != d.ID {"
+    },
+    {
+      "name": "subject digest drops the supersedes pointer",
+      "file": "projectobligations.go",
+      "old": "poNet(d.ProposedBy), poNet(d.Reviewer), poNet(d.Supersedes),",
+      "new": "poNet(d.ProposedBy), poNet(d.Reviewer),"
+    },
+    {
+      "name": "subject digest drops the not-applicable reason",
+      "file": "projectobligations.go",
+      "old": "poNet(d.ID), poNet(d.Outcome), poNet(d.Reason), poNet(d.Scope),",
+      "new": "poNet(d.ID), poNet(d.Outcome), poNet(d.Scope),"
+    },
+    {
+      "name": "canonical form back to an unescaped join",
+      "file": "projectobligations.go",
+      "old": "func poNet(s string) string { return fmt.Sprintf(\"%d:%s,\", len(s), s) }",
+      "new": "func poNet(s string) string { return s + \"\\n\" }"
+    },
+    {
+      "name": "Complete ignores candidate problems",
+      "file": "projectobligations.go",
+      "old": "return cur > 0 && len(r.Problems) == 0",
+      "new": "return cur > 0"
+    },
+    {
+      "name": "Complete true for an empty set",
+      "file": "projectobligations.go",
+      "old": "return cur > 0 && len(r.Problems) == 0",
+      "new": "return len(r.Problems) == 0"
+    },
+    {
+      "name": "cross-repo hold dropped when no decision is current",
+      "file": "projectobligations.go",
+      "old": "v.State, v.Reasons = poUnresolved, append([]string{\"no-current-decision\"}, hold...)",
+      "new": "v.State, v.Reasons = poUnresolved, []string{\"no-current-decision\"}"
+    },
+    {
+      "name": "loader: scheme-shaped path no longer refused",
+      "file": "projectobligations.go",
+      "old": "if strings.Contains(path, \"://\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "validator: paraphrase bound removed",
+      "file": "projectobligations.go",
+      "old": "if utf8.RuneCountInString(m.Paraphrase) > poMaxParaphrase {",
+      "new": "if false {"
+    },
+    {
+      "name": "validator: mapping supersedes chain unchecked",
+      "file": "projectobligations.go",
+      "old": "if m.Supersedes != want {",
+      "new": "if false {"
+    },
+    {
+      "name": "validator: source predecessor form unchecked",
+      "file": "projectobligations.go",
+      "old": "if !ok || pid != s.ID {",
+      "new": "if false {"
+    },
+    {
+      "name": "validator: not-applicable reason unchecked",
+      "file": "projectobligations.go",
+      "old": "if d.Outcome == \"not-applicable\" && strings.TrimSpace(d.Reason) == \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "validator: decision on an unsupplied mapping allowed",
+      "file": "projectobligations.go",
+      "old": "if _, ok := maps[fmt.Sprintf(\"%s@%d\", d.MappingID, d.MappingRevision)]; !ok {",
+      "new": "if _, ok := maps[fmt.Sprintf(\"%s@%d\", d.MappingID, d.MappingRevision)]; false && !ok {"
+    },
+    {
+      "name": "validator: stored text without permitted storage allowed",
+      "file": "projectobligations.go",
+      "old": "if s.Text != \"\" && (!storage || s.Use.AccessRef == \"\") {",
+      "new": "if false {"
     }
   ]
 }

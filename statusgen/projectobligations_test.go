@@ -2,8 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -12,8 +17,8 @@ import (
 // (projectobligations.go; spec/project-obligations-v1.md). The fixtures under
 // testdata/projectobligations are synthetic: no licensed text, no adopter record.
 // The expected digests in the fixture and in the golden test were computed by an
-// independent implementation (a separate script over the canonical subject text in
-// the spec), never by the code under test.
+// independent implementation of the spec's canonical form
+// (testdata/projectobligations/canonical_digest.py), never by the code under test.
 //
 // Test and helper names stay short: the pre-push secret scan reads a long
 // unbroken alphanumeric run as a possible credential.
@@ -79,12 +84,20 @@ func hasReason(v poVerdict, want string) bool {
 // decision record), so a test can isolate one fault from the digest check.
 func poRebind(t *testing.T, in *obligationInput) obligationCtx {
 	t.Helper()
+	return poRebindAt(t, in, 0, poDRa, poGates())
+}
+
+// poRebindAt re-binds decision i to its own edited subject inside a copy of the
+// fixture tree whose record dr carries the fresh digest, then loads the context
+// with the given corroboration state.
+func poRebindAt(t *testing.T, in *obligationInput, i int, dr string, gates decisionGateLinks) obligationCtx {
+	t.Helper()
 	root := t.TempDir()
 	copyTree(t, poTree(), root)
-	d := &in.Decisions[0]
+	d := &in.Decisions[i]
 	old := d.Acceptance.SubjectDigest
-	d.Acceptance.SubjectDigest = subjectDigest(in.Sources[0], in.Mappings[0], *d)
-	p := filepath.Join(root, poDRa)
+	d.Acceptance.SubjectDigest = poSubjectOf(t, *in, *d)
+	p := filepath.Join(root, dr)
 	raw, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
@@ -92,11 +105,86 @@ func poRebind(t *testing.T, in *obligationInput) obligationCtx {
 	if err := os.WriteFile(p, []byte(strings.Replace(string(raw), old, d.Acceptance.SubjectDigest, 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ctx, err := loadObligationCtx(root, poGates())
+	ctx, err := loadObligationCtx(root, gates)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return ctx
+}
+
+// poSubjectOf computes a decision's subject digest over the supplied mapping and
+// source revisions it names.
+func poSubjectOf(t *testing.T, in obligationInput, d poDecision) string {
+	t.Helper()
+	for _, m := range in.Mappings {
+		if m.ID != d.MappingID || m.Revision != d.MappingRevision {
+			continue
+		}
+		for _, s := range in.Sources {
+			if s.key() == m.Source.key() {
+				return subjectDigest(s, m, d)
+			}
+		}
+	}
+	t.Fatalf("decision %s names no supplied mapping/source", d.ID)
+	return ""
+}
+
+// poAddDR writes a synthetic decision record carrying digest into a fixture copy.
+func poAddDR(t *testing.T, root, id, digest string) {
+	t.Helper()
+	body := "---\nid: \"" + id + "\"\ndate: \"2026-10-06\"\ntitle: \"Synthetic: later decision\"\n" +
+		"consequence: \"major\"\ndecided-by: \"human:<name>\"\nalternatives:\n  - \"Keep the earlier decision.\"\n" +
+		"accepted:\n  - \"The later decision governs.\"\n---\n\nSynthetic decision record. It binds exactly one subject: " + digest + "\n"
+	p := filepath.Join(root, "docs/streams/decisions", id+".md")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func poCtxAt(t *testing.T, root string, gates decisionGateLinks) obligationCtx {
+	t.Helper()
+	ctx, err := loadObligationCtx(root, gates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ctx
+}
+
+func poCopyInput(in obligationInput) obligationInput {
+	out := in
+	out.Sources = append([]poSource(nil), in.Sources...)
+	out.Mappings = append([]poMapping(nil), in.Mappings...)
+	out.Decisions = append([]poDecision(nil), in.Decisions...)
+	return out
+}
+
+const poDRc = "docs/streams/decisions/DR-synth-applic-c.md"
+
+// poGatesC is poGates plus a corroborated issue for DR-synth-applic-c.
+func poGatesC() decisionGateLinks {
+	g := poGates()
+	g[poDRc] = []decisionGateIssue{{Ref: "example-org/tracker#80", ClosedBy: "ada", Body: decisionGateMarker("DR-synth-applic-c")}}
+	return g
+}
+
+// poSupInput returns the fixture plus an accepted not-applicable decision
+// APD-synth-003 that supersedes APD-synth-001, with its own record and receipt.
+func poSupInput(t *testing.T) (obligationInput, string) {
+	t.Helper()
+	in := poInput(t)
+	d := in.Decisions[0]
+	d.ID, d.Outcome, d.Reason = "APD-synth-003", "not-applicable", "The release process moved out of scope."
+	d.DecidedAt, d.Supersedes = "2026-10-06", "APD-synth-001"
+	acc := *d.Acceptance
+	acc.DecisionID, acc.CorroborationRef = "DR-synth-applic-c", "example-org/tracker#80"
+	acc.SubjectDigest = poSubjectOf(t, in, d)
+	d.Acceptance = &acc
+	in.Decisions = append(in.Decisions, d)
+	root := t.TempDir()
+	copyTree(t, poTree(), root)
+	poAddDR(t, root, "DR-synth-applic-c", acc.SubjectDigest)
+	return in, root
 }
 
 // ---------- A1: source permissions and stable revisions ----------
@@ -367,11 +455,57 @@ func TestAssuranceApplicability(t *testing.T) {
 		if v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1"); v.State != poConflict {
 			t.Errorf("two live decisions must conflict, not pick one: %+v", v)
 		}
+		// An UNACCEPTED proposal naming a predecessor retires nothing: the accepted
+		// decision stays current and the mapping is in conflict, never resolved by the
+		// input's own pointer.
 		in.Decisions[2].Supersedes = "APD-synth-001"
 		in.Decisions[2].Acceptance = nil
 		v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1")
-		if v.State != poUnresolved || len(v.History) == 0 {
-			t.Errorf("a superseded accepted decision is history, the new proposal is unresolved: %+v", v)
+		if v.State != poConflict || len(v.History) != 0 {
+			t.Errorf("an unaccepted superseder must not retire the accepted decision: %+v", v)
+		}
+	})
+
+	t.Run("supersession binds to the accepted decision", func(t *testing.T) {
+		in, root := poSupInput(t)
+		ctx := poCtxAt(t, root, poGatesC())
+		res := resolveObligations(in, ctx, poAsOf)
+		v := poVerdictOf(t, res, "MAP-synth-001@1")
+		if v.State != poNotApplicable || v.DecisionID != "APD-synth-003" || !containsAll(v.History, "APD-synth-001 superseded") {
+			t.Fatalf("an accepted superseder retires the earlier decision: %+v", v)
+		}
+		if !res.Complete() {
+			t.Fatalf("positive control: the superseded set is complete, problems %v", res.Problems)
+		}
+		// Reverse the pointer in the input only (no record, receipt or digest change):
+		// both decisions' subjects move, so neither is accepted and nothing is retired.
+		rev := poCopyInput(in)
+		rev.Decisions[0].Supersedes, rev.Decisions[2].Supersedes = "APD-synth-003", ""
+		res = resolveObligations(rev, ctx, poAsOf)
+		v = poVerdictOf(t, res, "MAP-synth-001@1")
+		if v.State == poAccepted || v.State == poNotApplicable || res.Complete() {
+			t.Errorf("a reversed supersedes pointer must not resolve the mapping: %+v", v)
+		}
+		// Dropping the pointer alone is also a different subject.
+		drop := poCopyInput(in)
+		drop.Decisions[2].Supersedes = ""
+		if v := poVerdictOf(t, resolveObligations(drop, ctx, poAsOf), "MAP-synth-001@1"); v.State != poConflict {
+			t.Errorf("a dropped supersedes pointer leaves two current decisions: %+v", v)
+		}
+	})
+
+	t.Run("reason and decision time are part of the subject", func(t *testing.T) {
+		for name, edit := range map[string]func(d *poDecision){
+			"reason rewritten":    func(d *poDecision) { d.Reason = "A different recorded reason." },
+			"decidedAt rewritten": func(d *poDecision) { d.DecidedAt = "2026-10-04" },
+			"supersedes added":    func(d *poDecision) { d.Supersedes = "APD-synth-009" },
+		} {
+			in, ctx := poInput(t), poCtx(t)
+			edit(&in.Decisions[1])
+			v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-002@1")
+			if v.State != poRejected || !hasReason(v, "subject-digest-mismatch") {
+				t.Errorf("%s: an approved not-applicable decision edited after approval must be refused, got %+v", name, v)
+			}
 		}
 	})
 
@@ -497,10 +631,11 @@ func TestAssuranceReqDereference(t *testing.T) {
 
 func TestAssuranceSubjectDigest(t *testing.T) {
 	in := poInput(t)
-	// Expected values were computed by a separate script over the canonical text
-	// documented in spec/project-obligations-v1.md, not by this package.
-	wantMap := "sha256:235922bdf69914b106f062ace9c5081bcf7d69f5f61c1dd349ad63fa1bae6e56"
-	wantSubj := "sha256:e58ed0d80cc74d6d2e7a4d82a1b855ca132a49fad089a709b19de353c9658fa2"
+	// Expected values come from testdata/projectobligations/canonical_digest.py, an
+	// independent implementation of spec section 3 written from the spec text (run by
+	// hand, not by CI), never from this package.
+	wantMap := "sha256:e719e1317c544348791c5e91a15e45d1c8cca9b789ffdbbd15cd6a7e21e4dce6"
+	wantSubj := "sha256:d8a2ae0bdef090bab514d892330836b6b24792649b3d3ae80e88b1b1f28179e1"
 	if got := mappingDigest(in.Mappings[0]); got != wantMap {
 		t.Errorf("mapping digest = %s, want %s", got, wantMap)
 	}
@@ -514,6 +649,309 @@ func TestAssuranceSubjectDigest(t *testing.T) {
 	if a != mappingDigest(swapped) {
 		t.Errorf("REQ order must not change a mapping's identity")
 	}
+}
+
+// TestAssuranceDigestInjective: two different mappings never share a digest, even
+// when a field holds the characters an unescaped join would split on.
+func TestAssuranceDigestInjective(t *testing.T) {
+	base := poInput(t).Mappings[0]
+	pairs := map[string][2]func(m *poMapping){
+		"newline moves clause/paraphrase boundary": {
+			func(m *poMapping) { m.Clause, m.Paraphrase = "4.1", "first line\nsecond line" },
+			func(m *poMapping) { m.Clause, m.Paraphrase = "4.1\nfirst line", "second line" },
+		},
+		"comma inside one control": {
+			func(m *poMapping) { m.Controls = []string{"CTRL-a,CTRL-b"} },
+			func(m *poMapping) { m.Controls = []string{"CTRL-a", "CTRL-b"} },
+		},
+		"context fields re-split": {
+			func(m *poMapping) { m.Context = poContext{Entity: "a\nb", Activity: "c"} },
+			func(m *poMapping) { m.Context = poContext{Entity: "a", Activity: "b\nc"} },
+		},
+		"at-sign inside id and revision": {
+			func(m *poMapping) { m.Source = poRef{ID: "SRC-a@1", Revision: "2"} },
+			func(m *poMapping) { m.Source = poRef{ID: "SRC-a", Revision: "1@2"} },
+		},
+	}
+	for name, p := range pairs {
+		x, y := base, base
+		p[0](&x)
+		p[1](&y)
+		if mappingDigest(x) == mappingDigest(y) {
+			t.Errorf("%s: two different mappings share a digest", name)
+		}
+	}
+
+	// End to end: an approval recorded for one mapping is not accepted for its
+	// re-split twin.
+	in := poInput(t)
+	in.Mappings[0].Clause, in.Mappings[0].Paraphrase = "4.1", "first line\nsecond line"
+	ctx := poRebind(t, &in)
+	if v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1"); v.State != poAccepted {
+		t.Fatalf("positive control: the bound mapping is accepted, got %+v", v)
+	}
+	in.Mappings[0].Clause, in.Mappings[0].Paraphrase = "4.1\nfirst line", "second line"
+	if v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1"); v.State != poRejected || !hasReason(v, "subject-digest-mismatch") {
+		t.Errorf("an approval must not transfer to a re-split mapping, got %+v", v)
+	}
+}
+
+// ---------- F3: the receipt is the seam's corroborating issue ----------
+
+// TestAssuranceOneClosedByOwner: when a record links two issues and only the
+// second is closed by the blessed login, the receipt names the second. A decision
+// naming the non-blessed closer and its issue is never accepted.
+func TestAssuranceOneClosedByOwner(t *testing.T) {
+	gates := decisionGateLinks{
+		poDRa: {
+			{Ref: "example-org/tracker#77", ClosedBy: "mallory", Body: decisionGateMarker("DR-synth-applic-a")},
+			{Ref: "example-org/tracker#79", ClosedBy: "ada", Body: decisionGateMarker("DR-synth-applic-a")},
+		},
+		poDRb: poGates()[poDRb],
+	}
+	in := poInput(t)
+	in.Decisions[0].Acceptance.CorroborationRef = "example-org/tracker#79"
+	ctx := poCtxAt(t, poTree(), gates)
+	if v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1"); v.State != poAccepted {
+		t.Errorf("the decision corroborated by the blessed closer must be accepted, got %+v", v)
+	}
+	forged := poInput(t)
+	forged.Decisions[0].Reviewer = "mallory"
+	forged.Decisions[0].Acceptance.CorroborationRef = "example-org/tracker#77"
+	ctx = poRebindAt(t, &forged, 0, poDRa, gates)
+	if v := poVerdictOf(t, resolveObligations(forged, ctx, poAsOf), "MAP-synth-001@1"); v.State == poAccepted {
+		t.Errorf("a decision naming the non-blessed closer must not be accepted, got %+v", v)
+	}
+}
+
+// TestAssuranceGateSeamOnly is the class guard for F3: outside
+// decisiongateanchor.go, no production function may index, range over or
+// otherwise read a decisionGateLinks parameter; it may only pass it on. Selecting
+// the corroborating issue is the seam's job alone.
+func TestAssuranceGateSeamOnly(t *testing.T) {
+	// positive control: the matcher flags a planted second selection loop and
+	// passes a pure pass-through.
+	planted := `package main
+func bad(gates decisionGateLinks) { for _, iss := range gates["f"] { _ = iss } }
+func alsoBad(gates decisionGateLinks) { g := gates; _ = g }
+func ok(gates decisionGateLinks) { use(gates) }`
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "planted.go", planted, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := poGateReads(fset, f); len(got) != 2 || !strings.Contains(got[0], "bad") || !strings.Contains(got[1], "alsoBad") {
+		t.Fatalf("matcher control: want bad and alsoBad flagged, got %v", got)
+	}
+
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") || name == "decisiongateanchor.go" {
+			continue
+		}
+		f, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range poGateReads(fset, f) {
+			t.Errorf("%s: reads decision-gate state directly; ask decisionGateCorroboratingIssue instead", r)
+		}
+	}
+}
+
+// poGateReads lists every use of a decisionGateLinks parameter that is not a
+// direct call argument.
+func poGateReads(fset *token.FileSet, f *ast.File) []string {
+	var out []string
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		params := map[string]bool{}
+		for _, fld := range fn.Type.Params.List {
+			if id, ok := fld.Type.(*ast.Ident); ok && id.Name == "decisionGateLinks" {
+				for _, n := range fld.Names {
+					params[n.Name] = true
+				}
+			}
+		}
+		if len(params) == 0 {
+			continue
+		}
+		args := map[*ast.Ident]bool{}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok {
+				for _, a := range c.Args {
+					if id, ok := a.(*ast.Ident); ok {
+						args[id] = true
+					}
+				}
+			}
+			return true
+		})
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && params[id.Name] && !args[id] {
+				out = append(out, fmt.Sprintf("%s %s", fset.Position(id.Pos()), fn.Name.Name))
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// ---------- F6: one test per refusal path the mutation spec disarms ----------
+
+func TestAssuranceRefusals(t *testing.T) {
+	// boundary: each edit is re-bound so only the guard under test is wrong.
+	boundary := []struct {
+		name, reason string
+		i            int
+		edit         func(d *poDecision)
+	}{
+		{"decision dated after as-of", "decision-in-future", 0, func(d *poDecision) { d.DecidedAt = "2026-10-09" }},
+		{"not-applicable without reason", "not-applicable-needs-reason", 1, func(d *poDecision) { d.Reason = " " }},
+		{"unknown outcome", "unknown-outcome", 0, func(d *poDecision) { d.Outcome = "maybe" }},
+		{"malformed date", "bad-date", 0, func(d *poDecision) { d.DecidedAt = "2026-13-45" }},
+		{"empty scope", "scope-missing", 0, func(d *poDecision) { d.Scope = " " }},
+		{"missing proposer", "actor-missing", 0, func(d *poDecision) { d.ProposedBy = "" }},
+	}
+	for _, c := range boundary {
+		t.Run(c.name, func(t *testing.T) {
+			in := poInput(t)
+			c.edit(&in.Decisions[c.i])
+			dr := []string{poDRa, poDRb}[c.i]
+			ctx := poRebindAt(t, &in, c.i, dr, poGates())
+			mp := in.Decisions[c.i].MappingID + "@1"
+			v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), mp)
+			if v.State != poRejected || !hasReason(v, c.reason) {
+				t.Errorf("want rejected/%s, got %+v", c.reason, v)
+			}
+		})
+	}
+
+	t.Run("unknown source rejects the mapping", func(t *testing.T) {
+		in, ctx := poInput(t), poCtx(t)
+		in.Sources = in.Sources[1:]
+		v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1")
+		if v.State != poRejected || !hasReason(v, "source-unknown") {
+			t.Errorf("want rejected/source-unknown, got %+v", v)
+		}
+	})
+
+	t.Run("duplicate source revision is a boundary problem", func(t *testing.T) {
+		in, ctx := poInput(t), poCtx(t)
+		dup := in.Sources[0]
+		dup.ContentDigest = poSum("other")
+		in.Sources = append(in.Sources, dup)
+		res := resolveObligations(in, ctx, poAsOf)
+		if res.Complete() || !containsAll(res.Problems, "duplicate source revision") {
+			t.Errorf("a duplicate source revision must hold the set, problems %v", res.Problems)
+		}
+	})
+
+	t.Run("record whose id is not its file name gets no receipt", func(t *testing.T) {
+		root := t.TempDir()
+		copyTree(t, poTree(), root)
+		old := filepath.Join(root, poDRa)
+		moved := "docs/streams/decisions/DR-synth-other.md"
+		if err := os.Rename(old, filepath.Join(root, moved)); err != nil {
+			t.Fatal(err)
+		}
+		gates := poGates()
+		gates[moved] = []decisionGateIssue{{Ref: "example-org/tracker#77", ClosedBy: "ada", Body: decisionGateMarker("DR-synth-other")}}
+		ctx := poCtxAt(t, root, gates)
+		v := poVerdictOf(t, resolveObligations(poInput(t), ctx, poAsOf), "MAP-synth-001@1")
+		if v.State == poAccepted || !hasReason(v, "no-trusted-corroboration") {
+			t.Errorf("a receipt for another file must not corroborate DR-synth-applic-a, got %+v", v)
+		}
+	})
+
+	t.Run("complete needs no candidate problems", func(t *testing.T) {
+		r := obligationResult{Verdicts: []poVerdict{{Mapping: "MAP-x@1", State: poAccepted}}}
+		if !r.Complete() {
+			t.Fatalf("positive control: one accepted mapping is complete")
+		}
+		r.Problems = []string{"schema mismatch"}
+		if r.Complete() {
+			t.Errorf("a candidate problem must hold completeness")
+		}
+	})
+
+	t.Run("cross-repo hold kept with no current decision", func(t *testing.T) {
+		in, ctx := poInput(t), poCtx(t)
+		in.Mappings[0].Reqs = []string{"other:REQ-synthetic-controls"}
+		in.Decisions = in.Decisions[1:]
+		v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1")
+		if v.State != poUnresolved || !hasReason(v, "no-current-decision") || !hasReason(v, "req-cross-repo-unchecked") {
+			t.Errorf("want unresolved with both reasons, got %+v", v)
+		}
+	})
+
+	t.Run("a scheme-shaped path is refused before reading", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("a ':' directory name is not portable")
+		}
+		dir := filepath.Join(t.TempDir(), "a:")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join(poFixtureDir, "obligations.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "b.json"), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readObligationInput(dir + "/b.json"); err != nil {
+			t.Fatalf("control: the plain path reads: %v", err)
+		}
+		// dir+"//b.json" contains "://" yet names the same readable file.
+		if _, err := readObligationInput(dir + "//b.json"); err == nil || !strings.Contains(err.Error(), "only a local") {
+			t.Errorf("a path containing :// must be refused by the guard, got %v", err)
+		}
+	})
+
+	validator := []struct {
+		name, want string
+		edit       func(in *obligationInput)
+	}{
+		{"paraphrase over the bound", "paraphrase exceeds", func(in *obligationInput) {
+			in.Mappings[0].Paraphrase = strings.Repeat("x", poMaxParaphrase+1)
+		}},
+		{"mapping supersedes chain", "supersedes", func(in *obligationInput) {
+			in.Mappings[0].Supersedes = "MAP-synth-001@0"
+		}},
+		{"source predecessor form", "must be <same id>@<revision>", func(in *obligationInput) {
+			in.Sources[0].Predecessor = in.Sources[1].key()
+		}},
+		{"not-applicable reason", "not-applicable needs a reason", func(in *obligationInput) {
+			in.Decisions[1].Reason = ""
+		}},
+		{"decision on an unsupplied mapping", "is not a supplied mapping revision", func(in *obligationInput) {
+			in.Decisions[0].MappingRevision = 7
+		}},
+	}
+	for _, c := range validator {
+		t.Run("validator: "+c.name, func(t *testing.T) {
+			in := poInput(t)
+			c.edit(&in)
+			if !containsAll(validateObligationInput(in), c.want) {
+				t.Errorf("want a problem containing %q, got %v", c.want, validateObligationInput(in))
+			}
+		})
+	}
+
+	t.Run("validator: paraphrase at the bound is clean", func(t *testing.T) {
+		in := poInput(t)
+		in.Mappings[0].Paraphrase = strings.Repeat("x", poMaxParaphrase)
+		if p := validateObligationInput(in); len(p) != 0 {
+			t.Errorf("a paraphrase of exactly the bound is allowed: %v", p)
+		}
+	})
 }
 
 // copyTree copies a small fixture tree (files only, no symlinks).

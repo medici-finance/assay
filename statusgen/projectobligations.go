@@ -187,36 +187,70 @@ func poSum(s string) string {
 	return "sha256:" + hex.EncodeToString(h[:])
 }
 
+// poNet encodes one field as a netstring: "<byte length>:<bytes>,". A sequence of
+// netstrings is uniquely decodable whatever the field bytes contain (newlines,
+// commas, '@', ':'), so the canonical text — and therefore the digest input — is
+// injective: two different field tuples can never serialize to the same bytes.
+func poNet(s string) string { return fmt.Sprintf("%d:%s,", len(s), s) }
+
+// poNetList encodes a list as ONE field: the netstring of its sorted elements'
+// netstrings concatenated, so ["a,b"] and ["a","b"] stay distinct and order never
+// changes the identity.
+func poNetList(xs []string) string {
+	s := append([]string(nil), xs...)
+	sort.Strings(s)
+	var b strings.Builder
+	for _, x := range s {
+		b.WriteString(poNet(x))
+	}
+	return poNet(b.String())
+}
+
+// poCanon is the digest of a tag followed by fields, each a netstring (a list
+// field arrives already encoded by poNetList and is passed through raw).
+func poCanon(fields ...string) string {
+	var b strings.Builder
+	for _, f := range fields {
+		b.WriteString(f)
+	}
+	return poSum(b.String())
+}
+
 // mappingDigest pins the exact mapping revision content (reqs and controls
-// sorted, so order never changes the identity).
+// sorted, so order never changes the identity). Ids and revisions are separate
+// fields, never an "<id>@<revision>" join, so an '@' inside either cannot alias.
 func mappingDigest(m poMapping) string {
-	reqs := append([]string(nil), m.Reqs...)
-	ctl := append([]string(nil), m.Controls...)
-	sort.Strings(reqs)
-	sort.Strings(ctl)
-	return poSum(strings.Join([]string{
-		"mapping", m.key(), m.Source.key(), m.Clause, m.Paraphrase,
-		strings.Join(reqs, ","), m.Profile.key(), m.Context.Entity,
-		m.Context.Activity, m.Context.Jurisdiction, strings.Join(ctl, ","), m.Owner,
-	}, "\n"))
+	return poCanon(
+		poNet(obligationsSchema+"/mapping"),
+		poNet(m.ID), poNet(fmt.Sprint(m.Revision)),
+		poNet(m.Source.ID), poNet(m.Source.Revision),
+		poNet(m.Clause), poNet(m.Paraphrase),
+		poNetList(m.Reqs),
+		poNet(m.Profile.ID), poNet(m.Profile.Revision),
+		poNet(m.Context.Entity), poNet(m.Context.Activity), poNet(m.Context.Jurisdiction),
+		poNetList(m.Controls),
+		poNet(m.Owner),
+	)
 }
 
 // subjectDigest is the exact subject an acceptance must bind: the current source
 // revision (and its content digest), the current mapping revision (and its content
-// digest), the profile revision, and the outcome, scope and period being approved.
+// digest), the profile revision, and EVERY field of the decision proposal — its id,
+// outcome and not-applicable reason, scope and effective period, decision time,
+// proposer, reviewer and the decision it supersedes. Binding the whole proposal is
+// what makes supersession, decision time and the recorded reason part of the
+// authorized subject (stream spec §3): rewriting any of them in the input breaks
+// the digest the decision record carries.
 func subjectDigest(src poSource, m poMapping, d poDecision) string {
-	return poSum(strings.Join([]string{
-		obligationsSchema + "/subject",
-		"source=" + src.key(),
-		"sourceDigest=" + src.ContentDigest,
-		"mapping=" + m.key(),
-		"mappingDigest=" + mappingDigest(m),
-		"profile=" + m.Profile.key(),
-		"outcome=" + d.Outcome,
-		"scope=" + d.Scope,
-		"from=" + d.EffectiveFrom,
-		"to=" + d.EffectiveTo,
-	}, "\n"))
+	return poCanon(
+		poNet(obligationsSchema+"/subject"),
+		poNet(src.ID), poNet(src.Revision), poNet(src.ContentDigest),
+		poNet(m.ID), poNet(fmt.Sprint(m.Revision)), poNet(mappingDigest(m)),
+		poNet(m.Profile.ID), poNet(m.Profile.Revision),
+		poNet(d.ID), poNet(d.Outcome), poNet(d.Reason), poNet(d.Scope),
+		poNet(d.EffectiveFrom), poNet(d.EffectiveTo), poNet(d.DecidedAt),
+		poNet(d.ProposedBy), poNet(d.Reviewer), poNet(d.Supersedes),
+	)
 }
 
 // ---------------------------------------------------------------- model input
@@ -453,9 +487,11 @@ type trustedReceipt struct {
 	sealed     bool
 }
 
-// trustReceipts builds receipts ONLY by asking decisionGateCorroboration, over
-// pre-fetched issue state. nil gates (no state supplied) yields no receipts —
-// applicability then stays unresolved; the loader never fetches the forge.
+// trustReceipts builds receipts ONLY from the issue the existing decision-gate seam
+// (decisionGateCorroboratingIssue) names as corroborating, over pre-fetched issue
+// state. It never re-selects among the linked issues itself: the receipt's ref and
+// closer are exactly the seam's answer. nil gates (no state supplied) yields no
+// receipts — applicability then stays unresolved; the loader never fetches the forge.
 func trustReceipts(decs []decisionEntry, gates decisionGateLinks) map[string]trustedReceipt {
 	out := map[string]trustedReceipt{}
 	for _, e := range decs {
@@ -463,16 +499,11 @@ func trustReceipts(decs []decisionEntry, gates decisionGateLinks) map[string]tru
 		if id, ok := decisionRecordID(file); !ok || id != e.ID {
 			continue // frontmatter id must be the file's own id
 		}
-		if _, ok := decisionGateCorroboration(stamp{Name: "-", File: file}, gates); !ok {
+		iss, _, ok := decisionGateCorroboratingIssue(file, gates)
+		if !ok {
 			continue
 		}
-		want := decisionGateMarker(e.ID)
-		for _, iss := range gates[file] {
-			if iss.ClosedBy != "" && strings.Contains(iss.Body, want) {
-				out[e.ID] = trustedReceipt{decisionID: e.ID, ref: iss.Ref, closer: iss.ClosedBy, sealed: true}
-				break
-			}
-		}
+		out[e.ID] = trustedReceipt{decisionID: e.ID, ref: iss.Ref, closer: iss.ClosedBy, sealed: true}
 	}
 	return out
 }
@@ -765,25 +796,40 @@ func resolveObligations(in obligationInput, ctx obligationCtx, asOf string) obli
 
 // poDecide fills in the decision-derived state for one current mapping.
 func poDecide(v *poVerdict, m poMapping, src poSource, all []poDecision, ctx obligationCtx, asOf string, hold []string) {
-	superseded := map[string]bool{}
-	for _, d := range all {
-		if d.Supersedes != "" {
-			superseded[d.Supersedes] = true
-		}
-	}
-	var cur []poDecision
+	var onRev []poDecision
 	for _, d := range all {
 		if d.MappingID != m.ID {
 			continue
 		}
-		switch {
-		case superseded[d.ID]:
-			v.History = append(v.History, fmt.Sprintf("%s superseded", d.ID))
-		case d.MappingRevision != m.Revision:
+		if d.MappingRevision != m.Revision {
 			v.History = append(v.History, fmt.Sprintf("%s bound to stale mapping revision %d", d.ID, d.MappingRevision))
-		default:
-			cur = append(cur, d)
+			continue
 		}
+		onRev = append(onRev, d)
+	}
+	// A supersedes pointer takes effect ONLY when the decision carrying it is itself
+	// accepted: the pointer is inside that decision's subject digest, so it is the
+	// authorized decision — never the input — that retires an earlier one. An
+	// unaccepted proposal naming a predecessor retires nothing; it is one more
+	// current decision, and the mapping is in conflict until it is accepted or
+	// withdrawn.
+	verdicts := make([][]string, len(onRev))
+	supersededBy := map[string]string{}
+	for i, d := range onRev {
+		verdicts[i] = acceptApplicability(d, m, src, ctx, asOf)
+		if d.Supersedes != "" && d.Supersedes != d.ID && len(verdicts[i]) == 0 {
+			supersededBy[d.Supersedes] = d.ID
+		}
+	}
+	var cur []poDecision
+	var curReasons [][]string
+	for i, d := range onRev {
+		if by, ok := supersededBy[d.ID]; ok {
+			v.History = append(v.History, fmt.Sprintf("%s superseded by %s", d.ID, by))
+			continue
+		}
+		cur = append(cur, d)
+		curReasons = append(curReasons, verdicts[i])
 	}
 	switch {
 	case len(cur) == 0:
@@ -800,8 +846,7 @@ func poDecide(v *poVerdict, m poMapping, src poSource, all []poDecision, ctx obl
 	}
 	d := cur[0]
 	v.DecisionID = d.ID
-	reasons := acceptApplicability(d, m, src, ctx, asOf)
-	reasons = append(reasons, hold...)
+	reasons := append(append([]string(nil), curReasons[0]...), hold...)
 	if len(reasons) == 0 {
 		v.State = poAccepted
 		if d.Outcome == "not-applicable" {

@@ -49,7 +49,7 @@
       "proposedBy": "analysis-stub", "reviewer": "ada",
       "acceptance": {
         "decisionId": "DR-synth-applic-a",
-        "subjectDigest": "sha256:e58ed0d80cc74d6d2e7a4d82a1b855ca132a49fad089a709b19de353c9658fa2",
+        "subjectDigest": "sha256:d8a2ae0bdef090bab514d892330836b6b24792649b3d3ae80e88b1b1f28179e1",
         "disposition": "approved",
         "corroborationRef": "example-org/tracker#77",
         "reviewRef": "DR-synth-review-a"
@@ -65,7 +65,7 @@
       "proposedBy": "analysis-stub", "reviewer": "ada",
       "acceptance": {
         "decisionId": "DR-synth-applic-b",
-        "subjectDigest": "sha256:0e06e3b30e1abca6b2d62574fe14a6d71489cdb27620e441002b2d76d01808a7",
+        "subjectDigest": "sha256:ef37e145477b54b0c45891386e34906d48a2b591874e70cfe2da4f167d05215f",
         "disposition": "approved",
         "corroborationRef": "example-org/tracker#78",
         "reviewRef": "DR-synth-review-a"
