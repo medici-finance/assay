@@ -129,14 +129,24 @@ reviewable artifact, not a run.
   stream-README change. The job runs in two steps. The compute step runs `statusgen`
   holding only the read token and emits the commit it made. The publish step runs no
   `statusgen`; it pushes that commit and opens or refreshes the PR. The board-writer App
-  token is minted only when there is a commit, and only the publish step sees it. The job
-  uses the corroborate job's isolation: a job-local, checksum-verified Go toolchain and
-  caches, `GOENV=off`, a pinned gh (never one already on PATH), and a checkout that
-  persists no credential. It recognises its own PR by this repository's head, never by
-  branch name alone. Both steps' `run:` texts are tested end to end by
-  `statusgen/reconcilejob_test.go`, which extracts them from the staged YAML. The same
-  file guards every job that mints the App token for that isolation. The
-  job never pushes the default branch, and scheduled runs sit in their own concurrency
+  token is minted only when there is a commit, narrowed to `contents` and
+  `pull-requests` write, and only the publish step's environment holds it. The job uses
+  the corroborate job's isolation: a job-local, checksum-verified Go toolchain and
+  caches, `GOENV=off`, and a pinned gh (never one already on PATH). It also keeps no
+  state an earlier job on the runner could leave: no checkout into the workspace, but a
+  fresh clone of the default branch under `RUNNER_TEMP`, a git configuration of its own
+  with hooks off (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`, a discovery ceiling at
+  `RUNNER_TEMP`), a job-local `GH_CONFIG_DIR`, a push to the forge URL by name, and a
+  credential helper bound to that host. Its PR is the open one from this repository's
+  own `board/reconcile` into the default branch, whoever opened it; one from that head
+  into another base is skipped, and two into the default branch fail the tick. Its
+  clone, compute and publish `run:` texts are tested end to end by
+  `statusgen/reconcilejob_test.go`, which extracts them from the staged YAML, runs them
+  in a rig that plants hooks, a push address and URL rewrites, and checks that a list of
+  edits to the job each turns a named test red; once promoted, the board workflow's PR
+  lint job runs those tests (before promotion no pull-request check runs them). The same file holds every job that mints the App token to that
+  isolation, except `regen` and `model-autoflip`, which are live today without it and
+  are listed as exempt (the list may only shrink). The job never pushes the default branch, and scheduled runs sit in their own concurrency
   group so they cannot displace a pending push regen. **Staged, not live** — classified
   by its `assay-statusgen.yml.pending` companion, not the manifest, so the drift guard
   excludes it from the parity check until promotion. Promote with

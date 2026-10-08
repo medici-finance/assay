@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -13,10 +14,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The scheduled reconcile tick — the reconcile job's own compute and publish
-// `run:` texts, read from the staged workflow — exercised end to end against a
-// throwaway bare origin, with stub `statusgen` and `gh` on PATH — hermetic: no
-// network, no token, no real repo.
+// The scheduled reconcile tick — the reconcile job's own clone, compute and
+// publish `run:` texts, read from the staged workflow — exercised end to end
+// against a throwaway bare origin, with stub `statusgen` and `gh` on PATH —
+// hermetic: no network, no token, no real repo.
 
 const jobReadmeMain = "# s\n\n| # | Brief | Status |\n|---|---|---|\n| 01 | one | todo |\n| 02 | two | todo |\n"
 
@@ -27,13 +28,18 @@ const (
 	writeTokenSentinel = "WRITE-TOKEN-SENTINEL"
 )
 
-// stubStatusgen flips row $STUB_FLIP (if set) from todo to implemented in the
-// fixture README on `reconcile`, or with $STUB_HOLD reports one held row and
-// writes nothing; prints the --apply report and exits $STUB_RECONCILE_RC.
-// `regen` is a no-op and the lint exits $STUB_LINT_RC. With $STUB_CHECK_WRITE
-// set, every invocation fails if its environment holds the write token.
+// stubStatusgen records its arguments, one invocation per line, in
+// $STUB_LOG/statusgen.log. It flips row $STUB_FLIP (if set) from todo to
+// implemented in the fixture README on `reconcile`, or with $STUB_HOLD reports
+// one held row (in the real report's shape, statusgen/reconcile.go's
+// printReconcileTable) and writes nothing; prints the --apply report and exits
+// $STUB_RECONCILE_RC. `regen` writes a non-README file when $STUB_STRAY is set
+// and is otherwise a no-op; the lint exits $STUB_LINT_RC. With
+// $STUB_CHECK_WRITE set, every invocation fails if its environment holds the
+// write token.
 const stubStatusgen = `#!/usr/bin/env bash
 set -eu
+echo "$*" >> "$STUB_LOG/statusgen.log"
 if [ -n "${STUB_CHECK_WRITE:-}" ]; then
   case "$(env)" in *WRITE-TOKEN-SENTINEL*) echo "statusgen ran holding the write token" >&2; exit 97 ;; esac
 fi
@@ -43,8 +49,9 @@ case "${1:-}" in
     if [ "${STUB_RECONCILE_RC:-0}" != 0 ]; then echo "reconcile --apply: could-not-check — HTTP 401" >&2; exit "$STUB_RECONCILE_RC"; fi
     if [ -n "${STUB_HOLD:-}" ]; then
       echo "reconcile: o/r (2 brief(s))"
-      echo "reconcile --apply: wrote 0 row(s), held 1"
-      echo "  HELD s/${STUB_HOLD} todo -> implemented: risk-gated brief at \"implemented\" has no design: record"
+      echo "reconcile --apply: held 1 row(s) — writing them would add a lint PROBLEM; not written"
+      echo "  s/${STUB_HOLD}                                     todo -> implemented   [PR #7 (merged abc1234)]"
+      echo "      would add: risk-gated brief at \"implemented\" has no design: record"
     fi
     if [ -n "${STUB_FLIP:-}" ]; then
       sed "s/^| ${STUB_FLIP} | \(.*\) | todo |\$/| ${STUB_FLIP} | \1 | implemented |/" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
@@ -52,20 +59,22 @@ case "${1:-}" in
       echo "reconcile --apply: wrote 1 row(s)"
       echo "  s/${STUB_FLIP} todo -> implemented   $f   [PR #7 (merged abc1234)]"
     fi ;;
-  regen) ;;
+  regen)
+    if [ -n "${STUB_STRAY:-}" ]; then echo stray > NOTES.md; fi ;;
   *) exit "${STUB_LINT_RC:-0}" ;;
 esac
 `
 
-// stubGh logs every call. `api` GETs print $STUB_PULLS: TSV lines of number,
-// head repository and head ref — what the step's --jq projection prints — and
-// the stub returns EVERY entry whatever the query says, the worst case of a head
-// filter that also matches forks, so the step's own selection is what is
-// tested. `pr list` is the forge's bare head-name filter (forks included): it
-// counts every $STUB_PULLS entry. A call made holding the write token logs
-// `token=write`.
+// stubGh logs every call, and the GH_CONFIG_DIR it saw in $STUB_LOG/gh-env.log.
+// `api` GETs print $STUB_PULLS: TSV lines of number, head repository, head ref
+// and base ref — what the step's --jq projection prints — and the stub returns
+// EVERY entry whatever the query says, the worst case of a head filter that
+// also matches forks, so the step's own selection is what is tested (the
+// projection itself is pinned by TestReconcileJobPRProjection). A call made
+// holding the write token logs `token=write`.
 const stubGh = `#!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG/gh.log"
+echo "GH_CONFIG_DIR=${GH_CONFIG_DIR:-}" >> "$STUB_LOG/gh-env.log"
 [ "${GH_TOKEN:-}" = WRITE-TOKEN-SENTINEL ] && echo "token=write" >> "$STUB_LOG/gh.log"
 case "$1" in
   api)
@@ -74,25 +83,34 @@ case "$1" in
     [ -z "${STUB_PULLS:-}" ] || printf '%s\n' "$STUB_PULLS" ;;
   pr)
     case "$2" in
-      list)
-        [ "${STUB_GH_LIST_RC:-0}" = 0 ] || exit "$STUB_GH_LIST_RC"
-        if [ -n "${STUB_PULLS:-}" ]; then printf '%s\n' "$STUB_PULLS" | grep -c .; else echo 0; fi ;;
       create) echo "https://example.invalid/pr/1" ;;
     esac ;;
 esac
 `
 
-// ownPR is this repository's own open PR on the carried branch, as the step's
-// --jq projection prints it.
-const ownPR = "5\to/r\tboard/reconcile"
+// ownPR is this repository's own open PR from the carried branch into main, as
+// the step's --jq projection prints it.
+const ownPR = "5\to/r\tboard/reconcile\tmain"
 
 type jobRig struct {
-	t      *testing.T
-	dir    string
-	origin string
-	seed   string
-	bin    string
-	env    []string
+	t         *testing.T
+	dir       string
+	forge     string // GITHUB_SERVER_URL's directory: origin is <forge>/o/r.git
+	origin    string
+	seed      string
+	bin       string
+	workspace string // the job's default working directory (GITHUB_WORKSPACE)
+	userCfg   string // the runner user's git configuration
+	env       []string
+	ticks     int
+	lastTemp  string // the last tick's RUNNER_TEMP
+	// Hooks a test uses to move the forge between steps, as a concurrent
+	// writer would.
+	beforeCompute func()
+	beforePublish func()
+	// When set, the tick skips the compute step and hands this value to the
+	// publish step as the compute step's `commit` output.
+	forceCommit string
 }
 
 func requireJobTools(t *testing.T) {
@@ -107,17 +125,19 @@ func requireJobTools(t *testing.T) {
 	}
 }
 
-// scrubbedEnv is the caller's environment minus any credential or runner
+// scrubbedEnv is the caller's environment minus any credential, runner or git
 // variable a step could act on: the rig supplies each step's env itself.
 func scrubbedEnv() []string {
 	drop := map[string]bool{
 		"GH_TOKEN": true, "GITHUB_TOKEN": true, "GH_ENTERPRISE_TOKEN": true,
 		"GITHUB_ENTERPRISE_TOKEN": true, "GITHUB_OUTPUT": true, "GITHUB_ENV": true,
-		"GITHUB_PATH": true, "COMMIT": true,
+		"GITHUB_PATH": true, "COMMIT": true, "GH_CONFIG_DIR": true,
+		"GITHUB_SERVER_URL": true, "RUNNER_TEMP": true, "GIT_CEILING_DIRECTORIES": true,
+		"GIT_DIR": true, "GIT_WORK_TREE": true, "GIT_TEMPLATE_DIR": true,
 	}
 	var env []string
 	for _, kv := range os.Environ() {
-		if k, _, _ := strings.Cut(kv, "="); !drop[k] {
+		if k, _, _ := strings.Cut(kv, "="); !drop[k] && !strings.HasPrefix(k, "GIT_CONFIG") {
 			env = append(env, kv)
 		}
 	}
@@ -128,29 +148,31 @@ func newJobRig(t *testing.T) *jobRig {
 	t.Helper()
 	requireJobTools(t)
 	r := &jobRig{t: t, dir: t.TempDir()}
-	r.origin = filepath.Join(r.dir, "origin.git")
+	r.forge = filepath.Join(r.dir, "forge")
+	r.origin = filepath.Join(r.forge, "o", "r.git")
 	r.seed = filepath.Join(r.dir, "seed")
 	r.bin = filepath.Join(r.dir, "bin")
-	if err := os.MkdirAll(r.bin, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, body := range map[string]string{"statusgen": stubStatusgen, "gh": stubGh} {
-		if err := os.WriteFile(filepath.Join(r.bin, name), []byte(body), 0o755); err != nil {
+	r.workspace = filepath.Join(r.dir, "workspace")
+	for _, d := range []string{r.bin, r.workspace} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	gitcfg := filepath.Join(r.dir, "gitconfig")
-	if err := os.WriteFile(gitcfg, nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(r.bin, "gh"), []byte(stubGh), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.userCfg = filepath.Join(r.dir, "gitconfig")
+	if err := os.WriteFile(r.userCfg, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	r.env = append(scrubbedEnv(),
 		"PATH="+r.bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"GIT_CONFIG_GLOBAL="+gitcfg, "GIT_CONFIG_NOSYSTEM=1",
+		// The runner user's git configuration: what a job inherits unless it
+		// replaces it. The residue test plants hooks and rewrites here.
+		"GIT_CONFIG_GLOBAL="+r.userCfg, "GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=job", "GIT_AUTHOR_EMAIL=job@example.invalid",
 		"GIT_COMMITTER_NAME=job", "GIT_COMMITTER_EMAIL=job@example.invalid",
-		// What the runner provides the step: RUNNER_TEMP holds the statusgen
-		// binary (the stub here) and the step's scratch files.
-		"RUNNER_TEMP="+r.bin, "GITHUB_REPOSITORY=o/r",
+		"GITHUB_REPOSITORY=o/r", "GITHUB_SERVER_URL=file://"+r.forge,
 		"STUB_LOG="+r.dir, "TMPDIR="+r.dir,
 	)
 	r.git("", "init", "-q", "--bare", "-b", "main", r.origin)
@@ -197,30 +219,44 @@ func (r *jobRig) commitOnMain(readme, msg string) {
 	r.git(r.seed, "push", "-q", "origin", "main")
 }
 
-// reconcileJobWorkflow is the staged workflow whose reconcile job is under test.
+// reconcileJobWorkflow is the staged workflow whose reconcile job is under
+// test. RECONCILEJOB_WORKFLOW points the tests at another copy of it — a
+// mutant, in TestReconcileJobMutantsFail.
 const reconcileJobWorkflow = "../ci/staged-workflows/assay-statusgen.yml"
 
-// The two steps the tick runs; the tests fail if either is renamed away.
+func reconcileWorkflowPath() string {
+	if p := os.Getenv("RECONCILEJOB_WORKFLOW"); p != "" {
+		return p
+	}
+	return reconcileJobWorkflow
+}
+
+// The steps the tick runs; the tests fail if any is renamed away.
 const (
+	cloneStepName        = "Clone main into a fresh job-local directory"
 	reconcileJobStepName = "Reconcile and regenerate the stream README tables"
 	publishStepName      = "Push board/reconcile and open or refresh its draft PR"
 	appTokenExpr         = "${{ steps.app-token.outputs.token }}"
 	commitGateExpr       = "${{ steps.compute.outputs.commit != '' }}"
+	runnerTempExpr       = "${{ runner.temp }}"
 )
 
 type wfStep struct {
-	ID   string            `yaml:"id"`
-	Name string            `yaml:"name"`
-	If   string            `yaml:"if"`
-	Uses string            `yaml:"uses"`
-	With map[string]any    `yaml:"with"`
-	Env  map[string]string `yaml:"env"`
-	Run  string            `yaml:"run"`
+	ID               string            `yaml:"id"`
+	Name             string            `yaml:"name"`
+	If               string            `yaml:"if"`
+	Uses             string            `yaml:"uses"`
+	With             map[string]any    `yaml:"with"`
+	Env              map[string]string `yaml:"env"`
+	WorkingDirectory string            `yaml:"working-directory"`
+	Run              string            `yaml:"run"`
 }
 
 type wfJob struct {
-	Env   map[string]string `yaml:"env"`
-	Steps []wfStep          `yaml:"steps"`
+	If          string            `yaml:"if"`
+	Permissions any               `yaml:"permissions"`
+	Env         map[string]string `yaml:"env"`
+	Steps       []wfStep          `yaml:"steps"`
 }
 
 type workflow struct {
@@ -239,11 +275,12 @@ func parseWorkflow(t *testing.T, raw []byte, name string) workflow {
 
 func stagedWorkflow(t *testing.T) workflow {
 	t.Helper()
-	raw, err := os.ReadFile(reconcileJobWorkflow)
+	p := reconcileWorkflowPath()
+	raw, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return parseWorkflow(t, raw, reconcileJobWorkflow)
+	return parseWorkflow(t, raw, p)
 }
 
 // reconcileStep returns the reconcile job's step of that name, exactly as the
@@ -253,12 +290,12 @@ func reconcileStep(t *testing.T, name string) wfStep {
 	for _, st := range stagedWorkflow(t).Jobs["reconcile"].Steps {
 		if st.Name == name {
 			if strings.TrimSpace(st.Run) == "" {
-				t.Fatalf("%s: step %q has no run: text", reconcileJobWorkflow, name)
+				t.Fatalf("%s: step %q has no run: text", reconcileWorkflowPath(), name)
 			}
 			return st
 		}
 	}
-	t.Fatalf("%s: jobs.reconcile has no step named %q", reconcileJobWorkflow, name)
+	t.Fatalf("%s: jobs.reconcile has no step named %q", reconcileWorkflowPath(), name)
 	return wfStep{}
 }
 
@@ -287,7 +324,7 @@ func stepEnv(t *testing.T, st wfStep, outputs map[string]string) []string {
 	return env
 }
 
-// scriptFile writes a step's run text to a file outside the work clone.
+// scriptFile writes a step's run text to a file outside every repository.
 func scriptFile(t *testing.T, run string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "step.sh")
@@ -297,10 +334,10 @@ func scriptFile(t *testing.T, run string) string {
 	return p
 }
 
-func (r *jobRig) runStep(work, script string, env []string) (int, string) {
+func (r *jobRig) runStep(dir, script string, env []string) (int, string) {
 	r.t.Helper()
 	cmd := exec.Command("bash", script)
-	cmd.Dir = work
+	cmd.Dir = dir
 	cmd.Env = append(append([]string{}, r.env...), env...)
 	out, err := cmd.CombinedOutput()
 	code := 0
@@ -312,7 +349,7 @@ func (r *jobRig) runStep(work, script string, env []string) (int, string) {
 	return code, string(out)
 }
 
-// readOutputs parses a GITHUB_OUTPUT file of key=value lines.
+// readOutputs parses a GITHUB_OUTPUT (or GITHUB_ENV) file of key=value lines.
 func readOutputs(t *testing.T, path string) map[string]string {
 	t.Helper()
 	m := map[string]string{}
@@ -328,36 +365,68 @@ func readOutputs(t *testing.T, path string) map[string]string {
 	return m
 }
 
-// tick runs one job tick in a fresh clone (as the workflow's checkout gives it)
-// with extra env, returning the exit code and combined output: the compute
-// step, then — only when it set its `commit` output, as the publish step's
-// `if:` says — the publish step. RECONCILEJOB_SCRIPT points the rig at another
-// body run as the whole tick (a pre-fix single-step body, for the fail-first
-// record), with the env shape that body had: both tokens in one step.
+// tick runs one job tick as the runner would: a fresh RUNNER_TEMP holding the
+// statusgen binary (the stub); the clone step; the compute step; then — only
+// when compute set its `commit` output, as the publish step's `if:` says — the
+// publish step. Each step runs in its `working-directory:` (the workspace when
+// it names none), with what earlier steps wrote to GITHUB_ENV, its own `env:`,
+// and the test's extra env. Returns the exit code and combined output.
 func (r *jobRig) tick(extra ...string) (int, string) {
 	r.t.Helper()
-	work := filepath.Join(r.dir, "work")
-	_ = os.RemoveAll(work)
-	r.git("", "clone", "-q", r.origin, work)
-	outFile := filepath.Join(r.dir, "github-output")
-	if err := os.WriteFile(outFile, nil, 0o644); err != nil {
+	r.ticks++
+	temp := filepath.Join(r.dir, fmt.Sprintf("runner-temp-%d", r.ticks))
+	if err := os.MkdirAll(temp, 0o755); err != nil {
 		r.t.Fatal(err)
 	}
-	if s := os.Getenv("RECONCILEJOB_SCRIPT"); s != "" {
-		env := append([]string{"GITHUB_TOKEN=" + readTokenSentinel, "GH_TOKEN=" + writeTokenSentinel, "GITHUB_OUTPUT=" + outFile}, extra...)
-		return r.runStep(work, s, env)
+	r.lastTemp = temp
+	if err := os.WriteFile(filepath.Join(temp, "statusgen"), []byte(stubStatusgen), 0o755); err != nil {
+		r.t.Fatal(err)
 	}
-	compute := reconcileStep(r.t, reconcileJobStepName)
-	code, out := r.runStep(work, scriptFile(r.t, compute.Run),
-		append(append(stepEnv(r.t, compute, nil), "GITHUB_OUTPUT="+outFile), extra...))
-	outputs := readOutputs(r.t, outFile)
-	if code != 0 || outputs["commit"] == "" {
+	ghEnv := filepath.Join(r.dir, fmt.Sprintf("github-env-%d", r.ticks))
+	ghOut := filepath.Join(r.dir, fmt.Sprintf("github-output-%d", r.ticks))
+	for _, f := range []string{ghEnv, ghOut} {
+		if err := os.WriteFile(f, nil, 0o644); err != nil {
+			r.t.Fatal(err)
+		}
+	}
+	run := func(name string, outputs map[string]string) (int, string) {
+		st := reconcileStep(r.t, name)
+		dir := r.workspace
+		if wd := st.WorkingDirectory; wd != "" {
+			dir = strings.ReplaceAll(wd, runnerTempExpr, temp)
+			if strings.Contains(dir, "${{") {
+				r.t.Fatalf("step %q working-directory: the rig cannot resolve %q", name, wd)
+			}
+		}
+		env := []string{"RUNNER_TEMP=" + temp, "GITHUB_ENV=" + ghEnv, "GITHUB_OUTPUT=" + ghOut}
+		for k, v := range readOutputs(r.t, ghEnv) {
+			env = append(env, k+"="+v)
+		}
+		env = append(append(env, stepEnv(r.t, st, outputs)...), extra...)
+		return r.runStep(dir, scriptFile(r.t, st.Run), env)
+	}
+	code, out := run(cloneStepName, nil)
+	if code != 0 {
 		return code, out
 	}
-	publish := reconcileStep(r.t, publishStepName)
-	code, out2 := r.runStep(work, scriptFile(r.t, publish.Run),
-		append(stepEnv(r.t, publish, outputs), extra...))
-	return code, out + out2
+	outputs := map[string]string{"commit": r.forceCommit}
+	if r.forceCommit == "" {
+		if r.beforeCompute != nil {
+			r.beforeCompute()
+		}
+		var o string
+		code, o = run(reconcileJobStepName, nil)
+		out += o
+		outputs = readOutputs(r.t, ghOut)
+		if code != 0 || outputs["commit"] == "" {
+			return code, out
+		}
+	}
+	if r.beforePublish != nil {
+		r.beforePublish()
+	}
+	code, o := run(publishStepName, outputs)
+	return code, out + o
 }
 
 func (r *jobRig) remoteRef(ref string) string {
@@ -378,8 +447,13 @@ func (r *jobRig) ghLog() string {
 	return string(b)
 }
 
+func (r *jobRig) statusgenLog() []string {
+	b, _ := os.ReadFile(filepath.Join(r.dir, "statusgen.log"))
+	return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+}
+
 // TestReconcileJobFreshBranch: no carried branch yet; a witnessed flip is
-// committed on a branch cut from main and the draft PR is opened.
+// committed on a branch cut from main and a DRAFT PR into main is opened.
 func TestReconcileJobFreshBranch(t *testing.T) {
 	r := newJobRig(t)
 	code, out := r.tick("STUB_FLIP=01")
@@ -389,12 +463,26 @@ func TestReconcileJobFreshBranch(t *testing.T) {
 	if !strings.Contains(r.remoteFile("refs/heads/board/reconcile"), "| 01 | one | implemented |") {
 		t.Fatalf("flip not carried:\n%s", r.remoteFile("refs/heads/board/reconcile"))
 	}
-	if !strings.Contains(r.ghLog(), "pr create") {
-		t.Fatalf("draft PR not opened; gh log:\n%s", r.ghLog())
+	if !strings.Contains(r.ghLog(), "pr create --repo o/r --draft --base main --head board/reconcile") {
+		t.Fatalf("a draft PR into main was not opened; gh log:\n%s", r.ghLog())
 	}
 	msg := r.git(r.origin, "log", "-1", "--format=%B", "refs/heads/board/reconcile")
 	if !strings.Contains(msg, "PR #7") {
 		t.Fatalf("the commit must name each flip's witness:\n%s", msg)
+	}
+}
+
+// TestReconcileJobStatusgenArgs is review B6's trailer-only half at the job
+// level: the step runs the reconcile WITHOUT --backfill, then the README
+// re-render, then the full lint — exactly these invocations, in this order.
+func TestReconcileJobStatusgenArgs(t *testing.T) {
+	r := newJobRig(t)
+	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	want := []string{"reconcile --apply --root . --repo o/r", "regen --readmes --root .", "--root . --lint"}
+	if got := r.statusgenLog(); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("statusgen invocations:\n  %s\nwant:\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
 	}
 }
 
@@ -428,6 +516,48 @@ func TestReconcileJobSurvivesConflictingMainChange(t *testing.T) {
 	r.git(r.origin, "merge-base", "--is-ancestor", "refs/heads/main", newTip)
 }
 
+// TestReconcileJobComputesOnFetchedMain pins the compute step's detached
+// checkout of the main it just fetched: main moves after the clone step, and
+// the carried tree is still computed from main as fetched by the compute step.
+func TestReconcileJobComputesOnFetchedMain(t *testing.T) {
+	r := newJobRig(t)
+	r.beforeCompute = func() {
+		r.commitOnMain(strings.Replace(jobReadmeMain, "| 01 | one | todo |", "| 01 | one, renamed | todo |", 1), "docs: rename brief 01")
+	}
+	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if got := r.remoteFile("refs/heads/board/reconcile"); !strings.Contains(got, "| 01 | one, renamed | implemented |") {
+		t.Fatalf("the tree must be computed on the fetched main, not the clone's checkout:\n%s", got)
+	}
+}
+
+// TestReconcileJobNeverForces is review B6's "never forced": a writer that moves
+// the branch between this tick's compute and publish steps wins; the tick's
+// push is rejected, the tick fails, and the other writer's commit stays.
+func TestReconcileJobNeverForces(t *testing.T) {
+	r := newJobRig(t)
+	var racer string
+	r.beforePublish = func() {
+		other := filepath.Join(r.dir, "racer")
+		r.git("", "clone", "-q", r.origin, other)
+		r.write(other, strings.Replace(jobReadmeMain, "| 02 | two | todo |", "| 02 | two | implemented |", 1))
+		r.git(other, "commit", "-q", "-am", "chore(board): reconcile (desk)")
+		r.git(other, "push", "-q", "origin", "HEAD:refs/heads/board/reconcile")
+		racer = r.git(other, "rev-parse", "HEAD")
+	}
+	code, out := r.tick("STUB_FLIP=01")
+	if code == 0 {
+		t.Fatalf("a push that lost the race must fail the tick:\n%s", out)
+	}
+	if got := r.remoteRef("refs/heads/board/reconcile"); got != racer {
+		t.Fatalf("the other writer's commit was overwritten: branch at %s, racer %s\n%s", got, racer, out)
+	}
+	if strings.Contains(r.ghLog(), "pr create") {
+		t.Fatalf("no PR may be opened after a rejected push:\n%s", r.ghLog())
+	}
+}
+
 // TestReconcileJobRefusesForeignCommit: a commit on the branch that this job
 // did not make is never overwritten — the tick fails loudly and pushes nothing.
 func TestReconcileJobRefusesForeignCommit(t *testing.T) {
@@ -435,16 +565,7 @@ func TestReconcileJobRefusesForeignCommit(t *testing.T) {
 	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
 		t.Fatalf("first tick exit %d:\n%s", code, out)
 	}
-	// A human pushes a hand edit onto the carried branch.
-	hand := filepath.Join(r.dir, "hand")
-	r.git("", "clone", "-q", "-b", "board/reconcile", r.origin, hand)
-	if err := os.WriteFile(filepath.Join(hand, "NOTES.md"), []byte("hand edit\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	r.git(hand, "add", "-A")
-	r.git(hand, "commit", "-q", "-m", "wip: my notes")
-	r.git(hand, "push", "-q", "origin", "board/reconcile")
-	before := r.remoteRef("refs/heads/board/reconcile")
+	before := r.handCommit("NOTES.md", "wip: my notes")
 	r.commitOnMain(jobReadmeMain+"\nmore\n", "docs: main moves")
 
 	code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR)
@@ -456,6 +577,62 @@ func TestReconcileJobRefusesForeignCommit(t *testing.T) {
 	}
 	if r.remoteRef("refs/heads/board/reconcile") != before {
 		t.Fatal("the branch carrying a foreign commit was overwritten")
+	}
+}
+
+// TestReconcileJobRefusesNonReadmeCommit is review B6's README-only half: a
+// commit with this job's own subject that touches more than stream READMEs is
+// refused — the subject alone never makes a commit this job's.
+func TestReconcileJobRefusesNonReadmeCommit(t *testing.T) {
+	r := newJobRig(t)
+	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+		t.Fatalf("first tick exit %d:\n%s", code, out)
+	}
+	before := r.handCommit("NOTES.md", "chore(board): reconcile 2026-10-08")
+	r.commitOnMain(jobReadmeMain+"\nmore\n", "docs: main moves")
+
+	code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR)
+	if code == 0 {
+		t.Fatalf("a same-subject commit touching NOTES.md must fail the tick:\n%s", out)
+	}
+	if !strings.Contains(out, "(touches more than stream READMEs)") {
+		t.Fatalf("the refusal must say the commit touches more than stream READMEs:\n%s", out)
+	}
+	if r.remoteRef("refs/heads/board/reconcile") != before {
+		t.Fatal("the branch carrying a non-README commit was overwritten")
+	}
+}
+
+// handCommit pushes a commit adding file onto the carried branch, as another
+// writer would, and returns the new branch tip.
+func (r *jobRig) handCommit(file, subject string) string {
+	r.t.Helper()
+	hand := filepath.Join(r.dir, "hand")
+	_ = os.RemoveAll(hand)
+	r.git("", "clone", "-q", "-b", "board/reconcile", r.origin, hand)
+	if err := os.WriteFile(filepath.Join(hand, file), []byte("hand edit\n"), 0o644); err != nil {
+		r.t.Fatal(err)
+	}
+	r.git(hand, "add", "-A")
+	r.git(hand, "commit", "-q", "-m", subject)
+	r.git(hand, "push", "-q", "origin", "board/reconcile")
+	return r.remoteRef("refs/heads/board/reconcile")
+}
+
+// TestReconcileJobRefusesStrayPath is review B6's "only stream READMEs may
+// change": a statusgen run that writes any other path fails the tick, naming
+// it, and nothing is pushed.
+func TestReconcileJobRefusesStrayPath(t *testing.T) {
+	r := newJobRig(t)
+	code, out := r.tick("STUB_FLIP=01", "STUB_STRAY=1")
+	if code == 0 {
+		t.Fatalf("a run that changed NOTES.md must fail the tick:\n%s", out)
+	}
+	if !strings.Contains(out, "changed paths other than stream READMEs") || !strings.Contains(out, "NOTES.md") {
+		t.Fatalf("the refusal must name the stray path:\n%s", out)
+	}
+	if r.remoteRef("refs/heads/board/reconcile") != "" || r.ghLog() != "" {
+		t.Fatalf("nothing may be pushed or opened; gh log:\n%s", r.ghLog())
 	}
 }
 
@@ -479,6 +656,18 @@ func TestReconcileJobPRListFailureFails(t *testing.T) {
 	code, out := r.tick("STUB_FLIP=01", "STUB_GH_LIST_RC=1")
 	if code == 0 {
 		t.Fatalf("an unreadable PR list must fail the tick:\n%s", out)
+	}
+}
+
+// TestReconcileJobRejectsBadCommitOutput pins the publish step's check of the
+// compute step's output: a value that is not an object name is refused before
+// git sees it.
+func TestReconcileJobRejectsBadCommitOutput(t *testing.T) {
+	r := newJobRig(t)
+	r.forceCommit = "zz"
+	code, out := r.tick()
+	if code == 0 || !strings.Contains(out, "is not an object name") {
+		t.Fatalf("a commit output that is not an object name must be refused by the step's own check (exit %d):\n%s", code, out)
 	}
 }
 
@@ -584,33 +773,108 @@ func TestReconcileJobAcceptsDeskSideMerge(t *testing.T) {
 // from a same-named branch. A look-alike made every tick push the branch, open
 // no PR, report "an open PR already carries" it and exit 0. Only this
 // repository's own branch counts as our PR now; a look-alike — including one
-// whose fork was deleted (no head repository) — is ignored and our PR is opened.
+// whose fork was deleted (no head repository), and one from this repository's
+// own branch of another name — is ignored and our PR is opened.
 func TestReconcileJobIgnoresForkPR(t *testing.T) {
 	r := newJobRig(t)
-	lookalikes := "9\toutsider/r\tboard/reconcile\n10\t\tboard/reconcile"
+	lookalikes := "9\toutsider/r\tboard/reconcile\tmain\n10\t-\tboard/reconcile\tmain\n11\to/r\tboard/reconcile-x\tmain"
 	code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+lookalikes)
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
 	if !strings.Contains(r.ghLog(), "pr create") {
-		t.Fatalf("a fork's same-named PR was read as ours — no PR opened:\n%s\ngh log:\n%s", out, r.ghLog())
+		t.Fatalf("a look-alike PR was read as ours — no PR opened:\n%s\ngh log:\n%s", out, r.ghLog())
 	}
 	if strings.Contains(r.ghLog(), "--method PATCH") {
-		t.Fatalf("a look-alike PR's body was edited:\n%s", r.ghLog())
+		t.Fatalf("a look-alike PR was edited:\n%s", r.ghLog())
 	}
-	for _, n := range []string{"#9", "#10"} {
-		if !strings.Contains(out, "ignoring open PR "+n) {
+	for _, n := range []string{"#9", "#10", "#11"} {
+		if !strings.Contains(out, "ignoring open PR "+n+": its head is not") {
 			t.Fatalf("the ignored look-alike %s must be named in the log:\n%s", n, out)
 		}
 	}
-	if !strings.Contains(r.ghLog(), "head=o:board/reconcile") {
-		t.Fatalf("the PR query must name the owner-qualified head:\n%s", r.ghLog())
+}
+
+// TestReconcileJobPRIdentity is review SEC-2372-1's second round: anyone can
+// open a PR FROM this repository's own board/reconcile into any base. One into
+// another base is never adopted (named and skipped, and our own PR into main is
+// opened); two PRs into main from this head fail the tick rather than pick one.
+func TestReconcileJobPRIdentity(t *testing.T) {
+	t.Run("other base", func(t *testing.T) {
+		r := newJobRig(t)
+		code, out := r.tick("STUB_FLIP=01", "STUB_PULLS=12\to/r\tboard/reconcile\trelease")
+		if code != 0 {
+			t.Fatalf("exit %d:\n%s", code, out)
+		}
+		if !strings.Contains(out, "ignoring open PR #12: it targets release, not main") {
+			t.Fatalf("a PR from our head into another base must be named and skipped:\n%s", out)
+		}
+		if strings.Contains(r.ghLog(), "--method PATCH") || !strings.Contains(r.ghLog(), "pr create --repo o/r --draft --base main") {
+			t.Fatalf("a PR into another base was adopted:\n%s", r.ghLog())
+		}
+	})
+	t.Run("two into main", func(t *testing.T) {
+		r := newJobRig(t)
+		code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR+"\n13\to/r\tboard/reconcile\tmain")
+		if code == 0 {
+			t.Fatalf("two PRs carrying the branch into main must fail the tick:\n%s", out)
+		}
+		if !strings.Contains(out, "#5 and #13 both carry") {
+			t.Fatalf("the refusal must name both PRs:\n%s", out)
+		}
+		if strings.Contains(r.ghLog(), "--method PATCH") || strings.Contains(r.ghLog(), "pr create") {
+			t.Fatalf("no PR may be edited or opened when two are selected:\n%s", r.ghLog())
+		}
+	})
+}
+
+// TestReconcileJobPRQuery pins the list call: paginated, open PRs only,
+// owner-qualified head, and the four-field projection the selection reads.
+func TestReconcileJobPRQuery(t *testing.T) {
+	r := newJobRig(t)
+	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	want := `api --paginate repos/o/r/pulls?state=open&per_page=100&head=o:board/reconcile --jq ` + prProjection
+	if !strings.Contains(r.ghLog(), want) {
+		t.Fatalf("the PR list call must be\n  %s\ngh log:\n%s", want, r.ghLog())
+	}
+}
+
+// prProjection is the publish step's --jq projection: number, head repository
+// ("-" when the head repository is gone, so the tab-split read keeps four
+// fields), head ref and base ref.
+const prProjection = `.[] | [.number, (.head.repo.full_name // "-"), .head.ref, .base.ref] | @tsv`
+
+// TestReconcileJobPRProjection runs the projection with real jq over a forge-
+// shaped list: our PR, a fork's, a deleted fork's and one into another base
+// each come out as the four fields the selection reads. Skipped without jq.
+func TestReconcileJobPRProjection(t *testing.T) {
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Skip("jq not on PATH")
+	}
+	const list = `[
+ {"number":5,"head":{"repo":{"full_name":"o/r"},"ref":"board/reconcile"},"base":{"ref":"main"}},
+ {"number":9,"head":{"repo":{"full_name":"outsider/r"},"ref":"board/reconcile"},"base":{"ref":"main"}},
+ {"number":10,"head":{"repo":null,"ref":"board/reconcile"},"base":{"ref":"main"}},
+ {"number":12,"head":{"repo":{"full_name":"o/r"},"ref":"board/reconcile"},"base":{"ref":"release"}}
+]`
+	cmd := exec.Command(jq, "-r", prProjection)
+	cmd.Stdin = strings.NewReader(list)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "5\to/r\tboard/reconcile\tmain\n9\toutsider/r\tboard/reconcile\tmain\n10\t-\tboard/reconcile\tmain\n12\to/r\tboard/reconcile\trelease\n"
+	if string(out) != want {
+		t.Fatalf("projection output:\n%q\nwant:\n%q", out, want)
 	}
 }
 
 // TestReconcileJobRefreshesBody is review SEC-2372-4's second half: the PR text
 // was written once, at creation, and never refreshed. Each push to the branch
-// now rewrites our PR's body from that tick's report.
+// now rewrites our PR's title and body from that tick's report.
 func TestReconcileJobRefreshesBody(t *testing.T) {
 	r := newJobRig(t)
 	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
@@ -621,13 +885,13 @@ func TestReconcileJobRefreshesBody(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
-	if !strings.Contains(r.ghLog(), "api --method PATCH repos/o/r/pulls/5") {
-		t.Fatalf("our open PR's body was not refreshed:\n%s", r.ghLog())
+	if !strings.Contains(r.ghLog(), "api --method PATCH repos/o/r/pulls/5 -f title=chore(board): reconcile -F body=@") {
+		t.Fatalf("our open PR's title and body were not rewritten:\n%s", r.ghLog())
 	}
 	if n := strings.Count(r.ghLog(), "pr create"); n != 1 {
 		t.Fatalf("pr create ran %d times; once, on the first tick, is right:\n%s", n, r.ghLog())
 	}
-	body, err := os.ReadFile(filepath.Join(r.bin, "reconcile-pr-body.md"))
+	body, err := os.ReadFile(filepath.Join(r.lastTemp, "reconcile-pr-body.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -645,7 +909,7 @@ func TestReconcileJobShowsHeldRows(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
-	if !strings.Contains(out, "HELD s/01") || !strings.Contains(out, "no design: record") {
+	if !strings.Contains(out, "held 1 row(s)") || !strings.Contains(out, "s/01") || !strings.Contains(out, "would add: risk-gated brief") {
 		t.Fatalf("a held row and its reason must reach the job log:\n%s", out)
 	}
 	if r.remoteRef("refs/heads/board/reconcile") != "" || r.ghLog() != "" {
@@ -666,22 +930,119 @@ func TestReconcileJobTokenScope(t *testing.T) {
 	}
 }
 
+// TestReconcileJobIgnoresRunnerResidue is review SEC-2372-2's second round:
+// git state an earlier job could leave on a reused runner — a repository in the
+// workspace with hooks and a push address, and the runner user's own git
+// configuration with a hooks path and URL rewrites — takes no effect on the
+// tick. No hook runs, the push reaches the real origin and not the decoy, and
+// gh reads a configuration directory of the job's own.
+func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
+	r := newJobRig(t)
+	marker := filepath.Join(r.dir, "hook-ran")
+	hook := "#!/usr/bin/env bash\necho \"$0 ${GH_TOKEN:-}\" >> " + marker + "\n"
+	writeHooks := func(dir string) {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, h := range []string{"pre-push", "post-checkout", "reference-transaction", "pre-commit", "post-commit", "post-merge"} {
+			if err := os.WriteFile(filepath.Join(dir, h), []byte(hook), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	decoyForge := filepath.Join(r.dir, "decoy")
+	decoy := filepath.Join(decoyForge, "o", "r.git")
+	r.git("", "init", "-q", "--bare", "-b", "main", decoy)
+	forgeURL := "file://" + r.forge + "/"
+	decoyURL := "file://" + decoyForge + "/"
+
+	// The workspace repository an earlier job left behind.
+	r.git("", "clone", "-q", r.origin, r.workspace)
+	writeHooks(filepath.Join(r.workspace, ".git", "hooks"))
+	r.git(r.workspace, "config", "remote.origin.pushurl", decoyURL+"o/r.git")
+	r.git(r.workspace, "config", "url."+decoyURL+".pushInsteadOf", forgeURL)
+
+	// The runner user's git configuration. Planted after the rig's own setup,
+	// which reads it too.
+	userHooks := filepath.Join(r.dir, "user-hooks")
+	writeHooks(userHooks)
+	r.git("", "config", "--file", r.userCfg, "core.hooksPath", userHooks)
+	r.git("", "config", "--file", r.userCfg, "url."+decoyURL+".pushInsteadOf", forgeURL)
+	r.git("", "config", "--file", r.userCfg, "remote.origin.pushurl", decoyURL+"o/r.git")
+
+	code, out := r.tick("STUB_FLIP=01")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if b, err := os.ReadFile(marker); err == nil {
+		t.Fatalf("a hook left by an earlier job ran during the tick:\n%s", b)
+	}
+	if got := r.remoteRef("refs/heads/board/reconcile"); got == "" {
+		t.Fatalf("the push did not reach the real origin:\n%s", out)
+	}
+	cmd := exec.Command("git", "rev-parse", "--verify", "-q", "refs/heads/board/reconcile")
+	cmd.Dir = decoy
+	cmd.Env = r.env
+	if o, _ := cmd.Output(); len(strings.TrimSpace(string(o))) != 0 {
+		t.Fatal("the push was sent to the decoy a planted push address names")
+	}
+	envLog, _ := os.ReadFile(filepath.Join(r.dir, "gh-env.log"))
+	for _, line := range strings.Split(strings.TrimSpace(string(envLog)), "\n") {
+		if !strings.HasPrefix(line, "GH_CONFIG_DIR="+r.lastTemp+string(filepath.Separator)) {
+			t.Fatalf("gh must read a configuration directory under the job's RUNNER_TEMP, got %q", line)
+		}
+	}
+}
+
+// TestReconcileJobTriggerAndScope pins the job's guards, read from the YAML:
+// the schedule-and-repository `if:` (review A5), the read-only job token, and
+// the mint narrowed to the publish step's two grants.
+func TestReconcileJobTriggerAndScope(t *testing.T) {
+	job := stagedWorkflow(t).Jobs["reconcile"]
+	if want := "${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}"; job.If != want {
+		t.Errorf("reconcile if: %q, want %q", job.If, want)
+	}
+	perms, _ := job.Permissions.(map[string]any)
+	want := map[string]any{"contents": "read", "pull-requests": "read", "issues": "read"}
+	if fmt.Sprint(perms) != fmt.Sprint(want) {
+		t.Errorf("reconcile permissions: %v, want exactly %v", job.Permissions, want)
+	}
+	minted := false
+	for _, st := range job.Steps {
+		if !strings.HasPrefix(st.Uses, "actions/create-github-app-token@") {
+			continue
+		}
+		minted = true
+		grants := map[string]string{}
+		for k, v := range st.With {
+			if strings.HasPrefix(k, "permission-") {
+				grants[k] = fmt.Sprint(v)
+			}
+			if k == "owner" || k == "repositories" {
+				t.Errorf("the mint must cover this repository only; it sets %s: %v", k, v)
+			}
+		}
+		if fmt.Sprint(grants) != fmt.Sprint(map[string]string{"permission-contents": "write", "permission-pull-requests": "write"}) {
+			t.Errorf("mint grants %v, want exactly permission-contents: write and permission-pull-requests: write", grants)
+		}
+	}
+	if !minted {
+		t.Fatal("the reconcile job mints no App token")
+	}
+}
+
 // TestReconcileJobStepWiring is review SEC-2372-2's credential half, read from
-// the YAML: the checkout persists no credential; the App token is minted after
-// every step that touches statusgen, only when the compute step produced a
-// commit, and is referenced by the publish step alone, which runs no statusgen.
+// the YAML: the job checks nothing out into the workspace; the App token is
+// minted after every step that touches statusgen, only when the compute step
+// produced a commit, and is referenced by the publish step alone, which runs no
+// statusgen.
 func TestReconcileJobStepWiring(t *testing.T) {
 	job := stagedWorkflow(t).Jobs["reconcile"]
 	mint, compute, publish, lastStatusgen := -1, -1, -1, -1
 	for i, st := range job.Steps {
 		switch {
 		case strings.HasPrefix(st.Uses, "actions/checkout@"):
-			if fmt.Sprint(st.With["persist-credentials"]) != "false" {
-				t.Errorf("checkout must set persist-credentials: false, got %v", st.With["persist-credentials"])
-			}
-			if _, ok := st.With["token"]; ok {
-				t.Errorf("checkout must not take a token: %v", st.With["token"])
-			}
+			t.Errorf("step %d uses actions/checkout, which keeps a workspace repository an earlier job left", i)
 		case strings.HasPrefix(st.Uses, "actions/create-github-app-token@"):
 			mint = i
 			if st.If != commitGateExpr {
@@ -731,17 +1092,32 @@ func TestReconcileJobStepWiring(t *testing.T) {
 
 // Class guard for SEC-2372-2 — the defect class: a job that mints the
 // board-writer App token (a bypass actor on the default branch) on the shared
-// runner label, without the corroborate job's isolation. knownUnisolated lists
-// the jobs that are live today with that shape; each is a maintainer follow-up
-// on the live workflow and outside this change. The list may only shrink: a
-// listed job that is now isolated, or no longer exists, fails the guard too.
+// runner label, without the corroborate job's toolchain isolation and without
+// git and gh state of its own. knownUnisolated lists the jobs that are live
+// today with that shape; each is a maintainer follow-up on the live workflow
+// and outside this change. The list may only shrink: a listed job that is now
+// isolated, or no longer exists, fails the guard too. The guard reads the
+// YAML's text; what that text does is pinned by the job tests above, which run
+// the reconcile job's steps.
 var knownUnisolated = map[string]bool{
 	"regen":          true,
 	"model-autoflip": true,
 }
 
+// invokes reports whether a run text calls tool as a command on some line.
+func invokes(run, tool string) bool {
+	re := regexp.MustCompile(`(^|[;&|(]\s*|\$\(\s*|\b(if|then|do|exec)\s+)` + regexp.QuoteMeta(tool) + `\s`)
+	for _, line := range strings.Split(run, "\n") {
+		if re.MatchString(strings.TrimSpace(line)) {
+			return true
+		}
+	}
+	return false
+}
+
 // isolationProblems names every way a credentialed job departs from the
-// corroborate job's isolation. A job that mints no App token returns nil.
+// isolation the reconcile job is held to. A job that mints no App token
+// returns nil.
 func isolationProblems(wf workflow, job wfJob) []string {
 	credentialed := false
 	for _, st := range job.Steps {
@@ -760,11 +1136,14 @@ func isolationProblems(wf workflow, job wfJob) []string {
 	if wf.Env["GO_LINUX_AMD64_SHA256"] == "" {
 		p = append(p, "workflow env pins no GO_LINUX_AMD64_SHA256")
 	}
-	callsGh, pinnedGh := false, false
+	callsGh, pinnedGh, ownGitCfg, gitBeforeCfg := false, false, false, false
 	for _, st := range job.Steps {
 		run := st.Run
-		if strings.HasPrefix(st.Uses, "actions/checkout@") && fmt.Sprint(st.With["persist-credentials"]) != "false" {
-			p = append(p, "checkout persists a credential")
+		if strings.HasPrefix(st.Uses, "actions/checkout@") {
+			p = append(p, "uses actions/checkout, which keeps a workspace repository (its hooks and local configuration) an earlier job left")
+			if fmt.Sprint(st.With["persist-credentials"]) != "false" {
+				p = append(p, "checkout persists a credential")
+			}
 		}
 		if strings.Contains(run, "go.dev/dl") {
 			for _, need := range []string{"sha256sum", "$GO_LINUX_AMD64_SHA256", "${RUNNER_TEMP}/go-toolchain",
@@ -783,10 +1162,38 @@ func isolationProblems(wf workflow, job wfJob) []string {
 				p = append(p, fmt.Sprintf("step %q accepts a gh already on PATH", st.Name))
 			}
 		}
-		for _, line := range strings.Split(run, "\n") {
-			l := strings.TrimSpace(line)
-			callsGh = callsGh || strings.HasPrefix(l, "gh ") || strings.Contains(l, "$(gh ") || strings.Contains(l, "\"$(gh ")
+		usesGit, usesGh := invokes(run, "git"), invokes(run, "gh")
+		callsGh = callsGh || usesGh
+		// The step that gives the job its own git and gh configuration: a
+		// global config file of its own with hooks off, the system config
+		// off, repository discovery stopped at RUNNER_TEMP, and a gh config
+		// directory of its own — exported for every later step.
+		if strings.Contains(run, "GIT_CONFIG_GLOBAL=") && strings.Contains(run, "GITHUB_ENV") {
+			for _, need := range []string{"hooksPath = /dev/null", `echo "GIT_CONFIG_GLOBAL=`, `echo "GIT_CONFIG_NOSYSTEM=1"`,
+				`echo "GIT_CEILING_DIRECTORIES=${RUNNER_TEMP}"`, `echo "GH_CONFIG_DIR=${RUNNER_TEMP}/`, "clone", "--template= "} {
+				if !strings.Contains(run, need) {
+					p = append(p, fmt.Sprintf("step %q sets up the job's git without %s", st.Name, need))
+				}
+			}
+			ownGitCfg = true
+		} else if (usesGit || usesGh) && !ownGitCfg {
+			gitBeforeCfg = true
 		}
+		if (usesGit || usesGh || invokes(run, "go")) && !strings.HasPrefix(st.WorkingDirectory, runnerTempExpr) {
+			p = append(p, fmt.Sprintf("step %q runs git, gh or go outside a directory under RUNNER_TEMP", st.Name))
+		}
+		if regexp.MustCompile(`\bpush\s+(-\S+\s+)*origin\b`).MatchString(run) {
+			p = append(p, fmt.Sprintf("step %q pushes to a configured remote, not the forge URL", st.Name))
+		}
+		if strings.Contains(run, "credential.helper=!") || (strings.Contains(run, "credential.") && !strings.Contains(run, `credential.${GITHUB_SERVER_URL}.helper=`)) {
+			p = append(p, fmt.Sprintf("step %q gives a credential helper that is not bound to the forge host", st.Name))
+		}
+	}
+	if !ownGitCfg {
+		p = append(p, "no step gives the job git and gh configuration of its own (GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM, GH_CONFIG_DIR via GITHUB_ENV)")
+	}
+	if gitBeforeCfg {
+		p = append(p, "git or gh runs before the job's own git configuration is in place")
 	}
 	if callsGh && !pinnedGh {
 		p = append(p, "calls gh with no pinned, checksum-verified install")
@@ -809,12 +1216,12 @@ func TestCredentialedJobIsolation(t *testing.T) {
 		case knownUnisolated[name] && len(problems) == 0:
 			t.Errorf("job %q is now isolated — drop it from knownUnisolated", name)
 		case !knownUnisolated[name] && len(problems) > 0:
-			t.Errorf("job %q mints the App token without the corroborate job's isolation:\n  %s", name, strings.Join(problems, "\n  "))
+			t.Errorf("job %q mints the App token without the reconcile job's isolation:\n  %s", name, strings.Join(problems, "\n  "))
 		}
 	}
 	for name := range knownUnisolated {
 		if !seen[name] {
-			t.Errorf("knownUnisolated names %q, which is not a job in %s", name, reconcileJobWorkflow)
+			t.Errorf("knownUnisolated names %q, which is not a job in %s", name, reconcileWorkflowPath())
 		}
 	}
 }
@@ -842,11 +1249,15 @@ jobs:
       - name: use
         run: |
           gh pr list
+          git -c 'credential.helper=!f() { echo password=x; }; f' push origin HEAD
 `
 	wf := parseWorkflow(t, []byte(planted), "planted")
 	got := strings.Join(isolationProblems(wf, wf.Jobs["planted"]), "\n")
-	for _, want := range []string{"GOENV is not off", "GOTOOLCHAIN is not local", "checkout persists a credential",
-		"without sha256sum", "under the runner home", "accepts a gh already on PATH", "no pinned, checksum-verified install"} {
+	for _, want := range []string{"GOENV is not off", "GOTOOLCHAIN is not local", "uses actions/checkout", "checkout persists a credential",
+		"without sha256sum", "under the runner home", "accepts a gh already on PATH", "no pinned, checksum-verified install",
+		"no step gives the job git and gh configuration of its own", "runs before the job's own git configuration",
+		`step "use" runs git, gh or go outside a directory under RUNNER_TEMP`, "pushes to a configured remote",
+		"not bound to the forge host"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("planted job not flagged for %q; got:\n%s", want, got)
 		}
@@ -854,5 +1265,105 @@ jobs:
 	// And the staged reconcile job is flagged on none of them.
 	if p := isolationProblems(stagedWorkflow(t), stagedWorkflow(t).Jobs["reconcile"]); len(p) != 0 {
 		t.Errorf("reconcile job: %v", p)
+	}
+}
+
+// reconcileMutants are edits to the staged job, each of which one named test
+// must catch. TestReconcileJobMutantsFail applies each to a copy of the file
+// and runs that test against the copy: a mutant the test survives fails the
+// suite. Each `from` must occur exactly once, so the list stays bound to the
+// file's text.
+var reconcileMutants = []struct {
+	name, from, to, test string
+}{
+	{"backfill on the schedule",
+		`"$statusgen" reconcile --apply --root .`, `"$statusgen" reconcile --backfill --apply --root .`, "TestReconcileJobStatusgenArgs"},
+	{"forced push (+refspec)",
+		`"${COMMIT}:refs/heads/${branch}"`, `"+${COMMIT}:refs/heads/${branch}"`, "TestReconcileJobNeverForces"},
+	{"forced push (--force)",
+		`push "${GITHUB_SERVER_URL}/${repo}.git"`, `push --force "${GITHUB_SERVER_URL}/${repo}.git"`, "TestReconcileJobNeverForces"},
+	{"README-only refusal removed",
+		`"$readme_only" || foreign=`, `true || foreign=`, "TestReconcileJobRefusesNonReadmeCommit"},
+	{"stray-path guard removed",
+		`if [ -n "$stray" ]; then`, `if false; then`, "TestReconcileJobRefusesStrayPath"},
+	{"repository guard dropped",
+		` && github.repository == 'medici-finance/assay' }}`, ` }}`, "TestReconcileJobTriggerAndScope"},
+	{"contents widened",
+		"      contents: read\n      pull-requests: read\n      issues: read", "      contents: write\n      pull-requests: read\n      issues: read", "TestReconcileJobTriggerAndScope"},
+	{"mint not narrowed",
+		"          permission-contents: write\n", "", "TestReconcileJobTriggerAndScope"},
+	{"detached checkout of fetched main removed",
+		`git checkout -q --detach "$base"`, `true`, "TestReconcileJobComputesOnFetchedMain"},
+	{"commit-output check removed",
+		`''|*[!0-9a-f]*) echo`, `__never__) echo`, "TestReconcileJobRejectsBadCommitOutput"},
+	{"list not paginated",
+		`gh api --paginate "repos/`, `gh api "repos/`, "TestReconcileJobPRQuery"},
+	{"projection reads the base repository",
+		`(.head.repo.full_name // "-")`, `(.base.repo.full_name // "-")`, "TestReconcileJobPRQuery"},
+	{"PR opened as non-draft",
+		`--draft --base "$default_branch"`, `--base "$default_branch"`, "TestReconcileJobFreshBranch"},
+	{"head repository not compared",
+		`[ "$head_repo" != "$repo" ] || `, ``, "TestReconcileJobIgnoresForkPR"},
+	{"head ref not compared",
+		` || [ "$head_ref" != "$branch" ]`, ``, "TestReconcileJobIgnoresForkPR"},
+	{"base not compared",
+		`elif [ "$base_ref" != "$default_branch" ]; then`, `elif false; then`, "TestReconcileJobPRIdentity"},
+	{"second selected PR not refused",
+		`elif [ -n "$own" ]; then`, `elif false; then`, "TestReconcileJobPRIdentity"},
+	{"title not rewritten",
+		`-f "title=${title}" `, ``, "TestReconcileJobRefreshesBody"},
+	{"runner user's git configuration kept",
+		`echo "GIT_CONFIG_GLOBAL=${cfg}"`, `echo "UNUSED_CONFIG=${cfg}"`, "TestReconcileJobIgnoresRunnerResidue"},
+	{"gh configuration directory not the job's own",
+		`echo "GH_CONFIG_DIR=${RUNNER_TEMP}/board-gh-config"`, `echo "UNUSED_DIR=${RUNNER_TEMP}/board-gh-config"`, "TestReconcileJobIgnoresRunnerResidue"},
+	{"publish runs in the workspace",
+		"        working-directory: ${{ runner.temp }}/board-src\n        env:\n          # The WRITE token", "        env:\n          # The WRITE token", "TestReconcileJobIgnoresRunnerResidue"},
+	{"compute runs in the workspace",
+		"        working-directory: ${{ runner.temp }}/board-src\n        env:\n          # The READ token", "        env:\n          # The READ token", "TestReconcileJobIgnoresRunnerResidue"},
+	{"hooks not disabled",
+		`printf '[core]\n\thooksPath = /dev/null\n' > "$cfg"`, `: > "$cfg"`, "TestIsolationGuardFlagsPlant"},
+	{"clone takes the template directory",
+		`--branch main --template= \`, `--branch main \`, "TestIsolationGuardFlagsPlant"},
+	{"push to a configured remote",
+		`push "${GITHUB_SERVER_URL}/${repo}.git" "${COMMIT}`, `push origin "${COMMIT}`, "TestIsolationGuardFlagsPlant"},
+	{"credential helper for any host",
+		`-c "credential.${GITHUB_SERVER_URL}.helper=${helper}"`, `-c "credential.helper=${helper}"`, "TestIsolationGuardFlagsPlant"},
+	{"workspace checkout re-added",
+		"      - name: Clone main into a fresh job-local directory\n", "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: false\n      - name: Clone main into a fresh job-local directory\n", "TestReconcileJobStepWiring"},
+}
+
+// TestReconcileJobMutantsFail is review B6's class guard: each property the job
+// comment and the README say is tested is shown red when its line is reverted.
+// It re-runs this test binary against each mutated copy of the staged file.
+func TestReconcileJobMutantsFail(t *testing.T) {
+	if os.Getenv("RECONCILEJOB_WORKFLOW") != "" {
+		t.Skip("running against a mutant")
+	}
+	requireJobTools(t)
+	raw, err := os.ReadFile(reconcileJobWorkflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range reconcileMutants {
+		m := m
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+			if n := strings.Count(string(raw), m.from); n != 1 {
+				t.Fatalf("mutant text occurs %d times in %s, want 1: %q", n, reconcileJobWorkflow, m.from)
+			}
+			p := filepath.Join(t.TempDir(), "assay-statusgen.yml")
+			if err := os.WriteFile(p, []byte(strings.Replace(string(raw), m.from, m.to, 1)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command(os.Args[0], "-test.run", "^"+m.test+"$", "-test.count=1")
+			cmd.Env = append(os.Environ(), "RECONCILEJOB_WORKFLOW="+p)
+			out, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("mutant survived: %s stays green\n%s", m.test, out)
+			}
+			if !strings.Contains(string(out), "--- FAIL: "+m.test) {
+				t.Fatalf("mutant run failed, but not in %s:\n%s", m.test, out)
+			}
+		})
 	}
 }

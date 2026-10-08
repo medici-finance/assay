@@ -712,9 +712,13 @@ proposal until a maintainer promotes it: the board workflow's hourly reconcile j
 (`ci/staged-workflows/assay-statusgen.yml`), which
 will never push the default branch: it carries a change as one pull request on the branch
 `board/reconcile`, and the push-to-default-branch job keeps writing `STATUS.md` alone.
-Until that promotion, and alongside it after, the desk-side `deskreconcile` verb carries
-changes on the same branch and pull request. Either way a generated table changes only by
-a reviewed pull request.
+Until that promotion, the desk-side `deskreconcile` verb carries changes on the same branch
+and pull request; after it, each of the two replaces the other's tree on that branch
+(the job writes trailer-witnessed rows only, the verb also backfills). Either way a
+Status cell moves to `implemented`, and a table is re-rendered, only by a reviewed pull
+request. Other lifecycle cells are not covered by that sentence: the board workflow's
+`model-autoflip` job and the verify-gate close workflow write their rows on the default
+branch.
 
 32. **A worker's terminal verdict on a PR is a DISPOSITION RECORD, not a prose comment.**
     A conclusion that only a human can read is one a sweep must re-derive. In one

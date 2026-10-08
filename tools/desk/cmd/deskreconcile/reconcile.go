@@ -8,7 +8,7 @@ package main
 //
 //   - `statusgen regen --readmes` PRESERVES the lifecycle columns (Status / Verified /
 //     Reviewed) on every render — it never derives them (statusgen/readmetable.go header),
-//   - the ONLY writer of a Status cell is `statusgen reconcile --backfill --apply`, under
+//   - the writer that flips a Status cell to implemented is `statusgen reconcile --apply`, under
 //     the narrow, safe conditions its own header states — only todo|in-progress ->
 //     implemented, only with a real merged-PR witness, Status cell only
 //     (statusgen/reconcileapply.go header), and

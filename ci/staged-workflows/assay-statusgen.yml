@@ -37,6 +37,9 @@ on:
       - "STATUS.md"
       - "statusgen/**"
       - ".github/workflows/assay-statusgen.yml"
+      # The reconcile job's run: texts below are what statusgen's job tests
+      # execute, so a change to this file's staged copy runs those tests too.
+      - "ci/staged-workflows/assay-statusgen.yml"
   push:
     branches: [main]
     # STATUS.md is deliberately NOT listed and lives at the repo root (outside
@@ -112,6 +115,16 @@ jobs:
       - name: statusgen --lint
         run: |
           "${RUNNER_TEMP}/statusgen" --root . --lint
+      # The reconcile job's tests (statusgen/reconcilejob_test.go), and the
+      # registry check that keeps its write-then-lint sequence passable. The job
+      # tests execute that job's run: texts from this file's staged copy, so an
+      # edit to either meets them on its PR, not first on the hourly schedule.
+      # Hermetic: a local bare origin, stub statusgen and gh, no network, no token.
+      - name: Reconcile job tests
+        run: |
+          set -euo pipefail
+          cd statusgen
+          go test -count=1 -timeout 600s -run '^(TestReconcileJob|TestCredentialedJobIsolation|TestIsolationGuardFlagsPlant|TestStatusKeyedLintRulesRegistered)' .
 
   # Findings-register transition corroboration (statusgen/06, deliverable 7).
   # A job of its own, so no PR-authored code runs before or beside the guard:
@@ -444,13 +457,21 @@ jobs:
             exit 1
           fi
 
+
   # Hourly board reconcile (derived-board/04): writes the GENERATED Briefs tables
   # in every `board: generated` stream README, by pull request only.
   #
-  # The steps' own text is tested end to end: statusgen/reconcilejob_test.go
-  # extracts the two `run:` blocks below (compute, then publish) and executes them
-  # against a throwaway origin with stub statusgen and gh, so an edit here is an
-  # edit to what is tested. One tick, in order:
+  # The three `run:` blocks that touch git (the clone, compute and publish steps
+  # below) are tested end to end: statusgen/reconcilejob_test.go extracts them,
+  # with their `env:` and `working-directory:`, and executes them against a
+  # throwaway origin with stub statusgen and gh. Once this file is promoted, the
+  # board workflow's PR lint job (above) runs that suite on any change to
+  # statusgen/, this file or its staged copy, so an edit here meets those tests;
+  # TestReconcileJobMutantsFail holds a list of edits to this job, each of which
+  # must turn a named test red. What the tests pin, and the job
+  # promises: the reconcile runs without --backfill; a push is a fast-forward,
+  # never forced; a branch carrying a commit not of this job's shape is refused;
+  # only stream READMEs may change. One tick, in order:
   #   1. `statusgen reconcile --apply` (trailer-only: a row is written only for a
   #      merged PR carrying that brief's `Brief:` trailer; the --backfill branch-
   #      name / body-mention / hand-said rules are NOT on this path) — reads PR
@@ -468,7 +489,7 @@ jobs:
   # is a pure function of main plus the PR witnesses. It is committed onto the
   # fixed branch board/reconcile (parents: the old branch tip, plus main when the
   # branch does not already contain it) and pushed as a fast-forward; one draft
-  # PR carries it, and its body is rewritten on every push.
+  # PR carries it, and its title and body are rewritten on every push.
   #
   # Noise floor (spec Q3). The only inputs that can change a README here are a
   # Status cell changing STATE and a frontmatter authoring column changing. A
@@ -498,12 +519,18 @@ jobs:
   #     commit, and is never overwritten.
   #   - A remote that cannot be listed, or a PR list that cannot be read, fails
   #     the tick: a could-not-check is never read as "branch absent" or "PR open".
-  #   - The open-PR lookup is bound to THIS repository's own branch: the query
-  #     names the head as <owner>:board/reconcile, and the step then keeps only
-  #     entries whose head repository is this one and whose head ref is the
-  #     branch. A head filter on the bare branch name also returns pull requests
-  #     from forks whose branch has the same name — which any account can open —
-  #     and such a look-alike must never read as "our PR is already open".
+  #   - Which open PR is ours. The query names the head as
+  #     <owner>:board/reconcile; the step then keeps only entries whose head
+  #     repository is this one, whose head ref is the branch AND whose base is
+  #     main, naming and skipping every other entry. A head filter on the bare
+  #     branch name also returns pull requests from forks whose branch has the
+  #     same name, and anyone can open a pull request from THIS repository's own
+  #     branch into any base: neither may read as "our PR is already open". More
+  #     than one entry left fails the tick rather than pick one. The one entry
+  #     left is adopted whoever opened it — the forge does not let this job bind
+  #     the opener (the desk-side writer opens the same PR under another
+  #     identity) — so every push rewrites its title and body: what a maintainer
+  #     is asked to merge is this branch into main, under this job's text.
   #
   # Loop guards. The scheduled event cannot match the pull_request/push `if:`
   # of any other job, and the repository guard keeps a fork's schedule from
@@ -513,20 +540,36 @@ jobs:
   # touches STATUS.md only and carries the marker.
   #
   # Credentials and isolation. The job runs on the runner label that also runs
-  # pull-request code, so it takes the corroborate job's isolation: Go and every
-  # Go cache under RUNNER_TEMP, the Go tarball checksum-verified before unpack,
-  # GOENV off, GOFLAGS cleared, GOTOOLCHAIN local, and gh always the pinned,
-  # checksum-verified tarball, never one already on PATH. The checkout persists
-  # NO credential, and the compute step (git reads of this public repository,
-  # and every statusgen run) holds only the read-only default token. The
-  # assay-board-writer App token — the bypass actor on the default branch's
-  # rulesets, see the regen job — is minted only AFTER the compute step, only
-  # when it produced a commit to carry, and reaches the publish step alone: the
-  # branch push (a credential helper reading it from the step env, never a
-  # persisted header) and the PR calls. Opening or editing the PR needs that App
-  # to hold `Pull requests: write`; if it does not, the publish step fails loudly
-  # after the push and the pushed branch waits for the grant. (An App push,
-  # unlike a GITHUB_TOKEN push, triggers the PR lint workflow on the branch.)
+  # pull-request code, so it assumes the runner may carry state an earlier job
+  # left, and reads none of it:
+  #   - Go and every Go cache under RUNNER_TEMP (emptied by the runner at the
+  #     start of every job), the Go tarball checksum-verified before unpack, GOENV
+  #     off, GOFLAGS cleared, GOTOOLCHAIN local; gh always the pinned,
+  #     checksum-verified tarball, never one already on PATH — the corroborate
+  #     job's isolation.
+  #   - No git command runs in the workspace. actions/checkout keeps an existing
+  #     workspace repository, and with it any hooks and local configuration
+  #     (remote and push addresses, URL rewrites) an earlier job planted there,
+  #     so this job does not use it: the first step clones main into a fresh
+  #     directory under RUNNER_TEMP, and every later git command runs there.
+  #   - No git command reads the runner user's or the system git configuration:
+  #     the first step points GIT_CONFIG_GLOBAL at a job-local file that turns
+  #     hooks off (core.hooksPath=/dev/null), sets GIT_CONFIG_NOSYSTEM, and stops
+  #     repository discovery at RUNNER_TEMP; gh reads a job-local GH_CONFIG_DIR.
+  #   - The push names the forge URL explicitly, never a configured remote, and
+  #     the credential helper answers for that host only.
+  # The compute step (git reads of this public repository, and every statusgen
+  # run) holds only the read-only default token. The assay-board-writer App
+  # token — the bypass actor on the default branch's rulesets, see the regen job
+  # — is minted only AFTER the compute step, only when it produced a commit to
+  # carry, narrowed to `contents: write` and `pull-requests: write` on this
+  # repository, and is referenced by the publish step alone: the branch push (a
+  # credential helper reading it from the step env, never a persisted header)
+  # and the PR calls. If the App does not hold both grants the mint fails and
+  # nothing is pushed. (An App push, unlike a GITHUB_TOKEN push, triggers the PR
+  # lint workflow on the branch.) Out of reach of this job, and assumed: the
+  # runner's own binaries (git, bash, curl), which no job may write, and a
+  # runner that ends every process of an earlier job when that job ends.
   reconcile:
     if: ${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}
     runs-on: medici-builder-public
@@ -540,10 +583,24 @@ jobs:
       GOENV: "off"
       GOTOOLCHAIN: local
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # the carried-branch checks walk main..board/reconcile ancestry
-          persist-credentials: false
+      # First, before any git command: a fresh clone under RUNNER_TEMP, and git
+      # and gh configuration that is this job's own. The workspace (and any
+      # repository an earlier job left in it) is never read.
+      - name: Clone main into a fresh job-local directory
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          cfg="${RUNNER_TEMP}/board-gitconfig"
+          printf '[core]\n\thooksPath = /dev/null\n' > "$cfg"
+          export GIT_CONFIG_GLOBAL="$cfg" GIT_CONFIG_NOSYSTEM=1 GIT_CEILING_DIRECTORIES="${RUNNER_TEMP}"
+          {
+            echo "GIT_CONFIG_GLOBAL=${cfg}"
+            echo "GIT_CONFIG_NOSYSTEM=1"
+            echo "GIT_CEILING_DIRECTORIES=${RUNNER_TEMP}"
+            echo "GH_CONFIG_DIR=${RUNNER_TEMP}/board-gh-config"
+          } >> "${GITHUB_ENV}"
+          git clone --quiet --no-tags --single-branch --branch main --template= \
+            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" "${RUNNER_TEMP}/board-src"
       # The corroborate job's install, unchanged: toolchain and caches under
       # RUNNER_TEMP, never $HOME; the tarball checksum-pinned.
       - name: Install Go (job-local toolchain and caches, checksum-verified)
@@ -567,10 +624,11 @@ jobs:
             echo "GOFLAGS="
           } >> "${GITHUB_ENV}"
       - name: Build statusgen from source
+        working-directory: ${{ runner.temp }}/board-src/statusgen
         run: |
           set -euo pipefail
           go version
-          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+          go build -o "${RUNNER_TEMP}/statusgen" .
       # Always the pinned tarball, never a gh already on PATH: the publish step
       # hands it the board-writer token.
       - name: Install gh CLI (pinned, checksum-verified)
@@ -589,6 +647,7 @@ jobs:
       # Compute: read-only. No write credential exists yet in this job.
       - name: Reconcile and regenerate the stream README tables
         id: compute
+        working-directory: ${{ runner.temp }}/board-src
         env:
           # The READ token: statusgen reconcile resolves it from GITHUB_TOKEN.
           GITHUB_TOKEN: ${{ github.token }}
@@ -691,9 +750,15 @@ jobs:
         with:
           app-id: ${{ secrets.BOARD_APP_ID }}
           private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+          # Narrowed to what the publish step does: one branch push, one PR
+          # create or edit. With no owner input the token covers this
+          # repository only.
+          permission-contents: write
+          permission-pull-requests: write
       # Publish: the only step that holds the write token. It runs no statusgen.
       - name: Push board/reconcile and open or refresh its draft PR
         if: ${{ steps.compute.outputs.commit != '' }}
+        working-directory: ${{ runner.temp }}/board-src
         env:
           # The WRITE token: the push (through the credential helper below) and
           # the PR list/create/edit calls.
@@ -704,47 +769,56 @@ jobs:
           repo="${GITHUB_REPOSITORY}"
           owner="${repo%%/*}"
           branch="board/reconcile"
+          default_branch="main"
+          title='chore(board): reconcile'
           case "$COMMIT" in
             ''|*[!0-9a-f]*) echo "::error::the compute step's commit output is not an object name"; exit 1 ;;
           esac
           git cat-file -e "${COMMIT}^{commit}"
-          # The token reaches git through a helper that reads it from this step's
-          # env at request time: nothing is written to .git/config.
-          git -c credential.helper= \
-            -c 'credential.helper=!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=${GH_TOKEN}"; fi; }; f' \
-            push origin "${COMMIT}:refs/heads/${branch}"
+          # The push names the forge URL, never a configured remote, and the
+          # helper answers for that host only. It reads the token from this
+          # step's env at request time: nothing is written to .git/config.
+          helper='!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=${GH_TOKEN}"; fi; }; f'
+          git -c credential.helper= -c "credential.${GITHUB_SERVER_URL}.helper=${helper}" \
+            push "${GITHUB_SERVER_URL}/${repo}.git" "${COMMIT}:refs/heads/${branch}"
           body="${RUNNER_TEMP}/reconcile-pr-body.md"
           {
             echo "Scheduled board reconcile."
             echo
-            echo "Flips a stream README Status cell from todo or in-progress to implemented when a merged PR carrying that brief's \`Brief:\` trailer witnesses it, and re-renders the generated Briefs tables from brief frontmatter. Only stream README files change; Verified and Reviewed cells and everything outside the generated markers are untouched. A row whose flip would add a lint problem is held and listed below, not written. This text is rewritten on every push to the branch."
+            echo "Flips a stream README Status cell from todo or in-progress to implemented when a merged PR carrying that brief's \`Brief:\` trailer witnesses it, and re-renders the generated Briefs tables from brief frontmatter. Only stream README files change; Verified and Reviewed cells and everything outside the generated markers are untouched. A row whose flip would add a lint problem is held and listed below, not written. This text and the title are rewritten on every push to the branch."
             echo
             echo '```'
             sed -n '/^reconcile --apply:/,$p' "${RUNNER_TEMP}/reconcile-out.txt"
             echo '```'
           } > "$body"
-          # Our PR is the open one whose head is THIS repository's own branch. The
-          # owner-qualified head narrows the query; the loop then binds the match
-          # to this repository and branch by value, so a fork's pull request from a
-          # same-named branch is never read as ours, whatever the filter returns.
+          # Our PR is the one open PR from THIS repository's own branch into main.
+          # The owner-qualified head narrows the query; the loop then binds each
+          # entry by value — head repository, head ref and base — so a fork's
+          # same-named branch, or a PR from this branch into another base, is
+          # named and skipped, whatever the filter returns. Two left fail the tick.
           # A list that cannot be read fails here (errexit on the assignment): a
           # could-not-check is never read as "a PR is open".
-          pulls="$(gh api --paginate "repos/${repo}/pulls?state=open&per_page=100&head=${owner}:${branch}" --jq '.[] | [.number, (.head.repo.full_name // ""), .head.ref] | @tsv')"
+          pulls="$(gh api --paginate "repos/${repo}/pulls?state=open&per_page=100&head=${owner}:${branch}" --jq '.[] | [.number, (.head.repo.full_name // "-"), .head.ref, .base.ref] | @tsv')"
           own=""
-          while IFS=$'\t' read -r num head_repo head_ref; do
+          while IFS=$'\t' read -r num head_repo head_ref base_ref; do
             [ -n "$num" ] || continue
             case "$num" in
               *[!0-9]*) echo "::error::the PR list returned an entry with no PR number — refusing to guess"; exit 1 ;;
             esac
-            if [ "$head_repo" = "$repo" ] && [ "$head_ref" = "$branch" ]; then
-              own="$num"
-            else
+            if [ "$head_repo" != "$repo" ] || [ "$head_ref" != "$branch" ]; then
               echo "ignoring open PR #${num}: its head is not this repository's ${branch}"
+            elif [ "$base_ref" != "$default_branch" ]; then
+              echo "ignoring open PR #${num}: it targets ${base_ref}, not ${default_branch}"
+            elif [ -n "$own" ]; then
+              echo "::error::open PRs #${own} and #${num} both carry ${branch} into ${default_branch} — refusing to pick one; close all but one"
+              exit 1
+            else
+              own="$num"
             fi
           done <<< "$pulls"
           if [ -n "$own" ]; then
-            gh api --method PATCH "repos/${repo}/pulls/${own}" -F "body=@${body}" > /dev/null
-            echo "PR #${own} already carries ${branch} — the push above updated it, and its body was rewritten"
+            gh api --method PATCH "repos/${repo}/pulls/${own}" -f "title=${title}" -F "body=@${body}" > /dev/null
+            echo "PR #${own} already carries ${branch} — the push above updated it, and its title and body were rewritten"
             exit 0
           fi
-          gh pr create --repo "$repo" --draft --base main --head "$branch" --title 'chore(board): reconcile' --body-file "$body"
+          gh pr create --repo "$repo" --draft --base "$default_branch" --head "$branch" --title "$title" --body-file "$body"
