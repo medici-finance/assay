@@ -1,0 +1,29 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7"
+    }
+  ],
+  "result": {
+    "Number": 7,
+    "State": "closed",
+    "Draft": false,
+    "NodeID": "PR_node",
+    "ChangedFiles": 0,
+    "Author": {
+      "Login": "worker[bot]",
+      "ID": 99
+    },
+    "HeadSHA": "abc123",
+    "Mergeable": "UNKNOWN",
+    "Labels": [],
+    "URL": "",
+    "HeadRef": "feat/x",
+    "BaseRef": "main",
+    "UpdatedAt": "",
+    "MergedAt": "2026-09-10T12:00:00Z",
+    "Merged": true,
+    "MergeCommitSHA": "fff999"
+  }
+}

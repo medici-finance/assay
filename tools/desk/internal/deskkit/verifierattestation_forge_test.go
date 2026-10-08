@@ -40,6 +40,8 @@ func TestVerifierAttestationGitLabIssueContract(t *testing.T) {
 			body, _ = in["description"].(string)
 			w.WriteHeader(201)
 			encode(issue())
+		case r.Method == "GET" && strings.HasPrefix(p, "/api/v4/users/"):
+			encode(map[string]any{"id": 1, "username": "example-desk", "bot": true})
 		case r.Method == "GET" && strings.HasSuffix(p, "/issues/41"):
 			encode(issue())
 		case r.Method == "GET" && strings.HasSuffix(p, "/issues/41/resource_label_events"):

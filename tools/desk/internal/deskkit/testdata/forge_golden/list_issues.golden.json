@@ -1,0 +1,59 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[IssueState!],$labels:[String!]){repository(owner:$owner,name:$name){issues(states:$states,labels:$labels,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title state createdAt closedAt url labels(first:100){nodes{name} pageInfo{hasNextPage}} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}",
+        "variables": {
+          "after": null,
+          "first": 100,
+          "labels": [
+            "gate: human"
+          ],
+          "name": "assay",
+          "owner": "medici-finance",
+          "states": [
+            "OPEN",
+            "CLOSED"
+          ]
+        }
+      }
+    }
+  ],
+  "result": {
+    "Issues": [
+      {
+        "Number": 13,
+        "Title": "still open",
+        "Author": {
+          "Login": "worker[bot]",
+          "ID": 99,
+          "Type": "Bot"
+        },
+        "Labels": [
+          "gate: human"
+        ],
+        "CreatedAt": "2026-09-02T09:00:00Z",
+        "URL": "https://example/issues/13",
+        "State": "open"
+      },
+      {
+        "Number": 12,
+        "Title": "done",
+        "Author": {
+          "Login": "someone",
+          "ID": 5,
+          "Type": "User"
+        },
+        "Labels": [],
+        "CreatedAt": "2026-09-01T09:00:00Z",
+        "URL": "https://example/issues/12",
+        "State": "closed",
+        "ClosedAt": "2026-09-03T09:00:00Z"
+      }
+    ],
+    "Incomplete": false,
+    "PageCap": 100
+  }
+}

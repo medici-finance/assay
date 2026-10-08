@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7"
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7/commits",
+      "query": "per_page=100\u0026page=1"
+    }
+  ],
+  "result": {
+    "SHAs": [
+      "aaa111",
+      "bbb222"
+    ],
+    "Complete": true
+  }
+}

@@ -15,30 +15,35 @@
       {
         "Number": 7,
         "State": "OPEN",
-        "HeadSHA": "aaa111",
-        "HeadRef": "feat/a",
-        "Title": "open work",
-        "Body": "Brief: example-a/00",
+        "HeadSHA": "abc123",
+        "HeadRef": "feat/x",
+        "Title": "add the thing",
+        "Body": "",
         "MergedAt": "",
         "Author": {
           "Login": "worker-bot",
-          "ID": 99
+          "ID": 99,
+          "Type": "Bot"
         },
-        "BaseRef": "main"
+        "BaseRef": "main",
+        "CrossRepo": "same",
+        "HeadRepo": "medici-finance/assay"
       },
       {
         "Number": 8,
-        "State": "MERGED",
-        "HeadSHA": "bbb222",
-        "HeadRef": "feat/b",
-        "Title": "landed work",
-        "Body": "Brief: example-b/01",
-        "MergedAt": "2026-09-10T12:00:00Z",
+        "State": "OPEN",
+        "HeadSHA": "abc123",
+        "HeadRef": "feat/fork",
+        "Title": "add the thing",
+        "Body": "",
+        "MergedAt": "",
         "Author": {
           "Login": "worker-bot",
-          "ID": 99
+          "ID": 99,
+          "Type": "Bot"
         },
-        "BaseRef": "main"
+        "BaseRef": "main",
+        "CrossRepo": "fork"
       }
     ],
     "Incomplete": false,
