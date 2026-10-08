@@ -126,8 +126,16 @@ reviewable artifact, not a run.
   (derived-board/04): a `schedule:` trigger guarded to this repository (a fork's schedule
   never runs it), a read-only token (`contents`, `pull-requests`, `issues`: read) for the
   PR-witness reads, and one draft pull request on `board/reconcile` carrying any generated
-  stream-README change. The reconcile step's own `run:` text is
-  tested end to end by `statusgen/reconcilejob_test.go`, which extracts it from the staged YAML. The
+  stream-README change. The job runs in two steps. The compute step runs `statusgen`
+  holding only the read token and emits the commit it made. The publish step runs no
+  `statusgen`; it pushes that commit and opens or refreshes the PR. The board-writer App
+  token is minted only when there is a commit, and only the publish step sees it. The job
+  uses the corroborate job's isolation: a job-local, checksum-verified Go toolchain and
+  caches, `GOENV=off`, a pinned gh (never one already on PATH), and a checkout that
+  persists no credential. It recognises its own PR by this repository's head, never by
+  branch name alone. Both steps' `run:` texts are tested end to end by
+  `statusgen/reconcilejob_test.go`, which extracts them from the staged YAML. The same
+  file guards every job that mints the App token for that isolation. The
   job never pushes the default branch, and scheduled runs sit in their own concurrency
   group so they cannot displace a pending push regen. **Staged, not live** — classified
   by its `assay-statusgen.yml.pending` companion, not the manifest, so the drift guard
