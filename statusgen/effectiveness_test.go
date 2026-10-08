@@ -251,3 +251,105 @@ effectiveness: "go test ./x -run TestY"
 		t.Fatalf("register integrity must surface the partial record once, got %v", regMsgs)
 	}
 }
+
+// The closure obligation is enforced where run() turns the two closure rules'
+// slices into PROBLEM / NOTICE lines and an exit code. This drives the lint entry
+// point over a temp tree so that wiring is pinned, not just the functions: a
+// mutant that drops the calls in run(), or appends their problems to notices,
+// fails here.
+func TestEffClosureLintEntryPoint(t *testing.T) {
+	lintWith := func(t *testing.T, entry string) capturedRun {
+		t.Helper()
+		root := t.TempDir()
+		if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
+			t.Fatal(err)
+		}
+		if entry != "" {
+			dir := filepath.Join(root, "docs", "streams", "findings")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "F-under-test.md"), []byte("---\n"+entry+"---\n\nbody\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return captureRun(t, func() int { return run(root, "lint", nil, nil, "") })
+	}
+	// Tags are matched as LITERALS, not through the effTag* constants: the tag text
+	// is the stable interface the firing audit (lintaudit.go) and readers key on, so
+	// a rename must fail here rather than move silently with the constant.
+	lines := func(stderr, prefix, tag string) int {
+		n := 0
+		for _, l := range strings.Split(stderr, "\n") {
+			if strings.HasPrefix(l, prefix) && strings.Contains(l, tag) && strings.Contains(l, "F-under-test") {
+				n++
+			}
+		}
+		return n
+	}
+	entry := func(date, extra string) string {
+		return "id: F-under-test\ndate: \"" + date + "\"\ntitle: \"under test\"\naffects: [\"alpha/02\"]\nresolved: true\n" + extra
+	}
+
+	// Positive control: the fixture tree on its own lints clean, so any non-zero
+	// exit below is the finding under test, not the tree.
+	if r := lintWith(t, ""); r.code != 0 {
+		t.Fatalf("control: goodrepo must lint clean, exit %d\n%s", r.code, r.err)
+	}
+
+	t.Run("post-boundary resolved, no record", func(t *testing.T) {
+		r := lintWith(t, entry(effAfter, ""))
+		if r.code == 0 {
+			t.Errorf("want non-zero exit, got 0\n%s", r.err)
+		}
+		if lines(r.err, "PROBLEM:", "[effectiveness-missing]") != 1 {
+			t.Errorf("want one PROBLEM [effectiveness-missing] line\n%s", r.err)
+		}
+		if lines(r.err, "NOTICE:", "[effectiveness-missing]") != 0 {
+			t.Errorf("must not be demoted to a NOTICE\n%s", r.err)
+		}
+	})
+
+	t.Run("pre-boundary resolved, no record", func(t *testing.T) {
+		r := lintWith(t, entry(effBefore, ""))
+		if r.code != 0 {
+			t.Errorf("an inherited finding must not change the exit, got %d\n%s", r.code, r.err)
+		}
+		if lines(r.err, "NOTICE:", "[effectiveness-missing]") != 1 {
+			t.Errorf("want one NOTICE [effectiveness-missing] line\n%s", r.err)
+		}
+		if lines(r.err, "PROBLEM:", "[effectiveness-missing]") != 0 {
+			t.Errorf("must not be a PROBLEM\n%s", r.err)
+		}
+	})
+
+	t.Run("recurring, landed control, no record", func(t *testing.T) {
+		r := lintWith(t, entry(effAfter, "class: recurring\ncontrol: \"alpha/01\"\n"))
+		if r.code == 0 {
+			t.Errorf("want non-zero exit, got 0\n%s", r.err)
+		}
+		if lines(r.err, "PROBLEM:", "[finding-control-unfired]") != 1 {
+			t.Errorf("want one PROBLEM [finding-control-unfired] line\n%s", r.err)
+		}
+		if lines(r.err, "PROBLEM:", "[effectiveness-missing]") != 0 {
+			t.Errorf("the generic rule must not double-report it\n%s", r.err)
+		}
+	})
+
+	t.Run("partial record", func(t *testing.T) {
+		r := lintWith(t, entry(effAfter, "effectiveness: \"go test ./x -run TestY\"\n"))
+		if r.code == 0 {
+			t.Errorf("want non-zero exit, got 0\n%s", r.err)
+		}
+		if lines(r.err, "PROBLEM:", "[effectiveness-partial]") != 1 {
+			t.Errorf("want one PROBLEM [effectiveness-partial] line\n%s", r.err)
+		}
+	})
+
+	t.Run("post-boundary resolved, full record", func(t *testing.T) {
+		r := lintWith(t, entry(effAfter, "effectiveness: \"go test ./x -run TestY\"\neffectiveness-date: \"2026-10-10\"\neffectiveness-by: \"human:ian\"\n"))
+		if r.code != 0 {
+			t.Errorf("a complete record must lint clean, got %d\n%s", r.code, r.err)
+		}
+	})
+}
