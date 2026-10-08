@@ -143,15 +143,34 @@ func (g *GitLabForge) client() (*gitlab.Client, error) {
 		gitlab.WithoutRetries(),
 		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
 	}
-	if g.Client != nil {
-		opts = append(opts, gitlab.WithHTTPClient(g.Client))
-	}
+	opts = append(opts, gitlab.WithHTTPClient(gitlabNoRedirectClient(g.Client)))
 	cl, err := gitlab.NewClient(g.Token, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab API client", err)
 	}
 	g.cl = cl
 	return cl, nil
+}
+
+// gitlabNoRedirectClient is the HTTP client every GitLab call in this backend goes through: a
+// COPY of the injected client (or a fresh one when none is injected — production) that follows
+// no redirect at all. The reason is the credential's shape (review finding SEC-1). GitLab
+// authenticates with PRIVATE-TOKEN, a custom header, and net/http strips only Authorization and
+// cookies when it follows a redirect to another host — every other header goes with it — so a
+// followed redirect hands the role's token to whatever host the Location names. The trigger call
+// carries its token in the request BODY, which a 307/308 re-sends. The GitLab API answers its
+// own routes directly, run-log traces included, so no call here needs a redirect: a 3xx comes
+// back as the response, the library reports it as an error, and mapErr makes it a could-not-check
+// naming the status. The copy leaves the caller's client untouched.
+// forge_redirect_test.go pins it over the wire; gitlabcredsites_test.go lists every site.
+func gitlabNoRedirectClient(base *http.Client) *http.Client {
+	c := &http.Client{}
+	if base != nil {
+		cp := *base
+		c = &cp
+	}
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return c
 }
 
 // project renders a ForgeRepo as the URL-encoded project path GitLab addresses projects by
@@ -4137,7 +4156,8 @@ const gitlabPipelineDefinition = ".gitlab-ci.yml"
 // PRIVATE-TOKEN header: the pipeline trigger token authenticates as a `token` field of the
 // request itself, and presenting it as an access token too would both misuse it and have the
 // instance reject the call as an invalid access token. The same three construction choices
-// client() makes (no retries, no internal limiter, the injected HTTP client) apply, and an
+// client() makes (no retries, no internal limiter, the injected HTTP client with redirects
+// refused — gitlabNoRedirectClient) apply, and an
 // empty token is refused here too — the trigger call never goes out anonymous.
 func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
 	if g.Token == "" {
@@ -4149,9 +4169,7 @@ func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
 		gitlab.WithoutRetries(),
 		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
 	}
-	if g.Client != nil {
-		opts = append(opts, gitlab.WithHTTPClient(g.Client))
-	}
+	opts = append(opts, gitlab.WithHTTPClient(gitlabNoRedirectClient(g.Client)))
 	cl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab trigger client", err)

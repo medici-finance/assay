@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden|TestRunLog|TestForgeNoPassthroughAfterRunLogRetry'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden|TestRunLog|TestForgeNoPassthroughAfterRunLogRetry|RedirectKeepsToken|RedirectDropsToken|NilClientRefusesRedirect|InjectedClientRefusesRedirect|TestGitLabCred'",
   "control": {
     "name": "CONTROL — the GitHub dispatch body loses its ref",
     "file": "internal/deskkit/forge_github.go",
@@ -161,7 +161,7 @@
       "name": "review B6 — GitLab reads only the first page of a pipeline's jobs",
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages",
-      "new": "\t\tif true {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages"
+      "new": "\t\tif _ = resp; true {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages"
     },
     {
       "name": "review B6 — a GitLab job list past the page bound returns the pages read as the whole list",
@@ -180,6 +180,36 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
       "new": "\t\tsink := &runLogSink{limit: lim.readCap, keep: 0}"
+    },
+    {
+      "name": "review SEC-1 — the GitLab backend's client follows redirects again (CheckRedirect dropped)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }\n\treturn c\n}",
+      "new": "\treturn c\n}"
+    },
+    {
+      "name": "review SEC-1 — client() uses the injected client as given, or the library default (the pre-fix construction)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\topts = append(opts, gitlab.WithHTTPClient(gitlabNoRedirectClient(g.Client)))\n\tcl, err := gitlab.NewClient(",
+      "new": "\tif g.Client != nil {\n\t\topts = append(opts, gitlab.WithHTTPClient(g.Client))\n\t}\n\tcl, err := gitlab.NewClient("
+    },
+    {
+      "name": "review SEC-1 — the trigger client follows redirects (a 307 re-sends the trigger token in the body)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\topts = append(opts, gitlab.WithHTTPClient(gitlabNoRedirectClient(g.Client)))\n\tcl, err := gitlab.NewAuthSourceClient(",
+      "new": "\tif g.Client != nil {\n\t\topts = append(opts, gitlab.WithHTTPClient(g.Client))\n\t}\n\tcl, err := gitlab.NewAuthSourceClient("
+    },
+    {
+      "name": "review SEC-1 sibling — the liveness fetcher uses an injected client as given (follows redirects with PRIVATE-TOKEN)",
+      "file": "internal/deskkit/trustliveness_gitlab.go",
+      "old": "\t\treturn gitlabNoRedirectClient(f.Client)",
+      "new": "\t\treturn f.Client"
+    },
+    {
+      "name": "review SEC-1 class guard — a listed credential site is dropped from the register",
+      "file": "internal/deskkit/gitlabcredsites_test.go",
+      "old": "\t\"internal/deskkit/forge_gitlab.go|triggerClient|client\": \"TestGitLabClientRedirectKeepsToken\",\n",
+      "new": ""
     }
   ]
 }

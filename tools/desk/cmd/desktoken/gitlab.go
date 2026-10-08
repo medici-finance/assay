@@ -240,6 +240,23 @@ func gitlabRepoResolved(repo string) bool {
 	return res.Kind == deskkit.ForgeGitLab
 }
 
+// gitlabHTTPClient is the client every GitLab call in this command goes through: a copy of the
+// httpClient hook that follows NO redirect (review finding SEC-1). Both GitLab calls send
+// PRIVATE-TOKEN, a custom header net/http forwards when it follows a redirect to another host
+// (it strips only Authorization and cookies), so a followed redirect would hand the current or
+// the new token to whatever host the Location names. GitLab answers both endpoints directly; a
+// 3xx comes back as the response and is handled as any other non-200 status. The GitHub calls in
+// this command send Authorization, which net/http drops on a cross-host redirect, and keep
+// httpClient as it is.
+func gitlabHTTPClient() *http.Client {
+	c := http.Client{}
+	if httpClient != nil {
+		c = *httpClient
+	}
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &c
+}
+
 // gitlabRotateResult is the subset of the rotation response this command consumes. The token
 // value is written to the custody file and NEVER printed; expires_at is reported (a date, not
 // a secret) so the audit line records the backstop the group policy applied.
@@ -267,7 +284,7 @@ func rotateGitLabToken(base, current string) (*gitlabRotateResult, error) {
 	req.Header.Set("PRIVATE-TOKEN", current)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := gitlabHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("POST rotate: %w", err)
 	}
@@ -316,7 +333,7 @@ func gitlabSelfCheck(base, token string) (int, error) {
 	req.Header.Set("PRIVATE-TOKEN", token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	resp, err := gitlabHTTPClient().Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("GET %s: %w", gitlabSelfCheckPath, err)
 	}
