@@ -109,23 +109,31 @@ type LintRule struct {
 // EnforcementStatusTracksTheLint test proves.
 var lintRuleRegistry = []LintRule{
 	{"verify-row-portability", "a Verify row hardcodes /tmp, sh/bash -c or findstr without an explicit OS marker (TMPDIR fallback is exempt)", StatusAdvisory},
-	// Verify-row shape lint (verifyrows.go) — all advisory (unfailable notices).
-	{ruleERELiteralPipe, "a `\\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind", StatusAdvisory},
-	{ruleGrepZeroCount, "a `grep -c` whose pass bar is satisfied by a zero count measures nothing", StatusAdvisory},
-	{ruleExitSwallowed, "a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail", StatusAdvisory},
-	{ruleRE2LiteralPipe, "a `\\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation", StatusAdvisory},
-	{ruleMetavar, "an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written", StatusAdvisory},
-	{ruleGoRunExit, "a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success", StatusAdvisory},
-	{ruleBREAlternation, "a pipe in a basic-regex grep pattern (no `-E`/`-P`) is an ordinary character, so the pattern matches the Verify row itself", StatusAdvisory},
-	{ruleShreddedCell, "a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column", StatusAdvisory},
-	{ruleMovingRef, "a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it", StatusAdvisory},
-	{rulePortability, "a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on", StatusAdvisory},
+	// Verify-row shape lint (verifyrows.go). R1–R10 (docs/verify-row-strength.md)
+	// are fatal for a closure the branch makes and NOTICEs everywhere else — the
+	// differential shape stream-cap uses below (verify-integrity/03). The rest of
+	// the family is advisory.
+	{ruleERELiteralPipe, "a `\\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{ruleGrepZeroCount, "a `grep -c` whose pass bar is satisfied by a zero count measures nothing — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{ruleExitSwallowed, "a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{ruleRE2LiteralPipe, "a `\\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{ruleMetavar, "an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{ruleGoRunExit, "a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{ruleBREAlternation, "a pipe in a basic-regex grep pattern (no `-E`/`-P`) is an ordinary character, so the pattern matches the Verify row itself — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{ruleShreddedCell, "a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{ruleMovingRef, "a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
+	{rulePortability, "a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief", StatusFatal},
 	{ruleGoTestRunVacuous, "a `go test -run` selector with no `--- PASS` assertion in the same command, so the row passes whether or not the named test exists, is built, or was ever renamed away (open briefs only; a closed brief's rows are summarised, not individually flagged)", StatusAdvisory},
 	{ruleProseLedCommand, "a prose Command cell whose first code span — the text the lift returns — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; verifyrun records the row could-not-run until the command is marked with a `cmd:` code span", StatusAdvisory},
 	{ruleCmdMarkerAmbiguous, "a Command cell carrying more than one `cmd:`-marked code span, so which command the row names is ambiguous", StatusAdvisory},
 	{ruleCmdMarkerOverrides, "a `cmd:` marker that replaces a first code span which reads as a command itself (multi-word), so the row runs something other than the span a reader sees first", StatusAdvisory},
 	{ruleCmdMarkerNotHonoured, "a `cmd:` span verifyrun ignores because the rendered cell may not show it as code (backslash-escaped backticks; raw HTML, a link, an image, a dollar in any spelling or a character reference in the cell's prose; a span fused to the text before it; or a marker not set apart by whitespace), so the row runs its first span", StatusAdvisory},
 	{ruleCmdMarkerVacuous, "a `cmd:`-marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`), so the row passes whatever the tree holds", StatusAdvisory},
+	// Verify-row strength heuristics R11–R13 (strength.go, verify-integrity/03):
+	// advisory everywhere — they flag weak rows, not provably unfailable ones.
+	{ruleTriviallyGreen, "a command that exits 0 whatever the tree holds — `true`, `echo ok`, a trailing `|| true`, a `git log --grep` with no count, or an existence test on a path the brief itself declares", StatusAdvisory},
+	{ruleNoOutputAssert, "an Expect of exactly `exit 0` on a command whose output nobody asserts on (use `exit 0; output contains \"<literal>\"` or `exit 0; <N> lines`)", StatusAdvisory},
+	{ruleTableNoFiles, "no Verify command references any path the brief's `files:` declares, so the table may prove nothing about the change (an unparseable `files:` is COULD-NOT-CHECK)", StatusAdvisory},
 
 	// consumers: routed-consumer lint (consumers.go). One class is fatal.
 	{"consumers-followup-missing-brief", "a `consumers: follow-up <stream>/<NN>` whose target is not a brief in any stream README — the routing claim is false", StatusFatal},

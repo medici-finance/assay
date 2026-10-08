@@ -544,11 +544,21 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// Inert with no --changed set, exactly like the DAR check.
 	notices = append(notices, verifyScriptDiffNotices(changed)...)
 	// Unfailable Verify rows: a row whose command is structurally
-	// incapable of failing manufactures evidence. NOTICE this phase — the rules
-	// fire on briefs already on main, many of them closed, and rewriting a closed
-	// brief's Verify table to green the gate is the very falsification the check
-	// exists to catch. Flip to a hard problem once the active streams are clean.
-	notices = append(notices, unfailableRowNotices(checkStreams)...)
+	// incapable of failing manufactures evidence. Transition-scoped
+	// (verify-integrity/03): R1–R10 are a PROBLEM on a closure THIS branch makes
+	// and stay a NOTICE on every brief already closed at the merge-base —
+	// rewriting a closed brief's Verify table to green the gate is the very
+	// falsification the check exists to catch. The strength rules R11–R13 are
+	// NOTICEs everywhere (docs/verify-row-strength.md).
+	ufProblems, ufNotices := unfailableRowChecks(root, checkStreams)
+	problems = append(problems, ufProblems...)
+	notices = append(notices, ufNotices...)
+	// Fail-first (verify-integrity/03): a closure THIS branch makes must carry,
+	// for each risk-bearing Verify row, a `verifyrun --fail-first` witness that
+	// reds on a base in HEAD's history. See witnessgate.go / failfirst.go.
+	ffProblems, ffNotices := failFirstGateChecks(root, checkStreams)
+	problems = append(problems, ffProblems...)
+	notices = append(notices, ffNotices...)
 	// Portability is advisory; existing POSIX rows remain executable records.
 	notices = append(notices, verifyPortabilityNotices(checkStreams)...)
 	// Missing EXECUTION WITNESS (ground-truth/01, #284): a brief the README

@@ -290,6 +290,18 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   turns an Evidence row from prose into something a reviewer can re-run and compare.
   A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
   PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
+- **Fail-first: a risk-bearing row must red on the base.** When the table has a risk-bearing row
+  (any `risk:` answer `yes`, or a row tagged risk-bearing, live, mutating or end-to-end), run
+  `statusgen verifyrun --brief <path> --fail-first` before landing the Evidence, not the plain
+  run. It checks the merge-base of HEAD and `origin/main` out into a temporary worktree, runs each
+  risk-bearing row there, then runs the table at head, and the witness gains a `Base` column
+  (`base=<sha> red|green|unproven · head=<sha>`). A row green at base and at head is
+  **non-discriminating**: it passes with or without the change, so it proves nothing about it.
+  Exit 1 means at least one risk-bearing row is non-discriminating. That is a VERIFY: FAIL on the
+  row, not on the code: route it back to the implementer to strengthen the row
+  (`docs/verify-row-strength.md`). Never land a closure on it. Exit 2 means a row could not run at
+  base, which is could-not-check, not a pass. The lint refuses a new closure whose risk-bearing row
+  has no fail-first witness, is non-discriminating, or names a base that is not an ancestor of HEAD.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
   stronger external/paid tier** (human:<name>, 2026-07-15). A risk-clear brief (gate `model`, all
   risk answers `no`) is the normal path and most of the queue, and the local tier is its only

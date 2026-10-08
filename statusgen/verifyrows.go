@@ -1735,11 +1735,23 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 // closed record). Every OTHER rule is unscoped by brief status; this scoping
 // applies to these two tags only.
 func unfailableRowNotices(streams []*Stream) []string {
-	var notices []string
+	_, notices := unfailableRowAudit(streams, nil, false)
+	return notices
+}
+
+// unfailableRowAudit applies every row rule (rowFindingsCtx) and the per-table
+// R13 check to every brief. With baseOK, a brief whose README status is
+// verified/done and which is NOT in grandfathered is a closure THIS branch made
+// (post-base): its R1–R10 findings are PROBLEMs (verify-integrity/03), and it
+// is exempt from the closed-brief scoping above — the branch closing it is the
+// moment its rows can still be fixed. Every other finding is a NOTICE.
+func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK bool) (problems, notices []string) {
 	closedRows := 0
 	closedBriefs := map[string]bool{}
 	closedProseRows := 0
 	closedProseBriefs := map[string]bool{}
+	closedStrength := 0
+	closedStrengthBriefs := map[string]bool{}
 
 	for _, s := range streams {
 		statusByNum := map[string]string{}
@@ -1759,26 +1771,56 @@ func unfailableRowNotices(streams []*Stream) []string {
 				status := statusByNum[num] // "" (no README row) reads as open
 				closed = status == "done" || status == "verified"
 			}
+			postBase := closed && okName && baseOK && !grandfathered[briefID]
+			scoped := closed && !postBase // a pre-existing closed record
+			var cmds []string
 			verifyRowTable(bf.Verify, func(r verifyRowCells) {
 				where := "a Verify row"
 				if r.Num != "" {
 					where = "Verify row " + r.Num
 				}
-				for _, f := range rowFindings(r.Command, r.Expect) {
-					if closed && f.rule == ruleGoTestRunVacuous {
+				if c := verifyCommand(r.Command); c != "" {
+					cmds = append(cmds, c)
+				}
+				for _, f := range rowFindingsCtx(r.Command, r.Expect, bf.DeclaredPaths) {
+					if scoped && f.rule == ruleGoTestRunVacuous {
 						closedRows++
 						closedBriefs[briefID] = true
 						continue
 					}
-					if closed && f.rule == ruleProseLedCommand {
+					if scoped && f.rule == ruleProseLedCommand {
 						closedProseRows++
 						closedProseBriefs[briefID] = true
 						continue
 					}
-					notices = append(notices, fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg))
+					if scoped && (f.rule == ruleTriviallyGreen || f.rule == ruleNoOutputAssert) {
+						closedStrength++
+						closedStrengthBriefs[briefID] = true
+						continue
+					}
+					line := fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg)
+					if postBase && promotedRowRules[f.rule] {
+						problems = append(problems, line+" — a PROBLEM because this branch closes the brief (it was not verified/done at the merge-base): an unfailable row cannot be the basis of a new closure. Fix the row and re-run it before closing")
+						continue
+					}
+					notices = append(notices, line)
 				}
 			})
+			msg, cnc := tableFilesCheck(cmds, bf.DeclaredPaths, filesLabelPresent(bf.Body))
+			switch {
+			case msg == "" && !cnc:
+			case scoped:
+				closedStrength++
+				closedStrengthBriefs[briefID] = true
+			case cnc:
+				notices = append(notices, fmt.Sprintf("%s: [%s] COULD-NOT-CHECK — the `files:` line is present but yields no path, so whether the Verify table touches the deliverable cannot be read (never a pass)", path, ruleTableNoFiles))
+			default:
+				notices = append(notices, fmt.Sprintf("%s: [%s] %s", path, ruleTableNoFiles, msg))
+			}
 		}
+	}
+	if closedStrength > 0 {
+		notices = append(notices, fmt.Sprintf("[%s/%s/%s] %d strength finding(s) in %d closed brief(s) — closed records are not rewritten; the per-row notice covers open briefs and closures this branch makes (docs/verify-row-strength.md)", ruleTriviallyGreen, ruleNoOutputAssert, ruleTableNoFiles, closedStrength, len(closedStrengthBriefs)))
 	}
 	if closedRows > 0 {
 		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) carry an unasserted go test -run selector — closed records are not rewritten; the per-row notice covers open briefs only", ruleGoTestRunVacuous, closedRows, len(closedBriefs)))
@@ -1786,8 +1828,9 @@ func unfailableRowNotices(streams []*Stream) []string {
 	if closedProseRows > 0 {
 		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) have a prose mention as their first code span — closed records are not rewritten, and verifyrun records such a row could-not-run; the per-row notice covers open briefs only", ruleProseLedCommand, closedProseRows, len(closedProseBriefs)))
 	}
+	sort.Strings(problems)
 	sort.Strings(notices)
-	return notices
+	return problems, notices
 }
 
 // rowFinding is one defect found in one Verify row. rule is a stable,
@@ -1878,7 +1921,7 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		add(ruleShreddedCell, "the Command cell's code span is unterminated — a RAW `|` in the command was read as a table-cell delimiter, cutting the command at the pipe and shifting every column after it (the Expect cell shown is another fragment of the command, not an expectation). The brief therefore prints a command nobody can run, and every other row check goes blind past the cut. Escape shell pipes and regex alternations as `\\|` inside the table cell")
 	}
 
-	// Rule 12 (#1805): the command the witness would execute is a prose mention.
+	// prose-led-command (#1805; not R12 of docs/verify-row-strength.md): the command the witness would execute is a prose mention.
 	// Judged on the CELL, before the lift, because the defect is in which span
 	// gets lifted — every rule below judges whatever the lift returned.
 	if first, why := proseLedCommandWhy(cmdCell); why != "" {
@@ -1963,7 +2006,8 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		add(rulePortability, "uses %s, which is GNU-only — the row is run by whoever verifies, on macOS desks as well as ubuntu CI, and it does not mean the same thing on both. Write it %s", c, gnuOnlySubstitute[c])
 	}
 
-	// Rule 11: a `go test -run` selector with no `--- PASS` assertion.
+	// gotest-run-vacuous (statusgen/14; not R11 of docs/verify-row-strength.md):
+	// a `go test -run` selector with no `--- PASS` assertion.
 	var runSelectors []goTestPattern
 	for _, p := range goTestRunPatterns(toks) {
 		if p.flag != "-run" { // -bench/-fuzz do not print `--- PASS:` lines — out of scope
