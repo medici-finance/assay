@@ -160,7 +160,9 @@ func TestNewScrubbedRoundTrip(t *testing.T) {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	t.Setenv("CELLS_ROOT", t.TempDir())
-	cmdNew([]string{"rt", "--kind", "scrubbed", "--repo", repo, "--repo-slug", "o/r", "--roots", "o/r=" + repo})
+	if code := inproc("new", "rt", "--kind", "scrubbed", "--repo", repo, "--repo-slug", "o/r", "--roots", "o/r="+repo); code != 0 {
+		t.Fatalf("new exited %d", code)
+	}
 	envfile := filepath.Join(os.Getenv("CELLS_ROOT"), "rt", "cell.env")
 	raw, err := os.ReadFile(envfile)
 	if err != nil {

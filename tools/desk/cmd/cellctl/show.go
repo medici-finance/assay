@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -19,31 +20,17 @@ const showUsage = "cellctl show <cell> [--kind <k>] [--cockpit <c>] [--harness <
 // It launches nothing and writes nothing. The same flags `desk`/`up` take are accepted so "what
 // would THIS invocation resolve to" is answerable BEFORE booting it; a `--kind` the cell is not
 // provisioned for refuses exactly as `desk` would.
-func cmdShow(cell string, args []string) {
-	kindOverride := prescanKindOverride(args)
-	c := loadCellWithKind(cell, kindOverride)
+func cmdShow(c *Cell, v *cli.Values, extra []string) {
+	if len(extra) > 0 {
+		die("show: unexpected argument '%s'", extra[0])
+	}
 	envfile := filepath.Join(c.Dir, "cell.env")
 
-	harnessFlag, cockpitFlag, providerFlag, modelFlag := "", "", "", ""
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; a {
-		case "--kind":
-			i++
-		case "--cockpit":
-			cockpitFlag = needFlagValue(args, &i, "--cockpit needs a value ("+joinPipe(cockpitValues)+")")
-		case "--harness":
-			harnessFlag = needFlagValue(args, &i, "--harness needs a value ("+joinPipe(harnessValues)+")")
-		case "--provider":
-			providerFlag = needFlagValue(args, &i, "--provider needs a value")
-		case "--model":
-			modelFlag = needFlagValue(args, &i, "--model needs a value")
-		default:
-			if strings.HasPrefix(a, "--") {
-				die("show: unknown flag %s", a)
-			}
-			die("show: unexpected argument '%s'", a)
-		}
-	}
+	needValue(v, "cockpit", "--cockpit needs a value ("+joinPipe(cockpitValues)+")")
+	needValue(v, "harness", "--harness needs a value ("+joinPipe(harnessValues)+")")
+	needValue(v, "provider", "--provider needs a value")
+	needValue(v, "model", "--model needs a value")
+	harnessFlag, cockpitFlag, providerFlag, modelFlag := v.String("harness"), v.String("cockpit"), v.String("provider"), v.String("model")
 	if harnessFlag != "" && !valueIn(harnessFlag, harnessValues) {
 		die("show: --harness must be one of %s, got '%s'", joinPipe(harnessValues), harnessFlag)
 	}

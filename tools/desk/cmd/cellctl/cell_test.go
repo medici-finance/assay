@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestParseCellEnvShellForms(t *testing.T) {
@@ -72,15 +74,30 @@ func TestRootsValid(t *testing.T) {
 	}
 }
 
-func TestPrescanKindOverrideRefusesUnknown(t *testing.T) {
-	if got := prescanKindOverride([]string{"--model", "x", "--kind", "house"}); got != "house" {
-		t.Errorf("prescanKindOverride = %q, want house", got)
+func TestKindFlagRefusesUnknown(t *testing.T) {
+	kindOf := func(args ...string) (string, int) {
+		var got string
+		code := runTreeWith(t, args, func(root *cobra.Command) {
+			for _, c := range root.Commands() {
+				if c.Name() == "show" {
+					c.RunE = func(cmd *cobra.Command, _ []string) error { got = kindFlag(cmd); return nil }
+				}
+			}
+		})
+		return got, code
 	}
-	if got := prescanKindOverride([]string{"--model", "x"}); got != "" {
-		t.Errorf("prescanKindOverride with no --kind = %q, want empty", got)
+	if got, code := kindOf("show", "x", "--model", "y", "--kind", "house"); got != "house" || code != 0 {
+		t.Errorf("kindFlag = %q (exit %d), want house (0)", got, code)
 	}
-	assertDies(t, "unknown kind", func() { prescanKindOverride([]string{"--kind", "nope"}) })
-	assertDies(t, "missing value", func() { prescanKindOverride([]string{"--kind"}) })
+	if got, code := kindOf("show", "x", "--model", "y"); got != "" || code != 0 {
+		t.Errorf("kindFlag with no --kind = %q (exit %d), want empty (0)", got, code)
+	}
+	if _, code := kindOf("show", "x", "--kind", "nope"); code == 0 {
+		t.Error("unknown kind accepted")
+	}
+	if _, code := kindOf("show", "x", "--kind", ""); code == 0 {
+		t.Error("empty kind accepted")
+	}
 }
 
 // assertDies runs fn and fails unless it raised the package's exit panic. die() writes to

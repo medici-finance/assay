@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -301,6 +302,31 @@ func runGoldenCase(t *testing.T, bin string, c goldenCase) []cliRun {
 	return out
 }
 
+// deliberateDiff is one reviewed difference from the pre-migration transcript: the new exit code
+// and the exact new stderr (stdout is still required to match). The reason is the compatibility
+// report's row (docs/cellctl-cli-compat.md); an entry that stops differing is itself a failure.
+type deliberateDiff struct {
+	code   int
+	stderr string
+	why    string
+}
+
+const (
+	whyNoEcho    = "help, --version, version and parse failures print no roster echo: nothing acts, so there is no effective configuration to show"
+	whyParseText = "a malformed command line is now refused by the parser with its own wording and the usage exit (3)"
+)
+
+var deliberateDiffs = map[string]deliberateDiff{
+	"version-flag/0":  {0, "", whyNoEcho},
+	"version-verb/0":  {0, "", whyNoEcho},
+	"unknown-verb/0":  {3, "cellctl: unknown command \"frobnicate\" for \"cellctl\"\nRun 'cellctl --help' for usage.\n", whyParseText},
+	"show-refusals/3": {3, "cellctl: flag needs an argument: --model\nRun 'cellctl --help' for usage.\n", whyParseText},
+	"desk-refusals/6": {3, "cellctl: flag needs an argument: --model\nRun 'cellctl --help' for usage.\n", whyParseText},
+	"set-refusals/9":  {3, "cellctl: flag needs an argument: --harness\nRun 'cellctl --help' for usage.\n", whyParseText},
+	"scratch/10":      {3, "cellctl: invalid argument \"bogus\" for \"--max-age\" flag: time: invalid duration \"bogus\"\nRun 'cellctl --help' for usage.\n", whyParseText + "; scratch's old flag-package exit 2 becomes 3"},
+	"cells-root/3":    {3, "cellctl: flag needs an argument: --cells-root\nRun 'cellctl --help' for usage.\n", whyParseText},
+}
+
 func TestCLINonHelpParity(t *testing.T) {
 	cases := goldenCases()
 	if rec := os.Getenv("CELLCTL_GOLDEN_RECORD"); rec != "" {
@@ -347,6 +373,18 @@ func TestCLINonHelpParity(t *testing.T) {
 			continue
 		}
 		for i := range want {
+			key := fmt.Sprintf("%s/%d", c.name, i)
+			if d, ok := deliberateDiffs[key]; ok {
+				same := got[i].Code == want[i].Code && got[i].Stdout == want[i].Stdout && got[i].Stderr == want[i].Stderr
+				if same {
+					t.Errorf("%s is listed as a deliberate difference but matches the pre-migration transcript: drop the entry", key)
+				}
+				if got[i].Code != d.code || got[i].Stdout != want[i].Stdout || got[i].Stderr != d.stderr {
+					t.Errorf("%s %v: the deliberate difference (%s) no longer holds\n  exit   want %d got %d\n  stdout want %q got %q\n  stderr want %q\n         got  %q",
+						key, want[i].Args, d.why, d.code, got[i].Code, want[i].Stdout, got[i].Stdout, d.stderr, got[i].Stderr)
+				}
+				continue
+			}
 			if got[i].Code != want[i].Code || got[i].Stdout != want[i].Stdout || got[i].Stderr != want[i].Stderr {
 				t.Errorf("case %s step %d %v diverges from the pre-migration transcript (%s)\n"+
 					"  exit   want %d got %d\n  stdout want %q\n         got  %q\n  stderr want %q\n         got  %q",

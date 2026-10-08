@@ -8,79 +8,23 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
 
 // cmdNew scaffolds a cell. Every template below is a BYTE CONTRACT with the shell oracle: the
 // parity harness diffs the whole tree each implementation writes — paths, mode bits and file
 // contents — so a stray space in a comment line here is a divergence, not a nit.
-func cmdNew(args []string) {
-	// --help before anything else, so `cellctl new --help` prints the kind- and forge-aware
-	// usage rather than dying on a missing cell name or flag.
-	for _, a := range args {
-		if a == "-h" || a == "--help" {
-			usage(0)
-		}
-	}
+func cmdNew(cell string, v *cli.Values) {
 	e := newEnvFromProcess()
 
 	// DESK_APP_ID is the default because `cellctl deskd` reads the CELL home's apps.env, and
 	// cell homes name their Apps by generic role.
-	kind, forge, idvar, port := "k8s", "github", "DESK_APP_ID", "8787"
-	cell, repo, yaml, orgs, pem := "", "", "", "", ""
-	group, gitlabAPIBase, tokenStore := "", "", ""
-	roots, launcher, repoSlug, containerConfig := "", "", "", ""
-	roles, rolesSet := rolesDefault, false
-
-	for i := 0; i < len(args); i++ {
-		next := func(msg string) string { return needFlagValue(args, &i, msg) }
-		switch a := args[i]; a {
-		case "--kind":
-			kind = nextOrEmpty(args, &i)
-		case "--container-config":
-			containerConfig = next("--container-config needs an absolute JSON file")
-		case "--launcher":
-			launcher = next("--launcher needs an absolute executable")
-		case "--forge":
-			forge = nextOrEmpty(args, &i)
-		case "--repo":
-			repo = nextOrEmpty(args, &i)
-		case "--cells-yaml":
-			yaml = nextOrEmpty(args, &i)
-		case "--orgs":
-			orgs = nextOrEmpty(args, &i)
-		case "--repo-slug":
-			repoSlug = next("--repo-slug needs a value (<owner>/<repo>)")
-		case "--deskd-app-pem":
-			pem = nextOrEmpty(args, &i)
-		case "--deskd-app-id-var":
-			idvar = nextOrEmpty(args, &i)
-		case "--port":
-			port = nextOrEmpty(args, &i)
-		case "--group":
-			group = nextOrEmpty(args, &i)
-		case "--gitlab-api-base":
-			gitlabAPIBase = nextOrEmpty(args, &i)
-		case "--gitlab-token-store":
-			tokenStore = nextOrEmpty(args, &i)
-		case "--roots":
-			roots = nextOrEmpty(args, &i)
-		case "--roles":
-			roles = nextOrEmpty(args, &i)
-			rolesSet = true
-		default:
-			if strings.HasPrefix(a, "--") {
-				die("new: unknown flag %s", a)
-			}
-			// The cell name is a POSITIONAL that may appear anywhere among the flags. It is
-			// captured as the ONE bare token so that a missing CUSTODY input is diagnosed before
-			// a missing cell name — the forge-custody validation must fire whether or not a cell
-			// name was given.
-			if cell != "" {
-				die("new: unexpected extra argument '%s' (the cell name is '%s')", a, cell)
-			}
-			cell = a
-		}
-	}
+	kind, forge, idvar, port := v.String("kind"), v.String("forge"), v.String("deskd-app-id-var"), v.String("port")
+	repo, yaml, orgs, pem := v.String("repo"), v.String("cells-yaml"), v.String("orgs"), v.String("deskd-app-pem")
+	group, gitlabAPIBase, tokenStore := v.String("group"), v.String("gitlab-api-base"), v.String("gitlab-token-store")
+	roots, launcher, repoSlug, containerConfig := v.String("roots"), v.String("launcher"), v.String("repo-slug"), v.String("container-config")
+	roles, rolesSet := v.String("roles"), v.Source("roles") == cli.Flag
 
 	// Every path below is written bare into cell.env, where a Windows `\` would read back as a
 	// shell escape: emit it with forward slashes on Windows (cellenvpath.go; identity elsewhere).
@@ -527,15 +471,6 @@ a second ` + "`desk`" + ` while one is live is refused, naming the live pid and 
 `
 
 // ---- small write helpers ----
-
-func nextOrEmpty(args []string, i *int) string {
-	if *i+1 >= len(args) {
-		*i++
-		return ""
-	}
-	*i++
-	return args[*i]
-}
 
 func mustMkdirAll(paths ...string) {
 	for _, p := range paths {

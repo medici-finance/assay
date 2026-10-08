@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -300,7 +301,7 @@ func activeHarnessOf(envfile string) string {
 
 const setUsage = "cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex|cursor] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
 
-func cmdSet(cell string, args []string) {
+func cmdSet(cell string, v *cli.Values, pos []string) {
 	e := newEnvFromProcess()
 	d := cellDir(e, cell)
 	abs, err := filepath.Abs(d)
@@ -309,37 +310,26 @@ func cmdSet(cell string, args []string) {
 	}
 	envfile := filepath.Join(abs, "cell.env")
 
-	force := false
-	role, harness, model, kind, cockpit, provider := "", "", "", "", "", ""
+	needValue(v, "harness", "--harness needs a value ("+joinPipe(harnessValues)+")")
+	needValue(v, "model", "--model needs a value")
+	needValue(v, "kind", "--kind needs a value ("+joinPipe(kindValues)+")")
+	needValue(v, "cockpit", "--cockpit needs a value ("+joinPipe(cockpitValues)+")")
+	needValue(v, "provider", "--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)")
+	force := v.Bool("force")
+	harness, model, kind, cockpit, provider := v.String("harness"), v.String("model"), v.String("kind"), v.String("cockpit"), v.String("provider")
+	role := ""
 	var kvs, sugar []string
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; a {
-		case "--force":
-			force = true
-		case "--harness":
-			harness = needFlagValue(args, &i, "--harness needs a value ("+joinPipe(harnessValues)+")")
-		case "--model":
-			model = needFlagValue(args, &i, "--model needs a value")
-		case "--kind":
-			kind = needFlagValue(args, &i, "--kind needs a value ("+joinPipe(kindValues)+")")
-		case "--cockpit":
-			cockpit = needFlagValue(args, &i, "--cockpit needs a value ("+joinPipe(cockpitValues)+")")
-		case "--provider":
-			provider = needFlagValue(args, &i, "--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)")
-		default:
-			switch {
-			case strings.HasPrefix(a, "--"):
-				die("set: unknown flag %s", a)
-			case strings.Contains(a, "="):
-				kvs = append(kvs, a)
-			case valueIn(a, knownRoles):
-				if role != "" {
-					die("set: '%s' — a role was already given ('%s'); only one role-sugar call at a time", a, role)
-				}
-				role = a
-			default:
-				die("set: '%s' is not KEY=VALUE (or a role name, with --model and optionally --harness)", a)
+	for _, a := range pos {
+		switch {
+		case strings.Contains(a, "="):
+			kvs = append(kvs, a)
+		case valueIn(a, knownRoles):
+			if role != "" {
+				die("set: '%s' — a role was already given ('%s'); only one role-sugar call at a time", a, role)
 			}
+			role = a
+		default:
+			die("set: '%s' is not KEY=VALUE (or a role name, with --model and optionally --harness)", a)
 		}
 	}
 	if kind != "" {

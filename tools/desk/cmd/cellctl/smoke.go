@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
 
 const smokeUsage = "cellctl smoke <cell> [--harness <claude|codex>] [--model <m>]"
@@ -16,26 +18,21 @@ const smokeUsage = "cellctl smoke <cell> [--harness <claude|codex>] [--model <m>
 //
 // Never a Verify row on a live harness (every row runs a stub); this is what an operator runs by
 // hand to prove a cell actually answers before trusting it with real work.
-func cmdSmoke(cell string, args []string) {
+func cmdSmoke(cell string, v *cli.Values, extra []string) {
 	c := loadCell(cell)
 	if c.Kind != "scrubbed" {
 		die("smoke is only defined for a scrubbed cell (kind=%s, got '%s')", c.Kind, cell)
 	}
-	harness := c.Harness
-	modelOverride := ""
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; a {
-		case "--harness":
-			harness = needFlagValue(args, &i, "--harness needs a value (claude|codex)")
-		case "--model":
-			modelOverride = needFlagValue(args, &i, "--model needs a value")
-		default:
-			if strings.HasPrefix(a, "--") {
-				die("smoke: unknown flag %s", a)
-			}
-			die("smoke: unexpected argument '%s'", a)
-		}
+	if len(extra) > 0 {
+		die("smoke: unexpected argument '%s'", extra[0])
 	}
+	needValue(v, "harness", "--harness needs a value (claude|codex)")
+	needValue(v, "model", "--model needs a value")
+	harness := c.Harness
+	if h := v.String("harness"); v.IsSet("harness") {
+		harness = h
+	}
+	modelOverride := v.String("model")
 	if !valueIn(harness, harnessValues) {
 		die("smoke: --harness must be claude or codex, got '%s'", harness)
 	}

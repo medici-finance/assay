@@ -11,17 +11,6 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
 )
 
-const cacheUsage = `
-# Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env; macOS/Linux):
-#   cellctl cache <cell> status           (dry-run JSON; no cleanup)
-#   cellctl cache <cell> clean            (inactive caches, only under pressure)
-#   cellctl cache <cell> recover --confirm-stopped
-# Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor.
-# Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE.
-# Recovery requires external proof ALL cache consumers have stopped.
-# See docs/cellctl-go-cache.md for custody, reports and platform limitations.
-`
-
 func (c *Cell) cachePolicy() (*cellcache.Policy, error) {
 	return cellcache.Resolve(c.Dir, c.Env.Get)
 }
@@ -65,7 +54,7 @@ func (c *Cell) cacheAdmission() error {
 	fmt.Fprintf(os.Stderr, "storage-admission %s\n", b)
 	return err
 }
-func cmdCache(cell string, args []string) {
+func cmdCache(cell string, args []string, confirm bool) {
 	c := loadCell(cell)
 	p, err := c.cachePolicy()
 	if err != nil {
@@ -74,13 +63,13 @@ func cmdCache(cell string, args []string) {
 	if p == nil {
 		die("cache requires CELL_GO_CACHE=on in cell.env")
 	}
-	if len(args) == 2 && args[0] == "recover" && args[1] == "--confirm-stopped" {
+	if len(args) == 1 && args[0] == "recover" && confirm {
 		if err = cellcache.Recover(*p, true); err != nil {
 			die("cache recover: %v", err)
 		}
 		return
 	}
-	if len(args) != 1 || (args[0] != "status" && args[0] != "clean") {
+	if confirm || len(args) != 1 || (args[0] != "status" && args[0] != "clean") {
 		die("cache <cell> status|clean|recover --confirm-stopped (status is dry-run)")
 	}
 	report, err := cellcache.Check(*p, args[0] == "status")

@@ -222,7 +222,7 @@ func (w *tailWriter) Write(p []byte) (int, error) {
 }
 func (w *tailWriter) String() string { w.mu.Lock(); defer w.mu.Unlock(); return string(w.buf) }
 
-func cmdCadence(cell string, args []string) {
+func cmdCadence(cell string, args []string, confirmFlag bool) {
 	c := loadCell(cell)
 	if c.Kind != "house" {
 		die("cadence is only defined for house cells")
@@ -233,14 +233,18 @@ func cmdCadence(cell string, args []string) {
 	action := args[0]
 	roles := knownRoles
 	confirmed := false
+	if len(args) > 2 {
+		die("cadence: unexpected arguments")
+	}
 	if len(args) > 1 {
 		if !valueIn(args[1], knownRoles) {
 			die("cadence: unknown role %q", args[1])
 		}
 		roles = []string{args[1]}
 	}
-	if len(args) > 2 {
-		if len(args) != 3 || args[2] != "--confirm-stopped" || action != "recover" {
+	if confirmFlag {
+		// Confirmation names ONE role: it is never widened to every role.
+		if action != "recover" || len(args) != 2 {
 			die("cadence: unexpected arguments")
 		}
 		confirmed = true

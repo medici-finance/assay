@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
 
 // upOverrides are the values `role_cmd` threads onto every role's own `cellctl desk`
@@ -222,15 +224,22 @@ func deskdHandStart(sh paneShell, cell string) string {
 	return "CELL_ATTENDED=1 cellctl deskd " + cell
 }
 
-func cmdUp(cell string, args []string) {
-	kindOverride := prescanKindOverride(args)
-	c := loadCellWithKind(cell, kindOverride)
-
+func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
+	if c.Kind == "container" || c.Kind == "scrubbed" {
+		// Container and scrubbed cells run exactly one desk, and `up` hands it the typed desk
+		// options. The host-cockpit flags have no meaning there, and desk has always refused them
+		// by name — keep that refusal where it was, now stated for the flags up declares.
+		for _, hostOnly := range []string{"no-the-desk", "with-the-desk", "no-attach", "automate"} {
+			if v.Source(hostOnly) == cli.Flag {
+				die("desk: unknown flag --%s", hostOnly)
+			}
+		}
+	}
 	if c.Kind == "container" {
 		if strings.Join(c.Roles, " ") != "the-desk" {
 			die("container up currently requires ROLES=the-desk; use desk for explicit roles")
 		}
-		cmdDesk(c.Name, append([]string{"the-desk"}, args...))
+		cmdDesk(c, "the-desk", deskInputsFrom(v, cfgIn))
 		return
 	}
 	if c.Kind == "scrubbed" {
@@ -245,45 +254,20 @@ func cmdUp(cell string, args []string) {
 		if len(c.Roles) > 0 {
 			first = c.Roles[0]
 		}
-		cmdDesk(c.Name, append([]string{first}, args...))
+		cmdDesk(c, first, deskInputsFrom(v, cfgIn))
 		return
 	}
 
-	noTheDesk, attach, persist := false, true, false
-	cfgIn, cockpitFlag, automate := "", "", ""
+	noTheDesk, attach, persist := v.Bool("no-the-desk"), !v.Bool("no-attach"), v.Bool("set")
+	cockpitFlag, automate := v.String("cockpit"), v.String("automate")
 	var o upOverrides
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; a {
-		case "--no-the-desk":
-			noTheDesk = true
-		case "--with-the-desk":
-		case "--no-attach":
-			attach = false
-		case "--cockpit":
-			cockpitFlag = needFlagValue(args, &i, "--cockpit needs a value (auto|tmux|herdr|orca)")
-		case "--automate":
-			automate = needFlagValue(args, &i, "--automate needs a trigger (a 5-field cron string or a preset)")
-		case "--cadence":
-			o.Cadence = needFlagValue(args, &i, "--cadence needs a duration or off")
-		case "--tick-budget":
-			o.TickBudget = needFlagValue(args, &i, "--tick-budget needs a duration")
-		case "--model":
-			o.Model = needFlagValue(args, &i, "--model needs a value")
-		case "--provider":
-			o.Provider = needFlagValue(args, &i, "--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)")
-		case "--harness":
-			o.Harness = needFlagValue(args, &i, "--harness needs a value (claude|codex)")
-		case "--kind":
-			i++ // consumed by prescanKindOverride above
-		case "--set":
-			persist = true
-		default:
-			if strings.HasPrefix(a, "--") {
-				die("up: unknown flag %s", a)
-			}
-			cfgIn = a
-		}
-	}
+	// Only what was GIVEN by flag is threaded onto each role window's own `desk` command line;
+	// the cell.env pins are re-read by that desk, so they are not copied here.
+	o.Cadence = flagOnly(v, "cadence")
+	o.TickBudget = flagOnly(v, "tick-budget")
+	o.Model = flagOnly(v, "model")
+	o.Provider = v.String("provider")
+	o.Harness = v.String("harness")
 	if o.Harness != "" && !valueIn(o.Harness, harnessValues) {
 		die("up: --harness must be claude or codex, got '%s'", o.Harness)
 	}
@@ -297,14 +281,8 @@ func cmdUp(cell string, args []string) {
 	if effectiveHarness == "" {
 		effectiveHarness = c.Harness
 	}
-	cadence := o.Cadence
-	if cadence == "" {
-		cadence = c.Env.Get("CELL_CADENCE")
-	}
-	budget := o.TickBudget
-	if budget == "" {
-		budget = c.Env.Get("CELL_TICK_BUDGET")
-	}
+	cadence := v.String("cadence")
+	budget := v.String("tick-budget")
 	if effectiveHarness == "cursor" && cfgIn != "" {
 		die("cursor does not accept a Claude config directory")
 	}
