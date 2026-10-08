@@ -41,6 +41,13 @@ package main
 // An unknown or unpublished tag, a tag outside the brief's `files:` list, a --repo no tag names, an
 // absent --repo, or a brief that declares deliverable_repo/homed-in explicitly → the HARD FAIL above.
 //
+// THE AUTHORING-PR ACCEPTANCE. A dispatch with --pr N onto the brief's TRACKING repo (its home
+// alias, resolved through the same registry) is accepted: that change is the one that authors the
+// brief, and its reviewer needs the PR's own tree with --brief still passed so a `gate: human` brief
+// stays detected. The change's repo is --repo, else --root's origin; --root's origin must still be
+// that tracking repo, so a --root at the deliverable's checkout is the same HARD FAIL. A fresh
+// dispatch (no --pr), a --pr onto any third repo, or an unknown tracking repo → the HARD FAIL above.
+//
 // WHERE THE REGISTRY IS READ. Under --claim-root when given, else --root. --claim-root is the
 // tracking checkout — the one that carries the brief, its board and the full registry copy — and it
 // is already authoritative for the claim tool; the registry follows it for the same reason. The
@@ -449,18 +456,23 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 
 	// HARD FAIL on a mismatch — the check the whole class turns on. Two witnesses, both pre-claim.
 	if r := strings.TrimSpace(o.repo); r != "" && !strings.EqualFold(r, repo) {
-		// The one narrow acceptance: --repo is a repo the brief's own files: list declares. Only when
+		// The narrow acceptances: --repo is a repo the brief's own files: list declares (only when
 		// the deliverable was NOT declared explicitly — an explicit deliverable_repo/homed-in names
-		// exactly one repo, and a tag never overrides it.
+		// exactly one repo, and a tag never overrides it), or --repo is the tracking repo and --pr
+		// names the brief's AUTHORING change there.
 		tag := ""
 		if declDeliverable == "" && declHomedIn == "" {
 			tag = declaredTagFor(briefText, reg, r)
 		}
-		if tag == "" {
+		switch {
+		case tag != "":
+			repo, _ = reg.repoOf(tag)
+			d.alias, d.source, d.repo = tag, "the ["+tag+"] tag on the brief's files: list", repo
+		case authoringPR(o, d, r):
+			repo = d.acceptAuthoringPR(o)
+		default:
 			return d, mismatch(d, "--repo", r)
 		}
-		repo, _ = reg.repoOf(tag)
-		d.alias, d.source, d.repo = tag, "the ["+tag+"] tag on the brief's files: list", repo
 	}
 	origin := runCmd(o.root, "git", "remote", "get-url", "origin")
 	if origin.err != nil {
@@ -476,7 +488,12 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 				"Nothing was claimed.", stepClaimAcquire, d.alias, repo, origin.stdout), nil)
 	}
 	if !strings.EqualFold(actual, repo) {
-		return d, mismatch(d, "--root "+o.root, actual)
+		// With no --repo the change's repo IS --root's origin, so the authoring-PR acceptance reads
+		// that one witness. With --repo given it was already decided above, and --root must agree.
+		if strings.TrimSpace(o.repo) != "" || !authoringPR(o, d, actual) {
+			return d, mismatch(d, "--root "+o.root, actual)
+		}
+		d.acceptAuthoringPR(o)
 	}
 	// From here on the repo is the checkout's OWN canonical origin slug, not the registry's spelling:
 	// the two matched case-insensitively, and the claim, the mint and the allowlist should see the
@@ -579,6 +596,24 @@ func declaredTagFor(text string, reg *aliasRegistry, repo string) string {
 		}
 	}
 	return ""
+}
+
+// authoringPR reports whether repo is the brief's TRACKING repo and the dispatch names an
+// already-open change (--pr N) — the shape of a brief-AUTHORING PR: the change adds or edits the
+// brief in the repo that tracks it, while the brief's deliverable lands elsewhere. Its reviewer (or
+// resumer) needs the PR's own tree, not the deliverable's, and --brief must still be passed so the
+// human gate is read. Nothing else is relaxed: the tracking repo comes from the registry (an unknown
+// or unpublished home alias never matches), --root's origin is still checked against it, and every
+// other refusal in this file has already run.
+func authoringPR(o dispatchOpts, d deliverable, repo string) bool {
+	return o.pr > 0 && d.trackingRepo != "" && strings.EqualFold(repo, d.trackingRepo)
+}
+
+// acceptAuthoringPR re-points d at the tracking repo for an authoring-PR dispatch and returns it.
+func (d *deliverable) acceptAuthoringPR(o dispatchOpts) string {
+	d.alias, d.repo = d.homeAlias, d.trackingRepo
+	d.source = fmt.Sprintf("the authoring change (--pr %d) in the brief's tracking repo", o.pr)
+	return d.repo
 }
 
 func unregisteredAlias(alias, source string, reg *aliasRegistry) error {
