@@ -1,2 +1,0 @@
-### Added
-- statusgen brief 17 (authoring only): both issue scanners hold a placeholder, instead of creating or re-activating it, when an excluded label was removed from its issue by anything other than a rostered human and the ratifying identity has not commented on the issue since the label was applied; an unreadable label history holds too. The brief records as open, not decided, an issue-board lane for held issues and whether the hold should cover only the decision-owed labels.
