@@ -156,7 +156,23 @@ type findingEntry struct {
 	// an unclassified legacy entry round-trips through the generated view unchanged.
 	Class   string `yaml:"class,omitempty"`   // "recurring" | "one-off"; absent reads as one-off.
 	Control string `yaml:"control,omitempty"` // typed reference to the landed adaptation (brief ID / check name / pinned-test path).
-	Body    string `yaml:"-"`                 // prose after the heading, before the metadata lines
+	// Corrective-action effectiveness record (iso-9001/03). All three are REQUIRED
+	// TOGETHER, or none — one or two of the three is a hard --lint error, the same
+	// all-or-nothing shape as the parked triple above. A partial record is worse
+	// than none because it reads as one.
+	//   - Effectiveness: the command, verbatim, that re-establishes the failure
+	//     mode is gone (what a reviewer or auditor can re-run).
+	//   - EffectivenessDate: the YYYY-MM-DD the command was run.
+	//   - EffectivenessBy: who ran it — a `human:<name>` or a runner identity, the
+	//     shape the Verified cell uses.
+	// The lint checks the record's PRESENCE and attribution (a presence floor),
+	// never the ADEQUACY of the command: whether it genuinely fails if the failure
+	// mode returned is the reviewer's question. omitempty so an entry without the
+	// record round-trips through the generated view unchanged.
+	Effectiveness     string `yaml:"effectiveness,omitempty"`
+	EffectivenessDate string `yaml:"effectiveness-date,omitempty"`
+	EffectivenessBy   string `yaml:"effectiveness-by,omitempty"`
+	Body              string `yaml:"-"` // prose after the heading, before the metadata lines
 }
 
 // slugFromTitle produces a short, deterministic slug from a title — lowercase,

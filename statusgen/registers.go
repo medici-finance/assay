@@ -337,6 +337,10 @@ func registerIntegrityEntries(root string) []registerProblem {
 			for _, msg := range parkFieldProblems([]Finding{f}) {
 				add(msg, findingIdx[f.ID]...)
 			}
+			// Effectiveness triple (iso-9001/03): all three keys or none.
+			for _, msg := range effectivenessTripleProblems([]Finding{f}) {
+				add(msg, findingIdx[f.ID]...)
+			}
 		}
 	}
 
