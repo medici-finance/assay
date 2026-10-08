@@ -7,10 +7,12 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
-// The scheduled reconcile tick (reconcilejob.sh) exercised end to end against a
-// throwaway bare origin, with stub `statusgen` and `gh` on PATH — hermetic: no
+// The scheduled reconcile tick — the reconcile step's own `run:` text, read from
+// the staged workflow — exercised end to end against a throwaway bare origin, with stub `statusgen` and `gh` on PATH — hermetic: no
 // network, no token, no real repo.
 
 const jobReadmeMain = "# s\n\n| # | Brief | Status |\n|---|---|---|\n| 01 | one | todo |\n| 02 | two | todo |\n"
@@ -88,8 +90,8 @@ func newJobRig(t *testing.T) *jobRig {
 		"GIT_CONFIG_GLOBAL="+gitcfg, "GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=job", "GIT_AUTHOR_EMAIL=job@example.invalid",
 		"GIT_COMMITTER_NAME=job", "GIT_COMMITTER_EMAIL=job@example.invalid",
-		"STATUSGEN="+filepath.Join(r.bin, "statusgen"), "REPO=o/r",
-		// The pre-fix inline step read these two; set so the same rig can run it.
+		// What the runner provides the step: RUNNER_TEMP holds the statusgen
+		// binary (the stub here) and the step's scratch files.
 		"RUNNER_TEMP="+r.bin, "GITHUB_REPOSITORY=o/r",
 		"STUB_LOG="+r.dir, "TMPDIR="+r.dir,
 	)
@@ -137,14 +139,53 @@ func (r *jobRig) commitOnMain(readme, msg string) {
 	r.git(r.seed, "push", "-q", "origin", "main")
 }
 
-// jobScript is the script under test; RECONCILEJOB_SCRIPT points the same rig
-// at another body (the pre-fix inline step, for the fail-first record).
+// reconcileJobWorkflow is the staged workflow whose reconcile step is under test.
+const reconcileJobWorkflow = "../ci/staged-workflows/assay-statusgen.yml"
+
+// reconcileJobStepName names that step; the test fails if it is renamed away.
+const reconcileJobStepName = "Reconcile and regenerate the stream README tables"
+
+// reconcileJobStep extracts the reconcile step's `run:` text from the staged
+// workflow, exactly as the runner would execute it.
+func reconcileJobStep(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(reconcileJobWorkflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wf struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &wf); err != nil {
+		t.Fatalf("parsing %s: %v", reconcileJobWorkflow, err)
+	}
+	for _, st := range wf.Jobs["reconcile"].Steps {
+		if st.Name == reconcileJobStepName {
+			if strings.TrimSpace(st.Run) == "" {
+				t.Fatalf("%s: step %q has no run: text", reconcileJobWorkflow, reconcileJobStepName)
+			}
+			return st.Run
+		}
+	}
+	t.Fatalf("%s: jobs.reconcile has no step named %q", reconcileJobWorkflow, reconcileJobStepName)
+	return ""
+}
+
+// jobScript writes the step under test to a file outside the work clone and
+// returns its path; RECONCILEJOB_SCRIPT points the same rig at another body
+// (the pre-fix inline step, for the fail-first record).
 func jobScript(t *testing.T) string {
+	t.Helper()
 	if s := os.Getenv("RECONCILEJOB_SCRIPT"); s != "" {
 		return s
 	}
-	p, err := filepath.Abs("reconcilejob.sh")
-	if err != nil {
+	p := filepath.Join(t.TempDir(), "reconcile-step.sh")
+	if err := os.WriteFile(p, []byte(reconcileJobStep(t)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return p

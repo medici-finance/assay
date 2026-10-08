@@ -126,8 +126,8 @@ reviewable artifact, not a run.
   (derived-board/04): a `schedule:` trigger guarded to this repository (a fork's schedule
   never runs it), a read-only token (`contents`, `pull-requests`, `issues`: read) for the
   PR-witness reads, and one draft pull request on `board/reconcile` carrying any generated
-  stream-README change. The job's logic is `statusgen/reconcilejob.sh`, tested by
-  `statusgen/reconcilejob_test.go`; the YAML step only sets up identity and calls it. The
+  stream-README change. The reconcile step's own `run:` text is
+  tested end to end by `statusgen/reconcilejob_test.go`, which extracts it from the staged YAML. The
   job never pushes the default branch, and scheduled runs sit in their own concurrency
   group so they cannot displace a pending push regen. **Staged, not live** — classified
   by its `assay-statusgen.yml.pending` companion, not the manifest, so the drift guard

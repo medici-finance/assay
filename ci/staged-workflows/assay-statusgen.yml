@@ -447,9 +447,10 @@ jobs:
   # Hourly board reconcile (derived-board/04): writes the GENERATED Briefs tables
   # in every `board: generated` stream README, by pull request only.
   #
-  # The logic is statusgen/reconcilejob.sh (tested end to end by
-  # statusgen/reconcilejob_test.go against a throwaway origin); this job sets up
-  # the toolchain and identity and calls it. One tick, in order:
+  # The step's own text is tested end to end: statusgen/reconcilejob_test.go
+  # extracts the `run:` block below and executes it against a throwaway origin
+  # with stub statusgen and gh, so an edit here is an edit to what is tested.
+  # One tick, in order:
   #   1. `statusgen reconcile --apply` (trailer-only: a row is written only for a
   #      merged PR carrying that brief's `Brief:` trailer; the --backfill branch-
   #      name / body-mention / hand-said rules are NOT on this path) — reads PR
@@ -560,14 +561,107 @@ jobs:
           # The WRITE token, used only by gh below (PR list/create). The git push
           # uses the same App token through the checkout's persisted credential.
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          STATUSGEN: ${{ runner.temp }}/statusgen
-          REPO: ${{ github.repository }}
-          BRANCH: board/reconcile
         run: |
           set -euo pipefail
+          statusgen="${RUNNER_TEMP}/statusgen"
+          repo="${GITHUB_REPOSITORY}"
+          branch="board/reconcile"
+          readme_re='^docs/streams/[^/]+/README\.md$'
+          subject_re='^chore\(board\): reconcile( |$)'
           git config user.name  'assay-board-writer[bot]'
           git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
-          # Run a copy from outside the checkout: the script checks out main's
-          # tree, and bash reads a script file incrementally as it runs.
-          cp statusgen/reconcilejob.sh "${RUNNER_TEMP}/reconcilejob.sh"
-          bash "${RUNNER_TEMP}/reconcilejob.sh"
+          git fetch --no-tags origin main
+          base="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          # A transport error must fail here, never read as "branch absent": no
+          # --exit-code and no silencing, so errexit sees git's own failure.
+          heads="$(git ls-remote --heads origin "refs/heads/${branch}")"
+          tip=""
+          if [ -n "$heads" ]; then
+            git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}"
+            tip="$(git rev-parse --verify "refs/remotes/origin/${branch}^{commit}")"
+            # Refuse a branch carrying any commit this writer family did not make: only
+            # `chore(board): reconcile` commits (and `Merge` commits, which the desk-side
+            # writer makes) whose change against one of their parents is stream READMEs
+            # only. A human commit on the branch is never overwritten.
+            foreign=""
+            for c in $(git rev-list "${base}..${tip}"); do
+              subj="$(git log -1 --format=%s "$c")"
+              parents="$(git rev-list --parents -n 1 "$c" | cut -d' ' -f2-)"
+              nparents="$(echo "$parents" | wc -w | tr -d ' ')"
+              if [ "$nparents" -ge 2 ]; then
+                echo "$subj" | grep -q -E "${subject_re}|^Merge " || { foreign="${foreign}${c} ${subj}"$'\n'; continue; }
+              else
+                echo "$subj" | grep -q -E "$subject_re" || { foreign="${foreign}${c} ${subj}"$'\n'; continue; }
+              fi
+              readme_only=false
+              for p in $parents; do
+                if [ -z "$(git diff --name-only "$p" "$c" | grep -v -E "$readme_re" || true)" ]; then
+                  readme_only=true
+                  break
+                fi
+              done
+              "$readme_only" || foreign="${foreign}${c} ${subj} (touches more than stream READMEs)"$'\n'
+            done
+            if [ -n "$foreign" ]; then
+              echo "::error::${branch} carries commit(s) this job did not make — not overwriting them. Close its PR and delete the branch (or land those commits elsewhere), and the next tick re-cuts it:"
+              printf '%s' "$foreign"
+              exit 1
+            fi
+          fi
+          # Compute on main's tree, never the branch's: the result is a pure function
+          # of main plus the PR witnesses, so main moving can never conflict with it.
+          git checkout -q --detach "$base"
+          out="${RUNNER_TEMP}/reconcile-out.txt"
+          "$statusgen" reconcile --apply --root . --repo "$repo" > "$out"
+          "$statusgen" regen --readmes --root .
+          "$statusgen" --root . --lint
+          # This job may change stream READMEs and nothing else.
+          stray="$(git status --porcelain --untracked-files=all | grep -v -E '^ M docs/streams/[^ ]+/README\.md$' || true)"
+          if [ -n "$stray" ]; then
+            echo "::error::reconcile changed paths other than stream READMEs — refusing to commit:"
+            echo "$stray"
+            exit 1
+          fi
+          git add -- 'docs/streams/*/README.md'
+          tree="$(git write-tree)"
+          # Parents: the old branch tip (so the push is a fast-forward, never forced)
+          # plus main when the branch does not already contain it.
+          if [ -z "$tip" ]; then
+            if [ "$tree" = "$(git rev-parse "${base}^{tree}")" ]; then
+              echo "no stream README changed state — nothing to carry"
+              exit 0
+            fi
+            set -- -p "$base"
+          else
+            if [ "$tree" = "$(git rev-parse "${tip}^{tree}")" ] && git merge-base --is-ancestor "$base" "$tip"; then
+              echo "${branch} already carries this tick's result — nothing to push"
+              exit 0
+            fi
+            set -- -p "$tip"
+            git merge-base --is-ancestor "$base" "$tip" || set -- "$@" -p "$base"
+          fi
+          msg="${RUNNER_TEMP}/reconcile-msg.txt"
+          {
+            echo "chore(board): reconcile $(date -u +%F)"
+            echo
+            sed -n '/^reconcile --apply:/,$p' "$out"
+          } > "$msg"
+          commit="$(git commit-tree "$tree" "$@" -F "$msg")"
+          git push origin "${commit}:refs/heads/${branch}"
+          # A PR list that cannot be read is a could-not-check, never "a PR is open".
+          open="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq 'length')"
+          if [ "$open" != "0" ]; then
+            echo "an open PR already carries ${branch} — the push above updated it"
+            exit 0
+          fi
+          body="${RUNNER_TEMP}/reconcile-pr-body.md"
+          {
+            echo "Scheduled board reconcile."
+            echo
+            echo "Flips a stream README Status cell from todo or in-progress to implemented when a merged PR carrying that brief's \`Brief:\` trailer witnesses it, and re-renders the generated Briefs tables from brief frontmatter. Only stream README files change; Verified and Reviewed cells and everything outside the generated markers are untouched. A row whose flip would add a lint problem is held and listed below, not written."
+            echo
+            echo '```'
+            sed -n '/^reconcile --apply:/,$p' "$out"
+            echo '```'
+          } > "$body"
+          gh pr create --repo "$repo" --draft --base main --head "$branch" --title 'chore(board): reconcile' --body-file "$body"
