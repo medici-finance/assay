@@ -42,6 +42,12 @@
       "file": "cmd/cellctl/desk.go",
       "old": "\t\trefuseOpusForTheDesk(model)\n",
       "new": "\t\t_ = model\n"
+    },
+    {
+      "name": "--set stops persisting (the cell.env write after a launch's overrides is dropped)",
+      "file": "cmd/cellctl/launch.go",
+      "old": "\t\tapplyEnvKVs(c.Env, filepath.Join(c.Dir, \"cell.env\"), false, persistKVs)\n",
+      "new": "\t\t_ = persistKVs\n"
     }
   ]
 }

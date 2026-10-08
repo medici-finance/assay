@@ -1,5 +1,7 @@
 # Host desk cadence
 
+Command-line forms (flags, precedence, exit codes) are listed in [the `cellctl` command reference](cellctl-cli-reference.md); what changed from the earlier hand-written parser is in [the compatibility table](cellctl-cli-compat.md).
+
 `cellctl` can own the clock for a host desk whose harness cannot wake itself after
 its current turn. The cockpit runs one foreground Go supervisor; that supervisor
 starts a bounded role pass, waits for completion, then waits the configured interval.

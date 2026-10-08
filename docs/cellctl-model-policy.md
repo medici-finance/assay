@@ -1,5 +1,7 @@
 # Cell model policy
 
+Command-line forms (flags, precedence, exit codes) are listed in [the `cellctl` command reference](cellctl-cli-reference.md); what changed from the earlier hand-written parser is in [the compatibility table](cellctl-cli-compat.md).
+
 For shared provider defaults with per-cell exceptions, see
 [Shared provider defaults](cellctl-provider-defaults.md). A complete
 `CELL_MODEL_POLICY` remains authoritative when set.
