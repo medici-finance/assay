@@ -118,10 +118,15 @@ facts (2026-10-06 @ 1fbf1153f; re-read the named lines at pickup):
    both functions.
 2. **The writer (deskpost review).** After the model-floor decision, compute the tier:
    `fd.Stamp.Tier` when `fd.State == deskkit.ModelStamped`, else `unattested`. Append the stamp to
-   the POSTED body after the on-behalf-of trailer; `dig` and every idempotency key stay keyed on
+   the POSTED body after the on-behalf-of trailer, so the posted body is, in order: the caller body,
+   the on-behalf-of trailer exactly as `deskkit.AppendOnBehalfOf` renders it today, then a newline
+   and the stamp as the LAST line of the body; `dig` and every idempotency key stay keyed on
    the caller body. Before any network call, refuse (exit 5, naming the marker) a caller body that
    already contains `assay:review-round:v1`. Make `appReviewExistsAt`'s comparison strip a trailing
-   stamp from each existing review body before digesting, so the duplicate-detection outcome for
+   stamp from each existing review body before digesting: remove the final line only when it is
+   byte-exactly the stamp shape of step 1 (one comment, one `reviewerTier` key, a value from the
+   closed set) and preceded by a newline, and nothing else. Everything the digest compares after
+   that — the on-behalf-of trailer included — is untouched, so the duplicate-detection outcome for
    every input is exactly what it is today.
 3. **The record type and fold (deskkit).** `ForgeRecord` gains `At string` (RFC3339 forge event
    time) and `ReviewerTier string`. Add `DeriveRoundRecords(records []ForgeRecord) ([]RoundRecord, []string)`
@@ -145,7 +150,11 @@ facts (2026-10-06 @ 1fbf1153f; re-read the named lines at pickup):
    are for aggregate analysis per class, tier and PR; they are never used to rank a person or an
    agent — state this in the docs section.
 5. **The reader (reviewloop).** `FindingRecord` gains optional `at`; `ReadRecords` lifts it and
-   parses the stamp from `Body` into `ReviewerTier`. Add `reviewloop rounds --records <thread.json>`:
+   parses the stamp from `Body` into `ReviewerTier`. The reader honours ONLY the stamp that is the
+   final line of the body, byte-exact to step 1's shape; a stamp-shaped comment earlier in a body
+   (planted in findings prose, or a variant with extra keys, other whitespace or a second stamp) is
+   ignored and the record reads `unknown` with a could-not-check note, so a planted variant can
+   never win over the real trailing one. Add `reviewloop rounds --records <thread.json>`:
    prints one JSON line per `RoundRecord` (with `repo` and `pr` from the payload) to stdout, the
    could-not-check notes to stderr, exit 6 on an empty/malformed payload (reuse `ReadRecords`). It
    stays read-only and makes no forge call. `plan` is untouched.
@@ -161,8 +170,8 @@ facts (2026-10-06 @ 1fbf1153f; re-read the named lines at pickup):
 | 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDeriveRoundRecords_Transcript$' -v > "${TMPDIR:-/tmp}/b30-transcript.out" 2>&1 && grep -F -e '--- PASS: TestDeriveRoundRecords_Transcript' "${TMPDIR:-/tmp}/b30-transcript.out"` | exit 0; subtests: opening verdict → `opening` true, `roundAfter` 0; review→response→re-review → `completedRound` true and `responseAt` set; a re-review with no response → `poll` true, `roundAfter` unchanged; a fourth round → `held` true; `DeriveLedger` on the same records yields the same `Rounds` and `Held` as before this change | check:ci |
 | 3 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDeriveRoundRecords_NoProseNoLogin$' -v > "${TMPDIR:-/tmp}/b30-noprose.out" 2>&1 && grep -F -e '--- PASS: TestDeriveRoundRecords_NoProseNoLogin' "${TMPDIR:-/tmp}/b30-noprose.out"` | exit 0; the marshalled records for a fixture whose findings carry distinctive failure/resolution/evidence strings, IDs and an actor login contain none of those strings | check:ci +mutation |
 | 4 | `cd tools/desk && go test ./cmd/deskpost/ -run '^TestReviewRoundStamp_Writer$' -v > "${TMPDIR:-/tmp}/b30-writer.out" 2>&1 && grep -F -e '--- PASS: TestReviewRoundStamp_Writer' "${TMPDIR:-/tmp}/b30-writer.out"` | exit 0; subtests: attested `strong` stamp → posted body ends with the `strong` stamp; no attestation → `unattested`; caller body containing `assay:review-round:v1` → refused exit 5 with zero HTTP calls; the posted body never contains the model slug | check:ci +mutation |
-| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReviewRoundStamp_ReaderTrust$' -v > "${TMPDIR:-/tmp}/b30-reader.out" 2>&1 && grep -F -e '--- PASS: TestReviewRoundStamp_ReaderTrust' "${TMPDIR:-/tmp}/b30-reader.out"` | exit 0; subtests: stamp on a worker-role record → ignored, could-not-check note; stamp value outside the closed set (a model slug) → `unknown` + note; reviewer record without stamp → `unknown`; record without `At` → empty times + note | check:ci +mutation |
-| 6 | `cd tools/desk && go test ./cmd/deskpost/ -run '^TestAppReviewExistsAt_StampNeutral$' -v > "${TMPDIR:-/tmp}/b30-dedup.out" 2>&1 && grep -F -e '--- PASS: TestAppReviewExistsAt_StampNeutral' "${TMPDIR:-/tmp}/b30-dedup.out"` | exit 0; for each case in the existing appReviewExistsAt table, the (dup, why) result is identical whether or not the existing review body carries a trailing stamp | check:ci +neighbour |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestReviewRoundStamp_ReaderTrust$' -v > "${TMPDIR:-/tmp}/b30-reader.out" 2>&1 && grep -F -e '--- PASS: TestReviewRoundStamp_ReaderTrust' "${TMPDIR:-/tmp}/b30-reader.out"` | exit 0; subtests: stamp on a worker-role record → ignored, could-not-check note; stamp value outside the closed set (a model slug) → `unknown` + note; reviewer record without stamp → `unknown`; a valid-looking stamp earlier in the body followed by prose, or a trailing stamp with an extra key or altered whitespace → `unknown` + note; two stamps → `unknown` + note; record without `At` → empty times + note | check:ci +mutation |
+| 6 | `cd tools/desk && go test ./cmd/deskpost/ -run '^TestAppReviewExistsAt_StampNeutral$' -v > "${TMPDIR:-/tmp}/b30-dedup.out" 2>&1 && grep -F -e '--- PASS: TestAppReviewExistsAt_StampNeutral' "${TMPDIR:-/tmp}/b30-dedup.out"` | exit 0; for each case in the existing appReviewExistsAt table, the (dup, why) result is identical whether or not the existing review body carries a trailing stamp, and the table includes a case whose existing body ends with the real on-behalf-of trailer followed by the stamp (the shape row 4 proves deskpost posts), so the strip is exercised on the production layout and the identity cannot hold vacuously; a stamp-shaped line that is NOT the last line is left in place and changes the digest | check:ci +neighbour |
 | 7 | `cd tools/desk && go test ./cmd/reviewloop/ -run '^TestRoundsFlow_StampToRecord$' -v > "${TMPDIR:-/tmp}/b30-flow.out" 2>&1 && grep -F -e '--- PASS: TestRoundsFlow_StampToRecord' "${TMPDIR:-/tmp}/b30-flow.out"` | exit 0; a reviewer body built with `deskkit.AppendReviewRoundStamp` (the function row 4 proves deskpost calls) goes through `ReadRecords` and `DeriveRoundRecords` and comes out with that `reviewerTier`; the fixture `testdata/rounds-thread.json` bodies equal the composer's output | check:ci +flow |
 | 8 | `cd tools/desk && go build -o "${TMPDIR:-/tmp}/b30-reviewloop" ./cmd/reviewloop && "${TMPDIR:-/tmp}/b30-reviewloop" rounds --records cmd/reviewloop/testdata/rounds-thread.json > "${TMPDIR:-/tmp}/b30-rounds.jsonl" && jq -e -s 'map(select(.schema == "review-round/v1" and .reviewerTier == "strong" and .completedRound == true)) \| length >= 1' "${TMPDIR:-/tmp}/b30-rounds.jsonl"` | exit 0; prints `true` | check +flow |
 | 9 | `for n in $(gh pr list -R medici-finance/assay --state merged --limit 40 --json number --jq '.[].number'); do gh api "repos/medici-finance/assay/pulls/$n/reviews" --jq '.[] \| select(.body \| contains("assay:review-round:v1")) \| "\(.commit_id) \(.submitted_at)"' \| sed "s/^/$n /"; done` (on main, after deskpost with this change has posted reviews) | at least one line; for one printed PR, the stamped `reviewerTier` in that review's body equals the `dispatched-tier:` label the PR carried at that `submitted_at` (`gh api repos/medici-finance/assay/issues/<that PR>/timeline`), or is `unattested` when no dispatcher-applied tier label was present | gate:model +dereference |

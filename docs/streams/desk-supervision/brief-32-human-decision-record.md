@@ -122,7 +122,17 @@ facts:
      `asked_to_ruled_s` (int seconds, equal to the differences);
    - `tool_sha` (the build's source SHA, as the audit Entry carries).
    Add a "Never recorded" list: option text, ruling text, any comment body, any login or account
-   id, any per-person aggregate.
+   id, any per-person aggregate. Add two rules to the schema doc:
+   - **Visibility.** The forge copy lands on the close comment's own repo, whose visibility can
+     differ from the `tracker` item's repo. `tracker` is already rendered in the close comment's
+     source string (`deskclose/triage.go:273`) and the outbound check scans the whole comment body,
+     so the block discloses nothing the comment did not already carry — the doc states that
+     `tracker` is the only repo-bearing field, that it is exactly as visible as the close comment
+     itself, and that the record holds no `dispatch_ref`, no option or ruling text and no login.
+   - **Authenticity.** Any commenter can post a lookalike `human-decision-v1` block. A reader
+     honours a block ONLY in the close comment authored by the closing role's own App identity
+     (the roster-trusted App that ran `deskclose`), never in a comment by any other author, and
+     prefers the local `decision-records.jsonl` line when both copies exist.
 2. **deskkit.** In `decisionrecord.go`: `ParseDecisionOptions(body)` — the exact parse now inline
    in deskinbox (`section` + line regexes + recommended detection), returning source letters, the
    recommended index and cleaned texts; `ParseRulingPick(comments, anchorIdx, rulerComment)` —

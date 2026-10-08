@@ -67,19 +67,36 @@ files:
 
 facts:
 - **Who releases the claim, and who sees the usage figure (read 2026-10-06 @ 1fbf1153f).** The
-  claim is `refs/dispatch/<id>` (`tools/desk/cmd/deskclaim-ref/main.go:11-13`); `release` only
-  deletes it (`claim.go:261-275`). A WORKER releases its own claim as its last step — the
+  claim is `refs/dispatch/<id>` (`tools/desk/cmd/deskclaim-ref/main.go:11-13`); at `1fbf1153f`
+  `release` only deletes it (`claim.go:261-275`; desk-supervision/28 later adds the `released`
+  dispatch-record line there). A WORKER releases its own claim as its last step — the
   dispatch prompt tells it to (`tools/desk/cmd/deskdispatch/prompt.go:453-463`). The worker
   cannot read its own run's usage figure; the harness reports it to the DISPATCHING desk session
   in the worker's completion notification, which is the event the worker-desk skill already acts
   on ("Fill to N, refill on completion", `plugins/assay/skills/worker-desk/SKILL.md:127`). So
   "at claim release" is implemented as: the desk records usage at that completion event, which
-  follows the worker's own release. The claim tools are NOT changed.
-- **`dispatch_ref`** is as defined by desk-supervision/28: a per-RUN id `<claim_key>@<YYYYMMDDTHHMMSSZ>`
-  minted at claim acquire (the claim key is `claimKeyFor`, `tools/desk/cmd/deskdispatch/dispatch.go:1829-1834`,
-  per ITEM; the acquire timestamp makes it per run) and readable in the worker worktree as
+  follows the worker's own release. Brief 34 adds NOTHING to the claim tools or to deskdispatch: no usage flag, no
+  usage import. (Its dependency, desk-supervision/28, does edit `tools/desk/cmd/deskclaim-ref/claim.go` to append a
+  `released` dispatch record at release; that is 28's change, it carries no usage figure, and
+  brief 34's Verify row 9 is scoped to what brief 34 owns, not to the whole directory.)
+- **`dispatch_ref`** is as defined by desk-supervision/28: a per-RUN id
+  `<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 lowercase hex nonce>` minted at claim acquire (the claim key
+  is `claimKeyFor`, `tools/desk/cmd/deskdispatch/dispatch.go:1829-1834`, per ITEM; the timestamp and
+  the random nonce make it per run) and readable in the worker worktree as
   `git config --worktree assay.dispatchRef`. A usage record therefore joins to exactly one
-  dispatch record by `dispatch_ref` alone.
+  dispatch record by `dispatch_ref` alone. It is local state and brief 28's visibility rule applies:
+  the usage store is local (below), so the clear ref is allowed there and nowhere on a non-private
+  surface.
+- **Where the desk gets the `dispatch_ref` at completion.** The session that receives the
+  completion notification is the dispatching desk, not the worker, and its cwd is not the worker's
+  worktree. The `dispatch_ref` is not passed to it by any channel brief 28 adds, but brief 28 writes
+  the `dispatched` record (`<StateDir>/dispatch-records.jsonl`, same machine and same state
+  directory as the usage store) and that record carries `claim_key` and `dispatch_ref`. So the
+  source is a lookup: the LATEST `dispatched` line for the claim key. Exclusivity guarantees one
+  live claim per key, and the desk records usage at the completion event before it refills the
+  slot, so the latest `dispatched` line is the run that just finished; if no such line exists
+  (the dispatch record write failed, or the dispatch predates brief 28) the record is refused,
+  never guessed.
 - **Tier vocabulary** is `deskkit.DispatchTiers()` = {`any`, `strong`}
   (`tools/desk/internal/deskkit/modelstamp.go:123`), the same set `deskdispatch --tier` validates
   against (`dispatch.go:1781`). The record stores the tier slug only, never a model name. (The
@@ -123,15 +140,22 @@ facts:
    DispatchRef, Repo (owner/name), Item (`<stream>/<NN>` or `issue-<N>`), Tier, TokensIn,
    TokensOut, TokensTotal, WallSeconds}` — the four counts are `*VitalField`. NO other field: no
    session id, no person, no model name, no free text, no PR title, no path. Each string field
-   is validated against a closed grammar (`dispatch_ref` = desk-supervision/28's `<claim_key>@<ts>` grammar; `repo` =
+   is validated against a closed grammar (`dispatch_ref` = desk-supervision/28's `<claim_key>@<ts>.<nonce>` grammar; `repo` =
    owner/name; `item` = `<stream>/<NN>` or `issue-<N>`; `tier` ∈ `DispatchTiers()`).
 2. **Store.** Resolve the directory: `ASSAY_USAGE_DIR` (one absolute path) when set, else
    `StateDir()/usage`. REFUSE (exit 5) a directory that is, or is inside, a git working tree
-   (walk up looking for `.git`) — the counts never land in a repository. Register the key in the
+   (resolve symlinks first — `filepath.EvalSymlinks` on the directory, or on its nearest existing
+   ancestor when it does not exist yet — then walk up looking for `.git`), so a symlinked
+   `ASSAY_USAGE_DIR` cannot land counts inside a work tree — the counts never land in a repository. Register the key in the
    three roster sites listed in Context. Append one JSON line per record with an exclusive lock,
    file mode 0600.
-3. **Verb `deskusage record <dispatch_ref> --repo O/R --item ITEM --tier any|strong
-   [--tokens-in N] [--tokens-out N] [--tokens-total N] [--wall-seconds N]`.** Flags only. Each
+3. **Verb `deskusage record (<dispatch_ref> | --claim-key KEY) --repo O/R --item ITEM --tier any|strong
+   [--tokens-in N] [--tokens-out N] [--tokens-total N] [--wall-seconds N]`.** Flags only. The run is
+   named by exactly one of: a positional `dispatch_ref` (validated against desk-supervision/28's
+   grammar), or `--claim-key KEY`, which resolves the `dispatch_ref` from the latest `dispatched`
+   line for `KEY` in `<StateDir>/dispatch-records.jsonl` (the lookup of Context; no such line →
+   exit 5, nothing written; both or neither → exit 5). The `repo` flag must equal the resolved
+   record's `repo`, or the verb refuses. Each
    count flag takes a non-negative integer or the literal `could-not-check`; an omitted count is
    null. Anything else — a non-integer, a negative number, an unknown flag, a positional beyond
    `dispatch_ref` — is refused (exit 5) and nothing is written (the store file is byte-identical).
@@ -143,9 +167,10 @@ facts:
    `could-not-check` or null); an unknown key or bad value is refused (exit 6, naming the line
    number), never skipped silently.
 5. **Skill.** In worker-desk's "Fill to N, refill on completion" bullet: when a worker's
-   completion notification arrives, before refilling the slot, run `deskusage record` with the
-   claim key the dispatch used, the item, the dispatched tier, and only the counts the
-   notification itself reports; omit any it does not carry. State plainly: never read, quote or
+   completion notification arrives, before refilling the slot, run `deskusage record --claim-key <the claim key the dispatch used>` with the repo, the item,
+   the dispatched tier, and only the counts the notification itself reports; omit any it does not
+   carry. The verb resolves the run's `dispatch_ref` itself (Task 3), so the skill never has to
+   hold, copy or reconstruct one. State plainly: never read, quote or
    pass anything from the worker's transcript, prompt or tool output; the figures are not a
    target for ranking agents or people. A refusal is logged and does not block the refill.
 6. **Docs + changelog.** `tools/desk/README.md`: a `deskusage` row (local-only write, never a
@@ -158,12 +183,12 @@ facts:
 | 1 | `cd tools/desk && go test ./cmd/deskusage/... ./internal/deskkit/...` | exit 0 | check:ci |
 | 2 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageRecord_RefusesTranscriptShapedInput$' -v > "${TMPDIR:-/tmp}/b34-transcript.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_RefusesTranscriptShapedInput' "${TMPDIR:-/tmp}/b34-transcript.out"` | exit 0; subtests: a transcript-shaped JSON line (a `message` object with `content` text carrying a canary string) passed as `--tokens-in` → exit 5, store byte-identical; the same transcript piped on stdin with otherwise valid flags → record written, stdin never read, canary absent from the store; `--transcript`/`--prompt` flags → exit 5 | check:ci +mutation |
 | 3 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageSummary_RefusesPollutedStore$' -v > "${TMPDIR:-/tmp}/b34-polluted.out" 2>&1 && grep -F -e '--- PASS: TestUsageSummary_RefusesPollutedStore' "${TMPDIR:-/tmp}/b34-polluted.out"` | exit 0; a store with one hand-appended line carrying a `prompt` key → `summary` exits 6 naming that line number; a store of valid lines → aggregates printed with no `dispatch_ref` in the output (the reader layer, with the writer bypassed) | check:ci +mutation |
-| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageStore_RefusesGitWorkTree$' -v > "${TMPDIR:-/tmp}/b34-gitdir.out" 2>&1 && grep -F -e '--- PASS: TestUsageStore_RefusesGitWorkTree' "${TMPDIR:-/tmp}/b34-gitdir.out"` | exit 0; `ASSAY_USAGE_DIR` pointing inside a temp dir carrying `.git` → refused, nothing written; unset → resolves under the (test-overridden) state dir | check:ci +mutation |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageStore_RefusesGitWorkTree$' -v > "${TMPDIR:-/tmp}/b34-gitdir.out" 2>&1 && grep -F -e '--- PASS: TestUsageStore_RefusesGitWorkTree' "${TMPDIR:-/tmp}/b34-gitdir.out"` | exit 0; `ASSAY_USAGE_DIR` pointing inside a temp dir carrying `.git` → refused, nothing written; `ASSAY_USAGE_DIR` a symlink whose target is inside a temp dir carrying `.git` → refused, nothing written; unset → resolves under the (test-overridden) state dir | check:ci +mutation |
 | 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageRecord_ThreeState$' -v > "${TMPDIR:-/tmp}/b34-3state.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_ThreeState' "${TMPDIR:-/tmp}/b34-3state.out"` | exit 0; omitted count → JSON `null`; `could-not-check` → that string; measured `0` → `0`; a vendor model name as `--tier` → refused | check:ci |
-| 6 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsage_RecordToSummaryFlow$' -v > "${TMPDIR:-/tmp}/b34-flow.out" 2>&1 && grep -F -e '--- PASS: TestUsage_RecordToSummaryFlow' "${TMPDIR:-/tmp}/b34-flow.out"` | exit 0; roster key → store dir → three `record` calls (two items, two tiers) → `summary --by tier --json` shows the right counts, sums and measured/null tallies; each stored `dispatch_ref` equals what deskdispatch's claim-key derivation yields for the same item and repo | check:ci +flow |
+| 6 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsage_RecordToSummaryFlow$' -v > "${TMPDIR:-/tmp}/b34-flow.out" 2>&1 && grep -F -e '--- PASS: TestUsage_RecordToSummaryFlow' "${TMPDIR:-/tmp}/b34-flow.out"` | exit 0; roster key → store dir → three `record` calls (two items, two tiers) → `summary --by tier --json` shows the right counts, sums and measured/null tallies; a `--claim-key` call resolves to the `dispatch_ref` of the LATEST `dispatched` line in a fixture dispatch-record store (two `dispatched` lines for one key, the later one wins), and each stored `dispatch_ref` equals the one desk-supervision/28's `MintDispatchRef` produced for that fixture line — never a bare claim key; a `--claim-key` with no `dispatched` line, a `--repo` that differs from the resolved record, and a positional ref passed together with `--claim-key` are each refused (exit 5, store byte-identical) | check:ci +flow |
 | 7 | `(cd statusgen && go test . -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-sg-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-sg-roster.out") && (cd tools/desk && go test ./internal/deskkit/ -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-dk-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-dk-roster.out") && grep -F -e 'ASSAY_USAGE_DIR' statusgen/testdata/roster_coupling.json` | exit 0 (the new key is in the coupling vector and both binaries' key-schema coupling tests pass) | check:ci +neighbour |
 | 8 | `grep -n 'deskusage record' plugins/assay/skills/worker-desk/SKILL.md && grep -n -i 'transcript' plugins/assay/skills/worker-desk/SKILL.md` | exit 0; the record step sits in the refill-on-completion bullet and the same passage forbids transcript content | check |
-| 9 | `grep -n 'func cmdRelease' -A6 tools/desk/cmd/deskclaim-ref/claim.go && git diff --quiet 1fbf1153f -- tools/desk/cmd/deskclaim-ref/` | exit 0; release still only removes the ref and the claim tool is untouched (the claim of Context fact 1 dereferenced against code) | check +dereference |
+| 9 | `grep -n 'func cmdRelease' tools/desk/cmd/deskclaim-ref/claim.go && ! grep -rn -i -e 'deskusage' -e 'UsageRecord' -e 'usage-v1' tools/desk/cmd/deskclaim-ref/ tools/desk/cmd/deskdispatch/` | exit 0; `cmdRelease` exists and neither the claim tool nor deskdispatch references the usage verb or record — brief 34 adds nothing to them (the claim of Context fact 1 dereferenced against code; desk-supervision/28's own `released`-record edit to the same file is deliberately out of this row's scope) | check +dereference |
 | 10 | `statusgen --consumers --root .` | exit 0 (every `consumers:` routing above is corroborated by the implementation diff) | check:ci |
 
 Pre-mortem → detection map:
@@ -178,6 +203,8 @@ Pre-mortem → detection map:
 | The new roster key fail-closes an adopter's fleet because one binary does not know it | row 7 |
 | The skill never tells the desk to record, so the store stays empty in production | row 8 |
 | Someone "simplifies" by adding usage flags to the claim tool, which the worker runs blind | row 9 |
+| The skill passes a claim key where a `dispatch_ref` is required, so every production record is refused and the store stays empty | row 6 (`--claim-key` resolves against a fixture dispatch-record store) |
+| `ASSAY_USAGE_DIR` is a symlink into a checkout | row 4 (symlink subtest) |
 | The figures get used to rank agents or people | no row — review-only (a use-of-data norm stated in the skill and the summary's aggregate-only output; no mechanism can test intent) |
 
 ## Evidence

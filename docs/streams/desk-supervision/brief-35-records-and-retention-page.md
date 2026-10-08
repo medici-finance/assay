@@ -67,10 +67,11 @@ facts:
     (lines 357-375), which states "Nothing is deleted … no tool removes a segment".
   - **Decide journal** — today `AuditJournal` writes each `DecisionRecord` into the audit log as
     a `decide` verb line with the record flattened into `detail`
-    (`tools/desk/internal/deskkit/decide.go:496-516`); the raw context is stored only as a digest
+    (`tools/desk/internal/deskkit/decide.go:504-519`); the raw context is stored only as a digest
     (`decide.go:223-224`). Contract: `tools/desk/internal/deskkit/decide.md`; assessment spec:
-    `spec/decision-assessment-v1.md`. desk-supervision/29 moves it to a structured sidecar — the
-    row describes the post-29 location and notes that earlier history sits in the audit log.
+    `spec/decision-assessment-v1.md`. desk-supervision/29 tees it: the structured sidecar is ADDED and the audit
+    `decide` line stays as it is, so the row lists both locations and notes that earlier history
+    sits only in the audit log.
   - **Review-finding blocks** — a versioned block inside an HTML comment in forge review/reply
     bodies (on the forge, not in the repo), written by `deskpost review` and `deskreply`; schema
     `docs/streams/desk-supervision/review-finding-v1.md`. Retention is the forge's.

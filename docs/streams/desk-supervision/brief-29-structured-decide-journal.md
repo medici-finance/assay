@@ -83,8 +83,12 @@ facts (all read 2026-10-06 @ 1fbf1153f):
   from a malformed answer.
 - Callers today: `tools/desk/cmd/commsloop/decide.go:202-208` and `tools/desk/cmd/commsgw/prosegate.go:164-170`,
   both with a nil-defaulting `Journal` field.
-- `dispatch_ref` as defined by desk-supervision/28. A Decide call may run outside any dispatch; when the
-  ref is not available the record omits it and joins by `session_tag` + `item` instead.
+- `dispatch_ref` as defined by desk-supervision/28 (local state only; never in clear on a non-private
+  surface — the journal sidecar is local, mode 0600). `Decide` reads it from the calling process's
+  cwd worktree config, `git config --worktree assay.dispatchRef`, the same read desk-supervision/28's
+  release side uses, and keeps it only if it parses against 28's grammar. A Decide call may run
+  outside any dispatch (a desk session's cwd is not a dispatched worktree); when the ref is not
+  available or does not parse the record omits it and joins by `session_tag` + `item` instead.
 - single-point-of-failure: the observation writer's membership check (the record exists; the observed
   label is in that record's own vocabulary) — backed by `decide-export`'s independent re-validation on
   read, which skips and counts any record or observation that fails, however it got onto disk.
@@ -128,6 +132,11 @@ facts (all read 2026-10-06 @ 1fbf1153f):
    reference only — `owner/repo#N`, `owner/repo@<40-hex sha>`, or `<stream>/<NN>`; anything else
    refused), `observer_role` (closed set: the five desk role slugs, or `human` — never a name).
    The original record is never rewritten; several observations per record are allowed.
+   `source` and `observer_role` are SELF-REPORTED: the `decide-observe` CLI cannot verify that a
+   `human-ruling` observation came from the driver. The schema doc says so, and any calibration or
+   promotion decision that reads `source: human-ruling` must either treat it as self-reported or
+   dereference `evidence_ref` to a driver-authored comment before counting it; `decide-export`
+   carries the field through unchanged and gates nothing on it.
 5. **`deskaudit decide-observe --record <id> --label <L> --source <S> --ref <R> --role <role>`** —
    validates per Task 4 against the record read from disk and appends; every refusal exits 5 naming
    the field and leaves both files byte-identical.

@@ -108,9 +108,22 @@ facts:
 - Join keys: the issue-lane record carries `session_tag` (the same value as the audit Entry's
   `sessionTag`) and an optional `dispatch_ref` as defined by desk-supervision/28. A record that
   cannot know `dispatch_ref` joins by `item` (`owner/repo#N`) instead.
-- single-point-of-failure: the record writer's closed-key validation (no title, body, author or
-  vendor model name can enter a record) — backed by the schema-match test in BOTH modules (row 6),
-  which fails on any added JSON key, and by the review gate on the implementation diff.
+- **The register is committed to git; the issue-lane file is not.** The intake register
+  (`docs/streams/intake/`) is tracked, so in a public adopter repo anything written to an entry's
+  frontmatter is public. That is why every identity-bearing value the record or the stamp can carry
+  (`triager_role`, `triaged-by`) is a CLOSED role set, never a free slug: a slug pattern admits any
+  lowercase person login. The closed set is the five canonical desk loop names
+  (`deskkit.canonicalLoopNames`, `tools/desk/internal/deskkit/loopnames.go`) — `the-desk`,
+  `worker-desk`, `pr-review-desk`, `verify-desk`, `intake-desk` — plus the neutral token `driver`
+  for a stamp a human wrote by hand. It is spelled as a literal in BOTH modules (statusgen cannot
+  import deskkit) and pinned to the schema doc by row 6. This is the same shape desk-supervision/29's
+  `observer_role` and desk-supervision/32's `ruler` already use.
+- single-point-of-failure: the record writer's closed-key and closed-vocabulary validation (no
+  title, body, author, person login or vendor model name can enter a record or a register stamp) —
+  backed by the schema-match test in BOTH modules (row 6), which fails on any added JSON key or any
+  difference in the role set, by the register-side lint on `triaged-by` (a different component from
+  the scanloop writer, and the only guard on a hand-edited entry), and by the review gate on the
+  implementation diff.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
@@ -127,58 +140,81 @@ facts:
    - `artifact` — a typed ref only: `<stream>/<NN>`, `owner/repo#N`, `#N`, `F-<slug>`, or a scan PR
      ref; REQUIRED unless `exit` is `rejected-watching`;
    - `decided_by` — `mechanical` | `judgment`;
-   - `triager_role` — a roster role slug (e.g. `issue-loop`), never a person;
+   - `triager_role` — one of the CLOSED role set: `the-desk`, `worker-desk`, `pr-review-desk`,
+     `verify-desk`, `intake-desk`, or `driver` (a hand-written stamp). Never a login, a name or any
+     other slug; the set is listed in the schema doc's vocabulary table and both writers and the
+     register lint check membership, not a pattern;
    - `triager_tier` — `any` | `strong` for `judgment`, `none` for `mechanical`; never a vendor
      model name (the public stamp label is the only place a model name appears, and this record
      does not repeat it);
    - `opened`, `triaged` — RFC3339 (`opened` <= `triaged`); `opened` may be empty when unknown;
-   - `kind` — the classifier reason (`new-issue`, `update`, …) or empty for intake;
+   - `kind` — one of the classifier reasons `new-issue`, `update`, `unreadable-placeholder-state`,
+     `no-scan-target`, `scan-target-outside-write-boundary` (`classify`, `adapter.go:303-326`), or
+     empty for intake;
    - `trust` — the admission state for issue items, empty for intake;
-   - `session_tag`, `dispatch_ref` — optional join keys (desk-supervision/28).
+   - `session_tag`, `dispatch_ref` — optional join keys (desk-supervision/28); `dispatch_ref` must
+     parse against desk-supervision/28's grammar. The record file is local state (never committed),
+     so the clear `dispatch_ref` is allowed there and nowhere on a public surface.
    State the NEVER-recorded list: titles, bodies, comments, author or assignee logins, human reply
    prose, prompts or transcripts. These records are never used to rank people or agents.
 2. **Issue-lane writer (scanloop).** In `exitrecord.go`: an `IntakeExitRecord` struct with exactly
    the keys above; `Validate()` refusing (`deskkit.Refused`, exit 5) an unknown exit, a missing
-   artifact where required, an artifact that is not a typed ref, a tier outside the set, `detail`
-   on the wrong exit, `opened` after `triaged`; `appendExitRecord` writing one line to
+   artifact where required, an artifact that is not a typed ref, a tier outside the set, a
+   `triager_role` outside the closed role set (a login-shaped value such as `alice-dev` included), a
+   `kind` outside the classifier's reasons (`new-issue`, `update`, `unreadable-placeholder-state`,
+   `no-scan-target`, `scan-target-outside-write-boundary`), a `dispatch_ref` that does not parse
+   against desk-supervision/28's grammar, `detail` on the wrong exit, `opened` after `triaged`; `appendExitRecord` writing one line to
    `<deskDir>/intake-exits.jsonl` under the existing audit lock discipline. Call it from `Land` for
    every member it records (mechanical: `decided_by: mechanical`, `triager_tier: none`). A write
    failure is returned, never swallowed (same rule as `auditExit`). Dry-run writes nothing.
 3. **Judgment exits get a landing verb.** `scanloop land --item <owner/repo#N> --exit <exit>
    --artifact <ref> --tier any|strong [--detail rejected|watching] [--kind <reason>]
-   [--dispatch-ref <id>]` — the session runs it after routing a parked item by hand. It goes
-   through `ExitOf(ExitUnrouted, exit)`, refuses a second DIFFERENT exit for an item already in the
-   record file (same exit again = exit 0 noop), writes the record (`decided_by: judgment`,
-   `triager_role` = the loop's roster role) and the existing audit `land` line.
+   [--dispatch-ref <ref>]` — the session runs it after routing a parked item by hand. `--kind` takes
+   only the classifier reasons listed in step 2 and `--dispatch-ref` only a value that parses
+   against desk-supervision/28's grammar; anything else is refused (exit 5) before anything is
+   written. It goes through `ExitOf(ExitUnrouted, exit)`, refuses a second DIFFERENT exit for an
+   item already in the record file (same exit again = exit 0 noop), writes the record
+   (`decided_by: judgment`, `triager_role` = the canonical name of the running loop, taken from
+   `$DESK_LOOP` and refused if it is not in the closed role set) and the existing audit `land` line.
+   Both `--kind` and `--dispatch-ref` are self-reported labels for analysis only; nothing gates on
+   them.
 4. **Register writer (statusgen).** Add `Triaged` (`triaged`), `TriagedBy` (`triaged-by`),
    `TriagerTier` (`triager-tier`) to `intakeEntry`. When present: `triaged` must parse as a date or
-   RFC3339; `triaged-by` must match `^[a-z][a-z0-9-]*$`; `triager-tier` must be `any` or `strong` —
-   each violation a `--lint` PROBLEM naming the entry and value. Absence is legal (forward-only; no
+   RFC3339; `triaged-by` must be a MEMBER of the closed role set (`the-desk`, `worker-desk`,
+   `pr-review-desk`, `verify-desk`, `intake-desk`, `driver`) — never matched by a pattern, so a
+   login-shaped value such as `alice-dev` is a PROBLEM; `triager-tier` must be `any` or `strong` —
+   each violation a `--lint` PROBLEM naming the entry and value (for `triaged-by`, the PROBLEM names
+   the entry and the rule, and quotes the offending value only up to the closed set's length so a
+   long pasted string is not echoed back). Absence is legal (forward-only; no
    backfill). `statusgen --intake-exits --json --root <dir>` emits one `intake-exit-v1` line per
    entry whose disposition is triaged, mapped: `scoped` + `scoped-to` a stream or `<stream>/<NN>` →
    `placeholder`; `scoped` + `scoped-to` `issue #NN` → `bug`; `scoped` + `scoped-to` `F-<slug>` →
-   `finding`; `decision-needed` → `needs-decision` (artifact = `decision-issue`); `watching` /
+   `finding`; `decision-needed` → `needs-decision` (artifact = the entry's `decision-issue` value rendered as
+   the typed ref `#N`; an entry with no `decision-issue` is counted `unmapped`); `watching` /
    `rejected` → `rejected-watching` with `detail`; legacy `adopted` → `placeholder`. It ends with a
    summary object `{"stamped": N, "unstamped": M, "unmapped": K}` so coverage is visible; an
-   unmappable disposition is counted, never guessed. A missing register is could-not-check (exit 6),
-   not an empty export.
+   unmappable disposition is counted, never guessed. The register is the
+   directory `docs/streams/intake/` AND the index `docs/streams/INTAKE.md`: if NEITHER exists the
+   export is could-not-check (exit 6), not an empty export. An index with no per-entry files (this
+   repo) is a readable register with zero entries: exit 0, summary counts all 0.
 5. **Spec.** §5.2 lists the three optional keys; new §5.4 carries the mapping table from step 4 and
    says the record schema lives in `intake-exit-v1.md`. The four-value disposition grammar is
    unchanged except that `scoped-to` may name an `F-<slug>`.
 6. **Skill + docs.** intake-desk: the exits table gains the code slug per row; the intake-lane triage
-   commit sets `triaged`, `triaged-by`, `triager-tier` alongside `disposition`; after routing a
+   commit sets `triaged`, `triaged-by` (the running loop's canonical name, or `driver` when a human
+   triages by hand), `triager-tier` alongside `disposition`; after routing a
    parked issue item, run `scanloop land`. Update `tools/desk/README.md`; add the changelog fragment.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `(cd statusgen && go test ./...) && (cd tools/desk && go test ./cmd/scanloop/...)` | exit 0 | check:ci |
-| 2 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestExitRecord_Validate$' -v > "${TMPDIR:-/tmp}/b33-validate.out" 2>&1 && grep -F -e '--- PASS: TestExitRecord_Validate' "${TMPDIR:-/tmp}/b33-validate.out"` | exit 0; subtests: unknown exit → refused; missing artifact on `bug` → refused; free-text artifact → refused; vendor model name as tier → refused; `detail` on `bug` → refused; `opened` after `triaged` → refused; valid mechanical and judgment records → accepted | check:ci +mutation |
-| 3 | `cd statusgen && go test . -run '^TestIntakeExits_MappingAndStamp$' -v > "${TMPDIR:-/tmp}/b33-map.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExits_MappingAndStamp' "${TMPDIR:-/tmp}/b33-map.out"` | exit 0; subtests: each disposition form maps to its exit; an unmappable value counts in `unmapped`; a bad `triager-tier` is a lint PROBLEM; an entry with none of the new keys lints clean and still counts as untriaged/triaged exactly as before (intake-debt neighbour) | check:ci +mutation +neighbour |
-| 4 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestLandVerb_OneExitPerItem$' -v > "${TMPDIR:-/tmp}/b33-land.out" 2>&1 && grep -F -e '--- PASS: TestLandVerb_OneExitPerItem' "${TMPDIR:-/tmp}/b33-land.out"` | exit 0; subtests: first land writes one record + one audit line; same exit again → exit 0, no second line; different exit for the same item → exit 5, file unchanged; `unrouted` → exit 5 | check:ci +mutation |
+| 2 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestExitRecord_Validate$' -v > "${TMPDIR:-/tmp}/b33-validate.out" 2>&1 && grep -F -e '--- PASS: TestExitRecord_Validate' "${TMPDIR:-/tmp}/b33-validate.out"` | exit 0; subtests: unknown exit → refused; missing artifact on `bug` → refused; free-text artifact → refused; vendor model name as tier → refused; a login-shaped `triager_role` (`alice-dev`) → refused while each member of the closed role set is accepted; `kind` outside the classifier reasons → refused; `dispatch_ref` not matching desk-supervision/28's grammar → refused; `detail` on `bug` → refused; `opened` after `triaged` → refused; valid mechanical and judgment records → accepted | check:ci +mutation |
+| 3 | `cd statusgen && go test . -run '^TestIntakeExits_MappingAndStamp$' -v > "${TMPDIR:-/tmp}/b33-map.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExits_MappingAndStamp' "${TMPDIR:-/tmp}/b33-map.out"` | exit 0; subtests: each disposition form maps to its exit; an unmappable value counts in `unmapped`; a bad `triager-tier` is a lint PROBLEM; a login-shaped `triaged-by` (`alice-dev`) is a lint PROBLEM, while each closed-set member lints clean and so does an absent key; an entry with none of the new keys lints clean and still counts as untriaged/triaged exactly as before (intake-debt neighbour) | check:ci +mutation +neighbour |
+| 4 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestLandVerb_OneExitPerItem$' -v > "${TMPDIR:-/tmp}/b33-land.out" 2>&1 && grep -F -e '--- PASS: TestLandVerb_OneExitPerItem' "${TMPDIR:-/tmp}/b33-land.out"` | exit 0; subtests: first land writes one record + one audit line; same exit again → exit 0, no second line; different exit for the same item → exit 5, file unchanged; `unrouted` → exit 5; `$DESK_LOOP` set to a login-shaped value → exit 5, file unchanged; `--kind free-text` or a malformed `--dispatch-ref` → exit 5, file unchanged | check:ci +mutation |
 | 5 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestDrainPass_WritesExitRecords$' -v > "${TMPDIR:-/tmp}/b33-flow.out" 2>&1 && grep -F -e '--- PASS: TestDrainPass_WritesExitRecords' "${TMPDIR:-/tmp}/b33-flow.out"` | exit 0; an offline pass over a fixture inbound file (one new issue, one update) writes one `decided_by: mechanical` record per batch member, then `land` on the parked update writes the `judgment` record; no line contains the keys `title`, `author` or `body`, nor the fixture's author login | check:ci +flow |
-| 6 | `(cd statusgen && go test . -run '^TestIntakeExitSchema_MatchesDoc$' -v > "${TMPDIR:-/tmp}/b33-sg-schema.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExitSchema_MatchesDoc' "${TMPDIR:-/tmp}/b33-sg-schema.out") && (cd tools/desk && go test ./cmd/scanloop/ -run '^TestIntakeExitSchema_MatchesDoc$' -v > "${TMPDIR:-/tmp}/b33-sl-schema.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExitSchema_MatchesDoc' "${TMPDIR:-/tmp}/b33-sl-schema.out")` | exit 0; each module's test reads the fields table of the schema doc `docs/streams/desk-supervision/intake-exit-v1.md` (planned) and fails if its record type's JSON keys differ from it in either direction (two writers, one schema) | check:ci +flow +mutation |
-| 7 | `statusgen --intake-exits --json --root .` | exit 0; the last line is the summary object (in this repo, which has no per-entry intake files, all three counts are 0) — not an empty output and not exit 6 | check |
+| 6 | `(cd statusgen && go test . -run '^TestIntakeExitSchema_MatchesDoc$' -v > "${TMPDIR:-/tmp}/b33-sg-schema.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExitSchema_MatchesDoc' "${TMPDIR:-/tmp}/b33-sg-schema.out") && (cd tools/desk && go test ./cmd/scanloop/ -run '^TestIntakeExitSchema_MatchesDoc$' -v > "${TMPDIR:-/tmp}/b33-sl-schema.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExitSchema_MatchesDoc' "${TMPDIR:-/tmp}/b33-sl-schema.out")` | exit 0; each module's test reads the fields table of the schema doc `docs/streams/desk-supervision/intake-exit-v1.md` (planned) and fails if its record type's JSON keys, or its closed role set, differ from it in either direction (two writers, one schema, one vocabulary) | check:ci +flow +mutation |
+| 7 | `statusgen --intake-exits --json --root .` | exit 0; the last line is the summary object (in this repo, which has the `docs/streams/INTAKE.md` index but no per-entry intake files, all three counts are 0) — not an empty output and not exit 6 | check |
 | 8 | `statusgen --consumers --root .` | exit 0 (every `consumers:` routing above is corroborated by the implementation diff) | check:ci |
 | 9 | `jq -rs 'map(select(.decided_by == "judgment")) \| last \| "\(.item) \(.exit) \(.artifact)"' "$HOME/.config/assay/intake-exits.jsonl"` (on an operator's desk host, after the first real `scanloop land`) | one line `<item> <exit> <artifact>`; `gh issue view` on the printed item and artifact shows both exist, and for `needs-decision` the artifact carries the `needs-decision` label, for `bug` the `bug` label | gate:model +dereference |
 
@@ -187,6 +223,7 @@ Pre-mortem → detection map:
 | Failure mode | Caught by |
 |---|---|
 | A record carries a title, author login or vendor model name (sensitive text leaks into analysis data) | rows 2, 5, 6 |
+| A person's login lands in the committed register (`triaged-by`) or the record (`triager_role`) because the value was checked by pattern, not by membership | rows 2, 3, 4 (a login-shaped value refused at the register lint AND at both writers) |
 | The two writers drift to different key sets, so records cannot be concatenated | row 6 |
 | Judgment exits are still never written because the skill never runs `land` | row 9 (a real judgment record exists); skill wording stays review-only |
 | `land` lets one item take two exits across sessions | row 4 |
