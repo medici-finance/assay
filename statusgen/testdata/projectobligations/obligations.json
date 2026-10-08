@@ -1,0 +1,75 @@
+{
+  "schema": "project-obligations-v1",
+  "sources": [
+    {
+      "id": "SRC-synth-standard", "kind": "standard", "issuer": "Synthetic Standards Body",
+      "locator": "synthetic://standard/qms", "revision": "2030",
+      "published": "2030-01-01", "effective": "unknown", "capturedAt": "2026-10-08",
+      "contentDigest": "sha256:aba6307ff0a1cb9a07207b5ed8a751023b77451380c8e2af502c24e31b82f4ca",
+      "use": { "accessRef": "ACCESS-synth-1", "storage": "permitted", "ai": "permitted" },
+      "text": "Synthetic clause text for tests only. Not licensed material."
+    },
+    {
+      "id": "SRC-synth-licensed", "kind": "standard", "issuer": "Synthetic Standards Body",
+      "locator": "synthetic://standard/licensed", "revision": "2031",
+      "published": "unknown", "effective": "unknown", "capturedAt": "2026-10-08",
+      "use": { "accessRef": "ACCESS-synth-2", "storage": "denied", "ai": "denied" }
+    }
+  ],
+  "mappings": [
+    {
+      "id": "MAP-synth-001", "revision": 1,
+      "source": { "id": "SRC-synth-standard", "revision": "2030" },
+      "clause": "4.1",
+      "paraphrase": "Synthetic: the project keeps controls for its release process.",
+      "reqs": ["REQ-synthetic-controls"],
+      "profile": { "id": "profile-synth", "revision": "1" },
+      "context": { "entity": "synthetic entity", "activity": "release", "jurisdiction": "synthetic jurisdiction" },
+      "controls": ["CTRL-synth-a"],
+      "owner": "quality lead (role)"
+    },
+    {
+      "id": "MAP-synth-002", "revision": 1,
+      "source": { "id": "SRC-synth-licensed", "revision": "2031" },
+      "clause": "7.2",
+      "paraphrase": "Synthetic: concerns a process the project does not run.",
+      "reqs": [],
+      "profile": { "id": "profile-synth", "revision": "1" },
+      "context": {},
+      "owner": "quality lead (role)"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "APD-synth-001", "mappingId": "MAP-synth-001", "mappingRevision": 1,
+      "source": { "id": "SRC-synth-standard", "revision": "2030" },
+      "profile": { "id": "profile-synth", "revision": "1" },
+      "outcome": "applicable", "scope": "synthetic project",
+      "effectiveFrom": "2026-10-01", "decidedAt": "2026-10-05",
+      "proposedBy": "analysis-stub", "reviewer": "ada",
+      "acceptance": {
+        "decisionId": "DR-synth-applic-a",
+        "subjectDigest": "sha256:e58ed0d80cc74d6d2e7a4d82a1b855ca132a49fad089a709b19de353c9658fa2",
+        "disposition": "approved",
+        "corroborationRef": "example-org/tracker#77",
+        "reviewRef": "DR-synth-review-a"
+      }
+    },
+    {
+      "id": "APD-synth-002", "mappingId": "MAP-synth-002", "mappingRevision": 1,
+      "source": { "id": "SRC-synth-licensed", "revision": "2031" },
+      "profile": { "id": "profile-synth", "revision": "1" },
+      "outcome": "not-applicable", "reason": "The project does not run the process this clause governs.",
+      "scope": "synthetic project",
+      "effectiveFrom": "2026-10-01", "decidedAt": "2026-10-05",
+      "proposedBy": "analysis-stub", "reviewer": "ada",
+      "acceptance": {
+        "decisionId": "DR-synth-applic-b",
+        "subjectDigest": "sha256:0e06e3b30e1abca6b2d62574fe14a6d71489cdb27620e441002b2d76d01808a7",
+        "disposition": "approved",
+        "corroborationRef": "example-org/tracker#78",
+        "reviewRef": "DR-synth-review-a"
+      }
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "test": "go test . -run '^TestAssurance' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL \u2014 the AI-permitted check removed (a denied-use source reaches the model)",
+    "file": "projectobligations.go",
+    "old": "s.Use.norm(s.Use.Storage) == \"permitted\" && s.Use.norm(s.Use.AI) == \"permitted\"",
+    "new": "s.Use.norm(s.Use.Storage) == \"permitted\""
+  },
+  "mutations": [
+    {
+      "name": "access reference no longer required for model input",
+      "file": "projectobligations.go",
+      "old": "return s.Use.AccessRef != \"\" && s.Text != \"\" &&",
+      "new": "return s.Text != \"\" &&"
+    },
+    {
+      "name": "storage permission no longer required for model input",
+      "file": "projectobligations.go",
+      "old": "s.Use.norm(s.Use.Storage) == \"permitted\" && s.Use.norm(s.Use.AI) == \"permitted\"",
+      "new": "s.Use.norm(s.Use.AI) == \"permitted\""
+    },
+    {
+      "name": "untrusted-data label dropped from the model payload",
+      "file": "projectobligations.go",
+      "old": "Mode: \"metadata-only\", Trust: \"untrusted-data\"}",
+      "new": "Mode: \"metadata-only\"}"
+    },
+    {
+      "name": "self-approval check disabled",
+      "file": "projectobligations.go",
+      "old": "} else if strings.EqualFold(d.Reviewer, d.ProposedBy) {",
+      "new": "} else if false {"
+    },
+    {
+      "name": "subject digest check disabled (wrong-subject approval accepted)",
+      "file": "projectobligations.go",
+      "old": "if a.SubjectDigest != want {",
+      "new": "if false && a.SubjectDigest != want {"
+    },
+    {
+      "name": "decision record no longer has to carry the subject digest (replay)",
+      "file": "projectobligations.go",
+      "old": "case !strings.Contains(rec.Body, want):",
+      "new": "case false && !strings.Contains(rec.Body, want):"
+    },
+    {
+      "name": "disposition check disabled",
+      "file": "projectobligations.go",
+      "old": "if a.Disposition != \"approved\" {",
+      "new": "if false && a.Disposition != \"approved\" {"
+    },
+    {
+      "name": "reviewer no longer has to be the corroborated closer",
+      "file": "projectobligations.go",
+      "old": "case !strings.EqualFold(rc.closer, d.Reviewer):",
+      "new": "case false:"
+    },
+    {
+      "name": "corroboration ref no longer compared",
+      "file": "projectobligations.go",
+      "old": "case rc.ref != a.CorroborationRef:",
+      "new": "case false:"
+    },
+    {
+      "name": "missing trusted corroboration no longer holds acceptance",
+      "file": "projectobligations.go",
+      "old": "case !got || !rc.sealed || rc.decisionID != a.DecisionID:",
+      "new": "case false && (!got || !rc.sealed || rc.decisionID != a.DecisionID):"
+    },
+    {
+      "name": "review independence check disabled",
+      "file": "projectobligations.go",
+      "old": "case a.ReviewRef == a.DecisionID:",
+      "new": "case false:"
+    },
+    {
+      "name": "review record existence not checked",
+      "file": "projectobligations.go",
+      "old": "if _, ok := ctx.Decisions[a.ReviewRef]; !ok {",
+      "new": "if _, ok := ctx.Decisions[a.ReviewRef]; false && !ok {"
+    },
+    {
+      "name": "stale source revision not detected",
+      "file": "projectobligations.go",
+      "old": "if d.Source != m.Source {",
+      "new": "if false && d.Source != m.Source {"
+    },
+    {
+      "name": "stale mapping revision not detected",
+      "file": "projectobligations.go",
+      "old": "if d.MappingID != m.ID || d.MappingRevision != m.Revision {",
+      "new": "if false {"
+    },
+    {
+      "name": "effective period not enforced",
+      "file": "projectobligations.go",
+      "old": "} else if asOf < d.EffectiveFrom || (d.EffectiveTo != \"\" && asOf > d.EffectiveTo) {",
+      "new": "} else if false {"
+    },
+    {
+      "name": "dangling REQ no longer rejects the mapping",
+      "file": "projectobligations.go",
+      "old": "reject = append(reject, \"req-unknown:\"+q)",
+      "new": "_ = q"
+    },
+    {
+      "name": "withdrawn REQ no longer rejects the mapping",
+      "file": "projectobligations.go",
+      "old": "case strings.TrimSpace(e.Status) == \"withdrawn\":",
+      "new": "case false && strings.TrimSpace(e.Status) == \"withdrawn\":"
+    },
+    {
+      "name": "cross-repo REQ no longer holds the mapping",
+      "file": "projectobligations.go",
+      "old": "hold = append(hold, \"req-cross-repo-unchecked:\"+q)",
+      "new": "_ = q"
+    }
+  ]
+}
