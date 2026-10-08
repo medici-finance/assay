@@ -403,6 +403,85 @@ Each was chosen so the row it names is the ONLY thing standing between it and a 
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — 2026-10-08 assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian)
+
+First verify pass on merged main. **This is Evidence for the human gate. It is not a sign-off, and no execution witness was written** (the reason is under the table). Subject: main 979e5453f05c, confirmed equal to the forge's main by an independent API read at run time. The implementing commit is 0a9cc186273c (#2362), an ancestor of the subject in a repository that is not shallow. Main has since moved to 34f6b90a4613; the three commits between touch nothing under tools/desk or statusgen, and neither this brief nor its decision record. All twelve rows were run by hand (go1.27.1 darwin/arm64, module proxy off, no network or cluster contact), each command extracted mechanically from the Verify table. The runs had the loop-identity variables, VERIFIER_PEM and ASSAY_CONFIG_HOME unset. The desk re-ran rows 1, 2, 4, 7, 8, 11 and 12 itself at the same sha, with the same results.
+
+| Row | Command | Exit | Observed | Date | Runner |
+|-----|---------|------|----------|------|--------|
+| 1 | Verify row 1 as written, run with HOME pointed at an empty throwaway directory | 0 | `--- PASS: TestUnsignedOutNeverResolvesVerifierKey (0.10s)` | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written, run with HOME pointed at an empty throwaway directory | 0 | `--- PASS: TestUnsignedOutNeverOpensVerifierPEMCanary (0.15s)`; subtests U1-all-three-live, U2-home-only, K1-env, K2-config-home and K3-home each pass | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written, run with HOME pointed at an empty throwaway directory | 0 | `--- PASS: TestUnsignedComposeSignedByDeskverdictMatchesCombined (2.18s)` | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written, run with HOME pointed at an empty throwaway directory | 0 | `--- PASS: TestUnsignedOutRefusals (0.05s)`; subtests i-existing-path, ii-row-plants-path, iii-write-fails, iv-empty-queue and v-success-line-digest-only each pass | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written, run with HOME pointed at an empty throwaway directory | 0 | four PASS lines: TestRunVerdictMissingPEMFailsClosedAndFilesNothing, TestDryRunSignVerify, TestRunVerdictDryRunEndToEnd, TestSignedBodyVerifiesAndTamperRefuses | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 6 | Verify row 6 as written, run with HOME pointed at an empty throwaway directory | 0 | ok for cmd/verifyloop (6.674s) and ok for cmd/deskverdict (1.694s); no FAIL line | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 7 | Verify row 7 as written, run by the desk with a roster configured | 0 | all eleven greps print, the first being `-unsigned-out string` | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 7a | Verify row 7 as written, run with HOME pointed at an empty throwaway directory (no roster) | 1 | the verdict help command prints `could-not-check: assay/desk-tools inactive — assay.roster.trust unset or malformed` and `exit status 6`, and no flag help, so the first grep matches nothing; the other ten greps each match when run one by one | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written | 0 | prints ok; the implementing commit resolves to 0a9cc186273c; no removed or edited line in the two existing test files; no key file is tracked | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written, run with HOME pointed at an empty throwaway directory | 0 | `LINT: PASS`; no line starts PROBLEM | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 10 | Verify row 10 as written, run with HOME pointed at an empty throwaway directory | 0 | prints ok; `summary: 1 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 11 | Verify row 11 as written, run with HOME pointed at an empty throwaway directory | 0 | `--- PASS: TestSignBindingRefusesMismatchBeforeKey (0.13s)`; seven subtests pass (wrong-digest, wrong-repo, wrong-head, ts-before-not-before, ts-after-not-after, repo-on-array, empty-head-value) | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+| 12 | Verify row 12 as written, run with HOME pointed at an empty throwaway directory | 0 | `--- PASS: TestSignPathHandlingNeverFollowsLinks (0.32s)`; nine subtests pass, i-payload-symlink through ix-dir-symlink | 2026-10-08 | assay-verifier-app[bot] @ 979e5453f05c (claude-opus-5-5) (on-behalf-of human:ian) |
+
+- **Row 7 passes or fails on the runner's configuration, not on the deliverable** (#2419). The verifyloop binary runs its activation check before it dispatches any subcommand (tools/desk/cmd/verifyloop/main.go:47). Inside a checkout with no roster configured it exits 6 there, the help text is never printed, and the row's first grep has nothing to match. With a roster the row exits 0. From a copy of the tree that is not a git checkout the help prints with no roster.
+  - By code read, not executed: the keyless mode passes the same check before it reaches the unsigned branch (tools/desk/cmd/verifyloop/verdictrun.go:192-194). A fence that mounts the repository but no roster would get exit 6 and no payload. That fails closed under H2. The host contract and the decision record do not say what the fence must be able to read, and the default config home is one of the three places the verifier key is looked up.
+  - Rows 1 to 4 call runVerdict and parseVerdictFlags in-process, so no row passes through the binary's entry point.
+- **Named mutations.** All fifteen were applied one at a time to a scratch copy outside the worktree, which was restored and compared after each. Each one turns the row the brief names red (exit 1). M2 and M5 leave row 1 green, as the brief says. The desk repeated M6 on its own copy: row 11 exits 1 and only wrong-digest fails.
+  - Row 3's claims about part (d) cannot be seen from the row. Under M3 and under M8 an assertion in part (c) stops the test first (verdictunsigned_test.go:180 and :185), so (d) never runs. With (c) made non-fatal on the scratch copy, (d) stays green under M3 and turns red under M8, as claimed.
+  - M10 also turns case (iv) red, and M11 also turns cases ii, vi, vii, viii and ix red. The brief names neither set.
+  - Under M4 and M10 the assertion that fires is the exit-code check. The overwrite those mutations would allow is inferred, not observed.
+- **Where the implementing change differs from the brief's text.**
+  - A test file outside the brief's files list landed with it: signdirswap_unix_test.go under tools/desk/cmd/deskverdict (54 lines). The Ground rules allow only the planned new files there.
+  - Task 8 specifies an Lstat of the payload's parent directory. The code opens a handle on that directory and opens the payload relative to it (signopen_unix.go:30 and :71). That is tighter than the brief, and neither the brief nor the decision record describes it.
+  - Two more paths are in the code and in neither document: the removal taken when the stat after create fails (verdictrun.go:415-425), and the refusal of an explicitly empty output path (verdictrun.go:160-163).
+- **Not checked, and not counted as a pass.**
+  - The parent-directory owner refusal (signopen_unix.go:60). No test reaches it with a foreign owner, as row 12's Expect says; it was read, not run.
+  - Any non-unix build. On those both directory checks are skipped (signopen_other.go:17), as Task 8 says.
+  - The keyless mode run as a built binary, with or without a roster.
+  - Anything that needs a live forge or a real key. No real key and no real config home was read.
+- **Why there is no witness.** Rows 1 to 4, 10, 11 and 12 are class check:ci, and this host cannot give the witness runner the network-off sandbox it needs for that class (#1800). Rows 1 to 6, 11 and 12 also run go test over tools/desk packages, which the desk does not run against an operator's real home (#1618). For the record, the throwaway home held no audit lines after these runs.
+
+For the human gate, on the two Review questions. This is what the run observed, not an answer.
+
+- Question 1, the key read. The unsigned branch returns at verdictrun.go:192-194, before the only call to the key resolver at :198. Rows 1 and 2 hold with a detector at each of the three key locations (M1, M2 and M5 each turn one of them red). No second layer exists in this repository; the fence is the other layer.
+- Question 1, the forged payload. The binding check runs at sign.go:86, before the key is resolved at :91, over bytes read once. The binding flags are optional, so the control holds only when the host passes them, as H3 requires.
+- Question 2. Row 2 catches M2 and M5 while row 1 stays green. Rows 11 and 12 catch M6, M7, M12 and M10, M11, M13, M15 with the composer out of the picture. Row 3 part (e) shows the verifier refusing the unsigned file on structure.
+- One edge the rows do not cover: the success line prints the caller's output path verbatim (verdictrun.go:387-390). A path that contains a newline or the text sha256= would break a host that parses the line for exactly one digest. H2 tells the host to stop in that case.
+
+RISK-VALUE scope: sensitive-data is yes. The enumeration covered every added non-test line of the implementing commit under tools/desk (seven files), plus the key locations and exit codes the Tasks name. Line numbers are at the subject sha. Ranked first: a key read inside the fence, then a signature over bytes the host did not intend.
+
+RISK-VALUE: DERIVED — key locations the unsigned branch must never reach = the VERIFIER_PEM environment read @ tools/desk/cmd/verifyloop/verdictrun.go:464 and the config-home lookup of verifier-app.pem @ tools/desk/cmd/verifyloop/verdictrun.go:467 (through ASSAY_CONFIG_HOME @ tools/desk/internal/deskkit/confighome.go:39 and the default config home @ tools/desk/internal/deskkit/confighome.go:42) — Task 3 names exactly these three sources as forbidden to the branch. The branch returns at verdictrun.go:192-194, before the only resolver call at :198. M1, M2 and M5 observed red.
+
+RISK-VALUE: DERIVED — binding check order = bind.check(raw) @ tools/desk/cmd/deskverdict/sign.go:86, before resolveSignerPEM @ tools/desk/cmd/deskverdict/sign.go:91 — Task 8 requires every binding flag to be checked before the signer key is resolved. With no key present a mismatch returns 5 and a removed comparison returns 6 (M6, M7 and M12 observed).
+
+RISK-VALUE: DERIVED — printed digest = SHA-256 over the canonical bytes plus one newline @ tools/desk/cmd/verifyloop/verdictrun.go:347-348; the signer hashes the bytes it read @ tools/desk/cmd/deskverdict/sign.go:263 and requires 64 hex characters @ tools/desk/cmd/deskverdict/sign.go:222 — Tasks 5 and 6 fix the digest as SHA-256 over the file's exact bytes. M8 observed red.
+
+RISK-VALUE: DERIVED — unsigned payload create flags = O_WRONLY, O_CREATE, O_EXCL with mode 0644 @ tools/desk/cmd/verifyloop/verdictrun.go:351 — Task 5 gives these flags and this mode literally. O_EXCL stops a row process planting or pre-linking the path (M4 observed red).
+
+RISK-VALUE: DERIVED — signed-body sibling create flags = O_WRONLY, O_CREATE, O_EXCL with mode 0644 @ tools/desk/cmd/deskverdict/sign.go:123 — Task 8 gives this call literally. It neither follows nor replaces an existing entry (M10 observed red).
+
+RISK-VALUE: DERIVED — payload open flags = O_RDONLY, O_NOFOLLOW, O_NONBLOCK, O_CLOEXEC @ tools/desk/cmd/deskverdict/signopen_unix.go:71 — Task 8 names the first three: a swapped-in link fails the open and a swapped-in FIFO does not block it. O_CLOEXEC is an addition that only narrows descriptor inheritance. M11 and M13 observed red.
+
+RISK-VALUE: DERIVED — parent-directory write mask = refuse when perm AND 0o022 is non-zero @ tools/desk/cmd/deskverdict/signopen_unix.go:53 — the exact negation of Task 8's pass condition. M15 observed red on a 0777 directory.
+
+RISK-VALUE: DERIVED — parent-directory owner = refuse when the directory's uid differs from the effective uid @ tools/desk/cmd/deskverdict/signopen_unix.go:60 — Task 8 requires the two to be equal. Matched by code read only; no test exercises a foreign owner.
+
+RISK-VALUE: DERIVED — time bounds = refuse when ts is before not-before @ tools/desk/cmd/deskverdict/sign.go:312 or after not-after @ tools/desk/cmd/deskverdict/sign.go:315, both parsed as RFC3339 — Task 8 says ts must not be earlier or later, so both bounds are inclusive. Row 11's matching case passes with both bounds equal to ts. M12 observed red.
+
+RISK-VALUE: DERIVED — flags refused beside the unsigned-out flag = pem, dry-run, window @ tools/desk/cmd/verifyloop/verdictrun.go:165 — Task 2 lists these three. Row 4's parse cases cover each.
+
+RISK-VALUE: DERIVED — exit codes = ExitRefused 5 @ tools/desk/internal/deskkit/exitcodes.go:51 and ExitUnverifiable 6 @ tools/desk/internal/deskkit/exitcodes.go:55 — Tasks 2, 3, 5 and 8 name 5 for refusals and 6 for read or write failures. Both constants pre-date the implementing commit and are unchanged by it.
+
+RISK-VALUE: NAMED, NOT DERIVED — directory open flags = O_RDONLY, O_DIRECTORY, O_NOFOLLOW, O_NONBLOCK, O_CLOEXEC @ tools/desk/cmd/deskverdict/signopen_unix.go:30 — Task 8 specifies an Lstat of the parent directory, not an open. No brief or decision-record text states these flags, so the written derivation is missing.
+
+RISK-VALUE: NAMED, NOT DERIVED — removal test on the stat-failure path = remove unless the entry is not a regular file or is not empty @ tools/desk/cmd/verifyloop/verdictrun.go:418 — Task 5 describes only the removal confirmed by SameFile after a write or close failure. This path and its criterion are in neither the brief nor the decision record.
+
+RISK-VALUE: N/A — the implementing commit adds no timeout, window or duration literal to non-test code under tools/desk; the 5-second and 30-second bounds are in test files only. This N/A covers the timeout and window class only.
+
+VERIFY: BLOCKED — rows 1 to 6 and 8 to 12 meet Expect by hand, and all fifteen named mutations turn the row the brief names red. Row 7 exits 0 where a roster is configured and exits 1 where none is (#2419). No execution witness was written.
+
+**The board row is not changed by this run and stays `implemented`.** This brief is gate: human with sensitive-data: yes. A model run supplies Evidence for that gate and never the sign-off; the two Review questions are the maintainer's to answer.
+
 ## Review
 Gate: human (from frontmatter; sensitive-data: yes). The human decision above is ratified
 before dispatch; the option chosen is recorded on the brief's decision issue. If it is option
