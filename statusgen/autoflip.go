@@ -767,11 +767,9 @@ func candidateGate(res modelFlipResult, n int, repo string, src modelFlipSource,
 	var g gatedCandidate
 	g.shape, g.shapeErr = src.PRShape(repo, n)
 	if g.shapeErr == nil {
-		g.evidence, _ = evidenceOnlyReason(g.shape)
-	}
-	if g.evidence {
-		g.evidence = true
-		return g
+		if g.evidence, _ = evidenceOnlyReason(g.shape); g.evidence {
+			return g
+		}
 	}
 	g.cand, g.mergedAt = approvalAtHead(res, n, repo, src, rev)
 	return g
@@ -1580,7 +1578,7 @@ func (ghModelFlipSource) ReviewState(repo string, pr int) (prReviewState, error)
 // self-contained sub-command: it rewrites stream README rows and never reads or
 // writes STATUS.md. It gathers the decisions and hands the exit policy to
 // reportAutoFlipModel (see there for the exit codes).
-func runAutoFlipModel(root string, dryRun bool) int {
+func runAutoFlipModel(root string, dryRun, check bool) int {
 	streams, _, err := loadStreams(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
@@ -1592,7 +1590,28 @@ func runAutoFlipModel(root string, dryRun bool) int {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
 	}
-	return reportAutoFlipModel(os.Stdout, os.Stderr, results, rev.Display, dryRun)
+	return autoFlipCheckExit(os.Stderr, results, reportAutoFlipModel(os.Stdout, os.Stderr, results, rev.Display, dryRun), check)
+}
+
+// autoFlipCheckExit is the --check exit (verify-reset/07 Task 3). Without
+// --check a REFUSED or structural COULD-NOT-CHECK is non-fatal, so a stuck row
+// sat behind a green run. With it, any candidate left unflipped exits 2, and
+// a misconfiguration keeps its exit 1.
+func autoFlipCheckExit(errw io.Writer, results []modelFlipResult, code int, check bool) int {
+	if code != 0 || !check {
+		return code
+	}
+	stuck := 0
+	for _, r := range results {
+		if r.Outcome != flipDone {
+			stuck++
+		}
+	}
+	if stuck == 0 {
+		return 0
+	}
+	fmt.Fprintf(errw, "statusgen: --check: %d gate:model brief(s) at `verified` were not flipped (REFUSED or COULD-NOT-CHECK above, each with its reason) — exit 2\n", stuck)
+	return 2
 }
 
 // liveModelFlipSource selects the production read seam for the reviewer's forge.

@@ -287,6 +287,13 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		}
 	}
 
+	// Stuck auto-flips (verify-reset/07): the gate:model briefs at `verified`,
+	// which the model auto-flip judges and leaves REFUSED or COULD-NOT-CHECK.
+	// Rendered ONLY when one exists, so a board with none is byte-identical.
+	for _, l := range stuckFlipLines(streams, ages) {
+		w("%s", l)
+	}
+
 	// Parked streams (attention-budget/04): shelved out of the active roll-up and
 	// out of Next-up, but their briefs are kept and listed here so a parked stream
 	// is visible rather than vanished. Re-activates by a README `status:` flip

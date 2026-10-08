@@ -19,6 +19,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -737,8 +738,17 @@ func TestAutoflipDeliveringByFilesOverlap(t *testing.T) {
 		src.trailerHits = map[string][]int{"af/50": {152, 151}}
 		got := decideWalkFiles(t, src, "../elsewhere/internal/walk/walk.go")
 		if got.Outcome != flipUnchecked || !strings.Contains(got.Reason, "no PR touches the brief's files") ||
-			!strings.Contains(got.Reason, "../elsewhere/internal/walk/walk.go") {
-			t.Fatalf("want COULD-NOT-CHECK naming the unusable entry; got %v (%s)", got.Outcome, got.Reason)
+			!strings.Contains(got.Reason, "names a path in this repo: ../elsewhere/internal/walk/walk.go") {
+			t.Fatalf("want COULD-NOT-CHECK naming the entry as no path in this repo; got %v (%s)", got.Outcome, got.Reason)
+		}
+	})
+	t.Run("files: naming this repo by its own ../<name>/ path still overlaps", func(t *testing.T) {
+		b := briefFiles{entries: []string{"../assay/internal/walk/", "STATUS.md"}, declared: true}.forRepo("medici-finance/assay")
+		if len(b.entries) != 1 || b.entries[0] != "internal/walk/" || len(b.dropped) != 1 || b.dropped[0] != "STATUS.md" {
+			t.Fatalf("want entries [internal/walk/] and dropped [STATUS.md]; got %+v", b)
+		}
+		if !b.overlaps(prShape{Files: []string{"internal/walk/walk.go"}}) || b.overlaps(prShape{Files: []string{"STATUS.md"}}) {
+			t.Fatalf("overlap wrong for %+v", b)
 		}
 	})
 	t.Run("a non-overlapping credited PR still needs its approval", func(t *testing.T) {
@@ -780,4 +790,190 @@ func TestAutoflipDeliveringByFilesOverlap(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestAutoflipCouldNotCheckIsVisible — verify-reset/07 Task 3. A gate:model
+// brief the flip leaves at `verified` (here af/01, REFUSED on unreleased
+// coverage, and af/06, COULD-NOT-CHECK with no merged PR) is a row in
+// STATUS.md's roll-up, and `--auto-flip-model --check` exits 2 on it. Without
+// --check the exit stays 0, and a misconfiguration keeps its exit 1.
+func TestAutoflipCouldNotCheckIsVisible(t *testing.T) {
+	root, _ := loadAFStreams(t)
+	p := filepath.Join(root, "docs", "streams", "af", "brief-01-model-approved-at-head.md")
+	orig, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	witnessRow := "| 1 | `go vet ./...` | pass exit=0 | sha256:abc123def456 | 2026-07-08 | fixture-verifier @ " + afWitnessTree(t, root) + " |"
+	mutated := strings.Replace(string(orig), witnessRow, "", 1)
+	if mutated == string(orig) {
+		t.Fatalf("the af/01 witness row was not found in %s — the fixture has drifted", p)
+	}
+	if err := os.WriteFile(p, []byte(mutated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, err := loadHydratedStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := autoFlipModel(root, streams, afSource(), ghReviewer(afReviewer), afNow, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := afResult(t, results, "af/01"); got.Outcome != flipRefused {
+		t.Fatalf("af/01 with unreleased coverage: want REFUSED; got %v (%s)", got.Outcome, got.Reason)
+	}
+	if got := afResult(t, results, "af/06"); got.Outcome != flipUnchecked || got.Misconfig {
+		t.Fatalf("af/06 with no merged PR: want a structural COULD-NOT-CHECK; got %v misconfig=%v (%s)", got.Outcome, got.Misconfig, got.Reason)
+	}
+
+	// The roll-up row.
+	board := emit(streams, nil, NextUp{}, nil, nil, IntakeAlarmResult{}, nil, "")
+	rollup := board[strings.Index(board, "## Roll-up"):]
+	if i := strings.Index(rollup[len("## Roll-up"):], "\n## "); i >= 0 {
+		rollup = rollup[:len("## Roll-up")+i]
+	}
+	if !strings.Contains(rollup, "### Stuck auto-flips") {
+		t.Fatalf("STATUS.md's roll-up has no stuck auto-flip table:\n%s", rollup)
+	}
+	for _, b := range []string{"af/01", "af/06"} {
+		if !strings.Contains(rollup, "| ["+b+"](docs/streams/af/README.md) |") {
+			t.Errorf("STATUS.md's roll-up has no row for the stuck %s:\n%s", b, rollup)
+		}
+	}
+	if strings.Contains(rollup, "[af/03]") {
+		t.Errorf("af/03 is gate:human: the model flip never judges it, so it is no stuck auto-flip row:\n%s", rollup)
+	}
+
+	// The exit. reportAutoFlipModel alone is the green run that hid them.
+	code := reportAutoFlipModel(io.Discard, io.Discard, results, afReviewer, true)
+	if code != 0 {
+		t.Fatalf("reportAutoFlipModel: want 0 (non-fatal) for REFUSED/COULD-NOT-CHECK; got %d", code)
+	}
+	var errb strings.Builder
+	if got := autoFlipCheckExit(&errb, results, code, true); got != 2 || !strings.Contains(errb.String(), "exit 2") {
+		t.Errorf("--check with a stuck candidate: want exit 2 and a stderr line; got %d %q", got, errb.String())
+	}
+	if got := autoFlipCheckExit(io.Discard, results, code, false); got != 0 {
+		t.Errorf("without --check: want exit 0; got %d", got)
+	}
+	if got := autoFlipCheckExit(io.Discard, results, 1, true); got != 1 {
+		t.Errorf("a misconfiguration keeps exit 1 under --check; got %d", got)
+	}
+	if got := autoFlipCheckExit(io.Discard, []modelFlipResult{{Brief: "af/01", Outcome: flipDone}}, 0, true); got != 0 {
+		t.Errorf("--check with every candidate flipped: want 0; got %d", got)
+	}
+	// A board with no gate:model brief at `verified` renders no table at all.
+	if lines := stuckFlipLines(nil, nil); lines != nil {
+		t.Errorf("no stuck brief: want no roll-up lines; got %q", lines)
+	}
+}
+
+// ---- the class guard: the delivery-candidate decision reads no identity -----------
+
+// identityIdents are the names through which a PR's author or a roster role
+// reaches code: the prShape/note Author field, the reviewer identity's login
+// set, the pre-verify-reset/07 verifier set, and the set-membership helper.
+var identityIdents = map[string]bool{"Author": true, "Logins": true, "EvidenceLanders": true, "loginInSet": true}
+
+// evidenceShapeGuarded names the declarations the guard holds: every function in
+// evidenceshape.go, plus candidateGate wherever it lives.
+func evidenceShapeGuarded(file, fn string) bool {
+	return file == "evidenceshape.go" || fn == approvalGateName
+}
+
+// scanIdentityReads parses every non-test Go file directly in dir and returns
+// `<file>:<func> reads <ident>` for each identity name a guarded function
+// references. It also reports when no guarded function was found at all.
+func scanIdentityReads(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	fset := token.NewFileSet()
+	var problems []string
+	seenGate, seenShape := false, false
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, perr := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+		if perr != nil {
+			return nil, perr
+		}
+		for _, decl := range f.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Body == nil || !evidenceShapeGuarded(name, fd.Name.Name) {
+				continue
+			}
+			if fd.Name.Name == approvalGateName {
+				seenGate = true
+			}
+			if fd.Name.Name == "evidenceOnlyReason" {
+				seenShape = true
+			}
+			ast.Inspect(fd, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && identityIdents[id.Name] {
+					problems = append(problems, fmt.Sprintf("%s:%s reads %s — whether a PR is a delivery candidate "+
+						"is decided by its diff shape, never by who authored it (verify-reset/07)", name, fd.Name.Name, id.Name))
+				}
+				return true
+			})
+		}
+	}
+	if !seenGate || !seenShape {
+		problems = append(problems, fmt.Sprintf("found candidateGate=%v evidenceOnlyReason=%v — this guard is looking in the wrong place", seenGate, seenShape))
+	}
+	sort.Strings(problems)
+	return problems, nil
+}
+
+// TestEvidenceShapeNeverReadsIdentity is the class guard over this package: the
+// Evidence-only classifier and the gate that consults it read no identity.
+func TestEvidenceShapeNeverReadsIdentity(t *testing.T) {
+	problems, err := scanIdentityReads(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range problems {
+		t.Error(p)
+	}
+}
+
+// TestEvidenceShapeGuardCatchesPlant is the guard's own control: a second,
+// author-keyed exclusion planted in candidateGate and in the classifier file is
+// reported; the same read outside the guarded declarations is not; a tree
+// without the guarded functions fails loud.
+func TestEvidenceShapeGuardCatchesPlant(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("gate.go", "package main\n\ntype shape struct{ Author string }\n\n"+
+		"func candidateGate(s shape, verifiers []string) bool { return loginInSet(verifiers, s.Author) }\n\n"+
+		"func loginInSet(a []string, l string) bool { return len(a) > 0 && l != \"\" }\n\n"+
+		"func approvalNote(s shape) string { return s.Author }\n")
+	write("evidenceshape.go", "package main\n\nfunc evidenceOnlyReason(s shape) bool { return s.Author == \"verifier\" }\n")
+	problems, err := scanIdentityReads(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(problems, "\n")
+	for _, want := range []string{"gate.go:candidateGate reads loginInSet", "gate.go:candidateGate reads Author",
+		"evidenceshape.go:evidenceOnlyReason reads Author"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("planted identity read %q not reported; got:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "approvalNote") || strings.Contains(joined, "gate.go:loginInSet") {
+		t.Errorf("an unguarded declaration was reported; got:\n%s", joined)
+	}
+	empty := t.TempDir()
+	if p, err := scanIdentityReads(empty); err != nil || len(p) != 1 || !strings.Contains(p[0], "wrong place") {
+		t.Errorf("an empty scan must fail loud; got %v (err %v)", p, err)
+	}
 }

@@ -1,10 +1,10 @@
 {
-  "test": "go test . -run 'AutoFlip|Autoflip|Attribute|ApprovalOnly|ApprovalGuard' -count=1",
+  "test": "go test . -run 'AutoFlip|Autoflip|Attribute|ApprovalOnly|ApprovalGuard|EvidenceShape' -count=1",
   "control": {
-    "name": "CONTROL — Evidence-landing exclusion disabled (the #1838 defect: the verifier's Evidence PR is judged as a delivery candidate and refuses the flip)",
+    "name": "CONTROL — diff-shape exclusion disabled (the #1838 defect: an Evidence-only PR is judged as a delivery candidate and refuses the flip)",
     "file": "autoflip.go",
-    "old": "if shape.Author == \"\" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {",
-    "new": "if true || shape.Author == \"\" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {"
+    "old": "g.evidence, _ = evidenceOnlyReason(g.shape)",
+    "new": "g.evidence = false"
   },
   "mutations": [
     {
@@ -12,24 +12,6 @@
       "file": "autoflip.go",
       "old": "hits, err := src.PRsNamingBrief(repo, canonicalBriefKey(res.Brief))",
       "new": "hits, err := []int(nil), error(nil)"
-    },
-    {
-      "name": "Evidence exclusion drops the author half (any docs/streams-only PR escapes its approval)",
-      "file": "autoflip.go",
-      "old": "!loginInSet(rev.EvidenceLanders, shape.Author)",
-      "new": "false"
-    },
-    {
-      "name": "Evidence exclusion drops the docs/streams-only half (a verifier-authored code change escapes its approval)",
-      "file": "autoflip.go",
-      "old": "\t\tif !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {\n\t\t\treturn false",
-      "new": "\t\tif false && !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {\n\t\t\treturn false"
-    },
-    {
-      "name": "Evidence exclusion accepts an empty file list",
-      "file": "autoflip.go",
-      "old": "|| len(shape.Files) == 0 {",
-      "new": "|| false {"
     },
     {
       "name": "guard drops the approval of a later change to the brief file",
@@ -98,16 +80,10 @@
       "new": "case false:\n\t\treturn fmt.Sprintf(\"when its body"
     },
     {
-      "name": "Evidence exclusion ignores a rename's old path (a move into docs/streams/ escapes its approval: A1 on #1868)",
-      "file": "autoflip.go",
-      "old": "append(append([]string(nil), shape.Files...), shape.RenamedFrom...)",
-      "new": "shape.Files"
-    },
-    {
       "name": "file listing drops previous_filename",
       "file": "autoflip.go",
-      "old": "renamedFrom = append(renamedFrom, pair[1])",
-      "new": "_ = pair[1]"
+      "old": "renamedFrom = append(renamedFrom, *entry[1])",
+      "new": "_ = entry[1]"
     },
     {
       "name": "guard STOPS at a pre-delivery change (log order taken as merge order: F2 on #1868)",
@@ -134,10 +110,124 @@
       "new": "if false {"
     },
     {
-      "name": "Evidence landers read from the wrong roster role",
+      "name": "Evidence-only accepts an empty file list",
+      "file": "evidenceshape.go",
+      "old": "if len(shape.Files) == 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "Evidence-only ignores a rename (a move into docs/streams/ escapes its approval: A1 on #1868)",
+      "file": "evidenceshape.go",
+      "old": "if len(shape.RenamedFrom) > 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "Evidence-only accepts any path (a code change escapes its approval)",
+      "file": "evidenceshape.go",
+      "old": "\treturn fmt.Sprintf(\"it changes %s, which is not an Evidence section",
+      "new": "\treturn \"\"\n\t_ = fmt.Sprintf(\"it changes %s, which is not an Evidence section"
+    },
+    {
+      "name": "brief hunk outside `## Evidence` accepted (a Verify-table edit escapes its approval)",
+      "file": "evidenceshape.go",
+      "old": "\t\t\tif !inside {",
+      "new": "\t\t\tif false && !inside {"
+    },
+    {
+      "name": "brief section-heading change accepted (the Evidence section's edge moves)",
+      "file": "evidenceshape.go",
+      "old": "if strings.HasPrefix(strings.TrimSpace(d.text), \"## \") {",
+      "new": "if false {"
+    },
+    {
+      "name": "README cell other than Status/Verified/Reviewed accepted",
+      "file": "evidenceshape.go",
+      "old": "if !free[j] && strings.TrimSpace(oc[j]) != strings.TrimSpace(nc[j]) {",
+      "new": "if false && !free[j] {"
+    },
+    {
+      "name": "README added or removed line accepted",
+      "file": "evidenceshape.go",
+      "old": "if len(c.del) != len(c.add) {",
+      "new": "if false {"
+    },
+    {
+      "name": "file listing drops the patch",
       "file": "autoflip.go",
-      "old": "EvidenceLanders: rosterRoleLogins(cfg, \"verifier\")}",
-      "new": "EvidenceLanders: rosterRoleLogins(cfg, \"reviewer\")}"
+      "old": "patches[*entry[0]] = *entry[2]",
+      "new": "_ = entry[2]"
+    },
+    {
+      "name": "files: overlap ignored by the trailer resolver (the newest credited PR wins though it touches none)",
+      "file": "autoflip.go",
+      "old": "\t\tif !c.overlaps {\n\t\t\tcontinue",
+      "new": "\t\tif false {\n\t\t\tcontinue"
+    },
+    {
+      "name": "files: overlap ignored by the history walk",
+      "file": "autoflip.go",
+      "old": "if verdict == candidateCredit && !tr.files.overlaps(g.shape) {",
+      "new": "if false {"
+    },
+    {
+      "name": "no-overlap fallthrough not named as COULD-NOT-CHECK: no PR touches the brief's files",
+      "file": "autoflip.go",
+      "old": "\tif tr.files.declared {\n\t\t// verify-reset/07",
+      "new": "\tif false {\n\t\t// verify-reset/07"
+    },
+    {
+      "name": "every PR overlaps files:",
+      "file": "deliveryfiles.go",
+      "old": "\t\t\tif declaredEntryMatches(d, p) {",
+      "new": "\t\t\tif true {"
+    },
+    {
+      "name": "another repo's files: entry kept as a path here",
+      "file": "deliveryfiles.go",
+      "old": "if !declaredEntrySupported(e) || isVerifyWrittenPath(strings.TrimSuffix(e, \"/\")) {",
+      "new": "if false {"
+    },
+    {
+      "name": "autoFlipModel does not pass the brief's files:",
+      "file": "autoflip.go",
+      "old": "briefFiles{entries: bf.DeclaredPaths, declared: bf.DeclaredPathsFound}",
+      "new": "briefFiles{}"
+    },
+    {
+      "name": "--check does not fail on a stuck candidate (the hidden green run)",
+      "file": "autoflip.go",
+      "old": "\t\tif r.Outcome != flipDone {\n\t\t\tstuck++",
+      "new": "\t\tif false {\n\t\t\tstuck++"
+    },
+    {
+      "name": "--check overrides a misconfiguration's exit 1",
+      "file": "autoflip.go",
+      "old": "if code != 0 || !check {",
+      "new": "if !check {"
+    },
+    {
+      "name": "stuck-flip roll-up counts gate:human rows",
+      "file": "stuckflips.go",
+      "old": "if br.Gate != \"model\" || br.Status != \"verified\" {",
+      "new": "if br.Status != \"verified\" {"
+    },
+    {
+      "name": "stuck-flip roll-up not rendered",
+      "file": "emit.go",
+      "old": "range stuckFlipLines(streams, ages) {",
+      "new": "range stuckFlipLines(nil, ages) {"
+    },
+    {
+      "name": "PLANTED second identity-keyed exclusion (the defect class: the classifier consults the PR author)",
+      "file": "evidenceshape.go",
+      "old": "if len(shape.Files) == 0 {",
+      "new": "if len(shape.Files) == 0 || shape.Author != \"\" {"
+    },
+    {
+      "name": "PLANTED author-keyed exclusion in candidateGate",
+      "file": "autoflip.go",
+      "old": "if g.evidence, _ = evidenceOnlyReason(g.shape); g.evidence {",
+      "new": "if g.evidence, _ = evidenceOnlyReason(g.shape); g.evidence || loginInSet(rev.Logins, g.shape.Author) {"
     }
   ]
 }
