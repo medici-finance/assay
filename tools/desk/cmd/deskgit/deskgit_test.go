@@ -10,6 +10,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // allowedSlug is in the allowed-repo set; deniedSlug is not. The test upstream is a bare repo
@@ -436,33 +437,21 @@ func TestFetch_EffectiveURLDrivesDecision(t *testing.T) {
 
 // fetch starts NO child process — observed at the PROCESS, not at deskgit's own exec seam.
 // The fixture origin is a bare LOCAL PATH, the one shape for which go-git's stock transport
-// would start git-upload-pack with this process's whole environment; a recording stand-in
-// for git-upload-pack sits first on PATH (the stock transport's first lookup), under an
-// environment carrying git configuration and a program-naming variable a child git would
-// honour. Neither the seam nor the stand-in may see a start, and the fetch still lands. With
-// gitcore's in-process local transport removed this goes red on the stand-in (the seam alone
-// stays empty, which is why the seam is not the assertion). `git` itself is not stood in
-// here: the verb's kill-switch read at start-up runs it, outside the fetch transport;
-// gitcore's TestFileFetchStartsNoChild stands in both.
+// would start a git helper program with this process's whole environment; gittest's
+// recording stand-in for that helper sits first on PATH, under an environment carrying git
+// configuration and a program-naming variable a child git would honour. Neither the seam nor
+// the stand-in may see a start, and the fetch still lands. With gitcore's in-process local
+// transport removed this goes red on the stand-in (the seam alone stays empty, which is why
+// the seam is not the assertion). `git` itself is not stood in here (withGit=false): the
+// verb's kill-switch read at start-up runs it, outside the fetch transport; gitcore's
+// TestFileFetchStartsNoChild stands in both.
 func TestFetch_RunsNoGitChild(t *testing.T) {
 	work := newRepo(t, allowedSlug)
-	bin := t.TempDir()
-	logPath := filepath.Join(t.TempDir(), "children.log")
-	standIn := "#!/bin/sh\n{ echo \"STARTED $0 $*\"; env; } >>'" + logPath + "'\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git-upload-pack"), []byte(standIn), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	_, cmds := withEnvCmds(t, work)
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("GIT_SSH_COMMAND", "sh -c 'touch /tmp/should-not-run'")
-	t.Setenv("GIT_CONFIG_COUNT", "1")
-	t.Setenv("GIT_CONFIG_KEY_0", "uploadpack.packObjectsHook")
-	t.Setenv("GIT_CONFIG_VALUE_0", "/nonexistent/should-not-run")
+	logPath := gittest.StandInLocalTransport(t, false)
+	gittest.HostileGitEnv(t)
 	code := run([]string{"fetch"})
-	if b, err := os.ReadFile(logPath); err == nil {
-		first, _, _ := strings.Cut(string(b), "\n")
-		t.Fatalf("fetch started a child process (%s) — it must run in-process", first)
-	}
+	gittest.AssertNoChild(t, logPath, "fetch")
 	if code != deskkit.ExitOK {
 		t.Fatalf("fetch exit = %d, want ok", code)
 	}

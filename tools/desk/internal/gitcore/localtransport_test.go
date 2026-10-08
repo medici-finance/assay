@@ -1,7 +1,6 @@
 package gitcore
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -17,47 +16,6 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
-// childStandIns puts recording stand-ins for every program a git transport could start
-// (git-upload-pack, and git itself for go-git's `git --exec-path` fallback) FIRST on PATH,
-// and returns the log each writes its argv and environment to. A stand-in exits 1, so a
-// transport that starts one also fails — but the log is the assertion: it observes the
-// PROCESS, not a seam of the code under test.
-func childStandIns(t *testing.T) (logPath string) {
-	t.Helper()
-	bin := t.TempDir()
-	logPath = filepath.Join(t.TempDir(), "children.log")
-	script := "#!/bin/sh\n{ echo \"STARTED $0 $*\"; env; } >>'" + logPath + "'\nexit 1\n"
-	for _, name := range []string{"git-upload-pack", "git"} {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
-}
-
-// hostileGitEnv sets the environment-supplied git configuration a child git would honour.
-func hostileGitEnv(t *testing.T) {
-	t.Helper()
-	t.Setenv("GIT_CONFIG_COUNT", "1")
-	t.Setenv("GIT_CONFIG_KEY_0", "uploadpack.packObjectsHook")
-	t.Setenv("GIT_CONFIG_VALUE_0", "/nonexistent/should-not-run")
-	t.Setenv("GIT_SSH_COMMAND", "/nonexistent/should-not-run")
-}
-
-func assertNoChild(t *testing.T, logPath, what string) {
-	t.Helper()
-	b, err := os.ReadFile(logPath)
-	if os.IsNotExist(err) {
-		return
-	}
-	if err != nil {
-		t.Fatalf("%s: read stand-in log: %v", what, err)
-	}
-	first, _, _ := strings.Cut(string(b), "\n")
-	t.Fatalf("%s started a child process (%s) — a local-origin fetch must run in-process", what, first)
-}
-
 // A fetch, a listing and a tree fetch from a local origin — as a bare path, as a checkout
 // path and as a file:// URL — start no process at all, under an environment that carries
 // git configuration a child would honour. Removing the init() that installs localTransport
@@ -71,8 +29,8 @@ func TestFileFetchStartsNoChild(t *testing.T) {
 	}
 	work := gittest.NewFixture(t)
 
-	logPath := childStandIns(t)
-	hostileGitEnv(t)
+	logPath := gittest.StandInLocalTransport(t, true)
+	gittest.HostileGitEnv(t)
 
 	for _, url := range []string{bare, origin.Dir, "file://" + bare} {
 		repo, err := Open(work.Dir)
@@ -80,19 +38,19 @@ func TestFileFetchStartsNoChild(t *testing.T) {
 			t.Fatal(err)
 		}
 		ferr := repo.Fetch(FetchOpts{URL: url, RefSpecs: []string{"+refs/heads/*:refs/remotes/o/*"}, Force: true})
-		assertNoChild(t, logPath, "Fetch "+url)
+		gittest.AssertNoChild(t, logPath, "Fetch "+url)
 		if ferr != nil {
 			t.Fatalf("Fetch(%s): %v", url, ferr)
 		}
 
 		refs, lerr := List(ListOpts{URL: url})
-		assertNoChild(t, logPath, "List "+url)
+		gittest.AssertNoChild(t, logPath, "List "+url)
 		if lerr != nil || len(refs) == 0 {
 			t.Fatalf("List(%s) = %d refs, %v", url, len(refs), lerr)
 		}
 
 		_, terr := FetchTree(TreeOpts{URL: url, RefSpecs: fetchTreeSpecs, Commit: sha}, t.TempDir())
-		assertNoChild(t, logPath, "FetchTree "+url)
+		gittest.AssertNoChild(t, logPath, "FetchTree "+url)
 		if terr != nil {
 			t.Fatalf("FetchTree(%s): %v", url, terr)
 		}

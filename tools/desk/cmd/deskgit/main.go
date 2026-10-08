@@ -13,7 +13,7 @@
 // `deskgit fetch` now runs IN-PROCESS (internal/gitcore, go-git): it starts no child process
 // for any origin shape — a local-path or file:// origin included, which gitcore serves from the
 // local repository's storage rather than through go-git's stock local transport (that one
-// starts git-upload-pack with this process's environment; see gitcore/localtransport.go). So
+// starts a git helper program with this process's environment; see gitcore/localtransport.go). So
 // there is no program name to pin, no child environment to scrub, no config key that can name
 // a program to execute, no credential helper and no askpass file. The environment still
 // parameterises the connection itself (the Go HTTP client's proxy and trust-store variables;

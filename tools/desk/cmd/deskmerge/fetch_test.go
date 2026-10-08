@@ -2,8 +2,6 @@ package main
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,6 +10,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/gitexec"
+	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // stubFetch replaces both fetch seams: fetchFn records what it was asked for (and never
@@ -105,30 +104,20 @@ func TestFetchFromOrigin_LocalOriginGetsNoCredential(t *testing.T) {
 	}
 }
 
-// A local-origin fetch runs the REAL fetch path in-process and starts no child: a recording
-// stand-in for git-upload-pack (the program go-git's stock local transport looks up first)
-// sits first on PATH, under environment-supplied git configuration a child would honour. The
-// stand-in must never run, and the base branch must still land. Removing gitcore's in-process
-// local transport turns this red on the stand-in.
+// A local-origin fetch runs the REAL fetch path in-process and starts no child: gittest's
+// recording stand-in for the helper go-git's stock local transport starts sits first on PATH,
+// under environment-supplied git configuration a child would honour. The stand-in must never
+// run, and the base branch must still land. Removing gitcore's in-process local transport
+// turns this red on the stand-in. `git` itself is not stood in (withGit=false): the point-of-use
+// origin re-check reads `git remote get-url`, outside the fetch transport.
 func TestFetchFromOrigin_LocalOriginStartsNoChild(t *testing.T) {
 	withScratchTemp(t)
 	w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
-	bin := t.TempDir()
-	logPath := filepath.Join(t.TempDir(), "children.log")
-	standIn := "#!/bin/sh\n{ echo \"STARTED $0 $*\"; env; } >>'" + logPath + "'\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(bin, "git-upload-pack"), []byte(standIn), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("GIT_CONFIG_COUNT", "1")
-	t.Setenv("GIT_CONFIG_KEY_0", "uploadpack.packObjectsHook")
-	t.Setenv("GIT_CONFIG_VALUE_0", "/nonexistent/should-not-run")
+	logPath := gittest.StandInLocalTransport(t, false)
+	gittest.HostileGitEnv(t)
 
 	ferr := fetchFromOrigin(w.root, testRepo, []string{"+refs/heads/main:refs/remotes/origin/fetched-main"})
-	if b, err := os.ReadFile(logPath); err == nil {
-		first, _, _ := strings.Cut(string(b), "\n")
-		t.Fatalf("a local-origin fetch started a child process (%s) — it must run in-process", first)
-	}
+	gittest.AssertNoChild(t, logPath, "a local-origin fetch")
 	if ferr != nil {
 		t.Fatal(ferr)
 	}
