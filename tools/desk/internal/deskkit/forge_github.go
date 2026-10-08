@@ -3292,6 +3292,11 @@ func (g *GitHubForge) IssueStateEvents(repo ForgeRepo, number int) (*IssueStateH
 		if n.Repository != nil {
 			cc.Repo = n.Repository.NameWithOwner
 		}
+		if cc.Repo == "" {
+			// A closer the read cannot place: (Repo, Number) is its identity, so the history is
+			// could-not-check rather than a clean answer missing one merged change.
+			out.Complete = false
+		}
 		out.ClosingChanges = append(out.ClosingChanges, cc)
 	}
 	return out, nil

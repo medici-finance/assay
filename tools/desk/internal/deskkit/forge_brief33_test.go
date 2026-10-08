@@ -665,6 +665,112 @@ func TestIssueStateEventsMergedUnreadableIsIncomplete(t *testing.T) {
 	}
 }
 
+// TestIssueStateEventsRepoUnresolvedIsIncomplete pins that a closing change whose own repository
+// could not be resolved (Repo EMPTY) clears Complete. A consumer keys a closer on (Repo, Number), so
+// an empty Repo beside Complete=true would let a merged closer it cannot place read as "closed by
+// no merged change" — a could-not-check presented as a clean answer.
+func TestIssueStateEventsRepoUnresolvedIsIncomplete(t *testing.T) {
+	author := map[string]any{"login": "worker", "__typename": "Bot", "databaseId": 99}
+	for _, tc := range []struct {
+		name string
+		repo any
+	}{
+		{"null_repository", nil},
+		{"empty_name_with_owner", map[string]any{"nameWithOwner": ""}},
+	} {
+		t.Run("github_"+tc.name, func(t *testing.T) {
+			gh := newB33GitHub(t, func(w http.ResponseWriter, r *http.Request, body string) {
+				b33Enc(w, b33StateEvents(false, false, []map[string]any{
+					{"number": 7, "state": "MERGED", "merged": true, "repository": tc.repo, "author": author}}))
+			})
+			got, err := gh.forge().IssueStateEvents(forgeTestRepo, 12)
+			if err != nil {
+				t.Fatalf("IssueStateEvents: %v", err)
+			}
+			if got.Complete || len(got.ClosingChanges) != 1 || got.ClosingChanges[0].Repo != "" {
+				t.Fatalf("%s: a closer with no resolvable repo must keep Repo EMPTY and clear Complete: %+v", tc.name, got)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name  string
+		setup func(s *glServer) map[string]any
+	}{
+		{"gitlab_no_project_id", func(s *glServer) map[string]any {
+			return glMR(map[string]any{"state": "merged"})
+		}},
+		{"gitlab_project_unreadable", func(s *glServer) map[string]any {
+			s.forceStatus["/projects/77"] = http.StatusInternalServerError
+			return glMR(map[string]any{"state": "merged", "project_id": 77})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newGLServer(t)
+			s.closedBy = []map[string]any{tc.setup(s)}
+			got, err := s.forge().IssueStateEvents(glRepo, 12)
+			if err != nil {
+				t.Fatalf("IssueStateEvents: %v", err)
+			}
+			if got.Complete || len(got.ClosingChanges) != 1 || got.ClosingChanges[0].Repo != "" {
+				t.Fatalf("%s: a closer with no resolvable project must keep Repo EMPTY and clear Complete: %+v", tc.name, got)
+			}
+		})
+	}
+	t.Run("gitlab_project_resolved", func(t *testing.T) {
+		s := newGLServer(t)
+		s.project = map[string]any{"id": 77, "path_with_namespace": "medici-finance/other"}
+		s.closedBy = []map[string]any{glMR(map[string]any{"state": "merged", "project_id": 77})}
+		got, err := s.forge().IssueStateEvents(glRepo, 12)
+		if err != nil || !got.Complete || len(got.ClosingChanges) != 1 || got.ClosingChanges[0].Repo != "medici-finance/other" {
+			t.Fatalf("a closer whose project resolves reads Complete with its Repo: %v %+v", err, got)
+		}
+	})
+}
+
+// TestGitHubGraphQLErrorIsUnverifiable pins the top-level `errors` branch of ops 55 and 56 on
+// GitHub: a GraphQL error is could-not-check (Unverifiable), never a result — including the
+// partial-data shape, where GitHub returns a well-formed `data` beside `errors`, which a reader
+// that only nil-checked the repository would serve as a clean answer.
+func TestGitHubGraphQLErrorIsUnverifiable(t *testing.T) {
+	gqlErr := []map[string]any{{"message": "Something went wrong while executing your query."}}
+	withErr := func(resp map[string]any) map[string]any {
+		resp["errors"] = gqlErr
+		return resp
+	}
+	nullData := func() map[string]any { return map[string]any{"data": map[string]any{"repository": nil}} }
+	for _, tc := range []struct {
+		name string
+		resp func() map[string]any
+		run  func(f *GitHubForge) (any, error)
+	}{
+		{"list_issues_partial_data", func() map[string]any { return withErr(b33IssuesPage(b33IssueNodes(1, 2), false, "")) },
+			func(f *GitHubForge) (any, error) {
+				return f.ListIssues(forgeTestRepo, IssueListQuery{State: IssueStateOpen})
+			}},
+		{"list_issues_null_data", func() map[string]any { return withErr(nullData()) },
+			func(f *GitHubForge) (any, error) {
+				return f.ListIssues(forgeTestRepo, IssueListQuery{State: IssueStateOpen})
+			}},
+		{"issue_state_events_partial_data", func() map[string]any { return withErr(b33StateEvents(false, false, []map[string]any{})) },
+			func(f *GitHubForge) (any, error) { return f.IssueStateEvents(forgeTestRepo, 12) }},
+		{"issue_state_events_null_data", func() map[string]any { return withErr(nullData()) },
+			func(f *GitHubForge) (any, error) { return f.IssueStateEvents(forgeTestRepo, 12) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gh := newB33GitHub(t, func(w http.ResponseWriter, r *http.Request, body string) {
+				b33Enc(w, tc.resp())
+			})
+			got, err := tc.run(gh.forge())
+			if !IsUnverifiable(err) {
+				t.Fatalf("%s: a GraphQL top-level error must be Unverifiable, got err=%v result=%+v", tc.name, err, got)
+			}
+			if !strings.Contains(err.Error(), "GraphQL error") && !strings.Contains(err.Error(), "could-not-check") {
+				t.Fatalf("%s: the refusal must say why: %v", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestCommentFieldsOnChangeTarget(t *testing.T) {
 	t.Run("github_pull_request_thread", func(t *testing.T) {
 		gh := newB33GitHub(t, func(w http.ResponseWriter, r *http.Request, body string) {

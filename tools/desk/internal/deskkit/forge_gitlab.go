@@ -4473,8 +4473,8 @@ func gitlabClosingMerged(state string) (value, ok bool) {
 // /projects/:id/issues/:iid/resource_state_events (the `closed` and `reopened` events, with
 // their user and time) and GET /projects/:id/issues/:iid/closed_by (the merge requests that
 // close it). Each closing MR's project_id is resolved to its path for Repo, once per distinct
-// project; an unresolvable project leaves Repo EMPTY. Either walk reaching gitlabMaxNotePage
-// with a next page still advertised clears Complete.
+// project; an unresolvable project leaves Repo EMPTY and clears Complete. Either walk reaching
+// gitlabMaxNotePage with a next page still advertised clears Complete.
 func (g *GitLabForge) IssueStateEvents(repo ForgeRepo, number int) (*IssueStateHistory, error) {
 	cl, err := g.client()
 	if err != nil {
@@ -4546,6 +4546,11 @@ func (g *GitLabForge) IssueStateEvents(repo ForgeRepo, number int) (*IssueStateH
 					projects[mr.ProjectID] = p
 				}
 				cc.Repo = p
+			}
+			if cc.Repo == "" {
+				// No project id, or one the projects API could not resolve: the closer cannot be
+				// placed, so the history is could-not-check (ClosingChange.Repo's contract).
+				out.Complete = false
 			}
 			if mr.Author != nil {
 				cc.Author = types.resolve(gitlabAccount(mr.Author.ID, mr.Author.Username))

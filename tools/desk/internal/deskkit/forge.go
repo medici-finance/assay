@@ -1022,9 +1022,10 @@ type IssueStateEvent struct {
 
 // ClosingChange is one change the forge records as closing an issue. Repo is the change's OWN
 // `owner/name` (a change in another repository can close the issue, and a bare number would
-// then name the wrong change), EMPTY where unresolvable. Merged is meaningful only while the
-// enclosing IssueStateHistory is Complete: an unreadable merged state clears Complete rather
-// than reading as false.
+// then name the wrong change), EMPTY where unresolvable — and an EMPTY Repo clears the enclosing
+// IssueStateHistory's Complete, since a closer that cannot be placed is could-not-check, never a
+// clean answer. Merged is meaningful only while the enclosing IssueStateHistory is Complete: an
+// unreadable merged state clears Complete rather than reading as false.
 type ClosingChange struct {
 	Repo   string
 	Number int
@@ -1033,8 +1034,8 @@ type ClosingChange struct {
 }
 
 // IssueStateHistory is IssueStateEvents' (op 56) result. Complete=false means a connection
-// still paginated or a closing change's merged state could not be read; the consumer then
-// reads the issue as could-not-check, never as "closed by no merged change".
+// still paginated, or a closing change's merged state or own repository could not be read; the
+// consumer then reads the issue as could-not-check, never as "closed by no merged change".
 type IssueStateHistory struct {
 	Events         []IssueStateEvent
 	ClosingChanges []ClosingChange
