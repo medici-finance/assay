@@ -776,6 +776,57 @@ func ResolveForge(repo ForgeRepo, role string) (Forge, ForgeResolution, error) {
 	}
 }
 
+// ciTokenAPIBase redirects the CI workflow-token transport's GitHub backend at a test server.
+// It is EMPTY in production (the real API host) and set only through SetCITokenAPIBaseForTest;
+// the constructor never reads an environment variable for it, so a hostile GITHUB_API_URL cannot
+// carry the job's token to another host. TestCITokenConstructorConfined fails any non-test use
+// of the setter.
+var ciTokenAPIBase string
+
+// SetCITokenAPIBaseForTest points the CI-token backend at base for the life of a test and returns
+// the function that restores it. It exists for tests only; no non-test file may call it.
+func SetCITokenAPIBaseForTest(base string) (restore func()) {
+	prev := ciTokenAPIBase
+	ciTokenAPIBase = base
+	return func() { ciTokenAPIBase = prev }
+}
+
+// ciTokenPrefix is the shape of a GitHub App installation token, which is what a workflow's
+// GITHUB_TOKEN is. A personal (ghp_), OAuth (gho_) or user-to-server (ghu_) token is never one.
+const ciTokenPrefix = "ghs_"
+
+// ReadOnlyForgeForCIToken is the CI workflow-token transport's one constructor (forge-neutral
+// brief 34): a READ-ONLY GitHub backend authenticated by the job's own workflow token, bound to
+// the one repository the job runs in. It is the sole sibling of ResolveForge's construction site
+// and deliberately shares nothing with App custody: it calls neither custody nor githubCustody,
+// and reads no environment variable (the caller hands it the token and the job repository).
+//
+// Every check runs BEFORE any network call, in this order, and refuses (exit 5) rather than
+// falls back: the token must be an installation token (ghs_), the requested repo must be the
+// job's own repository (case-insensitive owner/name), and the repo must resolve to GitHub.
+// The backend leaves wrapped by BOTH the outbound-write check and the read-only fence, so even
+// a future read-only-violating call site cannot write.
+func ReadOnlyForgeForCIToken(repo ForgeRepo, jobRepo, token string) (Forge, ForgeResolution, error) {
+	if !strings.HasPrefix(token, ciTokenPrefix) {
+		return nil, ForgeResolution{}, Refused("the CI workflow token is not an app installation token " +
+			"(a personal, OAuth or user-to-server token is never accepted)")
+	}
+	if jobRepo == "" || !strings.EqualFold(repo.Slug(), jobRepo) {
+		return nil, ForgeResolution{}, Refused(fmt.Sprintf("the CI workflow-token transport reads only the job's own "+
+			"repository (%q); %q is another repository", jobRepo, repo.Slug()))
+	}
+	res, err := resolveForgeKind(repo)
+	if err != nil {
+		return nil, ForgeResolution{}, err
+	}
+	if res.Kind != ForgeGitHub {
+		return nil, ForgeResolution{}, Refused(fmt.Sprintf("the CI workflow-token transport serves GitHub "+
+			"only; %s resolves to %s", repo.Slug(), res.Kind))
+	}
+	base := GitHubBaseURLOrDefault(ciTokenAPIBase)
+	return ReadOnly(OutboundChecked(&GitHubForge{Token: token, BaseURL: base}, "ci-workflow-token")), res, nil
+}
+
 // ForgeKindFor resolves WHICH forge serves repo — the kind and the provenance of the
 // answer — WITHOUT obtaining a credential or constructing a backend. It is the read a
 // caller makes when it needs to KNOW the forge (to branch behaviour, or to refuse a

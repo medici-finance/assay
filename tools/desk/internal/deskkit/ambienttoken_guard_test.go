@@ -38,6 +38,7 @@ import (
 var ambientTokenVars = map[string]bool{
 	"GH_TOKEN": true, "GITHUB_TOKEN": true, "GH_ENTERPRISE_TOKEN": true,
 	"GITHUB_ENTERPRISE_TOKEN": true, "GITLAB_TOKEN": true,
+	"DESKREAD_CI_WORKFLOW_TOKEN": true,
 }
 
 // ambientTokenReadPermits are the functions that read a forge token from the environment today,
@@ -55,10 +56,16 @@ var ambientTokenReadPermits = map[string]string{
 	"cmd/deskclaim-ref/gogit.go::resolveToken": "the pure-Go claim helper's explicitly HANDED token " +
 		"(--token-file first, then the named variables) for adopters without the desk's minter; a claim " +
 		"ref write, outside the desk read seam.",
+	"cmd/deskread/ci.go::readCIEnv": "the CI workflow-token transport's one dedicated variable " +
+		"(forge-neutral/34): read only to feed the explicit --ci-workflow-token opt-in, whose gate then " +
+		"requires a CI job (GITHUB_ACTIONS, a numeric run id, an owner/name repository), refuses " +
+		"pull_request_target and any non-installation token, and hands the token to " +
+		"deskkit.ReadOnlyForgeForCIToken, a read-only, same-repository backend. Without the flag the value " +
+		"is never used (one stderr line says it was ignored).",
 }
 
 // ambientTokenReadCeiling is the ratchet: the exact number of permits above.
-const ambientTokenReadCeiling = 4
+const ambientTokenReadCeiling = 5
 
 func TestNoAmbientEnvTokenRead(t *testing.T) {
 	found, err := scanAmbientTokenReads(deskTreeRoot)

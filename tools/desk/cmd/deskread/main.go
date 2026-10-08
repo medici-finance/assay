@@ -141,6 +141,7 @@ flags:
                            any other word, or --state on another kind, is refused
   --label <name>           issue-list only; ONE label (a comma is refused — the forge reads it as a list)
   --max-parallel <N>       bounded concurrency for the set (default 6)
+  --ci-workflow-token      read as the CI job's own workflow token instead of an App role (see identity)
 
 output: a versioned JSON envelope on stdout
 
@@ -178,21 +179,52 @@ Absent is never a value: an empty "authorType", "updatedAt", "closedBy", "mergeC
 closer", "no merge commit" or "same repository". A file with "patchAbsent": true has a patch
 the forge did not serve, never an empty one. No kind maps any of these to an outcome.
 
-identity: reads authenticate as this session's minted App role via the deskkit resolver. There
-is no ambient-credential fallback — a session with no resolvable role is refused, never silently
-degraded onto whatever the local forge CLI happens to hold.
+identity: two transports, named in the envelope's "identity" object and on one stderr line.
+  app-custody (the default): reads authenticate as this session's minted App role via the deskkit
+  resolver. There is no ambient-credential fallback: a session with no resolvable role is
+  refused, never silently degraded onto whatever the local forge CLI happens to hold.
+  ci-workflow-token (opt-in): --ci-workflow-token alone selects it. It is CI-only (refused
+  outside a CI job and on pull_request_target), read-only (every write method is refused),
+  same-repository (only the job's own GITHUB_REPOSITORY is read; another --repo lands in
+  "partial" and a --issue/--change in another repository is refused) and limited to the kinds
+  issues, trust and comments. The token is read from DESKREAD_CI_WORKFLOW_TOKEN only and must be
+  an installation token (ghs_); without the flag that variable is ignored. A refusal reads
+  "deskread: refused [ci-transport:<layer>]: <reason>" and exits 5. The identity object's
+  repository and runId are copied from the environment and are NOT verified: CI detection is a
+  guard against misuse, not proof of a CI job.
 `
 
 func main() {
-	// This tool reads the roster to resolve its acting role, so ciEligible=false: config-home
-	// file only, never the environment, in CI as well as locally — the same declaration every
-	// other acting read verb makes.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	// The custody path reads the roster to resolve its acting role, so its class is
+	// ciEligible=false: config-home file only, never the environment, in CI as well as locally.
+	// Only the explicit --ci-workflow-token opt-in changes that (toolClassFor).
+	deskkit.SetToolClass(toolClassFor(os.Args[1:]))
 	deskkit.EchoEffectiveConfig(os.Stderr)
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// ciTransportKinds is the CLOSED set of read kinds the CI workflow-token transport serves. It is
+// separate from readKinds on purpose: a kind added to readKinds is NOT served under the CI
+// transport until a reviewed diff adds it here (forge-neutral brief 18 owns each addition its
+// CI-lane sites need). TestCITransportKindsAreReads pins that every entry is also a readKinds kind.
+var ciTransportKinds = map[string]bool{"issues": true, "trust": true, "comments": true}
+
+// toolClassFor is the one place deskread picks its roster class. The CI class (ClassForTool(true),
+// which is ClassCI only inside CI) is chosen ONLY when the arguments parse cleanly and carry the
+// --ci-workflow-token opt-in as a flag of its own, never as the value of another flag. Everything
+// else, including a malformed command line, is today's ClassForTool(false): config-home file only.
+// Under the CI transport deskread resolves no acting role, so this does not loosen the rule that
+// acting tools stay file-only.
+func toolClassFor(args []string) deskkit.ToolClass {
+	if len(args) >= 2 {
+		if o, err := parseFlags(args[1:]); err == nil && o.ci {
+			return deskkit.ClassForTool(true)
+		}
+	}
+	return deskkit.ClassForTool(false)
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -220,15 +252,34 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	// Every refusal below happens BEFORE any forge is resolved, so a refused run makes zero
 	// forge calls.
+	ce := readCIEnv()
+	if o.ci {
+		tr, layer, reason := ciGate(kind, ce)
+		if tr == nil {
+			return ciRefuse(stderr, layer, reason)
+		}
+		o.ciT = tr
+	} else if ce.token != "" {
+		// The opt-in is the flag alone: a token that is merely present is never used.
+		fmt.Fprintf(stderr, "deskread: %s is set but ignored: --ci-workflow-token was not given, so the App custody path runs\n", ciTokenEnv)
+	}
 	if rerr := checkAddressing(kind, &o); rerr != nil {
 		fmt.Fprintf(stderr, "deskread: refused: %v\n", rerr)
 		return deskkit.ExitRefused
 	}
+	if o.ciT != nil {
+		if layer, reason := ciGateTargets(kind, o); layer != "" {
+			return ciRefuse(stderr, layer, reason)
+		}
+	}
+	resetCustodyRole()
 	if !repoKinds[kind] {
 		return runPerItem(kind, o, stdout, stderr)
 	}
 
 	env := readSet(kind, o)
+	env.Identity = identityFor(o)
+	writeIdentityLine(stderr, env.Identity)
 	enc, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
 		fmt.Fprintf(stderr, "deskread: could-not-check: rendering the envelope failed: %v\n", err)
@@ -353,6 +404,11 @@ type readOpts struct {
 
 	target deskkit.TargetKind
 	items  []issueTarget
+
+	// ci is the --ci-workflow-token opt-in as parsed; ciT is the transport the gate settled (nil
+	// on the custody path). The token lives only inside ciT and is never rendered.
+	ci  bool
+	ciT *ciTransport
 }
 
 // parseFlags reads the repeatable --repo, --issue and --change sets, the --state and --label
@@ -411,6 +467,8 @@ func parseFlags(args []string) (readOpts, error) {
 			}
 			i++
 			o.label, o.labelSet = args[i], true
+		case ciWorkflowTokenFlag:
+			o.ci = true
 		case "--max-parallel":
 			if i+1 >= len(args) {
 				return o, fmt.Errorf("--max-parallel needs a value")
@@ -458,6 +516,10 @@ type Envelope struct {
 	Kind    string        `json:"kind"`
 	Repos   []RepoResult  `json:"repos"`
 	Partial []PartialRepo `json:"partial"`
+	// Identity says which transport authenticated the reads (omitempty and additive: schema
+	// stays 1, and a consumer that declares only the fields it reads never sees it). It never
+	// carries a credential.
+	Identity *IdentityJSON `json:"identity,omitempty"`
 }
 
 // RepoResult is one repo that WAS read. An empty Issues slice is a real answer — "this repo has
@@ -594,7 +656,7 @@ func readSet(kind string, o readOpts) Envelope {
 // readRepo is ONE enumerated operation per per-repo kind, no client-side filtering that could
 // turn a read failure into an empty answer.
 func readRepo(kind, repo string, o readOpts) (*RepoResult, error) {
-	f, fr, err := forgeFor(repo)
+	f, fr, err := forgeForRun(repo, o)
 	if err != nil {
 		return nil, err
 	}
@@ -696,6 +758,8 @@ type ItemEnvelope struct {
 	Kind    string        `json:"kind"`
 	Items   []ItemResult  `json:"items"`
 	Partial []PartialItem `json:"partial"`
+	// Identity is the same additive record Envelope carries.
+	Identity *IdentityJSON `json:"identity,omitempty"`
 }
 
 // ItemResult is one issue or change that WAS read. Exactly one payload is set, by kind. An
@@ -837,6 +901,8 @@ type FileJSON struct {
 
 func runPerItem(kind string, o readOpts, stdout, stderr io.Writer) int {
 	env := readItems(kind, o)
+	env.Identity = identityFor(o)
+	writeIdentityLine(stderr, env.Identity)
 	enc, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
 		fmt.Fprintf(stderr, "deskread: could-not-check: rendering the envelope failed: %v\n", err)
@@ -866,7 +932,7 @@ func readItems(kind string, o readOpts) ItemEnvelope {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			res, err := readItem(kind, o.target, tgt)
+			res, err := readItem(kind, o.target, tgt, o)
 			if err != nil {
 				slots[i].part = &PartialItem{Repo: tgt.Repo, Number: tgt.Number, Reason: err.Error()}
 				return
@@ -891,8 +957,8 @@ func readItems(kind string, o readOpts) ItemEnvelope {
 // readItem is ONE enumerated operation per kind (change-files: the file list plus the change's
 // own count it is reconciled against). No client-side filtering: a read failure is an error (→
 // partial), never an empty answer — and never a retry under another target.
-func readItem(kind string, target deskkit.TargetKind, tgt issueTarget) (*ItemResult, error) {
-	f, fr, err := forgeFor(tgt.Repo)
+func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpts) (*ItemResult, error) {
+	f, fr, err := forgeForRun(tgt.Repo, o)
 	if err != nil {
 		return nil, err
 	}
