@@ -324,8 +324,11 @@ func (a *auditCtx) finalize(err error) {
 	a.log(result, err.Error())
 }
 
-// cmdFetch refreshes refs from origin, IN-PROCESS (gitcore.Fetch): no git child, no credential
-// helper, no askpass file, no environment for a caller or a config to inject a program into.
+// cmdFetch refreshes refs from origin, IN-PROCESS (gitcore.Fetch): no child process for any
+// origin shape (a local-path or file:// origin is served in-process too — gitcore's
+// localTransport), no credential helper, no askpass file, so no environment variable or config
+// key for a caller to name a program through. (The environment still steers the connection —
+// HTTP proxy and trust-store variables, the ssh agent — but runs nothing.)
 // Three mutually exclusive modes, each building a FIXED refspec from a validated value, so no
 // caller flag and no arbitrary refspec can reach the transport:
 //
@@ -334,8 +337,9 @@ func (a *auditCtx) finalize(err error) {
 //	--branch <B>  refs/heads/<B>:refs/heads/<B>           (B ref-ish; not main/master in ANY case)
 //
 // BOTH ref-writing modes additionally refuse a destination that differs only by CASE from
-// an existing local branch — see localRefTarget/branchCollision — and refuse to write the
-// branch that is currently checked out (git's own "refusing to fetch into current branch").
+// an existing local branch — see localRefTarget/branchCollision — and refuse to write a
+// branch checked out in ANY worktree of the repository (git's own "refusing to fetch into
+// branch ... checked out at ..."), failing closed when that set cannot be read.
 //
 // The gate is the repository's own configured origin URL, read once (gitcore.RemoteURLs) and
 // then USED VERBATIM as the fetch URL: the string the allowed-repo check decided on is the

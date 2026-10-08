@@ -10,10 +10,14 @@
 // tool's main() does: `deskgit fetch` takes a fixed set of modes, each building a FIXED
 // refspec from a validated value — nothing appendable can change what runs.
 //
-// `deskgit fetch` now runs IN-PROCESS (internal/gitcore, go-git): it starts no git child, so
-// there is no program name to pin, no child environment to scrub, no config key that can
-// name a program to execute, no credential helper and no askpass file. The vectors the old
-// hardening closed one by one are closed by construction — there is nothing to inject into.
+// `deskgit fetch` now runs IN-PROCESS (internal/gitcore, go-git): it starts no child process
+// for any origin shape — a local-path or file:// origin included, which gitcore serves from the
+// local repository's storage rather than through go-git's stock local transport (that one
+// starts git-upload-pack with this process's environment; see gitcore/localtransport.go). So
+// there is no program name to pin, no child environment to scrub, no config key that can name
+// a program to execute, no credential helper and no askpass file. The environment still
+// parameterises the connection itself (the Go HTTP client's proxy and trust-store variables;
+// the ssh client's agent socket and known_hosts) — a route or a trust root, never a program.
 // What is left, and what this tool still enforces:
 //   - the refspec is a Go value built from a validated mode (never a caller flag), and the
 //     explicit tracking refspec confines a bare fetch to refs/remotes/origin/*, so a
@@ -72,10 +76,10 @@ deskgit is safe by construction: each mode builds a FIXED refspec from a validat
 no caller flag and no arbitrary refspec reach the transport. fetch runs in-process (no git
 child, so no program to name, no child environment, no credential helper); push runs git with a
 fixed argv that pins --receive-pack=git-receive-pack and refuses --force/--delete/--no-verify
-by name. Both gate on the origin URL. --as reads the role's 0600 token file and hands the token
-to the transport in memory, over https to github.com only; the token never reaches argv, a URL,
-a file, stdout, or the audit line. push also clears every ambient credential helper and
-pins --no-recurse-submodules.
+by name. Both gate on the origin URL. --as reads the role's 0600 token file and sends the token
+over https to github.com only — fetch hands it to the in-process transport in memory, push to
+its one git child through an ephemeral helper that clears every ambient one; the token never
+reaches argv, a URL, stdout, or the audit line. push also pins --no-recurse-submodules.
 It is not a sandbox against a fully attacker-controlled .git/config. On any state it cannot
 positively verify it refuses.
 

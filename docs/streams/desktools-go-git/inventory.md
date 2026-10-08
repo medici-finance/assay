@@ -267,11 +267,22 @@ checklist contract as above.
 Behaviour that changed on purpose, for the reviewer: an in-process fetch reads only the
 repository's own config, so deskgit's fetch no longer follows global- or worktree-scope
 `url.<base>.insteadOf` rewrites or `remote.origin.url` (the gate and the connection read the
-same repo-local string, so they cannot disagree); a branch checked out in another LINKED
-worktree is not protected by the checked-out-branch refusal (go-git cannot see linked
-worktrees); and ssh-alias origins are not resolved through `~/.ssh/config` in-process
-(desk worktrees use https origins). `--upload-pack` is now refused by the flag parser as an
-unknown flag (still exit 5).
+same repo-local string, so they cannot disagree); an ssh origin is fetched by go-git's Go ssh
+client, which takes only the `Hostname` and `Port` of a host alias from `~/.ssh/config` (no
+`IdentityFile`, `ProxyCommand` or other program-naming option — desk worktrees use https
+origins); and `--upload-pack` is now refused by the flag parser as an unknown flag (still
+exit 5). A branch checked out in ANY worktree — this one or a linked one — is still refused
+by `--branch`/`--pr` (`gitcore.CheckedOutBranches` reads every worktree's HEAD; unreadable =
+exit 6), matching `git fetch`'s own refusal.
+
+A local-path or `file://` origin is fetched in-process too: go-git's stock local transport
+starts `git-upload-pack` with the caller's whole environment, so gitcore replaces that
+protocol's fetch side (`internal/gitcore/localtransport.go`) with an in-process server over
+the local repository's storage, for every caller of `Fetch`, `List` and `FetchTree`. Its
+receive side (a push to a local path) is still go-git's stock child — tracked separately, as
+it is the child that enforces the target's hooks and compare-and-swap. The environment still
+parameterises the https client (proxy and trust-store variables) and the ssh client (agent
+socket, known_hosts); none of those names a program.
 
 ## Baseline counter
 

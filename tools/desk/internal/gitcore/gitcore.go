@@ -514,7 +514,9 @@ type FetchOpts struct {
 }
 
 // Fetch fetches RefSpecs from URL into the repo, entirely in-process: no external git
-// binary is spawned, no credential helper or askpass is consulted, no hook runs.
+// binary is spawned for any scheme (a local-path or file:// URL is served by localTransport,
+// not go-git's stock local client — see localtransport.go), no credential helper or askpass
+// is consulted, no hook runs.
 // Returns nil on success, including when the remote was already up to date.
 func (r *Repo) Fetch(opts FetchOpts) error {
 	specs, err := buildRefSpecs(opts.RefSpecs, opts.Force)

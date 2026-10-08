@@ -17,7 +17,9 @@ package gitcore
 //   - an entry whose path is not local to the destination (absolute, "..", empty element), or
 //     which has a ".git" element in any letter case (a case-insensitive filesystem would make
 //     it the repository's own metadata), refuses the whole write rather than being skipped:
-//     a tree that carries one is hostile, not merely unusual;
+//     a tree that carries one is hostile, not merely unusual. These checks are a SECOND
+//     layer: the pinned go-git tree walker already refuses such entries while decoding, so
+//     no fixture reaches them today; they stay so the guarantee does not rest on the library;
 //   - files are created exclusively (O_EXCL), so nothing already at the path — a planted
 //     symlink included — is followed.
 
