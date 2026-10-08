@@ -13,7 +13,7 @@ import (
 )
 
 // ciTestToken is an installation-shaped test token. It is not a credential.
-const ciTestToken = "gh" + "s_testtoken0000000000000000000000000"
+const ciTestToken = "gh" + "s_test_tok"
 
 // countingServer answers every request with an empty JSON list and counts them.
 func countingServer(t *testing.T) (*httptest.Server, *atomic.Int64) {

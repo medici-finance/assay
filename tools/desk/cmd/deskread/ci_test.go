@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	ciTestToken = "gh" + "s_placeholdertoken0000000000000000"
+	ciTestToken = "gh" + "s_placeholder_tok"
 	ciRepo      = "example-org/alpha"
 	ciOtherRepo = "example-org/beta"
 	ciIssueBody = `[{"number": 11, "title": "first", "state": "open",
@@ -90,8 +90,8 @@ func ciSetup(t *testing.T, srv *recSrv) *custodyCalls {
 	t.Setenv("GITHUB_REPOSITORY", ciRepo)
 	t.Setenv("GITHUB_EVENT_NAME", "push")
 	t.Setenv(ciTokenEnv, ciTestToken)
-	t.Setenv("GH_TOKEN", "gh"+"s_ambientdoesnotcount000000000000000")
-	t.Setenv("GITHUB_TOKEN", "gh"+"s_ambientdoesnotcount000000000000000")
+	t.Setenv("GH_TOKEN", "gh"+"s_ambient_not_used_tok")
+	t.Setenv("GITHUB_TOKEN", "gh"+"s_ambient_not_used_tok")
 	t.Setenv(deskkit.EnvRepoForges, ciRepo+"=github,"+ciOtherRepo+"=github")
 	deskkit.SetToolClass(deskkit.ClassCI)
 	t.Cleanup(func() { deskkit.SetToolClass(deskkit.ClassWrite) })
@@ -395,7 +395,7 @@ func TestCITransportRecordsIdentityNotToken(t *testing.T) {
 	if !strings.Contains(stderr, "transport=ci-workflow-token") {
 		t.Errorf("stderr does not name the transport: %s", stderr)
 	}
-	for _, tok := range []string{ciTestToken, "gh" + "s_ambientdoesnotcount000000000000000"} {
+	for _, tok := range []string{ciTestToken, "gh" + "s_ambient_not_used_tok"} {
 		if strings.Contains(stdout, tok) || strings.Contains(stderr, tok) {
 			t.Errorf("a token appears in the output")
 		}
@@ -458,7 +458,7 @@ func TestCITransportActivatesWithEnvRoster(t *testing.T) {
 		"HOME=" + home, "USERPROFILE=" + home, "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"PATH=" + os.Getenv("PATH"), "KUBECONFIG=/dev/null",
 		"GITHUB_ACTIONS=true", "GITHUB_RUN_ID=9001", "GITHUB_REPOSITORY=" + ciRepo, "GITHUB_EVENT_NAME=push",
-		ciTokenEnv + "=gh" + "p_notaninstallationtoken000000",
+		ciTokenEnv + "=gh" + "p_not_an_install_tok",
 		deskkit.EnvRepoForges + "=" + ciRepo + "=github",
 		deskkit.EnvTrustedBotSlugs + "=worker=assay-worker-app:300000006",
 		deskkit.EnvAllowedRepos + "=" + ciRepo + ":ci:private",
