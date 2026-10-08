@@ -1,0 +1,47 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 280s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary)$' ./cmd/cellctl/",
+  "control": {
+    "name": "CONTROL — a parse failure exits with the wrong code (usage exit 3 becomes 4)",
+    "file": "cmd/cellctl/cobra.go",
+    "old": "UsageExit:       3,",
+    "new": "UsageExit:       4,"
+  },
+  "mutations": [
+    {
+      "name": "help runs after the roster echo: the echo is called while the tree is built, so every help and version form reads configuration first",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "root := cli.NewRoot(\"cellctl\", \"start, stop and scaffold an Assay CELL on one laptop\")",
+      "new": "root := cli.NewRoot(\"cellctl\", \"start, stop and scaffold an Assay CELL on one laptop\")\n\techoRoster()"
+    },
+    {
+      "name": "version no longer exempt from the roster echo (the pre-run hook ignores the no-echo annotation)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if cmd.Annotations[noEcho] == \"1\" {",
+      "new": "if false && cmd.Annotations[noEcho] == \"1\" {"
+    },
+    {
+      "name": "a setting opens the config-map source nobody declared (the tick-budget binding gains Config)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "bStr(\"tick-budget\", \"per-pass tick budget (a duration)\", \"CELL_TICK_BUDGET\"),",
+      "new": "func() cli.Binding { b := bStr(\"tick-budget\", \"per-pass tick budget (a duration)\", \"CELL_TICK_BUDGET\"); b.Config = true; return b }(),"
+    },
+    {
+      "name": "a setting reads an undeclared environment name (the model binding also consults ANTHROPIC_MODEL)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\"model for THIS run only, passed through verbatim to the harness\", \"DESK_MODEL_OVERRIDE\"),",
+      "new": "\"model for THIS run only, passed through verbatim to the harness\", \"DESK_MODEL_OVERRIDE\", \"ANTHROPIC_MODEL\"),"
+    },
+    {
+      "name": "one legacy flag form dropped (single-dash -model stops being accepted)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "GoFlagCompat:    !rawVerb(args),",
+      "new": "GoFlagCompat:    false,"
+    },
+    {
+      "name": "the-desk Opus refusal removed from the domain check (nothing below the adapter refuses; a parser-bypassing caller is admitted)",
+      "file": "cmd/cellctl/desk.go",
+      "old": "\t\trefuseOpusForTheDesk(model)\n",
+      "new": "\t\t_ = model\n"
+    }
+  ]
+}

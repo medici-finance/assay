@@ -174,13 +174,23 @@ func cellArg(pos []string) string { return needCell(pos) }
 // pre-run hook rather than a line in main so help and --version stay pure.
 var echoRoster = func() { echoEffectiveConfig() }
 
+// declared records every binding of the tree being built, so a test can prove which sources the
+// contract opens (no config-map source, no undeclared environment name). buildRoot resets it.
+var declared []cli.Binding
+
+func declare(cmd *cobra.Command, bs ...cli.Binding) *cli.Set {
+	declared = append(declared, bs...)
+	return cli.Declare(cmd, bs...)
+}
+
 // buildRoot builds one fresh tree. Nothing here reads the environment, a file or a cell.
 func buildRoot() *cobra.Command {
+	declared = nil
 	root := cli.NewRoot("cellctl", "start, stop and scaffold an Assay CELL on one laptop")
 	root.Long = "cellctl starts, stops and scaffolds an Assay CELL on one laptop (the laptop route).\n\n" +
 		"Every command takes the cell as its first argument.\n\n" + helpConcepts
 	root.Example = "  cellctl ls\n  cellctl new mycell --kind house --repo ~/src/repo --roots 'o/r=/abs/path'\n  cellctl up mycell\n  cellctl --cells-root /abs/registry show mycell"
-	cli.Declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
+	declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if cmd.Annotations[noEcho] == "1" {
@@ -337,7 +347,7 @@ func deskCmd() *cobra.Command {
 			"is not provisioned for is refused naming the missing key.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd, launchBindings()...)
+	set := declare(cmd, launchBindings()...)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cellArg(args)
 		if len(args) < 2 || args[1] == "" {
@@ -375,7 +385,7 @@ func upCmd() *cobra.Command {
 		bBool("no-attach", "do not attach to the session after opening it"),
 		bStr("automate", "orca only: schedule one automation per role (a 5-field cron string or a preset)"),
 	)
-	set := cli.Declare(cmd, bs...)
+	set := declare(cmd, bs...)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		c := loadCellWithKind(cell, kindFlag(cmd))
@@ -397,7 +407,7 @@ func downCmd() *cobra.Command {
 			"cell accepts no host cockpit or deskd flags.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd,
+	set := declare(cmd,
 		bBool("keep-deskd", "leave the cell's deskd running"),
 		bStr("cockpit", "cockpit surface ("+joinPipe(cockpitValues)+")"),
 	)
@@ -419,7 +429,7 @@ func smokeCmd() *cobra.Command {
 			"and runs nothing.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd,
+	set := declare(cmd,
 		bStr("harness", "harness to probe (claude|codex)"),
 		bStr("model", "model to probe with"),
 	)
@@ -441,7 +451,7 @@ func showCmd() *cobra.Command {
 			"Launches and writes nothing.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd,
+	set := declare(cmd,
 		bStr("kind", "cell kind ("+joinPipe(kindValues)+")"),
 		bStr("cockpit", "cockpit surface ("+joinPipe(cockpitValues)+")"),
 		bStr("harness", "harness ("+joinPipe(harnessValues)+")"),
@@ -471,7 +481,7 @@ func setCmd() *cobra.Command {
 			"KEY=VALUE (CELL_KIND / CELL_COCKPIT / CELL_HARNESS / CELL_PROVIDER), validated by the same rules.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd,
+	set := declare(cmd,
 		bBool("force", "write a KEY that is not a known cell.env key"),
 		bStr("harness", "harness ("+joinPipe(harnessValues)+")"),
 		bStr("model", "model pin (needs a role)"),
@@ -505,7 +515,7 @@ func newCmd() *cobra.Command {
 			"cell whose harness runs inside an environment cellctl fully COMPOSES. See docs/cellctl.md.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd,
+	set := declare(cmd,
 		bDef("kind", "k8s|house|container|scrubbed", "k8s"),
 		bStr("container-config", "absolute JSON file for the native container runtime"),
 		bStr("launcher", "absolute operator-owned container launcher"),
@@ -555,7 +565,7 @@ func cadenceCmd() *cobra.Command {
 			"explicitly recovered. No OS startup service is installed.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior harness and all its children have stopped"))
+	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior harness and all its children have stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		cmdCadence(cell, args[1:], resolve(set, nil).Bool("confirm-stopped"))
@@ -577,7 +587,7 @@ func cacheCmd() *cobra.Command {
 			"stopped. See docs/cellctl-go-cache.md.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd, bBool("confirm-stopped", "recover only: confirm every cache consumer has stopped"))
+	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm every cache consumer has stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		cmdCache(cell, args[1:], resolve(set, nil).Bool("confirm-stopped"))
@@ -594,7 +604,7 @@ func commsCmd() *cobra.Command {
 			"service window; `down` stops it. `recover` needs --confirm-stopped. See docs/cellctl-comms.md.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior gateway, drain and every owned child have stopped"))
+	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior gateway, drain and every owned child have stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		cmdComms(cell, args[1:], resolve(set, nil).Bool("confirm-stopped"))
@@ -612,7 +622,7 @@ func scratchCmd() *cobra.Command {
 			"unless --apply); `inventory` reads a legacy root.",
 		Args: cobra.ArbitraryArgs,
 	}
-	set := cli.Declare(cmd,
+	set := declare(cmd,
 		bBool("apply", "apply cleanup; default is dry-run"),
 		cli.Binding{Key: "max-age", Kind: cli.Duration, Flag: "max-age", Usage: "diagnostic retention age (default from the cell's scratch policy)"},
 		cli.Binding{Key: "max-bytes", Kind: cli.Int, Flag: "max-bytes", Usage: "retained diagnostic byte budget (default from the cell's scratch policy)"},

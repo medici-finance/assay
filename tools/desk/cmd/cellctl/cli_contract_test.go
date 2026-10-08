@@ -261,6 +261,30 @@ func TestCLIConfigFlow(t *testing.T) {
 			}
 		}
 	})
+	t.Run("declared-sources", func(t *testing.T) {
+		// Only the sources the contract names may feed a setting: no config-map source at all
+		// (cellctl's config is cell.env, which is the Env source's overlay), no secret, and an
+		// environment name only from this closed list.
+		allowed := map[string]bool{"DESK_MODEL_OVERRIDE": true, "CELL_CADENCE": true, "CELL_TICK_BUDGET": true,
+			"DESK_SESSION": true, "ASSAY_SCRATCH_ID": true}
+		buildRoot()
+		if len(declared) == 0 {
+			t.Fatal("no bindings recorded")
+		}
+		for _, b := range declared {
+			if b.Config {
+				t.Errorf("binding %q opens the config-map source, which the contract does not declare", b.Key)
+			}
+			if b.Secret {
+				t.Errorf("binding %q is a secret; cellctl declares none", b.Key)
+			}
+			for _, e := range b.Env {
+				if !allowed[e] {
+					t.Errorf("binding %q reads undeclared environment name %q", b.Key, e)
+				}
+			}
+		}
+	})
 	t.Run("environment-names-follow-the-platform", func(t *testing.T) {
 		w.writeHouseEnv(t, "DESK_MODEL_DEFAULT=sonnet\n")
 		_, model, _ := w.deskPlan(t, []string{"desk_model_override=lower"})
