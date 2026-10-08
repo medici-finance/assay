@@ -979,6 +979,13 @@ const (
 
 // IssueListQuery is ListIssues' (op 55) closed query: a STATED lifecycle state and at most ONE
 // label name. There is no free-form filter — the surface stays closed.
+//
+// A Label the repository does not carry is NOT refused: both forges answer an empty, complete
+// list, and ListIssues does not read the label set to tell "no such label" from "no issue
+// carries it". That is deliberate — a label created on first use (a fresh repository that has
+// never filed a needs-decision issue) is legitimately an empty population, and refusing it would
+// turn a true zero into could-not-check. A consumer for which a renamed or mistyped label must
+// not read as zero checks the label's existence itself before trusting an empty result.
 type IssueListQuery struct {
 	State string // IssueStateOpen | IssueStateClosed | IssueStateAll
 	Label string // optional; one label, never a comma-separated list
