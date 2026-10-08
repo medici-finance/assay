@@ -91,9 +91,13 @@ func tallyAwaiting(streams []*Stream) awaitingTally {
 
 // debtCounts computes verification-debt depth and composition for the
 // Awaiting heading and the debt-alarm NOTICE. awaiting = implemented+verified;
-// deskActionable = the desk-actionable bucket only (the judgement queue the
-// desk drains — never a row another owner moves); done is the total done
-// briefs across all streams.
+// deskActionable = the desk-actionable bucket (the judgement queue the desk
+// drains — never a row another owner moves) PLUS the could-not-check rows: a
+// row whose inputs could not be read is not known to be someone else's, so it
+// stays in the measure. Dropping it would let one unreadable file lower the
+// count and switch the drain-before-instrument gate off, silently (fail open).
+// Runner-pending rows leave the measure: the verify runner and CI drain them
+// without the desk. done is the total done briefs across all streams.
 func debtCounts(streams []*Stream) (awaiting, deskActionable, implemented, verified, done int) {
 	for _, s := range streams {
 		for _, br := range s.Briefs {
@@ -108,7 +112,8 @@ func debtCounts(streams []*Stream) (awaiting, deskActionable, implemented, verif
 		}
 	}
 	awaiting = implemented + verified
-	deskActionable = tallyAwaiting(streams).buckets[bucketDeskActionable]
+	t := tallyAwaiting(streams)
+	deskActionable = t.buckets[bucketDeskActionable] + t.buckets[bucketCouldNotCheck]
 	return
 }
 
@@ -125,7 +130,8 @@ func debtBreached(streams []*Stream) bool {
 }
 
 // debtNotice returns a non-empty NOTICE string when the desk-actionable
-// Awaiting queue exceeds the threshold or the total done count — the
+// Awaiting queue (could-not-check rows included, see debtCounts) exceeds the
+// threshold or the total done count — the
 // queue the desk can actually move is the constraint and should be drained
 // before dispatching new implementation work (retargeted at the
 // desk-actionable slice).
@@ -134,7 +140,11 @@ func debtNotice(streams []*Stream) string {
 		return ""
 	}
 	_, desk, _, _, done := debtCounts(streams)
-	return fmt.Sprintf("verification debt: %d desk-actionable awaiting vs %d done — the queue is the constraint; drain before dispatching new implementation work", desk, done)
+	counted := fmt.Sprintf("%d desk-actionable", desk)
+	if n := tallyAwaiting(streams).buckets[bucketCouldNotCheck]; n > 0 {
+		counted = fmt.Sprintf("%d desk-actionable (%d of them could-not-check)", desk, n)
+	}
+	return fmt.Sprintf("verification debt: %s awaiting vs %d done — the queue is the constraint; drain before dispatching new implementation work", counted, done)
 }
 
 // placedGate is one gate-score row with its placement.
@@ -214,7 +224,7 @@ func nextActCell(p awaitPlacement) string {
 	if p.paused || p.parked || p.nextAct == "" {
 		return "—"
 	}
-	if p.bucket == bucketEnvBlocked && p.nextAct != nextActNoEnvCmd && !strings.Contains(p.nextAct, "`") {
+	if p.bucket == bucketEnvBlocked && p.nextAct != nextActNoEnvCmd && !strings.HasPrefix(p.nextAct, nextActEnvBlocker) && !strings.Contains(p.nextAct, "`") {
 		return "`" + tableCell(p.nextAct) + "`"
 	}
 	return tableCell(p.nextAct)

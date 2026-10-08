@@ -18,42 +18,60 @@ import (
 // The spec is the bucket table below; bucketAwaiting implements it as one pure
 // function, first match wins:
 //
-//	| Order | Condition                                                         | Bucket              | Owner         | Next act                               |
-//	|-------|-------------------------------------------------------------------|---------------------|---------------|----------------------------------------|
-//	| 1     | gate human or irreversible yes, Evidence carries **VERIFY: PASS** | human gate          | driver        | close the sign-off card                |
-//	| 2     | last outcome verify-fail, blocker implementation/check-definition, | implementer rework  | worker        | fix, cite the issue                    |
-//	|       | blocker issue open                                                |                     |               |                                        |
-//	| 3     | status verified, gate model, Reviewed empty                       | runner-pending      | CI auto-flip  | none; stuck after one main run → file  |
-//	| 4     | any unrun row is check:cluster, a billed probe, or                | environment-blocked | operator      | the exact command, verbatim            |
-//	|       | could-not-check with an exact command                             |                     |               |                                        |
-//	| 5     | gate model, every unrun row runnable offline on Linux             | runner-pending      | verify runner | none                                   |
-//	| 6     | a judgement row                                                   | desk-actionable     | verify-desk   | dispatch one judge                     |
-//	| 7     | otherwise                                                         | desk-actionable     | verify-desk   | triage, then re-bucket                 |
+//	| Order | Condition                                                  | Bucket              | Owner         | Next act                              |
+//	|-------|------------------------------------------------------------|---------------------|---------------|---------------------------------------|
+//	| 1     | gate human or irreversible yes, live verdict PASS; or a    | human gate          | driver        | close the sign-off card               |
+//	|       | verified gate:human brief with no live FAIL                |                     |               |                                       |
+//	| 2a    | recorded blocker, kind implementation / check-definition,  | implementer rework  | worker        | fix, cite the issue                   |
+//	|       | blocker names an issue                                     |                     |               |                                       |
+//	| 2b    | recorded blocker, kind human-action                        | human gate          | driver        | the human action, cite the ref        |
+//	| 3     | status verified, gate model, Reviewed empty                | runner-pending      | CI auto-flip  | none; stuck after one main run → file |
+//	| 4     | an unrun row is check:cluster, a billed probe, or          | environment-blocked | operator      | the exact command, verbatim           |
+//	|       | could-not-check with an exact command; or a recorded       |                     |               | (a record alone: the blocker)         |
+//	|       | blocker of kind environment                                |                     |               |                                       |
+//	| 5     | gate model, >= 1 unrun row, all runnable offline on Linux, | runner-pending      | verify runner | none                                  |
+//	|       | no FAIL in Evidence, no recorded blocker                   |                     |               |                                       |
+//	| 6     | a judgement row                                            | desk-actionable     | verify-desk   | dispatch one judge                    |
+//	| 7     | otherwise                                                  | desk-actionable     | verify-desk   | triage, then re-bucket                |
+//
+// A "recorded blocker" is the brief's latest verify-outcome record when its
+// outcome is a fail (verify-fail, fail) or a hold (blocked, needs-context),
+// unless the Evidence's live verdict is PASS (the fix landed and the brief was
+// re-verified, so the older record decides nothing).
 //
 // THREE-STATE. A condition the function cannot read yields bucketCouldNotCheck
 // with the reason in nextAct, never a bucket: an unreadable Evidence section
 // (a brief file that exists but cannot be read, or an Evidence section holding
 // an unterminated HTML comment, which hides every row after it), an unreadable
-// verify-outcome store, or an Evidence section whose last verdict is FAIL with
-// no outcome record naming the brief (the blocker class the rework arm keys on
-// is unrecorded). A could-not-check row is never silently desk-actionable.
+// verify-outcome store, a record dated beyond the clock-skew tolerance, a
+// latest record whose outcome is none of the recognised values, or an Evidence
+// section whose last verdict is FAIL with no outcome record naming the brief
+// (the blocker class the rework arm keys on is unrecorded). A could-not-check
+// row is never silently desk-actionable, and it counts toward the
+// verification-debt measure (debtCounts) so it cannot switch the alarm off.
 //
 // Defaults this file decides where the table is silent (each is reversible):
 //
-//   - "blocker issue open" (row 2) cannot be read offline; the board renders
+//   - "blocker issue open" (row 2a) cannot be read offline; the board renders
 //     without network. The condition holds when the latest outcome's
 //     blocker_ref names an issue (`#N`, `owner/repo#N`, `alias#N`, or an
 //     `/issues/N` URL), presumed open until a newer outcome record supersedes
 //     it. A ref of "none …" fails the condition.
-//   - Row 5 also requires that the Evidence's last verdict is not FAIL: a
-//     recorded FAIL means the runner already ran, so re-running is not the next
-//     act; the row falls to the judgement or triage arm instead.
+//   - A recorded hold (blocked, needs-context) is routed exactly like a recorded
+//     fail: the runner already ran and the record names who owns the next act.
+//     A blocker whose kind is absent, unknown, or implementation/check-definition
+//     without an issue ref falls through to the judgement arm (kind absent or
+//     unknown) or triage.
+//   - Row 5 requires an unrun row (the runner has nothing to run on an
+//     all-settled brief) and no recorded FAIL in the Evidence or the records: a
+//     recorded FAIL or hold means the runner already ran, so re-running is not
+//     the next act; the row falls to the judgement or triage arm instead.
 //   - A brief carrying `blocked-by: env` in its frontmatter lands in
 //     environment-blocked at row 4's position, next act "no command recorded".
-//   - "Evidence carries **VERIFY: PASS**" (row 1) reads as: the live verdict
-//     (lastVerifyVerdict, last writer wins) is PASS AND a VERIFY: PASS token
-//     sits inside a bold span (boldPassRe), which keeps the live marker forms
-//     this board already routes to the human gate.
+//   - Row 1 reads the Evidence's live verdict (lastVerifyVerdict, last writer
+//     wins) as PASS, whatever the emphasis of the line. The sign-off card itself
+//     is raised only for the strict bold marker (hasVerifyPass) or a verified
+//     gate:human brief; a row on this arm with no card says so in its next act.
 //   - Row 4's "exact command, verbatim" is the unrun Verify row's own Command
 //     cell (one enclosing code span removed). A could-not-check Evidence row
 //     qualifies when it carries a code span, but its free text is not parsed
@@ -131,12 +149,19 @@ const (
 	ownerVerifyRunner = "verify runner"
 	ownerVerifyDesk   = "verify-desk"
 
-	nextActCloseCard   = "close the sign-off card"
-	nextActAutoFlip    = "none; stuck after one main run → file"
-	nextActNone        = "none"
-	nextActJudge       = "dispatch one judge"
-	nextActTriage      = "triage, then re-bucket"
-	nextActNoEnvCmd    = "no command recorded (`blocked-by: env`)"
+	nextActCloseCard = "close the sign-off card"
+	nextActAutoFlip  = "none; stuck after one main run → file"
+	nextActNone      = "none"
+	nextActJudge     = "dispatch one judge"
+	nextActTriage    = "triage, then re-bucket"
+	nextActNoEnvCmd  = "no command recorded (`blocked-by: env`)"
+	// nextActSignOffNoCard is row 1's act for a brief no sign-off card exists
+	// for (irreversible without gate: human, or an unbolded PASS).
+	nextActSignOffNoCard = "sign off the PASS verdict (no sign-off card is raised for this brief)"
+	nextActHumanAction   = "human action, cite "
+	// nextActEnvBlocker leads a prose environment act; nextActCell keeps it out
+	// of a code span (a command renders as one).
+	nextActEnvBlocker  = "environment blocker, cite "
 	couldNotCheckLabel = "could-not-check: "
 )
 
@@ -176,14 +201,13 @@ type awaitOutcome struct {
 type awaitOutcomes struct {
 	Unreadable string
 	Latest     *awaitOutcome
+	// Future is true when a record naming the brief carries a ts beyond the
+	// clock-skew tolerance. Such a record never wins the newest-ts comparison,
+	// so Latest alone cannot tell the brief's state: could-not-check.
+	Future bool
 }
 
 var (
-	// boldPassRe is the bold PASS marker: a VERIFY: PASS token inside a bold
-	// span — `**VERIFY: PASS**`, and the live forms that wrap it in a longer
-	// bold phrase (`**Non-implementer verifier run — VERIFY: PASS**`,
-	// `**VERIFY: PASS — all rows green.**`). An unbolded token does not count.
-	boldPassRe = regexp.MustCompile(`\*\*[^*\n]*VERIFY:[ \t]*PASS\b[^*\n]*\*\*`)
 	// riskValueNamedRe is the derivation-pending marker a judgement row carries.
 	riskValueNamedRe = regexp.MustCompile(`RISK-VALUE:\s*NAMED,\s*NOT DERIVED`)
 	// presenceGateRe recognises a Verify section that states it gates PRESENCE
@@ -225,27 +249,58 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 	verdict := lastVerifyVerdict(ev.Text)
 
 	// 1. Human gate: the gate is human (or the change is irreversible) AND the
-	// Evidence carries the bold PASS marker as its live verdict.
-	if (b.Gate == "human" || b.Irreversible) && verdict == verdictPass && boldPassRe.MatchString(ev.Text) {
-		return bucketHumanGate, ownerDriver, nextActCloseCard
+	// Evidence's live verdict is PASS, whatever the emphasis of the line.
+	if (b.Gate == "human" || b.Irreversible) && verdict == verdictPass {
+		return bucketHumanGate, ownerDriver, signOffAct(b, ev.Text)
+	}
+	// A verified gate:human brief always has its sign-off card raised
+	// (verifyIssues, Path A), so it is the driver's whatever its Evidence says
+	// — unless the Evidence's live verdict is a FAIL.
+	if b.Gate == "human" && b.Status == "verified" && verdict != verdictFail {
+		return bucketHumanGate, ownerDriver, signOffAct(b, ev.Text)
 	}
 
-	// 2. Implementer rework, read from the outcome records.
+	// Readability of the outcome records, before any arm reads them.
 	if oc.Unreadable != "" {
 		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel + "verify-outcome records unreadable: " + oc.Unreadable
+	}
+	if oc.Future {
+		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel +
+			"a verify-outcome record for this brief is dated beyond the clock-skew tolerance — it never wins, so the latest state is unknown"
+	}
+	if oc.Latest != nil && classifyOutcome(oc.Latest.Outcome) == outcomeUnrecognised {
+		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel +
+			fmt.Sprintf("the latest verify-outcome record has an unrecognised outcome %q", oc.Latest.Outcome)
 	}
 	if oc.Latest == nil && verdict == verdictFail {
 		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel +
 			"Evidence's last verdict is FAIL but no verify-outcome record names this brief — the blocker class is unrecorded"
 	}
-	lastFail := oc.Latest != nil && isFailOutcome(oc.Latest.Outcome)
-	if lastFail {
-		kind := strings.ToLower(strings.TrimSpace(oc.Latest.BlockerKind))
-		if kind == "implementation" || kind == "check-definition" {
-			if ref := blockerIssueRef(oc.Latest.BlockerRef); ref != "" {
-				return bucketRework, ownerWorker, "fix, cite " + ref
-			}
+
+	// The recorded blocker: the latest record when it is a fail or a hold, and
+	// the Evidence's live verdict has not since passed. A live PASS contradicts
+	// an older record (the fix landed and the brief was re-verified), so the
+	// record decides nothing then.
+	var blocker *awaitOutcome
+	if oc.Latest != nil && verdict != verdictPass {
+		if c := classifyOutcome(oc.Latest.Outcome); c == outcomeFail || c == outcomeHold {
+			blocker = oc.Latest
 		}
+	}
+	kind := ""
+	ref := ""
+	if blocker != nil {
+		kind = strings.ToLower(strings.TrimSpace(blocker.BlockerKind))
+		ref = blockerIssueRef(blocker.BlockerRef)
+	}
+
+	// 2. A recorded blocker, routed by its kind to the party that owns it (the
+	// owners deskkit's wake receipts name: worker, brief author, human, operator).
+	switch {
+	case (kind == "implementation" || kind == "check-definition") && ref != "":
+		return bucketRework, ownerWorker, "fix, cite " + ref
+	case kind == "human-action":
+		return bucketHumanGate, ownerDriver, humanActionAct(blocker.BlockerRef)
 	}
 
 	// 3. A verified gate:model row with an empty Reviewed cell is CI's flip.
@@ -255,7 +310,8 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 
 	unrun := unrunAwaitRows(rows.Rows, ev.Text)
 
-	// 4. Environment-blocked: a row no offline verifier can run.
+	// 4. Environment-blocked: a row no offline verifier can run, or a recorded
+	// environment blocker.
 	for _, u := range unrun {
 		switch {
 		case u.cells.class() == classCheckCluster || u.clusterParked:
@@ -266,13 +322,18 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 			return bucketEnvBlocked, ownerOperator, codeSpanContent(u.cells.Command)
 		}
 	}
+	if kind == "environment" {
+		return bucketEnvBlocked, ownerOperator, envBlockerAct(blocker.BlockerRef)
+	}
 	if b.BlockedBy == "env" {
 		return bucketEnvBlocked, ownerOperator, nextActNoEnvCmd
 	}
 
-	// 5. Runner-pending: a gate:model brief every unrun row of which the
-	// offline runner can execute on Linux, with no FAIL already recorded.
-	if b.Gate == "model" && len(rows.Rows) > 0 && verdict != verdictFail && !lastFail {
+	// 5. Runner-pending: a gate:model brief with at least one unrun row, every
+	// unrun row of which the offline runner can execute on Linux, with no FAIL
+	// in the Evidence and no fail or hold recorded. An empty unrun set is not
+	// runner work: the runner has nothing left to run.
+	if b.Gate == "model" && len(rows.Rows) > 0 && len(unrun) > 0 && verdict != verdictFail && blocker == nil {
 		all := true
 		for _, u := range unrun {
 			if !runnableOfflineLinux(u.cells) {
@@ -286,7 +347,7 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 	}
 
 	// 6. A judgement row.
-	if judgementRow(rows, unrun, ev.Text, oc.Latest) {
+	if judgementRow(rows, unrun, ev.Text, blocker) {
 		return bucketDeskActionable, ownerVerifyDesk, nextActJudge
 	}
 
@@ -294,13 +355,67 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 	return bucketDeskActionable, ownerVerifyDesk, nextActTriage
 }
 
-// isFailOutcome reports whether an outcome-record `outcome` is a verify failure.
-func isFailOutcome(outcome string) bool {
-	switch strings.ToLower(strings.TrimSpace(outcome)) {
-	case "verify-fail", "fail":
-		return true
+// signOffAct is row 1's next act. A sign-off card is raised for a gate:human
+// brief that is verified, or implemented with the strict bold PASS marker and
+// no held row (verifyIssues); for any other brief on this row no card exists,
+// and the act says so instead of naming one.
+func signOffAct(b awaitBrief, evidence string) string {
+	if b.Gate == "human" {
+		if b.Status == "verified" {
+			return nextActCloseCard
+		}
+		if held, _ := verifyPassHeldContradiction(evidence); !held && hasVerifyPass(evidence) {
+			return nextActCloseCard
+		}
 	}
-	return false
+	return nextActSignOffNoCard
+}
+
+// humanActionAct is the next act of a recorded human-action blocker.
+func humanActionAct(ref string) string {
+	return nextActHumanAction + blockerRefText(ref)
+}
+
+// envBlockerAct is the next act of a recorded environment blocker with no
+// unrun row to name a command for.
+func envBlockerAct(ref string) string {
+	return nextActEnvBlocker + blockerRefText(ref)
+}
+
+// blockerRefText renders a blocker_ref for a next act: the ref when the record
+// carries one, else a statement that none was recorded.
+func blockerRefText(ref string) string {
+	if r := strings.TrimSpace(ref); r != "" && !strings.EqualFold(r, "none") {
+		return r
+	}
+	return "no blocker ref recorded"
+}
+
+// outcomeClass is the meaning of a verify-outcome record's `outcome` value.
+type outcomeClass int
+
+const (
+	outcomeUnrecognised outcomeClass = iota
+	outcomePass
+	outcomeFail
+	outcomeHold
+)
+
+// classifyOutcome reads an outcome value. This mirrors the vocabulary of
+// deskkit's WakeReceipt.IsFailedOrBlocked (tools/desk/internal/deskkit/verifywake.go):
+// statusgen is a separate Go module and keeps its own copy of the pure record
+// rules, byte-identical by hand (see verifyoutcomes.go). A value neither list
+// names is unrecognised, which the bucketing treats as could-not-check.
+func classifyOutcome(outcome string) outcomeClass {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "verified":
+		return outcomePass
+	case "verify-fail", "fail":
+		return outcomeFail
+	case "blocked", "needs_context", "needs-context":
+		return outcomeHold
+	}
+	return outcomeUnrecognised
 }
 
 // blockerIssueRef returns the blocker_ref verbatim (trimmed) when it names an
@@ -372,7 +487,7 @@ func runnableOfflineLinux(r verifyRowCells) bool {
 }
 
 // judgementRow reports whether the brief carries a row only a judge can settle.
-func judgementRow(rows awaitRows, unrun []unrunAwaitRow, evidence string, latest *awaitOutcome) bool {
+func judgementRow(rows awaitRows, unrun []unrunAwaitRow, evidence string, blocker *awaitOutcome) bool {
 	if riskValueNamedRe.MatchString(evidence) {
 		return true
 	}
@@ -384,8 +499,8 @@ func judgementRow(rows awaitRows, unrun []unrunAwaitRow, evidence string, latest
 			return true
 		}
 	}
-	if latest != nil && isFailOutcome(latest.Outcome) {
-		k := strings.ToLower(strings.TrimSpace(latest.BlockerKind))
+	if blocker != nil {
+		k := strings.ToLower(strings.TrimSpace(blocker.BlockerKind))
 		if k == "" || k == "unknown" {
 			return true
 		}
@@ -464,6 +579,7 @@ func awaitBriefPath(s *Stream, num string) string {
 // record per brief key, or the reason the store could not be read.
 type awaitOutcomeIndex struct {
 	latest     map[string]awaitOutcome
+	future     map[string]bool
 	unreadable string
 }
 
@@ -489,10 +605,12 @@ func awaitOutcomesFor(s *Stream, num string) awaitOutcomes {
 	if idx.unreadable != "" {
 		return awaitOutcomes{Unreadable: idx.unreadable}
 	}
-	if o, ok := idx.latest[s.Name+"/"+num]; ok {
-		return awaitOutcomes{Latest: &o}
+	key := s.Name + "/" + num
+	out := awaitOutcomes{Future: idx.future[key]}
+	if o, ok := idx.latest[key]; ok {
+		out.Latest = &o
 	}
-	return awaitOutcomes{}
+	return out
 }
 
 func loadAwaitOutcomeIndex(root string) awaitOutcomeIndex {
@@ -503,8 +621,8 @@ func loadAwaitOutcomeIndex(root string) awaitOutcomeIndex {
 	if err != nil {
 		return awaitOutcomeIndex{unreadable: err.Error()}
 	}
-	latest, _ := latestOutcomePerBrief(records)
-	idx := awaitOutcomeIndex{latest: map[string]awaitOutcome{}}
+	latest, future := latestOutcomePerBrief(records)
+	idx := awaitOutcomeIndex{latest: map[string]awaitOutcome{}, future: future}
 	for key, rec := range latest {
 		var o struct {
 			Outcome     string `json:"outcome"`

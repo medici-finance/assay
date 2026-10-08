@@ -160,47 +160,87 @@ func TestBucketAwaiting(t *testing.T) {
 	}
 }
 
-// TestBucketAwaitingHumanGateNeedsMarker: a gate:human brief whose Evidence lacks
-// the bold PASS marker is not bucketed human gate — neither an unbolded verdict
-// token nor a bold span that does not open with the marker counts.
-func TestBucketAwaitingHumanGateNeedsMarker(t *testing.T) {
+// TestBucketAwaitingHumanGateLiveVerdict: a gate:human (or irreversible) brief
+// whose Evidence's LIVE verdict is PASS is the driver's, whatever the emphasis
+// of the verdict line; without a PASS verdict (or with a later FAIL) it is not.
+func TestBucketAwaitingHumanGateLiveVerdict(t *testing.T) {
 	rows := awaitRowsOf(bucketVerifySection("check:ci|`go test ./...`|exit 0"))
+	briefs := []awaitBrief{
+		{Status: "implemented", Gate: "human"},
+		{Status: "verified", Gate: "human"},
+		{Status: "implemented", Gate: "model", Irreversible: true},
+	}
 	for name, evidence := range map[string]string{
-		"no verdict":          evidenceHeader + "| 1 | `go test ./...` | 0 | ok | 2026-10-01 | implementer |\n",
+		"bold":                "**VERIFY: PASS** — 2026-10-01\n",
+		"bold with prefix":    "**Non-implementer verifier run — VERIFY: PASS** · 2026-10-01\n",
+		"bold with suffix":    "**VERIFY: PASS — all 6 rows green.**\n",
 		"unbolded PASS":       "VERIFY: PASS — all rows green\n",
 		"heading, not bold":   "### Verifier run — VERIFY: PASS (2026-10-01)\n",
 		"bold span elsewhere": "**Verifier run** — VERIFY: PASS · 2026-10-01\n",
 	} {
-		for _, b := range []awaitBrief{
-			{Status: "implemented", Gate: "human"},
-			{Status: "verified", Gate: "human"},
-			{Status: "implemented", Gate: "model", Irreversible: true},
-		} {
-			got, _, next := bucketAwaiting(b, rows, awaitEvidence{Text: evidence}, awaitOutcomes{})
-			if got == bucketHumanGate {
-				t.Errorf("%s / %+v: bucketed human gate (%s) without the bold **VERIFY: PASS** marker", name, b, next)
+		for _, b := range briefs {
+			got, owner, _ := bucketAwaiting(b, rows, awaitEvidence{Text: evidence}, awaitOutcomes{})
+			if got != bucketHumanGate || owner != ownerDriver {
+				t.Errorf("%s / %+v: bucket %v owner %q, want the driver's human gate", name, b, got, owner)
 			}
 		}
 	}
-	// The positive controls: the same brief WITH the marker is the driver's,
-	// including the live forms that wrap the marker in a longer bold span.
-	for _, evidence := range []string{
-		"**VERIFY: PASS** — 2026-10-01\n",
-		"**Non-implementer verifier run — VERIFY: PASS** · 2026-10-01\n",
-		"**VERIFY: PASS — all 6 rows green.**\n",
+	// Not the driver's: no verdict, or the live verdict is a FAIL.
+	for name, evidence := range map[string]string{
+		"no verdict":     evidenceHeader + "| 1 | `go test ./...` | 0 | ok | 2026-10-01 | implementer |\n",
+		"PASS then FAIL": "**VERIFY: PASS** — 2026-10-01\n\n**VERIFY: FAIL** — 2026-10-03\n",
 	} {
-		got, _, _ := bucketAwaiting(awaitBrief{Status: "implemented", Gate: "human"}, rows,
-			awaitEvidence{Text: evidence}, awaitOutcomes{})
-		if got != bucketHumanGate {
-			t.Errorf("positive control %q = %v, want human gate", evidence, got)
+		for _, b := range []awaitBrief{
+			{Status: "implemented", Gate: "human"},
+			{Status: "implemented", Gate: "model", Irreversible: true},
+		} {
+			oc := awaitOutcomes{Latest: &awaitOutcome{Outcome: "verify-fail", BlockerKind: "implementation", BlockerRef: "#7"}}
+			if name == "no verdict" {
+				oc = awaitOutcomes{}
+			}
+			got, _, next := bucketAwaiting(b, rows, awaitEvidence{Text: evidence}, oc)
+			if got == bucketHumanGate {
+				t.Errorf("%s / %+v: bucketed human gate (%s) without a live PASS verdict", name, b, next)
+			}
 		}
 	}
-	// Recency: a later FAIL supersedes an earlier bold PASS.
 	got, _, _ := bucketAwaiting(awaitBrief{Status: "implemented", Gate: "human"}, rows,
 		awaitEvidence{Text: "**VERIFY: PASS** — 2026-10-01\n\n**VERIFY: FAIL** — 2026-10-03\n"},
 		awaitOutcomes{Latest: &awaitOutcome{Outcome: "verify-fail", BlockerKind: "implementation", BlockerRef: "#7"}})
 	if got != bucketRework {
 		t.Errorf("PASS then FAIL = %v, want implementer rework", got)
+	}
+}
+
+// TestBucketAwaitingSignOffAct: the next act names a sign-off card only where
+// verifyIssues raises one (the strict bold marker with no held row, or a
+// verified gate:human brief); a row with no card says so.
+func TestBucketAwaitingSignOffAct(t *testing.T) {
+	rows := awaitRowsOf(bucketVerifySection("check:ci|`go test ./...`|exit 0"))
+	for name, c := range map[string]struct {
+		brief    awaitBrief
+		evidence string
+		want     string
+	}{
+		"implemented, strict bold":      {awaitBrief{Status: "implemented", Gate: "human"}, "**VERIFY: PASS**\n", nextActCloseCard},
+		"implemented, unbolded":         {awaitBrief{Status: "implemented", Gate: "human"}, "VERIFY: PASS\n", nextActSignOffNoCard},
+		"implemented, bold prefix span": {awaitBrief{Status: "implemented", Gate: "human"}, "**Run — VERIFY: PASS**\n", nextActSignOffNoCard},
+		"implemented, held row":         {awaitBrief{Status: "implemented", Gate: "human"}, "**VERIFY: PASS**\n\n| 2 | `x` | — | HELD: needs a human | 2026-10-01 | v |\n", nextActSignOffNoCard},
+		"verified, unbolded":            {awaitBrief{Status: "verified", Gate: "human"}, "VERIFY: PASS\n", nextActCloseCard},
+		"verified, no verdict":          {awaitBrief{Status: "verified", Gate: "human"}, "", nextActCloseCard},
+		"irreversible, gate model":      {awaitBrief{Status: "implemented", Gate: "model", Irreversible: true}, "**VERIFY: PASS**\n", nextActSignOffNoCard},
+	} {
+		_, _, next := bucketAwaiting(c.brief, rows, awaitEvidence{Text: c.evidence}, awaitOutcomes{})
+		if next != c.want {
+			t.Errorf("%s: next act = %q, want %q", name, next, c.want)
+		}
+	}
+	// A verified gate:human brief whose live verdict is FAIL is not the driver's.
+	got, _, _ := bucketAwaiting(awaitBrief{Status: "verified", Gate: "human"}, rows,
+		awaitEvidence{Text: "**VERIFY: FAIL**\n"},
+		awaitOutcomes{Latest: &awaitOutcome{Outcome: "verify-fail", BlockerKind: "implementation", BlockerRef: "#7"}})
+	if got == bucketHumanGate {
+		t.Error("a verified gate:human brief with a live FAIL must not render as the driver's")
 	}
 }
 

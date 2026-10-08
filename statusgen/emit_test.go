@@ -72,7 +72,10 @@ func writeOutcomeRecord(t *testing.T, root, stream, name, body string) {
 	}
 }
 
-func TestAwaitingSegmentedAssertions(t *testing.T) {
+// awaitingFixture is one stream per bucket plus a paused stream: the board the
+// segmented assertions and the golden file both render.
+func awaitingFixture(t *testing.T) []*Stream {
+	t.Helper()
 	// Fixture spanning every bucket plus the unbucketed paused segment.
 	root := t.TempDir()
 	writeOutcomeRecord(t, root, "active-s", "03-20260715T000000Z-aaaaaaaaaaaa.json",
@@ -102,7 +105,11 @@ func TestAwaitingSegmentedAssertions(t *testing.T) {
 	// LastTouch needed for gate-score staleness.
 	active.LastTouch = day(5)
 	paused.LastTouch = day(5)
+	return streams
+}
 
+func TestAwaitingSegmentedAssertions(t *testing.T) {
+	streams := awaitingFixture(t)
 	out := emit(streams, nil, nextUp(streams, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 
 	wantHeading := "## Awaiting verification / review (1 for the desk · 1 for the driver · 1 for workers · 1 for an operator · 1 runner-pending — of 7 total; 1 could-not-check)"
@@ -389,6 +396,12 @@ func TestDebtNotice(t *testing.T) {
 			Brief{Num: "d1", Wave: 0, Status: "done", Verified: "gf", Reviewed: "gf"},
 			Brief{Num: "d2", Wave: 0, Status: "done", Verified: "gf", Reviewed: "gf"},
 		)
+		// The FAIL briefs carry an outcome record naming an implementation
+		// issue: a FAIL with no record is could-not-check, which DOES count.
+		root := t.TempDir()
+		s.Root = root
+		writeOutcomeRecord(t, root, "test", "R-20260715T000000Z-aaaaaaaaaaaa.json",
+			`{"brief":"test/R","ts":"2026-07-15T00:00:00Z","outcome":"verify-fail","blocker_kind":"implementation","blocker_ref":"#41"}`)
 		for i := 0; i < 9; i++ {
 			s.Briefs = append(s.Briefs, Brief{
 				Num: "R", Wave: 0, Status: "implemented",
@@ -406,4 +419,104 @@ func TestDebtNotice(t *testing.T) {
 			t.Errorf("rework and env-blocked briefs must not count as desk-actionable; got NOTICE: %s", notice)
 		}
 	})
+
+	t.Run("could-not-check counts toward the debt", func(t *testing.T) {
+		// 11 briefs whose last verdict is FAIL with no outcome record are
+		// could-not-check. Dropping them from the measure would let an
+		// unreadable input switch the alarm off (fail open).
+		s := mkStream("test", "active", "P1",
+			Brief{Num: "d1", Wave: 0, Status: "done", Verified: "gf", Reviewed: "gf"},
+		)
+		for i := 0; i < 11; i++ {
+			s.Briefs = append(s.Briefs, Brief{Num: "C", Wave: 0, Status: "implemented", Evidence: "**VERIFY: FAIL** — no record"})
+		}
+		if !debtBreached([]*Stream{s}) {
+			t.Fatal("11 could-not-check rows vs 1 done must breach the debt gate")
+		}
+		want := "verification debt: 11 desk-actionable (11 of them could-not-check) awaiting vs 1 done — the queue is the constraint; drain before dispatching new implementation work"
+		if got := debtNotice([]*Stream{s}); got != want {
+			t.Errorf("notice:\ngot:  %s\nwant: %s", got, want)
+		}
+	})
+
+	t.Run("unparseable outcome store keeps the gate breached (end to end)", func(t *testing.T) {
+		// 11 FAIL briefs with a record each; the store then becomes
+		// unparseable. Every row turns could-not-check and the gate must
+		// STILL breach: an unreadable store never lowers the measure.
+		s := mkStream("test", "active", "P1",
+			Brief{Num: "d1", Wave: 0, Status: "done", Verified: "gf", Reviewed: "gf"},
+		)
+		root := t.TempDir()
+		s.Root = root
+		writeOutcomeRecord(t, root, "test", "bad-20260715T000000Z-aaaaaaaaaaaa.json", `{not json`)
+		for i := 0; i < 11; i++ {
+			s.Briefs = append(s.Briefs, Brief{Num: "U", Wave: 0, Status: "implemented", Evidence: "**VERIFY: FAIL** — x"})
+		}
+		if !debtBreached([]*Stream{s}) {
+			t.Fatal("an unparseable outcome store must keep the debt gate breached")
+		}
+	})
+}
+
+// awaitingGoldenPath is the rendered Awaiting section for awaitingGoldenFixture.
+// The fanoutloop board parser (tools/desk/cmd/fanoutloop) reads this same file
+// in its own test, so a drift between this emitter and that parser is red on
+// whichever side moved.
+const awaitingGoldenPath = "testdata/awaiting_board_golden.md"
+
+// awaitingGoldenFixture is awaitingFixture plus one stream carrying a recorded
+// blocker of each kind the table routes by kind.
+func awaitingGoldenFixture(t *testing.T) []*Stream {
+	t.Helper()
+	streams := awaitingFixture(t)
+	root := t.TempDir()
+	for _, r := range []struct{ num, kind, ref string }{
+		{"01", "human-action", "#51"},
+		{"02", "environment", "#52"},
+		{"03", "check-definition", "#53"},
+	} {
+		writeOutcomeRecord(t, root, "kinds-s", r.num+"-20260715T000000Z-aaaaaaaaaaaa.json",
+			`{"brief":"kinds-s/`+r.num+`","ts":"2026-07-15T00:00:00Z","outcome":"blocked","blocker_kind":"`+r.kind+`","blocker_ref":"`+r.ref+`"}`)
+	}
+	kinds := mkStream("kinds-s", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "implemented", Gate: "model"},
+		Brief{Num: "02", Wave: 0, Status: "implemented", Gate: "model"},
+		Brief{Num: "03", Wave: 0, Status: "implemented", Gate: "model"},
+	)
+	kinds.Root = root
+	kinds.LastTouch = day(5)
+	return append(streams, kinds)
+}
+
+// awaitingSection returns the rendered Awaiting section of a board.
+func awaitingSection(t *testing.T, out string) string {
+	t.Helper()
+	i := strings.Index(out, "## Awaiting verification / review")
+	if i < 0 {
+		t.Fatalf("no Awaiting section in:\n%s", out)
+	}
+	rest := out[i+3:]
+	if j := strings.Index(rest, "\n## "); j >= 0 {
+		return out[i : i+3+j+1]
+	}
+	return out[i:]
+}
+
+// TestAwaitingBoardGolden pins the rendered Awaiting section byte for byte.
+// STATUSGEN_UPDATE_GOLDEN=1 rewrites the file after an intended change.
+func TestAwaitingBoardGolden(t *testing.T) {
+	streams := awaitingGoldenFixture(t)
+	got := awaitingSection(t, emit(streams, nil, nextUp(streams, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, ""))
+	if os.Getenv("STATUSGEN_UPDATE_GOLDEN") == "1" {
+		if err := os.WriteFile(awaitingGoldenPath, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(awaitingGoldenPath)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("rendered Awaiting section differs from %s (STATUSGEN_UPDATE_GOLDEN=1 to rewrite after an intended change):\n--- got\n%s\n--- want\n%s", awaitingGoldenPath, got, want)
+	}
 }
