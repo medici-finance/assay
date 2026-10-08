@@ -36,6 +36,33 @@ they and the other artifacts in this repo are kept, see
 - **Withdrawal is a tombstone, never a deletion.** To retract an entry, keep its file,
   flip its disposition/resolution, and let the body explain the withdrawal. Reason:
   deleting the file both loses the record and trips the tombstone check above.
+- **A finding closes on a fired control, not on a fix commit — the effectiveness record.**
+  A findings entry may carry three keys, **required together, or none** (one or two of the
+  three is a hard `--lint` error, the same all-or-nothing rule as the parked triple):
+  - `effectiveness:` — the command, verbatim, that re-establishes the failure mode is gone.
+    Reason: `resolved: yes` says the work landed, not that the failure mode can no longer
+    occur; the command is what a reviewer or auditor can re-run.
+  - `effectiveness-date:` — the `YYYY-MM-DD` the command was run. Reason: a check run once,
+    at an unknown time, is not evidence the control still fires.
+  - `effectiveness-by:` — who ran it, a `human:<name>` or a runner identity (the shape the
+    Verified cell uses). Reason: a record nobody owns cannot be questioned.
+
+  A finding with `resolved: yes` dated **on or after 2026-10-08** and no record is a
+  `--lint` PROBLEM; an earlier one is a NOTICE, so the inherited register is not made fatal.
+  The same date scoping applies to a `class: recurring` finding with a landed `control:`
+  (the `finding-without-control` class), which is promoted from advisory to a PROBLEM when
+  the record is absent; a one-off or unclassified finding is not touched by that path.
+  Rule tags: `effectiveness-partial`, `effectiveness-missing`, `finding-control-unfired`.
+  Worked example of a good record: the mutation row in
+  [`docs/brief-rules.md`](brief-rules.md) rule 16 (revert the fix, run the check, confirm
+  it goes RED).
+
+  **Coverage boundary.** The lint checks the record's *presence* and attribution. It does
+  **not** show that the named command would fail if the failure mode returned; that
+  adequacy question stays with the reviewer, and a present command is not a demonstration
+  that it fires. Root cause is deliberately **not** a field: a cause stated as a restatement
+  of the symptom passes any presence check, so an obligation on it would be judgement the
+  lint cannot make.
 - **Typed IDs.** Entries reference briefs and each other by typed ID (`stream/NN`,
   `F-<slug>`, `I-<slug>`, `REQ-<slug>`), never prose names.
 
