@@ -930,10 +930,6 @@ func (g *GitLabForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 	return &ReviewQueue{Changes: changes, TruncatedAtCap: oc.TruncatedAtCap, Cap: oc.Cap}, nil
 }
 
-// gitlabChangeState maps a GitLab MR state word to the seam's uppercased lifecycle state,
-// keeping MERGED DISTINCT from CLOSED — the split ListChanges promises and gitlabState (used by
-// the board's OpenChange) deliberately collapses. `locked` is a transient of an open MR, so it
-// maps to OPEN.
 // gitlabChangeRepos derives ChangeRef.CrossRepo and ChangeRef.HeadRepo from ONE signal, the
 // source/target project-id comparison (forge-neutral brief 33 Task 2.4): equal → CrossRepoSame with
 // HeadRepo the target path; different → CrossRepoFork with HeadRepo EMPTY (the source project's
@@ -948,6 +944,10 @@ func gitlabChangeRepos(repo ForgeRepo, source, target int64) (crossRepo, headRep
 	return CrossRepoSame, repo.Slug()
 }
 
+// gitlabChangeState maps a GitLab MR state word to the seam's uppercased lifecycle state,
+// keeping MERGED DISTINCT from CLOSED — the split ListChanges promises and gitlabState (used by
+// the board's OpenChange) deliberately collapses. `locked` is a transient of an open MR, so it
+// maps to OPEN.
 func gitlabChangeState(s string) string {
 	switch s {
 	case "opened", "locked":
