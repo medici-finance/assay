@@ -1270,7 +1270,7 @@ func TestBlameRawLines(t *testing.T) {
 	if printed["worker line"] != vfMailVerifier || printed["uncommitted line"] != vfMailVerifier {
 		t.Fatalf("positive control: blame printed %q / %q, want the map applied (%s)", printed["worker line"], printed["uncommitted line"], vfMailVerifier)
 	}
-	lines, err := blameRawLines(filepath.Dir(vfBrief(root)), string(out))
+	lines, err := blameRawLines(filepath.Dir(vfBrief(root)), string(out), false)
 	if err != nil {
 		t.Fatal(err)
 	}

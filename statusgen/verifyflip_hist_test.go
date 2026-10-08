@@ -342,3 +342,116 @@ func TestHistoryGitIsolated(t *testing.T) {
 		t.Error(leak)
 	}
 }
+
+// TestVflipLintAmbiguousHeader is the lower-layer pair for an ambiguous
+// author header. The verb treats it as could-not-check (TestVflipAmbiguousAuthor);
+// the Evidence-actor lint must not: with the verb bypassed, a worker's hand
+// flip that also adds an Evidence line in a commit written with a non-UTF-8
+// commit encoding (an ordinary git setting) is still a PROBLEM, never a
+// could-not-check NOTICE with the row skipped.
+func TestVflipLintAmbiguousHeader(t *testing.T) {
+	o := vfDefaults()
+	o.author = vfMailWorker
+	root, readme := vfFixture(t, o)
+	vfAppend(t, root, "\n\nworker note")
+	raw, _ := os.ReadFile(readme)
+	flipped := strings.Replace(string(raw), "| implemented | — |", "| verified | "+vfStamp+" |", 1)
+	if err := os.WriteFile(readme, []byte(flipped), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vfGit(t, root, vfMailWorker, "add", "-A")
+	vfGit(t, root, vfMailWorker, "-c", "i18n.commitEncoding=ISO-8859-1", "commit", "-q", "-m", "flip")
+	if out, err := exec.Command("git", "-C", root, "cat-file", "commit", "HEAD").Output(); err != nil || !strings.Contains(string(out), "\nencoding ISO-8859-1\n") {
+		t.Fatalf("positive control: the flip commit must carry a non-UTF-8 encoding header (err %v)\n%s", err, out)
+	}
+	if _, err := rawCommitAuthor(root, vfRev(t, root, "HEAD")); err == nil {
+		t.Fatal("positive control: the verb's reader must refuse this header")
+	}
+	withBaseClosures(t, map[string]bool{}, true)
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	problems, notices := evidenceActorGate(root, streams)
+	if len(problems) != 1 || !strings.Contains(problems[0], "vf/01") {
+		t.Fatalf("lint problems = %v (notices %v), want one naming vf/01", problems, notices)
+	}
+	for _, n := range notices {
+		if strings.Contains(n, "could not read git blame") || strings.Contains(n, "ambiguous") {
+			t.Errorf("an ambiguous header must not become a could-not-check notice: %s", n)
+		}
+	}
+}
+
+// vfLenientCalls lists, per calling function, the literal third argument of
+// every blameRawLines call in src.
+func vfLenientCalls(t *testing.T, fset *token.FileSet, file string, src any) map[string][]string {
+	t.Helper()
+	f, err := parser.ParseFile(fset, file, src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string][]string{}
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "blameRawLines" {
+				arg := "?"
+				if len(call.Args) == 3 {
+					if lit, ok := call.Args[2].(*ast.Ident); ok {
+						arg = lit.Name
+					}
+				}
+				out[fn.Name.Name] = append(out[fn.Name.Name], arg)
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// TestVflipLenientReaderCallers is the class guard for lint-lower-layer-downgrade:
+// the only non-test caller that may read an ambiguous author header as an
+// unbacked identity is the Evidence-actor lint's reader, and it must; every
+// other caller (the verb) must refuse. A new caller, or a flipped literal,
+// fails here. The planted sources are the positive control.
+func TestVflipLenientReaderCallers(t *testing.T) {
+	fset := token.NewFileSet()
+	plant := "package main\nfunc plantedLint() { blameRawLines(\"\", \"\", false) }\nfunc plantedVerb() { blameRawLines(\"\", \"\", true) }\n"
+	got := vfLenientCalls(t, fset, "plant.go", plant)
+	if len(got["plantedLint"]) != 1 || got["plantedLint"][0] != "false" || got["plantedVerb"][0] != "true" {
+		t.Fatalf("positive control: calls = %v", got)
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no package sources found (err=%v)", err)
+	}
+	seenLint := false
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		for caller, args := range vfLenientCalls(t, fset, f, nil) {
+			for _, a := range args {
+				switch {
+				case caller == "blameEvidenceAuthors" && a == "true":
+					seenLint = true
+				default:
+					if a != "false" || caller == "blameEvidenceAuthors" {
+						t.Errorf("%s: %s calls blameRawLines(..., %s): only the lint reader may be lenient (and it must be); the verb refuses an ambiguous header", f, caller, a)
+					}
+				}
+			}
+		}
+	}
+	if !seenLint {
+		t.Error("blameEvidenceAuthors must read an ambiguous author header as unbacked (blameRawLines ..., true), or the lint downgrades a PROBLEM to a notice")
+	}
+}

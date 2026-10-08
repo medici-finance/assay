@@ -168,6 +168,7 @@ package main
 //     satisfy the check. A row cannot be greened by editing a file.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -715,6 +716,12 @@ func blameLineBearsContent(content string, inComment bool) (bearing, stillInComm
 // would be attributed to whoever last touched that region rather than to nobody.
 // Uncommitted lines come back owned by git's `not.committed.yet` address, which
 // pins no GitHub account and therefore cannot back a row.
+//
+// A line whose commit carries an ambiguous author header (see rawCommitAuthor)
+// is read as the fixed ambiguousAuthor identity, which backs nothing, rather
+// than failing the whole range: this is the lint's lower layer, and an
+// unreadable header must never turn a row's PROBLEM into a could-not-check
+// NOTICE. The verb keeps could-not-check (exit 2), where it fails closed.
 func blameEvidenceAuthors(root, rel string, start, end int) (authors []blameAuthor, sawBoundary bool, err error) {
 	cmd := historyGit(root, "blame", "--line-porcelain",
 		"-L", fmt.Sprintf("%d,%d", start, end), "--", rel)
@@ -722,7 +729,7 @@ func blameEvidenceAuthors(root, rel string, start, end int) (authors []blameAuth
 	if cerr != nil {
 		return nil, false, fmt.Errorf("git blame -L %d,%d %s: %w", start, end, rel, cerr)
 	}
-	lines, rerr := blameRawLines(root, string(out))
+	lines, rerr := blameRawLines(root, string(out), true)
 	if rerr != nil {
 		return nil, false, fmt.Errorf("git blame -L %d,%d %s: %w", start, end, rel, rerr)
 	}
@@ -745,7 +752,12 @@ func blameEvidenceAuthors(root, rel string, start, end int) (authors []blameAuth
 // not-committed-yet identity whatever blame printed, so it can never read as an
 // accepted actor. A record naming no commit keeps an empty author, which every
 // caller treats as could-not-check. A commit that cannot be read is an error.
-func blameRawLines(dir, out string) ([]blameLine, error) {
+//
+// A commit whose author header is ambiguous is an error too (the verb's
+// could-not-check, exit 2), unless ambiguousAsUnbacked is set: then its lines
+// read as ambiguousAuthor, an identity no roster entry matches, so the
+// Evidence-actor lint can only reject them, never skip the row.
+func blameRawLines(dir, out string, ambiguousAsUnbacked bool) ([]blameLine, error) {
 	lines := blamePorcelainLines(out)
 	for i := range lines {
 		c := lines[i].Commit
@@ -756,13 +768,33 @@ func blameRawLines(dir, out string) ([]blameLine, error) {
 			lines[i].Author = blameAuthor{Name: "Not Committed Yet", Email: "not.committed.yet"}
 		default:
 			a, err := rawCommitAuthor(dir, c)
-			if err != nil {
+			var amb *ambiguousAuthorError
+			switch {
+			case err == nil:
+			case ambiguousAsUnbacked && errors.As(err, &amb):
+				a = ambiguousAuthor
+			default:
 				return nil, err
 			}
 			lines[i].Author = a
 		}
 	}
 	return lines, nil
+}
+
+// ambiguousAuthor is the identity a line reads as when its commit's author
+// header is ambiguous and the caller asked for a verdict, not a refusal. It
+// pins no account, so classify can never accept it.
+var ambiguousAuthor = blameAuthor{Name: "Ambiguous Author Header", Email: "ambiguous.author.header"}
+
+// ambiguousAuthorError is a commit author header another reader could see
+// differently (or that cannot be read as an author at all).
+type ambiguousAuthorError struct{ msg string }
+
+func (e *ambiguousAuthorError) Error() string { return e.msg }
+
+func ambiguousAuthorf(format string, args ...any) error {
+	return &ambiguousAuthorError{msg: fmt.Sprintf(format, args...)}
 }
 
 // rawCommitAuthors caches rawCommitAuthor by commit id. A commit id names its
@@ -794,7 +826,7 @@ func rawCommitAuthor(dir, c string) (blameAuthor, error) {
 	}
 	a, err := parseRawAuthor(string(out))
 	if err != nil {
-		return blameAuthor{}, fmt.Errorf("commit %.12s: %v", c, err)
+		return blameAuthor{}, fmt.Errorf("commit %.12s: %w", c, err)
 	}
 	rawCommitAuthors.Store(c, a)
 	return a, nil
@@ -813,7 +845,7 @@ func parseRawAuthor(obj string) (blameAuthor, error) {
 	for _, line := range strings.Split(head, "\n") {
 		if rest, ok := strings.CutPrefix(line, "encoding "); ok {
 			if e := strings.ToLower(strings.TrimSpace(rest)); e != "utf-8" && e != "utf8" {
-				return blameAuthor{}, fmt.Errorf("ambiguous author: the commit declares encoding %q, which other readers re-encode", rest)
+				return blameAuthor{}, ambiguousAuthorf("ambiguous author: the commit declares encoding %q, which other readers re-encode", rest)
 			}
 		}
 		if strings.HasPrefix(line, "author ") {
@@ -822,14 +854,14 @@ func parseRawAuthor(obj string) (blameAuthor, error) {
 	}
 	switch len(authors) {
 	case 0:
-		return blameAuthor{}, fmt.Errorf("no author header")
+		return blameAuthor{}, ambiguousAuthorf("no author header")
 	case 1:
 	default:
-		return blameAuthor{}, fmt.Errorf("ambiguous author: %d author headers", len(authors))
+		return blameAuthor{}, ambiguousAuthorf("ambiguous author: %d author headers", len(authors))
 	}
 	m := rawAuthorLineRe.FindStringSubmatch(authors[0])
 	if m == nil || !utf8.ValidString(m[1]+m[2]) || strings.IndexFunc(m[1]+m[2], isRawAuthorControl) >= 0 {
-		return blameAuthor{}, fmt.Errorf("ambiguous or unreadable author header")
+		return blameAuthor{}, ambiguousAuthorf("ambiguous or unreadable author header")
 	}
 	return blameAuthor{Name: m[1], Email: m[2]}, nil
 }

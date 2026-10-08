@@ -719,7 +719,7 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 	if err != nil {
 		return fmt.Errorf("provenance: git blame %s: %v", base, err)
 	}
-	stamp, err := blameRawLines(dir, string(out))
+	stamp, err := blameRawLines(dir, string(out), false)
 	if err != nil {
 		return fmt.Errorf("provenance: %s: %v", base, err)
 	}
@@ -748,7 +748,7 @@ func flipProvenance(path, evidence string, marks []int, runStart int) error {
 	if err != nil {
 		return fmt.Errorf("provenance: git blame %s: %v", base, err)
 	}
-	extent, err := blameRawLines(dir, string(out))
+	extent, err := blameRawLines(dir, string(out), false)
 	if err != nil {
 		return fmt.Errorf("provenance: %s: %v", base, err)
 	}
