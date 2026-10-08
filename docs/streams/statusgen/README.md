@@ -41,6 +41,7 @@ findings-register state machine.
 | 14 | [`--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule)](brief-14-vacuous-gotest-run-lint.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 43420f7ecd74 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1659 @ f0355f1b57794105b59a1408522a44c7de59eb93) |
 | 16 | [Hold an issue out of dispatch when a non-human removed its excluded label: both scanners hold the placeholder, the issue board holds the un-briefed row](brief-16-label-removal-hold.md) | 1 | L | todo | — | — |
 | 17 | [`--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not)](brief-17-risk-high-label-gate.md) | 1 | S | todo | — | — |
+| 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -51,13 +52,17 @@ the brief-flow metrics, so 07 leads 08. statusgen/13 (cadenced roadmap artifacts
 landed `--roadmap` renderer over a computed window — independent, no new critical-path edge.
 statusgen/14 (the vacuous `go test -run` Verify-row rule, issue #1581 part 5) adds one
 advisory rule to the existing Verify-row lint — independent, no new critical-path edge.
+statusgen/17 (`risk:high` gates a placeholder at first write) → statusgen/18 (the scan's notice
+for a placeholder whose gate the issue has outgrown): 18 reports on the label 17 adds and
+extends the skill sentence 17 writes, so 17 leads 18.
 Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
   statusgen/14 (all independent; parallelizable).
-- **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07).
+- **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07),
+  statusgen/18 (depends on statusgen/17).
 
 ## Conventions
 - `statusgen --lint-audit` reports 30-day per-rule firing counts; COLD (0-firing,
