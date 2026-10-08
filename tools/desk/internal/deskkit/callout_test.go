@@ -130,3 +130,36 @@ func TestCalloutRunBoundsOutput(t *testing.T) {
 		t.Fatalf("stdout = %d bytes, want at most %d", len(res.Stdout), maxCalloutOutput)
 	}
 }
+
+func TestCalloutRunEnvIsExactlyWhatTheCallerGives(t *testing.T) {
+	t.Setenv("EXAMPLE_CALLER_VAR", "example-value")
+	p := fixtureCallout(t, "env | sort\n")
+	// Env nil: the callout inherits (the existing callers' behaviour).
+	res, err := Callout{Path: p}.Run("")
+	if err != nil || !strings.Contains(res.Stdout, "EXAMPLE_CALLER_VAR=example-value") {
+		t.Fatalf("nil Env must inherit: err=%v out=%q", err, res.Stdout)
+	}
+	// Env set: only those variables (plus what the shell itself adds).
+	res, err = Callout{Path: p, Env: []string{"PATH=/usr/bin:/bin", "LANG=C"}}.Run("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Stdout, "EXAMPLE_CALLER_VAR") || !strings.Contains(res.Stdout, "LANG=C") {
+		t.Fatalf("Env was not exact: %q", res.Stdout)
+	}
+}
+
+func TestCalloutRunReportsTruncation(t *testing.T) {
+	small := fixtureCallout(t, "echo ok\n")
+	if res, err := (Callout{Path: small}).Run(""); err != nil || res.Truncated {
+		t.Fatalf("a short answer reported Truncated: err=%v %+v", err, res)
+	}
+	big := fixtureCallout(t, "head -c 200000 /dev/zero | tr '\\0' a\n")
+	res, err := Callout{Path: big}.Run("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Truncated {
+		t.Fatal("an over-cap answer did not report Truncated")
+	}
+}

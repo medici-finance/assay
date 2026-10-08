@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -59,5 +61,70 @@ func TestNewPassesSameBodyOnPrivateTarget(t *testing.T) {
 	}
 	if curForge.filed == nil {
 		t.Fatal("no FileIssue recorded for the private target")
+	}
+}
+
+// --- desktools-v2/11: the house callout through the whole verb -------------------
+
+// writeHouseCallout installs an invented executable that answers `block` and plants it in
+// the fixture roster. It returns the executable's directory (the stub logs beside itself).
+func writeHouseCallout(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "callout.sh")
+	script := "#!/bin/sh\necho run >> \"${0%/*}/ran.log\"\ncat > /dev/null\necho \"block example-house-rule\"\n"
+	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rp := filepath.Join(os.Getenv("HOME"), ".config", "assay", "roster.env")
+	b, err := os.ReadFile(rp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rp, append(b, []byte("\n"+deskkit.EnvOutboundCallout+"="+p+"\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deskkit.ReloadConfig()
+	t.Cleanup(deskkit.ReloadConfig)
+	return dir
+}
+
+// TestHouseCalloutBlocksIssueFiling — a body the compiled layer passes, a callout that
+// blocks: the issue is NOT filed, the exit is the refusal code, the reason is on stderr and
+// not in the audit log, and --force-scan-override does not take it through.
+func TestHouseCalloutBlocksIssueFiling(t *testing.T) {
+	withEnv(t)
+	dir := writeHouseCallout(t)
+	var notices strings.Builder
+	t.Cleanup(deskkit.SetOutboundNoticeWriter(&notices))
+
+	args := []string{"new", "-R", "example-org/example-k8s",
+		"--title", "red check needs an owner", "--body-file", bodyFileWith(t, "The check has been red since the last merge and needs an owner.")}
+	rc, out := runCapture(args)
+	if curForge.filed != nil {
+		t.Fatalf("the issue was FILED although the house callout blocked it — rc=%d\n%s", rc, out)
+	}
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("rc = %d, want %d (refused)\n%s", rc, deskkit.ExitRefused, out)
+	}
+	if !strings.Contains(out, deskkit.RuleHouseCallout) {
+		t.Fatalf("the refusal does not name %q:\n%s", deskkit.RuleHouseCallout, out)
+	}
+	if !strings.Contains(notices.String(), "example-house-rule") {
+		t.Fatalf("the callout's reason is not on stderr:\n%s", notices.String())
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "ran.log")); !strings.Contains(string(b), "run") {
+		t.Fatal("the callout never ran")
+	}
+	if strings.Contains(out, "example-house-rule") {
+		t.Fatalf("the reason reached the verb's own output (which verbs also log):\n%s", out)
+	}
+
+	rc, out = runCapture(append(args, "--"+deskkit.ScanOverrideFlag, "the operator believes this is fine"))
+	if curForge.filed != nil || rc != deskkit.ExitRefused {
+		t.Fatalf("the override took a house.callout block through: rc=%d filed=%v\n%s", rc, curForge.filed != nil, out)
 	}
 }

@@ -960,6 +960,83 @@ grep scan_override ~/.config/assay/audit.jsonl
 The scan's accuracy in both directions, the acceptance run behind these verbs, and the
 proof each refusal can fail, are the ship bar in `docs/desk-tools-gate-bar.md`.
 
+### The house callout — a deployment's own outbound rule (desktools-v2/11)
+
+The outbound-write check (desktools-v2/10) is a compiled table. A deployment that has a rule
+the table cannot know (a list of words, a naming scheme, an internal classifier) names ONE
+executable of its own, and the check consults it on every outward write that carries text.
+The callout can only **narrow**: the compiled layer runs first, and only a write it passed is
+put to the callout. A callout cannot clear a compiled refusal, and for a write the compiled
+layer refused it is never executed.
+
+Three roster keys, all optional (`~/.config/assay/roster.env`):
+
+| Key | Meaning |
+|---|---|
+| `ASSAY_OUTBOUND_CALLOUT` | Absolute path of the executable. Unset means compiled checks alone. |
+| `ASSAY_OUTBOUND_CALLOUT_REQUIRED` | `public`: a write to a public or unknown target with no callout configured is refused. Private targets are unaffected. Also read from the environment, so a roster that failed validation cannot drop the requirement. |
+| `ASSAY_OUTBOUND_CALLOUT_TIMEOUT` | Go duration, 1s to 60s, default 5s. |
+
+A key that is SET but malformed (relative path, a list, a timeout outside the range, a
+`REQUIRED` value other than `public`) is not "unconfigured": the roster still loads and every
+outward write is refused, naming the key. The startup configuration echo prints the path and
+the required mode.
+
+**The contract.** The executable is run directly, with no shell. It must be an absolute
+path to a regular, executable file that is not group- or world-writable, in a directory that
+is not either. Its environment is exactly `PATH`, `HOME`, `TMPDIR` and `LANG`: it never
+holds the caller's token or any `ASSAY_*` variable. It receives ONE JSON object on stdin:
+
+```json
+{"version":1,"verb":"deskfile new","role":"worker","repo":"example-org/example-k8s",
+ "visibility":"public","kind":"issue",
+ "fields":[{"name":"title","text":"..."},{"name":"body","text":"..."}]}
+```
+
+`visibility` is `public`, `private` or `unknown` (a target the roster does not list is
+`unknown`, never `private`). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
+`commit` or `ref`. On stdout it prints, as its first word, `allow` or `block`; anything after `block` is the
+reason. Exit status must be 0.
+
+Everything else is a refusal, and the message says which failure it was: the file is missing
+or unreadable, or group/world-writable; a non-zero exit; no answer within the timeout; empty
+output; more than 64 KiB of output; a first word that is neither `allow` nor `block`.
+
+The refusal is `house.callout`, exit 5, and `--force-scan-override` does not apply to it. The
+callout's reason (and its own stderr) is printed to **stderr only**. It is deliberately not
+in the returned error, the audit log or anything sent to the forge, because verbs log their
+errors and the reason can quote the text it matched. The audit log gets one
+`outbound_callout` row: the rule id, the outcome, the kind and a digest, never the text.
+
+An example executable (invented word list; the shipped test fixture is
+`tools/desk/internal/deskkit/testdata/outbound-callout/example-sweep.sh`):
+
+```sh
+#!/bin/sh
+# Block any write whose "text" fields contain a word on the house list.
+words=/etc/example-house/withheld-words.txt      # one word per line, no blank lines
+if [ ! -r "$words" ]; then
+  echo "block the word list is unreadable"       # fail closed: no list, no verdict
+  exit 0
+fi
+if grep -o '"text":"\([^"\\]\|\\.\)*"' | grep -qiF -f "$words"; then
+  echo "block the write names a word on the house list"
+else
+  echo allow
+fi
+```
+
+Install it, then set it:
+
+```bash
+install -m 0755 example-sweep.sh /opt/example-house/outbound-callout
+echo 'ASSAY_OUTBOUND_CALLOUT=/opt/example-house/outbound-callout' >> ~/.config/assay/roster.env
+echo 'ASSAY_OUTBOUND_CALLOUT_REQUIRED=public' >> ~/.config/assay/roster.env
+```
+
+One callout round trip is a process start (a few milliseconds for a shell script) on top of
+whatever the executable does; the timeout bounds the worst case.
+
 ### Desk-decided: the merge is the gate (attention-budget/19)
 
 The driver holds merge on every pull request, so a desk that takes a REVERSIBLE default
