@@ -137,6 +137,11 @@ func cmdSign(args []string) int {
 	return deskkit.ExitOK
 }
 
+// afterPayloadDirCheck, nil in production, runs right after the payload's parent
+// directory passes checkPayloadDir, so a test can swap the directory in that window
+// and prove the later lookups do not re-resolve its path.
+var afterPayloadDirCheck func(dir string)
+
 // afterPayloadLstat, nil in production, runs between the payload's Lstat and its
 // open, so a test can swap the entry in that window and prove the open does not
 // trust the Lstat.
@@ -144,13 +149,21 @@ var afterPayloadLstat func(path string)
 
 // readPayloadNoFollow reads the --payload file once, refusing (exit 5) anything
 // but a regular file reached without following a link, in a parent directory
-// that passes checkPayloadDir. It returns deskkit.ExitOK with the bytes, or the
+// that passes checkPayloadDir; on unix the payload is opened relative to that
+// checked directory's handle, never by re-resolving the directory path. It returns deskkit.ExitOK with the bytes, or the
 // exit code to return (the message already printed). Any other open or read
 // failure stays exit 6, as before.
 func readPayloadNoFollow(path string) ([]byte, int) {
-	if err := checkPayloadDir(filepath.Dir(path)); err != nil {
+	dir, err := checkPayloadDir(filepath.Dir(path))
+	if err != nil {
 		fmt.Fprintf(stderr, "deskverdict sign: refusing payload %s: %v\n", path, err)
 		return nil, deskkit.ExitRefused
+	}
+	if dir != nil {
+		defer dir.Close()
+	}
+	if afterPayloadDirCheck != nil {
+		afterPayloadDirCheck(filepath.Dir(path))
 	}
 	before, err := os.Lstat(path)
 	if err != nil {
@@ -164,7 +177,7 @@ func readPayloadNoFollow(path string) ([]byte, int) {
 	if afterPayloadLstat != nil {
 		afterPayloadLstat(path)
 	}
-	f, err := openPayloadFile(path)
+	f, err := openPayloadFile(dir, path)
 	if err != nil {
 		if errors.Is(err, errPayloadIsLink) {
 			fmt.Fprintf(stderr, "deskverdict sign: refusing payload %s: it became a link after it was checked (%v)\n", path, err)
