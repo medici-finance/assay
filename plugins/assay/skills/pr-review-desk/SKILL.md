@@ -835,9 +835,9 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   gated on an expected `0` that fails on its own success path, an exit status swallowed by an
   always-zero pipeline sink). **Preferred proof shape:** a committed, re-runnable mutation script
   (`testdata/mutate.sh`), worth asking for on guard-heavy PRs; the hard requirement is an observed
-  red run *or* a re-runnable check. **Departures** (review kit §4): run `cd tools/desk && go test
-  ./internal/testledger/ -run TestReportTestLedger -v -args -base=<merge-base> -head=<PR head>`;
-  an unjustified departure in its report is a `test-evidence` finding.
+  red run *or* a re-runnable check. **Departures** (review kit §4): from a current-main checkout run `cd
+  tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -v -args -base=<merge-base sha>
+  -head=<PR head sha>`; an unjustified departure in its report, trailed or not, is a `test-evidence` finding.
   **Honest-failure corollary:** a row the author legitimately cannot make pass is a finding to
   report, not a row to soften or delete. Quietly weakening a correctly-red check to reach green is
   worse than leaving it red with a note explaining why; a correctly-red row is doing exactly its

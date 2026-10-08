@@ -64,10 +64,10 @@ self-compared artifact; a suite never run in CI; escape conditions that survive 
 docs, formatting, status-row flips, comment-only diffs, or changes with no test-based claim: if
 the evidence says "this test passes", ask "was it ever seen red, and where?". A Verify row IS a check.
 
-**Departures.** Run `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -v
--args -base=<merge-base> -head=<PR head>` and ask of each line: is what it pinned still pinned, and
-by which test; did the reason land as a `Retires-test:` trailer; if renamed, are the Verify rows
-re-pointed? An unjustified departure is a `test-evidence` finding; a trailed, justified one stands.
+**Departures.** From a current-main checkout, never the PR's, run `cd tools/desk && go test ./internal/testledger/
+-run TestReportTestLedger -v -args -base=<merge-base sha> -head=<PR head sha>` (full commit ids). Of each
+line ask: is what it pinned still pinned, and by which test; is the `Retires-test:` reason it shows
+sound; Verify rows re-pointed? An unjustified departure, trailed or not, is a `test-evidence` finding.
 
 ## 5. Could-not-check is never an approval
 

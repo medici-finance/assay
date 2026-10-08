@@ -57,14 +57,16 @@ func fixtureLines(t *testing.T) ([]string, []testledger.Retirement) {
 }
 
 // TestLedgerFixture asserts the exact report over testdata/{base,head}: head deletes one
-// tagged test (reported, with its tag) and one untagged test (covered by log.txt's trailer,
-// so not reported), renames one with an identical body and one with the same tag and a
-// changed body, keeps two and adds one. TestMain, a lower-case Testhelper and a TestDecoy in
-// a non-test .go file all leave too, and none of them may appear.
+// tagged test (reported untrailed, with its tag) and one untagged test (covered by log.txt's
+// trailer, so reported as trailed with the trailer's commit and reason, never hidden), renames
+// one with an identical body and one with the same tag and a changed body, keeps two and adds
+// one. TestMain, a lower-case Testhelper and a TestDecoy in a non-test .go file all leave too,
+// and none of them may appear.
 func TestLedgerFixture(t *testing.T) {
 	lines, retired := fixtureLines(t)
 	want := []string{
 		"retired-untrailed: pkg/parse.TestAlpha [regression F-fixture-alpha] deleted in fixture",
+		`retired-trailed: pkg/parse.TestBeta deleted in fixture; Retires-test in 111111111111: "the length check moved into TestEpsilon's table"`,
 		"renamed-untrailed: pkg/parse.TestDelta → TestDeltaRewritten (same tag) in fixture",
 		"renamed-untrailed: pkg/parse.TestGamma → TestGammaRenamed (body identical) in fixture",
 		"verify-rows-naming: TestAlpha → docs/streams/fixture/brief-01-parse.md:1",
@@ -173,10 +175,315 @@ func TestTrailerGrammar(t *testing.T) {
 	}
 }
 
-// TestReportTestLedger is the report: it logs every untrailed departure between -base and
-// -head, or `clean`. It never fails on what it finds — a reported line is for the reviewer to
-// judge (review kit §4) — and it skips with `could-not-check (<reason>)` when a side cannot be
-// read, so an unreadable range never passes as clean. Without -base and -head it skips.
+// probeTrees is one base and one head over two packages. pkg/a keeps an untagged TestParse;
+// pkg/b deletes TestGone (#5), TestParse (#7) and the untagged TestRe, renames TestOld (#8)
+// to TestActual with an identical body, adds TestReNew (TestRe rewritten, so no pairing),
+// keeps TestKeep while dropping its tag and keeps TestList while dropping one of its refs.
+func probeTrees(t *testing.T) (base, head []testledger.TestFunc) {
+	t.Helper()
+	read := func(files map[string]string) []testledger.TestFunc {
+		m := fstest.MapFS{}
+		for p, body := range files {
+			m[p] = &fstest.MapFile{Data: []byte("package p\n\nimport \"testing\"\n\n" + body)}
+		}
+		fns, err := testledger.Tests(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fns
+	}
+	base = read(map[string]string{
+		"pkg/a/a_test.go": "func TestParse(t *testing.T) { t.Log(\"a\") }\n",
+		"pkg/b/b_test.go": "// regression: #5\nfunc TestGone(t *testing.T) { t.Log(\"gone\") }\n" +
+			"// regression: #7\nfunc TestParse(t *testing.T) { t.Log(\"b\") }\n" +
+			"func TestRe(t *testing.T) { t.Log(\"re\") }\n" +
+			"// regression: #8\nfunc TestOld(t *testing.T) { t.Log(\"old\") }\n" +
+			"// regression: #9\nfunc TestKeep(t *testing.T) { t.Log(\"keep\") }\n" +
+			"// regression: #1, #2\nfunc TestList(t *testing.T) { t.Log(\"list\") }\n",
+	})
+	head = read(map[string]string{
+		"pkg/a/a_test.go": "func TestParse(t *testing.T) { t.Log(\"a\") }\n",
+		"pkg/b/b_test.go": "func TestReNew(t *testing.T) { t.Log(\"re, rewritten\") }\n" +
+			"// regression: #8\nfunc TestActual(t *testing.T) { t.Log(\"old\") }\n" +
+			"func TestKeep(t *testing.T) { t.Log(\"keep\") }\n" +
+			"// regression: #1\nfunc TestList(t *testing.T) { t.Log(\"list\") }\n",
+	})
+	return base, head
+}
+
+// TestTrailerCoverage pins what a Retires-test: trailer does to a departure. A trailer never
+// hides one: a covered departure is shown under its own label with the trailer's commit and
+// reason, so a trailer naming a same-named test in another package (P1) is visible. A rename
+// trailer covers a rename only when its new name is the test's new name, and a deletion only
+// when that name was added in the same package; otherwise the departure stays untrailed. A
+// kept test that loses a tag ref is shown too.
+func TestTrailerCoverage(t *testing.T) {
+	base, head := probeTrees(t)
+	at := func(testledger.TestFunc) string { return "X" }
+	rows := func(string) []testledger.Row { return nil }
+	untrailed := []string{
+		"retired-untrailed: pkg/b.TestGone [regression #5] deleted in X",
+		"retired-untrailed: pkg/b.TestParse [regression #7] deleted in X",
+		"retired-untrailed: pkg/b.TestRe deleted in X",
+		"renamed-untrailed: pkg/b.TestOld → TestActual (body identical) in X",
+	}
+	dropped := []string{
+		"tag-dropped: pkg/b.TestKeep [regression #9] → untagged",
+		"tag-dropped: pkg/b.TestList [regression #1, #2] → [regression #1]",
+	}
+	cases := []struct {
+		name, log string
+		want      []string
+	}{
+		{"no trailer", "", append(append([]string{}, untrailed...), dropped...)},
+		{
+			"wrong or absent new names cover nothing; a bare name shows its reason",
+			"c1\nTestParse — obsolete after the a-side rewrite\nTestOld — renamed TestSomethingElse; tidy\n" +
+				"TestGone — renamed TestNowhere; tidy\nTestRe — renamed TestReNew; body rewritten\n--\n",
+			append([]string{
+				untrailed[0],
+				`retired-trailed: pkg/b.TestParse [regression #7] deleted in X; Retires-test in c1: "obsolete after the a-side rewrite"`,
+				`retired-trailed: pkg/b.TestRe deleted in X; Retires-test in c1: renamed TestReNew, "body rewritten"`,
+				untrailed[3],
+			}, dropped...),
+		},
+		{
+			"a matching rename trailer shows every trailer naming the test",
+			"c2\nTestOld — renamed TestActual; clearer name\n--\nc3\nTestOld — superseded\n--\n",
+			append(append(append([]string{}, untrailed[:3]...),
+				`renamed-trailed: pkg/b.TestOld → TestActual (body identical) in X; Retires-test in c2: renamed TestActual, "clearer name"; Retires-test in c3: "superseded"`),
+				dropped...),
+		},
+	}
+	for _, c := range cases {
+		got := testledger.Lines(testledger.Diff(base, head), testledger.ParseTrailers(c.log), at, rows)
+		if g, w := strings.Join(got, "\n"), strings.Join(c.want, "\n"); g != w {
+			t.Errorf("%s:\n%s\nwant:\n%s", c.name, g, w)
+		}
+	}
+}
+
+// departureLine is a report line about one test: its label, then `<pkg>.<Name>`.
+var departureLine = regexp.MustCompile(`^([a-z]+(?:-[a-z]+)*): (\S+)\.([A-Za-z0-9_]+)(?: |$)`)
+
+// TestEveryDepartureIsShown is the class guard for a departure that leaves no line, the
+// shape that let a trailer turn a deleted tagged test into `clean`. It works out the
+// departures from the two trees without Diff (a base test whose package and name are gone
+// from head; a kept test whose tag lost a ref) and requires exactly one report line for each,
+// and no line for anything else, both with no trailers and with a trailer covering every
+// departure in every form. So a label that a trailer, a rename or a tag change can silence
+// fails here, wherever in Lines it is added.
+func TestEveryDepartureIsShown(t *testing.T) {
+	fixBase, err := testledger.Tests(os.DirFS("testdata/base"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixHead, err := testledger.Tests(os.DirFS("testdata/head"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pBase, pHead := probeTrees(t)
+	at := func(testledger.TestFunc) string { return "X" }
+	rows := func(string) []testledger.Row { return []testledger.Row{{File: "f.md", ID: "1"}} }
+	for _, tr := range []struct {
+		name       string
+		base, head []testledger.TestFunc
+	}{{"fixture", fixBase, fixHead}, {"probe", pBase, pHead}, {"unchanged", pBase, pBase}} {
+		inHead := map[string]testledger.TestFunc{}
+		for _, f := range tr.head {
+			inHead[f.Pkg+"."+f.Name] = f
+		}
+		want := map[string]bool{}
+		var all []testledger.Retirement
+		for _, f := range tr.base {
+			h, kept := inHead[f.Pkg+"."+f.Name]
+			if !kept {
+				want[f.Pkg+"."+f.Name] = true
+				all = append(all, testledger.Retirement{Commit: "c", Test: f.Name, Why: "w"})
+				for _, a := range tr.head {
+					all = append(all, testledger.Retirement{Commit: "c", Test: f.Name, NewName: a.Name, Why: "w"})
+				}
+				continue
+			}
+			for _, ref := range strings.Split(f.Tag, ", ") {
+				if ref != "" && !slicesContains(strings.Split(h.Tag, ", "), ref) {
+					want[f.Pkg+"."+f.Name] = true
+				}
+			}
+		}
+		for _, set := range []struct {
+			name    string
+			retired []testledger.Retirement
+		}{{"no trailers", nil}, {"every departure trailed", all}} {
+			lines := testledger.Lines(testledger.Diff(tr.base, tr.head), set.retired, at, rows)
+			seen := map[string]int{}
+			for _, l := range lines {
+				m := departureLine.FindStringSubmatch(l)
+				if m == nil {
+					if !strings.HasPrefix(l, "verify-rows-naming: ") {
+						t.Errorf("%s, %s: line names no test: %q", tr.name, set.name, l)
+					}
+					continue
+				}
+				seen[m[2]+"."+m[3]]++
+				if !want[m[2]+"."+m[3]] {
+					t.Errorf("%s, %s: line for a test that did not depart: %q", tr.name, set.name, l)
+				}
+			}
+			for k := range want {
+				if seen[k] != 1 {
+					t.Errorf("%s, %s: %s departed and has %d report lines, want 1:\n%s", tr.name, set.name, k, seen[k], strings.Join(lines, "\n"))
+				}
+			}
+			if len(want) == 0 && len(lines) != 0 {
+				t.Errorf("%s, %s: nothing departed and the report is not clean: %q", tr.name, set.name, lines)
+			}
+		}
+		if tr.name != "unchanged" && len(want) == 0 {
+			t.Errorf("%s: no departure worked out, so this check saw nothing", tr.name)
+		}
+	}
+}
+
+func slicesContains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRangeProbes runs the report end to end, in revision mode, over a synthetic repository:
+// each probe is a range that removes or renames a tagged test and must never print `clean`.
+// A trailer anywhere in the range (the deleting commit, a later commit, a merge) is shown with
+// its own commit beside the deleting one, so the reviewer can see whose reason it is.
+func TestRangeProbes(t *testing.T) {
+	dir := t.TempDir()
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=probe", "-c", "user.email=probe@example.invalid",
+			"-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	write := func(p, body string) {
+		t.Helper()
+		f := filepath.Join(dir, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	src := func(fns ...string) string {
+		return "package b\n\nimport \"testing\"\n\n" + strings.Join(fns, "\n")
+	}
+	parse := "// regression: #7\nfunc TestParse(t *testing.T) { t.Log(\"b\") }\n"
+	old := "// regression: #8\nfunc TestOld(t *testing.T) { t.Log(\"old\") }\n"
+	actual := "// regression: #8\nfunc TestActual(t *testing.T) { t.Log(\"old\") }\n"
+	keep := "// regression: #9\nfunc TestKeep(t *testing.T) { t.Log(\"keep\") }\n"
+	untaggedKeep := "func TestKeep(t *testing.T) { t.Log(\"keep\") }\n"
+
+	run("init", "-q", "-b", "main")
+	write("tools/desk/go.mod", "module probe\n")
+	write("pkg/a/a_test.go", "package a\n\nimport \"testing\"\n\nfunc TestParse(t *testing.T) { t.Log(\"a\") }\n")
+	write("pkg/b/b_test.go", src(parse, old, keep))
+	run("add", "-A")
+	run("commit", "-q", "-m", "base")
+	base := run("rev-parse", "HEAD")
+	t.Chdir(dir)
+
+	// commit checks out base, rewrites pkg/b and commits with the given message paragraphs.
+	commit := func(body string, msg ...string) string {
+		t.Helper()
+		run("checkout", "-q", "--detach", base)
+		write("pkg/b/b_test.go", body)
+		args := []string{"commit", "-q", "-a"}
+		for _, m := range msg {
+			args = append(args, "-m", m)
+		}
+		run(args...)
+		return run("rev-parse", "HEAD")
+	}
+	short := func(c string) string { // as report's own git call abbreviates it
+		out, err := git(dir, "log", "-1", "--format=%h", c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(out)
+	}
+	trailer := func(c, v string) string { return "Retires-test in " + c[:12] + ": " + v }
+
+	type probe struct {
+		name, tip string
+		want      string // the line the report must carry; it is never clean
+	}
+	var probes []probe
+	ctl := commit(src(old, keep), "drop parse")
+	probes = append(probes, probe{"control: untrailed deletion", ctl,
+		"retired-untrailed: pkg/b.TestParse [regression #7] deleted in " + short(ctl)})
+	p1 := commit(src(old, keep), "drop parse", "Retires-test: TestParse — obsolete after the a-side rewrite")
+	probes = append(probes, probe{"P1: a bare-name trailer is shown, never clean", p1,
+		"retired-trailed: pkg/b.TestParse [regression #7] deleted in " + short(p1) + "; " + trailer(p1, `"obsolete after the a-side rewrite"`)})
+	p2 := commit(src(parse, actual, keep), "rename old", "Retires-test: TestOld — renamed TestSomethingElse; tidy")
+	probes = append(probes, probe{"P2: a rename trailer naming another new name covers nothing", p2,
+		"renamed-untrailed: pkg/b.TestOld → TestActual (body identical) in " + short(p2)})
+	p2ok := commit(src(parse, actual, keep), "rename old", "Retires-test: TestOld — renamed TestActual; clearer name")
+	probes = append(probes, probe{"P2 control: a matching rename trailer is shown", p2ok,
+		"renamed-trailed: pkg/b.TestOld → TestActual (body identical) in " + short(p2ok) + "; " + trailer(p2ok, `renamed TestActual, "clearer name"`)})
+	p2b := commit(src(parse, keep), "drop old", "Retires-test: TestOld — renamed TestNowhere; tidy")
+	probes = append(probes, probe{"P2b: a rename trailer on a deletion covers nothing", p2b,
+		"retired-untrailed: pkg/b.TestOld [regression #8] deleted in " + short(p2b)})
+	del := commit(src(old, keep), "drop parse")
+	run("commit", "-q", "--allow-empty", "-m", "later", "-m", "Retires-test: TestParse — said later")
+	p3c := run("rev-parse", "HEAD")
+	probes = append(probes, probe{"P3c: a trailer on a later commit shows its own commit", p3c,
+		"retired-trailed: pkg/b.TestParse [regression #7] deleted in " + short(del) + "; " + trailer(p3c, `"said later"`)})
+	run("checkout", "-q", "-b", "side", base)
+	run("commit", "-q", "--allow-empty", "-m", "side")
+	run("checkout", "-q", "--detach", del)
+	run("merge", "-q", "--no-ff", "-m", "merge side", "-m", "Retires-test: TestParse — said in the merge", "side")
+	p3 := run("rev-parse", "HEAD")
+	probes = append(probes, probe{"P3: a trailer on a merge commit shows its own commit", p3,
+		"retired-trailed: pkg/b.TestParse [regression #7] deleted in " + short(del) + "; " + trailer(p3, `"said in the merge"`)})
+	a4 := commit(src(parse, old, untaggedKeep), "untag keep")
+	probes = append(probes, probe{"A4: a tag removed in place is shown", a4,
+		"tag-dropped: pkg/b.TestKeep [regression #9] → untagged"})
+
+	for _, p := range probes {
+		lines, _, err := report(base, p.tip)
+		if err != nil {
+			t.Errorf("%s: could-not-check (%v)", p.name, err)
+			continue
+		}
+		if !slicesContains(lines, p.want) {
+			t.Errorf("%s: report\n%s\nwant a line\n%s", p.name, strings.Join(lines, "\n"), p.want)
+		}
+	}
+
+	// A2: a symbolic name that is also a directory where the command runs is ambiguous, so it
+	// is could-not-check, never read as whichever one tree() tries first.
+	write("HEAD/pkg/b/b_test.go", src(parse, old, keep))
+	if lines, _, err := report(base, "HEAD"); err == nil || len(lines) != 0 {
+		t.Errorf("-head=HEAD with a directory named HEAD in the working directory: %q, %v; want could-not-check", lines, err)
+	} else if !strings.Contains(err.Error(), "both a directory and a revision") {
+		t.Errorf("-head=HEAD ambiguity: reason %q does not say so", err)
+	}
+}
+
+// TestReportTestLedger is the report: it logs every departure between -base and -head (an
+// untrailed one for the reviewer to judge, a trailed one with its trailer's commit and reason,
+// a tag dropped in place), or `clean` when nothing departed. It never fails on what it finds —
+// a reported line is for the reviewer to judge (review kit §4) — and it skips with
+// `could-not-check (<reason>)` when a side cannot be read, so an unreadable range never passes
+// as clean. Without -base and -head it skips.
 func TestReportTestLedger(t *testing.T) {
 	if *baseFlag == "" || *headFlag == "" {
 		t.Skip("could-not-check (no range: pass -args -base=<rev|dir> -head=<rev|dir>)")
@@ -329,14 +636,22 @@ func report(base, head string) (lines, notes []string, err error) {
 	return lines, notes, nil
 }
 
-// tree reads arg as a directory, else as a revision (returning its commit id).
+// tree reads arg as a directory or as a revision (returning its commit id). A name that is
+// both is could-not-check: which one it reads would depend on where the command runs.
 func tree(root, arg string) (fs.FS, string, error) {
-	if st, err := os.Stat(arg); err == nil && st.IsDir() {
-		return os.DirFS(arg), "", nil
+	st, err := os.Stat(arg)
+	isDir := err == nil && st.IsDir()
+	rev := ""
+	if !strings.HasPrefix(arg, "-") {
+		out, _ := git(root, "rev-parse", "--verify", "--quiet", arg+"^{commit}")
+		rev = strings.TrimSpace(out)
 	}
-	out, err := git(root, "rev-parse", "--verify", "--quiet", arg+"^{commit}")
-	rev := strings.TrimSpace(out)
-	if err != nil || rev == "" {
+	switch {
+	case isDir && rev != "":
+		return nil, "", fmt.Errorf("%q is both a directory and a revision in %s; pass a full commit id or an absolute directory", arg, root)
+	case isDir:
+		return os.DirFS(arg), "", nil
+	case rev == "":
 		return nil, "", fmt.Errorf("%q is neither a directory nor a revision in %s", arg, root)
 	}
 	fsys, err := archive(root, rev)
