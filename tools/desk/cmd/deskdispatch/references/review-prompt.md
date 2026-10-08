@@ -55,10 +55,10 @@ must show it failing on the unfixed code — a red run quoted in the PR body or 
 or a committed mutation script the reviewer can re-run.
 
 **A test whose red state was never observed is a finding, not evidence.** Treat its pass as
-unproven and request the red run. The single failure mode this catches is *a control that
-reads as present and cannot fail*: an assertion against its own source constant; a counter
-bumped with its comparand; a guard disarmed by a stray character; a self-compared artifact;
-a suite never run in CI; escape conditions that survive their own mutations.
+unproven and request changes asking for the red run. The single failure mode this catches is
+*a control that reads as present and cannot fail*: an assertion against its own source
+constant; a counter bumped with its comparand; a guard disarmed by a stray character; a
+self-compared artifact; a suite never run in CI; escape conditions that survive their own mutations.
 
 **Scope — do not over-apply.** The rule binds tests asserting behaviour or pinning a guard, not
 docs, formatting, status-row flips, comment-only diffs, or changes with no test-based claim: if

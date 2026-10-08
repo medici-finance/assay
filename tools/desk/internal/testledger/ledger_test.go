@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -74,15 +75,53 @@ func TestLedgerFixture(t *testing.T) {
 		t.Errorf("report:\n%s\nwant:\n%s", got, w)
 	}
 	if len(retired) != 1 || retired[0].Test != "TestBeta" || retired[0].Commit != strings.Repeat("1", 40) {
-		t.Errorf("trailers: got %+v, want exactly TestBeta at commit 1111… (the reasonless one dropped)", retired)
+		t.Errorf("trailers: got %+v, want exactly TestBeta at commit 1111… (the separator-less one dropped)", retired)
 	}
+
+	src := func(fns ...string) *fstest.MapFile {
+		return &fstest.MapFile{Data: []byte("package p\n\nimport \"testing\"\n\n" + strings.Join(fns, "\n"))}
+	}
+
+	t.Run("prose after the tag prefix is not a tag", func(t *testing.T) {
+		// A doc comment that wraps a sentence onto a line starting `regression: ` is prose:
+		// only a line holding grammar refs (`#<N>`, `F-<slug>`, `class #<N>`) and nothing
+		// else is a tag line. The first case is the seeded deskdispatch test's shape.
+		fns, err := testledger.Tests(fstest.MapFS{"p/p_test.go": src(
+			"// TestWrapped is the headline\n// regression: a verifier dispatched from a shared checkout carries an UNRELATED\n// identity.\n// regression: #1490\nfunc TestWrapped(t *testing.T) {}\n",
+			"// TestProse is the durable-coverage\n// regression: it iterates EVERY codepoint in the set\nfunc TestProse(t *testing.T) {}\n",
+			"// regression: #12 and the follow-up\nfunc TestTrailingProse(t *testing.T) {}\n",
+			"// regression: F-Bad_Slug\nfunc TestBadSlug(t *testing.T) {}\n",
+			"// regression: class 12\nfunc TestBadClass(t *testing.T) {}\n",
+			"// regression: class #1x\nfunc TestBadClassNum(t *testing.T) {}\n",
+			"// regression: #\nfunc TestNoNumber(t *testing.T) {}\n",
+			"// regression: #07\nfunc TestLeadingZero(t *testing.T) {}\n",
+			"// regression: #7,\nfunc TestTrailingComma(t *testing.T) {}\n",
+			// Controls: every legal ref shape still reads, alone, listed, and over two lines.
+			"// regression: #12, F-some-slug-2, class #34\nfunc TestListed(t *testing.T) {}\n",
+			"// regression: F-fixture-alpha\n// regression: class #3\nfunc TestTwoLines(t *testing.T) {}\n",
+		)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]string{
+			"TestWrapped": "#1490", "TestProse": "", "TestTrailingProse": "", "TestBadSlug": "",
+			"TestBadClass": "", "TestBadClassNum": "", "TestNoNumber": "", "TestLeadingZero": "",
+			"TestTrailingComma": "", "TestListed": "#12, F-some-slug-2, class #34",
+			"TestTwoLines": "F-fixture-alpha, class #3",
+		}
+		if len(fns) != len(want) {
+			t.Fatalf("read %d tests, want %d", len(fns), len(want))
+		}
+		for _, f := range fns {
+			if w, ok := want[f.Name]; !ok || f.Tag != w {
+				t.Errorf("%s: tag %q, want %q", f.Name, f.Tag, w)
+			}
+		}
+	})
 
 	t.Run("shared tag is not a rename", func(t *testing.T) {
 		// Two deleted tests share a tag and one added test carries it: no unique pairing,
 		// so the report shows two deletions, never one rename that hides the other.
-		src := func(fns ...string) *fstest.MapFile {
-			return &fstest.MapFile{Data: []byte("package p\n\nimport \"testing\"\n\n" + strings.Join(fns, "\n"))}
-		}
 		base, err := testledger.Tests(fstest.MapFS{"p/p_test.go": src(
 			"// regression: #7\nfunc TestOne(t *testing.T) { t.Log(1) }\n",
 			"// regression: #7\nfunc TestTwo(t *testing.T) { t.Log(2) }\n",
@@ -164,6 +203,72 @@ func TestUnresolvableBaseIsCouldNotCheck(t *testing.T) {
 	if err == nil || len(lines) != 0 {
 		t.Errorf("report(deadbeefdeadbeef, testdata/head) = %q, %v; want no lines and a could-not-check reason", lines, err)
 	}
+}
+
+// tagLine is a tag line as docs/contracts.md spells it, matched over the raw text so the
+// check below does not share the parser it checks.
+var tagLine = regexp.MustCompile(`^// regression: \s*((?:#[1-9][0-9]*|F-[a-z0-9]+(?:-[a-z0-9]+)*|class #[1-9][0-9]*)(?:\s*,\s*(?:#[1-9][0-9]*|F-[a-z0-9]+(?:-[a-z0-9]+)*|class #[1-9][0-9]*))*)\s*$`)
+
+// TestRepoTagsReadAsWritten is the class guard for prose read as a tag: over every test in
+// this repository it checks that the tag Tests reads is exactly the refs of the tag lines in
+// the comment block above the func, so a doc comment anywhere whose wrapped prose starts a
+// line with `regression: ` adds nothing. Verify row 10 counts tag lines and cannot see a tag
+// read wrongly; this can. It checks the parser against the tree, never the tree itself: a
+// malformed tag line is untagged on both sides, so no test file can turn it red.
+func TestRepoTagsReadAsWritten(t *testing.T) {
+	root, err := repoRoot()
+	if err != nil {
+		t.Skipf("could-not-check (%v)", err)
+	}
+	fns, err := testledger.Tests(os.DirFS(root))
+	if err != nil || len(fns) == 0 {
+		t.Fatalf("Tests(%s): %d tests, %v", root, len(fns), err)
+	}
+	files, tagged := map[string][]string{}, 0
+	for _, f := range fns {
+		lines, ok := files[f.File]
+		if !ok {
+			b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f.File)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines = strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+			files[f.File] = lines
+		}
+		decl := -1
+		for i, l := range lines {
+			if strings.HasPrefix(l, "func "+f.Name+"(") {
+				if decl >= 0 {
+					decl = -2 // declared twice in the text (once in a string): not checkable here
+					break
+				}
+				decl = i
+			}
+		}
+		if decl < 0 {
+			continue
+		}
+		var want []string
+		for i := decl - 1; i >= 0 && strings.HasPrefix(lines[i], "//"); i-- {
+			if m := tagLine.FindStringSubmatch(lines[i]); m != nil {
+				var refs []string
+				for _, r := range strings.Split(m[1], ",") {
+					refs = append(refs, strings.TrimSpace(r))
+				}
+				want = append(refs, want...)
+			}
+		}
+		if w := strings.Join(want, ", "); f.Tag != w {
+			t.Errorf("%s.%s (%s): tag read as %q, the tag lines say %q", f.Pkg, f.Name, f.File, f.Tag, w)
+		}
+		if f.Tag != "" {
+			tagged++
+		}
+	}
+	if tagged == 0 {
+		t.Errorf("%d tests read, none tagged: the seeded tags were not seen, so this check saw nothing", len(fns))
+	}
+	t.Logf("%d tests read, %d tagged", len(fns), tagged)
 }
 
 // report reads both sides and renders the lines. A non-nil error is a could-not-check reason.

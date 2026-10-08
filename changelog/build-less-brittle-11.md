@@ -1,6 +1,6 @@
 ### Added
 - `tools/desk/internal/testledger`: a report of test functions that left the tree between two revisions or directories without a `Retires-test:` trailer. It lists untrailed deletions (with the test's `// regression:` tag when it has one), renames (paired by an identical body or a shared tag), and the brief Verify rows that still name a departed test. Run it with `go test ./internal/testledger/ -run TestReportTestLedger -v -args -base=<rev|dir> -head=<rev|dir>`. It never fails on what it finds; a range it cannot read is `could-not-check`.
-- The `// regression: #<N>` doc-comment tag (also `F-<slug>`, `class #<N>`) on the line above a test says which incident it pins; seven existing regression tests carry it.
+- The `// regression: #<N>` doc-comment tag (also `F-<slug>`, `class #<N>`) on the line above a test says which incident it pins; seven existing regression tests carry it. Only a line holding refs of those shapes and nothing else is a tag: doc-comment prose that happens to wrap onto a `regression: ` line is not.
 
 ### Changed
 - Implementer kits (`worker`, `worker-objective`) §9: tag every fail-first test, give every deleted or renamed test function a `Retires-test: <Name> — <why>` trailer (`— renamed <New>; <why>` for a rename), re-point the Verify rows the report names, and paste a non-empty report under `## Tests retired`.

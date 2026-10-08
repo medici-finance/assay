@@ -78,6 +78,36 @@
       "file": "internal/testledger/ledger.go",
       "old": "\t\t}\n\t\taddRows(f.Name)\n",
       "new": "\t\t\taddRows(f.Name)\n\t\t}\n"
+    },
+    {
+      "name": "read prose after the tag prefix as a tag",
+      "file": "internal/testledger/ledger.go",
+      "old": "if allRefs(line) {",
+      "new": "if true {"
+    },
+    {
+      "name": "accept any F- slug",
+      "file": "internal/testledger/ledger.go",
+      "old": "return isSlug(slug)",
+      "new": "return isSlug(slug) || true"
+    },
+    {
+      "name": "accept an issue number with a leading zero",
+      "file": "internal/testledger/ledger.go",
+      "old": "if s == \"\" || s[0] == '0' {",
+      "new": "if s == \"\" {"
+    },
+    {
+      "name": "accept an issue number that is not digits",
+      "file": "internal/testledger/ledger.go",
+      "old": "return strings.Trim(s, \"0123456789\") == \"\"",
+      "new": "return true"
+    },
+    {
+      "name": "accept a class ref whose number is not a number",
+      "file": "internal/testledger/ledger.go",
+      "old": "return isNumber(n)\n\t}\n\tif slug",
+      "new": "return isNumber(n) || true\n\t}\n\tif slug"
     }
   ]
 }

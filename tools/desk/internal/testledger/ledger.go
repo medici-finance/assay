@@ -14,11 +14,19 @@
 //	test     — a top-level func with no receiver and one parameter, named Test*, Fuzz* or
 //	           Benchmark* under go test's naming rule; TestMain is not a test.
 //	package  — the slash path of the file's directory, relative to the tree root.
-//	tag      — the refs on a `// regression: ` line of the func's doc comment, joined ", ".
+//	tag      — the refs of every doc-comment line `// regression: <ref>[, <ref>…]`, joined
+//	           ", ", where a ref is `#<N>`, `F-<slug>` (slug: lower-case letters and digits
+//	           in hyphen-separated runs) or `class #<N>`. A line with anything else after the
+//	           prefix is prose that happens to wrap there, and is not a tag.
 //	hash     — the func body's token stream (comments and layout dropped), hashed.
 //	deleted  — in base, not in head (same package, same name).
 //	renamed  — a deletion paired with an addition in the same package whose hash, or else
 //	           non-empty tag, matches, and the match is unique on both sides.
+//
+// BLIND SPOTS. Go tests only. A test kept by name with its body gutted, skipped or
+// build-constrained away is not a departure. A move to another package reads as a deletion
+// plus an addition. A Verify row is tied to a test only when it spells the whole name, so a
+// prefix or regex `-run` selector that once matched the test is not listed.
 //
 // The report is a rubric, never a gate: nothing here decides that a departure is wrong.
 // Every function is pure; the git reads live in ledger_test.go (TestReportTestLedger).
@@ -180,13 +188,58 @@ func tag(doc *ast.CommentGroup) string {
 		if !ok {
 			continue
 		}
-		for _, r := range strings.Split(v, ",") {
-			if r = strings.TrimSpace(r); r != "" {
-				refs = append(refs, r)
-			}
+		line := strings.Split(v, ",")
+		for i := range line {
+			line[i] = strings.TrimSpace(line[i])
+		}
+		if allRefs(line) {
+			refs = append(refs, line...)
 		}
 	}
 	return strings.Join(refs, ", ")
+}
+
+// allRefs reports whether every element is a tag ref: `#<N>`, `F-<slug>` or `class #<N>`.
+func allRefs(refs []string) bool {
+	for _, r := range refs {
+		if !isRef(r) {
+			return false
+		}
+	}
+	return len(refs) > 0
+}
+
+func isRef(r string) bool {
+	if n, ok := strings.CutPrefix(r, "class #"); ok {
+		return isNumber(n)
+	}
+	if slug, ok := strings.CutPrefix(r, "F-"); ok {
+		return isSlug(slug)
+	}
+	n, ok := strings.CutPrefix(r, "#")
+	return ok && isNumber(n)
+}
+
+// isNumber: an issue number, digits with no leading zero.
+func isNumber(s string) bool {
+	if s == "" || s[0] == '0' {
+		return false
+	}
+	return strings.Trim(s, "0123456789") == ""
+}
+
+// isSlug: lower-case letters and digits in non-empty runs separated by single hyphens.
+func isSlug(s string) bool {
+	for _, run := range strings.Split(s, "-") {
+		if run == "" || strings.ContainsFunc(run, notSlugRune) {
+			return false
+		}
+	}
+	return true
+}
+
+func notSlugRune(r rune) bool {
+	return !('a' <= r && r <= 'z' || '0' <= r && r <= '9')
 }
 
 // bodyHash hashes the body's tokens, so a comment, a blank line or a gofmt re-indent leaves
