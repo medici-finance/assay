@@ -58,7 +58,7 @@ var promotedRowRules = map[string]bool{
 // same posture as the UNRUN and witness gates.
 func unfailableRowChecks(root string, streams []*Stream) (problems, notices []string) {
 	grandfathered, baseOK := closedAtBase(root, streams)
-	problems, notices = unfailableRowAudit(streams, grandfathered, baseOK)
+	problems, notices = unfailableRowAudit(streams, grandfathered, baseOK, true)
 	if !baseOK {
 		notices = append(notices, "unfailable-row gate is running degraded: origin/main could not be resolved, so no brief can be shown to have been closed on THIS branch and every R1–R10 finding is a NOTICE. If this is CI, fetch origin/main before the lint step")
 	}

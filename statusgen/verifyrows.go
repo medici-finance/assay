@@ -24,7 +24,8 @@ import (
 // decidable without judgement. "This assertion is shallow" stays with the
 // reviewer; "this assertion is inert" belongs here.
 //
-// Severity: NOTICE, not PROBLEM — see unfailableRowNotices.
+// Severity: NOTICE, except R1–R10 on a closure the branch makes — see
+// unfailableRowAudit and docs/verify-row-strength.md (verify-integrity/03).
 
 // ---------------------------------------------------------------------------
 // Markdown table cells
@@ -1734,8 +1735,12 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 // reason (#1808 review: its advice to mark the command is not actionable on a
 // closed record). Every OTHER rule is unscoped by brief status; this scoping
 // applies to these two tags only.
+//
+// This is the R1–R10 family's (and the two scoped tags') NOTICE surface, with no
+// merge-base and without the R11–R13 strength heuristics, which are
+// unfailableRowChecks' (strength.go).
 func unfailableRowNotices(streams []*Stream) []string {
-	_, notices := unfailableRowAudit(streams, nil, false)
+	_, notices := unfailableRowAudit(streams, nil, false, false)
 	return notices
 }
 
@@ -1744,8 +1749,9 @@ func unfailableRowNotices(streams []*Stream) []string {
 // verified/done and which is NOT in grandfathered is a closure THIS branch made
 // (post-base): its R1–R10 findings are PROBLEMs (verify-integrity/03), and it
 // is exempt from the closed-brief scoping above — the branch closing it is the
-// moment its rows can still be fixed. Every other finding is a NOTICE.
-func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK bool) (problems, notices []string) {
+// moment its rows can still be fixed. Every other finding is a NOTICE. With
+// strength false the R11–R13 heuristics are skipped.
+func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK, strength bool) (problems, notices []string) {
 	closedRows := 0
 	closedBriefs := map[string]bool{}
 	closedProseRows := 0
@@ -1783,6 +1789,9 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 					cmds = append(cmds, c)
 				}
 				for _, f := range rowFindingsCtx(r.Command, r.Expect, bf.DeclaredPaths) {
+					if !strength && (f.rule == ruleTriviallyGreen || f.rule == ruleNoOutputAssert) {
+						continue
+					}
 					if scoped && f.rule == ruleGoTestRunVacuous {
 						closedRows++
 						closedBriefs[briefID] = true
@@ -1808,7 +1817,7 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 			})
 			msg, cnc := tableFilesCheck(cmds, bf.DeclaredPaths, filesLabelPresent(bf.Body))
 			switch {
-			case msg == "" && !cnc:
+			case !strength, msg == "" && !cnc:
 			case scoped:
 				closedStrength++
 				closedStrengthBriefs[briefID] = true

@@ -94,8 +94,10 @@ type LintRule struct {
 // claims the authoring guidance makes. Every status here is a fact about the
 // lint's code, verifiable at the cited site:
 //
-//   - The Verify-row family (verifyrows.go rules const block) is emitted through
-//     unfailableRowNotices — every one is a NOTICE, so every one is `advisory`.
+//   - The Verify-row family (verifyrows.go rules const block, strength.go) is
+//     emitted through unfailableRowChecks. R1–R10 are a PROBLEM on a closure
+//     the branch makes (strength.go promotedRowRules), so they are `fatal`; the
+//     rest of the family is always a NOTICE — `advisory`.
 //   - The consumers: family (consumers.go consumersCheck): a `follow-up
 //     <stream>/<NN>` whose target is not a brief in any stream README is `add`ed
 //     to problems (consumers.go:381) — a `--lint` PROBLEM, so it is `fatal`. The
