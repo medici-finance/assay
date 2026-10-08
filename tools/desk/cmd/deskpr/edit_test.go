@@ -235,8 +235,8 @@ func TestEditSuccessPostsTheReviewNotice(t *testing.T) {
 		t.Fatalf("the notice was not posted on the branch's own PR: %v", comments[0])
 	}
 
-	if anyCall(gitCalls(*calls), "push") {
-		t.Fatalf("edit pushed — it edits TEXT and must never touch commits; calls: %v", gitCalls(*calls))
+	if anyPush(*calls) {
+		t.Fatalf("edit pushed — it edits TEXT and must never touch commits; calls: %v", *calls)
 	}
 	if anyGitForce(*calls) {
 		t.Fatal("edit emitted a git force flag")
@@ -579,8 +579,8 @@ func TestEditByPROwnHeadCommit(t *testing.T) {
 			} else if len(edits) != 0 || len(commentCalls(*calls)) != 0 {
 				t.Fatalf("the refusal still wrote: edits %v, comments %v", edits, commentCalls(*calls))
 			}
-			if anyCall(gitCalls(*calls), "push") {
-				t.Fatalf("edit pushed: %v", gitCalls(*calls))
+			if anyPush(*calls) {
+				t.Fatalf("edit pushed: %v", *calls)
 			}
 		})
 	}

@@ -542,13 +542,15 @@ var obClass = map[string]string{
 	"PRTrustEvents": "read", "IssueTrustEvents": "read", "IssueContentEvents": "read",
 	"ReviewsAtHead": "read", "ReviewQueueSnapshot": "read", "ListChangedFiles": "read",
 	"ChecksAtHead": "read", "RequiredStatusChecks": "read", "IssueReactions": "read",
-	"ListLabelEvents": "read", "ListComments": "read", "ListCommentsTyped": "read",
+	"ListIssueLabelEvents": "read", "ListLabelEvents": "read", "ListComments": "read", "ListCommentsTyped": "read",
 	"RepoVisibility": "read", "ReadFile": "read", "ListRecentCommits": "read",
 	"GetCommit": "read", "ListFileCommits": "read", "ListCommitChanges": "read",
 	"CompareRefs": "read", "SearchOpenChanges": "read", "ListWorkflowFiles": "read",
 	"ChangeDiff": "read", "RefExists": "read", "MatchingRefs": "read",
 	"RepoHardeningRead": "read", "ReadMergeHold": "read", "RunStatus": "read",
 	"PushTransportHint": "read",
+	"ListIssues":        "read", "IssueStateEvents": "read", "ListChangeCommits": "read",
+	"RepoDefaultBranch": "read",
 }
 
 // nilBackend is a Forge whose every WRITE panics (a nil embedded interface): a text method

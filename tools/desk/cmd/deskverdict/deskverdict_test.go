@@ -41,6 +41,9 @@ func writePrivPEM(t *testing.T, dir string) (string, *rsa.PrivateKey) {
 
 func TestCLIRoundtrip(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	privPath, _ := writePrivPEM(t, dir)
 
 	// Derive the pubkey via the CLI and write it out.
@@ -86,6 +89,9 @@ func TestCLIRoundtrip(t *testing.T) {
 
 func TestCLIVerifyTamperExit1(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	privPath, _ := writePrivPEM(t, dir)
 
 	pubOut, _, _ := capture(func() int { return cmdPubkey([]string{"--pem", privPath}) })
@@ -113,6 +119,9 @@ func TestCLIVerifyTamperExit1(t *testing.T) {
 
 func TestCLIVerifyCouldNotCheckExit6(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	privPath, _ := writePrivPEM(t, dir)
 	pubOut, _, _ := capture(func() int { return cmdPubkey([]string{"--pem", privPath}) })
 	pubPath := filepath.Join(dir, "pub.pem")
@@ -154,6 +163,9 @@ func signBodyWithNewKey(t *testing.T, dir string) (bodyPath string, pubPEM []byt
 // as a literal PEM string. No committed key file is involved.
 func TestCLIVerifyFromEnvVarPEM(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	bodyPath, pubPEM := signBodyWithNewKey(t, dir)
 
 	t.Setenv(deskkit.VerifierPubkeyVar, string(pubPEM))
@@ -170,6 +182,9 @@ func TestCLIVerifyFromEnvVarPEM(t *testing.T) {
 // newline-safe Actions-variable form.
 func TestCLIVerifyFromEnvVarBase64(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	bodyPath, pubPEM := signBodyWithNewKey(t, dir)
 
 	t.Setenv(deskkit.VerifierPubkeyVar, base64.StdEncoding.EncodeToString(pubPEM))
@@ -186,6 +201,9 @@ func TestCLIVerifyFromEnvVarBase64(t *testing.T) {
 // verify must COULD-NOT-CHECK (exit 6) — never a silent pass.
 func TestCLIVerifyNoPubkeyConfigured(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	bodyPath, _ := signBodyWithNewKey(t, dir)
 
 	t.Setenv(deskkit.VerifierPubkeyVar, "")
@@ -203,6 +221,9 @@ func TestCLIVerifyNoPubkeyConfigured(t *testing.T) {
 // into the variable — the full self-generation loop, no committed key.
 func TestCLIKeygenSelfGenerate(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	privPath := filepath.Join(dir, "verifier.pem")
 
 	pubOut, kErr, code := capture(func() int { return cmdKeygen([]string{"--priv", privPath}) })
@@ -266,6 +287,9 @@ func writeRolePEM(t *testing.T, dir, role string) (string, *rsa.PrivateKey) {
 // somewhere that happens to work.
 func TestCLIIssueLoopRoundtrip(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	privPath, _ := writeRolePEM(t, dir, "issue-loop")
 
 	pubOut, _, code := capture(func() int { return cmdPubkey([]string{"--pem", privPath}) })
@@ -305,6 +329,9 @@ func TestCLIIssueLoopRoundtrip(t *testing.T) {
 // deskkit.TestRoleMismatchRefusedBeforeCrypto.
 func TestCLIRoleMismatchExit1(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	ilPriv, _ := writeRolePEM(t, dir, "issue-loop")
 	ilPubOut, _, _ := capture(func() int { return cmdPubkey([]string{"--pem", ilPriv}) })
 
@@ -333,6 +360,9 @@ func TestCLIRoleMismatchExit1(t *testing.T) {
 // (exit 5) and never falls back to verifier.
 func TestCLISignUnknownKeyExit5(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	payloadPath := filepath.Join(dir, "p.json")
 	os.WriteFile(payloadPath, []byte(`{}`), 0o644)
 	_, sErr, code := capture(func() int {
@@ -350,6 +380,9 @@ func TestCLISignUnknownKeyExit5(t *testing.T) {
 // could-not-check (exit 6), never a pass and never a fall-back to verifier.
 func TestCLIVerifyUnknownKeyExit6(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	bodyPath, _ := signBodyWithNewKey(t, dir)
 	_, vErr, code := capture(func() int {
 		return cmdVerify([]string{"--body", bodyPath, "--key", "bogus-role"})
@@ -367,6 +400,9 @@ func TestCLIVerifyUnknownKeyExit6(t *testing.T) {
 // of TestCLIVerifyFromEnvVarBase64.
 func TestCLIIssueLoopEnvVarBase64(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	privPath, _ := writeRolePEM(t, dir, "issue-loop")
 	pubOut, _, _ := capture(func() int { return cmdPubkey([]string{"--pem", privPath}) })
 
@@ -391,6 +427,9 @@ func TestCLIIssueLoopEnvVarBase64(t *testing.T) {
 // verifier's.
 func TestCLIIssueLoopNoPubkeyConfiguredExit6(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	privPath, _ := writeRolePEM(t, dir, "issue-loop")
 	payloadPath := filepath.Join(dir, "sd.json")
 	os.WriteFile(payloadPath, []byte(`{}`), 0o644)
@@ -415,6 +454,9 @@ func TestCLIIssueLoopNoPubkeyConfiguredExit6(t *testing.T) {
 // (never VERIFIER_PEM).
 func TestCLISignIssueLoopPEMFromEnv(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	privPath, _ := writeRolePEM(t, dir, "issue-loop")
 
 	t.Setenv("ISSUE_LOOP_PEM", privPath)

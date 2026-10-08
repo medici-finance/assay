@@ -1,0 +1,51 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){issue(number:$number){timelineItems(first:100,itemTypes:[CLOSED_EVENT,REOPENED_EVENT]){pageInfo{hasNextPage} nodes{__typename ...on ClosedEvent{createdAt actor{login __typename ...on User{databaseId} ...on Bot{databaseId}}} ...on ReopenedEvent{createdAt actor{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}} closedByPullRequestsReferences(first:100,includeClosedPrs:true){pageInfo{hasNextPage} nodes{number state merged repository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}}",
+        "variables": {
+          "name": "assay",
+          "number": 12,
+          "owner": "medici-finance"
+        }
+      }
+    }
+  ],
+  "result": {
+    "Events": [
+      {
+        "Kind": "closed",
+        "Actor": {
+          "Login": "worker[bot]",
+          "ID": 99,
+          "Type": "Bot"
+        },
+        "CreatedAt": "2026-09-01T10:00:00Z"
+      },
+      {
+        "Kind": "reopened",
+        "Actor": {
+          "Login": "someone",
+          "ID": 5,
+          "Type": "User"
+        },
+        "CreatedAt": "2026-09-02T10:00:00Z"
+      }
+    ],
+    "ClosingChanges": [
+      {
+        "Repo": "medici-finance/assay",
+        "Number": 7,
+        "Merged": true,
+        "Author": {
+          "Login": "worker[bot]",
+          "ID": 99,
+          "Type": "Bot"
+        }
+      }
+    ],
+    "Complete": true
+  }
+}

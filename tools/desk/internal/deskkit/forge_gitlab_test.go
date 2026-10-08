@@ -174,6 +174,18 @@ type glServer struct {
 	triggerPipeline map[string]any
 	pipeline        map[string]any
 	deployments     []map[string]any
+	// forge-neutral brief 33's fixtures. stateEvents / closedBy are an issue's
+	// resource_state_events and closed_by LISTs (op 56), mrCommits a merge request's commits
+	// LIST (op 57). stateEventPages / mrCommitPages, when N>0, serve N one-entry pages chained by
+	// X-Next-Page instead of the canned list, and a NEGATIVE value an ENDLESS chain. issueTotal,
+	// when N>0, serves N synthetic issues on the project-issues LIST route, 100 per page (op 55's
+	// population read).
+	stateEvents     []map[string]any
+	stateEventPages int
+	closedBy        []map[string]any
+	mrCommits       []map[string]any
+	mrCommitPages   int
+	issueTotal      int
 	// forceStatus maps an escaped-path suffix to the HTTP status to return instead.
 	forceStatus map[string]int
 }
@@ -209,7 +221,7 @@ var (
 	// read, addressed by ?sha=). It is anchored so it cannot also match lPipelineJobs' path.
 	lPipelines   = regexp.MustCompile(`^/api/v4/projects/[^/]+/pipelines$`)
 	lBranch      = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
-	lMRLabelEvts = regexp.MustCompile(`/merge_requests/[0-9]+/resource_label_events$`)
+	lMRLabelEvts = regexp.MustCompile(`/(merge_requests|issues)/[0-9]+/resource_label_events$`)
 	lMRNote1     = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
 	lProjLabels  = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
 	lRepoFile    = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
@@ -232,7 +244,24 @@ var (
 	lJobPlay     = regexp.MustCompile(`^/api/v4/projects/[^/]+/jobs/[0-9]+/play$`)
 	lDeployments = regexp.MustCompile(`^/api/v4/projects/[^/]+/deployments$`)
 	lDeployApprv = regexp.MustCompile(`^/api/v4/projects/[^/]+/deployments/[0-9]+/approval$`)
+	// forge-neutral brief 33's routes (ops 56 and 57).
+	lIssueStateEvts = regexp.MustCompile(`^/api/v4/projects/[^/]+/issues/[0-9]+/resource_state_events$`)
+	lIssueClosedBy  = regexp.MustCompile(`^/api/v4/projects/[^/]+/issues/[0-9]+/closed_by$`)
+	lMRCommits      = regexp.MustCompile(`^/api/v4/projects/[^/]+/merge_requests/[0-9]+/commits$`)
 )
+
+// glPagedChain serves page n of an N-page one-entry chain (N<0: endless), setting X-Next-Page
+// while more remain, and returns the requested page number.
+func glPagedChain(w http.ResponseWriter, page string, pages int) int {
+	n := 1
+	if page != "" {
+		_, _ = fmt.Sscanf(page, "%d", &n)
+	}
+	if pages < 0 || n < pages {
+		w.Header().Set("X-Next-Page", fmt.Sprintf("%d", n+1))
+	}
+	return n
+}
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 	body, _ := readAllCompact(r)
@@ -252,6 +281,38 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 	page := r.URL.Query().Get("page")
 
 	switch {
+	case r.Method == http.MethodGet && lIssueStateEvts.MatchString(path):
+		if s.stateEventPages != 0 {
+			n := glPagedChain(w, page, s.stateEventPages)
+			enc([]map[string]any{{"id": n, "state": "closed", "created_at": "2026-09-01T10:00:00Z",
+				"user": map[string]any{"id": 5, "username": "someone"}}})
+			return
+		}
+		enc(nonNilList(s.stateEvents))
+	case r.Method == http.MethodGet && lIssueClosedBy.MatchString(path):
+		enc(nonNilList(s.closedBy))
+	case r.Method == http.MethodGet && lMRCommits.MatchString(path):
+		if s.mrCommitPages != 0 {
+			n := glPagedChain(w, page, s.mrCommitPages)
+			enc([]map[string]any{{"id": fmt.Sprintf("sha%04d", n)}})
+			return
+		}
+		enc(nonNilList(s.mrCommits))
+	case r.Method == http.MethodGet && lIssueRoot.MatchString(path) && s.issueTotal > 0:
+		n := 1
+		if page != "" {
+			_, _ = fmt.Sscanf(page, "%d", &n)
+		}
+		var out []map[string]any
+		for i := (n-1)*100 + 1; i <= n*100 && i <= s.issueTotal; i++ {
+			out = append(out, glIssue(map[string]any{"id": 5000 + i, "iid": i,
+				"title": fmt.Sprintf("issue %d", i), "state": "opened",
+				"created_at": "2026-09-01T09:00:00Z", "labels": []string{"area:x"}}))
+		}
+		if n*100 < s.issueTotal {
+			w.Header().Set("X-Next-Page", fmt.Sprintf("%d", n+1))
+		}
+		enc(nonNilList(out))
 	case lRepoFile.MatchString(path):
 		// Repository Files API: GET reads, POST creates, PUT updates. The file path is the
 		// last segment, which the client library escapes fully (a "." becomes %2E), so it is
@@ -531,6 +592,14 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 // glB64 renders s as the base64 the Repository Files API returns for file content.
+// nonNilList renders a nil fixture list as `[]`, never `null`.
+func nonNilList(l []map[string]any) []map[string]any {
+	if l == nil {
+		return []map[string]any{}
+	}
+	return l
+}
+
 func glB64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 // glNotes builds n synthetic non-system notes starting at the given id.
@@ -1359,7 +1428,7 @@ func glCases() []glCase {
 		{
 			// The resource-label-events endpoint is GitLab's exact analog of the GitHub
 			// timeline read: add/remove per label WITH the acting user. `remove` events are
-			// dropped (a removal is not an attestation), and an event whose label GitLab has
+			// retained to resolve standing provenance; an event whose label GitLab has
 			// since deleted comes back unnamed and is dropped too — a stamp nobody can name
 			// attests to nothing.
 			name: "list_label_events", method: "ListLabelEvents",
@@ -1374,6 +1443,13 @@ func glCases() []glCase {
 				}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ListLabelEvents(glRepo, 7) },
+		},
+		{
+			name: "list_issue_label_events", method: "ListIssueLabelEvents",
+			setup: func(s *glServer) {
+				s.labelEvents = []map[string]any{{"id": 1, "action": "add", "user": map[string]any{"id": 42, "username": "desk-bot"}, "label": map[string]any{"name": "dispatched-model:gpt-6.1-sol"}}, {"id": 2, "action": "remove", "user": map[string]any{"id": 42, "username": "desk-bot"}, "label": map[string]any{"name": "dispatched-model:gpt-6.1-sol"}}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListIssueLabelEvents(glRepo, 7) },
 		},
 		{
 			// SYSTEM notes are dropped: GitLab records its own activity in the same list as
@@ -2546,6 +2622,164 @@ func glCases() []glCase {
 					"web_url": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.RunStatus(glRepo, RunRef{ID: "9001"}) },
+		},
+		// --- forge-neutral brief 33: ops 55-58 and the widened fields ---
+		{
+			// Op 55. The issues-only endpoint with state=all and newest-first ordering; GitLab's
+			// `opened` normalises to `open`, and a closed issue carries its closed_at. Author Type is
+			// not resolved by this read, so it stays EMPTY (could-not-check), never "User".
+			name: "list_issues", method: "ListIssues",
+			setup: func(s *glServer) {
+				s.issueList = []map[string]any{
+					glIssue(map[string]any{"id": 1001, "iid": 13, "title": "still open",
+						"labels": []string{"area:x"}, "created_at": "2026-09-02T09:00:00Z"}),
+					glIssue(map[string]any{"id": 1000, "iid": 12, "title": "done", "state": "closed",
+						"labels": []string{}, "created_at": "2026-09-01T09:00:00Z",
+						"closed_at": "2026-09-03T09:00:00Z"}),
+				}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ListIssues(glRepo, IssueListQuery{State: IssueStateAll})
+			},
+		},
+		{
+			// Op 55 with the one label: sent as the `labels` parameter, URL-encoded.
+			name: "list_issues_label", method: "ListIssues",
+			setup: func(s *glServer) {
+				s.issueList = []map[string]any{glIssue(map[string]any{"title": "labelled",
+					"labels": []string{"gate: human"}, "created_at": "2026-09-01T09:00:00Z"})}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ListIssues(glRepo, IssueListQuery{State: IssueStateOpen, Label: "gate: human"})
+			},
+		},
+		{
+			// Op 55 refuses a label carrying a comma with ZERO requests: the provider would read it
+			// as two labels, a different question.
+			name: "list_issues_refuses_comma_label", method: "ListIssues",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ListIssues(glRepo, IssueListQuery{State: IssueStateOpen, Label: "a,b"})
+			},
+		},
+		{
+			// Op 56. The close and reopen transitions with their actors (Type resolved through the
+			// users API, once per account) and the closing merge requests — a merged one in this
+			// project and an unmerged one in another project, whose path is resolved by id.
+			name: "issue_state_events", method: "IssueStateEvents",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"id": 77, "path_with_namespace": "medici-finance/other"}
+				s.users["5"] = map[string]any{"id": 5, "username": "someone", "bot": false}
+				s.users["99"] = map[string]any{"id": 99, "username": "worker-bot", "bot": true}
+				s.stateEvents = []map[string]any{
+					{"id": 1, "state": "closed", "created_at": "2026-09-01T10:00:00Z",
+						"user": map[string]any{"id": 99, "username": "worker-bot"}},
+					{"id": 2, "state": "reopened", "created_at": "2026-09-02T10:00:00Z",
+						"user": map[string]any{"id": 5, "username": "someone"}},
+					{"id": 3, "state": "closed", "created_at": "2026-09-03T10:00:00Z",
+						"user": map[string]any{"id": 99, "username": "worker-bot"}},
+				}
+				s.closedBy = []map[string]any{
+					glMR(map[string]any{"iid": 7, "state": "merged", "project_id": 77}),
+					glMR(map[string]any{"iid": 8, "state": "opened", "project_id": 77}),
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.IssueStateEvents(glRepo, 12) },
+		},
+		{
+			// Op 56 with a closing merge request whose state is unreadable: its Merged cannot be
+			// read, so the whole history is NOT Complete — never "unmerged".
+			name: "issue_state_events_merged_unreadable", method: "IssueStateEvents",
+			setup: func(s *glServer) {
+				s.closedBy = []map[string]any{glMR(map[string]any{"iid": 7, "state": "", "project_id": 0})}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.IssueStateEvents(glRepo, 12) },
+		},
+		{
+			// Op 57. The merge request's commits, oldest first as the provider lists them.
+			name: "list_change_commits", method: "ListChangeCommits",
+			setup: func(s *glServer) {
+				s.mrCommits = []map[string]any{{"id": "aaa111"}, {"id": "bbb222"}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListChangeCommits(glRepo, 7) },
+		},
+		{
+			// Op 58. The project's default branch, read off GET /projects/:id.
+			name: "repo_default_branch", method: "RepoDefaultBranch",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"id": 1, "path_with_namespace": "medici-finance/assay",
+					"default_branch": "trunk"}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoDefaultBranch(glRepo) },
+		},
+		{
+			// Op 58 with no default branch reported: could-not-check, never "main".
+			name: "repo_default_branch_empty_refuses", method: "RepoDefaultBranch",
+			setup: func(s *glServer) {
+				s.project = map[string]any{"id": 1, "path_with_namespace": "medici-finance/assay"}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RepoDefaultBranch(glRepo) },
+		},
+		{
+			// MergeCommitSHA is filled only for a MERGED merge request.
+			name: "get_pull_request_merged_commit_sha", method: "GetPullRequest",
+			setup: func(s *glServer) {
+				s.mr = glMR(map[string]any{"state": "merged", "draft": false,
+					"merge_commit_sha": "fff999", "merged_at": "2026-09-10T12:00:00Z"})
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetPullRequest(glRepo, 7) },
+		},
+		{
+			// ClosedBy is filled only for a CLOSED issue, with its Type resolved.
+			name: "get_issue_closed_by", method: "GetIssue",
+			setup: func(s *glServer) {
+				s.issue = glIssue(map[string]any{"state": "closed",
+					"closed_by": map[string]any{"id": 99, "username": "worker-bot"}})
+				s.mrMissing = true
+				s.users["5"] = map[string]any{"id": 5, "username": "someone", "bot": false}
+				s.users["99"] = map[string]any{"id": 99, "username": "worker-bot", "bot": true}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetIssue(glRepo, 12) },
+		},
+		{
+			// ChangeRef's new fields: the author (Type resolved), the base ref, and the
+			// cross-repository reading — a fork (project ids differ) carries no head repo; the same
+			// project carries its own slug.
+			name: "list_changes_cross_repo", method: "ListChanges",
+			setup: func(s *glServer) {
+				s.users["99"] = map[string]any{"id": 99, "username": "worker-bot", "bot": true}
+				s.mrList = []map[string]any{
+					glMR(map[string]any{"iid": 7, "source_project_id": 1, "target_project_id": 1}),
+					glMR(map[string]any{"iid": 8, "source_project_id": 2, "target_project_id": 1,
+						"source_branch": "feat/fork"}),
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListChanges(glRepo, OpenAndMerged()) },
+		},
+		{
+			// A diff GitLab did not render (too large, or collapsed) states PatchAbsent rather than
+			// reading as an empty patch.
+			name: "list_changed_files_patch_absent", method: "ListChangedFiles",
+			setup: func(s *glServer) {
+				s.diffs = []map[string]any{
+					{"old_path": "a.go", "new_path": "a.go", "diff": "@@ -1 +1 @@\n-a\n+b\n"},
+					{"old_path": "big.bin", "new_path": "big.bin", "too_large": true, "diff": ""},
+					{"old_path": "gen.go", "new_path": "gen.go", "collapsed": true, "diff": ""},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListChangedFiles(glRepo, 7) },
+		},
+		{
+			// A note's updated_at is carried as Comment.UpdatedAt.
+			name: "list_comments_typed_issue_updated_at", method: "ListCommentsTyped",
+			setup: func(s *glServer) {
+				s.issueNotes = []map[string]any{
+					{"id": 950, "body": "edited note", "system": false,
+						"created_at": "2026-08-30T12:00:00Z", "updated_at": "2026-08-31T12:00:00Z",
+						"author": map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListCommentsTyped(glRepo, 12, TargetIssue) },
 		},
 	}
 }

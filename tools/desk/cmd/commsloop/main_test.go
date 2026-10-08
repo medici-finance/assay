@@ -31,6 +31,16 @@ func TestIdlePollCadenceIsNotZero(t *testing.T) {
 	}
 }
 
+// engineTestTimeout bounds the wait for loopengine.Run to exit after the STOP flag is
+// planted. It is a wedge SAFETY NET, not a measurement: on an idle machine Run exits within
+// a second or two. Every Run iteration calls deskkit.Guard, which spawns a git subprocess,
+// so under the CPU saturation of a whole-module `go test ./...` the old 5s ceiling was
+// missed although nothing was wedged. Same constant and reasoning as internal/loopengine
+// and cmd/fanoutloop (#738); the module root's TestNoShortEngineDeadline keeps short
+// literal deadlines out of every test that drives the engine. The pacing assertion below is
+// a FLOOR on elapsed time and does not depend on this ceiling.
+const engineTestTimeout = 60 * time.Second
+
 // setupCommsloopDeskHome points deskkit's state dir (via HOME) at a fresh
 // temp dir so this test controls the kill-switch deterministically, mirroring
 // internal/loopengine's own setupDeskHome test helper.
@@ -112,7 +122,7 @@ func TestRunDoesNotBusySpinOnEmptyQueue(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- loopengine.Run(cfg, loop) }()
 
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(engineTestTimeout)
 	planted := false
 	tick := time.NewTicker(2 * time.Millisecond)
 	defer tick.Stop()

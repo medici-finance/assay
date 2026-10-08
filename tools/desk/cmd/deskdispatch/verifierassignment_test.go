@@ -97,3 +97,15 @@ func TestWorkerAndReviewKitsUnaffectedByVerifierSplit(t *testing.T) {
 		t.Errorf("the review Assignment was perturbed by the verifier split:\n%s", reviewAsg)
 	}
 }
+
+// The guard above reads only the Assignment. The common kit is emitted to EVERY class after
+// it, so the worker's identity export can return through the standing clauses instead
+// (#2122 review SEC-1). Read the WHOLE prompt of both non-worker classes.
+func TestFullPromptNoWorkerLoop(t *testing.T) {
+	for kit, item := range map[string]string{"verifier": "verify-item-9", "review": "review-item-9"} {
+		if p := dispatchPrompt(t, kit, item); strings.Contains(p, workerLoopIdentityLine) {
+			t.Errorf("the full %s prompt carries the worker's loop identity %q — the agent's next write "+
+				"would mint the worker App and miss its own loop's STOP flag", kit, workerLoopIdentityLine)
+		}
+	}
+}

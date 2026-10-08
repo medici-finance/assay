@@ -747,6 +747,62 @@ RISK-VALUE DERIVED: roleVerifier = "verifier" @ lanes.go:48 — equals the rolet
 RISK-VALUE DERIVED: VerifyGateLabel = "verify-gate" @ trust.go:298 — equals the label the verify-gate-close workflow keys on (line 57); row 11 refuses unlabelled items.
 
 VERIFY: BLOCKED — 16 of 17 rows pass by hand (rows 1-16). Row 17 exits 2 as authored on merged main (#1281, open). The Linux network-off witness proves 14 of 17. Witness row 1 fails only on container environment limits outside this brief. Row 16 (prose-led command) and row 17 (consumers) need re-authoring, tracked at #1927, before the witness can pass. #1800 remains open for the darwin host.
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-07 claude-opus-5-5-verifier
+
+Context: gate: model; risk: regulatory no, customer no, irreversible no, sensitive-data no. Verified against merged main dde4fbeaead9c173e8355869e06d86e8e9eee446 (origin/main at run time), in a detached temporary worktree. The runner is not the implementer. Hand runs used the darwin-arm64 host (go1.27.1), offline: GOPROXY=off, GOFLAGS=-mod=readonly, KUBECONFIG=/dev/null, no forge calls. statusgen v1.0.32 was called as the installed binary directly, with no credential variables in its environment. Expectations were written down from the brief's Task and Verify sections before any diff, test body or earlier verdict was read.
+
+Why this re-run: since the 2026-10-04 run (fe12ee0c9), deskkit forge.go, forge_github.go and forge_gitlab.go changed, the forge-gitlab inventory changed, and deskclose authority.go changed (a whitespace-only edit to one comment). The brief's Verify table did not change: row 16's Command cell still opens with prose, and row 17 is still the merged-main consumers check. Inventory note: ReopenIssue is now inventory row 46 (row 38 is GetIssueTyped); the row credits forge-neutral brief 16. This is numbering drift in the brief text, not a behaviour gap.
+
+#### Hand run (against dde4fbeaead9)
+
+| # | Command | Expect | Observed (exit + key output line) | Date | Runner |
+|---|---------|--------|-----------------------------------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | exit 0; 103 packages ok, 0 FAIL, 0 cached; deskclose ok 12.6s, internal/deskkit ok 279.9s. Host load average about 20-29 on 16 CPUs; no package timed out on this run | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskclose/... -count=1` | exit 0; existing modes green alongside the two new ones | exit 0; ok tools/desk/cmd/deskclose 2.96s | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawSucceedsOnOwnDraft -count=1 -v` | exit 0 | exit 0; PASS with 5 subtests (abandoned; superseded --by; superseded --by typed change; already-closed no-op; dry-run writes nothing) | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesNonAuthor -count=1 -v` | refused, zero writes | exit 0; PASS, with the subtest "id matches, login does not" | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesNonDraft -count=1 -v` | refused, zero writes | exit 0; PASS | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesDecisionLabelled -count=1 -v` | refused by refuseDecisionItem | exit 0; PASS | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawIDPinRejectsLoginOnlyMatch -count=1 -v` | login-only match refused | exit 0; PASS with 2 subtests (login matches but id does not; roster pins no id for the role) | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawIgnoresUnsignedRuling -count=1 -v` | succeeds with R-1 unsigned | exit 0; PASS | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireSucceedsAsVerifier -count=1 -v` | reopen, comment, close in order | exit 0; PASS with 2 subtests (already open is an idempotent no-op; dry-run writes nothing) | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireRefusesNonVerifier -count=1 -v` | refused per role, zero writes | exit 0; PASS with 4 subtests (worker; reviewer; desk; unresolved) | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireRefusesUnlabelledItem -count=1 -v` | refused naming the label, zero writes | exit 0; PASS (5 PASS lines) | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./cmd/deskclose/... -run TestVerifyGateRefireIgnoresUnsignedRuling -count=1 -v` | succeeds with R-1 unsigned | exit 0; PASS | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `grep -cE -e 'sender\.type' -e 'gh issue reopen' .github/workflows/verify-gate-close.yml` | at least 2 | exit 0; count 4. The workflow has no diff since fe12ee0c9, and implementing commit 5f906464a touched no workflow path | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && go test ./internal/deskkit/ -run TestReopenIssueOpBothBackends -count=1 -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -count=1` | exit 0 on every chained command | exit 0; TestReopenIssueOpBothBackends github and gitlab subtests PASS; 4 ok lines, none reporting no tests | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 15 | `grep -c 'self-withdraw' docs/streams/forge-gitlab/inventory.md tools/desk/cmd/deskclose/main.go; grep -c 'verify-gate-refire' docs/streams/forge-gitlab/inventory.md tools/desk/cmd/deskclose/main.go` | each total at least 1 | exit 0; self-withdraw total 2 (main 2, inventory 0); verify-gate-refire total 5 (main 2, inventory 3) | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 16 | Mutation in the home worktree: lanes.go line 239 changed to "if false && pr.Author.ID != self.id {", then `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdraw -count=1 -v`; restored with git checkout and re-run | mutant exit 1; restored exit 0 | Mutant: exit 1. Only TestSelfWithdrawIDPinRejectsLoginOnlyMatch fails, in subtest "login matches, id does not", with "want exit 5, got 0"; 18 other PASS lines. Restored: 0-byte diff, exit 0. PASS | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+| 17 | `statusgen --root . --consumers --brief forge-neutral/16` | exit 0 | As authored on merged main: exit 2, "COULD-NOT-CHECK: assay:assay:forge-neutral:16 is not in the diff against dde4fbeaead9…". Re-scoped to authoring commit d97abb672 with base d97abb672^: exit 0, "4 corroborated, 0 disproved, 1 unchecked" (the workflow entry is out of scope). FAIL as authored (#1281 class); the substance holds | 2026-10-07 | assay-verifier-app[bot] @ dde4fbeaead9 (on-behalf-of human:ian) (forge-identity) |
+
+Rows passing by hand: 16 of 17 (rows 1-16). Row 17 fails as authored.
+
+#### Execution witness (darwin host)
+
+statusgen v1.0.32 verifyrun ran on the host, without a dry run, and exited 2. The --check summary: "2 pass, 0 fail, 15 could-not-run/missing (of 17 Verify rows)". Rows 13 and 15 pass. Rows 1-12, 14 and 17 are check:ci rows, which need a network-off sandbox; this darwin host has none (#1800). Row 16 could not run as a prose-led command. The witness lines are saved separately (witness-table.md). The pinned harness image in the paired-versions harness block is not cached on this host. No Linux container witness was taken: the 2026-10-04 run's seccomp-unconfined allowance applied to that run only.
+
+#### Findings
+
+- **Blocker still reproduces.** Row 16's Command cell still opens with the code identifier pr.Author.ID, so verifyrun reports "prose-led-command: not executed". Row 17 still exits 2 on merged main, because the brief (#996) and its implementation (#1172) never share one diff. Both are tracked at #1927, and the brief's Verify table is unchanged since that issue was opened.
+- **Row 1 is clean this run.** It exits 0 with 103 packages ok. The 2026-10-04 load timeouts did not recur.
+- **No defect in the shipped lanes.** The forge seam changes since fe12ee0c9 leave ReopenIssue green on both backends, with the golden and coverage tests passing.
+- **Doc drift.** The brief text says inventory "row 38", but the op is row 46 on main. This is cosmetic. Whoever re-authors under #1927 can fix it at the same time.
+
+#### Risk-bearing values (enumerate, rank, derive)
+
+Enumerated over the deskclose lanes and verbs, the deskkit trust, roletoken and forgeidentity sources, and the verify-gate-close workflow. Ranked by blast radius:
+1. Authorship id refusal of an unpinned roster id: ident.ID == 0 @ lanes.go:160, with the comparison pr.Author.ID != self.id @ lanes.go:239. A wrong value lets an App close a draft it did not author.
+2. roleVerifier = "verifier" @ lanes.go:48.
+3. VerifyGateLabel = "verify-gate" @ trust.go:298.
+4. reasonNotPlanned = "not_planned" @ verbs.go:41. This is the close disposition, it is reversible, and it ranks last.
+
+RISK-VALUE: DERIVED — ident.ID == 0 refusal @ lanes.go:160 (+ pr.Author.ID != self.id @ lanes.go:239) — 0 is the roster's "unpinned" sentinel (forgeidentity.go:51 "0 when unpinned"), so refusing 0 means a login-only match never passes; rows 7 and 16 show the id half is a live control.
+RISK-VALUE: DERIVED — roleVerifier = "verifier" @ lanes.go:48 — equals the verify-desk to verifier loop binding at roletoken.go:45, the role a verify-desk session mints; row 10 refuses every other role.
+RISK-VALUE: DERIVED — VerifyGateLabel = "verify-gate" @ trust.go:298 — equals the label the server-side guard keys on (verify-gate-close.yml:57), so the lane's scope and the independent guard's scope match exactly; row 11 refuses unlabelled items.
+
+VERIFY: BLOCKED — 16 of 17 rows pass by hand (rows 1-16); row 17 exits 2 as authored on merged main (#1281 class). The darwin witness is 2 of 17, with check:ci rows needing a sandbox (#1800). Rows 16 and 17 need re-authoring under #1927 before any witness can pass.
+
+Attached to #1927: https://github.com/medici-finance/assay/issues/1927#issuecomment-6038228849
 
 ## Review
 Gate: **model** (from frontmatter — all four risk answers `no`; see gate-why for the reasoning that

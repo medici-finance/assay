@@ -36,6 +36,12 @@ func (c *Cell) repairAdmissionValue() string {
 // Every process here goes through os/exec — no syscall, no shell — so the Windows consequence
 // this brief names is not made worse.
 func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution, cockpit cockpitResolution) {
+	// Refuse storage-heavy boot work before fetch/worktree creation as well as
+	// atomically rechecking at child enrollment in the process supervisor.
+	if err := c.cacheAdmission(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		exitWith(6)
+	}
 	if persist {
 		applyEnvKVs(c.Env, filepath.Join(c.Dir, "cell.env"), false, persistKVs)
 	}
@@ -112,12 +118,14 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	fmt.Printf("[launch] %s/%s kind=%s model=%s effort=%s provider=%s harness=%s session=%s config=%s cwd=%s desk_roots=%s (desk verbs → HOME=%s)\n",
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
-	env := os.Environ()
+	env := c.cacheEnv(os.Environ())
 	if harness != "codex" {
 		env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+string(filepath.ListSeparator)+c.Env.Get("PATH"))
 	}
 	env = envSet(env, "DESK_LOOP", role)
 	env = envSet(env, "DESK_SESSION", session)
+	env = envSet(env, "ASSAY_SOURCE_REVISION", sha)
+	env = envSet(env, "ASSAY_HARNESS", harness)
 	var commsErr error
 	env, commsErr = c.deskCommsEnv(role, env)
 	if commsErr != nil {
@@ -262,6 +270,11 @@ func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string) {
 	}
 	env := c.scrubbedComposeEnv(role, harness, session)
 	argv := harnessArgv(harness, role, model, session, wt)
+	if p, err := c.cachePolicy(); err != nil {
+		die("Go cache policy: %v", err)
+	} else if p != nil {
+		argv = append([]string{selfPath(), "cache-run"}, argv...)
+	}
 	var cmdline strings.Builder
 	cmdline.WriteString("env -i")
 	for _, kv := range env.Pairs {
@@ -292,6 +305,13 @@ func (c *Cell) scrubbedDeskLaunch(role, harness, model, session, wt string) {
 // exec(2) syscall so the package adds no direct syscall use (row 9) — the observable difference
 // is one extra process in the tree.
 func runForeground(argv []string, env []string, dir string) {
+	// Managed launches need child-tree custody even outside house cadence.
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "ASSAY_GO_CACHE_POLICY=") && kv != "ASSAY_GO_CACHE_POLICY=" {
+			runCachedForeground(argv, env, dir)
+			return
+		}
+	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
 	cmd.Dir = dir

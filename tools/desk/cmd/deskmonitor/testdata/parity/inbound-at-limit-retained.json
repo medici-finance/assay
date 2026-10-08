@@ -1,5 +1,5 @@
 {
- "description": "Property B (3/4): a read AT the --limit is a moving window \u2014 an established repo retains its baseline, and a truncated SEED establishes none (and suppresses the armed line).",
+ "description": "Property B (3/4): a read holding MORE than the --limit ceiling is a moving window \u2014 an established repo retains its baseline, and a truncated SEED establishes none (and suppresses the armed line).",
  "kind": "inbound",
  "env": {
   "INBOUND_MONITOR_LIMIT": "3"
@@ -10,7 +10,7 @@
  ],
  "cycles": [
   {
-   "note": "tracker seeds under the limit; agents' seed is truncated",
+   "note": "tracker seeds under the ceiling; agents' seed is truncated",
    "reads": {
     "example-org/tracker": {
      "issues": [
@@ -47,7 +47,7 @@
    }
   },
   {
-   "note": "tracker reaches the limit; agents still truncated",
+   "note": "tracker goes past the ceiling; agents still truncated",
    "reads": {
     "example-org/tracker": {
      "issues": [
@@ -61,6 +61,10 @@
       },
       {
        "number": 3,
+       "updatedAt": "2026-09-01T00:00:00Z"
+      },
+      {
+       "number": 4,
        "updatedAt": "2026-09-01T00:00:00Z"
       }
      ]

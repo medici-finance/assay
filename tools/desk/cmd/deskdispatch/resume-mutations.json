@@ -1,0 +1,65 @@
+{
+  "test": "go test ./cmd/deskdispatch -run '^TestResume|^TestAllocation|^TestFreshDispatchStill|^TestReadOnlyLanes' -count=1 -timeout 60s",
+  "control": {
+    "name": "resume source resolution bypassed",
+    "file": "cmd/deskdispatch/resume.go",
+    "old": "if !workerResume(o) {",
+    "new": "if true || !workerResume(o) {"
+  },
+  "mutations": [
+    {
+      "name": "missing source branch proceeds",
+      "file": "cmd/deskdispatch/resume.go",
+      "old": "if !branchNameRe.MatchString(branch) ||",
+      "new": "if false && !branchNameRe.MatchString(branch) ||"
+    },
+    {
+      "name": "missing head proceeds",
+      "file": "cmd/deskdispatch/resume.go",
+      "old": "if !resumeHeadRe.MatchString(change.HeadSHA) {",
+      "new": "if false && !resumeHeadRe.MatchString(change.HeadSHA) {"
+    },
+    {
+      "name": "closed change resumes",
+      "file": "cmd/deskdispatch/resume.go",
+      "old": "if change.State != \"open\" || change.MergedAt != \"\" {",
+      "new": "if false && (change.State != \"open\" || change.MergedAt != \"\") {"
+    },
+    {
+      "name": "fork or unknown origin resumes",
+      "file": "cmd/deskdispatch/resume.go",
+      "old": "if change.CrossRepo != deskkit.CrossRepoSame {",
+      "new": "if false && change.CrossRepo != deskkit.CrossRepoSame {"
+    },
+    {
+      "name": "explicit branch mismatch ignored",
+      "file": "cmd/deskdispatch/resume.go",
+      "old": "if o.branch != \"\" && o.branch != branch {",
+      "new": "if false && o.branch != \"\" && o.branch != branch {"
+    },
+    {
+      "name": "failed refresh trusts stale ref",
+      "file": "cmd/deskdispatch/worktree.go",
+      "old": "if fetched.err != nil {",
+      "new": "if false && fetched.err != nil {"
+    },
+    {
+      "name": "wrong or missing remote tip proceeds",
+      "file": "cmd/deskdispatch/worktree.go",
+      "old": "if r.err != nil || strings.TrimSpace(r.stdout) != head {",
+      "new": "if false && (r.err != nil || strings.TrimSpace(r.stdout) != head) {"
+    },
+    {
+      "name": "unchecked allocation proceeds",
+      "file": "cmd/deskdispatch/resume.go",
+      "old": "source == nil || !source.verified || source.branch != plan.branch || !resumeHeadRe.MatchString(source.head) || plan.detached",
+      "new": "source == nil"
+    },
+    {
+      "name": "second resume bypasses allocation boundary",
+      "file": "cmd/deskdispatch/resume.go",
+      "old": "// One checked source feeds",
+      "new": "func secondResume(o dispatchOpts) { runCmd(o.root, \"deskwt\", \"add\", \"second-resume\", \"--branch\", \"feat/item\", \"--base\", mainlineRef) }\n\n// One checked source feeds"
+    }
+  ]
+}

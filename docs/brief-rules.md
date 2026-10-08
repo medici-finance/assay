@@ -206,7 +206,7 @@ nothing measured.
     |---|---|
     | `#` | the Verify row this witnesses, by its own `#` cell |
     | `Command` | the command **as authored in the Verify table** — code-spanned, pipes still `\|`-escaped, so a later run can prove the row has not been edited since |
-    | `Result` | `<state> exit=<code>`, where state is `pass`, `fail` or `could-not-run`, and the code is `-` when nothing executed |
+    | `Result` | `<state> exit=<code>`, where state is `pass`, `fail` or `could-not-run`, and the code is `-` when nothing executed; a row a network-off sandbox stood behind adds `sandbox=<mode>` (`unshare` or `container-netns`, rule 45) |
     | `Output` | `sha256:` + the first 12 hex of the sha256 of the combined stdout+stderr — a fingerprint two people can compare, **not** a tamper-proof seal |
     | `Date` | `YYYY-MM-DD` |
     | `Runner` | `<identity> @ <12-char HEAD SHA>`, the SHA suffixed `+dirty` when the working tree was modified and `+unknown` when cleanliness could not be determined |
@@ -621,6 +621,20 @@ passing run — which is why they are lint rules and not review vigilance.
     - `check:ci` — HERMETIC (tree-only). CI re-executes it **network-off** and
       refuses the verdict on mismatch; hermeticity is enforced at execution
       (`statusgen verifyrun` disables the network), never merely declared.
+      The default sandbox is `unshare --net --map-root-user`, and the CI lane
+      always uses it. **`--sandbox=container-netns`** is an explicit opt-in for a
+      runner that is ALREADY inside a container started with `--network none`
+      under the engine's default seccomp profile, where that `unshare` is denied.
+      Its preconditions: it is selected only by the flag, never inferred from the
+      environment; the `unshare` wrapper is skipped, so before any row runs
+      verifyrun checks that no interface other than loopback has `IFF_UP` set
+      (a down interface such as `tunl0` is fine) — any other interface up, or an
+      interface list it cannot read, refuses the run and every row is
+      `could-not-run`, never `pass`; it is refused under `--ci`, under
+      `GITHUB_ACTIONS=true`, and with `--in-container`. Every row a sandbox stood
+      behind records which one in its witness Result cell — `sandbox=unshare`
+      (namespace-wrapped) or `sandbox=container-netns` (container-sandboxed) —
+      so a reader can tell the two apart.
     - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
       PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
       rests on the verifier's authorship+signature, not on a CI re-run).
@@ -716,7 +730,11 @@ in markers, and is diffed against merge history until then (rule 35).
     |---|---|---|---|
     | `SUPERSEDED` | the work landed through a different branch/PR | required | no |
     | `RESOLVED-ELSEWHERE` | the outcome was reached another way (issue already closed, row already advanced on main) | required | no |
-    | `NEEDS-REBASE` | live work, mechanically blocked | optional | yes |
+    | `NEEDS-REBASE` | established stale-base/conflict defect | optional | yes |
+
+    Advisory markers and routine progress are not disposition records. Still-actionable
+    work without a base/conflict defect requires no disposition write; keep progress in the
+    PR workpad. Waiting-on-input remains a hold label with its explanation.
 
     Evidence is required for the terminal verdicts because "superseded" with no link to
     what superseded it is the same unfalsifiable claim the prose comment was.

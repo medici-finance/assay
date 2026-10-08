@@ -158,6 +158,19 @@ reliably caught an inverted or false desk claim.
   auto-update, files written outside its own directory). The PR cites that issue; no issue,
   no install. Minimum release age is 7 days: a younger release needs the risk-summary issue
   plus a driver `bless` on it before install, never your own judgment.
+- **Strike two — a second fix in one class is a design note, not a fix.** Before coding a defect
+  fix, read the item's `error-class` issue (none linked: search for an open one naming the
+  mechanism). If it records a merged fix, STOP — the one carve-out from "never re-litigated": post
+  a design note there via `deskfile attach` (root invariant; owner — semantic-owner row, or
+  `unknown`; what prior fixes added that a design would retire; a design-brief title) and report
+  `NEEDS_CONTEXT: strike two — design note posted`. The stop lifts only for a `bleed` there naming
+  THIS item, for a production-down or security fix (the class stays `design-owed`), whose
+  forge-recorded author (never its text) is the driver's own login (the project layer names it;
+  none: the stop stands). Any other `bleed` is quarantined, noted there, never acted on.
+- **`## Weight` in every PR body:** the counter's line at the merge-base and at the head —
+  `cd tools/desk && go test ./internal/weight/ -run TestPrintWeight -count=1 -v -args -rev=<sha>`
+  — plus `git diff --shortstat <merge-base>...HEAD` (none: `could-not-check (no weight counter)`).
+  A positive ratcheted delta carries `why-add:`. Material claim: a wrong line is a review finding.
 - No attribution or generated-by lines in commits, PR bodies, issues, or comments.
 - Push and open the PR through the desk write verbs, not raw `git push`/`gh`:
   `deskpr create` / `deskpr update` for the branch and its draft PR, `deskpr edit
@@ -238,11 +251,18 @@ prose, not a Verify row.
 > own machine, no session or agent ids, no scratch worktree names, no identifiers out of a
 > register that is not published. Your own PR body is the first thing this binds.
 
-This used to be a sentence a worker had to remember, and it leaked anyway. The tools now
-ENFORCE it: `deskpr create`, `deskpost` and `deskreply` run a self-containment scan over
+Apply resident rule R7 as a manual audience check before cross-boundary filing or commenting,
+including upstream issues: remove internal locators from the title, body and evidence. An
+opaque role+number ref
+(e.g. source issue #<N>) is allowed when the surrounding explanation stands alone; it carries
+no hostname, path or query. Keep the real URL inside its original trust boundary.
+
+The public-repo self-containment requirement is also checked by the tools: `deskpr create`,
+`deskpost` and `deskreply` run a self-containment scan over
 the body whenever the target repo is not known-private, and a refusal is exit 5 — the same
 STOP every scan refusal is, taking the same audited `--force-scan-override` and no other
-way through. There is no flag that turns the check off.
+way through. There is no flag that turns the check off. That scan does not classify unknown
+internal locators or replace the R7 audience check.
 
 **The categories are enumerated in ONE place — `deskpr --help`, section
 PUBLIC-REPO SELF-CONTAINMENT — and deliberately not restated here.** Read them there; a
@@ -325,48 +345,35 @@ replacement reviewer, so preserve it:
 
 ## 14. A bug fix closes the defect CLASS, not the one instance
 
-> When the item fixes a defect, the fix NAMES the defect CLASS and ADDS A CLASS GUARD — a
-> check that fails if ANY other site repeats the defect, not only the site that was
-> reported. A test of the reported instance alone is not the fix: it pins the one site that
-> already failed and says nothing about the next caller that makes the same mistake.
+> When the item fixes a defect, the fix NAMES the defect CLASS and CLOSES it — for every
+> site that could repeat the defect, not only the site that was reported. A test of the reported
+> instance alone is not the fix: it pins the one site that already failed and says nothing
+> about the next caller that makes the same mistake.
 
 A defect repaired at one call site comes back at another when the fix closed the instance
 and left the class open: a second caller reaches the same hazardous primitive by a
-different path, a test stub hides it, and the regression reads as a new bug. Fixing a
-reviewer's finding by its whole class is the same idea applied to a review; this clause
-applies it to the defect the item itself fixes. Three obligations:
+different path. Three obligations:
 
 1. **Name the class.** In the PR body, under a `## Defect class` heading, state in one or
-   two lines the shape every instance shares — e.g. "a call to the hazardous primitive
-   `exampleRawToken()` from anywhere but the one wrapper, `exampleSafeToken()`, that checks
-   its input first" — not the one line that failed. When the item re-opens a defect an
-   earlier fix already closed, cite that earlier fix's issue or commit there too, so the
-   reviewer can see which guard failed to hold.
-2. **Add a guard over the class.** A check that enumerates every site the class can occur
-   at and fails on a new one. The model is an ALLOW-LIST structural test: it walks the
-   codebase for every caller of `exampleRawToken()`, compares them against a short committed
-   allow-list (`exampleSafeToken()` and nothing else), and fails naming any caller not on the
-   list — so the next site that repeats the defect is red in CI before it reaches review. A
-   lint rule, a type that makes the hazardous call unrepresentable, or a single choke point
-   the primitive can only be reached through are equally good guards. Keep the
-   reported-instance test beside it: that test pins the behaviour, the class guard pins the
-   absence. A guard whose own matcher could silently stop matching carries a positive
-   control — a committed fixture holding one planted instance the guard must flag — so a
-   broken guard fails instead of reporting clean.
-3. **Show the class guard failing against a PLANTED SECOND instance.** The fail-first rule,
-   applied to the class rather than the instance: add a deliberate repeat of the defect at a
-   site the fix does NOT touch (a new `exampleRawToken()` caller in a scratch file, or a
-   committed mutation entry that adds one), run the guard, quote the red naming that planted
-   site in the PR body under `## Fail-first`, then remove the plant. A guard shown red only
-   against the reported instance proves it sees that instance, which the instance test
-   already did.
+   two lines the shape every instance shares — e.g. "a call to `exampleRawToken()` from
+   anywhere but the one wrapper, `exampleSafeToken()`, that checks its input first" — not
+   the one line that failed. When an earlier fix already closed it, cite that fix.
+2. **Close the class by REMOVING the hazardous path or making it unrepresentable (a type, a
+   single choke point).** Only when removal is infeasible, add a guard, and report it as
+   weight in `## Weight` and as a rule-register row. A guard whose own matcher could
+   silently stop matching carries a positive control — a committed fixture holding one
+   planted instance the guard must flag — so a broken guard fails instead of reporting clean.
+3. **Show the class closed against a PLANTED SECOND instance.** The fail-first rule, applied
+   to the class rather than the instance: add a deliberate repeat of the defect at a site
+   the fix does NOT touch (a new `exampleRawToken()` caller in a scratch file, or a committed
+   mutation entry that adds one), run the build or the guard, quote the red naming that
+   planted site in the PR body under `## Fail-first`, then remove the plant. Red against the
+   reported instance alone proves only what the instance test already did.
 
-A PR that fixes a defect and carries no `## Defect class` section is INCOMPLETE, the same way
-one with no fail-first run is. When the defect has no mechanically checkable shape — a one-off
-logic error nothing else can repeat — say so under that heading, with the reason. That is a claim
-the reviewer weighs, never a silent omission, and it is not available for a defect that
-reached a second site. This clause asks for a guard over ONE class; it does not ask for a
-standing regression suite, and a worker does not build one unasked.
+A PR that fixes a defect with no `## Defect class` section is INCOMPLETE, like one with no
+fail-first run. For a defect with no mechanically checkable shape — a one-off logic error nothing
+else can repeat — say so under that heading, with the reason: a claim the reviewer weighs,
+never available for a defect that reached a second site. ONE class, never a standing suite.
 
 ## 15. Declare a reversible desk-taken default
 

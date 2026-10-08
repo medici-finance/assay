@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestFileKindSitesCarrySources'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -482,6 +482,30 @@
       "new": "\t\treturn d"
     },
     {
+      "name": "body-edit class: count a RESOLVED blocking code finding as standing (a re-review CR listing its resolved findings reads as mixed — reddens TestBodyEdit_ResolvedCodeFindingsDoNotMakeItMixed)",
+      "file": "internal/deskkit/bodyeditcr.go",
+      "old": "\t\t\tif !f.StandingBlockerAt(head) {",
+      "new": "\t\t\tif f.Severity != SeverityBlocking {"
+    },
+    {
+      "name": "standing-blocker predicate: retire every non-open state, not only resolved (a worker-asserted fix or a dispute stops blocking — reddens TestBodyEdit_NearMiss_UnresolvedCodeFindingStillMixed)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\tif f.State != StateResolved {\n\t\treturn true\n\t}\n\tev := ",
+      "new": "\tif f.State == StateOpen {\n\t\treturn true\n\t}\n\tev := "
+    },
+    {
+      "name": "standing-blocker predicate: read a mis-cased or padded state as resolved (a non-canonical state stops failing closed — reddens TestBodyEdit_NearMiss_UnresolvedCodeFindingStillMixed)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\tif f.State != StateResolved {\n\t\treturn true\n\t}\n\tev := ",
+      "new": "\tif !strings.EqualFold(strings.TrimSpace(string(f.State)), string(StateResolved)) {\n\t\treturn true\n\t}\n\tev := "
+    },
+    {
+      "name": "standing-blocker predicate: drop the evidence-head binding (a resolution at a stale head retires the entry — reddens TestBodyEdit_NearMiss_ResolvedAtStaleHeadStillMixed)",
+      "file": "internal/deskkit/reviewfinding.go",
+      "old": "\treturn ev != \"\" && ev != strings.TrimSpace(head)\n",
+      "new": "\t_ = ev\n\treturn false\n"
+    },
+    {
       "name": "the stamp-authority allowance vouches for ANY login (the widening becomes a silent default over every login)",
       "file": "internal/deskkit/modelstamp.go",
       "old": "\t_, ok := c.StampLogins[want]\n\treturn ok\n}",
@@ -538,8 +562,8 @@
     {
       "name": "#2022 — read FileSources on every write kind, not only kind `file` (a PR body or comment carrying one passes)",
       "file": "internal/deskkit/outbound.go",
-      "old": "\t\tif w.Kind == OutboundKindFile {\n\t\t\tif src, ok := w.FileSources[fd.Name]; ok {",
-      "new": "\t\tif true {\n\t\t\tif src, ok := w.FileSources[fd.Name]; ok {"
+      "old": "\t\t\topts.InFile = fd.Name != OutboundFieldCommitMessage\n\t\t\tif src, ok := w.FileSources[fd.Name]; ok {",
+      "new": "\t\t\topts.InFile = fd.Name != OutboundFieldCommitMessage\n\t\t}\n\t\t{\n\t\t\tif src, ok := w.FileSources[fd.Name]; ok {"
     },
     {
       "name": "#2022 class — plant a second kind-`file` check site that carries no FileSources (the WriteFile shape before #2022)",
@@ -672,6 +696,36 @@
       "file": "internal/deskkit/selfcontain.go",
       "old": "if m.re == reSessionUUID && exemptLine > 0 && lineOf(s, loc[0]) == exemptLine {",
       "new": "if exemptLine > 0 && (m.re != reSessionUUID || lineOf(s, loc[0]) == exemptLine) {"
+    },
+    {
+      "name": "#2217 — widen the synthetic-fixture head to seven zeros (a first group of all zeros but one digit, `0000000a-…` or `00000001-…`, passes)",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "const syntheticFixtureUUIDHead = \"00000000-\"",
+      "new": "const syntheticFixtureUUIDHead = \"0000000\""
+    },
+    {
+      "name": "#2217 — drop the file-content condition from the synthetic-fixture exemption (the same id in a PR body, comment or commit message passes)",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "if m.re == reSessionUUID && o.InFile && isSyntheticFixtureUUID(s[loc[0]:loc[1]]) {",
+      "new": "if m.re == reSessionUUID && isSyntheticFixtureUUID(s[loc[0]:loc[1]]) {"
+    },
+    {
+      "name": "#2217 — the synthetic-fixture exemption silences every arm of the loop, not only the session-id arm (an agent id beside a fixture id passes)",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "if m.re == reSessionUUID && o.InFile && isSyntheticFixtureUUID(s[loc[0]:loc[1]]) {",
+      "new": "if o.InFile && strings.Contains(s, syntheticFixtureUUIDHead) {"
+    },
+    {
+      "name": "#2217 — give a file write's COMMIT MESSAGE the synthetic-fixture exemption (the Forge file-write seam's message field passes)",
+      "file": "internal/deskkit/outbound.go",
+      "old": "opts.InFile = fd.Name != OutboundFieldCommitMessage",
+      "new": "opts.InFile = true"
+    },
+    {
+      "name": "#2217 — never set InFile (the exemption is dead: every synthetic fixture id in a file is refused again)",
+      "file": "internal/deskkit/outbound.go",
+      "old": "opts.InFile = fd.Name != OutboundFieldCommitMessage",
+      "new": "opts.InFile = false"
     }
   ],
   "_not_mutated": {

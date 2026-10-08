@@ -176,7 +176,7 @@ func TestCadenceExecutesMultipleHarnessPasses(t *testing.T) {
 			}
 			defer l.Close()
 			record := filepath.Join(t.TempDir(), "passes")
-			env := []string{"DESK_LOOP=worker-desk", "DESK_ROOTS=example/repo=/a path", "ASSAY_COCKPIT=herdr", "FIXTURE_CWD=" + wt, "FIXTURE_RECORD=" + record}
+			env := []string{"ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", "DESK_ROOTS=example/repo=/a path", "ASSAY_COCKPIT=herdr", "FIXTURE_CWD=" + wt, "FIXTURE_RECORD=" + record}
 			for _, k := range []string{"SYSTEMROOT", "SystemRoot"} {
 				if v := os.Getenv(k); v != "" {
 					env = append(env, k+"="+v)

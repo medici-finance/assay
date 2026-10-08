@@ -25,6 +25,9 @@ import (
 // NOT cryptographic un-forgeability. A holder of signing material can still forge; the close
 // is author!=approver between distinct Apps + branch protection, which is out of scope here.
 type VerifyLoop struct {
+	attested verifierRuns
+	Attest   func(loopengine.Item, string, string) (deskkit.VerifierReceipt, error)
+
 	Root      string // repo root the Awaiting scan runs against
 	TargetSHA string // merged-main SHA verifiers run against (stamped onto every Item)
 	// Roots, when non-empty, is the MULTI-ROOT queue: the configured stream roots (the same
@@ -139,6 +142,14 @@ func (v *VerifyLoop) Dispatch(it loopengine.Item, tier loopengine.Tier) (loopeng
 // engine EMITS the dispatch and the model executes it verbatim, then feeds the structured
 // Result back.
 func (v *VerifyLoop) dispatchInterim(it loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
+	if v.Feeder == nil {
+		return nil, fmt.Errorf("interim dispatch: no feeder wired — BLOCKED-ON-HUMAN")
+	}
+	receipt, err := v.attestRun(it, v.Root, "")
+	if err != nil {
+		return nil, err
+	}
+	v.rememberRun(it, v.Root, receipt, nil)
 	prompt := renderDispatchPrompt(it, tier)
 	if err := assertNoSharedCheckout(prompt); err != nil {
 		return nil, err

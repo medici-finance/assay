@@ -7,6 +7,21 @@ import (
 	"time"
 )
 
+// engineTestTimeout bounds every "wait for Run to dispatch / return / exit after STOP"
+// deadline in this package's tests. These deadlines are wedge SAFETY NETS, not
+// measurements: the conditions they wait on are reached in well under a second on an idle
+// machine, so the ceiling is only ever hit by a genuine no-exit bug.
+//
+// The old 2-5s ceilings were sized to unloaded speed. Every Run iteration calls
+// deskkit.Guard, which spawns a `git config --worktree` subprocess to resolve the per-run
+// stop key, so an iteration's wall cost grows with machine load. Under the CPU saturation of
+// a whole-module `go test ./...` every engine test here missed its deadline although
+// nothing was wedged. cmd/fanoutloop fixed the same shape the same way (#738). The module
+// root's TestNoShortEngineDeadline keeps short literal deadlines out of every test that
+// drives the engine. A real wedge still fails, after a longer but unambiguous wait, and
+// well inside the default 10-minute package timeout.
+const engineTestTimeout = 60 * time.Second
+
 // setupDeskHome points $HOME at a fresh temp dir so deskkit.Guard() reads a clean
 // desk-tools dir (no ambient DISABLED/STOP flag can leak in from the real ~/.claude),
 // neutralises the ambient kill-switch env, and pins DESK_LOOP to loopName so per-loop

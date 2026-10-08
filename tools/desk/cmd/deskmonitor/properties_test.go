@@ -143,7 +143,7 @@ func assertAuths(t *testing.T, auths []string, leak string, want []string) {
 }
 
 // TestMonitorRetainsOnFailedRead — property B. Each of the four untrusted reads (a failed read, a
-// zero-after-nonzero read, an at-limit read, a read collapsed below the retain floor) must keep the
+// zero-after-nonzero read, a read past the ceiling, a read collapsed below the retain floor) must keep the
 // repo's baseline byte-for-byte and print MONITOR-DEGRADED naming the repo, and the recovery cycle
 // must diff against that retained baseline: exactly the genuinely new issue, zero phantoms.
 func TestMonitorRetainsOnFailedRead(t *testing.T) {
@@ -155,7 +155,7 @@ func TestMonitorRetainsOnFailedRead(t *testing.T) {
 	}{
 		{"404 read", fixtureRead{Status: 404, Message: "Not Found"}, nil, "read FAILED"},
 		{"zero after nonzero", fixtureRead{Issues: []fixtureIssue{}}, nil, "returned 0 (had 6)"},
-		{"at the limit", fixtureRead{Issues: issues(1, 2, 3, 4, 5, 6, 7, 8)}, map[string]string{"INBOUND_MONITOR_LIMIT": "8"}, "results TRUNCATED"},
+		{"past the ceiling", fixtureRead{Issues: issues(1, 2, 3, 4, 5, 6, 7, 8)}, map[string]string{"INBOUND_MONITOR_LIMIT": "7"}, "results TRUNCATED"},
 		{"collapsed below the floor", fixtureRead{Issues: issues(1, 2)}, nil, "treating as a partial read"},
 	}
 	for _, tc := range cases {

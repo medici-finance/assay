@@ -28,6 +28,10 @@ type reply struct {
 // precondition the verb checks on disk.
 func (s *stub) install(t *testing.T) (home, root string) {
 	t.Helper()
+	oldAttest := attestVerifierDispatchFn
+	attestVerifierDispatchFn = func(dispatchOpts, string, string) (string, error) { return "OK: fixture pre-work attestation", nil }
+	t.Cleanup(func() { attestVerifierDispatchFn = oldAttest })
+	t.Setenv("DESK_LOOP", "the-desk")
 	home = t.TempDir()
 	root = t.TempDir()
 	// A real --brief must resolve now (resolveBrief refuses one that names no file), so the item
@@ -75,6 +79,9 @@ func (s *stub) install(t *testing.T) (home, root string) {
 				return exec.Command("/bin/sh", "-c", "cat <<'STUBEOF'\n"+r.stdout+"\nSTUBEOF")
 			}
 		}
+		if strings.Contains(joined, "rev-parse --verify --quiet refs/remotes/origin/") {
+			return exec.Command("/bin/sh", "-c", "echo "+resumeSHA)
+		}
 		return exec.Command("/bin/sh", "-c", "exit 0")
 	}
 	t.Cleanup(func() { execCommand = old })
@@ -103,6 +110,15 @@ func isolateClaimTool(t *testing.T, home string) {
 	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	t.Cleanup(func() { lookPath = oldLook })
 
+	oldResume := readResumeChange
+	readResumeChange = func(o dispatchOpts, _ string) (deskkit.PullRequest, error) {
+		branch := o.branch
+		if branch == "" {
+			branch = "feat/" + sanitizeSegment(o.item)
+		}
+		return deskkit.PullRequest{State: "open", HeadRef: branch, HeadSHA: resumeSHA, CrossRepo: deskkit.CrossRepoSame}, nil
+	}
+	t.Cleanup(func() { readResumeChange = oldResume })
 	t.Setenv("GH_TOKEN", "")
 	oldMint := mintTokenFn
 	mintTokenFn = func(role, repo string) (string, string, error) {
@@ -837,7 +853,7 @@ func TestEveryClassPromptCarriesTheCommonClauses(t *testing.T) {
 		s.replies = happyReplies("/private/tmp/agent-home")
 
 		promptFile := filepath.Join(t.TempDir(), kit+".md")
-		if rc := run([]string{"item-1", "--root", root, "--kit", kit, "--prompt-file", promptFile}); rc != deskkit.ExitOK {
+		if rc := run([]string{"item-1", "--root", root, "--kit", kit, "--model", "gpt-6-astra", "--brief", "spec.md", "--prompt-file", promptFile}); rc != deskkit.ExitOK {
 			t.Fatalf("kit %q rc = %d, want 0", kit, rc)
 		}
 		body, err := os.ReadFile(promptFile)
@@ -906,7 +922,7 @@ func TestVerifierPlanItemKeyIsTranslatedForTheClaimTool(t *testing.T) {
 	s.replies = happyReplies("/private/tmp/verifier-home")
 
 	promptFile := filepath.Join(t.TempDir(), "p.md")
-	rc := run([]string{"verdict-lane/05", "--root", root, "--kit", "verifier",
+	rc := run([]string{"verdict-lane/05", "--root", root, "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md",
 		"--prompt-file", promptFile})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("verifier dispatch rc = %d, want 0", rc)
@@ -1035,11 +1051,11 @@ func TestClaimRefusalWithNoHolderIsNotReportedAsACollision(t *testing.T) {
 		show reply
 	}{
 		{"verifier: show reports the key FREE",
-			[]string{"verdict-lane/05", "--kit", "verifier"},
+			[]string{"verdict-lane/05", "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md"},
 			reply{match: "dispatch-claim.sh show",
 				stdout: "dispatch-claim: FREE assay--verdict-lane--05 (no refs/heads/dispatch/... in the repo)"}},
 		{"verifier: show itself is refused (same malformed key)",
-			[]string{"verdict-lane/05", "--kit", "verifier"},
+			[]string{"verdict-lane/05", "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md"},
 			reply{match: "dispatch-claim.sh show", code: deskkit.ExitRefused}},
 		{"worker: show reads nothing at all (an unreadable or orphaned ref is never a live holder)",
 			[]string{"education/10"},
