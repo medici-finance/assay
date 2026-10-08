@@ -1,2 +1,0 @@
-### Fixed
-- The regression floor's wrapped shell suites (the fleet-hardening and shim-credential fixtures) no longer fail a passing run under host load: they share one named, finite 4-minute deadline instead of a 60-second one sized to idle speed, the floor runner and the brief's Verify row bound each `go test` run above it, and a new class guard keeps every wrapped suite on that budget. A hung fixture still fails at its deadline.
