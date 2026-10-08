@@ -561,3 +561,28 @@ func TestDeskrunRetryEndToEnd(t *testing.T) {
 		t.Fatalf("exit %d (%s) wire=%v, want exactly %v", code, msg, got, want)
 	}
 }
+
+// TestGithubCustodyMintIsClosed — the custody minter serves the release-runner (every run verb)
+// and the worker and reviewer roles (log only); any other desk role is refused WITHOUT a mint.
+func TestGithubCustodyMintIsClosed(t *testing.T) {
+	w := plantWorld(t, deskkit.ForgeGitHub)
+	mintTokenFn = func(role, repo string) (string, string, error) {
+		w.mints++
+		return "stub-" + role, "", nil
+	}
+	fr := deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}
+	for _, role := range []string{deskkit.ReleaseRunnerRole, "worker", "reviewer"} {
+		if tok, _, err := githubCustodyMint(role, fr); err != nil || tok != "stub-"+role {
+			t.Errorf("role %q: token %q err %v, want a minted token", role, tok, err)
+		}
+	}
+	w.mints = 0
+	for _, role := range []string{"verifier", "desk", "issue-loop", "board-writer", ""} {
+		if tok, _, err := githubCustodyMint(role, fr); err == nil || tok != "" {
+			t.Errorf("role %q: token %q err %v, want a refusal", role, tok, err)
+		}
+	}
+	if w.mints != 0 {
+		t.Errorf("a refused role minted %d token(s); custody must refuse before any mint", w.mints)
+	}
+}
