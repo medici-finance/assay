@@ -7,6 +7,8 @@ package deskkit
 
 import (
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -74,6 +76,86 @@ func TestPreflightReachability403(t *testing.T) {
 // could-not-check: no verdict was reached.
 func TestPreflightReachability503(t *testing.T) {
 	assertReach(t, statusServer(t, http.StatusServiceUnavailable), ProbeInconclusive)
+}
+
+// portServer is statusServer pinned to a port whose decimal digits contain
+// needle (e.g. "401" -> 14010), so the digits sit inside the URL gitcore's error
+// text names. It scans the registered-port range below the OS ephemeral ranges for
+// the first free port containing needle; there are hundreds of candidates, and
+// running out of them fails the test rather than skipping it, so the fix is never
+// reported green without having been exercised.
+func portServer(t *testing.T, code int, needle string) string {
+	t.Helper()
+	var ln net.Listener
+	for port := 10000; port < 32000 && ln == nil; port++ {
+		if !strings.Contains(fmt.Sprint(port), needle) {
+			continue
+		}
+		if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
+			ln = l
+		}
+	}
+	if ln == nil {
+		t.Fatalf("no free local port containing %q between 10000 and 31999", needle)
+	}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(code)
+	}))
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv.URL + "/example-org/tracker.git"
+}
+
+// bodyServer answers every request with code and a body, so a List against it fails
+// with the body copied into the transport's error text and no typed 401/403 check
+// claiming the status: the path where the classifier reads the WORDING.
+func bodyServer(t *testing.T, code int, body string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/example-org/tracker.git"
+}
+
+// TestPreflightReachabilityTextOnly — end to end through listReachability: a 404
+// whose body carries a denial beside a URL (or as status:403) is a REJECTION, and a
+// 404 whose body carries 401/403 inside a longer number is not.
+func TestPreflightReachabilityTextOnly(t *testing.T) {
+	for _, d := range denialBesideAddress {
+		t.Run("denial "+d, func(t *testing.T) {
+			assertReach(t, bodyServer(t, http.StatusNotFound, d), ProbeRejected)
+		})
+	}
+	for _, n := range numbersNotStatuses {
+		t.Run("number "+n, func(t *testing.T) {
+			assertReach(t, bodyServer(t, http.StatusNotFound, n), ProbeInconclusive)
+		})
+	}
+}
+
+// TestPreflightReachabilityPortDigits — a status the forge answered is judged by
+// the STATUS, never by digits that happen to sit in the server's URL: a 502/503
+// from a port containing 401 or 403 is inconclusive, and a real 401/403 from the
+// same ports is still a rejection.
+func TestPreflightReachabilityPortDigits(t *testing.T) {
+	for _, needle := range []string{"401", "403"} {
+		for _, tc := range []struct {
+			code int
+			want ProbeVerdict
+		}{
+			{http.StatusBadGateway, ProbeInconclusive},
+			{http.StatusServiceUnavailable, ProbeInconclusive},
+			{http.StatusUnauthorized, ProbeRejected},
+			{http.StatusForbidden, ProbeRejected},
+		} {
+			t.Run(fmt.Sprintf("port-%s-status-%d", needle, tc.code), func(t *testing.T) {
+				assertReach(t, portServer(t, tc.code, needle), tc.want)
+			})
+		}
+	}
 }
 
 func assertReach(t *testing.T, url string, want ProbeVerdict) {
