@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -528,6 +529,35 @@ func TestAssuranceApplicability(t *testing.T) {
 		if err != nil || res.Complete() || len(res.Accepted()) != 0 {
 			t.Errorf("with no corroboration state the loader must leave applicability unresolved")
 		}
+		// The loader runs the candidate validator: stored text on a source whose use
+		// denies storage is refused there (spec section 9's first MUST), even though
+		// the boundary's verdicts are unaffected by it.
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatal(err)
+		}
+		srcs, _ := doc["sources"].([]any)
+		lic, _ := srcs[len(srcs)-1].(map[string]any)
+		if use, _ := lic["use"].(map[string]any); use == nil || use["storage"] != "denied" {
+			t.Fatal("fixture: the last source must deny storage")
+		}
+		lic["text"] = "stored anyway"
+		stored, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tmp := filepath.Join(t.TempDir(), "o.json")
+		if err := os.WriteFile(tmp, stored, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		res, err = loadObligations(poTree(), tmp, poAsOf, poGates())
+		if err != nil || res.Complete() || !containsAll(res.Problems, "keep licensed text out of the record") {
+			t.Errorf("the loader must report the validator's stored-text refusal: err=%v problems=%v", err, res.Problems)
+		}
 		if _, err := loadObligations(poTree(), "https://example.invalid/o.json", poAsOf, nil); err == nil {
 			t.Errorf("the loader must refuse a remote source")
 		}
@@ -617,6 +647,31 @@ func TestAssuranceReqDereference(t *testing.T) {
 		in.Mappings[0].Reqs = []string{"REQ-1"}
 		if !containsAll(validateObligationInput(in), "is not a requirement reference") {
 			t.Errorf("REQ-1 is not the slug form")
+		}
+	})
+
+	t.Run("a malformed REQ ref is refused at the boundary", func(t *testing.T) {
+		in := poInput(t)
+		in.Mappings[0].Reqs = []string{"REQ-1"}
+		v := poVerdictOf(t, resolveObligations(in, poCtx(t), poAsOf), "MAP-synth-001@1")
+		if v.State != poRejected || !hasReason(v, "req-malformed") {
+			t.Errorf("the boundary refuses a malformed REQ ref without the validator: %+v", v)
+		}
+	})
+
+	t.Run("an unreadable decisions register is an error", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, "docs", "streams"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// requirements absent (legitimately empty); a regular file where the
+		// decisions directory belongs: not absent, not readable.
+		if err := os.WriteFile(filepath.Join(root, "docs", "streams", decisionsDirName), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := loadObligationCtx(root, nil)
+		if err == nil || !strings.Contains(err.Error(), "decisions register unreadable") {
+			t.Errorf("an unreadable decisions register must be could-not-check, not empty: %v", err)
 		}
 	})
 
@@ -803,6 +858,128 @@ func poGateReads(fset *token.FileSet, f *ast.File) []string {
 	return out
 }
 
+// ---------- S1: digest and receipt come from ONE file-bound record ----------
+
+// poShadowDR writes a second decisions file, name, whose frontmatter claims id and
+// whose body carries digest. The real record is left untouched.
+func poShadowDR(t *testing.T, root, name, id, digest string) {
+	t.Helper()
+	body := "---\nid: \"" + id + "\"\ndate: \"2026-10-07\"\ntitle: \"Synthetic: shadow\"\n" +
+		"consequence: \"major\"\ndecided-by: \"human:<name>\"\nalternatives:\n  - \"None.\"\n" +
+		"accepted:\n  - \"None.\"\n---\n\nShadow record: " + digest + "\n"
+	if err := os.WriteFile(filepath.Join(root, "docs/streams/decisions", name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// poFlipped is the fixture with APD-synth-001 flipped to not-applicable and its
+// input digest recomputed. No decision record carries the new digest.
+func poFlipped(t *testing.T) obligationInput {
+	t.Helper()
+	in := poInput(t)
+	d := &in.Decisions[0]
+	d.Outcome, d.Reason = "not-applicable", "Synthetic: never approved."
+	acc := *d.Acceptance
+	acc.SubjectDigest = poSubjectOf(t, in, *d)
+	d.Acceptance = &acc
+	return in
+}
+
+// TestAssuranceRecordIdentity: the record whose body must carry the subject digest
+// is the same file the corroboration receipt was minted from. A second file that
+// claims a corroborated record's id never supplies the digest, whatever its name
+// or where it sorts; the id is held as ambiguous instead of one file being picked.
+func TestAssuranceRecordIdentity(t *testing.T) {
+	for _, name := range []string{"notes.md", "DR-synth-zzzzz-x.md", "DR-synth-aaaaa-x.md"} {
+		t.Run("shadow file "+name, func(t *testing.T) {
+			in := poFlipped(t)
+			root := t.TempDir()
+			copyTree(t, poTree(), root)
+			poShadowDR(t, root, name, "DR-synth-applic-a", in.Decisions[0].Acceptance.SubjectDigest)
+			v := poVerdictOf(t, resolveObligations(in, poCtxAt(t, root, poGates()), poAsOf), "MAP-synth-001@1")
+			if v.State != poUnresolved || !hasReason(v, "decision-record-ambiguous") {
+				t.Errorf("a second file claiming the id must hold the decision, never supply its digest: %+v", v)
+			}
+		})
+	}
+
+	t.Run("approved subject held while its id is ambiguous", func(t *testing.T) {
+		root := t.TempDir()
+		copyTree(t, poTree(), root)
+		poShadowDR(t, root, "notes.md", "DR-synth-applic-a", "no digest here")
+		v := poVerdictOf(t, resolveObligations(poInput(t), poCtxAt(t, root, poGates()), poAsOf), "MAP-synth-001@1")
+		if v.State != poUnresolved || !hasReason(v, "decision-record-ambiguous") {
+			t.Errorf("an ambiguous record id is held, not resolved by picking a file: %+v", v)
+		}
+	})
+
+	t.Run("boundary refuses a body from another file", func(t *testing.T) {
+		// A hand-built context bypasses the loader's admission rule: the receipt is
+		// the real record's, the body comes from a different file claiming its id.
+		in := poFlipped(t)
+		ctx := poCtx(t)
+		rec := ctx.Decisions["DR-synth-applic-a"]
+		rec.File, rec.Body = "notes.md", "Shadow record: "+in.Decisions[0].Acceptance.SubjectDigest
+		ctx.Decisions["DR-synth-applic-a"] = rec
+		v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1")
+		if v.State != poRejected || !hasReason(v, "decision-record-not-file-bound") {
+			t.Errorf("a body from a file that is not the record's own must be refused: %+v", v)
+		}
+	})
+
+	t.Run("boundary refuses another record filed under the id", func(t *testing.T) {
+		// DR-synth-applic-b is its own file, but it is not DR-synth-applic-a.
+		in := poFlipped(t)
+		ctx := poCtx(t)
+		rec := ctx.Decisions["DR-synth-applic-b"]
+		rec.Body = "Other record: " + in.Decisions[0].Acceptance.SubjectDigest
+		ctx.Decisions["DR-synth-applic-a"] = rec
+		v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1")
+		if v.State != poRejected || !hasReason(v, "decision-record-not-file-bound") {
+			t.Errorf("a record filed under another id must be refused: %+v", v)
+		}
+	})
+
+	t.Run("boundary refuses a receipt minted from another file", func(t *testing.T) {
+		in, ctx := poInput(t), poCtx(t)
+		rc := ctx.Receipts["DR-synth-applic-a"]
+		rc.file = "DR-synth-other.md"
+		ctx.Receipts["DR-synth-applic-a"] = rc
+		v := poVerdictOf(t, resolveObligations(in, ctx, poAsOf), "MAP-synth-001@1")
+		if v.State != poRejected || !hasReason(v, "receipt-record-mismatch") {
+			t.Errorf("a receipt from another file must not corroborate this record: %+v", v)
+		}
+	})
+
+	t.Run("an ambiguous review reference is held", func(t *testing.T) {
+		root := t.TempDir()
+		copyTree(t, poTree(), root)
+		poShadowDR(t, root, "notes.md", "DR-synth-review-a", "review shadow")
+		v := poVerdictOf(t, resolveObligations(poInput(t), poCtxAt(t, root, poGates()), poAsOf), "MAP-synth-001@1")
+		if v.State != poUnresolved || !hasReason(v, "review-ref-ambiguous") {
+			t.Errorf("a review id two files claim is held, not resolved: %+v", v)
+		}
+	})
+
+	t.Run("admission is order independent", func(t *testing.T) {
+		a := decisionEntry{ID: "DR-synth-xone", File: "DR-synth-xone.md"}
+		b := decisionEntry{ID: "DR-synth-xone", File: "aa.md"}
+		for _, decs := range [][]decisionEntry{{a, b}, {b, a}} {
+			adm, amb := admitDecisionRecords(decs)
+			if _, ok := adm["DR-synth-xone"]; ok || len(amb["DR-synth-xone"]) != 2 {
+				t.Errorf("order %v: want held as ambiguous, got admitted=%v ambiguous=%v", decs, adm, amb)
+			}
+		}
+		adm, amb := admitDecisionRecords([]decisionEntry{a, {ID: "DR-synth-xtwo", File: "notes.md"}})
+		if _, ok := adm["DR-synth-xone"]; !ok || len(amb) != 0 {
+			t.Errorf("control: a lone file-bound record is admitted, got %v %v", adm, amb)
+		}
+		if _, ok := adm["DR-synth-xtwo"]; ok {
+			t.Errorf("a record that is not its own file is never admitted")
+		}
+	})
+}
+
 // ---------- F6: one test per refusal path the mutation spec disarms ----------
 
 func TestAssuranceRefusals(t *testing.T) {
@@ -865,8 +1042,8 @@ func TestAssuranceRefusals(t *testing.T) {
 		gates[moved] = []decisionGateIssue{{Ref: "example-org/tracker#77", ClosedBy: "ada", Body: decisionGateMarker("DR-synth-other")}}
 		ctx := poCtxAt(t, root, gates)
 		v := poVerdictOf(t, resolveObligations(poInput(t), ctx, poAsOf), "MAP-synth-001@1")
-		if v.State == poAccepted || !hasReason(v, "no-trusted-corroboration") {
-			t.Errorf("a receipt for another file must not corroborate DR-synth-applic-a, got %+v", v)
+		if v.State == poAccepted || !hasReason(v, "no-trusted-corroboration") || !hasReason(v, "decision-record-unknown") {
+			t.Errorf("a record that is not its own file is not admitted and gets no receipt, got %+v", v)
 		}
 	})
 
@@ -952,6 +1129,62 @@ func TestAssuranceRefusals(t *testing.T) {
 			t.Errorf("a paraphrase of exactly the bound is allowed: %v", p)
 		}
 	})
+}
+
+// TestAssuranceReasonsMutated keeps spec section 9's coverage sentence checkable:
+// every reason token the authority boundary can return is named, in [brackets], by
+// at least one entry of the committed mutation spec. A new reason with no mutation
+// fails here.
+func TestAssuranceReasonsMutated(t *testing.T) {
+	src, err := os.ReadFile("projectobligations.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("projectobligations-mutations.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Mutations []struct{ Name string } `json:"mutations"`
+	}
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		t.Fatal(err)
+	}
+	named := map[string]bool{}
+	tag := regexp.MustCompile(`\[([a-z:-]+)\]`)
+	for _, m := range spec.Mutations {
+		for _, g := range tag.FindAllStringSubmatch(m.Name, -1) {
+			named[g[1]] = true
+		}
+	}
+	reasons := poReasonTokens(string(src))
+	// positive control: the extractor sees reasons from each emitting form.
+	for _, want := range []string{"no-acceptance-link", "self-approval", "req-malformed", "conflicting-decisions", "no-current-decision"} {
+		if !reasons[want] {
+			t.Fatalf("extractor control: %q not found in %v", want, reasons)
+		}
+	}
+	for r := range reasons {
+		if !named[r] {
+			t.Errorf("reason %q has no [%s] entry in projectobligations-mutations.json", r, r)
+		}
+	}
+}
+
+// poReasonTokens extracts the reason tokens the boundary emits: add("x"),
+// []string{"x"}, and the "x:"+ prefixed forms.
+func poReasonTokens(src string) map[string]bool {
+	out := map[string]bool{}
+	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`add\("([a-z]+(?:-[a-z]+)+)"\)`),
+		regexp.MustCompile(`\[\]string\{"([a-z]+(?:-[a-z]+)+)"`),
+		regexp.MustCompile(`"([a-z]+(?:-[a-z]+)+):"\s*\+`),
+	} {
+		for _, g := range re.FindAllStringSubmatch(src, -1) {
+			out[g[1]] = true
+		}
+	}
+	return out
 }
 
 // copyTree copies a small fixture tree (files only, no symlinks).

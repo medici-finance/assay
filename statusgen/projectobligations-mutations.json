@@ -26,133 +26,133 @@
       "new": "Mode: \"metadata-only\"}"
     },
     {
-      "name": "self-approval check disabled",
+      "name": "self-approval check disabled [self-approval]",
       "file": "projectobligations.go",
       "old": "} else if strings.EqualFold(d.Reviewer, d.ProposedBy) {",
       "new": "} else if false {"
     },
     {
-      "name": "subject digest check disabled (wrong-subject approval accepted)",
+      "name": "subject digest check disabled (wrong-subject approval accepted) [subject-digest-mismatch]",
       "file": "projectobligations.go",
       "old": "if a.SubjectDigest != want {",
       "new": "if false && a.SubjectDigest != want {"
     },
     {
-      "name": "decision record no longer has to carry the subject digest (replay)",
+      "name": "decision record no longer has to carry the subject digest (replay) [decision-record-not-subject-bound]",
       "file": "projectobligations.go",
       "old": "case !strings.Contains(rec.Body, want):",
       "new": "case false && !strings.Contains(rec.Body, want):"
     },
     {
-      "name": "disposition check disabled",
+      "name": "disposition check disabled [disposition-not-approved]",
       "file": "projectobligations.go",
       "old": "if a.Disposition != \"approved\" {",
       "new": "if false && a.Disposition != \"approved\" {"
     },
     {
-      "name": "reviewer no longer has to be the corroborated closer",
+      "name": "reviewer no longer has to be the corroborated closer [reviewer-not-corroborated]",
       "file": "projectobligations.go",
       "old": "case !strings.EqualFold(rc.closer, d.Reviewer):",
       "new": "case false:"
     },
     {
-      "name": "corroboration ref no longer compared",
+      "name": "corroboration ref no longer compared [corroboration-ref-mismatch]",
       "file": "projectobligations.go",
       "old": "case rc.ref != a.CorroborationRef:",
       "new": "case false:"
     },
     {
-      "name": "missing trusted corroboration no longer holds acceptance",
+      "name": "missing trusted corroboration no longer holds acceptance [no-trusted-corroboration]",
       "file": "projectobligations.go",
       "old": "case !got || !rc.sealed || rc.decisionID != a.DecisionID:",
       "new": "case false && (!got || !rc.sealed || rc.decisionID != a.DecisionID):"
     },
     {
-      "name": "review independence check disabled",
+      "name": "review independence check disabled [review-not-independent]",
       "file": "projectobligations.go",
       "old": "case a.ReviewRef == a.DecisionID:",
       "new": "case false:"
     },
     {
-      "name": "review record existence not checked",
+      "name": "review record existence not checked [review-ref-unknown]",
       "file": "projectobligations.go",
       "old": "if _, ok := ctx.Decisions[a.ReviewRef]; !ok {",
       "new": "if _, ok := ctx.Decisions[a.ReviewRef]; false && !ok {"
     },
     {
-      "name": "stale source revision not detected",
+      "name": "stale source revision not detected [stale-source-revision]",
       "file": "projectobligations.go",
       "old": "if d.Source != m.Source {",
       "new": "if false && d.Source != m.Source {"
     },
     {
-      "name": "stale mapping revision not detected",
+      "name": "stale mapping revision not detected [stale-mapping-revision]",
       "file": "projectobligations.go",
       "old": "if d.MappingID != m.ID || d.MappingRevision != m.Revision {",
       "new": "if false {"
     },
     {
-      "name": "effective period not enforced",
+      "name": "effective period not enforced [outside-effective-period]",
       "file": "projectobligations.go",
       "old": "} else if asOf < d.EffectiveFrom || (d.EffectiveTo != \"\" && asOf > d.EffectiveTo) {",
       "new": "} else if false {"
     },
     {
-      "name": "dangling REQ no longer rejects the mapping",
+      "name": "dangling REQ no longer rejects the mapping [req-unknown]",
       "file": "projectobligations.go",
       "old": "reject = append(reject, \"req-unknown:\"+q)",
       "new": "_ = q"
     },
     {
-      "name": "withdrawn REQ no longer rejects the mapping",
+      "name": "withdrawn REQ no longer rejects the mapping [req-withdrawn]",
       "file": "projectobligations.go",
       "old": "case strings.TrimSpace(e.Status) == \"withdrawn\":",
       "new": "case false && strings.TrimSpace(e.Status) == \"withdrawn\":"
     },
     {
-      "name": "cross-repo REQ no longer holds the mapping",
+      "name": "cross-repo REQ no longer holds the mapping [req-cross-repo-unchecked]",
       "file": "projectobligations.go",
       "old": "hold = append(hold, \"req-cross-repo-unchecked:\"+q)",
       "new": "_ = q"
     },
     {
-      "name": "decision dated after as-of no longer refused",
+      "name": "decision dated after as-of no longer refused [decision-in-future]",
       "file": "projectobligations.go",
       "old": "} else if d.DecidedAt > asOf {",
       "new": "} else if false {"
     },
     {
-      "name": "boundary: not-applicable without a reason accepted",
+      "name": "boundary: not-applicable without a reason accepted [not-applicable-needs-reason]",
       "file": "projectobligations.go",
       "old": "add(\"not-applicable-needs-reason\")",
       "new": "_ = \"not-applicable-needs-reason\""
     },
     {
-      "name": "boundary: unknown outcome accepted",
+      "name": "boundary: unknown outcome accepted [unknown-outcome]",
       "file": "projectobligations.go",
       "old": "add(\"unknown-outcome\")",
       "new": "_ = \"unknown-outcome\""
     },
     {
-      "name": "boundary: malformed dates accepted",
+      "name": "boundary: malformed dates accepted [bad-date]",
       "file": "projectobligations.go",
       "old": "add(\"bad-date\")",
       "new": "_ = \"bad-date\""
     },
     {
-      "name": "boundary: empty scope accepted",
+      "name": "boundary: empty scope accepted [scope-missing]",
       "file": "projectobligations.go",
       "old": "add(\"scope-missing\")",
       "new": "_ = \"scope-missing\""
     },
     {
-      "name": "boundary: missing actor accepted",
+      "name": "boundary: missing actor accepted [actor-missing]",
       "file": "projectobligations.go",
       "old": "add(\"actor-missing\")",
       "new": "_ = \"actor-missing\""
     },
     {
-      "name": "boundary: unknown source no longer rejects",
+      "name": "boundary: unknown source no longer rejects [source-unknown]",
       "file": "projectobligations.go",
       "old": "reject = append(reject, \"source-unknown:\"+m.Source.key())",
       "new": "_ = m"
@@ -170,10 +170,10 @@
       "new": "iss, ok := decisionGateIssue{}, len(gates[file]) > 0; for _, x := range gates[file] { iss = x; break }"
     },
     {
-      "name": "receipt: record id no longer has to equal its file",
+      "name": "admission: a record that is not its own file is admitted [decision-record-unknown]",
       "file": "projectobligations.go",
-      "old": "if id, ok := decisionRecordID(file); !ok || id != e.ID {",
-      "new": "if false {"
+      "old": "if _, held := ambiguous[e.ID]; held || !poFileBound(e) {",
+      "new": "if _, held := ambiguous[e.ID]; held {"
     },
     {
       "name": "seam: blessed-closer condition removed",
@@ -264,6 +264,144 @@
       "file": "projectobligations.go",
       "old": "if s.Text != \"\" && (!storage || s.Use.AccessRef == \"\") {",
       "new": "if false {"
+    },
+    {
+      "name": "boundary: a decision with no acceptance link accepted [no-acceptance-link]",
+      "file": "projectobligations.go",
+      "old": "return []string{\"no-acceptance-link\"}",
+      "new": "return nil"
+    },
+    {
+      "name": "boundary: stale profile revision not detected [stale-profile-revision]",
+      "file": "projectobligations.go",
+      "old": "if d.Profile != m.Profile {",
+      "new": "if false && d.Profile != m.Profile {"
+    },
+    {
+      "name": "boundary: an unresolved outcome accepted [outcome-unresolved]",
+      "file": "projectobligations.go",
+      "old": "add(\"outcome-unresolved\")",
+      "new": "_ = \"outcome-unresolved\""
+    },
+    {
+      "name": "boundary: unknown decision record not reported [decision-record-unknown]",
+      "file": "projectobligations.go",
+      "old": "case !decisionIDRe.MatchString(a.DecisionID) || !known:",
+      "new": "case false:"
+    },
+    {
+      "name": "boundary: an ambiguous record id no longer held [decision-record-ambiguous]",
+      "file": "projectobligations.go",
+      "old": "case len(ctx.Ambiguous[a.DecisionID]) > 0:",
+      "new": "case false:"
+    },
+    {
+      "name": "admission: two files claiming one id no longer held [decision-record-ambiguous]",
+      "file": "projectobligations.go",
+      "old": "if len(files) > 1 {",
+      "new": "if false {"
+    },
+    {
+      "name": "boundary: a body from a file that is not the record's own [decision-record-not-file-bound]",
+      "file": "projectobligations.go",
+      "old": "case !poFileBound(rec) || rec.ID != a.DecisionID:",
+      "new": "case rec.ID != a.DecisionID:"
+    },
+    {
+      "name": "boundary: another record filed under the id [decision-record-not-file-bound]",
+      "file": "projectobligations.go",
+      "old": "case !poFileBound(rec) || rec.ID != a.DecisionID:",
+      "new": "case !poFileBound(rec):"
+    },
+    {
+      "name": "boundary: a receipt minted from another file [receipt-record-mismatch]",
+      "file": "projectobligations.go",
+      "old": "case known && rc.file != rec.File:",
+      "new": "case false:"
+    },
+    {
+      "name": "boundary: a missing review reference refused, not held [review-ref-missing]",
+      "file": "projectobligations.go",
+      "old": "case strings.TrimSpace(a.ReviewRef) == \"\":",
+      "new": "case false:"
+    },
+    {
+      "name": "boundary: an ambiguous review reference no longer held [review-ref-ambiguous]",
+      "file": "projectobligations.go",
+      "old": "case len(ctx.Ambiguous[a.ReviewRef]) > 0:",
+      "new": "case false:"
+    },
+    {
+      "name": "boundary: a malformed REQ ref no longer rejects [req-malformed]",
+      "file": "projectobligations.go",
+      "old": "reject = append(reject, \"req-malformed:\"+q)",
+      "new": "_ = q"
+    },
+    {
+      "name": "state: two current decisions no longer conflict [conflicting-decisions]",
+      "file": "projectobligations.go",
+      "old": "case len(cur) > 1:",
+      "new": "case false:"
+    },
+    {
+      "name": "state: a mapping with no current decision accepted [no-current-decision]",
+      "file": "projectobligations.go",
+      "old": "v.State, v.Reasons = poUnresolved, append([]string{\"no-current-decision\"}, hold...)",
+      "new": "v.State, v.Reasons = poAccepted, hold"
+    },
+    {
+      "name": "state: a prior revision no longer superseded [state:superseded]",
+      "file": "projectobligations.go",
+      "old": "if m.Revision != latest[m.ID] {",
+      "new": "if false {"
+    },
+    {
+      "name": "state: Complete true over an unresolved current mapping [state:complete]",
+      "file": "projectobligations.go",
+      "old": "if v.State != poAccepted && v.State != poNotApplicable {",
+      "new": "if false {"
+    },
+    {
+      "name": "state: an accepted not-applicable decision reads as accepted [state:not-applicable]",
+      "file": "projectobligations.go",
+      "old": "v.State, v.Reason = poNotApplicable, d.Reason",
+      "new": "v.Reason = d.Reason"
+    },
+    {
+      "name": "state: refusing reasons read as pending [state:rejected]",
+      "file": "projectobligations.go",
+      "old": "if !poPending[x] && !strings.HasPrefix(x, \"req-cross-repo-unchecked:\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "state: pending reasons read as refused [state:unresolved]",
+      "file": "projectobligations.go",
+      "old": "if !poPending[x] && !strings.HasPrefix(x, \"req-cross-repo-unchecked:\") {",
+      "new": "if !strings.HasPrefix(x, \"req-cross-repo-unchecked:\") {"
+    },
+    {
+      "name": "model input: unknown use treated as permitted [use-unknown-denied]",
+      "file": "projectobligations.go",
+      "old": "\treturn \"unknown\"\n",
+      "new": "\treturn \"permitted\"\n"
+    },
+    {
+      "name": "loader: unreadable requirements register read as empty [register-unreadable]",
+      "file": "projectobligations.go",
+      "old": "reqs, err := parseRequirementsDir(root)\n\tif err != nil {",
+      "new": "reqs, err := parseRequirementsDir(root)\n\tif false && err != nil {"
+    },
+    {
+      "name": "loader: unreadable decisions register read as empty [register-unreadable]",
+      "file": "projectobligations.go",
+      "old": "decs, err := parseDecisionsDir(root)\n\tif err != nil {",
+      "new": "decs, err := parseDecisionsDir(root)\n\tif false && err != nil {"
+    },
+    {
+      "name": "loader: candidate validator not run [validator-not-run]",
+      "file": "projectobligations.go",
+      "old": "res.Problems = append(validateObligationInput(in), res.Problems...)",
+      "new": "res.Problems = append([]string(nil), res.Problems...)"
     }
   ]
 }

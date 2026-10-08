@@ -482,36 +482,73 @@ func validateObligationInput(in obligationInput) []string {
 // fields are unexported: a decoded JSON object cannot construct one.
 type trustedReceipt struct {
 	decisionID string
+	file       string // basename of the record file the receipt was minted from
 	ref        string // the corroborating issue ("owner/repo#N")
 	closer     string // the login that closed it
 	sealed     bool
 }
 
-// trustReceipts builds receipts ONLY from the issue the existing decision-gate seam
-// (decisionGateCorroboratingIssue) names as corroborating, over pre-fetched issue
-// state. It never re-selects among the linked issues itself: the receipt's ref and
-// closer are exactly the seam's answer. nil gates (no state supplied) yields no
-// receipts — applicability then stays unresolved; the loader never fetches the forge.
-func trustReceipts(decs []decisionEntry, gates decisionGateLinks) map[string]trustedReceipt {
-	out := map[string]trustedReceipt{}
+// poFileBound reports whether a parsed record is its own file: the frontmatter id
+// equals the id the file name carries. Only such a record may stand for its id.
+func poFileBound(e decisionEntry) bool {
+	id, ok := decisionRecordID(e.File)
+	return ok && id == e.ID
+}
+
+// admitDecisionRecords is the ONE rule that selects which parsed DECISIONS record
+// stands for an id. Both halves of an acceptance's evidence — the body that must
+// carry the subject digest and the corroboration receipt — are built from its
+// output, so they always come from the same file. A record is admitted only when it
+// is file-bound. An id that more than one parsed file claims (whatever the file
+// names, whatever order the directory lists them in) is ambiguous: it is held, and
+// no file is picked for it.
+func admitDecisionRecords(decs []decisionEntry) (admitted map[string]decisionEntry, ambiguous map[string][]string) {
+	claims := map[string][]string{}
 	for _, e := range decs {
-		file := "docs/streams/" + decisionsDirName + "/" + e.File
-		if id, ok := decisionRecordID(file); !ok || id != e.ID {
-			continue // frontmatter id must be the file's own id
+		claims[e.ID] = append(claims[e.ID], e.File)
+	}
+	admitted, ambiguous = map[string]decisionEntry{}, map[string][]string{}
+	for id, files := range claims {
+		if len(files) > 1 {
+			sort.Strings(files)
+			ambiguous[id] = files
 		}
+	}
+	for _, e := range decs {
+		if _, held := ambiguous[e.ID]; held || !poFileBound(e) {
+			continue
+		}
+		admitted[e.ID] = e
+	}
+	return admitted, ambiguous
+}
+
+// trustReceipts builds receipts ONLY for admitted records, and ONLY from the issue
+// the existing decision-gate seam (decisionGateCorroboratingIssue) names as
+// corroborating, over pre-fetched issue state. It never re-selects among the linked
+// issues itself: the receipt's ref and closer are exactly the seam's answer. nil
+// gates (no state supplied) yields no receipts — applicability then stays
+// unresolved; the loader never fetches the forge.
+func trustReceipts(admitted map[string]decisionEntry, gates decisionGateLinks) map[string]trustedReceipt {
+	out := map[string]trustedReceipt{}
+	for id, e := range admitted {
+		file := "docs/streams/" + decisionsDirName + "/" + e.File
 		iss, _, ok := decisionGateCorroboratingIssue(file, gates)
 		if !ok {
 			continue
 		}
-		out[e.ID] = trustedReceipt{decisionID: e.ID, ref: iss.Ref, closer: iss.ClosedBy, sealed: true}
+		out[id] = trustedReceipt{decisionID: id, file: e.File, ref: iss.Ref, closer: iss.ClosedBy, sealed: true}
 	}
 	return out
 }
 
 // obligationCtx is everything the authority boundary reads besides the input.
+// Decisions holds only admitted (file-bound, unambiguous) records; Ambiguous names
+// every id more than one record file claims, with those files.
 type obligationCtx struct {
 	Reqs      map[string]requirementEntry
 	Decisions map[string]decisionEntry
+	Ambiguous map[string][]string
 	Receipts  map[string]trustedReceipt
 }
 
@@ -527,13 +564,11 @@ func loadObligationCtx(root string, gates decisionGateLinks) (obligationCtx, err
 	if err != nil {
 		return obligationCtx{}, fmt.Errorf("decisions register unreadable: %w", err)
 	}
-	ctx := obligationCtx{Reqs: map[string]requirementEntry{}, Decisions: map[string]decisionEntry{},
-		Receipts: trustReceipts(decs, gates)}
+	admitted, ambiguous := admitDecisionRecords(decs)
+	ctx := obligationCtx{Reqs: map[string]requirementEntry{}, Decisions: admitted, Ambiguous: ambiguous,
+		Receipts: trustReceipts(admitted, gates)}
 	for _, r := range reqs {
 		ctx.Reqs[r.ID] = r
-	}
-	for _, d := range decs {
-		ctx.Decisions[d.ID] = d
 	}
 	return ctx, nil
 }
@@ -632,11 +667,13 @@ func (r obligationResult) Accepted() []poVerdict {
 
 // Reasons that leave a decision PENDING (unresolved) rather than refused.
 var poPending = map[string]bool{
-	"no-acceptance-link":       true,
-	"no-trusted-corroboration": true,
-	"outcome-unresolved":       true,
-	"outside-effective-period": true,
-	"review-ref-missing":       true,
+	"no-acceptance-link":        true,
+	"no-trusted-corroboration":  true,
+	"outcome-unresolved":        true,
+	"outside-effective-period":  true,
+	"review-ref-missing":        true,
+	"decision-record-ambiguous": true, // two files claim the id: held, never picked
+	"review-ref-ambiguous":      true,
 }
 
 // acceptApplicability is the lower decision-validation boundary. It returns the
@@ -696,10 +733,18 @@ func acceptApplicability(d poDecision, m poMapping, src poSource, ctx obligation
 		add("disposition-not-approved")
 	}
 
+	// The body that must carry the digest and the receipt that corroborates it are
+	// re-checked here to be ONE record: the record is its own file, and the receipt
+	// was minted from that same file. The boundary does not assume the adapter's
+	// admission rule (admitDecisionRecords) ran.
 	rec, known := ctx.Decisions[a.DecisionID]
 	switch {
+	case len(ctx.Ambiguous[a.DecisionID]) > 0:
+		add("decision-record-ambiguous")
 	case !decisionIDRe.MatchString(a.DecisionID) || !known:
 		add("decision-record-unknown")
+	case !poFileBound(rec) || rec.ID != a.DecisionID:
+		add("decision-record-not-file-bound")
 	case !strings.Contains(rec.Body, want):
 		add("decision-record-not-subject-bound")
 	}
@@ -708,6 +753,8 @@ func acceptApplicability(d poDecision, m poMapping, src poSource, ctx obligation
 	switch {
 	case !got || !rc.sealed || rc.decisionID != a.DecisionID:
 		add("no-trusted-corroboration")
+	case known && rc.file != rec.File:
+		add("receipt-record-mismatch")
 	case rc.ref != a.CorroborationRef:
 		add("corroboration-ref-mismatch")
 	case !strings.EqualFold(rc.closer, d.Reviewer):
@@ -719,6 +766,8 @@ func acceptApplicability(d poDecision, m poMapping, src poSource, ctx obligation
 		add("review-ref-missing")
 	case a.ReviewRef == a.DecisionID:
 		add("review-not-independent")
+	case len(ctx.Ambiguous[a.ReviewRef]) > 0:
+		add("review-ref-ambiguous")
 	default:
 		if _, ok := ctx.Decisions[a.ReviewRef]; !ok {
 			add("review-ref-unknown")
