@@ -24,12 +24,15 @@ package main
 // scope. A row already at or past its new status at the base is left alone, so
 // a pin bump turns nothing red that has already landed.
 //
-// Matching decides SCOPE; it never lends a ruling. A ruling recorded for a base
-// brief stands for the brief after the change only when they are the same brief:
+// Matching decides SCOPE; it never lends a ruling or a prior status. A ruling
+// recorded for a base brief, and the base status that tells a move from a landed
+// row, stand for the brief after the change only when they are the same brief:
 // the same board id, or a RENUMBER (the base brief's board id is gone after the
 // change AND the other board id is new in it — isGateRenumber). So moving a
 // ruled brief's permanent id: onto another brief puts that brief in scope but
-// cannot hand it the ruling.
+// cannot hand it the ruling, and a NEW board row that takes the id: of a brief
+// still on the board is a move from "not on the board", however far that brief
+// had advanced.
 //
 // WHAT COUNTS AS RULED. The brief records its decision issue (`decision-issue:`)
 // and a link to the ruling comment (`ruling:`) in its frontmatter. Two layers:
@@ -465,12 +468,17 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 				f.RulingBase = append(f.RulingBase, b)
 			}
 		}
+		// The prior status comes only from the brief's own base counterpart (the
+		// same board id) or a true renumber — the same set that may lend a ruling
+		// (RulingBase). A permanent-id donor that is neither stays in ms for
+		// SCOPE, but a row that takes a still-present donor's id: is a NEW row
+		// and a move: it cannot inherit the donor's landed status.
 		if hr := gateStatusRank(h.Status); hr >= 1 {
-			if len(ms) == 0 {
+			if len(f.RulingBase) == 0 {
 				f.Move = true
 			} else {
-				low := ms[0]
-				for _, b := range ms[1:] {
+				low := f.RulingBase[0]
+				for _, b := range f.RulingBase[1:] {
 					if gateStatusRank(b.Status) < gateStatusRank(low.Status) {
 						low = b
 					}

@@ -295,12 +295,15 @@ issue has no human ruling, a change that:
 A brief is matched across the base and the change by EITHER its board id
 (`<stream>/<NN>`, any spelling of the number) OR its permanent frontmatter `id:`, so a
 change has to alter both keys to lose the match, and either key alone carries the hold.
-Matching decides SCOPE only; it never lends a ruling. A base brief's recorded ruling
-counts for the brief after the change only when the two are the same brief: the same
-board id, or a renumber (the base brief's board id is gone after the change, and the
-changed brief's board id was not on the base board). A brief that takes another brief's
-permanent `id:` is therefore in scope, but must carry a ruling of its own.
-A row already at or past its new status at the base is not a move; a pin bump that
+Matching decides SCOPE only; it never lends a ruling and it never lends a status. A base
+brief's recorded ruling, and its base status, count for the brief after the change only
+when the two are the same brief: the same board id, or a renumber (the base brief's board
+id is gone after the change, and the changed brief's board id was not on the base board).
+A brief that takes another brief's permanent `id:` is therefore in scope, but must carry
+a ruling of its own; and a row whose board id was not on the base board is a move from
+"not on the board" even when it takes the permanent `id:` of a brief that is still on the
+board and already advanced.
+A row of the same brief already at or past its new status at the base is not a move; a pin bump that
 introduces the hold therefore turns no landed row red, which is this rule's forward-only
 mechanism (section 4.4, "Grandfathering").
 

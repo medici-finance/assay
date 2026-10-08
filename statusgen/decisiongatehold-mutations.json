@@ -150,6 +150,18 @@
       "file": "decisiongatehold.go",
       "old": "`^docs/(streams|archive)/",
       "new": "`^docs/(streams)/"
+    },
+    {
+      "name": "a permanent-id donor still on the board supplies the prior status (a new row taking its id: reads as already advanced)",
+      "file": "decisiongatehold.go",
+      "old": "if len(f.RulingBase) == 0 {\n\t\t\t\tf.Move = true\n\t\t\t} else {\n\t\t\t\tlow := f.RulingBase[0]\n\t\t\t\tfor _, b := range f.RulingBase[1:] {",
+      "new": "if len(ms) == 0 {\n\t\t\t\tf.Move = true\n\t\t\t} else {\n\t\t\t\tlow := ms[0]\n\t\t\t\tfor _, b := range ms[1:] {"
+    },
+    {
+      "name": "a true renumber of a landed row is judged as a new row (the renumbered brief loses its landed status)",
+      "file": "decisiongatehold.go",
+      "old": "if len(f.RulingBase) == 0 {\n\t\t\t\tf.Move = true",
+      "new": "if true {\n\t\t\t\tf.Move = true"
     }
   ]
 }

@@ -825,6 +825,85 @@ func TestDecisionGatePermIDMatchStillCarriesScope(t *testing.T) {
 	wantContains(t, "layer-one refusal", p[0], "sdlc/19", "no decision issue is recorded")
 }
 
+// A NEW board row cannot take its prior status from a permanent-id donor that
+// is still on the board. Base: sdlc/18 is human-gated, done, id P, ruled on its
+// own issue. The change gives sdlc/18 a fresh id and adds sdlc/19 — human-gated,
+// implemented, taking id P, with decision issue #42 and no ruling. sdlc/19 was
+// not on the base board, so its status is a move from "not on the board" and it
+// must be ruled on its own record; the donor's landed done status (and its
+// ruling) are not sdlc/19's. Refused by both layers.
+func TestDecisionGateNewRowTakingDonorPermIDIsAMove(t *testing.T) {
+	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
+	root := dhFixture(t, map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "done")),
+		dhBriefPath:  dhFM("gate: human", "id: "+dhPermID+"\n"+dhRuledLines()),
+	})
+	dhWrite(t, root, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("18", "done"), dhRow("19", "implemented")),
+		dhBriefPath:   dhFM("gate: human", "id: fresh-example-id\n"+dhRuledLines()),
+		dhBrief19Path: dhBrief19("id: " + dhPermID + "\n"),
+	})
+	faults := judgeDecisionGate(mustGateAtRev(t, root), gateSnapshotOnDisk(root))
+	if len(faults) != 1 || faults[0].Head == nil || faults[0].Head.Key != "sdlc/19" || !faults[0].Move {
+		t.Fatalf("want one move fault for the new sdlc/19, got %+v", faults)
+	}
+	if len(faults[0].Base) != 1 || len(faults[0].RulingBase) != 0 {
+		t.Errorf("the donor stays a scope match (1) but supplies no status or ruling (0): got %d, %d", len(faults[0].Base), len(faults[0].RulingBase))
+	}
+	p := dhLayerOne(t, root)
+	if len(p) != 1 {
+		t.Fatalf("layer one: %d problems, want 1: %v", len(p), p)
+	}
+	wantContains(t, "layer-one refusal", p[0], "sdlc/19", "was not on the board at the base", "decision issue #42 has no recorded ruling")
+	code, out := dhGate(t, root)
+	if code == 0 {
+		t.Fatalf("new sdlc/19 inherited the donor's landed status:\n%s", out)
+	}
+	wantContains(t, "--decision-gate report", out, "sdlc/19 REFUSED")
+}
+
+// The same new row as a gate: model brief: the donor's gate: human still puts
+// it in scope, and the donor's done status still does not make it landed.
+func TestDecisionGateNewModelRowTakingDonorPermIDIsAMove(t *testing.T) {
+	dhSeams(t, nil)
+	root := dhFixture(t, map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "done")),
+		dhBriefPath:  dhFM("gate: human", "id: "+dhPermID+"\n"+dhRuledLines()),
+	})
+	dhWrite(t, root, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("18", "done"), dhRow("19", "verified")),
+		dhBriefPath:   dhFM("gate: human", "id: fresh-example-id\n"+dhRuledLines()),
+		dhBrief19Path: strings.Replace(dhFM("gate: model", "id: "+dhPermID+"\n"), dhBoardID, "sdlc/19", 1),
+	})
+	p := dhLayerOne(t, root)
+	if len(p) != 1 {
+		t.Fatalf("layer one: %d problems, want 1: %v", len(p), p)
+	}
+	wantContains(t, "layer-one refusal", p[0], "sdlc/19", "moves it to verified (it was not on the board at the base)", "no decision issue is recorded")
+}
+
+// A true renumber of a LANDED row stays landed: the base brief's board id is
+// gone and the new board id is new, so the renumbered brief takes its status
+// (and its ruling) from the base brief — nothing turns red.
+func TestDecisionGateLandedRenumberStaysLanded(t *testing.T) {
+	dhSeams(t, nil)
+	root := dhFixture(t, map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "done")),
+		dhBriefPath:  dhFM("gate: human", "id: "+dhPermID+"\n"+dhRuledLines()),
+	})
+	dhWrite(t, root, map[string]string{
+		dhReadmePath:  dhReadme(dhRow("19", "done")),
+		dhBriefPath:   "",
+		dhBrief19Path: dhBrief19("id: " + dhPermID + "\n"),
+	})
+	if faults := judgeDecisionGate(mustGateAtRev(t, root), gateSnapshotOnDisk(root)); len(faults) != 0 {
+		t.Fatalf("a renumbered landed row moved: %+v", faults)
+	}
+	if p := dhLayerOne(t, root); len(p) != 0 {
+		t.Fatalf("layer one refused a renumbered landed row: %v", p)
+	}
+}
+
 func mustGateAtRev(t *testing.T, root string) gateSnapshot {
 	t.Helper()
 	s, err := gateSnapshotAtRev(root, "refs/remotes/origin/main")
