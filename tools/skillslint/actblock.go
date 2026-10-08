@@ -23,7 +23,9 @@
 //     driver_act, so a block that fails to parse leaves no earlier act's
 //     function under the name the driver is told to type;
 //  3. every full-line comment holds only allowed characters, and no code line
-//     carries a trailing comment;
+//     carries a trailing comment: a # that starts a word outside quotes after
+//     code, whether a blank or an operator such as ; or | ends the word before
+//     it (actTrailingCommentLines);
 //  4. every read in the block is the whole shape NAME=; read -rs NAME || exit N
 //     or NAME=; read -rs NAME || { …; exit N; } on one line (N from 1 to 255;
 //     -r and -s both given, no other option; the clear in command position),
@@ -70,9 +72,128 @@ var actPerActNameRe = regexp.MustCompile(`^` + actBlockMarker + `_[A-Za-z0-9_]+$
 // actShellLangs are the fence info strings whose blocks the lint reads.
 var actShellLangs = map[string]bool{"sh": true, "bash": true, "zsh": true, "shell": true}
 
-// actTrailingCommentRe finds a `#` that follows a space or tab on a code line:
-// a trailing comment, which a first zsh paste passes to the command as words.
-var actTrailingCommentRe = regexp.MustCompile(`[ \t]#`)
+// actTrailingCommentLines returns the indexes of the block lines on which a
+// trailing comment starts: a `#` that starts a word, outside quotes and not
+// after a backslash, on a line that already holds code. A word starts after a
+// blank, a newline, a list or pipe operator (; & |), a redirect (< >), a
+// parenthesis, a backtick or a $( — so `echo dry;#;echo live` counts, which a
+// first zsh paste runs as `echo dry`, `#` and `echo live`. The block is read
+// whole, so a quote, $( or backtick span or line continuation opened on one
+// line carries to the next; a `#` that starts a word on a line holding nothing
+// before it is a full-line comment, which the comment rule reads instead. A
+// heredoc body is read as code, which errs strict.
+func actTrailingCommentLines(lines []string) map[int]bool {
+	src := strings.Join(lines, "\n")
+	type frame struct {
+		kind  byte // 'n' code, 'd' a double quote, '$' a $( span, '`' a backtick span
+		depth int  // ( opened inside a $( span and not yet closed
+	}
+	var (
+		stack     = []frame{{kind: 'n'}}
+		out       = map[int]bool{}
+		line      int
+		wordStart = true // the next character would start a word
+		lineStart = true // nothing but blanks since the last newline
+	)
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		top := &stack[len(stack)-1]
+		if top.kind == 'd' {
+			switch {
+			case c == '"':
+				stack = stack[:len(stack)-1]
+			case c == '\\' && i+1 < len(src):
+				i++
+				if src[i] == '\n' {
+					line++
+				}
+			case c == '$' && i+1 < len(src) && src[i+1] == '(':
+				stack = append(stack, frame{kind: '$'})
+				i++
+				wordStart = true
+			case c == '`':
+				stack = append(stack, frame{kind: '`'})
+				wordStart = true
+			case c == '\n':
+				line++
+			}
+			continue
+		}
+		switch {
+		case c == '\n':
+			line++
+			wordStart, lineStart = true, true
+			continue
+		case c == ' ' || c == '\t' || c == '\r':
+			wordStart = true
+			continue
+		case c == '\\':
+			// A backslash before a newline joins the lines, leaving the word
+			// state as it was; before anything else it quotes that character.
+			if i+1 < len(src) {
+				i++
+				if src[i] == '\n' {
+					line++
+					continue
+				}
+			}
+			wordStart = false
+		case c == '\'':
+			j := strings.IndexByte(src[i+1:], '\'')
+			if j < 0 {
+				j = len(src) - i - 1
+			}
+			line += strings.Count(src[i+1:i+1+j], "\n")
+			i += j + 1
+			wordStart = false
+		case c == '"':
+			stack = append(stack, frame{kind: 'd'})
+			wordStart = false
+		case c == '#' && wordStart:
+			if !lineStart {
+				out[line] = true
+			}
+			for i+1 < len(src) && src[i+1] != '\n' {
+				i++
+			}
+			continue
+		case c == '$' && i+1 < len(src) && src[i+1] == '(':
+			stack = append(stack, frame{kind: '$'})
+			i++
+			wordStart = true
+		case c == '`':
+			if top.kind == '`' {
+				stack = stack[:len(stack)-1]
+				wordStart = false
+			} else {
+				stack = append(stack, frame{kind: '`'})
+				wordStart = true
+			}
+		case c == '(':
+			if top.kind == '$' {
+				top.depth++
+			}
+			wordStart = true
+		case c == ')':
+			if top.kind == '$' && top.depth == 0 {
+				// The $( span closes mid-word: `$(cmd)#x` is one word.
+				stack = stack[:len(stack)-1]
+				wordStart = false
+			} else {
+				if top.kind == '$' {
+					top.depth--
+				}
+				wordStart = true
+			}
+		case strings.IndexByte(";&|<>", c) >= 0:
+			wordStart = true
+		default:
+			wordStart = false
+		}
+		lineStart = false
+	}
+	return out
+}
 
 // actCommentAllowed reports whether r may appear in an act block's comment
 // line: letters, digits, space, tab and a short list of punctuation no shell
@@ -187,8 +308,16 @@ func actBlockLines(rel, raw string) (int, []Issue) {
 			}
 		}
 		badReads := actUnsafeReadLines(code, name)
+		texts := make([]string, len(body))
+		for i, l := range body {
+			texts[i] = l.text
+		}
+		trailing := actTrailingCommentLines(texts)
 		for i, l := range body {
 			t := strings.TrimSpace(l.text)
+			if trailing[i] {
+				add(l.n, "act block code line carries a trailing # comment — put the comment on its own line (%s); a first zsh paste passes trailing text to the command, and a # after ; or | runs what follows it", actCommentRuleText)
+			}
 			if strings.HasPrefix(t, "#") {
 				for _, r := range t {
 					if !actCommentAllowed(r) {
@@ -197,9 +326,6 @@ func actBlockLines(rel, raw string) (int, []Issue) {
 					}
 				}
 				continue
-			}
-			if actTrailingCommentRe.MatchString(t) {
-				add(l.n, "act block code line carries a trailing # comment — put the comment on its own line (%s); a first zsh paste passes trailing text to the command", actCommentRuleText)
 			}
 			if badReads[i] {
 				add(l.n, "act block read is not in the shape NAME=; read -rs NAME || exit 1, or NAME=; read -rs NAME || { ...; exit 1; }, run by the act function's own shell — clear the variable first, read with -r and -s only, end the failure branch with an exit from 1 to 255, and keep it out of any subshell, command substitution, pipeline or background, or a shell whose read has no -s keeps an inherited value as the secret")

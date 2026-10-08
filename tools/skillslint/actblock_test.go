@@ -118,6 +118,68 @@ func TestActBlockLintFlagsTrailingComment(t *testing.T) {
 	}
 }
 
+// TestActBlockLintFlagsCommentAfterOperator — a # that starts a word starts a
+// comment in a shell that reads comments, whatever ends the word before it: a
+// blank, a list or pipe operator, a redirect, a parenthesis, a backtick or a
+// $( . Each row is flagged at the line the # sits on. In zsh without
+// interactive_comments the same # is a command, so `echo dry;#;echo live`
+// runs the live echo there.
+func TestActBlockLintFlagsCommentAfterOperator(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		lines []string
+		at    int // index into lines of the line the # sits on
+	}{
+		{"semicolon", []string{"  echo dry;#;echo live"}, 0},
+		{"pipe", []string{"  echo dry|#x", "  cat"}, 0},
+		{"background", []string{"  echo dry&#x", "  wait"}, 0},
+		{"and list", []string{"  echo dry&&#x", "  echo n"}, 0},
+		{"or list", []string{"  true||#x", "  echo n"}, 0},
+		{"open paren", []string{"  (#x", "  echo sub)"}, 0},
+		{"close paren", []string{"  (echo sub)#x"}, 0},
+		{"redirect out", []string{"  echo a>#f"}, 0},
+		{"redirect in", []string{"  cat <#f"}, 0},
+		{"backtick", []string{"  echo `#x", "  echo bq`"}, 0},
+		{"command substitution", []string{"  echo $(#x", "  echo cs)"}, 0},
+		{"command substitution in quotes", []string{`  echo "$(#x`, `  echo cs)"`}, 0},
+		{"after a line continuation", []string{`  echo a \`, "  #c"}, 1},
+		{"after a quote closed on an earlier line", []string{`  echo "a`, `  b";#c`}, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(4, c.lines...))
+			wantOneAt(t, issues, cleanActLine(4+c.at), "trailing # comment")
+		})
+	}
+}
+
+// TestActBlockLintHashInWordNotComment — a # that does not start a word, or
+// sits inside quotes or after a backslash, starts no comment and is not
+// flagged.
+func TestActBlockLintHashInWordNotComment(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		lines []string
+	}{
+		{"inside a word", []string{"  echo a#b"}},
+		{"in double quotes", []string{`  echo "a ;#b"`}},
+		{"in single quotes", []string{`  echo 'a ;#b'`}},
+		{"escaped", []string{`  echo x\#y`}},
+		{"escaped after an operator", []string{`  echo x;\#y`}},
+		{"length and count expansions", []string{`  echo "${#T}" $# ${#T}`}},
+		{"after a command substitution", []string{"  echo $(echo a)#b"}},
+		{"after a backtick span", []string{"  echo `echo c`#d"}},
+		{"in a double quote across lines", []string{`  echo "a`, `  b ;#c"`}},
+		{"in a single quote across lines", []string{`  echo 'a`, `  b ;#c'`}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(4, c.lines...))
+			if len(issues) != 0 {
+				t.Fatalf("issues=%+v, want none for a # that starts no comment", issues)
+			}
+		})
+	}
+}
+
 // TestActBlockLintFlagsMissingGuard — a block whose first non-blank line is
 // not the zsh guard is flagged, whether the guard is missing or comes after a
 // comment line or a code line.

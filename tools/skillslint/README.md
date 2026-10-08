@@ -317,7 +317,11 @@ or `shell` fence that defines a function named `driver_act…`) to four rules:
 
 1. every full-line comment holds only letters, digits, spaces, tabs and
    `. , : - / _ + = #`, indented or not, and no code line carries a trailing
-   `#` comment, so a comment runs nothing even where zsh reads it as a command;
+   `#` comment, so a comment runs nothing even where zsh reads it as a command.
+   A trailing comment is any `#` that starts a word outside quotes after code
+   on the same line: after a blank, `;`, `&`, `|`, `<`, `>`, `(`, `)`, a
+   backtick or `$(`, so `echo dry;#;echo live` is flagged (a first zsh paste
+   runs `echo live`), while `a#b`, `${#T}`, `$#`, `\#` and a quoted `#` are not;
 2. the block's first non-blank line is the zsh comment guard;
 3. the act function has a per-act name, `driver_act_<id>`, never the bare
    `driver_act`, so a block that fails to parse leaves no earlier act's
