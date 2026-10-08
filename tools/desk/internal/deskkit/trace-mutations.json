@@ -52,8 +52,8 @@
     {
       "name": "flatten deskwt's refusal into unverifiable in the worktree-create step (a decision the child made is reported as a state that could not be established, sending the operator to retry something that will never succeed)",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\t\tif exitCodeOf(wt.err) == deskkit.ExitRefused {\n\t\t\treturn wt.run.FailVerbatim(deskkit.ExitRefused, msg)\n\t\t}",
-      "new": "\t\tif false {\n\t\t\treturn wt.run.FailVerbatim(deskkit.ExitRefused, msg)\n\t\t}"
+      "old": "\t\tif exitCodeOf(wt.err) == deskkit.ExitRefused {\n\t\t\treturn held.settle(wt.run.FailVerbatim(deskkit.ExitRefused, msg))\n\t\t}",
+      "new": "\t\tif false {\n\t\t\treturn held.settle(wt.run.FailVerbatim(deskkit.ExitRefused, msg))\n\t\t}"
     },
     {
       "name": "report the claim tool's raw first stderr line again (the exit-6 claim failure goes back to naming the assay-config echo)",

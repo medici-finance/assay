@@ -1201,8 +1201,21 @@ func (h *heldClaim) settle(err error) error {
 		cp.Msg += note
 		return &cp
 	}
-	return &deskkit.DeskError{Code: deskkit.ExitCodeOf(err), Msg: err.Error() + note}
+	// Anything else — a plain error, or a *DeskError wrapped with %w — keeps its whole chain: the
+	// note rides on a wrapper that Unwraps to err, so errors.As still reaches a wrapped DeskError's
+	// Code, Err, RetryAfter and Finding (and ExitCodeOf still reads its Code).
+	return &settledError{err: err, note: note}
 }
+
+// settledError is a post-claim abort's error with the claim-release outcome appended to its
+// message. It adds text only; the cause and everything errors.As can reach through it are err's.
+type settledError struct {
+	err  error
+	note string
+}
+
+func (e *settledError) Error() string { return e.err.Error() + e.note }
+func (e *settledError) Unwrap() error { return e.err }
 
 // claimAuth is the credential hand-off for every claim-tool child this verb starts (acquire,
 // show, release) and, via scriptEnv, for the decision-gate script (issue 1146). Exactly one of

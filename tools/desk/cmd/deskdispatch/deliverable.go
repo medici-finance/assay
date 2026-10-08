@@ -44,9 +44,15 @@ package main
 // THE AUTHORING-PR ACCEPTANCE. A dispatch with --pr N onto the brief's TRACKING repo (its home
 // alias, resolved through the same registry) is accepted: that change is the one that authors the
 // brief, and its reviewer needs the PR's own tree with --brief still passed so a `gate: human` brief
-// stays detected. The change's repo is --repo, else --root's origin; --root's origin must still be
-// that tracking repo, so a --root at the deliverable's checkout is the same HARD FAIL. A fresh
-// dispatch (no --pr), a --pr onto any third repo, or an unknown tracking repo → the HARD FAIL above.
+// stays detected. The home alias must be NAMED for the item — the item-key prefix or the brief's
+// brief-v2 id. A home alias that merely defaults to the `self` of the registry this run read is no
+// evidence: any checkout's registry may name itself, so a --pr onto a third repo whose own registry
+// declares `self:` would otherwise pass as its own tracking repo. The change's repo is --repo, else
+// --root's origin; --root's origin must still be that tracking repo, so a --root at the deliverable's
+// checkout is the same HARD FAIL. A fresh dispatch (no --pr), a tracking repo that is only the
+// registry's defaulted `self`, a --pr onto any repo other than the named tracking repo, or an unknown
+// tracking repo → the HARD FAIL above (with --pr onto a defaulted `self`, the refusal names the fix:
+// prefix the item key with the tracking alias).
 //
 // WHERE THE REGISTRY IS READ. Under --claim-root when given, else --root. --claim-root is the
 // tracking checkout — the one that carries the brief, its board and the full registry copy — and it
@@ -203,9 +209,15 @@ type deliverable struct {
 	// repo is the deliverable repo the alias resolves to — the claim, token, worktree and PR repo.
 	repo string
 	// homeAlias / trackingRepo: the alias the brief is TRACKED under (the item-key prefix, else the
-	// registry's own `self`) and its published repo, "" when unknown or unpublished.
+	// brief's brief-v2 id, else the registry's own `self`) and its published repo, "" when unknown or
+	// unpublished.
 	homeAlias    string
 	trackingRepo string
+	// trackingNamed: the home alias was NAMED for this item — by the item-key prefix or the brief's
+	// brief-v2 id — rather than defaulted to the `self` of whichever registry the run read. Only a
+	// named tracking repo admits the authoring-PR acceptance: a defaulted one is just the checkout
+	// vouching for itself, so it is no evidence that this checkout tracks the brief.
+	trackingNamed bool
 	// trackingRoot is the ABSOLUTE registry root — the checkout `deskpr create --root` must name so
 	// the PR's `Brief:` trailer resolves against the tracking repo's board.
 	trackingRoot string
@@ -392,6 +404,7 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	if d.homeAlias == "" && declV2Alias != "" {
 		d.homeAlias, homeSource = declV2Alias, "the brief's brief-v2 id"
 	}
+	d.trackingNamed = d.homeAlias != ""
 	if d.homeAlias == "" {
 		d.homeAlias, homeSource = reg.self, "the registry's self"
 	}
@@ -471,7 +484,7 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 		case authoringPR(o, d, r):
 			repo = d.acceptAuthoringPR(o)
 		default:
-			return d, mismatch(d, "--repo", r)
+			return d, mismatch(d, "--repo", r, authoringPRHint(o, d, r))
 		}
 	}
 	origin := runCmd(o.root, "git", "remote", "get-url", "origin")
@@ -490,8 +503,11 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	if !strings.EqualFold(actual, repo) {
 		// With no --repo the change's repo IS --root's origin, so the authoring-PR acceptance reads
 		// that one witness. With --repo given it was already decided above, and --root must agree.
-		if strings.TrimSpace(o.repo) != "" || !authoringPR(o, d, actual) {
-			return d, mismatch(d, "--root "+o.root, actual)
+		if strings.TrimSpace(o.repo) != "" {
+			return d, mismatch(d, "--root "+o.root, actual, "")
+		}
+		if !authoringPR(o, d, actual) {
+			return d, mismatch(d, "--root "+o.root, actual, authoringPRHint(o, d, actual))
 		}
 		d.acceptAuthoringPR(o)
 	}
@@ -602,11 +618,26 @@ func declaredTagFor(text string, reg *aliasRegistry, repo string) string {
 // already-open change (--pr N) — the shape of a brief-AUTHORING PR: the change adds or edits the
 // brief in the repo that tracks it, while the brief's deliverable lands elsewhere. Its reviewer (or
 // resumer) needs the PR's own tree, not the deliverable's, and --brief must still be passed so the
-// human gate is read. Nothing else is relaxed: the tracking repo comes from the registry (an unknown
-// or unpublished home alias never matches), --root's origin is still checked against it, and every
-// other refusal in this file has already run.
+// human gate is read. Nothing else is relaxed: the tracking alias must be NAMED for this item (the
+// item-key prefix or the brief's brief-v2 id — never the registry's own `self`, which any checkout
+// can declare about itself), it resolves through the registry (an unknown or unpublished home alias
+// never matches), --root's origin is still checked against it, and every other refusal in this file
+// has already run.
 func authoringPR(o dispatchOpts, d deliverable, repo string) bool {
-	return o.pr > 0 && d.trackingRepo != "" && strings.EqualFold(repo, d.trackingRepo)
+	return o.pr > 0 && d.trackingNamed && d.trackingRepo != "" && strings.EqualFold(repo, d.trackingRepo)
+}
+
+// authoringPRHint is the remedy line a HARD FAIL carries when the dispatch WOULD be an authoring-PR
+// acceptance but for one missing piece of evidence: --pr is given and repo is the registry's own
+// `self`, which was defaulted rather than named. Otherwise "".
+func authoringPRHint(o dispatchOpts, d deliverable, repo string) string {
+	if o.pr <= 0 || d.trackingNamed || d.trackingRepo == "" || !strings.EqualFold(repo, d.trackingRepo) {
+		return ""
+	}
+	return fmt.Sprintf(" An authoring-PR dispatch (--pr) is accepted onto the brief's tracking repo only when "+
+		"the tracking alias is named for the item — the brief's brief-v2 id, or the alias of the repo that "+
+		"tracks the brief as a prefix on the item key (<alias>:%s) — not when it defaults to the self %q of "+
+		"the registry this run read, since any checkout's registry can name itself.", o.item, d.homeAlias)
 }
 
 // acceptAuthoringPR re-points d at the tracking repo for an authoring-PR dispatch and returns it.
@@ -629,11 +660,11 @@ func unregisteredAlias(alias, source string, reg *aliasRegistry) error {
 		stepClaimAcquire, alias, source, reg.path, strings.Join(keys, ", ")))
 }
 
-func mismatch(d deliverable, what, actual string) error {
+func mismatch(d deliverable, what, actual, hint string) error {
 	return deskkit.Refused(fmt.Sprintf(
 		"step %s: HARD FAIL — alias %q (from %s) resolves to %s via %s, but %s is %s. The deliverable "+
 			"lands in %s, so dispatching from this checkout would cut the worker's worktree in the wrong "+
 			"repo. Nothing was claimed and no worktree was cut. Re-run with --root at a checkout of %s "+
-			"(and --claim-root at the tracking checkout that carries the registry).",
-		stepClaimAcquire, d.alias, d.source, d.repo, d.registryPath, what, actual, d.repo, d.repo))
+			"(and --claim-root at the tracking checkout that carries the registry).%s",
+		stepClaimAcquire, d.alias, d.source, d.repo, d.registryPath, what, actual, d.repo, d.repo, hint))
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -61,6 +63,43 @@ func TestPromptWriteFailReleases(t *testing.T) {
 	}
 }
 
+// settle appends the release outcome without dropping the error chain: a %w-wrapped DeskError
+// keeps its Code and RetryAfter (errors.As still reaches it), and a plain error stays reachable by
+// errors.Is with its exit code unchanged.
+func TestSettleKeepsErrorChain(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	held := func() *heldClaim {
+		return &heldClaim{o: dispatchOpts{root: root}, tool: filepath.Join(root, filepath.FromSlash(claimScriptRel)), key: "item-1", repo: "example-org/tracker"}
+	}
+
+	inner := &deskkit.DeskError{Code: deskkit.ExitRateLimited, Msg: "rate limited", RetryAfter: 7 * time.Second}
+	err := held().settle(fmt.Errorf("step stamp: %w", inner))
+	var de *deskkit.DeskError
+	if !errors.As(err, &de) || de.RetryAfter != 7*time.Second {
+		t.Errorf("a wrapped DeskError lost its RetryAfter through settle: %#v", err)
+	}
+	if got := deskkit.ExitCodeOf(err); got != deskkit.ExitRateLimited {
+		t.Errorf("exit code = %d, want %d", got, deskkit.ExitRateLimited)
+	}
+	if !strings.Contains(err.Error(), "step stamp: rate limited") || !strings.Contains(err.Error(), "item-1 was released") {
+		t.Errorf("settle must keep the message and add the release outcome: %v", err)
+	}
+
+	plain := errors.New("disk full")
+	err = held().settle(plain)
+	if !errors.Is(err, plain) {
+		t.Errorf("a plain error is no longer reachable through settle: %#v", err)
+	}
+	if got := deskkit.ExitCodeOf(err); got != deskkit.ExitUnverifiable {
+		t.Errorf("exit code = %d, want %d", got, deskkit.ExitUnverifiable)
+	}
+	if !s.ran("dispatch-claim.sh release") {
+		t.Error("settle on an error did not release the claim")
+	}
+}
+
 // TestClaimReleaseChokepoint is the class guard. The defect class is "a return path after the
 // claim that does not release it"; each fix that added one more release call closed one instance
 // and left the next. The guard pins the SHAPE instead: stepClaim is called once, from dispatch, and
@@ -74,8 +113,9 @@ func TestClaimReleaseChokepoint(t *testing.T) {
 	}
 }
 
-// The guard's positive control: a planted second instance — a raw return after the claim, and a
-// direct releaseClaim call outside heldClaim — must be flagged, so the guard is never vacuous.
+// The guard's positive control: planted second instances — a raw return after the claim, a direct
+// releaseClaim call outside heldClaim, a settle on some other receiver, and held.settle(nil) — must
+// each be flagged, so the guard is never vacuous; the one well-formed held.settle(err) must not be.
 func TestChokepointGuardFlags(t *testing.T) {
 	const planted = `package main
 func dispatch(o dispatchOpts) error {
@@ -87,6 +127,12 @@ func dispatch(o dispatchOpts) error {
 		return err
 	}
 	_ = releaseClaim(o, "", claimAuth{}, "", "")
+	if err := another(); err != nil {
+		return stray.settle(err)
+	}
+	if err := third(); err != nil {
+		return held.settle(err)
+	}
 	return held.settle(nil)
 }
 `
@@ -97,8 +143,13 @@ func dispatch(o dispatchOpts) error {
 	}
 	leaks := claimReleaseLeaks(fset, []*ast.File{f})
 	joined := strings.Join(leaks, "\n")
-	if !strings.Contains(joined, "planted.go:8") || !strings.Contains(joined, "planted.go:10") {
-		t.Errorf("the guard missed the planted instances (want lines 8 and 10):\n%s", joined)
+	for _, line := range []string{"planted.go:8:", "planted.go:10:", "planted.go:12:", "planted.go:17:"} {
+		if !strings.Contains(joined+"\n", line) {
+			t.Errorf("the guard missed the planted instance at %s:\n%s", strings.TrimSuffix(line, ":"), joined)
+		}
+	}
+	if strings.Contains(joined, "planted.go:15:") {
+		t.Errorf("the guard flagged the well-formed held.settle(err) at line 15:\n%s", joined)
 	}
 }
 
@@ -199,13 +250,23 @@ func postClaimReturns(fn *ast.FuncDecl, pos func(ast.Node) string) []string {
 	return out
 }
 
+// isSettle reports whether e is `held.settle(<err>)`: the receiver is the heldClaim dispatch built
+// (any other `x.settle` could be a different type's method, or a different claim), and the argument
+// is not the literal nil — `held.settle(nil)` on an error path would discard the error and release
+// nothing, while satisfying a guard that looked only at the method name.
 func isSettle(e ast.Expr) bool {
 	call, ok := e.(*ast.CallExpr)
-	if !ok {
+	if !ok || len(call.Args) != 1 {
 		return false
 	}
 	sel, ok := call.Fun.(*ast.SelectorExpr)
-	return ok && sel.Sel.Name == "settle"
+	if !ok || sel.Sel.Name != "settle" || exprString(sel.X) != "held" {
+		return false
+	}
+	if id, isIdent := call.Args[0].(*ast.Ident); isIdent && id.Name == "nil" {
+		return false
+	}
+	return true
 }
 
 func containsCall(n ast.Node, name string) bool {
