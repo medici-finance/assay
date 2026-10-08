@@ -66,7 +66,7 @@ it on day one.
 
 Two `deskrun` verbs added by forge-neutral brief 17, spelled out because the table row is long:
 
-- `deskrun log <owner/repo> <run-id>` prints each job's log once, one section per job (control sequences stripped; a job over the 4 MiB cap keeps its true last 4 MiB, a job over the 64 MiB read bound is could-not-check rather than a slice). It is a read under the calling worker or reviewer role's own token, never the release-runner credential, and it does not spend the write verbs' per-repo budget: only its refusals are recorded in the audit ledger.
+- `deskrun log <owner/repo> <run-id>` prints each job's log once, one section per job (control sequences stripped; a job over the 4 MiB cap keeps its true last 4 MiB, a job over the 64 MiB read bound is could-not-check rather than a slice). It is a read under the calling worker or reviewer role's own token, never the release-runner credential, and it never reaches the write verbs' per-repo budget or circuit breaker: every audit line `log` or `status` writes (their refusals among them) goes under their own audit key, `deskrun-read`, which no write gate meters.
 - `deskrun retry <owner/repo> <run-id>` re-runs only the FAILED jobs of one run (GitHub `rerun-failed-jobs`, never the whole-run rerun; GitLab retries each failed job); it inherits the run-credential rule above, so a `human:<name>` binding is refused (exit 5) before any mint or request.
 
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools

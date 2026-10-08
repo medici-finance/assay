@@ -341,7 +341,7 @@ func cmdLog(args []string, out io.Writer) error {
 		auditLine(fr.Slug(), verb, resultOf(err), "log: "+err.Error())
 		return err
 	}
-	// A successful read records nothing: it must not spend the write verbs' budget (readVerbs).
+	// A successful read records nothing; its other outcomes go to the read bucket (readVerbs).
 	for _, p := range parts {
 		note := ""
 		if p.Truncated {
@@ -437,25 +437,29 @@ func resultOf(err error) string {
 	}
 }
 
-// readVerbs are deskrun's verbs that only READ the forge. They share the tool/repo ledger
-// bucket the write verbs' budget is metered from (AllowWrite(toolName, repo, 0)), so a read
-// records ONLY its refusals there — a refusal charges nothing, and it is the access decision
-// worth keeping. Every other outcome of a read (ok, a forge or custody failure) is left out:
-// recorded, it would be counted as a charged write, and reading logs to diagnose a red check
-// would lock the release-runner's dispatch, approve and retry on that repo for an hour.
+// readVerbs are deskrun's verbs that only READ the forge. Their audit lines are recorded under
+// their own ledger key (deskkit.DeskrunReadTool), never under toolName, whose lines the write
+// verbs' gate (AllowWrite(toolName, repo, 0)) meters TWICE: the budget would count a read's ok
+// or could-not-check line as a charged write, and the circuit breaker would count a read's
+// refusal as a writer spinning on bad input — so reading logs to diagnose a red check, or a
+// session outside the read grant calling `log`, would shut the release-runner's dispatch,
+// approve and retry on that repo. In their own bucket a read's every recorded outcome stays on
+// the audit trail and reaches neither meter. readledger_test.go pins both halves.
 var readVerbs = map[string]bool{"status": true, "log": true}
 
-// auditLine writes deskrun's one audit line. A run has no PR number, so the line records
-// none — the unnumbered bucket AllowWrite(…, 0) gates on (the bucket a gate reads must be the
-// bucket its writes land in). A read verb's non-refusal outcome is not recorded (readVerbs).
+// auditLine writes deskrun's one audit line — the ONLY ledger write in this package
+// (readledger_test.go fails on any other). A run has no PR number, so the line records none —
+// the unnumbered bucket AllowWrite(…, 0) gates on (the bucket a gate reads must be the bucket
+// its writes land in). A read verb's line goes to the read bucket instead (readVerbs).
 func auditLine(repo, verb, result, detail string) {
-	if readVerbs[verb] && result != deskkit.ResultRefused {
-		return
+	tool := toolName
+	if readVerbs[verb] {
+		tool = deskkit.DeskrunReadTool
 	}
 	sha, built := deskkit.Version()
 	_ = deskkit.Log(deskkit.Entry{
 		TS:         nowFunc().UTC().Format(time.RFC3339),
-		Tool:       toolName,
+		Tool:       tool,
 		Verb:       verb,
 		ArgsDigest: deskkit.ArgsDigest(os.Args[1:]),
 		Repo:       repo,

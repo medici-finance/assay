@@ -271,8 +271,10 @@ var readVerbsUnderTest = []string{"status", "log"}
 
 // TestDeskrunReadsChargeNothing — the class guard for log-reads-charge-write-budget. Every read
 // verb, on every path it has (success, a read failure at the forge, a custody failure, a
-// refusal), records nothing but refusals in the ledger the write verbs' budget is metered from —
-// so no read, failed or not, is ever counted as a charged write.
+// refusal), records NOTHING in the ledger bucket the write verbs' budget and breaker are metered
+// from (toolName) — its lines go to deskkit.DeskrunReadTool — so no read, failed or not, is ever
+// counted as a charged write or as a writer's non-progress. readledger_test.go carries the
+// breaker half of the class.
 func TestDeskrunReadsChargeNothing(t *testing.T) {
 	type path struct {
 		name  string
@@ -297,14 +299,14 @@ func TestDeskrunReadsChargeNothing(t *testing.T) {
 				for i := 0; i < 3; i++ {
 					runArgs(t, verb, "example-org/tracker", "501")
 				}
-				if bad := chargedLines(t); len(bad) > 0 {
-					t.Fatalf("%s/%s recorded non-refusal ledger line(s) %v — a read charged the write budget", verb, p.name, bad)
+				if bad := ledgerResults(t, toolName); len(bad) > 0 {
+					t.Fatalf("%s/%s recorded line(s) %v in the write verbs' bucket — a read reached the write meters", verb, p.name, bad)
 				}
 			})
 		}
 	}
-	// The refusal paths stay recorded: a role outside the read grant, and (status) a human-bound
-	// repo. Those are the only lines a read writes.
+	// The refusal paths stay recorded — in the read bucket, never the write one: a role outside
+	// the read grant, and (status) a human-bound repo.
 	plantWorld(t, deskkit.ForgeGitHub)
 	setLoop(t, "verify-desk")
 	if code, _, _ := runArgs(t, "log", "example-org/tracker", "501"); code != deskkit.ExitRefused {
@@ -314,13 +316,17 @@ func TestDeskrunReadsChargeNothing(t *testing.T) {
 	if code, _, _ := runArgs(t, "status", "example-org/console", "501"); code != deskkit.ExitRefused {
 		t.Fatalf("a refused status read: exit %d, want %d", code, deskkit.ExitRefused)
 	}
-	if got := ledgerResults(t); strings.Join(got, ",") != "log:refused,status:refused" {
-		t.Fatalf("ledger after two refused reads = %v, want exactly the two refusals", got)
+	if got := ledgerResults(t, deskkit.DeskrunReadTool); strings.Join(got, ",") != "log:refused,status:refused" {
+		t.Fatalf("read bucket after two refused reads = %v, want exactly the two refusals", got)
+	}
+	if got := ledgerResults(t, toolName); len(got) > 0 {
+		t.Fatalf("write bucket after two refused reads = %v, want nothing", got)
 	}
 }
 
-// ledgerResults returns "verb:result" for every deskrun line in this test's ledger, sorted.
-func ledgerResults(t *testing.T) []string {
+// ledgerResults returns "verb:result" for every line recorded under the tool key `tool` in this
+// test's ledger, sorted.
+func ledgerResults(t *testing.T, tool string) []string {
 	t.Helper()
 	f, err := os.Open(filepath.Join(os.Getenv("HOME"), ".config", "assay", "audit.jsonl"))
 	if errors.Is(err, os.ErrNotExist) {
@@ -337,23 +343,12 @@ func ledgerResults(t *testing.T) []string {
 		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
 			t.Fatalf("ledger line %q: %v", sc.Text(), err)
 		}
-		if e.Tool == toolName {
+		if e.Tool == tool {
 			out = append(out, e.Verb+":"+e.Result)
 		}
 	}
 	sort.Strings(out)
 	return out
-}
-
-// chargedLines is ledgerResults minus the refusals (the one result a read may record).
-func chargedLines(t *testing.T) []string {
-	var bad []string
-	for _, l := range ledgerResults(t) {
-		if !strings.HasSuffix(l, ":"+deskkit.ResultRefused) {
-			bad = append(bad, l)
-		}
-	}
-	return bad
 }
 
 // zipBytes builds an in-memory archive, entries in the given order.

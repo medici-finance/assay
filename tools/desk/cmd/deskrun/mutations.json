@@ -68,16 +68,28 @@
       "new": "\t\tif j.Status != \"\" {\n\t\t\tfailed = append(failed, j)"
     },
     {
-      "name": "review B5 — a read verb's every outcome is recorded in the write ledger again (log/status spend the write budget)",
+      "name": "review B5/B8 — a read verb's lines go back into the write verbs' bucket (a read reaches the write budget and the breaker)",
       "file": "cmd/deskrun/verbs.go",
-      "old": "\tif readVerbs[verb] && result != deskkit.ResultRefused {",
-      "new": "\tif false && readVerbs[verb] && result != deskkit.ResultRefused {"
+      "old": "\t\ttool = deskkit.DeskrunReadTool",
+      "new": "\t\ttool = toolName"
     },
     {
-      "name": "review B5 — a read verb's refusals are dropped from the ledger too (the access decision is lost)",
+      "name": "review B5 — a read verb's lines are dropped from the ledger (the access decision is lost)",
       "file": "cmd/deskrun/verbs.go",
-      "old": "\tif readVerbs[verb] && result != deskkit.ResultRefused {",
-      "new": "\tif readVerbs[verb] {"
+      "old": "\tif readVerbs[verb] {\n\t\ttool = deskkit.DeskrunReadTool\n\t}",
+      "new": "\tif readVerbs[verb] {\n\t\treturn\n\t}"
+    },
+    {
+      "name": "review B8 — the read bucket's key is unregistered, so it folds into deskrun's write bucket",
+      "file": "internal/deskkit/audittoolkey.go",
+      "old": "\tDeskrunReadTool: {},\n}",
+      "new": "}"
+    },
+    {
+      "name": "review B8 — log is dropped from the read set (its refusals open the write breaker again)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "var readVerbs = map[string]bool{\"status\": true, \"log\": true}",
+      "new": "var readVerbs = map[string]bool{\"status\": true}"
     }
   ]
 }
