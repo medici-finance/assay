@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
@@ -69,6 +70,8 @@ type world struct {
 	// push by some route the author did not imagine still fails the test.
 	pushes *[][]string
 	gitAll *[][]string
+	// fetches records every in-process fetch the tool asked gitcore for (fetchFn).
+	fetches *[]gitcore.FetchOpts
 	// forgeOps records every forge operation the run issued, as [op, repo, number, kind].
 	// The stub forge embeds a nil deskkit.Forge, so any op it does not serve — every write
 	// among them — panics rather than passing silently.
@@ -283,6 +286,13 @@ func (s *stubForge) ListCommentsTyped(r deskkit.ForgeRepo, n int, kind deskkit.T
 func (w *world) install(t *testing.T, pr prStub, signed bool) {
 	t.Helper()
 	prevGit, prevForge, prevAllow, prevAudit := runGit, forgeFor, allowWrite, auditLog
+	prevFetch := fetchFn
+	var fetchCalls []gitcore.FetchOpts
+	w.fetches = &fetchCalls
+	fetchFn = func(root string, opts gitcore.FetchOpts) error {
+		fetchCalls = append(fetchCalls, opts)
+		return prevFetch(root, opts)
+	}
 	var gitCalls, forgeOps, pushCalls [][]string
 	var audits []deskkit.Entry
 	w.gitAll, w.forgeOps, w.pushes, w.audits = &gitCalls, &forgeOps, &pushCalls, &audits
@@ -315,7 +325,10 @@ func (w *world) install(t *testing.T, pr prStub, signed bool) {
 	allowWrite = func(string, int) error { return nil }
 	auditLog = func(e deskkit.Entry) error { audits = append(audits, e); return nil }
 
-	t.Cleanup(func() { runGit, forgeFor, allowWrite, auditLog = prevGit, prevForge, prevAllow, prevAudit })
+	t.Cleanup(func() {
+		runGit, forgeFor, allowWrite, auditLog = prevGit, prevForge, prevAllow, prevAudit
+		fetchFn = prevFetch
+	})
 }
 
 // cli runs a verb and returns (exit code, stdout).

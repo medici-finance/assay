@@ -18,7 +18,7 @@
 // never by agents. Its conflict-stage-reading companions (the conflict-enumeration
 // `diff` and the regenerable-resolution `add` — both proven, not assumed, to need the
 // binary; see internal/gitcore/write.go) are fenced beside it for the same reason, and
-// deskmerge's still-unmigrated transport verbs (`fetch`/`push`, briefs 05/06) and its
+// deskmerge's still-unmigrated transport verb (`push`, brief 06) and its
 // scratch-worktree family (`worktree`, a separate go-git gap, follow-on stream) remain
 // until their own briefs land. That is the stream's documented exception, not a
 // deferral: `allowlist` must be shrunk, not grown, and any edit must name the brief
@@ -74,11 +74,10 @@ var allowlist = map[verbTool]bool{
 	{tool: "deskmerge", verb: "add"}:      true,
 	{tool: "deskmerge", verb: "worktree"}: true, // linked worktrees: go-git gap, follow-on stream
 
-	// Transport verbs not yet migrated — briefs 05 (fetch) and 06 (push).
-	{tool: "deskmerge", verb: "fetch"}: true,
-	{tool: "deskmerge", verb: "push"}:  true,
+	// Transport verb not yet migrated — brief 06 (push). Fetch is in-process (brief 05).
+	{tool: "deskmerge", verb: "push"}: true,
 	// `remote` is back ONLY for `remote get-url [--push] --all origin` — the read of where the
-	// fetch and push above will actually connect (#1623). Brief 07 had migrated it to gitcore's
+	// push above will actually connect (#1623). Brief 07 had migrated it to gitcore's
 	// RemoteURL, which reads the repository config file alone: it misses worktree- and
 	// global-scope values, global insteadOf rules and multi-valued lists, so a gate on it passed
 	// a repo git then never used. Only git can say what git will resolve, so the gate asks git.
@@ -119,9 +118,7 @@ var allowlist = map[verbTool]bool{
 	{tool: "writeguard", verb: "rev-parse"}:      true,
 	{tool: "desksourceguard", verb: "rev-parse"}: true,
 	{tool: "deskadvisory", verb: "init"}:         true,
-	{tool: "deskadvisory", verb: "fetch"}:        true, // third-party-fork fetch; hardening disappears with gitcore transport
 	{tool: "deskadvisory", verb: "commit"}:       true,
-	{tool: "deskadvisory", verb: "checkout"}:     true,
 	{tool: "verifyloop", verb: "pull"}:           true, // go-git gap: rebase / non-fast-forward pull — follow-on design brief
 	{tool: "verifyloop", verb: "commit"}:         true,
 	{tool: "verifyloop", verb: "add"}:            true,

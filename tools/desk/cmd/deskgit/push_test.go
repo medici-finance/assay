@@ -1,12 +1,16 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // push_test.go — the authenticated-transport verbs (`deskgit push --as`, `deskgit fetch
@@ -52,7 +56,8 @@ func onBranch(t *testing.T, work, branch string) {
 // because the authenticated forms prepend `-c credential.helper=` before the verb.
 func gitCallWith(calls [][]string, verb string) []string {
 	for _, c := range calls {
-		if len(c) == 0 || c[0] != "git" {
+		// "gitcore" is the synthetic entry the in-process fetch seam records (see withEnvCmds).
+		if len(c) == 0 || (c[0] != "git" && c[0] != "gitcore") {
 			continue
 		}
 		for _, a := range c[1:] {
@@ -383,22 +388,66 @@ func TestPushOptionsRefusedByName(t *testing.T) {
 	}
 }
 
-// Row 8: fetch --as keeps every fetch guard — the hardening pins and the effective-URL gate —
-// and only adds the credential channel.
+// Row 8: fetch --as keeps every fetch guard — the effective-URL gate, the refspec — and only adds
+// the credential. The credential is an in-memory value on the transport options; nothing is
+// staged on disk or in the environment (there is no helper to clear: no git child runs).
 func TestFetchAsRoleKeepsEveryFetchGuard(t *testing.T) {
-	t.Run("hardening pins still present, helper cleared before the verb", func(t *testing.T) {
+	t.Run("the credential is an in-memory value bound to a github.com origin only", func(t *testing.T) {
 		work := newRepo(t, allowedSlug)
-		calls := withEnv(t, work)
+		onBranch(t, work, "feature-auth")
+		mustGit(t, work, "remote", "set-url", "origin", githubOrigin)
+		withEnv(t, work)
 		asWorker(t)
-		if code := run([]string{"fetch", "--as", "worker"}); code != deskkit.ExitOK {
-			t.Fatalf("fetch --as worker exit = %d, want ok", code)
+		// github.com is not reachable from a unit test: the fetch seam records the options and
+		// fails, so the exit is 6 — the assertion is on what the transport was handed.
+		fetchFn = func(_ string, opts gitcore.FetchOpts) error {
+			fetchRecorded = append(fetchRecorded, opts)
+			return errors.New("offline")
 		}
-		argv := gitCallWith(*calls, "fetch")
-		if argv == nil {
-			t.Fatal("no git fetch was constructed for fetch --as")
+		if code := run([]string{"fetch", "--as", "worker"}); code != deskkit.ExitUnverifiable {
+			t.Fatalf("fetch --as worker exit = %d, want %d (offline seam)", code, deskkit.ExitUnverifiable)
 		}
-		assertHardened(t, argv)
-		assertCredentialHelperCleared(t, strings.Join(argv, " "), "fetch")
+		got := onlyFetch(t)
+		if got.URL != githubOrigin {
+			t.Errorf("fetch URL = %q, want the gated origin %q verbatim", got.URL, githubOrigin)
+		}
+		ba, ok := got.Auth.(*githttp.BasicAuth)
+		if !ok || ba.Password != fixtureToken {
+			t.Fatalf("fetch Auth = %#v, want BasicAuth carrying the role token", got.Auth)
+		}
+		if len(got.RefSpecs) != 1 || got.RefSpecs[0] != trackingRefspec {
+			t.Errorf("refspecs = %q, want exactly [%q]", got.RefSpecs, trackingRefspec)
+		}
+		// The token is in no URL and in no audit line.
+		if strings.Contains(got.URL, fixtureToken) {
+			t.Error("the token is in the fetch URL")
+		}
+		for _, e := range readAudit(t) {
+			if strings.Contains(e.Detail, fixtureToken) {
+				t.Errorf("the audit line carries the token: %+v", e)
+			}
+		}
+	})
+
+	t.Run("no credential is offered to an origin that is not https github.com", func(t *testing.T) {
+		for _, origin := range []string{
+			"http://github.com/" + allowedSlug + ".git",
+			"https://github.com.evil.test/" + allowedSlug + ".git",
+			"https://gitlab.example.com/" + allowedSlug + ".git",
+			"github.com:" + allowedSlug + ".git",
+		} {
+			if credentialHostOK(origin) {
+				t.Errorf("credentialHostOK(%q) = true, want false", origin)
+			}
+		}
+		for _, origin := range []string{
+			"https://github.com/" + allowedSlug + ".git",
+			"https://github.com:443/" + allowedSlug + ".git",
+		} {
+			if !credentialHostOK(origin) {
+				t.Errorf("credentialHostOK(%q) = false, want true", origin)
+			}
+		}
 	})
 
 	t.Run("effective-URL gate still refuses a rewritten origin", func(t *testing.T) {
@@ -412,8 +461,8 @@ func TestFetchAsRoleKeepsEveryFetchGuard(t *testing.T) {
 		if code := run([]string{"fetch", "--as", "worker"}); code != deskkit.ExitRefused {
 			t.Fatalf("fetch --as worker on a rewritten origin exit = %d, want %d (refused)", code, deskkit.ExitRefused)
 		}
-		if gitCallWith(*calls, "fetch") != nil {
-			t.Fatal("git fetch must not run when the effective URL is denied, even under --as")
+		if fetchArgv(*calls) != nil {
+			t.Fatal("the transport must not be reached when the effective URL is denied, even under --as")
 		}
 		if *called {
 			t.Fatal("a token was read though the origin gate refused — the gate must precede the token read")

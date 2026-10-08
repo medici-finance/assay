@@ -820,6 +820,27 @@ func (r *Repo) RemoteURL(name string) (string, error) {
 	return urls[0], nil
 }
 
+// RemoteURLs returns EVERY URL configured for the named remote, in order — the whole
+// remote.<name>.url list, where RemoteURL returns only the first. A caller that gates a fetch
+// on the URL it will connect to uses this so a multi-valued list is seen as multi-valued
+// rather than silently narrowed to its first entry.
+//
+// Same scope as RemoteURL: the repository's own config file only (go-git reads no global or
+// worktree scope), with that file's url.<base>.insteadOf rules already applied by go-git. The
+// strings returned are the strings a following Fetch should be handed, so the gate and the
+// connection cannot disagree.
+func (r *Repo) RemoteURLs(name string) ([]string, error) {
+	remote, err := r.repo.Remote(name)
+	if err != nil {
+		return nil, fmt.Errorf("gitcore: remote-urls %s: %w", name, err)
+	}
+	urls := remote.Config().URLs
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("gitcore: remote-urls %s: no URL configured", name)
+	}
+	return append([]string(nil), urls...), nil
+}
+
 // CommitVerifyQuiet reports whether rev resolves to a commit, matching
 // `git rev-parse --verify --quiet <rev>^{commit}` — including --quiet's own behaviour of
 // reporting false rather than erroring when rev does not resolve.

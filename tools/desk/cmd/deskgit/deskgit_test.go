@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // allowedSlug is in the allowed-repo set; deniedSlug is not. The test upstream is a bare repo
@@ -100,73 +101,118 @@ func withEnvCmds(t *testing.T, work string) (*[][]string, *[]*exec.Cmd) {
 		return c
 	}
 	t.Cleanup(func() { execCommand = oldExec })
+
+	// fetch runs in-process, so it never reaches execCommand. Record what cmdFetch handed the
+	// transport (as a synthetic `gitcore fetch` entry in calls, and as the typed options in
+	// fetchRecorded) and then run the REAL gitcore fetch against the scratch fixture, so a
+	// fetch test still proves the refs land.
+	fetchRecorded = nil
+	oldFetch := fetchFn
+	fetchFn = func(dir string, opts gitcore.FetchOpts) error {
+		fetchRecorded = append(fetchRecorded, opts)
+		argv := []string{"gitcore", "fetch"}
+		if opts.Prune {
+			argv = append(argv, "--prune")
+		}
+		argv = append(argv, opts.URL)
+		argv = append(argv, opts.RefSpecs...)
+		*calls = append(*calls, argv)
+		return oldFetch(dir, opts)
+	}
+	t.Cleanup(func() { fetchFn = oldFetch; fetchRecorded = nil })
 	return calls, cmds
 }
 
-// fetchArgv returns the argv of the `git fetch …` call the run made, or nil.
+// fetchRecorded is every gitcore.FetchOpts cmdFetch handed the in-process transport during
+// the current test (reset by withEnvCmds).
+var fetchRecorded []gitcore.FetchOpts
+
+// fetchArgv returns the synthetic `gitcore fetch …` entry the fetch seam recorded for the
+// run, or nil when no fetch was constructed. (Fetch is in-process: there is no git argv.)
 func fetchArgv(calls [][]string) []string {
 	for _, c := range calls {
-		if len(c) >= 2 && c[0] == "git" && c[1] == "fetch" {
+		if len(c) >= 2 && c[0] == "gitcore" && c[1] == "fetch" {
 			return c
 		}
 	}
 	return nil
 }
 
-// The pinned hardening flags must appear in every fetch (issue #1555 finding 1).
-func assertHardened(t *testing.T, argv []string) {
+// originURL reads the checkout's configured remote.origin.url with the git binary — the
+// value cmdFetch must gate on and connect to, unchanged.
+func originURL(t *testing.T, work string) string {
 	t.Helper()
-	joined := strings.Join(argv, " ")
-	for _, want := range []string{"--upload-pack=git-upload-pack", "--refmap=", "--no-recurse-submodules"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("fetch argv %q missing hardening flag %q", joined, want)
-		}
-	}
+	return mustGit(t, work, "config", "--get", "remote.origin.url")
 }
 
-func TestFetch_Bare_HardenedArgv(t *testing.T) {
+// onlyFetch returns the single FetchOpts the run handed the transport, failing the test if
+// there was not exactly one.
+func onlyFetch(t *testing.T) gitcore.FetchOpts {
+	t.Helper()
+	if len(fetchRecorded) != 1 {
+		t.Fatalf("fetch seam saw %d call(s), want exactly 1", len(fetchRecorded))
+	}
+	return fetchRecorded[0]
+}
+
+func TestFetch_Bare_FixedRefspecAndLandsRefs(t *testing.T) {
 	work := newRepo(t, allowedSlug)
+	// Drop the remote-tracking ref the fixture's `push -u` created, so the only way it can
+	// come back is the fetch under test.
+	mustGit(t, work, "update-ref", "-d", "refs/remotes/origin/main")
 	calls := withEnv(t, work)
 
 	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
 		t.Fatalf("fetch exit = %d, want %d", code, deskkit.ExitOK)
 	}
-	argv := fetchArgv(*calls)
-	if argv == nil {
-		t.Fatal("no `git fetch` was invoked")
+	if fetchArgv(*calls) == nil {
+		t.Fatal("no fetch was constructed")
 	}
-	assertHardened(t, argv)
-	want := "git fetch --refmap= --upload-pack=git-upload-pack --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/*"
-	if strings.Join(argv, " ") != want {
-		t.Fatalf("bare fetch argv = %q\n want %q", strings.Join(argv, " "), want)
+	got := onlyFetch(t)
+	if got.URL != originURL(t, work) {
+		t.Errorf("fetch URL = %q, want the configured origin URL %q verbatim", got.URL, originURL(t, work))
+	}
+	if len(got.RefSpecs) != 1 || got.RefSpecs[0] != trackingRefspec {
+		t.Errorf("bare fetch refspecs = %q, want exactly [%q]", got.RefSpecs, trackingRefspec)
+	}
+	if got.Prune || got.Force || got.Auth != nil {
+		t.Errorf("bare fetch opts = %+v, want no prune, no force, no credential", got)
+	}
+	// The expected ref actually landed (a real in-process fetch against the fixture).
+	want := mustGit(t, work, "rev-parse", "refs/heads/main")
+	if have := mustGit(t, work, "rev-parse", "refs/remotes/origin/main"); have != want {
+		t.Fatalf("refs/remotes/origin/main = %s, want %s", have, want)
 	}
 }
 
 func TestFetch_Prune(t *testing.T) {
 	work := newRepo(t, allowedSlug)
-	calls := withEnv(t, work)
+	// A stale remote-tracking ref the upstream does not have: --prune must drop it.
+	mustGit(t, work, "update-ref", "refs/remotes/origin/stale", mustGit(t, work, "rev-parse", "HEAD"))
+	withEnv(t, work)
 	if code := run([]string{"fetch", "--prune"}); code != deskkit.ExitOK {
 		t.Fatalf("fetch --prune exit = %d, want %d", code, deskkit.ExitOK)
 	}
-	want := "git fetch --refmap= --upload-pack=git-upload-pack --no-recurse-submodules --prune origin +refs/heads/*:refs/remotes/origin/*"
-	if got := strings.Join(fetchArgv(*calls), " "); got != want {
-		t.Fatalf("fetch --prune argv = %q\n want %q", got, want)
+	got := onlyFetch(t)
+	if !got.Prune || len(got.RefSpecs) != 1 || got.RefSpecs[0] != trackingRefspec {
+		t.Fatalf("fetch --prune opts = %+v, want prune with exactly the tracking refspec", got)
+	}
+	if out, err := exec.Command("git", "-C", work, "rev-parse", "--verify", "-q", "refs/remotes/origin/stale").CombinedOutput(); err == nil {
+		t.Fatalf("--prune left the stale ref in place (%s)", out)
 	}
 }
 
 func TestFetch_PR_BuildsPullRefspec(t *testing.T) {
 	work := newRepo(t, allowedSlug)
-	calls := withEnv(t, work)
-	// origin has no pull/* ref, so git fetch will fail; we assert the ARGV regardless.
+	withEnv(t, work)
+	// origin has no pull/* ref, so the fetch itself fails; we assert the OPTIONS regardless.
 	run([]string{"fetch", "--pr", "42"})
-	argv := fetchArgv(*calls)
-	if argv == nil {
-		t.Fatal("no `git fetch` invoked for --pr")
+	got := onlyFetch(t)
+	if len(got.RefSpecs) != 1 || got.RefSpecs[0] != "refs/pull/42/head:refs/heads/pr42" {
+		t.Fatalf("--pr refspecs = %q, want exactly the pull refspec", got.RefSpecs)
 	}
-	assertHardened(t, argv)
-	joined := strings.Join(argv, " ")
-	if !strings.HasSuffix(joined, "origin refs/pull/42/head:refs/heads/pr42") {
-		t.Fatalf("--pr argv = %q, want pull refspec suffix", joined)
+	if got.URL != originURL(t, work) {
+		t.Errorf("--pr fetch URL = %q, want the configured origin URL", got.URL)
 	}
 }
 
@@ -185,9 +231,12 @@ func TestFetch_Branch_BuildsRefspec(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	calls := withEnv(t, work)
 	run([]string{"fetch", "--branch", "fix/issue-1"})
-	joined := strings.Join(fetchArgv(*calls), " ")
-	if !strings.HasSuffix(joined, "origin refs/heads/fix/issue-1:refs/heads/fix/issue-1") {
-		t.Fatalf("--branch argv = %q, want branch refspec suffix", joined)
+	if fetchArgv(*calls) == nil {
+		t.Fatal("no fetch was constructed for --branch")
+	}
+	got := onlyFetch(t)
+	if len(got.RefSpecs) != 1 || got.RefSpecs[0] != "refs/heads/fix/issue-1:refs/heads/fix/issue-1" {
+		t.Fatalf("--branch refspecs = %q, want exactly the branch refspec", got.RefSpecs)
 	}
 }
 
@@ -288,7 +337,7 @@ func TestFetch_Branch_RejectsInjection(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	calls := withEnv(t, work)
 	// leading '+' (force), ':' (2nd refspec), and leading '-' (flag) must all be refused.
-	for _, bad := range []string{"+refs/heads/x", "x:refs/heads/main", "--upload-pack=evil"} {
+	for _, bad := range []string{"+refs/heads/x", "x:refs/heads/main", "--evil-flag"} {
 		if code := run([]string{"fetch", "--branch", bad}); code != deskkit.ExitRefused {
 			t.Fatalf("--branch %q exit = %d, want refused", bad, code)
 		}
@@ -309,17 +358,17 @@ func TestFetch_ModesMutuallyExclusive(t *testing.T) {
 	}
 }
 
-// The core of issue #1555: --upload-pack / --exec / a raw refspec cannot be smuggled
-// through the verb. flag parsing refuses the unknown flag; the operand guard refuses the
-// refspec. In neither case does the string reach git.
-func TestFetch_RejectsUploadPackFlag(t *testing.T) {
+// The core of issue #1555: a program-naming flag cannot be smuggled through the verb. fetch
+// runs in-process, so there is no program for it to name; a flag the verb does not define is
+// refused by the FlagSet (exit 5) and nothing reaches the transport.
+func TestFetch_RejectsUnknownProgramFlag(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	calls := withEnv(t, work)
-	if code := run([]string{"fetch", "--upload-pack=sh -c 'touch /tmp/PROOF'"}); code != deskkit.ExitRefused {
-		t.Fatalf("fetch --upload-pack exit = %d, want %d (refused)", code, deskkit.ExitRefused)
+	if code := run([]string{"fetch", "--helper=sh -c 'touch /tmp/PROOF'"}); code != deskkit.ExitRefused {
+		t.Fatalf("fetch with an unknown flag exit = %d, want %d (refused)", code, deskkit.ExitRefused)
 	}
 	if fetchArgv(*calls) != nil {
-		t.Fatal("git fetch must NOT run when a flag is refused")
+		t.Fatal("fetch must NOT run when a flag is refused")
 	}
 }
 
@@ -334,7 +383,9 @@ func TestFetch_RejectsRefspecOperand(t *testing.T) {
 	}
 }
 
-func TestFetch_RefusesRepoOutsideSet(t *testing.T) {
+// A fetch whose origin is outside the allowed-repo set is refused (exit 5) and never reaches the
+// transport — the allowed-repo gate survives the move off the git binary.
+func TestFetch_DisallowedOriginRefused(t *testing.T) {
 	work := newRepo(t, deniedSlug)
 	calls := withEnv(t, work)
 	if code := run([]string{"fetch"}); code != deskkit.ExitRefused {
@@ -342,6 +393,21 @@ func TestFetch_RefusesRepoOutsideSet(t *testing.T) {
 	}
 	if fetchArgv(*calls) != nil {
 		t.Fatal("git fetch must NOT run for a repo outside the set")
+	}
+}
+
+// The allowed-repo set is the SOLE refuser here: an https origin parses cleanly (no
+// configured-root layer to refuse it first, unlike the bare-local-path fixture above), names a
+// repo outside the set, and the fetch must neither run nor be offered a credential.
+func TestFetch_DisallowedHTTPSOriginRefused(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "remote", "set-url", "origin", "https://github.com/"+deniedSlug+".git")
+	calls := withEnv(t, work)
+	if code := run([]string{"fetch"}); code != deskkit.ExitRefused {
+		t.Fatalf("fetch on an out-of-set https origin exit = %d, want %d (refused)", code, deskkit.ExitRefused)
+	}
+	if fetchArgv(*calls) != nil || len(fetchRecorded) != 0 {
+		t.Fatal("a fetch must NOT run for a repo outside the set")
 	}
 }
 
@@ -365,32 +431,89 @@ func TestFetch_EffectiveURLDrivesDecision(t *testing.T) {
 	}
 }
 
-// re-review: assert the scrub is WIRED, not just that scrubbedEnv() is correct. A
-// hostile GIT_* in the process env must be absent from the CHILD git's actual .Env.
-// Deleting `cmd.Env = scrubbedEnv(...)` in runGit makes this fail.
-func TestFetch_ScrubIsWiredToChild(t *testing.T) {
+// fetch starts NO git child: nothing in the process environment (GIT_SSH_COMMAND here, the
+// program-naming and config-injection variables the old child scrub existed to drop) can
+// reach a program, because none is run. The fetch still lands.
+func TestFetch_RunsNoGitChild(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	t.Setenv("GIT_SSH_COMMAND", "sh -c 'touch /tmp/should-not-run'")
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.uploadpack")
+	t.Setenv("GIT_CONFIG_VALUE_0", "sh -c 'touch /tmp/should-not-run'")
 	_, cmds := withEnvCmds(t, work)
 	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
 		t.Fatalf("fetch exit = %d, want ok", code)
 	}
-	var fetchCmd *exec.Cmd
-	for _, c := range *cmds {
-		if len(c.Args) >= 2 && c.Args[1] == "fetch" {
-			fetchCmd = c
+	if len(*cmds) != 0 {
+		var argvs []string
+		for _, c := range *cmds {
+			argvs = append(argvs, strings.Join(c.Args, " "))
+		}
+		t.Fatalf("fetch started %d git child process(es): %q — it must run in-process", len(*cmds), argvs)
+	}
+}
+
+// The expected-refs-land golden for the authenticated form's absence of side channels: no
+// askpass file, no credential-helper config and no token in the URL. (The credential itself
+// is asserted in the --as tests; here, the filesystem and the audit line.)
+func TestFetch_WritesNoCredentialFiles(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	withEnv(t, work)
+	asWorker(t)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	if code := run([]string{"fetch", "--as", "worker"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch --as worker exit = %d, want ok", code)
+	}
+	ents, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ents) != 0 {
+		t.Fatalf("fetch --as left %d file(s) in TMPDIR (an askpass/helper script?): %v", len(ents), ents)
+	}
+	if cfg := mustGit(t, work, "config", "--local", "--list"); strings.Contains(cfg, fixtureToken) || strings.Contains(cfg, "credential") {
+		t.Fatalf("fetch --as touched the repo config: %s", cfg)
+	}
+	for _, e := range readAudit(t) {
+		if strings.Contains(e.Detail, fixtureToken) {
+			t.Fatalf("the audit line carries the token: %+v", e)
 		}
 	}
-	if fetchCmd == nil {
-		t.Fatal("no git fetch cmd captured")
+}
+
+// Behaviour note, pinned: the gate and the connection read ONE string — the repository's own
+// remote.origin.url. Global-scope url.<base>.insteadOf (which the git binary applied and the
+// in-process transport does not) plays no part in where a fetch goes, so a global rewrite
+// cannot make the connection differ from the string the allowed-repo check decided on.
+func TestFetch_GlobalInsteadOfIsNotConsulted(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	recorded := originURL(t, work)
+	withEnv(t, work)
+	denied := filepath.Join(t.TempDir(), filepath.FromSlash(deniedSlug)+".git")
+	cfg := "[url \"" + denied + "\"]\n\tinsteadOf = " + recorded + "\n"
+	if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".gitconfig"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if fetchCmd.Env == nil {
-		t.Fatal("runGit did not set cmd.Env (scrub not wired) — child inherited os.Environ()")
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch exit = %d, want ok (the global rewrite is not part of this fetch)", code)
 	}
-	for _, kv := range fetchCmd.Env {
-		if strings.HasPrefix(kv, "GIT_SSH_COMMAND=") {
-			t.Fatalf("child git inherited GIT_SSH_COMMAND — scrub not wired: %q", kv)
-		}
+	if got := onlyFetch(t); got.URL != recorded {
+		t.Fatalf("fetch connected to %q, want the gated %q", got.URL, recorded)
+	}
+}
+
+// A branch checked out in the worktree is not rewritten by --branch/--pr (git fetch refused
+// that itself; an in-process ref update would not).
+func TestFetch_RefusesToWriteCheckedOutBranch(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "checkout", "-b", "feature-here")
+	withEnv(t, work)
+	if code := run([]string{"fetch", "--branch", "feature-here"}); code == deskkit.ExitOK {
+		t.Fatal("fetch --branch <checked-out branch> succeeded; it must refuse")
+	}
+	if len(fetchRecorded) != 0 {
+		t.Fatal("the transport was reached for the checked-out branch")
 	}
 }
 
@@ -802,7 +925,7 @@ func TestNoArgsRefused(t *testing.T) {
 	}
 }
 
-// finding 1 env vector: the child env must carry no GIT_* var (upload-pack via
+// finding 1 env vector: the child env must carry no GIT_* var (a program-naming key via
 // GIT_CONFIG_*, GIT_SSH_COMMAND, GIT_ASKPASS, …) and must force GIT_TERMINAL_PROMPT=0.
 func TestScrubbedEnv_DropsGitAndDangerous(t *testing.T) {
 	parent := []string{

@@ -1,0 +1,2 @@
+### Changed
+- The desk tools' `fetch` now runs in-process (`gitcore`) instead of spawning the git binary: `deskgit fetch`, `deskmerge`'s base and PR-head fetch, and `deskadvisory`'s fork-tree fetch carry the role App token in memory only. The bespoke argv/env hardening and the askpass-script credential path are gone, and `deskadvisory` writes only the fork's tree (no repository, no credential file) before running its checks.

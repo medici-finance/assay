@@ -64,10 +64,8 @@ func TestResolveRepoRootGatesOnGitsFetchURL(t *testing.T) {
 	if !strings.Contains(out, otherRepo) {
 		t.Fatalf("the refusal must name the URL git resolved:\n%s", out)
 	}
-	for _, c := range *w.gitAll {
-		if len(c) > 1 && c[1] == "fetch" {
-			t.Fatalf("a fetch ran before the refusal: %v", c)
-		}
+	if len(*w.fetches) != 0 {
+		t.Fatalf("a fetch ran before the refusal: %v", *w.fetches)
 	}
 }
 
