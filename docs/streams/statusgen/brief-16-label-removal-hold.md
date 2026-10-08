@@ -22,10 +22,11 @@ gate-why: >-
   This is a trust-boundary control: the rule decides which actor counts as a human and when a
   human's ratification of an open decision is taken as given, and the change edits code under
   the gate's own security-path trigger (the forge layer in `tools/desk/internal/deskkit/`). A
-  human confirms the two readings of the ruling made here and how far the hold reaches (which
-  labels, which release signal), since each of those widens or narrows what an automated actor
-  can turn into dispatchable work without a human act. The four risk answers stay `no`; the
-  reasoning is under Context.
+  human decides how far the hold reaches (which labels, which release signal) in the Human
+  decision section, and at this gate reads the choices the author made where the ruling is
+  silent (Context, "choices made here"), since each of those widens or narrows what an
+  automated actor can turn into dispatchable work without a human act. The four risk answers
+  stay `no`; the reasoning is under Context.
 decision-trigger: creation
 issues: []
 outcome: none
@@ -45,7 +46,7 @@ sources:
   - "statusgen/trustgate.go — `isBlessAuthorityID`, `authorizedAuthorSet`: the identity checks this brief reuses"
   - "tools/desk/internal/deskkit — `LabelEvent`, `ListIssueLabelEvents`: the label-event read, which carries a login and no numeric id today, and on GitLab drops an event whose label was deleted"
   - "tools/desk/cmd/issueboard/board.go — `classifyIssue`: an open issue with no placeholder and no excluded label is `CREATE-PLACEHOLDER`, the row the worker pool's un-briefed sweep draws on"
-  - "freshness-checked 2026-10-08 @ 82caf63b2 (origin/main) — no Go file under `statusgen/` reads a label event; `deskread` has no label-event kind; the forge op register ends at op 58; open PRs #2377 (`tools/desk/cmd/deskread/main.go`) and #2382 (the deskkit forge files, and it adds forge ops) touch files this brief names"
+  - "freshness-checked 2026-10-08 @ 82caf63b2 (origin/main), re-checked @ a0b70eb87 with none of the code, register or skill files this brief routes changed between the two — no Go file under `statusgen/` reads a label event; `deskread` has no label-event kind; the forge op register's numbered tables end at op 58 and a later row numbered 61 already records the existing issue label-event read, so 59 and 60 are unused; open PRs that touch files this brief routes: #2377 (`tools/desk/cmd/deskread/main.go`), #2382 (the deskkit forge files and the op register, where it adds ops 62 and 63), #2266 (`statusgen/main.go`), #1688 (both skills), #2218 and #2225 (the worker-desk skill); statusgen brief 17, on main at `todo`, routes the intake-desk skill too"
 consumers:
   - "tools/desk/internal/deskkit/modelstamp.go: follow-up statusgen/16 (this brief; `LabelEvent` gains the actor's numeric id, additive)"
   - "tools/desk/internal/deskkit/forge.go: follow-up statusgen/16 (this brief; one new read op for an issue's label history)"
@@ -138,8 +139,10 @@ facts (all read on main @ 82caf63b2, 2026-10-08):
   deliberate for them (an unnamed stamp attests to nothing), so the existing reads must keep
   it.
 - **The forge interface is frozen except with a consumer.** Adding a method needs a consuming
-  tool in the same change, a row in the op register (`docs/streams/forge-gitlab/inventory.md`,
-  which ends at op 58 on main), an entry in the surface list
+  tool in the same change, a row in the op register (`docs/streams/forge-gitlab/inventory.md`;
+  its numbered tables end at op 58 on main, and a separate later row numbered 61 records
+  `ListIssueLabelEvents`, so the last table's end is not the next free number), an entry in
+  the surface list
   `TestForgeSurfaceUnchangedByDeskread` checks, a class in the map
   `TestOutboundForgeWrapsEveryWriteMethod` checks, and golden fixtures on both backends. The
   rule binds methods, not fields. Forge-neutral brief 33 added ops 55 to 58 this way, with
@@ -180,7 +183,8 @@ produced. It is stateless: it reads the issue's whole label history each time. A
 human is an actor whose login AND non-zero numeric id are in `authorizedAuthorSet()`. Nothing
 else is a human for this rule: not a trusted desk identity, not an account the forge types as
 a user, not a login without an id. A ratifying comment is a comment whose login and id satisfy
-`isBlessAuthorityID`; its text is not read.
+`isBlessAuthorityID`; its text is not read. "Strictly after" compares creation times: a
+comment with the same time as the event it must follow does not release.
 1. **History gap.** The label history could not be read, was read in part, or the read
    reports itself incomplete (the page bound was reached): HELD, reported as could-not-check.
    A ratifying comment does not release this; a complete read does.
@@ -192,8 +196,9 @@ a user, not a login without an id. A ratifying comment is a comment whose login 
      and who took L off is unknown. HELD. It is released when a declared human applies and
      removes L, which makes E a human removal.
    - E is a removal by a declared human: L is clear.
-   - E is a removal by anyone else, and the history shows an application A of L before E: L is
-     clear only when a ratifying comment exists created strictly after A.
+   - E is a removal by anyone else, and the history shows an application of L before E; let A
+     be the LATEST such application: L is clear only when a ratifying comment exists created
+     strictly after A.
    - E is a removal by anyone else, and the history shows no application of L: L is clear only
      when a ratifying comment exists created strictly after E.
 4. **Comments unreadable** when step 2 or 3 needs them: HELD, reported as could-not-check.
@@ -238,20 +243,37 @@ lane runs with no `deskread` on its PATH, or with one that predates the new kind
 and reactivate there is held as could-not-check. That is the safe direction, and it means the
 lane creates nothing until `deskread` is present; Verify row 11 pins both.
 
-two readings of the ruling made here. Each is a human's call (see Human decision) and each is
-one line to change:
+choices made here, where the ruling is silent. The ruling names a removal by a non-human actor
+and a comment from the ratifying identity. It does not say how either is told, or what happens
+when the history cannot answer. Each choice below is one line to change, and each says who
+settles it. An author's choice is not a ruling: a human who wants it otherwise says so at this
+brief's gate.
 - **"Non-human" is read as "not a declared human"**, which fails closed. The alternative,
   classifying by the forge's account type or by a login suffix, admits a machine user and
   breaks on the suffix mismatch above. Cost of this reading: a person who is not rostered and
-  removes the label also causes a hold.
+  removes the label also causes a hold. Author's choice. The Human decision section takes it
+  as given and does not ask it.
 - **"A comment exists" is read as "created after the label's latest application"** (step 3).
   The literal reading, any ratifying comment ever, would let an issue that is labelled again
-  for a second question be released by the answer to the first.
+  for a second question be released by the answer to the first. Whether the comment must also
+  follow the removal is the human's call: Human decision options 1 and 2.
+- **Three cases the ruling does not cover are completed toward hold.** An unnamed event is
+  released only by a ratifying comment after the latest one (step 2). A last-event application
+  with the label absent is released by no comment, only by a declared human applying and
+  removing the label (step 3). A removal with no recorded application is released only by a
+  ratifying comment after the removal (step 3). Author's choices, asked in no option.
+- **A could-not-check hold is a NOTICE with the exit code unchanged** (step 6). The
+  alternative is the unread-repo branch's exit 2, which would make every scan report
+  could-not-check for as long as one issue's history stays unreadable. Author's choice; its
+  cost is the second named risk.
+- **The board gets a superset test, and the forge gets a new op**, in place of a second copy
+  of the rule and of a change to the existing label-event reads. Author's choices, reasoned
+  under "the second route" above and in design-fit.
 
 named risks:
 - **The release signal is weaker than a ruling.** A ratifying comment made after the label
   was applied and BEFORE a non-human removed it releases the hold, whatever it says. A reply
-  that asks for more detail counts. This is the cost of the second reading; Human decision
+  that asks for more detail counts. This is the cost of the second choice above; Human decision
   option 2 closes it at the price of a second comment.
 - **A history that stays unreadable looks like a clean scan.** Steps 1 and 4 hold with a
   NOTICE and the exit code unchanged, so an issue whose history can never be read (a timeline
@@ -272,6 +294,12 @@ named risks:
   the other 391 open issues, and how often automation removes the other four labels on issues
   that are later reopened. Placeholders that are already live produce no plan and are not
   re-examined.
+- **Unnamed-event reach, not measured.** On a forge that keeps a deleted label's events and
+  stops naming them (GitLab, per the label-event fact above), step 2 holds every issue that
+  ever carried ANY label that was later deleted, excluded or not, until a ratifying comment
+  follows the latest such event, and the board shows the same issues as `AWAIT`. How many
+  issues that is on a given tracker was not measured; deleting one widely used label there
+  holds all of them at their next create or reactivate.
 - **The board without the scanner.** Where the board runs and the scanner does not, an issue
   with any excluded-label history stays `AWAIT` until someone writes its placeholder or brief
   by hand. `AWAIT` rows of this kind do not age toward `ESCALATE`.
@@ -279,9 +307,16 @@ named risks:
   when step 2 or 3 needs it, repeated every scan for an issue that stays held; and one
   label-history read per would-be `CREATE-PLACEHOLDER` row on every board run.
 - **What this cannot see.** Automation acting under a declared human's own credential is that
-  human to the forge. A label rename, delete or issue transfer that leaves no event behind is
-  invisible; a rename already releases every issue carrying the label today, with or without
-  this brief.
+  human to the forge. That includes the release: a comment posted by automation under the
+  ratifying identity's credential releases the hold, even one carrying the automation marker
+  the un-block lane's `isBotComment` refuses, because this rule reads no comment text. A label
+  rename, delete or issue transfer that leaves no event behind is invisible; a rename already
+  releases every issue carrying the label today, with or without this brief. And a label
+  applied and removed between two scans is never examined when the issue's placeholder was
+  already live: `planScan` retires a live placeholder only when a scan sees the label ON, so
+  that placeholder is never retired, no create or reactivate plan is produced for it, and the
+  rule does not run. That is the act the ruling is about, on a path this brief does not reach
+  (Out of scope item 3).
 
 the `risk-files-crossread` lint NOTICE fires here and is answered, not ignored. What is edited
 under its trigger: `tools/desk/internal/deskkit/`, where one field is added to `LabelEvent`
@@ -347,6 +382,9 @@ decisions has commented on the issue. Measured on this tracker on 2026-10-08, am
 most recently updated open issues, 8 have had the decision label removed and carry no system
 label now; 7 of those removals were by an automated account. Three settings of the rule trade
 how much an agent's mistake can still slip through against how often a person must act twice.
+Under all three the hold is checked only when a work item would be created or brought back: a
+work item that already exists when the label goes on, and whose label is taken off again before
+the next scan runs, stays in the queue and is never checked.
 
 Options:
 1. **Hold on any non-human removal; a comment made after the label was applied releases
@@ -367,12 +405,21 @@ Default if no answer: none — blocks until answered (this decides when a human 
 ## Ground rules
 - NEVER push to main or trigger workflows by hand. Feature branch + draft PR only.
 - Stop at `implemented` — you do not set verified/done.
-- Do not start before the Human decision is answered. The rule above is written as option 1;
-  option 2 changes one comparison in step 3 (after E, not after A), option 3 changes the set
-  step 3 iterates and the board test reads. Change the matching table cases with it.
-- Before starting, merge main and check whether #2377 or #2382 has landed; build on what is
-  there, do not re-do their edits, and take the next FREE op number in the register (#2382
-  adds ops too).
+- Do not start before the Human decision is answered. Nothing but this line holds you:
+  dispatch does not wait for the answer. A human-gated brief dispatches normally, and the
+  dispatch step files the decision issue and then launches the worker. If the decision is
+  unanswered when you are launched, stop and report NEEDS_CONTEXT.
+- The rule above is written as option 1. Option 2 changes one comparison in step 3 (after E,
+  not after A), the release wording of Task 13's intake-desk sentence ("since the label was
+  removed", not "since the label was applied") and the same wording in the changelog fragment.
+  Option 3 changes the set step 3 iterates and the board test reads, and Task 13's two
+  sentences and the changelog fragment name the two decision labels where they now say the
+  excluded label. Change the matching table cases with it.
+- Before starting, merge main and check which of the open PRs listed in `sources:` have
+  landed (#2377, #2382, #2266, #1688, #2218, #2225) and whether statusgen brief 17 has been
+  implemented; build on what is there and do not re-do their edits. Take the next FREE op
+  number by reading every numbered row of the register, not the end of its last table: 61 is
+  taken on main and #2382 adds 62 and 63.
 - ONE decision function, pure, called by both scan functions through one injected checker. Do
   not write the rule twice. The issue board gets the superset test only, never the release
   rule.
@@ -454,8 +501,12 @@ Default if no answer: none — blocks until answered (this decides when a human 
    - removed by an App, the only ratifying comment predates a later re-application → held
    - removed by an App, comment by the ratifying login with a DIFFERENT id → held; comment by
      another rostered human → held
-   - the removing actor is a trusted desk identity → held
+   - the removing actor is a trusted desk identity, its login rendered `app/<slug>` (a
+     rostered rendering that does not end in `[bot]`) → held
    - the removing actor has the ratifying login and id 0, or a different id → held
+   - a ratifying comment with the SAME creation time as the event it must follow (the latest
+     application; the removal, where no application is recorded; the latest unnamed event) →
+     held in each of the three
    - removed by an App with NO application in the history: ratifying comment before the
      removal → held; after it → clear
    - the last event for the label is an application and the label is absent → held, with a
@@ -538,7 +589,7 @@ that test's `--- PASS:` line, so a missing or renamed test fails the row.
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd statusgen && GOWORK=off go build ./... && GOWORK=off go vet ./... && cd ../tools/desk && go build ./... && go vet ./...` | exit 0 in both modules, so the added `LabelEvent` field and the added forge method broke none of their current readers or implementers | check:ci |
-| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestLabelHoldDecision$' -v . > "${TMPDIR:-/tmp}/sg16-r2.out" 2>&1 && grep -F -e '--- PASS: TestLabelHoldDecision' "${TMPDIR:-/tmp}/sg16-r2.out"` | exit 0; every case of Task 8 holds. Mutations, each of which must turn this row red: the declared-human check replaced by "login does not end in `[bot]`" (red on the trusted-desk-identity and id-0 cases); the after-application comparison dropped (red on the re-application case); an incomplete history treated as an empty one (red on the incomplete case); unnamed events skipped (red on the unnamed cases); only labels with a removal iterated (red on the last-event-application case); "any ratifying comment" accepted when no application is recorded (red on the comment-before-removal case) | check:ci +mutation |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestLabelHoldDecision$' -v . > "${TMPDIR:-/tmp}/sg16-r2.out" 2>&1 && grep -F -e '--- PASS: TestLabelHoldDecision' "${TMPDIR:-/tmp}/sg16-r2.out"` | exit 0; every case of Task 8 holds. Mutations, each of which must turn this row red: the declared-human check replaced by "login does not end in `[bot]`" (red on the trusted-desk-identity case, whose login is rendered `app/<slug>`, and on the id-0 case); the after-application comparison dropped (red on the re-application case); "strictly after" relaxed to "at or after" (red on the same-time cases); an incomplete history treated as an empty one (red on the incomplete case); unnamed events skipped (red on the unnamed cases); only labels with a removal iterated (red on the last-event-application case); "any ratifying comment" accepted when no application is recorded (red on the comment-before-removal case) | check:ci +mutation |
 | 3 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestLabelHoldBotRenderings$' -v . > "${TMPDIR:-/tmp}/sg16-r3.out" 2>&1 && grep -F -e '--- PASS: TestLabelHoldBotRenderings' "${TMPDIR:-/tmp}/sg16-r3.out"` | exit 0; the same App rendered as the bare slug, with the `[bot]` suffix and with the `app/` prefix is held in all three forms, and each hold message carries the login as rendered. With the actor classified by login shape, at least one of the three is admitted and the row exits 1 | check:ci |
 | 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanLabelHold$' -v . > "${TMPDIR:-/tmp}/sg16-r4.out" 2>&1 && grep -F -e '--- PASS: TestScanLabelHold' "${TMPDIR:-/tmp}/sg16-r4.out"` | exit 0; through `planScan`, a held issue gets no create plan on the create path and no `reactivate` close-out on the root and archive paths, with one NOTICE each; a clear issue gets the plan it gets today. Mutation: with the checker call removed from any one of the three paths the row exits 1 on that path | check:ci +mutation |
 | 5 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanLabelHoldFailsClosed$' -v . > "${TMPDIR:-/tmp}/sg16-r5.out" 2>&1 && grep -F -e '--- PASS: TestScanLabelHoldFailsClosed' "${TMPDIR:-/tmp}/sg16-r5.out"` | exit 0; when the checker errors, and when it is nil, no path produces a plan and each reports could-not-check. This is the negative path: the lower layer refuses with nothing above it deciding. Mutation: a nil or erroring checker treated as clear turns the row red | check:ci +mutation |
@@ -556,8 +607,8 @@ that test's `--- PASS:` line, so a missing or renamed test fails the row.
 | 17 | `cd tools/desk && go test -count=1 -timeout 300s -run '^TestDeskreadLabelEvents$' -v ./cmd/deskread/ > "${TMPDIR:-/tmp}/sg16-r17a.out" 2>&1 && grep -F -e '--- PASS: TestDeskreadLabelEvents' "${TMPDIR:-/tmp}/sg16-r17a.out" && go test -count=1 -timeout 300s -run '^TestDeskreadLabelEventsPartial$' -v ./cmd/deskread/ > "${TMPDIR:-/tmp}/sg16-r17b.out" 2>&1 && grep -F -e '--- PASS: TestDeskreadLabelEventsPartial' "${TMPDIR:-/tmp}/sg16-r17b.out"` | exit 0; the new kind returns each event's label, removal flag, time, actor login and actor id and the item's completeness flag, and an issue whose history cannot be read is reported in `partial`, not as an empty list | check:ci |
 | 18 | `cd tools/desk && go test -count=1 -timeout 300s -run '^TestClassifyLabelHistoryHold$' -v ./cmd/issueboard/ > "${TMPDIR:-/tmp}/sg16-r18a.out" 2>&1 && grep -F -e '--- PASS: TestClassifyLabelHistoryHold' "${TMPDIR:-/tmp}/sg16-r18a.out" && go test -count=1 -timeout 300s -run '^TestBoardLabelHistoryHold$' -v ./cmd/issueboard/ > "${TMPDIR:-/tmp}/sg16-r18b.out" 2>&1 && grep -F -e '--- PASS: TestBoardLabelHistoryHold' "${TMPDIR:-/tmp}/sg16-r18b.out"` | exit 0; on the board an un-briefed issue with a removed excluded label is `AWAIT` with its reason and not `CREATE-PLACEHOLDER`; one with no label history is still `CREATE-PLACEHOLDER`; an incomplete history degrades that one row; a failed read exits 6; an issue with a placeholder costs no history read. Mutation: with the new input ignored by the classifier, or never set by the board, the row exits 1. This is the second route, tested with the scanner absent | check:ci +flow +mutation |
 | 19 | `cd tools/desk && go test -count=1 -timeout 900s ./cmd/deskread/ ./cmd/issueboard/ ./internal/deskkit/` | exit 0; all three packages pass, so the existing kinds, the existing board rows, the existing label-event readers, the forge surface list, the outbound class map and both golden corpora agree with the change | check:ci |
-| 20 | `grep -n -F -e 'ratifying identity' plugins/assay/skills/intake-desk/SKILL.md && grep -n -F -e 'label history' plugins/assay/skills/worker-desk/SKILL.md && cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg16-skl" . && "${TMPDIR:-/tmp}/sg16-skl" --root ../..` | exit 0; the lines printed are the reactivate sentence stating the hold and the un-briefed sentence stating that an `AWAIT` row for label history is not un-briefed work, and both skills still pass every skill check | check:ci +dereference |
-| 21 | `cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg16c" . && cd .. && "${TMPDIR:-/tmp}/sg16c" --root . --consumers --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg16-r21.out" && test "$(grep -c -E -e 'CORROBORATED +[^ ]+: fixed-here' "${TMPDIR:-/tmp}/sg16-r21.out")" -eq 13 && grep -F -e ', 0 disproved,' "${TMPDIR:-/tmp}/sg16-r21.out"` | exit 0; run on the implementing branch before merge, after Task 14: thirteen entries are reported corroborated as `fixed-here` by the branch's diff and none is disproved. A branch that leaves the routings as `follow-up` fails on the count (they are corroborated, but not as `fixed-here`); a branch that flips one without touching its path is disproved, which fails both the checker's exit code and the summary line | check |
+| 20 | `grep -n -F -e 'ratifying identity' plugins/assay/skills/intake-desk/SKILL.md && grep -n -F -e 'label history' plugins/assay/skills/worker-desk/SKILL.md && cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg16-skl" . && "${TMPDIR:-/tmp}/sg16-skl" --root ../..` | exit 0; the lines printed are the reactivate sentence stating the hold and the un-briefed sentence stating that an `AWAIT` row for label history is not un-briefed work, and both skills still pass every skill check. The greps match under any of the three Human decision options: that the reactivate sentence states the release of the option the human chose is the reviewer's read of the line printed | check:ci +dereference |
+| 21 | `cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg16c" . && cd .. && "${TMPDIR:-/tmp}/sg16c" --root . --consumers --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg16-r21.out" && test "$(grep -c -E -e 'CORROBORATED +[^ ]+: fixed-here' "${TMPDIR:-/tmp}/sg16-r21.out")" -eq 13 && grep -F -e ', 0 disproved,' "${TMPDIR:-/tmp}/sg16-r21.out"` | exit 0; run on the implementing branch before merge, after Task 14: thirteen entries are reported corroborated as `fixed-here` by the branch's diff and none is disproved. A branch that leaves the routings as `follow-up` fails on the count (they are corroborated, but not as `fixed-here`); a branch that flips one without touching its path is disproved, which fails both the checker's exit code and the summary line. On merged main the merge-base is the head, the diff holds no brief file, the checker prints that there is nothing to corroborate and the count is 0, so the row fails there: its Evidence is the run at the implementing branch's head before the merge | check |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
