@@ -177,11 +177,12 @@ separates (or why no extracted boundary is warranted), and the current reason fo
 that choice. Reference the Task and Verify rows that implement and check the boundary;
 put detailed contracts there rather than expanding the Context into a design document.
 
-For that same scope, identify the affected components and their existing architectural
-and semantic contracts. Use an existing cell architecture map to find those contracts
-when available; no cell taxonomy or new architecture registry is required. Reuse the
-existing owners of facts, policy and operations, or explicitly propose an ownership
-migration with its compatibility and consumer routing. The `design-fit.owner` and
+For that same scope, the Task MUST identify the affected components and cite their
+existing architectural and semantic contracts. An existing cell architecture map
+(a cell-level inventory linking components to their contracts) MAY aid discovery;
+no cell taxonomy (a set of classification categories) or new registry is required.
+The brief MUST reuse the existing owners of facts, policy and operations, or explicitly
+propose an ownership migration with its compatibility and consumer routing. The `design-fit.owner` and
 `design-fit.contract` declarations below remain the ownership record; classification
 is a discovery aid, never a grant of ownership, authorization, eligibility or execution
 authority. A stream can span categories while its implementation must still respect
@@ -218,10 +219,10 @@ allowed dependency directions and forbidden shortcuts at any claimed boundary, c
 the existing contracts they preserve or explicitly propose to change. Route affected
 consumer compatibility and migration through `consumers:` and the flow verification
 requirements, rather than creating a second owner or assuming an atomic rollout.
-The Verify table MUST include a discriminating case for a changed boundary: a plausible
-forbidden dependency, bypassed adapter or unauthorized effect must fail the appropriate
-check. Use focused tests and/or mechanical dependency/effect checks, naming the
-properties covered and their limits. Import tests alone do not enforce a cross-process
+The Verify table MUST check any claimed boundary, new or changed, with focused tests
+and/or mechanical dependency/effect checks, naming the properties covered and their
+limits. It MUST also include a discriminating case: a plausible forbidden dependency,
+bypassed adapter or unauthorized effect must fail the appropriate check. Import tests alone do not enforce a cross-process
 authority boundary; test that boundary at its enforcement point with isolated fixtures.
 For an isolated core, include tests of its important
 rules without external services. An import allowlist or identifier scan alone MUST NOT be
@@ -230,9 +231,11 @@ negative control required by §4.4. For a flat tool with no extracted boundary, 
 observable behavior and relevant failure paths; do not invent a package boundary just to
 satisfy this requirement.
 
-Apply these requirements when authoring or revising unfinished work that changes a
-relevant boundary. Do not rewrite completed implementation or evidence to fit the new
-description; route any required implementation migration as separate work.
+For existing briefs, apply the added contract and discriminating-case guidance at the
+next authoring/review pass on unfinished work, using the scope triggers above in full
+(including new components). This is an amendment policy, not a narrower boundary scope.
+Do not rewrite completed implementation or evidence to fit the new description; route
+any required implementation migration as separate work.
 
 Every NEW brief's Context section MUST include a `design-fit:` block. It makes the author
 answer where the change belongs, what it replaces and how much weight it adds before any
