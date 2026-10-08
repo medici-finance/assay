@@ -1,0 +1,2 @@
+### Added
+- A staged copy of the board workflow (`ci/staged-workflows/assay-statusgen.yml`) adds an hourly `reconcile` job. It is the single scheduled writer of the generated Briefs tables in stream READMEs: it flips witnessed Status cells, re-renders the tables, and carries any change as one draft pull request on `board/reconcile`. It never pushes the default branch, and scheduled runs have their own concurrency group so they cannot displace a pending push regen. Promotion into `.github/workflows/` is a maintainer step.

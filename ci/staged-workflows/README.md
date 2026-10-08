@@ -197,3 +197,13 @@ companion whose YAML file is gone, a manifest entry with no staged file, an empt
 pending reason and an unknown mode each fail the guard.
 The existing unconditional `ci.yml`
 build-test job runs this guard on every PR and main push.
+- `assay-statusgen.yml` — the live board workflow plus the hourly `reconcile` job
+  (derived-board/04): a `schedule:` trigger, a read-only token (`contents`,
+  `pull-requests`, `issues`: read) for the PR-witness reads, and one draft pull request
+  on `board/reconcile` carrying any generated stream-README change. The job never pushes
+  the default branch, and scheduled runs sit in their own concurrency group so they
+  cannot displace a pending push regen. **Staged, not live**; promote with
+  `cp ci/staged-workflows/assay-statusgen.yml .github/workflows/assay-statusgen.yml`
+  (a copy, because the live file stays in place; re-base the staged copy on the live
+  file first if either changed since). The board-writer App also needs
+  `Pull requests: write` for the PR step.

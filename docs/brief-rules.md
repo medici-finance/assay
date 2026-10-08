@@ -704,6 +704,14 @@ Briefs table, whose lifecycle cells derive from the witnesses rule 30 names — 
 becomes a generated surface with exactly one writer (rule 47) as each stream is wrapped
 in markers, and is diffed against merge history until then (rule 35).
 
+A stream README's generated region sits between `<!-- statusgen:briefs:begin -->` and
+`<!-- statusgen:briefs:end -->`; its README frontmatter carries `board: generated`.
+`statusgen regen --readmes` rewrites only the lines between the markers, so everything
+outside them is hand-written prose it never touches. The writer on a schedule is the
+board workflow's hourly reconcile job, which never pushes the default branch: it carries a
+change as one pull request on the branch `board/reconcile`, and the push-to-default-branch
+job keeps writing `STATUS.md` alone.
+
 32. **A worker's terminal verdict on a PR is a DISPOSITION RECORD, not a prose comment.**
     A conclusion that only a human can read is one a sweep must re-derive. In one
     2026-08-12 batch-fanout cycle, 8 of 10 completed orphan dispatches re-derived a
