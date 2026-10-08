@@ -11,6 +11,7 @@ unblocks: ["desktools-v2/17", "desktools-v2/18", "desktools-v2/19", "desktools-v
 effort: "L"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}
+design: DR-cellctl-cobra
 issues: [2111]
 schema: "brief-v2"
 outcome: none
