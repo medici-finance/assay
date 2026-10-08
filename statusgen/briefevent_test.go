@@ -541,6 +541,25 @@ func TestBriefEventCompat(t *testing.T) {
 	if _, err := ParseBriefEvent([]byte(`{"schema":"brief-flow-event/v1","schema":"brief-flow-event/v1"}`)); err == nil {
 		bfeFail(t, "compat-duplicate", "duplicate member accepted")
 	}
+	// A repeated member is refused without naming it (the name is producer
+	// data), and the refusal is about the repeat, not about an escape.
+	dupLine := append(append([]byte{}, base[:len(base)-1]...), []byte(`,"x_dup_zq9":1,"x_dup_zq9":2}`)...)
+	if _, err := ParseBriefEvent(dupLine); err == nil {
+		bfeFail(t, "compat-duplicate", "duplicate extension member accepted")
+	} else if strings.Contains(err.Error(), "x_dup_zq9") {
+		bfeFail(t, "compat-duplicate", "duplicate refusal named the member")
+	}
+	// Any valid JSON escape is accepted as JSON defines it, `\/` included.
+	escLine := append(append([]byte{}, base[:len(base)-1]...), []byte(`,"x_note":"a\/b"}`)...)
+	if esc, err := ParseBriefEvent(escLine); err != nil {
+		bfeFail(t, "compat-json-escape", "a valid \\/ escape was refused: %v", err)
+	} else if !bytes.Contains(esc.Canonical, []byte(`"x_note":"a/b"`)) {
+		bfeFail(t, "compat-json-escape", "the \\/ escape did not decode to a slash")
+	}
+	deep := append(append([]byte{}, base[:len(base)-1]...), []byte(`,"x_deep":`+strings.Repeat("[", 80)+strings.Repeat("]", 80)+`}`)...)
+	if _, err := ParseBriefEvent(deep); err == nil {
+		bfeFail(t, "compat-depth", "an event nested 80 levels deep was accepted")
+	}
 	if _, err := ParseBriefEvent(bfeMutLine(t, base, func(m map[string]any) { m["must_understand"] = []any{"owner_cell"} })); err != nil {
 		bfeFail(t, "compat-must-understand", "a known must_understand member was refused: %v", err)
 	}
@@ -822,14 +841,43 @@ func TestBriefEventRoles(t *testing.T) {
 			m["source_ref"] = map[string]any{"kind": "forge", "id": secret + "@example.invalid"}
 		},
 	}
+	var admitted []*BriefEvent // anything wrongly accepted, carried to the export check
 	for i, mut := range cases {
-		_, err := ParseBriefEvent(bfeMutLine(t, base, mut))
+		ev, err := ParseBriefEvent(bfeMutLine(t, base, mut))
 		if err == nil {
 			bfeFail(t, "roles-login", "case %d: a person identifier was accepted", i+1)
+			admitted = append(admitted, ev)
 			continue
 		}
 		if strings.Contains(err.Error(), secret) {
 			bfeFail(t, "roles-no-disclose", "case %d: the refusal disclosed the refused value", i+1)
+		}
+	}
+
+	// A member NAME is producer data too: an email-shaped name is refused at
+	// the top level and under an extension member, and an undeclared ancestor
+	// name (here a bare synthetic login) is never echoed in the refusal path.
+	mail := secret + "@example.invalid"
+	names := []struct {
+		id  string
+		mut func(map[string]any)
+	}{
+		{"roles-member-name", func(m map[string]any) { m[mail] = "x" }},
+		{"roles-member-name", func(m map[string]any) { m["x_ext"] = map[string]any{mail: 1} }},
+		{"roles-member-name", func(m map[string]any) { m["x_ext"] = []any{map[string]any{mail: true}} }},
+		{"roles-scan-path", func(m map[string]any) { m[secret] = map[string]any{"login": "worker"} }},
+		{"roles-scan-path", func(m map[string]any) { m[secret] = map[string]any{"x_note": mail} }},
+		{"roles-scan-path", func(m map[string]any) { m["x_ext"] = map[string]any{secret: []any{"ok", mail}} }},
+	}
+	for i, c := range names {
+		ev, err := ParseBriefEvent(bfeMutLine(t, base, c.mut))
+		if err == nil {
+			bfeFail(t, c.id, "name case %d: a person identifier was accepted", i+1)
+			admitted = append(admitted, ev)
+			continue
+		}
+		if strings.Contains(err.Error(), secret) {
+			bfeFail(t, c.id, "name case %d: the refusal disclosed a producer member name", i+1)
 		}
 	}
 
@@ -847,8 +895,10 @@ func TestBriefEventRoles(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, exportEventsFile)); err == nil {
 		bfeFail(t, "roles-export-revalidate", "a refused export still wrote events")
 	}
+	// The export carries the store plus anything the checks above wrongly
+	// admitted; the refused value must reach neither output file.
 	okDir := filepath.Join(t.TempDir(), "export")
-	if _, err := WriteExport(okDir, w.store.All(), 0, 0); err != nil {
+	if _, err := WriteExport(okDir, append(w.store.All(), admitted...), 0, 0); err != nil {
 		t.Fatalf("ASSERT-FAIL[roles-no-persist] %v", err)
 	}
 	for _, f := range []string{exportEventsFile, exportManifest} {

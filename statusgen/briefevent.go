@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,8 +40,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // embeddedEventSchemaFS holds the committed brief-flow-event/v1 schema, compiled
@@ -205,8 +204,19 @@ func isPersonKey(k string) bool {
 }
 
 // scanPerson walks a decoded value in deterministic order and returns the
-// first person-identifying member or email-shaped value, by PATH only.
+// first person-identifying member or email-shaped value, by POSITION only.
+// Member NAMES are producer data too: a name is email-shape tested like a
+// value, and a path segment shows a member's name only when the event schema
+// declares that name; any other member is rendered as `member #i`.
 func scanPerson(v any, path string) error {
+	declared, err := eventDeclaredNames()
+	if err != nil {
+		return fmt.Errorf("embedded event schema unreadable: %w", err)
+	}
+	return scanPersonIn(v, path, declared)
+}
+
+func scanPersonIn(v any, path string, declared map[string]bool) error {
 	switch t := v.(type) {
 	case map[string]any:
 		keys := make([]string, 0, len(t))
@@ -215,18 +225,22 @@ func scanPerson(v any, path string) error {
 		}
 		sort.Strings(keys)
 		for i, k := range keys {
-			if isPersonKey(k) {
+			if isPersonKey(k) || emailShaped.MatchString(k) { // person-member-name
 				// The key name is part of the refused content too: name the
 				// position, never the key or its value.
 				return fmt.Errorf("%s: member #%d is person-identifying; actors are recorded as roles only (value not shown)", bfeLabel(path), i+1)
 			}
-			if err := scanPerson(t[k], joinPath(path, k)); err != nil {
+			seg := k
+			if !declared[k] { // scan-path-position
+				seg = fmt.Sprintf("member #%d", i+1)
+			}
+			if err := scanPersonIn(t[k], joinPath(path, seg), declared); err != nil {
 				return err
 			}
 		}
 	case []any:
 		for i, el := range t {
-			if err := scanPerson(el, fmt.Sprintf("%s[%d]", bfeLabel(path), i)); err != nil {
+			if err := scanPersonIn(el, fmt.Sprintf("%s[%d]", bfeLabel(path), i), declared); err != nil {
 				return err
 			}
 		}
@@ -236,6 +250,50 @@ func scanPerson(v any, path string) error {
 		}
 	}
 	return nil
+}
+
+var (
+	eventDeclaredOnce  sync.Once
+	eventDeclaredSet   map[string]bool
+	eventDeclaredError error
+)
+
+// eventDeclaredNames is every property name the event schema declares, at any
+// depth. These names are schema-authored, so a refusal may print them; any
+// other member name came from the producer and is printed by position only.
+func eventDeclaredNames() (map[string]bool, error) {
+	eventDeclaredOnce.Do(func() {
+		s, err := eventSchema()
+		if err != nil {
+			eventDeclaredError = err
+			return
+		}
+		eventDeclaredSet = map[string]bool{}
+		var walk func(node any)
+		walk = func(node any) {
+			switch n := node.(type) {
+			case map[string]any:
+				if props, ok := n["properties"].(map[string]any); ok {
+					for k, sub := range props {
+						eventDeclaredSet[k] = true
+						walk(sub)
+					}
+				}
+				if items, ok := n["items"]; ok {
+					walk(items)
+				}
+				if ap, ok := n["additionalProperties"].(map[string]any); ok {
+					walk(ap)
+				}
+			case []any:
+				for _, el := range n {
+					walk(el)
+				}
+			}
+		}
+		walk(s.raw)
+	})
+	return eventDeclaredSet, eventDeclaredError
 }
 
 func bfeLabel(path string) string {
@@ -352,18 +410,99 @@ func ParseBriefEvent(line []byte) (*BriefEvent, error) {
 	if !json.Valid(line) {
 		return nil, errors.New("event is not valid JSON")
 	}
-	var decoded any
-	// yaml.v3 decodes JSON integers as int (the schema validator's integer
-	// type) and refuses duplicate keys, which encoding/json would silently
-	// collapse to last-wins.
-	if err := yaml.Unmarshal(line, &decoded); err != nil {
-		return nil, errors.New("event is not a single well-formed JSON object (duplicate members are refused)")
+	decoded, err := bfeDecodeStrict(line)
+	if err != nil {
+		return nil, err
 	}
 	m, ok := decoded.(map[string]any)
 	if !ok {
 		return nil, errors.New("event is not a JSON object")
 	}
 	return briefEventFromMap(m)
+}
+
+// bfeMaxDepth bounds object/array nesting in one event line.
+const bfeMaxDepth = 64
+
+var errBfeDuplicate = errors.New("event repeats a member name; duplicate members are refused (member not shown)")
+
+// bfeDecodeStrict decodes one already-valid JSON text with encoding/json's
+// tokenizer, so every JSON escape (including `\/`) is accepted exactly as
+// JSON defines it. It refuses a repeated member name (encoding/json would
+// silently keep the last), bounds nesting, and returns integers as int (the
+// schema validator's integer type) and other numbers as float64.
+func bfeDecodeStrict(line []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(line))
+	dec.UseNumber()
+	v, err := bfeDecodeValue(dec, 0)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("event line holds more than one JSON value")
+	}
+	return v, nil
+}
+
+func bfeDecodeValue(dec *json.Decoder, depth int) (any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, errors.New("event is not valid JSON")
+	}
+	switch t := tok.(type) {
+	case json.Delim:
+		if depth >= bfeMaxDepth {
+			return nil, fmt.Errorf("event nests deeper than %d levels; refused", bfeMaxDepth)
+		}
+		switch t {
+		case '{':
+			m := map[string]any{}
+			for dec.More() {
+				kt, err := dec.Token()
+				if err != nil {
+					return nil, errors.New("event is not valid JSON")
+				}
+				k, _ := kt.(string)
+				if _, dup := m[k]; dup { // duplicate-member
+					return nil, errBfeDuplicate
+				}
+				v, err := bfeDecodeValue(dec, depth+1)
+				if err != nil {
+					return nil, err
+				}
+				m[k] = v
+			}
+			if _, err := dec.Token(); err != nil {
+				return nil, errors.New("event is not valid JSON")
+			}
+			return m, nil
+		case '[':
+			arr := []any{}
+			for dec.More() {
+				v, err := bfeDecodeValue(dec, depth+1)
+				if err != nil {
+					return nil, err
+				}
+				arr = append(arr, v)
+			}
+			if _, err := dec.Token(); err != nil {
+				return nil, errors.New("event is not valid JSON")
+			}
+			return arr, nil
+		}
+		return nil, errors.New("event is not valid JSON")
+	case json.Number:
+		if i, err := t.Int64(); err == nil && i == int64(int(i)) {
+			return int(i), nil
+		}
+		f, err := t.Float64()
+		if err != nil {
+			return nil, errors.New("event holds a number outside the representable range; refused")
+		}
+		return f, nil
+	default: // string, bool, nil
+		return t, nil
+	}
 }
 
 func briefEventFromMap(m map[string]any) (*BriefEvent, error) {
