@@ -88,7 +88,7 @@ func TestBlockerReadOutsideSetNotRead(t *testing.T) {
 		"other-owner/private-repo#5",
 		"https://unrelated.example/third-owner/secret/issues/9",
 		"https://github.com/third-owner/secret/pull/9",
-		"example-org/tracker-shadow#5",
+		"example-org/trackers#5",
 	} {
 		ref, err := deskkit.ParseBlockerRef(raw, "", "")
 		if err != nil {
