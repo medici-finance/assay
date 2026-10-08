@@ -89,6 +89,9 @@ type verdictRunConfig struct {
 	// writeHook writes the unsigned payload bytes to the file the composer just created.
 	// nil => f.Write. Tests set it to fail the write after the create; production never does.
 	writeHook func(f *os.File, b []byte) error
+	// statHook identifies the file the composer just created. nil => f.Stat. Tests set it to
+	// fail so the post-create failure path is exercised; production never does.
+	statHook func(f *os.File) (os.FileInfo, error)
 }
 
 func (c verdictRunConfig) execFn() rowExec {
@@ -134,7 +137,8 @@ func cmdVerdict(args []string) int {
 // refusal (exit 5) for a flag error or a combination that has no meaning. --unsigned-out never
 // combines with --pem (a key path in a keyless run is a caller error, never silently ignored),
 // --dry-run, or an EXPLICIT --window (the batching window does not apply to a run that composes
-// one payload; a silent ignore would hide a caller who expected batching).
+// one payload; a silent ignore would hide a caller who expected batching). An explicit empty
+// --unsigned-out is refused too, never taken as the flag's absence.
 func parseVerdictFlags(args []string) (verdictRunConfig, error) {
 	fs := flag.NewFlagSet("verdict", flag.ContinueOnError)
 	root := fs.String("root", ".", "repo root to scan for the Awaiting queue")
@@ -149,9 +153,15 @@ func parseVerdictFlags(args []string) (verdictRunConfig, error) {
 	if err := fs.Parse(args); err != nil {
 		return verdictRunConfig{}, deskkit.RefusedWithCause("verifyloop verdict: bad flags", err)
 	}
+	passed := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { passed[f.Name] = true })
+	// An explicit empty value is refused, never read as "flag absent": absent selects the
+	// signed, key-resolving path, which a caller who asked for the keyless mode never wants.
+	if passed["unsigned-out"] && *unsignedOut == "" {
+		return verdictRunConfig{}, deskkit.Refused(
+			"verifyloop verdict: --unsigned-out was given an empty path — name the NEW file to write the unsigned payload to, or drop the flag for the signed path")
+	}
 	if *unsignedOut != "" {
-		passed := map[string]bool{}
-		fs.Visit(func(f *flag.Flag) { passed[f.Name] = true })
 		for _, bad := range []string{"pem", "dry-run", "window"} {
 			if passed[bad] {
 				return verdictRunConfig{}, deskkit.Refused(fmt.Sprintf(
@@ -346,7 +356,16 @@ func runVerdictUnsigned(cfg verdictRunConfig) error {
 		}
 		return deskkit.Unverifiable(fmt.Sprintf("verdict runner: cannot create --unsigned-out %s; nothing written", path), err)
 	}
-	created, statErr := f.Stat()
+	stat := cfg.statHook
+	if stat == nil {
+		stat = (*os.File).Stat
+	}
+	created, statErr := stat(f)
+	if statErr != nil {
+		// Nothing has been written yet, so the file it created is still empty.
+		_ = f.Close()
+		return removeUnidentifiedEmpty(path, statErr)
+	}
 	write := cfg.writeHook
 	if write == nil {
 		write = func(f *os.File, b []byte) error { _, err := f.Write(b); return err }
@@ -358,7 +377,7 @@ func runVerdictUnsigned(cfg verdictRunConfig) error {
 		if cause == nil {
 			cause = cerr
 		}
-		return removeUnsignedPartial(path, created, statErr, cause)
+		return removeUnsignedPartial(path, created, cause)
 	}
 
 	briefs := map[string]bool{}
@@ -376,11 +395,8 @@ func runVerdictUnsigned(cfg verdictRunConfig) error {
 // created: it removes the path only while it still names that same file (os.SameFile), so it
 // never deletes an entry something else put there. It always returns an exit-6 error naming the
 // path, and the caller prints no digest.
-func removeUnsignedPartial(path string, created os.FileInfo, statErr, cause error) error {
+func removeUnsignedPartial(path string, created os.FileInfo, cause error) error {
 	msg := fmt.Sprintf("verdict runner: writing --unsigned-out %s failed; nothing signed, no digest printed", path)
-	if statErr != nil {
-		return deskkit.Unverifiable(msg+fmt.Sprintf(" — could not identify the file it created, so it removed nothing; remove %s by hand", path), cause)
-	}
 	cur, err := os.Lstat(path)
 	if err != nil || !os.SameFile(created, cur) {
 		return deskkit.Unverifiable(msg+fmt.Sprintf(" — %s no longer names the file it created, so it removed nothing", path), cause)
@@ -389,6 +405,23 @@ func removeUnsignedPartial(path string, created os.FileInfo, statErr, cause erro
 		return deskkit.Unverifiable(msg+fmt.Sprintf(" — and removing the partial file %s failed (%v); remove it by hand", path, err), cause)
 	}
 	return deskkit.Unverifiable(msg+" — the partial file it created was removed", cause)
+}
+
+// removeUnidentifiedEmpty cleans up when the composer cannot identify the file it just created
+// (its stat failed), so os.SameFile has nothing to compare against. It runs before any byte is
+// written, so it removes the path only while it is still an EMPTY regular file: an entry with
+// any content, or of any other type, was not left by this run and is never deleted. It always
+// returns an exit-6 error naming the path, and the caller prints no digest.
+func removeUnidentifiedEmpty(path string, cause error) error {
+	msg := fmt.Sprintf("verdict runner: could not identify the --unsigned-out %s it created; nothing written, nothing signed, no digest printed", path)
+	cur, err := os.Lstat(path)
+	if err != nil || !cur.Mode().IsRegular() || cur.Size() != 0 {
+		return deskkit.Unverifiable(msg+fmt.Sprintf(" — %s is no longer the empty file it created, so it removed nothing", path), cause)
+	}
+	if err := os.Remove(path); err != nil {
+		return deskkit.Unverifiable(msg+fmt.Sprintf(" — and removing the empty file %s failed (%v); remove it by hand", path, err), cause)
+	}
+	return deskkit.Unverifiable(msg+" — the empty file it created was removed", cause)
 }
 
 // runBriefRows reads the brief for an Awaiting item, parses its Verify table, and runs every

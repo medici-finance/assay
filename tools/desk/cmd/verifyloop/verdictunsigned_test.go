@@ -359,3 +359,51 @@ func TestUnsignedOutRefusals(t *testing.T) {
 		}
 	})
 }
+
+// An explicit empty --unsigned-out is a caller error, refused (exit 5) — never a silent fall
+// back to the signed, key-resolving path that an absent flag selects.
+func TestUnsignedOutExplicitEmptyIsRefused(t *testing.T) {
+	for _, args := range [][]string{
+		{"--unsigned-out", ""},
+		{"--unsigned-out="},
+	} {
+		if _, err := parseVerdictFlags(args); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+			t.Fatalf("parseVerdictFlags(%q) = %v, want exit 5", args, err)
+		}
+	}
+	// CONTROL: an absent flag still parses (the signed path is the default).
+	cfg, err := parseVerdictFlags(nil)
+	if err != nil || cfg.unsignedOut != "" {
+		t.Fatalf("parseVerdictFlags(nil) = %+v, %v; want the default config", cfg, err)
+	}
+}
+
+// When the composer cannot identify the file it just created, it fails the run, prints no
+// digest, and leaves no file of its own behind — whether or not the write would have worked.
+func TestUnsignedOutStatFailureLeavesNoFile(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		writeFail bool
+	}{{"write-ok", false}, {"write-fails", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(privDir(t), "payload.json")
+			var out bytes.Buffer
+			cfg := verdictRunConfig{root: demoRoot(t), repo: exRepo, head: exHead,
+				exec: fakeExec, out: &out, unsignedOut: path,
+				statHook: func(*os.File) (os.FileInfo, error) { return nil, errors.New("injected stat failure") }}
+			if tc.writeFail {
+				cfg.writeHook = func(f *os.File, b []byte) error { return errors.New("injected write failure") }
+			}
+			err := runVerdict(cfg)
+			if err == nil || deskkit.ExitCodeOf(err) == deskkit.ExitOK {
+				t.Fatalf("stat failure = %v, want a non-zero exit", err)
+			}
+			if _, lerr := os.Lstat(path); !errors.Is(lerr, os.ErrNotExist) {
+				t.Fatalf("file left behind after a stat failure (lstat err %v)", lerr)
+			}
+			if strings.Contains(out.String(), "sha256=") {
+				t.Fatalf("a non-success run printed a digest:\n%s", out.String())
+			}
+		})
+	}
+}
