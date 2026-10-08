@@ -621,7 +621,7 @@ RISK-VALUE: DERIVED — flipConditions = [caller-role, app-token, pr-open-draft,
 RISK-VALUE: DERIVED — help tokens = {"-h","-help","--help"} @ tools/desk/internal/deskkit/helprequest.go:52-54 — a strict subset of what Go's flag package treats as ErrHelp, matched only as the sole token after a subcommand; a miss falls through to normal parsing (the safe direction, never skipping a Guard).
 rootConcurrency = 4 @ tools/desk/cmd/deskboard/roots.go:41 — reversible operational knob, ranked last, no derivation required.
 
-**VERIFY: FAIL** — check-definition: re-point rows 2, 4, 5, 7, 14, 15 to the real test names/packages (a Verify-row change by PR, never an Evidence rewording) and add tests for rows 3 and 6; then re-verify. Status stays `implemented`. Bug: #2293.
+**VERIFY: FAIL** — check-definition: re-point rows 2, 4, 5, 7, 14, 15 to the real test names/packages (a Verify-row change by PR, never an Evidence rewording) and add tests for rows 3 and 6; then re-verify. Status is `in-progress` and this record does not move it: the delivery PR (#1062) took the board row from `todo` to `in-progress` and never to `implemented`, so the Definition-of-done item "The brief's board row is `implemented`" is unmet. Bug: #2293.
 
 ## Review
 
