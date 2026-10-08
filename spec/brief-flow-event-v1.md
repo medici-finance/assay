@@ -54,7 +54,10 @@ RFC 2119.
 
 A brief-flow event file is JSON Lines: one JSON object per line, UTF-8, `\n`-terminated. Blank
 lines are ignored. A line that is not valid JSON, or an object with a duplicated member name,
-MUST be refused. Every timestamp is UTC in RFC 3339 form ending in `Z`.
+MUST be refused; the refusal does not name the repeated member. Any valid JSON line MUST
+otherwise be accepted as JSON defines it, every string escape (including `\/`) included. A
+reader MAY refuse a line nested deeper than a fixed bound (64 levels in the reference
+validator). Every timestamp is UTC in RFC 3339 form ending in `Z`.
 
 ## 3. The envelope
 
@@ -123,10 +126,17 @@ any event that has, at any depth:
   `committer`, `assignee`; or ending in `_login`, `_email`, `_name`, `_user`, `_username`,
   `_handle`, `_author`, `_person`, `_principal`, `_mail`; or containing `login`, `email`,
   `username` or `user_name`; or
-- any string value shaped like an email address.
+- any member **name** or string value shaped like an email address.
 
 The refusal MUST name only the member's position, never its value, and schema-validation
-messages MUST NOT echo a refused value either. Verifying that a `human` role is genuine stays
+messages MUST NOT echo a refused value either. A member name is producer data too: in a
+refusal's position path, a member whose name this schema does not declare is shown by its
+position among its siblings (`member #3`), never by its name.
+
+This scan is a name-and-shape heuristic, not a complete person-data filter. A bare login that
+is not email-shaped, placed in a free-form string (an owner, a reference, a source id, an
+extension member's value or name), is not caught. A producer MUST NOT rely on the reader to
+remove person data it should never have emitted. Verifying that a `human` role is genuine stays
 with the source that authenticated the act; the event records only the classification.
 
 ## 4. Identity and aliases
@@ -145,7 +155,7 @@ Resolving an alias at an instant:
 |---|---|
 | Exactly one brief's span covers the instant | That brief's uuid. |
 | No span covers it | `unknown` — refused, never guessed. |
-| Two or more briefs' spans cover it (two `legacy` claims on one alias, or two assignments at the same latest instant) | `ambiguous` — refused. |
+| Two or more briefs' spans cover it — whether their claims start together (two `legacy` claims on one alias) or are staggered (brief B is assigned the alias while brief A's span is still open) | `ambiguous` — refused. A later assignment to another brief never closes an earlier brief's span, so it never wins by being later. |
 
 An ambiguous legacy mapping needs a reviewed, permanent identity record; until then every
 observation that names it is refused and counted in the export's `refused` coverage. A reader
@@ -217,7 +227,7 @@ The result is independent of input order.
 | written | `written` fact (one birth per uuid) | a historian seed row, an alias, an authored date |
 | coded | `pr_opened` of an `implementation` contribution | an `authoring` pull request |
 | reviewed | `pr_ready` of an implementation contribution, or a `pr_opened` that was ready at creation (recorded as `ready_at_creation`, not an invented flip) | an approval |
-| merged | `pr_merged` of an implementation contribution whose `executor_role` is `human` | an app merge — counted separately as `other_merges` |
+| merged | `pr_merged` of an implementation contribution whose `executor_role` is `human` | an app merge (`desk`, `reviewer`, `verifier` or `worker`) — counted separately as `other_merges`; a merge whose executor is `unknown` is neither, and is counted as `unknown_merges` |
 | verified, done | `verified` / `done` whose `acceptance.coverage` is `complete` | anything less — counted as `unqualified` |
 
 Each first carries what was true **at occurrence**: fact id, time, precision, source authority,
@@ -285,7 +295,15 @@ An export is a directory holding:
 A writer MUST re-validate every event before writing (an event that bypassed validation cannot
 carry a refused member out), MUST write each file atomically, and MUST refuse a destination
 that is inside a git work tree: an export is operator data, never a committed artifact, and
-never reaches the board historian. A reader MUST refuse an unknown manifest schema, a digest or
+never reaches the board historian. The work-tree test MUST resolve symbolic links on the
+nearest existing ancestor of the destination before looking for a `.git` entry, so a symlinked
+destination, or a symlinked parent followed by `..`, is judged where the files would actually
+land. The reference writer creates the export directory owner-only (`0700`) and writes each
+file through a fresh owner-only (`0600`) temporary file in the same directory, synced and then
+renamed. **Limit:** the test looks for a `.git` entry on the destination's ancestors, so a work
+tree whose git directory lives elsewhere (a separate `--git-dir` with `--work-tree`, or
+`core.worktree`) and holds no `.git` entry is not detected; an operator using such a layout
+chooses the destination accordingly. A reader MUST refuse an unknown manifest schema, a digest or
 count mismatch, and any line that fails §3.
 
 ## 10. Report grouping and quantiles
@@ -336,7 +354,7 @@ A report built on this contract no longer assumes that:
 - the first historian row of a brief is its birth (a seed is not a birth, §8);
 - an alias, a number or a title identifies a brief (the uuid does, §4);
 - a merged pull request means the brief is merged, verified or done (§7.3);
-- an app merge is a human merge (§7.1);
+- an app merge is a human merge, or a merge by an unknown executor is an app merge (§7.1);
 - a mean of daily means is a mean (§10).
 
 ## 12. Owner dispositions
