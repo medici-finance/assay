@@ -32,8 +32,8 @@ import (
 //     deskkit.AllowVerdictIssueWrite (the verdict-issue bucket), wired at cutover.
 //
 // Fail-closed envelope (operating-envelope preflight pattern): a missing verifier PEM is
-// reported loudly and NOTHING is filed — an unsigned verdict BODY is never emitted; an unsigned
-// PAYLOAD is written only to an explicit `--unsigned-out` file.
+// reported loudly and NOTHING is filed — an unsigned verdict BODY is never emitted;
+// an unsigned PAYLOAD is written only to an explicit `--unsigned-out` file.
 //
 //   - `--unsigned-out <file>` (brief desk-tools/29) is the split path for a fenced runner: it
 //     runs the same rows, composes ONE payload in the same canonical form, writes it to a NEW
