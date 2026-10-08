@@ -125,7 +125,7 @@
       "name": "Evidence-only accepts any path (a code change escapes its approval)",
       "file": "evidenceshape.go",
       "old": "\treturn fmt.Sprintf(\"it changes %s, which is not an Evidence section",
-      "new": "\treturn \"\"\n\t_ = fmt.Sprintf(\"it changes %s, which is not an Evidence section"
+      "new": "\tif true {\n\t\treturn \"\"\n\t}\n\treturn fmt.Sprintf(\"it changes %s, which is not an Evidence section"
     },
     {
       "name": "brief hunk outside `## Evidence` accepted (a Verify-table edit escapes its approval)",
@@ -179,7 +179,7 @@
       "name": "every PR overlaps files:",
       "file": "deliveryfiles.go",
       "old": "\t\t\tif declaredEntryMatches(d, p) {",
-      "new": "\t\t\tif true {"
+      "new": "\t\t\tif true || declaredEntryMatches(d, p) {"
     },
     {
       "name": "another repo's files: entry kept as a path here",
@@ -197,7 +197,7 @@
       "name": "--check does not fail on a stuck candidate (the hidden green run)",
       "file": "autoflip.go",
       "old": "\t\tif r.Outcome != flipDone {\n\t\t\tstuck++",
-      "new": "\t\tif false {\n\t\t\tstuck++"
+      "new": "\t\tif false && r.Outcome != flipDone {\n\t\t\tstuck++"
     },
     {
       "name": "--check overrides a misconfiguration's exit 1",
