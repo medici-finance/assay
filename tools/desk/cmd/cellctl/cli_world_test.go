@@ -76,6 +76,24 @@ func newCLIWorld(t *testing.T, extraEnv string) *cliWorld {
 			t.Fatal(err)
 		}
 	}
+	// The cockpit resolver reads PATH (herdr, else tmux), and the world's PATH still ends in the
+	// host's: a runner with neither would resolve a different cockpit than the one the recorded
+	// transcripts were captured under, and the `--cockpit tmux` an `up` run prints would be
+	// refused when re-executed. Stubs for the two cockpit CLIs the contract exercises pin the
+	// resolution (herdr wins `auto`, tmux satisfies an explicit choice) on every host.
+	for _, h := range []string{"herdr", "tmux"} {
+		if err := os.WriteFile(filepath.Join(w.binDir, h), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(w.deskToolsDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range strings.Fields(houseVerbs) {
+		if err := os.WriteFile(filepath.Join(w.deskToolsDir(), v), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	w.policy = filepath.Join(w.cellDir, "model-policy.json")
 	return w
 }
@@ -114,12 +132,20 @@ func (w *cliWorld) baseEnv() []string {
 		"CELLS_ROOT=" + w.cellsRoot,
 		"CLAUDE_CONFIG_DIR=" + w.cfgDir,
 		"PATH=" + w.binDir + ":" + os.Getenv("PATH"),
+		"DESK_TOOLS_BIN=" + w.deskToolsDir(),
 		"HOME=" + w.cellDir,
 		"KUBECONFIG=/dev/null",
 		"ZAI_API_KEY=fixture-zai",
 		"KIMI_API_KEY=fixture-kimi",
 	}
 }
+
+// shippedDeskToolsBin is where the recorded transcripts saw the desk verbs: the compiled default
+// install directory. The world points DESK_TOOLS_BIN at its own stub directory instead, so the
+// `check` rows for the verbs do not depend on what the host has installed; norm maps it back.
+const shippedDeskToolsBin = "/opt/desk-tools/bin"
+
+func (w *cliWorld) deskToolsDir() string { return filepath.Join(w.root, "desk-tools", "bin") }
 
 // cliRun is one finished invocation.
 type cliRun struct {
@@ -165,9 +191,29 @@ var (
 // host's free-space figure: three values that differ between two runs of the same case.
 var volatileRE = regexp.MustCompile(`"(at|domain)":"[^"]*"|"available_bytes":\d+`)
 
+// hostRE matches the two values a transcript takes from the machine it was recorded on rather
+// than from the world: the first bash on PATH (composed into SHELL for a scrubbed cell) and the
+// device id of the cache report's filesystem. hostNorm is applied to BOTH sides of a comparison,
+// so the recorded transcript keeps its original text and a different runner still matches.
+var hostRE = []struct {
+	re   *regexp.Regexp
+	with string
+}{
+	{regexp.MustCompile(`SHELL=\S*bash`), "SHELL=<BASH>"},
+	{regexp.MustCompile(`"filesystem":"device:\d+"`), `"filesystem":"device:<N>"`},
+}
+
+func hostNorm(s string) string {
+	for _, h := range hostRE {
+		s = h.re.ReplaceAllString(s, h.with)
+	}
+	return s
+}
+
 // norm replaces everything that legitimately differs between two runs of the same case: the
 // world's directory and a UTC boot stamp.
 func (w *cliWorld) norm(s string) string {
+	s = strings.ReplaceAll(s, w.deskToolsDir(), shippedDeskToolsBin)
 	s = strings.ReplaceAll(s, w.root, "<ROOT>")
 	s = strings.ReplaceAll(s, "/home/", "/<HOME>/")
 	s = binPathRE.ReplaceAllString(s, "'<BIN>'")

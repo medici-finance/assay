@@ -368,6 +368,14 @@ func TestCLINonHelpParity(t *testing.T) {
 			continue
 		}
 		got := runGoldenCase(t, cellctlBinary(t), c)
+		got = append([]cliRun(nil), got...)
+		want = append([]cliRun(nil), want...)
+		for i := range got {
+			got[i].Stdout, got[i].Stderr = hostNorm(got[i].Stdout), hostNorm(got[i].Stderr)
+		}
+		for i := range want {
+			want[i].Stdout, want[i].Stderr = hostNorm(want[i].Stdout), hostNorm(want[i].Stderr)
+		}
 		if len(got) != len(want) {
 			t.Errorf("case %s: %d steps recorded, %d run", c.name, len(want), len(got))
 			continue
