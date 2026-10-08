@@ -211,6 +211,8 @@ not own.
   note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering
   evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
+  Before submitting an upstream issue or attaching a cross-boundary comment, apply R7: remove
+  internal locators from the title, body and evidence; use opaque role+number refs instead.
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
   driver or a stronger-tier model — the item PARKS only when the fork is one-way; a reversible item proceeds on its
   stated default with the label riding on it) or `help wanted` (the desk hit its capability/authority edge). Both are
@@ -354,12 +356,13 @@ red check is the worker's work item, never a wait state. **The ready flip is `pr
 (2026-08-24) — never the implementer's, and never this desk's**: `gh pr ready` when the reviewer App
 has APPROVED at the current head, checks are green, and the PR is mergeable. Merge stays the human's.
 
-- **Redaction scopes the PUBLIC record only — check repo visibility first (R7).** In a private repo
+- **Redaction follows the destination boundary — check venue and visibility first (R7).** In a private repo
   the PR is a team+agent-only record and the worker needs the full `file:line` + mechanism: never tell
   reviewers to keep correctness or auth detail "with the desk" (a blocking finding once got redacted to
   vagueness the worker couldn't act on). Redact genuinely secret MATERIAL (tokens, keys, credentials,
-  PII), plus exploit recipes in a public repo. **Never instruct any agent to withhold anything from the
-  driver** — sensitive findings route TO them, in full.
+  PII), plus exploit recipes in a public repo. Before cross-boundary issues or comments, apply R7
+  to internal locators; full defect detail stays on the source PR. **Never instruct any agent to
+  withhold anything from the driver** — sensitive findings route TO them, in full.
 - Lifecycle `todo → in-progress → implemented → verified → done`: implementers stop at `implemented`;
   `verified` needs a NON-implementer running the Verify table and filling Evidence; `done` needs the
   recorded review. Merging does NOT verify.

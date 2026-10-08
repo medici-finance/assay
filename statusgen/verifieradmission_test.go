@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -25,5 +26,23 @@ func TestVerifierAdmissionBeforeRows(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(root, name)); err == nil {
 			t.Errorf("Verify row executed before admission: %s", name)
 		}
+	}
+}
+
+// TestDeskLoopCleared pins TestMain's clearing of DESK_LOOP: it re-runs this
+// test binary with DESK_LOOP set to a verify loop and requires the child to
+// see none, so no test here can inherit a verify loop and reach the real
+// deskdispatch through admission, whatever the CI environment carries.
+func TestDeskLoopCleared(t *testing.T) {
+	if os.Getenv("STATUSGEN_DESKLOOP_PROBE") == "1" {
+		if v, ok := os.LookupEnv("DESK_LOOP"); ok {
+			t.Fatalf("the test binary inherited DESK_LOOP=%q", v)
+		}
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDeskLoopCleared$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "DESK_LOOP=verify-desk", "STATUSGEN_DESKLOOP_PROBE=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("a DESK_LOOP set by the caller reached the tests: %v\n%s", err, out)
 	}
 }

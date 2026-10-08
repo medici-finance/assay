@@ -1,0 +1,29 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/diffs",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": [
+    {
+      "Filename": "a.go",
+      "PreviousFilename": "",
+      "Status": "modified",
+      "Patch": "@@ -1 +1 @@\n-a\n+b\n"
+    },
+    {
+      "Filename": "big.bin",
+      "PreviousFilename": "",
+      "Status": "modified",
+      "PatchAbsent": true
+    },
+    {
+      "Filename": "gen.go",
+      "PreviousFilename": "",
+      "Status": "modified",
+      "PatchAbsent": true
+    }
+  ]
+}

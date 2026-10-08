@@ -19,6 +19,7 @@ unblocks: []
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-desk-tools-29
 gate-why: >-
   The change sits on the verifier key's custody boundary and on what a verdict signature
   attests. The Verify rows a run executes are arbitrary shell, started with `sh -c` from the repo
@@ -71,7 +72,7 @@ exec-tier-why: >-
   plumbing whose dangerous failures — the unsigned branch quietly still resolving or opening the
   key, or the signer reading or writing through a link — pass every happy-path test.
 consumers:
-  - "tools/desk/cmd/deskverdict/sign.go: follow-up desk-tools/29 (the implementing change flips this entry to fixed-here and records what landed, Task 12; it gains `--expect-sha256`, `--expect-repo`, `--expect-head`, `--not-before` and `--not-after`, optional and checked only when passed; on EVERY `--payload` call, with or without them, it reads the payload only as a regular non-link file opened without following a link or blocking, on unix from a parent directory that is not a link and that no other user can write, and creates the `.out` sibling exclusively; with none of the new flags its signed output for a regular payload file in such a directory (any directory on non-unix) is unchanged, which the existing tests in deskverdict_test.go prove with only an added chmod of their payload directory to 0700, and row 8 keeps every existing line unchanged — but an existing or unwritable `.out` sibling, which used to exit 0 (overwritten, or a note printed), now exits 5)"
+  - "tools/desk/cmd/deskverdict/sign.go: fixed-here (landed: `--expect-sha256`, `--expect-repo`, `--expect-head`, `--not-before` and `--not-after`, plain optional string flags, each counted as passed by `fs.Visit` and checked before the signer key is resolved, a mismatch or an empty or unparseable value refusing with exit 5 and nothing on stdout; on EVERY `--payload` call, with or without them, the payload is read once as a regular non-link file, `Lstat` then an open with `O_NOFOLLOW|O_NONBLOCK` on unix (a plain open elsewhere) and an `os.SameFile` check of the opened file, with a link found at the open refused (exit 5); on unix its parent directory must be a non-link directory owned by the effective uid with no group or other write bit (`signopen_unix.go`; `signopen_other.go` skips the directory check); the `.out` sibling is created with `O_CREATE|O_EXCL`, so an existing or unwritable sibling, which used to exit 0, now exits 5 with the signed body on stdout only; with none of the new flags the signed output for a regular payload in such a directory is unchanged, which the existing tests in deskverdict_test.go prove with only an added chmod of their payload directory to 0700)"
   - "tools/desk/cmd/deskverdict/verify.go: out-of-scope (unchanged and read-only toward this brief; row 3 (e) proves it refuses the bare payload on structure with a public key supplied, and (f) that it accepts the host-signed body)"
   - "statusgen/transcribeverdict.go: out-of-scope (never sees the unsigned payload: it reads issue bodies, and an unsigned payload is written only to a file; a body without a signature trailer is already CouldNotCheck there)"
 ---
@@ -88,17 +89,17 @@ files:
 - `tools/desk/cmd/verifyloop/verdictrun.go` — the flag-parsing seam, the new flag, the unsigned branch of `runVerdict`, the amended package comment
 - `tools/desk/cmd/verifyloop/verdictpayload.go` — one shared canonical-bytes helper used by BOTH `signPayload` and the unsigned writer
 - `tools/desk/cmd/verifyloop/main.go` — usage line and `verdict` prose, including the host contract
-- `tools/desk/cmd/verifyloop/verdictunsigned_test.go` (planned) — rows 1, 3, 4
-- `tools/desk/cmd/verifyloop/verdictunsigned_unix_test.go` (planned) — row 2 (FIFO canaries, `//go:build unix`)
+- `tools/desk/cmd/verifyloop/verdictunsigned_test.go` — rows 1, 3, 4
+- `tools/desk/cmd/verifyloop/verdictunsigned_unix_test.go` — row 2 (FIFO canaries, `//go:build unix`)
 - `tools/desk/cmd/deskverdict/sign.go` — the binding flags, the parent-directory check, the regular-file payload read, the exclusive `.out` write
-- `tools/desk/cmd/deskverdict/signopen_unix.go` (planned) — the no-follow, non-blocking payload open and the parent-directory check (`//go:build unix`)
-- `tools/desk/cmd/deskverdict/signopen_other.go` (planned) — the plain open and no parent-directory check on other platforms (`//go:build !unix`)
+- `tools/desk/cmd/deskverdict/signopen_unix.go` — the no-follow, non-blocking payload open and the parent-directory check (`//go:build unix`)
+- `tools/desk/cmd/deskverdict/signopen_other.go` — the plain open and no parent-directory check on other platforms (`//go:build !unix`)
 - `tools/desk/cmd/deskverdict/main.go` — the `sign` usage line
-- `tools/desk/cmd/deskverdict/signbinding_test.go` (planned) — row 11
-- `tools/desk/cmd/deskverdict/signpaths_unix_test.go` (planned) — row 12 (links and FIFOs, `//go:build unix`)
+- `tools/desk/cmd/deskverdict/signbinding_test.go` — row 11
+- `tools/desk/cmd/deskverdict/signpaths_unix_test.go` — row 12 (links and FIFOs, `//go:build unix`)
 - `changelog/` — one fragment for the implementing PR
 
-single-point-of-failure: two faults, two answers. (a) A key read by the new mode: the single control is the unsigned branch's code path (it never reaches `resolveVerifierPEMPath`, `signPayload` or any key location the resolver consults) — behind it, the operator's fence, which mounts no key (outside this repo), and the consumers' refusal of an unsigned body (`deskverdict verify` exits 6 on a bare payload; statusgen's transcriber treats a body with no signature trailer as CouldNotCheck). (b) A forged, malformed or substituted payload: the single control is the host's signing step, enforced in `deskverdict sign` by the digest, repo, head, not-before and not-after checks, the parent-directory check and the regular-file read (Task 8), under the host contract (Task 9), which takes repo, head and both time bounds from the host's own dispatch record and only the digest from the composer — behind it, NONE. A second layer is infeasible in this design: the row shell and the composer run as one user in one container, so nothing the composer writes or prints (the file or its digest line) is out of a hostile row's reach, and the only witness outside the fence would be a host that re-runs the rows, which is the combined path this brief exists to avoid. The signer checks bound a forgery to the repo, head and time window (from `--not-before` to `--not-after`) the host recorded; they do not prevent it. Option 2 in the Human decision moves the composer out of the fence and is the design that would add a layer.
+single-point-of-failure: two faults, two answers. (a) A key read by the new mode: the single control is the unsigned branch's code path (it never reaches `resolveVerifierPEMPath`, `signPayload` or any key location the resolver consults) — behind it, the operator's fence, which mounts no key (outside this repo), and the consumers' refusal of an unsigned body (`deskverdict verify` exits 6 on a bare payload; statusgen's transcriber treats a body with no signature trailer as CouldNotCheck). (b) A forged, malformed or substituted payload: the single control is the host's signing step, enforced in `deskverdict sign` by the digest, repo, head, not-before and not-after checks, the parent-directory check and the regular-file read (Task 8), under the host contract (Task 9), which takes repo, head and both time bounds from the host's own dispatch record and only the digest from the composer — behind it, NONE. A second layer is infeasible in this design: the row shell and the composer run as one user in one container, so nothing the composer writes or prints (the file or its digest line) is out of a hostile row's reach, and the only witness outside the fence would be a host that re-runs the rows, which is the combined path this brief exists to avoid. The signer checks refuse a payload whose digest, repo, head or time bounds disagree with the host's record, but only at signing: after signing only the repo is checked again, and they do not prevent a forged entry inside a payload the host signs. Option 2 in the Human decision moves the composer out of the fence and is the design that would add a layer.
 
 facts:
 - Key resolution is the FIRST thing `runVerdict` does (`verdictrun.go:139`). Checked live at the stamp: with no key anywhere (empty `HOME`, `VERIFIER_PEM` and `ASSAY_CONFIG_HOME` unset) `verifyloop verdict --dry-run` exits 6 with "cannot find the verifier private key" even when the queue is empty — before the queue is read. No existing mode composes without a key.
@@ -139,8 +140,8 @@ recommended option makes the host refuse a file that does not match the fingerpr
 step reported or what the host itself recorded when it started the run (the same repository, the
 same commit, a timestamp between the start of the run and the end of it). The host takes the
 repository, commit and times from its own record, never from anything the container printed or
-wrote. That stops stale or swapped files and confines a forgery to the one run the host
-dispatched. It
+wrote. At signing, that stops stale or swapped files; nothing after signing checks the commit
+or the times again (the transcriber checks only the repository). It
 does not stop a hostile check command from inventing results for that run: nothing inside the
 container can be trusted to witness them, and the only outside witness would be a host that
 re-runs the checks — which is the combined process again.
