@@ -34,7 +34,7 @@
     {
       "name": "one legacy flag form dropped (single-dash -model stops being accepted)",
       "file": "cmd/cellctl/cobra.go",
-      "old": "GoFlagCompat:    !rawVerb(args),",
+      "old": "GoFlagCompat:    !raw,",
       "new": "GoFlagCompat:    false,"
     },
     {
