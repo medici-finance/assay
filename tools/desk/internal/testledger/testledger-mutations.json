@@ -1,0 +1,83 @@
+{
+  "test": "go test ./internal/testledger/ -count=1 -timeout 120s -run 'TestLedgerFixture|TestTrailerGrammar'",
+  "control": {
+    "name": "report a deletion under another label",
+    "file": "internal/testledger/ledger.go",
+    "old": "\"retired-untrailed: %s.%s%s deleted in %s\"",
+    "new": "\"retired: %s.%s%s deleted in %s\""
+  },
+  "mutations": [
+    {
+      "name": "pair renames on an ambiguous match (shared tag over-matches)",
+      "file": "internal/testledger/ledger.go",
+      "old": "len(ds) == 1 && len(as) == 1 {",
+      "new": "len(ds) >= 1 && len(as) >= 1 {"
+    },
+    {
+      "name": "never pair by tag",
+      "file": "internal/testledger/ledger.go",
+      "old": "return f.Tag }, \"same tag\"",
+      "new": "return \"\" }, \"same tag\""
+    },
+    {
+      "name": "hash the raw body bytes (comments and layout count)",
+      "file": "internal/testledger/ledger.go",
+      "old": "return hex.EncodeToString(h.Sum(nil))[:16]",
+      "new": "return fmt.Sprintf(\"%x\", sha256.Sum256(body))[:16]"
+    },
+    {
+      "name": "count TestMain as a test",
+      "file": "internal/testledger/ledger.go",
+      "old": "if name == \"TestMain\" {",
+      "new": "if name == \"\" {"
+    },
+    {
+      "name": "read non-test .go files (the decoy counts)",
+      "file": "internal/testledger/ledger.go",
+      "old": "if !strings.HasSuffix(p, \"_test.go\") {",
+      "new": "if !strings.HasSuffix(p, \".go\") {"
+    },
+    {
+      "name": "ignore go test's naming rule (Testhelper counts)",
+      "file": "internal/testledger/ledger.go",
+      "old": "return !unicode.IsLower(r)",
+      "new": "return true"
+    },
+    {
+      "name": "read no tag",
+      "file": "internal/testledger/ledger.go",
+      "old": "strings.CutPrefix(c.Text, TagPrefix)",
+      "new": "strings.CutPrefix(c.Text, \"// regression:: \")"
+    },
+    {
+      "name": "a trailer covers nothing",
+      "file": "internal/testledger/ledger.go",
+      "old": "covered[x.Test] = true",
+      "new": "covered[x.Test] = false"
+    },
+    {
+      "name": "accept a trailer with no reason",
+      "file": "internal/testledger/ledger.go",
+      "old": "if !ok || !isIdent(name) || why == \"\" {",
+      "new": "if !ok || !isIdent(name) {"
+    },
+    {
+      "name": "match a test name inside a longer identifier",
+      "file": "internal/testledger/ledger.go",
+      "old": "if !identRune(before) && !identRune(after) {",
+      "new": "if true {"
+    },
+    {
+      "name": "read rows outside the Verify section",
+      "file": "internal/testledger/ledger.go",
+      "old": "inVerify = strings.HasPrefix(line, \"## Verify\")",
+      "new": "inVerify = true"
+    },
+    {
+      "name": "list Verify rows only for untrailed departures",
+      "file": "internal/testledger/ledger.go",
+      "old": "\t\t}\n\t\taddRows(f.Name)\n",
+      "new": "\t\t\taddRows(f.Name)\n\t\t}\n"
+    }
+  ]
+}

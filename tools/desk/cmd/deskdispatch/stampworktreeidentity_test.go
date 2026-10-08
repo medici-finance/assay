@@ -27,6 +27,7 @@ const verifierWorktreeEmail = "300000005+assay-verifier-app[bot]@users.noreply.g
 // FAIL-FIRST: before the fix the worktree-create step stamped nothing, so the worktree
 // inherited the shared checkout's `assay-desk-app[bot]` identity and this assertion read that
 // desk email back instead of the verifier's — a red run demonstrable by stashing the fix.
+// regression: #1490
 func TestVerifierDispatchStampsWorktreeIdentityNotTheSharedCheckouts(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)

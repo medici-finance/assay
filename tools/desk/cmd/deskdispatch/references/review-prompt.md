@@ -55,19 +55,19 @@ must show it failing on the unfixed code — a red run quoted in the PR body or 
 or a committed mutation script the reviewer can re-run.
 
 **A test whose red state was never observed is a finding, not evidence.** Treat its pass as
-unproven and request changes asking for the red run.
+unproven and request the red run. The single failure mode this catches is *a control that
+reads as present and cannot fail*: an assertion against its own source constant; a counter
+bumped with its comparand; a guard disarmed by a stray character; a self-compared artifact;
+a suite never run in CI; escape conditions that survive their own mutations.
 
-The single failure mode this catches is *a control that reads as present and cannot fail*: an
-assertion against its own source constant; a counter bumped with its comparand, so it is
-structurally incapable of diverging; a guard disarmed by a stray character; a self-compared
-artifact; a suite never run in CI; escape conditions that survive their own mutations.
+**Scope — do not over-apply.** The rule binds tests asserting behaviour or pinning a guard, not
+docs, formatting, status-row flips, comment-only diffs, or changes with no test-based claim: if
+the evidence says "this test passes", ask "was it ever seen red, and where?". A Verify row IS a check.
 
-**Scope — do not over-apply.** The rule binds tests asserting behaviour or pinning a guard.
-It does NOT bind docs, formatting, status-row flips, comment-only diffs, or changes that
-carry no test-based claim. The line: if the PR's evidence includes "this test passes", ask
-"was it ever seen red, and where?"; if the PR makes no test-based claim, the rule is
-silent. A one-line docs PR never needs a mutation harness. A Verify row IS a check for this
-purpose — "docs" above means prose, not a Verify row.
+**Departures.** Run `cd tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -v
+-args -base=<merge-base> -head=<PR head>` and ask of each line: is what it pinned still pinned, and
+by which test; did the reason land as a `Retires-test:` trailer; if renamed, are the Verify rows
+re-pointed? An unjustified departure is a `test-evidence` finding; a trailed, justified one stands.
 
 ## 5. Could-not-check is never an approval
 

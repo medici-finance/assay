@@ -822,9 +822,8 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   red state was never observed is a finding, not evidence**: treat its pass as unproven and
   `--request-changes` asking for the red run. The single failure mode this catches is *a control
   that reads as present and cannot fail*: an assertion comparing an emitted value against the
-  constant it came from; a counter documented as a cross-check but incremented unconditionally
-  alongside its comparand; a fail-open delete guard disarmed by a stray character in a comment; a
-  build step comparing an artifact against itself; a large subtest suite that had never run in CI.
+  constant it came from; a counter incremented unconditionally alongside its comparand; a guard
+  disarmed by a stray character; a self-compared build artifact; a subtest suite never run in CI.
   **Scope — do not over-apply:** the rule binds tests asserting behaviour or pinning a guard; it
   does NOT bind docs, formatting, register/status-row flips, comment-only diffs, or changes
   carrying no test-based claim. The line: if the PR's evidence includes "this test passes", ask
@@ -834,10 +833,11 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   unresolved evidence-pattern NOTICEs as findings before inspecting anything by hand — it decides
   the mechanical subset for free (a literal `\|` inside a `grep -E`/`go test -run` pattern, `grep -c`
   gated on an expected `0` that fails on its own success path, an exit status swallowed by an
-  always-zero pipeline sink). **Preferred proof shape where a real mutation suite exists:** a
-  committed, re-runnable script (`testdata/mutate.sh`) so a verifier re-runs the claim instead of
-  taking a transcript on trust — worth asking for on guard-heavy PRs, but the hard requirement is
-  an observed red run *or* a re-runnable check.
+  always-zero pipeline sink). **Preferred proof shape:** a committed, re-runnable mutation script
+  (`testdata/mutate.sh`), worth asking for on guard-heavy PRs; the hard requirement is an observed
+  red run *or* a re-runnable check. **Departures** (review kit §4): run `cd tools/desk && go test
+  ./internal/testledger/ -run TestReportTestLedger -v -args -base=<merge-base> -head=<PR head>`;
+  an unjustified departure in its report is a `test-evidence` finding.
   **Honest-failure corollary:** a row the author legitimately cannot make pass is a finding to
   report, not a row to soften or delete. Quietly weakening a correctly-red check to reach green is
   worse than leaving it red with a note explaining why; a correctly-red row is doing exactly its
