@@ -10,6 +10,7 @@ package main
 // reaches a live forge, and no case runs a real mint.
 
 import (
+	"archive/zip"
 	"bytes"
 	"errors"
 	"fmt"
@@ -31,6 +32,8 @@ type fakeForge struct {
 	runs      []deskkit.RunWorkflowInput
 	approvals []approval
 	statuses  []deskkit.RunRef
+	retries   []deskkit.RunRef
+	logs      []deskkit.RunRef
 }
 
 type approval struct {
@@ -53,13 +56,29 @@ func (f *fakeForge) RunStatus(fr deskkit.ForgeRepo, run deskkit.RunRef) (*deskki
 	return &deskkit.RunState{Status: deskkit.RunStatusWaiting}, nil
 }
 
-func (f *fakeForge) calls() int { return len(f.runs) + len(f.approvals) + len(f.statuses) }
+func (f *fakeForge) RetryRun(fr deskkit.ForgeRepo, run deskkit.RunRef) error {
+	f.retries = append(f.retries, run)
+	return nil
+}
+
+func (f *fakeForge) RunLog(fr deskkit.ForgeRepo, run deskkit.RunRef) ([]deskkit.RunLogPart, error) {
+	f.logs = append(f.logs, run)
+	return []deskkit.RunLogPart{
+		{Name: "build", Text: "compiling\x1b[31m ok\x1b[0m\r\nlinking\n"},
+		{Name: "test", Text: "FAIL: TestThing", Truncated: true},
+	}, nil
+}
+
+func (f *fakeForge) calls() int {
+	return len(f.runs) + len(f.approvals) + len(f.statuses) + len(f.retries) + len(f.logs)
+}
 
 // world is one test's isolated environment and its counters.
 type world struct {
 	fake       *fakeForge
-	forgeCalls int // how many times the resolver seam was asked for a backend
-	mints      int // how many times the GitHub mint seam ran
+	forgeCalls int      // how many times the resolver seam was asked for a backend
+	mints      int      // how many times the GitHub mint seam ran
+	logRoles   []string // the roles `log` asked the resolver for, in order
 }
 
 // plantWorld isolates HOME (roster fixture, audit log), sets a loop identity, and points the
@@ -74,9 +93,14 @@ func plantWorld(t *testing.T, kind deskkit.ForgeKind) *world {
 	t.Setenv("DESK_LOOP", "worker-desk")
 
 	w := &world{fake: &fakeForge{}}
-	oldForge, oldMint, oldNow, oldBase := forgeForFn, mintTokenFn, nowFunc, forgeAPIBase
+	oldForge, oldMint, oldNow, oldBase, oldLog := forgeForFn, mintTokenFn, nowFunc, forgeAPIBase, logForgeFn
 	forgeForFn = func(fr deskkit.ForgeRepo) (deskkit.Forge, deskkit.ForgeResolution, error) {
 		w.forgeCalls++
+		return w.fake, deskkit.ForgeResolution{Repo: fr, Kind: kind, Source: "test"}, nil
+	}
+	logForgeFn = func(fr deskkit.ForgeRepo, role string) (deskkit.Forge, deskkit.ForgeResolution, error) {
+		w.forgeCalls++
+		w.logRoles = append(w.logRoles, role)
 		return w.fake, deskkit.ForgeResolution{Repo: fr, Kind: kind, Source: "test"}, nil
 	}
 	mintTokenFn = func(role, repo string) (string, string, error) {
@@ -84,7 +108,9 @@ func plantWorld(t *testing.T, kind deskkit.ForgeKind) *world {
 		return "", "", errors.New("the fake world mints nothing")
 	}
 	nowFunc = func() time.Time { return time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC) }
-	t.Cleanup(func() { forgeForFn, mintTokenFn, nowFunc, forgeAPIBase = oldForge, oldMint, oldNow, oldBase })
+	t.Cleanup(func() {
+		forgeForFn, mintTokenFn, nowFunc, forgeAPIBase, logForgeFn = oldForge, oldMint, oldNow, oldBase, oldLog
+	})
 	return w
 }
 
@@ -97,6 +123,10 @@ func runArgs(t *testing.T, args ...string) (int, string, string) {
 		err = cmdApprove(args[1:], &out)
 	case "status":
 		err = cmdStatus(args[1:], &out)
+	case "retry":
+		err = cmdRetry(args[1:], &out)
+	case "log":
+		err = cmdLog(args[1:], &out)
 	default:
 		err = cmdDispatch(args, &out)
 	}
@@ -319,5 +349,215 @@ func TestDeskrunDispatchEndToEnd(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) || w.mints != 1 || !strings.Contains(out, "run 777") {
 		t.Fatalf("wire=%v mints=%d out=%q, want %v, one mint, run 777", got, w.mints, out, want)
+	}
+}
+
+// setLoop presents a desk loop identity ($DESK_LOOP); the log verb derives its role from it.
+func setLoop(t *testing.T, loop string) {
+	t.Helper()
+	t.Setenv("DESK_LOOP", loop)
+}
+
+// TestDeskrunLogSucceedsWorkerAndReviewer — Verify row 2 (+flow). `log` reads the run's log under
+// the CALLING role's own credential for BOTH the worker and the reviewer, on both forges: the
+// resolver is asked for that role (never the release-runner), nothing is minted by the fake
+// world, the job sections come back with terminal-active bytes stripped, and a repo whose run
+// credential is bound to a human reads fine — there is deliberately no binding gate on a read.
+func TestDeskrunLogSucceedsWorkerAndReviewer(t *testing.T) {
+	for _, kind := range []deskkit.ForgeKind{deskkit.ForgeGitHub, deskkit.ForgeGitLab} {
+		for _, tc := range []struct{ loop, role string }{{"worker-desk", "worker"}, {"pr-review-desk", "reviewer"}} {
+			t.Run(string(kind)+"-"+tc.role, func(t *testing.T) {
+				w := plantWorld(t, kind)
+				setLoop(t, tc.loop)
+				// console is bound to a HUMAN for the write verbs; a read must not care.
+				code, out, msg := runArgs(t, "log", "example-org/console", "501")
+				if code != deskkit.ExitOK {
+					t.Fatalf("exit %d: %s", code, msg)
+				}
+				if !reflect.DeepEqual(w.logRoles, []string{tc.role}) || w.fake.calls() != 1 || len(w.fake.logs) != 1 {
+					t.Fatalf("resolver roles=%v fake calls=%d, want exactly one RunLog as %q", w.logRoles, w.fake.calls(), tc.role)
+				}
+				if w.fake.logs[0].ID != "501" {
+					t.Fatalf("RunLog read run %q, want 501", w.fake.logs[0].ID)
+				}
+				for _, want := range []string{"===== build =====", "compiling ok", "linking", "===== test (truncated", "FAIL: TestThing"} {
+					if !strings.Contains(out, want) {
+						t.Errorf("output lacks %q: %q", want, out)
+					}
+				}
+				if strings.ContainsAny(out, "\x1b\r") {
+					t.Errorf("terminal-active bytes survived into the output: %q", out)
+				}
+				if w.mints != 0 {
+					t.Errorf("the fake world's mint ran %d time(s) — log must not use the release-runner custody", w.mints)
+				}
+			})
+		}
+	}
+}
+
+// TestDeskrunLogRefusesOtherRoles — the read grant is a closed set (worker, reviewer): a session
+// acting as another desk role is refused (exit 5) before any resolver call.
+func TestDeskrunLogRefusesOtherRoles(t *testing.T) {
+	for _, loop := range []string{"verify-desk", "the-desk", "intake-desk"} {
+		w := plantWorld(t, deskkit.ForgeGitHub)
+		setLoop(t, loop)
+		code, _, msg := runArgs(t, "log", "example-org/tracker", "501")
+		if code != deskkit.ExitRefused {
+			t.Fatalf("%s: exit %d (%s), want %d", loop, code, msg, deskkit.ExitRefused)
+		}
+		if w.forgeCalls != 0 || w.fake.calls() != 0 {
+			t.Fatalf("%s: a refused role reached the resolver (%d) / forge (%d)", loop, w.forgeCalls, w.fake.calls())
+		}
+	}
+	w := plantWorld(t, deskkit.ForgeGitHub)
+	t.Setenv("DESK_LOOP", "")
+	if code, _, _ := runArgs(t, "log", "example-org/tracker", "501"); code != deskkit.ExitRefused || w.forgeCalls != 0 {
+		t.Fatalf("no loop identity: exit %d, resolver calls %d, want a refusal with none", code, w.forgeCalls)
+	}
+	if code, _, _ := runArgs(t, "log", "example-org/tracker", "../runs"); code != deskkit.ExitUnverifiable || w.forgeCalls != 0 {
+		t.Fatalf("a path-shaped run id: exit %d, resolver calls %d, want could-not-check with none", code, w.forgeCalls)
+	}
+}
+
+// TestDeskrunLogEndToEnd — +flow through the REAL resolver and GitHub backend: the token the
+// WORKER role minted is what reaches the forge (not the release-runner's), the logs endpoint
+// redirects to an archive, and the job entries print.
+func TestDeskrunLogEndToEnd(t *testing.T) {
+	w := plantWorld(t, deskkit.ForgeGitHub)
+	setLoop(t, "pr-review-desk")
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range map[string]string{"1_build.txt": "build ok\n", "2_test.txt": "boom\n"} {
+		f, _ := zw.Create(name)
+		f.Write([]byte(body))
+	}
+	zw.Close()
+	var auth []string
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/actions/runs/501/logs") {
+			auth = append(auth, r.Header.Get("Authorization"))
+			http.Redirect(rw, r, "/archive/501.zip", http.StatusFound)
+			return
+		}
+		if r.URL.Path == "/archive/501.zip" {
+			rw.Write(buf.Bytes())
+			return
+		}
+		t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	t.Cleanup(srv.Close)
+	forgeAPIBase = srv.URL
+	logForgeFn = func(fr deskkit.ForgeRepo, role string) (deskkit.Forge, deskkit.ForgeResolution, error) {
+		w.logRoles = append(w.logRoles, role)
+		return deskkit.ResolveForge(fr, role)
+	}
+	mintTokenFn = func(role, repo string) (string, string, error) {
+		w.mints++
+		return "stub-" + role + "-token", "", nil
+	}
+	code, out, msg := runArgs(t, "log", "example-org/tracker", "501")
+	if code != deskkit.ExitOK {
+		t.Fatalf("exit %d: %s", code, msg)
+	}
+	if len(auth) != 1 || auth[0] != "token stub-reviewer-token" || w.mints != 1 {
+		t.Fatalf("logs request auth=%v mints=%d, want one request bearing the reviewer role's token", auth, w.mints)
+	}
+	for _, want := range []string{"===== 1_build.txt =====", "build ok", "===== 2_test.txt =====", "boom"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q: %q", want, out)
+		}
+	}
+}
+
+// TestDeskrunRetryRefusesOnHumanRoster — Verify row 3 (negative path). With the repo's run
+// credential bound to a HUMAN, `retry` REFUSES (exit 5) before any request: the recording fake
+// sees zero calls, the resolver is never asked for a backend, nothing is minted, and the
+// refusal names the role and the resolved human — on both forges.
+func TestDeskrunRetryRefusesOnHumanRoster(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind deskkit.ForgeKind
+		repo string
+	}{
+		{"github", deskkit.ForgeGitHub, "example-org/console"},
+		{"gitlab", deskkit.ForgeGitLab, "example-org/ledger"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := plantWorld(t, tc.kind)
+			code, out, msg := runArgs(t, "retry", tc.repo, "501")
+			if code != deskkit.ExitRefused {
+				t.Fatalf("exit %d (%s), want %d — a human-bound repo must be refused", code, msg, deskkit.ExitRefused)
+			}
+			for _, want := range []string{deskkit.ReleaseRunnerRole, "human:ada", tc.repo} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("refusal does not name %q: %s", want, msg)
+				}
+			}
+			if w.fake.calls() != 0 || w.forgeCalls != 0 || w.mints != 0 || out != "" {
+				t.Fatalf("forge calls=%d resolver calls=%d mints=%d out=%q — a human-bound repo must reach none of them",
+					w.fake.calls(), w.forgeCalls, w.mints, out)
+			}
+			t.Logf("refused (exit 5) with zero forge calls: %s", msg)
+		})
+	}
+	// An unbound repo is could-not-check, and reaches nothing either.
+	w := plantWorld(t, deskkit.ForgeGitHub)
+	if code, _, _ := runArgs(t, "retry", "example-org/agents", "501"); code != deskkit.ExitUnverifiable || w.fake.calls() != 0 || w.forgeCalls != 0 {
+		t.Fatalf("unbound repo: exit %d, fake calls %d, resolver calls %d", code, w.fake.calls(), w.forgeCalls)
+	}
+}
+
+// TestDeskrunRetrySucceedsOnAppRoster — Verify row 4. With the repo bound to the dedicated
+// release-runner credential, `retry` issues exactly ONE RetryRun against the run, through the
+// release-runner seam (never the log seam), on both forges; --dry-run reaches nothing.
+func TestDeskrunRetrySucceedsOnAppRoster(t *testing.T) {
+	for _, tc := range []struct {
+		kind deskkit.ForgeKind
+		repo string
+	}{{deskkit.ForgeGitHub, "example-org/tracker"}, {deskkit.ForgeGitLab, "example-org/platform"}} {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			w := plantWorld(t, tc.kind)
+			code, out, msg := runArgs(t, "retry", tc.repo, "9001")
+			if code != deskkit.ExitOK {
+				t.Fatalf("exit %d: %s", code, msg)
+			}
+			if !reflect.DeepEqual(w.fake.retries, []deskkit.RunRef{{ID: "9001"}}) || w.fake.calls() != 1 || len(w.logRoles) != 0 {
+				t.Fatalf("RetryRun calls=%+v total=%d log-seam roles=%v, want exactly one retry of run 9001", w.fake.retries, w.fake.calls(), w.logRoles)
+			}
+			if !strings.Contains(out, "run 9001") {
+				t.Errorf("output does not name the run: %q", out)
+			}
+		})
+	}
+	w := plantWorld(t, deskkit.ForgeGitHub)
+	code, out, _ := runArgs(t, "retry", "example-org/tracker", "9001", "--dry-run")
+	if code != deskkit.ExitOK || !strings.HasPrefix(out, "dry-run:") || w.fake.calls() != 0 || w.forgeCalls != 0 || w.mints != 0 {
+		t.Fatalf("--dry-run: exit %d out=%q fake=%d resolver=%d mints=%d", code, out, w.fake.calls(), w.forgeCalls, w.mints)
+	}
+}
+
+// TestDeskrunRetryEndToEnd — +flow: verb → real resolver → real GitHub backend. The release-runner
+// token is minted and exactly one POST to the rerun-failed-jobs route is made.
+func TestDeskrunRetryEndToEnd(t *testing.T) {
+	w := plantWorld(t, deskkit.ForgeGitHub)
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Method+" "+r.URL.Path+" "+r.Header.Get("Authorization"))
+		rw.WriteHeader(http.StatusCreated)
+	}))
+	t.Cleanup(srv.Close)
+	forgeAPIBase = srv.URL
+	forgeForFn = func(fr deskkit.ForgeRepo) (deskkit.Forge, deskkit.ForgeResolution, error) {
+		return deskkit.ResolveForge(fr, deskkit.ReleaseRunnerRole)
+	}
+	mintTokenFn = func(role, repo string) (string, string, error) {
+		w.mints++
+		return "stub-" + role + "-token", "", nil
+	}
+	code, _, msg := runArgs(t, "retry", "example-org/tracker", "777")
+	want := []string{"POST /repos/example-org/tracker/actions/runs/777/rerun-failed-jobs token stub-release-runner-token"}
+	if code != deskkit.ExitOK || !reflect.DeepEqual(got, want) {
+		t.Fatalf("exit %d (%s) wire=%v, want exactly %v", code, msg, got, want)
 	}
 }

@@ -38,17 +38,26 @@ var (
 	forgeForFn = func(fr deskkit.ForgeRepo) (deskkit.Forge, deskkit.ForgeResolution, error) {
 		return deskkit.ResolveForge(fr, deskkit.ReleaseRunnerRole)
 	}
+	// logForgeFn resolves the backend serving `deskrun log` under the CALLING role's own custody
+	// (a read: worker or reviewer, never the release-runner). Package var so a test can
+	// substitute a recording fake.
+	logForgeFn = func(fr deskkit.ForgeRepo, role string) (deskkit.Forge, deskkit.ForgeResolution, error) {
+		return deskkit.ResolveForge(fr, role)
+	}
 )
 
 func init() {
 	deskkit.SetGitHubCustodyMinter(githubCustodyMint)
 }
 
-// githubCustodyMint mints the release-runner App token — and ONLY that role's. A request for
-// any other role is refused: deskrun has no business minting a desk role's credential.
+// githubCustodyMint mints the release-runner App token for every run verb, and for `log` ALONE
+// the calling worker or reviewer role's own token (logRoles). A request for any other role is
+// refused: deskrun has no business minting any other desk role's credential, and only
+// cmdLog ever asks for a logRoles role (the write verbs are hard-wired to the release-runner
+// by forgeForFn).
 func githubCustodyMint(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {
-	if role != deskkit.ReleaseRunnerRole {
-		return "", "", fmt.Errorf("deskrun mints only the %s credential, never %q", deskkit.ReleaseRunnerRole, role)
+	if role != deskkit.ReleaseRunnerRole && !logRoles[role] {
+		return "", "", fmt.Errorf("deskrun mints only the %s credential (and, for log, the worker or reviewer role's own), never %q", deskkit.ReleaseRunnerRole, role)
 	}
 	tok, _, merr := mintTokenFn(role, repo.Slug())
 	if merr != nil {

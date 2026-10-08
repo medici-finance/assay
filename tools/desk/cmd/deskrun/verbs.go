@@ -223,6 +223,139 @@ func cmdApprove(args []string, out io.Writer) error {
 	return nil
 }
 
+// cmdRetry is `deskrun retry <owner/repo> <run-id>` — re-runs the FAILED work of one run.
+// Retrying needs GitHub `actions: write` / GitLab `api`, the same over-broad scopes that made
+// dispatch roster-bound, so it takes the dispatch identity rule verbatim: the repo's
+// run-credential binding is read BEFORE anything is minted, a human-bound repo is refused
+// (exit 5, naming the role and the human) and an unbound one is could-not-check (exit 6).
+// The write then runs under the release-runner credential, never the session's own role.
+func cmdRetry(args []string, out io.Writer) error {
+	const verb = "retry"
+	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	dryRun := fs.Bool("dry-run", false, "resolve the binding and budget, print what would happen, mint nothing")
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return deskkit.Refused(verb + ": " + err.Error())
+	}
+	if len(pos) != 2 {
+		return deskkit.Refused(fmt.Sprintf("%s: want exactly two positionals <owner/repo> <run-id>, got %d", verb, len(pos)))
+	}
+	fr, err := parseRepo(pos[0])
+	if err != nil {
+		return err
+	}
+	run := deskkit.RunRef{ID: strings.TrimSpace(pos[1])}
+	if _, err := deskkit.ValidateRunID(run); err != nil {
+		return err
+	}
+	if err := deskkit.RequireLoopIdentity(toolName); err != nil {
+		return err
+	}
+	cred, err := bindingFor(verb, fr)
+	if err != nil {
+		if cred.Human != "" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {
+			return deskkit.Refused(fmt.Sprintf(
+				"refused: retry needs the %s role, but %s's run credential resolves to human:%s — re-running a run "+
+					"is a human action today, done by that human in their own identity. Nothing was minted, no request "+
+					"was made and no ambient credential was read", deskkit.ReleaseRunnerRole, fr.Slug(), cred.Human))
+		}
+		return err
+	}
+	if err := deskkit.AllowWrite(toolName, fr.Slug(), 0); err != nil {
+		return err
+	}
+	if *dryRun {
+		fmt.Fprintf(out, "dry-run: would retry the failed work of %s run %s as the %s credential\n",
+			fr.Slug(), run.ID, deskkit.ReleaseRunnerRole)
+		auditLine(fr.Slug(), verb, deskkit.ResultDryRun, "run "+run.ID)
+		return nil
+	}
+	fg, _, err := resolveForge(verb, fr)
+	if err != nil {
+		return err
+	}
+	if err := fg.RetryRun(fr, run); err != nil {
+		auditLine(fr.Slug(), verb, resultOf(err), "retry: "+err.Error())
+		return err
+	}
+	auditLine(fr.Slug(), verb, deskkit.ResultOK, "run "+run.ID)
+	fmt.Fprintf(out, "retried: the failed work of %s run %s\n", fr.Slug(), run.ID)
+	return nil
+}
+
+// logRoles are the session roles `deskrun log` serves: the worker and the reviewer. A run log is
+// read-only (GitHub `actions: read`, GitLab `read_api`), so it needs no roster-bound identity —
+// the argument is that nothing destructive is reachable through a read scope. The set is still
+// closed and named: a role outside it is refused, so widening the read to another desk role is
+// a deliberate edit here, never a side effect of a role table change.
+var logRoles = map[string]bool{"worker": true, "reviewer": true}
+
+// sessionRoleFn resolves the App role the session acts as. Package var so a test can fix it.
+var sessionRoleFn = deskkit.SessionTokenRole
+
+// cmdLog is `deskrun log <owner/repo> <run-id>` — prints the run's log, one section per job.
+// It is a READ under the CALLING role's own token (no binding check, no release-runner
+// custody), for the worker and reviewer roles. Log text is forge-origin: terminal-active
+// bytes are stripped before it reaches stdout.
+func cmdLog(args []string, out io.Writer) error {
+	const verb = "log"
+	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return deskkit.Refused(verb + ": " + err.Error())
+	}
+	if len(pos) != 2 {
+		return deskkit.Refused(fmt.Sprintf("%s: want exactly two positionals <owner/repo> <run-id>, got %d", verb, len(pos)))
+	}
+	fr, err := parseRepo(pos[0])
+	if err != nil {
+		return err
+	}
+	run := deskkit.RunRef{ID: strings.TrimSpace(pos[1])}
+	if _, err := deskkit.ValidateRunID(run); err != nil {
+		return err
+	}
+	role, _, err := sessionRoleFn(toolName)
+	if err != nil {
+		return err
+	}
+	if !logRoles[role] {
+		err := deskkit.Refused(fmt.Sprintf("refused: %s log is served to the worker and reviewer roles; this session acts as %q", toolName, role))
+		auditLine(fr.Slug(), verb, deskkit.ResultRefused, err.Error())
+		return err
+	}
+	fg, _, err := logForgeFn(fr, role)
+	if err != nil {
+		var de *deskkit.DeskError
+		if !errors.As(err, &de) {
+			err = deskkit.Unverifiable("could-not-check: cannot obtain the "+role+" credential for "+fr.Slug(), err)
+		}
+		auditLine(fr.Slug(), verb, resultOf(err), "custody: "+err.Error())
+		return err
+	}
+	parts, err := fg.RunLog(fr, run)
+	if err != nil {
+		auditLine(fr.Slug(), verb, resultOf(err), "log: "+err.Error())
+		return err
+	}
+	auditLine(fr.Slug(), verb, deskkit.ResultOK, fmt.Sprintf("run %s as %s, %d part(s)", run.ID, role, len(parts)))
+	for _, p := range parts {
+		note := ""
+		if p.Truncated {
+			note = fmt.Sprintf(" (truncated: the last %d bytes)", deskkit.RunLogPartCap)
+		}
+		fmt.Fprintf(out, "===== %s%s =====\n", deskkit.StripControl(p.Name), note)
+		text := deskkit.StripControl(p.Text)
+		fmt.Fprint(out, text)
+		if !strings.HasSuffix(text, "\n") {
+			fmt.Fprintln(out)
+		}
+	}
+	return nil
+}
+
 // cmdStatus is `deskrun status <owner/repo> <run-id>` — a READ under the same binding (the
 // release-runner credential is the one that can see the run it started; a human-bound repo is
 // refused here too, because deskrun never reads a forge under any other identity).
