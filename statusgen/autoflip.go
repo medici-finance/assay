@@ -138,15 +138,18 @@ package main
 //     unknown merge time is never "before". With no delivery in hand, the walk
 //     is also the resolver, exactly as before.
 //
-// In both resolvers a VERIFY EVIDENCE LANDING is not a candidate: a PR whose
-// author is the roster's `verifier=` App and whose whole diff stays inside
-// docs/streams/ (isEvidenceLanding). It is the PR form of the verifier's own
-// direct-to-main Evidence commit, and that commit already resolves no PR and
-// asks for no approval. Before #1838 the walk met such a PR first (it is the
-// newest change to the brief file) and demanded the reviewer App's approval of
-// it. Evidence PRs merge on a human approval, so every PR-landed PASS was
-// refused. The exclusion is keyed to an identity (the App is the author), and
-// never to a branch name or other free text any author can set.
+// In both resolvers an EVIDENCE-ONLY or STATUS-ONLY PR is not a candidate: a PR
+// whose diff touches only `## Evidence` sections, verify-outcome records, stream
+// README status cells and STATUS.md (evidenceOnlyReason, evidenceshape.go). It
+// is the PR form of the verifier's own direct-to-main Evidence commit, and that
+// commit already resolves no PR and asks for no approval. Before #1838 the walk
+// met such a PR first (it is the newest change to the brief file) and demanded
+// the reviewer App's approval of it. Evidence PRs merge on a human approval, so
+// every PR-landed PASS was refused. #1838 keyed the exclusion to the author
+// (the roster's verifier App), so the same diff from any other author was still
+// a candidate and still stalled the flip; verify-reset/07 keys it to the diff
+// shape alone, and never to an author, a branch name or other free text. A
+// diff the forge did not fully report is never Evidence-only.
 // candidateGate is the one place that exclusion is applied, and
 // TestApprovalOnlyViaCandidateGate pins that approvalAtHead has no other caller.
 
@@ -155,6 +158,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -297,12 +301,6 @@ type reviewerIdentity struct {
 	// matched. It is a MISCONFIGURATION (a human fixes the roster), distinct from
 	// "no reviewer bound at all" (Logins empty AND Unresolved "").
 	Unresolved string
-	// EvidenceLanders are the login renderings of the roster's `verifier=` App —
-	// the identity whose docs/streams-only PRs are verify Evidence landings, not
-	// delivery candidates (isEvidenceLanding). Empty when no verifier is bound or
-	// it is bound to an unrecognised forge: then no PR is treated as an Evidence
-	// landing, which is the pre-#1838 behaviour (stricter, never looser).
-	EvidenceLanders []string
 }
 
 // configured reports whether an accepted reviewer identity was resolved. A false
@@ -340,24 +338,7 @@ func modelReviewer() reviewerIdentity {
 	if len(logins) == 0 {
 		return reviewerIdentity{} // defensive: no trustable rendering on this forge
 	}
-	return reviewerIdentity{Logins: logins, Forge: ident.Forge, Display: logins[0],
-		EvidenceLanders: rosterRoleLogins(cfg, "verifier")}
-}
-
-// rosterRoleLogins is the accepted login set of the App bound to role, resolved
-// the same forge-aware way modelReviewer resolves the reviewer: a legacy roster
-// entry defaults to GitHub, and an unrecognised forge yields no logins (so
-// nothing is matched against it).
-func rosterRoleLogins(cfg scanConfig, role string) []string {
-	slug := strings.TrimSpace(cfg.RoleBots[role])
-	if slug == "" {
-		return nil
-	}
-	ident := scanBotIdentity{Forge: forgeGitHub, Slug: strings.ToLower(slug)}
-	if got, ok := cfg.BotIdents[strings.ToLower(slug)]; ok {
-		ident = got
-	}
-	return ident.acceptedLogins()
+	return reviewerIdentity{Logins: logins, Forge: ident.Forge, Display: logins[0]}
 }
 
 // loginInSet reports whether login (case-insensitively) is one of the accepted
@@ -445,12 +426,12 @@ type prShape struct {
 	// they name briefs a PR AUTHORED, not delivered.
 	Briefs []string
 	// Author is the PR author's login as the forge renders it (on GitHub the
-	// `<slug>[bot]` form for an App). isEvidenceLanding matches it against the
-	// roster's verifier App; "" never matches.
+	// `<slug>[bot]` form for an App). It is read for the record only: no
+	// candidacy decision consults it (verify-reset/07; evidenceshape.go).
 	Author string
 	// RenamedFrom is the previous path of each renamed file (the REST
 	// `previous_filename`). A rename lists only its NEW path in Files, so
-	// isEvidenceLanding judges these too.
+	// evidenceOnlyReason judges these too.
 	RenamedFrom []string
 	// BaseRef is the branch the PR merged into, and DefaultBranch the repo's
 	// default branch, both from the PR's own record. The trailer resolver
@@ -458,31 +439,16 @@ type prShape struct {
 	// side branch may never have reached it.
 	BaseRef       string
 	DefaultBranch string
+	// Patches maps a changed path to its unified-diff patch as the forge
+	// reports it. A path with no entry had no patch reported (GitHub omits one
+	// for a binary or very large diff), and evidenceOnlyReason then judges the
+	// PR as NOT Evidence-only: an unseen hunk is never an Evidence hunk.
+	Patches map[string]string
+	// Heads maps a changed brief file or stream README to its content at the
+	// PR's head commit: the frame the patch's new-side line numbers are read
+	// against. A missing entry is unknown, never Evidence-only.
+	Heads map[string]string
 }
-
-// isEvidenceLanding reports whether shape is a verify Evidence landing: authored
-// by the roster's `verifier=` App (rev.EvidenceLanders) AND with a diff that
-// stays wholly inside docs/streams/ (the brief file, its README row, its
-// verify-outcome record). Both halves are required. The author is an identity
-// the forge attributes, not text a PR author chooses. The docs-only half keeps
-// a verifier-authored PR that touches anything else from being passed over
-// without its approval. A renamed file is judged at its old path too
-// (RenamedFrom), so a move into docs/streams/ from outside is not docs-only. An
-// empty file list is never an Evidence landing.
-func isEvidenceLanding(shape prShape, rev reviewerIdentity) bool {
-	if shape.Author == "" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {
-		return false
-	}
-	for _, f := range append(append([]string(nil), shape.Files...), shape.RenamedFrom...) {
-		if !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {
-			return false
-		}
-	}
-	return true
-}
-
-// evidenceLandingWhy is the walked-list note for an excluded Evidence landing.
-const evidenceLandingWhy = "a verify Evidence landing by the verifier App — not a delivery candidate, and no reviewer-App approval is asked of it, exactly as for a direct-to-main Evidence commit"
 
 // bulkMigrationDocsPrefix is the path prefix a brief-migration/reformat PR's
 // entire diff stays inside. A PR with at least one file OUTSIDE this prefix
@@ -608,6 +574,13 @@ func attributeCandidate(shape prShape, briefID string) (candidateVerdict, string
 // are resolved BEFORE any fetch, so an unconfigured roster or a contradicted
 // marker cost nothing and reach nothing.
 func decideModelFlip(root string, s *Stream, path string, briefID string, evidence string, src modelFlipSource, rev reviewerIdentity) modelFlipResult {
+	return decideModelFlipFiles(root, s, path, briefID, evidence, briefFiles{}, src, rev)
+}
+
+// decideModelFlipFiles is decideModelFlip with the brief's `files:` declaration:
+// when one is declared, only a PR whose diff touches one of those paths can be
+// the delivering PR (verify-reset/07; briefFiles.overlaps).
+func decideModelFlipFiles(root string, s *Stream, path string, briefID string, evidence string, bfiles briefFiles, src modelFlipSource, rev reviewerIdentity) modelFlipResult {
 	res := modelFlipResult{Brief: briefID, Outcome: flipUnchecked}
 
 	// A **VERIFY: PASS** marker is not a flip signal on its own when the same
@@ -656,7 +629,8 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 	// Resolver 1: the delivering PR by its `Brief:` trailer (#1838). A stop is a
 	// candidate that fails its own approval or cannot be read; it ends the run
 	// exactly as a failing walk candidate does.
-	tr := resolveByTrailer(res, repo, src, rev)
+	bfiles = bfiles.forRepo(repo)
+	tr := resolveByTrailer(res, repo, bfiles, src, rev)
 	if tr.stop != nil {
 		return *tr.stop
 	}
@@ -675,8 +649,9 @@ func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, s
 	// Resolver 2 / guard: walk the brief file's history newest-first. Every
 	// distinct merged PR the walk reaches is a CANDIDATE, judged in this order:
 	//
-	//  0. a verify Evidence landing (isEvidenceLanding) is passed over, as the
-	//     verifier's direct-to-main Evidence commits always were.
+	//  0. an Evidence-only or status-only PR (evidenceOnlyReason, by diff shape)
+	//     is passed over, as the verifier's direct-to-main Evidence commits
+	//     always were.
 	//  1. its App approval at its own merged head (approvalAtHead) — a candidate
 	//     that fails this ends the walk with that candidate's refusal or
 	//     could-not-check, exactly as it would have when the newest candidate was
@@ -711,7 +686,7 @@ func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, s
 
 		g := candidateGate(res, n, repo, src, rev)
 		if g.evidence {
-			walked = append(walked, fmt.Sprintf("#%d (%s)", n, evidenceLandingWhy))
+			walked = append(walked, fmt.Sprintf("#%d (%s)", n, evidenceOnlyWhy))
 			continue
 		}
 		cand := g.cand
@@ -731,6 +706,9 @@ func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, s
 			return withWalked(cand, walked)
 		}
 		verdict, why := attributeCandidate(g.shape, res.Brief)
+		if verdict == candidateCredit && !tr.files.overlaps(g.shape) {
+			verdict, why = candidateWalkPast, tr.files.missWhy(res.Brief)
+		}
 		if verdict == candidateCredit {
 			return cand
 		}
@@ -756,6 +734,12 @@ func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, s
 	if len(walked) > 0 {
 		res.Reason = fmt.Sprintf("no merged pull request from the last %d commits touching %s is this brief's delivering PR", commitScanDepth, rel)
 	}
+	if tr.files.declared {
+		// verify-reset/07: the delivering PR is one that touches the brief's
+		// files:, and none was found by either resolver.
+		res.Reason = fmt.Sprintf("no PR touches the brief's files (%s) — neither a `Brief:`-trailer PR nor a PR in the last %d commits touching %s",
+			tr.files.describe(), commitScanDepth, rel)
+	}
 	return withWalked(res, walked)
 }
 
@@ -763,8 +747,8 @@ func walkBriefHistory(res modelFlipResult, commits []string, rel, repo string, s
 type gatedCandidate struct {
 	shape    prShape
 	shapeErr error
-	// evidence: a verify Evidence landing — neither credited nor asked for an
-	// approval. When set, cand is unset.
+	// evidence: Evidence-only or status-only by diff shape (evidenceOnlyReason)
+	// — neither credited nor asked for an approval. When set, cand is unset.
 	evidence bool
 	// cand is approvalAtHead's verdict on the PR (flipDone = App-approved at its
 	// merged head).
@@ -773,8 +757,8 @@ type gatedCandidate struct {
 }
 
 // candidateGate is the ONE door every candidate PR goes through, from either
-// resolver. It reads the PR's shape, passes over a verify Evidence landing
-// before any approval is asked of it, and otherwise returns approvalAtHead's
+// resolver. It reads the PR's shape, passes over an Evidence-only or status-only
+// PR (judged by diff shape, never by author) before any approval is asked of it, and otherwise returns approvalAtHead's
 // verdict. A shape that cannot be read never excuses a PR: it is judged on its
 // approval, and the caller reports the unreadable shape only after that.
 // TestApprovalOnlyViaCandidateGate pins that approvalAtHead has no other caller,
@@ -782,7 +766,10 @@ type gatedCandidate struct {
 func candidateGate(res modelFlipResult, n int, repo string, src modelFlipSource, rev reviewerIdentity) gatedCandidate {
 	var g gatedCandidate
 	g.shape, g.shapeErr = src.PRShape(repo, n)
-	if g.shapeErr == nil && isEvidenceLanding(g.shape, rev) {
+	if g.shapeErr == nil {
+		g.evidence, _ = evidenceOnlyReason(g.shape)
+	}
+	if g.evidence {
 		g.evidence = true
 		return g
 	}
@@ -806,6 +793,8 @@ type trailerResolution struct {
 	// falls back to the history walk alone (the pre-#1838 resolver), and the note
 	// is kept on a non-flip reason. A failed search never becomes a flip.
 	searchErr string
+	// files is the brief's `files:` declaration both resolvers credit against.
+	files briefFiles
 }
 
 func (t trailerResolution) found() bool         { return t.credit.Outcome == flipDone && t.credit.PR != 0 }
@@ -819,11 +808,11 @@ func (t trailerResolution) predates(m time.Time) bool {
 }
 
 // resolveByTrailer is resolver 1: the merged PRs that name this brief in their
-// own `Brief:` trailer. Every hit goes through candidateGate (an Evidence
-// landing is set aside first) and attributeCandidate. Every credited PR must be
+// own `Brief:` trailer. Every hit goes through candidateGate (an Evidence-only
+// PR is set aside first) and attributeCandidate. Every credited PR must be
 // App-approved at its merged head, or the run stops on it.
-func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev reviewerIdentity) trailerResolution {
-	var t trailerResolution
+func resolveByTrailer(res modelFlipResult, repo string, bfiles briefFiles, src modelFlipSource, rev reviewerIdentity) trailerResolution {
+	t := trailerResolution{files: bfiles}
 	hits, err := src.PRsNamingBrief(repo, canonicalBriefKey(res.Brief))
 	if errors.Is(err, errGitLabFlipReadUnavailable) {
 		return t // the walk reports the same structural could-not-check; one note is enough
@@ -837,6 +826,7 @@ func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev
 	type credited struct {
 		cand     modelFlipResult
 		mergedAt time.Time
+		overlaps bool
 	}
 	var got []credited
 	for _, n := range hits {
@@ -846,7 +836,7 @@ func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev
 		seen[n] = true
 		g := candidateGate(res, n, repo, src, rev)
 		if g.evidence {
-			t.notes = append(t.notes, fmt.Sprintf("#%d (%s)", n, evidenceLandingWhy))
+			t.notes = append(t.notes, fmt.Sprintf("#%d (%s)", n, evidenceOnlyWhy))
 			continue
 		}
 		if g.shapeErr != nil {
@@ -900,14 +890,26 @@ func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev
 			t.stop = &stop
 			return t
 		}
-		got = append(got, credited{g.cand, g.mergedAt})
+		ov := bfiles.overlaps(g.shape)
+		if !ov {
+			t.notes = append(t.notes, fmt.Sprintf("#%d (%s)", n, bfiles.missWhy(res.Brief)))
+		}
+		got = append(got, credited{g.cand, g.mergedAt, ov})
 	}
-	if len(got) == 0 {
-		return t
-	}
-	// Newest first: by merge time where both are known, else by PR number.
-	best := got[0]
-	for _, c := range got[1:] {
+	// Newest first among the credited PRs that touch the brief's files: (every
+	// credited PR when none is declared): by merge time where both are known,
+	// else by PR number. A credited PR that touches none of them is never the
+	// delivering PR, but it was still held to its own approval above.
+	var best *credited
+	for i := range got {
+		c := &got[i]
+		if !c.overlaps {
+			continue
+		}
+		if best == nil {
+			best = c
+			continue
+		}
 		switch {
 		case !c.mergedAt.IsZero() && !best.mergedAt.IsZero():
 			if c.mergedAt.After(best.mergedAt) {
@@ -916,6 +918,9 @@ func resolveByTrailer(res modelFlipResult, repo string, src modelFlipSource, rev
 		case c.cand.PR > best.cand.PR:
 			best = c
 		}
+	}
+	if best == nil {
+		return t
 	}
 	t.credit, t.mergedAt = best.cand, best.mergedAt
 	t.prs = map[int]bool{}
@@ -1120,7 +1125,8 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev revi
 				continue
 			}
 
-			res := decideModelFlip(root, s, path, bf.Brief, bf.Evidence, src, rev) // briefid:raw label + attributeCandidate, which reduces it via canonicalBriefKey
+			res := decideModelFlipFiles(root, s, path, bf.Brief, bf.Evidence, // briefid:raw label + attributeCandidate, which reduces it via canonicalBriefKey
+				briefFiles{entries: bf.DeclaredPaths, declared: bf.DeclaredPathsFound}, src, rev)
 			if res.Outcome != flipDone {
 				results = append(results, res)
 				continue
@@ -1301,6 +1307,9 @@ type ghPRSummaryJSON struct {
 	User         struct {
 		Login string `json:"login"`
 	} `json:"user"`
+	Head struct {
+		SHA string `json:"sha"`
+	} `json:"head"`
 	Base struct {
 		Ref  string `json:"ref"`
 		Repo struct {
@@ -1335,16 +1344,16 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 	if err := json.Unmarshal(sum, &v); err != nil {
 		return prShape{}, fmt.Errorf("unmarshal PR %d: %w", pr, err)
 	}
-	// --jq emits one JSON [filename, previous_filename] pair per line across
-	// every page, so the concatenated per-page arrays --paginate produces never
-	// need re-joining.
+	// --jq emits one JSON [filename, previous_filename, patch] triple per line
+	// across every page, so the concatenated per-page arrays --paginate
+	// produces never need re-joining. patch is null when GitHub omits it.
 	out, err := exec.Command("gh", "api", "--paginate",
 		fmt.Sprintf("repos/%s/pulls/%d/files?per_page=100", repo, pr),
-		"--jq", `.[] | [.filename, (.previous_filename // "")] | @json`).Output()
+		"--jq", `.[] | [.filename, (.previous_filename // ""), .patch] | @json`).Output()
 	if err != nil {
 		return prShape{}, fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
-	files, renamedFrom, err := parseFileListing(pr, out)
+	files, renamedFrom, patches, err := parseFileListing(pr, out)
 	if err != nil {
 		return prShape{}, err
 	}
@@ -1354,30 +1363,73 @@ func (ghModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 	}
 	shape.Author = v.User.Login
 	shape.RenamedFrom = renamedFrom
+	shape.Patches = patches
 	if shape.BaseRef, shape.DefaultBranch, err = summaryBase(pr, v); err != nil {
 		return prShape{}, err
 	}
+	shape.Heads = readEvidenceHeads(repo, v.Head.SHA, shape)
 	return shape, nil
 }
 
-// parseFileListing reads PRShape's one-pair-per-line listing into the changed
-// paths and the previous path of each renamed file. A line that is not a
-// two-string pair is an error, never skipped.
-func parseFileListing(pr int, out []byte) (files, renamedFrom []string, err error) {
+// readEvidenceHeads reads, at the PR's head commit, each changed stream README
+// and brief file, the frame evidenceOnlyReason places their hunks in. It reads
+// nothing unless every changed path could be Evidence-shaped (so an ordinary
+// code PR costs no extra call). A read that fails is left out, and a missing
+// head is never Evidence-only: the PR then stays a candidate.
+func readEvidenceHeads(repo, sha string, shape prShape) map[string]string {
+	if sha == "" || len(shape.RenamedFrom) > 0 {
+		return nil
+	}
+	var want []string
+	for _, f := range shape.Files {
+		switch {
+		case f == "STATUS.md", isVerifyOutcomePath(f):
+		case isStreamReadmePath(f), isStreamBriefPath(f):
+			want = append(want, f)
+		default:
+			return nil
+		}
+	}
+	heads := map[string]string{}
+	for _, f := range want {
+		segs := strings.Split(f, "/")
+		for i := range segs {
+			segs[i] = url.PathEscape(segs[i])
+		}
+		b, err := exec.Command("gh", "api", "-H", "Accept: application/vnd.github.raw+json",
+			fmt.Sprintf("repos/%s/contents/%s?ref=%s", repo, strings.Join(segs, "/"), sha)).Output()
+		if err == nil {
+			heads[f] = string(b)
+		}
+	}
+	return heads
+}
+
+// parseFileListing reads PRShape's one-entry-per-line listing into the changed
+// paths, the previous path of each renamed file and each file's patch. An entry
+// is [filename, previous_filename] or [filename, previous_filename, patch],
+// patch a string or null (null or absent: no patch reported, so no map entry).
+// Any other line is an error, never skipped.
+func parseFileListing(pr int, out []byte) (files, renamedFrom []string, patches map[string]string, err error) {
+	patches = map[string]string{}
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
 		if line == "" {
 			continue
 		}
-		var pair []string
-		if err := json.Unmarshal([]byte(line), &pair); err != nil || len(pair) != 2 || pair[0] == "" {
-			return nil, nil, fmt.Errorf("PR #%d file listing line %q is not a [filename, previous_filename] pair", pr, line)
+		var entry []*string
+		if err := json.Unmarshal([]byte(line), &entry); err != nil || len(entry) < 2 || len(entry) > 3 ||
+			entry[0] == nil || *entry[0] == "" || entry[1] == nil {
+			return nil, nil, nil, fmt.Errorf("PR #%d file listing line %q is not a [filename, previous_filename, patch] entry", pr, line)
 		}
-		files = append(files, pair[0])
-		if pair[1] != "" {
-			renamedFrom = append(renamedFrom, pair[1])
+		files = append(files, *entry[0])
+		if *entry[1] != "" {
+			renamedFrom = append(renamedFrom, *entry[1])
+		}
+		if len(entry) == 3 && entry[2] != nil {
+			patches[*entry[0]] = *entry[2]
 		}
 	}
-	return files, renamedFrom, nil
+	return files, renamedFrom, patches, nil
 }
 
 // PRsNamingBrief lists the merged PRs whose body GitHub's search matches for
