@@ -16,6 +16,7 @@ domain-neutral, project skills carry a domain token; descriptions are triggers o
 |-------|---------------|------|
 | install | `assay:install` | Turnkey installer — invoke → self-installs the whole project setup (Unix-first) |
 | adopt | `assay:adopt` | Install/adopt runbook — scenario routing + PRIMITIVEs the turnkey installer wraps |
+| author-spec | `assay:author-spec` | Create, adopt or revise a sufficient specification before brief decomposition |
 | author-brief | `assay:author-brief` | Brief authoring methodology (portable core) |
 | cut-release | `assay:cut-release` | Cuts a versioned release and carries it to every consumer pin — four preconditions, both release runs (dry run first, then the publish) and their approvals handed to the driver as exact commands, hashes harvested only from the published `checksums.txt`, fix forward, never move a tag |
 | system-demo | `assay:system-demo` | Storyboard or build a seekable system demonstration around one user outcome, with explicit evidence provenance |
