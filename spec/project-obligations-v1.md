@@ -12,7 +12,14 @@ A project can say, in a reviewable and replay-safe way: *this source revision, u
 permitted use, is mapped by this clause to these existing requirements for this project profile,
 and a named human decision accepted that the mapping applies (or does not) over this period*. It
 can then be checked offline that no accepted conclusion rests on a forged actor, a stale
-revision, a subject the approver never saw, or a requirement that does not exist.
+revision, a subject digest absent from the corroborated decision record, or a requirement that
+does not exist.
+
+That last check binds the subject to the record **as it stands in the evaluated tree**, not to
+the moment its issue was closed. Three limits follow, and none is checked mechanically: a digest
+added to a record after its issue closed is caught only by the review of the change that adds
+it; one closed issue corroborates every digest its record carries, so a record naming two
+subjects covers both; and the record's prose (approve or decline) is not read (§4, the note after rule 10).
 
 It establishes three distinct things and keeps them apart:
 
@@ -117,16 +124,24 @@ A decision is accepted only when every rule holds; the first failures are report
    proposal.
 6. `subjectDigest` equals the digest recomputed from the current records.
 7. `disposition` is `approved`.
-8. `decisionId` names an existing DECISIONS record **whose body contains the recomputed subject
-   digest**. This is the replay protection: a record approving another subject does not carry
-   this digest.
+8. `decisionId` names an admitted DECISIONS record **whose body contains the recomputed subject
+   digest**. A record is admitted only when its frontmatter id equals the id its file name
+   carries and no other file in the register claims that id; an id claimed by two files is
+   held (`unresolved`, `decision-record-ambiguous`), never resolved by directory order. The
+   digest-bearing body and the receipt of rule 9 are taken from the same admitted file
+   (`receipt-record-mismatch` otherwise). This stops a decision approved for one subject being
+   replayed onto another while the record is unchanged; it does not stop a digest being added
+   to the record later (§1).
 9. A trusted corroboration receipt exists for that decision, its reference equals
    `corroborationRef`, and the corroborated closer equals `reviewer`. Receipts are produced only
    from caller-supplied, pre-fetched decision-issue state through the existing decision-gate
    corroboration seam; a decoded JSON object is never trusted. With no receipt the result is
    `unresolved` (`no-trusted-corroboration`), never a default forge fetch.
-10. `reviewRef` names a different existing DECISIONS record. A missing review reference leaves
-    the decision `unresolved`; a reference to the decision itself, or to no record, is refused.
+10. `reviewRef` names a different admitted DECISIONS record. A missing or ambiguous review
+    reference leaves the decision `unresolved`; a reference to the decision itself, or to no
+    record, is refused. The reference is neither inside the subject digest nor corroborated: any
+    other admitted record satisfies it, so it records that a review was claimed, not which
+    review covered this subject.
 
 Corroboration proves who closed which issue and where, not the meaning of the approval prose;
 rule 10 and the semantic-correctness row of §1 are why a review reference is also required.
@@ -137,7 +152,7 @@ rule 10 and the semantic-correctness row of §1 are why a review reference is al
 |---|---|
 | `accepted` | A current, accepted `applicable` decision resolves. |
 | `not-applicable` | A current, accepted `not-applicable` decision; the mapping stays in the inventory with its reason. |
-| `unresolved` | No current decision, or a pending one (rules 1, 4, 9 or 10 above, or an outcome of `unresolved`), or a cross-repo REQ the offline loader cannot read (could-not-check, not empty). |
+| `unresolved` | No current decision, or a pending one (rules 1, 4, 9 or 10 above, an ambiguous record id under rule 8, or an outcome of `unresolved`), or a cross-repo REQ the offline loader cannot read (could-not-check, not empty). |
 | `conflict` | More than one current decision on one mapping revision, including an accepted decision and an unaccepted proposal that names it in `supersedes`. None is picked. |
 | `rejected` | A decision exists and fails a binding rule, or a referenced REQ is unknown or withdrawn. |
 | `superseded` | A prior revision. Kept as history; a decision bound to a superseded revision is history, never carried forward to the new revision. |
@@ -169,7 +184,14 @@ Two layers are independent by construction. The *candidate validator* checks sha
 identifier forms, lineage, permitted use, digests of stored text). The *authority boundary*
 re-derives every binding from the explicit inputs and does not assume the validator ran, so a
 forged acceptance is refused even when the validator is bypassed. Tests exercise the boundary
-directly for that reason.
+directly for that reason. Both halves of an acceptance's evidence, the digest-bearing record
+body and the corroboration receipt, are selected by one admission rule (§4 rule 8), and the
+boundary re-checks that the record it reads is its own file and that the receipt was minted
+from that file.
+
+What is corroborated is the close of an issue linked to a record file. The content of that file
+is trusted as it stands in the tree being evaluated: integrity of the record after the close is
+the job of merge review on the register, not of this contract.
 
 ## 9. Conformance
 
@@ -181,8 +203,9 @@ reference before accepting; never accept a decision bound to a stale revision; h
 cross-repo or unreadable reference rather than report an empty result; and never report complete
 coverage for an empty set. The reference implementation's mutation spec
 (`statusgen/projectobligations-mutations.json`) carries at least one single-site mutation for each
-of these obligations and for each refusal reason in §4 and §5, and requires the
-`TestAssurance` suite to catch every one. It is a local harness (`muhar`); no workflow runs it.
+of these obligations, for each refusal reason the authority boundary can return, and for each
+state in §5, and requires the `TestAssurance` suite to catch every one. A test
+(`TestAssuranceReasonsMutated`) fails when a reason the boundary emits is named by no entry. It is a local harness (`muhar`); no workflow runs it.
 
 Out of scope and deliberately absent: a scheduler, a document store, packet preparation
 (iso-9001/09), change-impact propagation (iso-9001/10) and qualification (iso-9001/11).

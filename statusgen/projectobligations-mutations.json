@@ -402,6 +402,12 @@
       "file": "projectobligations.go",
       "old": "res.Problems = append(validateObligationInput(in), res.Problems...)",
       "new": "res.Problems = append([]string(nil), res.Problems...)"
+    },
+    {
+      "name": "state: a decision passing every rule reads as unresolved [state:accepted]",
+      "file": "projectobligations.go",
+      "old": "\t\tv.State = poAccepted\n\t\tif d.Outcome == \"not-applicable\" {",
+      "new": "\t\tv.State = poUnresolved\n\t\tif d.Outcome == \"not-applicable\" {"
     }
   ]
 }
