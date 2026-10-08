@@ -74,7 +74,7 @@ chain. Related, adjacent, cite both, never conflate them.
 | 05 | [Records control and retention, stated once](brief-05-records-control-and-retention.md) | 1 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #400 @ 90c19fd7a273835d01247292ad91f217a4ff9fe1) |
 | 06 | [The auditor one-pager — what Assay is and is not](brief-06-auditor-one-pager.md) | 2 | S | todo | — | — |
 | 07 | [Release by merge — the human merge is the cut and the authorizer](brief-07-release-by-merge.md) | 2 | M | blocked | — | — |
-| 08 | [Versioned source obligations and project applicability](brief-08-source-applicability.md) | 0 | M | todo | — | — |
+| 08 | [Versioned source obligations and project applicability](brief-08-source-applicability.md) | 0 | M | implemented | — | — |
 | 09 | [Prepare project assurance reviews from canonical evidence](brief-09-project-review-packet.md) | 8 | M | todo | — | — |
 | 10 | [Reassess affected project reviews after source changes](brief-10-source-change-impact.md) | 9 | M | todo | — | — |
 | 11 | [Qualify project assurance preparation on an offline corpus](brief-11-assurance-review-qualification.md) | 10 | M | todo | — | — |
