@@ -343,6 +343,43 @@ func TestHistoryGitIsolated(t *testing.T) {
 	}
 }
 
+// TestHistoryGitGrafts pins historyGitEnv's graft isolation: a runner-local
+// .git/info/grafts that cuts HEAD's parent must not shorten the history a
+// provenance read sees. The plain read is the positive control: it proves the
+// graft file is live in this git, so the pinned read's full count is the pin.
+func TestHistoryGitGrafts(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", root, "-c", "user.name=v",
+			"-c", "user.email=v@example.com", "-c", "commit.gpgsign=false"}, args...)...).Output()
+		if err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	git("commit", "-q", "--allow-empty", "-m", "first")
+	git("commit", "-q", "--allow-empty", "-m", "second")
+	grafts := filepath.Join(root, ".git", "info", "grafts")
+	if err := os.MkdirAll(filepath.Dir(grafts), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(grafts, []byte(git("rev-parse", "HEAD")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := git("--no-replace-objects", "rev-list", "--count", "HEAD"); got != "1" {
+		t.Fatalf("positive control: a plain read through the graft counts %s commits, want 1", got)
+	}
+	out, err := historyGit(root, "rev-list", "--count", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("historyGit rev-list: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != "2" {
+		t.Errorf("historyGit counts %s commits through a runner-local graft, want 2", got)
+	}
+}
+
 // TestVflipLintAmbiguousHeader is the lower-layer pair for an ambiguous
 // author header. The verb treats it as could-not-check (TestVflipAmbiguousAuthor);
 // the Evidence-actor lint must not: with the verb bypassed, a worker's hand
