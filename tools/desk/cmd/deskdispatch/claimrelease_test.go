@@ -22,7 +22,7 @@ func TestGateRefusalReleasesClaim(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
-	s.replies = append(happyReplies("/private/tmp/worker-home"),
+	s.replies = append(happyReplies(filepath.Join(t.TempDir(), "home")),
 		reply{match: "decision-issue.sh ensure", stderr: "refused: no decision surface", code: deskkit.ExitRefused})
 
 	rc, stderr := runCapturingStderr(t, []string{"item-1", "--root", root, "--gate-human", "--brief", "spec.md",
@@ -45,7 +45,7 @@ func TestPromptWriteFailReleases(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
-	s.replies = happyReplies("/private/tmp/worker-home")
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "home"))
 
 	// The destination's parent exists (the pre-claim check passes) but the destination is itself a
 	// directory, so the prompt write — the last step — fails.
