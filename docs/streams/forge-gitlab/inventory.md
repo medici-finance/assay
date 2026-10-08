@@ -441,3 +441,15 @@ control the brief names, independent of the per-tool tests.
 The pre-work verifier reader consumes this issue-specific operation with the existing
 `ApplyLabels(TargetIssue)` writer and model-stamp reader. Hitting a pagination bound is
 could-not-check, never a successful partial provenance read.
+
+| 62 | `RunLog(repo, run)` | read the log of ONE run as one part per job, the tail of each capped (`deskrun log`) | `GET /repos/{o}/{r}/actions/runs/{id}/logs` (`actions: read`); the redirect to the archive is followed and each zip entry is one part, under a download cap and a part-count bound | `GET /projects/:id/pipelines/:id/jobs` (paginated), then `GET /projects/:id/jobs/:job_id/trace` for EVERY job (`read_api`); a pipeline with no jobs is could-not-check | implemented |
+| 63 | `RetryRun(repo, run)` | retry only the FAILED jobs of ONE run (`deskrun retry`) | `POST /repos/{o}/{r}/actions/runs/{id}/rerun-failed-jobs` (`actions: write`), never the whole-run rerun | `GET /projects/:id/pipelines/:id/jobs`, then `POST /projects/:id/jobs/:job_id/retry` for each failed job only (`api`); no failed job is could-not-check and nothing is written | implemented |
+
+**Ops 62-63 (`RunLog`, `RetryRun`) were added by forge-neutral brief 17** under the same freeze rule, with
+their consuming call sites in the same change: `deskrun log` and `deskrun retry`. `retry` inherits brief 14's
+identity rule (a repo whose run credential resolves to a human is refused before any mint or request); `log`
+does not need the release-runner credential and reads under the calling worker or reviewer role's own token,
+because a log read must never require the capability that can cancel or delete runs. Log text is stripped of
+terminal control sequences before it is printed. The goldens `run_log*` and `retry_run*` on both backends pin
+the wire against recorded fixtures, including a multi-job GitLab pipeline whose every job trace is read and a
+retry that touches only failed jobs; no live run or pipeline is exercised.

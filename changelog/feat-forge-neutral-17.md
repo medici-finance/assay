@@ -1,0 +1,2 @@
+### Added
+- `deskrun log` prints a run's per-job log (every job of a GitLab pipeline, the tail of each capped, terminal control sequences stripped) under the calling worker or reviewer role's own read token, and `deskrun retry` re-runs only the failed jobs of one run under the roster-bound run credential, refusing a human-bound repo before any mint. Both ride two new forge operations, `RunLog` and `RetryRun`, on the GitHub and GitLab backends.
