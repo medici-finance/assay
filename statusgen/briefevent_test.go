@@ -931,6 +931,39 @@ func TestBriefEventRoles(t *testing.T) {
 		bfeFail(t, "roles-export-git", "the historian log changed")
 	}
 
+	// A symlink cannot carry an export into a work tree: neither a symlinked
+	// destination parent nor a symlinked parent followed by `..`.
+	outside := t.TempDir()
+	link := filepath.Join(outside, "link")
+	if err := os.Symlink(filepath.Join(repo, "docs"), link); err != nil {
+		t.Logf("symlinks unsupported here, roles-export-symlink not run: %v", err)
+	} else {
+		for _, d := range []string{
+			filepath.Join(link, "export"),
+			link + string(os.PathSeparator) + ".." + string(os.PathSeparator) + "export",
+		} {
+			if _, err := WriteExport(d, w.store.All(), 0, 0); err == nil {
+				bfeFail(t, "roles-export-symlink", "export through a symlink into a git work tree was accepted")
+			}
+		}
+		for _, p := range []string{filepath.Join(repo, "docs", "export"), filepath.Join(repo, "export")} {
+			if _, err := os.Stat(p); err == nil {
+				bfeFail(t, "roles-export-symlink", "a refused export created a directory in the work tree")
+			}
+		}
+	}
+	if fi, err := os.Stat(okDir); err != nil || fi.Mode().Perm()&0o077 != 0 {
+		bfeFail(t, "roles-export-mode", "export directory is readable beyond its owner")
+	}
+	for _, f := range []string{exportEventsFile, exportManifest} {
+		if fi, err := os.Stat(filepath.Join(okDir, f)); err != nil || fi.Mode().Perm()&0o077 != 0 {
+			bfeFail(t, "roles-export-mode", "%s is readable beyond its owner", f)
+		}
+	}
+	if left, _ := filepath.Glob(filepath.Join(okDir, ".*tmp-*")); len(left) != 0 {
+		bfeFail(t, "roles-export-mode", "temporary files left behind: %d", len(left))
+	}
+
 	// The event code has no path to the historian's writer.
 	for _, f := range []string{"briefevent.go", "briefstage.go"} {
 		src, err := os.ReadFile(f)

@@ -952,21 +952,60 @@ type ExportManifest struct {
 	Coverage    ExportCoverage `json:"coverage"`
 }
 
-// insideGitWorkTree reports whether dir (or its nearest existing ancestor) is
-// inside a git work tree: any ancestor holding a `.git` entry.
+// insideGitWorkTree reports whether dir is inside a git work tree: any
+// ancestor holding a `.git` entry. Symlinks are resolved first — on the
+// nearest EXISTING ancestor, before any `..` is applied — so a symlinked
+// destination, or a symlinked parent followed by `..`, is judged where the
+// kernel would actually write. Both the resolved and the lexical path are
+// walked; either finding a `.git` refuses.
 func insideGitWorkTree(dir string) (bool, error) {
-	abs, err := filepath.Abs(dir)
+	raw := dir
+	if !filepath.IsAbs(raw) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return false, err
+		}
+		raw = wd + string(os.PathSeparator) + raw // not Join: Join would clean `..` lexically
+	}
+	resolved, err := bfeResolveExisting(raw)
 	if err != nil {
 		return false, err
 	}
-	for d := abs; ; d = filepath.Dir(d) {
-		if _, serr := os.Stat(filepath.Join(d, ".git")); serr == nil {
-			return true, nil
-		}
-		if filepath.Dir(d) == d {
-			return false, nil
+	for _, start := range []string{resolved, filepath.Clean(raw)} {
+		for d := start; ; d = filepath.Dir(d) {
+			if _, serr := os.Lstat(filepath.Join(d, ".git")); serr == nil {
+				return true, nil
+			}
+			if filepath.Dir(d) == d {
+				break
+			}
 		}
 	}
+	return false, nil
+}
+
+// bfeResolveExisting resolves symlinks in the longest existing prefix of the
+// uncleaned absolute path p, then appends the not-yet-existing remainder.
+// Nothing in the remainder exists, so it holds no symlink and cleaning it
+// lexically agrees with the kernel.
+func bfeResolveExisting(p string) (string, error) {
+	sep := string(os.PathSeparator)
+	parts := strings.Split(p, sep)
+	for n := len(parts); n > 0; n-- {
+		prefix := strings.Join(parts[:n], sep)
+		if prefix == "" || strings.HasSuffix(prefix, ":") {
+			prefix += sep // the root, or a bare drive volume
+		}
+		rp, err := filepath.EvalSymlinks(prefix) // export-symlink-resolve
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return "", err
+		}
+		return filepath.Clean(rp + sep + strings.Join(parts[n:], sep)), nil
+	}
+	return filepath.Clean(p), nil
 }
 
 // WriteExport writes events.jsonl and manifest.json into dir. It refuses a
@@ -1018,7 +1057,7 @@ func WriteExport(dir string, evs []*BriefEvent, held, refused int) (*ExportManif
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	if err := writeAtomic(filepath.Join(dir, exportEventsFile), buf.Bytes()); err != nil {
@@ -1035,12 +1074,36 @@ func bfeMustTime(s string) time.Time {
 	return t
 }
 
+// writeAtomic writes b to path through a fresh temporary file in the same
+// directory (created exclusively, mode 0600, so a pre-planted file or symlink
+// is never followed), synced before the rename and removed on any failure.
 func writeAtomic(path string, b []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmp := f.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			_ = f.Close()
+			_ = os.Remove(tmp)
+		}
+	}()
+	if _, err := f.Write(b); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	ok = true
+	return nil
 }
 
 // ReadExport reads an export back, refusing an unknown manifest schema, a
