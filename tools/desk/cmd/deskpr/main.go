@@ -276,7 +276,9 @@ func run(args []string) int {
 		return deskkit.ExitOK
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		// Through the seam (os.Stderr in production) so a test can read the verb's own
+		// terminal error — the text a house.callout refusal must keep the callout's words out of.
+		fmt.Fprintln(deskprStderr, err.Error())
 	}
 	return deskkit.ExitCodeOf(err)
 }

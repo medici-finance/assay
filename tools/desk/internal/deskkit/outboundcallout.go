@@ -39,12 +39,14 @@ package deskkit
 // by a human's configuration, not waived per write.
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // RuleHouseCallout is the rule id of every refusal that comes from the house callout — a
@@ -107,6 +109,7 @@ func parseOutboundCalloutKeys(cfg *Config, vals map[string]string) {
 		} else {
 			// The strictest reading: an unrecognised requirement still requires.
 			cfg.OutboundCalloutRequired = true
+			cfg.OutboundCalloutRequiredInvalid = true
 			bad("%s=%q is not %q. Set it to %q or unset it", EnvOutboundCalloutRequired, raw,
 				outboundCalloutRequiredPublic, outboundCalloutRequiredPublic)
 		}
@@ -154,6 +157,10 @@ func outboundCalloutEcho(c Config) string {
 	switch {
 	case c.OutboundCalloutProblem != "" && c.OutboundCallout == "":
 		return "(INVALID — outward writes REFUSE: " + c.OutboundCalloutProblem + ")"
+	case c.OutboundCalloutProblem != "":
+		// A valid path beside a malformed sibling key (the timeout, the required mode) still
+		// refuses every write: the echo must not present it as healthy.
+		return c.OutboundCallout + " (INVALID — outward writes REFUSE: " + c.OutboundCalloutProblem + ")"
 	case c.OutboundCallout == "":
 		return "(unset — compiled outbound checks only)"
 	default:
@@ -161,9 +168,23 @@ func outboundCalloutEcho(c Config) string {
 	}
 }
 
+// outboundTimeoutEcho renders the callout timeout for the P3 echo: the configured bound, or
+// the default that applies when it is unset.
+func outboundTimeoutEcho(c Config) string {
+	if c.OutboundCalloutTimeout == 0 {
+		return "(unset — " + DefaultCalloutTimeout.String() + ")"
+	}
+	return c.OutboundCalloutTimeout.String()
+}
+
 // outboundRequiredEcho renders the required mode for the P3 echo, naming where it came from.
 func outboundRequiredEcho(c Config) string {
-	env := strings.TrimSpace(os.Getenv(EnvOutboundCalloutRequired)) != ""
+	raw := strings.TrimSpace(os.Getenv(EnvOutboundCalloutRequired))
+	env := raw != ""
+	if c.OutboundCalloutRequiredInvalid || (env && !strings.EqualFold(raw, outboundCalloutRequiredPublic)) {
+		// Still required (the strictest reading), but never presented as a valid `public`.
+		return "(INVALID — read as " + outboundCalloutRequiredPublic + "; outward writes REFUSE until it is fixed)"
+	}
 	switch {
 	case c.OutboundCalloutRequired && env:
 		return outboundCalloutRequiredPublic + " (roster and environment)"
@@ -222,7 +243,16 @@ func buildOutboundCalloutRequest(w OutboundWrite) ([]byte, error) {
 		}
 		req.Fields = append(req.Fields, outboundCalloutField{Name: fd.Name, Text: fd.Text})
 	}
-	return json.Marshal(req)
+	// NOT json.Marshal: it rewrites `&`, `<` and `>` as \u0026, \u003c and \u003e, so a callout
+	// matching the words it was given would never see a word that contains one. The text is
+	// a plain JSON string; the only escapes left are the ones JSON requires.
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(req); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }
 
 // outboundHouseCheck is the house callout's consult step. OutboundCheck calls it ONLY after
@@ -234,63 +264,94 @@ func outboundHouseCheck(w OutboundWrite) error {
 
 	if s.Problem != "" {
 		return houseRefuse(w, field, digest, "broken", "the house callout configuration is malformed: "+s.Problem+
-			" Fix or unset it; this refusal is not overridable", "")
+			" Fix or unset it; this refusal is not overridable", calloutSaid{})
 	}
 	if s.Path == "" {
 		if s.Required && RepoVisibility(w.Repo) != VisibilityPrivate {
 			return houseRefuse(w, field, digest, "required-absent", EnvOutboundCalloutRequired+"="+
 				outboundCalloutRequiredPublic+" but no house callout is configured ("+EnvOutboundCallout+
 				" is unset, or the roster that carried it failed validation) — a public or unknown-visibility "+
-				"write is refused rather than leaving with the compiled checks alone", "")
+				"write is refused rather than leaving with the compiled checks alone", calloutSaid{})
 		}
 		return nil
 	}
 
 	payload, err := buildOutboundCalloutRequest(w)
 	if err != nil {
-		return houseRefuse(w, field, digest, "broken", "the callout request could not be encoded: "+err.Error(), "")
+		return houseRefuse(w, field, digest, "broken", "the callout request could not be encoded: "+err.Error(), calloutSaid{})
 	}
 	res, err := Callout{Path: s.Path, Timeout: s.Timeout, Env: outboundCalloutEnv()}.Run(string(payload))
 	if err != nil {
-		return houseRefuse(w, field, digest, "broken", "the house callout did not answer: "+err.Error(), res.Stderr)
+		// Callout.Run's error names the path and the exit status or timeout, never output.
+		return houseRefuse(w, field, digest, "broken", "the house callout did not answer: "+err.Error(),
+			calloutSaid{Answer: res.Stdout, Stderr: res.Stderr})
 	}
 	if res.Truncated {
+		// Not even the first line is printed back: output this large is not an answer.
 		return houseRefuse(w, field, digest, "broken", fmt.Sprintf("the house callout printed more than %d bytes — "+
-			"output that does not fit one answer line is not an answer", maxCalloutOutput), res.Stderr)
+			"output that does not fit one answer line is not an answer", maxCalloutOutput),
+			calloutSaid{Stderr: res.Stderr})
 	}
-	out := strings.TrimSpace(res.Stdout)
-	if out == "" {
+	said := calloutSaid{Answer: res.Stdout, Stderr: res.Stderr}
+	verdict, rest := calloutVerdict(res.Stdout)
+	switch verdict {
+	case "":
 		return houseRefuse(w, field, digest, "broken", "the house callout printed nothing — it must print "+
-			"`allow` or `block <reason>`", res.Stderr)
-	}
-	verdict, rest, _ := strings.Cut(out, " ")
-	switch strings.ToLower(strings.TrimSpace(verdict)) {
+			"`allow` or `block <reason>`", said)
 	case "allow":
 		return nil
 	case "block":
-		return houseRefuse(w, field, digest, "block", "", strings.TrimSpace(rest))
+		said.Reason = rest
+		return houseRefuse(w, field, digest, "block", "", said)
 	default:
-		return houseRefuse(w, field, digest, "broken", fmt.Sprintf("the house callout printed %q, which is "+
-			"neither `allow` nor `block`", clipForTerminal(houseFirstLine(out), 80)), res.Stderr)
+		// The answer is the callout's own words: it goes to stderr with the rest of them,
+		// never into this detail (which the verb returns and logs).
+		return houseRefuse(w, field, digest, "broken", "the house callout's answer is neither `allow` nor "+
+			"`block` (its first word must be exactly one of them, in lower case); what it printed went to "+
+			"stderr only", said)
 	}
+}
+
+// calloutVerdict splits the callout's answer into its first word — separated from the rest
+// by any whitespace, a line break included — and the trimmed remainder. The verdict is
+// compared exactly: `allow` and `block`, lower case, nothing else.
+func calloutVerdict(out string) (verdict, rest string) {
+	out = strings.TrimSpace(out)
+	i := strings.IndexFunc(out, unicode.IsSpace)
+	if i < 0 {
+		return out, ""
+	}
+	return out[:i], strings.TrimSpace(out[i:])
+}
+
+// calloutSaid is everything the callout itself printed. It reaches stderr only: houseRefuse
+// prints it and passes none of it to the returned error or the audit row.
+type calloutSaid struct {
+	Answer string // its stdout, printed back on a failure (not on a block, whose Reason it carries)
+	Reason string // the text after `block`
+	Stderr string // its own diagnostic
 }
 
 // houseRefuse is the ONE exit of every house.callout refusal. kind is "block" (the callout
 // said no), "broken" (it could not answer or is misconfigured) or "required-absent". detail
-// is OUR message (generic text, a path, a failure class — never the callout's words);
-// reason is the CALLOUT's words and goes to stderr only.
-func houseRefuse(w OutboundWrite, field, digest, kind, detail, reason string) error {
+// is OUR message (generic text, a path, a failure class — never the callout's words, which
+// TestHouseRefuseDetailNeverCarriesCalloutOutput enforces); said is the CALLOUT's words and
+// goes to stderr only.
+func houseRefuse(w OutboundWrite, field, digest, kind, detail string, said calloutSaid) error {
 	if kind == "block" {
-		why := clipForTerminal(reason, maxCalloutReasonRunes)
+		why := clipForTerminal(said.Reason, maxCalloutReasonRunes)
 		if why == "" {
 			why = "(the callout gave no reason)"
 		}
 		fmt.Fprintf(outboundWriter(), "refused: %s at %s — %s\n", RuleHouseCallout, field, why)
 		detail = "blocked by the configured house callout; its reason was printed to stderr and is " +
 			"deliberately not logged or sent to the forge. Reword the write or change the callout's rules"
-	} else if reason != "" {
+	} else if ans := clipForTerminal(said.Answer, maxCalloutReasonRunes); ans != "" {
+		fmt.Fprintf(outboundWriter(), "house callout answered: %s\n", ans)
+	}
+	if diag := clipForTerminal(said.Stderr, maxCalloutReasonRunes); diag != "" {
 		// The callout's own diagnostic helps its owner; it is stderr-only like a block reason.
-		fmt.Fprintf(outboundWriter(), "house callout stderr: %s\n", clipForTerminal(reason, maxCalloutReasonRunes))
+		fmt.Fprintf(outboundWriter(), "house callout stderr: %s\n", diag)
 	}
 	// The audit row: rule id, outcome class, kind, field NAME and the content digest.
 	_ = Log(Entry{
@@ -339,17 +400,11 @@ func houseWriteDigest(w OutboundWrite) string {
 	return Sha256Hex([]byte(b.String()))
 }
 
-func houseFirstLine(s string) string {
-	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
-		return s[:i]
-	}
-	return s
-}
-
-// clipForTerminal strips control characters from text a third party produced and bounds its
-// length: it is printed to an operator's terminal and may be replayed into agent context.
+// clipForTerminal strips control characters from text a third party produced, folds it onto
+// ONE line (a second line could pose as another tool's output) and bounds its length: it is
+// printed to an operator's terminal and may be replayed into agent context.
 func clipForTerminal(s string, maxRunes int) string {
-	s = strings.TrimSpace(StripControl(s))
+	s = strings.Join(strings.Fields(StripControl(s)), " ")
 	r := []rune(s)
 	if len(r) > maxRunes {
 		return string(r[:maxRunes]) + "…"

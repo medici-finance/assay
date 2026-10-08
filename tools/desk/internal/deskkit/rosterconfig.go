@@ -780,6 +780,10 @@ type Config struct {
 	// OutboundCalloutRequired is true when the roster states REQUIRED=public
 	// (EnvOutboundCalloutRequired). The process environment can additionally require it.
 	OutboundCalloutRequired bool
+	// OutboundCalloutRequiredInvalid is true when the roster's REQUIRED value was set to
+	// something other than `public`: it still requires (the strictest reading), and the echo
+	// says it is invalid rather than presenting it as `public`.
+	OutboundCalloutRequiredInvalid bool
 	// OutboundCalloutTimeout is the configured bound, zero when unset (the default applies).
 	OutboundCalloutTimeout time.Duration
 	// OutboundCalloutProblem is non-empty when one of the three keys was SET and malformed.
@@ -2108,6 +2112,7 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", EnvWriteguardCallout, calloutStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvOutboundCallout, outboundCalloutEcho(c)),
 		fmt.Sprintf("assay-config: %s=%s", EnvOutboundCalloutRequired, outboundRequiredEcho(c)),
+		fmt.Sprintf("assay-config: %s=%s", EnvOutboundCalloutTimeout, outboundTimeoutEcho(c)),
 		fmt.Sprintf("assay-config: %s=%s", EnvContributorLedger, ledgerStr),
 		// The GitLab session / implementer commit-author allowlist WIDENS the
 		// commit-identity check, so it renders its full sorted set here (never a

@@ -64,9 +64,19 @@ func TestPushRefusesWithheldNameInAddedTestComment(t *testing.T) {
 	}
 }
 
-// TestHouseCalloutBlocksPushOnCommitMessage — the callout blocks a pushed range whose added
-// lines and message the compiled layer passes: no push, no change opened, reason on stderr.
+// TestHouseCalloutBlocksPushOnCommitMessage — the callout is asked about each commit message
+// and the added lines of the pushed range, not only the branch name. The stub blocks ONE kind
+// of write and allows every other, so the push is refused AT that kind (the branch name it
+// allows is checked first): no push, no change opened, the reason on stderr only — not in the
+// verb's error output, which run() writes to deskprStderr, and not in the verb's audit row.
 func TestHouseCalloutBlocksPushOnCommitMessage(t *testing.T) {
+	for _, kind := range []string{deskkit.OutboundKindCommit, deskkit.OutboundKindFile} {
+		kind := kind
+		t.Run(kind, func(t *testing.T) { houseCalloutBlocksPushKind(t, kind) })
+	}
+}
+
+func houseCalloutBlocksPushKind(t *testing.T, kind string) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	plantPublicTargetRoster(t, work)
@@ -76,7 +86,8 @@ func TestHouseCalloutBlocksPushOnCommitMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, "callout.sh")
-	script := "#!/bin/sh\necho run >> \"${0%/*}/ran.log\"\ncat > /dev/null\necho \"block example-house-rule\"\n"
+	script := "#!/bin/sh\necho run >> \"${0%/*}/ran.log\"\nreq=$(cat)\n" +
+		"case \"$req\" in *'\"kind\":\"" + kind + "\"'*) echo \"block example-house-rule\" ;; *) echo allow ;; esac\n"
 	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +118,7 @@ func TestHouseCalloutBlocksPushOnCommitMessage(t *testing.T) {
 		}
 	}
 	if pushes != 0 {
-		t.Fatalf("the branch was PUSHED (%d) although the house callout blocked the commit message — rc=%d\n%s", pushes, rc, stderr.String())
+		t.Fatalf("the branch was PUSHED (%d) although the house callout blocked the %s write — rc=%d\n%s", pushes, kind, rc, stderr.String())
 	}
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("rc = %d, want %d (refused)\n%s", rc, deskkit.ExitRefused, stderr.String())
@@ -115,13 +126,26 @@ func TestHouseCalloutBlocksPushOnCommitMessage(t *testing.T) {
 	if curForge.createCalls != 0 {
 		t.Fatal("a draft change was opened although the push was refused")
 	}
+	// The verb's error output is the refusal, AT the kind the callout blocked: a refusal at
+	// the branch name would read "(ref write to".
+	if !strings.Contains(stderr.String(), "refused: "+deskkit.RuleHouseCallout+" at ") ||
+		!strings.Contains(stderr.String(), "("+kind+" write to ") {
+		t.Fatalf("the verb's error output is not the %s refusal:\n%s", kind, stderr.String())
+	}
 	if !strings.Contains(notices.String(), "example-house-rule") {
 		t.Fatalf("the callout's reason is not on stderr:\n%s", notices.String())
 	}
 	if strings.Contains(stderr.String(), "example-house-rule") {
 		t.Fatalf("the reason is in the verb's own error output:\n%s", stderr.String())
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "ran.log")); !strings.Contains(string(b), "run") {
-		t.Fatal("the callout never ran")
+	audit, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".config", "assay", "audit.jsonl"))
+	if !strings.Contains(string(audit), deskkit.RuleHouseCallout) {
+		t.Fatalf("the verb's audit log has no house.callout refusal:\n%s", audit)
+	}
+	if strings.Contains(string(audit), "example-house-rule") {
+		t.Fatalf("the reason is in the verb's audit log:\n%s", audit)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "ran.log")); strings.Count(string(b), "run") < 2 {
+		t.Fatalf("the callout ran %d time(s); the branch name and then the %s write must both be asked", strings.Count(string(b), "run"), kind)
 	}
 }

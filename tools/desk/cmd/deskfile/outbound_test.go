@@ -70,12 +70,18 @@ func TestNewPassesSameBodyOnPrivateTarget(t *testing.T) {
 // the fixture roster. It returns the executable's directory (the stub logs beside itself).
 func writeHouseCallout(t *testing.T) string {
 	t.Helper()
+	return writeHouseCalloutSaying(t, "block example-house-rule")
+}
+
+// writeHouseCalloutSaying is writeHouseCallout with the answer line chosen by the test.
+func writeHouseCalloutSaying(t *testing.T, answer string) string {
+	t.Helper()
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, "callout.sh")
-	script := "#!/bin/sh\necho run >> \"${0%/*}/ran.log\"\ncat > /dev/null\necho \"block example-house-rule\"\n"
+	script := "#!/bin/sh\necho run >> \"${0%/*}/ran.log\"\ncat > /dev/null\necho '" + answer + "'\necho example-house-diagnostic >&2\n"
 	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -126,5 +132,43 @@ func TestHouseCalloutBlocksIssueFiling(t *testing.T) {
 	rc, out = runCapture(append(args, "--"+deskkit.ScanOverrideFlag, "the operator believes this is fine"))
 	if curForge.filed != nil || rc != deskkit.ExitRefused {
 		t.Fatalf("the override took a house.callout block through: rc=%d filed=%v\n%s", rc, curForge.filed != nil, out)
+	}
+}
+
+// TestHouseCalloutOffVocabularyNeverLogged — the whole verb, with a callout whose answer is
+// outside the vocabulary but carries its own words (`block:` with a colon, another verb). The
+// write is refused and NOT filed, and the callout's words appear on stderr only: not in the
+// verb's own output (which carries the returned error) and not in the audit log the verb
+// writes that error into.
+func TestHouseCalloutOffVocabularyNeverLogged(t *testing.T) {
+	for _, answer := range []string{"block: example-house-rule", "deny example-house-rule", "maybe example-house-rule"} {
+		t.Run(answer, func(t *testing.T) {
+			withEnv(t)
+			writeHouseCalloutSaying(t, answer)
+			var notices strings.Builder
+			t.Cleanup(deskkit.SetOutboundNoticeWriter(&notices))
+			rc, out := runCapture([]string{"new", "-R", "example-org/example-k8s",
+				"--title", "red check needs an owner", "--body-file", bodyFileWith(t, "The check has been red since the last merge and needs an owner.")})
+			if curForge.filed != nil || rc != deskkit.ExitRefused {
+				t.Fatalf("answer %q: want refused and not filed, got rc=%d filed=%v\n%s", answer, rc, curForge.filed != nil, out)
+			}
+			if !strings.Contains(out, deskkit.RuleHouseCallout) || !strings.Contains(out, "neither `allow` nor `block`") {
+				t.Fatalf("answer %q: the refusal does not name the failure:\n%s", answer, out)
+			}
+			if !strings.Contains(notices.String(), "example-house-rule") || !strings.Contains(notices.String(), "example-house-diagnostic") {
+				t.Errorf("answer %q: the callout's answer and diagnostic are not on stderr:\n%s", answer, notices.String())
+			}
+			audit, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".config", "assay", "audit.jsonl"))
+			if !strings.Contains(string(audit), `"result":"refused"`) {
+				t.Fatalf("answer %q: the verb wrote no refused audit row:\n%s", answer, audit)
+			}
+			for where, text := range map[string]string{"the verb's output": out, "the audit log": string(audit)} {
+				for _, leak := range []string{"example-house-rule", "example-house-diagnostic"} {
+					if strings.Contains(text, leak) {
+						t.Errorf("answer %q: %q reached %s:\n%s", answer, leak, where, text)
+					}
+				}
+			}
+		})
 	}
 }

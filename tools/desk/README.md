@@ -964,8 +964,10 @@ proof each refusal can fail, are the ship bar in `docs/desk-tools-gate-bar.md`.
 
 The outbound-write check (desktools-v2/10) is a compiled table. A deployment that has a rule
 the table cannot know (a list of words, a naming scheme, an internal classifier) names ONE
-executable of its own, and the check consults it on every outward write that carries text.
-The callout can only **narrow**: the compiled layer runs first, and only a write it passed is
+executable of its own, and the check consults it on every outward write the compiled layer
+passed — including one with no text, which it receives with an empty `fields` list. A push is
+put to it once for the branch name, once per commit message and once for the added lines, so
+a push of N commits is N+2 consults. The callout can only **narrow**: the compiled layer runs first, and only a write it passed is
 put to the callout. A callout cannot clear a compiled refusal, and for a write the compiled
 layer refused it is never executed.
 
@@ -979,8 +981,9 @@ Three roster keys, all optional (`~/.config/assay/roster.env`):
 
 A key that is SET but malformed (relative path, a list, a timeout outside the range, a
 `REQUIRED` value other than `public`) is not "unconfigured": the roster still loads and every
-outward write is refused, naming the key. The startup configuration echo prints the path and
-the required mode.
+outward write is refused, naming the key. The startup configuration echo prints the path, the
+required mode and the timeout, and marks the path `INVALID` whenever any of the three keys is
+malformed — a valid path beside a bad timeout still refuses every write.
 
 **The contract.** The executable is run directly, with no shell. It must be an absolute
 path to a regular, executable file that is not group- or world-writable, in a directory that
@@ -995,15 +998,27 @@ holds the caller's token or any `ASSAY_*` variable. It receives ONE JSON object 
 
 `visibility` is `public`, `private` or `unknown` (a target the roster does not list is
 `unknown`, never `private`). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
-`commit` or `ref`. On stdout it prints, as its first word, `allow` or `block`; anything after `block` is the
-reason. Exit status must be 0.
+`commit` or `ref`. A field with no text is not sent. The object is one line.
+
+Each `text` is a JSON string, and the callout must **decode** it before matching anything
+against it. `&`, `<` and `>` arrive as themselves (no HTML escaping), but a line break arrives
+as `\n`, a tab as `\t`, a quote as `\"`, a backslash as `\\`, and other control characters
+and U+2028/U+2029 as `\uXXXX`. A callout that greps the raw JSON misses a listed word that
+contains `"` or `\`, and a listed phrase that a line break splits in the write.
+
+On stdout it prints, as its first word, exactly `allow` or `block` (lower case; the first word
+ends at any whitespace, a line break included); anything after `block` is the reason. Exit
+status must be 0.
 
 Everything else is a refusal, and the message says which failure it was: the file is missing
 or unreadable, or group/world-writable; a non-zero exit; no answer within the timeout; empty
-output; more than 64 KiB of output; a first word that is neither `allow` nor `block`.
+output; more than 64 KiB of output; a first word that is neither `allow` nor `block`. For those,
+the refusal says WHICH failure in generic words; what the callout printed is shown on stderr
+only, as below.
 
-The refusal is `house.callout`, exit 5, and `--force-scan-override` does not apply to it. The
-callout's reason (and its own stderr) is printed to **stderr only**. It is deliberately not
+The refusal is `house.callout`, exit 5, and `--force-scan-override` does not apply to it.
+Everything the callout printed — its reason, an off-vocabulary answer, its own stderr — is
+printed to **stderr only**, on one line each, control characters removed. It is deliberately not
 in the returned error, the audit log or anything sent to the forge, because verbs log their
 errors and the reason can quote the text it matched. The audit log gets one
 `outbound_callout` row: the rule id, the outcome, the kind and a digest, never the text.
@@ -1013,13 +1028,27 @@ An example executable (invented word list; the shipped test fixture is
 
 ```sh
 #!/bin/sh
-# Block any write whose "text" fields contain a word on the house list.
-words=/etc/example-house/withheld-words.txt      # one word per line, no blank lines
+# EXAMPLE house callout (invented values): block any write whose "text" fields contain a word
+# or phrase listed in a file the deployment owns. Reads the request on stdin; prints `allow`
+# or `block <reason>`. List: one word or phrase per line, one space between a phrase's
+# words, no blank lines; matched case-insensitively as fixed strings.
+words=/etc/example-house/withheld-words.txt
 if [ ! -r "$words" ]; then
-  echo "block the word list is unreadable"       # fail closed: no list, no verdict
+  echo "block the word list is unreadable"   # fail closed: no list, no verdict
   exit 0
 fi
-if grep -o '"text":"\([^"\\]\|\\.\)*"' | grep -qiF -f "$words"; then
+# Each "text" value is a JSON string: decode it before matching. `\\` is held aside first so
+# an escaped backslash followed by n is not read as a line break; every whitespace escape and
+# \uXXXX (control and line-separator characters) becomes a space; any other escape (`\"`,
+# `\/`) is the character itself; runs of spaces fold to one, so a listed phrase matches
+# across a line break, a tab or a run of spaces in the write.
+hold=$(printf '\001')
+if grep -oE '"text":"([^"\\]|\\.)*"' |
+  sed -e 's/^"text":"//' -e 's/"$//' \
+      -e 's/\\\\/'"$hold"'/g' \
+      -e 's/\\u[0-9A-Fa-f]\{4\}/ /g' -e 's/\\[bfnrt]/ /g' -e 's/\\\(.\)/\1/g' \
+      -e 's/'"$hold"'/\\/g' -e 's/  */ /g' |
+  grep -qiF -f "$words"; then
   echo "block the write names a word on the house list"
 else
   echo allow
@@ -1034,8 +1063,13 @@ echo 'ASSAY_OUTBOUND_CALLOUT=/opt/example-house/outbound-callout' >> ~/.config/a
 echo 'ASSAY_OUTBOUND_CALLOUT_REQUIRED=public' >> ~/.config/assay/roster.env
 ```
 
+The shipped fixture is this script with its list beside it, and a test holds the two
+identical and drives the fixture through the real request encoding with listed words that
+contain `&`, `<`, `>`, `"` and `\`, and a phrase split by a line break, a CRLF and a tab.
+
 One callout round trip is a process start (a few milliseconds for a shell script) on top of
-whatever the executable does; the timeout bounds the worst case.
+whatever the executable does, per consult — a push pays it N+2 times; the timeout bounds the
+worst case of each.
 
 ### Desk-decided: the merge is the gate (attention-budget/19)
 

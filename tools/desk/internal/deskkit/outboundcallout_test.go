@@ -8,10 +8,17 @@ package deskkit
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -217,7 +224,9 @@ func ocCheckBrokenCalloutBlocks(t *testing.T) {
 		}, "did not answer within 1s"},
 		{"prints nothing", stub("empty"), "printed nothing"},
 		{"prints 100 KiB", stub("big"), "more than 65536 bytes"},
-		{"prints maybe", stub("maybe"), `printed "maybe"`},
+		// The failure is NAMED, but the callout's own words are not in it: they go to stderr
+		// only (TestCalloutReasonNeverReachesForgeOrAudit pins their absence).
+		{"prints maybe", stub("maybe"), "neither `allow` nor `block`"},
 	}
 	for _, c := range cases {
 		c := c
@@ -336,10 +345,13 @@ func ocCheckEnvironment(t *testing.T) {
 
 func TestOutboundCalloutEnvironmentCarriesNoToken(t *testing.T) { ocCheckEnvironment(t) }
 
-// H7 — a block on a commit message, on the push path: refused before any push. The same
-// range with no callout configured passes, so the refusal is the callout's.
+// H7 — the push path puts EVERY surface to the callout: the branch name (kind `ref`), each
+// commit message (kind `commit`) and the added lines (kind `file`). The stub blocks ONE kind
+// and allows the rest, so a refusal naming that kind proves that kind was asked: a stub that
+// blocked unconditionally would be refused at the ref write, before any commit message or
+// file was reached, and would prove nothing about either. The same range with no callout
+// configured passes, so each refusal is the callout's.
 func ocCheckPushPathCommitMessage(t *testing.T) {
-	path, dir := ocStub(t, "block")
 	push := newObPushRepo(t)
 	row := obRow{id: "H7", text: "tidy the build script", target: obPublic}
 	ocConfigure(t, nil)
@@ -351,44 +363,129 @@ func ocCheckPushPathCommitMessage(t *testing.T) {
 	if err := run(); err != nil {
 		t.Fatalf("control: a clean commit message with no callout must pass: %v", err)
 	}
-	ocConfigure(t, map[string]string{EnvOutboundCallout: path})
-	stderr := ocStderr(t)
-	err := run()
-	if err == nil || !IsRefused(err) || !strings.Contains(err.Error(), RuleHouseCallout) {
-		t.Fatalf("the callout's block on a commit message did not refuse the push: %v", err)
-	}
-	if !strings.Contains(stderr.String(), ocReason) {
-		t.Fatalf("the reason is not on stderr:\n%s", stderr)
-	}
-	if ocRan(dir) == 0 {
-		t.Fatal("the callout was never asked about the push")
+	for _, kind := range []string{OutboundKindRef, OutboundKindCommit, OutboundKindFile} {
+		kind := kind
+		t.Run(kind, func(t *testing.T) {
+			path, dir := ocStub(t, "block-kind")
+			if err := os.WriteFile(filepath.Join(dir, "kind"), []byte(kind+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+			stderr := ocStderr(t)
+			err := run()
+			if err == nil || !IsRefused(err) || !strings.Contains(err.Error(), "refused: "+RuleHouseCallout+" at ") {
+				t.Fatalf("a callout blocking only kind %q did not refuse the push: %v", kind, err)
+			}
+			// The refusal names the kind of write it refused: the one the stub blocks, and no
+			// other — a refusal at an earlier surface would name that surface's kind.
+			if !strings.Contains(err.Error(), "("+kind+" write to ") {
+				t.Fatalf("the push was refused, but not on the %s write the callout blocked: %v", kind, err)
+			}
+			if !strings.Contains(stderr.String(), ocReason) {
+				t.Fatalf("the reason is not on stderr:\n%s", stderr)
+			}
+			asked, _ := os.ReadFile(filepath.Join(dir, "asked.log"))
+			if got := strings.Fields(string(asked)); len(got) == 0 || got[len(got)-1] != kind {
+				t.Fatalf("the callout was asked about %q; want the last request to be the blocked %q", got, kind)
+			}
+		})
 	}
 }
 
-// TestCalloutReasonNeverReachesForgeOrAudit — the recording forge, the audit log, the
-// returned error and the audit row of a refusal are all searched for the stub's reason.
+// ocSay installs the replay stub with the given stdout, stderr and exit status.
+func ocSay(t *testing.T, stdout, stderr string, code int) (path, dir string) {
+	t.Helper()
+	path, dir = ocStub(t, "say")
+	for name, body := range map[string]string{"say.out": stdout, "say.err": stderr} {
+		if body == "" {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code != 0 {
+		if err := os.WriteFile(filepath.Join(dir, "say.code"), []byte(strconv.Itoa(code)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return path, dir
+}
+
+// ocLeakCases is every way a callout can answer, each carrying the callout's words in what
+// it prints: a well-formed block, answers outside the vocabulary (a first word that only
+// LOOKS like `block`, an upper-case verdict, another verb), a non-zero exit, empty output and
+// an oversized answer. Every one refuses, and in NONE may the callout's words reach anything
+// but stderr. onStderr says whether the words must be ON stderr (the oversized answer is
+// never printed back at all).
+func ocLeakCases() []struct {
+	name, out, err string
+	code           int
+	onStderr       bool
+} {
+	big := strings.Repeat(ocReason+" ", (70<<10)/len(ocReason+" "))
+	return []struct {
+		name, out, err string
+		code           int
+		onStderr       bool
+	}{
+		{"well-formed block", "block " + ocReason, ocDiagnostic, 0, true},
+		{"block with a colon", "block: " + ocReason, ocDiagnostic, 0, true},
+		{"BLOCKED", "BLOCKED " + ocReason, ocDiagnostic, 0, true},
+		{"upper-case ALLOW", "ALLOW " + ocReason, ocDiagnostic, 0, true},
+		{"deny", "deny " + ocReason, ocDiagnostic, 0, true},
+		{"words on a second line", "maybe\n" + ocReason, ocDiagnostic, 0, true},
+		{"terminal escape in the answer", "neither \x1b[31m" + ocReason + "\x1b[0m", ocDiagnostic, 0, true},
+		{"non-zero exit", "allow " + ocReason, ocDiagnostic, 3, false},
+		{"empty answer", "", ocDiagnostic + " " + ocReason, 0, true},
+		{"oversized answer", big, ocDiagnostic, 0, false},
+	}
+}
+
+// TestCalloutReasonNeverReachesForgeOrAudit — the CLASS guard for the callout's own words.
+// For every answer a callout can give (ocLeakCases), the recording forge, the audit log and
+// the returned error (which every verb writes into its own audit row) are searched for the
+// words the callout printed; stderr is the one place they may appear.
 func TestCalloutReasonNeverReachesForgeOrAudit(t *testing.T) {
+	for _, c := range ocLeakCases() {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			path, _ := ocSay(t, c.out, c.err, c.code)
+			audit := ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+			stderr := ocStderr(t)
+			fake := &outboundRecordingForge{}
+			_, err := OutboundChecked(fake, "worker").FileIssue(obRepo(obPublic), IssueInput{Title: "a neutral title", Body: ocCleanBody})
+			if err == nil || !IsRefused(err) || !strings.Contains(err.Error(), RuleHouseCallout) {
+				t.Fatalf("the callout's answer did not refuse: %v", err)
+			}
+			if c.onStderr && !strings.Contains(stderr.String(), ocReason) {
+				t.Errorf("the callout's words are not on stderr (the one place they belong):\n%s", stderr)
+			}
+			if !strings.Contains(stderr.String(), ocDiagnostic) {
+				t.Errorf("the callout's own stderr diagnostic was not passed to its owner:\n%s", stderr)
+			}
+			if strings.ContainsRune(stderr.String(), 0x1b) {
+				t.Fatalf("a terminal escape the callout printed reached the terminal: %q", stderr)
+			}
+			for _, where := range []struct{ name, text string }{
+				{"the forge", strings.Join(fake.bodies, "\n") + strings.Join(fake.calls, "\n")},
+				{"the audit log", ocAuditText(t, audit)},
+				{"the returned error", err.Error()},
+			} {
+				for _, leak := range []string{ocReason, ocDiagnostic} {
+					if strings.Contains(where.text, leak) {
+						t.Fatalf("%q reached %s:\n%s", leak, where.name, where.text)
+					}
+				}
+			}
+		})
+	}
+
 	path, _ := ocStub(t, "block")
 	audit := ocConfigure(t, map[string]string{EnvOutboundCallout: path})
-	stderr := ocStderr(t)
-	fake := &outboundRecordingForge{}
-	_, err := OutboundChecked(fake, "worker").FileIssue(obRepo(obPublic), IssueInput{Title: "a neutral title", Body: ocCleanBody})
-	if err == nil {
+	ocStderr(t)
+	if _, err := ocFileIssue(obPublic, ocCleanBody); err == nil {
 		t.Fatal("the block did not refuse")
-	}
-	if !strings.Contains(stderr.String(), ocReason) {
-		t.Fatalf("the reason is not on stderr (the one place it belongs):\n%s", stderr)
-	}
-	for _, where := range []struct{ name, text string }{
-		{"the forge", strings.Join(fake.bodies, "\n") + strings.Join(fake.calls, "\n")},
-		{"the audit log", ocAuditText(t, audit)},
-		{"the returned error", err.Error()},
-	} {
-		for _, leak := range []string{ocReason, ocDiagnostic} {
-			if strings.Contains(where.text, leak) {
-				t.Fatalf("%q reached %s:\n%s", leak, where.name, where.text)
-			}
-		}
 	}
 	// The audit row DOES exist, and holds exactly the rule id, the field name and a digest.
 	var row map[string]any
@@ -404,8 +501,11 @@ func TestCalloutReasonNeverReachesForgeOrAudit(t *testing.T) {
 	if d, _ := row["detail"].(string); !strings.Contains(d, "rule="+RuleHouseCallout) || !strings.Contains(d, "outcome=block") || !strings.Contains(d, "field=") {
 		t.Fatalf("audit detail = %q, want the rule id, outcome and a field name", d)
 	}
-	if d, _ := row["bodyDigest"].(string); !obHex64.MatchString(d) {
-		t.Fatalf("audit bodyDigest = %q, want a SHA-256", d)
+	// The digest is OF THE WRITE: each non-empty field's name and text, NUL-terminated, in
+	// order — computed here independently, so a constant or a digest of something else fails.
+	want := sha256.Sum256([]byte("title\x00a neutral title\x00body\x00" + ocCleanBody + "\x00"))
+	if d, _ := row["bodyDigest"].(string); d != hex.EncodeToString(want[:]) {
+		t.Fatalf("audit bodyDigest = %q, want the SHA-256 of the write's fields %x", d, want)
 	}
 	if strings.Contains(ocAuditText(t, audit), ocCleanBody) {
 		t.Fatal("the audit log holds the write's text")
@@ -484,6 +584,66 @@ func TestOutboundCalloutRequestShape(t *testing.T) {
 	if !strings.Contains(string(b), `"visibility":"unknown"`) {
 		t.Fatalf("visibility for an unlisted target = %s", b)
 	}
+	// The text is a JSON string WITHOUT HTML escaping: `&`, `<` and `>` reach the callout as
+	// themselves (Go's default would send `&`, `<`, `>`, and a callout matching
+	// the words it was given would never see them). A field with no text is not sent.
+	const marked = `a & b <c> "d" \e`
+	fake := &outboundRecordingForge{}
+	if _, err := OutboundChecked(fake, "worker").FileIssue(obRepo(obPublic), IssueInput{Title: "", Body: marked}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, "request.json"))
+	if !strings.Contains(string(b), `"text":"a & b <c> \"d\" \\e"`) || strings.Contains(string(b), `\u00`) {
+		t.Fatalf("the request's text is not the write's text as a plain JSON string: %s", b)
+	}
+	req.Fields = nil
+	if err := json.Unmarshal(b, &req); err != nil {
+		t.Fatal(err)
+	}
+	if len(req.Fields) != 1 || req.Fields[0].Name != "body" || req.Fields[0].Text != marked {
+		t.Fatalf("fields = %+v, want only the non-empty body, decoding to the write's exact text", req.Fields)
+	}
+}
+
+// TestCalloutAnswerParsing — the answer's FIRST WORD, separated by any whitespace, is the
+// verdict, and it is exactly `allow` or `block`. Anything after `block` is the reason.
+func TestCalloutAnswerParsing(t *testing.T) {
+	for _, c := range []struct {
+		name, out string
+		pass      bool
+	}{
+		{"allow", "allow", true},
+		{"allow tab trailing text", "allow\tall clear", true},
+		{"allow then a second line", "allow\nblock this is not the first word", true},
+		{"block newline reason", "block\n" + ocReason, false},
+		{"block tab reason", "block\t" + ocReason, false},
+		{"Allow", "Allow", false},
+		{"allowed", "allowed", false},
+	} {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			path, _ := ocSay(t, c.out, "", 0)
+			ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+			stderr := ocStderr(t)
+			calls, err := ocFileIssue(obPublic, ocCleanBody)
+			if c.pass {
+				if err != nil || calls != 1 {
+					t.Fatalf("answer %q: want the write to proceed, got calls=%d err=%v", c.out, calls, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), RuleHouseCallout) || calls != 0 {
+				t.Fatalf("answer %q: want a house.callout refusal, got calls=%d err=%v", c.out, calls, err)
+			}
+			// A block whose reason follows any whitespace is a BLOCK, reported as one.
+			if strings.HasPrefix(c.out, "block") {
+				if !strings.Contains(err.Error(), "blocked by the configured house callout") ||
+					!strings.Contains(stderr.String(), "— "+ocReason) {
+					t.Fatalf("answer %q: want a block with its reason on stderr, got %v\n%s", c.out, err, stderr)
+				}
+			}
+		})
+	}
 }
 
 // TestRosterRecognisesOutboundCalloutKeys — a roster carrying the three keys loads (without
@@ -547,22 +707,30 @@ func TestOutboundCalloutMalformedKeyRefusesWrites(t *testing.T) {
 	}
 }
 
-// The documented example executable works as documented.
-func TestExampleSweepCallout(t *testing.T) {
-	path, dir := ocStub(t, "example-sweep")
-	words := filepath.Join(dir, "words.txt")
-	if err := os.WriteFile(words, []byte("example-withheld-slug\nexample-other-word\n"), 0o644); err != nil {
+// ocExampleWords is the invented house list the example executable is tested against: words
+// carrying every character JSON or HTML escaping rewrites, and a two-word phrase.
+const ocExampleWords = "example-other-word\nhouse&word\nhouse<word>\nhouse\"word\nhouse\\word\nexample house phrase\n"
+
+// ocExampleSweep installs the shipped example with the invented list beside it (the
+// fixture's list path is `words.txt` in its own directory; the README's is the deployment's).
+func ocExampleSweep(t *testing.T) (path, dir string) {
+	t.Helper()
+	path, dir = ocStub(t, "example-sweep")
+	if err := os.WriteFile(filepath.Join(dir, "words.txt"), []byte(ocExampleWords), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("EXAMPLE_WORDS_FILE", words)
-	// Stub environments are scrubbed, so the example reads its list from its default
-	// location relative to the invoker only through the variable; run it directly.
+	return path, dir
+}
+
+// The documented example executable answers as documented on hand-written requests.
+func TestExampleSweepCallout(t *testing.T) {
+	path, dir := ocExampleSweep(t)
 	for body, want := range map[string]string{
-		`{"version":1,"verb":"example-withheld-slug","fields":[{"name":"body","text":"all good"}]}`:                     "allow",
-		`{"version":1,"fields":[{"name":"body","text":"mentions the Example-Withheld-Slug here"}]}`:                     "block",
+		`{"version":1,"verb":"example-other-word","fields":[{"name":"body","text":"all good"}]}`:                        "allow",
+		`{"version":1,"fields":[{"name":"body","text":"mentions the Example-Other-Word here"}]}`:                        "block",
 		`{"version":1,"fields":[{"name":"title","text":"fine"},{"name":"body","text":"has example-other-word in it"}]}`: "block",
 	} {
-		res, err := Callout{Path: path}.Run(body)
+		res, err := Callout{Path: path, Env: outboundCalloutEnv()}.Run(body)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -570,8 +738,212 @@ func TestExampleSweepCallout(t *testing.T) {
 			t.Fatalf("request %s: example printed %q, want %q first", body, res.Stdout, want)
 		}
 	}
-	t.Setenv("EXAMPLE_WORDS_FILE", filepath.Join(dir, "missing.txt"))
-	if res, _ := (Callout{Path: path}).Run(`{"fields":[]}`); !strings.HasPrefix(res.Stdout, "block") {
+	if err := os.Remove(filepath.Join(dir, "words.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := (Callout{Path: path, Env: outboundCalloutEnv()}).Run(`{"fields":[]}`); !strings.HasPrefix(res.Stdout, "block") {
 		t.Fatalf("an unreadable word list must block, got %q", res.Stdout)
+	}
+}
+
+// TestExampleSweepThroughCheck — the documented example, configured as THE callout and driven
+// through the real request encoding (OutboundChecked → buildOutboundCalloutRequest → the
+// executable), matches a listed word exactly: one containing `&`, `<`, `>`, `"` or `\`, and a
+// listed phrase whose words a line break or a run of whitespace separates in the write. A
+// literal backslash-n in the text is NOT a line break and does not join a phrase.
+func TestExampleSweepThroughCheck(t *testing.T) {
+	path, _ := ocExampleSweep(t)
+	ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+	for _, c := range []struct {
+		body  string
+		block bool
+	}{
+		{ocCleanBody, false},
+		{"see house&word for the rule", true},
+		{"see house<word> for the rule", true},
+		{`see house"word for the rule`, true},
+		{`see house\word for the rule`, true},
+		{"the example house\nphrase, split over a line break", true},
+		{"the example\r\n   house phrase, split by CRLF and spaces", true},
+		{"the example\thouse  phrase, split by a tab", true},
+		{`the example\nhouse phrase, a literal backslash-n`, false},
+		{"house and word, apart", false},
+	} {
+		ocStderr(t)
+		calls, err := ocFileIssue(obPublic, c.body)
+		if c.block {
+			if err == nil || !strings.Contains(err.Error(), RuleHouseCallout) || calls != 0 {
+				t.Errorf("body %q names a listed word, but the example let it through: calls=%d err=%v", c.body, calls, err)
+			}
+			continue
+		}
+		if err != nil || calls != 1 {
+			t.Errorf("body %q names no listed word, but was refused: calls=%d err=%v", c.body, calls, err)
+		}
+	}
+}
+
+// TestExampleSweepMatchesReadme — the fixture IS the README's example: line for line, except
+// the one `words=` line that says where the list lives.
+func TestExampleSweepMatchesReadme(t *testing.T) {
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const open = "```sh\n#!/bin/sh\n# EXAMPLE house callout"
+	i := strings.Index(string(readme), open)
+	if i < 0 {
+		t.Fatal("the README carries no example house callout block")
+	}
+	block := string(readme)[i+len("```sh\n"):]
+	block = block[:strings.Index(block, "```")]
+	fixture, err := os.ReadFile(filepath.Join("testdata", "outbound-callout", "example-sweep.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	strip := func(s string) string {
+		var keep []string
+		for _, ln := range strings.Split(strings.TrimSpace(s), "\n") {
+			if !strings.HasPrefix(ln, "words=") {
+				keep = append(keep, ln)
+			}
+		}
+		return strings.Join(keep, "\n")
+	}
+	if strip(block) != strip(string(fixture)) {
+		t.Fatalf("the README example and the tested fixture differ:\n--- README\n%s\n--- fixture\n%s", block, fixture)
+	}
+}
+
+// TestOutboundCalloutEcho — the startup echo never presents a callout that will refuse every
+// write as healthy, and it shows the timeout in force.
+func TestOutboundCalloutEcho(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		extra map[string]string
+		want  []string
+	}{
+		{"unset", nil, []string{
+			EnvOutboundCallout + "=(unset — compiled outbound checks only)",
+			EnvOutboundCalloutRequired + "=(unset",
+			EnvOutboundCalloutTimeout + "=(unset — 5s)",
+		}},
+		{"valid path, timeout out of range", map[string]string{EnvOutboundCallout: "/opt/example-house/callout", EnvOutboundCalloutTimeout: "61s"}, []string{
+			EnvOutboundCallout + "=/opt/example-house/callout (INVALID — outward writes REFUSE: ",
+		}},
+		{"required malformed", map[string]string{EnvOutboundCalloutRequired: "everything"}, []string{
+			EnvOutboundCallout + "=(INVALID — outward writes REFUSE: ",
+			EnvOutboundCalloutRequired + "=(INVALID — read as public; outward writes REFUSE until it is fixed)",
+		}},
+		{"timeout set", map[string]string{EnvOutboundCallout: "/opt/example-house/callout", EnvOutboundCalloutTimeout: "30s"}, []string{
+			EnvOutboundCalloutTimeout + "=30s",
+		}},
+	} {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			ocConfigure(t, c.extra)
+			echo := strings.Join(EffectiveConfig().EffectiveConfigLines(), "\n")
+			for _, w := range c.want {
+				if !strings.Contains(echo, "assay-config: "+w) {
+					t.Fatalf("the startup echo lacks %q:\n%s", w, echo)
+				}
+			}
+		})
+	}
+}
+
+// houseDetailAllowed is the allow-list of identifiers a houseRefuse `detail` argument may be
+// built from: our own constants, the resolved configuration's problem text, and the callout
+// plumbing's error (a path and an exit status, never the callout's output). Any other
+// identifier — the result, the answer, a word cut from it — is the callout's own output,
+// which belongs in the stderr-only argument and nowhere else.
+var houseDetailAllowed = map[string]bool{
+	"fmt": true, "Sprintf": true, "s": true, "Problem": true, "err": true, "Error": true,
+	"maxCalloutOutput": true, "EnvOutboundCallout": true, "EnvOutboundCalloutRequired": true,
+	"outboundCalloutRequiredPublic": true,
+}
+
+// houseLeakViolations is the structural half of the class guard over outboundcallout.go:
+// (1) every houseRefuse call's `detail` argument uses allow-listed identifiers only, and
+// (2) no other function in the file builds a refusal, an error or an audit row — houseRefuse
+// is the ONE exit, so the rule in (1) covers every path the callout's words could take to
+// the returned error or the audit log.
+func houseLeakViolations(src string) ([]string, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "outboundcallout.go", src, 0)
+	if err != nil {
+		return nil, err
+	}
+	var bad []string
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		ast.Inspect(fn, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			name := ""
+			switch fun := call.Fun.(type) {
+			case *ast.Ident:
+				name = fun.Name
+			case *ast.SelectorExpr:
+				name = fun.Sel.Name
+			}
+			switch name {
+			case "houseRefuse":
+				if len(call.Args) < 5 {
+					bad = append(bad, fmt.Sprintf("%s: houseRefuse call without a detail argument", fset.Position(call.Pos())))
+					return true
+				}
+				ast.Inspect(call.Args[4], func(m ast.Node) bool {
+					if id, ok := m.(*ast.Ident); ok && !houseDetailAllowed[id.Name] {
+						bad = append(bad, fmt.Sprintf("%s: houseRefuse detail is built from %q", fset.Position(id.Pos()), id.Name))
+					}
+					return true
+				})
+			case "Refused", "Unverifiable", "Errorf", "New", "Log":
+				if fn.Name.Name != "houseRefuse" {
+					bad = append(bad, fmt.Sprintf("%s: %s() outside houseRefuse — every refusal and audit row leaves through houseRefuse", fset.Position(call.Pos()), name))
+				}
+			}
+			return true
+		})
+	}
+	return bad, nil
+}
+
+// TestHouseRefuseDetailNeverCarriesCalloutOutput — the class guard, run over the shipped
+// file, with a positive control: a planted source repeating the defect at two NEW sites (a
+// detail built from the result, and a refusal composed outside houseRefuse) must be flagged
+// at both, so a guard whose matcher stopped matching fails instead of reporting clean.
+func TestHouseRefuseDetailNeverCarriesCalloutOutput(t *testing.T) {
+	src, err := os.ReadFile("outboundcallout.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad, err := houseLeakViolations(string(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bad) != 0 {
+		t.Fatalf("the callout's output can reach the returned error or the audit log:\n%s", strings.Join(bad, "\n"))
+	}
+	const planted = `package deskkit
+func outboundHouseCheck(w OutboundWrite) error {
+	res, _ := Callout{}.Run("")
+	return houseRefuse(w, "", "", "broken", "the callout printed "+res.Stdout, calloutSaid{})
+}
+func plantedSecondExit(out string) error { return Refused("the callout said " + out) }
+`
+	bad, err = houseLeakViolations(planted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flagged := strings.Join(bad, "\n")
+	if !strings.Contains(flagged, `houseRefuse detail is built from "res"`) || !strings.Contains(flagged, "Refused() outside houseRefuse") {
+		t.Fatalf("the guard missed a planted leak; flagged:\n%s", strings.Join(bad, "\n"))
 	}
 }
