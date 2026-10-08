@@ -814,8 +814,8 @@ func cmdNew(args []string) (err error) {
 	reason := fs.String("reason", "", "stated reason for --force-new / --force-file (required with either)")
 	noFork := fs.String("no-fork", "", "re-routes a filing that turned out to have fewer than two workable options "+
 		"(the `deskfile new` fork-test gate's refusal names this flag): one of "+noForkBriefContradicts+" | "+
-		noForkWrongRepo+" | "+noForkToolFalsePositive+". Files WITHOUT the needs-decision label, and refuses a one-way item (deskkit.OneWay) — "+
-		"that stays on the driver's queue")
+		noForkWrongRepo+" | "+noForkToolFalsePositive+". Files WITHOUT the needs-decision label, and refuses a one-way item (deskkit.OneWay, or a "+
+		"human-only hand-off: the human-only label or a body led by BLOCKED-ON-HUMAN) — that stays on the driver's queue")
 	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskfile", "new")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
@@ -1014,7 +1014,8 @@ func cmdNew(args []string) (err error) {
 	// --no-fork content requirements: each re-route names what its body must carry, checked
 	// against the shape rather than trusting free text. FIRST, the one-way check: every
 	// --no-fork value files WITHOUT needs-decision, so a one-way item (a one-way caller label,
-	// or a one-way term anywhere in title+body — deskkit.OneWay) is refused here rather than
+	// a one-way term anywhere in title+body — deskkit.OneWay — or a human-only hand-off, the
+	// act gate's own test) is refused here rather than
 	// steered off the driver's queue. The only way forward for it is a needs-decision filing.
 	if noForkVal != "" {
 		ac.lane = "no-fork=" + noForkVal

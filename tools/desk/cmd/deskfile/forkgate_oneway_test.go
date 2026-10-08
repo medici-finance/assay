@@ -183,8 +183,9 @@ func TestNoticeLaneRefusedByOneWayCallerLabel(t *testing.T) {
 			t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel, lbl))
 			text := "A reversible question.\n\n" + neutralEvidence + "\n" + noticeLaneBlock
 			if lbl == humanOnlyLabel {
-				// A human-only filing is also a hand-off, so the act gate needs an act fence
-				// before the fork-test lane under test here is reached.
+				// A human-only filing is also a hand-off, so it carries an act fence: without
+				// one the act gate refuses it, and the labels the lane chose are never filed
+				// for this test to read.
 				text += "\n```sh\ntrue\n```\n"
 			}
 			body := bodyFileWith(t, text)
@@ -197,6 +198,51 @@ func TestNoticeLaneRefusedByOneWayCallerLabel(t *testing.T) {
 			}
 			if final := curForge.finalLabels(); !hasLabel(final, needsDecisionLabel) || hasLabel(final, deskDecidedLabel) {
 				t.Errorf("caller label %q: filed with %v, want needs-decision kept", lbl, final)
+			}
+		})
+	}
+}
+
+// TestNoticeLaneRefusedByHandoffMarker — a body whose first non-blank line opens with the
+// BLOCKED-ON-HUMAN marker is a human-only hand-off (isHumanOnlyHandoff), the same as the
+// human-only label, so the fork-test gate keeps it on needs-decision even with no one-way
+// label and a reversible subject; and --no-fork, which files off the queue, refuses it.
+func TestNoticeLaneRefusedByHandoffMarker(t *testing.T) {
+	for _, lead := range []string{
+		"BLOCKED-ON-HUMAN: run the act below.",
+		"## **blocked-on-human** — run the act below.",
+	} {
+		t.Run(lead, func(t *testing.T) {
+			withEnv(t)
+			t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+			t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel, deskDecidedLabel))
+			body := bodyFileWith(t, lead+"\n\n```sh\ntrue\n```\n\n"+neutralEvidence+"\n"+noticeLaneBlockWithSubject)
+
+			rc, out := runCapture([]string{"new", "-R", allowedRepo,
+				"--title", reversibleTitle, "--body-file", body,
+				"--label", needsDecisionLabel})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("rc = %d, want 0 (filed, on needs-decision); out=%s", rc, out)
+			}
+			if final := curForge.finalLabels(); !hasLabel(final, needsDecisionLabel) || hasLabel(final, deskDecidedLabel) {
+				t.Errorf("marker-led hand-off filed with %v, want needs-decision kept and no desk-decided", final)
+			}
+			if curForge.filed != nil && strings.Contains(curForge.filed.Body, deskDecidedMarker) {
+				t.Errorf("marker-led hand-off carries the notice-lane marker")
+			}
+		})
+		t.Run(lead+", --no-fork", func(t *testing.T) {
+			withEnv(t)
+			t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+			t.Setenv("FAKEGH_LABELS", labelsJSON(t, "to:worker", "to:desk", "bug"))
+			body := bodyFileWith(t, lead+"\n\nThis belongs in example-org/other-repo.\n\n```sh\ntrue\n```\n")
+			rc, out := runCapture([]string{"new", "-R", allowedRepo, "--title", "a routing note",
+				"--body-file", body, "--no-fork", noForkWrongRepo})
+			if rc != deskkit.ExitRefused {
+				t.Fatalf("--no-fork on a marker-led hand-off: rc = %d, want %d; out=%s", rc, deskkit.ExitRefused, out)
+			}
+			if curForge.filed != nil {
+				t.Fatal("an issue was filed")
 			}
 		})
 	}
