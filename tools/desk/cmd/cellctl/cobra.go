@@ -172,14 +172,13 @@ func cellArg(pos []string) string { return needCell(pos) }
 
 // echoRoster is P3: the effective roster, once per run, before anything that acts. It is a
 // pre-run hook rather than a line in main so help and --version stay pure.
-func echoRoster() { echoEffectiveConfig() }
+var echoRoster = func() { echoEffectiveConfig() }
 
 // buildRoot builds one fresh tree. Nothing here reads the environment, a file or a cell.
 func buildRoot() *cobra.Command {
 	root := cli.NewRoot("cellctl", "start, stop and scaffold an Assay CELL on one laptop")
 	root.Long = "cellctl starts, stops and scaffolds an Assay CELL on one laptop (the laptop route).\n\n" +
-		"A cell directory holds cell.env (the per-cell variables), home/ (the cell config-home), bin/,\n" +
-		"index/, worktrees/<role>/ and shim/. Every command takes the cell as its first argument.\n\n" + helpConcepts
+		"Every command takes the cell as its first argument.\n\n" + helpConcepts
 	root.Example = "  cellctl ls\n  cellctl new mycell --kind house --repo ~/src/repo --roots 'o/r=/abs/path'\n  cellctl up mycell\n  cellctl --cells-root /abs/registry show mycell"
 	cli.Declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
