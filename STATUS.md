@@ -26,6 +26,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/33 | 2026-10-08 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/27 | 2026-10-08 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-08 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-08 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-08 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-08 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/14 | 2026-10-08 |  |
@@ -42,7 +43,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-08 |
 | [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-08 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-08 |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | 4/11 | 2026-10-08 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-08 |
 
 ## Next up
@@ -57,6 +57,8 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | desktools-v2 | 16 — Migrate cellctl to Cobra commands and Viper configuration [exec:strong] | 2 | 20000 + 1500 (drive:desktools-v2) |
+| iso-9001 | 03 — A finding closes on a fired control — the corrective-action effectiveness record [exec:strong] | 1 | 3000 |
+| iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
 | build-less-brittle | 11 — Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge [exec:strong] | 4 | 4000 + 1500 (drive:build-less-brittle) |
 | forge-neutral | 33 — Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind [exec:strong] | 1 | 3500 |
 | forge-neutral | 34 — deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default [exec:strong] | 1 | 3500 |
@@ -78,7 +80,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 01a0dab 2026-10-07T20:53:19-05:00_
+_last regen: d5d3a89 2026-10-08T06:39:05-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -99,7 +101,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 01a0dab 2026-10-07T20:53:19-05:00_
+_last regen: d5d3a89 2026-10-08T06:39:05-05:00_
 
 **Progress:** 16/71 brief items done.
 
@@ -783,4 +785,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**19** active, **0** paused, **7** parked) · **106/369** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**20** active, **0** paused, **6** parked) · **106/369** briefs done · completed initiatives: see `docs/archive/`
