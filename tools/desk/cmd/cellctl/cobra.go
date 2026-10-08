@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -68,12 +69,19 @@ func runTree(args []string) (code int) {
 			code = hookBlockExit
 		}
 	}()
+	raw := rawVerb(args)
+	if raw && selectorSpan(args) > 0 && !strings.HasPrefix(args[0], "--") {
+		// The single-dash flag rewrite is off for a raw verb (its words are not ours to touch),
+		// and Cobra would take the selector's separate value for the verb name. Only the leading
+		// selector token is respelled; the verb's own words are passed through untouched.
+		args = append([]string{"-" + args[0]}, args[1:]...)
+	}
 	return cli.Run(buildRoot, args, cli.Options{
 		IO:              cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",
 		UsageExit:       3,
-		GoFlagCompat:    !rawVerb(args),
+		GoFlagCompat:    !raw,
 	})
 }
 
@@ -88,15 +96,41 @@ func selectCellsRoot(path string) {
 	}
 }
 
-// rawArgs strips a leading --cells-root <abs> from a flag-less command's argv (Cobra does not
-// parse flags for it) and applies it; everything else is the command's own argv, untouched.
+// selectorSpan is how many leading tokens of args spell the --cells-root selector: 2 for the
+// separated form (--cells-root <abs>), 1 for the = form, 0 when args do not start with one. The
+// single-dash spellings are the Go flag package's, which the tree accepts for every long flag.
+func selectorSpan(args []string) int {
+	if len(args) == 0 {
+		return 0
+	}
+	for _, name := range []string{"--cells-root", "-cells-root"} {
+		if args[0] == name {
+			return 2
+		}
+		if strings.HasPrefix(args[0], name+"=") {
+			return 1
+		}
+	}
+	return 0
+}
+
+// rawArgs strips a leading --cells-root selector (any spelling selectorSpan knows) from a
+// flag-less command's argv (Cobra does not parse flags for it) and applies it; everything else
+// is the command's own argv, untouched.
 func rawArgs(args []string) []string {
-	if len(args) > 0 && args[0] == "--cells-root" {
+	switch selectorSpan(args) {
+	case 2:
 		if len(args) < 3 {
 			die("--cells-root requires an absolute registry path and a command")
 		}
 		selectCellsRoot(args[1])
 		return args[2:]
+	case 1:
+		if len(args) < 2 {
+			die("--cells-root requires an absolute registry path and a command")
+		}
+		selectCellsRoot(strings.SplitN(args[0], "=", 2)[1])
+		return args[1:]
 	}
 	return args
 }
@@ -356,6 +390,10 @@ func deskCmd() *cobra.Command {
 			exitWith(1)
 		}
 		c := loadCellWithKind(args[0], kindFlag(cmd))
+		// The role is validated before any flag, as the legacy parser ordered it.
+		if !valueIn(args[1], knownRoles) {
+			die("unknown role '%s'", args[1])
+		}
 		v := resolve(set, c)
 		launchNeeds(v)
 		cmdDesk(c, args[1], deskInputsFrom(v, lastBare(args[2:])))

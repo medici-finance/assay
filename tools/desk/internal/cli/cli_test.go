@@ -555,3 +555,33 @@ func TestCLIOpaqueArgv(t *testing.T) {
 		}
 	}
 }
+
+// TestCLIRefusesCompletionRequests pins that the hidden completion entrypoints Cobra adds on its
+// own are refused like any unknown word: no handler of the tool runs (the shell-completion
+// request would otherwise execute a handler's validation code, which may print or read state),
+// and the refusal is the usage exit code with the unknown-command wording.
+func TestCLIRefusesCompletionRequests(t *testing.T) {
+	ran := false
+	build := func() *cobra.Command {
+		root := NewRoot("tool", "fixture")
+		root.AddCommand(&cobra.Command{Use: "do <x>", Args: cobra.ExactArgs(1),
+			ValidArgsFunction: func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+				ran = true
+				return []string{"leak"}, cobra.ShellCompDirectiveNoFileComp
+			},
+			RunE: func(*cobra.Command, []string) error { ran = true; return nil }})
+		return root
+	}
+	for _, args := range [][]string{
+		{cobra.ShellCompRequestCmd, "do", ""},
+		{cobra.ShellCompNoDescRequestCmd, "do", "x"},
+		{cobra.ShellCompRequestCmd},
+	} {
+		ran = false
+		var out, errb bytes.Buffer
+		code := Run(build, args, Options{GoFlagCompat: true, Version: "v0", IO: IO{Out: &out, Err: &errb}})
+		if code != ExitUsage || ran || out.Len() != 0 || !strings.Contains(errb.String(), "unknown command") {
+			t.Errorf("%v: exit %d, handler ran %v, stdout %q, stderr %q; want the unknown-command refusal and no handler", args, code, ran, out.String(), errb.String())
+		}
+	}
+}

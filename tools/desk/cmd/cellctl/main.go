@@ -83,12 +83,13 @@ func needCell(rest []string) string {
 	return rest[0]
 }
 
-// commandArgs recognizes the one global selector before hook deadline detection.
-// Validation still happens in run, but no alternate hook spelling can defer its
+// commandArgs recognizes the one global selector before hook deadline detection, in every
+// spelling the tree accepts (--cells-root <abs>, --cells-root=<abs>, and the Go single-dash
+// forms). Validation still happens in run, but no alternate hook spelling can defer its
 // watchdog until after the potentially blocking roster echo.
 func commandArgs(args []string) []string {
-	if len(args) >= 3 && args[0] == "--cells-root" {
-		return args[2:]
+	if n := selectorSpan(args); n > 0 && len(args) > n {
+		return args[n:]
 	}
 	return args
 }

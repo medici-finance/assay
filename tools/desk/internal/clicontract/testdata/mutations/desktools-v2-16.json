@@ -60,6 +60,36 @@
       "file": "internal/cli/cli.go",
       "old": "\targs = splitOpaqueArgv(root, args)\n",
       "new": "\t_ = splitOpaqueArgv\n"
+    },
+    {
+      "name": "the hidden completion entrypoints answer again (the refusal command is not registered)",
+      "file": "internal/cli/cli.go",
+      "old": "\trefuseCompletionRequests(root)\n",
+      "new": "\n"
+    },
+    {
+      "name": "the single-dash selector before a raw verb is no longer respelled, so Cobra reads its value as the verb",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "!strings.HasPrefix(args[0], \"--\") {",
+      "new": "false {"
+    },
+    {
+      "name": "the hook watchdog and raw-verb detection see only the separated double-dash selector (the = and single-dash spellings hide the verb)",
+      "file": "cmd/cellctl/main.go",
+      "old": "if n := selectorSpan(args); n > 0 && len(args) > n {",
+      "new": "if n := selectorSpan(args); n > 0 && len(args) > n && args[0] == \"--cells-root\" {"
+    },
+    {
+      "name": "a raw verb keeps the = selector in its argv (the = form is not stripped before the verb sees its words)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\tselectCellsRoot(strings.SplitN(args[0], \"=\", 2)[1])\n\t\treturn args[1:]",
+      "new": "\t\tselectCellsRoot(strings.SplitN(args[0], \"=\", 2)[1])\n\t\treturn args"
+    },
+    {
+      "name": "the desk role is no longer checked ahead of the flags (a bad role is reported only after flag values resolve)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\tif !valueIn(args[1], knownRoles) {\n\t\t\tdie(\"unknown role '%s'\", args[1])\n\t\t}\n\t\tv := resolve(set, c)",
+      "new": "\t\tv := resolve(set, c)"
     }
   ]
 }

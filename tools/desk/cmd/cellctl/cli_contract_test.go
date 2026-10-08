@@ -492,6 +492,79 @@ func TestCLILegacyForms(t *testing.T) {
 			t.Errorf("cache-run: parser rejected a verb token:\n%s", r.Stderr)
 		}
 	})
+
+	// A rejection message proves the parser stayed out; it does not prove the verb got the words.
+	// This runs a child that records its own argv and requires exactly the words typed, flag-shaped
+	// or not, with the selector in front of the verb in each spelling stripped and nothing else.
+	t.Run("raw-verb-child-receives-every-word", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("the argv probe is a POSIX shell script")
+		}
+		out := filepath.Join(w.root, "raw-probe.out")
+		probe := "#!/bin/sh\n{ for a in \"$@\"; do printf 'arg=%s\\n' \"$a\"; done; } > " + out + "\n"
+		if err := os.WriteFile(filepath.Join(w.binDir, "raw-probe"), []byte(probe), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		words := []string{"--help", "-h", "--version", "-source", "x", "--cells-root=/nope", "--", "--model=y"}
+		want := ""
+		for _, a := range words {
+			want += "arg=" + a + "\n"
+		}
+		for _, pre := range [][]string{
+			nil,
+			{"--cells-root", w.cellsRoot},
+			{"--cells-root=" + w.cellsRoot},
+			{"-cells-root", w.cellsRoot},
+			{"-cells-root=" + w.cellsRoot},
+		} {
+			_ = os.Remove(out)
+			args := append(append(append([]string{}, pre...), "cache-run", "raw-probe"), words...)
+			r := w.run(t, nil, args...)
+			if got := string(readFileOrEmpty(out)); r.Code != 0 || got != want {
+				t.Errorf("%v: exit %d, child argv\n%s\nwant\n%s\nstderr:\n%s", pre, r.Code, got, want, r.Stderr)
+			}
+		}
+	})
+
+	// The same selector spellings in front of the hook: it must see its own tokens, whichever
+	// spelling, and a bad token is its own refusal (2), never the parser's usage exit.
+	t.Run("hook-selector-spellings", func(t *testing.T) {
+		for _, pre := range [][]string{
+			{"--cells-root", w.cellsRoot},
+			{"--cells-root=" + w.cellsRoot},
+			{"-cells-root", w.cellsRoot},
+			{"-cells-root=" + w.cellsRoot},
+		} {
+			args := append(append([]string{}, pre...), "model-policy", "hook", "relative", "worker-desk", "anthropic", "", "claude", "abc")
+			r := w.run(t, nil, args...)
+			if r.Code != 2 || !strings.Contains(r.Stderr, "cell directory must be absolute: relative") {
+				t.Errorf("%v: exit %d, want the hook's own refusal (2) of its first token\n%s", pre, r.Code, r.Stderr)
+			}
+		}
+	})
+
+	// The parser's hidden completion entrypoints are not commands of cellctl: they refuse as any
+	// unknown word does (usage exit, no roster echo, nothing printed on stdout) in every position.
+	t.Run("completion-entrypoints-refuse", func(t *testing.T) {
+		for _, args := range [][]string{
+			{"__complete", "desk", "x"}, {"__completeNoDesc", "desk"},
+			{"--cells-root", w.cellsRoot, "__complete", ""}, {"--cells-root=" + w.cellsRoot, "__completeNoDesc", "d"},
+		} {
+			r := w.run(t, nil, args...)
+			if r.Code != 3 || r.Stdout != "" || !strings.Contains(r.Stderr, "unknown command") || strings.Contains(r.Stderr, "assay-config:") {
+				t.Errorf("%v: exit %d, stdout %q\n%s", args, r.Code, r.Stdout, r.Stderr)
+			}
+		}
+	})
+
+	// The role is the first thing `desk` checks after the cell: a bad role is refused as such
+	// whatever flags follow it, as the hand-written parser ordered it.
+	t.Run("desk-role-checked-before-flags", func(t *testing.T) {
+		r := w.run(t, []string{"DRY_RUN=1"}, "desk", "example", "badrole", "--model", "")
+		if r.Code != 3 || !strings.Contains(r.Stderr, "unknown role 'badrole'") {
+			t.Errorf("exit %d, want the unknown-role refusal\n%s", r.Code, r.Stderr)
+		}
+	})
 }
 
 // dieRun runs fn and reports the exit code it ended with (-1 when it returned normally).

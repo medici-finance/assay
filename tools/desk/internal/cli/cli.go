@@ -109,6 +109,7 @@ func Run(build func() *cobra.Command, args []string, opts Options) int {
 		help = nil
 	}
 	wrapHandlers(root, help)
+	refuseCompletionRequests(root)
 	if args == nil {
 		args = []string{}
 	}
@@ -175,6 +176,26 @@ func wrapHandlers(c, help *cobra.Command) {
 	for _, sub := range c.Commands() {
 		wrapHandlers(sub, help)
 	}
+}
+
+// refuseCompletionRequests makes Cobra's hidden shell-completion entrypoints (__complete and
+// __completeNoDesc) refuse like any other unknown command. Cobra registers them on every root
+// whatever CompletionOptions say, and they answer with a completion listing and exit 0, which is a
+// command surface no tool in this suite ever offered. Cobra adds its own entry only after this
+// one and resolves the first match, so a request reaches this refusal; the message and the usage
+// exit are those of an ordinary unknown command, produced by argument validation before any
+// pre-run hook (so no configuration echo, no roster read).
+func refuseCompletionRequests(root *cobra.Command) {
+	root.AddCommand(&cobra.Command{
+		Use:                cobra.ShellCompRequestCmd,
+		Aliases:            []string{cobra.ShellCompNoDescRequestCmd},
+		Hidden:             true,
+		DisableFlagParsing: true,
+		Args: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("unknown command %q for %q", cmd.CalledAs(), root.CommandPath())
+		},
+		Run: func(*cobra.Command, []string) {},
+	})
 }
 
 // opaqueArgvKey is the annotation OpaqueArgv sets.

@@ -21,9 +21,10 @@ import (
 //	CELLCTL_GOLDEN_RECORD=/path/to/pre-migration/cellctl CELLCTL_GOLDEN_BASE=<sha> \
 //	  go test ./cmd/cellctl -run '^TestCLINonHelpParity$'
 //
-// Cases whose behavior was deliberately changed are NOT here; they are listed with their reason
-// in the compatibility table (docs/cellctl.md) and pinned by TestCLILegacyForms and
-// TestCLICompatChanges.
+// Cases whose behavior was deliberately changed are recorded here too and listed in
+// deliberateDiffs with their reason; each is written up in the compatibility table
+// (docs/cellctl-cli-compat.md), which TestCLICompatDoc requires, and a listed difference that
+// stops differing fails this test, so the table cannot go stale in either direction.
 
 const goldenPath = "testdata/cli-nonhelp-golden.json"
 
@@ -249,6 +250,33 @@ func goldenCases() []goldenCase {
 			st("cache-run", "true"),
 			st("cache-run", "sh", "-c", "exit 7"),
 		}},
+		{name: "completion-entrypoints", steps: []goldenStep{
+			st("__complete", "desk", "x"),
+			st("__completeNoDesc", "desk"),
+			st("--cells-root", "<ROOT>/cells", "__complete", "x"),
+		}},
+		{name: "flags-before-positionals", steps: []goldenStep{
+			st("scratch", "example", "--apply", "sweep"),
+			st("cadence", "example", "--confirm-stopped", "recover", "worker-desk"),
+			stEnv(dry, "desk", "example", "--model", "early", "worker-desk"),
+			st("show", "--harness", "codex", "example"),
+		}},
+		{name: "single-dash-outside-scratch", steps: []goldenStep{
+			stEnv(dry, "desk", "example", "worker-desk", "-model", "dash"),
+			st("show", "example", "-harness", "codex"),
+			st("-version"),
+			st("version", "extra"),
+		}},
+		{name: "cells-root-spellings", steps: []goldenStep{
+			st("--cells-root=<ROOT>/cells", "ls"),
+			st("-cells-root", "<ROOT>/cells", "ls"),
+			st("--cells-root=<ROOT>/cells", "cache-run", "true"),
+			st("--cells-root=<ROOT>/cells", "model-policy", "hook", "relative", "worker-desk", "anthropic", "", "claude", "abc"),
+			st("-cells-root", "relative", "model-policy", "hook", "a", "b", "c", "d", "e", "f"),
+		}},
+		{name: "refusal-order", steps: []goldenStep{
+			stEnv(dry, "desk", "example", "badrole", "--model", ""),
+		}},
 		{name: "cells-root", steps: []goldenStep{
 			st("--cells-root", "<ROOT>/cells", "ls"),
 			st("--cells-root", "relative", "ls"),
@@ -305,26 +333,88 @@ func runGoldenCase(t *testing.T, bin string, c goldenCase) []cliRun {
 // deliberateDiff is one reviewed difference from the pre-migration transcript: the new exit code
 // and the exact new stderr (stdout is still required to match). The reason is the compatibility
 // report's row (docs/cellctl-cli-compat.md); an entry that stops differing is itself a failure.
+//
+// A line the old binary refused and the new one runs has output of its own, so such an entry
+// names fragments instead: stdoutHas replaces the stdout-must-match rule, and stderrHas replaces
+// the exact-stderr rule (the roster echo is in it, and is world-specific).
 type deliberateDiff struct {
-	code   int
-	stderr string
-	why    string
+	code      int
+	stderr    string
+	why       string
+	stdoutHas []string
+	stderrHas []string
 }
 
 const (
-	whyNoEcho    = "help, --version, version and parse failures print no roster echo: nothing acts, so there is no effective configuration to show"
-	whyParseText = "a malformed command line is now refused by the parser with its own wording and the usage exit (3)"
+	whyNoEcho       = "help, --version, version and parse failures print no roster echo: nothing acts, so there is no effective configuration to show"
+	whyParseText    = "a malformed command line is now refused by the parser with its own wording and the usage exit (3)"
+	whyInterspersed = "flags are accepted before and between positionals on every non-raw verb, so a line the legacy parser refused now runs"
+	whyDashLong     = "the single-dash spelling of a long flag is accepted on every non-raw verb, and -version names the version, not only scratch's flags"
+	whySelector     = "the cells-root selector is accepted as --cells-root=<abs> and -cells-root <abs> before a verb, and a raw verb strips the = form like the separated one"
+	echoFragment    = "assay-config:"
 )
 
+func unknownCmd(name string) string {
+	return "cellctl: unknown command \"" + name + "\" for \"cellctl\"\nRun 'cellctl --help' for usage.\n"
+}
+
 var deliberateDiffs = map[string]deliberateDiff{
-	"version-flag/0":  {0, "", whyNoEcho},
-	"version-verb/0":  {0, "", whyNoEcho},
-	"unknown-verb/0":  {3, "cellctl: unknown command \"frobnicate\" for \"cellctl\"\nRun 'cellctl --help' for usage.\n", whyParseText},
-	"show-refusals/3": {3, "cellctl: flag needs an argument: --model\nRun 'cellctl --help' for usage.\n", whyParseText},
-	"desk-refusals/6": {3, "cellctl: flag needs an argument: --model\nRun 'cellctl --help' for usage.\n", whyParseText},
-	"set-refusals/9":  {3, "cellctl: flag needs an argument: --harness\nRun 'cellctl --help' for usage.\n", whyParseText},
-	"scratch/10":      {3, "cellctl: invalid argument \"bogus\" for \"--max-age\" flag: time: invalid duration \"bogus\"\nRun 'cellctl --help' for usage.\n", whyParseText + "; scratch's old flag-package exit 2 becomes 3"},
-	"cells-root/3":    {3, "cellctl: flag needs an argument: --cells-root\nRun 'cellctl --help' for usage.\n", whyParseText},
+	"version-flag/0":  {code: 0, stderr: "", why: whyNoEcho},
+	"version-verb/0":  {code: 0, stderr: "", why: whyNoEcho},
+	"unknown-verb/0":  {code: 3, stderr: "cellctl: unknown command \"frobnicate\" for \"cellctl\"\nRun 'cellctl --help' for usage.\n", why: whyParseText},
+	"show-refusals/3": {code: 3, stderr: "cellctl: flag needs an argument: --model\nRun 'cellctl --help' for usage.\n", why: whyParseText},
+	"desk-refusals/6": {code: 3, stderr: "cellctl: flag needs an argument: --model\nRun 'cellctl --help' for usage.\n", why: whyParseText},
+	"set-refusals/9":  {code: 3, stderr: "cellctl: flag needs an argument: --harness\nRun 'cellctl --help' for usage.\n", why: whyParseText},
+	"scratch/10":      {code: 3, stderr: "cellctl: invalid argument \"bogus\" for \"--max-age\" flag: time: invalid duration \"bogus\"\nRun 'cellctl --help' for usage.\n", why: whyParseText + "; scratch's old flag-package exit 2 becomes 3"},
+	"cells-root/3":    {code: 3, stderr: "cellctl: flag needs an argument: --cells-root\nRun 'cellctl --help' for usage.\n", why: whyParseText},
+
+	// The hidden completion entrypoints refuse like any unknown command.
+	"completion-entrypoints/0": {code: 3, stderr: unknownCmd("__complete"), why: whyParseText},
+	"completion-entrypoints/1": {code: 3, stderr: unknownCmd("__completeNoDesc"), why: whyParseText},
+	"completion-entrypoints/2": {code: 3, stderr: unknownCmd("__complete"), why: whyParseText},
+
+	"flags-before-positionals/0": {code: 0, why: whyInterspersed, stdoutHas: []string{`"apply":true`}, stderrHas: []string{echoFragment}},
+	"flags-before-positionals/1": {code: 0, why: whyInterspersed, stdoutHas: []string{"worker-desk recover recorded"}, stderrHas: []string{echoFragment}},
+	"flags-before-positionals/2": {code: 0, why: whyInterspersed, stdoutHas: []string{"model=early (override)"}, stderrHas: []string{echoFragment}},
+	"flags-before-positionals/3": {code: 0, why: whyInterspersed, stdoutHas: []string{"CELL_HARNESS=codex (flag)"}, stderrHas: []string{echoFragment}},
+
+	"single-dash-outside-scratch/0": {code: 0, why: whyDashLong, stdoutHas: []string{"model=dash (override)"}, stderrHas: []string{echoFragment}},
+	"single-dash-outside-scratch/1": {code: 0, why: whyDashLong, stdoutHas: []string{"CELL_HARNESS=codex (flag)"}, stderrHas: []string{echoFragment}},
+	"single-dash-outside-scratch/2": {code: 0, why: whyDashLong, stdoutHas: []string{"dev-"}},
+	"single-dash-outside-scratch/3": {code: 0, why: whyDashLong, stdoutHas: []string{"dev-"}},
+
+	"cells-root-spellings/0": {code: 0, why: whySelector, stdoutHas: []string{"example\nscrub\n"}, stderrHas: []string{echoFragment}},
+	"cells-root-spellings/1": {code: 0, why: whySelector, stdoutHas: []string{"example\nscrub\n"}, stderrHas: []string{echoFragment}},
+	"cells-root-spellings/2": {code: 0, why: whySelector, stderrHas: []string{echoFragment}},
+	"cells-root-spellings/3": {code: 2, why: whySelector, stderrHas: []string{"model-policy: cell directory must be absolute: relative"}},
+	"cells-root-spellings/4": {code: 2, why: whySelector, stderrHas: []string{"--cells-root requires an absolute registry path"}},
+}
+
+// diffHolds reports whether a listed difference still has exactly the recorded new shape.
+func diffHolds(d deliberateDiff, got, old cliRun) bool {
+	if got.Code != d.code {
+		return false
+	}
+	if d.stdoutHas == nil {
+		if got.Stdout != old.Stdout {
+			return false
+		}
+	} else {
+		for _, f := range d.stdoutHas {
+			if !strings.Contains(got.Stdout, f) {
+				return false
+			}
+		}
+	}
+	if d.stderrHas == nil {
+		return got.Stderr == d.stderr
+	}
+	for _, f := range d.stderrHas {
+		if !strings.Contains(got.Stderr, f) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestCLINonHelpParity(t *testing.T) {
@@ -387,7 +477,7 @@ func TestCLINonHelpParity(t *testing.T) {
 				if same {
 					t.Errorf("%s is listed as a deliberate difference but matches the pre-migration transcript: drop the entry", key)
 				}
-				if got[i].Code != d.code || got[i].Stdout != want[i].Stdout || got[i].Stderr != d.stderr {
+				if !diffHolds(d, got[i], want[i]) {
 					t.Errorf("%s %v: the deliberate difference (%s) no longer holds\n  exit   want %d got %d\n  stdout want %q got %q\n  stderr want %q\n         got  %q",
 						key, want[i].Args, d.why, d.code, got[i].Code, want[i].Stdout, got[i].Stdout, d.stderr, got[i].Stderr)
 				}
