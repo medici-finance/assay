@@ -1,3 +1,0 @@
-### Fixed
-- windows-port/00's Verify row 2 no longer rejects a valid OS-list constraint such as `//go:build darwin || linux`. Instead of matching two literal `//go:build` spellings, it now asks `go list` (with `GOOS=windows`, on both amd64 and arm64, cgo on) whether each `_unix.go` / `_unix_test.go` file under statusgen and tools/desk is left out of the windows build. It still fails on a missing constraint or one that admits windows, and refuses to pass when it finds no file to check (#2297).
-- windows-port/00's Verify row 7 drops its expired temporary `-skip` of two deskkit tests, which now pass, and asserts a `--- PASS:` line for each so the row cannot pass with either skipped (#2297).
