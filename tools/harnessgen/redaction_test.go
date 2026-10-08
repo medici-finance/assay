@@ -31,12 +31,17 @@ func TestR7BoundaryClause(t *testing.T) {
 }
 
 var redactWord = regexp.MustCompile(`(?i)\bredact(?:ion|ed|s|ing)?\b`)
-var redactionBreak = regexp.MustCompile(`\n[ \t]*\n|\n[ \t]*- `)
+
+// A break is a blank line or the start of any CommonMark list item: a bullet
+// (-, * or +) or an ordered marker (1-9 digits then . or )), each followed by
+// a space or tab, at any indentation.
+var redactionBreak = regexp.MustCompile(`\n[ \t]*\n|\n[ \t]*(?:[-*+]|[0-9]{1,9}[.)])[ \t]`)
 
 // Enumerate the instruction corpus rather than pinning the two reported skill
 // locations. Every paragraph expanding redaction of secrets/defects must defer
-// to R7, and cannot retain the old exclusive permission. Blank lines delimit
-// paragraphs/list items so an unrelated R7 pointer elsewhere cannot launder an expansion.
+// to R7, and cannot retain the old exclusive permission. Blank lines and list
+// markers delimit paragraphs/list items so an unrelated R7 pointer elsewhere
+// cannot launder an expansion.
 func redactionRefs(root string) ([]string, error) {
 	var findings []string
 	for _, sub := range []string{
@@ -111,19 +116,36 @@ func TestRedactionPositiveControl(t *testing.T) {
 		{"Apply R7 when redacting secret material and reporting defect detail.\n", false, 0},
 		{"Redact secret material.\n\nUnrelated paragraph (R7).\n", true, 1},
 		{"- Apply R7.\n- Redact secret material.\n", true, 2},
+		// Every Markdown list-item marker is a boundary: an unrelated R7
+		// mention in the preceding item must not satisfy the next one.
+		{"* Apply R7.\n* Redact secret material.\n", true, 2},
+		{"+ Apply R7.\n+ Redact secret material.\n", true, 2},
+		{"1. Apply R7.\n2. Redact secret material.\n", true, 2},
+		{"1) Apply R7.\n2) Redact secret material.\n", true, 2},
+		{"-\tApply R7.\n-\tRedact secret material.\n", true, 2},
+		{"- Intro.\n  * Apply R7.\n  * Redact secret material.\n", true, 3},
+		{"- Intro.\n   10. Apply R7.\n   11. Redact secret material.\n", true, 3},
+		// Negative controls: an item carrying its own R7 reference stays
+		// clean, including across a wrapped continuation line, and emphasis
+		// at line start is not a list marker.
+		{"* Redact secret material per R7.\n* Unrelated item.\n", false, 0},
+		{"1. Redact secret material,\n   applying R7.\n2. Unrelated item.\n", false, 0},
+		{"Redact secret material\n**per R7**.\n", false, 0},
 	} {
-		if err := os.WriteFile(plant, []byte(tc.text), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		findings, err := redactionRefs(root)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if (len(findings) > 0) != tc.bad {
-			t.Fatalf("positive control %q: findings %v, want bad=%v", tc.text, findings, tc.bad)
-		}
-		if tc.bad && !strings.Contains(findings[0], fmt.Sprintf("second-site.md:%d:", tc.line)) {
-			t.Fatalf("guard did not name the planted second site: %v", findings)
-		}
+		t.Run(tc.text, func(t *testing.T) {
+			if err := os.WriteFile(plant, []byte(tc.text), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			findings, err := redactionRefs(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (len(findings) > 0) != tc.bad {
+				t.Fatalf("positive control %q: findings %v, want bad=%v", tc.text, findings, tc.bad)
+			}
+			if tc.bad && !strings.Contains(findings[0], fmt.Sprintf("second-site.md:%d:", tc.line)) {
+				t.Fatalf("guard did not name the planted second site: %v", findings)
+			}
+		})
 	}
 }
