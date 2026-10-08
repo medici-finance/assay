@@ -1,22 +1,24 @@
 ---
 id: DR-cellctl-cobra
 date: "2026-10-08"
-title: "The compatibility report for cellctl's Cobra and Viper migration is accepted: the preserved source/admission boundaries and the explicitly listed help and parse changes, subject to independent review and all required validation passing"
-consequence: major
+title: "Option 1 of the decision issue is taken for cellctl's Cobra and Viper migration: accept the preserved source/admission boundaries and the explicitly listed help and parse changes, subject to independent review and all required validation passing; by the driver's own answer the listed changes are the 'Deliberate differences' list of #2391"
+consequence: major  # the transcriber's classification, not part of the ruling; see "The consequence level"
 decided-by: "human:<name>"
 ruling: "https://github.com/medici-finance/assay/issues/2240#issuecomment-6065679126"
 alternatives:
   - "Option 2 of the decision issue — 'Hold the migration and specify a compatibility change that must be revised before acceptance. Existing published CLI behavior remains in place until a reviewed merge.' (#2240 `Options:`, item 2). The issue put two options; this is the one not taken. Ruled out because the driver's answer is `1`. No rationale was recorded with the answer and none is supplied here."
 accepted:
-  - "Help, `-h`, `--version`, `version` and parse failures no longer print the effective-configuration echo (first item of the change list as put to the driver; desk relay on #2240)."
-  - "An unknown verb and a missing flag value use Cobra's wording, still exit 3 (second item of the same list)."
-  - "`scratch ... --max-age bogus` exits 3 (was 2) (third item of the same list)."
-  - "`--flag=value` and a bare `--` are accepted by every non-raw verb; a single-dash token that is not a known long flag is an error; `cadence recover` without a role is refused (fourth item of the same list)."
+  - "The four entries below are the list the driver named in their own login: the answer `a` (#2240 comment 6066281586) to the question 'Which list does option 1 cover?' (#2240 comment 6066226070), whose option a is the 'Deliberate differences' list in #2391's body as it stood at 2026-10-08T16:27:52Z. Each entry is quoted from option a."
+  - "help, `-h`, `--version`, `version` and parse failures no longer print the effective-configuration (roster) echo"
+  - "an unknown verb and a missing flag value use Cobra's wording, still exit 3, with no echo"
+  - "`scratch ... --max-age bogus` exits 3 (was 2 from the Go flag package); the hook verb keeps 2"
+  - "`--flag=value` and a bare `--` are accepted by every non-raw verb; a single-dash token that is not a known long flag is an error; `cadence recover` without a role is refused"
+  - "Not accepted: the issue body's own report of the parse changes ('Unknown flags/commands, malformed typed values and wrong positional counts return exit 2 before effects'). It was option b of the same question and was not taken."
   - "The acceptance is conditional, in option 1's own words: 'subject to independent review and all required validation passing' (#2240 `Options:`, item 1). This record does not say that condition is met."
 ---
 
 **This record transcribes a recorded human ruling. It is not an agent asserting sign-off.**
-The human act is the driver's (`human:<name>`) two comments on decision issue
+The human act is the driver's (`human:<name>`) three comments on decision issue
 [#2240](https://github.com/medici-finance/assay/issues/2240), each posted under the driver's
 own login and never a role App. This file copies that ruling into the register for the
 lifecycle's design-approval gate (`spec/lifecycle-v1.md` §4.4). It mints no decision and
@@ -45,7 +47,8 @@ options, and no more than two:
 It ends: "Default if no answer: none — blocks until answered".
 
 **The answer.** Two comments, both by the driver, account type User, neither edited (each
-comment's last-updated time equals its creation time):
+comment's last-updated time equals its creation time). A third comment by the driver, on
+which list the answer covers, is set out under "Which list the answer covers" below.
 
 - [comment 6065583010](https://github.com/medici-finance/assay/issues/2240#issuecomment-6065583010),
   2026-10-08T17:37:42Z. Its whole text is `1`.
@@ -95,28 +98,69 @@ last edited 2026-10-08T16:27:52Z, before the answer, and its list reads:
 
 Two limits on this section. The relay was posted after the first answer (17:38:07Z against
 17:37:42Z) and before the second (17:43:28Z). And what was said outside the issue cannot be
-checked from the issue: for the list that was put, this record relies on the relay.
+checked from the issue. This record therefore does not rely on the relay for which list was
+accepted. It relies on the driver's own later answer, set out next.
+
+## Which list the answer covers
+
+The driver's first two comments name no list, and the two lists above disagree on exit values.
+Both reviews of the pull request that adds this record found that a desk relay cannot settle
+which one option 1 covers. The desk App therefore put the question on the issue
+([comment 6066226070](https://github.com/medici-finance/assay/issues/2240#issuecomment-6066226070),
+2026-10-08T18:15:51Z, not edited). It is a desk note, not a ruling. It asks "**Which list does
+option 1 cover?**" and gives two lettered options. Option a, verbatim:
+
+> a. **(recommended) The "Deliberate differences" list in #2391's body, as it stood at 2026-10-08T16:27:52Z:**
+>    - help, `-h`, `--version`, `version` and parse failures no longer print the effective-configuration (roster) echo;
+>    - an unknown verb and a missing flag value use Cobra's wording, still exit 3, with no echo;
+>    - `scratch ... --max-age bogus` exits 3 (was 2 from the Go flag package); the hook verb keeps 2;
+>    - `--flag=value` and a bare `--` are accepted by every non-raw verb; a single-dash token that is not a known long flag is an error; `cadence recover` without a role is refused.
+
+Option b was the issue body's own report, quoted in that comment as: "Unknown flags/commands,
+malformed typed values and wrong positional counts return exit 2 before effects, replacing
+inconsistent exit 1/3 or ignored extra arguments." The comment asks for the reply as "`a` or
+`b`, in the driver's own login on this issue".
+
+The driver's answer is
+[comment 6066281586](https://github.com/medici-finance/assay/issues/2240#issuecomment-6066281586)
+(login of the driver, account type User, 2026-10-08T18:19:07Z, not edited). Its whole text is
+`a`.
+
+The four list items in option a are the same text as the four items in #2391's body quoted in
+the section above. That body's last edit is still 2026-10-08T16:27:52Z, so the list has not
+changed since before the first answer.
+
+No accepted item changes the hook verb's exit value. The third item says "the hook verb keeps
+2", and no other item names the hook verb.
 
 ## Reading, stated so it can be declined
 
-The driver's comments say `1` and `1 — DR-cellctl-cobra`, and nothing else. This record reads
-that answer as follows.
+The driver's three comments say `1`, `1 — DR-cellctl-cobra` and `a`, and nothing else. This
+record reads them as follows.
 
 1. `1` is option 1 of #2240 as the issue wrote it: "Accept the preserved source/admission
    boundaries and the explicitly listed help and parse changes, subject to independent review
    and all required validation passing."
-2. "the explicitly listed help and parse changes" is the change list as put to the driver,
-   which the relay records and which is quoted above. Where that list and the issue body's
-   report differ, the list as put governs on this reading, because the relay says that list
-   "is what was put". The `accepted:` entries above carry that list and no other.
+2. `a` is option a of the question comment as that comment wrote it: "the explicitly listed
+   help and parse changes" are the four items of the "Deliberate differences" list quoted
+   under option a. The `accepted:` entries above quote those four items and no others.
+3. Option b, the issue body's own report (exit 2 for unknown flags and commands, malformed
+   typed values and wrong positional counts), was offered in the same question and not taken.
+   The record lists it as not accepted.
 
-An item that appears only in the issue body's report is part of the issue the answer was given
-on. This record neither adds such an item to what was accepted nor removes it.
+What remains a reading is small: that a one-letter reply names the option carrying that letter
+in the comment directly above it, in full and as written. The question comment had not been
+edited when this record was written, and the answer follows it by a little over three minutes
+with nothing from the driver in between.
 
-If either half of this reading is wrong, the remedy is to decline the pull request that adds
-this record. Nothing here lands until the driver merges it.
+`ruling:` still links the second comment (`1 — DR-cellctl-cobra`), because the register's
+check needs the linked comment's own text to name the record. The third comment does not name
+it. It is cited here, by id, for which list the ruling covers.
 
-## The design that was approved
+If any part of this reading is wrong, the remedy is to decline the pull request that adds this
+record. Nothing here lands until the driver merges it.
+
+## The design the brief and the issue describe
 
 The brief is the authority for the design. This summary quotes it and the issue and does not
 amend either.
@@ -152,7 +196,9 @@ was opened. This record does not describe a design approved before it was built.
   reads `implemented`; on `main` it read `todo` when this record was written.
 - 2026-10-08T14:32:27Z and 14:49:30Z: both review lanes requested changes on #2391 at head
   `f19dd544`.
-- 2026-10-08T17:37:42Z and 17:43:28Z: the driver's two comments.
+- 2026-10-08T17:37:42Z and 17:43:28Z: the driver's two comments answering `1`.
+- 2026-10-08T18:15:51Z: the desk App's question on which list option 1 covers.
+- 2026-10-08T18:19:07Z: the driver's answer, `a`.
 
 ## The consequence level
 
@@ -169,8 +215,10 @@ configuration selects executable paths, role identity and credential locations."
   `597904c5`, which had no review when this record was written. Option 1 is "subject to
   independent review and all required validation passing"; that review and that validation
   are not this record.
-- **Any change to the listed behaviour made after 2026-10-08T17:37:42Z.** The answer was
-  given on the list quoted above. A later change to that list is not covered by it.
+- **Any change to the listed behaviour that is not in the four items quoted under option a.**
+  The driver's answer names that list as the question comment quotes it. A later change to
+  #2391's list, or a difference from the pre-migration binary that the list does not name, is
+  not covered by it.
 - **The choice of Cobra and Viper.** The brief's `gate-why` says "choosing Cobra and Viper
   was already requested in issue 2111", and #2111 says: "This issue records the maintainer's
   direct request to use Cobra and Viper; library selection is settled." The brief's
