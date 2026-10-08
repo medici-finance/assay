@@ -76,6 +76,15 @@ func TestMain(m *testing.M) {
 	// (netns.go) and as the network probe the netns tests run inside it.
 	maybeRunNetnsHelper()
 	maybeRunNetProbe()
+	// No test inherits the caller's loop identity. verifyrun's pre-work
+	// verifier admission turns on when DESK_LOOP names a verify loop and then
+	// execs the real deskdispatch on PATH, so a test run from a verify-desk
+	// session would reach live desk tooling instead of its fixture (#2297).
+	// A test that needs a loop sets it itself with t.Setenv;
+	// TestDeskLoopCleared pins this line.
+	if err := os.Unsetenv("DESK_LOOP"); err != nil {
+		panic("cannot clear DESK_LOOP for the test binary: " + err.Error())
+	}
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())
