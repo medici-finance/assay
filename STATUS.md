@@ -60,7 +60,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | iso-9001 | 03 — A finding closes on a fired control — the corrective-action effectiveness record [exec:strong] | 1 | 3000 |
 | iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
 | build-less-brittle | 11 — Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge [exec:strong] | 4 | 4000 + 1500 (drive:build-less-brittle) |
-| forge-neutral | 33 — Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind [exec:strong] | 1 | 3500 |
 | forge-neutral | 34 — deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default [exec:strong] | 1 | 3500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
@@ -73,14 +72,13 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | measured-status | 01 — Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test | 0 | 2000 |
 | desktools-go-git | 05 — migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge) | 4 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
-| desk-tools | 29 — `verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs [exec:strong] | 1 | 1000 |
 | desk-tools | 30 — verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass [exec:strong] | 1 | 1000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 76d104e 2026-10-08T11:40:32Z_
+_last regen: 1d6a335 2026-10-08T11:43:56Z_
 
 **Progress:** 10/13 brief items done.
 
@@ -101,7 +99,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 76d104e 2026-10-08T11:40:32Z_
+_last regen: 1d6a335 2026-10-08T11:43:56Z_
 
 **Progress:** 16/71 brief items done.
 
@@ -133,14 +131,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (56 desk-actionable of 97 total — 85 at implemented, 12 verified awaiting review)
+## Awaiting verification / review (58 desk-actionable of 99 total — 87 at implemented, 12 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (56)
+### Desk-actionable (58)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -160,6 +158,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 10 [exec:strong] | verified | 4000 | 2 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
+| forge-neutral | 33 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | verified | 3500 | 5 | — | 2026-10-04 assay-verifier-app[bot] @ bed1a31ba875 (claude-opus-5-5) | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
@@ -192,6 +191,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 29 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desktools-v2 | 05 [exec:strong] | verified | 1000 | 0 | — | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | desktools-v2 | 09 [exec:strong] | verified | 1000 | 0 | — | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | desktools-v2 | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -416,7 +416,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 26 `deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton — implemented (wave 2)
 - 27 `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check — in-progress (wave 2)
 - 28 Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path — implemented (wave 1)
-- 29 `verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs — todo (wave 1)
+- 29 `verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs — implemented (wave 1)
 - 30 verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass — todo (wave 1)
 
 ### desktools-go-git (3 open)
@@ -513,7 +513,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 30 Release-N cutover — ship, prove the narrowed reviewer on a live cell, then the operator narrows the grant — todo (wave 7)
 - 31 Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live — todo (wave 8)
 - 32 Release-N+1 deletion — the forge claim store is removed and an unset store key is refused — todo (wave 8)
-- 33 Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind — todo (wave 1)
+- 33 Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind — implemented (wave 1)
 - 34 deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default — todo (wave 1)
 - 35 Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own — todo (wave 6)
 
