@@ -351,8 +351,9 @@ const (
 )
 
 // Revision content-hashes a declared input against the local tree. A "tool" key returns the
-// configured tool version; a "file:<relpath>" key returns the sha256 of that file's bytes; any
-// unreadable file or unknown key is ok=false (could-not-check).
+// configured tool version; a "file:<relpath>" key returns the sha256 of that file's bytes (of a
+// symlink's target text, as git stores it); any unreadable file or unknown key is ok=false
+// (could-not-check).
 func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 	switch {
 	case input == inputKeyTool:
@@ -368,8 +369,20 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
 			return "", false
 		}
-		b, err := os.ReadFile(filepath.Join(rr.Root, clean))
-		if err != nil {
+		// A symlink is hashed as its target text, never followed — exactly the blob git stores
+		// for it, which is what the receipt writer hashed at the record's sha. Following it would
+		// disagree with the writer on every symlinked input and could read outside the root.
+		full := filepath.Join(rr.Root, clean)
+		var b []byte
+		if fi, err := os.Lstat(full); err != nil {
+			return "", false
+		} else if fi.Mode()&os.ModeSymlink != 0 {
+			target, lerr := os.Readlink(full)
+			if lerr != nil {
+				return "", false
+			}
+			b = []byte(target)
+		} else if b, err = os.ReadFile(full); err != nil {
 			return "", false
 		}
 		sum := sha256.Sum256(b)
@@ -441,12 +454,14 @@ func inputLabel(in string) string {
 }
 
 // BlockerState is ReadBlocker's three-state verdict on the issue a receipt's blocker_ref names.
+// The zero value is BlockerCouldNotCheck, so a source that returns nothing fails closed (held,
+// surfaced) rather than reading as an open blocker.
 type BlockerState int
 
 const (
-	BlockerOpen          BlockerState = iota // the forge read the issue and it is open
+	BlockerCouldNotCheck BlockerState = iota // no read, a failed read, or an unreadable answer
+	BlockerOpen                              // the forge read the issue and it is open
 	BlockerClosed                            // the forge read the issue and it is closed
-	BlockerCouldNotCheck                     // no read, a failed read, or an unreadable answer
 )
 
 func (s BlockerState) String() string {

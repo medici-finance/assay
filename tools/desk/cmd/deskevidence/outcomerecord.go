@@ -315,14 +315,22 @@ var outcomeReceiptFn = deriveOutcomeReceipt
 
 // deriveOutcomeReceipt returns raw with its receipt (deskkit.BuildOutcomeRecord): the declared
 // inputs are read from the LOCAL checkout at root at the record's own sha, and the brief's own
-// revision from the brief as it lands on branch. A pass record, and a record that already
-// carries a verify-wake-v1 receipt (validated by validateReceipt instead), pass through.
+// revision from the brief as it lands on branch. A pass record passes through. A non-pass record
+// that already carries a verify-wake-v1 receipt passes through unchanged only when that receipt
+// is complete (deskkit.CheckSuppliedReceipt; validateReceipt then runs its three checks); an
+// incomplete one is refused, naming the field, and never lands.
 func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string) ([]byte, error) {
 	var wr deskkit.WakeReceipt
 	if err := json.Unmarshal(raw, &wr); err != nil {
 		return nil, deskkit.Refused("refused: invalid --outcome-record JSON: " + err.Error())
 	}
-	if !wr.IsFailedOrBlocked() || wr.Schema == deskkit.SchemaWakeV1 {
+	if !wr.IsFailedOrBlocked() {
+		return raw, nil
+	}
+	if wr.Schema == deskkit.SchemaWakeV1 {
+		if err := deskkit.CheckSuppliedReceipt(wr); err != nil {
+			return nil, err
+		}
 		return raw, nil
 	}
 	if root == "" {
@@ -346,6 +354,7 @@ func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.
 	}
 	return deskkit.BuildOutcomeRecord(raw, deskkit.OutcomeReceiptInput{
 		BriefPath: briefPath, LandedBrief: landed.Content, ToolVersion: deskkit.ReleaseTagOrDev(),
+		Repo: fr.Slug(),
 	}, tree)
 }
 

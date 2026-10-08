@@ -154,18 +154,25 @@ func (failForge) GetIssue(deskkit.ForgeRepo, int) (*deskkit.Issue, error) {
 
 // Verify row 4: no token (the mint refuses) and a rejected token (HTTP 401) are both
 // could-not-check — surfaced, held, never read as a closed blocker.
+// The repository is planted in the configured set, so each case reaches its forge branch rather
+// than stopping at the repository-set check (asserted on the reason).
 func TestWakeNoTokenIsCouldNotCheckNotClosed(t *testing.T) {
+	plantAllowedRoster(t, "medici-finance/assay")
 	same := fakeWake{revs: map[string]string{"file:pkg/x.go": "rev1"}}
+	var calls []string
 	sources := map[string]*forgeIssueSource{
 		"no token": {forgeFor: func(deskkit.ForgeRepo) (deskkit.Forge, error) {
 			return nil, deskkit.Unverifiable("could-not-check: no verifier App token for medici-finance/assay", nil)
 		}},
 		"rejected token": {forgeFor: func(deskkit.ForgeRepo) (deskkit.Forge, error) { return failForge{}, nil }},
+		"unknown state": {forgeFor: func(deskkit.ForgeRepo) (deskkit.Forge, error) {
+			return stateForge{state: "locked", calls: &calls}, nil
+		}},
 	}
 	for name, src := range sources {
 		ref, _ := deskkit.ParseBlockerRef("#100", "medici-finance", "assay")
-		if st, _ := src.IssueState(ref); st != deskkit.BlockerCouldNotCheck {
-			t.Errorf("%s: IssueState = %v, want could-not-check", name, st)
+		if st, why := src.IssueState(ref); st != deskkit.BlockerCouldNotCheck || strings.Contains(why, "outside") {
+			t.Errorf("%s: IssueState = %v (%q), want could-not-check from the forge branch", name, st, why)
 		}
 		d, r, why := holdCase(t, same, src, heldReceipt(holdTS))
 		if d != dispCouldNotCheck || strings.Contains(why, "blocker closed") {

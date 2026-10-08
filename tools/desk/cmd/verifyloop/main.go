@@ -108,7 +108,7 @@ func cmdPlan(args []string) error {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
 
-	v := &VerifyLoop{Root: *root, TargetSHA: *sha, RunnerID: *runner}
+	v := &VerifyLoop{Root: *root, TargetSHA: *sha, RunnerID: *runner, RootRepo: deskkit.RepoSlugForDir(*root)}
 	if !*noForge {
 		v.Issues = issueSourceFn()
 	}
@@ -322,7 +322,10 @@ complete receipt whose declared inputs are unchanged and whose blocker issue rea
 WAIT line naming the ref and the next actor, never a DISPATCH. Changed inputs, a closed blocker
 or a newer explicit-recheck receipt wake it; an unreadable input or blocker read is
 could-not-check, never "unchanged" or "closed". The blocker is read through the forge as the
-verifier App; --no-forge reads none, so every held receipt is could-not-check. The last line is
+verifier App, only in a repository inside the configured set (one outside it is could-not-check,
+never read), and each repository is named on stderr before its first read. A bare #N resolves
+in the record's repo, else the root's origin repository. --no-forge reads none, so every held
+receipt is could-not-check. The last line is
 'verify-desk plan: wait=<n> dispatchable=<n> could-not-check=<n>'.
 
 'verdict' is the DETERMINISTIC runner: it runs each brief's check/check:ci Verify rows locally

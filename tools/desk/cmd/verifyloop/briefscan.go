@@ -83,7 +83,7 @@ type briefFrontmatter struct {
 // This is the deterministic board read; there is NO code path that produces a verify verdict
 // without going through the engine's Dispatch — the inline-verify path is unrepresentable.
 func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
-	return scanAwaitingIn(deskkit.RootConfig{Path: root}, targetSHA, nil, nil, time.Time{})
+	return scanAwaitingIn(deskkit.RootConfig{Path: root}, "", targetSHA, nil, nil, time.Time{})
 }
 
 // scanAwaitingRoots is the MULTI-ROOT board read: one scanAwaitingIn per configured root, in
@@ -95,7 +95,7 @@ func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 func scanAwaitingRoots(roots []deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time) ([]loopengine.Item, error) {
 	var all []loopengine.Item
 	for _, r := range roots {
-		items, err := scanAwaitingIn(r, targetSHA, reader, issues, now)
+		items, err := scanAwaitingIn(r, "", targetSHA, reader, issues, now)
 		if err != nil {
 			return nil, fmt.Errorf("root %s (%s): %w", r.Repo, r.Path, err)
 		}
@@ -120,7 +120,10 @@ func itemWorkClass(it loopengine.Item) int {
 // root is named on every printed item and two roots carrying a same-named stream cannot alias.
 // issues reads a held receipt's blocker issue; nil reads every blocker as could-not-check (plan
 // --no-forge), so a hold is never released — or confirmed — without a forge read.
-func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time) ([]loopengine.Item, error) {
+// homeRepo is the single-root read's own repository ("owner/name", from the checkout's origin):
+// the repository a bare #N blocker_ref resolves in when the record names none and r.Repo is
+// empty. It never prefixes IDs — only r.Repo does.
+func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time) ([]loopengine.Item, error) {
 	root := r.Path
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)
@@ -212,6 +215,9 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeI
 			defaultRepo := rec.Repo
 			if defaultRepo == "" {
 				defaultRepo = r.Repo
+			}
+			if defaultRepo == "" {
+				defaultRepo = homeRepo
 			}
 			deriveWakePayload(payload, rec, br.verifyRows, reader, issues, defaultRepo, now)
 		}

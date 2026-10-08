@@ -386,6 +386,10 @@ type OutcomeReceiptInput struct {
 	BriefPath   string // the brief's repo-relative path (docs/streams/<stream>/brief-<NN>-*.md)
 	LandedBrief []byte // the brief as it lands on the target branch: its hash is the brief input
 	ToolVersion string // the desk-tools version that wrote the record: the "tool" input
+	// Repo is the landing repository ("owner/name"). It is stamped as the record's repo key
+	// when the record carries none, so a bare #N blocker_ref resolves against the repository the
+	// record lands in — the same repository the writer's own reference check resolved it in.
+	Repo string
 }
 
 var (
@@ -432,6 +436,49 @@ func checkNonPassBlocker(r WakeReceipt) error {
 	return err
 }
 
+// CheckSuppliedReceipt is the completeness gate for a non-pass record that arrives already
+// carrying a verify-wake-v1 receipt (declared decision 3: validated as written, never
+// re-derived). It refuses — exit 5, naming the first missing or invalid field — exactly the
+// records BuildOutcomeRecord would refuse to produce, so the pass-through can never land a
+// receipt the planner then reads as incomplete. A pass record, and a record with no
+// wake_schema, are not its concern (nil).
+func CheckSuppliedReceipt(r WakeReceipt) error {
+	if !r.IsFailedOrBlocked() || r.Schema != SchemaWakeV1 {
+		return nil
+	}
+	named := func(field, why string) error {
+		return Refused("refused: " + field + " — " + why + " (a " + r.Outcome +
+			" record carrying wake_schema " + SchemaWakeV1 + " lands only with a complete receipt)")
+	}
+	if strings.TrimSpace(r.ID) == "" {
+		return named("receipt_id", "empty")
+	}
+	if err := checkNonPassBlocker(r); err != nil {
+		return err
+	}
+	if !wakePredicates[r.WakePredicate] {
+		return named("wake_predicate", strconv.Quote(r.WakePredicate)+" is not a wake predicate")
+	}
+	switch r.WakePredicate {
+	case WakeRelevantInputChanged:
+		if len(r.Inputs) == 0 {
+			return named("inputs", "empty, so unchangedness cannot be established")
+		}
+	case WakeDeadlineReached:
+		if strings.TrimSpace(r.Deadline) == "" {
+			return named("deadline", "empty for "+WakeDeadlineReached)
+		}
+	case WakeExplicitRecheck:
+		if strings.TrimSpace(r.RecheckReason) == "" {
+			return named("recheck_reason", "empty for "+WakeExplicitRecheck)
+		}
+	}
+	if !r.Complete() {
+		return named("wake_schema", "the receipt is incomplete")
+	}
+	return nil
+}
+
 // BuildOutcomeRecord returns the record bytes to land for raw (one JSON verify-outcome record).
 // A pass record is returned unchanged. A verify-fail or blocked record gets a complete
 // verify-wake-v1 receipt:
@@ -439,7 +486,9 @@ func checkNonPassBlocker(r WakeReceipt) error {
 //   - inputs: one file:<path> key per declared path that exists at the record's sha (every
 //     file under a declared directory), read from the brief AT that sha; plus
 //     file:<brief-path> hashed as the brief lands; plus tool = in.ToolVersion;
-//   - wake_predicate relevant-input-changed, wake_schema, a stable receipt_id, tool_version.
+//   - wake_predicate relevant-input-changed, wake_schema, a stable receipt_id, tool_version;
+//   - repo = in.Repo (the landing repository) when the record names none, so the planner reads
+//     a bare #N blocker_ref in the repository the record lands in.
 //
 // blocker_kind and blocker_ref are the caller's, carried in raw, and required: an unknown kind
 // or a reference that is not #<N>, <owner>/<repo>#<N> or a forge URL is refused, naming the
@@ -521,10 +570,14 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 	if !r.Complete() {
 		return nil, Refused("refused: the derived receipt for " + r.Brief + " is incomplete")
 	}
-	for k, v := range map[string]any{
+	stamp := map[string]any{
 		"wake_schema": r.Schema, "receipt_id": r.ID, "inputs": r.Inputs,
 		"tool_version": r.ToolVersion, "wake_predicate": r.WakePredicate,
-	} {
+	}
+	if strings.TrimSpace(r.Repo) == "" && strings.TrimSpace(in.Repo) != "" {
+		stamp["repo"] = strings.TrimSpace(in.Repo)
+	}
+	for k, v := range stamp {
 		b, merr := json.Marshal(v)
 		if merr != nil {
 			return nil, merr

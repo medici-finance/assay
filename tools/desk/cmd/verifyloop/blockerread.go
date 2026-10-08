@@ -5,8 +5,17 @@ package main
 // repo resolves to, as the verifier App. It never reports "closed" without a read that said
 // closed: a missing token, a refused mint, an HTTP error and an unknown state are all
 // could-not-check, and the hold is surfaced rather than released.
+//
+// The repository a read goes to comes from record content (blocker_ref, or the record's repo
+// key for a bare #N), so it is bounded here, before any credential is minted: a repository
+// outside the configured repository set (deskkit.IsAllowedRepo — the check the board reader
+// applies) is could-not-check and the forge is never resolved for it. resolveForge is the ONE
+// place this package resolves a forge; TestForgeForSingleCaller pins that.
 
 import (
+	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -15,15 +24,19 @@ import (
 // issueSourceFn builds the plan's issue-state source. A package var so a test can install a
 // forge that fails the way a missing credential does.
 var issueSourceFn = func() deskkit.IssueStateSource {
-	return &forgeIssueSource{forgeFor: func(repo deskkit.ForgeRepo) (deskkit.Forge, error) {
-		return deskkit.ForgeFor(repo, verifyloopRole)
-	}}
+	return &forgeIssueSource{forgeFor: resolveForge, notice: os.Stderr}
+}
+
+// resolveForge is this package's only forge resolution: the verifier-role forge for repo.
+func resolveForge(repo deskkit.ForgeRepo) (deskkit.Forge, error) {
+	return deskkit.ForgeFor(repo, verifyloopRole)
 }
 
 // forgeIssueSource reads issue state through a per-repo forge, resolving each repo's forge (and
-// so its credential) once per plan pass.
+// so its credential) once per plan pass, and only for a repository in the configured set.
 type forgeIssueSource struct {
 	forgeFor func(deskkit.ForgeRepo) (deskkit.Forge, error)
+	notice   io.Writer // when set, names each repository once, before its first forge contact
 	forges   map[string]deskkit.Forge
 	errs     map[string]error
 }
@@ -31,6 +44,10 @@ type forgeIssueSource struct {
 func (s *forgeIssueSource) IssueState(ref deskkit.BlockerRef) (deskkit.BlockerState, string) {
 	repo := ref.Repo()
 	key := repo.Slug()
+	if !deskkit.IsAllowedRepo(key) {
+		return deskkit.BlockerCouldNotCheck, "repository " + key +
+			" is outside the configured repository set — not read"
+	}
 	if s.forges == nil {
 		s.forges, s.errs = map[string]deskkit.Forge{}, map[string]error{}
 	}
@@ -38,6 +55,9 @@ func (s *forgeIssueSource) IssueState(ref deskkit.BlockerRef) (deskkit.BlockerSt
 	if !ok {
 		if err, failed := s.errs[key]; failed {
 			return deskkit.BlockerCouldNotCheck, "no forge read for " + key + ": " + oneLine(err)
+		}
+		if s.notice != nil {
+			fmt.Fprintf(s.notice, "verify-desk plan: reading blocker state from %s as the verifier App\n", key)
 		}
 		f, err := s.forgeFor(repo)
 		if err != nil || f == nil {

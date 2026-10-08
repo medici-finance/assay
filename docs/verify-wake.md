@@ -8,8 +8,17 @@ derives the receipt when it lands the record:
   exists at the record's sha. A listed directory contributes every file under it. The keys
   also include the brief itself, hashed as it lands, and the tool version.
 - `blocker_kind` and `blocker_ref` come from the caller and are required. `blocker_ref` must be
-  an issue or change reference (`#N`, `<owner>/<repo>#N`, or an issue or pull-request URL). A
-  placeholder such as `to file` is refused with exit 5.
+  a reference: `#N`, `<owner>/<repo>#N`, or an issue, pull-request or CI-run URL. A
+  placeholder such as `to file` is refused with exit 5. A run URL is accepted, but a run has
+  no open or closed state, so the planner always reads it as could-not-check.
+- `repo` is set to the repository the record lands in when the caller gave none, so a bare
+  `#N` is read in that repository.
+
+A record that already carries a `verify-wake-v1` receipt is validated as written and is not
+derived again. It lands only when the receipt is complete: a `receipt_id`, a `blocker_kind`
+and a `wake_predicate` from their closed sets, a reference `blocker_ref`, and the field its
+predicate needs (`inputs`, `deadline` or `recheck_reason`). Otherwise it is refused with exit
+5, naming the field, and nothing lands.
 
 `verifyloop plan` then decides, per brief, whether its latest record is worth another run. It
 makes two independent reads, and each one can return could-not-check:
@@ -17,9 +26,15 @@ makes two independent reads, and each one can return could-not-check:
 - **Inputs.** Every declared input is hashed again at the current tree and compared with the
   receipt.
 - **Blocker issue.** The issue named by `blocker_ref` is read through the forge as the verifier
-  App. If there is no token, the token is rejected, the reference is not an issue, or the state
-  is unknown, the read is could-not-check. It is never read as "closed". `plan --no-forge`
-  makes no forge call, so every blocker read is could-not-check.
+  App. A bare `#N` is read in the record's `repo`, or, when the record has none, in the plan
+  root's own repository (its `origin` remote). The read is could-not-check, never "closed", in
+  these cases: there is no token, the token is rejected, the reference is not an issue or
+  change, the state is unknown, or no repository can be resolved.
+- **Repository set.** A reference whose repository is outside the configured repository set
+  (the same set the board reader enforces) is could-not-check and is never read. No credential
+  is requested for it. Before the first read in each repository, the plan prints that
+  repository to stderr. `plan --no-forge` makes no forge call, so every blocker read is
+  could-not-check.
 
 ## The hold rule
 

@@ -72,6 +72,10 @@ type VerifyLoop struct {
 	// nil — `plan --no-forge`, and every caller that never wired a forge — reads every blocker as
 	// could-not-check, so a hold is surfaced, never released and never confirmed, without a read.
 	Issues deskkit.IssueStateSource
+	// RootRepo is the single-root plan's own repository ("owner/name", from Root's origin
+	// remote): where a held record's bare #N blocker_ref resolves when the record names no repo.
+	// Empty — no origin, or a caller that never set it — leaves such a ref could-not-check.
+	RootRepo string
 
 	// --- Native ACP dispatch --------------------------------
 	// Native selects the dispatch MODE. false (the zero value, the default) keeps
@@ -115,7 +119,7 @@ func (v *VerifyLoop) SelectQueue() ([]loopengine.Item, error) {
 	if len(v.Roots) > 0 {
 		return scanAwaitingRoots(v.Roots, v.TargetSHA, v.WakeReader, v.Issues, now)
 	}
-	return scanAwaitingIn(deskkit.RootConfig{Path: v.Root}, v.TargetSHA, v.WakeReader, v.Issues, now)
+	return scanAwaitingIn(deskkit.RootConfig{Path: v.Root}, v.RootRepo, v.TargetSHA, v.WakeReader, v.Issues, now)
 }
 
 // wakeNow is the clock the wake evaluator uses — v.Now when injected (deterministic in tests),

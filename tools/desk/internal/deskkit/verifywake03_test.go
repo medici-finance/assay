@@ -6,6 +6,8 @@ package deskkit
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -234,5 +236,68 @@ func TestReadBlockerThreeState(t *testing.T) {
 		if got, why := ReadBlocker(c.raw, c.def, c.src); got != c.want {
 			t.Errorf("ReadBlocker(%q, %q) = %v (%s), want %v", c.raw, c.def, got, why, c.want)
 		}
+	}
+
+	// The guards in ReadBlocker itself, against a source that answers closed for ANY reference
+	// it is handed: each case below is could-not-check only because ReadBlocker refuses to ask.
+	// A fake that answered could-not-check for an unlisted ref would hide a removed guard.
+	closedAll := closedSource{}
+	for _, c := range []struct{ raw, def, why string }{
+		{"#1", "", "a bare ref with no repository to resolve it in"},
+		{"#1", "o", "a default repository with no name"},
+		{"https://github.com/o/r/actions/runs/7", "", "a run, which has no open/closed state"},
+		{"to file", "o/r", "free text"},
+	} {
+		if got, why := ReadBlocker(c.raw, c.def, closedAll); got != BlockerCouldNotCheck {
+			t.Errorf("%s: ReadBlocker(%q, %q) = %v (%s), want could-not-check without asking the source",
+				c.why, c.raw, c.def, got, why)
+		}
+	}
+	if got, _ := ReadBlocker("#1", "o/r", closedAll); got != BlockerClosed {
+		t.Errorf("positive control: a resolvable issue ref against closedSource = %v, want closed", got)
+	}
+	// A source that returns its zero value fails closed: held as could-not-check, never open.
+	if got, _ := ReadBlocker("#1", "o/r", zeroSource{}); got != BlockerCouldNotCheck {
+		t.Errorf("zero-value source: %v, want could-not-check", got)
+	}
+}
+
+// closedSource answers closed for every reference.
+type closedSource struct{}
+
+func (closedSource) IssueState(BlockerRef) (BlockerState, string) { return BlockerClosed, "" }
+
+// zeroSource answers the zero BlockerState with no reason.
+type zeroSource struct{}
+
+func (zeroSource) IssueState(BlockerRef) (BlockerState, string) { return 0, "" }
+
+// COR-2410-4 (symlink half): the planner hashes a symlinked input as its target text — the blob
+// git stores and the receipt writer hashed — never the file it points at, so an unchanged link
+// reads unchanged and a link out of the root is never followed.
+func TestRevisionSymlinkIsTargetText(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "real.go"), []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real.go", filepath.Join(root, "link.go")); err != nil {
+		t.Skip("symlinks unavailable: ", err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(root, "out.go")); err != nil {
+		t.Fatal(err)
+	}
+	rr := NewRootRevisionReader(root, "v1")
+	if got, ok := rr.Revision("file:link.go"); !ok || got != Sha256Hex([]byte("real.go")) {
+		t.Errorf("link.go = %q %v, want the hash of its target text", got, ok)
+	}
+	if got, ok := rr.Revision("file:out.go"); !ok || got == Sha256Hex([]byte("outside\n")) {
+		t.Errorf("out.go = %q %v: a link out of the root was followed", got, ok)
+	}
+	if got, ok := rr.Revision("file:real.go"); !ok || got != Sha256Hex([]byte("package x\n")) {
+		t.Errorf("real.go = %q %v, want its content hash", got, ok)
 	}
 }
