@@ -169,6 +169,7 @@ var volatileRE = regexp.MustCompile(`"(at|domain)":"[^"]*"|"available_bytes":\d+
 // world's directory and a UTC boot stamp.
 func (w *cliWorld) norm(s string) string {
 	s = strings.ReplaceAll(s, w.root, "<ROOT>")
+	s = strings.ReplaceAll(s, "/home/", "/<HOME>/")
 	s = binPathRE.ReplaceAllString(s, "'<BIN>'")
 	s = buildStampRE.ReplaceAllString(s, "dev-<BUILD>")
 	s = volatileRE.ReplaceAllString(s, `"volatile":"<V>"`)
