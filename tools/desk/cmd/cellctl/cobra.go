@@ -18,7 +18,8 @@ import (
 // forbids --set, a harness outside the closed set, a container cell's host-only flags — stays in
 // the domain code the handlers call (desk.go, up.go, down.go, cell.go, policy*.go), which runs
 // the same checks whoever built the typed options. A parser that selects the wrong option can
-// therefore be refused below it, and cobra_test.go proves that with the adapter bypassed.
+// therefore be refused below it, and TestCLIAdmissionBoundary (cli_contract_test.go) proves that
+// with the adapter bypassed.
 //
 // Handlers still end by panicking an exitCode (die / exitWith), recovered once in runTree, so the
 // deferred lock and lease cleanup under them keeps running exactly as before.
@@ -638,6 +639,10 @@ func scratchCmd() *cobra.Command {
 		bBool("resumable", "retain for resumption (inactive task only)"),
 		bStr("path", "legacy root for read-only inventory"),
 	)
+	// Everything past <cell> and the action is the command to run, never this verb's flags: the
+	// adapter puts the `--` there when the caller did not (the legacy parser stopped at the same
+	// word), so a word of the command that spells --source, --task or --help reaches the child.
+	cli.OpaqueArgv(cmd, 2)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		d := cmd.ArgsLenAtDash()
 		if d == 0 {
@@ -647,8 +652,8 @@ func scratchCmd() *cobra.Command {
 		if len(args) < 2 || d == 1 {
 			die("scratch requires run, ack, sweep, or inventory")
 		}
-		// The command to run is what follows `--`; with no `--`, anything past the action
-		// is taken as the command, as it always was.
+		// The command to run is what follows `--`. With no `--` there is no word past the
+		// action (OpaqueArgv above would have put one before it), so the command is empty.
 		rest, command := args[1:], args[2:]
 		if d >= 0 {
 			rest, command = args[1:d], args[d:]

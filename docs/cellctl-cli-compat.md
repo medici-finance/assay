@@ -19,6 +19,12 @@ it also fails when a listed row stops differing, so this table cannot go stale i
 - **Raw entrypoints.** `model-policy`, `cache-run` and `container-run` receive their argv verbatim;
   a flag-shaped token after one of these verbs belongs to the verb. The hook verb keeps its own
   exit codes (a parse failure is 2, never the usage code 3).
+- **`scratch ... run` command boundary.** Everything after `scratch <cell> <action>` and the
+  verb's own flags is the command, with or without `--`: the first word that is not a flag or a
+  flag's value starts it, and nothing after that word is parsed as a `scratch` flag, `--help`,
+  `--version` or `--cells-root`. A command that itself begins with `-` needs `--` before it, as
+  it always did. `TestScratchRunArgvBoundary` runs a child whose arguments spell those flags and
+  checks the argv it receives.
 - **Setting precedence.** For `--model`, `--cadence` and `--tick-budget`: the flag, then the
   environment (the process environment with `cell.env` overlaid, so `cell.env` wins over the
   process), then the cell's own pin or default. An empty environment value counts as unset; an
@@ -50,7 +56,6 @@ it also fails when a listed row stops differing, so this table cannot go stale i
 - `-h` means help. A single-dash token that is not a known long flag is an error rather than a
   config-directory positional.
 - No roster echo is printed for `help`, `-h`, `--help`, `--version`, `version` or a parse failure.
-- A `scratch ... run` command that begins with `-` needs a `--` before it.
 - `cadence recover` without a role is refused.
 - `show` ignores `DESK_MODEL_OVERRIDE` in the environment, exactly as before: it reports pins, not
   one-run overrides.

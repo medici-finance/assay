@@ -508,3 +508,50 @@ func TestCLIReentrant(t *testing.T) {
 		t.Fatal("fixture environment leaked into the process")
 	}
 }
+
+// TestCLIOpaqueArgv pins the OpaqueArgv boundary: every word past the declared positionals of a
+// command that runs a command line reaches its handler untouched, whatever flag it spells, while
+// the command's own flags before that word still parse.
+func TestCLIOpaqueArgv(t *testing.T) {
+	build := func(got *[]string, src *string) func() *cobra.Command {
+		return func() *cobra.Command {
+			root := NewRoot("tool", "fixture")
+			root.PersistentFlags().String("root", "", "a persistent selector")
+			grp := &cobra.Command{Use: "grp", Short: "a group"}
+			run := &cobra.Command{Use: "run <a> [-- command [args]]", Args: cobra.ArbitraryArgs,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					*got = args
+					*src, _ = cmd.Flags().GetString("source")
+					return nil
+				}}
+			run.Flags().String("source", "", "a value flag")
+			run.Flags().BoolP("all", "a", false, "a bool flag")
+			OpaqueArgv(run, 1)
+			grp.AddCommand(run)
+			root.AddCommand(grp)
+			return root
+		}
+	}
+	for _, tc := range []struct {
+		args    []string
+		src     string
+		command []string
+	}{
+		{[]string{"grp", "run", "x", "--source", "s", "child", "--source", "t", "--all", "--help"}, "s", []string{"child", "--source", "t", "--all", "--help"}},
+		{[]string{"--root", "/r", "grp", "--source=s", "run", "-a", "x", "child", "-source", "t", "-a", "--root", "/q"}, "s", []string{"child", "-source", "t", "-a", "--root", "/q"}},
+		{[]string{"grp", "run", "-source", "s", "x", "--all", "child", "-h", "--version"}, "s", []string{"child", "-h", "--version"}},
+		{[]string{"grp", "run", "x", "--", "child", "--source", "t"}, "", []string{"child", "--source", "t"}},
+		{[]string{"grp", "run", "x", "--source", "s"}, "s", []string{}},
+	} {
+		var got []string
+		var src string
+		code := Run(build(&got, &src), tc.args, Options{GoFlagCompat: true, Version: "v0"})
+		if code != 0 || src != tc.src {
+			t.Errorf("%v: exit %d, --source %q; want exit 0, --source %q", tc.args, code, src, tc.src)
+			continue
+		}
+		if len(got) < 1 || !reflect.DeepEqual(append([]string{}, got[1:]...), tc.command) {
+			t.Errorf("%v: handler got %q; want positional x then the command %q untouched", tc.args, got, tc.command)
+		}
+	}
+}

@@ -1,5 +1,5 @@
 {
-  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 280s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary)$' ./cmd/cellctl/",
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 280s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv)$' ./cmd/cellctl/",
   "control": {
     "name": "CONTROL — a parse failure exits with the wrong code (usage exit 3 becomes 4)",
     "file": "cmd/cellctl/cobra.go",
@@ -48,6 +48,18 @@
       "file": "cmd/cellctl/launch.go",
       "old": "\t\tapplyEnvKVs(c.Env, filepath.Join(c.Dir, \"cell.env\"), false, persistKVs)\n",
       "new": "\t\t_ = persistKVs\n"
+    },
+    {
+      "name": "scratch run loses its command boundary (the OpaqueArgv declaration dropped): a word of the supervised command that spells --source, --task or --help is parsed by cellctl",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tcli.OpaqueArgv(cmd, 2)\n",
+      "new": ""
+    },
+    {
+      "name": "the adapter stops inserting the opaque-argv boundary (splitOpaqueArgv no longer called by Run)",
+      "file": "internal/cli/cli.go",
+      "old": "\targs = splitOpaqueArgv(root, args)\n",
+      "new": "\t_ = splitOpaqueArgv\n"
     }
   ]
 }
