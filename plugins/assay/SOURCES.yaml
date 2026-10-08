@@ -140,6 +140,19 @@ canonical:
 # drift against. Declared here so the coverage check can tell "has no source"
 # apart from "somebody forgot to pin it".
 unported:
+  - path: skills/author-spec/SKILL.md
+    reason: >-
+      Independently authored portable specification-authoring instructions, not a
+      copied upstream skill; no drift baseline applies. Selective influences:
+      BMAD architecture (inherited decisions and shared invariants),
+      https://github.com/bmad-code-org/BMAD-METHOD/blob/bda3c5929f672019b90f39a3ea27259d35d00974/skills/bmad-architecture/SKILL.md;
+      Plumbline spec engine (adopt sufficient artifacts and preserve proof obligations),
+      https://github.com/nickyfactz/plumbline/blob/35498b2e153e473dd78473a02e551334936bcddb/skills/plumbline-spec-engine/SKILL.md;
+      Spec Kit (outcomes versus implementation planning), https://github.com/github/spec-kit;
+      arc42 (selectable context/runtime/quality/decision views), https://arc42.org/overview/;
+      and this repository's docs/streams/build-less-brittle/spec.md (semantic
+      ownership, retirement, evidence grading and investigation). These are
+      attribution, not dependencies or evidence that the combination reduces defects.
   - path: skills/system-demo/SKILL.md
     reason: >-
       Independently authored portable demo-storyboarding instructions. Captain

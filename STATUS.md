@@ -71,7 +71,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: b593af3 2026-10-08T14:14:54Z_
+_last regen: 49c6fe8 2026-10-08T13:14:12-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -92,7 +92,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: b593af3 2026-10-08T14:14:54Z_
+_last regen: 49c6fe8 2026-10-08T13:14:12-05:00_
 
 **Progress:** 16/71 brief items done.
 
@@ -124,14 +124,14 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (58 desk-actionable of 99 total — 87 at implemented, 12 verified awaiting review)
+## Awaiting verification / review (59 desk-actionable of 100 total — 88 at implemented, 12 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (58)
+### Desk-actionable (59)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -153,6 +153,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | forge-neutral | 33 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | verified | 3500 | 5 | — | 2026-10-04 assay-verifier-app[bot] @ bed1a31ba875 (claude-opus-5-5) | — |
+| iso-9001 | 03 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -564,7 +565,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### iso-9001 (7 open)
 
-- 03 A finding closes on a fired control — the corrective-action effectiveness record — todo (wave 1)
+- 03 A finding closes on a fired control — the corrective-action effectiveness record — implemented (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 - 07 Release by merge — the human merge is the cut and the authorizer — blocked (wave 2)
 - 08 Versioned source obligations and project applicability — todo (wave 0)
