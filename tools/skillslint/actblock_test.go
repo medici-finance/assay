@@ -175,10 +175,90 @@ func TestActBlockLintFlagsUnsafeRead(t *testing.T) {
 		{"stop only leaves a subshell", `  (T=; read -rs T || exit 1)`},
 		{"clear glued to a keyword", `  doT=; read -rs T || exit 1`},
 		{"read in a backtick span", "  X=`read -rs T`"},
+		// The clear inside a subshell or a piped group opened on the same line: the exit
+		// ends only that subshell, and the act carries on with an inherited value.
+		{"shape inside a same-line subshell", `  ( :; T=; read -rs T || exit 1; )`},
+		{"shape inside a command substitution", `  X=$(:; T=; read -rs T || exit 1; echo "$T")`},
+		{"shape inside a command substitution in double quotes", `  echo "$(:; T=; read -rs T || exit 1)"`},
+		{"shape inside a backtick span", "  X=`:; T=; read -rs T || exit 1`"},
+		{"shape in a group piped into", `  echo x | { T=; read -rs T || exit 1; }`},
+		{"shape in a group piped from", `  { T=; read -rs T || exit 1; } | cat`},
+		{"shape in a backgrounded group", `  { T=; read -rs T || exit 1; } &`},
+		{"shape in an if piped into", `  echo x | if true; then T=; read -rs T || exit 1; fi`},
+		// The failure group run in a pipeline or in the background: its exit ends only a
+		// subshell.
+		{"failure group piped away", `  T=; read -rs T || { exit 1; } | cat`},
+		{"failure group backgrounded", `  T=; read -rs T || { exit 1; } &`},
+		{"failure group followed by more of the list", `  T=; read -rs T || { exit 1; } || true`},
+		// A read word that a punctuation character ends, not a blank.
+		{"read in a command substitution", `  X=$(read)`},
+		{"read in a backtick span, bare", "  X=`read`"},
+		{"read in a subshell", `  (read)`},
+		{"read with a redirect", `  read<&0`},
+		{"read backgrounded", `  read&`},
+		{"read piped", `  read|cat`},
+		{"read in a quoted command substitution", `  echo "$(read -r X)"`},
+		// A word that a shell runs as read once its quotes and backslashes are removed.
+		{"read behind a backslash", `  \read -r T`},
+		{"read in double quotes", `  "read" -r T`},
+		{"read split by empty quotes", `  r''ead -r T`},
+		// An exit status the shell reports as 0.
+		{"exit 256 is status 0", `  T=; read -rs T || exit 256`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLine(4, c.line))
 			wantOneAt(t, issues, cleanActLine(4), "NAME=; read -rs NAME ||")
+		})
+	}
+}
+
+// withLines returns cleanActLines with lines inserted at index i.
+func withLines(i int, lines ...string) []string {
+	out := append([]string{}, cleanActLines[:i]...)
+	out = append(out, lines...)
+	return append(out, cleanActLines[i:]...)
+}
+
+// TestActBlockLintFlagsUnsafeReadAcrossLines — the read check reads the whole block, not one
+// line: a subshell, pipeline or background that a read sits in is seen wherever it opens or
+// closes, and a read outside the act function, which the dry paste would run, is flagged.
+func TestActBlockLintFlagsUnsafeReadAcrossLines(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		at    int
+		lines []string
+		bad   int // index in lines of the read the issue names
+	}{
+		{"subshell opened on an earlier line", 4, []string{"  (", "  T=; read -rs T || exit 1", "  )"}, 1},
+		{"group piped on a later line", 4, []string{"  {", "  T=; read -rs T || exit 1", "  } | cat"}, 1},
+		{"group piped into from an earlier line", 4, []string{"  echo x |", "  {", "  T=; read -rs T || exit 1", "  }"}, 2},
+		{"if backgrounded on a later line", 4, []string{"  if true; then", "  T=; read -rs T || exit 1", "  fi &"}, 1},
+		{"clear after a pipe on an earlier line", 4, []string{"  echo x |", "  T=; read -rs T || exit 1"}, 1},
+		{"failure group piped on a later line", 4, []string{"  T=; read -rs T || {", "  exit 1; } | cat"}, 0},
+		{"read in another function", 4, []string{"  ask() { T=; read -rs T || exit 1; }"}, 0},
+		{"read outside the act function", 1, []string{"T=; read -rs T || exit 1"}, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(c.at, c.lines...))
+			wantOneAt(t, issues, cleanActLine(c.at+c.bad), "NAME=; read -rs NAME ||")
+		})
+	}
+}
+
+// TestActBlockLintSafeReadAcrossLines — the shape passes inside an if, a loop or a group
+// that the act function runs in its own shell, wherever those open and close.
+func TestActBlockLintSafeReadAcrossLines(t *testing.T) {
+	for _, c := range [][]string{
+		{"  if true; then :", "  else printf 'token: '", "    T=; read -rs T || { echo; echo \"no token read; nothing changed\" >&2; exit 1; }", "  fi"},
+		{"  {", "  T=; read -rs T || exit 1", "  } >/dev/null"},
+		{"  while true; do", "  T=; read -rs T || exit 1", "  break; done"},
+		{"  T=; read -rs T || {", "  echo; exit 1; }"},
+	} {
+		t.Run(strings.Join(c, " / "), func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(4, c...))
+			if len(issues) != 0 {
+				t.Fatalf("issues=%+v, want none", issues)
+			}
 		})
 	}
 }
@@ -194,6 +274,10 @@ func TestActBlockLintSafeReadForms(t *testing.T) {
 		`  echo "would read it; read -r X"`,
 		`  echo 'read T'`,
 		`  run gh api repos/o/r/readme --jq .already_read`,
+		`  T=; read -rs T || exit 1; U=; read -rs U || exit 1`,
+		`  T=; read -rs T || exit 255`,
+		`  { T=; read -rs T || exit 1; }`,
+		`  echo "$(printf x) would read it, read -r X"`,
 	} {
 		t.Run(line, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLine(4, line))

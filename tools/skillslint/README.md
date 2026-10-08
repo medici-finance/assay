@@ -324,13 +324,17 @@ or `shell` fence that defines a function named `driver_act…`) to four rules:
    function under the name the driver is told to type;
 4. every `read` is the whole safe shape on one line,
    `NAME=; read -rs NAME || exit N` or `NAME=; read -rs NAME || { ...; exit N; }`:
-   the clear comes first in command position (never after `&&` or `||`, nor
-   inside a same-line subshell), the read carries `-r` and `-s` and no other
-   option, and the failure branch ends with `exit N`, `N` non-zero. A shell
-   whose `read` has no `-s` fails without assigning, and an inherited value
-   would pass as the secret. Any unquoted word `read` on a code line counts
-   as a read wherever it sits (after `if`, `!`, `while`, a pipe or a
-   backtick), so the rule errs strict; words inside quotes do not count.
+   the clear comes first in command position (never after `&&`, `||` or a
+   pipe), the read carries `-r` and `-s` and no other option, and the failure
+   branch ends with `exit N`, `N` from 1 to 255, closing the list. The shape
+   must run in the act function's own shell: not inside a subshell, `$( )`,
+   backticks, a pipeline or a background job, nor in another function, whether
+   that opens on the read's line or on another one. A shell whose `read` has no
+   `-s` fails without assigning, so an inherited value would pass as the
+   secret, and an `exit` in a child shell ends only that child. Any word that
+   is `read` once quotes and backslashes are removed (`read`, `\read`,
+   `"read"`, `r''ead`) counts as a read wherever it sits, so the rule errs
+   strict.
 
 A violation is exit 1, naming the file and line. Finding no act block at all is
 could-not-check (exit 2), never a pass: the `ask-decision` example must exist.
@@ -338,8 +342,12 @@ The check reads only the examples the plugin ships. An act block a desk writes
 at run time gets no lint. Its fence finder matches the opening character and a
 closing run at least as long, but applies no indentation or list rule, so a
 four-space-indented example is still checked, which errs strict. The read rule
-reads one line at a time: an `exit` inside a subshell opened on an earlier line
-ends only that subshell, and the lint does not see that.
+tokenizes the block whole (quotes, backslashes and line continuations, `$( )`,
+backticks, `( )`, `{ }`, pipes, `&` and the compound commands), so a subshell or
+pipe that opens or closes on another line is seen. It does not see a read run
+through `eval`, `sh -c` or a command name built from an expansion, and it takes
+a full line that starts with `#` as a comment even inside a multi-line quoted
+string.
 
 ## Fixtures
 

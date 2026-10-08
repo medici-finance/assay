@@ -212,10 +212,12 @@ This plugin's own skill lint checks the shipped example below against the plain-
 rule (full-line and trailing), the guard line, the per-act name and the secret-read shape, in
 every `sh`, `bash`, `zsh` or `shell` fence that defines an act function. For the read, it
 accepts only the whole shape on one line: the clear first, `read` with `-r` and `-s` and no
-other option, and a failure branch that ends in a non-zero `exit`; any other unquoted `read`
-is flagged. It reads one line at a time, so it does not see whether an `exit` sits in a
-subshell opened on an earlier line. A block a desk composes at run time gets no lint; it rests
-on these rules alone.
+other option, and a failure branch that ends in an `exit` from 1 to 255, run by the act
+function's own shell rather than in a subshell, command substitution, pipeline or background
+(an `exit` there ends only that child). It reads the block whole, across lines, and flags any
+other word that is `read` once quotes and backslashes are removed. It does not see a read run
+through `eval`, `sh -c` or a command name built from an expansion. A block a desk composes at
+run time gets no lint; it rests on these rules alone.
 
 ```sh
 [ -n "${ZSH_VERSION-}" ] && setopt interactive_comments

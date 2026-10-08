@@ -245,7 +245,7 @@ func main() {
 			exit = 1
 		}
 	default:
-		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments, the zsh guard, a per-act name and the one-line safe secret read (cleared, -rs, non-zero exit)\n", abBlocks)
+		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments, the zsh guard, a per-act name and the one-line safe secret read (cleared, -rs, exit 1-255, run by the act function's own shell)\n", abBlocks)
 	}
 
 	// posix-token: advisory (never exit-affecting, per the lint-debt cadence a hard
