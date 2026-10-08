@@ -1,0 +1,77 @@
+{
+  "test": "go test ./internal/gitquiet/ ./internal/regression/ ./cmd/deskclaim-ref/ -count=1 -timeout 300s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|GitPackagesInstallQuiet|GuardControl|ShellFixtureReposQuiet|Reg727WorktreeOrigin|GitDirFixtureIsolation)$'",
+  "control": {
+    "name": "CONTROL — the template carries no settings: every fixture repository forks automatic maintenance again (the #1608 race)",
+    "file": "internal/gitquiet/gitquiet.go",
+    "old": "\t{\"maintenance.auto\", \"false\"},\n\t{\"gc.auto\", \"0\"},\n",
+    "new": ""
+  },
+  "mutations": [
+    {
+      "name": "the template is written but GIT_TEMPLATE_DIR is never pointed at it — git init/clone fall back to the default template",
+      "file": "internal/gitquiet/gitquiet.go",
+      "old": "os.Setenv(\"GIT_TEMPLATE_DIR\", dir)",
+      "new": "os.Setenv(\"GITQUIET_UNUSED\", dir)"
+    },
+    {
+      "name": "the template config is rendered empty — repositories get no settings",
+      "file": "internal/gitquiet/gitquiet.go",
+      "old": "\treturn b.String()\n",
+      "new": "\treturn \"\"\n"
+    },
+    {
+      "name": "guard: a TestMain that never installs the template is accepted",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "\t\tif d.fn.Name.Name == \"TestMain\" && callsRun(d.f, d.fn.Body, via) {",
+      "new": "\t\tif d.fn.Name.Name == \"TestMain\" {"
+    },
+    {
+      "name": "guard: the runTests(m) indirection is not followed — a TestMain whose helper calls m.Run is accepted",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "|| via[fun.Name] {",
+      "new": "|| fun.Name == \"runTests\" {"
+    },
+    {
+      "name": "guard: the git-use matcher stops matching — no package is examined and the scan reports clean",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "s == \"git\" {",
+      "new": "s == \"git-never\" {"
+    },
+    {
+      "name": "guard: a package whose only git use is the shared gittest harness is not treated as a git-test package",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "strings.HasSuffix(p, \"/internal/gittest\")",
+      "new": "strings.HasSuffix(p, \"/internal/gittest-never\")"
+    },
+    {
+      "name": "guard: the launcher arm is dropped — a package whose tests reach git only through its own non-test launcher (internal/gitexec's shape) is never examined",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "\treturn hasTests && launches\n",
+      "new": "\treturn false\n"
+    },
+    {
+      "name": "guard: the launcher arm no longer requires tests — a launcher package with no test binary is flagged",
+      "file": "internal/gitquiet/gitquiet_test.go",
+      "old": "\treturn hasTests && launches\n",
+      "new": "\treturn launches\n"
+    },
+    {
+      "name": "TemplateDir returns an empty directory — a fixture passing it explicitly gets no settings",
+      "file": "internal/gitquiet/gitquiet.go",
+      "old": "\tif err := writeTemplate(dir); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treturn dir\n",
+      "new": "\treturn dir\n"
+    },
+    {
+      "name": "the regression floor's shell fixtures lose their explicit template — FixtureEnv's GIT_* drop leaves their repositories forking maintenance",
+      "file": "internal/regression/shell_test.go",
+      "old": "\t\t\"GIT_TEMPLATE_DIR=\"+gitquiet.TemplateDir(t))\n",
+      "new": "\t\t\"GITQUIET_UNUSED=\"+gitquiet.TemplateDir(t))\n"
+    },
+    {
+      "name": "the #727 floor fixture loses its explicit template — its init and commit run with no settings",
+      "file": "cmd/deskclaim-ref/regression_test.go",
+      "old": "\t\t\t\"GIT_TEMPLATE_DIR=\"+template)\n",
+      "new": "\t\t\t\"GITQUIET_UNUSED=\"+template)\n"
+    }
+  ]
+}

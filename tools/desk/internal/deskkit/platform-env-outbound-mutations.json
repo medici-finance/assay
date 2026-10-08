@@ -58,8 +58,8 @@
     {
       "name": "house new resolves the home after mkdir",
       "file": "cmd/cellctl/new.go",
-      "old": "\thome := hostHome(e)\n\tmustMkdirAll(filepath.Join(d, \"home\", \".config\"), filepath.Join(d, \"worktrees\"), filepath.Join(d, \"shim\"))\n",
-      "new": "\tmustMkdirAll(filepath.Join(d, \"home\", \".config\"), filepath.Join(d, \"worktrees\"), filepath.Join(d, \"shim\"))\n\thome := hostHome(e)\n"
+      "old": "\thome := hostHome(e)\n\tmustMkdirAll(root)\n\tl := newLinker()\n\ts, err := beginCellScaffold(l.goos, d)\n\tif err != nil {\n\t\tdie(\"new: %v\", err)\n\t}\n",
+      "new": "\tmustMkdirAll(root)\n\tl := newLinker()\n\ts, err := beginCellScaffold(l.goos, d)\n\tif err != nil {\n\t\tdie(\"new: %v\", err)\n\t}\n\thome := hostHome(e)\n"
     },
     {
       "name": "Windows drive-letter Users matcher disabled",

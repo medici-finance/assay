@@ -3,8 +3,8 @@
   "control": {
     "name": "CONTROL — re-introduce a `gh` exec: a helper that shells the GitHub CLI to release a dispatch claim, exactly the passthrough the enumerated DeleteRef replaced",
     "file": "cmd/fanoutloop/land.go",
-    "old": "const dispatchRefNamespace = \"dispatch\"",
-    "new": "const dispatchRefNamespace = \"dispatch\"\n\nfunc legacyRelease(run func(...string) (string, error), ref string) (string, error) {\n\treturn run(\"gh\", \"api\", \"-X\", \"DELETE\", ref)\n}"
+    "old": "const dispatchRefNamespace = deskkit.ClaimRefNamespace",
+    "new": "const dispatchRefNamespace = deskkit.ClaimRefNamespace\n\nfunc legacyRelease(run func(...string) (string, error), ref string) (string, error) {\n\treturn run(\"gh\", \"api\", \"-X\", \"DELETE\", ref)\n}"
   },
   "mutations": [
     {

@@ -88,7 +88,7 @@ func clearedByExternalPrereq(reviews []reviewInfo, head string, securityFail boo
 	}
 
 	// Fresh, independent observation of each declared prerequisite.
-	decl := deskkit.ParsePrereqDeclaration(cr.Body)
+	decl := deskkit.ParsePrereqDeclaration(cr.Body, head)
 	obs := make(map[string]deskkit.PrereqObservation, len(decl.Conditions))
 	for _, cond := range decl.Conditions {
 		o := observePrereq(cond)

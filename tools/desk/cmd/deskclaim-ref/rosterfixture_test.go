@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // The claim store is resolved from the roster (deskkit.ResolveClaimStore), which is read from
@@ -24,7 +25,7 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("HOME", home); err != nil {
 		panic(err)
 	}
-	code := m.Run()
+	code := gitquiet.Run(m)
 	if had {
 		_ = os.Setenv("HOME", prev)
 	} else {

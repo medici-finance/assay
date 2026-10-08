@@ -47,6 +47,11 @@
       "reason": "cellcache developer mutation runner for issue #2228; temporarily mutates source in an isolated checkout and runs bounded Go tests, not an installed operator CLI"
     },
     {
+      "class": "test",
+      "pattern": "containers/scripts/layer-secret-scan.mutate.sh",
+      "reason": "developer mutation runner for the layer-secret-scan fixtures (issue #2256); runs layer-secret-scan.test.sh against mutated copies of the scan, not an operator entrypoint"
+    },
+    {
       "class": "fixture",
       "pattern": "**/testdata/**",
       "reason": "Go testdata convention: the go tool ignores these packages; they are inputs to tests"
@@ -1635,6 +1640,23 @@
       "state": "pending"
     },
     {
+      "executable": "git-floor-check.sh",
+      "path": "containers/scripts/git-floor-check.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; baked into the base image as /usr/local/bin/git-floor-check",
+      "consumers": [
+        "containers/base/Dockerfile",
+        "containers/README.md",
+        "tools/desk/internal/deskkit/gitfloor_test.go"
+      ],
+      "parser": "none (no flags)",
+      "complexity": "simple",
+      "basis": "167 lines at 73434c9469ab",
+      "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
       "executable": "inject-board-state.sh",
       "path": "plugins/assay/hooks/inject-board-state.sh",
       "kind": "script",
@@ -1974,6 +1996,24 @@
       "basis": "6 lines at 3ad1ad83c871",
       "owner": "desktools-v2/31",
       "state": "pending"
+    },
+    {
+      "executable": "workpad-render",
+      "path": "tools/desk/examples/workpad-render",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "tools/desk/cmd/deskreply/main.go",
+        "tools/desk/cmd/deskreply/workpaddoc_test.go"
+      ],
+      "parser": "no arguments; JSON on stdin",
+      "complexity": "simple",
+      "basis": "23 LOC, ~0 verbs, ~0 flags at 72fa7841d218",
+      "owner": "",
+      "state": "excluded",
+      "class": "demo",
+      "reason": "source-checkout example of the workpad renderer, named in deskreply --help; not built by release.yml or the Makefile, renders stdin to stdout and never posts"
     },
     {
       "executable": "check-floor.sh",

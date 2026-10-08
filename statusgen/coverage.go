@@ -74,13 +74,40 @@ package main
 //     unrelated root) is refused. Nothing here proves the witness's run
 //     happened; the Evidence row is the only record of that, as before. The
 //     witness commit must be in the object store; when it is not, the claim
-//     is could-not-check, naming the missing commit. What a witness speaks
-//     for (round-2 F2, round-3 F2/F6):
-//     - by default (and always, today): conservatively, every path OUTSIDE
-//       the board's bookkeeping surface: `docs/streams/**` (sibling briefs'
-//       Evidence in the same verify batch, READMEs, verify-outcome logs) and
-//       the regenerated `STATUS.md`, which move between ANY witness and the
-//       main tip and say nothing about the code a check ran against;
+//     is could-not-check, naming the missing commit. The witness's tree must
+//     also have LANDED (witnessLanded, #2026 cause 1): some commit on the
+//     item's history since the merge base — the base itself when the witness
+//     is on that history, the squash commit when its branch was squash-merged
+//     — has a tree identical to the witness's outside docs/streams/** and
+//     STATUS.md. Otherwise the check ran against code the item never carried
+//     as a whole, and the claim is `wrong-revision`. The merge bases and the
+//     item's revision are compared first, so a witness on the item's own
+//     history lands however many commits followed it; only the search for a
+//     squash commit between them is bounded. A shallow clone, a git failure,
+//     or a search past maxLandingCandidates is could-not-check. For a
+//     `+dirty` / `+unknown` witness the landing check reads its BASE commit,
+//     never the uncommitted edits it ran on, so such a witness never gets a
+//     derived scope (classifyRevisionDetail) and its pass says only that the
+//     base commit landed. What
+//     a witness speaks for (round-2 F2, round-3 F2/F6, #2026 cause 2):
+//     - with no dependency manifest (production today), the paths the row's
+//       command READS, derived from its text by a closed shell grammar
+//       (coverage_inputs.go, forVerifyRow), plus every `.gitattributes` on
+//       the way to them — so a changelog fragment or a release stamp the row
+//       does not read no longer holds it;
+//     - conservatively, when the row's inputs cannot be derived (any command,
+//       operator or path the grammar does not establish, a symbolic link or
+//       submodule on an input's path, an input not tracked under its exact
+//       path in both trees, another tracked name a case-insensitive checkout
+//       opens as the same file, a non-ASCII input, a coverage root below the
+//       repository's toplevel, an input verify and regen write, a `+dirty` /
+//       `+unknown` witness) or a
+//       manifest is supplied but incomplete: every path OUTSIDE the board's
+//       bookkeeping surface: `docs/streams/**` (sibling briefs' Evidence in
+//       the same verify batch, READMEs, verify-outcome logs) and the
+//       regenerated `STATUS.md`, which move between ANY witness and the main
+//       tip and say nothing about the code a check ran against. The reason
+//       names why the row's inputs could not be derived;
 //     - ONLY when a complete work-input dependency manifest is supplied for
 //       the brief (see "WORK-INPUT DEPENDENCIES" below): the brief's declared
 //       `files:` entries plus the row's source dependencies (a declared
@@ -118,10 +145,12 @@ package main
 // callers may invalidate an assumption outside the edited files". So:
 //
 //   - A `files:` declaration ALONE never narrows the scope any more. Without a
-//     complete dependency manifest (coverageOptions.Dependencies), every
-//     claim takes the conservative scope, whose derivation is "nothing outside
-//     the board's bookkeeping differs". This replaces the round-3 residual,
-//     where a change to a helper outside `files:` let the old PASS stand.
+//     complete dependency manifest (coverageOptions.Dependencies), a claim
+//     takes its row's derived read set when the command's text establishes
+//     it (#2026 cause 2), and otherwise the conservative scope, whose
+//     derivation is "nothing outside the board's bookkeeping differs". This
+//     replaces the round-3 residual, where a change to a helper outside
+//     `files:` let the old PASS stand.
 //   - A manifest names each claim's dependencies by kind: source (joins the
 //     witness scope), policy and build (compared by the git object id of the
 //     path at the witness's base commit against the item's revision), and
@@ -135,9 +164,10 @@ package main
 //     the derivation. Claim.Revision stays the witness's own revision, so the
 //     old receipt is never retargeted to the new subject.
 //   - The result vocabulary is unchanged. graph-execution/09's adapter
-//     supplies manifests later. Production passes none today, so every brief
-//     takes the conservative scope. That is the "start with conservative
-//     invalidation" posture WI-2 asks for.
+//     supplies manifests later. Production passes none today, so every row
+//     whose read set its command does not establish takes the conservative
+//     scope. That is the "start with conservative invalidation" posture WI-2
+//     asks for.
 //
 // The residual the conservative scope still accepts: a change under
 // `docs/streams/**` or to STATUS.md never invalidates a witness unless the
@@ -421,7 +451,7 @@ func evaluateOneCoverage(root, briefPath, id string, bf *BriefFile, opts coverag
 	}
 	scope := newWitnessScope(root, briefPath, bf, man)
 	for _, r := range verifyRows {
-		result, reason, claimRev := resolveVerifyClaim(root, scope.forRow(r.ID), r, evidence, revision)
+		result, reason, claimRev := resolveVerifyClaim(root, scope.forVerifyRow(r), r, evidence, revision)
 		claims = append(claims, Claim{
 			Claim:    fmt.Sprintf("Verify row #%s: %s", r.ID, r.Command),
 			Kind:     "command",
@@ -750,7 +780,20 @@ func classifyRevisionDetail(root string, scope witnessScope, witnessTree, target
 	if strings.EqualFold(w[:n], t[:n]) {
 		return revisionMatch, true, ""
 	}
-	rel, detail = witnessTreeApplies(root, scope, w, t)
+	// A `+dirty` / `+unknown` witness ran on uncommitted edits over w: the
+	// landing check below compares w's tree, never the tree the row read, so
+	// it is no layer behind a narrowed scope. Such a witness keeps the
+	// conservative scope (#2026: narrowing only where both layers bind).
+	landedNoun := "the witness's tree"
+	if w != witnessTree {
+		landedNoun = "the witness's base commit (not the uncommitted edits its " + strings.TrimPrefix(witnessTree, w) + " token marks)"
+		if scope.derived() {
+			scope.inputs = nil
+			scope.conservative = true
+			scope.whyConservative = "no dependency manifest, and the witness ran on a working tree with uncommitted edits (" + strings.TrimPrefix(witnessTree, w) + "), whose tree no commit holds, so the landing check cannot stand behind a scope narrowed to the row's derived inputs"
+		}
+	}
+	rel, detail = witnessTreeApplies(root, scope, w, t, landedNoun)
 	return rel, false, detail
 }
 
@@ -775,6 +818,16 @@ type witnessScope struct {
 	conservative bool
 	// whyConservative says which of those set conservative, for the reason.
 	whyConservative string
+	// inputs, when set (and conservative is not), are the repo paths the
+	// row's command reads, derived from its text (forVerifyRow,
+	// coverage_inputs.go; #2026 cause 2): the witness speaks for exactly
+	// these. Only set when no dependency manifest is supplied.
+	inputs []string
+}
+
+// derived reports whether the scope is a row's derived read set.
+func (sc witnessScope) derived() bool {
+	return !sc.conservative && len(sc.inputs) > 0
 }
 
 // newWitnessScope builds a brief's witnessScope from its CURRENT parsed `files:`
@@ -833,6 +886,9 @@ func (sc witnessScope) forRow(rowID string) witnessScope {
 
 // describe says what the scope covers, for a wrong-revision reason.
 func (sc witnessScope) describe() string {
+	if sc.derived() {
+		return "the row's command reads only " + strings.Join(sc.inputs, ", ") + " (derived from its text)"
+	}
 	if sc.conservative {
 		return sc.whyConservative + ", so the witness speaks for every path outside docs/streams/** and STATUS.md"
 	}
@@ -842,6 +898,9 @@ func (sc witnessScope) describe() string {
 // derivation is the applicability derivation that licenses reusing a witness
 // at a later revision (WI-2), for a reused pass's reason.
 func (sc witnessScope) derivation() string {
+	if sc.derived() {
+		return "none of the paths the row's command reads (" + strings.Join(sc.inputs, ", ") + "; derived from its text) differs between the witness's tree and the item's"
+	}
 	if sc.conservative {
 		return "no path outside docs/streams/** and STATUS.md differs between the witness's tree and the item's (" + sc.whyConservative + ", so that whole surface is the input)"
 	}
@@ -961,6 +1020,14 @@ func isVerifyWrittenPath(p string) bool {
 func (sc witnessScope) invalidatedBy(p string) bool {
 	p = filepath.ToSlash(strings.TrimSpace(p))
 	if p == "" || p == sc.briefRel {
+		return false
+	}
+	if sc.derived() {
+		for _, in := range sc.inputs {
+			if inputCovers(in, p) {
+				return true
+			}
+		}
 		return false
 	}
 	if sc.conservative && !isBoardBookkeepingPath(p) {
@@ -1159,7 +1226,7 @@ func splitNUL(out []byte) []string {
 // revision does not resolve, or git fails). Where there is no usable git
 // checkout at all the two plainly different tokens stay a mismatch, as
 // before.
-func witnessTreeApplies(root string, scope witnessScope, witnessTree, target string) (rel revisionRelation, detail string) {
+func witnessTreeApplies(root string, scope witnessScope, witnessTree, target, landedNoun string) (rel revisionRelation, detail string) {
 	if root == "" || scope.briefRel == "" {
 		return revisionMismatch, ""
 	}
@@ -1177,6 +1244,9 @@ func witnessTreeApplies(root string, scope witnessScope, witnessTree, target str
 	if why != "" {
 		return revisionUnestablished, fmt.Sprintf("the witness's commit %s %s", witnessTree, why)
 	}
+	if why := shallowCloneWhy(root); why != "" {
+		return revisionUnestablished, why
+	}
 	if err := coverageGit(root, "merge-base", "--end-of-options", w, t).Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
@@ -1184,7 +1254,16 @@ func witnessTreeApplies(root string, scope witnessScope, witnessTree, target str
 		}
 		return revisionUnestablished, "the witness's commit and the item's revision could not be related (git merge-base failed)"
 	}
-	eff := scope.atBase(root, w, t)
+	eff := scope
+	if scope.derived() {
+		eff, why = scope.derivedAtBase(root, w, t)
+		if why != "" {
+			return revisionUnestablished, why
+		}
+	}
+	if !eff.derived() {
+		eff = eff.atBase(root, w, t)
+	}
 	// --no-renames (round-3 F6): with rename detection on, a rename or move
 	// prints only its DESTINATION, so a declared file renamed away — or code
 	// moved into docs/streams/ — never showed up as a change to its old path.
@@ -1198,7 +1277,18 @@ func witnessTreeApplies(root string, scope witnessScope, witnessTree, target str
 			return revisionMismatch, fmt.Sprintf("%s differs between the witness's tree and the item's and the witness speaks for it (%s)", p, eff.describe())
 		}
 	}
-	return revisionMatch, eff.derivation()
+	// #2026 cause 1: the paths the witness speaks for are unchanged, but the
+	// tree it ran on must also have LANDED — be, outside the board's
+	// bookkeeping, the tree of some commit on the item's history — or the
+	// check ran against code the item never carried as a whole.
+	landedAt, landed, why := witnessLanded(root, w, t)
+	if why != "" {
+		return revisionUnestablished, why
+	}
+	if !landed {
+		return revisionMismatch, fmt.Sprintf("the witness's tree never landed: no commit on the item's history since the merge base has a tree identical to it outside docs/streams/** and STATUS.md (a branch squash-merged after its base moved, or never merged), so the check did not run against code %s carries", target)
+	}
+	return revisionMatch, fmt.Sprintf("%s; %s landed at %s", eff.derivation(), landedNoun, landedAt[:treeSHALen])
 }
 
 // tokenAbsent is resolveCommitToken's why for an object it cannot find.
