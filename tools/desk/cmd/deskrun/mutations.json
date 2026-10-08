@@ -48,6 +48,36 @@
       "file": "cmd/deskrun/forge.go",
       "old": "\tif role != deskkit.ReleaseRunnerRole && !logRoles[role] {",
       "new": "\tif false {"
+    },
+    {
+      "name": "review B7 — GitLab's RunLog fails: the worker/reviewer log path must go red over the real resolver",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {\n\treturn g.runLog(repo, run, defaultRunLogBounds)",
+      "new": "func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {\n\treturn nil, Unverifiable(\"mutant\", nil)"
+    },
+    {
+      "name": "review B7 — GitHub's RunLog fails: the worker/reviewer log path must go red over the real resolver",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {\n\treturn g.runLog(repo, run, defaultRunLogBounds)",
+      "new": "func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {\n\treturn nil, Unverifiable(\"mutant\", nil)"
+    },
+    {
+      "name": "review B7 — GitLab's RetryRun retries every job, not only the failed ones",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif j.Status == string(gitlab.Failed) {\n\t\t\tfailed = append(failed, j)",
+      "new": "\t\tif j.Status != \"\" {\n\t\t\tfailed = append(failed, j)"
+    },
+    {
+      "name": "review B5 — a read verb's every outcome is recorded in the write ledger again (log/status spend the write budget)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tif readVerbs[verb] && result != deskkit.ResultRefused {",
+      "new": "\tif false && readVerbs[verb] && result != deskkit.ResultRefused {"
+    },
+    {
+      "name": "review B5 — a read verb's refusals are dropped from the ledger too (the access decision is lost)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tif readVerbs[verb] && result != deskkit.ResultRefused {",
+      "new": "\tif readVerbs[verb] {"
     }
   ]
 }

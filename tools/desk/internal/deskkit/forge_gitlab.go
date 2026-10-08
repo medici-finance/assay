@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -4345,15 +4344,16 @@ func (g *GitLabForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 }
 
 // gitlabPipelineJobs lists every job of a pipeline (`GET /projects/:id/pipelines/:id/jobs`),
-// page by page. It is the shared first hop of RunLog and RetryRun: GitLab's trace and retry
-// are per JOB, so a pipeline-level verb resolves its jobs first. More than RunLogMaxParts jobs
-// is a could-not-check — a silently shortened list would read as the whole pipeline.
-func (g *GitLabForge) gitlabPipelineJobs(cl *gitlab.Client, repo ForgeRepo, pid int64) ([]*gitlab.Job, error) {
+// page by page under lim (production: defaultRunLogBounds). It is the shared first hop of RunLog
+// and RetryRun: GitLab's trace and retry are per JOB, so a pipeline-level verb resolves its jobs
+// first. More than lim.maxParts jobs, or more pages than lim.maxPages, is a could-not-check — a
+// silently shortened list would read as the whole pipeline.
+func (g *GitLabForge) gitlabPipelineJobs(cl *gitlab.Client, repo ForgeRepo, pid int64, lim runLogBounds) ([]*gitlab.Job, error) {
 	path := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", g.projectPath(repo), pid)
 	var all []*gitlab.Job
-	for page := 1; page <= gitlabMaxCIPage; page++ {
+	for page := 1; page <= lim.maxPages; page++ {
 		chunk, resp, lerr := cl.Jobs.ListPipelineJobs(repo.Slug(), pid, &gitlab.ListJobsOptions{
-			ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+			ListOptions: gitlab.ListOptions{PerPage: lim.perPage, Page: int64(page)},
 		})
 		if lerr != nil {
 			return nil, g.mapErr(http.MethodGet, path, lerr)
@@ -4363,9 +4363,9 @@ func (g *GitLabForge) gitlabPipelineJobs(cl *gitlab.Client, repo ForgeRepo, pid 
 				all = append(all, j)
 			}
 		}
-		if len(all) > RunLogMaxParts {
+		if len(all) > lim.maxParts {
 			return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has more than %d jobs — "+
-				"refusing to act on a silently shortened job list", pid, repo.Slug(), RunLogMaxParts), nil)
+				"refusing to act on a silently shortened job list", pid, repo.Slug(), lim.maxParts), nil)
 		}
 		if resp == nil || resp.NextPage == 0 {
 			return all, nil
@@ -4378,8 +4378,14 @@ func (g *GitLabForge) gitlabPipelineJobs(cl *gitlab.Client, repo ForgeRepo, pid 
 // RunLog reads the log of a pipeline: its jobs are listed, then EVERY job's trace is read
 // (`GET /projects/:id/jobs/:job_id/trace`, `read_api`), one RunLogPart per job. A pipeline
 // with several jobs is never reduced to the first job's trace; a pipeline with no jobs is a
-// could-not-check (404 semantics), not an empty success.
+// could-not-check (404 semantics), not an empty success. Each trace is STREAMED through the
+// bounded sink, so the download itself is bounded and the trace's true tail is what is kept.
 func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	return g.runLog(repo, run, defaultRunLogBounds)
+}
+
+// runLog is RunLog under explicit bounds (production: defaultRunLogBounds).
+func (g *GitLabForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]RunLogPart, error) {
 	pid, err := ValidateRunID(run)
 	if err != nil {
 		return nil, err
@@ -4388,7 +4394,7 @@ func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
 	if err != nil {
 		return nil, err
 	}
-	jobs, err := g.gitlabPipelineJobs(cl, repo, pid)
+	jobs, err := g.gitlabPipelineJobs(cl, repo, pid, lim)
 	if err != nil {
 		return nil, err
 	}
@@ -4398,20 +4404,21 @@ func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
 	}
 	parts := make([]RunLogPart, 0, len(jobs))
 	for _, j := range jobs {
-		path := fmt.Sprintf("/projects/%s/jobs/%d/trace", g.projectPath(repo), j.ID)
-		rd, _, terr := cl.Jobs.GetTraceFile(repo.Slug(), j.ID)
-		if terr != nil {
-			return nil, g.mapErr(http.MethodGet, path, terr)
+		rel := fmt.Sprintf("projects/%s/jobs/%d/trace", g.projectPath(repo), j.ID)
+		req, rerr := cl.NewRequest(http.MethodGet, rel, nil, nil)
+		if rerr != nil {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: GET /%s could not be built", rel), rerr)
 		}
-		var b []byte
-		if rd != nil {
-			var rerr error
-			b, rerr = io.ReadAll(io.LimitReader(rd, 4*RunLogPartCap))
-			if rerr != nil {
-				return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot read the trace of job %d on %s", j.ID, repo.Slug()), rerr)
-			}
+		sink := &runLogSink{limit: lim.readCap, keep: lim.partCap}
+		_, derr := cl.Do(req, sink)
+		if errors.Is(derr, errRunLogOverRead) {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: the trace of job %q (%d) in pipeline %d on %s exceeds %d bytes — "+
+				"refusing to present a slice of it as its tail", StripControl(j.Name), j.ID, pid, repo.Slug(), lim.readCap), nil)
 		}
-		text, trunc := capRunLogText(b)
+		if derr != nil {
+			return nil, g.mapErr(http.MethodGet, "/"+rel, derr)
+		}
+		text, trunc := sink.tail()
 		parts = append(parts, RunLogPart{Name: j.Name, Text: text, Truncated: trunc})
 	}
 	return parts, nil
@@ -4430,7 +4437,7 @@ func (g *GitLabForge) RetryRun(repo ForgeRepo, run RunRef) error {
 	if err != nil {
 		return err
 	}
-	jobs, err := g.gitlabPipelineJobs(cl, repo, pid)
+	jobs, err := g.gitlabPipelineJobs(cl, repo, pid, defaultRunLogBounds)
 	if err != nil {
 		return err
 	}

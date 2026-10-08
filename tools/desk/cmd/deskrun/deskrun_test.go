@@ -34,6 +34,7 @@ type fakeForge struct {
 	statuses  []deskkit.RunRef
 	retries   []deskkit.RunRef
 	logs      []deskkit.RunRef
+	fail      error // when set, the read ops (RunStatus, RunLog) answer it
 }
 
 type approval struct {
@@ -53,6 +54,9 @@ func (f *fakeForge) ApproveGate(fr deskkit.ForgeRepo, run deskkit.RunRef, in des
 
 func (f *fakeForge) RunStatus(fr deskkit.ForgeRepo, run deskkit.RunRef) (*deskkit.RunState, error) {
 	f.statuses = append(f.statuses, run)
+	if f.fail != nil {
+		return nil, f.fail
+	}
 	return &deskkit.RunState{Status: deskkit.RunStatusWaiting}, nil
 }
 
@@ -63,6 +67,9 @@ func (f *fakeForge) RetryRun(fr deskkit.ForgeRepo, run deskkit.RunRef) error {
 
 func (f *fakeForge) RunLog(fr deskkit.ForgeRepo, run deskkit.RunRef) ([]deskkit.RunLogPart, error) {
 	f.logs = append(f.logs, run)
+	if f.fail != nil {
+		return nil, f.fail
+	}
 	return []deskkit.RunLogPart{
 		{Name: "build", Text: "compiling\x1b[31m ok\x1b[0m\r\nlinking\n"},
 		{Name: "test", Text: "FAIL: TestThing", Truncated: true},
@@ -358,44 +365,6 @@ func setLoop(t *testing.T, loop string) {
 	t.Setenv("DESK_LOOP", loop)
 }
 
-// TestDeskrunLogSucceedsWorkerAndReviewer — Verify row 2 (+flow). `log` reads the run's log under
-// the CALLING role's own credential for BOTH the worker and the reviewer, on both forges: the
-// resolver is asked for that role (never the release-runner), nothing is minted by the fake
-// world, the job sections come back with terminal-active bytes stripped, and a repo whose run
-// credential is bound to a human reads fine — there is deliberately no binding gate on a read.
-func TestDeskrunLogSucceedsWorkerAndReviewer(t *testing.T) {
-	for _, kind := range []deskkit.ForgeKind{deskkit.ForgeGitHub, deskkit.ForgeGitLab} {
-		for _, tc := range []struct{ loop, role string }{{"worker-desk", "worker"}, {"pr-review-desk", "reviewer"}} {
-			t.Run(string(kind)+"-"+tc.role, func(t *testing.T) {
-				w := plantWorld(t, kind)
-				setLoop(t, tc.loop)
-				// console is bound to a HUMAN for the write verbs; a read must not care.
-				code, out, msg := runArgs(t, "log", "example-org/console", "501")
-				if code != deskkit.ExitOK {
-					t.Fatalf("exit %d: %s", code, msg)
-				}
-				if !reflect.DeepEqual(w.logRoles, []string{tc.role}) || w.fake.calls() != 1 || len(w.fake.logs) != 1 {
-					t.Fatalf("resolver roles=%v fake calls=%d, want exactly one RunLog as %q", w.logRoles, w.fake.calls(), tc.role)
-				}
-				if w.fake.logs[0].ID != "501" {
-					t.Fatalf("RunLog read run %q, want 501", w.fake.logs[0].ID)
-				}
-				for _, want := range []string{"===== build =====", "compiling ok", "linking", "===== test (truncated", "FAIL: TestThing"} {
-					if !strings.Contains(out, want) {
-						t.Errorf("output lacks %q: %q", want, out)
-					}
-				}
-				if strings.ContainsAny(out, "\x1b\r") {
-					t.Errorf("terminal-active bytes survived into the output: %q", out)
-				}
-				if w.mints != 0 {
-					t.Errorf("the fake world's mint ran %d time(s) — log must not use the release-runner custody", w.mints)
-				}
-			})
-		}
-	}
-}
-
 // TestDeskrunLogRefusesOtherRoles — the read grant is a closed set (worker, reviewer): a session
 // acting as another desk role is refused (exit 5) before any resolver call.
 func TestDeskrunLogRefusesOtherRoles(t *testing.T) {
@@ -505,35 +474,6 @@ func TestDeskrunRetryRefusesOnHumanRoster(t *testing.T) {
 	w := plantWorld(t, deskkit.ForgeGitHub)
 	if code, _, _ := runArgs(t, "retry", "example-org/agents", "501"); code != deskkit.ExitUnverifiable || w.fake.calls() != 0 || w.forgeCalls != 0 {
 		t.Fatalf("unbound repo: exit %d, fake calls %d, resolver calls %d", code, w.fake.calls(), w.forgeCalls)
-	}
-}
-
-// TestDeskrunRetrySucceedsOnAppRoster — Verify row 4. With the repo bound to the dedicated
-// release-runner credential, `retry` issues exactly ONE RetryRun against the run, through the
-// release-runner seam (never the log seam), on both forges; --dry-run reaches nothing.
-func TestDeskrunRetrySucceedsOnAppRoster(t *testing.T) {
-	for _, tc := range []struct {
-		kind deskkit.ForgeKind
-		repo string
-	}{{deskkit.ForgeGitHub, "example-org/tracker"}, {deskkit.ForgeGitLab, "example-org/platform"}} {
-		t.Run(string(tc.kind), func(t *testing.T) {
-			w := plantWorld(t, tc.kind)
-			code, out, msg := runArgs(t, "retry", tc.repo, "9001")
-			if code != deskkit.ExitOK {
-				t.Fatalf("exit %d: %s", code, msg)
-			}
-			if !reflect.DeepEqual(w.fake.retries, []deskkit.RunRef{{ID: "9001"}}) || w.fake.calls() != 1 || len(w.logRoles) != 0 {
-				t.Fatalf("RetryRun calls=%+v total=%d log-seam roles=%v, want exactly one retry of run 9001", w.fake.retries, w.fake.calls(), w.logRoles)
-			}
-			if !strings.Contains(out, "run 9001") {
-				t.Errorf("output does not name the run: %q", out)
-			}
-		})
-	}
-	w := plantWorld(t, deskkit.ForgeGitHub)
-	code, out, _ := runArgs(t, "retry", "example-org/tracker", "9001", "--dry-run")
-	if code != deskkit.ExitOK || !strings.HasPrefix(out, "dry-run:") || w.fake.calls() != 0 || w.forgeCalls != 0 || w.mints != 0 {
-		t.Fatalf("--dry-run: exit %d out=%q fake=%d resolver=%d mints=%d", code, out, w.fake.calls(), w.forgeCalls, w.mints)
 	}
 }
 

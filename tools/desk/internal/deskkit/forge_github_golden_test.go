@@ -1124,13 +1124,36 @@ func TestForgeGithubGolden(t *testing.T) {
 		},
 		// --- forge-neutral brief 17: RunLog and RetryRun ---
 		{
-			// RunLog: the logs route redirects to an archive; each zip entry is one job's log,
-			// in archive order, and the token-bearing request is the one to the API host.
+			// RunLog: the logs route redirects to an archive in GitHub's REAL layout — a top-level
+			// whole-job file per job plus a directory of per-step files per job. One part per JOB
+			// comes back (the whole-job files, in archive order); the step files are not parts.
 			name: "run_log",
+			setup: func(s *goldenServer) {
+				s.runLogZip = zipOf(t, [][2]string{
+					{"0_build.txt", "ready\ncompiled\n"},
+					{"1_test.txt", "ready\nFAIL: TestThing\n"},
+					{"build/1_Set up job.txt", "ready\n"},
+					{"build/2_Compile.txt", "compiled\n"},
+					{"test/1_Set up job.txt", "ready\n"},
+					{"test/2_Run tests.txt", "FAIL: TestThing\n"},
+				})
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RunLog(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
+			// An archive carrying only per-step files: each job directory is one part, its steps
+			// joined in archive order.
+			name: "run_log_steps_only",
 			setup: func(s *goldenServer) {
 				s.runLogZip = zipOf(t, [][2]string{{"build/1_Set up job.txt", "ready\n"}, {"build/2_Run tests.txt", "FAIL: TestThing\n"}})
 			},
 			run: func(f *GitHubForge) (any, error) { return f.RunLog(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
+			// An archive with no log file is a could-not-check, never an empty success.
+			name:  "run_log_empty_archive",
+			setup: func(s *goldenServer) { s.runLogZip = zipOf(t, nil) },
+			run:   func(f *GitHubForge) (any, error) { return f.RunLog(forgeTestRepo, RunRef{ID: "501"}) },
 		},
 		{
 			// A log that expired or was deleted answers 404: surfaced as not-found, never as an

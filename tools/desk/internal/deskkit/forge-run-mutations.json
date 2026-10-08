@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden|TestCapRunLog|TestForgeNoPassthroughAfterRunLogRetry'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden|TestRunLog|TestForgeNoPassthroughAfterRunLogRetry'",
   "control": {
     "name": "CONTROL — the GitHub dispatch body loses its ref",
     "file": "internal/deskkit/forge_github.go",
@@ -92,10 +92,94 @@
       "new": "\t\tif j.Status != \"\" {"
     },
     {
-      "name": "brief 17 — the log cap keeps the HEAD of an oversized log instead of the tail (the failure at the end is lost)",
+      "name": "review B3 — the run-log sink keeps the HEAD of an oversized log instead of the tail (the failure at the end is lost)",
       "file": "internal/deskkit/forge.go",
-      "old": "\treturn string(b[len(b)-RunLogPartCap:]), true",
-      "new": "\treturn string(b[:RunLogPartCap]), true"
+      "old": "\t\treturn string(s.buf[len(s.buf)-s.keep:]), true",
+      "new": "\t\treturn string(s.buf[:s.keep]), true"
+    },
+    {
+      "name": "review B3 — the sink's compaction keeps the oldest bytes, so a streamed log's tail is the middle of the log",
+      "file": "internal/deskkit/forge.go",
+      "old": "\t\ts.buf = append(s.buf[:0], s.buf[len(s.buf)-s.keep:]...)",
+      "new": "\t\ts.buf = s.buf[:s.keep]"
+    },
+    {
+      "name": "review B6 — the sink's read bound is removed (an unbounded log is read whole)",
+      "file": "internal/deskkit/forge.go",
+      "old": "\tif s.n+int64(len(p)) > s.limit {",
+      "new": "\tif false && s.n+int64(len(p)) > s.limit {"
+    },
+    {
+      "name": "review B6 — production's read bound is raised past the documented constant",
+      "file": "internal/deskkit/forge.go",
+      "old": "\treadCap:    RunLogReadCap,",
+      "new": "\treadCap:    RunLogReadCap << 4,"
+    },
+    {
+      "name": "review B4 — GitHub returns a part per step file even when whole-job files exist",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tif len(whole) > 0 {\n\t\treturn whole\n\t}",
+      "new": "\tif false && len(whole) > 0 {\n\t\treturn whole\n\t}"
+    },
+    {
+      "name": "review B4 — an empty GitHub archive is an empty success",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tif len(jobs) == 0 {\n\t\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: the log archive",
+      "new": "\tif false && len(jobs) == 0 {\n\t\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: the log archive"
+    },
+    {
+      "name": "review B6 — the GitHub job bound is removed",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tif len(jobs) > lim.maxParts {",
+      "new": "\tif false && len(jobs) > lim.maxParts {"
+    },
+    {
+      "name": "review B6 — the GitHub archive download is not bounded by archiveCap",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tarc := &runLogSink{limit: lim.archiveCap}",
+      "new": "\tarc := &runLogSink{limit: lim.archiveCap + 1<<30}"
+    },
+    {
+      "name": "review B6 — a GitHub job log is read under the archive bound, not the per-part read bound",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
+      "new": "\t\tsink := &runLogSink{limit: lim.archiveCap, keep: lim.partCap}"
+    },
+    {
+      "name": "review B3 — a GitHub job log is kept whole, not cut to its tail",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
+      "new": "\t\tsink := &runLogSink{limit: lim.readCap, keep: 0}"
+    },
+    {
+      "name": "review B6 — the GitLab job bound is removed",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif len(all) > lim.maxParts {",
+      "new": "\t\tif false && len(all) > lim.maxParts {"
+    },
+    {
+      "name": "review B6 — GitLab reads only the first page of a pipeline's jobs",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages",
+      "new": "\t\tif true {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages"
+    },
+    {
+      "name": "review B6 — a GitLab job list past the page bound returns the pages read as the whole list",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages",
+      "new": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn all, nil\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages"
+    },
+    {
+      "name": "review B6 — a GitLab trace is read under the archive bound, not the per-part read bound",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
+      "new": "\t\tsink := &runLogSink{limit: lim.archiveCap, keep: lim.partCap}"
+    },
+    {
+      "name": "review B3 — a GitLab trace is kept whole, not cut to its tail",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
+      "new": "\t\tsink := &runLogSink{limit: lim.readCap, keep: 0}"
     }
   ]
 }

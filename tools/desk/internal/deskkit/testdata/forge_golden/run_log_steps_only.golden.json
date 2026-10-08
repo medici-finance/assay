@@ -11,11 +11,7 @@
   ],
   "result": [
     {
-      "Name": "0_build.txt",
-      "Text": "ready\ncompiled\n"
-    },
-    {
-      "Name": "1_test.txt",
+      "Name": "build",
       "Text": "ready\nFAIL: TestThing\n"
     }
   ]

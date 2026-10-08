@@ -1464,31 +1464,87 @@ type RunState struct {
 	URL        string `json:",omitempty"`
 }
 
-// RunLogPart is one job's log text (RunLog). Name is the job (GitHub: the zip entry name,
-// GitLab: the job name), Text its log, Truncated true when the log exceeded RunLogPartCap and
-// only its tail is kept. Both strings are forge-origin: a renderer control-strips them.
+// RunLogPart is one job's log text (RunLog). Name is the job (GitHub: the archive's whole-job
+// file name, or the job directory when the archive carries only per-step files; GitLab: the
+// job name), Text its log, Truncated true when the log exceeded RunLogPartCap and only its
+// tail is kept. Both strings are forge-origin: a renderer control-strips them.
 type RunLogPart struct {
 	Name      string
 	Text      string
 	Truncated bool `json:",omitempty"`
 }
 
-// RunLogPartCap bounds the text kept per RunLogPart (4 MiB). The TAIL is kept: a failing
-// step's message is at the end of a log. RunLogMaxParts bounds the jobs read from one run, and
-// runLogArchiveCap the bytes of a GitHub log archive downloaded, so a hostile or runaway log
-// cannot exhaust memory.
+// The run-log bounds, so a hostile or runaway log cannot exhaust memory or be passed off as
+// whole:
+//
+//   - RunLogPartCap bounds the text KEPT per RunLogPart (4 MiB). The TAIL is kept — a failing
+//     step's message is at the end of a log — and the whole log is streamed through to find it.
+//   - RunLogReadCap bounds the bytes READ per part (64 MiB). A log longer than that is a
+//     could-not-check naming the job, never a slice of it presented as its tail.
+//   - RunLogMaxParts bounds the jobs read from one run (200); more is a could-not-check.
+//   - runLogArchiveCap bounds the bytes of a GitHub log archive downloaded (64 MiB); more is a
+//     could-not-check.
 const (
 	RunLogPartCap    = 4 << 20
+	RunLogReadCap    = 64 << 20
 	RunLogMaxParts   = 200
 	runLogArchiveCap = 64 << 20
 )
 
-// capRunLogText applies RunLogPartCap, keeping the tail.
-func capRunLogText(b []byte) (string, bool) {
-	if len(b) <= RunLogPartCap {
-		return string(b), false
+// runLogBounds carries the run-log bounds into a backend's read. Production always passes
+// defaultRunLogBounds (the constants above and GitLab's pagination constants); a test passes
+// smaller values to prove each bound fires — the bounds are parameters, never mutable state.
+type runLogBounds struct {
+	partCap    int   // bytes of tail kept per part
+	readCap    int64 // bytes read per part before could-not-check
+	maxParts   int   // jobs per run
+	archiveCap int64 // bytes of one GitHub archive
+	perPage    int64 // GitLab job-list page size
+	maxPages   int   // GitLab job-list pages walked before could-not-check
+}
+
+var defaultRunLogBounds = runLogBounds{
+	partCap:    RunLogPartCap,
+	readCap:    RunLogReadCap,
+	maxParts:   RunLogMaxParts,
+	archiveCap: runLogArchiveCap,
+	perPage:    gitlabPerPage,
+	maxPages:   gitlabMaxCIPage,
+}
+
+// errRunLogOverRead is what a runLogSink answers once its read bound is passed.
+var errRunLogOverRead = errors.New("run log exceeds its read bound")
+
+// runLogSink is the one bounded writer every run-log byte goes through. It accepts at most
+// limit bytes in total — past that, Write fails with errRunLogOverRead and the caller reports
+// could-not-check — and, when keep > 0, retains only the LAST keep bytes (the tail), so a log of
+// any length up to limit is streamed in bounded memory and its true end survives. keep == 0
+// retains every byte (the GitHub archive, which must be whole to be unzipped).
+type runLogSink struct {
+	limit int64
+	keep  int
+	n     int64
+	buf   []byte
+}
+
+func (s *runLogSink) Write(p []byte) (int, error) {
+	if s.n+int64(len(p)) > s.limit {
+		return 0, errRunLogOverRead
 	}
-	return string(b[len(b)-RunLogPartCap:]), true
+	s.n += int64(len(p))
+	s.buf = append(s.buf, p...)
+	if s.keep > 0 && len(s.buf) > 2*s.keep {
+		s.buf = append(s.buf[:0], s.buf[len(s.buf)-s.keep:]...)
+	}
+	return len(p), nil
+}
+
+// tail returns the kept text and whether anything before it was dropped.
+func (s *runLogSink) tail() (string, bool) {
+	if s.keep > 0 && len(s.buf) > s.keep {
+		return string(s.buf[len(s.buf)-s.keep:]), true
+	}
+	return string(s.buf), s.keep > 0 && s.n > int64(s.keep)
 }
 
 // ValidateRunID checks a RunRef's id is a bare positive integer before it is interpolated
@@ -1991,10 +2047,15 @@ type Forge interface {
 	// RunLog reads one run's log as text, one RunLogPart per job (forge-neutral brief 17;
 	// consumer: cmd/deskrun log). It is READ-ONLY and runs under the calling role's own token
 	// (GitHub `actions: read`, GitLab `read_api`). GitHub: `GET …/actions/runs/{id}/logs` (a
-	// redirect to a zip of per-job logs; an expired or deleted log answers 404, surfaced as
-	// IsForgeNotFound, never as an empty success). GitLab's trace is per JOB, so the pipeline's
-	// jobs are listed and EVERY job's trace is read — a multi-job pipeline is never reduced to
-	// the first job. A part over the per-part cap keeps its TAIL and is marked Truncated.
+	// redirect to a zip holding a top-level whole-job file per job plus a directory of step
+	// files per job; one part per whole-job file, the step files grouped by job directory only
+	// when no whole-job file exists; an archive with no log file is could-not-check, and an
+	// expired or deleted log answers 404, surfaced as IsForgeNotFound, never as an empty
+	// success). GitLab's trace is per JOB, so EVERY page of the pipeline's jobs is listed and
+	// EVERY job's trace is streamed — a multi-job pipeline is never reduced to the first job or
+	// the first page. A part over RunLogPartCap keeps its true TAIL and is marked Truncated; a
+	// part over RunLogReadCap, a run over RunLogMaxParts jobs or a GitHub archive over its
+	// download cap is could-not-check, never a silently shortened log.
 	RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error)
 	// RetryRun re-runs the FAILED work of one run and nothing else (forge-neutral brief 17;
 	// consumer: cmd/deskrun retry). It needs GitHub `actions: write` / GitLab `api`, the

@@ -3055,11 +3055,21 @@ func (g *GitHubForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 }
 
 // RunLog reads one run's log (`GET /repos/{o}/{r}/actions/runs/{id}/logs`). GitHub answers a
-// redirect to a zip archive of per-job logs; the redirect is followed WITHOUT the bearer token
-// (go-gh attaches it only to the API host), the archive is read under a byte cap, and each zip
-// entry becomes one RunLogPart. An expired or deleted log answers 404 (IsForgeNotFound).
-// Needs only `actions: read`.
+// redirect to a zip archive; the redirect is followed by the HTTP client, and go-gh's transport
+// attaches the bearer token only when the target is the API host or a subdomain of it (GitHub
+// serves the archive from a separate storage host). The archive is read under a byte cap. Its
+// real layout is a top-level whole-job file per job (`0_build.txt`) PLUS a directory per job of
+// per-step files (`build/1_Set up job.txt`, the same text split), so ONE RunLogPart is built per
+// job: from the whole-job files when the archive has them, else by joining each job directory's
+// step files in archive order — never a part per zip entry, which would print every job twice.
+// An archive with no log file is a could-not-check, not an empty success. An expired or deleted
+// log answers 404 (IsForgeNotFound). Needs only `actions: read`.
 func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	return g.runLog(repo, run, defaultRunLogBounds)
+}
+
+// runLog is RunLog under explicit bounds (production: defaultRunLogBounds).
+func (g *GitHubForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]RunLogPart, error) {
 	id, err := ValidateRunID(run)
 	if err != nil {
 		return nil, err
@@ -3079,42 +3089,85 @@ func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
 		return nil, Unverifiable(fmt.Sprintf("GET %s failed", path), rerr)
 	}
 	defer resp.Body.Close()
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, runLogArchiveCap+1))
-	if readErr != nil {
+	arc := &runLogSink{limit: lim.archiveCap}
+	if _, cerr := io.Copy(arc, resp.Body); cerr != nil {
+		if errors.Is(cerr, errRunLogOverRead) {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: the log archive for run %d on %s exceeds %d bytes — "+
+				"refusing to read it whole", id, repo.Slug(), lim.archiveCap), nil)
+		}
 		return nil, Unverifiable(fmt.Sprintf("GET %s response body cut off mid-transfer (%d bytes arrived) — "+
-			"refusing to treat a partial log as a complete one", path, len(raw)), readErr)
+			"refusing to treat a partial log as a complete one", path, arc.n), cerr)
 	}
-	if len(raw) > runLogArchiveCap {
-		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log archive for run %d on %s exceeds %d bytes — "+
-			"refusing to read it whole", id, repo.Slug(), runLogArchiveCap), nil)
-	}
-	zr, zerr := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	zr, zerr := zip.NewReader(bytes.NewReader(arc.buf), int64(len(arc.buf)))
 	if zerr != nil {
 		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log for run %d on %s is not a readable archive", id, repo.Slug()), zerr)
 	}
-	var parts []RunLogPart
-	for _, f := range zr.File {
+	jobs := githubLogJobs(zr.File)
+	if len(jobs) == 0 {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log archive for run %d on %s holds no log file, "+
+			"so there is no log to read", id, repo.Slug()), nil)
+	}
+	if len(jobs) > lim.maxParts {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: run %d on %s has more than %d jobs — "+
+			"refusing to return a silently shortened log", id, repo.Slug(), lim.maxParts), nil)
+	}
+	parts := make([]RunLogPart, 0, len(jobs))
+	for _, j := range jobs {
+		sink := &runLogSink{limit: lim.readCap, keep: lim.partCap}
+		for _, f := range j.files {
+			rd, oerr := f.Open()
+			if oerr != nil {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot open log file %q of run %d", StripControl(f.Name), id), oerr)
+			}
+			_, cerr := io.Copy(sink, rd)
+			rd.Close()
+			if errors.Is(cerr, errRunLogOverRead) {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: the log of job %q in run %d on %s exceeds %d bytes — "+
+					"refusing to present a slice of it as its tail", StripControl(j.name), id, repo.Slug(), lim.readCap), nil)
+			}
+			if cerr != nil {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot read log file %q of run %d", StripControl(f.Name), id), cerr)
+			}
+		}
+		text, trunc := sink.tail()
+		parts = append(parts, RunLogPart{Name: j.name, Text: text, Truncated: trunc})
+	}
+	return parts, nil
+}
+
+// githubLogJob is one job of a run-log archive and the entries its text is read from.
+type githubLogJob struct {
+	name  string
+	files []*zip.File
+}
+
+// githubLogJobs groups a run-log archive's entries into jobs, in archive order: each
+// top-level file is one job's whole log; when there is none, each top-level directory is one
+// job whose step files are joined. Directory entries carry no text and are skipped.
+func githubLogJobs(files []*zip.File) []*githubLogJob {
+	var whole, steps []*githubLogJob
+	byDir := map[string]*githubLogJob{}
+	for _, f := range files {
 		if f.FileInfo().IsDir() {
 			continue
 		}
-		if len(parts) >= RunLogMaxParts {
-			return nil, Unverifiable(fmt.Sprintf("could-not-check: run %d on %s has more than %d log files — "+
-				"refusing to return a silently shortened log", id, repo.Slug(), RunLogMaxParts), nil)
+		dir, _, nested := strings.Cut(f.Name, "/")
+		if !nested {
+			whole = append(whole, &githubLogJob{name: f.Name, files: []*zip.File{f}})
+			continue
 		}
-		rd, oerr := f.Open()
-		if oerr != nil {
-			return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot open log file %q of run %d", StripControl(f.Name), id), oerr)
+		j := byDir[dir]
+		if j == nil {
+			j = &githubLogJob{name: dir}
+			byDir[dir] = j
+			steps = append(steps, j)
 		}
-		// Read one byte past a generous bound; the tail cap is applied to what was read.
-		b, ierr := io.ReadAll(io.LimitReader(rd, 4*RunLogPartCap))
-		rd.Close()
-		if ierr != nil {
-			return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot read log file %q of run %d", StripControl(f.Name), id), ierr)
-		}
-		text, trunc := capRunLogText(b)
-		parts = append(parts, RunLogPart{Name: f.Name, Text: text, Truncated: trunc})
+		j.files = append(j.files, f)
 	}
-	return parts, nil
+	if len(whole) > 0 {
+		return whole
+	}
+	return steps
 }
 
 // RetryRun re-runs the failed jobs of one run (`POST …/actions/runs/{id}/rerun-failed-jobs`).

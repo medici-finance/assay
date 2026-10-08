@@ -11,8 +11,6 @@ alternatives:
 accepted:
   - "A repo whose run-credential binding is unset or human-bound cannot be retried by any desk verb; that stays a human action until an operator deliberately binds a `release-runner` credential. This is the intended fail-closed posture."
   - "The log read is available to the worker and reviewer roles on every repo they already hold a token for, with no per-repo roster binding. The set is closed in code (a named two-role set), so widening it to another role is a deliberate edit, not a side effect."
-  - "GitHub's retry is the narrower of its two endpoints: it re-runs only the failed jobs of a run. GitLab has no run-level retry, so the backend retries each failed job of the pipeline and leaves passed, running and manual jobs alone. A run with no failed job is could-not-check and writes nothing."
-  - "Log text is bounded: each job's tail is capped, the part count is bounded, and terminal control sequences are stripped before anything is printed."
 ---
 
 The driver (`human:<name>`) ratified `forge-neutral/17`, which adds the run-log and

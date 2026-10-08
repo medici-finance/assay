@@ -55,22 +55,37 @@ func TestForgeNoPassthroughAfterRunLogRetry(t *testing.T) {
 	}
 }
 
-// TestCapRunLogTextKeepsTail pins the cap's direction: the TAIL survives, because a CI failure
-// is at the end of a job log, and the truncated flag is set.
-func TestCapRunLogTextKeepsTail(t *testing.T) {
-	small, trunc := capRunLogText([]byte("short"))
-	if small != "short" || trunc {
-		t.Fatalf("a log under the cap must pass untouched, got %q trunc=%v", small, trunc)
+// TestRunLogSinkKeepsTail pins the sink's direction: the TAIL survives however the bytes
+// arrive (one write, or many small ones across its compaction), the truncated flag is exact at
+// the keep boundary, and a write past the read bound fails instead of being dropped silently.
+func TestRunLogSinkKeepsTail(t *testing.T) {
+	small := &runLogSink{limit: 1 << 20, keep: 8}
+	_, _ = small.Write([]byte("short"))
+	if got, trunc := small.tail(); got != "short" || trunc {
+		t.Fatalf("a log under the cap must pass untouched, got %q trunc=%v", got, trunc)
 	}
-	big := strings.Repeat("a", RunLogPartCap) + "THE-FAILURE"
-	got, trunc := capRunLogText([]byte(big))
-	if !trunc {
-		t.Fatal("a log over the cap must be flagged truncated")
+	exact := &runLogSink{limit: 1 << 20, keep: 8}
+	_, _ = exact.Write([]byte("12345678"))
+	if got, trunc := exact.tail(); got != "12345678" || trunc {
+		t.Fatalf("a log exactly at the cap is whole, got %q trunc=%v", got, trunc)
 	}
-	if !strings.HasSuffix(got, "THE-FAILURE") {
-		t.Fatalf("the cap must keep the tail, got ...%q", got[max(0, len(got)-20):])
+	for _, chunk := range []int{1, 3, 7, 64} {
+		s := &runLogSink{limit: 1 << 20, keep: 8}
+		log := strings.Repeat("a", 100) + "FAILURE!"
+		for i := 0; i < len(log); i += chunk {
+			if _, err := s.Write([]byte(log[i:min(i+chunk, len(log))])); err != nil {
+				t.Fatalf("chunk %d: %v", chunk, err)
+			}
+		}
+		if got, trunc := s.tail(); got != "FAILURE!" || !trunc {
+			t.Fatalf("chunk %d: want the last 8 bytes flagged truncated, got %q trunc=%v", chunk, got, trunc)
+		}
 	}
-	if len(got) > RunLogPartCap {
-		t.Fatalf("capped text is %d bytes, over the %d cap", len(got), RunLogPartCap)
+	over := &runLogSink{limit: 10, keep: 8}
+	if _, err := over.Write([]byte("0123456789")); err != nil {
+		t.Fatalf("a write reaching the bound exactly must pass: %v", err)
+	}
+	if _, err := over.Write([]byte("x")); err != errRunLogOverRead {
+		t.Fatalf("a write past the bound must fail with errRunLogOverRead, got %v", err)
 	}
 }

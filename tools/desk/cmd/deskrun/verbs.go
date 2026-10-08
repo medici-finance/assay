@@ -294,7 +294,8 @@ var logRoles = map[string]bool{"worker": true, "reviewer": true}
 // sessionRoleFn resolves the App role the session acts as. Package var so a test can fix it.
 var sessionRoleFn = deskkit.SessionTokenRole
 
-// cmdLog is `deskrun log <owner/repo> <run-id>` — prints the run's log, one section per job.
+// cmdLog is `deskrun log <owner/repo> <run-id>` — prints the run's log, one section per job
+// (each over-cap job's tail, the true end of its log).
 // It is a READ under the CALLING role's own token (no binding check, no release-runner
 // custody), for the worker and reviewer roles. Log text is forge-origin: terminal-active
 // bytes are stripped before it reaches stdout.
@@ -340,11 +341,11 @@ func cmdLog(args []string, out io.Writer) error {
 		auditLine(fr.Slug(), verb, resultOf(err), "log: "+err.Error())
 		return err
 	}
-	auditLine(fr.Slug(), verb, deskkit.ResultOK, fmt.Sprintf("run %s as %s, %d part(s)", run.ID, role, len(parts)))
+	// A successful read records nothing: it must not spend the write verbs' budget (readVerbs).
 	for _, p := range parts {
 		note := ""
 		if p.Truncated {
-			note = fmt.Sprintf(" (truncated: the last %d bytes)", deskkit.RunLogPartCap)
+			note = fmt.Sprintf(" (truncated: the last %d bytes)", len(p.Text))
 		}
 		fmt.Fprintf(out, "===== %s%s =====\n", deskkit.StripControl(p.Name), note)
 		text := deskkit.StripControl(p.Text)
@@ -436,10 +437,21 @@ func resultOf(err error) string {
 	}
 }
 
+// readVerbs are deskrun's verbs that only READ the forge. They share the tool/repo ledger
+// bucket the write verbs' budget is metered from (AllowWrite(toolName, repo, 0)), so a read
+// records ONLY its refusals there — a refusal charges nothing, and it is the access decision
+// worth keeping. Every other outcome of a read (ok, a forge or custody failure) is left out:
+// recorded, it would be counted as a charged write, and reading logs to diagnose a red check
+// would lock the release-runner's dispatch, approve and retry on that repo for an hour.
+var readVerbs = map[string]bool{"status": true, "log": true}
+
 // auditLine writes deskrun's one audit line. A run has no PR number, so the line records
 // none — the unnumbered bucket AllowWrite(…, 0) gates on (the bucket a gate reads must be the
-// bucket its writes land in).
+// bucket its writes land in). A read verb's non-refusal outcome is not recorded (readVerbs).
 func auditLine(repo, verb, result, detail string) {
+	if readVerbs[verb] && result != deskkit.ResultRefused {
+		return
+	}
 	sha, built := deskkit.Version()
 	_ = deskkit.Log(deskkit.Entry{
 		TS:         nowFunc().UTC().Format(time.RFC3339),
