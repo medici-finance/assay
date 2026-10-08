@@ -12,7 +12,10 @@ package main
 //	   --limit ceiling (a moving window, not ground truth), or COLLAPSES below the retain floor of
 //	   its previous count RETAINS the previous baseline and prints `MONITOR-DEGRADED: <slug> …`.
 //	   The ceiling is not a fixed page window: the read walks pages until the open set is
-//	   exhausted, and only a set past the ceiling is truncated (see inboundDefaultLimit). Because the
+//	   exhausted, and only a set past the ceiling is truncated (see inboundDefaultLimit). A listing
+//	   that fills the forge client's own page guard is refused by the client as could-not-check and
+//	   is handled as a FAILED read, whatever the ceiling — the one place this verb and the script can
+//	   disagree, and always in the fail-closed direction (TestInboundPageGuardDivergence). Because the
 //	   untrusted read's baseline is retained, the next good cycle diffs against the real baseline
 //	   and the outage is absorbed — zero phantom INBOUND events.
 //	C. BURST CAP. More than INBOUND_MONITOR_BURST_CAP new keys for one repo in one cycle collapse to
@@ -49,6 +52,9 @@ It never silently goes blind:
   · the read walks pages until the open set is exhausted; a repo holding MORE
     than the --limit ceiling is TRUNCATED, so it is treated as could-not-check:
     retain + go loud (a set of exactly the ceiling is the whole set);
+  · a listing that fills the forge client's page guard (GitHub: 100 pages of
+    100 rows, open pull requests included; GitLab: 25 pages of 100 issues) is
+    refused by the client and handled as a failed read, whatever the ceiling;
   · a read that collapses below the retain floor of its previous count is a
     partial read: retain + go loud, so the recovery cycle absorbs it;
   · a burst of more than the cap new items for one repo collapses to a single
@@ -62,8 +68,9 @@ Options:
 
 Environment:
   INBOUND_MONITOR_STATE_DIR    per-repo state (default <temp dir>/assay-inbound-monitor).
-  INBOUND_MONITOR_LIMIT        per-repo read ceiling (default 10000 — the forge
-                               client's own open-issue page ceiling).
+  INBOUND_MONITOR_LIMIT        per-repo read ceiling (default 2000, below the forge
+                               client's page guard, so a set of exactly the ceiling
+                               and one past it are both read whole).
   INBOUND_MONITOR_BURST_CAP    new-items-per-repo-per-cycle listing cap (default 25).
   INBOUND_MONITOR_RETAIN_FLOOR percent-of-previous below which a read is partial
                                (retain + degrade); 0 disables (default 50).
@@ -77,12 +84,22 @@ Exit codes:
      rate-limited) — state RETAINED
 `
 
-// inboundDefaultLimit is the default per-repo read CEILING. It is the forge client's own
-// open-issue page ceiling (100 pages of 100, deskkit's forgeMaxIssuePages × forgeIssuePerPage) —
-// the real API cap, past which the forge read itself refuses as could-not-check. It replaced a
-// fixed 500-issue window that sat at the same number as the truncation threshold: a repo whose
-// open set grew past 500 read as TRUNCATED on every cycle, and nothing could clear it.
-const inboundDefaultLimit = 10000
+// inboundDefaultLimit is the default per-repo read CEILING. It is chosen so that the ceiling's own
+// boundary is decided by this poller, never by the forge client underneath it: the poller must read
+// LIMIT+1 issues WHOLE to tell a set of exactly LIMIT from one past it. The forge client's open-issue
+// walk stops at a local page guard and refuses past it as could-not-check — on GitHub 100 pages of
+// 100 REST rows (deskkit's forgeMaxIssuePages × forgeIssuePerPage), which count open pull requests
+// too, because the REST issue listing serves them and the client drops them only after reading the
+// page; on GitLab 25 pages of 100 issues (gitlabMaxIssuePage × gitlabPerPage). That guard is the
+// client's own bound, not an API limit. 2000 sits below both: LIMIT+1 = 2001 issues read whole on
+// GitLab (guard 2500) and on GitHub while the repo has fewer than 7999 open pull requests. Past the
+// guard the read is refused and handled as a FAILED read (TestInboundPageGuardDivergence).
+//
+// It replaced a fixed 500-issue window that sat at the same number as the truncation threshold: a
+// repo whose open set grew past 500 read as TRUNCATED on every cycle, and nothing could clear it.
+// The script's default (inbound-monitor.sh) is the same number; TestMonitorCeilingParity pins both
+// at it.
+const inboundDefaultLimit = 2000
 
 // inboundConfig is one inbound cycle's resolved inputs.
 type inboundConfig struct {
@@ -213,7 +230,7 @@ func inboundCycle(cfg inboundConfig, repos []string, out io.Writer) (bool, error
 		curN, atLimit := 0, false
 		if readOK {
 			// The forge client walks the WHOLE open set (and refuses as could-not-check past its own
-			// page ceiling); the script asks `gh` for one row past the ceiling. Either way a set is
+			// page guard — a failed read, handled above); the script asks `gh` for one row past the ceiling. Either way a set is
 			// TRUNCATED only when it holds MORE than the ceiling — a set of exactly LIMIT is the
 			// whole set, never a moving window — so the fail-closed rule and its line are the same.
 			cur = sortC(keys)

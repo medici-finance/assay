@@ -81,11 +81,15 @@ set -uo pipefail
 # line "<owner>/<name>#<num> <updatedAt>". The presence of the file is the seed
 # marker: no file => this repo has never been polled => SEED it silently.
 STATE_DIR="${INBOUND_MONITOR_STATE_DIR:-${TMPDIR:-/tmp}/assay-inbound-monitor}"
-# LIMIT is the per-repo read CEILING, not a page window. The default is the Go
-# verb's forge-client open-issue page ceiling (100 pages of 100) — the real API
-# cap. It replaced a fixed 500 that sat at the same number as the truncation
-# threshold: a repo past 500 open issues read as TRUNCATED on every cycle.
-LIMIT="${INBOUND_MONITOR_LIMIT:-10000}"
+# LIMIT is the per-repo read CEILING, not a page window. The default (2000) is
+# the Go verb's (deskmonitor inbound, inboundDefaultLimit), and parity pins the
+# two together. The verb reads through a forge client whose open-issue walk
+# stops at its own page guard, so the default sits below that guard: one row
+# past the ceiling still reads whole there, and the two pollers decide the
+# ceiling's boundary the same way. It replaced a fixed 500 that sat at the
+# same number as the truncation threshold: a repo past 500 open issues read as
+# TRUNCATED on every cycle.
+LIMIT="${INBOUND_MONITOR_LIMIT:-2000}"
 BURST_CAP="${INBOUND_MONITOR_BURST_CAP:-25}"
 # Retain floor: a read that returns fewer than this PERCENT of the repo's
 # previous count is treated as a partial/could-not-check read (retain + go loud),
@@ -136,7 +140,7 @@ Options:
 Environment:
   INBOUND_MONITOR_STATE_DIR   where per-repo state lives (default $TMPDIR/assay-inbound-monitor).
   INBOUND_MONITOR_LIMIT       per-repo read ceiling; `gh issue list` is asked for one
-                              row past it (default 10000).
+                              row past it (default 2000).
   INBOUND_MONITOR_BURST_CAP   new-items-per-repo-per-cycle listing cap (default 25).
   INBOUND_MONITOR_RETAIN_FLOOR percent-of-previous below which a read is treated as
                               partial (retain + degrade); 0 disables (default 50).

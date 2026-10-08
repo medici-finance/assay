@@ -96,7 +96,7 @@ func runParity(t *testing.T, script string, fx fixture) (oracle, verb []cycleRes
 	oracleState := filepath.Join(t.TempDir(), "oracle-state")
 	verbState := filepath.Join(t.TempDir(), "verb-state")
 	stateEnv := "INBOUND_MONITOR_STATE_DIR"
-	limitEnv, limitDef := "INBOUND_MONITOR_LIMIT", 500
+	limitEnv, limitDef := "INBOUND_MONITOR_LIMIT", inboundDefaultLimit
 	if fx.Kind == "pr" {
 		stateEnv = "PR_MONITOR_STATE_DIR"
 		limitEnv, limitDef = "PR_MONITOR_LIMIT", 100

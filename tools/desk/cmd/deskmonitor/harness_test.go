@@ -52,10 +52,15 @@ type fixturePR struct {
 // fixtureRead is one repo's answer in one cycle. With no failure field set it is a successful read
 // of Issues/PRs.
 type fixtureRead struct {
-	Issues  []fixtureIssue `json:"issues,omitempty"`
-	PRs     []fixturePR    `json:"prs,omitempty"`
-	Status  int            `json:"status,omitempty"`  // a non-2xx answer
-	Message string         `json:"message,omitempty"` // its JSON `message`
+	Issues []fixtureIssue `json:"issues,omitempty"`
+	// PRRows (inbound only) is how many open pull requests the forge's REST issue listing serves
+	// AFTER the issues. That listing returns pull requests too, and the verb's forge client drops
+	// them only after a page is read, so they fill its page guard; `gh issue list` never returns
+	// them, so the oracle never sees them.
+	PRRows  int         `json:"prRows,omitempty"`
+	PRs     []fixturePR `json:"prs,omitempty"`
+	Status  int         `json:"status,omitempty"`  // a non-2xx answer
+	Message string      `json:"message,omitempty"` // its JSON `message`
 	// Errors are the non-2xx body's errors[] strings. go-gh — gh's own error decoder — appends
 	// each to the message as its own line, so both tools see them.
 	Errors []string `json:"errors,omitempty"`
@@ -112,6 +117,9 @@ func loadFixtures(t *testing.T, kind string) map[string]fixture {
 			for repo, rd := range c.Reads {
 				if len(rd.GraphQLErrors) > 0 && kind != "pr" {
 					t.Fatalf("%s: %s: a GraphQL errors envelope is a pr-read answer only", p, repo)
+				}
+				if rd.PRRows > 0 && kind != "inbound" {
+					t.Fatalf("%s: %s: prRows are rows of the REST issue listing, an inbound-read answer only", p, repo)
 				}
 			}
 		}
@@ -230,18 +238,31 @@ func (f *forgeFake) serve(w http.ResponseWriter, r *http.Request) {
 		if per < 1 {
 			per = 30
 		}
+		// The REST listing's rows: the issues, then PRRows open pull requests (pull_request set).
+		total := len(rd.Issues) + rd.PRRows
 		lo, hi := (page-1)*per, page*per
-		if lo > len(rd.Issues) {
-			lo = len(rd.Issues)
+		if lo > total {
+			lo = total
 		}
-		if hi > len(rd.Issues) {
-			hi = len(rd.Issues)
+		if hi > total {
+			hi = total
 		}
-		if hi < len(rd.Issues) {
+		if hi < total {
 			w.Header().Set("Link", fmt.Sprintf(`<%s%s?page=%d>; rel="next"`, f.srv.URL, r.URL.Path, page+1))
 		}
 		items := make([]map[string]any, 0, hi-lo)
-		for _, is := range rd.Issues[lo:hi] {
+		for i := lo; i < hi; i++ {
+			if i >= len(rd.Issues) {
+				n := 1000000 + i
+				items = append(items, map[string]any{
+					"number": n, "title": "fixture pr", "user": map[string]any{"login": "someone", "id": 7},
+					"labels": []any{}, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-09-01T00:00:00Z",
+					"html_url":     "https://github.com/" + repo + "/pull/" + strconv.Itoa(n),
+					"pull_request": map[string]any{"url": "https://api.github.com/repos/" + repo + "/pulls/" + strconv.Itoa(n)},
+				})
+				continue
+			}
+			is := rd.Issues[i]
 			items = append(items, map[string]any{
 				"number": is.Number, "title": "fixture issue", "user": map[string]any{"login": "someone", "id": 7},
 				"labels": []any{}, "created_at": "2026-01-01T00:00:00Z", "updated_at": is.UpdatedAt,
