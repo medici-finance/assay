@@ -33,13 +33,4 @@ selection bias; retrospective detection is not proof of prevention. Include alre
 obligations and cases where the skill should recommend no change. Distinguish a missed
 design obligation from a failure to implement or enforce an obligation already present.
 
-## Sources informing this approach
-
-These are selective adaptations, not dependencies, copied skill bodies or evidence that
-this combination reduces defects. No external workflow needs installing.
-
-- [BMAD architecture](https://github.com/bmad-code-org/BMAD-METHOD/blob/bda3c5929f672019b90f39a3ea27259d35d00974/skills/bmad-architecture/SKILL.md): inherited decisions and the invariants independent implementers need to share.
-- [Plumbline spec engine](https://github.com/nickyfactz/plumbline/blob/35498b2e153e473dd78473a02e551334936bcddb/skills/plumbline-spec-engine/SKILL.md): adopt sufficient existing artifacts and preserve behavioural proof obligations.
-- [Spec Kit](https://github.com/github/spec-kit): distinguish user outcomes from implementation planning.
-- [arc42](https://arc42.org/overview/): select context, runtime, quality and decision views according to the question.
-- [Assay build-less-brittle](https://github.com/medici-finance/assay/blob/main/docs/streams/build-less-brittle/spec.md): semantic ownership, retirement, evidence grading and investigating intent against observed failures. Reuse its procedures where applicable.
+Reuse applicable [build-less-brittle procedures](https://github.com/medici-finance/assay/blob/main/docs/streams/build-less-brittle/spec.md) for semantic ownership, retirement, evidence grading and investigations.
