@@ -329,7 +329,7 @@ func TestCLIConfigLaunch(t *testing.T) {
 	t.Run("fake-harness-argv", func(t *testing.T) {
 		w := newCLIWorld(t, "")
 		logPath := w.logStub(t)
-		values := []string{"m-one", "/tmp/a dir/with space.txt", `C:\Users\op\m`, "a=b,c=d", "-dash-leading"}
+		values := []string{"m-one", "/tmp/a dir/with space.txt", `D:\op\m`, "a=b,c=d", "-dash-leading"}
 		for _, v := range values {
 			r := w.run(t, nil, "smoke", "scrub", "--harness", "claude", "--model", v)
 			if r.Code != 0 {
