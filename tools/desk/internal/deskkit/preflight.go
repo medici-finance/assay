@@ -1160,7 +1160,10 @@ func listedDetail(refs []*plumbing.Reference) string {
 // permission-classifier wording (#823) are here: from the desk's seat a
 // classifier denial and a 403 are the same fact — this identity has no permitted
 // write transport to its landing path. The status codes are whole tokens (\b),
-// so 401/403 inside a longer number (a 14010 port, a request id) is not one.
+// so 401/403 inside a longer number (a 14010 port, a request number) is not one.
+// The same boundary means a status glued to letters or an underscore ("HTTP403",
+// "err_403") is not read as one either; that is deliberate, and a text-only denial
+// in that shape reads as could-not-check.
 //
 // Match through isRejection, never rejectionRe directly on raw transport text:
 // gitcore's errors name the request URL, and digits in a URL's port or path are
@@ -1168,13 +1171,31 @@ func listedDetail(refs []*plumbing.Reference) string {
 var rejectionRe = regexp.MustCompile(`(?i)(permission denied|denied to |\b403\b|\b401\b|authentication failed|not authorized|resource not accessible|protected branch|pre-receive hook declined|refusing to allow|blocked by|permission to .* denied)`)
 
 // addressRe matches the places transport text carries an address rather than an
-// answer: a URL ("scheme://…") and a bare host:port ("127.0.0.1:40109",
-// "[::1]:403", "github.com:443").
-var addressRe = regexp.MustCompile(`\S*://\S*|(?:[\w.-]+|\[[0-9a-fA-F:]+\]):\d+\b`)
+// answer, and ONLY the address:
+//
+//   - a URL, from its scheme ("http://", "https://") to the first character that
+//     cannot belong to one: whitespace, a quote, an angle bracket, a comma, pipe,
+//     semicolon or parenthesis, or a colon not followed by a port. Wording glued to
+//     a URL by punctuation ('"Not authorized","documentation_url":"https://…"',
+//     "https://host/o/r.git:permission denied") stays outside the match.
+//   - a host:port whose host LOOKS like a host: a dotted name ("127.0.0.1:40109",
+//     "github.com:443"), "localhost", or a bracketed IPv6 literal ("[::1]:403").
+//
+// A word that is none of those followed by a colon and digits is a label and its
+// value, not an address: "status:403", "error:403" and "code:401" are statuses and
+// are left for rejectionRe. The one ambiguity is a dotted name followed directly by
+// a colon and 401 or 403 ("example.test:403"), which reads as a port. Address
+// shapes it does not blank (a port with no host, a hostname label such as
+// "git-403.internal", a scheme-less path, a bare count) are still judged as text:
+// there a 401 or 403 can still read as a denial, as it did before.
+var addressRe = regexp.MustCompile(
+	`[A-Za-z][A-Za-z0-9+.-]*://(?:\[[0-9A-Fa-f:.]+(?:%[\w.-]+)?\]|[^\s"'<>,|;()\[\]:]|:\d)*` +
+		`|(?:[\w-]+(?:\.[\w-]+)+|localhost|\[[0-9A-Fa-f:.]+(?:%[\w.-]+)?\]):\d+\b`)
 
 // isRejection reports whether a transport error's text says DENIED. It judges the
-// wording of the answer only: addresses are blanked first, so a port or path that
-// happens to contain 401 or 403 cannot turn a 502 into a rejection.
+// wording of the answer: addresses are blanked first, so a port or path that
+// happens to contain 401 or 403 cannot turn a 502 into a rejection, while denial
+// wording that sits next to an address still counts.
 func isRejection(text string) bool {
 	return rejectionRe.MatchString(addressRe.ReplaceAllString(text, " "))
 }

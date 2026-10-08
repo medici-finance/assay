@@ -79,24 +79,24 @@ func TestPreflightReachability503(t *testing.T) {
 }
 
 // portServer is statusServer pinned to a port whose decimal digits contain
-// needle (e.g. "401" -> 40109), so the digits sit inside the URL gitcore's error
-// text names. It scans a block of candidate ports and skips when none is free.
+// needle (e.g. "401" -> 14010), so the digits sit inside the URL gitcore's error
+// text names. It scans the registered-port range below the OS ephemeral ranges for
+// the first free port containing needle; there are hundreds of candidates, and
+// running out of them fails the test rather than skipping it, so the fix is never
+// reported green without having been exercised.
 func portServer(t *testing.T, code int, needle string) string {
 	t.Helper()
 	var ln net.Listener
-	for _, base := range []int{40000, 14000, 20000} {
-		for i := 0; i < 100 && ln == nil; i++ {
-			port := base + i
-			if !strings.Contains(fmt.Sprint(port), needle) {
-				continue
-			}
-			if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
-				ln = l
-			}
+	for port := 10000; port < 32000 && ln == nil; port++ {
+		if !strings.Contains(fmt.Sprint(port), needle) {
+			continue
+		}
+		if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
+			ln = l
 		}
 	}
 	if ln == nil {
-		t.Skipf("no free local port containing %q", needle)
+		t.Fatalf("no free local port containing %q between 10000 and 31999", needle)
 	}
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(code)
@@ -105,6 +105,35 @@ func portServer(t *testing.T, code int, needle string) string {
 	srv.Start()
 	t.Cleanup(srv.Close)
 	return srv.URL + "/example-org/tracker.git"
+}
+
+// bodyServer answers every request with code and a body, so a List against it fails
+// with the body copied into the transport's error text and no typed 401/403 check
+// claiming the status: the path where the classifier reads the WORDING.
+func bodyServer(t *testing.T, code int, body string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/example-org/tracker.git"
+}
+
+// TestPreflightReachabilityTextOnly — end to end through listReachability: a 404
+// whose body carries a denial beside a URL (or as status:403) is a REJECTION, and a
+// 404 whose body carries 401/403 inside a longer number is not.
+func TestPreflightReachabilityTextOnly(t *testing.T) {
+	for _, d := range denialBesideAddress {
+		t.Run("denial "+d, func(t *testing.T) {
+			assertReach(t, bodyServer(t, http.StatusNotFound, d), ProbeRejected)
+		})
+	}
+	for _, n := range numbersNotStatuses {
+		t.Run("number "+n, func(t *testing.T) {
+			assertReach(t, bodyServer(t, http.StatusNotFound, n), ProbeInconclusive)
+		})
+	}
 }
 
 // TestPreflightReachabilityPortDigits — a status the forge answered is judged by
