@@ -239,6 +239,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 33 | [Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind](brief-33-forge-reads-for-statusgen-s-remaining-sites.md) | 1 | L | implemented | — | — |
 | 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | todo | — | — |
 | 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
+| 36 | [Importable fact reader SDK and first shared read](brief-36-importable-fact-reader-sdk-and-first-shared-read.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -527,3 +528,10 @@ One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 32`, with 31 be
 - **No hand-built API call is evidence.** A pilot or Verify row satisfied by `curl` proves
   the forge works, not that the verbs do — which is precisely the gap
   [`pilot-report.md` §2](../forge-gitlab/pilot-report.md) records.
+
+## Library-first work — 2026-10-08
+
+New work: `forge-neutral/36` extracts the first SDK read slice independently of /18.
+Then /18 migrates the remaining reads; /35 retains its control-specific human gate.
+Final no-forge-CLI enforcement in desktools-v2/08 waits for both /18 and /35.
+See [the component contract](../../library-first.md). Existing completed history is unchanged.

@@ -43,7 +43,7 @@ decision-trigger: creation
 decision-issue: 2315
 issues: [2315]
 schema: brief-v2
-version: 2
+version: 3
 outcome: none
 id: a6651bd7-de82-48d4-b80e-38c7d6663222
 authored: 2026-10-06 by forge-neutral authoring session (the #2253 ruling); revised 2026-10-06 for the correctness and security reviews of #2314
@@ -312,6 +312,16 @@ Default if no answer: none — blocks until answered.
   base URL from the environment or a flag.
 - If anything is unclear or contradicts repo state, report NEEDS_CONTEXT. Do not bypass
   activation, and do not guess.
+
+## Library-first amendment — 2026-10-08
+
+Read `docs/library-first.md`. Keep this brief's existing identity ruling, kinds, explicit
+opt-in, host/repository binding, token checks and negative tests unchanged. Where /36 has
+landed, call its shared read implementation below the existing CI admission constructor;
+do not put CI admission in the generic Reader API. The CLI remains a supported composition.
+This brief does not authorize moving the CI credential into another process, an ambient
+fallback or reuse of a role-owned token. No new SDK dependency is required merely to finish
+this already-scoped identity change; subsequent read migration uses the landed constructor.
 
 ## Task
 

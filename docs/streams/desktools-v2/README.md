@@ -26,11 +26,10 @@ first-class principles (see [spec.md](spec.md) §2):
    the re-minted credential is the App PEM + installation id, so **key presence is the custody
    boundary**; one role's key per environment, making even the desktop behave like a locked
    container.
-2. **The read path covers statusgen — across the `deskread` verb boundary.** statusgen shells
-   `gh` directly (the `scanloop`-in-container break, #628). It reaches the seam by RUNNING the
-   `deskread` verb, never by importing `deskkit` (`statusgen/forgeread.go`), and that migration
-   is owned by the sibling brief `forge-neutral/18`. v2 does not redo it: it brings
-   `statusgen/**` under the ban so the progress is measurable, then holds the zero.
+2. **The read path covers statusgen through a shared typed API.** The
+   [library-first plan](../../library-first.md) assigns SDK extraction to forge-neutral/36,
+   consumer migration to /18 and control-feeding reads to /35. v2/08 holds the no-forge-CLI
+   and no-ambient boundary without banning safe library imports.
 3. **Purpose-built queries** — typed access-pattern operations (review-queue snapshot, head-sha
    batch, board sweep), each backend one tuned query: N+1 → one round-trip, rate-limit headroom,
    and one consistent snapshot (freshness), with the GraphQL document never crossing the seam.
@@ -59,7 +58,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 04 | [deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019)](brief-04-deskclose-authorization-read-kind.md) | 2 | S | done | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1320 @ f6a6b8fcb28a03884f90590a5ad6557258f3c6f0) |
 | 05 | [the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884)](brief-05-push-guards-judge-the-real-remote.md) | 2 | M | verified | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | 06 | [installation-token scoping — explicit repo-scoped custody across Go, cellctl and dispatch](brief-06-installation-token-scoping.md) | 4 | M | todo | — | — |
-| 08 | [hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present](brief-08-hold-statusgen-at-zero.md) | 6 | S | todo | — | — |
+| 08 | [hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present](brief-08-hold-statusgen-at-zero.md) | 7 | M | todo | — | — |
 | 09 | [purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls)](brief-09-access-pattern-queries.md) | 3 | L | verified | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | 10 | [one outbound-write check at the forge write seam, keyed on the target's visibility](brief-10-one-outbound-write-check.md) | 2 | L | implemented | — | — |
 | 11 | [a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools](brief-11-outbound-house-callout.md) | 3 | M | todo | — | — |

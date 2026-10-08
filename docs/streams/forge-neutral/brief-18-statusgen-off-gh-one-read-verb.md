@@ -13,7 +13,7 @@ why: >-
   reads that belong to a forge go through the desk-tools read verb, and the check that runs in
   CI stops reaching the network at all.
 wave: 5
-depends: ["forge-neutral/08", "forge-neutral/33", "forge-neutral/34"]
+depends: ["forge-neutral/08", "forge-neutral/33", "forge-neutral/34", "forge-neutral/36"]
 unblocks: ["forge-neutral/35"]
 effort: L
 gate: model
@@ -57,7 +57,7 @@ consumers:
   - "docs/telemetry.md: fixed-here (the contract for what `--lint` may reach)"
   - "tools/desk/internal/deskkit/forge.go: out-of-scope (this brief adds NO operation — every read it needs is already enumerated, or added by forge-neutral/33, and has both backends, so the freeze rule is satisfied by consuming the surface rather than widening it)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (statusgen is a separate module and has never had a permit row; the register counts desk-tools call sites, and this brief adds none)"
-version: 2
+version: 3
 id: 6ccc64a7-c32b-48ba-b6ac-d3a8165f15f9
 ---
 
@@ -225,6 +225,22 @@ facts — all measured on this repository at `e428134c`, 24 streams and 165 brie
   `e6cb7d2a0`), nor `ghVerdictIssueResolver` in `statusgen/transcribeverdict.go` or the two
   places `main.go` passes it (`:1987`, `:1994`). They are forge-neutral/35's.
   `ghAuthorResolver` and `ghVerdictMainHealth`, in the same two files, are this brief's.
+
+## Library-first amendment — 2026-10-08
+
+Read `docs/library-first.md`. This amendment replaces the mandatory process transport in
+Task 1–3, not the enumerated reads, offline default, performance requirements or /35 exclusions.
+/36 owns the shared OpenIssues slice and public API. This brief extends that API only with
+consumed read kinds and migrates the remaining callers; it does not duplicate /36's code.
+
+Keep deskread's command/envelope compatibility. Online role reads may retain its process
+adapter where it preserves existing custody; direct offline/frozen and approved in-process
+reads use the SDK. No requirement below to run deskread forbids direct library reuse under
+that contract. No change grants a process a token it could not previously hold. /34 remains
+the CI admission owner and /35 remains the ruling/sign-off owner. The remaining CLI-specific
+Verify rows qualify the compatibility adapter; SDK equivalence is separately required by /36.
+Add the new module to release resolution and CI scans as each read moves. Historical source
+notes and measurements below describe the earlier transport, not a prohibition on the SDK.
 
 ## Task
 

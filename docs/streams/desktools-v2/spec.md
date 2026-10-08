@@ -76,43 +76,21 @@ The two credential-custody briefs cite this framing: `desktools-v2/03` (the nati
 client's custody contract) and `desktools-v2/06` (installation-token scoping); the statusgen
 custody proof in `desktools-v2/08` inherits it too.
 
-### Principle 2 — the READ PATH covers statusgen, across the `deskread` verb boundary
+### Principle 2 — statusgen shares the typed read API
 
-"Retire `gh` in the read path" (#1223) is NOT done when the desk verbs are done. statusgen
-shells `gh` directly across its scan, auto-flip, autonomy and corroboration reads (§1 table).
-It is the `scanloop`-blind root (#628): `scanloop` invokes `statusgen --scan-issues`, which
-shells `gh`, so a container with no ambient `gh` credential reads an empty queue and goes
-blind.
+The library-first plan in `docs/library-first.md` replaces the mandatory cross-module
+verb boundary. `forge-neutral/36` extracts a narrow importable read API and its first
+shared implementation; /18 migrates the remaining reads. The SDK does not export deskkit
+wholesale or give statusgen custody. Existing independent authority boundaries remain.
+Offline/frozen access links directly. A role-session online read retains the deskread
+compatibility adapter until an approved reader service/client can preserve custody;
+a CI profile keeps /34's explicit admission. The CLI and SDK share implementation and
+three-state results. No ambient authentication fallback is introduced.
 
-**How statusgen reaches the seam is already decided, and v2 adopts that decision rather than
-reopening it.** statusgen is its own Go module and does not import `deskkit`; the header of
-`statusgen/forgeread.go` records that this "is deliberate and it stays: the seam is reached by
-RUNNING the desk-tools read verb (`deskread`) and parsing its JSON, not by linking a package."
-That is the driver's direction of 2026-09-14 as recorded in `forge-neutral/18` ("desk-tools
-owns the seam"), and it is landed code, not a proposal: `tools/desk/cmd/deskread/` exists,
-`forgeReader` defaults to an offline three-state reader, and the first statusgen read has
-already moved onto it. `deskread` authenticates as the session's minted App role through the
-`deskkit` resolver and has no ambient-credential fallback, so a read that moves onto it
-inherits Principle 1's custody posture with no work in statusgen itself.
-
-An earlier draft of this document proposed the opposite — promote `deskkit` to an importable
-shared library and have statusgen link it. **That proposal is withdrawn.** It contradicted a
-recorded direction and the tree, and it duplicated `forge-neutral/18`, which owns the
-statusgen migration end to end (its completion test is zero forge-CLI sites in `statusgen/`).
-The two briefs that carried it are gone: `desktools-v2/07` is withdrawn (its number is not
-reused) and `desktools-v2/08` is re-scoped to the part no other brief owns.
-
-What v2 contributes to the statusgen read path is therefore enforcement and proof, not
-migration:
-
-- **The ban covers `statusgen/**`** (`desktools-v2/02`). statusgen has never had a permit row
-  because `forgeban` counts desk-tools call sites only; the v2 counter includes it, so
-  `forge-neutral/18`'s progress is visible as a falling count.
-- **The zero is held** (`desktools-v2/08`). Once `forge-neutral/18` reaches zero, the
-  statusgen half of the counter flips from advisory to failing, and a container-shaped proof
-  — no `gh` on `PATH`, no ambient credential, only the role's minting key — shows the scan
-  reads a real queue or reports could-not-check, never an empty one. `forge-neutral/18` is
-  `gate: model` with every risk answer `no` and does not carry that proof.
+`desktools-v2/08` owns enforcement: no forge CLI, no direct credential acquisition and no
+forbidden transitive capabilities. A missing reader reports unavailable, never empty success.
+Its final zero check follows both /18 and /35, which owns the remaining control-feeding reads.
+The withdrawn /07 number remains retired; the new extraction is forge-neutral/36.
 
 ### Principle 3 — PURPOSE-BUILT QUERIES (typed access-pattern operations)
 
@@ -156,9 +134,9 @@ Architectural commitments (including the additive CLI contract of §9):
    this.)
 2. **A ban-lint that makes the reach-past a red build, not a code-review catch** — and that
    covers statusgen, which is not under `forgeban` today.
-3. **The cross-module boundary is a VERB, not a package.** A second module reaches the seam
-   by running `deskread` and parsing its versioned envelope (Principle 2); `deskkit` stays
-   internal. v2 enforces that boundary, it does not replace it.
+3. **Cross-module reuse is library-first.** Link the narrow typed SDK where authority permits;
+   use its client adapter across an independently enforced boundary. Do not import all of
+   deskkit or use a process boundary merely to avoid publishing an API.
 4. **Custody-first native clients** (Principle 1): explicit minted-token, key-presence
    boundary, refuse-ambient — on the desk read path and on statusgen.
 5. **Incremental, tool-by-tool migration, with the old path REMOVED as each lands.**
