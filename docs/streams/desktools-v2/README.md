@@ -26,10 +26,14 @@ first-class principles (see [spec.md](spec.md) §2):
    the re-minted credential is the App PEM + installation id, so **key presence is the custody
    boundary**; one role's key per environment, making even the desktop behave like a locked
    container.
-2. **The read path covers statusgen through a shared typed API.** The
-   [library-first plan](../../library-first.md) assigns SDK extraction to forge-neutral/36,
-   consumer migration to /18 and control-feeding reads to /35. v2/08 holds the no-forge-CLI
-   and no-ambient boundary without banning safe library imports.
+2. **The read path covers statusgen — across the `deskread` verb boundary.** statusgen shells
+   `gh` directly (the `scanloop`-in-container break, #628). It reaches the seam by RUNNING the
+   `deskread` verb, never by importing `deskkit` (`statusgen/forgeread.go`), and that migration
+   is owned by the sibling briefs `forge-neutral/18` and, for the control-feeding reads, `/35`.
+   v2 does not redo it: it brings `statusgen/**` under the ban so the progress is measurable,
+   then holds the zero. A [library-first proposal](../../library-first.md), pending a driver
+   ruling on #2395, would let statusgen link a narrow module's offline and frozen packages;
+   online reads keep the verb and `deskkit` stays internal in either outcome.
 3. **Purpose-built queries** — typed access-pattern operations (review-queue snapshot, head-sha
    batch, board sweep), each backend one tuned query: N+1 → one round-trip, rate-limit headroom,
    and one consistent snapshot (freshness), with the GraphQL document never crossing the seam.
@@ -129,9 +133,12 @@ An earlier draft of this README put a different chain here — promote `deskkit`
 library, then port statusgen onto it. That was the tempting-but-wrong first step: it was derived
 without reading `statusgen/forgeread.go` or `forge-neutral/18`, which record the opposite
 decision and already own that migration ([spec.md](spec.md) §2 Principle 2, §4). Brief 07 is
-withdrawn and its number is not reused. `desktools-v2/08` is the one brief here that waits on
-another stream: it cannot start until `forge-neutral/18` reaches zero `gh` sites in statusgen
-(26 remained on 2026-09-17), which is why it sits in the last wave and on no critical path.
+withdrawn and its number is not reused. The 2026-10-08 library-first proposal is not that
+chain: it keeps `deskkit` internal and statusgen's online reads on the verb, and it is pending
+a driver ruling (spec §2 Principle 2). `desktools-v2/08` is the one brief here that waits on
+another stream: it cannot start until `forge-neutral/18` and `/35` together reach zero `gh`
+sites in statusgen (26 remained on 2026-09-17), which is why it sits in the last wave and on
+no critical path.
 
 ## Dependency waves
 
@@ -148,16 +155,18 @@ another stream: it cannot start until `forge-neutral/18` reaches zero `gh` sites
   exceptions; depends 01+02 — human-gated), `desktools-v2/09` (purpose-built access-pattern
   queries; depends 02) and `desktools-v2/11` (the house callout; depends 10 — human-gated).
 - **Wave 4** — `desktools-v2/06` (installation-token scoping; depends 02+03 — human-gated).
-- **Wave 6** — `desktools-v2/08` (hold statusgen at zero; depends 02 and the sibling
-  `forge-neutral/18`, which is wave 5 of its own stream — the wave number follows that edge).
+- **Wave 7** — `desktools-v2/08` (hold statusgen at zero; depends 02 and the siblings
+  `forge-neutral/18` and `/35`, waves 5 and 6 of their own stream — the wave number follows
+  the later edge).
 
 Critical path: `01 → 02 → 03 → 06`, with the outbound-write chain `01 → 10 → 11` beside it.
 
 ## Relationship to the sibling streams
 
 - **`forge-neutral`** owns the forge *write* path, the resolver/custody (`forge-neutral/01`)
-  **and statusgen's forge path** (`forge-neutral/07`, `/08`, and `/18` — statusgen off `gh`
-  through the `deskread` verb, in progress). v2 consumes the resolver, waits on `/18`, and
+  **and statusgen's forge path** (`forge-neutral/07`, `/08`, `/18` — statusgen off `gh`
+  through the `deskread` verb, in progress — and `/35`, the ruling resolvers). v2 consumes the
+  resolver, waits on `/18` and `/35`, and
   re-implements neither. v2's own contribution is the *ban* (extended to statusgen), the
   *custody contract* on the native read client, the *access-pattern query layer* and the
   *outbound-write check*. See [spec.md](spec.md) §4.

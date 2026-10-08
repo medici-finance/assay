@@ -294,14 +294,16 @@ facts — measured at `35c303e47`:
   pushed into `deskread`.
 - Touch no file under `tools/desk/` and no workflow.
 
-## Library-first amendment — 2026-10-08
+## Library-first amendment — 2026-10-08 (proposed; pending a driver ruling)
 
-Read `docs/library-first.md`. Consume the shared typed read API from /36 through /18;
-retain the deskread adapter where it enforces the approved credential placement. The direct
-HTTP client and its ambient-token fallback still retire. Preserve every author-type,
-edit-history, subject-binding and sign-off refusal and its existing human gate. Library
-reuse does not turn the ruling resolvers into generic queries or grant them credentials.
-Existing CLI adapter tests remain; add SDK/adapter parity to the resolver's flow fixtures.
+`docs/library-first.md` proposes library-first reuse; adopting it needs a driver ruling, asked
+for on #2395. **This amendment adds no deliverable and changes no transport.** The ruling
+resolvers' two reads move onto `deskread`, as Task 1 says, in either outcome. The direct HTTP
+client and its ambient-token fallback still retire. statusgen links no authenticated read
+adapter from the shared module, so the resolvers neither hold a credential nor become generic
+queries. Every author-type, edit-history, subject-binding and sign-off refusal and the human
+gate stay as written. A later move of these reads into the shared module would be its own
+human-gated brief.
 
 ## Task
 

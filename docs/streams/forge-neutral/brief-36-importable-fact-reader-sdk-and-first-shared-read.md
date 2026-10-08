@@ -4,11 +4,11 @@ title: Importable fact reader SDK and first shared read
 why: "Consumers currently need a subprocess or duplicate forge handling to reuse read behavior. A narrow SDK lets commands and applications share the implementation without acquiring custody or write authority."
 wave: 1
 depends: []
-unblocks: ["forge-neutral/18"]
+unblocks: []
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
-gate-why: "Consumers currently need a subprocess or duplicate forge handling to reuse read behavior. A narrow SDK lets commands and applications share the implementation without acquiring custody or write authority."
+gate-why: "sensitive-data is yes because the slice moves the code that reads private issue data under a minted credential into a new module other processes can link. The human confirms three things: no credential moves into a previously credential-free process; the forge-CLI scan, the ambient-token rule and the CI path trigger follow the moved code (rows 5 to 8); and the lower boundary refuses an out-of-scope repository with the consumer-side check bypassed (row 9)."
 issues: []
 schema: brief-v2
 version: 1
@@ -22,13 +22,13 @@ exec-tier-why: Cross-module extraction must preserve identity constraints, parti
 domain: complicated
 decision-trigger: start
 consumers:
-  - "forgeread/, go.work, tools/desk/go.mod, statusgen/go.mod: follow-up forge-neutral/36"
+  - "forgeread/, tools/desk/go.mod, statusgen/go.mod: follow-up forge-neutral/36 (no root go.work: loopadmin/runner/request_test.go fails if one exists)"
   - "tools/desk/internal/deskkit/forge_github.go, tools/desk/internal/deskkit/forge_gitlab.go, tools/desk/cmd/deskread: follow-up forge-neutral/36"
   - "statusgen/forgeread.go: follow-up forge-neutral/36"
   - "remaining statusgen forge reads: follow-up forge-neutral/18"
   - "CI identity admission: follow-up forge-neutral/34"
   - "ruling/sign-off resolvers: follow-up forge-neutral/35"
-  - "tools/desk/scripts/forge-ban.sh: follow-up desktools-v2/08"
+  - "tools/desk/scripts/forge-ban.sh, tools/desk/internal/deskkit/ambienttoken_guard_test.go, .github/workflows/forge-surface-control.yml: follow-up forge-neutral/36 (this brief is the single owner of their coverage of forgeread/; desktools-v2/08 still owns the statusgen half)"
 id: 41aca5ee-e627-4547-817d-932c899e766e
 ---
 
@@ -37,10 +37,11 @@ id: 41aca5ee-e627-4547-817d-932c899e766e
 ## Context
 
 files: `forgeread/go.mod` (new), `forgeread/reader.go` (planned), `forgeread/offline.go` (planned),
-`forgeread/envelope.go` (planned), `forgeread/adapters/` and tests (new), `go.work`,
+`forgeread/envelope.go` (planned), `forgeread/adapters/` and tests (new),
 `tools/desk/go.mod`, `tools/desk/internal/deskkit/forge_github.go`,
 `tools/desk/internal/deskkit/forge_gitlab.go`, their tests,
-`tools/desk/cmd/deskread/`, `statusgen/go.mod`, `statusgen/forgeread.go` and tests,
+`tools/desk/cmd/deskread/`, `tools/desk/scripts/forge-ban.sh`,
+`tools/desk/internal/deskkit/ambienttoken_guard_test.go`, `statusgen/go.mod`, `statusgen/forgeread.go` and tests,
 `statusgen/forgeread_sdk_test.go` (new), `tools/desk/internal/arch/`,
 `.github/workflows/forge-surface-control.yml`, `.github/workflows/assay-statusgen.yml`,
 `docs/library-first.md`, `docs/streams/forge-gitlab/inventory.md`,
@@ -53,16 +54,19 @@ internal. The SDK module does not exist. OpenIssues already has GitHub and GitLa
 /34 owns CI workflow-token admission and /35 owns the human-ruling control migrations.
 
 layering: a narrow consumer read API plus separate effectful read adapters; credential
-composition remains at the existing trusted boundary. Task 1–3 and Verify 2–4 enforce this.
+composition remains at the existing trusted boundary. Tasks 1–3 and 5 and Verify 2–9 enforce this.
 design-fit:
   owner: forgeread (read implementation extracted from existing forge adapters)
   contract: "none — typed read transport; S-identity stays owned by existing custody"
   retires: [duplicated OpenIssues transport implementation, duplicated statusgen read envelope types]
   weight: "verbs 0, flags 0, refusals 0; one module and typed API"
   why-add: "An independent module avoids importing all of deskkit and replaces duplicated read code; exporting deskkit would expose unrelated capabilities."
-single-point-of-failure: SDK types do not contain caller authority. Existing provider scopes
-and the credential-holding boundary remain independent of the consumer; a read-only method
-set alone is not a sandbox for an overprivileged token.
+single-point-of-failure: the credential composition inside desk-tools — `deskkit`'s resolver,
+reached through `deskread`, is the one place a token meets a read adapter. Behind it: the
+provider installation's own repository scope, which the forge enforces whatever the client
+does, and rows 3, 6, 7 and 9 (no ambient fallback, scans over the moved code, and a
+lower-layer refusal with the upper check bypassed). SDK types carry no caller authority, and a
+read-only method set alone is not a sandbox for an overprivileged token.
 
 Read first: `docs/library-first.md`, `docs/streams/desktools-v2/spec.md`,
 `docs/streams/forge-neutral/brief-34-deskread-ci-workflow-token-transport.md` and /35.
@@ -75,7 +79,7 @@ The review decides whether the demonstrated package and runtime boundaries prese
 
 Options:
 1. **Accept the bounded extraction** — reuse the typed reader while retaining existing credential
-   placement and compatibility transport wherever direct access is not authorized.
+   placement; statusgen's online reads stay on the deskread process adapter.
 2. **Hold the extraction** — retain current reads until the implementation supplies adequate
    evidence of equivalent scope and independent enforcement.
 
@@ -101,9 +105,12 @@ all remaining read kinds stay with their existing migration owners.
    transitive custody/write dependency. Effectful adapters accept only explicitly supplied,
    already-admitted access at trusted composition; they never discover credentials themselves.
 3. Wire deskread's issues kind and statusgen's OpenIssues seam to the shared API/types. Direct
-   library access is used for offline/frozen inputs and at trusted read compositions. Keep the
-   existing deskread bridge as a named compatibility adapter for role-session online reads:
-   removing that bridge is not permission to copy credentials into statusgen. Exercise direct
+   library access is used for offline and frozen inputs, and inside `deskread` itself, where
+   `deskkit`'s resolver composes the credential (the trusted read composition). statusgen's
+   online reads, role-session and CI alike, keep the deskread process adapter. Retiring that
+   bridge for any online read is not part of this brief: it needs its own human-gated brief and
+   a driver ruling, and none is authored. Removing it is never permission to copy credentials
+   into statusgen. Exercise direct
    SDK and CLI production paths against the same fake-provider observations. Do not change /34's
    CI opt-in or /35's ruling rules. Add imports/flow checks with negative controls, including
    a client bypass that still cannot use another repository's credential scope at the lower
@@ -111,8 +118,13 @@ all remaining read kinds stay with their existing migration owners.
 4. Pin dependencies, ensure desk-tools and statusgen release builds resolve the new module with
    GOWORK=off, and build an external consumer using a temporary local module proxy without relative
    replace or network. Version Go and JSON contracts separately; preserve command output/exit
-   compatibility. Extend existing CI scans/path triggers to the new module, including the forge
-   launch scan; moving code must not remove audit coverage. Update docs and changelog.
+   compatibility. Do not create a root `go.work`. Update docs and changelog.
+5. Own the control coverage of the new module, landing with the extraction; moving code must
+   not remove audit coverage. `forge-ban.sh` counts `forgeread/` as its own tree, reported
+   separately, and exits non-zero when that count is above zero from the start (rows 5–6). The
+   ambient-token-read rule covers `forgeread/` (row 7). The forge-surface-control workflow's
+   `pull_request` and `push` path lists include `forgeread/**` (row 8). Add the lower-layer
+   scope test in the desk-tools module, where the boundary lives (row 9).
 
 ## Verify
 
@@ -123,14 +135,22 @@ case retains a fail-first mutation and exercises a production path, not a mirror
 |---|---|---|---|
 | 1 | check:ci +flow +mutation | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKCLIParity$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKCLIParity " "$result")` | exit 0; named PASS; Both provider fixtures give equal SDK/deskread/statusgen results; one deliberate mapping change fails. |
 | 2 | check:ci +flow +mutation | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKUnavailable$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKUnavailable " "$result")` | exit 0; named PASS; Known-empty, partial, all-unavailable, truncated and unsupported-schema fixtures remain distinct; empty-success substitution fails. |
-| 3 | check:ci +flow +mutation | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKAuthorityBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKAuthorityBoundary " "$result")` | exit 0; named PASS; No ambient fallback or transitive custody/write access; upper-check bypass cannot broaden lower host/repo scope; allowed control succeeds. |
+| 3 | check:ci +flow +mutation | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKAuthorityBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKAuthorityBoundary " "$result")` | exit 0; named PASS; No ambient fallback or transitive custody/write access from statusgen's side; allowed control succeeds. The lower-layer scope proof is row 9, in the module that holds the boundary. |
 | 4 | check:ci +flow +mutation | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderSDKExternalConsumer$" ./... > "$result" && grep -F -- "--- PASS: TestReaderSDKExternalConsumer " "$result")` | exit 0; named PASS; Release build and external consumer resolve with GOWORK=off and local proxy only; omitted module publication fails. |
+| 5 | check +dereference | `test -d forgeread && { sh tools/desk/scripts/forge-ban.sh > "${TMPDIR:-/tmp}/b36-r5.out" 2>&1; rc=$?; grep -F 'forgeread sites: 0' "${TMPDIR:-/tmp}/b36-r5.out" && test "$rc" -eq 0; }` | exit 0: the counter reports the `forgeread/` tree separately, at `0`, and exits 0 on the clean tree. Fails if the tree is missing or not counted |
+| 6 | check +mutation | `sh -c 'test -d forgeread \|\| exit 1; mkdir -p forgeread/zz_banprobe && printf "package zz\nimport \"os/exec\"\nvar _ = exec.CommandContext(nil, \"gh\", \"api\")\n" > forgeread/zz_banprobe/probe.go; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; rc=$?; rm -rf forgeread/zz_banprobe; echo "rc=$rc"; test "$rc" -ne 0'` | exit 0; prints a non-zero `rc=`. **Negative control**: a forge-CLI launch planted under `forgeread/` makes the counter FAIL, and the probe directory is removed whatever the result |
+| 7 | check:ci +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && go test -count=1 -v -run "^TestAmbientTokenGuardCoversForgeread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestAmbientTokenGuardCoversForgeread " "$result")` | exit 0; named PASS. `TestAmbientTokenGuardCoversForgeread` (planned) runs the ambient-token-read rule over `forgeread/` and requires zero findings there with no permit; on a temporary copy with a planted `os.Getenv("GH_TOKEN")` in an adapter it requires exactly one finding |
+| 8 | check +dereference | `grep -c -F '"forgeread/**"' .github/workflows/forge-surface-control.yml` | prints `2`: both path lists trigger the forge-surface control on a `forgeread/` change. Measured at this brief's authoring: `0` |
+| 9 | check:ci +flow +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && go test -count=1 -v -run "^TestSharedReadLowerScope$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestSharedReadLowerScope " "$result")` | exit 0; named PASS. `TestSharedReadLowerScope` (planned) bypasses the consumer-side repository check and hands the shared adapter, as composed by `deskkit`, a repository outside the composed credential's scope: it is refused before any request reaches the fake provider (zero recorded requests), and an in-scope control repository reads. **+mutation**: removing the composition's scope check makes the out-of-scope request reach the fake provider and fails the test |
 
 ## Pre-mortem
 
 Duplicate backend mapping drifts (row 1); partial reads become empty queues (row 2); an SDK
 silently inherits ambient or excessive access (row 3); a workspace-only dependency ships
-unbuildable consumers (row 4). Package selection and independence remain human review judgments.
+unbuildable consumers (row 4); the moved adapters fall outside the forge-CLI scan, the
+ambient-token rule or the CI trigger (rows 5–8); a consumer-side bypass reaches another
+repository through the shared adapter (row 9). Package selection and independence remain
+human review judgments.
 
 ## Evidence
 

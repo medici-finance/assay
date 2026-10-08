@@ -477,6 +477,9 @@ findings and do not exist yet.
 - **Wave 1 (beside 01)** — `forge-neutral/34` (the CI workflow-token transport in `deskread`;
   depends on nothing, since the read verb and the seam it builds on already exist on `main`).
   18 depends on 08, 33 and 34 and stays in wave 5.
+- **Wave 1 (beside 01)** — `forge-neutral/36` (the importable fact-reader module and its first
+  shared read, human-gated; depends on nothing and unblocks nothing — its library-first
+  premise is pending a driver ruling on #2395, so no other brief waits on it).
 - **Wave 2** — `forge-neutral/02`, `03`, `04`, `05` (all depend only on 01, all
   parallelizable): identity, the two write-verb wiring briefs, and the claim layer.
 - **Wave 3** — `forge-neutral/06` (reads; depends on 01 + 03 for the established wiring
@@ -493,7 +496,8 @@ findings and do not exist yet.
 - **Wave 6** — `forge-neutral/35` (both human-ruling resolvers and the verdict-issue read onto the read verb, human-gated; its
   `depends:` names `forge-neutral/18` and `forge-neutral/33`).
 
-One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `{33, 34} → 18` and `{18, 33} → 35`.
+One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `{33, 34} → 18` and `{18, 33} → 35`;
+`36` stands alone.
 
 **Reviewer write boundary (briefs 20–25, 28–32)** — waves are derived from `depends:` like
 every other brief here, so they interleave with the numbers above rather than restarting:
@@ -531,7 +535,8 @@ One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 32`, with 31 be
 
 ## Library-first work — 2026-10-08
 
-New work: `forge-neutral/36` extracts the first SDK read slice independently of /18.
-Then /18 migrates the remaining reads; /35 retains its control-specific human gate.
-Final no-forge-CLI enforcement in desktools-v2/08 waits for both /18 and /35.
+Proposed, pending a driver ruling on #2395: `forge-neutral/36` (human-gated) would extract the
+first SDK read slice. It blocks nothing. /18 keeps its dependencies and its `deskread`
+transport for every online read, and /35 retains its control-specific human gate. Final
+no-forge-CLI enforcement in desktools-v2/08 waits for both /18 and /35, in either outcome.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.

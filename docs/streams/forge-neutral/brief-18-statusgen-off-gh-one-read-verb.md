@@ -13,7 +13,7 @@ why: >-
   reads that belong to a forge go through the desk-tools read verb, and the check that runs in
   CI stops reaching the network at all.
 wave: 5
-depends: ["forge-neutral/08", "forge-neutral/33", "forge-neutral/34", "forge-neutral/36"]
+depends: ["forge-neutral/08", "forge-neutral/33", "forge-neutral/34"]
 unblocks: ["forge-neutral/35"]
 effort: L
 gate: model
@@ -226,21 +226,29 @@ facts — all measured on this repository at `e428134c`, 24 streams and 165 brie
   places `main.go` passes it (`:1987`, `:1994`). They are forge-neutral/35's.
   `ghAuthorResolver` and `ghVerdictMainHealth`, in the same two files, are this brief's.
 
-## Library-first amendment — 2026-10-08
+## Library-first amendment — 2026-10-08 (proposed; pending a driver ruling)
 
-Read `docs/library-first.md`. This amendment replaces the mandatory process transport in
-Task 1–3, not the enumerated reads, offline default, performance requirements or /35 exclusions.
-/36 owns the shared OpenIssues slice and public API. This brief extends that API only with
-consumed read kinds and migrates the remaining callers; it does not duplicate /36's code.
+`docs/library-first.md` proposes library-first reuse. Adopting it needs a driver ruling, asked
+for on #2395, because it would change the 2026-09-14 direction quoted in Context. **This
+amendment does not change this brief's transport, in either outcome.** Every online read this
+brief moves goes through `deskread`, as Task 1–3 say, under the identity the verb resolves.
+The Context, the facts (statusgen reaches the seam by running a process, not by linking a
+package) and the risk answers stand as written.
 
-Keep deskread's command/envelope compatibility. Online role reads may retain its process
-adapter where it preserves existing custody; direct offline/frozen and approved in-process
-reads use the SDK. No requirement below to run deskread forbids direct library reuse under
-that contract. No change grants a process a token it could not previously hold. /34 remains
-the CI admission owner and /35 remains the ruling/sign-off owner. The remaining CLI-specific
-Verify rows qualify the compatibility adapter; SDK equivalence is separately required by /36.
-Add the new module to release resolution and CI scans as each read moves. Historical source
-notes and measurements below describe the earlier transport, not a prohibition on the SDK.
+What it adds:
+
+- **No dependency on forge-neutral/36.** If /36 has landed when a read moves, statusgen's
+  OpenIssues seam uses /36's shared request and result types, not a second copy. This brief
+  adds no read kind to the shared module and moves no provider adapter into it. Putting a
+  further kind's authenticated adapter in the SDK is a /36-class extraction under its own
+  human gate, and no brief carries one yet.
+- **No in-process credential.** statusgen links nothing from the shared module except its
+  offline and frozen packages, never an authenticated read adapter. No moved read uses an
+  in-process forge client or a forge token from the environment, including the clients that
+  already exist in statusgen (`ghfetch.go`, `doratiming.go`, `claimdecay_gitlab.go`).
+  Rows 21–23 fail if one does.
+- /34 remains the CI admission owner and /35 the ruling and sign-off owner. Scan and CI path
+  coverage of the extracted module is /36's. Release resolution is /36's row 4.
 
 ## Task
 
@@ -476,6 +484,9 @@ presence, `+flow` a row that exercises the cross-component path end to end.
 | 18 | check:ci | `cd tools/desk && go test ./cmd/deskread/ -run '^TestCITransportKindsIssue$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r18.out" 2>&1 && grep -F -e '--- PASS: TestCITransportKindsIssue' "${TMPDIR:-/tmp}/b18-r18.out"` | exit 0, `--- PASS:` printed. `TestCITransportKindsIssue` (planned) asserts that `issue` is on `ciTransportKinds` and on `readKinds`, and that a `deskread issue` call under the CI transport for the job's own repository reads, while the same call without the transport's opt-in does not use the job token. It also asserts every other kind this brief added to `ciTransportKinds` is on `readKinds` |
 | 19 | check +dereference | `test -f statusgen/transcribescan.go && awk '/^func /{fn=$0; sub(/^func (\([^)]*\) )?/, "", fn); sub(/\(.*/, "", fn)} /"gh"/ && !/^[[:space:]]*\/\// {print fn}' statusgen/transcribescan.go` | output is exactly one line, `ghCommentResolver`. The command prints the name of the function enclosing each non-`//` line of `transcribescan.go` that carries `"gh"`, method receivers included. It is row 3's file-scoped twin: row 3 can drop `decisionruling.go` by path, but not this file, whose two launches are textually identical and belong to different briefs. Measured at `e6cb7d2a0` with BSD awk and GNU awk: two lines, `ghAuthorResolver` then `ghCommentResolver`. After this brief `ghAuthorResolver` reads through the reader; if forge-neutral/35 has landed, the output is empty. Any other name, or the same name twice, fails the row |
 | 20 | check +dereference | `test -f statusgen/transcribeverdict.go && awk '/^func /{fn=$0; sub(/^func (\([^)]*\) )?/, "", fn); sub(/\(.*/, "", fn)} /"gh"/ && !/^[[:space:]]*\/\// {print fn}' statusgen/transcribeverdict.go` | output is exactly one line, `ghVerdictIssueResolver`. Row 19's twin for `transcribeverdict.go`, by the same command: the file's other launch, in `ghVerdictMainHealth`, is this brief's, and `ghVerdictIssueResolver` is forge-neutral/35's, so a path filter cannot separate them. Measured at `e6cb7d2a0` with BSD awk and GNU awk: two lines, `ghVerdictIssueResolver` then `ghVerdictMainHealth`. After this brief `ghVerdictMainHealth` reads through the reader; if forge-neutral/35 has landed, the output is empty. Any other name, or the same name twice, fails the row |
+| 21 | check +dereference | `test -d statusgen && { grep -rn --include='*.go' --exclude='*_test.go' 'forgeread/adapters' statusgen \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`. **Negative control for the no-in-process-credential rule**: no statusgen source outside test files names the shared module's authenticated read-adapter packages. Every grep stage tolerates only the no-match status, and the `test -d` leg fails the row on a missing tree. Measured at this amendment: `0` (the module does not exist yet) |
+| 22 | check +dereference | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"(GH_TOKEN\|GITHUB_TOKEN\|GH_ENTERPRISE_TOKEN\|GITHUB_ENTERPRISE_TOKEN\|GITLAB_TOKEN\|STATUSGEN_GITLAB_TOKEN\|CI_JOB_TOKEN)"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| cut -d: -f1 \| sort \| uniq -c` | **negative control (ratchet)**: every line names one of `statusgen/claimdecay_gitlab.go` (count at most 3), `statusgen/decisionruling.go` (at most 2; absent once forge-neutral/35 lands), `statusgen/doratiming.go` (at most 1) or `statusgen/ghfetch.go` (at most 1). Any other file, or a higher count, fails: a moved read has acquired a forge token from the environment in a new place. Measured at this amendment: exactly those four files with counts 3, 2, 1, 1 |
+| 23 | check:ci +flow +mutation | `cd statusgen && go test ./... -run '^TestMovedReadsUseVerbOnly$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r23.out" 2>&1 && grep -F -e '--- PASS: TestMovedReadsUseVerbOnly' "${TMPDIR:-/tmp}/b18-r23.out"` | exit 0, `--- PASS:` printed. `TestMovedReadsUseVerbOnly` (planned) runs every site in Task 6's table under `--forge` with a stub `deskread` first on `PATH`, a sentinel value in each forge-token environment variable, and the row 4 dial hook that FAILS the test on any network dial from the statusgen process. Each moved site's read must arrive at the stub, and no dial may occur while that site's read runs. It enumerates the Task 6 sites, so a site that is added without an entry fails rather than being skipped. Row 22 catches a new token read; this row catches a moved read that reuses an existing in-process client |
 
 ### Named mutations for the `+mutation` rows
 
@@ -489,6 +500,7 @@ never observed reddening is a control whose strength is asserted, not shown.
 | 9 | delete the memo lookup in `parseBriefFile`. Distinct parses then equal CALL count and the row fails |
 | 10 | swap the two assignments in the authorship walk (take the first sighting as the introducing commit). The multi-author fixture file must then resolve first and last inverted |
 | 11 | drop the CI-gate detection from `--changed-only` so it merely warns. The row must fail on the exit code |
+| 23 | route one moved site's read through `ghfetch.go`'s in-process client instead of `deskread`. The dial hook must fire and the row must fail on that site's name |
 
 ## Pre-mortem → detection map
 
@@ -515,6 +527,7 @@ never observed reddening is a control whose strength is asserted, not shown.
 | A new `Forge` operation is added because one call site was awkward, widening a frozen surface behind a read verb | row 15 + `allowedInvocationCeiling` unchanged |
 | The remaining call sites are left on `gh` but the row is flipped to implemented anyway | row 3's `0` is the completion test for the whole brief; slice 1 leaves it non-zero and the row stays `in-progress` by construction |
 | The measured win is claimed from a warm-cache run against a cold-cache baseline | row 13 specifies best-of-three on one tree, both sides offline |
+| A moved read is served by an in-process forge client or a forge token taken from the environment, so statusgen holds a credential the verb was meant to hold | rows 21–23: no authenticated adapter linked, no new token read, and a dial hook over every moved site |
 | An adopter on a box with no desk-tools installed finds `--lint` broken rather than merely offline | **no row** — it is the offline DEFAULT that makes this safe: with no `--forge` the verb is never invoked, so a missing `deskread` is unreachable from the gate. A row asserting a missing binary's behaviour under `--forge` belongs with `forge-neutral/11`'s install work, where a box with no desk-tools actually exists |
 
 ## Evidence

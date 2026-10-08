@@ -55,7 +55,7 @@ Every other brief is independent and self-contained.
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
-  statusgen/14 (all independent; parallelizable).
+  statusgen/14, statusgen/15 (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07).
 
 ## Conventions
