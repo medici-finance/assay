@@ -247,6 +247,13 @@ type blockerRow struct {
 // blocked by a dependency not yet done, an env-blocked brief, and unresolved
 // findings affecting the stream or one of its briefs. allStatus maps
 // "stream/NN" -> status across the whole portfolio.
+//
+// Divergence (named, not aligned): this page, nextWaveGate and the
+// Blocked-by cell in renderBriefWaves read depends: from status alone
+// (done/verified). They do NOT apply targetSatisfies' depends: branch — a
+// gate:human target at implemented whose Evidence carries a strict PASS with
+// no later FAIL — so a brief Next-up offers can still be listed here as
+// blocked by that target until the target is signed off.
 func streamBlockers(s *Stream, allStatus map[string]string, findings []Finding, findingFiles map[string]string) []blockerRow {
 	var rows []blockerRow
 	done := func(st string) bool { return st == "done" || st == "verified" }
@@ -338,7 +345,8 @@ func streamAsserted(dir string) []blockerRow {
 
 // nextWaveGate returns the human sentence describing what unlocks the next
 // incomplete wave, computed from the depends graph. "" input streams and
-// all-complete streams are handled explicitly.
+// all-complete streams are handled explicitly. It reads depends: from status
+// alone; see the divergence note on streamBlockers.
 func nextWaveGate(s *Stream, allStatus map[string]string) string {
 	nw := nextWave(s)
 	if nw == 0 {
@@ -651,7 +659,8 @@ func renderBriefWaves(w func(string, ...any), s *Stream, allStatus map[string]st
 			if touched[br.Num] {
 				deltaBadge = "<span class=\"delta-dot\" title=\"changed in last 24h\">Δ</span>"
 			}
-			// Blocked-by refs: unsatisfied deps + env block.
+			// Blocked-by refs: unsatisfied deps + env block. Status-only depends:
+			// read; see the divergence note on streamBlockers.
 			var blockedBy []string
 			for _, dep := range br.Depends {
 				if st, ok := allStatus[dep]; !ok || !done(st) {

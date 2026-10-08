@@ -1,10 +1,13 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +32,14 @@ import (
 //     deskkit.AllowVerdictIssueWrite (the verdict-issue bucket), wired at cutover.
 //
 // Fail-closed envelope (operating-envelope preflight pattern): a missing verifier PEM is
-// reported loudly and NOTHING is filed — an unsigned verdict is never emitted.
+// reported loudly and NOTHING is filed — an unsigned verdict BODY is never emitted;
+// an unsigned PAYLOAD is written only to an explicit `--unsigned-out` file.
+//
+//   - `--unsigned-out <file>` (the keyless-compose split) is the split path for a fenced runner: it
+//     runs the same rows, composes ONE payload in the same canonical form, writes it to a NEW
+//     file UNSIGNED and prints only its sha256. It never resolves, opens or reads a key — the
+//     branch is taken before resolveVerifierPEMPath (runVerdictUnsigned, below).
+//     The key-holding host signs it afterwards with `deskverdict sign --expect-sha256 …`.
 
 // rowExec runs one Verify command from `root` and returns its exit code and combined output.
 // It is the runner's single side-effecting primitive, injectable so the batch/payload logic
@@ -72,6 +82,16 @@ type verdictRunConfig struct {
 	exec    rowExec // nil => shellExec
 	now     func() time.Time
 	out     io.Writer // nil => os.Stdout
+
+	// unsignedOut, when set, selects the keyless compose-only mode (--unsigned-out): the
+	// canonical payload is written to this NEW file unsigned and no key is ever resolved.
+	unsignedOut string
+	// writeHook writes the unsigned payload bytes to the file the composer just created.
+	// nil => f.Write. Tests set it to fail the write after the create; production never does.
+	writeHook func(f *os.File, b []byte) error
+	// statHook identifies the file the composer just created. nil => f.Stat. Tests set it to
+	// fail so the post-create failure path is exercised; production never does.
+	statHook func(f *os.File) (os.FileInfo, error)
 }
 
 func (c verdictRunConfig) execFn() rowExec {
@@ -97,27 +117,10 @@ func (c verdictRunConfig) emit() io.Writer {
 
 // cmdVerdict parses the `verdict` subcommand flags and runs the deterministic runner.
 func cmdVerdict(args []string) int {
-	fs := flag.NewFlagSet("verdict", flag.ContinueOnError)
-	root := fs.String("root", ".", "repo root to scan for the Awaiting queue")
-	repo := fs.String("repo", "", "owner/name (default: derived from git origin)")
-	sha := fs.String("sha", "", "commit SHA the rows ran against (default: git HEAD)")
-	runner := fs.String("runner", "", "runner identity stamped into provenance")
-	session := fs.String("session", "", "runner session id (default: CLAUDE_SESSION_ID)")
-	pem := fs.String("pem", "", "verifier private-key PEM (default: VERIFIER_PEM, else <config-home>/verifier-app.pem)")
-	window := fs.Duration("window", defaultBatchWindow, "batch flush window")
-	dryRun := fs.Bool("dry-run", false, "compose + sign + print the would-be body without filing")
-	if err := fs.Parse(args); err != nil {
-		return deskkit.ExitRefused
-	}
-	cfg := verdictRunConfig{
-		root:    *root,
-		repo:    *repo,
-		head:    *sha,
-		runner:  *runner,
-		session: *session,
-		pem:     *pem,
-		window:  *window,
-		dryRun:  *dryRun,
+	cfg, err := parseVerdictFlags(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		return deskkit.ExitCodeOf(err)
 	}
 	// Fail-closed: a red envelope (missing/unreadable PEM, an unreadable Awaiting queue, a
 	// signing failure) is reported LOUDLY on stderr — never a silent non-zero exit. The
@@ -130,10 +133,66 @@ func cmdVerdict(args []string) int {
 	return deskkit.ExitOK
 }
 
+// parseVerdictFlags is the flag-parsing seam for `verdict`: it returns the parsed config, or a
+// refusal (exit 5) for a flag error or a combination that has no meaning. --unsigned-out never
+// combines with --pem (a key path in a keyless run is a caller error, never silently ignored),
+// --dry-run, or an EXPLICIT --window (the batching window does not apply to a run that composes
+// one payload; a silent ignore would hide a caller who expected batching). An explicit empty
+// --unsigned-out is refused too, never taken as the flag's absence.
+func parseVerdictFlags(args []string) (verdictRunConfig, error) {
+	fs := flag.NewFlagSet("verdict", flag.ContinueOnError)
+	root := fs.String("root", ".", "repo root to scan for the Awaiting queue")
+	repo := fs.String("repo", "", "owner/name (default: derived from git origin)")
+	sha := fs.String("sha", "", "commit SHA the rows ran against (default: git HEAD)")
+	runner := fs.String("runner", "", "runner identity stamped into provenance")
+	session := fs.String("session", "", "runner session id (default: CLAUDE_SESSION_ID)")
+	pem := fs.String("pem", "", "verifier private-key PEM (default: VERIFIER_PEM, else <config-home>/verifier-app.pem)")
+	window := fs.Duration("window", defaultBatchWindow, "batch flush window")
+	dryRun := fs.Bool("dry-run", false, "compose + sign + print the would-be body without filing")
+	unsignedOut := fs.String("unsigned-out", "", "write the canonical verdict-v1 payload to this new file UNSIGNED and print its sha256; resolves and reads no key; sign it on the key-holding host with deskverdict sign --expect-sha256")
+	if err := fs.Parse(args); err != nil {
+		return verdictRunConfig{}, deskkit.RefusedWithCause("verifyloop verdict: bad flags", err)
+	}
+	passed := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { passed[f.Name] = true })
+	// An explicit empty value is refused, never read as "flag absent": absent selects the
+	// signed, key-resolving path, which a caller who asked for the keyless mode never wants.
+	if passed["unsigned-out"] && *unsignedOut == "" {
+		return verdictRunConfig{}, deskkit.Refused(
+			"verifyloop verdict: --unsigned-out was given an empty path — name the NEW file to write the unsigned payload to, or drop the flag for the signed path")
+	}
+	if *unsignedOut != "" {
+		for _, bad := range []string{"pem", "dry-run", "window"} {
+			if passed[bad] {
+				return verdictRunConfig{}, deskkit.Refused(fmt.Sprintf(
+					"verifyloop verdict: --unsigned-out does not combine with --%s — the keyless mode reads no key, "+
+						"files nothing and composes ONE payload per run; drop --%s", bad, bad))
+			}
+		}
+	}
+	return verdictRunConfig{
+		root:        *root,
+		repo:        *repo,
+		head:        *sha,
+		runner:      *runner,
+		session:     *session,
+		pem:         *pem,
+		window:      *window,
+		dryRun:      *dryRun,
+		unsignedOut: *unsignedOut,
+	}, nil
+}
+
 // runVerdict is the testable core: resolve the envelope (PEM), read the queue, run the
 // rows, batch, sign, and print. It returns a *deskkit.DeskError on a fail-closed envelope /
 // signing failure and nil on success.
 func runVerdict(cfg verdictRunConfig) error {
+	// The keyless compose-only mode branches HERE, before the key is resolved: nothing below
+	// this line runs for it, so it never reaches resolveVerifierPEMPath or signPayload.
+	if cfg.unsignedOut != "" {
+		return runVerdictUnsigned(cfg)
+	}
+
 	// Operating-envelope preflight: resolve the verifier PEM up front. A missing PEM is an
 	// envelope error reported loudly — file nothing, sign nothing.
 	pemPath, err := resolveVerifierPEMPath(cfg.pem)
@@ -141,23 +200,7 @@ func runVerdict(cfg verdictRunConfig) error {
 		return err
 	}
 
-	repo := cfg.repo
-	if repo == "" {
-		repo = deriveRepo(cfg.root)
-	}
-	head := cfg.head
-	if head == "" {
-		head = deriveHead(cfg.root)
-	}
-	session := cfg.session
-	if session == "" {
-		session = deskkit.SessionTag()
-	}
-	runner := cfg.runner
-	if runner == "" {
-		runner = "verify-desk-engine"
-	}
-	meta := sessionMeta{ID: session, Runner: runner}
+	repo, head, meta := runIdentity(cfg)
 
 	items, err := scanAwaiting(cfg.root, head)
 	if err != nil {
@@ -209,6 +252,29 @@ func runVerdict(cfg verdictRunConfig) error {
 	return nil
 }
 
+// runIdentity derives the repo, head and provenance the payload is stamped with — the explicit
+// flag values, else git origin / git HEAD / the session tag / the engine's default runner name.
+// Both the signed path and the keyless path call it, so the two stamp identical values.
+func runIdentity(cfg verdictRunConfig) (repo, head string, meta sessionMeta) {
+	repo = cfg.repo
+	if repo == "" {
+		repo = deriveRepo(cfg.root)
+	}
+	head = cfg.head
+	if head == "" {
+		head = deriveHead(cfg.root)
+	}
+	session := cfg.session
+	if session == "" {
+		session = deskkit.SessionTag()
+	}
+	runner := cfg.runner
+	if runner == "" {
+		runner = "verify-desk-engine"
+	}
+	return repo, head, sessionMeta{ID: session, Runner: runner}
+}
+
 // emitBatch composes, signs, and prints one batch's payload. It returns the number of rows
 // in the payload. Filing is BLOCKED-ON-HUMAN, so both dry-run and default paths print the
 // signed body rather than file it; the rate gate at the real filing site is
@@ -231,6 +297,131 @@ func emitBatch(out io.Writer, repo, head string, ts time.Time, meta sessionMeta,
 	fmt.Fprintf(out, "\nsigned verdict for %d row(s) across %d brief(s) (window %s) — %s\n",
 		len(rows), len(briefs), window, tail)
 	return len(rows), nil
+}
+
+// runVerdictUnsigned is the keyless compose-only branch of runVerdict (--unsigned-out, the
+// keyless-compose split). It runs the same rows as the signed path, composes ONE payload over all of
+// them in the same canonical form signPayload signs, writes it to a NEW file and prints only its
+// sha256. It never calls resolveVerifierPEMPath, signPayload or deskkit.FindConfigFile, and it
+// reads neither VERIFIER_PEM nor ASSAY_CONFIG_HOME: the rows it runs are arbitrary shell, and
+// the point of this mode is that no key is ever in their reach.
+//
+// On every non-zero exit it leaves no file of its own behind and prints no digest, so a file
+// present after a failed run was not written by this run. The digest it prints is the binding
+// between the file and this run; the key-holding host checks it with `deskverdict sign
+// --expect-sha256`, and takes repo, head and the time bounds from its own dispatch record.
+func runVerdictUnsigned(cfg verdictRunConfig) error {
+	path := cfg.unsignedOut
+	// Refuse an existing entry (a file, a link, a FIFO — anything) before the queue is read or
+	// any row runs, and leave it untouched.
+	if _, err := os.Lstat(path); err == nil {
+		return deskkit.Refused(fmt.Sprintf(
+			"verdict runner: --unsigned-out %s already exists — refusing to replace it; nothing composed, nothing written", path))
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"verdict runner: cannot check --unsigned-out %s before composing; nothing composed, nothing written", path), err)
+	}
+
+	repo, head, meta := runIdentity(cfg)
+
+	items, err := scanAwaiting(cfg.root, head)
+	if err != nil {
+		return deskkit.Unverifiable("cannot read the Awaiting queue", err)
+	}
+	execFn := cfg.execFn()
+	var rows []rowResult
+	for _, it := range items {
+		rows = append(rows, runBriefRows(cfg.root, it, execFn)...)
+	}
+	out := cfg.emit()
+	if len(rows) == 0 {
+		fmt.Fprintln(out, "verdict runner: no runner-executed (check/check:ci) rows in the Awaiting queue — nothing to compose")
+		return nil
+	}
+
+	payload := composePayload(repo, head, cfg.nowFn(), meta, rows)
+	canonical, err := canonicalPayloadBytes(payload)
+	if err != nil {
+		return deskkit.Unverifiable("cannot canonicalise the verdict payload; nothing written", err)
+	}
+	data := append(canonical, '\n')
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return deskkit.RefusedWithCause(fmt.Sprintf(
+				"verdict runner: --unsigned-out %s appeared while the rows ran — refusing to replace it; the existing entry is untouched and nothing was written", path), err)
+		}
+		return deskkit.Unverifiable(fmt.Sprintf("verdict runner: cannot create --unsigned-out %s; nothing written", path), err)
+	}
+	stat := cfg.statHook
+	if stat == nil {
+		stat = (*os.File).Stat
+	}
+	created, statErr := stat(f)
+	if statErr != nil {
+		// Nothing has been written yet, so the file it created is still empty.
+		_ = f.Close()
+		return removeUnidentifiedEmpty(path, statErr)
+	}
+	write := cfg.writeHook
+	if write == nil {
+		write = func(f *os.File, b []byte) error { _, err := f.Write(b); return err }
+	}
+	werr := write(f, data)
+	cerr := f.Close()
+	if werr != nil || cerr != nil {
+		cause := werr
+		if cause == nil {
+			cause = cerr
+		}
+		return removeUnsignedPartial(path, created, cause)
+	}
+
+	briefs := map[string]bool{}
+	for _, r := range rows {
+		briefs[r.BriefPath] = true
+	}
+	fmt.Fprintf(out, "unsigned verdict payload for %d row(s) across %d brief(s) written to %s sha256=%s — NOT signed; "+
+		"sign it on the key-holding host with deskverdict sign --expect-sha256 <this digest>, "+
+		"taking repo, head and time bounds from the host's own dispatch record\n",
+		len(rows), len(briefs), path, digest)
+	return nil
+}
+
+// removeUnsignedPartial cleans up after a write or close failure on a file the composer itself
+// created: it removes the path only while it still names that same file (os.SameFile), so it
+// never deletes an entry something else put there. It always returns an exit-6 error naming the
+// path, and the caller prints no digest.
+func removeUnsignedPartial(path string, created os.FileInfo, cause error) error {
+	msg := fmt.Sprintf("verdict runner: writing --unsigned-out %s failed; nothing signed, no digest printed", path)
+	cur, err := os.Lstat(path)
+	if err != nil || !os.SameFile(created, cur) {
+		return deskkit.Unverifiable(msg+fmt.Sprintf(" — %s no longer names the file it created, so it removed nothing", path), cause)
+	}
+	if err := os.Remove(path); err != nil {
+		return deskkit.Unverifiable(msg+fmt.Sprintf(" — and removing the partial file %s failed (%v); remove it by hand", path, err), cause)
+	}
+	return deskkit.Unverifiable(msg+" — the partial file it created was removed", cause)
+}
+
+// removeUnidentifiedEmpty cleans up when the composer cannot identify the file it just created
+// (its stat failed), so os.SameFile has nothing to compare against. It runs before any byte is
+// written, so it removes the path only while it is still an EMPTY regular file: an entry with
+// any content, or of any other type, was not left by this run and is never deleted. It always
+// returns an exit-6 error naming the path, and the caller prints no digest.
+func removeUnidentifiedEmpty(path string, cause error) error {
+	msg := fmt.Sprintf("verdict runner: could not identify the --unsigned-out %s it created; nothing written, nothing signed, no digest printed", path)
+	cur, err := os.Lstat(path)
+	if err != nil || !cur.Mode().IsRegular() || cur.Size() != 0 {
+		return deskkit.Unverifiable(msg+fmt.Sprintf(" — %s is no longer the empty file it created, so it removed nothing", path), cause)
+	}
+	if err := os.Remove(path); err != nil {
+		return deskkit.Unverifiable(msg+fmt.Sprintf(" — and removing the empty file %s failed (%v); remove it by hand", path, err), cause)
+	}
+	return deskkit.Unverifiable(msg+" — the empty file it created was removed", cause)
 }
 
 // runBriefRows reads the brief for an Awaiting item, parses its Verify table, and runs every

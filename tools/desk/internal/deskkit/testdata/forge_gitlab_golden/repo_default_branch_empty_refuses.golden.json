@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay"
+    }
+  ],
+  "result": "",
+  "err": "could-not-check: project medici-finance/assay reported no default branch — refusing to assume one",
+  "not_found": false
+}

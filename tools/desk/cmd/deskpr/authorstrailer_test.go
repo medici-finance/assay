@@ -68,8 +68,8 @@ func TestCreateRefusesBriefOnAuthoringBranch(t *testing.T) {
 		if !strings.Contains(err.Error(), "Authors: fixture/02") {
 			t.Fatalf("check=%v: refusal must name the `Authors:` line to use; got: %v", check, err)
 		}
-		if anyCall(gitCalls(*calls), "push") || curForge.createCalls > 0 {
-			t.Fatalf("check=%v: the refusal must precede any push or create; git calls: %v", check, gitCalls(*calls))
+		if anyPush(*calls) || curForge.createCalls > 0 {
+			t.Fatalf("check=%v: the refusal must precede any push or create; calls: %v", check, *calls)
 		}
 	}
 }
@@ -82,8 +82,8 @@ func TestCreateAcceptsAuthorsOnAuthoringBranch(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create with `Authors:` rc = %d, want 0", rc)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/author-briefs") {
-		t.Fatalf("expected the branch push; git calls: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/author-briefs") {
+		t.Fatalf("expected the branch push; calls: %v", *calls)
 	}
 }
 
@@ -130,8 +130,8 @@ func TestCreateRefusesAuthorsOnNonAuthoringBranch(t *testing.T) {
 		if !strings.Contains(err.Error(), "not authoring-only") {
 			t.Fatalf("check=%v: refusal must say the diff is not authoring-only; got: %v", check, err)
 		}
-		if anyCall(gitCalls(*calls), "push") || curForge.createCalls > 0 {
-			t.Fatalf("check=%v: the refusal must precede any push or create; git calls: %v", check, gitCalls(*calls))
+		if anyPush(*calls) || curForge.createCalls > 0 {
+			t.Fatalf("check=%v: the refusal must precede any push or create; calls: %v", check, *calls)
 		}
 	}
 }

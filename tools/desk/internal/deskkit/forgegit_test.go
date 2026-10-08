@@ -228,3 +228,42 @@ func TestForgeGitEndpointFor_MalformedGitLabBaseRefuses(t *testing.T) {
 		t.Fatalf("exit = %d, want %d: %v", ExitCodeOf(err), ExitUnverifiable, err)
 	}
 }
+
+// TestGitEndpointCheckoutHostKind: with the roster silent, ForgeGitEndpointForCheckout takes the
+// forge KIND from its own origin's well-known host — and still dials the kind's canonical host.
+func TestGitEndpointCheckoutHostKind(t *testing.T) {
+	roster := goldenRoster()
+	delete(roster, EnvRepoForges)
+	withRoster(t, roster)
+	withFixtureMinter(t, fixtureGitHubToken, nil)
+
+	if _, err := ForgeGitEndpointFor("example-org/unlisted", "worker"); err == nil {
+		t.Fatal("ForgeGitEndpointFor resolved a roster-silent repo; the cross-repo builder must stay roster-only")
+	}
+	ep, err := ForgeGitEndpointForCheckout("example-org/unlisted", "worker", "https://github.com/example-org/unlisted.git")
+	if err != nil {
+		t.Fatalf("ForgeGitEndpointForCheckout: %v", err)
+	}
+	if want := "https://github.com/example-org/unlisted.git"; ep.Kind != ForgeGitHub || ep.Opts.URL != want {
+		t.Fatalf("kind/URL = %q/%q, want github/%s", ep.Kind, ep.Opts.URL, want)
+	}
+}
+
+// TestGitEndpointCheckoutNoSteer: an origin on a host outside the well-known table resolves
+// nothing — the origin can never choose where the credential is presented.
+func TestGitEndpointCheckoutNoSteer(t *testing.T) {
+	roster := goldenRoster()
+	delete(roster, EnvRepoForges)
+	withRoster(t, roster)
+	withFixtureMinter(t, fixtureGitHubToken, nil)
+
+	for _, origin := range []string{
+		"https://forge.example.invalid/example-org/unlisted.git",
+		"git@forge.example.invalid:example-org/unlisted.git",
+		"",
+	} {
+		if ep, err := ForgeGitEndpointForCheckout("example-org/unlisted", "worker", origin); err == nil {
+			t.Fatalf("origin %q resolved an endpoint (%s); an unknown host must be could-not-check", origin, ep.Opts.URL)
+		}
+	}
+}

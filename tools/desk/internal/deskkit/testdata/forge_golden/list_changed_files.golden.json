@@ -10,12 +10,14 @@
     {
       "Filename": "config/authz/token.go",
       "PreviousFilename": "secrets/auth/token.go",
-      "Status": "renamed"
+      "Status": "renamed",
+      "PatchAbsent": true
     },
     {
       "Filename": "docs/desk-tools.md",
       "PreviousFilename": "",
-      "Status": "modified"
+      "Status": "modified",
+      "PatchAbsent": true
     }
   ]
 }

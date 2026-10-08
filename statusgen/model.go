@@ -277,4 +277,11 @@ type Finding struct {
 	// control naming a check/test/rubric is trusted as already landed. Advisory
 	// only this phase — see findingcontrol.go and spec/registers-v1.md § FINDINGS.
 	Control string
+
+	// Corrective-action effectiveness record (iso-9001/03). REQUIRED TOGETHER, or
+	// none: the command that re-establishes the failure mode is gone, the date it
+	// was run (YYYY-MM-DD), and who ran it. See effectiveness.go.
+	Effectiveness     string
+	EffectivenessDate string
+	EffectivenessBy   string
 }

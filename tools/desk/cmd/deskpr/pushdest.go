@@ -307,7 +307,7 @@ func pushRemedy(dir, repo, fetchURL string) string {
 	b.WriteString("  Remedy (one line; worktree-scoped — it never touches the shared checkout's remote config):\n")
 	fmt.Fprintf(&b, "    %sgit -C %s config --worktree --replace-all remote.origin.pushurl '' && "+
 		"git -C %s config --worktree --add remote.origin.pushurl %s\n", enable, d, d, target)
-	b.WriteString("  then configure the role App's credential helper for that URL in the same worktree scope.\n")
+	b.WriteString("  deskpr then pushes in-process with the role App's minted token; no credential helper is needed.\n")
 	for _, p := range insteadOfPrefixes(dir) {
 		if strings.HasPrefix(target, p) {
 			fmt.Fprintf(&b, "  NOTE: a url.<base>.insteadOf rule rewrites URLs starting %q, which includes that "+

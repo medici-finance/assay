@@ -369,6 +369,73 @@ RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ s
 RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated contract. Observed by hand in this pass: rc=0 on the shipped patterns, rc=1 on each mutated copy and bad fixture, and rc=2 on a root with no spec/workflow-patterns directory.
 
 VERIFY: BLOCKED — rows 1-8 pass by hand (8/9). Row 10 is could-not-check as written and fails the witness by check definition; it needs a Verify-row re-author (class #1281, still open). The Linux network-off witness gives 7/9 pass; its row 5 fail is the container's missing PyYAML, not a code result. Status stays implemented.
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-07, merged main 36113a1ddbb3492c213520d561edd09e2f7afca8
+
+Runner: assay-verifier-app[bot] (claude-opus-5-5[1m]) (on-behalf-of human:ian). This runner is not the implementer. It used a detached worktree pinned to the merged head. Worktree HEAD, refs/remotes/origin/main and `git ls-remote origin main` all matched at the start. Offline envelope: KUBECONFIG=/dev/null, GOPROXY=off, GOSUMDB=off, GOTOOLCHAIN=local, and HOME, TMPDIR and GOCACHE redirected into the runner's scratch directory. The run was read-only. Host: darwin/arm64, go1.27.1, statusgen v1.0.32 (pinned desk-tools binary). Gate: model. All four risk answers are no, so the risk metadata is present and not absent. Every mutation ran on a scratch copy outside the tree, and no tracked file was edited. `statusgen verifyrun` wrote the brief, and the brief was then restored with `git checkout -- .`.
+
+Why this re-run: 151 commits landed since the 2026-10-04 receipt at fe12ee0c90b9. Two hashed inputs changed:
+- statusgen/main.go gained one help-text line for the graph-execution/03 `--coverage` flag. The `patterns` subcommand is unchanged.
+- plugins/assay/skills/worker-desk/SKILL.md changed its advisory-comment and disposition wording (#2278). It has no pattern, node or effect content, and this brief's consumers entry marks it out-of-scope.
+
+Every other hashed input is byte-identical to the 2026-10-04 receipt. That covers this brief, statusgen/patterns.go, statusgen/patterns_test.go, both pattern files, spec/workflow-pattern-v1.md, schemas/workflow-pattern-v1.json, spec/README.md, docs/lifecycle.md, docs/enforcement-model.md and statusgen/topologyvalues.go.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestPatterns ./...` | pass exit=0 | ok github.com/medici-finance/assay/statusgen; the streamview package reports no tests to run. A supporting -count=1 -v repeat shows 11 --- PASS lines, every TestPatterns test, and 0 FAIL, so the selector is not vacuous | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned) / rc=0 | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | pass exit=0 | ok github.com/medici-finance/assay/statusgen; the -count=1 -v repeat shows one --- PASS line for the named test. Independent mutation on scratch roots: the bad-effect-exceeds-role fixture alone gives rc=1 [pattern-effect-exceeds-role] node review has role reviewer, which is not permitted to perform effect kind push. The SHIPPED implementation pattern with line 44 changed from comment to push also gives rc=1 under the same rule | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestPatternsReviewSameRoleIsProblem ./...` | pass exit=0 | ok github.com/medici-finance/assay/statusgen; the -count=1 -v repeat shows one --- PASS line for the named test. Independent mutation on scratch roots: the bad-review-same-role fixture alone gives rc=1 [pattern-review-same-role] review node review has role worker, the same role as implement. The SHIPPED implementation pattern with line 37 changed from reviewer to worker gives rc=1, naming implement as the producer of draft-pr | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `python3 -c 'import json,yaml;s=json.load(open("schemas/workflow-pattern-v1.json"));import jsonschema;[jsonschema.validate(yaml.safe_load(open(p)),s) for p in ["spec/workflow-patterns/implementation-v1.yaml","spec/workflow-patterns/research-v1.yaml"]];print("ok")'` | pass exit=0 | ok (jsonschema 4.26.0, PyYAML 6.0.3) | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -c 'workflow-pattern-v1' spec/README.md` | pass exit=0 | 1 | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | pass exit=0 | ok github.com/medici-finance/assay/statusgen; the -count=1 -v repeat shows --- PASS: TestTopologyValuesMatchSource | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | LINT: PASS / rc=0; 0 lines begin with PROBLEM. One NOTICE names this brief: the one-sided depends edge from graph-execution/09 to graph-execution/02. No per-row gotest-run-vacuous NOTICE names this brief at this head | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --consumers --brief graph-execution/02 --root .; echo rc=$?` | could-not-check exit=0 (statusgen rc=2) | COULD-NOT-CHECK as written: assay:assay:graph-execution:02 is not in the diff against 36113a1ddbb3, so this run carries no evidence about its claims; rc=2. The shell exits 0 because of the trailing echo. The row's own Expect sanctions this as could-not-check, never as pass. Sanctioned merge-diff recipe, run in a no-hardlinks scratch clone at squash merge 5b384e52c (#1259) with --base 060980aa0f1a: exit 0; summary: 3 corroborated, 0 disproved, 1 unchecked. The unchecked entry is the out-of-scope desk-skill claim. The 24-file merge diff touches only the author-brief SKILL.md, none of worker-desk, pr-review-desk or verify-desk | 2026-10-07 | assay-verifier-app[bot] @ 36113a1ddbb3 (on-behalf-of human:ian) (forge-identity) |
+
+**Execution witness** (`statusgen verifyrun --brief`, write mode, darwin host, statusgen v1.0.32): exit 2. Rows 2, 5, 6 and 8 pass, with hashes e86054a2ccc7, dc51b8c96c2d, 4355a46b19d3 and 53bcbc423275. The first three match every earlier darwin witness. Rows 1, 3, 4 and 7 could-not-run: they are check:ci rows that need the Linux `unshare --net` network-off sandbox, and this host is darwin (#1800, open). Row 10 records fail exit=0 with the reason "exit 0, expected 2". The desk lands the witness table verbatim with its own runner and source stamp.
+
+Findings:
+
+- **No implementation defect.** Rows 1-8 pass by hand (8 of 9). The substance of row 10 passes by the sanctioned merge-diff recipe. The rows 3 and 4 mutations show that the lint refuses a reviewer push and a same-role review on the shipped pattern itself, not only on the fixtures.
+- **Row 10 is the durable blocker, a check-definition problem.** It is unchanged since 2026-09-30. As written it cannot be witnessed as pass on merged main:
+  - statusgen exits 2, and the trailing echo makes the shell exit 0.
+  - The witness expect-parser takes "exit 2" from the merged-main clause, so it records a fail.
+  - The row's own Expect forbids recording the exit-2 case as a pass.
+  - It clears only when the Verify row is re-authored. The class is tracked at #1281, still OPEN at this run. The re-author tracker #1927 (open) still does not name this brief, and no issue specific to this row was found.
+- **Rows 1, 3, 4 and 7 (environment):** the darwin witness could not run them (#1800, open). The 2026-10-04 Linux network-off witness at fe12ee0c9 recorded all four as pass, and nothing they read has changed since then.
+- **The risk-input design question stays open at #1933.** That issue has no comments and no recorded ruling.
+- **Deliverables are present at this head:**
+  - the spec, the JSON schema and both pattern files
+  - patterns.go and patterns_test.go
+  - all seven fixtures: two good and five bad
+  - the patterns subcommand in statusgen/main.go
+  - the spec/README.md row and the docs/lifecycle.md §Review gates sentence
+
+  The changelog fragment was aggregated into CHANGELOG.md at v1.0.13 (891a48b1).
+
+Risk-bearing value enumeration. These are the literals this brief's diff introduced, re-read at 36113a1d and byte-unchanged since fe12ee0c9:
+
+1. patternRoleEffectPermissions: worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95. Mirrored at spec/workflow-pattern-v1.md:155-158.
+2. Implementation risk-input: low = [review]; standard = [review, verify]; elevated = [review, verify]; human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:15-18. Research risk-input: all four = [review-artifact] @ spec/workflow-patterns/research-v1.yaml:13-16.
+3. topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77. The source is topology.yaml apps:, from line 236.
+4. patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100.
+5. patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70.
+6. budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31 and research-v1.yaml:26, 37, 50.
+
+Ranked by irreversibility, none is irreversible. Each is undone by a spec, pattern or lint edit plus a version bump, and a node naming a role mints no token. Highest consequence first:
+1. Entry 1, the declared single point of failure for permission safety.
+2. Entry 2, which sets the gates a risk class makes mandatory.
+3. Entries 3 and 4, the vocabulary the lint pins.
+4. Entry 5, the instrument contract.
+5. Entry 6, a retry knob. It ranks last and no derivation is owed.
+
+RISK-VALUE: DERIVED — patternRoleEffectPermissions worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95 — it equals Task 2's table exactly and matches each role's present forge behaviour. No role holds another role's certifying effect, which is the separation the enforcement model requires. The lint reads this table: at 36113a1d, a push effect on the shipped reviewer node exits 1.
+RISK-VALUE: NAMED, NOT DERIVED — implementation risk-input elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — Task 1's example maps elevated and human to security-review and human-signoff gates. Task 3's fixed node list has neither node, so both verdicts collapse onto the standard set and a human-class instance declares no human node. Deriving the value needs a design ruling. The question is open at #1933, with no ruling recorded.
+RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77 — equals the four apps: roles in topology.yaml. Row 7 pins the two together, and it passed.
+RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100 — this is the stream's fixed risk-class vocabulary, from the vocabulary fact in the brief's Context. The missing-verdict test passed.
+RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated contract. Observed by hand in this pass: rc=0 on the shipped patterns, rc=1 on each mutated copy and bad fixture, and rc=2 on a root with no spec/workflow-patterns directory.
+RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+**VERIFY: BLOCKED** — rows 1-8 pass by hand (8 of 9). Row 10 is could-not-check as written and fails the witness by check definition. It needs a Verify-row re-author (class #1281, still open). On this darwin host the witness could not run check:ci rows 1, 3, 4 and 7 (#1800). Status stays implemented.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

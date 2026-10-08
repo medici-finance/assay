@@ -20,7 +20,7 @@
 // arithmetic decides the outcome — a second trust layer that still bites when a
 // key is mis-provisioned into the wrong role's variable.
 //
-//	deskverdict sign   --payload f.json [--key verifier|issue-loop]
+//	deskverdict sign   --payload f.json [--key verifier|issue-loop] [--expect-sha256 hex] [--expect-repo owner/name] [--expect-head sha] [--not-before RFC3339] [--not-after RFC3339]
 //	                                             # read the LOCAL private key for
 //	                                             # --key's role, emit the signed
 //	                                             # issue-body block on stdout
@@ -65,7 +65,7 @@ const usage = `deskverdict — sign & verify role-keyed verdict payloads (verdic
 cross-repo scan-delta lanes).
 
 USAGE:
-  deskverdict sign   --payload <f.json> [--key verifier|issue-loop] [--pem <path>]
+  deskverdict sign   --payload <f.json> [--key verifier|issue-loop] [--pem <path>] [--expect-sha256 <hex>] [--expect-repo <owner/name>] [--expect-head <sha>] [--not-before <RFC3339>] [--not-after <RFC3339>]
   deskverdict verify --body <f.md> [--key verifier|issue-loop] [--pubkey <path>]
   deskverdict keygen --priv <path> [--pub <path>] [--b64]
   deskverdict pubkey --pem <path>

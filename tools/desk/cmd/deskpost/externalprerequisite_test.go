@@ -133,6 +133,54 @@ func TestExternalPrerequisiteMixedAndForged(t *testing.T) {
 		}
 	})
 
+	// A re-review CR that lists an earlier code finding as resolved is not mixed: only a
+	// standing (unresolved) blocking code finding makes it so (#1985).
+	t.Run("resolved content finding is not mixed", func(t *testing.T) {
+		withObserver(t, func(deskkit.PrereqCondition) deskkit.PrereqObservation { return epqSatisfied() })
+		resolved := epqContentFinding("code-1")
+		resolved.State = deskkit.StateResolved
+		cr := epqCRBody("waiting on upstream", extFinding, resolved)
+		reviews := []reviewInfo{
+			epqReview("CHANGES_REQUESTED", testHead, epqCRAt, cr),
+			epqReview("APPROVED", testHead, epqApproveAt, epqApproveBody(goodCite)),
+		}
+		if out := clearedByExternalPrereq(reviews, testHead, false); !out.declared || !out.decision.Cleared {
+			t.Fatalf("decision = %+v, want declared AND cleared (the only code finding is resolved)", out)
+		}
+	})
+
+	// A resolved prerequisite is not one the CR still rests on, so a CR whose only
+	// prerequisite is resolved enumerates no standing condition — and refuses.
+	t.Run("resolved prerequisite is not a declared condition", func(t *testing.T) {
+		withObserver(t, func(deskkit.PrereqCondition) deskkit.PrereqObservation { return epqSatisfied() })
+		resolvedExt := extFinding
+		resolvedExt.State = deskkit.StateResolved
+		reviews := []reviewInfo{
+			epqReview("CHANGES_REQUESTED", testHead, epqCRAt, epqCRBody("waiting on upstream", resolvedExt)),
+			epqReview("APPROVED", testHead, epqApproveAt, epqApproveBody(goodCite)),
+		}
+		out := clearedByExternalPrereq(reviews, testHead, false)
+		if out.decision.Cleared || !strings.Contains(out.decision.Reason, "enumerates no external-prerequisite blocker") {
+			t.Fatalf("decision = %+v, want NOT cleared: no standing prerequisite is enumerated", out)
+		}
+	})
+
+	// Only `resolved` retires an entry: a worker-asserted fix still stands as a blocker.
+	t.Run("fixed-awaiting-review content finding still blocks", func(t *testing.T) {
+		withObserver(t, func(deskkit.PrereqCondition) deskkit.PrereqObservation { return epqSatisfied() })
+		pending := epqContentFinding("code-1")
+		pending.State = deskkit.StateFixedAwaitingReview
+		cr := epqCRBody("waiting on upstream", extFinding, pending)
+		reviews := []reviewInfo{
+			epqReview("CHANGES_REQUESTED", testHead, epqCRAt, cr),
+			epqReview("APPROVED", testHead, epqApproveAt, epqApproveBody(goodCite)),
+		}
+		out := clearedByExternalPrereq(reviews, testHead, false)
+		if out.decision.Cleared || !strings.Contains(out.decision.Reason, "code/content") {
+			t.Fatalf("decision = %+v, want NOT cleared, naming the code/content blocker", out)
+		}
+	})
+
 	t.Run("worker-authored clearance is ignored", func(t *testing.T) {
 		withObserver(t, func(deskkit.PrereqCondition) deskkit.PrereqObservation { return epqSatisfied() })
 		cr := epqReview("CHANGES_REQUESTED", testHead, epqCRAt, epqCRBody("waiting", extFinding))

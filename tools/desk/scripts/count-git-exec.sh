@@ -2,7 +2,9 @@
 # count-git-exec.sh — advisory counting gate for the desktools-go-git migration.
 #
 # Counts the git-binary spawn sites the stream is driving to zero:
-#   1. direct spawns:  exec.Command("git" ...)  — the actual process launches, and
+#   1. direct spawns:  exec.Command("git" ...) and exec.CommandContext(<ctx>, "git" ...)
+#      — the actual process launches (the context form counted since brief 06, whose
+#      deleted preflight probe was one; the earlier pattern missed it), and
 #   2. per-tool seam call sites: runGit( / gitOut( / execCommand( / execGit(
 #      — the named helpers behind which tools route their git argv.
 # Both counts EXCLUDE tools/desk/internal/gitexec (the audited fallback home — its
@@ -18,7 +20,7 @@
 set -u
 cd "$(dirname "$0")/.." || exit 2
 
-DIRECT=$(grep -rEn 'exec\.Command\("git"' cmd internal \
+DIRECT=$(grep -rEn -e 'exec\.Command\("git"' -e 'exec\.CommandContext\([^,]+, *"git"' cmd internal \
   --include='*.go' \
   | grep -v '/internal/gitexec/' \
   | grep -v '_test\.go:' \

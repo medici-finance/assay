@@ -168,6 +168,28 @@ type Finding struct {
 
 func (f Finding) blocking() bool { return f.Severity == SeverityBlocking }
 
+// StandingBlockerAt reports whether the finding still blocks a review pinned to head:
+// blocking severity, unless the record resolves it with evidence AT that head. It is the ONE
+// predicate every reader outside this file uses to classify a block's findings — a re-review
+// CR lists the findings it now records as resolved beside the ones still open, and a
+// classifier that reads severity alone counts those resolved entries as live blockers
+// (#1985). The resolution is head-bound exactly as applyReviewer binds it: an empty evidence
+// head means the record's own head, and a resolution whose evidence head is another head is a
+// verdict on stale code, so the entry stays standing. Only the exact state `resolved` retires
+// an entry; a missing, mis-cased or unknown state keeps it standing. The severity constant
+// and blocking() are referenced only in this file; a guard test
+// (TestStandingBlockerIsTheOnlyReader) pins that.
+func (f Finding) StandingBlockerAt(head string) bool {
+	if !f.blocking() {
+		return false
+	}
+	if f.State != StateResolved {
+		return true
+	}
+	ev := strings.TrimSpace(f.EvidenceHead)
+	return ev != "" && ev != strings.TrimSpace(head)
+}
+
 // StatedLane is the lane the finding's block states, case-folded and trimmed the way the
 // ledger compares lanes; empty when the block states none.
 func (f Finding) StatedLane() string { return normLane(f.Lane) }

@@ -76,9 +76,27 @@ func (v *VerifyLoop) dispatchNative(it loopengine.Item, tier loopengine.Tier) (l
 		cleanup = func() {}
 	}
 
+	model := ""
+	if v.RunnerTable != nil {
+		entry, e := v.RunnerTable.Resolve(tier)
+		if e != nil {
+			cleanup()
+			return nil, e
+		}
+		model = entry.Model
+	}
+	if model == "" && v.Attest == nil {
+		cleanup()
+		return nil, fmt.Errorf("native verifier requires an explicit selected model in its runner table")
+	}
+	receipt, aerr := v.attestRun(it, dir, model)
+	if aerr != nil {
+		return nil, fmt.Errorf("verifier admission failed; retained worktree %s for coordinator recovery before any launch: %w", dir, aerr)
+	}
+	v.rememberRun(it, dir, receipt, cleanup)
+	prompt += "\n" + receipt.EvidenceBinding() + "\nRecheck deskdispatch --check-verifier before Verify rows.\n"
 	done := make(chan loopengine.Result, 1)
 	go func() {
-		defer cleanup()
 		done <- v.runNativeDispatch(it, dir, prompt, runnerCmd, runnerID)
 	}()
 	return &handle{item: it, done: done}, nil

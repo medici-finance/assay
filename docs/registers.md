@@ -36,6 +36,66 @@ they and the other artifacts in this repo are kept, see
 - **Withdrawal is a tombstone, never a deletion.** To retract an entry, keep its file,
   flip its disposition/resolution, and let the body explain the withdrawal. Reason:
   deleting the file both loses the record and trips the tombstone check above.
+- **A finding closes on a fired control, not on a fix commit — the effectiveness record.**
+  A findings entry may carry three keys, **required together, or none** (one or two of the
+  three is a hard `--lint` error, the same all-or-nothing rule as the parked triple):
+  - `effectiveness:` — the command, verbatim, that re-establishes the failure mode is gone.
+    Reason: `resolved: yes` says the work landed, not that the failure mode can no longer
+    occur; the command is what a reviewer or auditor can re-run.
+  - `effectiveness-date:` — the `YYYY-MM-DD` the command was run. Reason: a check run once,
+    at an unknown time, is not evidence the control still fires.
+  - `effectiveness-by:` — who ran it, a `human:<name>` or a runner identity (the shape the
+    Verified cell uses; the lint checks only that it is present and non-blank, not its
+    shape). Reason: a record nobody owns cannot be questioned.
+
+  A partial record — one or two keys, or an `effectiveness-date` that is not `YYYY-MM-DD` —
+  is `effectiveness-partial`, a PROBLEM at any finding date.
+
+  A finding with `resolved: yes` and no record is `effectiveness-missing`. Its severity is
+  set by the finding's own `date:`: dated **on or after 2026-10-08** it is a `--lint`
+  PROBLEM; dated earlier it is a NOTICE, so the inherited register is not made fatal; a
+  `date:` that is empty or not `YYYY-MM-DD` cannot be placed against the boundary and is a
+  NOTICE marked could-not-check — never a pass.
+
+  A `class: recurring` finding that is resolved and names a landed `control:` takes the
+  same date scoping under its own tag, `finding-control-unfired`, instead of
+  `effectiveness-missing` (one defect, one line). Before this record existed such a finding
+  was silent: the recurring-class check (`findingControlNotices`, tag
+  `finding-without-control`) looks only at **unresolved** findings, and still does. A
+  one-off or unclassified finding is not touched by that path; the generic
+  `effectiveness-missing` rule covers it like any resolved finding.
+
+  Path scoping differs between the two halves. `effectiveness-partial` is a
+  register-integrity check, so under `--lint --changed` a partial record in an entry file
+  the diff does not touch is demoted to a NOTICE. `effectiveness-missing` and
+  `finding-control-unfired` are whole-register checks and are not scoped by `--changed`:
+  they are a PROBLEM wherever the entry sits.
+
+  **Withdrawing a finding under the record.** The withdrawal bullet above flips the entry's
+  resolution. For a finding dated on or after the boundary that flip now owes the record
+  too, and the record still has a job: `effectiveness:` names the command that shows the
+  reported failure mode does not occur — the check that disproved the finding — with the
+  date it was run and who ran it, and the body explains the withdrawal.
+
+  Worked example of a good record: the mutation row in
+  [`docs/brief-rules.md`](brief-rules.md) rule 16 (revert the fix, run the check, confirm
+  it goes RED).
+
+  **Coverage boundary.** The lint checks the record's *presence* and attribution. It does
+  **not** show that the named command would fail if the failure mode returned; that
+  adequacy question stays with the reviewer, and a present command is not a demonstration
+  that it fires. Three further limits keep a clean lint from being over-read:
+  - The obligation is keyed on the finding's **self-declared** `date:`. An entry whose
+    `date:` is empty, malformed or back-dated before 2026-10-08 gets a NOTICE, not a
+    PROBLEM, and a finding opened before the boundary never owes the record as a PROBLEM
+    however late it is resolved.
+  - No relation is checked between `effectiveness-date` and the finding's `date:`: a record
+    dated before the finding was opened, or in the future, passes.
+  - `effectiveness` and `effectiveness-by` are presence checks on any non-blank scalar.
+
+  Root cause is deliberately **not** a field: a cause stated as a restatement of the
+  symptom passes any presence check, so an obligation on it would be judgement the lint
+  cannot make.
 - **Typed IDs.** Entries reference briefs and each other by typed ID (`stream/NN`,
   `F-<slug>`, `I-<slug>`, `REQ-<slug>`), never prose names.
 
