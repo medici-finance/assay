@@ -27,8 +27,10 @@ while read -r pkg name; do
   esac
   # -run is anchored: a renamed/missing test cannot hide behind another match.
   # -v is retained so an empty selection is detected below.
+  # -timeout 5m sits above the wrapped shell suites' own 4m budget (shellBudget in
+  # shell_test.go), so a hung suite reports that deadline rather than a test-binary panic.
   out=$(mktemp "${TMPDIR:-/tmp}/floor-test.XXXXXX")
-  if ! ( cd "$root/$module" && bash "$here/floor-go.sh" test -run "^${name}$" -count=1 -timeout 90s -v "$package" ) > "$out" 2>&1; then
+  if ! ( cd "$root/$module" && bash "$here/floor-go.sh" test -run "^${name}$" -count=1 -timeout 5m -v "$package" ) > "$out" 2>&1; then
     cat "$out"; rm -f "$out"; exit 1
   fi
   if ! grep -E -e "^--- PASS: $name [(]" "$out"; then

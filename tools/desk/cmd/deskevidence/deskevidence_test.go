@@ -80,6 +80,12 @@ type fakeForge struct {
 	readN      map[string]int
 	// expectedSHARefusals counts WriteFile calls refused by their ExpectedSHA precondition.
 	expectedSHARefusals int
+
+	// holds records the change number of every OpenMergeHold call (#2254); holdErr, when set,
+	// is OpenMergeHold's error. The default is a GitLab-shaped success, since the draft lane
+	// this fake drives is the closed-default-branch (GitLab) one.
+	holds   []int
+	holdErr error
 }
 
 // serveLocked answers one read of path (the caller holds f.mu): a scripted path advances its
@@ -181,6 +187,17 @@ func (f *fakeForge) CreateDraftChange(_ deskkit.ForgeRepo, in deskkit.DraftChang
 	return &deskkit.PullRef{Number: 4242, URL: "https://forge.example/change/4242"}, nil
 }
 
+// OpenMergeHold records the merge-hold the draft lane opens on the change it just created.
+func (f *fakeForge) OpenMergeHold(_ deskkit.ForgeRepo, number int) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.holds = append(f.holds, number)
+	if f.holdErr != nil {
+		return "", f.holdErr
+	}
+	return "disc-4242", nil
+}
+
 // GetPullRequest serves the head sha the online attribution resolution reads on the GitLab
 // draft-landing path (#1477). Only the HeadSHA field is populated (all deskevidence reads).
 func (f *fakeForge) GetPullRequest(_ deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
@@ -211,6 +228,9 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 // stdout/stderr.
 func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Helper()
+	oldAdmission := verifierEvidenceAdmissionFn
+	verifierEvidenceAdmissionFn = func(string, string, string) (deskkit.VerifierReceipt, error) { return deskkit.VerifierReceipt{}, nil }
+	t.Cleanup(func() { verifierEvidenceAdmissionFn = oldAdmission })
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)

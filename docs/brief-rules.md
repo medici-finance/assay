@@ -716,7 +716,11 @@ in markers, and is diffed against merge history until then (rule 35).
     |---|---|---|---|
     | `SUPERSEDED` | the work landed through a different branch/PR | required | no |
     | `RESOLVED-ELSEWHERE` | the outcome was reached another way (issue already closed, row already advanced on main) | required | no |
-    | `NEEDS-REBASE` | live work, mechanically blocked | optional | yes |
+    | `NEEDS-REBASE` | established stale-base/conflict defect | optional | yes |
+
+    Advisory markers and routine progress are not disposition records. Still-actionable
+    work without a base/conflict defect requires no disposition write; keep progress in the
+    PR workpad. Waiting-on-input remains a hold label with its explanation.
 
     Evidence is required for the terminal verdicts because "superseded" with no link to
     what superseded it is the same unfalsifiable claim the prose comment was.

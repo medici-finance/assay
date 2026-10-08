@@ -72,6 +72,9 @@ func dispatchPromptOriginRC(t *testing.T, origin, kit, item string, extra ...str
 	promptFile := filepath.Join(t.TempDir(), "prompt.md")
 	args := []string{item, "--root", root, "--repo", allowedRepo, "--kit", kit,
 		"--dry-run", "--prompt-file", promptFile}
+	if kit == "verifier" {
+		args = append(args, "--model", "gpt-6-astra", "--brief", "spec.md")
+	}
 	args = append(args, extra...)
 	rc := run(args)
 	body, err := os.ReadFile(promptFile)

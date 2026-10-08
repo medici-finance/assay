@@ -105,7 +105,9 @@ cannot retire live work. The confirm keeps it. The proposal does **not** require
 claim ("PR B carries this") is usually made while B is open — so a proposed PR sits open, labelled
 `superseded?` and `disposition:superseded`, excluded from orphan dispatch by the record, until B
 merges and the reviewer confirms. If B dies unmerged instead, the proposal is stale: the reviewer
-disputes it (or the worker re-records `NEEDS-REBASE`) and the work resumes. The alternative — let
+disputes it, retaining the `needs-decision` hold until authoritative correction. A worker
+may record `NEEDS-REBASE` only for an established base/conflict defect, never just to
+clear a stale proposal and resume unrelated live work. The alternative — let
 the reviewer confirm against an *open* target, certifying scope containment and accepting that B
 may never land — is a legitimate design; it trades the parked-PR window for a close that can be
 wrong for a reason nobody can see at confirm time. This cut takes the conservative side and names

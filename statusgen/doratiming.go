@@ -472,7 +472,7 @@ func marshalRecord(v any) (string, error) {
 func recordDoraTiming(root string, src doraTimingSource, now time.Time) int {
 	repo := doraTargetRepo(root)
 	if repo == "" {
-		fmt.Println("dora-timing: could-not-check — no target repo ($GITHUB_REPOSITORY / git remote / gh default all empty); nothing recorded")
+		fmt.Println("dora-timing: could-not-check — no target repo ($GITHUB_REPOSITORY / git remote origin both empty); nothing recorded")
 		return 0
 	}
 	workflow := strings.TrimSpace(os.Getenv(doraWorkflowEnv))
@@ -616,7 +616,11 @@ func doraCouldNotCheckWhich(restoreCNC, leadCNC bool) string {
 // doraTargetRepo resolves the target repo, repo-agnostically:
 //  1. $GITHUB_REPOSITORY (set in every GitHub Actions job)
 //  2. the checkout's own git remote origin
-//  3. gh's default repo for the checkout
+//
+// There is no third, forge-CLI step (forge-neutral/18): an earlier `gh repo view`
+// fallback shelled the forge CLI, and in the process's working directory rather than
+// root, so it could name a repo other than the checkout's. Neither source resolving
+// is a could-not-check the callers already render.
 //
 // Never a hardcoded owner/repo — the recorder runs on any adopter repo.
 func doraTargetRepo(root string) string {
@@ -627,9 +631,6 @@ func doraTargetRepo(root string) string {
 		if r := ownerRepoFromURL(strings.TrimSpace(string(out))); r != "" {
 			return r
 		}
-	}
-	if out, err := exec.Command("gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner").Output(); err == nil {
-		return strings.TrimSpace(string(out))
 	}
 	return ""
 }

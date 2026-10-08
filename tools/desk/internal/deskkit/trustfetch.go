@@ -85,10 +85,11 @@ type gqlThreadConn struct {
 }
 
 type gqlItem struct {
-	LastEditedAt  string        `json:"lastEditedAt"`
-	Comments      gqlConn       `json:"comments"`
-	Reviews       gqlConn       `json:"reviews"`
-	ReviewThreads gqlThreadConn `json:"reviewThreads"`
+	bodyHistoryKnown bool
+	LastEditedAt     string        `json:"lastEditedAt"`
+	Comments         gqlConn       `json:"comments"`
+	Reviews          gqlConn       `json:"reviews"`
+	ReviewThreads    gqlThreadConn `json:"reviewThreads"`
 }
 
 type gqlEnvelope struct {
@@ -177,7 +178,7 @@ func trustFromEnvelope(env gqlEnvelope, pr bool) (TrustPayload, error) {
 	if cerr != nil {
 		return TrustPayload{}, cerr
 	}
-	return TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete}, nil
+	return TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete, BodyHistoryKnown: item.bodyHistoryKnown}, nil
 }
 
 func collectEvents(item *gqlItem, pr bool) (bodyEdited time.Time, events []ContentEvent, complete bool, err error) {
@@ -234,4 +235,23 @@ func collectEvents(item *gqlItem, pr bool) (bodyEdited time.Time, events []Conte
 		}
 	}
 	return bodyEdited, events, complete, nil
+}
+
+// UnmarshalJSON distinguishes a provider's explicit null lastEditedAt from an
+// omitted field. Only the pre-work immutable-record reader requires this proof;
+// legacy content-event consumers retain their existing contract.
+func (g *gqlItem) UnmarshalJSON(raw []byte) error {
+	type plain gqlItem
+	var decoded plain
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	field, present := fields["lastEditedAt"]
+	decoded.bodyHistoryKnown = present && (string(field) == "null" || decoded.LastEditedAt != "")
+	*g = gqlItem(decoded)
+	return nil
 }

@@ -110,12 +110,35 @@ equality is all the comparison shows: not that the witness commit was merged or 
 and not that its run happened — the Evidence row remains the only record of the run. A
 witness commit absent from the evaluating clone (an unfetched squash-merged branch commit,
 a hand-edited sha), or an item revision that names no commit, leaves the comparison
-without footing, and the witness is not credited. Reusing another tree's
+without footing, and the witness is not credited. The witness's tree must also have
+landed: some commit on the item's history since the two share an ancestor (the witness
+commit itself when it is on that history, the squash commit when its branch was
+squash-merged) has a tree identical to the witness's outside `docs/streams/**` and
+`STATUS.md`. A witness whose branch was squash-merged after its base moved, or never
+merged, ran against code the item never carried as a whole and is `wrong-revision`; a
+clone too shallow to read that history, or a search that cannot complete, is
+`could-not-check`. The merge base and the item's revision need no search, so a witness on
+the item's own history has landed however many commits followed it; only a search
+between them may be bounded. Reusing another tree's
 result needs an explicit applicability derivation (the work-input amendment): a `files:` declaration by itself never narrows
 what a witness speaks for, because file non-overlap alone is not proof. Without a
-complete work-input dependency manifest for the brief, a witness speaks for every path
+complete work-input dependency manifest for the brief, a witness speaks for the paths its
+row's command reads when the command's text establishes them exactly — a closed grammar
+of read-only commands whose operands are plain repository paths, plus every
+`.gitattributes` on the way to each, with no expansion, glob, redirection, symbolic link,
+submodule, or file verify and regeneration write on the path, every path tracked
+under exactly that spelling in both the witness's tree and the item's, no other tracked
+name that a case- or normalisation-insensitive checkout opens as the same file (under full
+case folding, where one character can fold to several, such as ß to ss), and no
+non-ASCII operand — and the derivation is that
+none of those paths changed. The trees name paths from the repository's toplevel, while a
+row opens its operands in the directory it ran in, which the witness does not record. So
+the derived scope applies only where both are the toplevel: a conforming execution-witness
+runner runs rows at the toplevel and refuses a working root below it, and an evaluation
+whose root is below the toplevel gives no row a derived scope. Any command whose reads its text does not establish (a test
+runner, a script, a substitution) gets no derived scope: its witness speaks for every path
 outside the board's own bookkeeping (`docs/streams/**` and the generated `STATUS.md`),
-and the derivation is that none of those paths changed. Only a complete manifest licenses
+and the derivation is that none of those paths changed. Otherwise only a complete manifest licenses
 a narrower scope: the brief's declared `files:` entries plus the claim's source
 dependencies (a declared directory covers everything under it), taken as the union of the
 declaration now and as it stood at the witness's commit, so narrowing `files:` after the
@@ -137,7 +160,9 @@ compared with rename detection off, so a renamed or moved path counts as a chang
 old path. A change to a path the witness speaks for, after it ran, is `wrong-revision`. A witness recorded
 over an uncommitted working tree (`+dirty`, or `+unknown`) is compared by its base commit;
 that tolerance is a declared residual of the witness-trust gap (the token cannot say what
-was dirty), not a guarantee the uncommitted edits landed. Any
+was dirty), not a guarantee the uncommitted edits landed — so such a witness gets no
+derived scope (the landing check reads only its base commit, never the edits it ran on),
+and a reused pass for it says only that its base commit landed. Any
 mandatory claim that is `missing`, `error`, `could-not-check`, `wrong-revision`, or an
 outright `fail` HOLDS coverage, and a conforming implementation MUST NOT promote
 `verified` (or the `verified`→`done` flip) while coverage is not released — this is a

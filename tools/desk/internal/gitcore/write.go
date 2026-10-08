@@ -101,6 +101,41 @@ func (r *Repo) CommitParents(rev string) ([]string, error) {
 	return out, nil
 }
 
+// UpdateRemoteTracking records, after a successful in-process Push, that remoteRef on the
+// named remote now holds hash. A successful `git push <remote>` does this itself: it moves the
+// remote-tracking ref that the remote's own fetch refspec maps remoteRef to
+// (refs/remotes/<remote>/<branch> in the default layout). Push writes nothing locally because
+// it pushes through a transient remote, so a caller that pushed on the named remote's behalf
+// calls this. The first configured fetch refspec that matches remoteRef decides the tracking
+// ref, the same resolution UpstreamRef reads back. It returns the ref written, or "" with no
+// error when no fetch refspec maps remoteRef (git writes nothing then either).
+func (r *Repo) UpdateRemoteTracking(remote, remoteRef, hash string) (string, error) {
+	cfg, err := r.repo.Config()
+	if err != nil {
+		return "", fmt.Errorf("gitcore: update-remote-tracking: %w", err)
+	}
+	rc, ok := cfg.Remotes[remote]
+	if !ok {
+		return "", fmt.Errorf("gitcore: update-remote-tracking: remote %s not configured", remote)
+	}
+	h := plumbing.NewHash(hash)
+	if h.IsZero() || h.String() != hash {
+		return "", fmt.Errorf("gitcore: update-remote-tracking: %q is not a full object id", hash)
+	}
+	src := plumbing.ReferenceName(remoteRef)
+	for _, rs := range rc.Fetch {
+		if !rs.Match(src) {
+			continue
+		}
+		dst := rs.Dst(src)
+		if serr := r.repo.Storer.SetReference(plumbing.NewHashReference(dst, h)); serr != nil {
+			return "", fmt.Errorf("gitcore: update-remote-tracking %s: %w", dst, serr)
+		}
+		return string(dst), nil
+	}
+	return "", nil
+}
+
 // DeleteLocalRef removes a local reference, matching `git update-ref -d <name>`.
 // Deleting an already-absent reference is a no-op success, matching real git's own
 // `update-ref -d` on a ref that does not exist.

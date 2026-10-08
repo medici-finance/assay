@@ -693,7 +693,7 @@ func collectSiblingRows(streams []*Stream, reg *graphRepos, ownRepo string) sibl
 			}
 			body := ""
 			if path, ok := pathByNum[b.Num]; ok {
-				if raw, err := os.ReadFile(path); err == nil {
+				if raw, err := readFileMemo(path); err == nil {
 					body = string(raw)
 				}
 				// An unreadable brief file here is silently skipped: boardhonesty.go's

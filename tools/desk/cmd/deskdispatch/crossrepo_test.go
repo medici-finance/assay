@@ -33,6 +33,13 @@ const exampleBriefRel = "docs/streams/example-stream/brief-05-example.md"
 // consumer scripts, and one brief whose frontmatter carries the given extra lines.
 func trackingCheckout(t *testing.T, registry string, frontmatter ...string) string {
 	t.Helper()
+	return trackingCheckoutBody(t, registry, "# Example brief\n", frontmatter...)
+}
+
+// trackingCheckoutBody is trackingCheckout with the brief's markdown body (everything after the
+// frontmatter) supplied by the caller — the declared-deliverable tests put a `files:` list in it.
+func trackingCheckoutBody(t *testing.T, registry, mdBody string, frontmatter ...string) string {
+	t.Helper()
 	trk := t.TempDir()
 	plantScripts(t, trk)
 	if registry != "" {
@@ -54,7 +61,7 @@ func trackingCheckout(t *testing.T, registry string, frontmatter ...string) stri
 			gate = "" // the caller's own gate line wins
 		}
 	}
-	body := "---\ntitle: example\n" + gate + strings.Join(frontmatter, "\n") + "\n---\n\n# Example brief\n"
+	body := "---\ntitle: example\n" + gate + strings.Join(frontmatter, "\n") + "\n---\n\n" + mdBody
 	if err := os.WriteFile(bp, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -662,5 +669,218 @@ func TestReworkDryRunNamesTheFollowUpPossibility(t *testing.T) {
 	})
 	if !strings.Contains(out, "FOLLOW-UP branch feat/example-stream-05-followup-<N>") {
 		t.Errorf("the --rework dry-run plan does not name the follow-up possibility:\n%s", out)
+	}
+}
+
+// ── DECLARED DELIVERABLE REPOS: the `[alias]` tags on a brief's `files:` list ─────────────────────
+//
+// A brief tracked in one repo (its brief-v2 id names the tracking alias) may list files it changes in
+// a sibling repo, each tagged with that repo's registry alias. Such a brief is legitimately dispatched
+// with --repo at the sibling: the tag is a declaration, resolved through the same registry. Any other
+// --repo still hard-fails exactly as before.
+
+const exampleV2ID = "brief: example-cell:example-trk:example-stream:05"
+
+// taggedBody is a brief body whose Context `files:` list tags one entry per alias given.
+func taggedBody(aliases ...string) string {
+	var b strings.Builder
+	b.WriteString("# Example brief\n\n## Context\n\nfiles:\n")
+	for _, a := range aliases {
+		b.WriteString("- `[" + a + "]` `../example-deliverable/pkg/thing.go` (the change)\n")
+	}
+	b.WriteString("- `docs/streams/example-stream/README.md` (tracking-side note)\n\n## Task\n\nDo it.\n")
+	return b.String()
+}
+
+// TestDeclaredTagAdmitsRepo — the positive path. --repo names the repo a `files:` tag declares, and
+// --root is a checkout of it: the dispatch proceeds, the claim key is the TRACKING key, and the claim,
+// the mint and the worktree all land in --repo (the claim is a ref in --repo, never elsewhere).
+func TestDeclaredTagAdmitsRepo(t *testing.T) {
+	for _, item := range []string{"example-stream/05", "example-trk--example-stream--05"} {
+		t.Run(item, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t) // --root's origin is medici-finance/assay (alias example-tool)
+			trk := trackingCheckoutBody(t, exampleRegistry, taggedBody("example-tool"), exampleV2ID)
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+			mints := recordMint(t, home, nil)
+			promptFile := filepath.Join(t.TempDir(), "p.md")
+			err := cmdDispatch([]string{item, "--repo", "medici-finance/assay", "--root", root, "--claim-root", trk,
+				"--brief", exampleBriefRel, "--kit", "worker", "--prompt-file", promptFile, "--quiet"})
+			if err != nil {
+				t.Fatalf("--repo at a repo the brief's files: list declares must dispatch: %v", err)
+			}
+			cc := claimCalls(s)
+			if len(cc) != 1 {
+				t.Fatalf("want exactly one claim acquire, got %v", cc)
+			}
+			if got := strings.Join(cc[0][1:], " "); got != "acquire example-trk--example-stream--05 --repo medici-finance/assay" {
+				t.Errorf("claim argv = %q — want the TRACKING key, claimed in --repo", got)
+			}
+			if len(*mints) != 1 || (*mints)[0] != "medici-finance/assay" {
+				t.Errorf("token minted for %v — want exactly --repo", *mints)
+			}
+			if !s.ran("deskwt add") {
+				t.Error("no worktree was cut from the --repo checkout")
+			}
+			prompt := readPrompt(t, promptFile)
+			absTrk, _ := filepath.Abs(trk)
+			for _, want := range []string{
+				"**Target repo:** `medici-finance/assay`",
+				"**Tracked in:** `example-org/tracker`",
+				"`deskpr create --root " + absTrk + "`",
+				"alias `example-tool`",
+			} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("prompt is missing %q", want)
+				}
+			}
+		})
+	}
+}
+
+// TestUndeclaredRepoStillFails — the negative path. The brief declares a DIFFERENT sibling; --repo
+// at an undeclared repo is the same HARD FAIL as before, before any claim, mint or worktree.
+func TestUndeclaredRepoStillFails(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	trk := trackingCheckoutBody(t, exampleRegistry, taggedBody("example-con"), exampleV2ID)
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+	mints := recordMint(t, home, nil)
+	err := cmdDispatch([]string{"example-stream/05", "--repo", "medici-finance/assay", "--root", root,
+		"--claim-root", trk, "--brief", exampleBriefRel, "--quiet"})
+	if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+		t.Fatalf("an undeclared --repo must hard-fail (exit 5): %v", err)
+	}
+	for _, want := range []string{"HARD FAIL", `"example-trk"`, "example-org/tracker", "but --repo is medici-finance/assay"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name %q: %v", want, err)
+		}
+	}
+	if len(claimCalls(s)) != 0 || s.ran("deskwt add") || len(*mints) != 0 {
+		t.Errorf("the hard fail must precede mint, claim and worktree; calls=%v mints=%v", s.calls, *mints)
+	}
+}
+
+// TestUntaggedBriefIsLegacy — a brief whose files: list carries no tags behaves exactly as before:
+// the same refusal, byte for byte, as the same brief with no files: list at all.
+func TestUntaggedBriefIsLegacy(t *testing.T) {
+	refusal := func(mdBody string) string {
+		s := &stub{}
+		_, root := s.install(t)
+		trk := trackingCheckoutBody(t, exampleRegistry, mdBody, exampleV2ID)
+		s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+		err := cmdDispatch([]string{"example-stream/05", "--repo", "medici-finance/assay", "--root", root,
+			"--claim-root", trk, "--brief", exampleBriefRel, "--quiet"})
+		if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "HARD FAIL") {
+			t.Fatalf("an untagged brief tracked elsewhere must hard-fail as before: %v", err)
+		}
+		if len(claimCalls(s)) != 0 || s.ran("deskwt add") {
+			t.Error("the hard fail must precede the claim and the worktree")
+		}
+		return strings.ReplaceAll(err.Error(), trk, "<trk>")
+	}
+	bare := refusal("# Example brief\n")
+	untagged := refusal(taggedBody())
+	if bare != untagged {
+		t.Errorf("an untagged files: list changed the refusal:\n bare:     %s\n untagged: %s", bare, untagged)
+	}
+}
+
+// TestTagNeverWidens — the CLASS guard. Only a registry-resolved `[alias]` tag on an entry of the
+// brief's own `files:` list, matching --repo, with --root a checkout of --repo, and with no explicit
+// deliverable_repo/homed-in, admits a repo. Every near-miss below must keep the HARD FAIL (exit 5)
+// with nothing claimed, minted or cut.
+func TestTagNeverWidens(t *testing.T) {
+	prose := "# Example brief\n\nThis also touches `[example-tool]` `../example-deliverable/x.go`.\n\n" +
+		"files:\n- `docs/streams/example-stream/README.md`\n"
+	afterList := "# Example brief\n\nfiles:\n- `docs/streams/example-stream/README.md`\n\n" +
+		"- `[example-tool]` `../example-deliverable/x.go`\n"
+	// No blank line: a left-margin line, not a blank one, closes the list.
+	leftMargin := "# Example brief\n\nfiles:\n- `docs/streams/example-stream/README.md`\n" +
+		"Then, later:\n- `[example-tool]` `../example-deliverable/x.go`\n"
+	notAtHead := "# Example brief\n\nfiles:\n- `../example-deliverable/x.go` `[example-tool]`\n"
+	secondList := "# Example brief\n\nfiles:\n- `docs/streams/example-stream/README.md`\n\n" +
+		"## Notes\n\nfiles:\n- `[example-tool]` `../example-deliverable/x.go`\n"
+	// An illustrative fenced example ahead of the real (untagged) list declares nothing.
+	fenced := "# Example brief\n\nAn entry looks like:\n\n```markdown\nfiles:\n" +
+		"- `[example-tool]` `../example-deliverable/x.go`\n```\n\n" +
+		"## Context\n\nfiles:\n- `docs/streams/example-stream/README.md`\n"
+	// A fence closes only on its OWN character: a `~~~` line inside a backtick fence leaves it open,
+	// so the tagged list after it is still inside the example.
+	otherKind := "# Example brief\n\n```markdown\n~~~\nfiles:\n" +
+		"- `[example-tool]` `../example-deliverable/x.go`\n```\n\n" +
+		"## Context\n\nfiles:\n- `docs/streams/example-stream/README.md`\n"
+	// A fence closes only on a bare run: a ```go line (an info string) inside a fence opens nothing
+	// and closes nothing, so the tagged list after it is still inside the example.
+	infoString := "# Example brief\n\n```\n```go\nfiles:\n" +
+		"- `[example-tool]` `../example-deliverable/x.go`\n```\n\n" +
+		"## Context\n\nfiles:\n- `docs/streams/example-stream/README.md`\n"
+	for _, c := range []struct {
+		name, mdBody, repo string
+		front              []string
+	}{
+		{"unknown alias", taggedBody("example-nope"), "medici-finance/assay", nil},
+		{"unpublished alias", taggedBody("example-hidden"), "medici-finance/assay", nil},
+		{"tag in prose", prose, "medici-finance/assay", nil},
+		{"tag after the list", afterList, "medici-finance/assay", nil},
+		{"closed by a left-margin line", leftMargin, "medici-finance/assay", nil},
+		{"tag not at entry head", notAtHead, "medici-finance/assay", nil},
+		{"tag in a second files: list", secondList, "medici-finance/assay", nil},
+		{"tag in a fenced example", fenced, "medici-finance/assay", nil},
+		{"fence not closed by the other kind", otherKind, "medici-finance/assay", nil},
+		{"fence not closed by a run with an info string", infoString, "medici-finance/assay", nil},
+		{"tag in frontmatter", "# Example brief\n", "medici-finance/assay",
+			[]string{"files:", "- `[example-tool]` `../example-deliverable/x.go`"}},
+		{"explicit deliverable wins", taggedBody("example-tool"), "medici-finance/assay",
+			[]string{"deliverable_repo: example-con"}},
+		{"explicit homed-in wins", taggedBody("example-tool"), "medici-finance/assay",
+			[]string{"homed-in: example-org/console"}},
+		{"no --repo given", taggedBody("example-tool"), "", nil},
+		{"--root not --repo", taggedBody("example-con"), "example-org/console", nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			trk := trackingCheckoutBody(t, exampleRegistry, c.mdBody, append([]string{exampleV2ID}, c.front...)...)
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+			mints := recordMint(t, home, nil)
+			args := []string{"example-stream/05", "--root", root, "--claim-root", trk, "--brief", exampleBriefRel, "--quiet"}
+			if c.repo != "" {
+				args = append(args, "--repo", c.repo)
+			}
+			err := cmdDispatch(args)
+			if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "HARD FAIL") {
+				t.Fatalf("this near-miss must keep the HARD FAIL (exit 5): %v", err)
+			}
+			if len(claimCalls(s)) != 0 || s.ran("deskwt add") || len(*mints) != 0 {
+				t.Errorf("the hard fail must precede mint, claim and worktree; calls=%v mints=%v", s.calls, *mints)
+			}
+		})
+	}
+}
+
+// TestDeclaredTagAfterFencedExample — a fenced example `files:` block ahead of the real list is
+// skipped, not read as the brief's list, so the real `## Context` list's tag still declares. The
+// example is a four-tilde fence holding a three-tilde line, so it pins the closer's LENGTH check: a
+// shorter run of the same character does not close the fence. (Its inner backtick run is also
+// shorter than the opener, so this fixture cannot separate the closer's character check from its
+// length check; TestTagNeverWidens' "fence not closed by the other kind" row pins the character
+// check, and "fence not closed by a run with an info string" pins the nothing-after check.)
+func TestDeclaredTagAfterFencedExample(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	example := "# Example brief\n\nAn entry looks like:\n\n~~~~markdown\nfiles:\n- `docs/x.md`\n```\n~~~\n~~~~\n\n"
+	body := example + strings.TrimPrefix(taggedBody("example-tool"), "# Example brief\n\n")
+	trk := trackingCheckoutBody(t, exampleRegistry, body, exampleV2ID)
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+	mints := recordMint(t, home, nil)
+	err := cmdDispatch([]string{"example-stream/05", "--repo", "medici-finance/assay", "--root", root,
+		"--claim-root", trk, "--brief", exampleBriefRel, "--kit", "worker",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md"), "--quiet"})
+	if err != nil {
+		t.Fatalf("the real list's tag must still declare after a fenced example: %v", err)
+	}
+	if len(claimCalls(s)) != 1 || len(*mints) != 1 || (*mints)[0] != "medici-finance/assay" {
+		t.Errorf("want one claim and one mint for --repo; claims=%v mints=%v", claimCalls(s), *mints)
 	}
 }

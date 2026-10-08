@@ -1,0 +1,2 @@
+### Fixed
+- The verifier dispatch kit and `deskdispatch --kit verifier`'s assignment now ask for the bold `**VERIFY: PASS**` / `**VERIFY: FAIL**` marker, with any qualifier after the closing asterisks. They used to ask for an unbolded verdict, which the statusgen gate never reads, so a verifier that followed the kit exactly wrote a PASS that never advanced the item. A new test reads the gate's own regex from statusgen and fails if any dispatch kit or the assembled verifier prompt asks for a verdict that regex does not match.
