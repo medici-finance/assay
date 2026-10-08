@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -4341,6 +4342,115 @@ func (g *GitLabForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 			"mapping does not know — not rounded to a known state", pid, repo.Slug(), StripControl(p.Status)), nil)
 	}
 	return st, nil
+}
+
+// gitlabPipelineJobs lists every job of a pipeline (`GET /projects/:id/pipelines/:id/jobs`),
+// page by page. It is the shared first hop of RunLog and RetryRun: GitLab's trace and retry
+// are per JOB, so a pipeline-level verb resolves its jobs first. More than RunLogMaxParts jobs
+// is a could-not-check — a silently shortened list would read as the whole pipeline.
+func (g *GitLabForge) gitlabPipelineJobs(cl *gitlab.Client, repo ForgeRepo, pid int64) ([]*gitlab.Job, error) {
+	path := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", g.projectPath(repo), pid)
+	var all []*gitlab.Job
+	for page := 1; page <= gitlabMaxCIPage; page++ {
+		chunk, resp, lerr := cl.Jobs.ListPipelineJobs(repo.Slug(), pid, &gitlab.ListJobsOptions{
+			ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+		})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, path, lerr)
+		}
+		for _, j := range chunk {
+			if j != nil {
+				all = append(all, j)
+			}
+		}
+		if len(all) > RunLogMaxParts {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has more than %d jobs — "+
+				"refusing to act on a silently shortened job list", pid, repo.Slug(), RunLogMaxParts), nil)
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return all, nil
+		}
+	}
+	return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has more job pages than this read "+
+		"will walk — refusing a silently shortened job list", pid, repo.Slug()), nil)
+}
+
+// RunLog reads the log of a pipeline: its jobs are listed, then EVERY job's trace is read
+// (`GET /projects/:id/jobs/:job_id/trace`, `read_api`), one RunLogPart per job. A pipeline
+// with several jobs is never reduced to the first job's trace; a pipeline with no jobs is a
+// could-not-check (404 semantics), not an empty success.
+func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	pid, err := ValidateRunID(run)
+	if err != nil {
+		return nil, err
+	}
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	jobs, err := g.gitlabPipelineJobs(cl, repo, pid)
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) == 0 {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has no jobs, so there is no log to read",
+			pid, repo.Slug()), nil)
+	}
+	parts := make([]RunLogPart, 0, len(jobs))
+	for _, j := range jobs {
+		path := fmt.Sprintf("/projects/%s/jobs/%d/trace", g.projectPath(repo), j.ID)
+		rd, _, terr := cl.Jobs.GetTraceFile(repo.Slug(), j.ID)
+		if terr != nil {
+			return nil, g.mapErr(http.MethodGet, path, terr)
+		}
+		var b []byte
+		if rd != nil {
+			var rerr error
+			b, rerr = io.ReadAll(io.LimitReader(rd, 4*RunLogPartCap))
+			if rerr != nil {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot read the trace of job %d on %s", j.ID, repo.Slug()), rerr)
+			}
+		}
+		text, trunc := capRunLogText(b)
+		parts = append(parts, RunLogPart{Name: j.Name, Text: text, Truncated: trunc})
+	}
+	return parts, nil
+}
+
+// RetryRun retries the FAILED jobs of a pipeline: the jobs are listed and each job whose
+// status is failed is retried (`POST /projects/:id/jobs/:job_id/retry`, `api`). Passed, running
+// and manual jobs are left alone — the same narrowness as GitHub's rerun-failed-jobs. A
+// pipeline with no failed job is a could-not-check naming it; nothing is written.
+func (g *GitLabForge) RetryRun(repo ForgeRepo, run RunRef) error {
+	pid, err := ValidateRunID(run)
+	if err != nil {
+		return err
+	}
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	jobs, err := g.gitlabPipelineJobs(cl, repo, pid)
+	if err != nil {
+		return err
+	}
+	var failed []*gitlab.Job
+	for _, j := range jobs {
+		if j.Status == string(gitlab.Failed) {
+			failed = append(failed, j)
+		}
+	}
+	if len(failed) == 0 {
+		return Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has no failed job to retry — "+
+			"nothing was written", pid, repo.Slug()), nil)
+	}
+	for _, j := range failed {
+		path := fmt.Sprintf("/projects/%s/jobs/%d/retry", g.projectPath(repo), j.ID)
+		if _, _, rerr := cl.Jobs.RetryJob(repo.Slug(), j.ID); rerr != nil {
+			return g.mapErr(http.MethodPost, path, rerr)
+		}
+	}
+	return nil
 }
 
 // GitLab issues do not expose lastEditedAt. The existing activity-note query is

@@ -1464,6 +1464,33 @@ type RunState struct {
 	URL        string `json:",omitempty"`
 }
 
+// RunLogPart is one job's log text (RunLog). Name is the job (GitHub: the zip entry name,
+// GitLab: the job name), Text its log, Truncated true when the log exceeded RunLogPartCap and
+// only its tail is kept. Both strings are forge-origin: a renderer control-strips them.
+type RunLogPart struct {
+	Name      string
+	Text      string
+	Truncated bool `json:",omitempty"`
+}
+
+// RunLogPartCap bounds the text kept per RunLogPart (4 MiB). The TAIL is kept: a failing
+// step's message is at the end of a log. RunLogMaxParts bounds the jobs read from one run, and
+// runLogArchiveCap the bytes of a GitHub log archive downloaded, so a hostile or runaway log
+// cannot exhaust memory.
+const (
+	RunLogPartCap    = 4 << 20
+	RunLogMaxParts   = 200
+	runLogArchiveCap = 64 << 20
+)
+
+// capRunLogText applies RunLogPartCap, keeping the tail.
+func capRunLogText(b []byte) (string, bool) {
+	if len(b) <= RunLogPartCap {
+		return string(b), false
+	}
+	return string(b[len(b)-RunLogPartCap:]), true
+}
+
 // ValidateRunID checks a RunRef's id is a bare positive integer before it is interpolated
 // into any request path — the ValidateRefPath shape applied to a run id. A caller-supplied id
 // that is anything else is a could-not-check refusal with zero requests.
@@ -1961,6 +1988,22 @@ type Forge interface {
 	// `GET …/actions/runs/{id}`; GitLab: `GET /projects/:id/pipelines/:id`. A state the
 	// mapping does not know is could-not-check, never rounded to a known one.
 	RunStatus(repo ForgeRepo, run RunRef) (*RunState, error)
+	// RunLog reads one run's log as text, one RunLogPart per job (forge-neutral brief 17;
+	// consumer: cmd/deskrun log). It is READ-ONLY and runs under the calling role's own token
+	// (GitHub `actions: read`, GitLab `read_api`). GitHub: `GET …/actions/runs/{id}/logs` (a
+	// redirect to a zip of per-job logs; an expired or deleted log answers 404, surfaced as
+	// IsForgeNotFound, never as an empty success). GitLab's trace is per JOB, so the pipeline's
+	// jobs are listed and EVERY job's trace is read — a multi-job pipeline is never reduced to
+	// the first job. A part over the per-part cap keeps its TAIL and is marked Truncated.
+	RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error)
+	// RetryRun re-runs the FAILED work of one run and nothing else (forge-neutral brief 17;
+	// consumer: cmd/deskrun retry). It needs GitHub `actions: write` / GitLab `api`, the
+	// over-broad scopes that made RunWorkflow roster-bound, so it runs ONLY under the run
+	// credential ResolveRunCredential binds. GitHub: `POST …/actions/runs/{id}/rerun-failed-jobs`
+	// (the narrower of the two rerun endpoints). GitLab: the pipeline's FAILED jobs are listed
+	// and each is retried (`POST /projects/:id/jobs/:job_id/retry`). A run with nothing failed
+	// is a could-not-check naming the run, never a whole-run rerun.
+	RetryRun(repo ForgeRepo, run RunRef) error
 
 	// --- Identity / transport ---
 

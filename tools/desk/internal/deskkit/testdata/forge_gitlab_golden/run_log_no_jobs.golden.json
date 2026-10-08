@@ -1,0 +1,12 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/9001/jobs",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: pipeline 9001 on medici-finance/assay has no jobs, so there is no log to read",
+  "not_found": false
+}

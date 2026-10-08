@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
@@ -103,6 +104,8 @@ type goldenServer struct {
 	workflowRuns       map[string]any
 	pendingDeployments []map[string]any
 	run                map[string]any
+	// runLogZip is the archive the run-log route redirects to (forge-neutral brief 17's RunLog).
+	runLogZip []byte
 	// fileCommits is the path-filtered commits LIST (ListFileCommits) and commitPulls the
 	// commit's associated-PRs LIST (ListCommitChanges).
 	fileCommits []map[string]any
@@ -148,6 +151,11 @@ var (
 	gWorkflowRuns     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/workflows/[^/]+/runs$`)
 	gRunPending       = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+/pending_deployments$`)
 	gRun1             = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+$`)
+	// forge-neutral brief 17's run-log and retry routes: the logs route answers a redirect to an
+	// archive path (as GitHub redirects to a signed blob URL), which this server then serves.
+	gRunLogs    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+/logs$`)
+	gRunArchive = regexp.MustCompile(`^/_run_archive/[0-9]+\.zip$`)
+	gRunRerun   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+/rerun-failed-jobs$`)
 
 	// forge-neutral brief 33's pull-commits route (op 57).
 	gPullCommits = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/[0-9]+/commits$`)
@@ -328,6 +336,14 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc([]map[string]any{{"id": 1}})
 	case r.Method == http.MethodGet && gRun1.MatchString(path):
 		enc(s.run)
+	case r.Method == http.MethodGet && gRunLogs.MatchString(path):
+		id := strings.TrimSuffix(strings.TrimPrefix(path[strings.Index(path, "/runs/")+len("/runs/"):], ""), "/logs")
+		http.Redirect(w, r, "/_run_archive/"+id+".zip", http.StatusFound)
+	case r.Method == http.MethodGet && gRunArchive.MatchString(path):
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(s.runLogZip)
+	case r.Method == http.MethodPost && gRunRerun.MatchString(path):
+		w.WriteHeader(http.StatusCreated)
 	case r.Method == http.MethodGet && gRepo.MatchString(path):
 		enc(s.repo)
 	default:
@@ -1106,6 +1122,50 @@ func TestForgeGithubGolden(t *testing.T) {
 			},
 			run: func(f *GitHubForge) (any, error) { return f.RunStatus(forgeTestRepo, RunRef{ID: "501"}) },
 		},
+		// --- forge-neutral brief 17: RunLog and RetryRun ---
+		{
+			// RunLog: the logs route redirects to an archive; each zip entry is one job's log,
+			// in archive order, and the token-bearing request is the one to the API host.
+			name: "run_log",
+			setup: func(s *goldenServer) {
+				s.runLogZip = zipOf(t, [][2]string{{"build/1_Set up job.txt", "ready\n"}, {"build/2_Run tests.txt", "FAIL: TestThing\n"}})
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RunLog(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
+			// A log that expired or was deleted answers 404: surfaced as not-found, never as an
+			// empty success.
+			name:  "run_log_expired",
+			setup: func(s *goldenServer) { s.forceStatus["/runs/501/logs"] = http.StatusNotFound },
+			run:   func(f *GitHubForge) (any, error) { return f.RunLog(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
+			// A path-shaped run id is refused with ZERO requests.
+			name:  "run_log_refuses_path_shaped_id",
+			setup: func(s *goldenServer) {},
+			run:   func(f *GitHubForge) (any, error) { return f.RunLog(forgeTestRepo, RunRef{ID: "501/logs"}) },
+		},
+		{
+			// RetryRun: ONE POST to the failed-jobs route (never the whole-run `rerun`), no body.
+			name:  "retry_run",
+			setup: func(s *goldenServer) {},
+			run:   func(f *GitHubForge) (any, error) { return nil, f.RetryRun(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
+			// The credential lacks actions: write: the forge's 403 surfaces, nothing else is tried.
+			name:  "retry_run_forbidden",
+			setup: func(s *goldenServer) { s.forceStatus["/rerun-failed-jobs"] = http.StatusForbidden },
+			run:   func(f *GitHubForge) (any, error) { return nil, f.RetryRun(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
+			// The backend layer's own refusal: no minted token, zero requests.
+			name:  "retry_run_refuses_unminted_token",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				f.Token = ""
+				return nil, f.RetryRun(forgeTestRepo, RunRef{ID: "501"})
+			},
+		},
 		// --- forge-neutral brief 33: ops 55-58 and the widened fields ---
 		{
 			// Op 55: the issues-only GraphQL connection (never REST /issues), state and label as
@@ -1373,4 +1433,23 @@ func ghRunFixture(id int, created, branch, actor string) map[string]any {
 		"created_at": created, "html_url": fmt.Sprintf("https://example/actions/runs/%d", id),
 		"actor": map[string]any{"login": actor},
 	}
+}
+
+// zipOf builds an archive of (name, content) entries in the given order, the shape GitHub's
+// run-log download returns.
+func zipOf(t *testing.T, files [][2]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, f := range files {
+		w, err := zw.Create(f[0])
+		if err != nil {
+			t.Fatalf("zip entry %q: %v", f[0], err)
+		}
+		_, _ = w.Write([]byte(f[1]))
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zip close: %v", err)
+	}
+	return buf.Bytes()
 }

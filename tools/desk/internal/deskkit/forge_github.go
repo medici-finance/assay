@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
@@ -3051,6 +3052,82 @@ func (g *GitHubForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 			"does not know — not rounded to a known state", id, repo.Slug(), StripControl(w.Status)), nil)
 	}
 	return st, nil
+}
+
+// RunLog reads one run's log (`GET /repos/{o}/{r}/actions/runs/{id}/logs`). GitHub answers a
+// redirect to a zip archive of per-job logs; the redirect is followed WITHOUT the bearer token
+// (go-gh attaches it only to the API host), the archive is read under a byte cap, and each zip
+// entry becomes one RunLogPart. An expired or deleted log answers 404 (IsForgeNotFound).
+// Needs only `actions: read`.
+func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	id, err := ValidateRunID(run)
+	if err != nil {
+		return nil, err
+	}
+	rc, err := g.restClient()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/logs", repo.Owner, repo.Name, id)
+	resp, rerr := rc.Request(http.MethodGet, g.baseURL()+path, nil)
+	if rerr != nil {
+		var he *ghapi.HTTPError
+		if errors.As(rerr, &he) {
+			return nil, &ForgeAPIError{Status: he.StatusCode, Method: http.MethodGet, Path: path,
+				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
+		}
+		return nil, Unverifiable(fmt.Sprintf("GET %s failed", path), rerr)
+	}
+	defer resp.Body.Close()
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, runLogArchiveCap+1))
+	if readErr != nil {
+		return nil, Unverifiable(fmt.Sprintf("GET %s response body cut off mid-transfer (%d bytes arrived) — "+
+			"refusing to treat a partial log as a complete one", path, len(raw)), readErr)
+	}
+	if len(raw) > runLogArchiveCap {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log archive for run %d on %s exceeds %d bytes — "+
+			"refusing to read it whole", id, repo.Slug(), runLogArchiveCap), nil)
+	}
+	zr, zerr := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if zerr != nil {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log for run %d on %s is not a readable archive", id, repo.Slug()), zerr)
+	}
+	var parts []RunLogPart
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		if len(parts) >= RunLogMaxParts {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: run %d on %s has more than %d log files — "+
+				"refusing to return a silently shortened log", id, repo.Slug(), RunLogMaxParts), nil)
+		}
+		rd, oerr := f.Open()
+		if oerr != nil {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot open log file %q of run %d", StripControl(f.Name), id), oerr)
+		}
+		// Read one byte past a generous bound; the tail cap is applied to what was read.
+		b, ierr := io.ReadAll(io.LimitReader(rd, 4*RunLogPartCap))
+		rd.Close()
+		if ierr != nil {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot read log file %q of run %d", StripControl(f.Name), id), ierr)
+		}
+		text, trunc := capRunLogText(b)
+		parts = append(parts, RunLogPart{Name: f.Name, Text: text, Truncated: trunc})
+	}
+	return parts, nil
+}
+
+// RetryRun re-runs the failed jobs of one run (`POST …/actions/runs/{id}/rerun-failed-jobs`).
+// This is the narrower of GitHub's two rerun endpoints (`…/rerun` re-runs every job, including
+// ones that passed), chosen because a retry's purpose is to recover the failed work. Needs
+// `actions: write`, so the caller holds the roster-bound run credential.
+func (g *GitHubForge) RetryRun(repo ForgeRepo, run RunRef) error {
+	id, err := ValidateRunID(run)
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/rerun-failed-jobs", repo.Owner, repo.Name, id)
+	return g.doJSON(http.MethodPost, path, nil, nil)
 }
 
 // quotedList renders names for a refusal message; an empty list reads "nothing".
