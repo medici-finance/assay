@@ -13,7 +13,7 @@ accepted:
   - "With no executable configured, only the built-in checks run (#2375 option 1: 'unset means built-in checks only')."
   - "An executable that is configured but broken refuses the write (#2375 option 1: 'configured-but-broken refuses the write')."
   - "Under the REQUIRED mode a deployment may set, public-target writes refuse when no executable is configured (#2375 option 1: 'a deployment may set a REQUIRED mode under which public-target writes refuse when no executable is configured')."
-  - "The deployment-supplied executable receives the text of the write (#2375 option 1: 'the executable gets the text but a scrubbed environment with no credential'). Brief desktools-v2/11 `gate-why` says the same of the design it proposes: it 'hands that executable the full text of every outward write'."
+  - "The deployment-supplied executable receives the text of the write (#2375 option 1: 'the executable gets the text but a scrubbed environment with no credential'). The proposal names what else it is handed with the text: 'the verb, the role, the target repository and its visibility, the kind of write'. Brief desktools-v2/11 `gate-why` says the same of the design it proposes: it 'hands that executable the full text of every outward write'."
 ---
 
 **This record transcribes a recorded human ruling. It is not an agent asserting sign-off.**
@@ -58,11 +58,14 @@ as written, in full. Option 1, verbatim from the issue body:
 No rationale was given with the answer, and this record supplies none. If this reading is wrong,
 the remedy is to decline the pull request that adds this record.
 
-## The design that was approved
+## The design the ruling's text describes
 
-"As proposed" refers to the proposal in the issue body, which reads:
+"As proposed" refers to the proposal in the issue body. The paragraph that carries it reads, in
+full:
 
-> The proposal lets a deployment point the tools at its own executable. Before any write leaves the
+> The outbound-write check in the desk tools is generic: it cannot know the names one deployment
+> withholds, and those names must never be compiled into or shipped with public tools. The
+> proposal lets a deployment point the tools at its own executable. Before any write leaves the
 > machine, after the built-in checks have passed it, the tools hand that executable one JSON
 > object — the verb, the role, the target repository and its visibility, the kind of write, and
 > the text being written — and it answers allow, or block with a reason. It can add a block; it
@@ -81,8 +84,10 @@ specifics:
 - "5 second default timeout, configurable to 60";
 - "the executable gets the text but a scrubbed environment with no credential".
 
-The brief is the authority for the design. This summary quotes the issue and does not amend the
-brief.
+The brief holds the design in more detail than #2375 does. The ruling's text is the issue's
+text. This record transcribes approval of what #2375's body states; where the brief says more
+than the issue, this record does not say it was ruled, and it does not amend the brief. Whether
+the ruling reaches the whole brief is the driver's to say, in the driver's own login on #2375.
 
 ## The consequence level
 
@@ -145,7 +150,18 @@ reads `todo`.
     `block`"), the 64 KiB limit on its output, and that the request text is sent "without HTML
     escaping";
   - what the audit row holds ("the rule id, outcome, kind and a digest"); the issue says only
-    what the audit log does not hold.
+    what the audit log does not hold;
+  - which outcomes refuse the write: "missing file, group/world-writable, non-zero exit,
+    timeout, empty output, more than 64 KiB, an answer that is neither word" (option 1 says
+    "configured-but-broken refuses the write" and gives a timeout; it does not say a timeout
+    counts as broken);
+  - that "A key that is set but malformed refuses outward writes instead of reading as
+    unconfigured";
+  - that a write "with no text" is still put to the executable;
+  - that what the executable printed is shown "with control characters removed".
+
+  This list is not complete. It names the differences found when this record was written;
+  #2383's body is the full statement.
 
   Some of these are stated in the brief. Whether #2383 matches the brief is the review's
   question, not this record's.
