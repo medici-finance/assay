@@ -2,8 +2,9 @@
 stream: iso-9001
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P2
+spec: docs/streams/iso-9001/reactivation.md
 track: platform
 issues: []
 board: generated
@@ -11,10 +12,10 @@ board: generated
 
 # iso-9001 Stream — make the artifacts an ISO 9001 adopter needs actually shippable
 
-**Parked** (2026-09-25, relayed by the desk at the driver's direction): shelved to
-free attention-budget for higher-priority work; briefs are kept as authored.
-Re-activate by flipping this README's `status:` back to `active` when priority
-allows.
+**Active at P2** (2026-10-06, at the driver's direction). The stream was parked
+on 2026-09-25 to free attention for higher-priority work and is now reactivated.
+[Reactivation scope](reactivation.md) records the prioritization decision; existing
+brief dependencies and human gates still apply.
 
 [`docs/iso9001-mapping.md`](../../iso9001-mapping.md) reads this repo's shipped artifacts
 against the ISO 9001 clause skeleton and says, per clause, what exists, whether it is
@@ -68,7 +69,7 @@ chain. Related, adjacent, cite both, never conflate them.
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Emit the tool-validation evidence pack as a release asset](brief-01-tool-validation-evidence-pack.md) | 0 | S | done | 2026-09-27 assay-verifier-app[bot] @ b227b40768db (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #566 @ e277316c439096c894dccc5895cafa9c8c1b1119) |
 | 02 | [Align three shipped disclosures with the code they describe](brief-02-disclosure-honesty-fixes.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
-| 03 | [A finding closes on a fired control — the corrective-action effectiveness record](brief-03-corrective-action-effectiveness.md) | 1 | M | todo | — | — |
+| 03 | [A finding closes on a fired control — the corrective-action effectiveness record](brief-03-corrective-action-effectiveness.md) | 1 | M | implemented | — | — |
 | 04 | [Record the authorizing human in the release itself](brief-04-release-authorizer-traceability.md) | 1 | S | done | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1364 @ 974cc294c29acdc580c4bff0d5a393ca813362ac) |
 | 05 | [Records control and retention, stated once](brief-05-records-control-and-retention.md) | 1 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #400 @ 90c19fd7a273835d01247292ad91f217a4ff9fe1) |
 | 06 | [The auditor one-pager — what Assay is and is not](brief-06-auditor-one-pager.md) | 2 | S | todo | — | — |
@@ -199,7 +200,7 @@ Wave 10: [11] ← 10
 
 ## Project assurance extension — proposed 2026-10-03
 
-[Project assurance specification](project-assurance-spec.md) adds a versioned source/applicability link, a review procedure over existing control exports, selective source-change reassessment and an offline qualification corpus. It adds no QMS, scheduler, vendor dependency or compliance claim. **This stream remains parked.**
+[Project assurance specification](project-assurance-spec.md) adds a versioned source/applicability link, a review procedure over existing control exports, selective source-change reassessment and an offline qualification corpus. It adds no QMS, scheduler, vendor dependency or compliance claim. **This stream is active at P2 following the 2026-10-06 reactivation.**
 
 New briefs: **08 → 09 → 10 → 11**, waves 0, 8, 9, 10. Brief 08 can use existing requirements and synthetic sources immediately after prioritization. Brief 09 also requires graph-execution/02, /03, /15 and iso-9001/03–04. The full delivery path is consequently held by the existing graph instance/experiment/run-record/control-export chain and corrective-action effectiveness, not by any external product. No dependency is removed.
 

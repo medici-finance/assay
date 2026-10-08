@@ -222,8 +222,12 @@ func TestEligibilityV2EscapesWholeWaveGate(t *testing.T) {
 	}
 
 	// --- subtest (converse): depends unsatisfied → held ---
+	// The target is `implemented` with no gate and no Evidence. Under the
+	// depends: rule pinned by TestDependsHumanGatePass below, `implemented`
+	// satisfies a depends: edge ONLY for a gate:human brief with a recorded
+	// pass — this one is neither, so it still holds.
 	blocker2 := mkStream("blocker", "active", "P1",
-		Brief{Num: "01", Wave: 0, Status: "implemented"}, // not done/verified
+		Brief{Num: "01", Wave: 0, Status: "implemented"}, // not done/verified, not gate:human-with-PASS
 	)
 	blocker2.LastTouch = day(0)
 
@@ -238,6 +242,213 @@ func TestEligibilityV2EscapesWholeWaveGate(t *testing.T) {
 		if p.Stream.Name == "target" && p.Brief.Num == "02" {
 			t.Fatalf("brief-v2 02 with unsatisfied depends should be HELD even though the wave-0 sibling is done, got %+v", picks2)
 		}
+	}
+
+	// --- subtest (rule change): the SAME implemented target, but gate:human
+	// with a recorded strict PASS → the depends: edge is satisfied → offered.
+	// Before this rule an `implemented` target held every dependent whatever
+	// its gate and verdict; this subtest is the deliberate flip of that.
+	blocker3 := mkStream("blocker", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "implemented", Gate: "human", Evidence: evPass},
+	)
+	blocker3.LastTouch = day(0)
+	target3 := mkStream("target", "active", "P1",
+		Brief{Num: "08", Wave: 0, Status: "done"},
+		Brief{Num: "02", Wave: 1, Status: "todo", Schema: "brief-v2", Depends: []string{"blocker/01"}},
+	)
+	target3.LastTouch = day(0)
+	if !pickedIn(nextUp([]*Stream{target3, blocker3}, ClaimView{}, nil).Picks, "target", "02") {
+		t.Fatalf("brief-v2 02 whose depends: target is gate:human at implemented with a recorded PASS should be eligible")
+	}
+}
+
+// Evidence bodies for the depends: rule tests below.
+const (
+	evPass      = "| Date | Runner |\n|---|---|\n| 2026-01-02 | verifier |\n\n**VERIFY: PASS**\n"
+	evFail      = "**VERIFY: FAIL** — row 2 red\n"
+	evPassFail  = "**VERIFY: PASS**\n\nre-run:\n\n**VERIFY: FAIL** — regression\n"
+	evFailPass  = "**VERIFY: FAIL** — row 2 red\n\nre-run after fix:\n\n**VERIFY: PASS**\n"
+	evLoosePass = "Non-implementer verifier run — VERIFY: PASS (no strict marker)\n"
+	// A FAIL that answers a strict PASS, followed by a prose mention of a
+	// future pass: the last verdict token reads PASS, so only the
+	// FAIL-after-strict-PASS check holds it.
+	evPassFailProsePass = "**VERIFY: PASS**\n\nre-run:\n\n**VERIFY: FAIL** — regression\n\nWill record VERIFY: PASS once green.\n"
+	// A strict PASS that appears only struck, fenced or quoted: the marker is
+	// present in the raw Evidence but is a quotation, not a live verdict.
+	evStruckPass = "~~**VERIFY: PASS**~~ withdrawn\n"
+	evFencedPass = "Expected output:\n\n```\n**VERIFY: PASS**\n```\n"
+	evQuotedPass = "> **VERIFY: PASS**\n"
+	// The same three quotations plus one loose-form PASS token in live prose:
+	// the last verdict token now reads PASS and no FAIL follows, so only the
+	// live strict-marker read (hasLiveVerifyPass) holds these.
+	evStruckPassLoose = "~~**VERIFY: PASS**~~ withdrawn; will record VERIFY: PASS once green\n"
+	evFencedPassLoose = "Expected output:\n\n```\n**VERIFY: PASS**\n```\n\nWill record VERIFY: PASS once green.\n"
+	evQuotedPassLoose = "> **VERIFY: PASS**\n\nWill record VERIFY: PASS once green.\n"
+	// A live strict PASS that also quotes the marker elsewhere: the quotation
+	// does not hide the live verdict, so this still satisfies (control).
+	evPassPlusQuoted = evPass + "\nExpected output:\n\n```\n**VERIFY: PASS**\n```\n\n> **VERIFY: PASS**\n"
+	// Shapes the live read alone would admit but the raw strict read refuses.
+	// Splice: a struck FAIL inside the marker's own bold run; removing the
+	// struck span joins the rest into **VERIFY: PASS**, a marker the raw
+	// Evidence never carries. Unclosed: a **VERIFY: FAIL opener with no
+	// closing ** on its line; the raw read runs it on to the next line's
+	// opening **, so that line's PASS marker never forms as one. Only the raw
+	// hasVerifyPass conjunct holds these.
+	evSplicePass     = "**VERIFY: ~~FAIL~~PASS**\n"
+	evFailSplicePass = evFail + "\n" + evSplicePass
+	evUnclosedFail   = "**VERIFY: FAIL — row 2 red\n\n**VERIFY: PASS**\n"
+	// A retracted FAIL struck as a whole, then a strict PASS on the same line:
+	// both strict reads find the PASS, so this satisfies (control for the
+	// splice cases).
+	evStruckFailPass = "~~**VERIFY: FAIL**~~ **VERIFY: PASS**\n"
+)
+
+func pickedIn(picks []Pick, stream, num string) bool {
+	for _, p := range picks {
+		if p.Stream.Name == stream && p.Brief.Num == num {
+			return true
+		}
+	}
+	return false
+}
+
+// TestDependsHumanGatePass pins the depends: satisfaction rule: a target at
+// done/verified satisfies a depends: edge; so does a gate:human target at
+// `implemented` whose last recorded verdict is a strict PASS. Every other
+// shape — a FAIL, a PASS later answered by a FAIL (even when prose mentions a
+// pass after it), no verdict, a loose-form PASS only, a strict PASS that is only
+// struck, fenced or quoted (with or without a loose-form PASS in live prose), a
+// PASS marker that forms only once a struck span is removed or that follows an
+// unclosed FAIL opener (neither is a strict marker in the raw Evidence), a
+// non-human gate, a status other than implemented — stays held.
+// Each case is checked through all three readers: depIsSatisfied, the
+// eligibility evaluator, and Next-up.
+func TestDependsHumanGatePass(t *testing.T) {
+	cases := []struct {
+		name   string
+		dep    Brief
+		wantOK bool
+	}{
+		{"human implemented PASS", Brief{Status: "implemented", Gate: "human", Evidence: evPass}, true},
+		{"human implemented FAIL then PASS", Brief{Status: "implemented", Gate: "human", Evidence: evFailPass}, true},
+		{"human implemented FAIL", Brief{Status: "implemented", Gate: "human", Evidence: evFail}, false},
+		{"human implemented PASS then FAIL", Brief{Status: "implemented", Gate: "human", Evidence: evPassFail}, false},
+		{"human implemented no verdict", Brief{Status: "implemented", Gate: "human"}, false},
+		{"human implemented loose PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evLoosePass}, false},
+		{"human implemented PASS then FAIL then prose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evPassFailProsePass}, false},
+		{"human implemented struck PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evStruckPass}, false},
+		{"human implemented fenced PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evFencedPass}, false},
+		{"human implemented quoted PASS only", Brief{Status: "implemented", Gate: "human", Evidence: evQuotedPass}, false},
+		{"human implemented struck PASS plus loose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evStruckPassLoose}, false},
+		{"human implemented fenced PASS plus loose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evFencedPassLoose}, false},
+		{"human implemented quoted PASS plus loose PASS", Brief{Status: "implemented", Gate: "human", Evidence: evQuotedPassLoose}, false},
+		{"human implemented live PASS plus quoted PASS", Brief{Status: "implemented", Gate: "human", Evidence: evPassPlusQuoted}, true},
+		{"human implemented struck-splice PASS", Brief{Status: "implemented", Gate: "human", Evidence: evSplicePass}, false},
+		{"human implemented FAIL then struck-splice PASS", Brief{Status: "implemented", Gate: "human", Evidence: evFailSplicePass}, false},
+		{"human implemented unclosed FAIL then PASS", Brief{Status: "implemented", Gate: "human", Evidence: evUnclosedFail}, false},
+		{"human implemented struck FAIL then PASS", Brief{Status: "implemented", Gate: "human", Evidence: evStruckFailPass}, true},
+		{"model implemented PASS", Brief{Status: "implemented", Gate: "model", Evidence: evPass}, false},
+		{"legacy implemented PASS", Brief{Status: "implemented", Evidence: evPass}, false},
+		{"human in-progress PASS", Brief{Status: "in-progress", Gate: "human", Evidence: evPass}, false},
+		{"human todo PASS", Brief{Status: "todo", Gate: "human", Evidence: evPass}, false},
+		{"model verified", Brief{Status: "verified", Gate: "model"}, true},
+		{"human done", Brief{Status: "done", Gate: "human"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dep := tc.dep
+			dep.Num, dep.Wave = "01", 0
+			blocker := mkStream("blocker", "active", "P1", dep)
+			blocker.LastTouch = day(0)
+			target := mkStream("target", "active", "P1",
+				Brief{Num: "02", Wave: 0, Status: "todo", Schema: "brief-v2", Depends: []string{"blocker/01"}},
+			)
+			target.LastTouch = day(0)
+			streams := []*Stream{target, blocker}
+
+			if got := depIsSatisfied(streams, "blocker/01"); got != tc.wantOK {
+				t.Errorf("depIsSatisfied = %v, want %v", got, tc.wantOK)
+			}
+			ev := evaluateEligibility(streams, nil, "")["target/02"]
+			if gotOK := ev.Verdict == VerdictEligible; gotOK != tc.wantOK {
+				t.Errorf("evaluator verdict = %s (holds %+v), want eligible=%v", ev.Verdict, ev.Holds, tc.wantOK)
+			}
+			if got := pickedIn(nextUp(streams, ClaimView{}, nil).Picks, "target", "02"); got != tc.wantOK {
+				t.Errorf("Next-up offers target/02 = %v, want %v", got, tc.wantOK)
+			}
+		})
+	}
+}
+
+// TestHumanGateReadsImplyLastVerdictPass pins why humanGatedVerifyPassed does
+// not also require lastVerifyVerdict == verdictPass: whenever a live strict
+// PASS is present (hasLiveVerifyPass) and no FAIL follows the last strict PASS
+// (verdictFailAfterStrictPass), the last live verdict token is a PASS. It walks
+// every Evidence body of up to three fragments, joined both on one line and on
+// separate lines, drawn from verdict markers in every form and every quotation
+// context the readers strip. If either reader drifts so the implication
+// breaks, this goes red and the conjunct has to come back.
+func TestHumanGateReadsImplyLastVerdictPass(t *testing.T) {
+	frags := []string{
+		"**VERIFY: PASS**", "**VERIFY: FAIL** red", "VERIFY: PASS", "VERIFY: FAIL", "VERIFY:FAIL",
+		"~~**VERIFY: PASS**~~", "~~VERIFY: FAIL~~", "```", "~~~", "> **VERIFY: PASS**", "> VERIFY: FAIL",
+		"text", "**VERIFY: PASS VERIFY: FAIL**", "**VERIFY: PASS — rows** then VERIFY: FAIL", "VERIFY: PARTIAL",
+	}
+	checked := 0
+	var walk func(ev string, depth int)
+	walk = func(ev string, depth int) {
+		checked++
+		if hasLiveVerifyPass(ev) && !verdictFailAfterStrictPass(ev) && lastVerifyVerdict(ev) != verdictPass {
+			t.Fatalf("live strict PASS with no later FAIL, but lastVerifyVerdict = %q for Evidence %q", lastVerifyVerdict(ev), ev)
+		}
+		if depth == 3 {
+			return
+		}
+		for _, f := range frags {
+			walk(ev+"\n"+f, depth+1)
+			walk(ev+" "+f, depth+1)
+		}
+	}
+	walk("", 0)
+	if checked < 27000 {
+		t.Fatalf("walked %d Evidence bodies, want the full fragment product", checked)
+	}
+}
+
+// TestGatesNeverHumanPass pins the other half of the rule: the gate:human +
+// implemented + PASS target that satisfies a depends: edge NEVER satisfies a
+// gates: edge (still held) or a feathers: edge (still a notice). A gates:
+// edge keeps waiting for verified/done.
+func TestGatesNeverHumanPass(t *testing.T) {
+	dep := Brief{Num: "01", Wave: 0, Status: "implemented", Gate: "human", Evidence: evPass}
+	blocker := mkStream("blocker", "active", "P1", dep)
+	blocker.LastTouch = day(0)
+
+	gated := mkStream("target", "active", "P1",
+		Brief{Num: "02", Wave: 0, Status: "todo", Schema: "brief-v2",
+			Gates: []GraphEdge{{Ref: "blocker/01", Type: "ordering-gate", Reason: "must be in force first"}}},
+		Brief{Num: "03", Wave: 0, Status: "todo", Schema: "brief-v2",
+			Feathers: []GraphEdge{{Ref: "blocker/01", Type: "build-dep"}}},
+	)
+	gated.LastTouch = day(0)
+	streams := []*Stream{gated, blocker}
+
+	if state, why := resolveInRepoBriefRef("blocker/01", streams); state != StateUnsatisfied || why == "" {
+		t.Fatalf("gates:/feathers: resolution of a gate:human implemented PASS target: want unsatisfied with a reason, got %s %q", state, why)
+	}
+	elig := evaluateEligibility(streams, nil, "")
+	if ev := elig["target/02"]; ev.Verdict != VerdictHeld || len(ev.Holds) != 1 || ev.Holds[0].State != StateUnsatisfied {
+		t.Fatalf("gates: edge on a gate:human implemented PASS target must HOLD; got %+v", ev)
+	}
+	if ev := elig["target/03"]; ev.Verdict != VerdictEligibleWithNotice || len(ev.Notices) != 1 {
+		t.Fatalf("feathers: edge on a gate:human implemented PASS target must stay a notice; got %+v", ev)
+	}
+	if pickedIn(nextUp(streams, ClaimView{}, nil).Picks, "target", "02") {
+		t.Fatalf("Next-up must not offer a brief whose gates: target is only gate:human implemented PASS")
+	}
+	// Same target satisfies a depends: edge — the asymmetry is the rule.
+	if !depIsSatisfied(streams, "blocker/01") {
+		t.Fatalf("control: the same target must satisfy a depends: edge")
 	}
 }
 

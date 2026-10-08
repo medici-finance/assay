@@ -10,10 +10,12 @@ import (
 
 // coverage_treediff_test.go — #2026 cause 1: a witness is judged by whether
 // any path it speaks for differs between the witness's tree and the item's,
-// not by commit ancestry. The scope is unchanged (conservative: every path
-// outside docs/streams/** and STATUS.md); only the ancestry requirement is
-// replaced, by a tree comparison plus a shared-history requirement. Every
-// test runs with coverageOptions{} — the production shape, no manifest.
+// not by commit ancestry. These tests use a `true` row, which reads no path,
+// so its scope stays conservative (every path outside docs/streams/** and
+// STATUS.md); the ancestry requirement is replaced by a tree comparison plus
+// a shared-history requirement. Derived scopes and the landing check are
+// tested in coverage_inputs_test.go. Every test runs with coverageOptions{} —
+// the production shape, no manifest.
 
 const tdVerify = "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 
@@ -138,9 +140,11 @@ func TestTreeDiffSquashChanged(t *testing.T) {
 	}
 }
 
-// TestTreeDiffConservativeHolds — #2026 cause 2 is NOT fixed here: with no
-// dependency manifest the witness still speaks for every path outside the
-// board's bookkeeping, so an unrelated release-bookkeeping change holds it.
+// TestTreeDiffConservativeHolds — a row whose inputs its command does not
+// establish (`true` reads no repository path) keeps the conservative scope:
+// with no dependency manifest its witness speaks for every path outside the
+// board's bookkeeping, so a release-bookkeeping change still holds it. A row
+// that names what it reads is narrowed instead (coverage_inputs_test.go).
 func TestTreeDiffConservativeHolds(t *testing.T) {
 	got := tdScenario(t, writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n"))
 	if got.Result != covWrongRevision || !strings.Contains(got.Reason, ".assay-versions") {

@@ -28,7 +28,7 @@ func TestVerifierKitCutsDetachedWorktreeUnderItsOwnName(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/verifier-home")
 
-	rc := run([]string{"example-stream/07", "--root", root, "--kit", "verifier",
+	rc := run([]string{"example-stream/07", "--root", root, "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md",
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("verifier dispatch rc = %d, want 0", rc)
@@ -64,7 +64,7 @@ func TestVerifierKitRefusesExplicitBranch(t *testing.T) {
 	_, root := s.install(t)
 	plantScripts(t, root)
 	rc, stderr := runCapturingStderr(t, []string{"example-stream/07", "--root", root, "--repo", allowedRepo,
-		"--kit", "verifier", "--branch", "feat/example-stream-07", "--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+		"--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md", "--branch", "feat/example-stream-07", "--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 	if rc != deskkit.ExitRefused || !strings.Contains(stderr, "--branch is not accepted with --kit verifier") {
 		t.Fatalf("rc = %d (want 5), stderr:\n%s", rc, stderr)
 	}
@@ -81,7 +81,7 @@ func TestVerifierDryRunPlanNamesNoBranch(t *testing.T) {
 	plantScripts(t, root)
 	promptFile := filepath.Join(t.TempDir(), "p.md")
 	out := captureStdoutOf(t, func() {
-		if rc := run([]string{"example-stream/07", "--root", root, "--repo", allowedRepo, "--kit", "verifier",
+		if rc := run([]string{"example-stream/07", "--root", root, "--repo", allowedRepo, "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md",
 			"--dry-run", "--prompt-file", promptFile}); rc != deskkit.ExitOK {
 			t.Errorf("dry run rc = %d", rc)
 		}

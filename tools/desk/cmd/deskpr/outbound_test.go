@@ -47,8 +47,8 @@ func TestPushRefusesWithheldNameInAddedTestComment(t *testing.T) {
 	rc := run([]string{"create", "--title", "add widget test", "--body-min", "adds a test\nBrief: fixture/01"})
 
 	var pushes int
-	for _, c := range gitCalls(*calls) {
-		if len(c) >= 2 && c[1] == "push" {
+	for _, c := range *calls {
+		if len(c) > 0 && c[0] == pushMark {
 			pushes++
 		}
 	}

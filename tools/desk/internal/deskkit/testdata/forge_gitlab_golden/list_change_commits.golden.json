@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/commits",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": {
+    "SHAs": [
+      "aaa111",
+      "bbb222"
+    ],
+    "Complete": true
+  }
+}

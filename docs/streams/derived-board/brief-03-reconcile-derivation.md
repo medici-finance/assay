@@ -432,6 +432,59 @@ RISK-VALUE: NAMED, NOT DERIVED — version = 1 @ statusgen/reconcile.go:203 (and
 rows_passed=7 rows_total=8
 
 VERIFY: BLOCKED — check-definition: Verify row 1 prints three counts against a single ≥ 14 Expect, so the execution witness scores it fail (7/8) although every test in the three suites passes (18, 14, 5; sum 37); the row is unchanged since the 2026-09-27 block and #1787 is still open with neither of its two parts fixed. Rows 2 to 8 are checked-clean on merged main e1d99484ffd91b649ea45e10a1cecf4ba2a4924b. Status stays implemented.
+### Non-implementer verifier re-run — VERIFY: BLOCKED (check-definition; #1787 still reproduces) — 2026-10-07, assay-verifier-app[bot] (on-behalf-of human:ian), merged main 91f04b81ba064394aa121a4940cf11a138b55402
+
+The runner is not the implementer. The worktree was detached at merged main 91f04b81ba064394aa121a4940cf11a138b55402 (fetched 2026-10-07, equal to origin/main). Rows ran under bash exactly as authored, from the repo root, with go run building statusgen from this worktree's source. KUBECONFIG=/dev/null. No cluster or production endpoint was touched. Row 3 made a read-only REST read with a deliberately invalid token. Row 4 made a read-only REST read with the verifier App's read token. No forge write was made. Row 5 writes one untracked fixture file under statusgen/testdata as authored; it was removed afterwards and the worktree is clean. gate: model. Risk metadata is present and every field reads no (irreversible: no).
+
+What changed since the 2026-10-02 run (e1d99484): among the reconcile-path files, only statusgen/brieffile.go and statusgen/main.go changed. The brieffile.go change is a read memo (readDirMemo/readFileMemo) plus a waitingBriefNotice refactor. The main.go change adds missionProblems to --lint and new cluster-pending doc text. statusgen/lifecycle.go, reconcile.go, regen.go, ghfetch.go and briefv2.go are unchanged. The brief's Verify table is unchanged.
+
+| # | Command | Expect | Observed (exit + key output line) | Date | Runner |
+|---|---------|--------|-----------------------------------|------|--------|
+| 1 | `cd statusgen && go test . -run 'Lifecycle' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'BriefV2' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (7 cells + 3 demotions + offline + 3 v2-parse cases) | exit 0. Prints three counts: 18, 14, 5 (Lifecycle, BriefV2, GHFetch), sum 37. The combined -v run of the three suites ended `ok` with 37 `--- PASS` lines and 0 FAIL or SKIP lines. The sum meets ≥ 14, but the last count (5) does not, and the row does not say which number the Expect binds. The execution witness scores this row as fail ("count 5 is below the expected minimum 14"). Recorded as check-definition (#1909, open) | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | `ok` — offline never renders a PR-derived cell as todo | exit 0, `ok`. 367 briefs, all 367 pr-source, all unknown, so the assert checks every brief. Top-level lookedAt=false, reason "offline (--offline) — the PR fetch was not attempted" | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | `ok` — an auth failure is unknown with the status | exit 0, `ok`; lookedAt=False, reason "HTTP 401: Bad credentials" | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell; witness dereferences merged PR #80 | exit 0, prints `implemented`; id assay:assay:derived-board:02, witness "PR #80 (merged c93ae91)". The whole run had lookedAt=true across 367 briefs: 215 implemented, 152 todo, and none verified, done, blocked or in-progress. This brief's own cell is implemented, witness "PR #1358 (merged f645d2f)" | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && printf -- '---\nbrief: x/01\ntitle: t\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nschema: brief-v2\ngates: [{on: "rec:ingest/06", type: ordering-gate, reason: r}]\n---\n' > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke; echo rc=$?` | `rc=0` and output contains `[eligibility-could-not-check] demo/01: held by rec:ingest/06` | exit 0; LINT: PASS; rc=0. Output contains "NOTICE: [eligibility-could-not-check] demo/01: held by rec:ingest/06 — could-not-check (alias rec is unpublished — its target repo is not resolvable from this tree)" | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | ≥ 3 | exit 0; 14 | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'reconcile' statusgen/README.md` | ≥ 1 | exit 0; 9 | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 | exit 0. go vet is clean and grep finds no graphql match. All four named files exist, so the no-match is real and not caused by missing files | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+
+Execution witness: non-dry `statusgen verifyrun --brief` with released statusgen v1.0.32, run from the worktree root on a clean tree with the verifier read token in env. Exit 1, 7 pass and 1 fail of 8. Row 1 failed with "count 5 is below the expected minimum 14"; rows 2 to 8 passed. The witness table is attached separately.
+
+By hand, rows 2 to 8 are checked-clean (7 of 8). Row 1 runs cleanly and every test in it passes. Its verdict depends on a reading the row does not fix, so it is recorded as check-definition: neither a pass nor an engine failure.
+
+Does the #1787 blocker still reproduce? Yes.
+- A search of non-test statusgen sources finds no assignment to the lifecycle fold's Witnesses, Approvals, Rulings or IssueLabels inputs (declared in statusgen/lifecycle.go LifecycleInput). Both production constructors still build `LifecycleInput{Briefs: idents}`, at statusgen/reconcile.go:88 and statusgen/regen.go:94. ReviewsAtHead (statusgen/ghfetch.go:169) is still called only from ghfetch_test.go.
+- The live row-4 run derived 0 of 367 briefs as verified, done or blocked. Compared with the stream README Status cells on the same tree: 102 README-done briefs derive implemented, and 4 derive todo. 9 README-verified briefs derive implemented. All 5 README-blocked briefs derive implemented (2) or todo (3). derived-board/02 is done in its README and derives implemented.
+- This contradicts the brief's facts line ("verified/done derivation is the EXISTING code path ... this brief calls it") and its title ("from PRs, witnesses, approvals and rulings"). No Verify row catches it, because row 4 also accepts implemented. assay#1787 is open (last updated 2026-09-27); assay#1909 is open.
+
+Grounding note: the Context files list names a statusgen/testdata/lifecycle fixture directory, and it does not exist. The fixture matrix lives in Go test files instead (lifecycle_test.go, lifecycle_hierarchical_test.go and others). No Verify row names the directory.
+
+Risk-bearing value enumeration (step 1) covered statusgen/ghfetch.go, statusgen/reconcile.go, statusgen/lifecycle.go, statusgen/briefv2.go and the brief-v2 branch of statusgen/brieffile.go. The brieffile.go delta since the last run adds no literal.
+
+- githubAPIBase = "https://api.github.com" @ statusgen/ghfetch.go:47
+- http.Client Timeout = 30 * time.Second @ statusgen/ghfetch.go:54
+- perPage = 100 @ statusgen/ghfetch.go:107
+- maxPages = 20 @ statusgen/ghfetch.go:108
+- status != http.StatusOK (200) @ statusgen/ghfetch.go:115, paired at :175
+- uuidV4Re (version nibble 4, variant 8/9/a/b) @ statusgen/briefv2.go:78
+- Version < 1 refused @ statusgen/briefv2.go:427; legacy default Version = 1 @ statusgen/briefv2.go:212; version = 1 @ statusgen/reconcile.go:203, :207
+- blockingIssueLabels = {question, needs-decision, help wanted} @ statusgen/lifecycle.go:121
+- reconcileOK = 0, reconcileUsageErr = 2 @ statusgen/reconcile.go:47-48
+
+Ranked by irreversibility: none of these is irreversible. The tool only reads, and an edit plus a redeploy corrects any of them. The page cap ranks first because exceeding it truncates the witness set without a signal. The fail-closed status guard ranks second because it carries the three-state invariant. The rest are reversible knobs or format validators.
+
+RISK-VALUE: DERIVED — maxPages = 20 @ statusgen/ghfetch.go:108 (with perPage = 100 @ statusgen/ghfetch.go:107) — the cap bounds the list at 2000 PRs so a malformed Link-header loop cannot spin forever. The repository holds 1447 PRs today (read-only search total_count), about 1.38x headroom. That is down from about 1.53x on 2026-10-02 and 1.6x on 2026-10-01, so roughly 550 PRs remain before truncation. Nothing is truncated now. A full 20th page still returns lookedAt=true with no truncation signal, tracked in #1969 (open). At the recent rate of growth this becomes a live defect within weeks.
+
+RISK-VALUE: DERIVED — status != http.StatusOK @ statusgen/ghfetch.go:115 (paired at :175) — the literal is the HTTP 200 protocol constant, not a tunable. Any other status yields lookedAt=false with the status text. Row 3 re-observed this live: a 401 gives lookedAt=False with reason "HTTP 401: Bad credentials".
+
+RISK-VALUE: NAMED, NOT DERIVED — version = 1 @ statusgen/reconcile.go:203 (and :207; statusgen/briefv2.go:212) — a reversible default for a brief that carries no version. Whether it should be pinned or reported as could-not-check is a design choice this verifier cannot derive. Routed as #1910 (open).
+
+rows_passed=7 rows_total=8
+
+VERIFY: BLOCKED — check-definition. Verify row 1 prints three counts against a single ≥ 14 Expect, so the execution witness scores it fail (7/8), although all 37 tests pass (18, 14, 5). The engine gap in #1787 also still reproduces on this main: reconcile never populates the fold's Witnesses, Approvals, Rulings or IssueLabels, and 0 of 367 live cells derive above implemented. Rows 2 to 8 are checked-clean on merged main 91f04b81ba064394aa121a4940cf11a138b55402. Status stays implemented.
+
+Blocker re-confirmed and attached: https://github.com/medici-finance/assay/issues/1787#issuecomment-6037701998. The NAMED, NOT DERIVED value (version = 1 at statusgen/reconcile.go:203) is already routed to https://github.com/medici-finance/assay/issues/1910.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

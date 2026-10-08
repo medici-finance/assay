@@ -1,0 +1,4 @@
+### Changed
+- `ask-decision`: a relayed ruling that approves a `gate: human` brief still `todo` names its re-dispatch owner (the dispatching desk and the claim key); when the decision issue may then close is `intake-desk`'s §Close authority.
+- `intake-desk` §Close authority: when the tracker a decided issue's close names is a `gate: human` brief still `todo`, the close waits until that brief's dispatch lands (`deskdispatch` exit 0 under its claim key, or its draft PR open) or its dispatch refusal is filed and linked.
+- `worker-desk`: a decision-gate exit 6 that repeats across more than one brief in one tick is filed that tick as one issue naming every blocked brief, excluding briefs where the helper itself refused (status 5, which still means repair the brief); the decision-issue helper is never hand-run around the refusal.

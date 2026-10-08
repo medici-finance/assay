@@ -15,10 +15,13 @@
 #      emitted every retained issue as new.
 #      B3 pins the sibling blinding path: a "successful" read that returns ZERO
 #      where the repo previously had issues is also retained, not trusted.
-#   D  TRUNCATION: a read that comes back == --limit is a moving window `gh`
-#      gives no signal for. D1 proves an at-limit read on an established repo is
-#      retained (real baseline kept, no phantom INBOUND on the shifted window);
-#      D2 proves a truncated SEED establishes no baseline at all.
+#   D  TRUNCATION: a read holding MORE than the --limit ceiling is a moving
+#      window `gh` gives no signal for (the script asks for one row past the
+#      ceiling; that extra row is the signal). D1 proves a read past the ceiling
+#      on an established repo is retained (real baseline kept, no phantom INBOUND
+#      on the shifted window); D2 proves a truncated SEED establishes no baseline
+#      at all; D3 proves a set of EXACTLY the ceiling is the whole set — it seeds
+#      and diffs — and that `gh` is asked for one row past the ceiling.
 #   E  PARTIAL LOSS: a "successful", non-empty read that collapses below the
 #      retain floor is the middle of the range the zero-check misses. E proves it
 #      is retained + loud, the recovery cycle absorbs it, and the floor is
@@ -66,6 +69,7 @@ make_gh() {
     printf '#!/usr/bin/env bash\n'
     printf 'printf "GH_TOKEN=[%%s] GITHUB_TOKEN=[%%s]\\n" "${GH_TOKEN:-}" "${GITHUB_TOKEN:-}" >> %s\n' \
       "$(printf '%q' "$dir/token.log")"
+    printf 'printf "%%s\\n" "$*" >> %s\n' "$(printf '%q' "$dir/args.log")"
     if [[ -n "$err" ]]; then printf 'printf "%%s\\n" %s >&2\n' "$(printf '%q' "$err")"; fi
     if [[ -n "$out" ]]; then printf 'printf "%%s" %s\n' "$(printf '%q' "$out")"; fi
     printf 'exit %s\n' "$code"
@@ -181,18 +185,18 @@ check "$(contains "$OUT" "returned 0 (had 5)" && echo 0 || echo 1)" \
 check "$([[ "$(grep -c . "$st/o__r.state")" == "5" ]] && echo 0 || echo 1)" \
   "the 5 lines are retained, not zeroed" "lines: $(grep -c . "$st/o__r.state" 2>/dev/null)"
 
-# ---- D: an AT-LIMIT read is TRUNCATED — could-not-check, not ground truth ----
-echo "D — a read that comes back == --limit is truncated: retain + degrade"
-# D1: at-limit on an ESTABLISHED repo retains the real baseline and goes loud,
+# ---- D: a read PAST the ceiling is TRUNCATED — could-not-check, not ground truth
+echo "D — a read holding more than --limit is truncated: retain + degrade"
+# D1: past the ceiling on an ESTABLISHED repo retains the real baseline and goes loud,
 # and — critically — fires NO phantom INBOUND when the (shifted) window returns
 # keys the baseline never held.
 w="$TMPROOT/d-gh"; st="$TMPROOT/d-state"
 make_gh "$w" 0 "$(issue_json 3)" ""                  # seed 3 (< limit 5)
 run_case "$w" "$st" INBOUND_MONITOR_LIMIT=5 -- o/r
-make_gh "$w" 0 "$(issue_json 5 900)" ""              # 5 == limit, a shifted window
+make_gh "$w" 0 "$(issue_json 6 900)" ""              # 6 > limit, a shifted window
 run_case "$w" "$st" INBOUND_MONITOR_LIMIT=5 -- o/r
-check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "an at-limit read => exit 2" "got $RC"
-check "$(contains "$OUT" "== --limit 5" && contains "$OUT" "TRUNCATED" && echo 0 || echo 1)" \
+check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "a read past the ceiling => exit 2" "got $RC"
+check "$(contains "$OUT" "more than --limit 5" && contains "$OUT" "TRUNCATED" && echo 0 || echo 1)" \
   "the truncation is named as could-not-check" "stdout: ${OUT:-<empty>}"
 check "$(contains "$OUT" "INBOUND:" && echo 1 || echo 0)" \
   "a truncated read fires no phantom INBOUND on the shifted window" "stdout: ${OUT:-<empty>}"
@@ -200,16 +204,29 @@ check "$([[ "$(grep -c . "$st/o__r.state")" == "3" ]] && echo 0 || echo 1)" \
   "the real 3-line baseline is retained, not overwritten by the slice" \
   "lines: $(grep -c . "$st/o__r.state" 2>/dev/null)"
 
-# D2: at-limit on the SEED establishes NO baseline (a truncated seed would bake a
+# D2: past the ceiling on the SEED establishes NO baseline (a truncated seed would bake a
 # moving window in as if it were the whole repo).
 w="$TMPROOT/d2-gh"; st="$TMPROOT/d2-state"
-make_gh "$w" 0 "$(issue_json 5)" ""                  # 5 == limit on the very first read
+make_gh "$w" 0 "$(issue_json 6)" ""                  # 6 > limit on the very first read
 run_case "$w" "$st" INBOUND_MONITOR_LIMIT=5 -- o/r
 check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "a truncated seed => exit 2" "got $RC"
-check "$(contains "$OUT" "seed returned 5 == --limit 5" && echo 0 || echo 1)" \
+check "$(contains "$OUT" "seed returned more than --limit 5" && echo 0 || echo 1)" \
   "the truncated seed is named" "stdout: ${OUT:-<empty>}"
 check "$([[ ! -f "$st/o__r.state" ]] && echo 0 || echo 1)" \
   "no baseline file is written for a truncated seed" "a state file was written"
+
+# D3: a set of EXACTLY the ceiling is the whole set — it seeds, then diffs — and
+# gh is asked for one row past the ceiling (the truncation signal).
+w="$TMPROOT/d3-gh"; st="$TMPROOT/d3-state"
+make_gh "$w" 0 "$(issue_json 5)" ""                  # exactly the ceiling
+run_case "$w" "$st" INBOUND_MONITOR_LIMIT=5 -- o/r
+check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "a seed of exactly the ceiling => exit 0" "got $RC"
+check "$([[ "$OUT" == "MONITOR-ARMED: 5" ]] && echo 0 || echo 1)" \
+  "a seed of exactly the ceiling arms" "stdout: ${OUT:-<empty>}"
+check "$([[ "$(grep -c . "$st/o__r.state" 2>/dev/null)" == "5" ]] && echo 0 || echo 1)" \
+  "the whole 5-line set is the baseline" "lines: $(grep -c . "$st/o__r.state" 2>/dev/null)"
+check "$(grep -q -- '--limit 6 ' "$w/args.log" && echo 0 || echo 1)" \
+  "gh is asked for one row past the ceiling" "args: $(cat "$w/args.log" 2>/dev/null)"
 
 # ---- E: a PARTIAL read (below the retain floor) is retained, not trusted -----
 echo "E — a successful read that collapses below the floor is retained + loud"

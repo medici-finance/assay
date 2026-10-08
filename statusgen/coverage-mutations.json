@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'Coverage|TreeDiff|NoAncestryWitnessJudge|DeclaredEntries' -count=1",
+  "test": "go test . -run 'Coverage|TreeDiff|NoAncestryWitnessJudge|DeclaredEntries|^TestRowInputs|^TestDepScope|^TestLand|^TestNoFixedPathExemption' -count=1",
   "control": {
     "name": "CONTROL — the tree comparison never invalidates (any witness is reused whatever changed: a stale witness with a changed path in scope releases)",
     "file": "coverage.go",
@@ -10,8 +10,8 @@
     {
       "name": "ancestry reintroduced as the judge (the #2026 cause-1 defect: a squash-merged witness with a byte-identical scope is refused)",
       "file": "coverage.go",
-      "old": "\teff := scope.atBase(root, w, t)\n",
-      "new": "\tif exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", w, t).Run() != nil {\n\t\treturn revisionMismatch, \"\"\n\t}\n\teff := scope.atBase(root, w, t)\n"
+      "old": "\teff := scope\n\tif scope.derived() {\n",
+      "new": "\tif exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", w, t).Run() != nil {\n\t\treturn revisionMismatch, \"\"\n\t}\n\teff := scope\n\tif scope.derived() {\n"
     },
     {
       "name": "PLANTED second instance of the class: a helper elsewhere in the package asks git for ancestry",
@@ -52,14 +52,176 @@
     {
       "name": "no manifest narrows instead of staying conservative (cause 2 'fixed' by dropping the guard)",
       "file": "coverage.go",
-      "old": "\teff := scope.atBase(root, w, t)\n",
-      "new": "\teff := scope.atBase(root, w, t)\n\teff.conservative = false\n"
+      "old": "\t\teff = eff.atBase(root, w, t)\n\t}\n",
+      "new": "\t\teff = eff.atBase(root, w, t)\n\t}\n\teff.conservative = false\n"
     },
     {
       "name": "rename detection back on (a path renamed away shows only its destination)",
       "file": "coverage.go",
       "old": "\"diff\", \"--name-only\", \"--no-renames\", \"-z\"",
       "new": "\"diff\", \"--name-only\", \"-z\""
+    },
+    {
+      "name": "#2026 cause 2: a derived row's input change never invalidates (a stale witness whose read file changed releases)",
+      "file": "coverage.go",
+      "old": "\t\t\tif inputCovers(in, p) {\n\t\t\t\treturn true",
+      "new": "\t\t\tif false && inputCovers(in, p) {\n\t\t\t\treturn true"
+    },
+    {
+      "name": "#2026 cause 1: the landing check skipped (a witness whose tree never landed releases)",
+      "file": "coverage.go",
+      "old": "\tif !landed {",
+      "new": "\tif false && !landed {"
+    },
+    {
+      "name": "landing search: a git diff failure treated as landed (release on error)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\treturn \"\", false, \"the witness's tree could not be compared with \" + c + \" (git diff failed)\"",
+      "new": "\t\t\treturn c, true, \"\""
+    },
+    {
+      "name": "landing search: the bound ignored (an unbounded search past the limit releases instead of could-not-check)",
+      "file": "coverage_inputs.go",
+      "old": "if len(more) > maxLandingCandidates {",
+      "new": "if false && len(more) > maxLandingCandidates {"
+    },
+    {
+      "name": "a shallow clone not detected (cut history read as complete)",
+      "file": "coverage_inputs.go",
+      "old": "if strings.TrimSpace(string(out)) != \"false\" {",
+      "new": "if false && strings.TrimSpace(string(out)) != \"false\" {"
+    },
+    {
+      "name": "an ls-tree failure ignored in derivedAtBase (the derived scope used although the trees were never read)",
+      "file": "coverage_inputs.go",
+      "old": "return sc, fmt.Sprintf(\"the tree at %s could not be listed (git ls-tree failed), so what the row reads cannot be established\", rev)",
+      "new": "return eff, \"\""
+    },
+    {
+      "name": ".gitattributes dropped from a derived row's inputs (an eol/filter change that alters the bytes read releases)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\tif !have[ga] {",
+      "new": "\t\t\tif false && !have[ga] {"
+    },
+    {
+      "name": "a symbolic link or submodule on an input's path not widened (a link's target change releases)",
+      "file": "coverage_inputs.go",
+      "old": "if (e.mode == \"120000\" || e.mode == \"160000\") &&",
+      "new": "if false && (e.mode == \"120000\" || e.mode == \"160000\") &&"
+    },
+    {
+      "name": "a directory input covering a verify-written file not widened",
+      "file": "coverage_inputs.go",
+      "old": "if covered && (e.path == sc.briefRel || isVerifyWrittenPath(e.path)) {",
+      "new": "if false && covered && (e.path == sc.briefRel || isVerifyWrittenPath(e.path)) {"
+    },
+    {
+      "name": "lexer accepts `$` (a variable or command substitution read as plain text)",
+      "file": "coverage_inputs.go",
+      "old": "case strings.IndexByte(\"$`\\\\<>(){}[]*?~#!\\n\\r\", c) >= 0:",
+      "new": "case strings.IndexByte(\"`\\\\<>(){}[]*?~#!\\n\\r\", c) >= 0:"
+    },
+    {
+      "name": "an unknown command treated as reading nothing (its reads silently dropped from the scope)",
+      "file": "coverage_inputs.go",
+      "old": "\t\treturn nil, underivable(\"the command %q is outside the set whose reads a command's text establishes\", name)",
+      "new": "\t\treturn nil, nil"
+    },
+    {
+      "name": "grep -r allowed (a recursive read of a directory operand treated as a file read)",
+      "file": "coverage_inputs.go",
+      "old": "\"cqviEFoxwnhHlLsP\"",
+      "new": "\"cqviEFoxwnhHlLsPr\""
+    },
+    {
+      "name": "a cd in a `;`/`||`-joined row allowed (later commands may run in a different directory)",
+      "file": "coverage_inputs.go",
+      "old": "if hasCD && !onlyAnd {",
+      "new": "if false && hasCD && !onlyAnd {"
+    },
+    {
+      "name": "a `..` operand allowed (a read outside the derived directory)",
+      "file": "coverage_inputs.go",
+      "old": "\t\tif seg == \"..\" {",
+      "new": "\t\tif false && seg == \"..\" {"
+    },
+    {
+      "name": "PLANTED second instance of the cause-2 class: a fixed changelog exemption in the bookkeeping surface",
+      "file": "coverage.go",
+      "old": "return p == \"STATUS.md\" || strings.HasPrefix(p, \"docs/streams/\")",
+      "new": "return p == \"STATUS.md\" || strings.HasPrefix(p, \"docs/streams/\") || strings.HasPrefix(p, \"changelog/\")"
+    },
+    {
+      "name": "PLANTED second instance of the cause-2 class: a fixed release-stamp exemption in the derived scope",
+      "file": "coverage.go",
+      "old": "\tif sc.derived() {\n\t\tfor _, in := range sc.inputs {",
+      "new": "\tif sc.derived() {\n\t\tif p == \".assay-versions\" {\n\t\t\treturn false\n\t\t}\n\t\tfor _, in := range sc.inputs {"
+    },
+    {
+      "name": "a derived input not tracked under its exact path not widened (an ignored output or a case variant is judged by a diff that can never name it)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\tif !found {",
+      "new": "\t\t\tif false && !found {"
+    },
+    {
+      "name": "landing search: the bound checked before the merge bases and the item's revision are compared (an ancestor witness expires on age alone)",
+      "file": "coverage_inputs.go",
+      "old": "; ok || why != \"\" {",
+      "new": "; why != \"\" {"
+    },
+    {
+      "name": "a +dirty/+unknown witness keeps the narrowed scope (no landing check stands behind the uncommitted edits it read)",
+      "file": "coverage.go",
+      "old": "\t\tif scope.derived() {\n\t\t\tscope.inputs = nil",
+      "new": "\t\tif false && scope.derived() {\n\t\t\tscope.inputs = nil"
+    },
+    {
+      "name": "S1 round 2: the presence check kept but the root-prefix handling dropped (a row run below the toplevel is judged by a shadowing toplevel file of the same name, and a change to the file it read releases)",
+      "file": "coverage_inputs.go",
+      "old": "\tif prefix != \"\" {\n\t\treturn widen(",
+      "new": "\tif false && prefix != \"\" {\n\t\treturn widen("
+    },
+    {
+      "name": "S1 round 2: verifyrun accepts a --root below the toplevel (its rows run in a directory coverage never judges)",
+      "file": "verifyrun.go",
+      "old": "if prefix := strings.TrimSpace(string(out)); prefix != \"\" {",
+      "new": "if prefix := strings.TrimSpace(string(out)); false && prefix != \"\" {"
+    },
+    {
+      "name": "S1b: a tree entry that case-folds onto a derived input not widened (README.md and readme.md tracked, only readme.md changes, and the pass stands)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\t\tif !covered && foldCovers(p, e.path) {",
+      "new": "\t\t\t\tif false && !covered && foldCovers(p, e.path) {"
+    },
+    {
+      "name": "S1b: a non-ASCII rune in a tree entry compared byte-exactly instead of as a fold candidate (the Kelvin sign is not seen as k)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\tif r >= utf8.RuneSelf {\n\t\t\t\tfor k := j; ; k++ {",
+      "new": "\t\t\tif r >= utf8.RuneSelf {\n\t\t\t\tcontinue\n\t\t\t\tfor k := j; ; k++ {"
+    },
+    {
+      "name": "S1b round 3: the one-rune-one-byte match restored (a non-ASCII rune matches exactly one byte, so ß.md beside ss.md and the ligature spellings never line up, and the pass stands)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\t\tfor k := j; ; k++ {\n\t\t\t\t\tnext[k] = true\n\t\t\t\t\tif k == len(in) || in[k] == '/' {\n\t\t\t\t\t\tbreak\n\t\t\t\t\t}\n\t\t\t\t}",
+      "new": "\t\t\t\tif j < len(in) && in[j] != '/' {\n\t\t\t\t\tnext[j+1] = true\n\t\t\t\t}"
+    },
+    {
+      "name": "S1b round 3: a non-ASCII rune never matches zero bytes (a tree entry carrying a code point a checkout ignores is not seen as the input)",
+      "file": "coverage_inputs.go",
+      "old": "\t\t\t\t\tnext[k] = true\n\t\t\t\t\tif k == len(in) || in[k] == '/' {",
+      "new": "\t\t\t\t\tif k > j {\n\t\t\t\t\t\tnext[k] = true\n\t\t\t\t\t}\n\t\t\t\t\tif k == len(in) || in[k] == '/' {"
+    },
+    {
+      "name": "S1b round 3: a folded entry under a directory input not matched (SRC/c.go and straße/c.go beside a read of src or strasse)",
+      "file": "coverage_inputs.go",
+      "old": "\t\tif r == '/' && at[len(in)] {",
+      "new": "\t\tif false && r == '/' && at[len(in)] {"
+    },
+    {
+      "name": "S1b: a non-ASCII derived input not widened (its canonically equivalent spellings are never compared)",
+      "file": "coverage_inputs.go",
+      "old": "\t\tif !isASCII(p) {",
+      "new": "\t\tif false && !isASCII(p) {"
     }
   ]
 }
