@@ -128,6 +128,8 @@ func run() (code int) {
 		cmdDeskd(needCell(rest))
 	case "cadence":
 		cmdCadence(needCell(rest), rest[1:])
+	case "scratch":
+		cmdScratch(needCell(rest), rest[1:])
 	case "cache":
 		cmdCache(needCell(rest), rest[1:])
 	case "cache-run":

@@ -617,9 +617,10 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 	return false
 }
 
-// depIsSatisfied checks whether a typed dep "<stream>/<NN>" is done or verified.
-// An unresolvable dep (shouldn't happen — checkRef validates at lint time)
-// returns false, gating the dependent brief.
+// depIsSatisfied checks whether a typed dep "<stream>/<NN>" satisfies a
+// depends: edge — see targetSatisfies(b, true). An unresolvable dep
+// (shouldn't happen — checkRef validates at lint time) returns false, gating
+// the dependent brief.
 func depIsSatisfied(streams []*Stream, dep string) bool {
 	parts := strings.SplitN(dep, "/", 2)
 	if len(parts) != 2 {
@@ -631,11 +632,100 @@ func depIsSatisfied(streams []*Stream, dep string) bool {
 		}
 		for _, b := range s.Briefs {
 			if b.Num == parts[1] {
-				return b.Status == "done" || b.Status == "verified"
+				return targetSatisfies(b, true)
 			}
 		}
 	}
 	return false // unresolved dep → not satisfied
+}
+
+// targetSatisfies is the ONE predicate for "does this target brief satisfy an
+// edge pointing at it". done/verified satisfies every edge kind. A depends:
+// edge (dependsEdge=true) is ALSO satisfied by a gate:human target that sits
+// at `implemented` with a recorded passing verify run: the human gate binds
+// approval, not implementation, so a dependent may build on a deliverable that
+// has already passed verification while it waits for sign-off. A gates: or
+// feathers: edge (dependsEdge=false) never takes that branch — an ordering or
+// policy gate still waits for verified/done.
+func targetSatisfies(b Brief, dependsEdge bool) bool {
+	if b.Status == "done" || b.Status == "verified" {
+		return true
+	}
+	return dependsEdge && humanGatedVerifyPassed(b)
+}
+
+// humanGatedVerifyPassed reports a gate:human brief at `implemented` whose
+// LAST recorded verdict is a pass. It makes three verdict reads, all fail
+// closed: a strict **VERIFY: PASS** marker must be present in the raw Evidence
+// (hasVerifyPass, the sign-off gate's own strict read), a strict marker must
+// also be present as a live verdict, outside fenced code blocks, blockquote
+// lines and struck-through spans (hasLiveVerifyPass), and no FAIL may follow
+// the last strict PASS (verdictFailAfterStrictPass — the FAIL read the
+// sign-off path applies when closing a `verified` row, with the same three
+// contexts stripped). A FAIL, a loose-form-only PASS, a strict PASS that is
+// only struck, fenced or quoted (whatever loose-form PASS prose sits outside
+// it), or no verdict at all leaves the brief unsatisfied.
+//
+// The raw and the live strict reads are both required because neither is a
+// subset of the other. The live read skips quotations the raw read counts;
+// the raw read refuses shapes the live read would admit: stripping a struck
+// span can splice a strict marker together that the raw Evidence never
+// carries (a struck FAIL inside the marker's own bold run), and the raw read
+// takes an unclosed **VERIFY: FAIL opener through the next line's ** so that
+// line's PASS marker never forms. Requiring both keeps this predicate inside
+// the sign-off gate's strict read.
+//
+// Together the live and FAIL reads imply lastVerifyVerdict == verdictPass:
+// with a live strict PASS present and no FAIL after it, the last live verdict
+// token is a PASS. That conjunct is therefore not repeated here, where no
+// Evidence shape could ever turn it red; TestHumanGateReadsImplyLastVerdictPass
+// pins the implication instead, so a drift in either reader that breaks it
+// goes red.
+//
+// It is deliberately NOT the full human sign-off read for an `implemented`
+// brief: an unrouted HELD or could-not-check line in the Evidence does not
+// hold a depends: edge here (the sign-off still refuses on it), nor does a
+// missing Date/Runner row or the verified-stamp floor. Those reads gate the
+// human approval of the target itself; this predicate only decides whether a
+// dependent may start building on a deliverable whose last verdict is a pass.
+// Two quotation contexts the stripping does not cover — HTML comments and
+// inline code spans — are read as live, as lastVerifyVerdict and
+// verdictFailAfterStrictPass also read them.
+func humanGatedVerifyPassed(b Brief) bool {
+	return b.Gate == "human" && b.Status == "implemented" &&
+		hasVerifyPass(b.Evidence) && hasLiveVerifyPass(b.Evidence) &&
+		!verdictFailAfterStrictPass(b.Evidence)
+}
+
+// hasLiveVerifyPass reports a strict **VERIFY: PASS** marker that is a live
+// verdict, not a quotation: it applies the same per-line stripping
+// lastVerifyVerdict and verdictFailAfterStrictPass apply (fenced code blocks,
+// blockquote lines and struck-through spans are skipped) and only then looks
+// for the strict bold marker. hasVerifyPass, the sign-off gate's read, scans
+// the raw Evidence and is left unchanged. This read is used only by the
+// depends: branch, and only together with hasVerifyPass: on its own it is not
+// narrower than the raw read, because removing a struck span can join the
+// text around it into a marker the raw Evidence does not contain. With both
+// required, a strict marker that appears only inside one of the stripped
+// contexts can never satisfy a depends: edge, whatever loose-form PASS prose
+// sits outside it.
+func hasLiveVerifyPass(evidence string) bool {
+	inFence := false
+	for _, line := range strings.Split(evidence, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence || strings.HasPrefix(trimmed, ">") {
+			continue
+		}
+		line = strikethroughRe.ReplaceAllString(line, "")
+		if hasVerifyPass(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // GateScore is a scored awaiting brief for gate-queue prioritization. The

@@ -154,6 +154,42 @@ Risk values (enumerated over the #1684 diff in the exec allowlist, the stage mod
 - RISK-VALUE: DERIVED — page mode 0o600 @ deskinbox html.go:189 and flow.go:1111 — decision-queue content is readable by its owner only. The brief pins no value, and the setting is reversible.
 
 VERIFY: BLOCKED — rows 1 to 9 pass by hand, and row 9 is corroborated at the authoring commit. Row 10 is check:ci and its network-off witness cannot run on a darwin host (#1800), so the status stays implemented until a Linux runner produces that witness. The gate is model, all risk answers are no, and no defect was found in scope.
+### Non-implementer verifier re-run on merged main 11228951d0a8 — 2026-10-06
+
+Independent non-implementer pass. Forge main SHA cross-checked: git and the API agree at 11228951d0a8. Readers ran with real binaries and no ambient credential, using statusgen/desk-tools v1.0.32 and go1.27.1 darwin/arm64. Expectations were derived from the brief before the diff was read. No Context file has changed since the 2026-10-02 pass at e1d99484ffd9, except this brief's Evidence.
+
+| # | Command | Exit | Observed output | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `cd tools/desk && go vet ./cmd/deskinbox/ && go test -count=1 ./cmd/deskinbox/` | 0 | PASS: `ok .../tools/desk/cmd/deskinbox 3.205s` | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test -count=1 -run 'TestParityFlow' -v ./cmd/deskinbox/ \| grep -c -- '--- PASS'` | 0 | PASS: count 8. The flow and flow-text parity tests each pass 3 subtests: single cell; two cells with one blind; throughput unread. 0 SKIP, 0 FAIL | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test -count=1 -run 'TestParityHTML' ./cmd/deskinbox/` | 0 | PASS: `ok`. With -v, the HTML parity test (3 subtests) and the login-shapes test each report `--- PASS` | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 4 | `deskinbox html OUT.html medici-finance/assay && ! grep -q -e 'url(' -e '<script' -e ' src=' OUT.html` (OUT in a scratch dir) | 0 | PASS: wrote 73 cards, 73 items across 1 repo. Zero matches for `url(`, `<script`, ` src=` and `@import`. Every href is an issue link. A Flow section has one inline SVG. Page mode 0600 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 5 | `! grep -rn 'exec\.Command' tools/desk/cmd/deskinbox/*.go \| grep -v _test.go \| grep -qv -e statusgen -e deskboard` | 0 | PASS. The only real exec site (flow.go:194) matches through its trailing comment, so the bound was checked live: an ASSAY_STATUSGEN override naming `gh` is refused rc=5, and an ASSAY_DESKBOARD override naming `gh.EXE` is refused rc=5 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 6 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskinbox/` | 0 | PASS: PE32+ x86-64 console executable. Cross-compile only, not run on a Windows host. Artifact removed | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 7 | `grep -c 'deskinbox' plugins/assay/commands/inbox.md plugins/assay/skills/ask-decision/SKILL.md` | 0 | PASS: inbox.md 37, SKILL.md 10, up from 11 and 5 at the windows-port/13 merge. No "not yet ported" text remains | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 8 | `deskinbox flow medici-finance/assay; echo rc=$?` against the bash oracle `assay-inbox.sh --flow medici-finance/assay` | 0 / 0 | PASS: the runs were 43 s apart and differ only in asOf and the program name. Both name the bottleneck `todo` (1393 waiting / 12 slots = 116.08). Stage counts match. Review is could-not-check in both, never 0. Note: the trailing `echo rc=$?` makes this row exit 0 even if deskinbox fails, so the comparison carries it | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 9 | `statusgen --root . --consumers windows-port/15; echo $?` | 0 (vacuous) | Exit 0, but nothing is corroborated on merged main ("no brief files in the diff"). Row-authoring defect: the positional `windows-port/15` is silently ignored, and the selector is `--brief`. With `--consumers --brief windows-port/15` on merged main the result is rc=2 could-not-check. At the authoring commit (#1507) with `--base` set to its parent: rc=0, 3 CORROBORATED, 0 disproved, 0 unchecked | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+| 10 | `statusgen --root . --lint` | 0 (held) | HELD (#1800): this check:ci row needs a network-off witness on a Linux runner. A direct non-hermetic run is supporting evidence only: exit 0, `LINT: PASS`, 0 PROBLEM lines | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) |
+
+RISK-VALUE: DERIVED. The resolveFlowBin allow-list, "statusgen" / "deskboard" at tools/desk/cmd/deskinbox/flow.go:1094,1099 and html.go:170,175, matches the brief's two named readers. Every other base name is refused after a case-insensitive `.exe` strip, and `gh` and `gh.EXE` both return rc=5 live. The stage model (flow.go:464-472) matches the oracle entry for entry. WriteFile mode 0o600 is owner-only for decision-queue content. Layout constants are reversible and identical to the oracle.
+
+Execution witness, `statusgen verifyrun` (exit 2; rows 1–9 pass, row 10 could-not-run on darwin):
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go vet ./cmd/deskinbox/ && go test -count=1 ./cmd/deskinbox/` | pass exit=0 | sha256:3d2930ea8bea | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test -count=1 -run 'TestParityFlow' -v ./cmd/deskinbox/ \| grep -c -- '--- PASS'` | pass exit=0 | sha256:aa67a169b0bb | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test -count=1 -run 'TestParityHTML' ./cmd/deskinbox/` | pass exit=0 | sha256:4b0686a72e27 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `deskinbox html /tmp/inbox-check.html medici-finance/assay && ! grep -q -e 'url(' -e '<script' -e ' src=' /tmp/inbox-check.html` | pass exit=0 | sha256:f3fcd015df09 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `! grep -rn 'exec\.Command' tools/desk/cmd/deskinbox/*.go \| grep -v _test.go \| grep -qv -e statusgen -e deskboard` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./cmd/deskinbox/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -c 'deskinbox' plugins/assay/commands/inbox.md plugins/assay/skills/ask-decision/SKILL.md` | pass exit=0 | sha256:10ebd0e57c74 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `deskinbox flow medici-finance/assay; echo rc=$?` | pass exit=0 | sha256:039cd9543317 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers windows-port/15; echo $?` | pass exit=0 | sha256:d3e0f9aed696 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `statusgen --root . --lint` | could-not-run exit=- — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8 (on-behalf-of human:ian) (forge-identity) |
+
+
+VERIFY: BLOCKED — rows 1–9 pass by hand; row 10 is check:ci, and its network-off witness cannot run on a darwin host (#1800); the execution witness exited 2 on row 10 alone. No deliverable defect found. Row 9 positional-argument authoring defect noted above.
 
 ## Review
 Gate: **model**. Reviewer's questions: (1) does the flow-model port reproduce the

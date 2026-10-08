@@ -542,7 +542,7 @@ var obClass = map[string]string{
 	"PRTrustEvents": "read", "IssueTrustEvents": "read", "IssueContentEvents": "read",
 	"ReviewsAtHead": "read", "ReviewQueueSnapshot": "read", "ListChangedFiles": "read",
 	"ChecksAtHead": "read", "RequiredStatusChecks": "read", "IssueReactions": "read",
-	"ListLabelEvents": "read", "ListComments": "read", "ListCommentsTyped": "read",
+	"ListIssueLabelEvents": "read", "ListLabelEvents": "read", "ListComments": "read", "ListCommentsTyped": "read",
 	"RepoVisibility": "read", "ReadFile": "read", "ListRecentCommits": "read",
 	"GetCommit": "read", "ListFileCommits": "read", "ListCommitChanges": "read",
 	"CompareRefs": "read", "SearchOpenChanges": "read", "ListWorkflowFiles": "read",

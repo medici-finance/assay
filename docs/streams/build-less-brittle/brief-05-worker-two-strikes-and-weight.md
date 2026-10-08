@@ -26,9 +26,9 @@ exec-tier: strong
 exec-tier-why: "(b) the same clause wording must land byte-identical in two kits under a parity test, and the worker-desk re-dispatch tier rule must agree with it."
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskdispatch/references/worker-prompt.md: follow-up build-less-brittle/05 (this brief)"
-  - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md: follow-up build-less-brittle/05 (this brief)"
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up build-less-brittle/05 (this brief)"
+  - "tools/desk/cmd/deskdispatch/references/worker-prompt.md: fixed-here (clauses 8 and 14 amended)"
+  - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md: fixed-here (the same wording, verbatim)"
+  - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here (re-dispatch tier; strike-two routing; defect-class summary aligned)"
   - "installed deskdispatch binaries (kits are embedded): out-of-scope (reach consumers on the next desk-tools release and pin bump)"
 ---
 
@@ -103,9 +103,11 @@ design-fit:
    class issue with `deskfile attach`, carrying: root invariant; the owner it should live in
    (a semantic-owner row, or `unknown`); what the prior fixes added that a design would retire;
    a proposed design-brief title. Report `NEEDS_CONTEXT: strike two — design note posted`.
-   The exception is a `bleed` reply on the class issue whose author is the driver's own login
-   (the project value), read from the forge's comment record. A `bleed` from any other login
-   is quarantined, noted on the class issue and never acted on.
+   The exception is a `bleed` reply on the class issue that names THIS item (a release `bleed`
+   from intake counts), for a production-down or security fix (the class stays `design-owed`),
+   whose author is the driver's own login (the project value; none configured: the stop stands),
+   read from the forge's comment record. Any other `bleed` is quarantined, noted on the class
+   issue and never acted on.
 2. **Clause 8, Weight** (≤ 4 lines, both kits). Every PR body carries `## Weight`: the two counter
    lines and the shortstat. A positive delta in any ratcheted dimension also carries
    `why-add:`. The section is a material claim: a wrong line is a review finding.
@@ -124,7 +126,7 @@ design-fit:
 ## Verify (executable — no prose-only DoD items)
 
 Rows run from the root of `medici-finance/assay`. Row 2 is the neighbour/guard row: the parity
-test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net ≤ 0 weight rows. Row 10 checks the pinned token moved.
+test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net ≤ 0 weight rows. Row 10 checks the pinned token moved. Row 13 checks the `bleed` lift is bound to the item and to D-B's scope in each kit.
 
 | # | Command | Expect |
 |---|---------|--------|
@@ -133,13 +135,14 @@ test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net �
 | 3 | `cd tools/desk && f=cmd/deskdispatch/references/worker-prompt-objective.md && cp "$f" /tmp/bl05-kit.bak && sed 's/unrepresentable/unrepresentible/' /tmp/bl05-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestDefectClassClauseIsOneWordingAcrossImplementerKits -count=1 > /tmp/bl05-mut.out 2>&1; rc=$?; cp /tmp/bl05-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | `RED-ON-DRIFT` (the parity test catches a one-word drift in the amended clause) |
 | 4 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -ciE 'strike two' "$f"; done \| grep -c '^[1-9]'` | `2` |
 | 5 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c '## Weight' "$f"; done \| grep -c '^[1-9]'` | `2` |
-| 6 | `grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/worker-prompt.md && test -f tools/desk/internal/weight/weight_test.go && echo COUNTER-EXISTS` | a count ≥ `1`, then `COUNTER-EXISTS` (dereference: the command the kit tells workers to run exists) |
+| 6 | `grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/worker-prompt.md && test -f tools/desk/internal/weight/weight_test.go && echo COUNTER-EXISTS` | `1`, then `COUNTER-EXISTS`; output is `COUNTER-EXISTS` (dereference: the command the kit tells workers to run exists; `grep -c` fails on a zero count, so the token prints only when the kit names the command and the counter test file exists). Expect re-phrased 2026-10-06 (#1915): the earlier count-floor wording read the floor from the last output line, which is the token, so the witness could not decide the row. |
 | 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | `MOVED` (the pinned token moved with the retired obligation) |
-| 11 | `statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?"` | output is `exit=0` at the PR head (no `consumers:` routing claim is disproved by the diff; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim makes the command print `exit=1` and names the claim. Expect re-written 2026-10-03 (#1862). |
+| 11 | `d=; impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; b=$(git rev-parse "$base") && t=$(git rev-parse "$tip") && test "$b" != "$t" && d=$(mktemp -d "$PWD/.bl05-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach "$t" && statusgen --consumers --root "$d" --brief build-less-brittle/05 --base "$b"; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | exit 0; output is `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` (the `consumers:` claims are judged against the delivering change itself, in a throwaway clone: after the merge, the first-parent commit on main carrying the `Brief: build-less-brittle/05` trailer (the net-weight rows resolve the same commit) diffed against its parent; before the merge, the PR head diffed against its merge-base; the three `fixed-here` entries are corroborated, and the UNCHECKED one is the out-of-scope installed-binaries entry, which the delivering diff does not touch and which stays the reviewer's call per brief-rule 9). A disproved claim fails the row and names the claim; an unresolvable delivering change fails the row rather than passing on an empty diff. Row re-authored 2026-10-06 (#1915): the unpinned form ran against merged main, where the brief is no longer in the diff, and reported COULD-NOT-CHECK; this form runs the same way before and after the merge (the #1908 pattern). Expect first re-written 2026-10-03 (#1862). |
 | 12 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c "driver's own login" "$f"; done \| grep -c '^[1-9]'` | `2` (both kits state that only a `bleed` from the driver's own login lifts strike two; the check is procedure the worker runs, not code, so this row gates its presence in each kit) |
+| 13 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c 'THIS item, for a production-down or security fix' "$f"; done \| grep -c '^[1-9]'` | `2` (both kits bind a `bleed` to the item it names and to D-B's production-down/security scope; a class-wide or unscoped `bleed` lifts nothing) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,
@@ -147,6 +150,135 @@ test still holds. Row 3 is the mutation row for that guard. Rows 7–9 are net �
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
+### 2026-10-06 non-implementer verification on merged main (56140a33d)
+
+Run on merged main 56140a33d0b4cde167f9e8269e624769fc3013ca (the forge's main at run time). The implementing change is the squash commit e77868565 (#2245, single parent 9cd7271bb). statusgen was built from the tree's own statusgen module with a throwaway HOME.
+
+| # | Command | Exit | Output | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | 0 | `ok  github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 38.551s` | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./cmd/deskdispatch/ -run TestDefectClassClauseIsOneWordingAcrossImplementerKits -count=1 -v` | 0 | `--- PASS: TestDefectClassClauseIsOneWordingAcrossImplementerKits (0.00s)`, then `ok` | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && f=cmd/deskdispatch/references/worker-prompt-objective.md && cp "$f" /tmp/bl05-kit.bak && sed 's/unrepresentable/unrepresentible/' /tmp/bl05-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestDefectClassClauseIsOneWordingAcrossImplementerKits -count=1 > /tmp/bl05-mut.out 2>&1; rc=$?; cp /tmp/bl05-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | 0 | `RED-ON-DRIFT`. The mutant run failed with: kit "worker-objective" defect-class clause lost "unrepresentable", and the two kits' defect-class clauses differ. The kit was restored and the tree was clean afterwards | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -ciE 'strike two' "$f"; done \| grep -c '^[1-9]'` | 0 | `2` (per-kit counts 2 and 2) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c '## Weight' "$f"; done \| grep -c '^[1-9]'` | 0 | `2` (per-kit counts 2 and 2) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/worker-prompt.md && test -f tools/desk/internal/weight/weight_test.go && echo COUNTER-EXISTS` | 0 | `1`, then `COUNTER-EXISTS`. The counter test function TestPrintWeight exists in the weight package's test file. The witness gives this row a non-pass status only because its parser cannot read "a count ≥ 1" from the Expect cell. Its output hash bd8115622356 equals the sha256 of exactly `1` + newline + `COUNTER-EXISTS` | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" && echo NET-OK` | 0 | `NET-OK` (impl e77868565, base 9cd7271bb; 388 lines before and 388 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" && echo NET-OK` | 0 | `NET-OK` (522 lines before and 522 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | 0 | `NET-OK` (923 lines before and 921 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | 0 | `MOVED` | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | `statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?"` | 0 | Pass, judged at the PR head as the Expect specifies. On merged main the command printed `exit=2` with a COULD-NOT-CHECK status: the brief is not in the diff against 56140a33d, so that run is no evidence either way. That is why the witness records this row as fail. The re-run the tool itself prescribes for a merged brief was made at the implementing commit e77868565 with `--base 9cd7271bb6d20900208f91c4f11738324b99142c`. It printed 3 corroborated and 0 disproved, then `exit=0`: the three fixed-here entries were corroborated, and the out-of-scope installed-binaries entry was unchanged since the merge-base | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c "driver's own login" "$f"; done \| grep -c '^[1-9]'` | 0 | `2` (per-kit counts 1 and 1) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c 'THIS item, for a production-down or security fix' "$f"; done \| grep -c '^[1-9]'` | 0 | `2` (per-kit counts 1 and 1) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Review-gate check: clause 14 still carries obligation 3, the fail-first against a planted second instance, in both kits. The kits read "Show the class closed against a PLANTED SECOND instance", and the parity test pins `PLANTED SECOND` and `## Fail-first`. The positive-control sentence is kept verbatim. The clause 8 strike-two and Weight blocks are byte-identical between the two kits on merged main.
+
+Risk-bearing values: the risk metadata is present and every field reads no (irreversible: no). The diff touches dispatch-kit text, one skill and one parity test, so the fail-safe trigger does not fire. The enumeration was done anyway, over the implementing diff:
+- strike threshold = second merged fix in one class @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:154 (and the objective kit at line 226)
+- re-dispatch tier threshold `round ≥ 2` @ plugins/assay/skills/worker-desk/SKILL.md:508
+- parity required tokens `"unrepresentable"`, `"REMOVING the hazardous path"` @ tools/desk/cmd/deskdispatch/kitparity_test.go:56
+- weight counter invocation `-count=1` @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:164
+
+Ranking: every value can be undone with a text edit and the next desk-tools release, because the kits are embedded in the binary. The two tier and strike thresholds rank first because they change worker behaviour. The tokens and the test flag are operational and need no derivation.
+
+RISK-VALUE: DERIVED — strike threshold = 2 (the second merged fix in one class) @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:154 — spec §2 row 3 and §4.3 define two-strikes as the stop at the second fix keyed to the same class issue. One prior merged fix in the class record is the earliest point where a repeat is observable, so a lower bound would block first fixes and a higher one would allow repeated patching.
+RISK-VALUE: DERIVED — round threshold = 2 @ plugins/assay/skills/worker-desk/SKILL.md:508 — spec §2 row 8 folds model tiering into this brief as "round ≥ 2 on a finding class … runs strong". It is a reversible tier knob that matches the strike-two trigger.
+
+**VERIFY: PASS — 13/13 Verify rows on merged main 56140a33d**
+
+Execution witness: `statusgen verifyrun` ran for real on merged main 56140a33d (11 pass; row 6 could-not-run, an Expect-parser limit, with the output hash matching `1
+COUNTER-EXISTS
+`; row 11 fail, the at-main COULD-NOT-CHECK above). The witness table is not landed here because that run stamped no on-behalf-of principal. It is re-run under the stamped write path once the rows are re-authored. Status stays `implemented` with no flip. Row re-authoring is routed to #1915 (https://github.com/medici-finance/assay/issues/1915#issuecomment-6004541583).
+2026-10-06 non-implementer re-verification on merged main 11228951d (confirmed by rev-parse and the commits API). Delivered by #2245, squash e77868565 (parent 9cd7271bb). statusgen v1.0.32. — VERIFY: PASS, 13/13.
+
+| # | Command | Exit | Observed output | Date | Runner |
+| --- | --- | --- | --- | --- | --- |
+| 1 | cd tools/desk && go test ./cmd/deskdispatch/ -count=1 | 0 | ok for the deskdispatch package (15.4s) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | cd tools/desk && go test ./cmd/deskdispatch/ -run (the row's named kit-parity test) -count=1 -v | 0 | RUN then PASS for the named parity test, then ok. The named test ran; not vacuous | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written (mutate "unrepresentable" in the objective kit, re-run the parity test, restore) | 0 | RED-ON-DRIFT. The mutant failed at kitparity_test.go:58 (clause lost "unrepresentable") and :64 (the two kits' clauses differ); kit restored, git status clean | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written (strike two in both kits) | 0 | 2 (per-kit counts 2 and 2) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written (## Weight in both kits) | 0 | 2 | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | Verify row 6 as written (weight counter invocation plus test file exists) | 0 | 1, then COUNTER-EXISTS; the named counter test is defined in the weight package test file (line 301) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | Verify row 7 as written (worker kit net lines) | 0 | NET-OK (impl e77868565, base 9cd7271bb; 388 before and 388 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written (objective kit net lines) | 0 | NET-OK (522 before and 522 after; 541 on main from later changes) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written (worker-desk skill net lines) | 0 | NET-OK (923 before and 921 after) | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | Verify row 10 as written (parity token moved) | 0 | MOVED | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | statusgen --consumers --root . --brief build-less-brittle/05; echo "exit=$?" — judged at the PR head as the Expect specifies | 0 | On merged main it prints exit=2 COULD-NOT-CHECK (brief not in the diff against main), no evidence either way. The tool's prescribed re-run at the implementing commit e77868565 with --base 9cd7271bb: 3 corroborated, 0 disproved, 1 unchanged since the merge-base, exit=0. PASS | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | Verify row 12 as written (driver's own login in both kits) | 0 | 2 | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | Verify row 13 as written (production-down or security fix scope in both kits) | 0 | 2 | 2026-10-06 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Review-gate check: clause 14 keeps obligations 1 and 3 and the positive-control sentence in both kits; the clause 8 strike-two and Weight blocks are byte-identical between the kits on merged main.
+
+RISK-VALUE: DERIVED — strike threshold = 2 (one prior merged fix in the class record) @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:155 (objective kit :227); the spec defines strike detection as "the class issue already records a merged fix", the earliest point a same-class repeat is observable. Reversible.
+RISK-VALUE: DERIVED — round threshold = 2 @ plugins/assay/skills/worker-desk/SKILL.md:512; spec D5 "Round-two work and design work run at strong tier". Reversible.
+
+**VERIFY: PASS**
+2026-10-06 execution witness for the pass above (statusgen v1.0.32 `verifyrun --brief`, non-dry, verifier worktree at merged main 11228951d0a8). verifyrun exit 2: 11 pass, row 6 could-not-run, row 11 fail. Neither non-pass row is a defect in the delivered work; both are row-authoring limits:
+- Row 6: the Expect cell asks for "a count ≥ 1", but the command's output is `1` followed by `COUNTER-EXISTS`. verifyrun cannot read a count from that output, so the row is could-not-run. This matches the witness hash at 56140a33d.
+- Row 11: `statusgen --consumers --brief` without --base on merged main prints `exit=2` (COULD-NOT-CHECK, brief not in the diff against main). The Expect can only be decided at the PR head. A manual run with --base at the implementing parent printed `exit=0`, 3 corroborated, 0 disproved. This is the #1915 class.
+
+The `+dirty` stamp is from the verifier's untracked scratch directory in its worktree (no tracked change before the run). The `(forge-identity)` tag is as stamped.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | row 1 | pass exit=0 | sha256:81773de0ad27 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | row 2 | pass exit=0 | sha256:69ac4b91cba0 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | row 3 | pass exit=0 | sha256:cd183bfd8e84 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 4 | row 4 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 5 | row 5 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 6 | row 6 | could-not-run exit=0 — Expect requires a count ≥ 1 but the output carries no number to read | sha256:bd8115622356 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 7 | row 7 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 8 | row 8 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 9 | row 9 | pass exit=0 | sha256:458c4e39effe | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 10 | row 10 | pass exit=0 | sha256:24896b079790 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 11 | row 11 | fail exit=0 | sha256:ed637df28bc4 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 12 | row 12 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+| 13 | row 13 | pass exit=0 | sha256:53c234e5e847 | 2026-10-06 | assay-verifier-app[bot] @ 11228951d0a8+dirty (on-behalf-of human:ian) (forge-identity) |
+
+**VERIFY: BLOCKED** — every row passes by hand (13/13 above), but the execution witness cannot pass until rows 6 and 11 are re-authored (#1915). Status stays implemented; the same-day status flip was reverted.
+### 2026-10-07 desk dispatch — VERIFY: PASS (build-less-brittle/05 @ fe2217521989, 13/13 rows)
+
+Non-implementer re-verification on merged main fe2217521989c9925a83e57c083fc11028990824 (confirmed by rev-parse of the fetched main and by the forge's commits API in the same run). Delivered by #2245, squash e77868565 (parent 9cd7271bb). This pass checks the rows as re-authored by #2300 (merged as 24886d98a, ahead of this main). statusgen v1.0.32.
+
+Execution witness: `statusgen verifyrun --dry-run` accepted the brief at this main and returned exit 0 with all 13 rows pass, row 6 and row 11 included. Both rows were could-not-run or fail in the 2026-10-06 witness; with the #2300 re-authoring the witness now decides them. Every row was then also run by hand for the observed output below.
+
+| # | Command | Exit | Observed | Date | Runner |
+|---|---------|------|----------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | 0 | ok for the deskdispatch package (72.8s) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | Verify row 2 as written (the named kit-parity test, run with -v) | 0 | RUN then PASS for the named parity test, then ok; the named test ran, so the row is not vacuous | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | Verify row 3 as written (mutate unrepresentable in the objective kit, re-run the parity test, restore) | 0 | RED-ON-DRIFT. The mutant failed at kitparity_test.go:58 (clause lost "unrepresentable") and :64 (the two kits' clauses differ); kit restored, git status clean afterwards | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | Verify row 4 as written (strike two counted in both kits) | 0 | 2 (per-kit counts 2 and 2) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | Verify row 5 as written (Weight section counted in both kits) | 0 | 2 (per-kit counts 2 and 2) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | Verify row 6 as written (kit names the weight counter command, counter test file exists) | 0 | 1, then COUNTER-EXISTS; the counter test function is defined at line 301 of the weight package test file. The witness now decides this row as pass (re-phrased Expect from #2300) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | Verify row 7 as written (worker kit net lines, delivering commit vs its parent) | 0 | NET-OK (impl e77868565, base 9cd7271bb; 388 lines before and 388 after) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | Verify row 8 as written (objective kit net lines) | 0 | NET-OK (522 lines before and 522 after) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | Verify row 9 as written (worker-desk skill net lines) | 0 | NET-OK (923 lines before and 921 after) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | 0 | MOVED | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | Verify row 11 as written (re-authored by #2300: resolve the delivering commit by its Brief trailer, check it out in a throwaway clone, run statusgen consumers with --base at its parent) | 0 | Resolved base 9cd7271bb6d2, tip e77868565. Three fixed-here entries CORROBORATED; the installed-binaries out-of-scope entry UNCHECKED (unchanged since the merge-base). Printed `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`, exit 0; the throwaway clone was removed. For comparison the old unpinned form still prints COULD-NOT-CHECK with exit 2 on this main, which is the #1915 class the re-authoring retires | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 12 | Verify row 12 as written (driver's own login stated in both kits) | 0 | 2 (per-kit counts 1 and 1) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 13 | Verify row 13 as written (bleed bound to THIS item and to the production-down or security scope in both kits) | 0 | 2 (per-kit counts 1 and 1) | 2026-10-07 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Blocker status: #2300 clears the #1915 blocker for this brief. Row 11 now pins the delivering change and exits 0 with the exact Expect summary on merged main; row 6's Expect is an exact output line the witness decides. The witness passes 13/13 at fe2217521989.
+
+Risk-bearing values: risk metadata is present and every field reads no (irreversible: no), and the diff touches dispatch-kit text, one skill and one parity test, so the fail-safe trigger does not fire. Enumeration over the delivering diff e77868565 anyway: strike threshold = one prior merged fix in the class record (the second fix stops) @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:156 (objective kit :228); re-dispatch tier threshold round ≥ 2 @ plugins/assay/skills/worker-desk/SKILL.md:523; parity required tokens "unrepresentable" and "REMOVING the hazardous path" @ tools/desk/cmd/deskdispatch/kitparity_test.go:56; weight counter flag -count=1 @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:164. Ranking: all are reversible with a text edit and the next desk-tools release (the kits are embedded); the strike threshold ranks first because it changes when a worker stops, the round threshold second, the tokens and flag are operational.
+
+RISK-VALUE: DERIVED — strike threshold = 2 (one prior merged fix in the class record) @ tools/desk/cmd/deskdispatch/references/worker-prompt.md:156 — the spec defines two-strikes as the stop at the second fix keyed to one class issue; one recorded merged fix is the earliest point a same-class repeat is observable, so a lower bound would block first fixes and a higher one would allow repeated patching. Reversible.
+
+**VERIFY: PASS**
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | pass exit=0 | sha256:af4d7a3e7528 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskdispatch/ -run TestDefectClassClauseIsOneWordingAcrossImplementerKits -count=1 -v` | pass exit=0 | sha256:01cf0c7fee2d | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && f=cmd/deskdispatch/references/worker-prompt-objective.md && cp "$f" /tmp/bl05-kit.bak && sed 's/unrepresentable/unrepresentible/' /tmp/bl05-kit.bak > "$f" && go test ./cmd/deskdispatch/ -run TestDefectClassClauseIsOneWordingAcrossImplementerKits -count=1 > /tmp/bl05-mut.out 2>&1; rc=$?; cp /tmp/bl05-kit.bak "$f"; test $rc -ne 0 && echo RED-ON-DRIFT` | pass exit=0 | sha256:cd183bfd8e84 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -ciE 'strike two' "$f"; done \| grep -c '^[1-9]'` | pass exit=0 | sha256:53c234e5e847 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c '## Weight' "$f"; done \| grep -c '^[1-9]'` | pass exit=0 | sha256:53c234e5e847 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/worker-prompt.md && test -f tools/desk/internal/weight/weight_test.go && echo COUNTER-EXISTS` | pass exit=0 | sha256:bd8115622356 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | pass exit=0 | sha256:458c4e39effe | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `f=tools/desk/cmd/deskdispatch/kitparity_test.go; grep -q '"unrepresentable"' "$f" && ! grep -q '"ALLOW-LIST"' "$f" && echo MOVED` | pass exit=0 | sha256:24896b079790 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `d=; impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/05$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; b=$(git rev-parse "$base") && t=$(git rev-parse "$tip") && test "$b" != "$t" && d=$(mktemp -d "$PWD/.bl05-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach "$t" && statusgen --consumers --root "$d" --brief build-less-brittle/05 --base "$b"; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | pass exit=0 | sha256:92691d7ad709 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c "driver's own login" "$f"; done \| grep -c '^[1-9]'` | pass exit=0 | sha256:53c234e5e847 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `for f in tools/desk/cmd/deskdispatch/references/worker-prompt.md tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md; do grep -c 'THIS item, for a production-down or security fix' "$f"; done \| grep -c '^[1-9]'` | pass exit=0 | sha256:53c234e5e847 | 2026-10-07 | assay-verifier-app[bot] @ fe2217521989 (on-behalf-of human:ian) (forge-identity) |
 
 ## Review
 Gate: model (from frontmatter). The reviewer confirms the clause 14 rewrite keeps the planted-

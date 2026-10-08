@@ -39,7 +39,7 @@ func TestDeskprRefusesWithoutMintedToken(t *testing.T) {
 		t.Fatalf("a forge op ran despite the custody refusal (create=%d open=%d get=%d) — there must be no "+
 			"fall-through write", rec.createCalls, rec.openCalls, rec.getCalls)
 	}
-	if anyCall(gitCalls(*calls), "push") {
+	if anyPush(*calls) {
 		t.Fatalf("create PUSHED despite the custody refusal — no write may precede forge auth; git calls: %v",
 			gitCalls(*calls))
 	}
@@ -64,8 +64,8 @@ func TestDeskprUpdateRefusesWithoutMintedToken(t *testing.T) {
 	if rec.openCalls != 0 {
 		t.Fatalf("update queried the forge despite the custody refusal (open=%d)", rec.openCalls)
 	}
-	if anyCall(gitCalls(*calls), "push") {
-		t.Fatalf("update PUSHED despite the custody refusal; git calls: %v", gitCalls(*calls))
+	if anyPush(*calls) {
+		t.Fatalf("update PUSHED despite the custody refusal; calls: %v", *calls)
 	}
 }
 

@@ -209,7 +209,7 @@ var (
 	// read, addressed by ?sha=). It is anchored so it cannot also match lPipelineJobs' path.
 	lPipelines   = regexp.MustCompile(`^/api/v4/projects/[^/]+/pipelines$`)
 	lBranch      = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
-	lMRLabelEvts = regexp.MustCompile(`/merge_requests/[0-9]+/resource_label_events$`)
+	lMRLabelEvts = regexp.MustCompile(`/(merge_requests|issues)/[0-9]+/resource_label_events$`)
 	lMRNote1     = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
 	lProjLabels  = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
 	lRepoFile    = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/files/[^/]+$`)
@@ -1359,7 +1359,7 @@ func glCases() []glCase {
 		{
 			// The resource-label-events endpoint is GitLab's exact analog of the GitHub
 			// timeline read: add/remove per label WITH the acting user. `remove` events are
-			// dropped (a removal is not an attestation), and an event whose label GitLab has
+			// retained to resolve standing provenance; an event whose label GitLab has
 			// since deleted comes back unnamed and is dropped too — a stamp nobody can name
 			// attests to nothing.
 			name: "list_label_events", method: "ListLabelEvents",
@@ -1374,6 +1374,13 @@ func glCases() []glCase {
 				}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ListLabelEvents(glRepo, 7) },
+		},
+		{
+			name: "list_issue_label_events", method: "ListIssueLabelEvents",
+			setup: func(s *glServer) {
+				s.labelEvents = []map[string]any{{"id": 1, "action": "add", "user": map[string]any{"id": 42, "username": "desk-bot"}, "label": map[string]any{"name": "dispatched-model:gpt-6.1-sol"}}, {"id": 2, "action": "remove", "user": map[string]any{"id": 42, "username": "desk-bot"}, "label": map[string]any{"name": "dispatched-model:gpt-6.1-sol"}}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListIssueLabelEvents(glRepo, 7) },
 		},
 		{
 			// SYSTEM notes are dropped: GitLab records its own activity in the same list as

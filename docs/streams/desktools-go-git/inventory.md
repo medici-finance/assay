@@ -239,6 +239,22 @@ is not a `gitcore`-side workaround to build: it is the SAME class of gap as the 
 merge's own (no three-way merge, no conflict-stage awareness), so the fix is fencing
 the one call site that touches it, not extending `gitcore`.
 
+## Brief 06 — push migrated; the preflight dry-run probe retired for an authenticated List
+
+Brief 06's sources call these "op family 2 (push)" and "3 (push dry-run probe)"; in THIS
+table's numbering they are row **20** (`push`) and the probe half of row **9**
+(`ls-remote`): the probe's replacement is a List. Same checklist contract as above.
+
+| # | Family | Ticked? | Note |
+|---|---|---|---|
+| 20 | `push` | partial (brief 06's sites ticked) | deskpr's branch push (`create`'s `push -u origin <branch>` and `update`'s `push origin <src>:<dst>`, now `tools/desk/cmd/deskpr/push.go`) and verifyloop's durable-Evidence `push origin HEAD:main` (`durable.go`'s `pushHeadToMain`) migrated to `gitcore.Push`: an https destination gets the resolved forge's canonical URL with the role App's token in memory (`deskkit.ForgeGitEndpointForCheckout`, where the checkout's origin host is a forge-KIND hint only); a local destination (the offline fixtures) gets no credential. The refspec source is the RESOLVED commit, never a ref name — go-git silently skips a symbolic source (an attached `HEAD`), which would have reported success having sent nothing. No `+`, no `Force`: a push that needs force is rejected (`TestForcePushRejected`, `TestDurablePushRaceRejected`). The repository's pre-push hook still runs before the push (`deskkit.PrePushHook`, path from `rev-parse --git-path hooks/pre-push`, git's argv/stdin contract), because `gitcore.Push` runs none. The transient remote `gitcore.Push` uses writes nothing locally, so after a successful push the caller records what `git push` used to, locally only and at the pushed hash: origin's remote-tracking ref for the destination (`gitcore.UpdateRemoteTracking`, through origin's own fetch refspec), plus, on `create`, the `-u` upstream config (`branch.<b>.remote` / `branch.<b>.merge`). `deskwt remove`'s unpushed-commits guard and `update`'s offline publish anchor read them. No URL or credential is persisted (`TestPushRecordsUpstream`, `TestPushRecordsTrackingRef`, `TestDurablePushLandsMain`). **deskreply has no push path** (see the seam legend: read-only by design), so the brief's deskreply bullet has no site to migrate. deskmerge's push stays paired with its trial merge (brief 07's exception), so the row stays partial. verifyloop's `pull --rebase` race resolution is untouched (named follow-on) |
+| 9 | `ls-remote` (+ `remote get-url`) | partial (probe ticked) | deskkit preflight's write-transport PROBE (`git push --dry-run --porcelain` with `exec.LookPath("git")` and `GIT_TERMINAL_PROMPT=0`) is deleted. The check now runs an authenticated `gitcore.List` of the landing repo with the same endpoint resolution: success → permitted, an HTTP 401/403 or a rejection-shaped error → rejected (STOP), any other transport failure → could-not-check. The caller contract (`CheckWriteTransport` clean / failed / could-not-check) is unchanged and pinned at the caller (`TestPreflightReachabilityCaller`). A List proves read reach with the role's identity, not write scope; write scope stays the minted-scope check's job. `registerid.go`'s `remoteHeadLiveness` network `ls-remote` is still owed (fetch-side, brief 05) |
+
+Unchanged on purpose: deskpr's push-destination and push-transport gates (SSH refusal,
+destination-names-the-gated-repo) still run before the push. The transport gate's
+credential-helper NOTICE no longer describes deskpr's own push, which now uses no helper;
+retiring that notice is a follow-up, not done here, because it removes no attack surface.
+
 ## Baseline counter
 
 `sh tools/desk/scripts/count-git-exec.sh` — see the brief-01 PR body for the recorded
@@ -254,3 +270,11 @@ all). Combined, `sh tools/desk/scripts/count-git-exec.sh` on this merge reads
 **80** (14 direct spawns + 66 seam call sites) — the two briefs' migrated sites do
 not overlap, so the combined count is lower than either brief's own number. The gate
 stays advisory (exit 0) until brief 08.
+
+Brief 06: by the time it started, new desk-tool code on main had raised the count to
+**159** (39 direct + 120 seam). Brief 06 widened the DIRECT pattern to also count
+`exec.CommandContext(<ctx>, "git"` spawns, which the old pattern missed (the deleted
+preflight probe was one). Under the widened script main read **163** before this brief
+(43 direct) and **162** after it (42 direct, 120 seam). The migrated push sites themselves
+never appeared in the count: they called a per-tool `git(` / `run(` wrapper that is not one
+of the four counted seam names.

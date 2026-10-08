@@ -238,10 +238,10 @@ func TestUnderOutcomeRecordsDirIndependentGuard(t *testing.T) {
 		"docs/.github/workflows/y-20260907T011923Z-aaaaaaaaaaaa.json",
 		"docs/streams/verify-outcomes/example-stream/../../../.github/workflows/evil.json",
 		"docs/streams/verify-outcomes/../not-outcomes/x.json",
-		"/etc/passwd",                                       // absolute-path injection
-		"docs/streams/verify-outcomes/onlyonesegment.json",   // wrong depth: no stream segment
-		"docs/streams/verify-outcomes/a/b/c.json",            // wrong depth: too deep
-		"docs/other/verify-outcomes/example-stream/x.json",   // wrong root entirely
+		"/etc/passwd", // absolute-path injection
+		"docs/streams/verify-outcomes/onlyonesegment.json", // wrong depth: no stream segment
+		"docs/streams/verify-outcomes/a/b/c.json",          // wrong depth: too deep
+		"docs/other/verify-outcomes/example-stream/x.json", // wrong root entirely
 		"",
 		// #1803 SR-1803-3 coverage gap: a short, unrelated two-segment relative path. Its shape
 		// (<seg>/<seg>) mirrors a legitimate record's <stream>/<file>.json depth, so it is the

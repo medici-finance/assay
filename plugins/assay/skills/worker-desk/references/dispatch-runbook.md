@@ -83,17 +83,25 @@ At 100 results treat the sweep as possibly truncated and widen rather than claim
 `RESOLVED-ELSEWHERE` is a deskclose item, never an orphan; `NEEDS-REBASE` is live work; a tool exit 6
 or a failed list read is could-not-check — report the repo BLIND for the cycle.
 
-A PR is ORPHANED when its disposition reads checked-clean AND the worker owes it action AND it has had
+A PR is ORPHANED when its disposition is dispatch-eligible (checked-clean with no record, or
+checked-failed with `NEEDS-REBASE`) AND the worker owes it action at the current head AND it has had
 no commit/comment for >4h AND no live dispatch claim exists. Three guards run on every candidate
 first:
 
-1. **Label exclusion.** `question` / `help wanted` = WAITING-ON-INPUT, not an orphan, however stale.
-2. **Already-triaged is not neglect.** "No activity for >4h" cannot tell a neglected PR from a
-   resolved one — both are silent. The durable form of this guard is the disposition record; fall back
-   to reading the latest comment only for PRs whose verdict predates it, and if that comment is itself
-   a bot/worker/desk marker the PR is ALREADY-TRIAGED: surface it to the human queue, do not
-   re-dispatch, and record the verdict with `deskdisposition set` so the next sweep need not re-read
-   the prose.
+1. **Label exclusion.** `question` / `help wanted` / `needs-decision` = WAITING-ON-INPUT, not an
+   orphan, however stale. Keep the label and its explanation as the durable hold; do not substitute
+   a terminal disposition for a wait.
+2. **Advisory comments do not establish disposition.** A bot/worker/desk marker identifies a
+   comment format, not a resolved or parked outcome. Surface-tier advice, workpad updates and other
+   non-gating comments cannot clear an unresolved current-head finding or create a hold. With no
+   supported disposition and all remaining guards satisfied, this is actionable work: **no
+   disposition write**. The normal >4h activity check still applies, including comment activity.
+   For legacy prose without a record, inspect the trusted conclusion and its primary evidence,
+   not merely the latest comment's author or marker. Record `SUPERSEDED` or `RESOLVED-ELSEWHERE`
+   only when that outcome is established, with its evidence link. A later advisory does not erase
+   an earlier terminal record or a genuine hold. Missing, conflicting or unreadable evidence is
+   could-not-check: surface the uncertainty, do not dispatch or invent a verdict. A successful
+   empty disposition read, by contrast, is absence of a record, not an unread record.
 3. **Supersession check (cheap, pre-claim).** If the body references `closes #N` / `fixes #N`, verify
    that issue is not already closed by a *different* merged PR, and check the target brief's stream
    README for `status: implemented` pointing at another PR. A superseded PR is surfaced as
@@ -101,11 +109,19 @@ first:
    `deskdisposition set -R <r> --pr <N> --verdict SUPERSEDED --evidence <url>` — the write is what
    stops the same guard being re-run four times on one PR.
 
-A resume-worker's dispatch carries the write side of the same record: `SUPERSEDED` when something else
-landed it, `RESOLVED-ELSEWHERE` when the outcome was reached another way, `NEEDS-REBASE` when it is
-still live work. The verb writes a label plus an evidence-carrying marker comment and is idempotent.
-**It does not close the PR** — the close is deskclose's human-authorized act, and a stated-but-unexecuted
-close intent is its own failure.
+A resume-worker's dispatch carries the same write contract: `SUPERSEDED` when something else
+landed the work, `RESOLVED-ELSEWHERE` when the outcome was reached another way, and `NEEDS-REBASE`
+only for an established **base/conflict defect**. Still-actionable findings or CI repair without
+that defect require **no disposition write**; use the existing PR workpad for progress. Do not
+fabricate a terminal verdict or use `NEEDS-REBASE` as a generic "live work" value. The disposition
+verb writes a label plus an evidence-carrying marker comment and is idempotent. **It does not close
+the PR** — closing is deskclose's human-authorized act. An obsolete terminal record with no truthful
+replacement stays an explicit could-not-check/hold for authoritative correction; an advisory
+comment cannot silently clear its label or record.
+
+These guards establish a candidate, not admission. Re-read ownership and both claim sources before
+claiming, preserve the supersession and freshness checks, and require the normal successful
+**model-stamp OK** before a worker starts. A live owner is not an orphan; an unread claim is not free.
 
 ### Queue suppressors — read them when a stream offers nothing for several consecutive ticks
 

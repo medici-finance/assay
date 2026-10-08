@@ -4,8 +4,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/regression"
 )
 
@@ -37,15 +39,27 @@ func reg727(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	local := func(args ...string) {
+	// FixtureEnv drops every inherited GIT_* variable, gitquiet.Run's GIT_TEMPLATE_DIR
+	// included, so the fixture passes its own quiet template explicitly: the commit
+	// below then forks no background maintenance to race the t.TempDir cleanup.
+	template := gitquiet.TemplateDir(t)
+	local := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command(git, args...)
-		cmd.Env = regression.FixtureEnv("GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		cmd.Env = regression.FixtureEnv("GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull,
+			"GIT_TEMPLATE_DIR="+template)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
 			t.Fatalf("fixture git %v: %v\n%s", args, err, out)
 		}
+		return strings.TrimSpace(string(out))
 	}
 	local("init", "-q", "-b", "main", main)
+	for _, kv := range gitquiet.Settings {
+		if got := local("-C", main, "config", "--local", "--default", "", "--get", kv[0]); got != kv[1] {
+			t.Fatalf("fixture repository %s = %q in its own config, want %q", kv[0], got, kv[1])
+		}
+	}
 	local("-C", main, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "--allow-empty", "-m", "fixture")
 	const origin = "https://gitlab.example.invalid/team/repo.git"
 	local("-C", main, "remote", "add", "origin", origin)

@@ -23,6 +23,10 @@ func gitRepo(t *testing.T) string {
 	run("init", "-q")
 	run("config", "user.email", "test@example.org")
 	run("config", "user.name", "test")
+	// No detached auto-maintenance or auto-gc: `git commit` can otherwise leave a background
+	// process writing under .git while t.TempDir's cleanup removes it.
+	run("config", "maintenance.auto", "false")
+	run("config", "gc.auto", "0")
 	return root
 }
 

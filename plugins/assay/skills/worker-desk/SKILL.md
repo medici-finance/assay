@@ -39,6 +39,9 @@ fires within one observer interval instead of relying on a worker to remember it
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
+
+
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
 > Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
@@ -277,10 +280,9 @@ unreadable root in as an empty one.
 
 ## Un-briefed issues — trusted, work-ready, on NO board (human:<name> 2026-08-13)
 
-An issue can be real, trusted, implementable work and still sit stranded merely because it is
-issue-shaped. Beside the board queue and the orphan sweep, the pool draws on **§Sources of work row
-6**: open issues across SCAN REPOS, trusted + work-ready but represented by NO brief and NO
-placeholder on any board.
+A real, trusted, implementable issue can sit stranded merely because it is issue-shaped. Beside the
+board queue and the orphan sweep, the pool draws on **§Sources of work row 6**: open issues across
+SCAN REPOS, trusted + work-ready but represented by NO brief and NO placeholder on any board.
 
 **Sweep it with `issueboard issues`, not a hand-rolled list.** The verb resolves the scan scope from
 the same roster key the placeholder scanner reads, applies the trust gate itself (untrusted, unblessed
@@ -293,16 +295,14 @@ or one unreadable repo, is exit 6 COULD-NOT-CHECK for the WHOLE board, never a s
    quarantine is the reading, and an EXTERNAL / UNBLESSED row is never dispatched. No new exception.
 2. **Un-represented** — no `issue-loop/issue-<NN>` placeholder (stream root or `done/` archive), no
    brief citing it, no open PR working it. **Absence from the board is NOT absence of representation**
-   (staleness, the caps or a board defect can suppress a real placeholder): check the FILES and the
-   open PRs, never what the board shows. Work that persistently fails to surface is a board defect —
-   FILE IT, never route around it here.
+   (staleness, the caps or a board defect can hide a real placeholder): check the FILES and open PRs,
+   never the board. Work persistently failing to surface is a board defect — FILE IT, never route around it.
 3. **Work-ready on its face** — an implementable spec by the placeholder lane's standard, carrying
    none of `question` / `needs-decision` / `help wanted`, not parked awaiting a reply.
-4. **Needs no triage judgment** — single-repo, no open design fork, no risk-bearing surface
-   (public-repo copy, security, prod-deploy, irreversible actions). Anything needing scoping,
-   splitting, a decision or a risk call is **intake's job**. When in doubt, leave it to intake AND
-   LEAVE A TRACE (a `question` on the issue naming the fork) — intake's strong tier picks the default
-   a reversible fork then proceeds on.
+4. **Needs no triage judgment** — single-repo, no open design fork, no risk-bearing surface (public-repo
+   copy, security, prod-deploy, irreversible actions). Anything needing scoping, splitting, a decision
+   or a risk call is **intake's job**. When in doubt, leave it to intake AND LEAVE A TRACE (a `question`
+   on the issue naming the fork) — intake's strong tier picks the default a reversible fork proceeds on.
 
 **Priority is LOWEST of the dispatch sources** (WIP-draining work → board rows → un-briefed issues),
 but the ordering is a tie-break, not a hold: an empty slot with a qualifying issue and nothing above
@@ -312,6 +312,9 @@ sweep that repeatedly surfaces issues failing rule 4 is an intake-coverage signa
 widen this lane. A `design-owed` `error-class` issue is not this lane's (its placeholder fails rule 2):
 intake unparks that row at the trigger, never past rule 4's risk-bearing-surface test (`intake-desk`
 step 1); it dispatches at **strong** tier, and its deliverable is the one its body line names, never code.
+A class also labelled `brittle` dispatches at the same **strong** tier with `docs/brittle-investigation-template.md`
+as its deliverable's shape: the design brief follows only on `redesign`, and `reconcile` yields a fix
+brief whose `retires:` is the investigation's deletion bundle (`accept` and `clear` code nothing).
 
 ## The loop
 
@@ -327,12 +330,13 @@ could-not-check, never "no repos".
 - **Read the DISPOSITIONS first, before any staleness arithmetic**: `SUPERSEDED` /
   `RESOLVED-ELSEWHERE` is a deskclose item, never an orphan; `NEEDS-REBASE` is live work; exit 6 or a
   failed read means that repo is BLIND this tick, not empty.
-- A PR is **ORPHANED** when its disposition reads checked-clean AND the worker owes it action
+- A PR is **ORPHANED** when its disposition is dispatch-eligible AND the worker owes it action
   (`CHANGES_REQUESTED` at current head, CI red, findings unanswered) AND no commit/comment for **>4h**
-  AND no live dispatch claim. **Write the verdict with `deskdisposition set`** when the sweep DERIVED
-  a new one — eight of ten orphan dispatches in one 2026-08-12 cycle re-derived a conclusion an
-  earlier pass had already posted — and **re-write nothing when nothing changed** (§WIP-capped: a
-  no-change tick makes no write at all).
+  AND no live dispatch claim. **Advisory comments do not establish disposition**: apply the
+  runbook's label, evidence and supersession guards. Write `deskdisposition set` only for a supported
+  derived outcome; `NEEDS-REBASE` requires an established base/conflict defect. Still-actionable
+  work without that defect needs **no disposition write**; progress belongs in the PR workpad.
+  Re-write nothing when nothing changed (§WIP-capped: a no-change tick makes no write at all).
 - **A `SUPERSEDED` record is a PROPOSAL, never a close.** After `deskdisposition set --verdict
   SUPERSEDED --evidence <target>`, the worker runs `deskclose superseded -R <repo> <N> --by
   <target>`: under a worker-bound token the tool applies `superseded?`, posts the proposal naming
@@ -381,7 +385,9 @@ never licenses dispatching past the floor. Resumes and rework (rows 3, 4, 5, 5b)
 drive picks and the floor does not hold them.
 
 **2. Merge the per-root plans** with §The interleave rule, tag every row with its repo-qualified ID,
-name every could-not-check root, and exclude items whose `depends:` are not yet `done`. A count from
+name every could-not-check root, and exclude items whose `depends:` are not yet `done` — except that a
+`gate: human` dependency at `implemented` whose Evidence carries a strict `**VERIFY: PASS**` (present in the raw text and not struck, fenced or
+quoted) with no later FAIL counts as met for `depends:` only, never for `gates:` (the same rule statusgen's eligibility evaluator applies). A count from
 human:<name> ("next 3") takes the top N **of the merged order** — scoping bounds THIS refill, never the loop.
 
 **3. Dispatch** each item with `deskdispatch` (below) — one `capability:dispatch-worker` per item, all
@@ -427,6 +433,17 @@ window stops, hands back, or asks the driver for direction.
    names a `RetryAfter` — sleep it and attempt ONCE, never retry-loop.
 5. **The tick still reports.** One line per §Output contract, and the sweep obligations of the HARD
    GATE are unaffected by a quiet queue.
+
+## Post-open stamp handoff
+
+For a dispatch made before its PR exists, retain the real dispatch receipt with the
+actual selected model and tier. When the worker returns the opened PR, send that PR and
+selection to the coordinator desk (`the-desk`), which runs the printed
+`deskdispatch --stamp-only --repo <repo> --pr <N> --model <actual-model> --tier <tier>`
+command with the original kit. Require its applied-and-verified receipt before treating
+the PR as model-attested. Both this worker-desk and its child are refused by stamp-only;
+a shared `DESK_SESSION` is claim custody, not stamp authority. Never switch identity or
+redispatch a worker just to obtain the stamp.
 
 ## Dispatch — `deskdispatch <item-key>` runs the ceremony
 
@@ -486,23 +503,18 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   per-invocation scratch-file body files (desk-shell.md §Scratch files), stop-at-`implemented` + the bare-token board-row shape, lineage
   self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
   fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one,
-  the defect-class guard for a bug fix) —
+  the defect-class rule for a bug fix, strike two, `## Weight`) —
   both shipped
   inside the binary from `tools/desk/cmd/deskdispatch/references/`. `--kits`
   lists what the installed binary carries; `--dry-run` prints the prompt it WOULD emit. **Never
   paraphrase, summarise or "improve" a kit clause at dispatch time**: each is a rule that has already
   failed in the field, and the wording is the fix.
 - **A bug fix closes the defect CLASS, not the one instance** — the worker's fix obligation the kit
-  carries. When the dispatched item fixes a defect, the worker's PR names the class under a
-  `## Defect class` heading (the shape every instance shares, plus the earlier fix's issue or commit
-  when the defect has been fixed before), adds a guard that fails if ANY other site repeats it, and
-  shows that guard red against a deliberately PLANTED second instance at a site the fix does not
-  touch. The model guard is an allow-list structural test: every caller of a hazardous primitive
-  (`exampleRawToken()`) is enumerated and any caller outside the committed allow-list
-  (`exampleSafeToken()`) fails CI. A test of the reported instance alone does not discharge it. A
-  PR that fixes a defect with no `## Defect class` section — neither a class guard nor a stated
-  reason the defect has no checkable shape — is INCOMPLETE, the same as one missing its fail-first
-  run. The kit asks for a guard over ONE class, never a standing regression suite.
+  carries: name the class under a `## Defect class` heading (plus the earlier fix when there was
+  one), close it by removing the hazardous path or making it unrepresentable — a guard only when
+  removal is infeasible, reported as weight in `## Weight` and a rule-register row — and show it red
+  against a deliberately PLANTED second instance at a site the fix does not touch. A defect-fix PR
+  with no `## Defect class` section is INCOMPLETE, the same as one missing its fail-first run.
 - **Cross-repo is the default case.** The verb cuts the worktree in the item's own repo off
   `refs/remotes/origin/main`; dispatch the agent with `capability:isolate-workspace` too, so its
   payload cwd is never the shared checkout — a /tmp clone does NOT isolate that cwd, and a
@@ -510,6 +522,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
   session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
   to a cheap tier behind the review/verify gates.
+  A re-dispatch or shepherd pass on a PR whose open finding class is at round ≥ 2 runs at **strong**
+  tier. A worker's `NEEDS_CONTEXT: strike two` (kit clause 8) returns the item to intake as
+  `design-owed` — not a failure to retry.
 - **Budget checkpoint — `budget:` is a filing threshold, never a gate.** A brief may declare
   `budget:` beside `effort:` — an amount with its unit (`400k tokens`, `25 USD`); absent = no
   checkpoint. The worker reads it from the brief it was dispatched on. When the worker's own
@@ -607,7 +622,13 @@ decision-trigger=spec` — the decision is only well-formed at the pickup design
 instructs the executor to author the brief's `## Human decision` section in its PR and report
 DECISION-BLOCK READY, and **this desk** then re-runs ensure `--at spec` against the branch copy
 (subagent issue-writes get classifier-denied); **5** = self-containment refusal, repair the brief,
-never hand-file around it; **6** = could-not-check, do not file, retry next cycle. Record the issue in
+never hand-file around it; **6** = could-not-check, do not file, retry next cycle — but a gate
+6 that repeats across more than one brief in one tick is a defect, not a blip: file it THAT tick as
+ONE issue naming every brief it blocked. The decision-gate step reports every helper failure as 6,
+the helper's own self-containment refusal included: where the step's message line or `DESK_TRACE`
+shows the helper itself refused (its status 5), that brief is a refusal — repair it, never count it
+toward the repeat filing. In either case, never hand-run the decision-issue helper around the
+refusal (a hand-run once landed a duplicate decision issue). Record the issue in
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
 step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
 

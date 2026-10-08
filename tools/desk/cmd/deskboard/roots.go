@@ -40,6 +40,12 @@ import (
 // plausible core count. It is deliberately NOT sweepConcurrency — see the file comment.
 const rootConcurrency = 4
 
+// rootPoolLimit is the width runPerRoot actually runs at. It is rootConcurrency in production
+// and nothing in this binary writes it; it is a variable only so a test can run `dispatch` and
+// `awaiting` at a width of 1 — the serial reference the pooled rows must equal, in order
+// (TestPerRootPoolMatchesSerial).
+var rootPoolLimit = rootConcurrency
+
 // rootSet is everything both root-reading verbs resolve before they read anything: the
 // resolved roots in configured order, the pinned statusgen binary, and the pin/version facts
 // their headers report. It is built once by resolveRootsOnce and never written after, so
@@ -102,5 +108,5 @@ func resolveRootsOnce() (rootSet, error) {
 // — so which failure surfaces does not depend on process scheduling, and a root that could
 // not be read can never leave the board reporting a queue that silently excludes it.
 func runPerRoot[T any](rs rootSet, work func(deskkit.RootConfig) (T, error)) ([]T, error) {
-	return sweepConcurrent(rs.roots, rootConcurrency, work)
+	return sweepConcurrent(rs.roots, rootPoolLimit, work)
 }

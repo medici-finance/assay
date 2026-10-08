@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework|TestBriefThatResolves'",
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework|TestBriefThatResolves|TestDeclaredTag|TestUndeclaredRepo|TestUntaggedBrief|TestTagNeverWidens'",
   "control": {
     "name": "CONTROL \u2014 drop the HARD FAIL on a deliverable repo that is not --root's origin; the worktree would be cut in the wrong repo. TestCrossRepoMismatchHardFailsBeforeAnything must go red",
     "file": "cmd/deskdispatch/deliverable.go",
@@ -78,6 +78,72 @@
       "file": "cmd/deskdispatch/deliverable.go",
       "old": "\tp := resolveBriefPath(o)\n\tif p == \"\" {",
       "new": "\tp := resolveBriefPath(o)\n\tif p == \"\" && false {"
+    },
+    {
+      "name": "a --repo the brief's files: list declares is still hard-failed (the declared-deliverable acceptance is dropped); TestDeclaredTagAdmitsRepo must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif tag == \"\" {\n\t\t\treturn d, mismatch(d, \"--repo\", r)",
+      "new": "\t\tif true {\n\t\t\treturn d, mismatch(d, \"--repo\", r)"
+    },
+    {
+      "name": "a files: tag overrides an explicit deliverable_repo/homed-in; TestTagNeverWidens/explicit_deliverable_wins must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif declDeliverable == \"\" && declHomedIn == \"\" {\n\t\t\ttag = declaredTagFor(",
+      "new": "\t\tif true {\n\t\t\ttag = declaredTagFor("
+    },
+    {
+      "name": "the files: list is not closed by a blank line, so a tagged entry AFTER the list declares a repo; TestTagNeverWidens/tag_after_the_list must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tif lt == \"\" {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tif strings.HasPrefix(lt, \"- \") {\n\t\t\t\ttake(",
+      "new": "\t\t\tif lt == \"\" {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif strings.HasPrefix(lt, \"- \") {\n\t\t\t\ttake("
+    },
+    {
+      "name": "F1: a files: line inside a fenced example is read as the brief's list (the fence skip is dropped); TestTagNeverWidens/tag_in_a_fenced_example must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif fence != \"\" {\n\t\t\tcontinue // inside a fenced example",
+      "new": "\t\tif false && fence != \"\" {\n\t\t\tcontinue // inside a fenced example"
+    },
+    {
+      "name": "F2: only an explicit deliverable_repo (not homed-in) stops a files: tag; TestTagNeverWidens/explicit_homed-in_wins must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif declDeliverable == \"\" && declHomedIn == \"\" {",
+      "new": "\t\tif declDeliverable == \"\" {"
+    },
+    {
+      "name": "a left-margin line no longer closes the files: list, so a tagged entry after it declares; TestTagNeverWidens/closed_by_a_left-margin_line must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tif !strings.HasPrefix(lines[j], \" \") && !strings.HasPrefix(lines[j], \"\\t\") {\n\t\t\t\tbreak",
+      "new": "\t\t\tif false && !strings.HasPrefix(lines[j], \" \") && !strings.HasPrefix(lines[j], \"\\t\") {\n\t\t\t\tbreak"
+    },
+    {
+      "name": "the tag is read anywhere in an entry, not only at its head (the ^ anchor is dropped); TestTagNeverWidens/tag_not_at_entry_head must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "regexp.MustCompile(\"^`?\\\\[(",
+      "new": "regexp.MustCompile(\"`?\\\\[("
+    },
+    {
+      "name": "every files: list is read, not only the first; TestTagNeverWidens/tag_in_a_second_files:_list must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\treturn tags\n\t}\n\treturn nil\n}",
+      "new": "\t\tcontinue\n\t}\n\treturn tags\n}"
+    },
+    {
+      "name": "F3: a fence closes on a run of the OTHER character (the closer's same-character check is dropped); TestTagNeverWidens/fence_not_closed_by_the_other_kind must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
+      "new": "\t\t\tcase len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":"
+    },
+    {
+      "name": "F3: a fence closes on a run followed by an info string (the closer's nothing-after check is dropped); TestTagNeverWidens/fence_not_closed_by_a_run_with_an_info_string must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
+      "new": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence):"
+    },
+    {
+      "name": "F3: a fence closes on a SHORTER run of its character (the closer's length check is dropped); TestDeclaredTagAfterFencedExample must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
+      "new": "\t\t\tcase f[0] == fence[0] && strings.TrimSpace(t[len(f):]) == \"\":"
     }
   ]
 }
