@@ -47,6 +47,7 @@ binding ([`cursor.md`](./cursor.md)) that carry the `degrades`/`refuses` cells.
 | `adopt` | runs |
 | `ask-decision` | runs |
 | `author-brief` | runs |
+| `author-spec` | runs — specification authoring and review; uses available source-reading and editing tools. |
 | `cut-release` | runs |
 | `dailies` | runs |
 | `human-runsheet` | runs |

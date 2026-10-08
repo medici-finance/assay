@@ -37,6 +37,7 @@ proven per the harness-portability/14 Verify table.
 adopt
 ask-decision
 author-brief
+author-spec
 cut-release
 human-runsheet
 install
