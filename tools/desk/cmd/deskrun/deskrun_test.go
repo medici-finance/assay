@@ -34,7 +34,8 @@ type fakeForge struct {
 	statuses  []deskkit.RunRef
 	retries   []deskkit.RunRef
 	logs      []deskkit.RunRef
-	fail      error // when set, the read ops (RunStatus, RunLog) answer it
+	fail      error                // when set, the read ops (RunStatus, RunLog) answer it
+	logParts  []deskkit.RunLogPart // when set, RunLog answers these parts instead of the default two
 }
 
 type approval struct {
@@ -69,6 +70,9 @@ func (f *fakeForge) RunLog(fr deskkit.ForgeRepo, run deskkit.RunRef) ([]deskkit.
 	f.logs = append(f.logs, run)
 	if f.fail != nil {
 		return nil, f.fail
+	}
+	if f.logParts != nil {
+		return f.logParts, nil
 	}
 	return []deskkit.RunLogPart{
 		{Name: "build", Text: "compiling\x1b[31m ok\x1b[0m\r\nlinking\n"},

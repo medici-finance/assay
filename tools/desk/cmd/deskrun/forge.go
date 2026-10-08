@@ -2,10 +2,12 @@ package main
 
 // forge.go — deskrun's custody and resolver seam.
 //
-// deskrun acts under ONE identity, the release-runner role, and only after
-// deskkit.ResolveRunCredential has said the repo is bound to it. It never acts under the
-// session's own desk role (a worker/reviewer/verifier App must not carry actions: write), and
-// there is no flag that selects a role. The backend comes from deskkit.ResolveForge — the one
+// deskrun's WRITES (dispatch, approve, retry) and its status read act under ONE identity, the
+// release-runner role, and only after deskkit.ResolveRunCredential has said the repo is bound to
+// it. They never act under the session's own desk role (a worker/reviewer/verifier App must not
+// carry actions: write). The one exception is the log read: it acts under the CALLING session's
+// own role (worker-desk or pr-review-desk, per the loop identity), never the release-runner's,
+// and refuses every other loop. No flag selects a role on any verb. The backend comes from deskkit.ResolveForge — the one
 // construction site — so the forge serving the repo is the roster's / origin host's answer,
 // never deskrun's choice.
 //

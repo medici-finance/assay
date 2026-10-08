@@ -90,6 +90,54 @@
       "file": "cmd/deskrun/verbs.go",
       "old": "var readVerbs = map[string]bool{\"status\": true, \"log\": true}",
       "new": "var readVerbs = map[string]bool{\"status\": true}"
+    },
+    {
+      "name": "review SEC-7/B9 — status disarms its read trail once the forge resolves (its forge reads write no audit line)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.stage = \"status\"\n",
+      "new": "\ttrail.stage, trail.mark = \"status\", -1\n"
+    },
+    {
+      "name": "review SEC-7/B9 — log disarms its read trail at the identity step (a successful log read writes no line)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.stage = \"identity\"\n",
+      "new": "\ttrail.stage, trail.mark = \"identity\", -1\n"
+    },
+    {
+      "name": "review SEC-6/B9 — a successful read records nothing (the trail writes only failures)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tif err == nil {\n\t\tauditLine(r.repo, r.verb, deskkit.ResultOK, r.ok)\n\t\treturn\n\t}",
+      "new": "\tif err == nil {\n\t\treturn\n\t}"
+    },
+    {
+      "name": "review SEC-7/B9 — the audit sequence never advances, so a read that already wrote its line writes a second",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "func auditLine(repo, verb, result, detail string) {\n\tauditSeq++\n",
+      "new": "func auditLine(repo, verb, result, detail string) {\n"
+    },
+    {
+      "name": "review SEC-7/B9 — a failed read is recorded as ok",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tauditLine(r.repo, r.verb, resultOf(err), r.stage+\": \"+err.Error())",
+      "new": "\tauditLine(r.repo, r.verb, deskkit.ResultOK, r.stage+\": \"+err.Error())"
+    },
+    {
+      "name": "review advisory — retry's loop-identity check is removed (any caller, or none, may re-run a run)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tif err := deskkit.RequireLoopIdentity(toolName); err != nil {\n\t\treturn err\n\t}\n\tcred, err := bindingFor(verb, fr)\n\tif err != nil {\n\t\tif cred.Human != \"\" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {\n\t\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\t\"refused: retry needs",
+      "new": "\tcred, err := bindingFor(verb, fr)\n\tif err != nil {\n\t\tif cred.Human != \"\" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {\n\t\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\t\"refused: retry needs"
+    },
+    {
+      "name": "review SEC-2 — a job name prints raw (control bytes and newlines reach the terminal)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tname := strings.Join(strings.Fields(deskkit.StripControl(p.Name)), \" \")",
+      "new": "\t\tname := p.Name"
+    },
+    {
+      "name": "review SEC-2 — a job name's newlines are kept (a name can print a forged section rule)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tname := strings.Join(strings.Fields(deskkit.StripControl(p.Name)), \" \")",
+      "new": "\t\tname := deskkit.StripControl(p.Name)"
     }
   ]
 }

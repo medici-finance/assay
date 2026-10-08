@@ -403,8 +403,12 @@ const VerdictIssueTool = "verifyloop-verdict"
 // the budget would count an ok or could-not-check read as a charged write, and the circuit
 // breaker would count a read's refusal as a writer spinning on bad input — five refused reads
 // on a repo (or twenty anywhere) would shut the release-runner's writes for the cooldown. No
-// write gate is ever called with this key, so a read's every outcome stays on the audit trail
-// without reaching either meter.
+// write gate is ever called with this key, so a read's lines stay on the audit trail without
+// reaching either meter. What lands here: once a read verb's <owner/repo> has parsed into the
+// desk-tools repo set, each invocation writes exactly one line — ok, refused or could-not-check
+// (deskrun's readTrail); its argument errors before that write none. Reads are therefore
+// UNMETERED in deskrun: no budget or breaker of their own, bounded per call by the run-log
+// bounds and by the forge's own rate limits.
 const DeskrunReadTool = "deskrun-read"
 
 // AllowVerdictIssueWrite gates one verdict-issue filing on `repo`. Each filing creates a
