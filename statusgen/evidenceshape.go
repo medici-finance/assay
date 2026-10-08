@@ -17,8 +17,9 @@ package main
 // one of:
 //
 //   - STATUS.md, the generated board (a status-only PR);
-//   - a verify-outcome record: docs/streams/verify-outcomes/** or
-//     docs/streams/verify-outcomes*.jsonl;
+//   - a verify-outcome record: anything under outcomeRecordsDir, or a legacy
+//     outcome log matching verifyOutcomesGlob (both named in verifyoutcomes.go,
+//     the module's one place that spells those paths);
 //   - a stream README (docs/streams/<stream>/README.md) whose every changed line
 //     is a briefs-table row rewritten in place: same row, same `#`, and only the
 //     Status, Verified and Reviewed cells differ;
@@ -86,7 +87,7 @@ func evidenceOnlyPathProblem(shape prShape, p string) string {
 }
 
 func isVerifyOutcomePath(p string) bool {
-	if strings.HasPrefix(p, "docs/streams/verify-outcomes/") {
+	if strings.HasPrefix(p, outcomeRecordsDir+"/") {
 		return true
 	}
 	m, err := pathpkg.Match("docs/streams/"+verifyOutcomesGlob, p)
