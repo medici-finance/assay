@@ -15,6 +15,8 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-17
+decision-issue: 1557
 issues: []
 schema: brief-v2
 authored: 2026-09-13 by forge-neutral authoring session
@@ -216,6 +218,7 @@ implementer: `TestDeskrunLogSucceedsWorkerAndReviewer` (planned), `TestDeskrunRe
 | 7 | check | `grep -cE -e 'RunLog' -e 'RetryRun' docs/streams/forge-gitlab/inventory.md` | prints `2` or more — both ops are recorded in the frozen op table with a ticked `gitlab impl` column |
 | 8 | check | a docs-index row confirming both verbs are listed in the desk-verbs index (exact file TBD by whatever brief 14 creates) | `grep -cE -e 'deskrun log' -e 'deskrun retry' <that index file>` prints `2` or more |
 | 9 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/17` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff, not merely counted as present |
+| 10 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskrun/... -count=1` — the test command this mutation row is judged by. **Mutation demonstration for the retry refusal and the custody gate.** In `cmdRetry`, ignore the resolver's refusal so a human-bound repo proceeds (then, separately, make `githubCustodyMint` accept any role, and widen the `log` role check) — run the command above on each mutated tree; restore each file and re-run it | exit **0** on the unmutated tree; exit non-zero on every mutated tree (the committed `cmd/deskrun/mutations.json` entries, run with `muhar -spec`, all report CAUGHT) — exit **0** again after restoring. Proves the human-bound refusal and the closed credential set are live controls, not checks nothing exercises |
 
 ## Pre-mortem → detection map
 

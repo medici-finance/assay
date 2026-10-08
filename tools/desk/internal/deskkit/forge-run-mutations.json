@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden|TestCapRunLog|TestForgeRunLogRetryShape'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden|TestCapRunLog|TestForgeNoPassthroughAfterRunLogRetry'",
   "control": {
     "name": "CONTROL — the GitHub dispatch body loses its ref",
     "file": "internal/deskkit/forge_github.go",

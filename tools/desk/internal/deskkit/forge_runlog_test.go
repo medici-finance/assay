@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-// TestForgeRunLogRetryShape pins the two operations forge-neutral brief 17 adds to the frozen
+// TestForgeNoPassthroughAfterRunLogRetry pins the two operations forge-neutral brief 17 adds to the frozen
 // Forge interface: each takes exactly (ForgeRepo, RunRef) — a repo and a run identity — and
 // no caller-supplied address, on the interface and on both backends. A log or retry verb that
 // took a path or URL would be an arbitrary-request method under a narrow name.
-func TestForgeRunLogRetryShape(t *testing.T) {
+func TestForgeNoPassthroughAfterRunLogRetry(t *testing.T) {
 	want := map[string]struct{ out []reflect.Type }{
 		"RunLog":   {out: []reflect.Type{reflect.TypeOf([]RunLogPart(nil)), reflect.TypeOf((*error)(nil)).Elem()}},
 		"RetryRun": {out: []reflect.Type{reflect.TypeOf((*error)(nil)).Elem()}},
