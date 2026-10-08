@@ -173,8 +173,12 @@ layering: <REQUIRED for a new component/service/tool or a substantial boundary c
 (domain extraction/dissolution, added adapter/entrypoint, logic crossing a process or
 trust boundary); omit otherwise. One or two lines: simplest justified structure +
 meaningful rules vs external effects (or why no extraction is warranted) + current
-reason + Task/Verify references. The defaults (domain-core / flat tool), the interface
-and purity rules, and what Task/Verify must check at the boundary: brief-v1 §4.1.>
+reason + Task/Verify references. Identify affected components and existing contracts;
+use a cell map if available, without requiring a taxonomy schema. Reuse the declared
+semantic owners or explicitly propose their migration. Record allowed directions,
+forbidden shortcuts and a discriminating boundary case in Task/Verify; route consumer
+compatibility through consumers. Classification grants no authority. The defaults
+(domain-core / flat tool), interface/purity rules and check limits: brief-v1 §4.1.>
 design-fit:                  # REQUIRED on every NEW brief; its two rules: brief-v1 §4.1
   owner: <the one module that owns the meaning this brief touches, or n/a>
   contract: <S-<slug> row id of the semantic-owner index, or none — <why>>
@@ -606,8 +610,9 @@ DISPATCH CHECKLIST — brief authored, before dispatch
 [ ] 6. Effort and exec-tier honest. Not an L wearing an M; not `any` on work that needs `strong`.
 [ ] 7. Shared value → a FLOW row, not only a site row, and `consumers:` enumerated (rule 6).
 [ ] 8. Every new brief → `design-fit:` answered; any weight delta > 0 → `why-add` names what
-       removal was considered. New component → `layering:` records structure, boundary, current
-       reason; Task/Verify check the claimed separation (or flat-tool behavior), not its label.
+       removal was considered. New component or substantial boundary change → `layering:`
+       names existing contracts/owners and justified structure; Task/Verify discriminate a
+       forbidden shortcut (or check flat-tool behavior), with consumer migration routed.
 [ ] 9. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
 ```
 
