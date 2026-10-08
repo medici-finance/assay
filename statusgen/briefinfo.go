@@ -392,6 +392,17 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 	if len(findings) == 0 {
 		return fmt.Errorf("verified outcome requires Verify rows with passing execution witnesses")
 	}
+	// A Verify row classed gate:human is decided by a person: its closure is
+	// valid only when the Verified cell names one. Read here from the written
+	// board row, after whatever wrote it — a flip path that skipped its own
+	// class check still stops at this one.
+	if !hasHumanReviewer(info.Row.Verified) {
+		for _, r := range briefVerifyRows(verify) {
+			if r.Class == classGateHuman {
+				return fmt.Errorf("verified outcome: Verify row %s is classed gate:human but the Verified cell %q names no human:<name>", r.ID, info.Row.Verified)
+			}
+		}
+	}
 	var failures []string
 	for _, finding := range findings {
 		if finding.State != statePass {
