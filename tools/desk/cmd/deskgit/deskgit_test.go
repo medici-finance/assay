@@ -562,7 +562,7 @@ func TestFetch_RefusesBranchCheckedOutInLinkedWorktree(t *testing.T) {
 	upstream := mustGit(t, work, "remote", "get-url", "origin")
 	scratch := filepath.Join(t.TempDir(), "scratch")
 	mustGit(t, "", "clone", "-q", "-b", "held-elsewhere", upstream, scratch)
-	mustGit(t, scratch, "-c", "user.email=t@e.st", "-c", "user.name=T", "-c", "commit.gpgsign=false",
+	mustGit(t, scratch, "-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false",
 		"commit", "-q", "--allow-empty", "-m", "ahead")
 	mustGit(t, scratch, "push", "-q", "origin", "held-elsewhere")
 
