@@ -160,9 +160,9 @@ func failFirstBaseRev(root, rev string) (string, error) {
 }
 
 // runFailFirstBase checks base out into a temporary detached worktree, runs
-// the risky rows there, and removes the worktree. Rows not in risky are
-// recorded not-selected and never run.
-func runFailFirstBase(plan shellPlan, root, base string, rows []verifyRow, risky map[string]bool, timeout time.Duration) (map[string]failFirst, error) {
+// the risky rows there under the same sandbox mode as the head run, and removes
+// the worktree. Rows not in risky are recorded not-selected and never run.
+func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyRow, risky map[string]bool, timeout time.Duration) (map[string]failFirst, error) {
 	short := base
 	if len(short) > treeSHALen {
 		short = short[:treeSHALen]
@@ -191,7 +191,7 @@ func runFailFirstBase(plan shellPlan, root, base string, rows []verifyRow, risky
 	if _, err := gitOut(root, "worktree", "add", "--detach", "--quiet", wt, base); err != nil {
 		return nil, fmt.Errorf("checking out the base %s: %w", short, err)
 	}
-	for _, w := range runWitnessesSandboxed(plan, sandboxUnshare, wt, sel, "", "", "", "", timeout, false) {
+	for _, w := range runWitnessesSandboxed(plan, sandbox, wt, sel, "", "", "", "", timeout, false) {
 		f := failFirst{Base: short, Exit: w.Exit}
 		switch w.State {
 		case statePass:

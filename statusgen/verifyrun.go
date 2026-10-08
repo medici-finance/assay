@@ -1902,7 +1902,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintln(stdout, "--fail-first: no risk-bearing row in this table; every row is recorded not-selected at base")
 		}
 		var ferr error
-		ff, ferr = runFailFirstBase(plan, root, base, rows, riskyIDs, *timeout)
+		ff, ferr = runFailFirstBase(plan, *sandbox, root, base, rows, riskyIDs, *timeout)
 		if ferr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", ferr)
 			return verifyrunExitCouldNot

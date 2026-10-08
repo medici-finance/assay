@@ -181,7 +181,7 @@ func TestFailFirstRunsAtBase(t *testing.T) {
 		{ID: "3", Command: "test -f flag.txt", Expect: "exit 0"},
 	}
 	risky := map[string]bool{"1": true, "2": true}
-	got, err := runFailFirstBase(resolveShellPlan(), root, base, rows, risky, time.Minute)
+	got, err := runFailFirstBase(resolveShellPlan(), sandboxUnshare, root, base, rows, risky, time.Minute)
 	if err != nil {
 		t.Fatalf("runFailFirstBase: %v", err)
 	}
