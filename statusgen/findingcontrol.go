@@ -26,6 +26,15 @@ import (
 // the entire legacy register stays silent until an author opts a finding into the
 // recurring class.
 
+// ESCALATION (iso-9001/03). The advisory posture above governs the OPEN-finding
+// surface (findingControlNotices). For the class this file already covers, the
+// RESOLVED side is promoted from "a control landed" to "a control was shown to
+// fire": findingControlUnfiredMessages raises a PROBLEM (NOTICE for a finding dated
+// before effectivenessBoundary) when a recurring-class, resolved finding with a
+// landed control carries no effectiveness record. It is a PRESENCE floor — it never
+// judges the ADEQUACY of the named command — and one-off / unclassified findings
+// stay exactly as before.
+
 const recurringClass = "recurring"
 
 // briefRefNumRe matches the second segment of a "<stream>/<NN>" control reference
@@ -131,4 +140,42 @@ func findingControlNotices(findings []Finding, streams []*Stream, now time.Time)
 		}
 	}
 	return out
+}
+
+// recurringLandedControl reports the exact class findingcontrol was written for,
+// seen from its closed side: a `class: recurring` finding that is resolved and
+// names a control that has LANDED. A one-off or unclassified finding (an absent
+// `class:` reads as one-off) is never in this class — widening it would be a second
+// decision hiding inside the effectiveness change (iso-9001/03).
+func recurringLandedControl(f Finding, streams []*Stream) bool {
+	if !f.Resolved || !strings.EqualFold(strings.TrimSpace(f.Class), recurringClass) {
+		return false
+	}
+	control := strings.TrimSpace(f.Control)
+	return control != "" && controlLanded(control, streams)
+}
+
+// findingControlUnfiredMessages extends findingcontrol from "a control LANDED" to
+// "a control was shown to FIRE" (iso-9001/03), for the class it already covers and
+// no other: a `class: recurring` finding that is `resolved: yes` with a landed
+// `control:` but no effectiveness record is exactly the gap this check exists to
+// surface. It is a PROBLEM when the finding is dated on or after
+// effectivenessBoundary and a NOTICE before it (transition-scoped, so the inherited
+// register is not made fatal).
+//
+// The check is a presence floor: it confirms a record EXISTS (and, with
+// effectivenessTripleProblems, is complete and attributed). It does not judge the
+// ADEQUACY of the named command — see effectivenessBoundaryNote. A partial record
+// is left to effectivenessTripleProblems so a defect is reported once.
+func findingControlUnfiredMessages(findings []Finding, streams []*Stream) (problems, notices []string) {
+	for _, f := range findings {
+		if !recurringLandedControl(f, streams) || !effectivenessAbsent(f) {
+			continue
+		}
+		msg := fmt.Sprintf(
+			"[%s] findings register: %s: recurring-class finding is resolved: yes with landed control %q, but records no effectiveness (missing effectiveness, effectiveness-date, effectiveness-by): a control that landed is not a control shown to fire. Name the command, verbatim, that re-establishes the failure mode is gone, the date it was run, and who ran it. %s",
+			effTagUnfired, effectivenessFindingID(f), strings.TrimSpace(f.Control), effectivenessBoundaryNote)
+		effectivenessRoute(f, msg, &problems, &notices)
+	}
+	return problems, notices
 }
