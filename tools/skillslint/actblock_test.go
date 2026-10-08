@@ -161,15 +161,14 @@ func TestActBlockLintHashInWordNotComment(t *testing.T) {
 		lines []string
 	}{
 		{"inside a word", []string{"  echo a#b"}},
-		{"in double quotes", []string{`  echo "a ;#b"`}},
-		{"in single quotes", []string{`  echo 'a ;#b'`}},
+		{"in double quotes", []string{`  echo "a#b;c"`}},
+		{"in single quotes", []string{`  echo 'a#b;c'`}},
 		{"escaped", []string{`  echo x\#y`}},
 		{"escaped after an operator", []string{`  echo x;\#y`}},
 		{"length and count expansions", []string{`  echo "${#T}" $# ${#T}`}},
-		{"after a command substitution", []string{"  echo $(echo a)#b"}},
-		{"after a backtick span", []string{"  echo `echo c`#d"}},
-		{"in a double quote across lines", []string{`  echo "a`, `  b ;#c"`}},
-		{"in a single quote across lines", []string{`  echo 'a`, `  b ;#c'`}},
+		{"after a closing brace", []string{`  echo "${T}#b"`}},
+		{"in a double quote across lines", []string{`  echo "a`, `  b#c;"`}},
+		{"in a single quote across lines", []string{`  echo 'a`, `  b#c;'`}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLines(4, c.lines...))
@@ -294,29 +293,32 @@ func TestActBlockLintUnclosedAtBlockEnd(t *testing.T) {
 }
 
 // TestActBlockLintQuoteStateNotComment — a # inside data or a word is not a
-// comment: a heredoc body (after an operator; see the strict rows for a # after
-// a blank), a here-string, a $'…' or $"…" quote, a parameter expansion,
-// arithmetic, a case pattern at the top level and a backslash-newline inside
-// quotes.
+// comment: a heredoc body, a here-string, a $'…' or $"…" quote, a parameter
+// expansion, arithmetic, $$, a case pattern at the top level and a
+// backslash-newline inside quotes. Each # here follows a word character: the
+// floor flags a # straight after a blank or an operator character even in such
+// places (TestActFloorAnyWordEnd).
 func TestActBlockLintQuoteStateNotComment(t *testing.T) {
 	for _, c := range []struct {
 		name  string
 		lines []string
 	}{
-		{"heredoc body, quoted delimiter", []string{"  cat <<'EOF'", "x;#y it's (data) `here` $(not run)", "EOF"}},
-		{"heredoc body, unquoted delimiter", []string{"  cat <<EOF", `x;#y it's "q`, "EOF"}},
-		{"heredoc body, tab-stripped", []string{"  cat <<-EOF", "\tx;#y it's", "\tEOF"}},
-		{"heredoc body read with the delimiter on the same line as more code", []string{"  cat <<'EOF' | cat", "x;#y it's", "EOF"}},
-		{"heredoc in a command substitution", []string{"  x=$(cat <<'EOF'", "x;#y it's", "EOF", "  )", `  echo "$x"`}},
-		{"here-string", []string{"  cat <<<'a;#b'", "  echo it"}},
-		{"ANSI-C quote", []string{`  echo $'a;#b' $'c\\'`}},
-		{"locale quote", []string{`  echo $"a;#b"`}},
-		{"parameter expansions", []string{`  echo ${T#x} ${T%%#*} ${#T} $# "${T:-a;#b}" ${T:-"a;#b"}`}},
-		{"arithmetic", []string{"  echo $((16#ff + $#))"}},
-		{"subshell inside a command substitution, then # mid-word", []string{"  echo $( (echo a) )#x"}},
+		{"heredoc body, quoted delimiter", []string{"  cat <<'EOF'", "x#y; it's (data) `here` $(not run)", "EOF"}},
+		{"heredoc body, unquoted delimiter", []string{"  cat <<EOF", `x#y; it's "q`, "EOF"}},
+		{"heredoc body, tab-stripped", []string{"  cat <<-EOF", "\tx#y; it's", "\tEOF"}},
+		{"heredoc body read with the delimiter on the same line as more code", []string{"  cat <<'EOF' | cat", "x#y; it's", "EOF"}},
+		{"heredoc in a command substitution", []string{"  x=$(cat <<'EOF'", "x#y; it's", "EOF", "  )", `  echo "$x"`}},
+		{"here-string", []string{"  cat <<<'a#b;c'", "  echo it"}},
+		{"ANSI-C quote", []string{`  echo $'a#b;c' $'c\\'`}},
+		{"locale quote", []string{`  echo $"a#b;c"`}},
+		{"parameter expansions", []string{`  echo ${T#x} ${T%%#*} ${#T} $# "${T:-a#b;}" ${T:-"a#b;"}`}},
+		{"arithmetic", []string{"  echo $((16#ff + $#))", "  (( X = 16#ff ))"}},
+		{"arithmetic with a nested group", []string{"  echo $(( (1+2) * 3 ))"}},
+		{"process id", []string{`  echo "$$" $$ "$${" $${`}},
+		{"subshell inside a command substitution", []string{"  echo $( (echo a) )x"}},
 		{"case at the top level", []string{`  case "${1-}" in a) echo a;; *) echo b;; esac`}},
-		{"backslash-newline in double quotes", []string{`  echo "a\`, `  b;#c"`}},
-		{"backslash-newline in single quotes", []string{`  echo 'a\`, `  b;#c'`}},
+		{"backslash-newline in double quotes", []string{`  echo "a\`, `  b#c;"`}},
+		{"backslash-newline in single quotes", []string{`  echo 'a\`, `  b#c;'`}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
@@ -331,8 +333,8 @@ func TestActBlockLintQuoteStateNotComment(t *testing.T) {
 // construct, or shells disagree on it, it fails rather than pass: a # after a
 // blank is flagged even in quotes or a heredoc body (the per-line check kept
 // next to the scanner); a code # in an unquoted heredoc's $( ) is flagged; a
-// \' in a $'…' quote, a single quote in ${…} and a case in $( ) are refused;
-// and a << in arithmetic reads as a heredoc, which then has no closing line.
+// \' in a $'…' quote, a single quote in ${…}, a case in $( ) and a << in
+// arithmetic are refused.
 func TestActBlockLintStrictWhereNotModelled(t *testing.T) {
 	for _, c := range []struct {
 		name  string
@@ -347,7 +349,82 @@ func TestActBlockLintStrictWhereNotModelled(t *testing.T) {
 		{"single quote in a parameter expansion", []string{`  echo "${T:-'a'}"`}, []actWant{{0, actUnmodMsg}}},
 		{"case in a command substitution", []string{`  x=$(case "${1-}" in a) echo a;; esac)`}, []actWant{{0, actUnmodMsg}}},
 		{"heredoc with no delimiter word", []string{"  cat <<;echo a"}, []actWant{{0, actUnmodMsg}}},
-		{"shift in arithmetic", []string{"  echo $((1<<2))"}, []actWant{{0, actOpenMsg}}},
+		{"shift in arithmetic", []string{"  echo $((1<<2))"}, []actWant{{0, actUnmodMsg}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
+			wantIssues(t, issues, cleanActLine(actRowAt), c.want...)
+		})
+	}
+}
+
+// TestActFloorAnyWordEnd — the per-line floor flags a # straight after a
+// blank or after any character that ends a bash or zsh operator, whatever the
+// quote, span or heredoc state around it, so no reading of the block can hide
+// one. Quoted and heredoc rows fail too: spell those another way.
+func TestActFloorAnyWordEnd(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		lines []string
+		at    int
+	}{
+		{"semicolon in double quotes", []string{`  echo "a ;#b"`}, 0},
+		{"semicolon in single quotes", []string{`  echo 'a ;#b'`}, 0},
+		{"semicolon in a double quote across lines", []string{`  echo "a`, `  b ;#c"`}, 1},
+		{"semicolon in a single quote across lines", []string{`  echo 'a`, `  b ;#c'`}, 1},
+		{"semicolon in a heredoc body", []string{"  cat <<'EOF'", "x;#y", "EOF"}, 1},
+		{"semicolon in a here-string", []string{"  cat <<<'a;#b'"}, 0},
+		{"semicolon in an ANSI-C quote", []string{`  echo $'a;#b'`}, 0},
+		{"semicolon in a parameter expansion", []string{`  echo "${T:-a;#b}"`}, 0},
+		{"after a command substitution", []string{"  echo $(echo a)#b"}, 0},
+		{"after a backtick span", []string{"  echo `echo c`#d"}, 0},
+		{"after a nested subshell", []string{"  echo $( (echo a) )#x"}, 0},
+		{"after an output descriptor close", []string{"  echo dry >&-#;echo live"}, 0},
+		{"after an input descriptor close", []string{"  cat <&-#;echo live"}, 0},
+		{"after the zsh clobber redirect", []string{"  echo a >!#;echo live"}, 0},
+		{"after the zsh disown operator", []string{"  sleep 1 &!#;echo live"}, 0},
+		{"after a carriage return", []string{"  echo a\r#;echo live"}, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
+			wantOneAt(t, issues, cleanActLine(actRowAt+c.at), actTrailMsg)
+		})
+	}
+}
+
+// TestActScanReadsLikeShell — rows where the scanner once read the block
+// differently from bash or zsh, so a # straight after an operator passed while
+// interactive zsh ran the text after it. Each now fails: the floor flags the #
+// line, and the scanner fails strict on the construct it does not model — a
+// heredoc whose body would start inside a span opened after its operator, or
+// whose span closes before its body; a << in arithmetic; a $ in a heredoc
+// delimiter; a ${ followed by a blank or |; and $[ ]. $$ is one parameter, so
+// "$${" opens no span.
+func TestActScanReadsLikeShell(t *testing.T) {
+	const tail = "  echo dry;#;echo live"
+	trail := func(at int) actWant { return actWant{at, actTrailMsg} }
+	unmod := actWant{0, actUnmodMsg}
+	for _, c := range []struct {
+		name  string
+		lines []string
+		want  []actWant
+	}{
+		{"heredoc whose span closes on its line", []string{"  x=$(cat <<EOF)", tail, "EOF"}, []actWant{unmod, trail(1)}},
+		{"heredoc whose span closes on its line, backtick", []string{"  x=`cat <<EOF`", tail, "EOF"}, []actWant{unmod, trail(1)}},
+		{"heredoc span closed, another opened", []string{"  x=$(cat <<EOF) y=$(", tail, "  )", "EOF"}, []actWant{unmod, trail(1)}},
+		{"span left open after a heredoc", []string{"  cat <<EOF $(", tail, "  )", "x", "EOF"}, []actWant{unmod, trail(1)}},
+		{"span with code left open after a heredoc", []string{"  cat <<true $(echo a", tail, "true", "  )", "body", "true"}, []actWant{unmod, trail(1)}},
+		{"backtick left open after a heredoc", []string{"  cat <<true `echo a", tail, "true", "  `", "body", "true"}, []actWant{unmod, trail(1)}},
+		{"shift in arithmetic with a closing line", []string{"  x=$((1<<2))", tail, "2"}, []actWant{unmod, trail(1)}},
+		{"shift in an arithmetic command", []string{"  (( X = 1 << 2 ))", tail, "2"}, []actWant{unmod, trail(1)}},
+		{"shift by a name in arithmetic", []string{"  echo $(( 1 << n ))", tail, "n"}, []actWant{unmod, trail(1)}},
+		{"shift in quoted arithmetic", []string{`  echo "$((1<<2))"`, tail, "2"}, []actWant{unmod, trail(1)}},
+		{"old-style arithmetic", []string{"  echo $[1<<2]", tail, "2"}, []actWant{unmod, trail(1)}},
+		{"process id before a brace", []string{`  echo "$${"`, tail, `  echo "}"`}, []actWant{trail(1)}},
+		{"backtick in a delimiter", []string{"  cat <<EOF`x`", tail, "EOF`x`"}, []actWant{unmod, trail(1)}},
+		{"ANSI-C quoted delimiter", []string{"  cat <<$'EOF'", "x", "EOF", tail, "$EOF"}, []actWant{unmod, trail(3)}},
+		{"bash 5.3 command substitution", []string{`  x="${ echo dry;#;echo live`, `  }"`}, []actWant{unmod, trail(0)}},
+		{"bash 5.3 REPLY substitution", []string{`  x="${| REPLY=a;}"`}, []actWant{unmod}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))

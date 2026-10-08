@@ -319,26 +319,34 @@ or `shell` fence that defines a function named `driver_act…`) to four rules:
    `. , : - / _ + = #`, indented or not, and no code line carries a trailing
    `#` comment, so a comment runs nothing even where zsh reads it as a command.
    Two checks find a trailing comment, and a line either one flags fails.
-   The per-line floor flags any `#` after a blank or tab on a code line, even
-   inside quotes or a heredoc body (`echo "a #b"` fails; write it another
-   way). A scanner reads the block whole, the way a shell splits words, and
-   flags a `#` that starts a word in code after code on its line: after a
-   blank, `;`, `&`, `|`, `<`, `>`, `(`, `)`, a backtick or `$(`. So
-   `echo dry;#;echo live` is flagged (a first zsh paste runs `echo live`),
-   while `a#b`, `${#T}`, `${T#x}`, `$#`, `$((16#ff))`, `\#`, and a `#` with no
-   blank before it inside quotes or a heredoc body are not. The scanner models
-   single quotes, double quotes, `$'...'` (with backslash escapes), `$"..."`,
-   `$( )` with nested `( )` and `$(( ))`, `${ }`, backtick spans, backslash
-   escapes and line continuations, here-strings (`<<<`), and heredocs
-   (`<<WORD` and `<<-WORD`, `WORD` bare or quoted, several on one line, inside
-   `$( )` too): a quoted-delimiter body is data, and an unquoted body is read
-   like a double-quoted string, so `$( )` and backticks in it are code. Text
-   in a comment opens no quote. Where it cannot settle a reading it fails the
-   block rather than pass. That covers a block, or an unquoted heredoc body,
-   that ends inside a quote, a span, a heredoc with no closing line, or a line
-   continuation. It also covers `\'` inside `$'...'` (dash ends the quote
-   there), a `'` inside `${ }`, the word `case` inside `$( )`, a `<<` with no
-   delimiter word, and `$((1<<2))` (read as a heredoc). It does not follow
+   The guarantee is the per-line floor: it flags any `#` straight after a
+   blank, a tab, a carriage return or one of `;`, `&`, `|`, `(`, `)`, `<`,
+   `>`, a backtick, `!` or `-` on a code line. Those characters end every bash
+   and zsh operator (the `-` of `>&-`, the `!` of zsh's `>!` and `&!`
+   included), and the floor reads no quote, span or heredoc state, so no
+   misreading can hide such a `#`. It flags one inside quotes or a heredoc body
+   too (`echo "a;#b"` fails; write it another way). So `echo dry;#;echo live`
+   and `echo dry >&-#;echo live` are flagged (a first zsh paste runs
+   `echo live`), while `a#b`, `${#T}`, `${T#x}`, `$#`, `$((16#ff))` and `\#`
+   are not. A scanner, a best-effort reader rather than a shell parser, reads
+   the block whole: it adds a `#` that starts a word on a continuation line,
+   and it fails the block on the constructs where its reading could part from
+   a shell's. It models single quotes, double quotes, `$'...'` (with backslash
+   escapes), `$"..."`, `$( )` with nested `( )`, arithmetic (`$(( ))`, `(( ))`,
+   `$[ ]`), `${ }`, `$$`, backtick spans, backslash escapes and line
+   continuations, here-strings (`<<<`), and heredocs (`<<WORD` and `<<-WORD`,
+   `WORD` bare or quoted, several on one line): a quoted-delimiter body is
+   data, and an unquoted body is read like a double-quoted string, so `$( )`
+   and backticks in it are code. Text in a comment opens no quote. It fails
+   the block on: a block, or an unquoted heredoc body, that ends inside a
+   quote, a span, a heredoc with no closing line, or a line continuation;
+   `\'` inside `$'...'` (dash ends the quote there); a `'` inside `${ }`; the
+   word `case` inside `$( )`; a `<<` with no delimiter word, or with a `$` or
+   a backtick in it (`<<$'EOF'`); a heredoc whose `$( )` or backtick span
+   closes on its line (`x=$(cat <<EOF)`), or whose line ends inside a span
+   opened after it (`cat <<EOF $(`); a `<<` in arithmetic (`$((1<<2))`,
+   `(( x << 2 ))`); a `(( ))` or `$(( ))` closed by a single `)`; and a `${`
+   followed by a blank or `|` (bash 5.3's `${ cmd; }`). It does not follow
    `eval`, `sh -c` or aliases;
 2. the block's first non-blank line is the zsh comment guard;
 3. the act function has a per-act name, `driver_act_<id>`, never the bare
