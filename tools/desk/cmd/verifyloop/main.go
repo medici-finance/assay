@@ -103,11 +103,15 @@ func cmdPlan(args []string) error {
 	root := fs.String("root", ".", "repo root to scan for the Awaiting queue")
 	sha := fs.String("sha", "", "merged-main target SHA verifiers run against")
 	runner := fs.String("runner", "", "this session's runner identity (author!=runner guard)")
+	noForge := fs.Bool("no-forge", false, "read no blocker issue: every held receipt's blocker is could-not-check")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
 
 	v := &VerifyLoop{Root: *root, TargetSHA: *sha, RunnerID: *runner}
+	if !*noForge {
+		v.Issues = issueSourceFn()
+	}
 
 	// MULTI-ROOT: DESK_ROOTS set and no explicit --root. The plan spans every configured
 	// stream root — the same deskkit.ConfiguredRoots map deskboard reads — with a PER-ROOT
@@ -191,6 +195,9 @@ func cmdPlan(args []string) error {
 		}
 		dispatchable++
 		fmt.Printf("\n=== DISPATCH %s (tier=%s)%s ===\n%s\n", it.ID, tier, rootTag(it), prompt)
+		if why := payloadValue(it, "wake_reason"); why != "" {
+			fmt.Printf("wake: %s\n", why)
+		}
 	}
 
 	for _, block := range forEvidence {
@@ -261,6 +268,9 @@ func printBuckets(dispatchable int, bucketed map[disposition][]bucketMember) {
 		fmt.Printf("\n-- %s (%d): %s\n", bucketHeading(disp), len(members), disp.whyItWaits())
 		for _, m := range members {
 			switch {
+			case disp == dispWaitReceipt:
+				// verify-reset/03: one WAIT line per held brief, naming its blocker ref.
+				fmt.Printf("   WAIT %s — %s\n", m.ID, m.Reason)
 			case disp == dispAwaitingHuman && m.Reason != "":
 				// A risk-flagged item: its risk reason plus the Evidence-only marker, so the
 				// permission (may gather Evidence) and the limit (never flips) sit on one line.
@@ -272,12 +282,16 @@ func printBuckets(dispatchable int, bucketed map[disposition][]bucketMember) {
 			}
 		}
 	}
+	// verify-reset/03: the hold-table summary — held on an open blocker, dispatchable, and held
+	// because an input or the blocker could not be read.
+	fmt.Printf("\nverify-desk plan: wait=%d dispatchable=%d could-not-check=%d\n",
+		len(bucketed[dispWaitReceipt]), dispatchable, len(bucketed[dispCouldNotCheck]))
 }
 
 const usage = `verifyloop — verify-desk reference consumer of the drain engine.
 
 USAGE:
-  verifyloop plan    [--root <repo>] [--sha <targetSHA>] [--runner <id>]
+  verifyloop plan    [--root <repo>] [--sha <targetSHA>] [--runner <id>] [--no-forge]
   verifyloop verdict --root <repo> [--dry-run] [--window 5m] [--runner <id>] [--pem <path>]
                      [--unsigned-out <file>]
   verifyloop --dry-run [--root <repo>]        # shorthand for 'verdict --dry-run'
@@ -302,6 +316,14 @@ never flips it; the human's merge of the checkpoint PR is the flip. When such a 
 is still EMPTY (and nothing else withholds an offline run) it is emitted as a second dispatchable
 class, DISPATCH-FOR-EVIDENCE, after the DISPATCH set: Evidence rows + the outcome sidecar row
 only, flip never. A human-gated brief whose Evidence is already gathered stays awaiting-human.
+
+'plan' HOLDS a verify-fail/blocked brief until its blocker moves (docs/verify-wake.md): a
+complete receipt whose declared inputs are unchanged and whose blocker issue reads open is a
+WAIT line naming the ref and the next actor, never a DISPATCH. Changed inputs, a closed blocker
+or a newer explicit-recheck receipt wake it; an unreadable input or blocker read is
+could-not-check, never "unchanged" or "closed". The blocker is read through the forge as the
+verifier App; --no-forge reads none, so every held receipt is could-not-check. The last line is
+'verify-desk plan: wait=<n> dispatchable=<n> could-not-check=<n>'.
 
 'verdict' is the DETERMINISTIC runner: it runs each brief's check/check:ci Verify rows locally
 (exit code = verdict), batches results over the flush window into ONE signed verdict-v1

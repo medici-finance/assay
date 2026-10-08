@@ -83,7 +83,7 @@ type briefFrontmatter struct {
 // This is the deterministic board read; there is NO code path that produces a verify verdict
 // without going through the engine's Dispatch — the inline-verify path is unrepresentable.
 func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
-	return scanAwaitingIn(deskkit.RootConfig{Path: root}, targetSHA, nil, time.Time{})
+	return scanAwaitingIn(deskkit.RootConfig{Path: root}, targetSHA, nil, nil, time.Time{})
 }
 
 // scanAwaitingRoots is the MULTI-ROOT board read: one scanAwaitingIn per configured root, in
@@ -92,10 +92,10 @@ func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 // a class the per-root order (root order, then stream, then brief-num) is preserved — the sort
 // is stable. A root whose streams cannot be read is an error naming the root, never a silent
 // omission: the whole point of the multi-root plan is that a repo's queue cannot vanish.
-func scanAwaitingRoots(roots []deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, now time.Time) ([]loopengine.Item, error) {
+func scanAwaitingRoots(roots []deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time) ([]loopengine.Item, error) {
 	var all []loopengine.Item
 	for _, r := range roots {
-		items, err := scanAwaitingIn(r, targetSHA, reader, now)
+		items, err := scanAwaitingIn(r, targetSHA, reader, issues, now)
 		if err != nil {
 			return nil, fmt.Errorf("root %s (%s): %w", r.Repo, r.Path, err)
 		}
@@ -118,7 +118,9 @@ func itemWorkClass(it loopengine.Item) int {
 // before (bare `<stream>/<NN>` IDs, no provenance). With r.Repo set — the multi-root plan — every
 // item's ID is `<owner>/<repo>:<stream>/<NN>` and its payload carries `repo` and `root`, so the
 // root is named on every printed item and two roots carrying a same-named stream cannot alias.
-func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, now time.Time) ([]loopengine.Item, error) {
+// issues reads a held receipt's blocker issue; nil reads every blocker as could-not-check (plan
+// --no-forge), so a hold is never released — or confirmed — without a forge read.
+func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeInputs, issues deskkit.IssueStateSource, now time.Time) ([]loopengine.Item, error) {
 	root := r.Path
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)
@@ -207,7 +209,11 @@ func scanAwaitingIn(r deskkit.RootConfig, targetSHA string, reader deskkit.WakeI
 		// carried onto the payload as strings, so classifyItem reads it exactly like the other
 		// queue-truthfulness markers. A verified receipt is the stuck-flip lane's, not this one.
 		if rec, ok := receipts[br.Stream+"/"+br.Num]; ok && rec.IsFailedOrBlocked() {
-			deriveWakePayload(payload, rec, br.verifyRows, reader, now)
+			defaultRepo := rec.Repo
+			if defaultRepo == "" {
+				defaultRepo = r.Repo
+			}
+			deriveWakePayload(payload, rec, br.verifyRows, reader, issues, defaultRepo, now)
 		}
 		if r.Repo != "" {
 			id = r.Repo + ":" + id
@@ -391,18 +397,91 @@ func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFr
 	return rel, fm, evidenceEmpty, "", verifyRows
 }
 
-// deriveWakePayload evaluates one failed/blocked receipt and writes the wake markers classifyItem
-// reads. The states map to dispositions there:
-//   - hold, and the receipt holds EVERY runnable Verify row (or names no rows) → a whole-brief
-//     WAIT: wake_state=hold. Re-running reproduces the same non-verdict.
-//   - hold, but some Verify rows are NOT held → those rows are still runnable: wake_state=fire,
-//     wake_held_rows names the held rows to record as explicitly unrun (mirrors deferred_rows), so
-//     one newly-runnable row executes without repeating the held rows.
-//   - fire → the wake condition was met: wake_state=fire, dispatch the whole brief.
-//   - could-not-check → wake_state=could-not-check (an unreadable declared input; never a hold).
-//   - unclassified → no wake_state written: a legacy/incomplete receipt falls through to one
-//     ordinary classification pass, never a fabricated hold.
-func deriveWakePayload(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []int, reader deskkit.WakeInputs, now time.Time) {
+// deriveWakePayload evaluates one failed/blocked receipt against the hold table
+// (docs/verify-wake.md; first match wins) and writes the wake markers classifyItem reads:
+//
+//   - an explicit-recheck receipt (the latest record, so newer than any hold) → fire,
+//     "recheck: <reason>"; the blocker is not read.
+//   - a receipt that is absent from the table's shape — legacy, incomplete, or a
+//     relevant-input-changed receipt without a blocker_ref → no wake_state, wake_reason
+//     "classification pass, writes a receipt": one ordinary pass, never a fabricated hold.
+//   - complete, inputs changed → fire, "inputs changed: <path>".
+//   - complete, inputs could-not-check → wake_state=could-not-check (held, surfaced).
+//   - complete, inputs unchanged, blocker closed → fire, "blocker closed: <ref>".
+//   - complete, inputs unchanged, blocker open → hold (a WAIT row naming the ref and the next
+//     actor). If the receipt holds only some Verify rows, the rest are still runnable: fire with
+//     wake_held_rows naming the held rows to record as explicitly unrun (mirrors deferred_rows).
+//   - complete, inputs unchanged, blocker could-not-check → wake_state=could-not-check.
+//
+// Receipts on the two older predicates (referenced-action-done, deadline-reached) keep the
+// verify-wake-v1 evaluator they were written for.
+func deriveWakePayload(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []int, reader deskkit.WakeInputs,
+	issues deskkit.IssueStateSource, defaultRepo string, now time.Time) {
+	fire := func(reason string) {
+		payload["wake_state"] = "fire"
+		payload["wake_reason"] = reason
+	}
+	cnc := func(reason string) {
+		payload["wake_state"] = "could-not-check"
+		payload["wake_reason"] = reason
+	}
+	switch {
+	case rec.Complete() && rec.WakePredicate == deskkit.WakeExplicitRecheck:
+		fire("recheck: " + strings.TrimSpace(rec.RecheckReason))
+		return
+	case rec.Complete() && (rec.WakePredicate == deskkit.WakeReferencedActionDone || rec.WakePredicate == deskkit.WakeDeadlineReached):
+		deriveLegacyWake(payload, rec, verifyRows, reader, now)
+		return
+	case !rec.Complete() || strings.TrimSpace(rec.BlockerRef) == "":
+		payload["wake_reason"] = "classification pass, writes a receipt"
+		return
+	}
+	ref := strings.TrimSpace(rec.BlockerRef)
+	inState, inWhy := deskkit.Unchanged(rec, reader)
+	switch inState {
+	case deskkit.InputsChanged:
+		fire("inputs changed: " + strings.TrimPrefix(inWhy, "changed "))
+		return
+	case deskkit.InputsCouldNotCheck:
+		cnc("inputs " + inWhy + " — held, never rounded to unchanged; next: " + rec.NextActor())
+		return
+	}
+	blState, blWhy := deskkit.ReadBlocker(ref, defaultRepo, issues)
+	switch blState {
+	case deskkit.BlockerClosed:
+		fire("blocker closed: " + ref)
+		return
+	case deskkit.BlockerCouldNotCheck:
+		cnc("blocker " + ref + " could-not-check: " + blWhy + " — held, never read as closed; next: " + rec.NextActor())
+		return
+	}
+	reason := "blocker " + ref + " open (" + rec.BlockerKind + "); next: " + rec.NextActor() +
+		"; wakes when " + ref + " closes or a declared input changes"
+	holdOrPartial(payload, rec, verifyRows, reason)
+}
+
+// holdOrPartial writes a hold, or — when the receipt holds only some of the brief's Verify rows —
+// a fire for the runnable remainder with the held rows named.
+func holdOrPartial(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []int, reason string) {
+	held := heldRowSet(rec.Rows)
+	remaining := runnableRemainder(verifyRows, held)
+	if len(rec.Rows) > 0 && len(remaining) > 0 {
+		payload["wake_state"] = "fire"
+		payload["wake_held_rows"] = joinInts(rec.Rows)
+		payload["wake_reason"] = reason + " — holding rows " + joinInts(rec.Rows) +
+			"; dispatching runnable row(s) " + joinInts(remaining)
+		return
+	}
+	payload["wake_state"] = "hold"
+	payload["wake_reason"] = reason
+	if len(rec.Rows) > 0 {
+		payload["wake_held_rows"] = joinInts(rec.Rows)
+	}
+}
+
+// deriveLegacyWake is the verify-wake-v1 evaluator for referenced-action-done and
+// deadline-reached receipts, unchanged.
+func deriveLegacyWake(payload map[string]string, rec deskkit.WakeReceipt, verifyRows []int, reader deskkit.WakeInputs, now time.Time) {
 	dec := rec.EvaluateWake(reader, now)
 	switch dec.State {
 	case deskkit.WakeCouldNotCheck:
@@ -414,21 +493,7 @@ func deriveWakePayload(payload map[string]string, rec deskkit.WakeReceipt, verif
 		payload["wake_state"] = "fire"
 		payload["wake_reason"] = dec.Reason
 	case deskkit.WakeHold:
-		held := heldRowSet(rec.Rows)
-		remaining := runnableRemainder(verifyRows, held)
-		if len(rec.Rows) > 0 && len(remaining) > 0 {
-			// Partial: the receipt holds only some rows; the rest are runnable now.
-			payload["wake_state"] = "fire"
-			payload["wake_held_rows"] = joinInts(rec.Rows)
-			payload["wake_reason"] = dec.Reason + " — holding rows " + joinInts(rec.Rows) +
-				"; dispatching runnable row(s) " + joinInts(remaining)
-		} else {
-			payload["wake_state"] = "hold"
-			payload["wake_reason"] = dec.Reason
-			if len(rec.Rows) > 0 {
-				payload["wake_held_rows"] = joinInts(rec.Rows)
-			}
-		}
+		holdOrPartial(payload, rec, verifyRows, dec.Reason)
 	}
 }
 

@@ -68,6 +68,10 @@ type VerifyLoop struct {
 	// tool version, and NEVER observes an external action (that stays could-not-check offline).
 	// Injected in tests so every wake path is exercised without touching the filesystem.
 	WakeReader deskkit.WakeInputs
+	// Issues reads the open/closed state of a held receipt's blocker issue (verify-reset/03).
+	// nil — `plan --no-forge`, and every caller that never wired a forge — reads every blocker as
+	// could-not-check, so a hold is surfaced, never released and never confirmed, without a read.
+	Issues deskkit.IssueStateSource
 
 	// --- Native ACP dispatch --------------------------------
 	// Native selects the dispatch MODE. false (the zero value, the default) keeps
@@ -109,9 +113,9 @@ func (v *VerifyLoop) Name() string { return "verify-desk" }
 func (v *VerifyLoop) SelectQueue() ([]loopengine.Item, error) {
 	now := v.wakeNow()
 	if len(v.Roots) > 0 {
-		return scanAwaitingRoots(v.Roots, v.TargetSHA, v.WakeReader, now)
+		return scanAwaitingRoots(v.Roots, v.TargetSHA, v.WakeReader, v.Issues, now)
 	}
-	return scanAwaitingIn(deskkit.RootConfig{Path: v.Root}, v.TargetSHA, v.WakeReader, now)
+	return scanAwaitingIn(deskkit.RootConfig{Path: v.Root}, v.TargetSHA, v.WakeReader, v.Issues, now)
 }
 
 // wakeNow is the clock the wake evaluator uses — v.Now when injected (deterministic in tests),
