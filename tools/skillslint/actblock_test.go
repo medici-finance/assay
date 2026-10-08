@@ -8,7 +8,7 @@ import (
 
 // actblock_test.go — the act-block lint (actblock.go): every example Act block
 // under plugins/ opens with the zsh comment guard and keeps its comment lines
-// free of shell metacharacters.
+// free of shell metacharacters and in the block's header.
 
 const actFence = "```"
 
@@ -24,7 +24,7 @@ var cleanActLines = []string{
 	"# 0. the act as one function. Pasting this only prints. Type driver_act_1 live to act.",
 	"driver_act_1() (",
 	`  DRY_RUN=1; [ "${1-}" = live ] && DRY_RUN=0`,
-	"  # 1. push the parked branch. git push has its own --dry-run.",
+	"  echo '1. push the parked branch. git push has its own --dry-run.'",
 	`  if [ "$DRY_RUN" = 1 ]; then git push --dry-run origin b; else git push origin b; fi`,
 	`  if [ "$DRY_RUN" = 0 ]; then T=; read -rs T || exit 1; [ -n "$T" ] || exit 1; fi`,
 	`  echo "would read ${#T} chars"`,
@@ -78,9 +78,9 @@ func TestActBlockLintClean(t *testing.T) {
 
 // TestActBlockLintFlagsComment — each character that runs in a
 // comment-as-command is flagged, at the line it sits on, whether the comment
-// sits at the top level or indented inside the act function, as real step
-// comments are. Each single-character row carries one forbidden character
-// only, so allowing that one character turns its row green.
+// sits in the header or indented inside the act function, where its placement
+// is flagged as well. Each single-character row carries one forbidden
+// character only, so allowing that one character turns its row green.
 func TestActBlockLintFlagsComment(t *testing.T) {
 	for _, c := range []struct{ name, comment string }{
 		{"semicolon then backtick span", "# 0. pasting only prints; " + "`driver_act live`" + " acts"},
@@ -102,7 +102,7 @@ func TestActBlockLintFlagsComment(t *testing.T) {
 		})
 		t.Run(c.name+", indented in the act function", func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLine(4, "  "+c.comment))
-			wantOneAt(t, issues, cleanActLine(4), "comment carries")
+			wantIssues(t, issues, cleanActLine(4), actWant{0, "comment carries"}, actWant{0, actPlaceMsg})
 		})
 	}
 }
@@ -128,26 +128,31 @@ func TestActBlockLintFlagsCommentAfterOperator(t *testing.T) {
 	for _, c := range []struct {
 		name  string
 		lines []string
-		at    int // index into lines of the line the # sits on
+		at    int  // index into lines of the line the # sits on
+		place bool // the # line is a full-line comment after code: its placement is flagged too
 	}{
-		{"semicolon", []string{"  echo dry;#;echo live"}, 0},
-		{"pipe", []string{"  echo dry|#x", "  cat"}, 0},
-		{"background", []string{"  echo dry&#x", "  wait"}, 0},
-		{"and list", []string{"  echo dry&&#x", "  echo n"}, 0},
-		{"or list", []string{"  true||#x", "  echo n"}, 0},
-		{"open paren", []string{"  (#x", "  echo sub)"}, 0},
-		{"close paren", []string{"  (echo sub)#x"}, 0},
-		{"redirect out", []string{"  echo a>#f"}, 0},
-		{"redirect in", []string{"  cat <#f"}, 0},
-		{"backtick", []string{"  echo `#x", "  echo bq`"}, 0},
-		{"command substitution", []string{"  echo $(#x", "  echo cs)"}, 0},
-		{"command substitution in quotes", []string{`  echo "$(#x`, `  echo cs)"`}, 0},
-		{"after a line continuation", []string{`  echo a \`, "  #c"}, 1},
-		{"after a quote closed on an earlier line", []string{`  echo "a`, `  b";#c`}, 1},
+		{"semicolon", []string{"  echo dry;#;echo live"}, 0, false},
+		{"pipe", []string{"  echo dry|#x", "  cat"}, 0, false},
+		{"background", []string{"  echo dry&#x", "  wait"}, 0, false},
+		{"and list", []string{"  echo dry&&#x", "  echo n"}, 0, false},
+		{"or list", []string{"  true||#x", "  echo n"}, 0, false},
+		{"open paren", []string{"  (#x", "  echo sub)"}, 0, false},
+		{"close paren", []string{"  (echo sub)#x"}, 0, false},
+		{"redirect out", []string{"  echo a>#f"}, 0, false},
+		{"redirect in", []string{"  cat <#f"}, 0, false},
+		{"backtick", []string{"  echo `#x", "  echo bq`"}, 0, false},
+		{"command substitution", []string{"  echo $(#x", "  echo cs)"}, 0, false},
+		{"command substitution in quotes", []string{`  echo "$(#x`, `  echo cs)"`}, 0, false},
+		{"after a line continuation", []string{`  echo a \`, "  #c"}, 1, true},
+		{"after a quote closed on an earlier line", []string{`  echo "a`, `  b";#c`}, 1, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLines(4, c.lines...))
-			wantOneAt(t, issues, cleanActLine(4+c.at), "trailing # comment")
+			want := []actWant{{c.at, actTrailMsg}}
+			if c.place {
+				want = append(want, actWant{c.at, actPlaceMsg})
+			}
+			wantIssues(t, issues, cleanActLine(4), want...)
 		})
 	}
 }
@@ -217,6 +222,7 @@ const (
 	actTrailMsg = "trailing # comment"
 	actUnmodMsg = "the lint does not model"
 	actOpenMsg  = "ends inside"
+	actPlaceMsg = "comment line stands after code"
 )
 
 // TestActBlockLintQuoteStateBeforeTrailingComment — text that only looks like
@@ -244,8 +250,8 @@ func TestActBlockLintQuoteStateBeforeTrailingComment(t *testing.T) {
 		{"heredoc in a command substitution", []string{"  x=$(cat <<'EOF'", "it's data", "EOF", "  )"}, nil},
 		{"ANSI-C quote with an escaped quote", []string{`  echo $'it\'s'`}, []actWant{{0, actUnmodMsg}}},
 		{"ANSI-C quote with an escaped backslash", []string{`  echo $'a\\' 'b'`}, nil},
-		{"full-line comment with an apostrophe", []string{"  # don't"}, []actWant{{0, "comment carries"}}},
-		{"full-line comment with a double quote", []string{`  # say "hi`}, []actWant{{0, "comment carries"}}},
+		{"full-line comment with an apostrophe", []string{"  # don't"}, []actWant{{0, "comment carries"}, {0, actPlaceMsg}}},
+		{"full-line comment with a double quote", []string{`  # say "hi`}, []actWant{{0, "comment carries"}, {0, actPlaceMsg}}},
 		{"trailing comment with an apostrophe", []string{"  echo a # don't"}, []actWant{{0, actTrailMsg}}},
 		{"trailing comment with a double quote", []string{`  echo a # say "hi`}, []actWant{{0, actTrailMsg}}},
 		{"trailing comment after an operator, with an apostrophe", []string{"  echo a;# don't"}, []actWant{{0, actTrailMsg}}},
@@ -384,6 +390,14 @@ func TestActFloorAnyWordEnd(t *testing.T) {
 		{"after the zsh clobber redirect", []string{"  echo a >!#;echo live"}, 0},
 		{"after the zsh disown operator", []string{"  sleep 1 &!#;echo live"}, 0},
 		{"after a carriage return", []string{"  echo a\r#;echo live"}, 0},
+		// Inside double quotes the scanner reads no word start, so only the
+		// floor sees these: each pins one of its characters.
+		{"pipe in double quotes", []string{`  echo "a|#b"`}, 0},
+		{"ampersand in double quotes", []string{`  echo "a&#b"`}, 0},
+		{"less-than in double quotes", []string{`  echo "a<#b"`}, 0},
+		{"greater-than in double quotes", []string{`  echo "a>#b"`}, 0},
+		{"open paren in double quotes", []string{`  echo "a(#b"`}, 0},
+		{"carriage return in double quotes", []string{"  echo \"a\r#b\""}, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
@@ -425,6 +439,8 @@ func TestActScanReadsLikeShell(t *testing.T) {
 		{"ANSI-C quoted delimiter", []string{"  cat <<$'EOF'", "x", "EOF", tail, "$EOF"}, []actWant{unmod, trail(3)}},
 		{"bash 5.3 command substitution", []string{`  x="${ echo dry;#;echo live`, `  }"`}, []actWant{unmod, trail(0)}},
 		{"bash 5.3 REPLY substitution", []string{`  x="${| REPLY=a;}"`}, []actWant{unmod}},
+		{"arithmetic command closed by a single )", []string{"  ((echo a) | cat)"}, []actWant{unmod}},
+		{"arithmetic expansion closed by a single )", []string{"  x=$((echo a) | cat)"}, []actWant{unmod}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
@@ -435,22 +451,25 @@ func TestActScanReadsLikeShell(t *testing.T) {
 
 // TestActBlockLintFlagsMissingGuard — a block whose first non-blank line is
 // not the zsh guard is flagged, whether the guard is missing or comes after a
-// comment line or a code line.
+// comment line or a code line. After a code line the header comment that
+// follows the guard stands after code, so its placement is flagged too.
 func TestActBlockLintFlagsMissingGuard(t *testing.T) {
 	moved := func(after string) []string {
 		return append([]string{after, actBlockGuardLine}, cleanActLines[1:]...)
 	}
+	guard := actWant{0, "zsh comment guard"}
 	for _, c := range []struct {
 		name  string
 		lines []string
+		want  []actWant
 	}{
-		{"guard missing", cleanActLines[1:]},
-		{"guard after a comment line", moved("# 0. plain text first")},
-		{"guard after a code line", moved("true")},
+		{"guard missing", cleanActLines[1:], []actWant{guard}},
+		{"guard after a comment line", moved("# 0. plain text first"), []actWant{guard}},
+		{"guard after a code line", moved("true"), []actWant{guard, {2, actPlaceMsg}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", c.lines)
-			wantOneAt(t, issues, cleanActLine(0), "zsh comment guard")
+			wantIssues(t, issues, cleanActLine(0), c.want...)
 		})
 	}
 }
@@ -551,7 +570,7 @@ func TestActBlockLintFlagsUnsafeReadAcrossLines(t *testing.T) {
 		{"clear after a pipe on an earlier line", 4, []string{"  echo x |", "  T=; read -rs T || exit 1"}, 1},
 		{"failure group piped on a later line", 4, []string{"  T=; read -rs T || {", "  exit 1; } | cat"}, 0},
 		{"read in another function", 4, []string{"  ask() { T=; read -rs T || exit 1; }"}, 0},
-		{"read outside the act function", 1, []string{"T=; read -rs T || exit 1"}, 0},
+		{"read outside the act function", 2, []string{"T=; read -rs T || exit 1"}, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLines(c.at, c.lines...))
@@ -625,7 +644,7 @@ func TestActBlockLintFenceCloser(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ActBlockIssues: %v", err)
 			}
-			wantIssues(t, issues, cleanActLine(len(cleanActLines)), append([]actWant{{1, "comment carries"}}, c.extra...)...)
+			wantIssues(t, issues, cleanActLine(len(cleanActLines)), append([]actWant{{1, "comment carries"}, {1, actPlaceMsg}}, c.extra...)...)
 		})
 	}
 }
@@ -657,4 +676,56 @@ func TestActBlockLintRealTree(t *testing.T) {
 	if blocks < 1 {
 		t.Fatalf("found %d act blocks, want at least the ask-decision example", blocks)
 	}
+}
+
+// TestActCommentPlacement — on a first zsh paste a # line is a command that
+// fails. After && or ||, in an if, elif, while or until condition, last in a
+// group, function or case arm, inside an array, or after a line continuation,
+// that failure or its words change what runs. So a # line stands only in the
+// header, straight after the guard: every other one is refused, between two
+// complete commands as well, and a #-led line inside a heredoc body too.
+func TestActCommentPlacement(t *testing.T) {
+	place := func(at int) actWant { return actWant{at, actPlaceMsg} }
+	trail := func(at int) actWant { return actWant{at, actTrailMsg} }
+	for _, c := range []struct {
+		name  string
+		lines []string
+		want  []actWant
+	}{
+		{"after an or list", []string{`  [ "$DRY_RUN" = 1 ] ||`, "    # live only", "    echo LIVE"}, []actWant{place(1)}},
+		{"after an and list", []string{"  false &&", "  # note", "  echo LIVE"}, []actWant{place(1)}},
+		{"last in an if condition", []string{`  if [ "$DRY_RUN" = 1 ]`, "  # dry path prints", "  then echo dry", "  else echo LIVE", "  fi"}, []actWant{place(1)}},
+		{"last in a negated if condition", []string{"  if ! false", "  # note", "  then echo dry; else echo LIVE; fi"}, []actWant{place(1)}},
+		{"last in an elif condition", []string{"  if false; then echo a", "  elif true", "  # note", "  then echo dry; else echo LIVE; fi"}, []actWant{place(2)}},
+		{"last in an until condition", []string{"  until true", "  # note", "  do echo LIVE; break; done"}, []actWant{place(1)}},
+		{"last in a while condition", []string{"  while false", "  # note", "  do echo LIVE; done"}, []actWant{place(1)}},
+		{"last in a tested subshell", []string{"  (", "  true", "  # note", "  ) || echo LIVE"}, []actWant{place(2)}},
+		{"last in a case arm", []string{"  case x in x) echo a", "  # note", "  ;; esac"}, []actWant{place(1)}},
+		{"inside an array", []string{"  x=(a", "  # LIVE", "  b)"}, []actWant{place(1)}},
+		{"after a line continuation, unindented", []string{`  NOTE=1\`, "# echo LIVE"}, []actWant{place(1)}},
+		{"after a line continuation, indented", []string{`  NOTE=1\`, "  # echo LIVE"}, []actWant{trail(1), place(1)}},
+		{"after a closed descriptor and a continuation", []string{`  echo dry 2>&-\`, "# LIVE"}, []actWant{place(1)}},
+		{"between two complete commands", []string{"  echo a", "  # note", "  echo b"}, []actWant{place(1)}},
+		{"last in the act function", []string{"  # last note"}, []actWant{place(0)}},
+		{"in a heredoc body", []string{"  cat <<'EOF'", "# data", "EOF"}, []actWant{place(1)}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
+			wantIssues(t, issues, cleanActLine(actRowAt), c.want...)
+		})
+	}
+	t.Run("after the call", func(t *testing.T) {
+		_, issues := lintOne(t, "sh", withLines(len(cleanActLines), "# done"))
+		wantIssues(t, issues, cleanActLine(len(cleanActLines)), place(0))
+	})
+	t.Run("before the act function, after code", func(t *testing.T) {
+		_, issues := lintOne(t, "sh", withLines(1, "X=1", "# note"))
+		wantIssues(t, issues, cleanActLine(1), place(1), place(2))
+	})
+	t.Run("header run with a blank line and a fill marker", func(t *testing.T) {
+		_, issues := lintOne(t, "sh", withLines(2, "", "# fill: the publish token, typed at a hidden prompt on the live call"))
+		if len(issues) != 0 {
+			t.Fatalf("issues=%+v, want none for comments in the header", issues)
+		}
+	})
 }

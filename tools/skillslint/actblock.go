@@ -10,19 +10,32 @@
 // function live on the next block's first paste. The same holds for the text
 // after a `#` on a code line.
 //
-// The rule that closes that on a block's FIRST paste is the plain-text comment
-// rule: every comment line uses only plain characters (actCommentAllowed), and
-// no comment trails code, so a comment runs nothing even where zsh reads it as
-// a command. The zsh comment guard (actBlockGuardLine) does NOT close it alone:
-// a terminal hands zsh a paste as one bracketed paste, which zsh reads whole
-// before running its first line, so the guard covers only later pastes and
-// lines typed after it. This lint holds, on every act block under plugins/:
+// On a FIRST paste a comment line is therefore a command named # that fails
+// (status 127). Its words run nothing when it holds only plain characters
+// (actCommentAllowed), but its failure still counts wherever a status is used:
+// after && or ||, in an if, elif, while or until condition, last in a group or
+// function whose status is tested. And a line continuation before it joins its
+// text onto the previous command in every shell. So the rule that closes the
+// first paste is a placement rule as well as a character rule: comment lines
+// stand only in the block's header, the run of # lines straight after the
+// guard, where only the guard (a complete command whose status nothing reads)
+// comes before them; a step inside the act function opens with an echo of its
+// text, which every shell reads the same way. The zsh comment guard
+// (actBlockGuardLine) does NOT close it alone: a terminal hands zsh a paste as
+// one bracketed paste, which zsh reads whole before running its first line, so
+// the guard covers only later pastes and lines typed after it. This lint holds,
+// on every act block under plugins/:
 //
 //  1. the block's first non-blank line is the zsh comment guard;
 //  2. the act function has a per-act name (driver_act_<id>), never the bare
 //     driver_act, so a block that fails to parse leaves no earlier act's
 //     function under the name the driver is told to type;
-//  3. every full-line comment holds only allowed characters, and no code line
+//  3. a full-line comment stands only in the header (actCommentInHeader):
+//     every non-blank line before it is the guard or another # line. A #
+//     line anywhere else is refused, wherever it sits and whatever it holds,
+//     even inside a multi-line quote or heredoc body, so no position check has
+//     to be right;
+//  4. every full-line comment holds only allowed characters, and no code line
 //     carries a trailing comment. Two checks, unioned. The guarantee is the
 //     per-line floor (actTrailingCommentRe): it flags any # straight after a
 //     blank or after a character that ends a bash or zsh operator, on a code
@@ -34,7 +47,7 @@
 //     end; a heredoc whose body would start inside, or after the close of, a
 //     span opened or closed on its line; a << in arithmetic; a $ or backtick
 //     in a heredoc delimiter; a ${ followed by a blank or |; and a few more);
-//  4. every read in the block is the whole shape NAME=; read -rs NAME || exit N
+//  5. every read in the block is the whole shape NAME=; read -rs NAME || exit N
 //     or NAME=; read -rs NAME || { …; exit N; } on one line (N from 1 to 255;
 //     -r and -s both given, no other option; the clear in command position),
 //     run by the act function's own shell: not in a subshell, command
@@ -586,6 +599,27 @@ func actCommentAllowed(r rune) bool {
 // actCommentRuleText names the allowed set in every comment-rule issue.
 const actCommentRuleText = "a comment line holds only letters, digits, spaces, tabs and . , : - / _ + = #"
 
+// actCommentInHeader reports whether the full-line comment at texts[i] stands
+// in the block's header: every non-blank line before it is the zsh comment
+// guard or another full-line comment. There, on a first zsh paste, the line
+// is a failing command that only a complete command whose status nothing
+// reads comes before, and no line continuation reaches it. Anywhere else its
+// failure, or its words, can change what runs, so it is refused outright
+// rather than judged by position.
+func actCommentInHeader(texts []string, i int) bool {
+	for _, l := range texts[:i] {
+		t := strings.TrimSpace(l)
+		if t != "" && t != actBlockGuardLine && !strings.HasPrefix(t, "#") {
+			return false
+		}
+	}
+	return true
+}
+
+// actCommentPlaceText is the placement half of the comment rule, in every
+// placement issue.
+const actCommentPlaceText = "a # line stands only in the header, the run of # lines straight after the guard line; open a step inside the act function with an echo of its text instead"
+
 // ActBlockIssues walks every *.md under plugins/ and returns the number of act
 // blocks it found plus one issue per broken rule. err is set when the tree
 // cannot be read or holds no act block at all (could-not-check).
@@ -673,7 +707,7 @@ func actBlockLines(rel, raw string) (int, []Issue) {
 			}
 		}
 		if first < 0 || strings.TrimSpace(body[first].text) != actBlockGuardLine {
-			add(body[max(first, 0)].n, "an act block must open with the zsh comment guard %q, ahead of any # line (it covers later pastes; the plain-text comment rule covers the first)", actBlockGuardLine)
+			add(body[max(first, 0)].n, "an act block must open with the zsh comment guard %q, ahead of any # line (it covers later pastes; the comment rule, plain text and header only, covers the first)", actBlockGuardLine)
 		}
 		if !actPerActNameRe.MatchString(name) {
 			add(nameAt, "the act function is %q; name it per act, %s_<id> with the issue number as id, so a block that fails to parse leaves no earlier act's function under the name the driver types", name, actBlockMarker)
@@ -699,9 +733,12 @@ func actBlockLines(rel, raw string) (int, []Issue) {
 				add(l.n, "%s", p)
 			}
 			if strings.HasPrefix(t, "#") {
+				if !actCommentInHeader(texts, i) {
+					add(l.n, "act block comment line stands after code — %s. On a first zsh paste a # line is a command that fails: after && or ||, in a condition or last in a tested group it changes which branch runs, and after a line continuation its text runs in every shell", actCommentPlaceText)
+				}
 				for _, r := range t {
 					if !actCommentAllowed(r) {
-						add(l.n, "act block comment carries %q — %s, so it runs nothing in a shell that reads it as a command", r, actCommentRuleText)
+						add(l.n, "act block comment carries %q — %s, so its words run nothing in a shell that reads it as a command", r, actCommentRuleText)
 						break
 					}
 				}

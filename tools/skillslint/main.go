@@ -10,7 +10,8 @@
 //	house values     EVERY *.md under plugins/, at any depth (housevalue.go)
 //	guardrails       derive-or-diff of every shared-guardrail copy (guardrail.go)
 //	act blocks       every example Act block under plugins/ opens with the zsh
-//	                 comment guard and keeps plain-text comments (actblock.go)
+//	                 comment guard and keeps plain-text comments in its header
+//	                 only (actblock.go)
 //
 // The house-value half is deliberately wider than the other two: the references
 // and READMEs under plugins/ are as adopter-facing as a skill body, and a
@@ -223,8 +224,9 @@ func main() {
 	}
 
 	// act-block: HARD. Every example Act block under plugins/ keeps its comments
-	// plain text on their own lines (the rule that makes a first paste into an
-	// interactive zsh safe), opens with the zsh comment guard (later pastes),
+	// plain text on their own lines and in its header only (the rule that makes
+	// a first paste into an interactive zsh safe), opens with the zsh comment
+	// guard (later pastes),
 	// names its act function per act, and reads secrets in the clear-first,
 	// stop-on-failure shape (actblock.go). No act block at all is
 	// could-not-check, never a quiet pass.
@@ -245,7 +247,7 @@ func main() {
 			exit = 1
 		}
 	default:
-		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments, the zsh guard, a per-act name and the one-line safe secret read (cleared, -rs, exit 1-255, run by the act function's own shell)\n", abBlocks)
+		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments in the header only, the zsh guard, a per-act name and the one-line safe secret read (cleared, -rs, exit 1-255, run by the act function's own shell)\n", abBlocks)
 	}
 
 	// posix-token: advisory (never exit-affecting, per the lint-debt cadence a hard

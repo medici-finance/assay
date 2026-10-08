@@ -305,19 +305,26 @@ desk to hand the driver: pasting it must only print what it would do. zsh, the
 default macOS login shell, does not treat `#` as a comment at an interactive
 prompt unless `interactive_comments` is set, and it is unset by default. There a
 comment line is part of a command: a `;` ends it, and a backtick span or `$(...)`
-after it runs. The same goes for text after a `#` on a code line.
+after it runs. The same goes for text after a `#` on a code line. Even a
+plain-text comment line is a command named `#` that fails, and that failure is
+not inert where a status is read: after `&&` or `||`, in an `if`, `elif`,
+`while` or `until` condition, or last in a tested group or function, it can
+change which branch runs. After a line that ends in a backslash its text joins
+the command before it, in every shell.
 
-The control on a block's first paste is the plain-text comment rule. A terminal
+The control on a block's first paste is the comment rule: plain text, and in
+the header only. A terminal
 hands zsh a paste as one bracketed paste, and zsh reads all of it before running
 its first line, so the zsh comment guard
 `[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments` covers only later
 pastes and lines typed after it, never the paste that carries it. The
 `ACT-BLOCK` check holds every act block under `plugins/` (an `sh`, `bash`, `zsh`
-or `shell` fence that defines a function named `driver_act…`) to four rules:
+or `shell` fence that defines a function named `driver_act…`) to five rules:
 
 1. every full-line comment holds only letters, digits, spaces, tabs and
    `. , : - / _ + = #`, indented or not, and no code line carries a trailing
-   `#` comment, so a comment runs nothing even where zsh reads it as a command.
+   `#` comment, so a comment's words run nothing even where zsh reads it as a
+   command (rule 2 keeps its failing status from mattering).
    Two checks find a trailing comment, and a line either one flags fails.
    The guarantee is the per-line floor: it flags any `#` straight after a
    blank, a tab, a carriage return or one of `;`, `&`, `|`, `(`, `)`, `<`,
@@ -348,11 +355,18 @@ or `shell` fence that defines a function named `driver_act…`) to four rules:
    `(( x << 2 ))`); a `(( ))` or `$(( ))` closed by a single `)`; and a `${`
    followed by a blank or `|` (bash 5.3's `${ cmd; }`). It does not follow
    `eval`, `sh -c` or aliases;
-2. the block's first non-blank line is the zsh comment guard;
-3. the act function has a per-act name, `driver_act_<id>`, never the bare
+2. a full-line comment stands only in the header: every non-blank line before
+   it is the guard line or another `#` line. Anywhere else, inside the act
+   function, after the call, or after any code line, it is refused, and so is
+   a `#`-led line inside a multi-line quote or heredoc body, which errs strict.
+   In the header only the guard comes before it, so no status reads the
+   comment's failure and no continuation reaches it. A step inside the act
+   function opens with `echo '<n>. <text>'` instead;
+3. the block's first non-blank line is the zsh comment guard;
+4. the act function has a per-act name, `driver_act_<id>`, never the bare
    `driver_act`, so a block that fails to parse leaves no earlier act's
    function under the name the driver is told to type;
-4. every `read` is the whole safe shape on one line,
+5. every `read` is the whole safe shape on one line,
    `NAME=; read -rs NAME || exit N` or `NAME=; read -rs NAME || { ...; exit N; }`:
    the clear comes first in command position (never after `&&`, `||` or a
    pipe), the read carries `-r` and `-s` and no other option, and the failure
@@ -377,7 +391,7 @@ backticks, `( )`, `{ }`, pipes, `&` and the compound commands), so a subshell or
 pipe that opens or closes on another line is seen. It does not see a read run
 through `eval`, `sh -c` or a command name built from an expansion, and it takes
 a full line that starts with `#` as a comment even inside a multi-line quoted
-string.
+string; rule 2 then refuses that line unless it sits in the header.
 
 ## Fixtures
 

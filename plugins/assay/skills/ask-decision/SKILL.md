@@ -163,24 +163,33 @@ restate it.
 - **A fenced `sh` block that runs top to bottom.** Copied whole and pasted into a shell, it
   performs the act. No step lives outside the fence, and no step depends on the reader
   running only part of it.
-- **One comment per step, in plain text, on its own line.** Each step opens with one `#` line
-  saying what it does, so the driver can read the block before running it. A comment line
-  holds only letters, digits, spaces, tabs and `. , : - / _ + = #`: no `;`, `&`, `|`,
-  backtick, `$`, parenthesis, `<`, `>`, quote or apostrophe, backslash, `*`, `?`, `[` or `]`.
-  Write "do not", never "don't". No comment follows code on the same line: a step's text goes
-  on its own `#` line. This is the rule that makes the block's first paste safe. zsh, the
-  default login shell on macOS, reads `#` as a comment at an interactive prompt only when
-  `interactive_comments` is set, and it is unset by default, so there every comment line, and
-  any text after a `#` on a code line, is part of a command. A plain-text comment then runs
-  nothing: on a first paste into zsh each comment line prints `command not found: #` and does
-  nothing else. A metacharacter in it would run, on the paste meant to be dry.
+- **Comments in plain text, in the header only; each step opens with an `echo`.** The block's
+  `#` lines stand together straight after the guard line, before any code: what the act does,
+  how to run it live, and the `# fill:` markers. A comment line holds only letters, digits,
+  spaces, tabs and `. , : - / _ + = #`: no `;`, `&`, `|`, backtick, `$`, parenthesis, `<`,
+  `>`, quote or apostrophe, backslash, `*`, `?`, `[` or `]`. Write "do not", never "don't". No
+  comment follows code on the same line. Inside the act function there is no `#` line at all:
+  each step opens with `echo '<n>. <what it does>'`, its text in single quotes, in the same
+  plain characters and with no `#`, so the driver can read the block before running it and
+  the run names each step as it reaches it. These two rules together are what make the block's
+  first paste safe. zsh, the default login shell on macOS, reads `#` as a comment at an
+  interactive prompt only when `interactive_comments` is set, and it is unset by default, so
+  there every comment line is a command named `#` that fails, and any text after a `#` on a
+  code line is passed to the command. Plain text keeps a comment line's words from running
+  anything, but its failure still counts wherever a status is used: after `&&` or `||`, in an
+  `if`, `elif`, `while` or `until` condition, or last in a group or function whose status is
+  tested, it can change which branch runs, and after a line that ends in a backslash its text
+  joins the command before it, in every shell. In the header only the guard comes before it,
+  so nothing reads that status and no continuation reaches it: each comment line there prints
+  `command not found: #` and changes nothing. A step's `echo` line reads the same in every
+  shell.
 - **The zsh comment guard comes first.** The block's first line is
   `[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments`, ahead of any `#` line. It covers
   only what zsh reads after the guard has run. A terminal delivers a paste to zsh as one
   bracketed paste, and zsh reads all of it before running its first line, so the guard does
   not cover the comment lines in the paste that carries it, and a function that paste defines
   keeps its comment lines as commands. It takes effect for the next paste and for lines typed
-  after. So the guard is never the control on a first paste; the plain-text rule above is. The
+  after. So the guard is never the control on a first paste; the comment rule above is. The
   line does nothing in other shells; in zsh it leaves the option set, which is harmless.
 - **Dry run by default; live only on this act's own opt-in.** The block defines the act as one
   function whose body runs in a subshell, `driver_act_<id>() ( … )`, and its last line calls
@@ -198,7 +207,9 @@ restate it.
 - **A browser-click step** is exactly one URL line plus the field values to set, in a fenced
   `url` block — one per page. Never "go to the settings and find…".
 - **`# fill:` markers** for a value only the human can supply (a one-time code, a choice made
-  at the console, a secret typed at the prompt). Every other value is already resolved. A
+  at the console, a secret typed at the prompt). In an `sh` block the marker is a header
+  comment line; in a `url` block it stands in place of the field's value. Every other value
+  is already resolved. A
   credential never appears in the block: the marker names it, and the block reads it on the
   live call with `read -rs`, so it never echoes, never lands in shell history, and is not in
   the block if the driver pastes it again. **Read every secret first**, in the act's first
@@ -208,8 +219,8 @@ restate it.
   set in the environment would otherwise go through as the secret. An empty or failed read
   then changes nothing, instead of leaving the act half done after an earlier live step.
 
-This plugin's own skill lint checks the shipped example below against the plain-text comment
-rule (full-line and trailing), the guard line, the per-act name and the secret-read shape, in
+This plugin's own skill lint checks the shipped example below against the comment rule (plain
+text, header only, no trailing comment), the guard line, the per-act name and the secret-read shape, in
 every `sh`, `bash`, `zsh` or `shell` fence that defines an act function. For the read, it
 accepts only the whole shape on one line: the clear first, `read` with `-r` and `-s` and no
 other option, and a failure branch that ends in an `exit` from 1 to 255, run by the act
@@ -222,20 +233,21 @@ run time gets no lint; it rests on these rules alone.
 ```sh
 [ -n "${ZSH_VERSION-}" ] && setopt interactive_comments
 # 0. act 123 as one function run in a subshell. Pasting this only prints. Type driver_act_123 live to act.
+# fill: the publish token, typed at a hidden prompt in step 1 on the live call.
 driver_act_123() (
   DRY_RUN=1; [ "${1-}" = live ] && DRY_RUN=0
   run() { if [ "$DRY_RUN" = 1 ]; then echo "would run: $*"; else "$@"; fi; }
-  # 1. # fill: the publish token, typed at a hidden prompt. Read first, so an empty read changes nothing.
+  echo '1. read the publish token first, so an empty read changes nothing.'
   if [ "$DRY_RUN" = 1 ]; then echo "would read the publish token at a hidden prompt"
   else printf 'publish token: '
     PUBLISH_TOKEN=; read -rs PUBLISH_TOKEN || { echo; echo "no token read; nothing changed" >&2; exit 1; }
     echo; [ -n "$PUBLISH_TOKEN" ] || { echo "no token read; nothing changed" >&2; exit 1; }; fi
-  # 2. push the parked branch. git push has its own --dry-run.
+  echo '2. push the parked branch. git push has its own --dry-run.'
   if [ "$DRY_RUN" = 1 ]; then git push --dry-run origin parked-branch; else git push origin parked-branch; fi
-  # 3. store the publish token as a repo secret
+  echo '3. store the publish token as a repo secret.'
   if [ "$DRY_RUN" = 1 ]; then echo "would run: gh secret set PUBLISH_TOKEN -R owner/repo"
   else printf '%s' "$PUBLISH_TOKEN" | gh secret set PUBLISH_TOKEN -R owner/repo; fi
-  # 4. take the decision label off the issue. No --dry-run here, so the run guard covers it.
+  echo '4. take the decision label off the issue. No --dry-run here, so the run guard covers it.'
   run gh issue edit 123 -R owner/repo --remove-label needs-decision
 )
 driver_act_123
@@ -273,7 +285,7 @@ every surface that carries one:
 The tool half: `deskfile new` refuses (exit 5) a filing labelled `human-only`, or one whose
 body's first non-blank line opens with `BLOCKED-ON-HUMAN`, when the body carries neither a
 fenced `sh` block nor a fenced `url` block. It checks that a fence exists, not what is in it:
-the plain-text comment rule, the guard, the per-act name and the secret-read shape of a block
+the comment rule, the guard, the per-act name and the secret-read shape of a block
 composed at run time rest on the rules above alone. And it fires only on those two triggers: a driver act filed under
 another label, or a marker that sits in the title or after an opening paragraph, gets no tool
 backstop, and the Act block there rests on the skill rule alone. The only bypass is
