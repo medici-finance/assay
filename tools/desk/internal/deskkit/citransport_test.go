@@ -154,12 +154,29 @@ func TestCITransportRefusesWriteMethods(t *testing.T) {
 	}
 }
 
+// ciHostSteeringEnv is every environment variable a GitHub client is known to take its API host
+// from. TestCITransportPinsAPIBase sets each of them to another host before EVERY construction.
+var ciHostSteeringEnv = []string{"GITHUB_API_URL", "GITHUB_SERVER_URL", "GITHUB_GRAPHQL_URL", "GH_HOST", "GH_ENTERPRISE_HOST"}
+
 // TestCITransportPinsAPIBase pins that the CI backend's API host cannot be redirected by the
-// environment: with the test seam empty the base is the real API host (read off the built value, no
-// request sent); with the seam on server A and GITHUB_API_URL naming server B, the read goes to A.
+// environment. Both constructions run with every host-steering variable already naming server B:
+// with the test seam empty (every production run) the base is still the real API host (read off the
+// built value, no request sent); with the seam on server A, the read goes to A and B sees nothing.
 func TestCITransportPinsAPIBase(t *testing.T) {
 	repo := ForgeRepo{Owner: "o", Name: "a"}
 	ciGitHubRoster(t, repo.Slug())
+	srvA, hitsA := countingServer(t)
+	srvB, hitsB := countingServer(t)
+	for _, k := range ciHostSteeringEnv {
+		v := srvB.URL
+		if strings.HasPrefix(k, "GH_") {
+			v = strings.TrimPrefix(srvB.URL, "http://") // the gh CLI's variables name a host, not a URL
+		}
+		t.Setenv(k, v)
+	}
+	if ciTokenAPIBase != "" {
+		t.Fatalf("precondition: the test seam is %q, want empty (the production state)", ciTokenAPIBase)
+	}
 
 	f, _, err := ReadOnlyForgeForCIToken(repo, repo.Slug(), ciTestToken)
 	if err != nil {
@@ -167,16 +184,12 @@ func TestCITransportPinsAPIBase(t *testing.T) {
 	}
 	gh := unwrapGitHub(t, f)
 	if gh.BaseURL != GitHubAPIBase {
-		t.Fatalf("with no seam the CI backend's base is %q, want %q", gh.BaseURL, GitHubAPIBase)
+		t.Fatalf("with no seam and the host-steering variables naming another host, the CI backend's base is %q, want %q", gh.BaseURL, GitHubAPIBase)
 	}
 	if gh.Token != ciTestToken {
 		t.Fatalf("the CI backend does not carry the handed token")
 	}
 
-	srvA, hitsA := countingServer(t)
-	srvB, hitsB := countingServer(t)
-	t.Setenv("GITHUB_API_URL", srvB.URL)
-	t.Setenv("GITHUB_SERVER_URL", srvB.URL)
 	defer SetCITokenAPIBaseForTest(srvA.URL)()
 	f2, _, err := ReadOnlyForgeForCIToken(repo, repo.Slug(), ciTestToken)
 	if err != nil {

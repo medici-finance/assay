@@ -167,3 +167,124 @@ func ciTokenConfinementNegative(t *testing.T) {
 		t.Errorf("planted non-test use of the test seam not reported exactly once (and the _test.go use ignored): %v", setterUses)
 	}
 }
+
+// ciConstructorEnvAllow names the package functions ReadOnlyForgeForCIToken may call although
+// they read the environment themselves, each with the reason the read cannot steer the token's
+// host. It is empty today: the constructor's only resolution step goes through EffectiveConfig,
+// whose reads are not direct os calls in the callee. An entry is a reviewed diff.
+var ciConstructorEnvAllow = map[string]string{}
+
+// envReadCalls are the os functions that read the process environment.
+var envReadCalls = map[string]bool{"Getenv": true, "LookupEnv": true, "Environ": true, "ExpandEnv": true}
+
+// scanCIConstructorEnvReads parses the non-test Go files of the package in dir and returns every
+// environment read reachable from ReadOnlyForgeForCIToken's own body: a direct os.Getenv-family
+// call, or a call to a package-level function of the same package whose body makes one. It is the
+// class guard for "the CI token's API host comes from the environment" — the host has one source,
+// the test seam, and a read of the environment in the constructor (or one hop under it) is how a
+// hostile GITHUB_API_URL would carry the job's token elsewhere.
+func scanCIConstructorEnvReads(dir string) (reads []string, found bool, err error) {
+	fset := token.NewFileSet()
+	matches, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		return nil, false, err
+	}
+	funcs := map[string]*ast.FuncDecl{}
+	for _, p := range matches {
+		if strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		f, perr := parser.ParseFile(fset, p, nil, 0)
+		if perr != nil {
+			return nil, false, perr
+		}
+		for _, decl := range f.Decls {
+			if fd, ok := decl.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Body != nil {
+				funcs[fd.Name.Name] = fd
+			}
+		}
+	}
+	directReads := func(fd *ast.FuncDecl) []string {
+		var out []string
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "os" && envReadCalls[sel.Sel.Name] {
+				out = append(out, fmt.Sprintf("os.%s at %s", sel.Sel.Name, fset.Position(sel.Pos())))
+			}
+			return true
+		})
+		return out
+	}
+	ctor, ok := funcs["ReadOnlyForgeForCIToken"]
+	if !ok {
+		return nil, false, nil
+	}
+	reads = append(reads, directReads(ctor)...)
+	seen := map[string]bool{}
+	ast.Inspect(ctor.Body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := call.Fun.(*ast.Ident)
+		if !ok || seen[id.Name] {
+			return true
+		}
+		seen[id.Name] = true
+		callee, ok := funcs[id.Name]
+		if !ok {
+			return true
+		}
+		if _, allowed := ciConstructorEnvAllow[id.Name]; allowed {
+			return true
+		}
+		for _, r := range directReads(callee) {
+			reads = append(reads, fmt.Sprintf("%s (via %s)", r, id.Name))
+		}
+		return true
+	})
+	sort.Strings(reads)
+	return reads, true, nil
+}
+
+func TestCICtorReadsNoEnv(t *testing.T) {
+	reads, found, err := scanCIConstructorEnvReads(".")
+	if err != nil {
+		t.Fatalf("could-not-check: scanning the deskkit package: %v", err)
+	}
+	if !found {
+		t.Fatal("could-not-check: ReadOnlyForgeForCIToken not found in the package — a scanner that sees nothing certifies everything")
+	}
+	for _, r := range reads {
+		t.Errorf("ReadOnlyForgeForCIToken reads the environment: %s. The CI token's API host has one source, the test "+
+			"seam; an environment read here is how GITHUB_API_URL would carry the token to another host.", r)
+	}
+
+	// Positive control: a planted fixture package with a direct read and a one-hop read must report both.
+	dir := t.TempDir()
+	const planted = `package deskkit
+import "os"
+func ReadOnlyForgeForCIToken(repo ForgeRepo, jobRepo, token string) (Forge, ForgeResolution, error) {
+	base := os.Getenv("GITHUB_API_URL")
+	_ = apiHostFromEnv()
+	_ = pure()
+	return nil, ForgeResolution{}, nil
+}
+func apiHostFromEnv() string { v, _ := os.LookupEnv("GITHUB_SERVER_URL"); return v }
+func pure() string { return "" }
+`
+	if err := os.WriteFile(filepath.Join(dir, "planted.go"), []byte(planted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := scanCIConstructorEnvReads(dir)
+	if err != nil || !found {
+		t.Fatalf("planted fixture: found=%v err=%v", found, err)
+	}
+	if len(got) != 2 || !strings.Contains(got[0]+got[1], "os.Getenv") || !strings.Contains(got[0]+got[1], "os.LookupEnv") ||
+		!strings.Contains(got[0]+got[1], "via apiHostFromEnv") {
+		t.Errorf("the guard over the planted fixture reported %v, want the direct os.Getenv and the os.LookupEnv via apiHostFromEnv", got)
+	}
+}
