@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -41,17 +44,25 @@ func (d dryRunDurable) FileBug(it loopengine.Item, detail string) (string, error
 }
 
 // gitDurable is the REAL durable sink used only at cutover. It carries the push-race retry
-// loop (commit -> pull --rebase -> push) in code. `run` is the injectable command
-// runner (defaults to exec) so the retry loop is unit-testable without a live remote — and so
-// the reference build's tests never actually push.
+// loop (commit -> pull --rebase -> push) in code. `run` is the injectable command runner for
+// the LOCAL steps (add, commit, the race's pull --rebase — go-git has no rebase, so that
+// redesign is a follow-on) and `push` the injectable push, so the retry loop is unit-testable
+// without a live remote — and so the reference build's tests never actually push.
+//
+// The PUSH is in-process: pushHeadToMain sends HEAD to refs/heads/main
+// with gitcore.Push and the role's in-memory credential — no git child, no credential helper,
+// no token in a URL or the environment — after the checkout's pre-push hook has run.
 type gitDurable struct {
 	root     string
 	run      func(args ...string) (string, error)
+	push     func() error
 	maxRetry int
 }
 
-func newGitDurable(root string) *gitDurable {
-	return &gitDurable{
+// newGitDurable builds the cutover sink for the checkout at root, pushing as role to repo
+// (owner/name) — the forge endpoint and credential come from deskkit's custody for that pair.
+func newGitDurable(root, repo, role string) *gitDurable {
+	g := &gitDurable{
 		root:     root,
 		maxRetry: 5,
 		run: func(args ...string) (string, error) {
@@ -60,6 +71,69 @@ func newGitDurable(root string) *gitDurable {
 			return string(b), err
 		},
 	}
+	g.push = func() error {
+		return pushHeadToMain(root, func(originURL string) (deskkit.ForgeGitEndpoint, error) {
+			return deskkit.ForgeGitEndpointForCheckout(repo, role, originURL)
+		}, g.run)
+	}
+	return g
+}
+
+// pushHeadToMain pushes the checkout's HEAD commit to the remote's refs/heads/main,
+// in-process. endpoint resolves the URL + in-memory credential from origin's fetch URL (a
+// forge-kind hint only — the credential goes to the resolved forge's canonical URL). The
+// refspec source is the RESOLVED commit, never "HEAD" (go-git silently skips a symbolic
+// source), it carries no "+", and Force is never set: a push main has moved past is refused
+// as non-fast-forward — the race the caller's retry loop resolves. The checkout's pre-push
+// hook runs first (run answers its path and origin's resolved URL), and its refusal stops the push.
+func pushHeadToMain(root string, endpoint func(originURL string) (deskkit.ForgeGitEndpoint, error), run func(args ...string) (string, error)) error {
+	repo, err := gitcore.Open(root)
+	if err != nil {
+		return err
+	}
+	// The forge-kind hint is origin as git itself resolves it (insteadOf applied), the same
+	// value deskpr passes; a checkout with no origin simply gives no hint.
+	origin := ""
+	if out, gerr := run("git", "-C", root, "remote", "get-url", "origin"); gerr == nil {
+		origin = strings.TrimSpace(out)
+	}
+	ep, err := endpoint(origin)
+	if err != nil {
+		return err
+	}
+	head, err := repo.Resolve("HEAD")
+	if err != nil {
+		return err
+	}
+	hook := deskkit.PrePushHook{
+		Dir: root,
+		HookPath: func() (string, error) {
+			out, herr := run("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-push")
+			if herr != nil {
+				return "", fmt.Errorf("%v: %s", herr, out)
+			}
+			return out, nil
+		},
+		Stderr: os.Stderr,
+	}
+	if herr := hook.Run("origin", ep.Opts.URL, "HEAD", head.String(), "refs/heads/main"); herr != nil {
+		return herr
+	}
+	if perr := repo.Push(gitcore.PushOpts{
+		URL:      ep.Opts.URL,
+		RefSpecs: []string{head.String() + ":refs/heads/main"},
+		Auth:     ep.Opts.Auth,
+	}); perr != nil {
+		return perr
+	}
+	// `git push origin HEAD:main` moved origin's remote-tracking ref for main; the transient
+	// remote gitcore.Push uses writes nothing locally, so record it here, after the push
+	// landed and at the pushed hash, locally only. A failure only warns: the push has already
+	// landed, and the next fetch corrects the ref.
+	if _, terr := repo.UpdateRemoteTracking("origin", "refs/heads/main", head.String()); terr != nil {
+		fmt.Fprintf(os.Stderr, "verifyloop: WARNING — pushed, but could not record origin's tracking ref for main: %v\n", terr)
+	}
+	return nil
 }
 
 // commitPushRace commits the given paths on main and pushes, retrying the documented race
@@ -84,7 +158,7 @@ func (g *gitDurable) commitPushRace(paths []string, msg string) error {
 	}
 	var lastErr error
 	for attempt := 0; attempt < g.maxRetry; attempt++ {
-		if _, err := git("push", "origin", "HEAD:main"); err == nil {
+		if err := g.push(); err == nil {
 			return nil // pushed
 		} else {
 			lastErr = err

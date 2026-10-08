@@ -168,6 +168,7 @@ package main
 //     satisfy the check. A row cannot be greened by editing a file.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -177,6 +178,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // noreplyEmailRe matches GitHub's noreply commit address,
@@ -603,64 +605,107 @@ type blameAuthor struct {
 // graft-induced unreachability, never on a genuine root commit in a full clone.
 // --line-porcelain repeats the `boundary` header for every line of the boundary
 // commit (verified against a real shallow clone), so it is read per line-group.
-func blamePorcelainAuthors(out string) (authors []blameAuthor, sawBoundary bool) {
+//
+// It takes records that already went through blameRawLines: the author fields
+// blame prints are not the commit's own (see blameRawLines).
+func blamePorcelainAuthors(lines []blameLine) (authors []blameAuthor, sawBoundary bool) {
 	seen := map[string]bool{}
-	name, mail := "", ""
-	boundary := false
 	inComment := false
-	for _, line := range strings.Split(out, "\n") {
-		switch {
-		case strings.HasPrefix(line, "author "):
-			name = strings.TrimSpace(strings.TrimPrefix(line, "author "))
-		case strings.HasPrefix(line, "author-mail "):
-			mail = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "author-mail ")), "<>")
-		case line == "boundary":
-			boundary = true
-		case strings.HasPrefix(line, "\t"):
-			// The blamed line's own content, verbatim after the leading TAB.
-			content := strings.TrimSpace(line[1:])
-			bearing := content != "" && !inComment
-			// Track HTML-comment spans across lines. A line that OPENS a comment
-			// carries no evidence past the marker, and one that closes it may.
-			for rest := content; ; {
-				if inComment {
-					_, after, found := strings.Cut(rest, "-->")
-					if !found {
-						break
-					}
-					inComment = false
-					rest = after
-					if strings.TrimSpace(rest) != "" {
-						bearing = true
-					}
-					continue
-				}
-				before, after, found := strings.Cut(rest, "<!--")
-				if !found {
-					break
-				}
-				if strings.TrimSpace(before) == "" {
-					bearing = false
-				}
-				inComment = true
-				rest = after
-			}
-			if !bearing {
-				name, mail, boundary = "", "", false
-				continue
-			}
-			if boundary {
-				sawBoundary = true
-			}
-			key := name + "\x00" + mail
-			if !seen[key] {
-				seen[key] = true
-				authors = append(authors, blameAuthor{Name: name, Email: mail})
-			}
-			name, mail, boundary = "", "", false
+	for _, bl := range lines {
+		var bearing bool
+		bearing, inComment = blameLineBearsContent(bl.Content, inComment)
+		if !bearing {
+			continue
+		}
+		if bl.Boundary {
+			sawBoundary = true
+		}
+		key := bl.Author.Name + "\x00" + bl.Author.Email
+		if !seen[key] {
+			seen[key] = true
+			authors = append(authors, bl.Author)
 		}
 	}
 	return authors, sawBoundary
+}
+
+// blameLine is one blamed line of `git blame --line-porcelain` output: its
+// author, its content (the text after the leading TAB, trimmed), whether the
+// owning commit carried the `boundary` header, and that commit's id (empty when
+// the record's header line did not name one).
+type blameLine struct {
+	Author   blameAuthor
+	Content  string
+	Boundary bool
+	Commit   string
+}
+
+// blameHeaderRe is the first line of a --line-porcelain record:
+// `<commit> <orig-line> <final-line>[ <group-size>]`.
+var blameHeaderRe = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64}) [0-9]+ [0-9]+( [0-9]+)?$`)
+
+// blamePorcelainLines parses `git blame --line-porcelain` output into ONE
+// record per blamed line, in output order, with no filtering. A line whose
+// group carried no author header comes back with an empty Author — never with
+// the previous line's. It is the unfiltered layer under blamePorcelainAuthors:
+// a caller that must account for EVERY line it asked about (the verify flip's
+// provenance check) counts these records against the lines it requested,
+// rather than inferring coverage from a content-filtered author set.
+func blamePorcelainLines(out string) []blameLine {
+	var lines []blameLine
+	var cur blameLine
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "author "):
+			cur.Author.Name = strings.TrimSpace(strings.TrimPrefix(line, "author "))
+		case strings.HasPrefix(line, "author-mail "):
+			cur.Author.Email = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "author-mail ")), "<>")
+		case line == "boundary":
+			cur.Boundary = true
+		case blameHeaderRe.MatchString(line):
+			cur.Commit = line[:strings.IndexByte(line, ' ')]
+		case strings.HasPrefix(line, "\t"):
+			// The blamed line's own content, verbatim after the leading TAB.
+			cur.Content = strings.TrimSpace(line[1:])
+			lines = append(lines, cur)
+			cur = blameLine{}
+		}
+	}
+	return lines
+}
+
+// blameLineBearsContent reports whether a line carries any non-space text
+// OUTSIDE HTML comments, given whether a comment is already open when the
+// line starts, and returns whether one is still open when it ends. A line
+// that only opens, continues or closes a comment carries no evidence; text
+// before an opening marker or after a closing one does.
+//
+// The answer ACCUMULATES across the whole line: once any portion outside a
+// comment is content, a later comment on the same line never takes it back.
+// (The earlier inline form reset the verdict at each `<!--` preceded by
+// blanks, so `text <!-- a --> <!-- b -->` read as non-bearing and its author
+// dropped out of the set — the flip-verdict-provenance gap on assay#2095.)
+func blameLineBearsContent(content string, inComment bool) (bearing, stillInComment bool) {
+	for rest := content; ; {
+		if inComment {
+			_, after, found := strings.Cut(rest, "-->")
+			if !found {
+				return bearing, true
+			}
+			inComment = false
+			rest = after
+			continue
+		}
+		before, after, found := strings.Cut(rest, "<!--")
+		if strings.TrimSpace(before) != "" {
+			bearing = true
+		}
+		if !found {
+			return bearing, false
+		}
+		inComment = true
+		rest = after
+	}
 }
 
 // blameEvidenceAuthors blames one Evidence line range and returns its authors.
@@ -671,15 +716,190 @@ func blamePorcelainAuthors(out string) (authors []blameAuthor, sawBoundary bool)
 // would be attributed to whoever last touched that region rather than to nobody.
 // Uncommitted lines come back owned by git's `not.committed.yet` address, which
 // pins no GitHub account and therefore cannot back a row.
+//
+// A line whose commit carries an ambiguous author header (see rawCommitAuthor)
+// is read as the fixed ambiguousAuthor identity, which backs nothing, rather
+// than failing the whole range: this is the lint's lower layer, and an
+// unreadable header must never turn a row's PROBLEM into a could-not-check
+// NOTICE. The verb keeps could-not-check (exit 2), where it fails closed.
 func blameEvidenceAuthors(root, rel string, start, end int) (authors []blameAuthor, sawBoundary bool, err error) {
-	cmd := exec.Command("git", "-C", root, "blame", "--line-porcelain",
+	cmd := historyGit(root, "blame", "--line-porcelain",
 		"-L", fmt.Sprintf("%d,%d", start, end), "--", rel)
 	out, cerr := cmd.Output()
 	if cerr != nil {
 		return nil, false, fmt.Errorf("git blame -L %d,%d %s: %w", start, end, rel, cerr)
 	}
-	authors, sawBoundary = blamePorcelainAuthors(string(out))
+	lines, rerr := blameRawLines(root, string(out), true)
+	if rerr != nil {
+		return nil, false, fmt.Errorf("git blame -L %d,%d %s: %w", start, end, rel, rerr)
+	}
+	authors, sawBoundary = blamePorcelainAuthors(lines)
 	return authors, sawBoundary, nil
+}
+
+// blameRawLines parses `git blame --line-porcelain` output (blamePorcelainLines)
+// and replaces every record's author with the author recorded in that line's
+// COMMIT OBJECT. It is the only way blame output may become an identity.
+//
+// Why: the author fields blame prints are not the commit's. Blame rewrites them
+// through the repository's identity-mapping configuration, which any commit to
+// the repository can change, and it has no switch to turn that off. Judged
+// as printed, a line committed by one identity can read as another's while
+// every commit object stays truthful. The commit object's own author header is
+// what the commit says, and only that is judged.
+//
+// A record whose commit is the all-zero id (not committed yet) gets git's fixed
+// not-committed-yet identity whatever blame printed, so it can never read as an
+// accepted actor. A record naming no commit keeps an empty author, which every
+// caller treats as could-not-check. A commit that cannot be read is an error.
+//
+// A commit whose author header is ambiguous is an error too (the verb's
+// could-not-check, exit 2), unless ambiguousAsUnbacked is set: then its lines
+// read as ambiguousAuthor, an identity no roster entry matches, so the
+// Evidence-actor lint can only reject them, never skip the row.
+func blameRawLines(dir, out string, ambiguousAsUnbacked bool) ([]blameLine, error) {
+	lines := blamePorcelainLines(out)
+	for i := range lines {
+		c := lines[i].Commit
+		switch {
+		case c == "":
+			lines[i].Author = blameAuthor{}
+		case strings.Trim(c, "0") == "":
+			lines[i].Author = blameAuthor{Name: "Not Committed Yet", Email: "not.committed.yet"}
+		default:
+			a, err := rawCommitAuthor(dir, c)
+			var amb *ambiguousAuthorError
+			switch {
+			case err == nil:
+			case ambiguousAsUnbacked && errors.As(err, &amb):
+				a = ambiguousAuthor
+			default:
+				return nil, err
+			}
+			lines[i].Author = a
+		}
+	}
+	return lines, nil
+}
+
+// ambiguousAuthor is the identity a line reads as when its commit's author
+// header is ambiguous and the caller asked for a verdict, not a refusal. It
+// pins no account, so classify can never accept it.
+var ambiguousAuthor = blameAuthor{Name: "Ambiguous Author Header", Email: "ambiguous.author.header"}
+
+// ambiguousAuthorError is a commit author header another reader could see
+// differently (or that cannot be read as an author at all).
+type ambiguousAuthorError struct{ msg string }
+
+func (e *ambiguousAuthorError) Error() string { return e.msg }
+
+func ambiguousAuthorf(format string, args ...any) error {
+	return &ambiguousAuthorError{msg: fmt.Sprintf(format, args...)}
+}
+
+// rawCommitAuthors caches rawCommitAuthor by commit id. A commit id names its
+// content, so one id has one author header in any repository.
+var rawCommitAuthors sync.Map
+
+// rawCommitAuthor returns the author name and address written in commit c's
+// object header (`author <name> <<email>> <time> <tz>`), read with
+// `git cat-file commit` (historyGit: no replacement object, no graft), which
+// applies no identity mapping.
+//
+// The header must be UNAMBIGUOUS, or the read is an error (could-not-check,
+// never a verdict): another reader of the same commit — `git log`'s %an/%ae,
+// which the publish-identity gate uses — must not be able to see a different
+// identity. git log re-encodes a header from the commit's declared `encoding`
+// and splits at the first `<` and `>` without trimming, while this reader
+// takes the bytes as stored, so it refuses: an `encoding` header other than
+// UTF-8; more than one `author` header; a header that is not exactly
+// `author <name> <<email>> <digits> <+|-><4 digits>`; a name or address with
+// surrounding whitespace, an address with any whitespace, or either holding a
+// `<`, a `>`, a control character or invalid UTF-8.
+func rawCommitAuthor(dir, c string) (blameAuthor, error) {
+	if a, ok := rawCommitAuthors.Load(c); ok {
+		return a.(blameAuthor), nil
+	}
+	out, err := historyGit(dir, "cat-file", "commit", c).Output()
+	if err != nil {
+		return blameAuthor{}, fmt.Errorf("git cat-file commit %.12s: %v", c, err)
+	}
+	a, err := parseRawAuthor(string(out))
+	if err != nil {
+		return blameAuthor{}, fmt.Errorf("commit %.12s: %w", c, err)
+	}
+	rawCommitAuthors.Store(c, a)
+	return a, nil
+}
+
+// rawAuthorLineRe is the one author header shape parseRawAuthor accepts: a
+// name and an address with no surrounding whitespace, separated by exactly
+// one space, then the timestamp and zone.
+var rawAuthorLineRe = regexp.MustCompile(`^author ([^\s<>](?:[^<>]*[^\s<>])?) <([^\s<>]+)> [0-9]+ [+-][0-9]{4}$`)
+
+// parseRawAuthor reads the author from a raw commit object (see
+// rawCommitAuthor for what makes a header ambiguous).
+func parseRawAuthor(obj string) (blameAuthor, error) {
+	head, _, _ := strings.Cut(obj, "\n\n")
+	var authors []string
+	for _, line := range strings.Split(head, "\n") {
+		if rest, ok := strings.CutPrefix(line, "encoding "); ok {
+			if e := strings.ToLower(strings.TrimSpace(rest)); e != "utf-8" && e != "utf8" {
+				return blameAuthor{}, ambiguousAuthorf("ambiguous author: the commit declares encoding %q, which other readers re-encode", rest)
+			}
+		}
+		if strings.HasPrefix(line, "author ") {
+			authors = append(authors, line)
+		}
+	}
+	switch len(authors) {
+	case 0:
+		return blameAuthor{}, ambiguousAuthorf("no author header")
+	case 1:
+	default:
+		return blameAuthor{}, ambiguousAuthorf("ambiguous author: %d author headers", len(authors))
+	}
+	m := rawAuthorLineRe.FindStringSubmatch(authors[0])
+	if m == nil || !utf8.ValidString(m[1]+m[2]) || strings.IndexFunc(m[1]+m[2], isRawAuthorControl) >= 0 {
+		return blameAuthor{}, ambiguousAuthorf("ambiguous or unreadable author header")
+	}
+	return blameAuthor{Name: m[1], Email: m[2]}, nil
+}
+
+// isRawAuthorControl reports a control character, which no identity holds.
+func isRawAuthorControl(r rune) bool { return r < 0x20 || r == 0x7f }
+
+// historyGitPrefix is the argument prefix of every provenance git read. The
+// reads must be independent of the runner's own checkout: none of this state
+// travels with a fetch, but whoever can write the runner's checkout or its
+// user-level configuration could otherwise change what the provenance layers
+// see. --no-replace-objects reads the object store's own commits, never a
+// refs/replace/ substitution (statusgen/coverage.go's precedent), and
+// diff.algorithm is pinned to git's default so configuration cannot move a
+// line between commits. `-c` outranks every configuration file and the
+// environment.
+func historyGitPrefix(dir string) []string {
+	return []string{"--no-replace-objects", "-c", "diff.algorithm=myers", "-C", dir}
+}
+
+// historyGitEnv also points git at an empty graft file, so a runner-local
+// .git/info/grafts cannot rewrite a commit's parents.
+func historyGitEnv(cmd *exec.Cmd) *exec.Cmd {
+	cmd.Env = append(os.Environ(), "GIT_GRAFT_FILE="+os.DevNull)
+	return cmd
+}
+
+// historyGit is the git command for a provenance read in dir (see
+// historyGitPrefix). A blame also gets --no-ignore-revs-file: a configured
+// blame.ignoreRevsFile (at any level) makes blame skip the listed commits and
+// hand their lines to an earlier commit's author, and an empty `-c` value does
+// not clear it. TestHistoryGitIsolated fails on a provenance read that
+// bypasses this.
+func historyGit(dir string, args ...string) *exec.Cmd {
+	if len(args) > 0 && args[0] == "blame" {
+		args = append([]string{"blame", "--no-ignore-revs-file"}, args[1:]...)
+	}
+	return historyGitEnv(exec.Command("git", append(historyGitPrefix(dir), args...)...))
 }
 
 // isShallowRepository reports whether the object DB behind root is shallow or

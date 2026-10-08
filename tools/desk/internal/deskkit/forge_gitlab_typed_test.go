@@ -57,7 +57,14 @@ func TestForgeGitlabTypedReadRoutesOnKind(t *testing.T) {
 			if iss.IsPullRequest != c.wantPR || iss.URL != c.wantURL || iss.State != "open" || iss.Number != 7 {
 				t.Fatalf("GetIssueTyped(%s) = %+v, want pr=%v url=%s state=open number=7", c.kind, iss, c.wantPR, c.wantURL)
 			}
-			got := glPaths(s)
+			// The author's kind is resolved from the users API (forge-neutral brief 33, Task 2.6); those
+			// reads name no noteable, so the kind routing is asserted on every other request.
+			var got []string
+			for _, p := range glPaths(s) {
+				if !strings.HasPrefix(p, "GET /api/v4/users/") {
+					got = append(got, p)
+				}
+			}
 			if len(got) != 1 || got[0] != c.wantPath {
 				t.Fatalf("GetIssueTyped(%s) must probe exactly the %s endpoint; requests=%v", c.kind, c.kind, got)
 			}

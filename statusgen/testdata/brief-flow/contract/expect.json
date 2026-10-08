@@ -1,0 +1,182 @@
+{
+  "_comment": "Hand-written expectations for the synthetic brief-flow contract fixtures. Every value here was derived by reading the fixture events against spec/brief-flow-event-v1.md, NOT by running the reducer. Briefs are keyed by uuid; `case` names the scenario.",
+  "resolve": [
+    {"alias": "example/01", "at": "2030-01-02T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000001"},
+    {"alias": "example/01", "at": "2030-01-04T00:00:00Z", "error": "unknown"},
+    {"alias": "example/01", "at": "2030-01-07T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000002"},
+    {"alias": "example/02", "at": "2030-01-04T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000001"},
+    {"alias": "sample/02", "at": "2030-01-07T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000001"},
+    {"alias": "sample/02", "at": "2030-01-10T00:00:00Z", "error": "unknown"},
+    {"alias": "archive/02", "at": "2030-01-10T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000001"},
+    {"alias": "example/03", "at": "2030-01-04T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000003"},
+    {"alias": "legacy/09", "at": "2030-01-04T00:00:00Z", "error": "ambiguous"}
+  ],
+  "_comment_resolve_overlap": "overlap.jsonl: brief 41 takes example/41 on 2030-01-01, brief 42 takes the same alias on 2030-01-05 while 41 still holds it, and 41 is renumbered to example/43 on 2030-01-12 (which ends 41's span on example/41 only).",
+  "resolve_overlap": [
+    {"alias": "example/41", "at": "2029-12-31T00:00:00Z", "error": "unknown"},
+    {"alias": "example/41", "at": "2030-01-03T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000041"},
+    {"alias": "example/41", "at": "2030-01-09T00:00:00Z", "error": "ambiguous"},
+    {"alias": "example/41", "at": "2030-01-13T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000042"},
+    {"alias": "example/43", "at": "2030-01-13T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000041"}
+  ],
+  "history": {
+    "rows": 8,
+    "refused": 1,
+    "events": 7,
+    "facts": 6,
+    "last_status": {
+      "example/01": "todo",
+      "example/02": "todo",
+      "example/03": "todo",
+      "legacy/09": "todo",
+      "sample/02": "in-progress",
+      "example/21": "done"
+    },
+    "done_in_window": 1
+  },
+  "projections": 16,
+  "briefs": {
+    "00000000-0000-4000-8000-000000000001": {
+      "case": "identity: authored, renumbered, renamed, archived",
+      "stage": "written", "births": 1,
+      "aliases": ["example/01", "example/02", "sample/02", "archive/02"],
+      "firsts": {"written": "f-0102", "coded": null, "reviewed": null, "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0,
+      "with_history": {"seeded": true, "observations": 2, "last_observed": "in-progress"}
+    },
+    "00000000-0000-4000-8000-000000000002": {
+      "case": "identity: a later brief reuses the first brief's original alias",
+      "stage": "written", "births": 1,
+      "aliases": ["example/01"],
+      "firsts": {"written": "f-0202", "coded": null, "reviewed": null, "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0,
+      "with_history": {"seeded": true, "observations": 1, "last_observed": "todo"}
+    },
+    "00000000-0000-4000-8000-000000000003": {
+      "case": "identity: historian seed only, no written fact",
+      "stage": "unknown", "births": 0,
+      "aliases": ["example/03"],
+      "firsts": {"written": null, "coded": null, "reviewed": null, "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0,
+      "with_history": {"seeded": true, "observations": 1, "last_observed": "todo"}
+    },
+    "00000000-0000-4000-8000-000000000004": {
+      "case": "identity: legacy alias shared with another brief",
+      "stage": "unknown", "births": 0,
+      "aliases": ["legacy/09"],
+      "firsts": {"written": null, "coded": null, "reviewed": null, "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0,
+      "with_history": {"seeded": false, "observations": 0, "last_observed": ""}
+    },
+    "00000000-0000-4000-8000-000000000005": {
+      "case": "identity: legacy alias shared with another brief",
+      "stage": "unknown", "births": 0,
+      "aliases": ["legacy/09"],
+      "firsts": {"written": null, "coded": null, "reviewed": null, "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0,
+      "with_history": {"seeded": false, "observations": 0, "last_observed": ""}
+    },
+    "00000000-0000-4000-8000-000000000011": {
+      "case": "stage: single contribution, draft -> ready -> human merge -> verified (complete)",
+      "stage": "verified", "births": 1,
+      "aliases": ["stage/11"],
+      "firsts": {"written": "f-1102", "coded": "f-1103", "reviewed": "f-1104", "merged": "f-1105", "verified": "f-1107", "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000012": {
+      "case": "stage: authoring PR only",
+      "stage": "written", "births": 1,
+      "aliases": ["stage/12"],
+      "firsts": {"written": "f-1202", "coded": null, "reviewed": null, "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": ["pr:102"], "abandoned": [], "other_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000013": {
+      "case": "stage: partial merge, 2 of 3 scoped PRs merged, verified with partial coverage",
+      "stage": "mixed", "births": 1,
+      "aliases": ["stage/13"],
+      "firsts": {"written": "f-1302", "coded": "f-1304", "reviewed": "f-1304", "merged": "f-1307", "verified": null, "done": null},
+      "ready_at_creation": true,
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 1
+    },
+    "00000000-0000-4000-8000-000000000014": {
+      "case": "stage: replacement PR after a closed one",
+      "stage": "reviewed", "births": 1,
+      "aliases": ["stage/14"],
+      "firsts": {"written": "f-1402", "coded": "f-1403", "reviewed": "f-1406", "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000015": {
+      "case": "stage: ready -> draft regression, then PR closed and reopened",
+      "stage": "coded", "births": 1,
+      "aliases": ["stage/15"],
+      "firsts": {"written": "f-1502", "coded": "f-1503", "reviewed": "f-1504", "merged": null, "verified": null, "done": null},
+      "episodes": [{"kind": "ready_to_draft", "fact_id": "f-1505"}, {"kind": "pr_reopen", "fact_id": "f-1507"}],
+      "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000016": {
+      "case": "stage: done, then the brief is reopened",
+      "stage": "reopened", "births": 1,
+      "aliases": ["stage/16"],
+      "firsts": {"written": "f-1602", "coded": "f-1603", "reviewed": "f-1603", "merged": "f-1604", "verified": "f-1606", "done": "f-1607"},
+      "ready_at_creation": true,
+      "episodes": [{"kind": "brief_reopen", "fact_id": "f-1608"}],
+      "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000017": {
+      "case": "stage: abandoned PR, no replacement",
+      "stage": "unknown", "births": 1,
+      "aliases": ["stage/17"],
+      "firsts": {"written": "f-1702", "coded": "f-1703", "reviewed": null, "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": ["pr:171"], "other_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000018": {
+      "case": "stage: two parallel PRs, no acceptance scope",
+      "stage": "mixed", "births": 1,
+      "aliases": ["stage/18"],
+      "firsts": {"written": "f-1802", "coded": "f-1803", "reviewed": null, "merged": null, "verified": null, "done": null},
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000019": {
+      "case": "stage: ready at creation, merged by an app",
+      "stage": "merged", "births": 1,
+      "aliases": ["stage/19"],
+      "firsts": {"written": "f-1902", "coded": "f-1903", "reviewed": "f-1903", "merged": null, "verified": null, "done": null},
+      "ready_at_creation": true,
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 1, "unknown_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000020": {
+      "case": "stage: ready at creation, merged by an unknown executor (neither a human nor an app merge)",
+      "stage": "merged", "births": 1,
+      "aliases": ["stage/20"],
+      "firsts": {"written": "f-2002", "coded": "f-2003", "reviewed": "f-2003", "merged": null, "verified": null, "done": null},
+      "ready_at_creation": true,
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unknown_merges": 1, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000021": {
+      "case": "flow: producer receipts + forge events + historian rows for one brief",
+      "stage": "done", "births": 1,
+      "aliases": ["example/21"],
+      "firsts": {"written": "f-2102", "coded": "f-2103", "reviewed": "f-2104", "merged": "f-2105", "verified": "f-2107", "done": "f-2108"},
+      "episodes": [{"kind": "ready_to_draft", "fact_id": "f-2109"}],
+      "authoring_prs": [], "abandoned": [], "other_merges": 0, "unqualified": 0,
+      "with_history": {"seeded": true, "observations": 2, "last_observed": "done"}
+    }
+  },
+  "flow": {
+    "brief_uuid": "00000000-0000-4000-8000-000000000021",
+    "receipt_lines": 12,
+    "facts": 10,
+    "corroborated": 2,
+    "reviewed": {
+      "fact_id": "f-2104",
+      "source_authority": "forge",
+      "brief_revision": 2,
+      "owner_cell": "example-cell",
+      "initiator_role": "desk",
+      "executor_role": "reviewer",
+      "contribution": "pr:211"
+    },
+    "done_owner_cell": "other-cell",
+    "unknown_member": "x_future_hint"
+  }
+}

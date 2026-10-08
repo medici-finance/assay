@@ -47,7 +47,7 @@ func okProbes() PreflightProbes {
 		GrantedScopes: func(string, string) (map[string]string, error) {
 			return map[string]string{"pull_requests": "write", "issues": "write", "contents": "write"}, nil
 		},
-		WriteTransport: func(Landing) (ProbeVerdict, string, error) { return ProbePermitted, "up to date", nil },
+		WriteTransport: func(Landing, string, string) (ProbeVerdict, string, error) { return ProbePermitted, "up to date", nil },
 		CommitEmail:    func(string) (string, error) { return pfGoodEmail, nil },
 		AppIDFor:       func(string) (string, error) { return pfAppID, nil },
 		QueuedSiblings: func(string) ([]SiblingReq, error) { return nil, nil },
@@ -392,7 +392,7 @@ func TestPreflightPermsSidecarParse(t *testing.T) {
 func TestPreflightWriteTransportRejectionIsRed(t *testing.T) {
 	withRoster(t, goldenRoster())
 	p := okProbes()
-	p.WriteTransport = func(Landing) (ProbeVerdict, string, error) {
+	p.WriteTransport = func(Landing, string, string) (ProbeVerdict, string, error) {
 		return ProbeRejected, "remote: Permission to example-org/tracker.git denied", nil
 	}
 	rep := runPF(t, p)
@@ -416,7 +416,7 @@ func TestPreflightProbeRejectionIsNotRetried(t *testing.T) {
 	withRoster(t, goldenRoster())
 	calls := 0
 	p := okProbes()
-	p.WriteTransport = func(Landing) (ProbeVerdict, string, error) {
+	p.WriteTransport = func(Landing, string, string) (ProbeVerdict, string, error) {
 		calls++
 		return ProbeRejected, "403", nil
 	}
@@ -431,7 +431,7 @@ func TestPreflightProbeRejectionIsNotRetried(t *testing.T) {
 func TestPreflightWriteTransportInconclusiveIsCouldNotCheck(t *testing.T) {
 	withRoster(t, goldenRoster())
 	p := okProbes()
-	p.WriteTransport = func(Landing) (ProbeVerdict, string, error) {
+	p.WriteTransport = func(Landing, string, string) (ProbeVerdict, string, error) {
 		return ProbeInconclusive, "detached HEAD: no landing branch to probe", nil
 	}
 	rep := runPF(t, p)
@@ -894,7 +894,7 @@ func TestPreflightEveryNonGreenCheckNamesARemediation(t *testing.T) {
 			p.GrantedScopes = func(string, string) (map[string]string, error) { return nil, errors.New("x") }
 		},
 		"transport": func(p *PreflightProbes) {
-			p.WriteTransport = func(Landing) (ProbeVerdict, string, error) { return ProbeRejected, "403", nil }
+			p.WriteTransport = func(Landing, string, string) (ProbeVerdict, string, error) { return ProbeRejected, "403", nil }
 		},
 		"identity": func(p *PreflightProbes) { p.CommitEmail = func(string) (string, error) { return pfAppIDEmail, nil } },
 		// An UNCLAIMED brief's absent sibling degrades to a notice (#661), so to
@@ -928,7 +928,7 @@ func TestPreflightEveryNonGreenCheckNamesARemediation(t *testing.T) {
 func TestPreflightSummaryIsExactlyOneLine(t *testing.T) {
 	withRoster(t, goldenRoster())
 	p := okProbes()
-	p.WriteTransport = func(Landing) (ProbeVerdict, string, error) {
+	p.WriteTransport = func(Landing, string, string) (ProbeVerdict, string, error) {
 		return ProbeRejected, "remote: denied\nhint: line two\nhint: line three\n", nil
 	}
 	p.ColdMint = func(string, string) (string, error) {
@@ -952,7 +952,7 @@ func TestPreflightRedIsCouldNotRunExitSix(t *testing.T) {
 	withRoster(t, goldenRoster())
 	for name, darken := range map[string]func(*PreflightProbes){
 		"checked-failed": func(p *PreflightProbes) {
-			p.WriteTransport = func(Landing) (ProbeVerdict, string, error) { return ProbeRejected, "403", nil }
+			p.WriteTransport = func(Landing, string, string) (ProbeVerdict, string, error) { return ProbeRejected, "403", nil }
 		},
 		"could-not-check": func(p *PreflightProbes) {
 			p.GrantedScopes = func(string, string) (map[string]string, error) { return nil, errors.New("no grant recorded") }

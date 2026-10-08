@@ -90,7 +90,7 @@ func buildRegisterMap(root string) (findings, intake map[string]string) {
 // Bare (unlinked) references are never checked — they stay legal.
 func registerRefProblems(root string, files []string) (problems, notices []string) {
 	for _, f := range files {
-		raw, err := os.ReadFile(f)
+		raw, err := readFileMemo(f)
 		if err != nil {
 			continue
 		}

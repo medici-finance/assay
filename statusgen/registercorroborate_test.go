@@ -768,6 +768,7 @@ var mergeBaseAllow = map[string]string{
 	"productionResolveBase":  "operator-supplied base revision",
 	"runMergecheck":          "both sides already resolved to commits by resolveCommit",
 	"ancestorNoOtherChanges": "--is-ancestor on two commits verified with cat-file first",
+	"flipMergeBases":         "both sides are the %P parent object ids of a commit rev-list yielded; it refuses any operand isObjectID rejects and passes --end-of-options before them",
 }
 
 // mergeBaseCallSites returns "name file:line" for every exec.Command / gitOut

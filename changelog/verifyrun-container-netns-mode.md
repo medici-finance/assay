@@ -1,0 +1,2 @@
+### Added
+- `statusgen verifyrun --sandbox=container-netns`: an explicit opt-in for a runner already inside a `--network none` container, where the default seccomp profile denies `unshare --net`. It skips the `unshare` wrapper, first checks that loopback is the only interface up (any other interface up refuses the run, every row `could-not-run`), records `sandbox=<mode>` in each sandboxed row's witness Result cell, and is refused in the CI lane, which keeps the `unshare` path (#2350).

@@ -61,7 +61,7 @@ func greenPreflightProbes() deskkit.PreflightProbes {
 		GrantedScopes: func(string, string) (map[string]string, error) {
 			return map[string]string{"pull_requests": "write", "issues": "write", "contents": "write"}, nil
 		},
-		WriteTransport: func(deskkit.Landing) (deskkit.ProbeVerdict, string, error) {
+		WriteTransport: func(deskkit.Landing, string, string) (deskkit.ProbeVerdict, string, error) {
 			return deskkit.ProbePermitted, "up to date", nil
 		},
 		CommitEmail:    func(string) (string, error) { return "300000005+assay-verifier-app[bot]@users.noreply.github.com", nil },

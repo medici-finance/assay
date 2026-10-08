@@ -173,8 +173,8 @@ func TestCreatePinBumpIsNotRefused(t *testing.T) {
 		t.Fatalf("pin-bump create rc = %d, want 0 — deskpr is still refusing "+
 			"the most routine edit made to .assay-versions (#328)", rc)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("no push happened; git calls: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("no push happened; calls: %v", *calls)
 	}
 
 	// The content ARRIVED, intact: read it back out of the pushed bare repo.

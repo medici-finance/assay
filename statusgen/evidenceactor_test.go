@@ -211,7 +211,7 @@ func TestBlamePorcelainAuthorsIgnoresNonContentLines(t *testing.T) {
 		entry("bbb", 3, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |") +
 		entry("bbb", 4, fixtureWorkerName, fixtureWorkerEmail, "| 2 | `true` | pass |")
 
-	got, sawBoundary := blamePorcelainAuthors(out)
+	got, sawBoundary := blamePorcelainAuthors(blamePorcelainLines(out))
 	if len(got) != 1 || got[0].Email != fixtureWorkerEmail {
 		t.Fatalf("only the content-bearing rows count; got %+v, want just the worker", got)
 	}
@@ -224,9 +224,48 @@ func TestBlamePorcelainAuthorsIgnoresNonContentLines(t *testing.T) {
 	multi := entry("aaa", 1, fixtureVerifierName, fixtureVerifierEmail, "<!-- contract") +
 		entry("aaa", 2, fixtureVerifierName, fixtureVerifierEmail, "still inside the comment") +
 		entry("aaa", 3, fixtureVerifierName, fixtureVerifierEmail, "--> | 1 | real row |")
-	got, _ = blamePorcelainAuthors(multi)
+	got, _ = blamePorcelainAuthors(blamePorcelainLines(multi))
 	if len(got) != 1 || got[0].Email != fixtureVerifierEmail {
 		t.Fatalf("content after a comment closes must count; got %+v", got)
+	}
+}
+
+// TestBlameLineBearsContent pins the same-line comment class: text outside a
+// comment anywhere on the line makes it content, whatever comments come after
+// it. The first shape is the one that dropped an author from the set.
+func TestBlameLineBearsContent(t *testing.T) {
+	cases := []struct {
+		content       string
+		open, bearing bool
+		openAfter     bool
+	}{
+		{"text <!-- a --> <!-- b -->", false, true, false},
+		{"text <!-- a --> <!-- b", false, true, true},
+		{"<!-- a --> text <!-- b -->", false, true, false},
+		{"<!-- a --> <!-- b --> text", false, true, false},
+		{"<!-- a --> <!-- b -->", false, false, false},
+		{"<!-- a -->", false, false, false},
+		{"text <!-- open", false, true, true},
+		{"<!-- open", false, false, true},
+		{"still inside", true, false, true},
+		{"end --> text <!-- c -->", true, true, false},
+		{"end --> <!-- c --> <!-- d -->", true, false, false},
+		{"text", false, true, false},
+		{"", false, false, false},
+	}
+	for _, c := range cases {
+		b, o := blameLineBearsContent(c.content, c.open)
+		if b != c.bearing || o != c.openAfter {
+			t.Errorf("blameLineBearsContent(%q, open=%v) = (%v, %v), want (%v, %v)", c.content, c.open, b, o, c.bearing, c.openAfter)
+		}
+	}
+	entry := func(n int, name, email, content string) string {
+		return fmt.Sprintf("aaa %d %d 1\nauthor %s\nauthor-mail <%s>\n\t%s\n", n, n, name, email, content)
+	}
+	out := entry(1, fixtureVerifierName, fixtureVerifierEmail, "| 1 | row |") +
+		entry(2, fixtureWorkerName, fixtureWorkerEmail, "**VERIFY: PASS** <!-- a --> <!-- b -->")
+	if got, _ := blamePorcelainAuthors(blamePorcelainLines(out)); len(got) != 2 {
+		t.Fatalf("authors = %+v, want both: the marker line before two comments is content", got)
 	}
 }
 
@@ -247,13 +286,13 @@ func TestBlamePorcelainAuthorsBoundaryOnlyOnContentLines(t *testing.T) {
 	// A boundary marker over ONLY a blank line — structure, not evidence.
 	blankBoundary := entryB("aaa", 1, fixtureWorkerName, fixtureWorkerEmail, "", true) +
 		entryB("bbb", 2, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |", false)
-	if _, saw := blamePorcelainAuthors(blankBoundary); saw {
+	if _, saw := blamePorcelainAuthors(blamePorcelainLines(blankBoundary)); saw {
 		t.Error("a boundary marker over a blank line must not set sawBoundary")
 	}
 
 	// A boundary marker over a real content line — the graft shape.
 	contentBoundary := entryB("aaa", 1, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |", true)
-	if _, saw := blamePorcelainAuthors(contentBoundary); !saw {
+	if _, saw := blamePorcelainAuthors(blamePorcelainLines(contentBoundary)); !saw {
 		t.Error("a boundary marker over a content-bearing line must set sawBoundary")
 	}
 }

@@ -385,7 +385,9 @@ never licenses dispatching past the floor. Resumes and rework (rows 3, 4, 5, 5b)
 drive picks and the floor does not hold them.
 
 **2. Merge the per-root plans** with §The interleave rule, tag every row with its repo-qualified ID,
-name every could-not-check root, and exclude items whose `depends:` are not yet `done`. A count from
+name every could-not-check root, and exclude items whose `depends:` are not yet `done` — except that a
+`gate: human` dependency at `implemented` whose Evidence carries a strict `**VERIFY: PASS**` (present in the raw text and not struck, fenced or
+quoted) with no later FAIL counts as met for `depends:` only, never for `gates:` (the same rule statusgen's eligibility evaluator applies). A count from
 human:<name> ("next 3") takes the top N **of the merged order** — scoping bounds THIS refill, never the loop.
 
 **3. Dispatch** each item with `deskdispatch` (below) — one `capability:dispatch-worker` per item, all
@@ -431,6 +433,17 @@ window stops, hands back, or asks the driver for direction.
    names a `RetryAfter` — sleep it and attempt ONCE, never retry-loop.
 5. **The tick still reports.** One line per §Output contract, and the sweep obligations of the HARD
    GATE are unaffected by a quiet queue.
+
+## Post-open stamp handoff
+
+For a dispatch made before its PR exists, retain the real dispatch receipt with the
+actual selected model and tier. When the worker returns the opened PR, send that PR and
+selection to the coordinator desk (`the-desk`), which runs the printed
+`deskdispatch --stamp-only --repo <repo> --pr <N> --model <actual-model> --tier <tier>`
+command with the original kit. Require its applied-and-verified receipt before treating
+the PR as model-attested. Both this worker-desk and its child are refused by stamp-only;
+a shared `DESK_SESSION` is claim custody, not stamp authority. Never switch identity or
+redispatch a worker just to obtain the stamp.
 
 ## Dispatch — `deskdispatch <item-key>` runs the ceremony
 
@@ -609,7 +622,13 @@ decision-trigger=spec` — the decision is only well-formed at the pickup design
 instructs the executor to author the brief's `## Human decision` section in its PR and report
 DECISION-BLOCK READY, and **this desk** then re-runs ensure `--at spec` against the branch copy
 (subagent issue-writes get classifier-denied); **5** = self-containment refusal, repair the brief,
-never hand-file around it; **6** = could-not-check, do not file, retry next cycle. Record the issue in
+never hand-file around it; **6** = could-not-check, do not file, retry next cycle — but a gate
+6 that repeats across more than one brief in one tick is a defect, not a blip: file it THAT tick as
+ONE issue naming every brief it blocked. The decision-gate step reports every helper failure as 6,
+the helper's own self-containment refusal included: where the step's message line or `DESK_TRACE`
+shows the helper itself refused (its status 5), that brief is a refusal — repair it, never count it
+toward the repeat filing. In either case, never hand-run the decision-issue helper around the
+refusal (a hand-run once landed a duplicate decision issue). Record the issue in
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
 step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
 
@@ -747,6 +766,8 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering
   evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
+  Before submitting an upstream issue or attaching a cross-boundary comment, apply R7: remove
+  internal locators from the title, body and evidence; use opaque role+number refs instead.
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
   driver or a stronger-tier model — the item PARKS only when the fork is one-way; a reversible item proceeds on its
   stated default with the label riding on it) or `help wanted` (the desk hit its capability/authority edge). Both are

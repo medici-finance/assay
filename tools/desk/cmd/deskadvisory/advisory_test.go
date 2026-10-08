@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // TestMain installs the roster fixture and hands the exit code through finishFixtureRoster
@@ -24,7 +25,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("GH_TOKEN", "test-token")
 	os.Unsetenv("GITHUB_TOKEN")
 	os.Setenv("DESK_TOOLS_DISABLED", "")
-	code := m.Run()
+	code := gitquiet.Run(m)
 	os.Exit(finishFixtureRoster(rosterCleanup, code))
 }
 

@@ -553,7 +553,22 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 	// timestamp being populated.
 	out.MergedAt = gitlabTime(mr.MergedAt)
 	out.Merged = strings.EqualFold(mr.State, "merged")
+	out.MergeCommitSHA = gitlabMergeCommitSHA(mr.State, mr.MergeCommitSHA, mr.SquashCommitSHA)
 	return out, nil
+}
+
+// gitlabMergeCommitSHA is PullRequest.MergeCommitSHA on GitLab (forge-neutral brief 33 Task 2.1):
+// set ONLY for state == merged — merge_commit_sha, else squash_commit_sha when the merge
+// request was squashed — and EMPTY otherwise (a fast-forward merge reports neither; an MR not
+// yet merged has no merge commit). Empty is could-not-check.
+func gitlabMergeCommitSHA(state, mergeSHA, squashSHA string) string {
+	if !strings.EqualFold(state, "merged") {
+		return ""
+	}
+	if mergeSHA != "" {
+		return mergeSHA
+	}
+	return squashSHA
 }
 
 // GetIssue resolves what a bare number IS, and refuses when GitLab cannot say.
@@ -577,6 +592,30 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 // A non-404 error from either probe (401/403) is returned as-is: a tier or credential
 // failure must not be read as "this kind does not exist".
 func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
+	iss, err := g.getIssue(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	return g.withAccountTypes(iss)
+}
+
+// withAccountTypes resolves the author's and the closer's Type on a GetIssue/GetIssueTyped
+// result (forge-neutral brief 33 Task 2.6) from the users API, once per distinct account id. An
+// account the users API cannot resolve keeps Type EMPTY — could-not-check, never "User".
+func (g *GitLabForge) withAccountTypes(iss *Issue) (*Issue, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	types := newGitlabTypeCache(g, cl)
+	iss.Author = types.resolve(iss.Author)
+	iss.ClosedBy = types.resolve(iss.ClosedBy)
+	return iss, nil
+}
+
+// getIssue is GetIssue without the account-type lookups: the kind-and-state read PostComment
+// routes on, which reads no author type and so issues no users-API request.
+func (g *GitLabForge) getIssue(repo ForgeRepo, number int) (*Issue, error) {
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -624,6 +663,11 @@ func gitlabIssueAsIssue(iss *gitlab.Issue) *Issue {
 	if iss.Author != nil {
 		out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
 	}
+	// closed_by survives a reopen; a closer on an issue that is not closed no longer stands
+	// (forge-neutral brief 33 Task 2.7). A null closer on a closed issue stays zero — could-not-check.
+	if iss.State == "closed" && iss.ClosedBy != nil {
+		out.ClosedBy = gitlabAccount(iss.ClosedBy.ID, iss.ClosedBy.Username)
+	}
 	return out
 }
 
@@ -656,14 +700,14 @@ func (g *GitLabForge) GetIssueTyped(repo ForgeRepo, number int, kind TargetKind)
 		if ierr != nil {
 			return nil, g.mapErr(http.MethodGet, path, ierr)
 		}
-		return gitlabIssueAsIssue(iss), nil
+		return g.withAccountTypes(gitlabIssueAsIssue(iss))
 	case TargetChange:
 		path := fmt.Sprintf("/projects/%s/merge_requests/%d", g.projectPath(repo), number)
 		mr, _, merr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(number), nil)
 		if merr != nil {
 			return nil, g.mapErr(http.MethodGet, path, merr)
 		}
-		return gitlabMRAsIssue(mr), nil
+		return g.withAccountTypes(gitlabMRAsIssue(mr))
 	}
 	return nil, Refused(fmt.Sprintf("refused: GetIssueTyped: unknown target kind %q for %s#%d", string(kind), repo.Slug(), number))
 }
@@ -886,6 +930,20 @@ func (g *GitLabForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 	return &ReviewQueue{Changes: changes, TruncatedAtCap: oc.TruncatedAtCap, Cap: oc.Cap}, nil
 }
 
+// gitlabChangeRepos derives ChangeRef.CrossRepo and ChangeRef.HeadRepo from ONE signal, the
+// source/target project-id comparison (forge-neutral brief 33 Task 2.4): equal → CrossRepoSame with
+// HeadRepo the target path; different → CrossRepoFork with HeadRepo EMPTY (the source project's
+// path is not read, and is never filled with the target's); either id missing → both EMPTY.
+func gitlabChangeRepos(repo ForgeRepo, source, target int64) (crossRepo, headRepo string) {
+	if source == 0 || target == 0 {
+		return "", ""
+	}
+	if source != target {
+		return CrossRepoFork, ""
+	}
+	return CrossRepoSame, repo.Slug()
+}
+
 // gitlabChangeState maps a GitLab MR state word to the seam's uppercased lifecycle state,
 // keeping MERGED DISTINCT from CLOSED — the split ListChanges promises and gitlabState (used by
 // the board's OpenChange) deliberately collapses. `locked` is a transient of an open MR, so it
@@ -921,6 +979,7 @@ func (g *GitLabForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 	stateAll := "all"
 	orderBy, sort := "updated_at", "desc"
 	out := &ChangeList{PageCap: gitlabMaxChangesPage}
+	types := newGitlabTypeCache(g, cl)
 	for page := 1; page <= gitlabMaxChangesPage; page++ {
 		chunk, resp, lerr := cl.MergeRequests.ListProjectMergeRequests(repo.Slug(),
 			&gitlab.ListProjectMergeRequestsOptions{
@@ -941,7 +1000,7 @@ func (g *GitLabForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 				continue
 			}
 			title, _ := gitlabStripDraftPrefix(mr.Title)
-			out.Changes = append(out.Changes, ChangeRef{
+			ref := ChangeRef{
 				Number:   int(mr.IID),
 				State:    st,
 				HeadSHA:  mr.SHA,
@@ -949,7 +1008,13 @@ func (g *GitLabForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 				Title:    title,
 				Body:     mr.Description,
 				MergedAt: gitlabTime(mr.MergedAt),
-			})
+				BaseRef:  mr.TargetBranch,
+			}
+			if mr.Author != nil {
+				ref.Author = types.resolve(gitlabAccount(mr.Author.ID, mr.Author.Username))
+			}
+			ref.CrossRepo, ref.HeadRepo = gitlabChangeRepos(repo, mr.SourceProjectID, mr.TargetProjectID)
+			out.Changes = append(out.Changes, ref)
 		}
 		if resp == nil || resp.NextPage == 0 {
 			return out, nil
@@ -1093,7 +1158,7 @@ func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 			return nil, g.mapErr(http.MethodGet, listPath, lerr)
 		}
 		for _, iss := range chunk {
-			if iss == nil {
+			if iss == nil || (iss.Author != nil && IsVerifierAttestation(iss.Title, iss.Author.Username)) {
 				continue
 			}
 			s := IssueSummary{
@@ -1200,8 +1265,9 @@ type glGQLNoteConn struct {
 }
 
 type glGQLNoteable struct {
-	Comments glGQLNoteConn `json:"comments"`
-	Activity glGQLNoteConn `json:"activity"`
+	bodyHistoryKnown bool
+	Comments         glGQLNoteConn `json:"comments"`
+	Activity         glGQLNoteConn `json:"activity"`
 }
 
 type glGQLTrustEnvelope struct {
@@ -1326,7 +1392,7 @@ func (g *GitLabForge) trustEvents(repo ForgeRepo, number int, noteable, op strin
 	if rerr != nil {
 		return nil, Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d", repo.Slug(), number), rerr)
 	}
-	return &TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete && activityComplete}, nil
+	return &TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete && activityComplete, BodyHistoryKnown: item.bodyHistoryKnown}, nil
 }
 
 // gitlabTrustItem translates the GitLab wire shape into the reader's item shape and derives
@@ -1694,6 +1760,13 @@ func (g *GitLabForge) ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFil
 				// A deleted entry's new_path echoes the old path; keep the path that was
 				// removed so a risk-path gate still sees it.
 				cf.Filename = d.OldPath
+			}
+			// A too_large or collapsed diff carries no usable patch: STATED, never an empty
+			// change (forge-neutral brief 33 Task 2.5).
+			if d.TooLarge || d.Collapsed {
+				cf.PatchAbsent = true
+			} else {
+				cf.Patch = d.Diff
 			}
 			all = append(all, cf)
 		}
@@ -2728,7 +2801,7 @@ func (g *GitLabForge) PostComment(repo ForgeRepo, number int, body string) (*Com
 	if err != nil {
 		return nil, err
 	}
-	kind, err := g.GetIssue(repo, number)
+	kind, err := g.getIssue(repo, number)
 	if err != nil {
 		return nil, err
 	}
@@ -3472,9 +3545,8 @@ func (g *GitLabForge) MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, 
 //
 // GitLab's RESOURCE LABEL EVENTS endpoint is the exact analog of the GitHub timeline read
 // this replaces: it records add/remove per label with the acting user, which is the one fact
-// the model-capability floor needs and the label LIST cannot give. Events whose action is
-// not `add` are dropped, matching the GitHub side's filter to `labeled` — a removal is not an
-// attestation.
+// the model-capability floor needs and the label LIST cannot give. Both add and remove
+// events are retained so a removed application cannot remain standing provenance.
 //
 // An event whose label GitLab has since DELETED comes back with an empty label name (the
 // documented shape: the event survives, the label record does not). It is dropped rather than
@@ -3496,16 +3568,45 @@ func (g *GitLabForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent,
 			return nil, g.mapErr(http.MethodGet, path, lerr)
 		}
 		for _, e := range chunk {
-			if e == nil || e.Action != "add" || strings.TrimSpace(e.Label.Name) == "" {
+			if e == nil || (e.Action != "add" && e.Action != "remove") || strings.TrimSpace(e.Label.Name) == "" {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt)})
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
 		}
 		if resp == nil || resp.NextPage == 0 {
-			break
+			return out, nil
 		}
 	}
-	return out, nil
+	return nil, fmt.Errorf("label timeline exceeded page bound")
+}
+
+func (g *GitLabForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/issues/%d/resource_label_events",
+		g.projectPath(repo), number)
+	var out []LabelEvent
+	for page := 1; page <= gitlabMaxNotePage; page++ {
+		chunk, resp, lerr := cl.ResourceLabelEvents.ListIssueLabelEvents(repo.Slug(), int64(number),
+			&gitlab.ListLabelEventsOptions{
+				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+			})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, path, lerr)
+		}
+		for _, e := range chunk {
+			if e == nil || (e.Action != "add" && e.Action != "remove") || strings.TrimSpace(e.Label.Name) == "" {
+				continue
+			}
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("label timeline exceeded page bound")
 }
 
 // gitlabNoteIDScheme prefixes the opaque comment id this backend mints. Like
@@ -3651,6 +3752,9 @@ func (g *GitLabForge) listNotes(repo ForgeRepo, number int, kind TargetKind, com
 				Body:       n.Body,
 				Minimized:  false,
 				CreatedAt:  gitlabTime(n.CreatedAt),
+				// The note's own updated_at; a note reporting none stays EMPTY
+				// (could-not-check), never CreatedAt (forge-neutral brief 33 Task 2.8).
+				UpdatedAt: gitlabTime(n.UpdatedAt),
 			}
 			if kind == TargetChange {
 				c.ID = gitlabNoteID(repo, number, n.ID)
@@ -4237,4 +4341,280 @@ func (g *GitLabForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 			"mapping does not know — not rounded to a known state", pid, repo.Slug(), StripControl(p.Status)), nil)
 	}
 	return st, nil
+}
+
+// GitLab issues do not expose lastEditedAt. The existing activity-note query is
+// the provider contract: missing nodes/pageInfo is unknown, not an empty history.
+func (g *glGQLNoteable) UnmarshalJSON(raw []byte) error {
+	type plain glGQLNoteable
+	var decoded plain
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	var activity struct {
+		Nodes    json.RawMessage
+		PageInfo map[string]json.RawMessage
+	}
+	if err := json.Unmarshal(fields["activity"], &activity); err == nil && len(activity.Nodes) > 0 && string(activity.Nodes) != "null" {
+		field, ok := activity.PageInfo["hasPreviousPage"]
+		decoded.bodyHistoryKnown = ok && (string(field) == "true" || string(field) == "false")
+		for _, note := range decoded.Activity.Nodes {
+			if note.Body == "" || note.CreatedAt == "" {
+				decoded.bodyHistoryKnown = false
+			}
+		}
+	}
+	*g = glGQLNoteable(decoded)
+	return nil
+}
+
+// --- forge-neutral brief 33: ops 55–58 (statusgen's remaining reads) ---
+
+// gitlabTypeCache resolves Account.Type from the users API once per distinct account id within
+// ONE call (forge-neutral brief 33 Task 2.6), the way IssueReactions does. An account with no id is
+// not looked up; an id the users API cannot resolve keeps Type EMPTY — could-not-check, never
+// "User".
+type gitlabTypeCache struct {
+	g  *GitLabForge
+	cl *gitlab.Client
+	m  map[int64]string
+}
+
+func newGitlabTypeCache(g *GitLabForge, cl *gitlab.Client) *gitlabTypeCache {
+	return &gitlabTypeCache{g: g, cl: cl, m: map[int64]string{}}
+}
+
+// resolve returns a with its Type filled where the users API answered.
+func (c *gitlabTypeCache) resolve(a Account) Account {
+	if a.ID == 0 {
+		return a
+	}
+	t, seen := c.m[a.ID]
+	if !seen {
+		t = c.g.gitlabActorType(c.cl, a.ID)
+		c.m[a.ID] = t
+	}
+	a.Type = t
+	return a
+}
+
+// ListIssues is op 55 (forge-neutral brief 33) on GitLab: GET /projects/:id/issues — an issues-only
+// endpoint (merge requests have their own), so the ceiling is spent on issues — with
+// state=opened|closed|all and the one label as the URL-encoded `labels` parameter, newest
+// first, under gitlabMaxIssuePage pages of gitlabPerPage. GitLab's `opened` is normalised to
+// `open`. The ceiling reached with a next page still advertised is Incomplete. Author Type is
+// not resolved here (Task 2.6 does not name this read), so it stays EMPTY — could-not-check.
+func (g *GitLabForge) ListIssues(repo ForgeRepo, in IssueListQuery) (*IssueList, error) {
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	listPath := fmt.Sprintf("/projects/%s/issues", g.projectPath(repo))
+	state := map[string]string{IssueStateOpen: "opened", IssueStateClosed: "closed", IssueStateAll: "all"}[in.State]
+	orderBy, sort := "created_at", "desc"
+	opt := &gitlab.ListProjectIssuesOptions{State: &state, OrderBy: &orderBy, Sort: &sort}
+	if in.Label != "" {
+		opt.Labels = &gitlab.LabelOptions{in.Label}
+	}
+	out := &IssueList{Issues: []IssueSummary{}, PageCap: gitlabMaxIssuePage}
+	for page := 1; page <= gitlabMaxIssuePage; page++ {
+		opt.ListOptions = gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)}
+		chunk, resp, lerr := cl.Issues.ListProjectIssues(repo.Slug(), opt)
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, listPath, lerr)
+		}
+		for _, iss := range chunk {
+			if iss == nil {
+				continue
+			}
+			s := IssueSummary{
+				Number:    int(iss.IID),
+				Title:     iss.Title,
+				Labels:    append([]string{}, iss.Labels...),
+				CreatedAt: gitlabTime(iss.CreatedAt),
+				URL:       iss.WebURL,
+				State:     gitlabState(iss.State),
+				ClosedAt:  gitlabTime(iss.ClosedAt),
+			}
+			if iss.Author != nil {
+				s.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
+			}
+			out.Issues = append(out.Issues, s)
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return out, nil
+		}
+	}
+	out.Incomplete = true
+	return out, nil
+}
+
+// gitlabClosingMerged reads a closing merge request's merged state and FAILS CLOSED: true only
+// for `merged`, false only for `opened`, `closed` or `locked`. A missing or unknown state is
+// unreadable (ok=false), which clears the whole result's Complete — never "unmerged".
+func gitlabClosingMerged(state string) (value, ok bool) {
+	switch state {
+	case "merged":
+		return true, true
+	case "opened", "closed", "locked":
+		return false, true
+	}
+	return false, false
+}
+
+// IssueStateEvents is op 56 (forge-neutral brief 33) on GitLab: GET
+// /projects/:id/issues/:iid/resource_state_events (the `closed` and `reopened` events, with
+// their user and time) and GET /projects/:id/issues/:iid/closed_by (the merge requests that
+// close it). Each closing MR's project_id is resolved to its path for Repo, once per distinct
+// project; an unresolvable project leaves Repo EMPTY and clears Complete. Either walk reaching
+// gitlabMaxNotePage with a next page still advertised clears Complete.
+func (g *GitLabForge) IssueStateEvents(repo ForgeRepo, number int) (*IssueStateHistory, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	types := newGitlabTypeCache(g, cl)
+	out := &IssueStateHistory{Events: []IssueStateEvent{}, ClosingChanges: []ClosingChange{}, Complete: true}
+
+	evPath := fmt.Sprintf("/projects/%s/issues/%d/resource_state_events", g.projectPath(repo), number)
+	more := false
+	for page := 1; page <= gitlabMaxNotePage; page++ {
+		chunk, resp, eerr := cl.ResourceStateEvents.ListIssueStateEvents(repo.Slug(), int64(number),
+			&gitlab.ListStateEventsOptions{ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)}})
+		if eerr != nil {
+			return nil, g.mapErr(http.MethodGet, evPath, eerr)
+		}
+		for _, e := range chunk {
+			if e == nil {
+				continue
+			}
+			var kind string
+			switch string(e.State) {
+			case "closed":
+				kind = IssueEventClosed
+			case "reopened":
+				kind = IssueEventReopened
+			default:
+				continue // not a close/reopen transition
+			}
+			ev := IssueStateEvent{Kind: kind, CreatedAt: gitlabTime(e.CreatedAt)}
+			if e.User != nil {
+				ev.Actor = types.resolve(gitlabAccount(e.User.ID, e.User.Username))
+			}
+			out.Events = append(out.Events, ev)
+		}
+		more = resp != nil && resp.NextPage != 0
+		if !more {
+			break
+		}
+	}
+	if more {
+		out.Complete = false
+	}
+
+	cbPath := fmt.Sprintf("/projects/%s/issues/%d/closed_by", g.projectPath(repo), number)
+	projects := map[int64]string{}
+	more = false
+	for page := 1; page <= gitlabMaxNotePage; page++ {
+		chunk, resp, cerr := cl.Issues.ListMergeRequestsClosingIssue(repo.Slug(), int64(number),
+			&gitlab.ListMergeRequestsClosingIssueOptions{ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)}})
+		if cerr != nil {
+			return nil, g.mapErr(http.MethodGet, cbPath, cerr)
+		}
+		for _, mr := range chunk {
+			if mr == nil {
+				continue
+			}
+			merged, ok := gitlabClosingMerged(mr.State)
+			if !ok {
+				out.Complete = false
+			}
+			cc := ClosingChange{Number: int(mr.IID), Merged: merged}
+			if mr.ProjectID != 0 {
+				p, seen := projects[mr.ProjectID]
+				if !seen {
+					if proj, _, perr := cl.Projects.GetProject(mr.ProjectID, nil); perr == nil && proj != nil {
+						p = proj.PathWithNamespace
+					}
+					projects[mr.ProjectID] = p
+				}
+				cc.Repo = p
+			}
+			if cc.Repo == "" {
+				// No project id, or one the projects API could not resolve: the closer cannot be
+				// placed, so the history is could-not-check (ClosingChange.Repo's contract).
+				out.Complete = false
+			}
+			if mr.Author != nil {
+				cc.Author = types.resolve(gitlabAccount(mr.Author.ID, mr.Author.Username))
+			}
+			out.ClosingChanges = append(out.ClosingChanges, cc)
+		}
+		more = resp != nil && resp.NextPage != 0
+		if !more {
+			break
+		}
+	}
+	if more {
+		out.Complete = false
+	}
+	return out, nil
+}
+
+// gitlabMaxChangeCommitPage bounds op 57's walk (2500 commits).
+const gitlabMaxChangeCommitPage = 25
+
+// ListChangeCommits is op 57 (forge-neutral brief 33) on GitLab: GET
+// /projects/:id/merge_requests/:iid/commits, paginated. Complete=false when the page ceiling is
+// reached with a next page still advertised.
+func (g *GitLabForge) ListChangeCommits(repo ForgeRepo, number int) (*ChangeCommits, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/commits", g.projectPath(repo), number)
+	out := &ChangeCommits{SHAs: []string{}}
+	for page := 1; page <= gitlabMaxChangeCommitPage; page++ {
+		chunk, resp, cerr := cl.MergeRequests.GetMergeRequestCommits(repo.Slug(), int64(number),
+			&gitlab.GetMergeRequestCommitsOptions{ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)}})
+		if cerr != nil {
+			return nil, g.mapErr(http.MethodGet, path, cerr)
+		}
+		for _, c := range chunk {
+			if c != nil {
+				out.SHAs = append(out.SHAs, c.ID)
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			out.Complete = true
+			return out, nil
+		}
+	}
+	return out, nil
+}
+
+// RepoDefaultBranch is op 58 (forge-neutral brief 33) on GitLab: GET /projects/:id
+// `.default_branch`. An empty value is could-not-check, never "main".
+func (g *GitLabForge) RepoDefaultBranch(repo ForgeRepo) (string, error) {
+	cl, err := g.client()
+	if err != nil {
+		return "", err
+	}
+	path := fmt.Sprintf("/projects/%s", g.projectPath(repo))
+	p, _, err := cl.Projects.GetProject(repo.Slug(), nil)
+	if err != nil {
+		return "", g.mapErr(http.MethodGet, path, err)
+	}
+	if p.DefaultBranch == "" {
+		return "", Unverifiable(fmt.Sprintf(
+			"could-not-check: project %s reported no default branch — refusing to assume one", repo.Slug()), nil)
+	}
+	return p.DefaultBranch, nil
 }

@@ -52,7 +52,7 @@ NO ATTRIBUTION LINES anywhere: no Co-Authored-By in commits, no Generated-with-C
 MODEL-TIER AWARENESS: this session can be silently downgraded. On probe (the human driver asks your model): present env model line verbatim, keep working. On assertion of downgrade: stop synthesis/judgment/composition, fall back to verification and transcription.
 
 ## R7 REDACTION
-REDACTION: private repo -> full defect detail on PR (worker needs file:line + mechanism). Redact only genuinely secret MATERIAL (tokens/keys/PII), never defect descriptions.
+REDACTION: private repo -> full defect detail on PR (worker needs file:line + mechanism); redact secret MATERIAL (tokens/keys/PII), never defect descriptions. Never carry internal locators for private or org-internal forges, trackers and CI across a trust boundary: full URLs, clone URLs and host+path links stay inside their original trust boundary. Elsewhere use opaque role+number refs (e.g. source issue #42, source CI run #7), with no hostname, path or query. Same-venue same-visibility links remain valid.
 
 ## R8 GIT PUSH POLICY
 GIT PUSH POLICY: NEVER push to main or merge without the human driver's explicit say-so. Branch push + draft PR is standing-authorized. Never trigger workflows or mutating kubectl.
