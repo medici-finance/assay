@@ -18,7 +18,8 @@ package main
 //     DECISIONS record, bound to the exact subject by digest, and authenticated by
 //     the existing offline corroboration seam (decisiongateanchor.go). A decoded
 //     JSON object is never a corroboration receipt: trustedReceipt can only be built
-//     by trustReceipts, which asks decisionGateCorroboration.
+//     by trustReceipts, which asks decisionGateCorroboratingIssue (the issue-returning
+//     half of the seam that decisionGateCorroboration delegates to).
 //   - It does NOT read the forge, the clock or the network. asOf is an explicit
 //     argument; corroboration state is pre-fetched by the caller and passed in.
 //   - It does NOT judge semantic correctness. A source can be correctly identified,

@@ -104,7 +104,8 @@ The subject digest binds the exact source revision and content, the exact mappin
 content, the profile revision, and the whole proposal being approved: outcome and not-applicable
 reason, scope and effective period, decision time, proposer, reviewer and the decision it
 supersedes. Changing any of them changes the digest, so an approval of one subject cannot be
-replayed onto another, and a reason, a decision time or a supersession pointer cannot be
+replayed onto another while the decision record is unchanged (section 1 states what binds the
+digest to the record, and its limits), and a reason, a decision time or a supersession pointer cannot be
 rewritten in the input after approval. The reference tests compare against digests computed by
 an independent implementation of this section
 (`statusgen/testdata/projectobligations/canonical_digest.py`, written from this text and run by

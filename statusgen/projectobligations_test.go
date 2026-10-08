@@ -697,6 +697,15 @@ func TestAssuranceSubjectDigest(t *testing.T) {
 	if got := subjectDigest(in.Sources[0], in.Mappings[0], in.Decisions[0]); got != wantSubj {
 		t.Errorf("subject digest = %s, want %s", got, wantSubj)
 	}
+	// The fixture decision has no end date, so the golden above cannot see an
+	// effectiveTo dropped from the subject. Same helper, same fixture, with
+	// decisions[0].effectiveTo = "2027-09-30".
+	bounded := in.Decisions[0]
+	bounded.EffectiveTo = "2027-09-30"
+	wantBounded := "sha256:e043cc6eda86914dccd4cc5b6993e245eb24993765e284b2fd0667288df308a9"
+	if got := subjectDigest(in.Sources[0], in.Mappings[0], bounded); got != wantBounded {
+		t.Errorf("subject digest with effectiveTo = %s, want %s", got, wantBounded)
+	}
 	swapped := in.Mappings[0]
 	swapped.Reqs = []string{"REQ-synthetic-controls", "REQ-aaaa-aaaa-aaaa"}
 	a := mappingDigest(swapped)

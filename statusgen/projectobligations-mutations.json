@@ -200,6 +200,54 @@
       "new": "poNet(d.ID), poNet(d.Outcome), poNet(d.Scope),"
     },
     {
+      "name": "subject digest blanks the decision id",
+      "file": "projectobligations.go",
+      "old": "poNet(d.ID), poNet(d.Outcome), poNet(d.Reason), poNet(d.Scope),",
+      "new": "poNet(\"\"), poNet(d.Outcome), poNet(d.Reason), poNet(d.Scope),"
+    },
+    {
+      "name": "subject digest blanks the outcome",
+      "file": "projectobligations.go",
+      "old": "poNet(d.ID), poNet(d.Outcome), poNet(d.Reason), poNet(d.Scope),",
+      "new": "poNet(d.ID), poNet(\"\"), poNet(d.Reason), poNet(d.Scope),"
+    },
+    {
+      "name": "subject digest blanks the scope",
+      "file": "projectobligations.go",
+      "old": "poNet(d.ID), poNet(d.Outcome), poNet(d.Reason), poNet(d.Scope),",
+      "new": "poNet(d.ID), poNet(d.Outcome), poNet(d.Reason), poNet(\"\"),"
+    },
+    {
+      "name": "subject digest blanks the start of the effective period",
+      "file": "projectobligations.go",
+      "old": "poNet(d.EffectiveFrom), poNet(d.EffectiveTo), poNet(d.DecidedAt),",
+      "new": "poNet(\"\"), poNet(d.EffectiveTo), poNet(d.DecidedAt),"
+    },
+    {
+      "name": "subject digest blanks the end of the effective period",
+      "file": "projectobligations.go",
+      "old": "poNet(d.EffectiveFrom), poNet(d.EffectiveTo), poNet(d.DecidedAt),",
+      "new": "poNet(d.EffectiveFrom), poNet(\"\"), poNet(d.DecidedAt),"
+    },
+    {
+      "name": "subject digest blanks the decision time",
+      "file": "projectobligations.go",
+      "old": "poNet(d.EffectiveFrom), poNet(d.EffectiveTo), poNet(d.DecidedAt),",
+      "new": "poNet(d.EffectiveFrom), poNet(d.EffectiveTo), poNet(\"\"),"
+    },
+    {
+      "name": "subject digest blanks the proposer",
+      "file": "projectobligations.go",
+      "old": "poNet(d.ProposedBy), poNet(d.Reviewer), poNet(d.Supersedes),",
+      "new": "poNet(\"\"), poNet(d.Reviewer), poNet(d.Supersedes),"
+    },
+    {
+      "name": "subject digest blanks the reviewer",
+      "file": "projectobligations.go",
+      "old": "poNet(d.ProposedBy), poNet(d.Reviewer), poNet(d.Supersedes),",
+      "new": "poNet(d.ProposedBy), poNet(\"\"), poNet(d.Supersedes),"
+    },
+    {
       "name": "canonical form back to an unescaped join",
       "file": "projectobligations.go",
       "old": "func poNet(s string) string { return fmt.Sprintf(\"%d:%s,\", len(s), s) }",
@@ -233,7 +281,7 @@
       "name": "validator: paraphrase bound removed",
       "file": "projectobligations.go",
       "old": "if utf8.RuneCountInString(m.Paraphrase) > poMaxParaphrase {",
-      "new": "if false {"
+      "new": "if false && utf8.RuneCountInString(m.Paraphrase) > poMaxParaphrase {"
     },
     {
       "name": "validator: mapping supersedes chain unchecked",
@@ -245,7 +293,7 @@
       "name": "validator: source predecessor form unchecked",
       "file": "projectobligations.go",
       "old": "if !ok || pid != s.ID {",
-      "new": "if false {"
+      "new": "if false && (!ok || pid != s.ID) {"
     },
     {
       "name": "validator: not-applicable reason unchecked",
@@ -371,7 +419,7 @@
       "name": "state: refusing reasons read as pending [state:rejected]",
       "file": "projectobligations.go",
       "old": "if !poPending[x] && !strings.HasPrefix(x, \"req-cross-repo-unchecked:\") {",
-      "new": "if false {"
+      "new": "if false && !poPending[x] && !strings.HasPrefix(x, \"req-cross-repo-unchecked:\") {"
     },
     {
       "name": "state: pending reasons read as refused [state:unresolved]",
