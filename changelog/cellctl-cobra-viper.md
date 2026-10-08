@@ -1,0 +1,2 @@
+### Changed
+- `cellctl` now parses its command line with Cobra and resolves its per-run settings through the shared desk adapter. Every verb, flag, single-dash spelling, precedence rule and refusal is preserved; `--help`, `<verb> --help` and `--version` now read no cell, credential or roster, `--flag=value` and `--` are accepted, and a parse failure carries Cobra's wording with the usage exit code (3, including `scratch`, which used 2). The deliberate differences are listed in `docs/cellctl-cli-compat.md` and the generated command list is `docs/cellctl-cli-reference.md`.

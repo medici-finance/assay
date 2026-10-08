@@ -20,6 +20,12 @@ can also stand up by hand. Nothing else in Assay depends on it.
 
 For local messages between desk roles, see [Host desk communications](cellctl-comms.md).
 
+The command line is Cobra commands with scoped settings resolution: the generated
+[command reference](cellctl-cli-reference.md) lists every verb and flag, and the
+[compatibility table](cellctl-cli-compat.md) lists every way the surface differs from the earlier
+hand-written parser. `cellctl --help`, `cellctl <verb> --help` and `--version` read no cell, no
+credential and no roster.
+
 For an existing container deployment, the **container** kind provides registration and lifecycle
 delegation instead of host worktrees and credential symlinks. See [Container cells](#container-cells).
 For a harness that must run on the host but must NOT inherit the launching shell's credentials, the
