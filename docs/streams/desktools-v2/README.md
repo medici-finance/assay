@@ -62,7 +62,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 08 | [hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present](brief-08-hold-statusgen-at-zero.md) | 6 | S | todo | — | — |
 | 09 | [purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls)](brief-09-access-pattern-queries.md) | 3 | L | verified | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | 10 | [one outbound-write check at the forge write seam, keyed on the target's visibility](brief-10-one-outbound-write-check.md) | 2 | L | implemented | — | — |
-| 11 | [a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools](brief-11-outbound-house-callout.md) | 3 | M | todo | — | — |
+| 11 | [a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools](brief-11-outbound-house-callout.md) | 3 | M | implemented | — | — |
 | 12 | [platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS](brief-12-platform-compatibility-suite.md) | 2 | L | implemented | — | — |
 | 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | implemented | — | — |
 | 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | verified | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
