@@ -465,6 +465,73 @@ func TestPreflightRejectionVocabulary(t *testing.T) {
 	}
 }
 
+// TestPreflightRejectionIgnoresAddresses — the defect class: digits that belong to
+// an ADDRESS (a URL's port or path, a host:port in a dial error) are not a status
+// the forge answered. Every shape of address carrying 401/403 beside a non-denial
+// answer must stay inconclusive; the same addresses beside a real denial must still
+// be a rejection. Each case plants the digits at a different position.
+func TestPreflightRejectionIgnoresAddresses(t *testing.T) {
+	addrs := []string{
+		`"http://127.0.0.1:40109/org/repo.git/info/refs?service=git-upload-pack"`,
+		`"http://127.0.0.1:14030/org/repo.git/info/refs"`,
+		`"https://example.test/org/401/repo.git"`,
+		`"https://example.test/org/repo403.git?id=4010"`,
+		`http://[::1]:40300/x`,
+		`127.0.0.1:40309`,
+		`localhost:14013`,
+		`github.com:403`,
+	}
+	for _, a := range addrs {
+		for _, answer := range []string{
+			"unexpected requesting %s status code: 502",
+			"dial tcp %s: connect: connection refused",
+			"Get %s: context deadline exceeded",
+		} {
+			text := fmt.Sprintf(answer, a)
+			if isRejection(text) {
+				t.Errorf("non-denial %q is read as a rejection", text)
+			}
+		}
+		for _, denied := range []string{
+			"unexpected requesting %s status code: 403",
+			"remote: Permission to org/repo.git denied to bot (%s)",
+		} {
+			text := fmt.Sprintf(denied, a)
+			if !isRejection(text) {
+				t.Errorf("denial %q is NOT read as a rejection", text)
+			}
+		}
+	}
+}
+
+// TestPreflightRejectionCallerAllowList — the class guard: only listReachability
+// may judge raw transport text, and only through isRejection. A second site
+// matching rejectionRe on unscrubbed text would repeat the port-digits defect.
+func TestPreflightRejectionCallerAllowList(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits []string
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			if strings.Contains(line, "rejectionRe.") && !strings.HasPrefix(strings.TrimSpace(line), "//") {
+				hits = append(hits, fmt.Sprintf("%s:%d", f, i+1))
+			}
+		}
+	}
+	if len(hits) != 1 || !strings.HasPrefix(hits[0], "preflight.go:") {
+		t.Fatalf("rejectionRe must be used exactly once, inside isRejection (preflight.go); found %v", hits)
+	}
+}
+
 // ---- check 4: commit identity (#638) --------------------------------------
 
 // TestPreflightCommitIdentityBotUserIDIsClean — the correct shape.

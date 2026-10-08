@@ -7,6 +7,8 @@ package deskkit
 
 import (
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -74,6 +76,57 @@ func TestPreflightReachability403(t *testing.T) {
 // could-not-check: no verdict was reached.
 func TestPreflightReachability503(t *testing.T) {
 	assertReach(t, statusServer(t, http.StatusServiceUnavailable), ProbeInconclusive)
+}
+
+// portServer is statusServer pinned to a port whose decimal digits contain
+// needle (e.g. "401" -> 40109), so the digits sit inside the URL gitcore's error
+// text names. It scans a block of candidate ports and skips when none is free.
+func portServer(t *testing.T, code int, needle string) string {
+	t.Helper()
+	var ln net.Listener
+	for _, base := range []int{40000, 14000, 20000} {
+		for i := 0; i < 100 && ln == nil; i++ {
+			port := base + i
+			if !strings.Contains(fmt.Sprint(port), needle) {
+				continue
+			}
+			if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
+				ln = l
+			}
+		}
+	}
+	if ln == nil {
+		t.Skipf("no free local port containing %q", needle)
+	}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(code)
+	}))
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv.URL + "/example-org/tracker.git"
+}
+
+// TestPreflightReachabilityPortDigits — a status the forge answered is judged by
+// the STATUS, never by digits that happen to sit in the server's URL: a 502/503
+// from a port containing 401 or 403 is inconclusive, and a real 401/403 from the
+// same ports is still a rejection.
+func TestPreflightReachabilityPortDigits(t *testing.T) {
+	for _, needle := range []string{"401", "403"} {
+		for _, tc := range []struct {
+			code int
+			want ProbeVerdict
+		}{
+			{http.StatusBadGateway, ProbeInconclusive},
+			{http.StatusServiceUnavailable, ProbeInconclusive},
+			{http.StatusUnauthorized, ProbeRejected},
+			{http.StatusForbidden, ProbeRejected},
+		} {
+			t.Run(fmt.Sprintf("port-%s-status-%d", needle, tc.code), func(t *testing.T) {
+				assertReach(t, portServer(t, tc.code, needle), tc.want)
+			})
+		}
+	}
 }
 
 func assertReach(t *testing.T, url string, want ProbeVerdict) {
