@@ -248,6 +248,12 @@
       "new": "\tcase false && heldExpectColumnRe.MatchString(n):\n\t\treturn heldColExpect"
     },
     {
+      "name": "S1-r4: the expectation-header match is unanchored (a verdict column containing expect is skipped)",
+      "file": "heldscope.go",
+      "old": "regexp.MustCompile(`^(expect(ed)?( (exit( code| status)?|outcome|result|output|status))?|(pass |acceptance )?criteri(a|on))$`)",
+      "new": "regexp.MustCompile(`\\bexpect|\\bcriteri`)"
+    },
+    {
       "name": "A8: a span GFM does not strike is removed as struck",
       "file": "heldscope.go",
       "old": "\tcell = heldStrikeRe.ReplaceAllString(cell, \"\")\n",

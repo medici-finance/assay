@@ -64,8 +64,11 @@ import (
 //     ok, PASS, exit 0 or the like, followed only by neutral details such as
 //     a non-zero test count or a duration; a bare 0 only as a whole Exit
 //     cell), and no other cell of them or of any unrecognised column holds
-//     visible text. An expectation column (Expected exit, Pass criteria) is
-//     never read for the outcome. A placeholder (—, n/a), a carry-forward
+//     visible text. A column that names an expectation and nothing else
+//     (Expected exit, Pass criteria; heldExpectColumnRe, anchored) is never
+//     read for the outcome; a header that only contains the word (Verdict vs
+//     Expect, Matches expected?, Meets criteria) is an unrecognised column
+//     and must be empty. A placeholder (—, n/a), a carry-forward
 //     (same as Run 1), a note after the outcome (PASS (no re-run)), a zero
 //     count (0 checks run), markup or a format character, or any text outside
 //     that closed grammar is not clean. A later run that re-ran nothing,
@@ -599,8 +602,13 @@ var (
 	heldExitColumns   = map[string]bool{"exit": true, "exit code": true, "exit status": true, "rc": true}
 	heldResultColumns = map[string]bool{"result": true, "results": true, "observed": true, "output": true,
 		"outcome": true, "status": true, "actual": true, "actual result": true, "observed result": true, "verdict": true}
-	// heldExpectColumnRe is a header that names an expectation or a criterion.
-	heldExpectColumnRe = regexp.MustCompile(`\bexpect|\bcriteri`)
+	// heldExpectColumnRe is a header (heldNorm) that names an expectation or a
+	// criterion and nothing else: Expect, Expected exit, Expected result, Pass
+	// criteria. It is anchored on both ends. A header that merely CONTAINS the
+	// word (Verdict vs Expect, Matches expected?, Meets criteria, Criteria
+	// met?) records an actual verdict, so it stays heldColOther and must be
+	// empty.
+	heldExpectColumnRe = regexp.MustCompile(`^(expect(ed)?( (exit( code| status)?|outcome|result|output|status))?|(pass |acceptance )?criteri(a|on))$`)
 )
 
 // heldCoverColumn classifies a result-column header for the cover.

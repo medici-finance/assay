@@ -151,6 +151,46 @@ func TestHeldScopeCoverOutcome(t *testing.T) {
 	runHeldScanCases(t, cases)
 }
 
+// expectHdrRun is a later run whose results table carries one extra header
+// beside Exit and Output, with row 2 holding the given Exit, Output and
+// extra-column cells; it closes on a strict PASS.
+func expectHdrRun(header, exit, output, extra string) string {
+	return "### Run 2\n\n| # | Command | Exit | Output | " + header + " |\n|---|---|---|---|---|\n" +
+		"| 1 | `go test ./...` | 0 | ok | ok |\n" +
+		"| 2 | `go test ./integration/...` | " + exit + " | " + output + " | " + extra + " |\n\n**VERIFY: PASS**\n"
+}
+
+// TestHeldScopeExpectHeaderExact: a header is an expectation column only when
+// it names an expectation and nothing else. A header that merely contains
+// "expect" or "criteri" records the actual verdict, so it is an unrecognised
+// column: a non-empty cell there keeps the earlier hold read (S1 round 4).
+func TestHeldScopeExpectHeaderExact(t *testing.T) {
+	var cases []heldScanCase
+	for _, h := range []string{
+		"Verdict vs Expect", "Matches expected?", "Meets criteria", "As expected?",
+		"Result vs expected", "Criteria met?", "Expectation met", "Unexpected result",
+	} {
+		for _, v := range []string{"**INCONCLUSIVE**: empty body, not confirmed", "**FAIL**: Expect 200, got 503", "not re-run, carried from Run 1", "no (partial)", "no"} {
+			cases = append(cases,
+				heldScanCase{h + " says " + strconv.Quote(v) + ", empty result",
+					heldRun + expectHdrRun(h, "0", "", v), true},
+				heldScanCase{h + " says " + strconv.Quote(v) + ", ok result",
+					heldRun + expectHdrRun(h, "0", "ok", v), true})
+		}
+	}
+	// The reviewer's repro shape: the same header in both entries.
+	hdr := "| # | Command | Exit | Output | Verdict vs Expect | Date | Runner |\n|---|---|---|---|---|---|---|\n"
+	cases = append(cases, heldScanCase{"verdict-vs-expect repro, both entries",
+		"### Run 1\n\n" + hdr + "| 1 | `a` | 0 | ok | **PASS** | 2026-10-01 | r |\n| 2 | `b` | — | — | HELD — no runner online | 2026-10-01 | r |\n\n**VERIFY: PASS** (model)\n\n" +
+			"### Run 2\n\n" + hdr + "| 1 | `a` | 0 | ok | **PASS** | 2026-10-03 | r |\n| 2 | `b` | 0 |  | **INCONCLUSIVE**: empty body, not confirmed | 2026-10-03 | r |\n\n**VERIFY: PASS**\n", true})
+	// A pure expectation column is still skipped.
+	for _, h := range []string{"Expect", "Expected", "Expected exit", "Expected exit code", "Expected result", "Expected output", "Pass criteria", "Acceptance criteria", "Criteria", "Criterion"} {
+		cases = append(cases, heldScanCase{h + " column is skipped",
+			heldRun + expectHdrRun(h, "0", "ok", "exit 0"), false})
+	}
+	runHeldScanCases(t, cases)
+}
+
 // TestHeldScopeCurrentHeldRefuses: a genuine held row in the current entry
 // still refuses, whatever the scope rules admit around it.
 func TestHeldScopeCurrentHeldRefuses(t *testing.T) {
