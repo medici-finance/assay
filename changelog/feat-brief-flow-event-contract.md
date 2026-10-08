@@ -1,0 +1,4 @@
+### Added
+- `spec/brief-flow-event-v1.md` and `schemas/brief-flow-event-v1.json`: a brief-flow event contract keyed by the brief's stable uuid, with effective-dated aliases, canonical fact ids and digests, source precedence, role-only actors, and refusal of unknown mandatory members and of person identifiers.
+- `statusgen` reference implementation: event validation, a fact store with corroboration and held conflicts, a deterministic stage reducer that keeps first milestones apart from episodes and never infers completion from a merged pull request, a read-only board-historian adapter, and a portable JSONL export with a digest manifest that refuses git work trees.
+- `tests/brief-flow/07.sh`: offline acceptance runner (identity, stage, compatibility, flow, role identity, mutation) over synthetic fixtures with hand-written expectations.
