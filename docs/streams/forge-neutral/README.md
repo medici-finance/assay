@@ -237,7 +237,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 31 | [Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live](brief-31-remaining-roles-write-audit.md) | 8 | M | todo | — | — |
 | 32 | [Release-N+1 deletion — the forge claim store is removed and an unset store key is refused](brief-32-forge-store-deletion.md) | 8 | M | todo | — | — |
 | 33 | [Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind](brief-33-forge-reads-for-statusgen-s-remaining-sites.md) | 1 | L | implemented | — | — |
-| 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | todo | — | — |
+| 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | implemented | — | — |
 | 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
