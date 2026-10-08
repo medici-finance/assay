@@ -1,0 +1,2 @@
+### Changed
+- The `STATUS.md` Awaiting board now sorts each brief into one of four owned queues (Awaiting human gate, Awaiting implementer rework, Environment-blocked, Runner-pending) or into Desk-actionable, which keeps only rows that need judgement. Every row names its owner and next act, and the headline shows a count for each owner. A row whose Evidence or verify-outcome records cannot be read renders as could-not-check instead of being placed in a bucket. The rules are in `docs/board.md`. The `Env-blocked` heading is renamed `Environment-blocked`.

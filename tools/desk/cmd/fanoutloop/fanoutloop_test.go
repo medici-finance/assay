@@ -896,7 +896,7 @@ func TestReadNextUp_DropsRowsWhoseOwnReadmeStatusHasMovedOn(t *testing.T) {
 
 // TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn is the fail-first regression proof
 // for the REWORK-lane half of medici-finance/assay#1028. The `### Awaiting implementer rework`
-// STATUS.md section is statusgen's RENDERED classifyAwaiting output; it keeps listing a row after a
+// STATUS.md section is statusgen's RENDERED bucketAwaiting output; it keeps listing a row after a
 // LATER commit flips that row's own stream README Status cell out of the awaiting-rework state (the
 // rework landed → `done`; the deliverable was reset → `todo`), before the next status-regen commit
 // re-renders the section. readNextUp got this cross-check in #1047; the rework lane never did, which
@@ -948,7 +948,7 @@ func TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn(t *testing.T) 
 	writeReadme("donestream", "05", "done")         // rework landed → no longer awaiting rework → DROP
 	writeReadme("resetstream", "02", "todo")        // deliverable reset → not implemented → DROP
 	writeReadme("genuine", "03", "implemented")     // still awaiting rework → KEEP
-	writeReadme("verifiedstream", "08", "verified") // verified is in classifyAwaiting's set → KEEP
+	writeReadme("verifiedstream", "08", "verified") // verified is in bucketAwaiting's set → KEEP
 	// orphanstream has NO README on purpose — could-not-check → KEEP.
 
 	git("init", "-q")
@@ -974,7 +974,7 @@ func TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn(t *testing.T) 
 		t.Errorf("genuine/03 (still `implemented`, genuinely awaiting rework) was wrongly dropped: %v", ids)
 	}
 	if !contains(ids, "verifiedstream/08") {
-		t.Errorf("verifiedstream/08 (`verified` — inside classifyAwaiting's set) was wrongly dropped: %v", ids)
+		t.Errorf("verifiedstream/08 (`verified` — inside bucketAwaiting's set) was wrongly dropped: %v", ids)
 	}
 	if !contains(ids, "orphanstream/07") {
 		t.Errorf("orphanstream/07 (no README to cross-check — could-not-check) was wrongly dropped: %v", ids)
