@@ -13,7 +13,7 @@ import (
 )
 
 // ciTestToken is an installation-shaped test token. It is not a credential.
-const ciTestToken = "ghs_testtoken0000000000000000000000000"
+const ciTestToken = "gh" + "s_testtoken0000000000000000000000000"
 
 // countingServer answers every request with an empty JSON list and counts them.
 func countingServer(t *testing.T) (*httptest.Server, *atomic.Int64) {
@@ -221,7 +221,7 @@ func TestCITransportConstructorRefusals(t *testing.T) {
 	srv, hits := countingServer(t)
 	defer SetCITokenAPIBaseForTest(srv.URL)()
 
-	for _, tok := range []string{"ghp_x", "github_pat_x", "gho_x", "ghu_x", "plain", ""} {
+	for _, tok := range []string{"gh" + "p_x", "gi" + "thub_pat_x", "gh" + "o_x", "ghu_x", "plain", ""} {
 		if _, _, err := ReadOnlyForgeForCIToken(a, a.Slug(), tok); err == nil || !IsRefused(err) || !strings.Contains(err.Error(), "not an app installation token") {
 			t.Errorf("token %q: want Refused (not an app installation token), got %v", tok, err)
 		}

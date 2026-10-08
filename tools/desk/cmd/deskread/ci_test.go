@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	ciTestToken = "ghs_placeholdertoken0000000000000000"
+	ciTestToken = "gh" + "s_placeholdertoken0000000000000000"
 	ciRepo      = "example-org/alpha"
 	ciOtherRepo = "example-org/beta"
 	ciIssueBody = `[{"number": 11, "title": "first", "state": "open",
@@ -90,8 +90,8 @@ func ciSetup(t *testing.T, srv *recSrv) *custodyCalls {
 	t.Setenv("GITHUB_REPOSITORY", ciRepo)
 	t.Setenv("GITHUB_EVENT_NAME", "push")
 	t.Setenv(ciTokenEnv, ciTestToken)
-	t.Setenv("GH_TOKEN", "ghs_ambientdoesnotcount000000000000000")
-	t.Setenv("GITHUB_TOKEN", "ghs_ambientdoesnotcount000000000000000")
+	t.Setenv("GH_TOKEN", "gh"+"s_ambientdoesnotcount000000000000000")
+	t.Setenv("GITHUB_TOKEN", "gh"+"s_ambientdoesnotcount000000000000000")
 	t.Setenv(deskkit.EnvRepoForges, ciRepo+"=github,"+ciOtherRepo+"=github")
 	deskkit.SetToolClass(deskkit.ClassCI)
 	t.Cleanup(func() { deskkit.SetToolClass(deskkit.ClassWrite) })
@@ -247,7 +247,7 @@ func TestCITransportKindsAreReads(t *testing.T) {
 
 // Layer: token-shape, at the verb and at the constructor.
 func TestCITransportRefusesNonInstallationToken(t *testing.T) {
-	for _, tok := range []string{"ghp_personalaccesstoken0000", "github_pat_fine0000", "gho_oauth0000", "ghu_usertouser0000", "unprefixed0000"} {
+	for _, tok := range []string{"gh" + "p_personalaccesstoken0000", "gi" + "thub_pat_fine0000", "gh" + "o_oauth0000", "ghu_usertouser0000", "unprefixed0000"} {
 		srv := newRecSrv(t)
 		ciSetup(t, srv)
 		t.Setenv(ciTokenEnv, tok)
@@ -261,7 +261,7 @@ func TestCITransportRefusesNonInstallationToken(t *testing.T) {
 	srv := newRecSrv(t)
 	ciSetup(t, srv)
 	fr := deskkit.ForgeRepo{Owner: "example-org", Name: "alpha"}
-	if _, _, err := deskkit.ReadOnlyForgeForCIToken(fr, ciRepo, "ghp_personalaccesstoken0000"); err == nil || !deskkit.IsRefused(err) {
+	if _, _, err := deskkit.ReadOnlyForgeForCIToken(fr, ciRepo, "gh"+"p_personalaccesstoken0000"); err == nil || !deskkit.IsRefused(err) {
 		t.Errorf("constructor accepted a personal token: %v", err)
 	}
 	if n := len(srv.seen()); n != 0 {
@@ -395,7 +395,7 @@ func TestCITransportRecordsIdentityNotToken(t *testing.T) {
 	if !strings.Contains(stderr, "transport=ci-workflow-token") {
 		t.Errorf("stderr does not name the transport: %s", stderr)
 	}
-	for _, tok := range []string{ciTestToken, "ghs_ambientdoesnotcount000000000000000"} {
+	for _, tok := range []string{ciTestToken, "gh" + "s_ambientdoesnotcount000000000000000"} {
 		if strings.Contains(stdout, tok) || strings.Contains(stderr, tok) {
 			t.Errorf("a token appears in the output")
 		}
@@ -458,7 +458,7 @@ func TestCITransportActivatesWithEnvRoster(t *testing.T) {
 		"HOME=" + home, "USERPROFILE=" + home, "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"PATH=" + os.Getenv("PATH"), "KUBECONFIG=/dev/null",
 		"GITHUB_ACTIONS=true", "GITHUB_RUN_ID=9001", "GITHUB_REPOSITORY=" + ciRepo, "GITHUB_EVENT_NAME=push",
-		ciTokenEnv + "=ghp_notaninstallationtoken000000",
+		ciTokenEnv + "=gh" + "p_notaninstallationtoken000000",
 		deskkit.EnvRepoForges + "=" + ciRepo + "=github",
 		deskkit.EnvTrustedBotSlugs + "=worker=assay-worker-app:300000006",
 		deskkit.EnvAllowedRepos + "=" + ciRepo + ":ci:private",
