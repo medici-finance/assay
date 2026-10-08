@@ -34,19 +34,31 @@ import (
 // reconcileResult is the machine-readable output shape (--json). Its per-brief
 // rows are BriefCell values (id/cell/source/witness/reason/version). Applied
 // is populated only with --apply, and only with rows this run actually wrote
-// (reconcileapply.go) — omitted (nil) otherwise.
+// (reconcileapply.go) — omitted (nil) otherwise. Held lists the witnessed rows
+// --apply did NOT write because the write would add a lint PROBLEM
+// (reconcilehold.go) — omitted (nil) when none.
 type reconcileResult struct {
 	Repo     string       `json:"repo"`
 	LookedAt bool         `json:"lookedAt"`
 	Reason   string       `json:"reason"`
 	Briefs   []BriefCell  `json:"briefs"`
 	Applied  []appliedRow `json:"applied,omitempty"`
+	Held     []heldRow    `json:"held,omitempty"`
 }
 
 const (
 	reconcileOK       = 0
 	reconcileUsageErr = 2
+	// reconcileCouldNotCheck is --apply's exit when the PR read did not happen
+	// (HTTP error, no token, offline): a writer that looked at nothing must not
+	// exit like one that looked and found nothing to write.
+	reconcileCouldNotCheck = 3
 )
+
+// reconcileNewClient builds the REST client; a test seam (the tests point it at
+// an httptest server) — never a flag or env var, so no run can redirect the
+// token to another host.
+var reconcileNewClient = newGHClient
 
 func runReconcile(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet("reconcile", flag.ContinueOnError)
@@ -59,7 +71,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN)")
 	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo")
 	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
-	apply := fs.Bool("apply", false, "with --backfill: WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion); requires --backfill")
+	apply := fs.Bool("apply", false, "WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion). Without --backfill only a `Brief:` trailer witness is written; with --backfill the declared branch/body match is written too. A row whose move would add a lint PROBLEM is held and reported, never written. Exits 3 when the PR read could not be done")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return reconcileOK
@@ -68,10 +80,6 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 	if *report && !*backfill {
 		fmt.Fprintln(stderr, "reconcile: --report requires --backfill (the report compares against the backfill-adjusted cells)")
-		return reconcileUsageErr
-	}
-	if *apply && !*backfill {
-		fmt.Fprintln(stderr, "reconcile: --apply requires --backfill (the write only fires for a backfill-witnessed transition)")
 		return reconcileUsageErr
 	}
 	if *backfill && hasNoGitDir(*root) {
@@ -102,7 +110,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintf(stderr, "could-not-check: %v\n", terr)
 			return reconcileUsageErr
 		}
-		client = newGHClient(token)
+		client = reconcileNewClient(token)
 		prs, lookedAt, reason := client.ListPRs(*repo)
 		in.PRs = prs
 		in.LookedAt = lookedAt
@@ -123,19 +131,32 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 			pulls, pullsLookedAt, reason = client.fetchAllPulls(*repo)
 			if !pullsLookedAt {
 				fmt.Fprintf(stderr, "reconcile --backfill: could-not-check the raw pull list: %s\n", reason)
+				if *apply {
+					// The backfill witness set is unread: writing the trailer half
+					// alone would pass for a complete backfill run.
+					return reconcileCouldNotCheck
+				}
 			}
 		}
 		cells = applyReconcileBackfill(cells, pulls, pullsLookedAt, lookup)
 	}
 
+	if *apply && !in.LookedAt {
+		// Nothing was read, so nothing can be written — and the exit must say
+		// so: a scheduled writer exiting 0 here reads as "board current".
+		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %s; nothing written\n", in.Reason)
+		return reconcileCouldNotCheck
+	}
+
 	var applied []appliedRow
+	var held []heldRow
 	if *apply {
 		// boardRoot mirrors reconcileBriefIdents' own resolution (reconcile is
 		// commonly run from a subdirectory), so the write lands on the same
 		// docs/streams tree the briefs above were enumerated from.
 		if boardRoot, found := findBoardRoot(*root); found {
 			var aerr error
-			applied, aerr = applyReconcileWrites(boardRoot, cells)
+			applied, held, aerr = applyReconcileWrites(boardRoot, cells)
 			if aerr != nil {
 				fmt.Fprintf(stderr, "reconcile --apply: %v\n", aerr)
 				return reconcileUsageErr
@@ -149,6 +170,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		Reason:   in.Reason,
 		Briefs:   cells,
 		Applied:  applied,
+		Held:     held,
 	}
 
 	if *report {
@@ -256,11 +278,19 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 		}
 		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, detail)
 	}
-	if len(res.Applied) == 0 {
-		return
+	if len(res.Applied) > 0 {
+		fmt.Fprintf(w, "reconcile --apply: wrote %d row(s)\n", len(res.Applied))
+		for _, a := range res.Applied {
+			fmt.Fprintf(w, "  %-40s %s -> %s   %s   [%s]\n", a.ID, a.From, a.To, a.Path, a.Witness)
+		}
 	}
-	fmt.Fprintf(w, "reconcile --apply: wrote %d row(s)\n", len(res.Applied))
-	for _, a := range res.Applied {
-		fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
+	if len(res.Held) > 0 {
+		fmt.Fprintf(w, "reconcile --apply: held %d row(s) — writing them would add a lint PROBLEM; not written\n", len(res.Held))
+		for _, h := range res.Held {
+			fmt.Fprintf(w, "  %-40s %s -> %s   [%s]\n", h.ID, h.From, h.To, h.Witness)
+			for _, p := range h.Problems {
+				fmt.Fprintf(w, "      would add: %s\n", p)
+			}
+		}
 	}
 }

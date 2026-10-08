@@ -1,7 +1,8 @@
 package main
 
-// reconcileapply.go — the `statusgen reconcile --backfill --apply` write arm
-// (derived-board/07 follow-on).
+// reconcileapply.go — the `statusgen reconcile --apply` write arm
+// (derived-board/07 follow-on; trailer-only mode and the lint hold,
+// derived-board/04).
 //
 // `reconcile --backfill [--report]` (reconcile.go, reconcilebackfill.go) is
 // READ-ONLY: it derives a cell and can write a drift REPORT, but nothing
@@ -14,8 +15,12 @@ package main
 //     never verified/done (those need the separate verify-witness fold,
 //     out of scope here) and never a demotion.
 //   - Only when the derived cell is backed by a REAL merged-PR witness: the
-//     normal trailer fold (Source "pr") or the declared backfill branch/body
-//     match (Source "backfill"). The backfill's OTHER Source=="backfill"
+//     normal trailer fold (Source "pr") or, ONLY when --backfill is also
+//     given, the declared backfill branch/body match (Source "backfill").
+//     Without --backfill the write is trailer-only — the mode the scheduled
+//     reconcile job runs, because a branch/body match also catches PRs that
+//     merely author or mention a brief. A trailer witness the board should
+//     not take is fixed at the trailer (spec §2), not by closing the job's PR. The backfill's OTHER Source=="backfill"
 //     shape — a hand-asserted implemented/verified/done with no PR at all —
 //     derives `unknown`, not `implemented`, so it is already excluded by the
 //     Cell check below; it is exactly what --report leaves for a human to
@@ -32,6 +37,9 @@ package main
 //     rows are immutable to this verb.
 //   - A row with no witness at all (still `todo`) is left untouched — exactly
 //     what --report already lists for a human, never guessed at here.
+//   - A row whose move would add a lint PROBLEM (a risk-gated brief with no
+//     design record, say) is HELD: reported with the PROBLEM, never written
+//     (reconcilehold.go). The lint itself is never relaxed to let a write in.
 
 import (
 	"fmt"
@@ -62,11 +70,17 @@ func witnessedImplemented(c BriefCell) bool {
 
 // applyReconcileWrites writes the derived `implemented` cell back into each
 // witnessed brief's stream README Status cell, and returns the rows it
-// actually changed. It is idempotent: a brief already at implemented (or
-// beyond) or with no witness is silently skipped, never an error, so a
-// re-run with nothing left to do still exits clean.
-func applyReconcileWrites(root string, cells []BriefCell) ([]appliedRow, error) {
-	var applied []appliedRow
+// actually changed plus the rows it HELD. It is idempotent: a brief already at
+// implemented (or beyond) or with no witness is silently skipped, never an
+// error, so a re-run with nothing left to do still exits clean.
+//
+// A row is held — reported, not written — when moving it would add a PROBLEM
+// to any Status-keyed lint rule (reconcilehold.go), e.g. a risk-gated brief
+// with no design record. The writer never produces a tree its own lint step
+// rejects, and never weakens or skips that lint to get there.
+func applyReconcileWrites(root string, cells []BriefCell) (applied []appliedRow, held []heldRow, err error) {
+	defer beginGitReadSession()()
+	var env *lintEnv
 	for _, c := range cells {
 		if !witnessedImplemented(c) {
 			continue
@@ -76,15 +90,46 @@ func applyReconcileWrites(root string, cells []BriefCell) ([]appliedRow, error) 
 			continue
 		}
 		path := filepath.Join(root, "docs", "streams", stream, "README.md")
-		wrote, from, err := writeStatusCell(path, num, "implemented")
-		if err != nil {
-			return applied, fmt.Errorf("%s: %w", path, err)
+		writable, from, perr := statusCellWritable(path, num)
+		if perr != nil {
+			return applied, held, fmt.Errorf("%s: %w", path, perr)
+		}
+		if !writable {
+			continue
+		}
+		if env == nil {
+			if env, err = loadLintEnv(root); err != nil {
+				return applied, held, fmt.Errorf("loading the board for the lint hold: %w", err)
+			}
+		}
+		var wrote bool
+		var wroteFrom string
+		added, found, merr := env.tryMove(stream, num, "implemented", func() (func() error, error) {
+			orig, rerr := os.ReadFile(path)
+			if rerr != nil {
+				return nil, rerr
+			}
+			var werr error
+			if wrote, wroteFrom, werr = writeStatusCell(path, num, "implemented"); werr != nil {
+				return nil, werr
+			}
+			return func() error { return os.WriteFile(path, orig, 0o644) }, nil
+		}, true)
+		if merr != nil {
+			return applied, held, fmt.Errorf("%s: %w", path, merr)
+		}
+		if !found {
+			added = []string{couldNotCheckRow(c.ID)}
+		}
+		if len(added) > 0 {
+			held = append(held, heldRow{ID: c.ID, From: from, To: "implemented", Path: path, Witness: c.Witness, Problems: added})
+			continue
 		}
 		if wrote {
-			applied = append(applied, appliedRow{ID: c.ID, From: from, To: "implemented", Path: path, Witness: c.Witness})
+			applied = append(applied, appliedRow{ID: c.ID, From: wroteFrom, To: "implemented", Path: path, Witness: c.Witness})
 		}
 	}
-	return applied, nil
+	return applied, held, nil
 }
 
 // isBriefsTableHeaderRow reports whether cells is a briefs-table header row —
@@ -144,6 +189,20 @@ func cellPadding(cell string) (leading, trailing string) {
 // already knows a witness exists for the id; failing to find a row for it is
 // a pre-existing board inconsistency, not a failure of this write.
 func writeStatusCell(path, num, newStatus string) (wrote bool, from string, err error) {
+	return editStatusCell(path, num, newStatus, true)
+}
+
+// statusCellWritable reports, WITHOUT writing, whether writeStatusCell would
+// change brief num's Status cell in path (the row exists and sits at todo or
+// in-progress) and what it reads now. applyReconcileWrites asks this first so
+// the lint-hold evaluation only runs for a row the write would really move.
+func statusCellWritable(path, num string) (writable bool, from string, err error) {
+	return editStatusCell(path, num, "", false)
+}
+
+// editStatusCell is writeStatusCell's body; with write=false it stops at the
+// decision and touches nothing.
+func editStatusCell(path, num, newStatus string, write bool) (wrote bool, from string, err error) {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return false, "", nil
@@ -176,6 +235,9 @@ func writeStatusCell(path, num, newStatus string) (wrote bool, from string, err 
 		curTrim := strings.ToLower(strings.TrimSpace(cur))
 		if curTrim != "todo" && curTrim != "in-progress" {
 			return false, curTrim, nil // narrow transition only — every other state is immutable here
+		}
+		if !write {
+			return true, curTrim, nil
 		}
 		leading, trailing := cellPadding(cur)
 		cells[statusIdx] = leading + newStatus + trailing
