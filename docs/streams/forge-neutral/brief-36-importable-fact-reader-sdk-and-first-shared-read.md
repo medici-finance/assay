@@ -8,6 +8,7 @@ unblocks: []
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-36
 gate-why: "sensitive-data is yes because the slice moves the code that reads private issue data under a minted credential into a new module other processes can link. The human confirms three things: no credential moves into a previously credential-free process; the forge-CLI scan, the ambient-token rule and the CI path trigger follow the moved code (rows 5 to 8); and the lower boundary refuses an out-of-scope repository with the consumer-side check bypassed (row 9)."
 issues: []
 schema: brief-v2

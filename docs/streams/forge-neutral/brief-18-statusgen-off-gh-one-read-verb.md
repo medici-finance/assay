@@ -226,11 +226,14 @@ facts — all measured on this repository at `e428134c`, 24 streams and 165 brie
   places `main.go` passes it (`:1987`, `:1994`). They are forge-neutral/35's.
   `ghAuthorResolver` and `ghVerdictMainHealth`, in the same two files, are this brief's.
 
-## Library-first amendment — 2026-10-08 (proposed; pending a driver ruling)
+## Library-first amendment — 2026-10-08 (ruled: `DR-forge-neutral-36`)
 
-`docs/library-first.md` proposes library-first reuse. Adopting it needs a driver ruling, asked
-for on #2395, because it would change the 2026-09-14 direction quoted in Context. **This
-amendment does not change this brief's transport, in either outcome.** Every online read this
+`docs/library-first.md` sets out library-first reuse. The driver ruled on #2395 for offline and
+frozen inputs only (`DR-forge-neutral-36`): statusgen may link a narrow module's offline and
+frozen packages, every online forge read stays on the read verb, `deskkit` stays internal, and
+no credential moves into a process that has none today. The 2026-09-14 direction quoted in
+Context is amended in that part only. **This amendment does not change this brief's
+transport.** Every online read this
 brief moves goes through `deskread`, as Task 1–3 say, under the identity the verb resolves.
 The Context, the facts (statusgen reaches the seam by running a process, not by linking a
 package) and the risk answers stand as written.

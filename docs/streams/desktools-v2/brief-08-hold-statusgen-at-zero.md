@@ -85,10 +85,12 @@ facts:
 - Public repo: `example-*` placeholders; no absolute machine paths, private slugs, or session ids.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
-## Library-first amendment — 2026-10-08 (proposed; pending a driver ruling)
+## Library-first amendment — 2026-10-08 (ruled: `DR-forge-neutral-36`)
 
-`docs/library-first.md` proposes library-first reuse; adopting it needs a driver ruling, asked
-for on #2395. The changes below hold in either outcome. None of them loosens a row.
+`docs/library-first.md` sets out library-first reuse. The driver ruled on #2395 for offline and
+frozen inputs only (`DR-forge-neutral-36`): every online forge read stays on the read verb,
+`deskkit` stays internal, and no credential moves into a process that has none today. The
+changes below do not depend on that ruling. None of them loosens a row.
 
 - **Precondition is BOTH forge-neutral/18 and /35.** /18 deliberately leaves the
   control-feeding reads to /35, so final zero needs both. Row 1 sees the source text; row 8

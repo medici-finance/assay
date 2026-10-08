@@ -1,13 +1,14 @@
 # Library-first component contracts
 
-Status: proposed implementation direction, 2026-10-08. Adoption needs a driver ruling, asked
-for on #2395. It would supersede the forge-seam direction of 2026-09-14 (statusgen reaches the
-seam by running the read verb, never by linking a package; see the desktools-v2 spec header).
-Until that ruling is recorded, the 2026-09-14 direction stands: forge-neutral/36 and the
-library-first amendments to forge-neutral/18, /35 and desktools-v2/08 are not picked up on the
-strength of this document. If the ruling keeps the verb-only boundary, those forge-read parts
-are withdrawn. This document describes upcoming work, not a claim that the SDKs or
-extractions exist.
+Status: implementation direction, 2026-10-08, ruled for offline and frozen inputs only. The
+driver ruled on #2395 for option 1, recorded in
+[`DR-forge-neutral-36`](streams/decisions/DR-forge-neutral-36.md): statusgen may link a narrow
+module's offline and frozen packages; every online forge read stays on the read verb, `deskkit`
+stays internal, and no credential moves into a process that has none today. The forge-seam
+direction of 2026-09-14 (statusgen reaches the seam by running the read verb, never by linking
+a package; see the desktools-v2 spec header) is amended in that part only. forge-neutral/36
+becomes eligible for pick-up and keeps its own human gate; the ruling is not its sign-off. This
+document describes upcoming work, not a claim that the SDKs or extractions exist.
 
 Shared behavior has one canonical implementation exposed through versioned libraries or
 SDKs. Consumers link it directly where compatible with their authority and deployment.
@@ -71,9 +72,9 @@ map, not a competing register. Module placement is not a new semantic owner.
 | Hold no-forge-CLI / no-ambient behavior | desktools-v2/08 | After /18 AND /35; permit the narrow SDK's offline and frozen packages only; keep the manifest check that statusgen names nothing under `tools/desk`. |
 | CLI parsing | desktools-v2/16, /18 and remaining CLI briefs | Continue independently; no change to semantic or authority contracts. |
 
-Wave 0: review this contract and the named consumer amendments; the driver rules on the
-forge-read direction (#2395). Wave 1: /36, only after that ruling, and statusgen/15
-independently. Wave 2: their named consumers, subject to existing dependencies; the forge
+Wave 0: review this contract and the named consumer amendments; the driver's ruling on the
+forge-read direction is recorded (#2395, `DR-forge-neutral-36`). Wave 1: /36, under its own
+human gate, and statusgen/15 independently. Wave 2: their named consumers, subject to existing dependencies; the forge
 read chain (/18, /35, desktools-v2/08) keeps its own sequence and does not wait on /36.
 Retirement follows consumer qualification, never merely library availability. Existing
 implemented briefs keep their evidence and scope; changes land as follow-ups.

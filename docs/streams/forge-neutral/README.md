@@ -479,7 +479,8 @@ findings and do not exist yet.
   18 depends on 08, 33 and 34 and stays in wave 5.
 - **Wave 1 (beside 01)** — `forge-neutral/36` (the importable fact-reader module and its first
   shared read, human-gated; depends on nothing and unblocks nothing — its library-first
-  premise is pending a driver ruling on #2395, so no other brief waits on it).
+  premise is ruled on #2395 for offline and frozen inputs only, `DR-forge-neutral-36`, and it
+  keeps its own human gate; no other brief waits on it).
 - **Wave 2** — `forge-neutral/02`, `03`, `04`, `05` (all depend only on 01, all
   parallelizable): identity, the two write-verb wiring briefs, and the claim layer.
 - **Wave 3** — `forge-neutral/06` (reads; depends on 01 + 03 for the established wiring
@@ -535,8 +536,9 @@ One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 32`, with 31 be
 
 ## Library-first work — 2026-10-08
 
-Proposed, pending a driver ruling on #2395: `forge-neutral/36` (human-gated) would extract the
-first SDK read slice. It blocks nothing. /18 keeps its dependencies and its `deskread`
-transport for every online read, and /35 retains its control-specific human gate. Final
-no-forge-CLI enforcement in desktools-v2/08 waits for both /18 and /35, in either outcome.
+Ruled on #2395 for offline and frozen inputs only (`DR-forge-neutral-36`): `forge-neutral/36`
+(human-gated) extracts the first SDK read slice. The ruling makes it eligible for pick-up and is
+not its sign-off. It blocks nothing. /18 keeps its dependencies and its `deskread` transport for
+every online read, and /35 retains its control-specific human gate. Final no-forge-CLI
+enforcement in desktools-v2/08 waits for both /18 and /35.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.

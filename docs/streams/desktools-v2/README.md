@@ -31,9 +31,9 @@ first-class principles (see [spec.md](spec.md) §2):
    `deskread` verb, never by importing `deskkit` (`statusgen/forgeread.go`), and that migration
    is owned by the sibling briefs `forge-neutral/18` and, for the control-feeding reads, `/35`.
    v2 does not redo it: it brings `statusgen/**` under the ban so the progress is measurable,
-   then holds the zero. A [library-first proposal](../../library-first.md), pending a driver
-   ruling on #2395, would let statusgen link a narrow module's offline and frozen packages;
-   online reads keep the verb and `deskkit` stays internal in either outcome.
+   then holds the zero. The [library-first amendment](../../library-first.md), ruled on #2395
+   (`DR-forge-neutral-36`), lets statusgen link a narrow module's offline and frozen packages;
+   every online forge read keeps the verb and `deskkit` stays internal.
 3. **Purpose-built queries** — typed access-pattern operations (review-queue snapshot, head-sha
    batch, board sweep), each backend one tuned query: N+1 → one round-trip, rate-limit headroom,
    and one consistent snapshot (freshness), with the GraphQL document never crossing the seam.
@@ -133,9 +133,9 @@ An earlier draft of this README put a different chain here — promote `deskkit`
 library, then port statusgen onto it. That was the tempting-but-wrong first step: it was derived
 without reading `statusgen/forgeread.go` or `forge-neutral/18`, which record the opposite
 decision and already own that migration ([spec.md](spec.md) §2 Principle 2, §4). Brief 07 is
-withdrawn and its number is not reused. The 2026-10-08 library-first proposal is not that
-chain: it keeps `deskkit` internal and statusgen's online reads on the verb, and it is pending
-a driver ruling (spec §2 Principle 2). `desktools-v2/08` is the one brief here that waits on
+withdrawn and its number is not reused. The 2026-10-08 library-first amendment is not that
+chain: as ruled (`DR-forge-neutral-36`, spec §2 Principle 2) it covers offline and frozen
+inputs only, keeps `deskkit` internal and keeps statusgen's online reads on the verb. `desktools-v2/08` is the one brief here that waits on
 another stream: it cannot start until `forge-neutral/18` and `/35` together reach zero `gh`
 sites in statusgen (26 remained on 2026-09-17), which is why it sits in the last wave and on
 no critical path.

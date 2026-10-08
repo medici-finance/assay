@@ -294,11 +294,12 @@ facts — measured at `35c303e47`:
   pushed into `deskread`.
 - Touch no file under `tools/desk/` and no workflow.
 
-## Library-first amendment — 2026-10-08 (proposed; pending a driver ruling)
+## Library-first amendment — 2026-10-08 (ruled: `DR-forge-neutral-36`)
 
-`docs/library-first.md` proposes library-first reuse; adopting it needs a driver ruling, asked
-for on #2395. **This amendment adds no deliverable and changes no transport.** The ruling
-resolvers' two reads move onto `deskread`, as Task 1 says, in either outcome. The direct HTTP
+`docs/library-first.md` sets out library-first reuse. The driver ruled on #2395 for offline and
+frozen inputs only (`DR-forge-neutral-36`): every online forge read stays on the read verb.
+**This amendment adds no deliverable and changes no transport.** The ruling resolvers' two
+reads move onto `deskread`, as Task 1 says. The direct HTTP
 client and its ambient-token fallback still retire. statusgen links no authenticated read
 adapter from the shared module, so the resolvers neither hold a credential nor become generic
 queries. Every author-type, edit-history, subject-binding and sign-off refusal and the human
