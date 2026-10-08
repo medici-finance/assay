@@ -122,7 +122,7 @@ func TestEligibility_DispositionIsHeld(t *testing.T) {
 }
 
 func TestEligibility_HeldLabelsAreHeld(t *testing.T) {
-	for _, label := range []string{"needs-decision", "question", "Needs-Decision"} {
+	for _, label := range []string{"needs-decision", "question", "help wanted", "Needs-Decision", " Help Wanted "} {
 		v, err := Eligibility(aliveClaim(), stubReaders("owner", "in-progress", PRState{Kind: deskkit.PROpen, Labels: []string{"area:desk", label}}))
 		if err != nil {
 			t.Fatalf("label %q: unexpected error: %v", label, err)

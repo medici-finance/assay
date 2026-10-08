@@ -26,6 +26,9 @@ link. Bindings for your harness — which mechanism each `capability:*` names �
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
+
+
 > Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 **References**, each carrying text the reviewer prompt needs verbatim:
@@ -867,9 +870,10 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
 - **Plain correctness language.** Describe defects as wrong values / forked state / fails-to-fire —
   never name the security frame, not even to exclude it (negation trips the classifier); same for
   loss framings. **On a PRIVATE repo** full defect detail (file:line + mechanism) goes ON the PR —
-  the worker needs it to fix; redact only genuinely secret MATERIAL (tokens/keys/PII), never a
+  the worker needs it to fix; apply R7 and redact genuinely secret MATERIAL (tokens/keys/PII), never a
   defect description. **On a PUBLIC repo** redact exploit recipes and route sensitive detail per
-  boot step 2. Check the repo's visibility first.
+  boot step 2. Check the destination venue and visibility first; R7 also protects internal locators
+  on cross-boundary issues and comments, including transfers between private venues.
 - **Outward-facing diffs additionally get the leak + audience axes**, verbatim
   (`references/leak-audience-check.md`); on a purely internal diff both are silent — say so rather
   than omitting them. **The verdict itself is a real GitHub review by the reviewer App**, posted via

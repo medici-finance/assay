@@ -27,7 +27,8 @@ package deskkit
 // allow-listed by (file, function, name). A pass-through that resolves nothing (custody,
 // githubCustody) is a link too, not an allowed site: the chain is closed only where a caller
 // has actually resolved the forge — the GitHub transport entry points and ResolveRoleCredential
-// for the arm, ResolveForge and ForgeGitEndpointFor for custody — and the exported minter is
+// for the arm, ResolveForge and forgeGitEndpoint (the body behind ForgeGitEndpointFor and
+// ForgeGitEndpointForCheckout) for custody — and the exported minter is
 // reached by the arm alone. The per-process memo is a link as well: it returns a token
 // without a fork.
 //
@@ -101,9 +102,11 @@ var githubMinterAllow = map[string]string{
 		"trusts the kind it is handed; its callers are confined by the two entries below",
 	"internal/deskkit/forgeresolve.go:ResolveForge:custody": "resolves the forge (resolveForgeKind) and " +
 		"checks the role's roster entry agrees (assertEntryForgeAgrees) before calling it",
-	"internal/deskkit/forgegit.go:ForgeGitEndpointFor:custody": "resolves the forge from the roster " +
-		"(resolveForgeKindWithHost) and checks the role's roster entry agrees (assertEntryForgeAgrees) " +
-		"before calling it",
+	"internal/deskkit/forgegit.go:forgeGitEndpoint:custody": "resolves the forge from the roster " +
+		"(resolveForgeKindWithHost; the checkout entry point may add only its own origin's host, " +
+		"mapped through the well-known host table) and checks the role's roster entry agrees " +
+		"(assertEntryForgeAgrees) before calling it. The shared body of ForgeGitEndpointFor and " +
+		"ForgeGitEndpointForCheckout, which resolve nothing themselves",
 	"internal/deskkit/forgeresolve.go:githubAppRoleToken:RoleTokenForRepo": "the GitHub arm itself, " +
 		"whose own callers are confined by the entries above",
 	"internal/deskkit/roletoken.go:lookupRoleTokenMemo:roleTokenMemo": "the memo's own reader; it is " +

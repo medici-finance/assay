@@ -74,6 +74,45 @@ func refuseAppendedOutcomesLog(targetRepoPath string) error {
 // It is called ONLY from runOutward, which owns the audit lock and the single
 // deferred audit line (`ac`). Adding a second entry point without the lock would
 // re-open #227.
+var verifierEvidenceAdmissionFn = deskkit.CheckVerifierEvidence
+
+// admitVerifierEvidence runs pre-work admission for the exact path this landing
+// writes, so the attested brief is part of what admits the landing, never only
+// of what is recorded about it.
+func admitVerifierEvidence(root, repo, target string, ac *auditCtx) (deskkit.VerifierReceipt, error) {
+	receipt, err := verifierEvidenceAdmissionFn(root, repo, target)
+	if err != nil {
+		return receipt, err
+	}
+	ac.attestation = receipt.EvidenceBinding()
+	return receipt, nil
+}
+
+// pathWithin reports whether p lies inside dir, after resolving symlinks where
+// the path exists, so an alias of the root cannot place a fragment inside it.
+func pathWithin(dir, p string) bool {
+	resolve := func(x string) string {
+		x, _ = filepath.Abs(x)
+		if r, err := filepath.EvalSymlinks(x); err == nil {
+			return r
+		}
+		if r, err := filepath.EvalSymlinks(filepath.Dir(x)); err == nil {
+			return filepath.Join(r, filepath.Base(x))
+		}
+		return x
+	}
+	rel, err := filepath.Rel(resolve(dir), resolve(p))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// attestationTrailer carries the admitting run's binding into the landed commit.
+func (a *auditCtx) attestationTrailer() string {
+	if a.attestation == "" {
+		return ""
+	}
+	return "\n\n" + a.attestation
+}
+
 func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// Skip the tool name prefix that run() already removed.
 	rest := args
@@ -124,7 +163,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	fs := flag.NewFlagSet("deskevidence", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	evidenceFile := fs.String("evidence-file", "", "repo-relative path to the evidence/brief file (required, unless --outcome-record is given)")
+	evidenceFile := fs.String("evidence-file", "", "repo-relative path to the evidence/brief file, or with --brief-path an absolute fragment path outside --root (required, unless --outcome-record is given)")
 	briefPath := fs.String("brief-path", "", "if set, merge evidence into this brief file instead of committing evidence-file directly")
 	// --outcome-record (#882) commits ONE new verify-outcome record at the
 	// path RecordName derives from its bytes, retiring the shared appended
@@ -139,7 +178,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// --root <worktree> makes a repo-relative --evidence-file resolve against that worktree
 	// wherever the process happens to be. It rebases only the LOCAL read; the path committed
 	// to the remote branch stays the repo-relative one.
-	root := fs.String("root", "", "resolve a repo-relative --evidence-file against this directory (e.g. the verifier worktree) instead of the current working directory")
+	// Verifier admission reads the same --root: a landing names the dispatched verifier
+	// home, never the desk's own checkout.
+	root := fs.String("root", "", "the dispatched verifier home: admission is checked here and a repo-relative --evidence-file resolves against it instead of the current working directory (a --brief-path fragment may be an absolute path outside it)")
 	// --append-only guards a line-oriented sidecar against a net row DELETION. #1709: the
 	// whole-file Contents-API commit model has no protection against an append-only file
 	// shrinking, so a stale-base/wrong-file mistake reverted a sidecar (25→17 rows) as a
@@ -224,20 +265,33 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	}
 	ac.file = targetRepoPath
 
+	// Pre-work admission, bound to the exact target this landing writes. Placed
+	// before any read or network call the landing itself makes.
+	receipt, aerr := admitVerifierEvidence(*root, repoSlug, targetRepoPath, ac)
+	if aerr != nil {
+		return aerr
+	}
+
 	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
 	// from that checkout (#1709) rather than the process cwd; the target repo path committed
-	// to the branch stays evidenceRepoPath either way. An absolute --evidence-file with
-	// --root is contradictory (the join would be meaningless), so it is refused rather than
-	// silently ignoring one of them.
+	// to the branch stays evidenceRepoPath either way. An absolute --evidence-file names no
+	// repo path, so with --root it is admitted only as a --brief-path fragment that lies
+	// OUTSIDE --root: the fragment is verifier output, which never sits in the attested
+	// home (admission refuses any untracked file there), while the committed path is still
+	// the repo-relative --brief-path. Every other absolute form stays refused.
 	localReadPath := evidenceRepoPath
 	if *root != "" {
-		if filepath.IsAbs(evidenceRepoPath) {
-			return deskkit.Refused("refused: --evidence-file must be a repo-relative path when --root is set, got absolute " + evidenceRepoPath)
-		}
 		if info, serr := os.Stat(*root); serr != nil || !info.IsDir() {
 			return deskkit.Unverifiable("--root "+*root+" is not a readable directory", serr)
 		}
-		localReadPath = filepath.Join(*root, evidenceRepoPath)
+		if filepath.IsAbs(evidenceRepoPath) {
+			if *briefPath == "" || pathWithin(*root, evidenceRepoPath) {
+				return deskkit.Refused("refused: --evidence-file must be a repo-relative path when --root is set, " +
+					"or a --brief-path fragment outside --root; got absolute " + evidenceRepoPath)
+			}
+		} else {
+			localReadPath = filepath.Join(*root, evidenceRepoPath)
+		}
 	}
 
 	// Read the local evidence file.
@@ -425,6 +479,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// The scan is the ONE outbound-write check (desktools-v2/10), run here as a pre-flight on
 	// the bytes this landing adds; the checking Forge re-runs it on the same added lines at
 	// the write itself.
+	if err := receipt.CheckEvidenceContent(targetRepoPath, commitContent, rowScopeRows); err != nil {
+		return err
+	}
 	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, scanTarget, commitContent); berr != nil {
 		return withAddedOrigin(berr, scanTarget, localContent)
 	}
@@ -583,7 +640,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		File:        targetRepoPath,
 		Branch:      branch,
 		Content:     commitContent,
-		Message:     "Evidence: verification row for " + targetRepoPath + commitSuffix,
+		Message:     "Evidence: verification row for " + targetRepoPath + ac.attestationTrailer() + commitSuffix,
 		AppendOnly:  appendOnly,
 		AllowShrink: *allowShrink,
 		ExpectedSHA: rowScopeSHA,
@@ -652,7 +709,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		File:        target,
 		Branch:      side,
 		Content:     content,
-		Message:     "Evidence: verification row for " + target + commitSuffix,
+		Message:     "Evidence: verification row for " + target + ac.attestationTrailer() + commitSuffix,
 		StartBranch: base,
 		AppendOnly:  appendOnly,
 		AllowShrink: allowShrink,
@@ -669,15 +726,22 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 				"row was NOT landed", side), nil)
 	}
 
-	pr, perr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
+	// CreateHeldDraftChange, never the raw CreateDraftChange: the draft must carry the desk's
+	// merge-hold marker thread, or deskflip's reviewer-approved condition has nothing to release
+	// and refuses the Evidence change however it was reviewed (#2254).
+	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
 		Body: "Verification Evidence row for `" + target + "`, landed on branch `" + side + "` and opened " +
 			"as a draft change because the default branch `" + base + "` takes no direct write on this forge. " +
-			"A reviewer verdict lands the row.",
+			"A reviewer verdict lands the row.\n\n" + ac.attestation,
 		Head: side,
 		Base: base,
 	})
 	if perr != nil {
+		if pr != nil {
+			ac.detail = fmt.Sprintf("landed %s on %s in %s via %s, but its merge-hold was NOT opened",
+				target, repoSlug, side, draftChangeLabel(pr))
+		}
 		return perr
 	}
 
@@ -814,6 +878,7 @@ func addedLines(older, newer []byte) []byte {
 // auditCtx accumulates fields for the ONE audit line per invocation.
 // finalize is deferred so exactly one line is written.
 type auditCtx struct {
+	attestation   string
 	verb          string
 	repo          string
 	file          string
@@ -823,6 +888,9 @@ type auditCtx struct {
 }
 
 func (a *auditCtx) log(result, detail string) {
+	if a.attestation != "" {
+		detail += " " + a.attestation
+	}
 	_ = deskkit.Log(deskkit.Entry{
 		Tool:       toolName,
 		Verb:       a.verb,

@@ -665,6 +665,17 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// control's `<stream>/<NN>` brief reference against the FULL stream set (not
 	// the product-scoped checkStreams) so the control lands regardless of scope.
 	notices = append(notices, findingControlNotices(findings, streams, nowFunc())...)
+	// Corrective-action effectiveness (iso-9001/03): a resolved finding owes a
+	// record of the command that shows its failure mode is gone — PROBLEM when
+	// dated on or after effectivenessBoundary, NOTICE before it. The recurring-class
+	// path (findingcontrol) escalates in the same change. Presence floor only; each
+	// message states that adequacy stays with the reviewer.
+	effP, effN := effectivenessClosureMessages(findings, streams)
+	problems = append(problems, effP...)
+	notices = append(notices, effN...)
+	fcP, fcN := findingControlUnfiredMessages(findings, streams)
+	problems = append(problems, fcP...)
+	notices = append(notices, fcN...)
 	// Verification-debt alarm: the Awaiting queue
 	// is the throughput valve — fire a NOTICE when depth crosses threshold
 	// or exceeds the total done count.
@@ -1142,8 +1153,11 @@ func runGateScores(root string) int {
 // runClusterPendingQueue loads streams and emits the pod verify runner's
 // worklist — the code-verified / cluster-pending briefs (verdict-lane/07) — as a
 // JSON array. Read-only and STATUS.md-free, the same discipline as
-// runGateScores. Each row carries the brief id, stream, status, repo and the
-// cluster probes still pending. An empty queue prints `[]` and exits 0.
+// runGateScores. Each row carries the brief id, stream, status, repo, the
+// cluster probes still pending, the brief's gate, and its completion mode —
+// "flip" (gate:model, no risk axis yes) or "evidence-only" (the runner lands
+// Evidence and the human signs; clusterCompletion). An empty queue prints `[]`
+// and exits 0.
 func runClusterPendingQueue(root string) int {
 	streams, _, err := loadStreams(root)
 	if err != nil {
@@ -1247,6 +1261,13 @@ func main() {
 	// in the verify-outcomes sidecar is warranted (deskevidence's sidecar gate).
 	if len(os.Args) > 1 && os.Args[1] == "verifyclosure" {
 		os.Exit(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
+	// `statusgen verifyflip` — the sanctioned implemented → verified README flip
+	// for a gate: model brief, its Verified stamp derived from the recorded strict
+	// PASS (verifyflip.go, #2074). Own flag namespace, so intercepted here.
+	if len(os.Args) > 1 && os.Args[1] == "verifyflip" {
+		os.Exit(runVerifyflip(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen mergecheck` — the MERGE-TIME RE-CHECK (desk-hardening/05, #54).
@@ -1487,7 +1508,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, verifyflip, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1750,7 +1771,7 @@ func main() {
 	nextUpMode := flag.Bool("next-up", false, "emit the DISPATCH queue as JSON: the claim-filtered, capped Next-up selection (todo/in-progress, unclaimed, eligible) plus the held-back decomposition (eligible/shown/heldByStreamCap/heldBySpan/claimsKnown). NOT --gate-scores, which is the awaiting-verification backlog")
 	eligibilityMode := flag.Bool("eligibility", false, "emit the eligibility evaluator's verdict for every brief (graph-execution/01): gates:/feathers:/depends: become gating, with a reason. One line per brief (`<id>  <verdict>  <holds…>`), or --json for the full {id,verdict,holds,notices} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction — a forge-backed gate reports could-not-check regardless of --forge")
 	coverageMode := flag.Bool("coverage", false, "emit the evidence coverage verdict for every brief (graph-execution/03): every mandatory claim (its own Verify rows, plus a bound pattern node's mandatory evidence) must resolve `pass` at the item's revision or the brief is `held`, with the first reason. One line per brief (`<id> released|held <n-claims> <reason>`), or --json for the full {brief,released,claims} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction, same discipline as --eligibility")
-	clusterPendingQueueMode := flag.Bool("cluster-pending-queue", false, "emit the pod verify runner's worklist as JSON (verdict-lane/07): the briefs code-verified but cluster-pending — status implemented, every declared `check:cluster` probe parked by the offline lane (a could-not-check marker in Evidence), no VERIFY:FAIL. Read-only, STATUS.md-free")
+	clusterPendingQueueMode := flag.Bool("cluster-pending-queue", false, "emit the pod verify runner's worklist as JSON (verdict-lane/07): the briefs code-verified but cluster-pending — status implemented, every declared `check:cluster` probe parked by the offline lane (a could-not-check marker in Evidence), no VERIFY:FAIL. Each entry carries completion: flip (gate:model, no risk axis yes) or evidence-only (land Evidence, human signs). Read-only, STATUS.md-free")
 	// Gate-effectiveness telemetry: override rate, catch
 	// rate, ceremonial-gate detection. Self-contained diagnostic sub-command,
 	// same STATUS.md-free discipline as --dora/--trend/--bottleneck. --root

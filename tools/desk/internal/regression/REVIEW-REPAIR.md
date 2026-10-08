@@ -32,6 +32,12 @@ The restored command passes. `mutate_guard.py deadline` retains that control.
 A one-second pipe wait bound also prevents descendants retaining output pipes
 from holding the wrapper indefinitely after cancellation.
 
+Superseded by #2305: the 60-second budget was itself sized to idle speed and
+failed the unchanged fleet suite under host load. The budget is now the named
+`shellBudget` (4 minutes, capped at 5), the named runner allows 5 minutes per
+test and the regression Verify row 10 minutes; `TestShellBudgetNamed` keeps
+every wrapped suite on that one budget. The deadline control above is unchanged.
+
 These are implementer repair receipts, not reviewer resolution. The statusgen
 CI activation hold remains on issue #1836, and its staged patch is unchanged.
 

@@ -36,6 +36,7 @@ func TestInteractiveOwnerFixture(t *testing.T) {
 	c.cadenceLease = l
 	defer l.Close()
 	env := envSet(os.Environ(), "CELL_INTERACTIVE_FIXTURE", "child")
+	env = envSet(env, "ASSAY_SOURCE_REVISION", "fixture-revision")
 	c.runInteractiveHarness("worker-desk", []string{os.Args[0], "-test.run=^TestInteractiveOwnerFixture$"}, env, dir)
 }
 

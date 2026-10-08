@@ -1,0 +1,77 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName baseRefName title body mergedAt isCrossRepository headRepository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}",
+        "variables": {
+          "after": null,
+          "first": 100,
+          "name": "assay",
+          "owner": "medici-finance",
+          "states": [
+            "OPEN",
+            "MERGED"
+          ]
+        }
+      }
+    }
+  ],
+  "result": {
+    "Changes": [
+      {
+        "Number": 7,
+        "State": "OPEN",
+        "HeadSHA": "aaa111",
+        "HeadRef": "feat/a",
+        "Title": "same repo",
+        "Body": "",
+        "MergedAt": "",
+        "Author": {
+          "Login": "worker[bot]",
+          "ID": 99,
+          "Type": "Bot"
+        },
+        "BaseRef": "main",
+        "CrossRepo": "same",
+        "HeadRepo": "medici-finance/assay"
+      },
+      {
+        "Number": 8,
+        "State": "OPEN",
+        "HeadSHA": "bbb222",
+        "HeadRef": "feat/b",
+        "Title": "from a fork",
+        "Body": "",
+        "MergedAt": "",
+        "Author": {
+          "Login": "worker[bot]",
+          "ID": 99,
+          "Type": "Bot"
+        },
+        "BaseRef": "main",
+        "CrossRepo": "fork",
+        "HeadRepo": "someone/assay"
+      },
+      {
+        "Number": 9,
+        "State": "MERGED",
+        "HeadSHA": "ccc333",
+        "HeadRef": "feat/c",
+        "Title": "deleted fork",
+        "Body": "",
+        "MergedAt": "2026-09-10T12:00:00Z",
+        "Author": {
+          "Login": "worker[bot]",
+          "ID": 99,
+          "Type": "Bot"
+        },
+        "BaseRef": "main",
+        "CrossRepo": "fork"
+      }
+    ],
+    "Incomplete": false,
+    "PageCap": 5
+  }
+}

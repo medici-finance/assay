@@ -130,6 +130,33 @@ f, _ := os.CreateTemp("", "pr-body-*")                # Go
 A skill body names this mechanism as "a per-invocation scratch file (desk-shell.md §Scratch
 files)" rather than spelling `mktemp` as if every adopter's shell has it.
 
+## Managed task scratch
+
+House-cell interactive sessions and cadence passes receive a machine-owned scratch
+workspace through `TMPDIR`, `TMP`, and `TEMP`. Use it for unique body files and
+disposable output. Keep source changes in the assigned Git worktree. For standalone
+bounded commands, `cellctl scratch <cell> run --source <owned-worktree> --task <task>
+--session <session> -- <command>` supplies the same lifecycle. Its optional tracked
+snapshot and explicit extra inputs have a byte budget; never recursively copy a
+working directory with generated history or scratch output into another scratch tree.
+
+The top-level owner waits for every task sharing that scratch, persists required
+outcomes/evidence to the existing canonical destination, reads them back, then calls
+`cellctl scratch <ASSAY_SCRATCH_CELL> ack --id <ASSAY_SCRATCH_ID>
+--receipt <canonical-evidence-reference>` before the final completion message.
+A delegated agent never acknowledges its parent's scratch. Pending evidence and
+resumable work stay protected. No further required output may be created after ack.
+On failures, publish required diagnostics before acknowledgment too; the runtime
+retains only its bounded output tail, receipt and result after handoff.
+
+The runtime releases/reclaims scratch on ordinary completion or catchable termination;
+restart cleanup requires the execution lease and child-liveness proof. One owner,
+`cellctl scratch`, handles dry-run/apply, budgets and conservative recovery. Git
+worktrees remain `deskwt`'s responsibility. Unmarked legacy or harness owned
+directories are inventory-only; neither names nor age establish deletion authority.
+See `docs/cellctl-scratch.md` in the toolkit for flags, retention limits and supported
+host paths. Do not add shell deletion hooks to individual roles.
+
 ## Config home
 
 **Mechanism.** The desk tools' own config/roster/state directory is the literal path

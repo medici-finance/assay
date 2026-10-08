@@ -11,11 +11,13 @@ package main
 // four labels client-side — fewer calls, and the same union: an issue is included iff it
 // carries at least one of LABELS, exactly as the per-label fan-out would include it. The
 // one observable difference is the truncation THRESHOLD: the oracle caps each label query
-// at --limit (default 500) and warns per label; ListOpenIssues caps the repo's WHOLE open
-// list at 10,000 (forgeMaxIssuePages*forgeIssuePerPage) and refuses (could-not-check)
-// past it — a repo would need more open issues than that, escalation-labelled or not,
-// before the two mechanisms could disagree. testdata/spec.md records this as a deliberate,
-// bounded divergence.
+// at --limit (default 500) and warns per label; ListOpenIssues bounds the repo's WHOLE open
+// listing by the forge client's page guard and refuses (could-not-check) past it. On GitHub
+// that guard is 100 pages of 100 REST rows (forgeMaxIssuePages*forgeIssuePerPage), and the
+// rows include open pull requests, which the client drops only after reading the page; on
+// GitLab it is 25 pages of 100 issues. The two mechanisms disagree only on a repo whose open
+// listing fills that guard, escalation-labelled or not. testdata/spec.md records this as a
+// deliberate, bounded divergence.
 
 import (
 	"sort"

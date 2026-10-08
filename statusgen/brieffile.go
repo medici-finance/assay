@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -418,7 +417,7 @@ func decisionIssueRefInBody(body string, issueNum int) bool {
 // at load time (loadStreams stat'd and parsed its README.md), so a read error
 // here is not expected; return nothing rather than a partial list.
 func briefFilePaths(s *Stream) []string {
-	entries, err := os.ReadDir(s.Dir)
+	entries, err := readDirMemo(s.Dir)
 	if err != nil {
 		return nil
 	}
@@ -477,7 +476,7 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 	//
 	// parseBriefFile owns the single read so the key can hash the same bytes it parses;
 	// parseBriefFileBytes does the parse without re-reading.
-	raw, err := os.ReadFile(path)
+	raw, err := readFileMemo(path)
 	if err != nil {
 		// Unreadable: NOT memoised (a transient read error must never be cached), and the read
 		// error is itself the parse result — the same (nil, false, err) contract the parse

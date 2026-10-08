@@ -36,6 +36,7 @@ func TestNativeDispatchRoundTripViaTable(t *testing.T) {
 		t.Fatalf("build runner table: %v", err)
 	}
 	v := &VerifyLoop{
+		Attest:        fixtureAttestation,
 		Root:          t.TempDir(),
 		TargetSHA:     "deadbeef",
 		Native:        true,

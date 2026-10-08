@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -331,8 +332,9 @@ func TestRecordDoraTimingNoRepoIsCouldNotCheck(t *testing.T) {
 	os.Unsetenv("GITHUB_REPOSITORY")
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	// Even with data, an unresolved repo records nothing (fail-open).
-	// (doraTargetRepo will try git -C dir which fails, then gh which we can't
-	// rely on in CI; guard by asserting no panic + no file when repo empty.)
+	// (doraTargetRepo tries git -C dir, which fails, and has no other source:
+	// TestDoraTargetRepoNeverShellsForgeCLI pins that. Guard here by asserting no
+	// panic + no file when repo empty.)
 	src := fakeDoraSource{}
 	_ = recordDoraTiming(dir, src, now) // must not panic
 }
@@ -506,5 +508,30 @@ func TestOwnerRepoFromURL(t *testing.T) {
 		if got := ownerRepoFromURL(url); got != want {
 			t.Errorf("ownerRepoFromURL(%q)=%q, want %q", url, got, want)
 		}
+	}
+}
+
+// TestDoraTargetRepoNeverShellsForgeCLI: with no $GITHUB_REPOSITORY and no origin
+// remote, the target is unresolved, a could-not-check. A forge CLI on PATH that
+// would answer is never asked (forge-neutral/18, Verify row 3).
+func TestDoraTargetRepoNeverShellsForgeCLI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the PATH stub below is a shell script")
+	}
+	t.Setenv("GITHUB_REPOSITORY", "")
+	bin := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "gh-was-called")
+	stub := "#!/bin/sh\n: > '" + marker + "'\necho example-org/example-repo\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	dir := t.TempDir() // not a git checkout, so there is no origin to read
+	if got := doraTargetRepo(dir); got != "" {
+		t.Fatalf("doraTargetRepo = %q, want \"\" (could-not-check) when neither $GITHUB_REPOSITORY nor origin resolves", got)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("doraTargetRepo ran the forge CLI on PATH")
 	}
 }

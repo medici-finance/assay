@@ -371,10 +371,13 @@ func cmdCreate(args []string) (err error) {
 		return gerr
 	}
 
-	// Plain push. argv is constructed literally: no --force / --force-with-lease can
-	// ever be emitted, and no caller flag is forwarded to git.
-	if _, pushErr := git(facts.dir, "push", "-u", "origin", facts.branch); pushErr != nil {
-		return deskkit.Unverifiable("git push failed", pushErr)
+	// Plain push, in-process (push.go): the refspec is built here with no "+" and no Force,
+	// so a push that would need force is refused by the protocol; no caller flag reaches it.
+	if pushErr := pushFn(pushSpec{
+		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
+		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch, setUpstream: true,
+	}); pushErr != nil {
+		return pushErr
 	}
 
 	// On-behalf-of trailer (multi-principal/01), appended to the body sent to the forge
@@ -386,34 +389,35 @@ func cmdCreate(args []string) (err error) {
 		return oerr
 	}
 
-	// CreateDraftChange opens the change as a DRAFT — the frozen property of the seam; there
-	// is no path on which it opens ready. The body goes straight to the backend, so there is
-	// no temp file and no `--body-file` argv any more.
-	ref, cErr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
+	// CreateHeldDraftChange opens the change as a DRAFT — the frozen property of the seam;
+	// there is no path on which it opens ready — and then opens the desk's merge-hold marker
+	// thread on it (the forge-gitlab merge-hold brief): a resolvable discussion thread that
+	// blocks GitLab's merge button (only_allow_merge_if_all_discussions_are_resolved) until the
+	// reviewer's approve verdict releases it at the current head. GitHub returns the typed
+	// not-applicable (its twin control is server-side branch protection), a no-op there. The
+	// pairing lives in deskkit so every verb that opens a change gets it (#2254). A hold-open
+	// failure is LOUD: the change already exists, and an operator who is not told it is
+	// missing its gate would not find out until a ready-flip refuses for a reason that reads
+	// like a different problem. The body goes straight to the backend, so there is no temp
+	// file and no `--body-file` argv any more.
+	ref, cErr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: *title, Body: string(prBody), Head: facts.branch, Base: *base,
 	})
 	if cErr != nil {
-		return deskkit.Unverifiable("create draft change failed", cErr)
+		if ref == nil {
+			return deskkit.Unverifiable("create draft change failed", cErr)
+		}
+		if ref.Number > 0 {
+			n := ref.Number
+			ac.pr = &n
+		}
+		return cErr
 	}
 	url := ref.URL
 	detail := "created " + url
 	if ref.Number > 0 {
 		n := ref.Number
 		ac.pr = &n
-		// Open the desk's merge-hold marker thread (the forge-gitlab merge-hold brief): a
-		// resolvable discussion thread that blocks GitLab's merge button
-		// (only_allow_merge_if_all_discussions_are_resolved) until the reviewer's approve
-		// verdict releases it at the current head. GitHub returns the typed not-applicable
-		// (its twin control is server-side branch protection) and this is a no-op there.
-		// Failure to open is LOUD: the change already exists, and an operator who is not
-		// told it is missing its gate would not find out until a ready-flip refuses for a
-		// reason that reads like a different problem.
-		if hErr := openMergeHoldFn(fg, fr, n); hErr != nil {
-			return deskkit.Unverifiable(fmt.Sprintf(
-				"%s was created, but opening its merge-hold marker thread failed: %v — the change exists "+
-					"WITHOUT its server-side merge gate armed. Open one by hand (or re-run this step) before "+
-					"the PR is reviewed.", url, hErr), hErr)
-		}
 		// --decided (attention-budget/19): the block is already IN the body the create call
 		// just published — this only mirrors it as the at-a-glance label. A PR with no
 		// --decided applies no label at all (the transcribe-only shape stays byte-for-byte
@@ -432,18 +436,6 @@ func cmdCreate(args []string) (err error) {
 	}
 	ac.detail = detail
 	fmt.Println(url)
-	return nil
-}
-
-// openMergeHoldFn is the seam for deskpr create's merge-hold open step, a package var so
-// tests can observe the call without a live GitLab instance. Production calls
-// deskkit.Forge.OpenMergeHold directly and treats the typed not-applicable (GitHub: the twin
-// control is server-side branch protection) as success — there is nothing to open there.
-var openMergeHoldFn = func(fg deskkit.Forge, fr deskkit.ForgeRepo, number int) error {
-	_, err := fg.OpenMergeHold(fr, number)
-	if err != nil && !deskkit.IsMergeHoldNotApplicable(err) {
-		return err
-	}
 	return nil
 }
 
@@ -755,14 +747,18 @@ func cmdUpdate(args []string) (err error) {
 		return gerr
 	}
 
-	pushArgs := []string{"push", "-u", "origin", facts.branch}
-	if override {
-		// Explicit refspec: HEAD onto the PR's head branch. No -u — the worktree's own branch
-		// has a different name and must not be re-pointed at the PR head's upstream.
-		pushArgs = []string{"push", "origin", "HEAD:refs/heads/" + pushDest}
+	spec := pushSpec{
+		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
+		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch,
 	}
-	if _, pushErr := git(facts.dir, pushArgs...); pushErr != nil {
-		return deskkit.Unverifiable("git push failed", pushErr)
+	if override {
+		// Explicit refspec: HEAD onto the PR's head branch. The worktree's own branch has a
+		// different name, so its upstream config is left alone (git push <src>:<dst> never set
+		// one); the tracking ref for the PR head branch is still recorded (push.go recordPushed).
+		spec.srcRef, spec.dstBranch = "HEAD", pushDest
+	}
+	if pushErr := pushFn(spec); pushErr != nil {
+		return pushErr
 	}
 	// Post-update mergeable check (#1264): the push moved the head, so GitHub recomputes
 	// mergeability. A push that lands the PR in CONFLICTING gets zero pull_request runs at

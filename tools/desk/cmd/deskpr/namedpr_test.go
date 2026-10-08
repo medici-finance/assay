@@ -59,11 +59,11 @@ func TestUpdateByPRPushesHead(t *testing.T) {
 	if got := remoteRef(t, bare, "refs/heads/"+heldBranch); got != head {
 		t.Fatalf("PR head branch on the remote = %s, want the worktree HEAD %s", got, head)
 	}
-	if !anyCall(gitCalls(*calls), "push", "origin", "HEAD:refs/heads/"+heldBranch) {
-		t.Fatalf("update did not push by explicit refspec: %v", gitCalls(*calls))
+	if !pushedFrom(*calls, "HEAD", heldBranch) {
+		t.Fatalf("update did not push HEAD onto the PR's head branch: %v", *calls)
 	}
-	if anyCall(gitCalls(*calls), "push", "-u") {
-		t.Fatalf("update --pr re-pointed the local branch's upstream: %v", gitCalls(*calls))
+	if got := mustGit(t, work, "for-each-ref", "--format=%(upstream)", "refs/heads/neutral-rework"); got != "" {
+		t.Fatalf("update --pr re-pointed the local branch's upstream: %s", got)
 	}
 	if got := mustGit(t, bare, "for-each-ref", "refs/heads/neutral-rework"); got != "" {
 		t.Fatalf("the local branch name leaked to the remote: %s", got)
@@ -193,8 +193,8 @@ func TestUpdateByPRRefusals(t *testing.T) {
 			if got := mustGit(t, bare, "for-each-ref", "refs/heads/patch-1"); got != "" {
 				t.Fatalf("a refused update created a branch on the base repository: %s", got)
 			}
-			if anyCall(gitCalls(*calls), "push") {
-				t.Fatalf("pushed: %v", gitCalls(*calls))
+			if anyPush(*calls) {
+				t.Fatalf("pushed: %v", *calls)
 			}
 		})
 	}
@@ -214,8 +214,8 @@ func TestUpdateByPRScansHeadRef(t *testing.T) {
 	if got := remoteRef(t, bare, "refs/heads/"+tripping); got != c1 {
 		t.Fatalf("the refused update moved the head ref: %s, want %s", got, c1)
 	}
-	if anyCall(gitCalls(*calls), "push") {
-		t.Fatalf("pushed: %v", gitCalls(*calls))
+	if anyPush(*calls) {
+		t.Fatalf("pushed: %v", *calls)
 	}
 }
 
@@ -228,8 +228,8 @@ func TestUpdateWithoutPRFlagUnchanged(t *testing.T) {
 	if rc := run([]string{"update"}); rc != deskkit.ExitOK {
 		t.Fatalf("update rc = %d", rc)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("default update push changed: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("default update push changed: %v", *calls)
 	}
 }
 

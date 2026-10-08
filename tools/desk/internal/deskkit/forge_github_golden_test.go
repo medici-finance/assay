@@ -107,6 +107,8 @@ type goldenServer struct {
 	// commit's associated-PRs LIST (ListCommitChanges).
 	fileCommits []map[string]any
 	commitPulls []map[string]any
+	// pullCommits is a pull request's commits LIST (op 57, forge-neutral brief 33), served on page 1.
+	pullCommits []map[string]any
 }
 
 var (
@@ -146,6 +148,9 @@ var (
 	gWorkflowRuns     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/workflows/[^/]+/runs$`)
 	gRunPending       = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+/pending_deployments$`)
 	gRun1             = regexp.MustCompile(`^/repos/[^/]+/[^/]+/actions/runs/[0-9]+$`)
+
+	// forge-neutral brief 33's pull-commits route (op 57).
+	gPullCommits = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/[0-9]+/commits$`)
 )
 
 func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -259,6 +264,12 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		enc(s.reqChecks)
+	case r.Method == http.MethodGet && gPullCommits.MatchString(path):
+		if page != "" && page != "1" {
+			enc([]map[string]any{})
+			return
+		}
+		enc(s.pullCommits)
 	case r.Method == http.MethodGet && gPull.MatchString(path):
 		enc(s.pull)
 	case r.Method == http.MethodPatch && gPull.MatchString(path):
@@ -1094,6 +1105,166 @@ func TestForgeGithubGolden(t *testing.T) {
 					"html_url": "https://example/actions/runs/501"}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.RunStatus(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		// --- forge-neutral brief 33: ops 55-58 and the widened fields ---
+		{
+			// Op 55: the issues-only GraphQL connection (never REST /issues), state and label as
+			// typed variables, a Bot author re-suffixed with its kind and id, closedAt carried.
+			name: "list_issues",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
+					"issues": map[string]any{
+						"pageInfo": map[string]any{"hasNextPage": false, "endCursor": "c1"},
+						"nodes": []map[string]any{
+							{"number": 13, "title": "still open", "state": "OPEN",
+								"createdAt": "2026-09-02T09:00:00Z", "closedAt": nil,
+								"url":    "https://example/issues/13",
+								"labels": map[string]any{"nodes": []map[string]any{{"name": "gate: human"}}, "pageInfo": map[string]any{"hasNextPage": false}},
+								"author": map[string]any{"login": "worker", "__typename": "Bot", "databaseId": 99}},
+							{"number": 12, "title": "done", "state": "CLOSED",
+								"createdAt": "2026-09-01T09:00:00Z", "closedAt": "2026-09-03T09:00:00Z",
+								"url":    "https://example/issues/12",
+								"labels": map[string]any{"nodes": []map[string]any{}, "pageInfo": map[string]any{"hasNextPage": false}},
+								"author": map[string]any{"login": "someone", "__typename": "User", "databaseId": 5}},
+						},
+					}}}}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ListIssues(forgeTestRepo, IssueListQuery{State: IssueStateAll, Label: "gate: human"})
+			},
+		},
+		{
+			// Op 56: the close/reopen timeline and the closing changes in ONE query.
+			name: "issue_state_events",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
+					"issue": map[string]any{
+						"timelineItems": map[string]any{
+							"pageInfo": map[string]any{"hasNextPage": false},
+							"nodes": []map[string]any{
+								{"__typename": "ClosedEvent", "createdAt": "2026-09-01T10:00:00Z",
+									"actor": map[string]any{"login": "worker", "__typename": "Bot", "databaseId": 99}},
+								{"__typename": "ReopenedEvent", "createdAt": "2026-09-02T10:00:00Z",
+									"actor": map[string]any{"login": "someone", "__typename": "User", "databaseId": 5}},
+							},
+						},
+						"closedByPullRequestsReferences": map[string]any{
+							"pageInfo": map[string]any{"hasNextPage": false},
+							"nodes": []map[string]any{
+								{"number": 7, "state": "MERGED", "merged": true,
+									"repository": map[string]any{"nameWithOwner": "medici-finance/assay"},
+									"author":     map[string]any{"login": "worker", "__typename": "Bot", "databaseId": 99}},
+							},
+						},
+					}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.IssueStateEvents(forgeTestRepo, 12) },
+		},
+		{
+			// Op 57: the change's own commit count, then its commits list; the count reconciles.
+			name: "list_change_commits",
+			setup: func(s *goldenServer) {
+				s.pull = map[string]any{"number": 7, "commits": 2}
+				s.pullCommits = []map[string]any{{"sha": "aaa111"}, {"sha": "bbb222"}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListChangeCommits(forgeTestRepo, 7) },
+		},
+		{
+			name:  "repo_default_branch",
+			setup: func(s *goldenServer) { s.repo = map[string]any{"default_branch": "trunk"} },
+			run:   func(f *GitHubForge) (any, error) { return f.RepoDefaultBranch(forgeTestRepo) },
+		},
+		{
+			// Op 58 with no default branch reported: could-not-check, never "main".
+			name:  "repo_default_branch_empty_refuses",
+			setup: func(s *goldenServer) { s.repo = map[string]any{"visibility": "public"} },
+			run:   func(f *GitHubForge) (any, error) { return f.RepoDefaultBranch(forgeTestRepo) },
+		},
+		{
+			// MergeCommitSHA is carried for a MERGED change.
+			name: "get_pull_request_merged_commit_sha",
+			setup: func(s *goldenServer) {
+				s.pull = map[string]any{
+					"number": 7, "state": "closed", "merged": true, "node_id": "PR_node",
+					"merged_at":        "2026-09-10T12:00:00Z",
+					"merge_commit_sha": "fff999",
+					"user":             map[string]any{"login": "worker[bot]", "id": 99},
+					"head":             map[string]any{"sha": "abc123", "ref": "feat/x"},
+					"base":             map[string]any{"ref": "main"},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
+		},
+		{
+			// An OPEN change's merge_commit_sha is GitHub's test-merge commit, never a landed
+			// one: MergeCommitSHA stays empty.
+			name: "get_pull_request_open_test_merge_sha_dropped",
+			setup: func(s *goldenServer) {
+				s.pull = map[string]any{
+					"number": 7, "state": "open", "merged": false, "node_id": "PR_node",
+					"merge_commit_sha": "eee888",
+					"user":             map[string]any{"login": "worker[bot]", "id": 99},
+					"head":             map[string]any{"sha": "abc123", "ref": "feat/x"},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
+		},
+		{
+			// A CLOSED issue carries its closer, with the account kind.
+			name: "get_issue_closed_by",
+			setup: func(s *goldenServer) {
+				s.issue = map[string]any{"number": 12, "state": "closed",
+					"user":      map[string]any{"login": "someone", "id": 5, "type": "User"},
+					"closed_by": map[string]any{"login": "worker[bot]", "id": 99, "type": "Bot"}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.GetIssue(forgeTestRepo, 12) },
+		},
+		{
+			// ChangeRef's new fields: author, base ref and the cross-repository reading — the same
+			// repository, a live fork, and a deleted fork (headRepository null).
+			name: "list_changes_new_fields",
+			setup: func(s *goldenServer) {
+				author := map[string]any{"login": "worker", "__typename": "Bot", "databaseId": 99}
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
+					"pullRequests": map[string]any{
+						"pageInfo": map[string]any{"hasNextPage": false},
+						"nodes": []map[string]any{
+							{"number": 7, "state": "OPEN", "headRefOid": "aaa111", "headRefName": "feat/a",
+								"baseRefName": "main", "title": "same repo", "body": "",
+								"isCrossRepository": false,
+								"headRepository":    map[string]any{"nameWithOwner": "medici-finance/assay"},
+								"author":            author},
+							{"number": 8, "state": "OPEN", "headRefOid": "bbb222", "headRefName": "feat/b",
+								"baseRefName": "main", "title": "from a fork", "body": "",
+								"isCrossRepository": true,
+								"headRepository":    map[string]any{"nameWithOwner": "someone/assay"},
+								"author":            author},
+							{"number": 9, "state": "MERGED", "headRefOid": "ccc333", "headRefName": "feat/c",
+								"baseRefName": "main", "title": "deleted fork", "body": "",
+								"mergedAt":          "2026-09-10T12:00:00Z",
+								"isCrossRepository": true, "headRepository": nil,
+								"author": author},
+						},
+					}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListChanges(forgeTestRepo, OpenAndMerged()) },
+		},
+		{
+			// The typed change-thread read carries databaseId, url, updatedAt and the author kind.
+			name: "list_comments_typed_change_fields",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
+					"pullRequest": map[string]any{"comments": map[string]any{
+						"pageInfo": map[string]any{"hasNextPage": false},
+						"nodes": []map[string]any{
+							{"id": "IC_a", "databaseId": 501, "body": "edited", "isMinimized": false,
+								"createdAt": "2026-09-01T10:00:00Z", "updatedAt": "2026-09-02T10:00:00Z",
+								"url":    "https://example/pull/7#issuecomment-501",
+								"author": map[string]any{"login": "worker", "__typename": "Bot", "databaseId": 99}},
+						},
+					}}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListCommentsTyped(forgeTestRepo, 7, TargetChange) },
 		},
 		{
 			name:  "error_not_found",

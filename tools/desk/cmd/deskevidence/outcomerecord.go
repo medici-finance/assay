@@ -66,6 +66,11 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: --outcome-record target failed the path-prefix guard: " + perr.Error())
 	}
 	ac.file = targetRepoPath
+	// Pre-work admission, bound to this record's brief key: the record's target is
+	// derived from its brief, so an attestation for another brief refuses here.
+	if _, aerr := admitVerifierEvidence(root, repoSlug, targetRepoPath, ac); aerr != nil {
+		return aerr
+	}
 	commitContent := deskkit.CanonicalBytes(rec.Raw)
 
 	if len(commitContent) > maxBytes {
@@ -174,7 +179,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		File:    targetRepoPath,
 		Branch:  branch,
 		Content: commitContent,
-		Message: "Evidence: verify-outcome record for " + wr.Brief + commitSuffix,
+		Message: "Evidence: verify-outcome record for " + wr.Brief + ac.attestationTrailer() + commitSuffix,
 	})
 	if werr != nil {
 		return werr
@@ -209,7 +214,7 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 		File:        target,
 		Branch:      side,
 		Content:     content,
-		Message:     "Evidence: verify-outcome record for " + brief + commitSuffix,
+		Message:     "Evidence: verify-outcome record for " + brief + ac.attestationTrailer() + commitSuffix,
 		StartBranch: base,
 	})
 	if werr != nil {
@@ -221,14 +226,19 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 				"verify-outcome record was NOT landed", side), nil)
 	}
 
-	pr, perr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
+	// CreateHeldDraftChange, never the raw CreateDraftChange — see landEvidenceAsChange (#2254).
+	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
 		Body: "Verify-outcome record for `" + brief + "`, landed on branch `" + side + "` and opened as a " +
-			"draft change because the default branch `" + base + "` takes no direct write on this forge.",
+			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestation,
 		Head: side,
 		Base: base,
 	})
 	if perr != nil {
+		if pr != nil {
+			ac.detail = fmt.Sprintf("landed %s on %s in %s via %s, but its merge-hold was NOT opened",
+				target, repoSlug, side, draftChangeLabel(pr))
+		}
 		return perr
 	}
 
@@ -251,4 +261,16 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 	fmt.Fprintf(stdout, "landed %s on %s: %s takes no direct write, so wrote branch %s and opened draft %s — %s\n",
 		target, repoSlug, base, side, loc, attr)
 	return nil
+}
+
+// draftChangeLabel names a draft change in an audit detail: "draft change #N" when the forge
+// returned a number, else its URL, else a plain statement that the forge returned no number.
+func draftChangeLabel(pr *deskkit.PullRef) string {
+	switch {
+	case pr.Number > 0:
+		return fmt.Sprintf("draft change #%d", pr.Number)
+	case pr.URL != "":
+		return "draft change " + pr.URL
+	}
+	return "a draft change the forge returned no number for"
 }

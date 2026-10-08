@@ -75,51 +75,51 @@
     },
     {
       "name": "drop the named-row-absent-from-remote refusal (contract item 4 — the missing key indexes line 0)",
-      "file": "cmd/deskevidence/rowscope.go",
-      "old": "\t\tif _, ok := rt.keyed[r]; !ok {",
-      "new": "\t\tif _, ok := rt.keyed[r]; false && !ok {"
+      "file": "internal/deskkit/briefstable.go",
+      "old": "\t\tif _, ok := rt.Keyed[r]; !ok {",
+      "new": "\t\tif _, ok := rt.Keyed[r]; false && !ok {"
     },
     {
       "name": "drop the named-row-absent-from-local refusal (contract item 4 — local line 0 is spliced into the row)",
-      "file": "cmd/deskevidence/rowscope.go",
-      "old": "\t\tif _, ok := lt.keyed[r]; !ok {",
-      "new": "\t\tif _, ok := lt.keyed[r]; false && !ok {"
+      "file": "internal/deskkit/briefstable.go",
+      "old": "\t\tif _, ok := lt.Keyed[r]; !ok {",
+      "new": "\t\tif _, ok := lt.Keyed[r]; false && !ok {"
     },
     {
       "name": "drop the commit-only foreign-key arm of the write-time diagnostic (a refusal no longer names the row the commit added)",
       "file": "cmd/deskevidence/rowscope.go",
-      "old": "\t\tif _, ok := a.keyed[key]; !ok {",
-      "new": "\t\tif _, ok := a.keyed[key]; false && !ok {"
+      "old": "\t\tif _, ok := a.Keyed[key]; !ok {",
+      "new": "\t\tif _, ok := a.Keyed[key]; false && !ok {"
     },
     {
       "name": "drop the remote duplicate-key refusal (last-wins keying clobbers a different brief's row)",
-      "file": "cmd/deskevidence/rowscope.go",
-      "old": "\tif len(rt.dups) > 0 {",
-      "new": "\tif false && len(rt.dups) > 0 {"
+      "file": "internal/deskkit/briefstable.go",
+      "old": "\tif len(rt.Dups) > 0 {",
+      "new": "\tif false && len(rt.Dups) > 0 {"
     },
     {
       "name": "drop the local duplicate-key refusal (which local line lands becomes a guess)",
-      "file": "cmd/deskevidence/rowscope.go",
-      "old": "\tif len(lt.dups) > 0 {",
-      "new": "\tif false && len(lt.dups) > 0 {"
+      "file": "internal/deskkit/briefstable.go",
+      "old": "\tif len(lt.Dups) > 0 {",
+      "new": "\tif false && len(lt.Dups) > 0 {"
     },
     {
       "name": "drop the named local row cell-count refusal (a truncated row lands and loses its lifecycle cells on the next regen)",
-      "file": "cmd/deskevidence/rowscope.go",
-      "old": "\t\tif len(ls) != len(rt.header) {",
-      "new": "\t\tif false && len(ls) != len(rt.header) {"
+      "file": "internal/deskkit/briefstable.go",
+      "old": "\t\tif len(ls) != len(rt.Header) {",
+      "new": "\t\tif false && len(ls) != len(rt.Header) {"
     },
     {
       "name": "drop the mid-line carriage-return refusal (a named line renders as an extra row)",
-      "file": "cmd/deskevidence/rowscope.go",
+      "file": "internal/deskkit/briefstable.go",
       "old": "\t\tif i := strings.IndexByte(lline, '\\r'); i >= 0 && i != len(lline)-1 {",
       "new": "\t\tif i := strings.IndexByte(lline, '\\r'); false && i >= 0 && i != len(lline)-1 {"
     },
     {
       "name": "land the named row's whole local line instead of its lifecycle cells (a stale local copy reverts the row's authoring cells)",
-      "file": "cmd/deskevidence/rowscope.go",
-      "old": "\t\tout[rt.keyed[r]] = nl",
-      "new": "\t\tout[rt.keyed[r]] = lline"
+      "file": "internal/deskkit/briefstable.go",
+      "old": "\t\tout[rt.Keyed[r]] = nl",
+      "new": "\t\tout[rt.Keyed[r]] = lline"
     },
     {
       "name": "drop the write-time whole-content comparison (the second layer accepts any drift the fresh fetch shows)",

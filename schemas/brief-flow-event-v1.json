@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/brief-flow-event-v1.json",
+  "title": "brief-flow-event/v1",
+  "description": "One brief lifecycle fact, one JSON object per line of a portable JSONL export (spec/brief-flow-event-v1.md). The accounting unit is the brief's stable uuid (the brief-v2 `id:`); pull requests, commits and board rows are evidence about a brief, never a unit of their own. This schema is the SHAPE contract only. The semantic rules a schema cannot express live in the reference validator (statusgen/briefevent.go, ParseBriefEvent): occurrence bounds, receipt-not-before-occurrence, the per-milestone required members, the `must_understand` refusal, the person-identifier refusal and canonical fact digests. Unknown top-level members are allowed so a later optional extension round-trips unchanged through an older reader; an extension a reader MUST understand is named in `must_understand`, and a reader that does not know it refuses the event. A member named like a person identifier (login, name, email, author and similar) is refused at any depth by the validator: actors are recorded as roles only.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "fact_id",
+    "brief_uuid",
+    "alias",
+    "milestone",
+    "occurred_at",
+    "received_at",
+    "initiator_role",
+    "executor_role",
+    "coverage"
+  ],
+  "properties": {
+    "schema": {
+      "description": "The event contract and its major version. A reader refuses any other value: a later major version may change a meaning this reader would silently misread.",
+      "const": "brief-flow-event/v1"
+    },
+    "fact_id": {
+      "description": "The canonical fact id. Use the source's own immutable event id where one exists; otherwise the deterministic legacy derivation (namespace, object, revision, kind and subject hashed under a derivation version). Every observation of one fact carries the same id, so a live capture and a later import resolve to one fact. Same id with the same digest is idempotent; same id with a different digest is a conflict held for inspection, never a second fact.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$"
+    },
+    "brief_uuid": {
+      "description": "The brief's stable identity: its brief-v2 `id:` uuid v4. It survives renumber, rename and archive. Never derived from a title or an alias.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "alias": {
+      "description": "The `<stream>/<NN>` alias the brief carried when the fact occurred. An alias is effective-dated and may later name a different brief; it is a locator, never an identity.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*/[0-9]+[a-z]?$"
+    },
+    "milestone": {
+      "description": "The fact kind. Producers record facts; whether a fact is a FIRST milestone or a repeated episode is decided by the stage reducer, never by the producer.",
+      "type": "string",
+      "enum": [
+        "written",
+        "alias_assigned",
+        "status_observed",
+        "pr_opened",
+        "pr_ready",
+        "pr_draft",
+        "pr_merged",
+        "pr_closed",
+        "pr_reopened",
+        "acceptance_scope",
+        "verified",
+        "done",
+        "reopened",
+        "retraction"
+      ]
+    },
+    "occurred_at": {
+      "description": "When the fact happened, as best the source knows it, in UTC. Its quality is stated by `precision` and, when the source only brackets the instant, by `occurred_after`/`occurred_before`.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "received_at": {
+      "description": "When this observation was received by the collector, in UTC. Receipt order is not occurrence order.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "occurred_after": {
+      "description": "Optional inclusive lower bound on the occurrence instant (UTC).",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "occurred_before": {
+      "description": "Optional inclusive upper bound on the occurrence instant (UTC).",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "precision": {
+      "description": "How `occurred_at` was obtained: `event` is the source's own event time; `commit` is a commit-time proxy; `poll` is an observation between two polls; `day` is a date only. Absent means unstated, which ranks below every stated value.",
+      "type": "string",
+      "enum": ["event", "commit", "poll", "day"]
+    },
+    "source_authority": {
+      "description": "Which source observed the fact, in precedence order: `forge` (the forge's own event record), `producer` (the acting tool's receipt written after the act succeeded), `git` (main-branch history), `historian` (a live board-historian row), `backfill` (a historian row replayed from git). Absent means unstated, which ranks last.",
+      "type": "string",
+      "enum": ["forge", "producer", "git", "historian", "backfill"]
+    },
+    "source_ref": {
+      "description": "The source object this observation read: its kind, its immutable id and the revision read.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "type": "string" },
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "coverage": {
+      "description": "Whether the source read behind this observation was complete. `partial` (a truncated page, a missing range) and `unknown` are never read as complete, and missing data is never read as zero activity.",
+      "type": "string",
+      "enum": ["observed", "partial", "unknown"]
+    },
+    "initiator_role": {
+      "description": "The role classification of whoever initiated the act. Role names only; `unknown` is an explicit value, never a default.",
+      "type": "string",
+      "enum": ["desk", "reviewer", "verifier", "worker", "human", "unknown"]
+    },
+    "executor_role": {
+      "description": "The role classification of whoever executed the act, kept separate from the initiator (a human may ask, a worker may act).",
+      "type": "string",
+      "enum": ["desk", "reviewer", "verifier", "worker", "human", "unknown"]
+    },
+    "brief_revision": {
+      "description": "The brief's own revision counter (brief-v2 `version:`) in force when the fact occurred.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "owner_cell": {
+      "description": "The cell that owned the brief when the fact occurred. Absent means unknown ownership, which stays unknown in grouped reports.",
+      "type": "string"
+    },
+    "owner_stream": {
+      "description": "The stream that owned the brief when the fact occurred.",
+      "type": "string"
+    },
+    "visibility": {
+      "description": "Who may read this fact. Absent is treated as `restricted`: nothing is published without an explicit `public`.",
+      "type": "string",
+      "enum": ["public", "restricted"]
+    },
+    "contribution": {
+      "description": "The contribution (a pull request) a `pr_*` fact is about.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["ref"],
+      "properties": {
+        "ref": {
+          "description": "A stable contribution reference, for example `pr:12`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "`implementation` delivers the brief; `authoring` only writes or edits the brief and never counts as coded.",
+          "type": "string",
+          "enum": ["implementation", "authoring"]
+        },
+        "draft": {
+          "description": "On `pr_opened`: whether the pull request was created as a draft. A pull request created ready is ready-at-creation; no flip is invented.",
+          "type": "boolean"
+        },
+        "replaces": {
+          "description": "On `pr_opened`: the contribution this one replaces. A replaced contribution is superseded, not abandoned.",
+          "type": "string"
+        }
+      }
+    },
+    "acceptance": {
+      "description": "The acceptance owner's statement about which contributions the brief needs (`acceptance_scope`) or what a `verified`/`done` fact covered. Only `complete` coverage supports whole-brief completion.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["coverage"],
+      "properties": {
+        "revision": {
+          "description": "The acceptance (brief) revision the statement binds to.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "coverage": {
+          "type": "string",
+          "enum": ["complete", "partial", "unknown"]
+        },
+        "contributions": {
+          "description": "On `acceptance_scope`: every contribution reference the brief's acceptance needs.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "status_from": {
+      "description": "On `status_observed`: the previously recorded board status, or empty for a historian seed row. A seed records state; it is never a birth.",
+      "type": "string"
+    },
+    "status_to": {
+      "description": "On `status_observed`: the observed board status.",
+      "type": "string"
+    },
+    "alias_reason": {
+      "description": "On `alias_assigned`: why the alias took effect.",
+      "type": "string",
+      "enum": ["authored", "renumber", "rename", "archive", "legacy"]
+    },
+    "supersedes": {
+      "description": "The fact id this fact corrects. On `retraction` the target is withdrawn without replacement.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$"
+    },
+    "import_run": {
+      "description": "The import or collection run that produced this observation.",
+      "type": "string"
+    },
+    "must_understand": {
+      "description": "Member names a reader MUST understand to use this event. A reader that does not know a listed member refuses the event rather than guessing; a member NOT listed here is optional and round-trips unchanged.",
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
