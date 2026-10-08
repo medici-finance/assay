@@ -360,6 +360,8 @@ func dispatch(o dispatchOpts) error {
 	}
 	o.say("%s OK: %s claimed in %s (claim key %s) via %s, store %s, authenticated by %s",
 		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
+	// From here every abort returns through held.settle, which releases the claim (#2355).
+	held := &heldClaim{o: o, tool: plan.claimTool, key: plan.claimKey, repo: repo, auth: auth}
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -384,7 +386,7 @@ func dispatch(o dispatchOpts) error {
 		// operator's corrected re-run a second later, is told "already claimed by a LIVE holder",
 		// and a human has to hand-delete the ref. A worktree-create abort that placed a claim and
 		// never released it is the field defect this line closes.
-		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
+		released := held.release()
 		// deskwt's OWN message is forwarded whole (SaidAll: preamble stripped, SCRUBBED —
 		// see runtool.go), because it is the line that names the cause (which branch, which
 		// worktree holds it, what to do). Not toolMessage(wt.stderr): that strips only the
@@ -405,9 +407,9 @@ func dispatch(o dispatchOpts) error {
 		// (the `deskwt add` argv as executed, deskwt's exit status, its stderr whole) is
 		// attached. The verdict is unchanged either way.
 		if exitCodeOf(wt.err) == deskkit.ExitRefused {
-			return wt.run.FailVerbatim(deskkit.ExitRefused, msg)
+			return held.settle(wt.run.FailVerbatim(deskkit.ExitRefused, msg))
 		}
-		return wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg)
+		return held.settle(wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg))
 	}
 	home := firstLine(wt.stdout)
 	// Absoluteness is tested with homeIsAbsolute (filepath.IsAbs under the host-OS seam), not a
@@ -423,11 +425,11 @@ func dispatch(o dispatchOpts) error {
 		// the deskwt-add-failed branch above does — rather than leave a phantom HELD claim that wedges
 		// the item (every corrected re-run told "already claimed by a LIVE holder" until a human
 		// hand-deletes the ref). A refused dispatch must not be a queue suppressor.
-		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
-		return deskkit.Unverifiable(fmt.Sprintf(
+		released := held.release()
+		return held.settle(deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: `deskwt add %s` exited 0 but named no absolute worktree path (%q). The agent's home "+
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
-				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil)
+				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil))
 	}
 	// IDENTITY, worktree-scoped (#1490). The dispatched agent's worktree must commit under its
 	// OWN role's App identity, not the identity the shared checkout carries — otherwise a
@@ -500,15 +502,15 @@ func dispatch(o dispatchOpts) error {
 	if _, herr := deskkit.RunHook(deskkit.HookBeforeRun, deskkit.HookEnv{
 		RunKey: plan.claimKey, Worktree: home, Repo: repo, Role: o.kit,
 	}); herr != nil {
-		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
-		return deskkit.Unverifiable(fmt.Sprintf(
+		released := held.release()
+		return held.settle(deskkit.Unverifiable(fmt.Sprintf(
 			"step before_run: the before_run hook failed, so no prompt is emitted. The claim was %s. Hook: %v",
-			released, herr), herr)
+			released, herr), herr))
 	}
 
 	prompt, perr := assemblePrompt(o, plan, home)
 	if perr != nil {
-		return perr
+		return held.settle(perr)
 	}
 
 	// 3 — roster registration.
@@ -520,7 +522,7 @@ func dispatch(o dispatchOpts) error {
 	// the ambient login — issue 1146.
 	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionScript, auth)
 	if gerr != nil {
-		return gerr
+		return held.settle(gerr)
 	}
 	o.say("%s %s", stepDecisionGate, gate)
 
@@ -534,10 +536,10 @@ func dispatch(o dispatchOpts) error {
 	}
 	if serr != nil {
 		if o.kit == "verifier" {
-			released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
-			return deskkit.Unverifiable(fmt.Sprintf("verifier attestation failed; NO prompt emitted. Claim %s; retained worktree %s for recovery (deskdispatch --attest-verifier --root <home>). Reacquire the original claim before launching a recovered run: %v", released, home, serr), serr)
+			released := held.release()
+			return held.settle(deskkit.Unverifiable(fmt.Sprintf("verifier attestation failed; NO prompt emitted. Claim %s; retained worktree %s for recovery (deskdispatch --attest-verifier --root <home>). Reacquire the original claim before launching a recovered run: %v", released, home, serr), serr))
 		}
-		return serr
+		return held.settle(serr)
 	}
 	o.say("%s %s", stepModelStamp, stamp)
 
@@ -552,7 +554,7 @@ func dispatch(o dispatchOpts) error {
 	o.say("%s %s", stepQueueLabel, stepQueueLabelApply(o, repo))
 
 	// 7 — the prompt.
-	return emitPrompt(o, prompt)
+	return held.settle(emitPrompt(o, prompt))
 }
 
 // dispatchPlan is what validateCallerPreconditions derives once, so no later step
@@ -1164,6 +1166,56 @@ func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo 
 	}
 	return "released"
 }
+
+// heldClaim is the item claim from the moment stepClaim places it until the dispatch either
+// emits its prompt or aborts. It is the ONE place a post-claim abort releases: every return in
+// dispatch() after the claim goes through settle, so a refusal later in the run (the decision
+// gate, the model stamp, prompt assembly) never leaves the claim HELD for the next attempt to read
+// as a LIVE holder (#2355). TestClaimReleaseChokepoint pins that shape.
+type heldClaim struct {
+	o            dispatchOpts
+	tool, key    string
+	repo, phrase string
+	auth         claimAuth
+}
+
+// release releases the claim once and returns releaseClaim's phrase; later calls return the
+// same phrase without a second release.
+func (h *heldClaim) release() string {
+	if h.phrase == "" {
+		h.phrase = releaseClaim(h.o, h.tool, h.auth, h.key, h.repo)
+	}
+	return h.phrase
+}
+
+// settle passes a nil error through (the dispatch succeeded and the claim is the agent's). A
+// non-nil one releases the claim — unless an abort path already did and named it in its own
+// message — and appends the outcome to the error, keeping its exit code.
+func (h *heldClaim) settle(err error) error {
+	if err == nil || h.phrase != "" {
+		return err
+	}
+	note := fmt.Sprintf(" The dispatch claim %s was %s, so a re-run is not refused behind it.", h.key, h.release())
+	if de, ok := err.(*deskkit.DeskError); ok {
+		cp := *de
+		cp.Msg += note
+		return &cp
+	}
+	// Anything else — a plain error, or a *DeskError wrapped with %w — keeps its whole chain: the
+	// note rides on a wrapper that Unwraps to err, so errors.As still reaches a wrapped DeskError's
+	// Code, Err, RetryAfter and Finding (and ExitCodeOf still reads its Code).
+	return &settledError{err: err, note: note}
+}
+
+// settledError is a post-claim abort's error with the claim-release outcome appended to its
+// message. It adds text only; the cause and everything errors.As can reach through it are err's.
+type settledError struct {
+	err  error
+	note string
+}
+
+func (e *settledError) Error() string { return e.err.Error() + e.note }
+func (e *settledError) Unwrap() error { return e.err }
 
 // claimAuth is the credential hand-off for every claim-tool child this verb starts (acquire,
 // show, release) and, via scriptEnv, for the decision-gate script (issue 1146). Exactly one of
