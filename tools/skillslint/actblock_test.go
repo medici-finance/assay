@@ -180,6 +180,182 @@ func TestActBlockLintHashInWordNotComment(t *testing.T) {
 	}
 }
 
+// actWant is one issue a test row expects: at is an index into the row's
+// lines, msg a substring of the issue.
+type actWant struct {
+	at  int
+	msg string
+}
+
+// wantIssues fails unless issues holds exactly the wanted issues, in any
+// order, each at file line base+at.
+func wantIssues(t *testing.T, issues []Issue, base int, want ...actWant) {
+	t.Helper()
+	used := make([]bool, len(issues))
+	for _, w := range want {
+		found := false
+		for i, is := range issues {
+			if !used[i] && strings.Contains(is.Msg, fmt.Sprintf("line %d:", base+w.at)) && strings.Contains(is.Msg, w.msg) {
+				used[i], found = true, true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("issues=%+v, want one at line %d containing %q (want %+v)", issues, base+w.at, w.msg, want)
+		}
+	}
+	if len(issues) != len(want) {
+		t.Fatalf("issues=%+v, want exactly %d: %+v", issues, len(want), want)
+	}
+}
+
+// actRowAt is where the quote-state rows go: after the act function's last
+// read and before its closing parenthesis, so the read check sees the clean
+// block's reads before any row's quotes.
+var actRowAt = len(cleanActLines) - 2
+
+const (
+	actTrailMsg = "trailing # comment"
+	actUnmodMsg = "the lint does not model"
+	actOpenMsg  = "ends inside"
+)
+
+// TestActBlockLintQuoteStateBeforeTrailingComment — text that only looks like
+// an open quote must not hide a later trailing comment. A heredoc body is
+// data, so its apostrophe or double quote opens nothing; a $'…' quote ends at
+// its first unescaped quote; comment text is not read for quotes. Each row is
+// followed once by `echo dry #;echo live` and once by `echo dry;#;echo live`,
+// and that line must be flagged. An interactive zsh without
+// interactive_comments runs the live echo of both.
+func TestActBlockLintQuoteStateBeforeTrailingComment(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		lines []string
+		extra []actWant
+	}{
+		{"heredoc with an apostrophe, quoted delimiter", []string{"  cat <<'EOF'", "it's data", "EOF"}, nil},
+		{"heredoc with an apostrophe, unquoted delimiter", []string{"  cat <<EOF", "it's data", "EOF"}, nil},
+		{"heredoc with an apostrophe, double-quoted delimiter", []string{`  cat <<"EOF"`, "it's data", "EOF"}, nil},
+		{"heredoc with an apostrophe, backslash delimiter", []string{`  cat <<\EOF`, "it's data", "EOF"}, nil},
+		{"heredoc with an apostrophe, delimiter partly quoted", []string{`  cat <<E"O"F`, "it's data", "EOF"}, nil},
+		{"tab-stripped heredoc with an apostrophe", []string{"  cat <<-EOF", "\tit's data", "\tEOF"}, nil},
+		{"heredoc with a double quote", []string{"  cat <<EOF", `say "hi`, "EOF"}, nil},
+		{"heredoc with a backtick", []string{"  cat <<'EOF'", "a ` b", "EOF"}, nil},
+		{"two heredocs on one line, apostrophe in the second", []string{"  cat <<A <<B", "a", "A", "it's data", "B"}, nil},
+		{"heredoc in a command substitution", []string{"  x=$(cat <<'EOF'", "it's data", "EOF", "  )"}, nil},
+		{"ANSI-C quote with an escaped quote", []string{`  echo $'it\'s'`}, []actWant{{0, actUnmodMsg}}},
+		{"ANSI-C quote with an escaped backslash", []string{`  echo $'a\\' 'b'`}, nil},
+		{"full-line comment with an apostrophe", []string{"  # don't"}, []actWant{{0, "comment carries"}}},
+		{"full-line comment with a double quote", []string{`  # say "hi`}, []actWant{{0, "comment carries"}}},
+		{"trailing comment with an apostrophe", []string{"  echo a # don't"}, []actWant{{0, actTrailMsg}}},
+		{"trailing comment with a double quote", []string{`  echo a # say "hi`}, []actWant{{0, actTrailMsg}}},
+		{"trailing comment after an operator, with an apostrophe", []string{"  echo a;# don't"}, []actWant{{0, actTrailMsg}}},
+	} {
+		for _, tail := range []string{"  echo dry #;echo live", "  echo dry;#;echo live"} {
+			t.Run(c.name+" then "+strings.TrimSpace(tail), func(t *testing.T) {
+				lines := append(append([]string{}, c.lines...), tail)
+				_, issues := lintOne(t, "sh", withLines(actRowAt, lines...))
+				want := append([]actWant{{len(c.lines), actTrailMsg}}, c.extra...)
+				wantIssues(t, issues, cleanActLine(actRowAt), want...)
+			})
+		}
+	}
+}
+
+// TestActBlockLintUnclosedAtBlockEnd — a block that ends inside a quote, a
+// substitution, a heredoc or a line continuation fails at the line that opens
+// it: a shell reads the rest of the block, and whatever is pasted next, inside
+// it, so the lint cannot say what runs.
+func TestActBlockLintUnclosedAtBlockEnd(t *testing.T) {
+	opened := []actWant{{0, actOpenMsg}}
+	for _, c := range []struct {
+		name  string
+		lines []string
+		want  []actWant
+	}{
+		{"single quote", []string{"echo 'a"}, opened},
+		{"double quote", []string{`echo "a`}, opened},
+		{"ANSI-C quote", []string{`echo $'a`}, opened},
+		{"command substitution", []string{"echo $(echo a"}, opened},
+		{"parameter expansion", []string{"echo ${a"}, opened},
+		{"backtick span", []string{"echo `echo a"}, opened},
+		{"heredoc with no closing line", []string{"cat <<EOF", "a"}, opened},
+		{"heredoc operator on the block's last line", []string{"cat <<EOF"}, opened},
+		{"heredoc whose closing line is indented under <<", []string{"cat <<EOF", "a", "  EOF"}, opened},
+		{"line continuation", []string{`echo a \`}, opened},
+		{"command substitution in an unquoted heredoc body", []string{"cat <<EOF", "$(echo a", "EOF"}, []actWant{{1, actOpenMsg}}},
+		{"single quote hiding a later trailing comment", []string{"echo 'a", "echo dry #;echo live"}, []actWant{{0, actOpenMsg}, {1, actTrailMsg}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(len(cleanActLines), c.lines...))
+			wantIssues(t, issues, cleanActLine(len(cleanActLines)), c.want...)
+		})
+	}
+}
+
+// TestActBlockLintQuoteStateNotComment — a # inside data or a word is not a
+// comment: a heredoc body (after an operator; see the strict rows for a # after
+// a blank), a here-string, a $'…' or $"…" quote, a parameter expansion,
+// arithmetic, a case pattern at the top level and a backslash-newline inside
+// quotes.
+func TestActBlockLintQuoteStateNotComment(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		lines []string
+	}{
+		{"heredoc body, quoted delimiter", []string{"  cat <<'EOF'", "x;#y it's (data) `here` $(not run)", "EOF"}},
+		{"heredoc body, unquoted delimiter", []string{"  cat <<EOF", `x;#y it's "q`, "EOF"}},
+		{"heredoc body, tab-stripped", []string{"  cat <<-EOF", "\tx;#y it's", "\tEOF"}},
+		{"heredoc body read with the delimiter on the same line as more code", []string{"  cat <<'EOF' | cat", "x;#y it's", "EOF"}},
+		{"heredoc in a command substitution", []string{"  x=$(cat <<'EOF'", "x;#y it's", "EOF", "  )", `  echo "$x"`}},
+		{"here-string", []string{"  cat <<<'a;#b'", "  echo it"}},
+		{"ANSI-C quote", []string{`  echo $'a;#b' $'c\\'`}},
+		{"locale quote", []string{`  echo $"a;#b"`}},
+		{"parameter expansions", []string{`  echo ${T#x} ${T%%#*} ${#T} $# "${T:-a;#b}" ${T:-"a;#b"}`}},
+		{"arithmetic", []string{"  echo $((16#ff + $#))"}},
+		{"subshell inside a command substitution, then # mid-word", []string{"  echo $( (echo a) )#x"}},
+		{"case at the top level", []string{`  case "${1-}" in a) echo a;; *) echo b;; esac`}},
+		{"backslash-newline in double quotes", []string{`  echo "a\`, `  b;#c"`}},
+		{"backslash-newline in single quotes", []string{`  echo 'a\`, `  b;#c'`}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
+			if len(issues) != 0 {
+				t.Fatalf("issues=%+v, want none", issues)
+			}
+		})
+	}
+}
+
+// TestActBlockLintStrictWhereNotModelled — where the lint does not model a
+// construct, or shells disagree on it, it fails rather than pass: a # after a
+// blank is flagged even in quotes or a heredoc body (the per-line check kept
+// next to the scanner); a code # in an unquoted heredoc's $( ) is flagged; a
+// \' in a $'…' quote, a single quote in ${…} and a case in $( ) are refused;
+// and a << in arithmetic reads as a heredoc, which then has no closing line.
+func TestActBlockLintStrictWhereNotModelled(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		lines []string
+		want  []actWant
+	}{
+		{"# after a blank in a heredoc body", []string{"  cat <<'EOF'", "x #y", "EOF"}, []actWant{{1, actTrailMsg}}},
+		{"# after a blank in double quotes", []string{`  echo "a #b"`}, []actWant{{0, actTrailMsg}}},
+		{"# after a blank in a parameter expansion", []string{`  echo ${T:-a #b}`}, []actWant{{0, actTrailMsg}}},
+		{"# after an operator in an unquoted heredoc's command substitution", []string{"  cat <<EOF", "$(echo dry;#;echo live)", "EOF"}, []actWant{{1, actTrailMsg}, {1, actOpenMsg}}},
+		{"escaped quote in an ANSI-C quote", []string{`  echo $'it\'s'`}, []actWant{{0, actUnmodMsg}}},
+		{"single quote in a parameter expansion", []string{`  echo "${T:-'a'}"`}, []actWant{{0, actUnmodMsg}}},
+		{"case in a command substitution", []string{`  x=$(case "${1-}" in a) echo a;; esac)`}, []actWant{{0, actUnmodMsg}}},
+		{"heredoc with no delimiter word", []string{"  cat <<;echo a"}, []actWant{{0, actUnmodMsg}}},
+		{"shift in arithmetic", []string{"  echo $((1<<2))"}, []actWant{{0, actOpenMsg}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
+			wantIssues(t, issues, cleanActLine(actRowAt), c.want...)
+		})
+	}
+}
+
 // TestActBlockLintFlagsMissingGuard — a block whose first non-blank line is
 // not the zsh guard is flagged, whether the guard is missing or comes after a
 // comment line or a code line.
@@ -352,11 +528,15 @@ func TestActBlockLintSafeReadForms(t *testing.T) {
 
 // TestActBlockLintFenceCloser — only a bare run of the opening character, at
 // least as long, closes the fence; a shorter run or the other character inside
-// the block is content, so a bad comment after it is still checked.
+// the block is content, so a bad comment after it is still checked. As content,
+// a run of three backticks is also an unclosed backtick span to a shell.
 func TestActBlockLintFenceCloser(t *testing.T) {
-	for _, c := range []struct{ name, open, inner, close string }{
-		{"shorter run inside a longer fence", "````sh", "```", "````"},
-		{"tilde run inside a backtick fence", "```sh", "~~~", "```"},
+	for _, c := range []struct {
+		name, open, inner, close string
+		extra                    []actWant
+	}{
+		{"shorter run inside a longer fence", "````sh", "```", "````", []actWant{{0, actOpenMsg}}},
+		{"tilde run inside a backtick fence", "```sh", "~~~", "```", nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			body := strings.Join(append(append([]string{
@@ -368,7 +548,7 @@ func TestActBlockLintFenceCloser(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ActBlockIssues: %v", err)
 			}
-			wantOneAt(t, issues, cleanActLine(len(cleanActLines)+1), "comment carries")
+			wantIssues(t, issues, cleanActLine(len(cleanActLines)), append([]actWant{{1, "comment carries"}}, c.extra...)...)
 		})
 	}
 }
