@@ -57,20 +57,21 @@ type Episode struct {
 
 // BriefProjection is one brief's projected flow state.
 type BriefProjection struct {
-	BriefUUID    string      `json:"brief_uuid"`
-	Stage        string      `json:"stage"`
-	Births       int         `json:"births"`
-	Aliases      []string    `json:"aliases"`
-	Firsts       BriefFirsts `json:"firsts"`
-	Episodes     []Episode   `json:"episodes"`
-	Seeded       bool        `json:"seeded"`
-	Observations int         `json:"observations"`
-	LastObserved string      `json:"last_observed,omitempty"`
-	AuthoringPRs []string    `json:"authoring_prs"`
-	Abandoned    []string    `json:"abandoned"`
-	OtherMerges  int         `json:"other_merges"`
-	Unqualified  int         `json:"unqualified"`
-	Coverage     string      `json:"coverage"` // worst event coverage seen
+	BriefUUID     string      `json:"brief_uuid"`
+	Stage         string      `json:"stage"`
+	Births        int         `json:"births"`
+	Aliases       []string    `json:"aliases"`
+	Firsts        BriefFirsts `json:"firsts"`
+	Episodes      []Episode   `json:"episodes"`
+	Seeded        bool        `json:"seeded"`
+	Observations  int         `json:"observations"`
+	LastObserved  string      `json:"last_observed,omitempty"`
+	AuthoringPRs  []string    `json:"authoring_prs"`
+	Abandoned     []string    `json:"abandoned"`
+	OtherMerges   int         `json:"other_merges"`
+	UnknownMerges int         `json:"unknown_merges"`
+	Unqualified   int         `json:"unqualified"`
+	Coverage      string      `json:"coverage"` // worst event coverage seen
 }
 
 type stageContrib struct {
@@ -249,11 +250,14 @@ func applyContrib(p *BriefProjection, c *stageContrib, ev *BriefEvent) {
 		if c.kind != "implementation" {
 			return
 		}
-		if ev.ExecutorRole == "human" {
+		switch ev.ExecutorRole {
+		case "human":
 			if p.Firsts.Merged == nil {
 				p.Firsts.Merged = asMilestone(ev)
 			}
-		} else {
+		case "unknown", "": // merge-executor-unknown: not an app merge either
+			p.UnknownMerges++
+		default:
 			p.OtherMerges++
 		}
 	case "pr_closed":

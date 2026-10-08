@@ -92,18 +92,22 @@ type bfeExpBrief struct {
 	AuthoringPRs    []string           `json:"authoring_prs"`
 	Abandoned       []string           `json:"abandoned"`
 	OtherMerges     int                `json:"other_merges"`
+	UnknownMerges   int                `json:"unknown_merges"`
 	Unqualified     int                `json:"unqualified"`
 	WithHistory     *bfeExpHistory     `json:"with_history"`
 }
 
+type bfeExpResolve struct {
+	Alias string `json:"alias"`
+	At    string `json:"at"`
+	UUID  string `json:"uuid"`
+	Error string `json:"error"`
+}
+
 type bfeExpect struct {
-	Resolve []struct {
-		Alias string `json:"alias"`
-		At    string `json:"at"`
-		UUID  string `json:"uuid"`
-		Error string `json:"error"`
-	} `json:"resolve"`
-	History struct {
+	Resolve        []bfeExpResolve `json:"resolve"`
+	ResolveOverlap []bfeExpResolve `json:"resolve_overlap"`
+	History        struct {
 		Rows         int               `json:"rows"`
 		Refused      int               `json:"refused"`
 		Events       int               `json:"events"`
@@ -260,6 +264,9 @@ func bfeCheckBrief(t *testing.T, id string, p *BriefProjection, want bfeExpBrief
 	if p.OtherMerges != want.OtherMerges {
 		bfeFail(t, id, "%s: other merges %d, want %d", want.Case, p.OtherMerges, want.OtherMerges)
 	}
+	if p.UnknownMerges != want.UnknownMerges {
+		bfeFail(t, id, "%s: unknown-executor merges %d, want %d", want.Case, p.UnknownMerges, want.UnknownMerges)
+	}
 	if p.Unqualified != want.Unqualified {
 		bfeFail(t, id, "%s: unqualified %d, want %d", want.Case, p.Unqualified, want.Unqualified)
 	}
@@ -272,24 +279,13 @@ func TestBriefEventIdentity(t *testing.T) {
 	exp := bfeLoadExpect(t)
 	w := bfeBuild(t, true)
 
-	for _, r := range exp.Resolve {
-		at, _ := time.Parse(time.RFC3339, r.At)
-		got, err := w.reg.Resolve(r.Alias, at)
-		switch r.Error {
-		case "":
-			if err != nil || got != r.UUID {
-				bfeFail(t, "identity-resolve", "%s at %s: got %q err %v, want %s", r.Alias, r.At, got, err, r.UUID)
-			}
-		case "unknown":
-			if !errors.Is(err, errAliasUnknown) {
-				bfeFail(t, "identity-resolve", "%s at %s: want unknown, got %q err %v", r.Alias, r.At, got, err)
-			}
-		case "ambiguous":
-			if !errors.Is(err, errAliasAmbiguous) || got != "" {
-				bfeFail(t, "identity-legacy", "%s at %s: want ambiguous refusal, got %q err %v", r.Alias, r.At, got, err)
-			}
-		}
+	if len(exp.Resolve) == 0 || len(exp.ResolveOverlap) == 0 {
+		t.Fatalf("ASSERT-FAIL[fixture] expect.json has no resolve or resolve_overlap cases")
 	}
+	bfeCheckResolve(t, w.reg, exp.Resolve, "identity-resolve", "identity-legacy")
+	// Staggered overlap: a second brief claiming an alias the first still
+	// holds is ambiguous, never "latest wins".
+	bfeCheckResolve(t, NewAliasRegistry(bfeParseAll(t, "overlap.jsonl")), exp.ResolveOverlap, "identity-overlap", "identity-overlap")
 
 	if len(w.entries) != exp.History.Rows {
 		bfeFail(t, "identity-history", "history rows %d, want %d", len(w.entries), exp.History.Rows)
@@ -381,6 +377,35 @@ func TestBriefEventIdentity(t *testing.T) {
 	}
 }
 
+// bfeCheckResolve resolves every case against reg. An expectation with an
+// unrecognised error value is itself a failure, never skipped.
+func bfeCheckResolve(t *testing.T, reg *AliasRegistry, cases []bfeExpResolve, id, ambID string) {
+	t.Helper()
+	for _, r := range cases {
+		at, perr := time.Parse(time.RFC3339, r.At)
+		if perr != nil {
+			t.Fatalf("ASSERT-FAIL[fixture] resolve case %s: bad instant %q", r.Alias, r.At)
+		}
+		got, err := reg.Resolve(r.Alias, at)
+		switch r.Error {
+		case "":
+			if err != nil || got != r.UUID {
+				bfeFail(t, id, "%s at %s: got %q err %v, want %s", r.Alias, r.At, got, err, r.UUID)
+			}
+		case "unknown":
+			if !errors.Is(err, errAliasUnknown) || got != "" {
+				bfeFail(t, id, "%s at %s: want unknown, got %q err %v", r.Alias, r.At, got, err)
+			}
+		case "ambiguous":
+			if !errors.Is(err, errAliasAmbiguous) || got != "" {
+				bfeFail(t, ambID, "%s at %s: want ambiguous refusal, got %q err %v", r.Alias, r.At, got, err)
+			}
+		default:
+			bfeFail(t, "fixture", "%s at %s: unrecognised expected error %q", r.Alias, r.At, r.Error)
+		}
+	}
+}
+
 // bfeMutate decodes a fixture line, applies f and re-parses it.
 func bfeMutate(t *testing.T, line []byte, f func(map[string]any)) *BriefEvent {
 	t.Helper()
@@ -412,6 +437,12 @@ func TestBriefEventStage(t *testing.T) {
 	exp := bfeLoadExpect(t)
 	w := bfeBuild(t, false)
 	proj := ProjectBriefs(w.effective)
+	if len(exp.Briefs) == 0 || exp.Projections == 0 {
+		t.Fatalf("ASSERT-FAIL[fixture] expect.json has no brief expectations")
+	}
+	if len(proj) != exp.Projections || len(exp.Briefs) != exp.Projections {
+		bfeFail(t, "stage-count", "%d projections and %d expected briefs, want %d of each", len(proj), len(exp.Briefs), exp.Projections)
+	}
 	uuids := make([]string, 0, len(exp.Briefs))
 	for u := range exp.Briefs {
 		uuids = append(uuids, u)

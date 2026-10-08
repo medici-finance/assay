@@ -699,11 +699,12 @@ func NewAliasRegistry(evs []*BriefEvent) *AliasRegistry {
 }
 
 // Resolve returns the brief uuid an alias named at `at`. An alias no span
-// covers is errAliasUnknown; two briefs claiming it at the same effective
-// instant — or a legacy claim shared by more than one brief — is
-// errAliasAmbiguous. Neither is ever guessed.
+// covers is errAliasUnknown; an alias whose covering spans belong to more than
+// one brief is errAliasAmbiguous — whether the claims start together or one
+// after another, since a span ends only when its OWN brief is re-aliased.
+// Neither is ever guessed.
 func (r *AliasRegistry) Resolve(alias string, at time.Time) (string, error) {
-	var cands []aliasSpan
+	uuids := map[string]bool{}
 	for _, sp := range r.spans {
 		if sp.alias != alias || at.Before(sp.from) {
 			continue
@@ -711,39 +712,17 @@ func (r *AliasRegistry) Resolve(alias string, at time.Time) (string, error) {
 		if !sp.until.IsZero() && !at.Before(sp.until) {
 			continue
 		}
-		cands = append(cands, sp)
+		uuids[sp.uuid] = true // alias-span-cover
 	}
-	if len(cands) == 0 {
+	switch len(uuids) {
+	case 0:
 		return "", fmt.Errorf("%s at %s: %w", alias, at.UTC().Format(time.RFC3339), errAliasUnknown)
-	}
-	latest := cands[0].from
-	for _, c := range cands[1:] {
-		if c.from.After(latest) {
-			latest = c.from
+	case 1:
+		for u := range uuids {
+			return u, nil
 		}
 	}
-	uuids := map[string]bool{}
-	legacy := false
-	for _, c := range cands {
-		if c.from.Equal(latest) {
-			uuids[c.uuid] = true
-			legacy = legacy || c.reason == "legacy"
-		}
-	}
-	if legacy {
-		for _, c := range cands {
-			if c.reason == "legacy" {
-				uuids[c.uuid] = true
-			}
-		}
-	}
-	if len(uuids) > 1 {
-		return "", fmt.Errorf("%s at %s: %d candidate briefs: %w", alias, at.UTC().Format(time.RFC3339), len(uuids), errAliasAmbiguous)
-	}
-	for u := range uuids {
-		return u, nil
-	}
-	return "", errAliasUnknown
+	return "", fmt.Errorf("%s at %s: %d candidate briefs: %w", alias, at.UTC().Format(time.RFC3339), len(uuids), errAliasAmbiguous)
 }
 
 // Historian adapter --------------------------------------------------------

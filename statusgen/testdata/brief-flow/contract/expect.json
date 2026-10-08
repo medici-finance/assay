@@ -11,6 +11,14 @@
     {"alias": "example/03", "at": "2030-01-04T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000003"},
     {"alias": "legacy/09", "at": "2030-01-04T00:00:00Z", "error": "ambiguous"}
   ],
+  "_comment_resolve_overlap": "overlap.jsonl: brief 41 takes example/41 on 2030-01-01, brief 42 takes the same alias on 2030-01-05 while 41 still holds it, and 41 is renumbered to example/43 on 2030-01-12 (which ends 41's span on example/41 only).",
+  "resolve_overlap": [
+    {"alias": "example/41", "at": "2029-12-31T00:00:00Z", "error": "unknown"},
+    {"alias": "example/41", "at": "2030-01-03T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000041"},
+    {"alias": "example/41", "at": "2030-01-09T00:00:00Z", "error": "ambiguous"},
+    {"alias": "example/41", "at": "2030-01-13T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000042"},
+    {"alias": "example/43", "at": "2030-01-13T00:00:00Z", "uuid": "00000000-0000-4000-8000-000000000041"}
+  ],
   "history": {
     "rows": 8,
     "refused": 1,
@@ -26,7 +34,7 @@
     },
     "done_in_window": 1
   },
-  "projections": 15,
+  "projections": 16,
   "briefs": {
     "00000000-0000-4000-8000-000000000001": {
       "case": "identity: authored, renumbered, renamed, archived",
@@ -134,7 +142,15 @@
       "aliases": ["stage/19"],
       "firsts": {"written": "f-1902", "coded": "f-1903", "reviewed": "f-1903", "merged": null, "verified": null, "done": null},
       "ready_at_creation": true,
-      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 1, "unqualified": 0
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 1, "unknown_merges": 0, "unqualified": 0
+    },
+    "00000000-0000-4000-8000-000000000020": {
+      "case": "stage: ready at creation, merged by an unknown executor (neither a human nor an app merge)",
+      "stage": "merged", "births": 1,
+      "aliases": ["stage/20"],
+      "firsts": {"written": "f-2002", "coded": "f-2003", "reviewed": "f-2003", "merged": null, "verified": null, "done": null},
+      "ready_at_creation": true,
+      "episodes": [], "authoring_prs": [], "abandoned": [], "other_merges": 0, "unknown_merges": 1, "unqualified": 0
     },
     "00000000-0000-4000-8000-000000000021": {
       "case": "flow: producer receipts + forge events + historian rows for one brief",
