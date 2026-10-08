@@ -707,10 +707,14 @@ in markers, and is diffed against merge history until then (rule 35).
 A stream README's generated region sits between `<!-- statusgen:briefs:begin -->` and
 `<!-- statusgen:briefs:end -->`; its README frontmatter carries `board: generated`.
 `statusgen regen --readmes` rewrites only the lines between the markers, so everything
-outside them is hand-written prose it never touches. The writer on a schedule is the
-board workflow's hourly reconcile job, which never pushes the default branch: it carries a
-change as one pull request on the branch `board/reconcile`, and the push-to-default-branch
-job keeps writing `STATUS.md` alone.
+outside them is hand-written prose it never touches. The scheduled writer is a staged
+proposal until a maintainer promotes it: the board workflow's hourly reconcile job
+(`ci/staged-workflows/assay-statusgen.yml`, logic in `statusgen/reconcilejob.sh`), which
+will never push the default branch: it carries a change as one pull request on the branch
+`board/reconcile`, and the push-to-default-branch job keeps writing `STATUS.md` alone.
+Until that promotion, and alongside it after, the desk-side `deskreconcile` verb carries
+changes on the same branch and pull request. Either way a generated table changes only by
+a reviewed pull request.
 
 32. **A worker's terminal verdict on a PR is a DISPOSITION RECORD, not a prose comment.**
     A conclusion that only a human can read is one a sweep must re-derive. In one

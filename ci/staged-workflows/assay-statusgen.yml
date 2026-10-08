@@ -7,10 +7,10 @@ name: statusgen-board
 #     STATUS.md.
 #   - push to main: regenerate STATUS.md and commit it if it changed. This job
 #     is STATUS.md's single writer.
-#   - schedule (hourly): the `reconcile` job below. It is the single writer of
-#     the GENERATED stream-README Briefs tables (derived-board/04), and it never
-#     pushes main: it carries any change as ONE draft PR on the fixed branch
-#     board/reconcile. The push-to-main job above stays STATUS.md-only.
+#   - schedule (hourly): the `reconcile` job below (derived-board/04). It writes
+#     the GENERATED stream-README Briefs tables and never pushes main: it carries
+#     any change as ONE draft PR on the fixed branch board/reconcile. The
+#     push-to-main job above stays STATUS.md-only.
 #
 # statusgen is built FROM THIS REPO'S OWN SOURCE (statusgen/), not downloaded as a
 # pinned release binary: this IS the repo statusgen lives in, so a released binary
@@ -444,44 +444,57 @@ jobs:
             exit 1
           fi
 
-  # Hourly board reconcile (derived-board/04): the single writer of the GENERATED
-  # Briefs tables in every `board: generated` stream README.
+  # Hourly board reconcile (derived-board/04): writes the GENERATED Briefs tables
+  # in every `board: generated` stream README, by pull request only.
   #
-  # What it does, in order, on a branch cut from main (never on main itself):
-  #   1. `statusgen reconcile --backfill --apply` — reads PR witnesses with the
-  #      default token (pull-requests: read, issues: read; nothing else) and
-  #      writes ONLY a witnessed todo|in-progress -> implemented Status cell.
+  # The logic is statusgen/reconcilejob.sh (tested end to end by
+  # statusgen/reconcilejob_test.go against a throwaway origin); this job sets up
+  # the toolchain and identity and calls it. One tick, in order:
+  #   1. `statusgen reconcile --apply` (trailer-only: a row is written only for a
+  #      merged PR carrying that brief's `Brief:` trailer; the --backfill branch-
+  #      name / body-mention / hand-said rules are NOT on this path) — reads PR
+  #      witnesses with the job's read-only default token and writes ONLY a
+  #      witnessed todo|in-progress -> implemented Status cell. A row whose write
+  #      would add a lint PROBLEM (a risk-gated brief with no design record) is
+  #      held: reported in the commit and PR body, never written. A reconcile that
+  #      could not read the PRs exits nonzero and fails the tick.
   #   2. `statusgen regen --readmes` — re-renders the marker-wrapped tables from
   #      brief frontmatter. Everything outside the markers is untouched.
-  #   3. `statusgen --lint` — the sources must stay valid before they are committed.
-  # Any change is committed and carried as ONE draft PR on the fixed branch
-  # board/reconcile, which is reused run after run (a fast-forward push: the job
-  # merges main into the existing branch rather than rewriting it).
+  #   3. `statusgen --lint` — the full lint over the result; a failure fails the
+  #      tick and nothing is committed.
+  # Steps 1-3 run on main's tree, never on the carried branch's, so the result
+  # is a pure function of main plus the PR witnesses. It is committed onto the
+  # fixed branch board/reconcile (parents: the old branch tip, plus main when the
+  # branch does not already contain it) and pushed as a fast-forward; one draft
+  # PR carries it.
   #
   # Noise floor (spec Q3). The only inputs that can change a README here are a
   # Status cell changing STATE and a frontmatter authoring column changing. A
   # witness link or SHA is never written into the table by this job, so a run in
   # which nothing changed state leaves the tree clean and opens nothing.
   #
-  # Races, and why none loses a write:
+  # Races:
   #   - vs the push-to-main regen job: that job writes STATUS.md only and never a
   #     stream README; this job writes stream READMEs only and never main. They
   #     touch disjoint files on disjoint refs, and this job has a concurrency
   #     group of its own (see the top of the file).
-  #   - vs main moving under the branch (a merge, or the model-autoflip job
-  #     committing a README row): the run starts by merging current main into the
-  #     carried branch and then recomputes from that tree. Both outputs are pure
-  #     functions of the tree plus the PR witnesses, so a stale branch is rebuilt
-  #     on the next tick instead of being patched.
-  #   - vs a second writer on board/reconcile (the desk-side `deskreconcile` verb
-  #     uses the same branch and title): both coalesce onto the existing branch
-  #     and PR; a push that loses the race is rejected, never forced, and the
-  #     next tick merges and recomputes.
-  #   - A branch that cannot take the merge (a human committed onto it) fails the
-  #     job loudly. It is never overwritten.
+  #   - vs main moving under the branch (any merge, including one that edits the
+  #     very README rows the branch flipped): each tick recomputes from main's
+  #     tree and commits that result on top of the branch, so there is no merge
+  #     to conflict — a stale branch is rebuilt, not patched.
+  #   - vs the desk-side `deskreconcile` verb, which writes the same branch and
+  #     PR title: a push that loses the race is rejected (never forced) and fails
+  #     that tick; the next tick recomputes. Its `chore(board): reconcile` and
+  #     `Merge` commits are recognised as this writer family's own.
+  #   - A branch carrying any other commit (a human's, or one touching more than
+  #     stream READMEs) fails the tick loudly, naming the commit. It is never
+  #     overwritten.
+  #   - A remote that cannot be listed, or a PR list that cannot be read, fails
+  #     the tick: a could-not-check is never read as "branch absent" or "PR open".
   #
   # Loop guards. The scheduled event cannot match the pull_request/push `if:`
-  # of any other job. The commit here carries NO [skip-status-regen] marker, on
+  # of any other job, and the repository guard keeps a fork's schedule from
+  # running it. The commit here carries NO [skip-status-regen] marker, on
   # purpose: when this PR merges, STATUS.md must regenerate, because a Status
   # cell moved. The push-to-main loop guard still holds: that regen commit
   # touches STATUS.md only and carries the marker.
@@ -492,7 +505,7 @@ jobs:
   # it does not, the `gh pr create` step fails loudly and the pushed branch
   # waits for the grant.
   reconcile:
-    if: ${{ github.event_name == 'schedule' }}
+    if: ${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}
     runs-on: medici-builder-public
     # Read-only token for the witness reads. The writes below use the App token.
     permissions:
@@ -508,7 +521,7 @@ jobs:
           private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # --backfill reads the hand-said history from git log
+          fetch-depth: 0 # the carried-branch checks walk main..board/reconcile ancestry
           token: ${{ steps.app-token.outputs.token }}
       - name: Install Go
         run: |
@@ -547,52 +560,14 @@ jobs:
           # The WRITE token, used only by gh below (PR list/create). The git push
           # uses the same App token through the checkout's persisted credential.
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          STATUSGEN: ${{ runner.temp }}/statusgen
+          REPO: ${{ github.repository }}
+          BRANCH: board/reconcile
         run: |
           set -euo pipefail
-          branch="board/reconcile"
           git config user.name  'assay-board-writer[bot]'
           git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
-          git fetch --no-tags origin main
-          base="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
-          # Carry on the existing branch when there is one (a fast-forward
-          # push; force-push is never used), else cut it fresh from main.
-          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}"
-            git checkout -B "$branch" "refs/remotes/origin/${branch}"
-            if ! git merge --no-edit "$base"; then
-              git merge --abort || true
-              echo "::error::cannot merge main into ${branch} — it carries a change that conflicts with main. Not overwriting it: close the stale PR and delete the branch, and the next tick re-cuts it."
-              exit 1
-            fi
-          else
-            git checkout -B "$branch" "$base"
-          fi
-          "${RUNNER_TEMP}/statusgen" reconcile --backfill --apply --root . --repo "${GITHUB_REPOSITORY}"
-          "${RUNNER_TEMP}/statusgen" regen --readmes --root .
-          "${RUNNER_TEMP}/statusgen" --root . --lint
-          # This job may change stream READMEs and nothing else. Anything else in
-          # the tree is not a reconcile result: refuse rather than commit it.
-          foreign="$(git status --porcelain --untracked-files=all | grep -v -E '^ M docs/streams/[^ ]+/README\.md$' || true)"
-          if [ -n "$foreign" ]; then
-            echo "::error::reconcile changed paths other than stream READMEs — refusing to commit:"
-            echo "$foreign"
-            exit 1
-          fi
-          git add -- 'docs/streams/*/README.md'
-          if git diff --cached --quiet; then
-            echo "no stream README changed state — nothing to carry"
-            exit 0
-          fi
-          git commit -m "chore(board): reconcile $(date -u +%F)"
-          git push origin "$branch"
-          if [ "$(gh pr list --repo "${GITHUB_REPOSITORY}" --head "$branch" --state open --json number --jq 'length')" != "0" ]; then
-            echo "an open PR already carries ${branch} — the push above updated it"
-            exit 0
-          fi
-          body="${RUNNER_TEMP}/reconcile-pr-body.md"
-          {
-            echo "Scheduled board reconcile."
-            echo
-            echo "Flips a stream README Status cell from todo or in-progress to implemented when a merged PR witnesses it, and re-renders the generated Briefs tables from brief frontmatter. Only stream README files change; Verified and Reviewed cells and everything outside the generated markers are untouched. A hand edit to a generated table is a lint problem, so this PR is the only route by which those tables change."
-          } > "$body"
-          gh pr create --repo "${GITHUB_REPOSITORY}" --draft --base main --head "$branch" --title 'chore(board): reconcile' --body-file "$body"
+          # Run a copy from outside the checkout: the script checks out main's
+          # tree, and bash reads a script file incrementally as it runs.
+          cp statusgen/reconcilejob.sh "${RUNNER_TEMP}/reconcilejob.sh"
+          bash "${RUNNER_TEMP}/reconcilejob.sh"
