@@ -385,6 +385,17 @@ it while a single identity can author both the work and its record.
 A conforming implementation MUST claim the weaker, true statement. It MUST NOT
 claim the strong form ("measured ground truth", "tamper-proof", "cannot lie").
 
+### 6.2 Board history is an observation, not a flow record
+
+A board-historian row's timestamp is when the board was regenerated and saw the new
+status — an upper bound on the transition, not its instant. A row with an empty
+`from` is a seed: the brief was already in that state when observation began, and a
+seed is never the brief's birth. Flow measurement (when a brief was written, first
+coded, reviewed, merged, verified and done) is specified separately, keyed by the
+brief's stable uuid, in [`brief-flow-event-v1.md`](./brief-flow-event-v1.md), which
+reads historian rows only as observations (its §8) and leaves the historian's format
+and single writer unchanged.
+
 ## 7. Conformance
 
 ### 7.1 Lifecycle conformance

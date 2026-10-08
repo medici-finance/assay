@@ -129,17 +129,20 @@ func parseFindings(path string) ([]Finding, error) {
 	findings := make([]Finding, len(entries))
 	for i, e := range entries {
 		findings[i] = Finding{
-			ID:           e.ID,
-			Date:         e.Date,
-			Title:        e.Title,
-			Affects:      e.Affects,
-			Ack:          e.Ack,
-			Resolved:     e.Resolved,
-			ParkedUntil:  e.ParkedUntil,
-			ParkedBy:     e.ParkedBy,
-			ParkedReason: e.ParkedReason,
-			Class:        e.Class,
-			Control:      e.Control,
+			ID:                e.ID,
+			Date:              e.Date,
+			Title:             e.Title,
+			Affects:           e.Affects,
+			Ack:               e.Ack,
+			Resolved:          e.Resolved,
+			ParkedUntil:       e.ParkedUntil,
+			ParkedBy:          e.ParkedBy,
+			ParkedReason:      e.ParkedReason,
+			Class:             e.Class,
+			Control:           e.Control,
+			Effectiveness:     e.Effectiveness,
+			EffectivenessDate: e.EffectivenessDate,
+			EffectivenessBy:   e.EffectivenessBy,
 		}
 	}
 	return findings, nil

@@ -54,6 +54,8 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 		"RefExists", "ReopenIssue", "RepoHardeningRead", "RepoVisibility",
 		"RequiredStatusChecks", "ReviewQueueSnapshot", "ReviewsAtHead", "RunStatus", "RunWorkflow", "SearchIssues", "SearchOpenChanges",
 		"SetMergeHold", "WriteFile",
+		// Ops 55-58, added under the freeze rule by forge-neutral brief 33 with deskread kinds as consumers.
+		"ListIssues", "IssueStateEvents", "ListChangeCommits", "RepoDefaultBranch",
 	}
 	sort.Strings(want)
 

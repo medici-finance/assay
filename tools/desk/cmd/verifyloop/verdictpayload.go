@@ -120,16 +120,24 @@ func evidenceRow(r rowResult, date, runner string) string {
 		r.Row, r.Class, cmd, r.Exit, date, runner)
 }
 
+// canonicalPayloadBytes is the ONE canonical form of a payload: json.Marshal, then
+// deskkit.CanonicalizeJSON. signPayload signs these bytes and the keyless --unsigned-out writer
+// writes them (plus one trailing newline), so the file a fenced runner composes is exactly what
+// the combined path would have signed.
+func canonicalPayloadBytes(p verdictPayload) ([]byte, error) {
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("marshal verdict payload: %w", err)
+	}
+	return deskkit.CanonicalizeJSON(raw)
+}
+
 // signPayload marshals the payload, canonicalises it, signs the SHA-256 of the canonical
 // bytes (RS256) with the verifier private key at pemPath, and returns the assembled
 // issue-body block (fenced canonical payload + HTML-comment signature trailer). It reuses
 // the deskkit verdict primitives verbatim so signing and verifying share one canonical form.
 func signPayload(p verdictPayload, pemPath string) (string, error) {
-	raw, err := json.Marshal(p)
-	if err != nil {
-		return "", fmt.Errorf("marshal verdict payload: %w", err)
-	}
-	canonical, err := deskkit.CanonicalizeJSON(raw)
+	canonical, err := canonicalPayloadBytes(p)
 	if err != nil {
 		return "", err
 	}

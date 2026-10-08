@@ -315,11 +315,18 @@ prose, not a Verify row.
 > own machine, no session or agent ids, no scratch worktree names, no identifiers out of a
 > register that is not published. Your own PR body is the first thing this binds.
 
-This used to be a sentence a worker had to remember, and it leaked anyway. The tools now
-ENFORCE it: `deskpr create`, `deskpost` and `deskreply` run a self-containment scan over
+Apply resident rule R7 as a manual audience check before cross-boundary filing or commenting,
+including upstream issues: remove internal locators from the title, body and evidence. An
+opaque role+number ref
+(e.g. source issue #<N>) is allowed when the surrounding explanation stands alone; it carries
+no hostname, path or query. Keep the real URL inside its original trust boundary.
+
+The public-repo self-containment requirement is also checked by the tools: `deskpr create`,
+`deskpost` and `deskreply` run a self-containment scan over
 the body whenever the target repo is not known-private, and a refusal is exit 5 — the same
 STOP every scan refusal is, taking the same audited `--force-scan-override` and no other
-way through. There is no flag that turns the check off.
+way through. There is no flag that turns the check off. That scan does not classify unknown
+internal locators or replace the R7 audience check.
 
 **The categories are enumerated in ONE place — `deskpr --help`, section
 PUBLIC-REPO SELF-CONTAINMENT — and deliberately not restated here.** Read them there; a

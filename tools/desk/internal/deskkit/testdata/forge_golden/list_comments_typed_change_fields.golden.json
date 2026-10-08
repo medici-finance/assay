@@ -1,0 +1,32 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "query($owner:String!, $name:String!, $number:Int!, $after:String) {\n  repository(owner: $owner, name: $name) {\n    pullRequest(number: $number) {\n      comments(first: 100, after: $after) {\n        pageInfo { hasNextPage endCursor }\n        nodes {\n          id\n          databaseId\n          body\n          isMinimized\n          createdAt\n          updatedAt\n          url\n          author { login __typename ... on User { databaseId } ... on Bot { databaseId } ... on Organization { databaseId } ... on Mannequin { databaseId } }\n        }\n      }\n    }\n  }\n}",
+        "variables": {
+          "name": "assay",
+          "number": 7,
+          "owner": "medici-finance"
+        }
+      }
+    }
+  ],
+  "result": [
+    {
+      "ID": "IC_a",
+      "DatabaseID": 501,
+      "Author": {
+        "Login": "worker[bot]",
+        "ID": 99,
+        "Type": "Bot"
+      },
+      "Body": "edited",
+      "Minimized": false,
+      "CreatedAt": "2026-09-01T10:00:00Z",
+      "URL": "https://example/pull/7#issuecomment-501",
+      "UpdatedAt": "2026-09-02T10:00:00Z"
+    }
+  ]
+}

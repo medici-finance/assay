@@ -24,6 +24,8 @@ Ranked by what the outsider gains. Report per line, not per file.
 
 1. **People and approvers** — who decided, who reviewed, who is on the list.
 2. **Private repos, docs, endpoints** — anything an outsider cannot open but can now ask about.
+   Apply R7 to internal forge, tracker and CI locators: full URLs, clone URLs and host+path links
+   crossing a trust boundary become opaque role+number refs, including in issues and comments.
 3. **Internal machinery** — brief/stream ids (`<slug>/NN`), register ids (`F-…`/`I-…`),
    internal document paths, board-tool and desk vocabulary. **This leaks most freely because it reads
    as jargon** to the person writing it.

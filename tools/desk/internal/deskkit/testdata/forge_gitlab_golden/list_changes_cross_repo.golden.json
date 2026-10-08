@@ -1,0 +1,52 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "order_by=updated_at\u0026page=1\u0026per_page=100\u0026sort=desc\u0026state=all"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/users/99"
+    }
+  ],
+  "result": {
+    "Changes": [
+      {
+        "Number": 7,
+        "State": "OPEN",
+        "HeadSHA": "abc123",
+        "HeadRef": "feat/x",
+        "Title": "add the thing",
+        "Body": "",
+        "MergedAt": "",
+        "Author": {
+          "Login": "worker-bot",
+          "ID": 99,
+          "Type": "Bot"
+        },
+        "BaseRef": "main",
+        "CrossRepo": "same",
+        "HeadRepo": "medici-finance/assay"
+      },
+      {
+        "Number": 8,
+        "State": "OPEN",
+        "HeadSHA": "abc123",
+        "HeadRef": "feat/fork",
+        "Title": "add the thing",
+        "Body": "",
+        "MergedAt": "",
+        "Author": {
+          "Login": "worker-bot",
+          "ID": 99,
+          "Type": "Bot"
+        },
+        "BaseRef": "main",
+        "CrossRepo": "fork"
+      }
+    ],
+    "Incomplete": false,
+    "PageCap": 25
+  }
+}
