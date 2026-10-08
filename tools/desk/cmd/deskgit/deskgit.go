@@ -132,6 +132,10 @@ var fetchFn = func(dir string, opts gitcore.FetchOpts) error {
 	return repo.Fetch(opts)
 }
 
+// checkedOutBranchesFn is the seam for the set of branches held by any worktree; a test
+// replaces it only to prove the fetch fails closed when that set cannot be read.
+var checkedOutBranchesFn = gitcore.CheckedOutBranches
+
 // symbolicRefShortHEAD returns the current branch's short name, matching
 // `git symbolic-ref --short HEAD` (errors, rather than returning a name, when HEAD is
 // detached — cmdPush's caller relies on exactly that to refuse a detached push).
@@ -473,13 +477,22 @@ func cmdFetch(args []string) (err error) {
 		return deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
 	}
 
-	// Refuse to write the branch that is checked out: `git fetch` itself refused that, and an
-	// in-process ref update would not. (A branch checked out in ANOTHER linked worktree is not
-	// seen from here.)
+	// Refuse to write a branch that is checked out in ANY worktree of this repository — this
+	// one or a linked one: `git fetch` itself refused that ("refusing to fetch into branch ...
+	// checked out at ..."), and an in-process ref update would not. The set is read from the
+	// common directory (every worktree's HEAD); if it cannot be read the fetch does not guess
+	// "none" — it stops, unverifiable.
 	if flagName, target := localRefTarget(*branch, *prNum); target != "" {
-		if cur, cerr := symbolicRefShortHEAD(dir); cerr == nil && cur == target {
-			return deskkit.Unverifiable("refusing to fetch into the current branch ("+target+
-				") — "+flagName+" would rewrite the checked-out branch under the worktree", nil)
+		held, cerr := checkedOutBranchesFn(dir)
+		if cerr != nil {
+			return deskkit.Unverifiable("cannot tell which branches are checked out, so "+flagName+
+				" "+target+" is not written", cerr)
+		}
+		for _, ref := range held {
+			if ref == "refs/heads/"+target {
+				return deskkit.Unverifiable("refusing to fetch into a checked-out branch ("+target+
+					") — "+flagName+" would rewrite a branch some worktree has checked out", nil)
+			}
 		}
 	}
 

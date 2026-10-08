@@ -398,8 +398,11 @@ func TestFetch_DisallowedOriginRefused(t *testing.T) {
 
 // The allowed-repo set is the SOLE refuser here: an https origin parses cleanly (no
 // configured-root layer to refuse it first, unlike the bare-local-path fixture above), names a
-// repo outside the set, and the fetch must neither run nor be offered a credential.
-func TestFetch_DisallowedHTTPSOriginRefused(t *testing.T) {
+// repo outside the set, and the fetch must neither run nor be offered a credential. The name
+// keeps the "DisallowedOriginRefused" substring on purpose: brief 05's Verify row 3 selects by
+// it, and this is the case that goes red when the allowed-repo check is removed — the bare-path
+// case above stays green then, because the configured-root layer refuses it first.
+func TestFetch_HTTPSDisallowedOriginRefused(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	mustGit(t, work, "remote", "set-url", "origin", "https://github.com/"+deniedSlug+".git")
 	calls := withEnv(t, work)
@@ -431,17 +434,36 @@ func TestFetch_EffectiveURLDrivesDecision(t *testing.T) {
 	}
 }
 
-// fetch starts NO git child: nothing in the process environment (GIT_SSH_COMMAND here, the
-// program-naming and config-injection variables the old child scrub existed to drop) can
-// reach a program, because none is run. The fetch still lands.
+// fetch starts NO child process — observed at the PROCESS, not at deskgit's own exec seam.
+// The fixture origin is a bare LOCAL PATH, the one shape for which go-git's stock transport
+// would start git-upload-pack with this process's whole environment; a recording stand-in
+// for git-upload-pack sits first on PATH (the stock transport's first lookup), under an
+// environment carrying git configuration and a program-naming variable a child git would
+// honour. Neither the seam nor the stand-in may see a start, and the fetch still lands. With
+// gitcore's in-process local transport removed this goes red on the stand-in (the seam alone
+// stays empty, which is why the seam is not the assertion). `git` itself is not stood in
+// here: the verb's kill-switch read at start-up runs it, outside the fetch transport;
+// gitcore's TestFileFetchStartsNoChild stands in both.
 func TestFetch_RunsNoGitChild(t *testing.T) {
 	work := newRepo(t, allowedSlug)
+	bin := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "children.log")
+	standIn := "#!/bin/sh\n{ echo \"STARTED $0 $*\"; env; } >>'" + logPath + "'\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "git-upload-pack"), []byte(standIn), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, cmds := withEnvCmds(t, work)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("GIT_SSH_COMMAND", "sh -c 'touch /tmp/should-not-run'")
 	t.Setenv("GIT_CONFIG_COUNT", "1")
-	t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.uploadpack")
-	t.Setenv("GIT_CONFIG_VALUE_0", "sh -c 'touch /tmp/should-not-run'")
-	_, cmds := withEnvCmds(t, work)
-	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+	t.Setenv("GIT_CONFIG_KEY_0", "uploadpack.packObjectsHook")
+	t.Setenv("GIT_CONFIG_VALUE_0", "/nonexistent/should-not-run")
+	code := run([]string{"fetch"})
+	if b, err := os.ReadFile(logPath); err == nil {
+		first, _, _ := strings.Cut(string(b), "\n")
+		t.Fatalf("fetch started a child process (%s) — it must run in-process", first)
+	}
+	if code != deskkit.ExitOK {
 		t.Fatalf("fetch exit = %d, want ok", code)
 	}
 	if len(*cmds) != 0 {
@@ -450,6 +472,13 @@ func TestFetch_RunsNoGitChild(t *testing.T) {
 			argvs = append(argvs, strings.Join(c.Args, " "))
 		}
 		t.Fatalf("fetch started %d git child process(es): %q — it must run in-process", len(*cmds), argvs)
+	}
+	repo, err := gitcore.Open(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Resolve("refs/remotes/origin/main"); err != nil {
+		t.Fatalf("fetch did not land refs/remotes/origin/main: %v", err)
 	}
 }
 
@@ -514,6 +543,54 @@ func TestFetch_RefusesToWriteCheckedOutBranch(t *testing.T) {
 	}
 	if len(fetchRecorded) != 0 {
 		t.Fatal("the transport was reached for the checked-out branch")
+	}
+}
+
+// The same refusal holds for a branch checked out in a LINKED worktree, not just this one:
+// git fetch refused that too, and the in-process update would otherwise move the branch under
+// the other worktree's index and files. The upstream is one commit ahead so a fetch that went
+// through would visibly move the ref.
+func TestFetch_RefusesBranchCheckedOutInLinkedWorktree(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "branch", "held-elsewhere")
+	mustGit(t, work, "push", "-q", "origin", "held-elsewhere")
+	before := mustGit(t, work, "rev-parse", "refs/heads/held-elsewhere")
+	linked := filepath.Join(t.TempDir(), "linked")
+	mustGit(t, work, "worktree", "add", "-q", linked, "held-elsewhere")
+
+	// Move the upstream branch one commit ahead from a scratch clone.
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	scratch := filepath.Join(t.TempDir(), "scratch")
+	mustGit(t, "", "clone", "-q", "-b", "held-elsewhere", upstream, scratch)
+	mustGit(t, scratch, "-c", "user.email=t@e.st", "-c", "user.name=T", "-c", "commit.gpgsign=false",
+		"commit", "-q", "--allow-empty", "-m", "ahead")
+	mustGit(t, scratch, "push", "-q", "origin", "held-elsewhere")
+
+	withEnv(t, work)
+	if code := run([]string{"fetch", "--branch", "held-elsewhere"}); code == deskkit.ExitOK {
+		t.Fatal("fetch --branch <branch checked out in a linked worktree> succeeded; it must refuse")
+	}
+	if len(fetchRecorded) != 0 {
+		t.Fatal("the transport was reached for a branch checked out in a linked worktree")
+	}
+	if after := mustGit(t, work, "rev-parse", "refs/heads/held-elsewhere"); after != before {
+		t.Fatalf("held-elsewhere moved %s -> %s under the linked worktree", before, after)
+	}
+}
+
+// When the checked-out set cannot be read, a fetch that would write a local branch stops
+// (unverifiable) rather than assuming no worktree holds it.
+func TestFetch_CheckedOutSetUnreadableFailsClosed(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	withEnv(t, work)
+	old := checkedOutBranchesFn
+	checkedOutBranchesFn = func(string) ([]string, error) { return nil, os.ErrPermission }
+	t.Cleanup(func() { checkedOutBranchesFn = old })
+	if code := run([]string{"fetch", "--branch", "anything"}); code != deskkit.ExitUnverifiable {
+		t.Fatalf("fetch exit = %d, want %d (unverifiable) when the checked-out set is unreadable", code, deskkit.ExitUnverifiable)
+	}
+	if len(fetchRecorded) != 0 {
+		t.Fatal("the transport was reached although the checked-out set was unreadable")
 	}
 }
 
