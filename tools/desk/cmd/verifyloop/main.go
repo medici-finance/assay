@@ -336,8 +336,11 @@ The signature happens afterwards on the key-holding host, under this host contra
       not the signing user. After the fence has fully exited it moves the payload entry there
       by rename, never by copy; if the rename fails it does not sign. On unix the signer checks
       the immediate parent; on other platforms this contract is the only control.
-Within the dispatched scope a hostile row can still invent results: the binding bounds a forged
-payload to the repo, head and time window the host recorded; it does not prevent one.
+Within the dispatched scope a hostile row can still invent results. The binding is checked only
+when the host signs: the host refuses a payload whose digest, repo, head or ts does not match its
+own record. It does not limit what the entries claim, and nothing after signing checks head or ts
+again (statusgen's transcriber checks only the repo), so a forged entry in a signed payload is
+consumed for any brief it names in that repo.
 
 Exit: 0 ok · 3 disabled · 5 refused · 6 unverifiable · 7 author==runner.
 `
