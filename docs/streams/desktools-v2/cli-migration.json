@@ -38,6 +38,11 @@
     },
     {
       "class": "test",
+      "pattern": "tests/brief-flow/**",
+      "reason": "offline acceptance runner for the brief-flow event contract; CI and verifiers run it, never an operator entrypoint"
+    },
+    {
+      "class": "test",
       "pattern": "tools/desk/scripts/forge-ban-probe.sh",
       "reason": "positive control for forge-ban.sh; plants a probe file and asserts the counter moves"
     },
