@@ -94,14 +94,14 @@
     {
       "name": "resolve a typed ISSUE read through the bare both-kinds probe (a number that carries #N and !N is refused again, the field defect)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\tcase TargetIssue:\n\t\tpath := fmt.Sprintf(\"/projects/%s/issues/%d\", g.projectPath(repo), number)\n\t\tiss, _, ierr := cl.Issues.GetIssue(repo.Slug(), int64(number))\n\t\tif ierr != nil {\n\t\t\treturn nil, g.mapErr(http.MethodGet, path, ierr)\n\t\t}\n\t\treturn gitlabIssueAsIssue(iss), nil",
+      "old": "\tcase TargetIssue:\n\t\tpath := fmt.Sprintf(\"/projects/%s/issues/%d\", g.projectPath(repo), number)\n\t\tiss, _, ierr := cl.Issues.GetIssue(repo.Slug(), int64(number))\n\t\tif ierr != nil {\n\t\t\treturn nil, g.mapErr(http.MethodGet, path, ierr)\n\t\t}\n\t\treturn g.withAccountTypes(gitlabIssueAsIssue(iss))",
       "new": "\tcase TargetIssue:\n\t\treturn g.GetIssue(repo, number)"
     },
     {
       "name": "read the merge request for a typed CHANGE read but report it as an issue (IsPullRequest false)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\t\treturn gitlabMRAsIssue(mr), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped",
-      "new": "\t\treturn gitlabIssueAsIssue(&gitlab.Issue{IID: mr.IID, Title: mr.Title, State: mr.State, WebURL: mr.WebURL}), nil\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped"
+      "old": "\t\treturn g.withAccountTypes(gitlabMRAsIssue(mr))\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped",
+      "new": "\t\treturn g.withAccountTypes(gitlabIssueAsIssue(&gitlab.Issue{IID: mr.IID, Title: mr.Title, State: mr.State, WebURL: mr.WebURL}))\n\t}\n\treturn nil, Refused(fmt.Sprintf(\"refused: GetIssueTyped"
     },
     {
       "name": "open a merge-hold marker thread that came back not resolvable as if it were armed (the server would never block the merge on it)",
@@ -166,8 +166,8 @@
     {
       "name": "count the mapped pipeline entry outside the asserted status total (the caller's short-read reconcile misreads the rollup)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\t\tout.StatusTotalCount++",
-      "new": "\t\tout.StatusTotalCount += 0"
+      "old": "\tout.StatusTotalCount++",
+      "new": "\tout.StatusTotalCount += 0"
     },
     {
       "name": "redden an allow_failure job's failure (a job the forge does not gate on contradicts the green pipeline it belongs to)",
@@ -219,9 +219,9 @@
     },
     {
       "name": "skip the re-stamp removal (a foreign dispatched-* stamp stays standing on the MR and the floor keeps refusing; #1154)",
-      "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\tif len(stale) > 0 {\n\t\t// The removal is its OWN write",
-      "new": "\tif false {\n\t\t// The removal is its OWN write"
+      "file": "internal/deskkit/stampapply.go",
+      "old": "\tif len(remove) > 0 {",
+      "new": "\tif false && len(remove) > 0 {"
     },
     {
       "name": "stamp blind when the label history cannot be read (WHO applied the present stamp is unknown, yet the step writes; #1154)",

@@ -1,0 +1,10 @@
+package age
+
+import "time"
+
+type window struct{ start time.Time }
+
+func ageAt(now, t time.Time) time.Duration { return now.Sub(t) }
+
+// Fresh computes an age outside ageAt, which the rule refuses.
+func (w window) Fresh(now time.Time, max time.Duration) bool { return now.Sub(w.start) <= max }

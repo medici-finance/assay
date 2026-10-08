@@ -154,7 +154,7 @@ func cmdStalled(hdr Header, minAgeHours int) (*Report, error) {
 		briefStatus: briefStatus, knownBriefs: knownBriefs,
 	}
 	repos := deskkit.AllowedRepos()
-	partials, serr := sweepRepos(repos, sweepConcurrency, func(repo string) (stalledPartial, error) {
+	partials, serr := sweepRepos(repos, boardSweepLimit, func(repo string) (stalledPartial, error) {
 		return sweepStalledRepo(repo, sctx)
 	})
 	if serr != nil {
@@ -559,7 +559,7 @@ func sweepStalledRepo(repo string, c stalledCtx) (stalledPartial, error) {
 	// work returns no error — a per-PR read failure is a labelled row, not a dead board —
 	// so the pool's fail-closed path is unreachable from here and the discarded error
 	// cannot hide one.
-	outcomes, _ := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (stalledOutcome, error) {
+	outcomes, _ := sweepConcurrent(prs, boardSweepLimit, func(p prBase) (stalledOutcome, error) {
 		return sweepStalledPR(repo, p, c), nil
 	})
 	part.outcomes = outcomes

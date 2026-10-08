@@ -75,6 +75,8 @@ USAGE:
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
                [--branch NAME] [--brief PATH] [--gate-human] [--pr N] [--rework]
                [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
+  deskdispatch --stamp-only --repo OWNER/NAME --pr N --model SLUG --tier strong|any
+               [--kit worker|worker-objective|review|verifier] [--dry-run]
   deskdispatch --kits
   deskdispatch --version
 
@@ -88,6 +90,42 @@ prompt's item key stay on the ORIGINAL key.
 For review kits with --pr N, the resulting claim key must be <configured-alias>--pr-N
 or <repo-basename>--pr-N, optionally followed by --<lane>. Unknown historical aliases
 and keys for another PR are refused before claim acquisition; accepted keys are unchanged.
+
+STAMP AFTER OPEN. The dispatching worker-desk hands the opened PR and the actual model/tier
+from its real dispatch receipt to the coordinator desk (the-desk), which runs --stamp-only.
+Worker-desk and its child worker are both refused; inherited DESK_SESSION is claim custody,
+not independent stamp authority. Both model and tier are required;
+no model is inferred from existing labels. The original kit selects the same dispatcher
+role as ordinary dispatch. The session role must match it and be roster-bound; the worker
+cannot self-attest. No item key, claim, worktree, roster registration, hook, queue label or
+prompt is involved. This does not launch an agent or renew review-claim authority.
+
+The shared model vocabulary is open: gpt-6-astra and gpt-6.1-sol round-trip unchanged.
+gpt-6-1-sol is also a valid opaque slug, not an alias for gpt-6.1-sol. Use the identifier
+actually selected by the harness, never a guessed provider/model mapping.
+
+The shared stamp step reads current labels and their standing appliers, repairs partial,
+conflicting or foreign/unattributed stamps using the explicitly selected pair, and leaves
+an identical accepted stamp unchanged. Read failures stop before writes. After a write it
+re-reads labels AND timeline with the capability-floor reader; only the exact accepted pair
+returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
+change is required for --stamp-only. Its --dry-run reads and prints the removal/application
+plan without writes or a local audit append; a plan is not a verified stamp.
+
+VERIFIER PRE-WORK. --kit verifier requires --model and a source --brief, and rejects --pr.
+It creates an immutable dispatcher-authored verification-attestation issue bound to the
+exact run, source commit, brief digest, model and tier; stamps and reads it back under
+existing desk custody; then closes the record before emitting a verifier prompt. The
+record is not verification evidence and is excluded from issue intake even while open.
+
+deskdispatch --check-verifier --root HOME --brief PATH
+  Read-only admission: verify the forge record and the detached source before Verify rows.
+deskdispatch --attest-verifier --root HOME [--dry-run]
+  Recover the SAME persisted run under coordinator custody, with no new claim, allocation
+  or worker launch. An uncertain create is recovered by exact run identifier; an absent
+  search result cannot authorize another issue. Failed dispatch releases its claim and
+  retains the worktree for recovery. Reacquire that claim before launching a recovered run.
+  PENDING, failed, mismatched or unreadable stamps never admit verification.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
@@ -113,7 +151,9 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       is the claim tool refusing the invocation itself and is reported as
                       that error, never as a collision.
   2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
-                      refs/remotes/origin/main. Cross-repo is the default case, not the
+                      refs/remotes/origin/main for fresh/read-only dispatches; worker
+                      resumes use the verified source branch and head described below.
+                      Cross-repo is the default case, not the
                       exception: an item belongs to a repo, and a worker handed the wrong
                       one recreates the work where nobody asked for it. The new worktree is
                       then STAMPED with the DISPATCHED agent's own role commit identity
@@ -129,8 +169,11 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
-                      human), runs the repo's tools/decision-issue.sh ensure so the human
-                      has something concrete to decide. Idempotent by the script's own
+                      human), runs tools/decision-issue.sh ensure from the resolved root
+                      (--claim-root when given, else --root) so the human has something
+                      concrete to decide. No pure-Go port of it ships, so a resolved root
+                      without it REFUSES pre-claim (exit 6), naming the path tried and
+                      the --claim-root way out. Idempotent by the script's own
                       marker dedupe. The script runs under the dispatching role's
                       credential (GH_TOKEN in its environment, from the same resolution
                       the claim uses), never the ambient login; with none it refuses.
@@ -180,6 +223,15 @@ merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and th
 (resume it with --pr). A MERGED PR refuses as DELIVERED — unless --rework says the row awaits
 implementer rework, in which case the dispatch becomes a FOLLOW-UP on a new branch
 (feat/<item>-followup-<N>), never a resume of the merged branch.
+
+WORKER RESUME. --pr reads the open change through the resolved forge, including in a
+dry run. Its source branch supplies --branch; an explicit different --branch is refused.
+The source must be confirmed in the target repository, with a readable full head SHA.
+A real dispatch refreshes that origin branch and requires its tip to match the forge head
+before claiming anything, then passes the verified commit as --base and the source
+remote ref as --upstream to deskwt. The allocator checks the pair and sets tracking
+separately from the pinned checkout. Missing, stale or
+unreadable source/head never falls back to main. Review/verifier lanes remain detached.
 
 --kits lists the prompt kits this binary carries and exits 0.
 --dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt

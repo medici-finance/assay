@@ -30,6 +30,30 @@
       "file": "clusterrow.go",
       "old": "if !parked[p] {",
       "new": "if false && !parked[p] {"
+    },
+    {
+      "name": "queue marks every entry flip (the pre-fix behaviour: no gate/risk split on completion)",
+      "file": "clusterrow.go",
+      "old": "Completion: clusterCompletion(bf),",
+      "new": "Completion: clusterCompletionFlip,"
+    },
+    {
+      "name": "clusterCompletion ignores the gate (a gate:human brief would be marked flip)",
+      "file": "clusterrow.go",
+      "old": "if bf == nil || bf.Gate != \"model\" || len(bf.Risk) == 0 {",
+      "new": "if bf == nil || len(bf.Risk) == 0 {"
+    },
+    {
+      "name": "clusterCompletion ignores risk axes (a risk-flagged brief would be marked flip)",
+      "file": "clusterrow.go",
+      "old": "if v == \"yes\" {",
+      "new": "if false && v == \"yes\" {"
+    },
+    {
+      "name": "clusterCompletion trusts an absent risk block (fails open)",
+      "file": "clusterrow.go",
+      "old": "if bf == nil || bf.Gate != \"model\" || len(bf.Risk) == 0 {",
+      "new": "if bf == nil || bf.Gate != \"model\" {"
     }
   ]
 }

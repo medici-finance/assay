@@ -29,7 +29,7 @@ consumers:
 - 'statusgen: follow-up iso-9001/10'
 - 'spec: follow-up iso-9001/10'
 - 'docs/evidence-bundle.md: follow-up iso-9001/10'
-version: 1
+version: 2
 id: bb775839-aa6d-4957-a872-3ae70dfef0ff
 ---
 
@@ -69,7 +69,7 @@ Decision-trigger: spec. At pickup, prepare the concrete contract and negative-pa
 ## Ground rules
 
 - Never git push, trigger workflows or run mutating infrastructure commands unless explicitly instructed. Feature branch and draft PR only; no merge, deployment, external provider or live infrastructure access.
-- Keep the stream's parked state; prioritization is a separate owner decision.
+- Preserve the owner-set stream status and priority; reprioritization is a separate owner decision.
 - Public examples and fixtures are synthetic. No licensed normative text or adopter records.
 - Stop at implemented; independent verification and normal review own later states.
 - Unknown or missing evidence never becomes a pass. Required upstream behavior must be independently verified before operational reliance.

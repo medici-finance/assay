@@ -30,7 +30,7 @@ consumers:
 - 'schemas: follow-up iso-9001/08'
 - 'docs/iso9001-mapping.md: follow-up iso-9001/08'
 - 'docs/evidence-bundle.md: out-of-scope (this brief defines upstream source records)'
-version: 1
+version: 2
 id: 7722e206-2451-45b4-b077-5c6f17ecf540
 ---
 
@@ -70,7 +70,7 @@ Decision-trigger: spec. At pickup, prepare the concrete contract and negative-pa
 ## Ground rules
 
 - Never git push, trigger workflows or run mutating infrastructure commands unless explicitly instructed. Feature branch and draft PR only; no merge, deployment, external provider or live infrastructure access.
-- Keep the stream's parked state; prioritization is a separate owner decision.
+- Preserve the owner-set stream status and priority; reprioritization is a separate owner decision.
 - Public examples and fixtures are synthetic. No licensed normative text or adopter records.
 - Stop at implemented; independent verification and normal review own later states.
 - Unknown or missing evidence never becomes a pass. Required upstream behavior must be independently verified before operational reliance.

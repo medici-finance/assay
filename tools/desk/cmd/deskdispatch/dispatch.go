@@ -113,20 +113,22 @@ var worktreeNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var branchNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 
 type dispatchOpts struct {
-	item       string
-	tier       string
-	kit        string
-	repo       string
-	root       string
-	claimRoot  string
-	model      string
-	branch     string
-	brief      string
-	gateHuman  bool
-	pr         int
-	promptFile string
-	quiet      bool
-	dryRun     bool
+	stampReceipt string
+	stampOnly    bool
+	item         string
+	tier         string
+	kit          string
+	repo         string
+	root         string
+	claimRoot    string
+	model        string
+	branch       string
+	brief        string
+	gateHuman    bool
+	pr           int
+	promptFile   string
+	quiet        bool
+	dryRun       bool
 	// itemAlias is the `<alias>:` prefix split off the item key (deliverable.go) — the alias the
 	// brief is TRACKED under. item carries the key WITHOUT it, so every derivation below (claim
 	// key, branch, worktree name) sees the ordinary grammar.
@@ -146,6 +148,12 @@ type dispatchOpts struct {
 }
 
 func cmdDispatch(args []string) error {
+	if len(args) > 0 && (args[0] == "--check-verifier" || args[0] == "--attest-verifier") {
+		return cmdVerifierAttestation(args[0], args[1:])
+	}
+	if len(args) > 0 && args[0] == "--stamp-only" {
+		return cmdStampOnly(args[1:])
+	}
 	fs := flag.NewFlagSet("deskdispatch", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
 	tier := fs.String("tier", "any", "execution tier the item demands: strong|any")
@@ -156,7 +164,7 @@ func cmdDispatch(args []string) error {
 		"item's own repo does not (default: --root). The claim still lands in --repo's own ref namespace — this "+
 		"names only where the TOOL lives, never where the worktree is cut from")
 	model := fs.String("model", "", "lowercase slug of the model being launched, for the dispatcher's attestation stamp")
-	branch := fs.String("branch", "", "branch name for the agent's worktree (default: derived from the item key)")
+	branch := fs.String("branch", "", "branch name (fresh: derived from item; resume: must match the forge source branch)")
 	brief := fs.String("brief", "", "path to the item's specification file, for the decision-issue gate and the prompt")
 	gateHuman := fs.Bool("gate-human", false, "the item is human-gated: ensure its decision issue exists before dispatch")
 	pr := fs.Int("pr", 0, "an ALREADY-OPEN PR for this item; enables the roster work entry and the label stamp")
@@ -198,6 +206,9 @@ func cmdDispatch(args []string) error {
 }
 
 func dispatch(o dispatchOpts) error {
+	if err := storageAdmission(o.dryRun); err != nil {
+		return err
+	}
 	// --brief is resolved ONCE, first, to the absolute path every later reader uses (resolveBrief):
 	// a brief found only under --claim-root must gate, file its decision issue and scope its writes
 	// from the SAME file the deliverable resolution read.
@@ -210,6 +221,9 @@ func dispatch(o dispatchOpts) error {
 	// a tidiness preference.
 	plan, err := validateCallerPreconditions(o)
 	if err != nil {
+		return err
+	}
+	if err := resolveResume(o, &plan); err != nil {
 		return err
 	}
 	repo, branch, wtName := plan.repo, plan.branch, plan.wtName
@@ -352,11 +366,9 @@ func dispatch(o dispatchOpts) error {
 	// this step delegates rather than re-deriving any of it — INCLUDING where the
 	// worktree lands: the path the prompt names is the one deskwt printed, never one this
 	// verb predicted.
-	// Both arms take the SAME base expression: worktreeBase already answers mainlineRef for a
-	// verifier kit (o.pr<=0 || reviewKit || verifierKit), so the detached lane is unchanged by
-	// using it, while the branch lane keeps the PR-resume base main introduced. The only
-	// difference between the arms is --detach vs --branch, which is the verifier's whole point:
-	// it reads merged main and touches no feature branch.
+	// Fresh and read-only allocations use mainlineRef. Worker resumes require the
+	// source branch and immutable head verified before the claim (resolveResume).
+	// The single allocation boundary refuses a resume lacking that proof.
 	//
 	// --role names the DISPATCHED agent's role (plan.identityRole, resolved pre-claim), so
 	// deskwt stamps that role's commit identity AND replaces the transport the worktree would
@@ -513,8 +525,18 @@ func dispatch(o dispatchOpts) error {
 	o.say("%s %s", stepDecisionGate, gate)
 
 	// 5 — the dispatcher's model attestation.
-	stamp, serr := stepStamp(o, repo)
+	var stamp string
+	var serr error
+	if o.kit == "verifier" {
+		stamp, serr = attestVerifierDispatchFn(o, repo, home)
+	} else {
+		stamp, serr = stepStamp(o, repo)
+	}
 	if serr != nil {
+		if o.kit == "verifier" {
+			released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
+			return deskkit.Unverifiable(fmt.Sprintf("verifier attestation failed; NO prompt emitted. Claim %s; retained worktree %s for recovery (deskdispatch --attest-verifier --root <home>). Reacquire the original claim before launching a recovered run: %v", released, home, serr), serr)
+		}
 		return serr
 	}
 	o.say("%s %s", stepModelStamp, stamp)
@@ -537,6 +559,7 @@ func dispatch(o dispatchOpts) error {
 // re-derives a value the validation was performed against. Re-deriving is how a check and
 // the thing it checked drift apart.
 type dispatchPlan struct {
+	resume *resumeSource
 	repo   string
 	branch string
 	wtName string
@@ -628,6 +651,18 @@ type dispatchPlan struct {
 // of bad inputs and asserts NOTHING was executed.
 func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	var plan dispatchPlan
+	if o.kit == "verifier" {
+		role, _, err := deskkit.SessionTokenRole(toolName)
+		if err != nil {
+			return plan, err
+		}
+		if role != deskkit.DispatcherRole && role != "verifier" {
+			return plan, deskkit.Refused("verifier dispatch requires a dispatching desk session")
+		}
+	}
+	if o.kit == "verifier" && (o.model == "" || o.brief == "" || o.pr != 0) {
+		return plan, deskkit.Refused("verifier dispatch requires explicit --model and a source brief; --pr is not a pre-work attestation target")
+	}
 
 	// --worktree is accepted ONLY together with --dry-run. On a real dispatch the home is the
 	// path deskwt printed and nothing else, so an operator-stated one must never reach it —
@@ -808,13 +843,13 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.detached = true
 	} else {
 		plan.branch = o.branch
-		if plan.branch == "" {
+		if plan.branch == "" && o.pr == 0 {
 			plan.branch = "feat/" + sanitizeSegment(o.item)
 		}
 		// The worktree verb is the AUTHORITY on what branch and worktree names it accepts; this
 		// is a pre-check, deliberately no looser than its constraint, whose only job is to keep
 		// a name it would reject from costing a held claim. It does not replace that check.
-		if !branchNameRe.MatchString(plan.branch) || strings.Contains(plan.branch, "..") {
+		if plan.branch != "" && (!branchNameRe.MatchString(plan.branch) || strings.Contains(plan.branch, "..")) {
 			return plan, deskkit.Refused(fmt.Sprintf(
 				"step %s: --branch %q is not a plain branch name (letters, digits, dot, dash, underscore, "+
 					"slash; no leading dash, no '..'), so the worktree verb would refuse it.",
@@ -907,11 +942,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 	default:
 		return plan, deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: no claim tool is available — the pure-Go %s binary is not on PATH and %s is not "+
-				"present in %s, so no durable claim can be taken. A claim this verb cannot place is NOT "+
-				"permission to proceed: a machine-local lock would serialise two dispatchers on one machine "+
-				"and nothing at all across two, which is the case that double-dispatches%s.",
-			stepClaimAcquire, goClaimBinary, claimScriptRel, scriptsRoot, claimRootHint(o)), goErr)
+			"step %s: no claim tool is available — %s, so no durable claim can be taken. A claim this "+
+				"verb cannot place is NOT permission to proceed: a machine-local lock would serialise two "+
+				"dispatchers on one machine and nothing at all across two, which is the case that "+
+				"double-dispatches%s.",
+			stepClaimAcquire, helperLocationsTried(o, claimScriptRel, scriptsRoot), claimRootHint(o)), goErr)
 	}
 
 	// The human-decision gate's own preconditions: the flag pairing AND the script's
@@ -934,11 +969,20 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.gateHuman = true
 	}
 	if plan.gateHuman {
+		// The decision helper resolves from the same resolved root as the claim tool's script
+		// (--claim-root when given, else --root). The claim tool tries its PATH port FIRST and the
+		// script second (above); the decision helper has NO PATH port today (see consumerHelpers),
+		// so the file under the resolved root is its only location, and a missing file REFUSES —
+		// it never skips the gate. The refusal names every location in that
+		// order and the --claim-root way out: the claim tool's PATH port means a dispatch from
+		// a repo without the scripts no longer needs --claim-root to CLAIM, so this step is
+		// where such a dispatch first learns it needs one.
 		if _, err := os.Stat(plan.decisionScript); err != nil {
 			return plan, deskkit.Unverifiable(fmt.Sprintf(
-				"step %s: %s is not present in %s, so the human-decision gate cannot be ensured. Dispatching "+
-					"a human-gated item with nothing in front of the human is the failure this gate exists to "+
-					"close.", stepDecisionGate, decisionScriptRel, scriptsRoot), err)
+				"step %s: no decision helper is available, so the human-decision gate cannot be ensured — %s. "+
+					"Dispatching a human-gated item with nothing in front of the human is the failure this "+
+					"gate exists to close, so this refuses rather than skip the gate%s.",
+				stepDecisionGate, helperLocationsTried(o, decisionScriptRel, scriptsRoot), claimRootHint(o)), err)
 		}
 	}
 
@@ -1416,6 +1460,9 @@ func holderIsStale(showOut string) (stale bool, state string, ageMin int) {
 // becomes the AGENT's first act after its PR opens, and the exact command is carried in
 // the prompt. This step says which of the two happened; it never goes silent.
 func stepRoster(o dispatchOpts, repo string) string {
+	if o.kit == "verifier" {
+		return "VERIFIER: pre-work attestation is the run target; no PR roster entry is fabricated"
+	}
 	if o.pr <= 0 {
 		return "DEFERRED: no PR yet — the agent self-registers the instant its draft PR opens " +
 			"(the exact command is in the emitted prompt)"
@@ -1503,7 +1550,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	}
 	if o.pr <= 0 {
 		return "PENDING: apply " + strings.Join(labels, " + ") +
-			" under the DISPATCHER's identity the instant the draft PR opens", nil
+			fmt.Sprintf("; send the opened PR and this dispatch selection to the coordinator desk; coordinator runs deskdispatch --stamp-only --repo %s --pr <N> --model %s --tier %s --kit %s after the draft PR opens; never run this as the worker", repo, o.model, o.tier, o.kit), nil
 	}
 	// The identity comes FIRST, before any label is written. The role is the one deskkit
 	// declares as the dispatcher — the same declaration the floor's reader resolves the
@@ -1578,6 +1625,12 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 				"so stamping blind would report success on a PR that stays refused.",
 			stepModelStamp, repo, o.pr, forge, firstLine(perr.Error())), perr)
 	}
+	if change == nil {
+		return "", deskkit.Unverifiable("model-stamp: forge returned no change", nil)
+	}
+	if o.stampOnly && (change.State != "open" || change.MergedAt != "") {
+		return "", deskkit.Refused("stamp-only requires an open change")
+	}
 	events, eerr := fg.ListLabelEvents(fr, o.pr)
 	if eerr != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
@@ -1588,48 +1641,18 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
 	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
+	if o.dryRun {
+		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s); nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge), nil
+	}
 	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
 		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
 		// removed and nothing is re-applied, so a re-dispatch neither churns the label
 		// history nor leaves the PR briefly unstamped.
-		return fmt.Sprintf("OK: %s already standing on %s#%d under the %s App, the identity the capability "+
-			"floor accepts (%s) — an identical stamp is a no-op, nothing was written",
-			strings.Join(labels, " + "), repo, o.pr, stampRole, forge), nil
+		return fmt.Sprintf("OK: verified %s already standing on %s#%d under accepted stamp authority (%s) — an identical stamp is a no-op, nothing was written",
+			strings.Join(labels, " + "), repo, o.pr, forge), nil
 	}
-	if len(stale) > 0 {
-		// The removal is its OWN write, ahead of the application, on purpose: a label named in
-		// both halves of one LabelChange is skipped by the backends as a caller bug, and a
-		// single reconciliation that removed and re-added the same name would leave the forge's
-		// label set unchanged — no new application event, so the standing applier would not
-		// change and the PR would stay refused. Two writes are two events.
-		if _, aerr := fg.ApplyLabels(fr, o.pr, deskkit.LabelChange{
-			Target: deskkit.TargetChange,
-			Remove: stale,
-		}); aerr != nil {
-			return "", deskkit.Unverifiable(fmt.Sprintf(
-				"step %s: could not remove the stamp label(s) %s from %s#%d through the %s backend (%s) — "+
-					"re-applying the intended stamp on top would be a no-op, leaving the PR carrying labels "+
-					"the floor refuses.",
-				stepModelStamp, strings.Join(stale, " + "), repo, o.pr, forge, firstLine(aerr.Error())), aerr)
-		}
-	}
-
-	// Both halves in ONE reconciliation: the backend ensures each label exists (an
-	// already-exists is the success case, so two dispatchers stamping in parallel both end up
-	// with the label present) and applies the pair in one request, so the stamp can never land
-	// half-applied on a forge that writes the set atomically.
-	add := make([]deskkit.LabelSpec, 0, len(labels))
-	for _, l := range labels {
-		add = append(add, deskkit.LabelSpec{Name: l, Color: stampLabelColorHex, Description: stampLabelDescription})
-	}
-	if _, aerr := fg.ApplyLabels(fr, o.pr, deskkit.LabelChange{
-		Target: deskkit.TargetChange,
-		Add:    add,
-	}); aerr != nil {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: could not apply %s to %s#%d through the %s backend (%s) — an INCOMPLETE or absent "+
-				"stamp reads as indeterminate, and one half of a stamp is worse than no stamp at all.",
-			stepModelStamp, strings.Join(labels, " + "), repo, o.pr, forge, firstLine(aerr.Error())), aerr)
+	if err := deskkit.ApplyVerifiedModelStamp(fg, fr, o.pr, deskkit.TargetChange, labels, deskkit.IsStampAuthorityLogin); err != nil {
+		return "", err
 	}
 	// BOTH events are reported. A silent removal is a label disappearing from a PR with no
 	// record of why; the removal is half the repair and belongs in the step report next to
@@ -1640,7 +1663,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			"stamp the floor cannot read — before applying the intended stamp, since adding over a "+
 			"present label is a no-op)", strings.Join(stale, " + "))
 	}
-	return fmt.Sprintf("OK: applied %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
+	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
 		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
 }
 
@@ -1780,6 +1803,61 @@ func validTier(t string) bool {
 		}
 	}
 	return false
+}
+
+// consumerHelper is one consumer script this verb wraps, with its PATH port: the binary the
+// resolver looks up BEFORE the file under the resolved root (the claim tool's order, issue
+// 1151). "" = no port ships, so the file under the resolved root is the ONLY location and its
+// absence is a refusal. pathPort must name a lookup the resolver really performs —
+// TestHelperPathPortsAreLookedUp fails if an entry claims a port no lookup honours.
+type consumerHelper struct {
+	rel      string
+	pathPort string
+}
+
+// consumerHelpers is EVERY consumer script this verb wraps. It is the one list the
+// missing-helper refusals read their PATH half from, and the class guard in
+// decisionhelper_test.go fails if a wrapped `tools/*.sh` is declared without joining it — so
+// a new helper cannot ship with a refusal that names one directory and leaves the operator to
+// guess whether anywhere else was consulted (the shape the decision gate's refusal had).
+//
+// The decision helper has no PATH port: there is no pure-Go `ensure` equivalent of
+// tools/decision-issue.sh yet (statusgen renders decision bodies but files nothing). Until
+// one ships, a target repo that does not carry the script dispatches human-gated items only
+// with --claim-root pointing at a checkout that does.
+var consumerHelpers = []consumerHelper{
+	{rel: claimScriptRel, pathPort: goClaimBinary},
+	{rel: decisionScriptRel, pathPort: ""},
+}
+
+// helperLocationsTried states every location this verb looked for the consumer helper rel, for
+// a missing-helper refusal: the file under the resolved root (naming which flag chose that
+// root, and that an explicit --claim-root is authoritative) and PATH — the port that was
+// looked up, or that no port exists to look up. Locations are named in the resolver's order:
+// the PATH port first when one exists, then the file. Both refusals (the claim tool's and the
+// decision gate's) are phrased through this one function.
+func helperLocationsTried(o dispatchOpts, rel, scriptsRoot string) string {
+	under := "under --root, since no --claim-root was given"
+	if strings.TrimSpace(o.claimRoot) != "" {
+		under = "under --claim-root, which is authoritative: --root is not consulted when it is given"
+	}
+	// Named absolute: --root defaults to "." and is never made absolute, and a refusal that
+	// reads "tools/x.sh is not present" does not say which directory was searched.
+	path := filepath.Join(scriptsRoot, filepath.FromSlash(rel))
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	file := fmt.Sprintf("%s is not present (%s)", path, under)
+	port := ""
+	for _, h := range consumerHelpers {
+		if h.rel == rel {
+			port = h.pathPort
+		}
+	}
+	if port != "" {
+		return fmt.Sprintf("the pure-Go %s binary is not on PATH, and %s", port, file)
+	}
+	return fmt.Sprintf("%s, and no pure-Go port of %s ships, so PATH holds no fallback", file, rel)
 }
 
 // claimRootHint names the way out of a missing-claim-script failure when no --claim-root
@@ -1937,8 +2015,15 @@ func emitPrompt(o dispatchOpts, prompt string) error {
 }
 
 func audit(o dispatchOpts, err error) {
+	verb := "dispatch"
+	if o.stampOnly {
+		verb = "stamp-only"
+	}
 	result := deskkit.ResultOK
 	detail := "dispatch prepared item=" + o.item + " tier=" + o.tier + " kit=" + o.kit
+	if o.stampOnly {
+		detail = fmt.Sprintf("repo=%s pr=%d model=%s tier=%s kit=%s: %s", o.repo, o.pr, o.model, o.tier, o.kit, o.stampReceipt)
+	}
 	if o.dryRun {
 		detail = "dry-run item=" + o.item
 	}
@@ -1951,9 +2036,19 @@ func audit(o dispatchOpts, err error) {
 		}
 		detail = firstLine(err.Error())
 	}
+	var auditPR *int
+	var auditRepo string
+	if o.stampOnly {
+		auditRepo = o.repo
+		if o.pr > 0 {
+			auditPR = &o.pr
+		}
+	}
 	if lerr := deskkit.Log(deskkit.Entry{
+		Repo:   auditRepo,
+		PR:     auditPR,
 		Tool:   toolName,
-		Verb:   "dispatch",
+		Verb:   verb,
 		Result: result,
 		Detail: detail,
 		Title:  o.item,

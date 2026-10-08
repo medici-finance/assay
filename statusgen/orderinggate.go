@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -200,7 +199,7 @@ func orderingGateNotices(streams []*Stream) []string {
 		files = append(files, briefFilePaths(s)...)
 
 		for _, path := range files {
-			raw, err := os.ReadFile(path)
+			raw, err := readFileMemo(path)
 			if err != nil {
 				continue // README absence is another check's problem; briefs were globbed present
 			}

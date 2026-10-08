@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/desk-facts-v1.json",
+  "title": "desk-facts-v1 fact bundle",
+  "description": "One immutable snapshot of collected facts, read by the desk tools and by the board generator so that the same bundle evaluated by the same evaluator gives the same answer. The bundle carries the identity of its facts (snapshot_id, policy_digest, per-source revisions), never the identity of an evaluator; an evaluator prints its own version beside the bundle's snapshot_id. A consumer MUST refuse any schema value other than desk-facts-v1 rather than parse it best-effort. Freshness and completeness are explicit: a source read only in part answers could-not-check for anything not found in the part read, a source older than the consumer's freshness bound answers stale, and only a source read completely within that bound can answer a known negative. A source or bundle whose collected_at is later than the consumer's own time answers could-not-check: a future time proves no freshness. Object keys are case-sensitive and a key appears at most once in any object; a consumer MUST refuse a bundle that breaks either rule rather than pick one of the values. The Go reference reader is the deskcore/facts package.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "snapshot_id", "collected_at", "policy_digest", "graph_revision", "pattern_digest", "sources", "collection_errors", "facts"],
+  "properties": {
+    "schema": {
+      "description": "The schema marker; exactly desk-facts-v1 for this contract.",
+      "const": "desk-facts-v1"
+    },
+    "snapshot_id": {
+      "description": "The snapshot's identity, lowercase hex (a content digest is the usual choice). Two answers are comparable only when they were evaluated from the same snapshot_id by the same evaluator version.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{12,128}$"
+    },
+    "collected_at": {
+      "description": "RFC 3339 time the bundle was assembled. No source may be collected after it.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "policy_digest": {
+      "description": "Digest of the approved policy the facts were collected under, or the empty string when no policy was bound.",
+      "$ref": "#/$defs/optionalDigest"
+    },
+    "graph_revision": {
+      "description": "Revision of the reviewed work graph, or the empty string.",
+      "type": "string"
+    },
+    "pattern_digest": {
+      "description": "Digest of the work pattern, or the empty string.",
+      "$ref": "#/$defs/optionalDigest"
+    },
+    "sources": {
+      "description": "Every place facts were collected from, with the freshness and completeness of that collection. Identities are unique.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "collection_errors": {
+      "description": "Every read that did not complete. A source whose completeness is partial or failed MUST be named here, and a complete source MUST NOT be. An entry may name a source that is absent from sources: a source that could not even be enumerated is still reported. An empty array means no read failed; the field is never omitted.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "cause"],
+        "properties": {
+          "source": { "type": "string", "minLength": 1 },
+          "cause": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "facts": {
+      "description": "The observations. Each names a declared source that did not fail; ids are unique within the bundle.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/fact" }
+    }
+  },
+  "$defs": {
+    "optionalDigest": {
+      "type": "string",
+      "pattern": "^(sha256:[0-9a-f]{64})?$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "revision", "collected_at", "completeness", "pagination_done"],
+      "properties": {
+        "identity": {
+          "description": "The source's identity, for example one repository's issue listing.",
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "description": "The source's revision at collection (an ETag, cursor or commit), or the empty string when the source exposes none.",
+          "type": "string"
+        },
+        "collected_at": {
+          "description": "RFC 3339 time this source was read. A consumer compares it with its own freshness bound; an older source answers stale, never a known negative. A time later than the consumer's own answers could-not-check.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "completeness": {
+          "description": "complete: every page was read. partial: some was read and some was not. failed: nothing usable was read, and the source carries no facts.",
+          "enum": ["complete", "partial", "failed"]
+        },
+        "pagination_done": {
+          "description": "True only when the last page was reached. A complete source MUST have it true. The field is required, so an absent value can never be read as a proven false or a proven true.",
+          "type": "boolean"
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "kind", "subject", "observed_at"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "description": "The identity of a declared source.", "type": "string", "minLength": 1 },
+        "kind": { "description": "What was observed; it defines the shape of value.", "type": "string", "minLength": 1 },
+        "subject": { "description": "What the observation is about.", "type": "string", "minLength": 1 },
+        "revision": { "description": "The subject's revision when observed, if it has one.", "type": "string" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "value": { "description": "The observation's payload; its shape is defined by kind." }
+      }
+    }
+  }
+}

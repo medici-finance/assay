@@ -186,6 +186,42 @@
       "file": "internal/deskkit/trust.go",
       "old": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\treturn c.Logins[strings.ToLower(login)]\n}",
       "new": "\tc := EffectiveConfig()\n\tif !c.Configured() {\n\t\treturn false\n\t}\n\tfor k := range c.Logins {\n\t\tif strings.Contains(strings.ToLower(login), k) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}"
+    },
+    {
+      "name": "dt27 row 3 — merge the prs sweep's partials in FINISH order instead of input order (the unreadable and truncated lists then depend on scheduling)",
+      "file": "cmd/deskboard/board.go",
+      "old": "\tpartials, err := sweepRepos(repos, boardSweepLimit, func(repo string) (prsPartial, error) {\n\t\treturn sweepPRsRepo(repo, now)\n\t})\n",
+      "new": "\tfinished := make(chan prsPartial, len(repos))\n\tpartials, err := sweepRepos(repos, boardSweepLimit, func(repo string) (prsPartial, error) {\n\t\tp, e := sweepPRsRepo(repo, now)\n\t\tfinished <- p\n\t\treturn p, e\n\t})\n\tfor i := range partials {\n\t\tpartials[i] = <-finished\n\t}\n"
+    },
+    {
+      "name": "dt27 row 5 — return the per-root pool's results in FINISH order (a root's rows are attributed to whichever root finished in its slot)",
+      "file": "cmd/deskboard/roots.go",
+      "old": "\treturn sweepConcurrent(rs.roots, rootPoolLimit, work)\n",
+      "new": "\tfinished := make(chan T, len(rs.roots))\n\tout, err := sweepConcurrent(rs.roots, rootPoolLimit, func(r deskkit.RootConfig) (T, error) {\n\t\tv, e := work(r)\n\t\tfinished <- v\n\t\treturn v, e\n\t})\n\tfor i := range out {\n\t\tout[i] = <-finished\n\t}\n\treturn out, err\n"
+    },
+    {
+      "name": "dt27 row 6 — let the verify depth resolve its own roots again (a second resolution, pin walk and version probe per throughput run)",
+      "file": "cmd/deskboard/throughput.go",
+      "old": "\t} else if nv, err := awaitingFromRoots(hdr, \"awaiting\", rs); err != nil {\n",
+      "new": "\t} else if rs2, rerr2 := resolveRootsOnce(); rerr2 != nil {\n\t\tverifyStage.Blind = appendBlind(verifyStage.Blind, \"depth: \"+rerr2.Error())\n\t} else if nv, err := awaitingFromRoots(hdr, \"awaiting\", rs2); err != nil {\n"
+    },
+    {
+      "name": "dt27 row 7 — count a blind stage as READ (stagesRead overstates coverage on every partial-failure path)",
+      "file": "cmd/deskboard/throughput.go",
+      "old": "\t\tif s.Ratio == nil {\n\t\t\tcontinue\n\t\t}\n\t\trep.StagesRead++\n",
+      "new": "\t\trep.StagesRead++\n\t\tif s.Ratio == nil {\n\t\t\tcontinue\n\t\t}\n"
+    },
+    {
+      "name": "dt27 row 2 — drop the repo name from the open-PR read's error (a failing sweep no longer says WHICH repo it could not read)",
+      "file": "cmd/deskboard/board.go",
+      "old": "\t\treturn nil, false, deskkit.Unverifiable(\"cannot read open PRs for \"+repo, oerr)\n",
+      "new": "\t\treturn nil, false, deskkit.Unverifiable(\"cannot read open PRs\", oerr)\n"
+    },
+    {
+      "name": "dt27 rows 2 and 5 — let the HIGHEST-index error win instead of the lowest (which failure surfaces stops being the roster's first)",
+      "file": "cmd/deskboard/sweep.go",
+      "old": "\tfor i := range errs {\n\t\tif errs[i] != nil {\n\t\t\treturn nil, errs[i]\n\t\t}\n\t}\n",
+      "new": "\tfor i := len(errs) - 1; i >= 0; i-- {\n\t\tif errs[i] != nil {\n\t\t\treturn nil, errs[i]\n\t\t}\n\t}\n"
     }
   ]
 }

@@ -17,6 +17,11 @@ for every out-of-scope discovery.
 
 ## Filing goes through `deskfile`, never a bare `gh issue create`
 
+Before submitting an upstream issue or attaching a cross-boundary comment, apply R7: remove
+internal locators from the title, body and evidence; use opaque role+number refs. This also
+binds transfers between private venues. Preserve a self-contained defect mechanism; real URLs stay
+inside the original trust boundary, and same-venue same-visibility links remain valid.
+
 `deskfile check -R <repo> --title "<t>"` first — a dry run over the repo's open issues, same dedupe
 search, writes nothing. If it reports no candidate at or above threshold:
 
@@ -89,7 +94,8 @@ apart, and 17 minutes apart, are both on record. The fix is desk-side, not revie
   needed and from whom (CLAUDE.md § Filing & escalation).
 
 The review then carries **one line per item — `filed as <repo>#<N>`** (or, on a dedupe hit,
-`attached to <repo>#<N>`) — a pointer, never the register. If it is worth the desk's attention it
+`attached to <repo>#<N>`) where R7 permits that locator; otherwise use an opaque role+number ref
+— a pointer, never the register. If it is worth the desk's attention it
 is worth its own issue, or its own comment on the existing one.
 
 ## File-and-exit, never block — the pod-loop contract (the pod-loop contract)

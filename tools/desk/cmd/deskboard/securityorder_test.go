@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -123,4 +124,81 @@ func TestReduceReviewsEmphasisTolerant(t *testing.T) {
 			t.Fatal("a case-varied Security-Review: pass line must still be read")
 		}
 	})
+}
+
+// TestClassifyReadyRiskClassedNeedsSecurityPass (#2158) — a missing security pass at
+// head holds EVERY risk-classed row at SECURITY-REVIEW-REQUIRED, draft or ready. The
+// MERGE-NOW arm used to gate the hold on in.draft, so a READY risk-classed PR whose head
+// moved and was re-approved for correctness, with no fresh security pass, read
+// MERGE-NOW. Every MERGE-NOW sub-arm (human gate, unknown merge state, BEHIND) sits
+// below the hold, so each must also read SECURITY-REVIEW-REQUIRED for a ready row.
+func TestClassifyReadyRiskClassedNeedsSecurityPass(t *testing.T) {
+	base := func(draft, secPass bool) classifyInput {
+		return classifyInput{ever: true, atHead: true, approvedAtHead: true, ciGreen: true, pass: 1,
+			draft: draft, riskClassed: true, securityPass: secPass}
+	}
+	with := func(in classifyInput, f func(*classifyInput)) classifyInput { f(&in); return in }
+
+	cases := []struct {
+		name string
+		in   classifyInput
+		want string
+	}{
+		{"(a) ready, risk-classed, approved+green, NO security pass", base(false, false), actSecReview},
+		{"(b) ready, risk-classed, approved+green, security pass", base(false, true), actMergeNow},
+		{"(c) draft, risk-classed, approved+green, NO security pass", base(true, false), actSecReview},
+		{"(c) draft, risk-classed, approved+green, security pass", base(true, true), actMergeNow},
+		{"ready, no pass, human gate declared", with(base(false, false), func(in *classifyInput) {
+			in.humanGate, in.humanGateReason = true, "label human-gate"
+		}), actSecReview},
+		{"ready, no pass, merge state unknown", with(base(false, false), func(in *classifyInput) {
+			in.mergeStateUnknown = true
+		}), actSecReview},
+		{"ready, no pass, merge state BEHIND", with(base(false, false), func(in *classifyInput) {
+			in.mergeBehind = true
+		}), actSecReview},
+		{"ready, no pass, checked zero CI", with(base(false, false), func(in *classifyInput) {
+			in.pass, in.zeroCI = 0, zeroCINoChecks
+		}), actSecReview},
+		{"ready, not risk-classed, no pass — unchanged", with(base(false, false), func(in *classifyInput) {
+			in.riskClassed = false
+		}), actMergeNow},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			action, note := classify(c.in)
+			if action != c.want {
+				t.Fatalf("classify = %s, want %s\nnote: %s", action, c.want, note)
+			}
+			if action == actSecReview && !strings.Contains(note, "before FLIP or merge") {
+				t.Fatalf("SECURITY-REVIEW-REQUIRED note must read for a ready row too (\"before FLIP or merge\"): %s", note)
+			}
+		})
+	}
+}
+
+// TestClassifyReadySecurityPassAtOlderHeadDoesNotCount (#2158) — end to end through
+// reduceReviews: a ready risk-classed PR whose only security pass is at an OLDER head,
+// with a correctness APPROVED at the current head, must not read MERGE-NOW. securityPass
+// is head-bound (reduceReviews only counts a security verdict when sameHead(r.CommitID,
+// head)), so the stale pass never reaches classify as true.
+func TestClassifyReadySecurityPassAtOlderHeadDoesNotCount(t *testing.T) {
+	const oldHead, head = "OLD", "H"
+	pass := "## Security review\n\nSecurity-Review: pass\n"
+	correctness := "## Review\n\nVerdict: approve\n"
+	rs := reduceReviews([]review{
+		secReview("APPROVED", oldHead, pass),
+		secReview("APPROVED", head, correctness),
+	}, head)
+	if !rs.atHead || !rs.approved {
+		t.Fatalf("fixture: want a correctness APPROVED at head, got atHead=%v approved=%v", rs.atHead, rs.approved)
+	}
+	if rs.securityPass {
+		t.Fatal("securityPass = true for a pass recorded only at an older head — it must be head-bound")
+	}
+	in := classifyInput{ever: rs.ever, atHead: rs.atHead, blocking: rs.blocking, approvedAtHead: rs.approved,
+		securityPass: rs.securityPass, ciGreen: true, pass: 1, draft: false, riskClassed: true}
+	if action, note := classify(in); action != actSecReview {
+		t.Fatalf("classify = %s, want %s (stale security pass must not unlock MERGE-NOW)\nnote: %s", action, actSecReview, note)
+	}
 }

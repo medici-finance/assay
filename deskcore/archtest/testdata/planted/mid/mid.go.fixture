@@ -1,0 +1,4 @@
+// Package mid is the intermediate hop: domain does not import os/exec itself.
+package mid
+
+import _ "os/exec"

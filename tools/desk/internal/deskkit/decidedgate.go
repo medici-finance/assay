@@ -61,7 +61,7 @@ func DeskDecidedRefusal(pr int, labels []string, body string, reviews []DeskDeci
 	if blocked && perr != nil {
 		return fmt.Sprintf(
 			"condition %s: PR #%d's `%s` section does not parse: %v — fix the block "+
-				"(`deskpr edit --decided`) before the flip.",
+				"(`deskpr edit --body-file <the PR's current body> --decided F`) before the flip.",
 			DeskDecidedCondition, pr, DeskDecidedHeading, perr)
 	}
 	if labelled != blocked {
@@ -74,7 +74,7 @@ func DeskDecidedRefusal(pr int, labels []string, body string, reviews []DeskDeci
 				DeskDecidedHeading, DeskDecidedLabel)
 		}
 		return fmt.Sprintf(
-			"condition %s: PR #%d %s — the label and the block must agree. Re-run `deskpr edit --decided` "+
+			"condition %s: PR #%d %s — the label and the block must agree. Re-run `deskpr edit --body-file <the PR's current body> --decided F` "+
 				"(it applies both together), or drop whichever one is stale.", DeskDecidedCondition, pr, detail)
 	}
 
@@ -84,7 +84,7 @@ func DeskDecidedRefusal(pr int, labels []string, body string, reviews []DeskDeci
 	if line, lane := standingUndeclaredDeskDecision(reviews, reviewerLogin, head); line != "" {
 		return fmt.Sprintf(
 			"condition %s: %s's %s review at head %s names an undeclared desk decision: %q — declare it "+
-				"(`deskpr edit --decided`), then a fresh %s verdict at this head that omits the line clears it.",
+				"(`deskpr edit --body-file <the PR's current body> --decided F`), then a fresh %s verdict at this head that omits the line clears it.",
 			DeskDecidedCondition, reviewerLogin, lane, shortHead(head), line, lane)
 	}
 	return ""

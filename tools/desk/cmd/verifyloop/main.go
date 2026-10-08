@@ -279,6 +279,7 @@ const usage = `verifyloop — verify-desk reference consumer of the drain engine
 USAGE:
   verifyloop plan    [--root <repo>] [--sha <targetSHA>] [--runner <id>]
   verifyloop verdict --root <repo> [--dry-run] [--window 5m] [--runner <id>] [--pem <path>]
+                     [--unsigned-out <file>]
   verifyloop --dry-run [--root <repo>]        # shorthand for 'verdict --dry-run'
   verifyloop --version
 
@@ -307,6 +308,39 @@ only, flip never. A human-gated brief whose Evidence is already gathered stays a
 payload, and prints the would-be verifier-App issue body. --dry-run composes + signs + prints
 without filing (the CI-testable surface). A missing verifier PEM is a loud envelope error and
 nothing is signed. Filing the issue is the autonomous cutover — gate: human, BLOCKED-ON-HUMAN.
+
+'verdict --unsigned-out <file>' is the keyless half of a split run, for rows that execute in a
+fence (a sealed container) that holds no key: it runs the same rows, composes ONE canonical
+verdict-v1 payload over all of them, writes it to <file> (which must not exist) UNSIGNED and
+prints one line carrying its sha256 and nothing else to bind to. This mode resolves, opens and
+reads no key: not --pem (refused with this flag, as are --dry-run and --window), not
+VERIFIER_PEM, not any config-home verifier-app.pem. It never prints a fenced verdict body. Any
+non-zero exit leaves no file of its own and prints no digest; an empty queue writes no file.
+The signature happens afterwards on the key-holding host, under this host contract:
+  H1  Before starting the fence, the host writes its own dispatch record outside the fence:
+      repo, head sha and dispatch time (whole seconds, RFC3339, no fraction). It runs the
+      composer with explicit --repo and --sha from that record.
+  H2  It signs only after the composer exited 0 with exactly one sha256=<64 lowercase hex>
+      value on stdout, and only once the fence has fully exited with no row process left
+      alive; it adds that fence exit time (whole seconds) to its dispatch record. Any other
+      exit, no sha256= value or more than one means do not sign, whatever file is present.
+  H3  It signs with deskverdict sign --payload <file> --expect-sha256 <digest from H2>
+      --expect-repo <repo> --expect-head <sha> --not-before <dispatch time>
+      --not-after <fence exit time>, every value but the digest taken from its own dispatch
+      record and never from anything the fence printed or wrote; it passes all five flags and
+      stops on any non-zero exit.
+  H4  It takes the signed body from sign's stdout, never from a .out file in a directory the
+      fence could write.
+  H5  It signs only a payload in a directory owned by the signing user that the composing uid
+      cannot write (every directory above it equally out of reach), and the composing uid is
+      not the signing user. After the fence has fully exited it moves the payload entry there
+      by rename, never by copy; if the rename fails it does not sign. On unix the signer checks
+      the immediate parent; on other platforms this contract is the only control.
+Within the dispatched scope a hostile row can still invent results. The binding is checked only
+when the host signs: the host refuses a payload whose digest, repo, head or ts does not match its
+own record. It does not limit what the entries claim, and nothing after signing checks head or ts
+again (statusgen's transcriber checks only the repo), so a forged entry in a signed payload is
+consumed for any brief it names in that repo.
 
 Exit: 0 ok · 3 disabled · 5 refused · 6 unverifiable · 7 author==runner.
 `

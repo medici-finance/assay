@@ -126,9 +126,12 @@ flags. No flag is silently accepted and no-op'd.
    results. This reads each repo's open issues ONCE via the resolved forge's
    `ListOpenIssues` (the same frozen op `cmd/issueboard` already consumes) and filters to
    the four labels client-side. The union is identical; the truncation THRESHOLD differs
-   (oracle: 500 per label per repo; this port: 10,000 open issues total per repo,
-   `forgeMaxIssuePages*forgeIssuePerPage`) — the two mechanisms disagree only on a repo
-   with more open issues than that, labelled or not, which none of ours are.
+   (oracle: 500 per label per repo; this port: the forge client's open-issue page guard
+   per repo — on GitHub 100 pages of 100 REST rows, `forgeMaxIssuePages*forgeIssuePerPage`,
+   which count open pull requests as well as issues because the REST listing serves both; on
+   GitLab 25 pages of 100 issues — past which the read is refused as could-not-check, never
+   truncated). The two mechanisms disagree only on a repo whose open listing fills that
+   guard, labelled or not.
 3. **Comment bodies (walk mode's "latest desk note").** No typed `Forge` op returns
    comment BODY text (`ContentEvent`, the trust-gate read, deliberately carries only
    author+time). Rather than widen the frozen `Forge` interface — which would mean

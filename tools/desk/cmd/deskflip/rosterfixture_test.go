@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 const fixtureRoster = `# Test-fixture roster. It reproduces the values this tree used to compile in, so
@@ -103,7 +104,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())
 	}
-	code := m.Run()
+	code := gitquiet.Run(m)
 	cleanup()
 	os.Exit(code)
 }

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,7 +42,7 @@ func TestCreateSSHPushRemoteRefuses(t *testing.T) {
 	// SSH destination itself (with a worktree-scoped remedy), so its read of git's resolved
 	// push list is the fingerprint that proves rc=5 came from a push gate.
 	if !anyCall(gitCalls(*calls), "remote", "get-url", "--push", "--all", "origin") {
-		t.Fatalf("the push gate's read never happened, so rc=5 came from some OTHER refusal: %v", gitCalls(*calls))
+		t.Fatalf("the push gate's read never happened, so rc=5 came from some OTHER refusal: %v", *calls)
 	}
 	_ = stderr
 }
@@ -83,8 +81,8 @@ func TestSshFetchHttpsPushCreates(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("SSH FETCH url with a non-SSH push url rc = %d, want 0 — only the push transport is gated", rc)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("expected the push to proceed; git calls: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("expected the push to proceed; calls: %v", *calls)
 	}
 }
 
@@ -92,30 +90,24 @@ func TestSshFetchHttpsPushCreates(t *testing.T) {
 // routePushOffline sends the push itself to the local bare.
 const httpsPushURL = "https://example.com/example-org/tracker.git"
 
-// routePushOffline keeps an https-push fixture offline without lying to the gates. The
-// rewrite to the local bare is injected into the environment of the `git push` PROCESS ONLY
-// (GIT_CONFIG_COUNT), so every gate read — `config --list -z`, `remote get-url --push --all`
-// — still sees the https url the fixture configured, and the push lands in the bare.
-//
-// It replaces a url.<bare>.insteadOf rule in the worktree's config, which the gates also
-// read: since #884 the push-transport gate decides from git's RESOLVED push url, so that rule
-// made the push look local (no credential, no NOTICE) — the old fixture only produced an
-// https push for the gate by relying on the gate ignoring insteadOf. Call it AFTER withEnv so
-// the argv recorder still sees the push.
-func routePushOffline(t *testing.T, bare, httpsURL string) {
+// routePushOffline keeps an https-push fixture offline without lying to the gates. Every
+// gate read — `config --list -z`, `remote get-url --push --all` — still sees the https url
+// the fixture configured; only the in-process push's ENDPOINT resolution (endpointFn, the
+// step that would build the forge URL + in-memory credential) is pointed at the local bare,
+// so the push lands there. It also proves an https destination is pushed through the
+// endpoint resolver for the gated repo, never to the configured string itself.
+func routePushOffline(t *testing.T, bare string) {
 	t.Helper()
-	inner := execCommand
-	execCommand = func(name string, args ...string) *exec.Cmd {
-		cmd := inner(name, args...)
-		if filepath.Base(name) == "git" && callContainsAll(append([]string{name}, args...), "push") {
-			cmd.Env = append(os.Environ(),
-				"GIT_CONFIG_COUNT=1",
-				"GIT_CONFIG_KEY_0=url."+bare+".insteadOf",
-				"GIT_CONFIG_VALUE_0="+httpsURL)
+	inner := endpointFn
+	endpointFn = func(repo, originURL string) (deskkit.ForgeGitEndpoint, error) {
+		if repo != "example-org/tracker" {
+			t.Errorf("push endpoint resolved for %q, want the gated repo example-org/tracker", repo)
 		}
-		return cmd
+		ep := deskkit.ForgeGitEndpoint{Kind: deskkit.ForgeGitHub}
+		ep.Opts.URL = bare
+		return ep, nil
 	}
-	t.Cleanup(func() { execCommand = inner })
+	t.Cleanup(func() { endpointFn = inner })
 }
 
 // TestCreateHttpsNoAppHelper: https is the sanctioned transport, so
@@ -129,7 +121,7 @@ func TestCreateHttpsNoAppHelper(t *testing.T) {
 	mustGit(t, work, "remote", "set-url", "--push", "origin", httpsPushURL)
 	mustGit(t, work, "config", "credential.helper", "osxkeychain") // ambient, not the App's
 	calls := withEnv(t, work)
-	routePushOffline(t, bare, httpsPushURL)
+	routePushOffline(t, bare)
 	stderr := withStderrCapture(t)
 
 	rc := run([]string{"create", "--title", "x", "--body-min", "y\nBrief: fixture/01"})
@@ -140,8 +132,8 @@ func TestCreateHttpsNoAppHelper(t *testing.T) {
 	if !strings.Contains(got, "NOTICE") || !strings.Contains(got, "osxkeychain") {
 		t.Fatalf("expected a NOTICE naming the ambient helper; stderr:\n%s", got)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("a NOTICE must not stop the push; git calls: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("a NOTICE must not stop the push; calls: %v", *calls)
 	}
 }
 
@@ -155,7 +147,7 @@ func TestUpdateHttpsNoAppHelper(t *testing.T) {
 	mustGit(t, work, "remote", "set-url", "--push", "origin", httpsPushURL)
 	mustGit(t, work, "config", "credential.helper", "osxkeychain") // ambient, not the App's
 	calls := withEnv(t, work)
-	routePushOffline(t, bare, httpsPushURL)
+	routePushOffline(t, bare)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
 	stderr := withStderrCapture(t)
 
@@ -167,8 +159,8 @@ func TestUpdateHttpsNoAppHelper(t *testing.T) {
 	if !strings.Contains(got, "NOTICE") || !strings.Contains(got, "osxkeychain") {
 		t.Fatalf("expected a NOTICE naming the ambient helper; stderr:\n%s", got)
 	}
-	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
-		t.Fatalf("a NOTICE must not stop the push; git calls: %v", gitCalls(*calls))
+	if !pushedTo(*calls, "feature/test-branch") {
+		t.Fatalf("a NOTICE must not stop the push; calls: %v", *calls)
 	}
 }
 
@@ -193,9 +185,9 @@ func TestEditIsNotPushTransportGated(t *testing.T) {
 	run([]string{"edit", "--body-file", body})
 
 	if anyCall(gitCalls(*calls), "config", "--list", "-z") {
-		t.Fatalf("edit ran the push-transport gate, but it pushes nothing: %v", gitCalls(*calls))
+		t.Fatalf("edit ran the push-transport gate, but it pushes nothing: %v", *calls)
 	}
 	if anyCall(gitCalls(*calls), "remote", "get-url", "--push", "--all", "origin") {
-		t.Fatalf("edit ran the push-destination gate (#1623), but it pushes nothing: %v", gitCalls(*calls))
+		t.Fatalf("edit ran the push-destination gate (#1623), but it pushes nothing: %v", *calls)
 	}
 }

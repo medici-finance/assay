@@ -307,11 +307,35 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
 4. **needs-decision.** An issue or brief that hits a human gate — but the reversibility test runs
    first: a REVERSIBLE fork is scoped on its best-guess default and rides Next-up NOW (the merge gate
    catches a wrong default), and its `needs-decision` issue is a NOTIFICATION naming the default, not
-   a park; only a genuinely one-way gate parks the item. File (or confirm) a
-   `needs-decision` issue per the **brief-06 template**: self-contained (Situation / Options 2–4
-   with pros-cons at the mm/12 trade-off bar / What-happens-on-each-answer / Links). The decider is
-   the human, and only a verified human account is honored. This is the SINGLE decision queue
-   — the intake lane routes into it too, never a second one.
+   a park; only a genuinely one-way gate parks the item. File (or confirm) a `needs-decision` issue
+   whose body carries the `### Fork test` block `deskfile new` requires — the grammar (the `option:` /
+   `default:` / `caught-by:` / `ruled-check:` lines) is defined ONCE, in `tools/desk/README.md`; this
+   skill does not restate it. **An item with one workable option is not a decision** — the tool
+   refuses it (exit 5) and names the three `--no-fork` re-routes
+   (`brief-contradicts-artifact` | `wrong-repo` | `tool-false-positive`); use the one that fits
+   instead of forcing a `needs-decision` filing over a question that never had a fork. Two workable
+   options plus a gate you still hold (a draft PR, a flip, an issue close) MAY file on the NOTICE
+   LANE instead — `desk-decided`, off the queue, in the weekly digest with its veto date. The tool
+   admits it only on a positive, content-bearing R-3 reversible signal (a tool default alone
+   never admits, and neither does a lint-level/lint-severity/notice-or-error/port-or-drop
+   example, named CI check or not — that is always a classification question about some
+   check, so it never admits on its own) with no one-way term or one-way label, and the same
+   one-way check refuses `--no-fork`; the exact lists are in `tools/desk/README.md`. That
+   reversible signal is read from the block's own `subject:` line ALONE, never the title or
+   body prose, and only from the STRICT grammar's bounded block: the `### Fork test` heading
+   must be followed directly by the block (blank lines are fine, prose is not), the block is
+   the contiguous run of key lines that follows (each at column zero, no bullet/quote/indent
+   decoration), and it ends at the first line that does not match, blank or not — nothing past
+   that line is ever read as part of it, once fenced code and HTML comments are blanked (how
+   far that strip goes is in the README). Exactly one `subject:` line inside that bounded run
+   is required before the signal test can admit; zero or more than one admits nothing: write
+   ONE `subject:` line yourself, among the
+   block's other key lines, naming the one thing being decided (`tools/desk/README.md` has the
+   full grammar). Any
+   item that is one-way to you stays on the human queue whatever the tool would admit — file it
+   `caught-by: nothing`.
+   The decider is the human, and only a verified human account is honored. This is the SINGLE
+   decision queue — the intake lane routes into it too, never a second one.
 5. **DUPLICATE — merge the evidence first, and this desk never closes it** (human:<name>, 2026-08-02).
    Spotting a duplicate is not authority to close one: the loser's non-overlapping evidence dies
    with it. Issues and PRs alike:
@@ -349,7 +373,11 @@ advances the count. At `design-owed` the brief copies each field with its origin
 may be closed by the desk, citing the ruling** (2026-08-24 ruling 7). Implementation still
 outstanding is not a reason to hold a decided issue open — but the close comment **must NAME the
 tracker**: the actual brief id, PR number or issue carrying the remaining work, never the assertion
-"the work is tracked"; no tracker, create it first, then close. The relabel is the load-bearing half
+"the work is tracked"; no tracker, create it first, then close. **When the named tracker is a
+`gate: human` brief still `todo`, naming it is not enough** — the close waits until that brief's
+dispatch lands (`deskdispatch` exited 0 under its claim key `<repo>--<stream>--<NN>`, or its draft
+PR is open) or until the dispatch's refusal is itself filed and linked; a decided issue closed on a
+`todo` brief id alone lets the brief starve with no open surface pointing at it. The relabel is the load-bearing half
 and is mandatory — flip `needs-decision` → `human-decided`, which is what takes it off human:<name>'s
 queue; the close is board hygiene on top, and it is the close the tracker condition gates.
 
@@ -398,7 +426,8 @@ subdir. Never one without the other — a mismatch is what `--lint` catches. New
        archive to make room. A human decides the swap; the parked stream re-activates by a README flip.
    - **`scoped → issue #NN`** — operational / bug-shaped work → file a GitHub issue (label `bug`
      when bug-shaped, per the project's own convention); record the issue number. It then enters the
-     issue lane above.
+     issue lane above. Before cross-boundary filing or attaching a comment, apply R7 to
+     internal locators in the title, body and evidence; use opaque role+number refs.
    - **`decision-needed`** — a call that is human:<name>'s BECAUSE it is one-way. A reversible fork
      instead exits `scoped` on its best-guess default, with the `needs-decision` issue linked as a
      NOTIFICATION. Requires filing (or already having) a
@@ -549,3 +578,12 @@ before the first sweep, the fresh re-sweep every tick, relay acknowledgement, de
 when a window may stand down — is stated once for every desk role in
 [`../../references/desk-common.md`](../../references/desk-common.md) §Liveness contract; read it at
 boot, before the first sweep.
+
+### Verification attestation records
+
+Issues with the reserved `[verification-attestation] ` title AND authored by the bound
+dispatcher identity are dispatcher run records, not intake or work items. The title alone
+is not enough: an issue with that title from anyone else is ordinary intake. The typed issue-list tools exclude them even before they close.
+If inspecting raw forge results, keep these records out of intake and work scans; use a
+direct issue read only to audit or recover the exact dispatch. Closing a record attests
+the pre-work stamp, never that the brief was verified.

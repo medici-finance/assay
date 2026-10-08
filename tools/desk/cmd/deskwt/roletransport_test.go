@@ -78,6 +78,7 @@ func appTokenHelperShape(user, path string) string {
 }
 
 func TestAddRoleWiresAppTransportOverSSHOriginAndSentinel(t *testing.T) {
+	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	sshOperatorCheckout(t, work, sharedSSHOrigin)
@@ -140,6 +141,7 @@ func TestAddRoleWiresAppTransportOverSSHOriginAndSentinel(t *testing.T) {
 // An SSH host ALIAS (a ~/.ssh/config Host block) is resolved the way ssh resolves it, so the
 // https URL names the real host rather than an alias no https client can reach.
 func TestAddRoleResolvesSSHHostAlias(t *testing.T) {
+	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	sshOperatorCheckout(t, work, "git@corp-alias:example-org/tracker.git")
@@ -188,6 +190,7 @@ func TestAddRoleRefusesUnresolvableAlias(t *testing.T) {
 // here a global insteadOf that rewrites the :443 URL itself back to SSH — the add is refused and
 // rolled back rather than trusting that the config write took.
 func TestAddRoleRefusesWhenGitResolvesAnotherTransport(t *testing.T) {
+	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	sshOperatorCheckout(t, work, sharedSSHOrigin)
@@ -226,6 +229,7 @@ func TestAddRoleRefusesSSHPushBehindLocalFetch(t *testing.T) {
 // checkout outright; with --role the worktree gets the verifier App's https transport instead
 // and the add succeeds.
 func TestAddRoleReplacesInheritedSSHPushUnderBotLoop(t *testing.T) {
+	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	mustGit(t, work, "remote", "set-url", "origin", sharedSSHOrigin)

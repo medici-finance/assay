@@ -1,0 +1,4 @@
+// Package viahelper is clean itself; the module package it imports writes a file.
+package viahelper
+
+import _ "example.com/planted/helper"

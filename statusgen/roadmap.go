@@ -58,6 +58,10 @@ var roadmapHealthRules = []roadmapHealthRule{
 			}
 			// Find the critical-path briefs: in-progress or todo whose typed
 			// depends are ALL done/verified. Among those, the highest wave.
+			// Divergence (named, not aligned): this display read is
+			// status-only and does NOT apply targetSatisfies' depends: branch
+			// (a gate:human target at implemented with a strict PASS), so a
+			// brief Next-up already offers can be missing from this set.
 			type cand struct {
 				brief  Brief
 				stream *Stream

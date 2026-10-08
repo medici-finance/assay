@@ -1,0 +1,6 @@
+// Package plain has a data type with exported fields and no constructor, which is allowed.
+package plain
+
+type Request struct {
+	ID string
+}

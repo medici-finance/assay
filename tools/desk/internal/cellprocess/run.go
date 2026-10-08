@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 )
 
 const pipeWait = 500 * time.Millisecond
@@ -32,21 +34,65 @@ type processTree interface {
 // dirty ownership state and refuse further turns. Windows needs native runtime
 // verification in addition to cross-compilation.
 func Run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer) (exitCode int, uncertain bool, err error) {
-	return run(ctx, argv, env, dir, stdout, stderr, newProcessTree)
+	return withCache(env, func() (int, bool, error) {
+		return run(ctx, argv, env, dir, stdout, stderr, newProcessTree)
+	})
 }
 
 // RunInteractive preserves stdin and terminal foreground ownership in addition
 // to Run's containment guarantees. It imposes no execution deadline.
 func RunInteractive(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer) (int, bool, error) {
-	return run(ctx, argv, env, dir, stdout, stderr, func(cmd *exec.Cmd) (processTree, error) {
-		if stdin != nil {
-			cmd.Stdin = stdin
-		}
-		return newInteractiveProcessTree(cmd)
+	return withCache(env, func() (int, bool, error) {
+		return run(ctx, argv, env, dir, stdout, stderr, func(cmd *exec.Cmd) (processTree, error) {
+			if stdin != nil {
+				cmd.Stdin = stdin
+			}
+			return newInteractiveProcessTree(cmd)
+		})
 	})
 }
 
+// RunInteractiveObserved enrolls a child before accepting its completion.
+func RunInteractiveObserved(ctx context.Context, argv, env []string, dir string, stdin *os.File, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
+	return RunInteractive(observeLaunch(ctx, started), argv, env, dir, stdin, stdout, stderr)
+}
+
+// RunObserved goes through Run's public custody boundary. Observation must never
+// create a second route around launch admission or cache ownership.
+func RunObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, started func(int) error) (int, bool, error) {
+	return Run(observeLaunch(ctx, started), argv, env, dir, stdout, stderr)
+}
+
+type observerKey struct{}
+
+func observeLaunch(ctx context.Context, started func(int) error) context.Context {
+	if ctx == nil || started == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, observerKey{}, started)
+}
+
+// One custody boundary covers cadence, interactive and detached tmux wrappers.
+// A crash or uncertain child cleanup leaves a durable active-cache record.
+func withCache(env []string, child func() (int, bool, error)) (int, bool, error) {
+	lease, err := cellcache.Acquire(env)
+	if err != nil {
+		return -1, false, err
+	}
+	code, uncertain, err := child()
+	finishErr := lease.Finish(!uncertain)
+	return code, uncertain || finishErr != nil, errors.Join(err, finishErr)
+}
+
 func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error)) (int, bool, error) {
+	var started func(int) error
+	if ctx != nil {
+		started, _ = ctx.Value(observerKey{}).(func(int) error)
+	}
+	return runObserved(ctx, argv, env, dir, stdout, stderr, setup, started)
+}
+
+func runObserved(ctx context.Context, argv, env []string, dir string, stdout, stderr io.Writer, setup func(*exec.Cmd) (processTree, error), started func(int) error) (int, bool, error) {
 	if ctx == nil || len(argv) == 0 || argv[0] == "" {
 		return -1, false, errors.New("process launch requires a context and executable")
 	}
@@ -75,6 +121,9 @@ func run(ctx context.Context, argv, env []string, dir string, stdout, stderr io.
 		return -1, false, errors.Join(err, tree.close())
 	}
 	startErr := tree.started(cmd.Process)
+	if startErr == nil && started != nil {
+		startErr = started(cmd.Process.Pid)
+	}
 	close(ready)
 	var abortErr error
 	if startErr != nil {

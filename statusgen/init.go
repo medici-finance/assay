@@ -417,10 +417,13 @@ statusgen-darwin-amd64  REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECK
 statusgen-linux-amd64   REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 #
 # The BARE line is the one the desk tools (deskboard and friends) read first: same
-# tag as the platform lines, and the digest of the platform the desk runs on. CI
-# selects with the trailing space (grep '^statusgen-<platform> '), so this line is
-# additive and changes no CI behaviour. When it is absent the desk tools fall back
-# to this host's platform line above; keep it so every reader agrees on one tag.
+# tag as the platform lines, and the digest of statusgen-linux-amd64, the CI-runner
+# platform, so a CI that reads the bare line verifies the right binary. The installer
+# and upgrade-assay fill it from that asset by name, whatever host they run on. The
+# CI this init scaffolds selects by platform with the trailing space
+# (grep '^statusgen-<platform> '), so for that CI this line is additive. When it is
+# absent the desk tools fall back to this host's platform line above; keep it so
+# every reader agrees on one tag.
 statusgen               REPLACE_WITH_TAG  REPLACE_WITH_SHA256_FROM_RELEASE_CHECKSUMS
 `
 

@@ -12,6 +12,12 @@
       "AppliedBy": "desk-bot",
       "Removed": false,
       "CreatedAt": ""
+    },
+    {
+      "Name": "dispatched-tier:strong",
+      "AppliedBy": "desk-bot",
+      "Removed": true,
+      "CreatedAt": ""
     }
   ]
 }
