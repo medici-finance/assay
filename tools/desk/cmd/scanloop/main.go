@@ -61,6 +61,12 @@ func run(args []string) int {
 			fmt.Fprintln(os.Stderr, err.Error())
 		}
 		return deskkit.ExitCodeOf(err)
+	case "land":
+		err := cmdLand(args[1:], os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
+		return deskkit.ExitCodeOf(err)
 	default:
 		fmt.Fprintf(os.Stderr, "scanloop: unknown subcommand %q\n\n%s", args[0], usage)
 		return deskkit.ExitRefused
@@ -76,6 +82,8 @@ USAGE:
                 [--now <RFC3339>]
   scanloop run  --root <repo> [--worktree-base <abs dir>] [--offline --inbound <file|->]
                 [--dry-run] [everything 'plan' takes]
+  scanloop land --item <owner/repo#N> --exit <exit> --artifact <ref> --tier any|strong
+                [--detail rejected|watching] [--kind <reason>] [--dispatch-ref <ref>]
   scanloop --version
 
 'plan' is READ-ONLY. It prints the inbound queue — surface, item, lane, age, claim state — the
@@ -88,6 +96,18 @@ Pass the standing window's captured poll with --inbound.
 the seeding pass reports no inbound rather than replaying the backlog), applies the trust gate
 BEFORE anything is queued, executes the dispatch lanes and records exactly ONE tracked exit per
 item. --offline takes the pass's events from --inbound and opens no network read at all.
+
+Every exit 'run' lands also appends one intake-exit-v1 record (decided_by: mechanical) to
+<state dir>/intake-exits.jsonl, beside the audit 'land' line. --dry-run writes neither.
+
+'land' records a JUDGMENT exit: run it after routing a parked item by hand. It refuses (exit 5),
+before anything is written, an exit outside the five (unrouted included), an artifact that is not a
+typed ref (<stream>/<NN>, owner/repo#N, #N, F-<slug>, scan-pr:owner/repo), a tier other than any or
+strong, a --kind outside the classifier's reasons, a --dispatch-ref that does not parse, and a
+$DESK_LOOP that is not a canonical desk loop name. A second DIFFERENT exit for an item already in
+the record file is refused; the same exit again is a no-op (exit 0). It writes the record
+(decided_by: judgment) and the audit 'land' line. Schema:
+docs/streams/desk-supervision/intake-exit-v1.md.
 
 --dry-run prints every lane step without running it, and it does not advance the poller's per-repo
 baselines. A live dry-run polls a THROWAWAY COPY of the state dir, so the preview starts from the
