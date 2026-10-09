@@ -123,14 +123,28 @@ func MintDispatchRef(claimKey string, t time.Time, rnd io.Reader) (string, error
 	return claimKey + "@" + t.UTC().Format(dispatchRefTimeLayout) + "." + hex.EncodeToString(b[:]), nil
 }
 
-// DispatchRefClaimKey returns the part of ref before its "@" — the claim key a ref was minted for
-// (a claim key never contains "@") — and whether ref had one.
-func DispatchRefClaimKey(ref string) (string, bool) {
-	i := strings.IndexByte(ref, '@')
-	if i <= 0 {
-		return "", false
+// ValidDispatchRef reports whether ref is exactly `<claimKey>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>`
+// for this claimKey — the same test ValidateDispatchRecord applies — so a writer can fall back to
+// a null ref instead of having the whole line refused.
+func ValidDispatchRef(claimKey, ref string) bool {
+	return dispatchRefErr(claimKey, ref) == nil
+}
+
+func dispatchRefErr(claimKey, ref string) error {
+	if !strings.HasPrefix(ref, claimKey+"@") {
+		return fmt.Errorf("dispatch_ref %q does not start with the record's own claim_key %q + \"@\"", ref, claimKey)
 	}
-	return ref[:i], true
+	if !dispatchRefSuffixRe.MatchString(ref[len(claimKey):]) {
+		return fmt.Errorf("dispatch_ref %q is not <claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>", ref)
+	}
+	return checkRecordString("dispatch_ref", ref)
+}
+
+// ValidDispatchRecordString reports whether s passes the record's per-string bound (at most 256
+// bytes, valid UTF-8, no control character), so a writer can drop an optional value to null
+// instead of having the whole line refused. It is the validator's own check, not a copy.
+func ValidDispatchRecordString(s string) bool {
+	return checkRecordString("", s) == nil
 }
 
 // ValidateDispatchRecord refuses a record that is not exactly the schema: an unknown schema or
@@ -176,12 +190,8 @@ func ValidateDispatchRecord(r DispatchRecord) error {
 		return errors.New("session_tag is empty")
 	}
 	if r.DispatchRef != nil {
-		ref := *r.DispatchRef
-		if !strings.HasPrefix(ref, r.ClaimKey+"@") {
-			return fmt.Errorf("dispatch_ref %q does not start with the record's own claim_key %q + \"@\"", ref, r.ClaimKey)
-		}
-		if !dispatchRefSuffixRe.MatchString(ref[len(r.ClaimKey):]) {
-			return fmt.Errorf("dispatch_ref %q is not <claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>", ref)
+		if err := dispatchRefErr(r.ClaimKey, *r.DispatchRef); err != nil {
+			return err
 		}
 	}
 	for _, t := range []struct {

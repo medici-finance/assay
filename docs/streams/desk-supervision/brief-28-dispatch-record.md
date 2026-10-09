@@ -28,7 +28,7 @@ domain: complicated
 outcome: none
 sources:
   - "research note (driver-held, 2026-10-06): an independent review of applying decision models and statistical learning to the pipeline found the records cannot be joined; the only key surviving every stage is brief → PR → head SHA → dispatch claim/session → verify receipt"
-  - "sibling verify-outcome join-keys brief (draft PR #2287) — adds an OPTIONAL `dispatch_ref` to verify-outcome records and defers its definition to a dispatch-side brief; this is that brief"
+  - "sibling verify-outcome join-keys brief (brief 27, merged in #2287) — adds an OPTIONAL `dispatch_ref` to verify-outcome records and defers its definition to a dispatch-side brief; this is that brief"
   - "code read 2026-10-06 @ 1fbf1153f: the claim key is per ITEM, not per dispatch (claimKeyFor, tools/desk/cmd/deskdispatch/dispatch.go:1800-1834); a re-review re-acquires the SAME key (plugins/assay/skills/pr-review-desk/SKILL.md:345-348), so the bare claim id cannot identify one dispatch"
   - "freshness-checked 2026-10-06 @ 1fbf1153f (origin/main): no dispatch record exists; deskdispatch's only durable outputs are the forge claim ref, the `assay.runKey` worktree config (dispatch.go:464-478), the `dispatched-model:`/`dispatched-tier:` labels when --pr is known (dispatch.go:1494-1512; deskkit/modelstamp.go:106,110), and one audit line whose repo/pr/headSHA fields deskdispatch leaves empty (dispatch.go:1944-1967)"
 consumers:
@@ -39,7 +39,7 @@ consumers:
   - "tools/desk/README.md (new `The dispatch record` section, covering deskdispatch and deskclaim-ref): fixed-here"
   - "worker usage counts at claim release (joins on dispatch_ref): follow-up desk-supervision/34"
   - "records-and-retention page (lists this record's location, writer, schema and retention): follow-up desk-supervision/35"
-  - "verify-outcome records' optional dispatch_ref (sibling brief in draft PR #2287): out-of-scope (that brief lands separately and reads this definition; its verifier reads `assay.dispatchRef` from its own dispatched worktree, which this brief writes)"
+  - "verify-outcome records' optional dispatch_ref (sibling brief 27, merged in #2287): out-of-scope (that brief landed separately and reads this definition; its verifier reads `assay.dispatchRef` from its own dispatched worktree, which this brief writes)"
   - "tools/desk/internal/deskkit/killswitch.go (per-run stop reads assay.runKey): out-of-scope (assay.runKey is left byte-identical; the new assay.dispatchRef is a separate key — Verify row 7 proves the neighbour is untouched)"
   - "tools/dispatch-claim.sh (the legacy bash claim tool): out-of-scope (fallback for trees without the Go binary; it writes no released line, which this brief documents as a known gap rather than porting record-writing into shell)"
 ---

@@ -1882,14 +1882,10 @@ func tokenPathForMessage(path string) string {
 }
 
 // validTier checks the tier against the dispatch-tier vocabulary the stamp reader owns,
-// rather than against a second hand-written list here.
+// through the one normalisation the stamp label and the dispatch record also use.
 func validTier(t string) bool {
-	for _, v := range deskkit.DispatchTiers() {
-		if strings.EqualFold(strings.TrimSpace(t), v) {
-			return true
-		}
-	}
-	return false
+	_, ok := deskkit.CanonicalDispatchTier(t)
+	return ok
 }
 
 // consumerHelper is one consumer script this verb wraps, with its PATH port: the binary the

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,6 +121,14 @@ func TestMintDispatchRefShape(t *testing.T) {
 	}
 }
 
+// intOrNull renders a nullable int for a failure message: the value, or "null".
+func intOrNull(p *int) string {
+	if p == nil {
+		return "null"
+	}
+	return fmt.Sprint(*p)
+}
+
 // TestAppendDispatchRecordStore: the writer appends 0600 lines, counts attempt_local per claim
 // key from THIS store, and never writes a record that fails validation.
 func TestAppendDispatchRecordStore(t *testing.T) {
@@ -131,13 +140,13 @@ func TestAppendDispatchRecordStore(t *testing.T) {
 			t.Fatalf("append %d: %v", i, err)
 		}
 		if r.AttemptLocal == nil || *r.AttemptLocal != i+1 {
-			t.Fatalf("append %d: attempt_local = %v, want %d", i, r.AttemptLocal, i+1)
+			t.Fatalf("append %d: attempt_local = %s, want %d", i, intOrNull(r.AttemptLocal), i+1)
 		}
 	}
 	other := validDispatched()
 	other.ClaimKey, other.DispatchRef = "assay--y--2", nil
-	if err := AppendDispatchRecord(&other); err != nil || *other.AttemptLocal != 1 {
-		t.Fatalf("another key's attempt_local = %v (err %v), want 1", other.AttemptLocal, err)
+	if err := AppendDispatchRecord(&other); err != nil || other.AttemptLocal == nil || *other.AttemptLocal != 1 {
+		t.Fatalf("another key's attempt_local = %s (err %v), want 1", intOrNull(other.AttemptLocal), err)
 	}
 	bad := validDispatched()
 	bad.Tier = strp("opus-4.8")

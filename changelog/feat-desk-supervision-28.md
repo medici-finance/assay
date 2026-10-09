@@ -1,3 +1,4 @@
 ### Added
 - `deskdispatch` now writes one `dispatched` line per real dispatch to a local, 0600 `dispatch-records.jsonl` beside the audit log. The line records the brief, PR, session and tier, with no free text and no model name. `deskclaim-ref release` writes the matching `released` line. A failed write is a WARNING and never fails the dispatch or the release.
 - `dispatch_ref` (`<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 hex nonce>`) is the per-run join key, minted after claim-acquire. It is also recorded in the agent worktree as `assay.dispatchRef` and kept local; any non-private surface carries at most its sha256.
+- The record carries the canonical lower-case tier token whatever spelling `--tier` was given, through the one normalisation the `dispatched-tier:` label also uses, so an accepted tier spelling can no longer make the record refuse the line.

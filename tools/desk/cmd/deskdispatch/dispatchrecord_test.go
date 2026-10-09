@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,27 @@ func recordLines(t *testing.T, home string) []deskkit.DispatchRecord {
 		out = append(out, r)
 	}
 	return out
+}
+
+// sv and iv render a nullable record field for a failure message: the value, or "null".
+func sv(p *string) string {
+	if p == nil {
+		return "null"
+	}
+	return strconv.Quote(*p)
+}
+
+// dump renders record lines as their JSON, so a failure message shows values, not pointers.
+func dump(recs []deskkit.DispatchRecord) string {
+	b, _ := json.Marshal(recs)
+	return string(b)
+}
+
+func iv(p *int) string {
+	if p == nil {
+		return "null"
+	}
+	return strconv.Itoa(*p)
 }
 
 // plantRecordBrief writes a brief whose frontmatter carries the three fields the record reads.
@@ -100,7 +122,7 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 		}
 		recs := recordLines(t, home)
 		if len(recs) != 1 {
-			t.Fatalf("got %d record lines, want exactly 1: %+v", len(recs), recs)
+			t.Fatalf("got %d record lines, want exactly 1: %s", len(recs), dump(recs))
 		}
 		r := recs[0]
 		key := s.acquiredKey()
@@ -108,19 +130,68 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 			t.Errorf("claim_key %q, want the key passed to acquire %q", r.ClaimKey, key)
 		}
 		if r.Event != deskkit.DispatchEventDispatched || r.DispatchRef == nil || !strings.HasPrefix(*r.DispatchRef, key+"@") {
-			t.Errorf("event %q dispatch_ref %v: want a dispatched line whose ref starts with %q", r.Event, r.DispatchRef, key+"@")
+			t.Errorf("event %q dispatch_ref %s: want a dispatched line whose ref starts with %q", r.Event, sv(r.DispatchRef), key+"@")
 		}
 		if r.Brief == nil || *r.Brief != "example-stream/28" {
-			t.Errorf("brief = %v, want the frontmatter id example-stream/28", r.Brief)
+			t.Errorf("brief = %s, want the frontmatter id example-stream/28", sv(r.Brief))
 		}
 		if r.BriefExec == nil || *r.BriefExec != "strong" || r.BriefEffort == nil || *r.BriefEffort != "M" {
-			t.Errorf("brief_exec_tier %v / brief_effort %v, want strong / M", r.BriefExec, r.BriefEffort)
+			t.Errorf("brief_exec_tier %s / brief_effort %s, want strong / M", sv(r.BriefExec), sv(r.BriefEffort))
 		}
 		if r.Tier == nil || *r.Tier != "strong" || r.ModelStamp == nil || *r.ModelStamp != deskkit.ModelStampSkipped {
-			t.Errorf("tier %v / model_stamp %v, want strong / skipped (no --model)", r.Tier, r.ModelStamp)
+			t.Errorf("tier %s / model_stamp %s, want strong / skipped (no --model)", sv(r.Tier), sv(r.ModelStamp))
 		}
 		if r.Repo != allowedRepo || r.AttemptLocal == nil || *r.AttemptLocal != 1 || r.SessionTag != "deskdispatch-test" {
-			t.Errorf("repo %q attempt_local %v session_tag %q", r.Repo, r.AttemptLocal, r.SessionTag)
+			t.Errorf("repo %q attempt_local %s session_tag %q", r.Repo, iv(r.AttemptLocal), r.SessionTag)
+		}
+	})
+	// A tier spelling --tier accepts (validTier is case-insensitive and trimmed) records the
+	// canonical token; it never makes the validator refuse the whole line.
+	for _, tc := range []struct{ in, want string }{{"Strong", "strong"}, {"ANY", "any"}, {" strong", "strong"}} {
+		t.Run("tier "+strings.TrimSpace(tc.in)+" is canonical", func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			plantScripts(t, root)
+			fixEntropy(t)
+			s.replies = happyReplies(t.TempDir())
+			var rc int
+			errOut := captureStderr(t, func() {
+				rc = run([]string{"tier-case--03", "--root", root, "--tier", tc.in,
+					"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+			})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
+			}
+			recs := recordLines(t, home)
+			if len(recs) != 1 {
+				t.Fatalf("--tier %q: got %d record lines, want exactly 1\n%s", tc.in, len(recs), errOut)
+			}
+			if r := recs[0]; r.Tier == nil || *r.Tier != tc.want {
+				t.Errorf("--tier %q recorded tier %s, want %q", tc.in, sv(r.Tier), tc.want)
+			}
+		})
+	}
+	t.Run("invalid UTF-8 brief id is null", func(t *testing.T) {
+		s := &stub{}
+		home, root := s.install(t)
+		plantScripts(t, root)
+		fixEntropy(t)
+		s.replies = happyReplies(t.TempDir())
+		body := "---\nbrief: bad-\xff-id/28\ngate: model\n---\n\n# fixture\n"
+		if err := os.WriteFile(filepath.Join(root, "bad.md"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var rc int
+		errOut := captureStderr(t, func() {
+			rc = run([]string{"utf8--03", "--root", root, "--brief", "bad.md",
+				"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+		})
+		if rc != deskkit.ExitOK {
+			t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
+		}
+		recs := recordLines(t, home)
+		if len(recs) != 1 || recs[0].Brief != nil {
+			t.Fatalf("want one line with a null brief, got %d lines\n%s", len(recs), errOut)
 		}
 	})
 	t.Run("dry run writes nothing", func(t *testing.T) {
@@ -135,12 +206,29 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 			}
 		})
 		if recs := recordLines(t, home); len(recs) != 0 {
-			t.Fatalf("--dry-run wrote %d record lines: %+v", len(recs), recs)
+			t.Fatalf("--dry-run wrote %d record lines: %s", len(recs), dump(recs))
 		}
 		if s.ran("assay.dispatchRef") {
 			t.Error("--dry-run recorded a dispatch ref in a worktree")
 		}
 	})
+}
+
+// TestTierReadersAgree: the --tier gate, the stamp label and the record's tier all come from one
+// normalisation, so a spelling one accepts is never one another refuses. "\u017ftrong" (long s)
+// is the case-fold trap: strings.EqualFold matches it to "strong", strings.ToLower does not.
+func TestTierReadersAgree(t *testing.T) {
+	for _, in := range []string{"strong", "Strong", " ANY ", "\u017ftrong", "\u212a", "cheap", "", "s trong"} {
+		_, labelErr := deskkit.DispatchedTierLabel(in)
+		c, ok := deskkit.CanonicalDispatchTier(in)
+		if validTier(in) != (labelErr == nil) || ok != (labelErr == nil) {
+			t.Errorf("tier %q: validTier=%v, label error=%v, canonical ok=%v — the readers disagree",
+				in, validTier(in), labelErr, ok)
+		}
+		if ok && !deskkit.ValidDispatchRecordString(c) {
+			t.Errorf("tier %q canonicalises to %q, which the record refuses", in, c)
+		}
+	}
 }
 
 // realGitConfig routes the worktree-config writes to REAL git, so the value the agent's worktree
@@ -234,7 +322,7 @@ func TestDispatchRefRecordedInWorktree(t *testing.T) {
 				t.Errorf("dispatch %d: worktree assay.dispatchRef %q != record dispatch_ref %q", i+1, got, *r.DispatchRef)
 			}
 			if r.ClaimKey != key || r.AttemptLocal == nil || *r.AttemptLocal != i+1 {
-				t.Errorf("dispatch %d: claim_key %q attempt_local %v, want %q / %d", i+1, r.ClaimKey, r.AttemptLocal, key, i+1)
+				t.Errorf("dispatch %d: claim_key %q attempt_local %s, want %q / %d", i+1, r.ClaimKey, iv(r.AttemptLocal), key, i+1)
 			}
 			refs = append(refs, *r.DispatchRef)
 			// The agent finishes and releases the claim before the item is dispatched again.
@@ -267,7 +355,7 @@ func TestDispatchRefRecordedInWorktree(t *testing.T) {
 		}
 		recs := recordLines(t, home)
 		if len(recs) != 1 || recs[0].DispatchRef != nil {
-			t.Fatalf("want one record with a null dispatch_ref, got %+v", recs)
+			t.Fatalf("want one record with a null dispatch_ref, got %s", dump(recs))
 		}
 		if s.ran("assay.dispatchRef") {
 			t.Error("a dispatch with no minted ref still wrote assay.dispatchRef")
@@ -319,7 +407,7 @@ func TestDispatchAuditCarriesRef(t *testing.T) {
 	}
 	recs := recordLines(t, home)
 	if len(recs) != 1 || recs[0].DispatchRef == nil {
-		t.Fatalf("records: %+v", recs)
+		t.Fatalf("records: %s", dump(recs))
 	}
 	raw, err := os.ReadFile(filepath.Join(home, ".config", "assay", "audit.jsonl"))
 	if err != nil {

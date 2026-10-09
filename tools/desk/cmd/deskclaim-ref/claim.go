@@ -277,8 +277,9 @@ func cmdRelease(id, repo string) int {
 
 // writeReleasedRecord appends the `released` dispatch record after a
 // release that removed an EXISTING claim. dispatch_ref is the cwd worktree's assay.dispatchRef
-// only when it was minted for THIS claim key (its part before "@" equals id) — a release run from
-// another checkout, or from a worktree of another item, gets null and pairs by claim key. Every
+// only when it is a well-formed ref minted for THIS claim key — a release run from another
+// checkout, from a worktree of another item, or over a malformed ref gets null and pairs by
+// claim key. Every
 // dispatch-only field is null. Best-effort: a write failure warns on stderr and never changes the
 // release's exit code — the claim is already gone, and that is what the caller asked for.
 func writeReleasedRecord(id, repo string) {
@@ -287,10 +288,8 @@ func writeReleasedRecord(id, repo string) {
 		ClaimKey: id,
 		Repo:     repo,
 	}
-	if ref := deskkit.WorktreeDispatchRef(); ref != "" {
-		if key, ok := deskkit.DispatchRefClaimKey(ref); ok && key == id {
-			rec.DispatchRef = &ref
-		}
+	if ref := deskkit.WorktreeDispatchRef(); deskkit.ValidDispatchRef(id, ref) {
+		rec.DispatchRef = &ref
 	}
 	if err := deskkit.AppendDispatchRecord(&rec); err != nil {
 		errf("WARNING: could not write dispatch record: %v", err)

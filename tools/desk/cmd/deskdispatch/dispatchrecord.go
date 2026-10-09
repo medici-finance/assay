@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"unicode"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -102,8 +101,14 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		effort = nil
 	}
 	briefID := bf.id
-	if briefID != nil && !boundedRecordString(*briefID) {
+	if briefID != nil && !deskkit.ValidDispatchRecordString(*briefID) {
 		briefID = nil
+	}
+	// --tier is accepted in any case and with surrounding space (validTier); the record carries
+	// the canonical token, from the same normalisation the stamp label uses.
+	tier := o.tier
+	if c, ok := deskkit.CanonicalDispatchTier(o.tier); ok {
+		tier = c
 	}
 	ms := modelStampOutcome(stamp)
 	return deskkit.DispatchRecord{
@@ -117,7 +122,7 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		Branch:      branch,
 		PR:          pr,
 		SessionTag:  deskkit.SessionTag(),
-		Tier:        opt(o.tier),
+		Tier:        opt(tier),
 		BriefExec:   execTier,
 		BriefEffort: effort,
 		ModelStamp:  &ms,
@@ -131,18 +136,4 @@ func isDispatchTierValue(v string) bool {
 		}
 	}
 	return false
-}
-
-// boundedRecordString mirrors the record's per-string bound (256 bytes, no control character),
-// so an oversized or control-bearing frontmatter id is dropped to null instead of refusing the line.
-func boundedRecordString(s string) bool {
-	if len(s) > 256 {
-		return false
-	}
-	for _, c := range s {
-		if unicode.IsControl(c) {
-			return false
-		}
-	}
-	return true
 }

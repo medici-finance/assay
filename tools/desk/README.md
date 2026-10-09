@@ -5276,9 +5276,11 @@ rotated, since it gets one line per dispatch. The type, validator and writer liv
 `AppendDispatchRecord`, `MintDispatchRef`).
 
 The keys are `schema` (`dispatch-record-v1`), `event` (`dispatched` | `released`), `ts`
-(RFC3339), `dispatch_ref` (string or null), `claim_key`, `repo`, `item`, `brief` (the
+(RFC3339; the time the line was appended, not the claim's acquire time, which is the instant
+inside `dispatch_ref`), `dispatch_ref` (string or null), `claim_key`, `repo`, `item`, `brief` (the
 brief's frontmatter `brief:` id), `kit`, `branch` (null for a detached review or verifier
-dispatch), `pr`, `session_tag`, `tier` (`--tier`: `any` | `strong`), `brief_exec_tier` and
+dispatch), `pr`, `session_tag`, `tier` (`--tier`, recorded as its canonical lower-case token:
+`any` | `strong`), `brief_exec_tier` and
 `brief_effort` (the brief's frontmatter values), `model_stamp` (`applied` | `pending` |
 `skipped`) and `attempt_local`.
 
@@ -5330,12 +5332,16 @@ public register, or a file committed to git. A consumer that must express the jo
 writes at most a sha256 of the FULL ref. That digest is a stable identifier, not a secret.
 
 **Pairing.** A `released` line carries the `assay.dispatchRef` of the worktree it ran in, but
-only when that ref was minted for the same claim key. Otherwise its `dispatch_ref` is null, for
-example when the release ran from another checkout. A `released` line with a null
+only when that ref is well formed and was minted for the same claim key. Otherwise its
+`dispatch_ref` is null, for example when the release ran from another checkout. A `released` line with a null
 `dispatch_ref` pairs with the latest earlier `dispatched` line for the same `claim_key`, as
 long as no other `released` line for that key lies between them; exclusivity makes that pairing
 unique. A `released` line with no such `dispatched` line is the release of a dispatch that wrote
-none, for example one that aborted before model-stamp, or one claimed by hand. A record that
+none, for example one that aborted before model-stamp, or one claimed by hand. A null-ref
+pairing is best-effort, not proof: a release that wrote no line (a stale-claim takeover, the
+legacy script, another machine) can leave an earlier `dispatched` line unpaired, so a later
+null-ref `released` line pairs with it instead of with the dispatch it really ended. Only a
+non-null `dispatch_ref` is an exact join. A record that
 must point at every dispatch of one item uses `claim_key`. A record that cannot know
 `dispatch_ref` joins by PR (`repo` + `pr` + head SHA). For a fresh worker dispatch whose PR does
 not exist yet, it joins by `repo` + `branch`.

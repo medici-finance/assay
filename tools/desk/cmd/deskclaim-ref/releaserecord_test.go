@@ -109,6 +109,26 @@ func TestReleaseWritesReleasedRecord(t *testing.T) {
 		}
 	})
 
+	// A worktree ref minted for THIS key but with a malformed suffix is a ref the record cannot
+	// trust: the released line still lands, with a null ref, rather than being refused whole.
+	t.Run("malformed matching ref is null", func(t *testing.T) {
+		home := recordHome(t)
+		inWorktreeWithRef(t, id+"@not-a-timestamp")
+		f := newStore()
+		f.seedClaim(id, "sess-A", "dispatched", "feat/x", time.Minute)
+		run, _, se := harness(t, f)
+		if rc := run("release", id, "--repo", repo); rc != exitOK {
+			t.Fatalf("release rc = %d", rc)
+		}
+		recs := readRecords(t, home)
+		if len(recs) != 1 {
+			t.Fatalf("want one released line, got %d; stderr=%s", len(recs), se.String())
+		}
+		if v, ok := recs[0]["dispatch_ref"]; !ok || v != nil {
+			t.Errorf("a malformed worktree ref was recorded: dispatch_ref = %v", v)
+		}
+	})
+
 	t.Run("no-op release writes nothing", func(t *testing.T) {
 		home := recordHome(t)
 		inWorktreeWithRef(t, id+"@20261006T141502Z.3fa9c01b7d2e")
