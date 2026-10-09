@@ -17,11 +17,15 @@
 //     to it (#513 / #438);
 //   - ready = "ready for HUMAN review"; merge is always the owner's.
 //
-// `finish` (finish.go) is not a fourth kind of write: it runs one of the two verdict verbs,
-// reads the verdict back, and releases the reviewer's own dispatch claim.
+// `finish` (finish.go) posts no fourth kind of comment or review: it runs one of the two
+// verdict verbs and reads the verdict back. It does make one write the other verbs do not —
+// it releases the review-dispatch claim named by --claim, which must be this change's claim
+// for the lane whose verdict it just posted — and it writes a second audit line for that
+// release. It does not check who placed the claim.
 //
 // The tool has NO other verbs — no merge, close, un-ready, edit, or label.
-// Every invocation runs the deskkit kill switch first, audits exactly one line,
+// Every invocation runs the deskkit kill switch first, audits exactly one line (`finish`:
+// one for the post step and, when it reaches the release, one for the release),
 // and fails closed on anything it cannot positively verify.
 package main
 
@@ -526,13 +530,18 @@ finishing a review (one command instead of three):
                       the verb it names, with that verb's exit code;
                    2. confirm a review by the reviewer identity with this body is recorded
                       at --head (exit 6 if it cannot be read back);
-                   3. release the dispatch claim (a claim already gone is not a failure).
+                   3. release the dispatch claim (a claim already gone is not a failure)
+                      and write an audit line for the release.
                  Then ONE line on stdout:
                    deskpost finish: review=<link or id> state=<STATE> head=<sha> claim=released|already-released
                  A stop names the step and what was and was not done; nothing after the
-                 failed step runs, and running the same command again is safe. The claim is
-                 released LAST because the post step needs it held. --claim must be a review
-                 claim of this change (exit 2 otherwise, before anything is posted).
+                 failed step runs. Running the same command again does not post the verdict
+                 a second time: a review by the reviewer identity with this body at --head is
+                 found on the change and not re-posted, from this session or another. The
+                 claim is released LAST because the post step needs it held. --claim must be
+                 a review claim of this change AND of this lane — a key with a "security"
+                 segment for "finish security-review", one without for "finish review" (exit
+                 2 otherwise, before anything is posted). Who placed the claim is not checked.
                  With --dry-run only step 1 is rehearsed.
 
 modifiers (every mutating verb; both default off):

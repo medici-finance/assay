@@ -4,16 +4,30 @@ import (
 	"bytes"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// finishClaimKey is a review-dispatch claim key of exampleRepo#1 — "<short label>--pr-<N>".
-const finishClaimKey = "tracker--pr-1"
+// finishClaimKey is the correctness lane's review-dispatch claim key of exampleRepo#1 —
+// "<short label>--pr-<N>" — and finishSecurityClaimKey the security lane's.
+const (
+	finishClaimKey         = "tracker--pr-1"
+	finishSecurityClaimKey = finishClaimKey + "--security"
+)
 
-const finishClaimRefPath = "/git/refs/dispatch/" + finishClaimKey
+// finishKeyFor is the claim key a finish of that lane must be given.
+func finishKeyFor(lane string) string {
+	if lane == "security-review" {
+		return finishSecurityClaimKey
+	}
+	return finishClaimKey
+}
+
+func finishRefPath(key string) string { return "/git/refs/dispatch/" + key }
 
 func finishArgs(lane, pr, verdict, head, bodyFile, claim string) []string {
 	args := []string{"finish", lane, exampleRepo, pr, "--verdict", verdict, "--head", head, "--body-file", bodyFile}
@@ -30,18 +44,19 @@ type finishHarness struct {
 	f            *fakeGH
 	out, errOut  *bytes.Buffer
 	deleteStatus int
+	claimKey     string // the claim whose DELETE this forge answers; the correctness key unless set
 }
 
 func setupFinish(t *testing.T) *finishHarness {
 	t.Helper()
 	f, errBuf := setupFake(t)
 	f.pullHeads = []string{testHead}
-	h := &finishHarness{f: f, errOut: errBuf, out: &bytes.Buffer{}, deleteStatus: http.StatusNoContent}
+	h := &finishHarness{f: f, errOut: errBuf, out: &bytes.Buffer{}, deleteStatus: http.StatusNoContent, claimKey: finishClaimKey}
 	saved := stdout
 	stdout = h.out
 	t.Cleanup(func() { stdout = saved })
 	f.intercept = func(method, path string) (int, bool) {
-		if method == http.MethodDelete && strings.HasSuffix(path, finishClaimRefPath) && h.deleteStatus != 0 {
+		if method == http.MethodDelete && strings.HasSuffix(path, finishRefPath(h.claimKey)) && h.deleteStatus != 0 {
 			return h.deleteStatus, true
 		}
 		return 0, false
@@ -61,7 +76,57 @@ func (h *finishHarness) order(method, suffix string) int {
 	return -1
 }
 
-func (h *finishHarness) deletes() int { return h.f.hitCount(http.MethodDelete, finishClaimRefPath) }
+// deletes counts DELETE requests for ANY ref: a finish must delete its own claim and nothing
+// else, so a test that expects none must see none for any key.
+func (h *finishHarness) deletes() int {
+	h.f.mu.Lock()
+	defer h.f.mu.Unlock()
+	n := 0
+	for _, hit := range h.f.hits {
+		if strings.HasPrefix(hit, http.MethodDelete+" ") {
+			n++
+		}
+	}
+	return n
+}
+
+// releaseRows returns the audit rows the release step wrote.
+func releaseRows(t *testing.T) []deskkit.Entry {
+	t.Helper()
+	var rows []deskkit.Entry
+	for _, e := range auditEntries(t) {
+		if e.Verb == finishReleaseVerb {
+			rows = append(rows, e)
+		}
+	}
+	return rows
+}
+
+// postedShape is body as the writer posts it: with its on-behalf-of line appended.
+func postedShape(t *testing.T, body string) string {
+	t.Helper()
+	b, err := deskkit.AppendOnBehalfOf([]byte(body), "", exampleRepo)
+	if err != nil {
+		t.Fatalf("AppendOnBehalfOf: %v", err)
+	}
+	if string(b) == body {
+		t.Fatal("fixture defect: the writer appended no on-behalf-of line, so a posted-shape fixture would prove nothing")
+	}
+	return string(b)
+}
+
+// forgetThisSession removes this HOME's audit log — what a re-dispatched reviewer starts
+// with — so that only the forge's own state can stop a second post.
+func forgetThisSession(t *testing.T) {
+	t.Helper()
+	p := filepath.Join(os.Getenv("HOME"), ".config", "assay", "audit.jsonl")
+	if err := os.Remove(p); err != nil {
+		t.Fatalf("remove the audit log: %v", err)
+	}
+	if n := len(auditEntries(t)); n != 0 {
+		t.Fatalf("the audit log still holds %d row(s)", n)
+	}
+}
 
 func (h *finishHarness) resultLines() []string {
 	s := strings.TrimRight(h.out.String(), "\n")
@@ -82,16 +147,18 @@ func TestFinishHappyPath(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := setupFinish(t)
+			key := finishKeyFor(tc.lane)
+			h.claimKey = key
 			bf := writeBody(t, "v.md", tc.body)
 
-			if code := run(finishArgs(tc.lane, "1", tc.verdict, testHead, bf, finishClaimKey)); code != 0 {
+			if code := run(finishArgs(tc.lane, "1", tc.verdict, testHead, bf, key)); code != 0 {
 				t.Fatalf("finish exit = %d, want 0\nstderr: %s", code, h.errOut.String())
 			}
 			if h.f.postedReview != 1 {
 				t.Fatalf("postedReview = %d, want 1", h.f.postedReview)
 			}
 			post := h.order(http.MethodPost, "/pulls/1/reviews")
-			del := h.order(http.MethodDelete, finishClaimRefPath)
+			del := h.order(http.MethodDelete, finishRefPath(key))
 			if post < 0 || del < 0 || post > del {
 				t.Fatalf("want the review POST before the claim DELETE; post at %d, delete at %d: %v", post, del, h.f.hits)
 			}
@@ -115,13 +182,28 @@ func TestFinishHappyPath(t *testing.T) {
 				t.Fatalf("result line\n got %q\nwant %q", lines[0], want)
 			}
 
-			// One audit row, and it is the post step's: same verb key the plain verb records.
+			// Two audit rows. The first is the post step's: same verb key the plain verb
+			// records. The second is the release step's own.
 			entries := auditEntries(t)
-			if len(entries) != 1 {
-				t.Fatalf("audit rows = %d, want exactly 1: %+v", len(entries), entries)
+			if len(entries) != 2 {
+				t.Fatalf("audit rows = %d, want exactly 2: %+v", len(entries), entries)
 			}
 			if e := entries[0]; e.Result != deskkit.ResultOK || e.Verb != tc.wantVerb || e.HeadSHA == nil || *e.HeadSHA != testHead {
-				t.Fatalf("audit = %+v", e)
+				t.Fatalf("post row = %+v", e)
+			}
+			rel := entries[1]
+			if rel.Verb != finishReleaseVerb || rel.Result != deskkit.ResultOK || rel.Repo != exampleRepo ||
+				rel.PR == nil || *rel.PR != 1 || rel.HeadSHA == nil || *rel.HeadSHA != testHead {
+				t.Fatalf("release row = %+v", rel)
+			}
+			if !strings.Contains(rel.Detail, "claim "+key+" released") {
+				t.Fatalf("release row detail does not name the claim and the outcome: %q", rel.Detail)
+			}
+			if rel.BodyDigest != "" {
+				t.Fatalf("release row carries a body digest (%q); a check that reads the log for a posted verdict could match it", rel.BodyDigest)
+			}
+			if rel.ArgsDigest != entries[0].ArgsDigest {
+				t.Fatalf("the two rows of one invocation carry different argument digests: %q, %q", entries[0].ArgsDigest, rel.ArgsDigest)
 			}
 		})
 	}
@@ -203,7 +285,7 @@ func TestFinishRefusesWhereTheVerdictVerbRefuses(t *testing.T) {
 			t.Run("finish", func(t *testing.T) {
 				var h *finishHarness
 				fin, h = observe(func(bf string) []string {
-					return finishArgs(tc.lane, "1", tc.verdict, tc.head, bf, finishClaimKey)
+					return finishArgs(tc.lane, "1", tc.verdict, tc.head, bf, finishKeyFor(tc.lane))
 				})
 				if h.f.postedReview != 0 {
 					t.Errorf("a refused finish posted a review")
@@ -213,6 +295,9 @@ func TestFinishRefusesWhereTheVerdictVerbRefuses(t *testing.T) {
 				}
 				if got := h.out.String(); got != "" {
 					t.Errorf("a refused finish printed a result line: %q", got)
+				}
+				if rows := releaseRows(t); len(rows) != 0 {
+					t.Errorf("a refused finish wrote a release row: %+v", rows)
 				}
 				if !strings.Contains(h.errOut.String(), "STOPPED at step 1 of 3 (post)") && tc.wantCode != 2 {
 					t.Errorf("the stop does not name the post step: %s", h.errOut.String())
@@ -228,29 +313,134 @@ func TestFinishRefusesWhereTheVerdictVerbRefuses(t *testing.T) {
 	}
 }
 
-// TestFinishConfirmsAVerdictAlreadyOnTheChange: when the post path finds this exact verdict
-// already recorded at the head (its own duplicate guard — nothing is posted), finish still
-// confirms THAT review and releases the claim. The recorded body here carries no trailer, so
-// this is also the case that needs the trailer taken off the expected side.
+// TestFinishConfirmsAVerdictAlreadyOnTheChange: this session's log holds nothing, and the
+// change already carries this exact verdict at the head — the state a re-dispatched reviewer
+// finds. The post path's forge-state check must find it, so nothing is posted; finish then
+// confirms THAT review and releases the claim.
+//
+// The first case is the one that matters: the recorded body is in the shape the writer
+// posts, WITH its on-behalf-of line, which is what every review by the reviewer identity
+// looks like on a real forge. A fixture without that line passes against a check that
+// compares the caller's bytes and so proves nothing about a retry.
 func TestFinishConfirmsAVerdictAlreadyOnTheChange(t *testing.T) {
-	h := setupFinish(t)
-	prior := appReviewAt("APPROVED", testHead, okReviewBody)
-	prior.ID = 77
-	h.f.reviews = []reviewInfo{prior}
-	bf := writeBody(t, "v.md", okReviewBody)
+	for _, tc := range []struct {
+		name     string
+		recorded func(t *testing.T) string
+	}{
+		{"recorded in the shape the writer posts", func(t *testing.T) string { return postedShape(t, okReviewBody) }},
+		{"recorded without an on-behalf-of line", func(*testing.T) string { return okReviewBody }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := setupFinish(t)
+			prior := appReviewAt("APPROVED", testHead, tc.recorded(t))
+			prior.ID = 77
+			h.f.reviews = []reviewInfo{prior}
+			bf := writeBody(t, "v.md", okReviewBody)
 
-	if code := run(finishArgs("review", "1", "approve", testHead, bf, finishClaimKey)); code != 0 {
-		t.Fatalf("exit = %d, want 0\nstderr: %s", code, h.errOut.String())
+			if code := run(finishArgs("review", "1", "approve", testHead, bf, finishClaimKey)); code != 0 {
+				t.Fatalf("exit = %d, want 0\nstderr: %s", code, h.errOut.String())
+			}
+			if h.f.postedReview != 0 {
+				t.Fatalf("postedReview = %d, want 0 — the verdict was already recorded, and a second one cannot be withdrawn", h.f.postedReview)
+			}
+			if h.deletes() != 1 {
+				t.Fatalf("the claim was not released: %v", h.f.hits)
+			}
+			want := "deskpost finish: review=" + exampleRepo + "#1/review-77 state=APPROVED head=" + testHead + " claim=released\n"
+			if got := h.out.String(); got != want {
+				t.Fatalf("result\n got %q\nwant %q", got, want)
+			}
+		})
+	}
+}
+
+// TestFinishRerunFromAnotherSessionPostsOnce: the first run posts and confirms the verdict
+// and stops at the release. The re-run comes from a session whose log holds no row for it.
+// Exactly one review is on the change afterwards.
+func TestFinishRerunFromAnotherSessionPostsOnce(t *testing.T) {
+	for _, tc := range []struct{ name, lane, verdict, body, state string }{
+		{"correctness", "review", "approve", okReviewBody, "APPROVED"},
+		{"security", "security-review", "pass", okSecurityBody, "COMMENTED"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := setupFinish(t)
+			h.claimKey = finishKeyFor(tc.lane)
+			h.deleteStatus = http.StatusInternalServerError
+			bf := writeBody(t, "v.md", tc.body)
+			args := finishArgs(tc.lane, "1", tc.verdict, testHead, bf, h.claimKey)
+			if code := run(args); code == 0 {
+				t.Fatal("first run: exit 0 with the release failing")
+			}
+			if h.f.postedReview != 1 {
+				t.Fatalf("first run: postedReview = %d, want 1", h.f.postedReview)
+			}
+
+			forgetThisSession(t)
+			h.out.Reset()
+			h.deleteStatus = http.StatusNoContent
+			if code := run(args); code != 0 {
+				t.Fatalf("re-run exit = %d, want 0\nstderr: %s", code, h.errOut.String())
+			}
+			if h.f.postedReview != 1 {
+				t.Fatalf("postedReview = %d after a re-run from another session, want 1 — the forge already held this verdict", h.f.postedReview)
+			}
+			want := "deskpost finish: review=" + exampleRepo + "#1/review-1001 state=" + tc.state + " head=" + testHead + " claim=released\n"
+			if got := h.out.String(); got != want {
+				t.Fatalf("re-run result\n got %q\nwant %q", got, want)
+			}
+		})
+	}
+}
+
+// TestFinishRerunAfterALostPostResponse: the forge answers the review POST with a server
+// error, and it holds the review all the same — a write that was accepted and whose answer
+// was lost. finish stops at step 1 without saying nothing was posted; the same command again,
+// in the same session, posts nothing, confirms the review that is there and releases.
+func TestFinishRerunAfterALostPostResponse(t *testing.T) {
+	h := setupFinish(t)
+	inner := h.f.intercept
+	failPost := true
+	h.f.intercept = func(method, path string) (int, bool) {
+		if failPost && method == http.MethodPost && reReviews.MatchString(path) {
+			return http.StatusBadGateway, true
+		}
+		return inner(method, path)
+	}
+	bf := writeBody(t, "v.md", okReviewBody)
+	args := finishArgs("review", "1", "approve", testHead, bf, finishClaimKey)
+
+	code := run(args)
+	if code == 0 {
+		t.Fatalf("first run: exit 0 with the POST answered %d", http.StatusBadGateway)
+	}
+	first := h.errOut.String()
+	if !strings.Contains(first, "STOPPED at step 1 of 3 (post)") {
+		t.Fatalf("the stop does not name the post step: %s", first)
+	}
+	if strings.Contains(first, "Nothing was posted") || strings.Contains(first, "nothing was posted") {
+		t.Fatalf("the stop says nothing was posted after a write that was sent: %s", first)
+	}
+	if !strings.Contains(first, "may have left the verdict on the change") {
+		t.Fatalf("the stop does not say the verdict may be on the change: %s", first)
+	}
+	if h.deletes() != 0 {
+		t.Fatalf("the claim was released without a confirmed verdict: %v", h.f.hits)
+	}
+
+	held := appReviewAt("APPROVED", testHead, postedShape(t, okReviewBody))
+	held.ID = 77
+	h.f.reviews = []reviewInfo{held}
+	failPost = false
+
+	if code := run(args); code != 0 {
+		t.Fatalf("re-run exit = %d, want 0\nstderr: %s", code, h.errOut.String())
 	}
 	if h.f.postedReview != 0 {
-		t.Fatalf("postedReview = %d, want 0 — the verdict was already recorded", h.f.postedReview)
-	}
-	if h.deletes() != 1 {
-		t.Fatalf("the claim was not released: %v", h.f.hits)
+		t.Fatalf("postedReview = %d on the re-run, want 0 — the forge already held this verdict", h.f.postedReview)
 	}
 	want := "deskpost finish: review=" + exampleRepo + "#1/review-77 state=APPROVED head=" + testHead + " claim=released\n"
 	if got := h.out.String(); got != want {
-		t.Fatalf("result\n got %q\nwant %q", got, want)
+		t.Fatalf("re-run result\n got %q\nwant %q", got, want)
 	}
 }
 
@@ -315,9 +505,10 @@ func TestFinishConfirmFails(t *testing.T) {
 	}
 }
 
-// TestFinishConfirmIgnoresTheTrailerOnly: the confirm matches a posted body with its trailer
-// and CRLF line ends, and does not match a body that differs in substance.
-func TestFinishConfirmIgnoresTheTrailerOnly(t *testing.T) {
+// TestComparableBodyIgnoresTheTrailerOnly: the comparison the duplicate check and the
+// confirm share matches a posted body with its trailer and CRLF line ends, and does not match
+// a body that differs in substance.
+func TestComparableBodyIgnoresTheTrailerOnly(t *testing.T) {
 	setupFinish(t)
 	postBody, err := deskkit.AppendOnBehalfOf([]byte(okReviewBody), "", exampleRepo)
 	if err != nil {
@@ -326,15 +517,15 @@ func TestFinishConfirmIgnoresTheTrailerOnly(t *testing.T) {
 	if string(postBody) == okReviewBody {
 		t.Fatal("fixture defect: the writer appended no trailer, so this test would prove nothing")
 	}
-	if got := finishComparableBody(string(postBody)); got != strings.TrimSpace(okReviewBody) {
+	if got := reviewComparableBody(string(postBody)); got != strings.TrimSpace(okReviewBody) {
 		t.Fatalf("comparable body = %q, want the caller's body", got)
 	}
 	crlf := strings.ReplaceAll(string(postBody), "\n", "\r\n")
-	if finishComparableBody(crlf) != finishComparableBody(string(postBody)) {
+	if reviewComparableBody(crlf) != reviewComparableBody(string(postBody)) {
 		t.Fatal("CRLF line ends changed the comparable body")
 	}
 	edited := strings.Replace(string(postBody), "No blockers.", "One blocker.", 1)
-	if finishComparableBody(edited) == finishComparableBody(string(postBody)) {
+	if reviewComparableBody(edited) == reviewComparableBody(string(postBody)) {
 		t.Fatal("a substantive edit did not change the comparable body")
 	}
 
@@ -348,9 +539,15 @@ func TestFinishConfirmIgnoresTheTrailerOnly(t *testing.T) {
 	if strings.Contains(string(postedPlanted), "somebody-else") {
 		t.Fatal("fixture defect: the writer kept the planted line, so this case would prove nothing")
 	}
-	if finishComparableBody(string(postedPlanted)) != finishComparableBody(planted) {
+	if reviewComparableBody(string(postedPlanted)) != reviewComparableBody(planted) {
 		t.Fatalf("a caller body holding its own on-behalf-of line did not compare equal to what was posted from it:\n posted=%q\n caller=%q",
-			finishComparableBody(string(postedPlanted)), finishComparableBody(planted))
+			reviewComparableBody(string(postedPlanted)), reviewComparableBody(planted))
+	}
+	if reviewBodyDigest(postBody) != reviewBodyDigest([]byte(okReviewBody)) {
+		t.Fatal("the digest the duplicate check compares differs between a caller body and the body posted from it")
+	}
+	if reviewBodyDigest([]byte(edited)) == reviewBodyDigest([]byte(okReviewBody)) {
+		t.Fatal("the digest the duplicate check compares is the same for a substantively different body")
 	}
 }
 
@@ -402,6 +599,16 @@ func assertReleaseStop(t *testing.T, h *finishHarness, code int) {
 	if code == 0 {
 		t.Fatalf("exit 0 with the claim still held\nstderr: %s", h.errOut.String())
 	}
+	// The release step's own audit row says the claim was not released, and is neither a
+	// success nor a "nothing to do".
+	rows := releaseRows(t)
+	if len(rows) != 1 {
+		t.Fatalf("release rows = %d, want exactly 1: %+v", len(rows), rows)
+	}
+	if r := rows[0]; r.Result == deskkit.ResultOK || r.Result == deskkit.ResultNoop ||
+		!strings.Contains(r.Detail, "claim "+finishClaimKey+" NOT released") {
+		t.Fatalf("release row = %+v, want a failure naming the claim", r)
+	}
 	if h.f.postedReview != 1 {
 		t.Fatalf("postedReview = %d, want 1", h.f.postedReview)
 	}
@@ -431,6 +638,10 @@ func TestFinishClaimAlreadyGone(t *testing.T) {
 		lines := h.resultLines()
 		if len(lines) != 1 || !strings.HasSuffix(lines[0], " claim=already-released") {
 			t.Fatalf("delete %d: result = %q, want one line ending claim=already-released", status, h.out.String())
+		}
+		rows := releaseRows(t)
+		if len(rows) != 1 || rows[0].Result != deskkit.ResultNoop || !strings.Contains(rows[0].Detail, "claim "+finishClaimKey+" was already released") {
+			t.Fatalf("delete %d: release rows = %+v, want one noop row naming the claim", status, rows)
 		}
 	}
 }
@@ -476,6 +687,9 @@ func TestFinishDryRun(t *testing.T) {
 	}
 	if e := lastAudit(t); e.Result != deskkit.ResultDryRun {
 		t.Fatalf("audit result = %q, want dryrun", e.Result)
+	}
+	if rows := releaseRows(t); len(rows) != 0 {
+		t.Fatalf("a dry run wrote a release row: %+v", rows)
 	}
 	if !strings.Contains(h.errOut.String(), "dry run") {
 		t.Errorf("stderr does not say it was a dry run: %s", h.errOut.String())
@@ -554,30 +768,105 @@ func TestFinishHelpNoRow(t *testing.T) {
 	}
 }
 
-// TestFinishAcceptsALaneSuffixedClaim: a re-dispatch's claim key carries a --<lane> suffix;
-// it is this change's claim and is the ref that gets deleted.
-func TestFinishAcceptsALaneSuffixedClaim(t *testing.T) {
-	f, errBuf := setupFake(t)
-	f.pullHeads = []string{testHead}
-	out := &bytes.Buffer{}
-	saved := stdout
-	stdout = out
-	t.Cleanup(func() { stdout = saved })
-	const key = finishClaimKey + "--security"
-	f.intercept = func(method, path string) (int, bool) {
-		if method == http.MethodDelete && strings.HasSuffix(path, "/git/refs/dispatch/"+key) {
-			return http.StatusNoContent, true
+// TestFinishAcceptsThisLanesSuffixedClaim: a re-dispatch's claim key carries further
+// `--<segment>` parts; a key of this lane is accepted with them and is the ref that gets
+// deleted.
+func TestFinishAcceptsThisLanesSuffixedClaim(t *testing.T) {
+	for _, tc := range []struct{ name, lane, verdict, body, key string }{
+		{"security", "security-review", "pass", okSecurityBody, finishSecurityClaimKey},
+		{"security, re-dispatched", "security-review", "pass", okSecurityBody, finishClaimKey + "--r2--security"},
+		{"security, upper case", "security-review", "pass", okSecurityBody, finishClaimKey + "--SECURITY"},
+		{"correctness, re-dispatched", "review", "approve", okReviewBody, finishClaimKey + "--r2"},
+		{"correctness, named", "review", "approve", okReviewBody, finishClaimKey + "--correctness"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := setupFinish(t)
+			h.claimKey = tc.key
+			bf := writeBody(t, "v.md", tc.body)
+			if code := run(finishArgs(tc.lane, "1", tc.verdict, testHead, bf, tc.key)); code != 0 {
+				t.Fatalf("exit = %d, want 0\nstderr: %s", code, h.errOut.String())
+			}
+			if h.f.hitCount(http.MethodDelete, finishRefPath(tc.key)) != 1 || h.deletes() != 1 {
+				t.Fatalf("want exactly one delete, of this key's ref: %v", h.f.hits)
+			}
+			if !strings.HasSuffix(strings.TrimSpace(h.out.String()), "claim=released") {
+				t.Fatalf("result = %q", h.out.String())
+			}
+		})
+	}
+}
+
+// TestFinishRefusesAnotherLanesClaim: a finish of one lane given the other lane's key for the
+// same change is an argument error. Nothing is posted, no ref is deleted, no forge request is
+// made and no audit row is written — so one lane's finish cannot release the claim the other
+// lane's review is still running under.
+func TestFinishRefusesAnotherLanesClaim(t *testing.T) {
+	for _, tc := range []struct{ name, lane, verdict, body, key, want string }{
+		{"security finish, the change's bare key", "security-review", "pass", okSecurityBody, finishClaimKey,
+			"is not the security lane's claim key"},
+		{"security finish, a correctness re-dispatch key", "security-review", "pass", okSecurityBody, finishClaimKey + "--r2",
+			"is not the security lane's claim key"},
+		{"security finish, a key that only contains the word", "security-review", "pass", okSecurityBody, finishClaimKey + "--insecurity",
+			"is not the security lane's claim key"},
+		{"correctness finish, the security key", "review", "approve", okReviewBody, finishSecurityClaimKey,
+			"is the security lane's claim key"},
+		{"correctness finish, the security key in upper case", "review", "approve", okReviewBody, finishClaimKey + "--SECURITY",
+			"is the security lane's claim key"},
+		{"correctness finish, a security re-dispatch key", "review", "approve", okReviewBody, finishClaimKey + "--r2--security",
+			"is the security lane's claim key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := setupFinish(t)
+			h.claimKey = tc.key
+			before := helpAuditBytes(t)
+			bf := writeBody(t, "v.md", tc.body)
+			if code := run(finishArgs(tc.lane, "1", tc.verdict, testHead, bf, tc.key)); code != 2 {
+				t.Fatalf("exit = %d, want 2\nstderr: %s", code, h.errOut.String())
+			}
+			msg := h.errOut.String()
+			for _, want := range []string{tc.want, "Nothing was posted and no claim was released"} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("stderr lacks %q:\n%s", want, msg)
+				}
+			}
+			if h.f.postedReview != 0 {
+				t.Errorf("a finish given another lane's key posted a review")
+			}
+			if len(h.f.hits) != 0 {
+				t.Errorf("a finish given another lane's key touched the forge: %v", h.f.hits)
+			}
+			if got := h.out.String(); got != "" {
+				t.Errorf("a finish given another lane's key printed a result line: %q", got)
+			}
+			if after := helpAuditBytes(t); string(after) != string(before) {
+				t.Errorf("a finish given another lane's key wrote an audit row")
+			}
+		})
+	}
+}
+
+// TestFinishClaimLaneRule holds the lane-of-a-key rule: a `security` segment, in any letter
+// case, among the `--`-separated parts after the last `--pr-<N>`.
+func TestFinishClaimLaneRule(t *testing.T) {
+	for _, tc := range []struct {
+		key  string
+		pr   int
+		want bool
+	}{
+		{"tracker--pr-1", 1, false},
+		{"tracker--pr-1--security", 1, true},
+		{"tracker--pr-1--Security", 1, true},
+		{"tracker--pr-1--r2--security", 1, true},
+		{"tracker--pr-1--security--r2", 1, true},
+		{"tracker--pr-1--correctness", 1, false},
+		{"tracker--pr-1--insecurity", 1, false},
+		{"tracker--pr-1--security-notes", 1, false},
+		{"security--pr-1", 1, false},           // the label is not the lane
+		{"tracker--pr-10--security", 1, false}, // another change's key
+		{"tracker--security", 1, false},
+	} {
+		if got := finishClaimKeyIsSecurity(tc.key, tc.pr); got != tc.want {
+			t.Errorf("finishClaimKeyIsSecurity(%q, %d) = %v, want %v", tc.key, tc.pr, got, tc.want)
 		}
-		return 0, false
-	}
-	bf := writeBody(t, "v.md", okSecurityBody)
-	if code := run(finishArgs("security-review", "1", "pass", testHead, bf, key)); code != 0 {
-		t.Fatalf("exit = %d, want 0\nstderr: %s", code, errBuf.String())
-	}
-	if f.hitCount(http.MethodDelete, "/git/refs/dispatch/"+key) != 1 {
-		t.Fatalf("the suffixed claim ref was not deleted: %v", f.hits)
-	}
-	if !strings.HasSuffix(strings.TrimSpace(out.String()), "claim=released") {
-		t.Fatalf("result = %q", out.String())
 	}
 }
