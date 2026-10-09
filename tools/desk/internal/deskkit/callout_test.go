@@ -5,6 +5,7 @@ package deskkit
 // question can go unanswered, and it returns within its deadline.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -163,6 +164,53 @@ func calloutLayoutLink(t *testing.T, target, link string) string {
 	return link
 }
 
+// calloutMidLink builds <open>/via/callout where via is a link to a safe bin
+// directory holding the callout, and <open> has the given mode. It returns the
+// configured path, whose middle component (via) is the link.
+func calloutMidLink(t *testing.T, mode os.FileMode) string {
+	t.Helper()
+	bin := calloutLayoutDir(t, 0o755)
+	calloutLayoutFile(t, bin, "callout", 0o755)
+	open := calloutLayoutDir(t, 0o755)
+	calloutLayoutLink(t, bin, filepath.Join(open, "via"))
+	if err := os.Chmod(open, mode); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	return filepath.Join(open, "via", "callout")
+}
+
+// TestCalloutRefusalNamesRealDir pins that a refusal names the directory that
+// really holds the link (its physical, cleaned path), so the `chmod` it suggests
+// is applied to the right directory rather than to a spelling such as a/b/..
+func TestCalloutRefusalNamesRealDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the callout fixtures are POSIX shell scripts")
+	}
+	root := calloutLayoutDir(t, 0o755)
+	for _, d := range []string{"bin", "real", "real/sub"} {
+		if err := os.Mkdir(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	calloutLayoutFile(t, filepath.Join(root, "real"), "target", 0o755)
+	// real/sub/callout -> ../target is a link held in real/sub, reached through
+	// bin/callout -> ../real/sub/callout. real/sub is the writable one.
+	calloutLayoutLink(t, "../target", filepath.Join(root, "real", "sub", "callout"))
+	path := calloutLayoutLink(t, "../real/sub/callout", filepath.Join(root, "bin", "callout"))
+	if err := os.Chmod(filepath.Join(root, "real", "sub"), 0o777); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	physRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("resolving the fixture root: %v", err)
+	}
+	want := fmt.Sprintf("callout directory %q is group-", filepath.Join(physRoot, "real", "sub"))
+	_, err = Callout{Path: path}.Run("")
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("refusal = %v; want it to name %s", err, want)
+	}
+}
+
 // TestCalloutResolvedLayouts pins that the file checks and the directory checks are
 // made against the file the configured path RESOLVES to, for the layout where the
 // configured name (a symbolic link) and the file it resolves to live in different
@@ -194,6 +242,13 @@ func TestCalloutResolvedLayouts(t *testing.T) {
 			}
 			calloutLayoutFile(t, filepath.Join(root, "real"), "callout", 0o755)
 			return layout{path: calloutLayoutLink(t, "../real/callout", filepath.Join(root, "bin", "callout"))}
+		},
+		"linked dir mid-path, safe dir": func(t *testing.T) layout {
+			return layout{path: calloutMidLink(t, 0o755)}
+		},
+		"link through linked dir, safe": func(t *testing.T) layout {
+			mid := calloutMidLink(t, 0o755)
+			return layout{path: calloutLayoutLink(t, mid, filepath.Join(calloutLayoutDir(t, 0o755), "callout"))}
 		},
 
 		// --- new: refused because of where the RESOLVED file lives -----------------
@@ -236,6 +291,23 @@ func TestCalloutResolvedLayouts(t *testing.T) {
 				wantErr: "group- or world-writable",
 			}
 		},
+		"linked dir mid-path, open dir": func(t *testing.T) layout {
+			// open/via/callout with via a link to a safe bin directory: the
+			// directory holding via is world-writable, so via can be replaced.
+			return layout{path: calloutMidLink(t, 0o777), wantErr: "group- or world-writable"}
+		},
+		"linked dir mid-path, group dir": func(t *testing.T) layout {
+			return layout{path: calloutMidLink(t, 0o775), wantErr: "group- or world-writable"}
+		},
+		"link through linked dir, open": func(t *testing.T) layout {
+			// A final-element link in a safe directory whose TARGET passes
+			// through a linked directory held in a world-writable directory.
+			mid := calloutMidLink(t, 0o777)
+			return layout{
+				path:    calloutLayoutLink(t, mid, filepath.Join(calloutLayoutDir(t, 0o755), "callout")),
+				wantErr: "group- or world-writable",
+			}
+		},
 
 		// --- existing refusals, kept when the configured path is a link ---------------
 		"link itself in a writable dir": func(t *testing.T) layout {
@@ -261,6 +333,28 @@ func TestCalloutResolvedLayouts(t *testing.T) {
 			}
 			return layout{
 				path:    lexical + "/via/../callout",
+				wantErr: "group- or world-writable",
+			}
+		},
+		"dot-dot, lexical dir holds no link": func(t *testing.T) layout {
+			// <lexical>/sub/via/../../callout with via -> <real>/a/b: the
+			// directory the text names is <lexical>, which holds no link (via
+			// sits in <lexical>/sub), so only the lexical term checks it.
+			real := calloutLayoutDir(t, 0o755)
+			if err := os.MkdirAll(filepath.Join(real, "a", "b"), 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			calloutLayoutFile(t, real, "callout", 0o755)
+			lexical := calloutLayoutDir(t, 0o755)
+			if err := os.Mkdir(filepath.Join(lexical, "sub"), 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			calloutLayoutLink(t, filepath.Join(real, "a", "b"), filepath.Join(lexical, "sub", "via"))
+			if err := os.Chmod(lexical, 0o777); err != nil {
+				t.Fatalf("chmod: %v", err)
+			}
+			return layout{
+				path:    lexical + "/sub/via/../../callout",
 				wantErr: "group- or world-writable",
 			}
 		},
@@ -295,6 +389,12 @@ func TestCalloutResolvedLayouts(t *testing.T) {
 			return layout{
 				path:    calloutLayoutLink(t, target, filepath.Join(calloutLayoutDir(t, 0o755), "callout")),
 				wantErr: "not executable",
+			}
+		},
+		"trailing slash on a file": func(t *testing.T) layout {
+			return layout{
+				path:    calloutLayoutFile(t, calloutLayoutDir(t, 0o755), "callout", 0o755) + "/",
+				wantErr: "cannot be read",
 			}
 		},
 		"link to a group-writable file": func(t *testing.T) layout {

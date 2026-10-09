@@ -153,7 +153,7 @@ func (c Callout) Run(stdin string, args ...string) (CalloutResult, error) {
 	return res, nil
 }
 
-// maxCalloutLinkHops bounds how many symbolic links calloutLinkDirs follows before
+// maxCalloutLinkHops bounds how many symbolic links calloutResolve follows before
 // refusing — the same order of limit the kernel applies before it reports a loop.
 const maxCalloutLinkHops = 40
 
@@ -165,15 +165,17 @@ const maxCalloutLinkHops = 40
 // THE CHECKS ARE MADE AGAINST THE RESOLVED PATH. The configured path may be a
 // symbolic link (a package manager's bin directory is the common case), and what
 // actually runs is the file the link resolves to. So the path is resolved ONCE,
-// and the file checks (type, executable, not group/world-writable) and the
-// directory check are all made against that resolved file and the directory that
-// really holds it. The directory check is ALSO still made against the directory
-// holding the configured name, and against the directory holding every
-// intermediate link: each of those names, if replaceable, chooses what runs just as
-// surely as the target itself. Resolving only ever ADDS directories to check; no
-// check the configured path used to get is dropped.
+// by calloutResolve, and the file checks (type, executable, not
+// group/world-writable) and the directory check are all made against that
+// resolved file and the directory that really holds it. The directory check is
+// ALSO made against the directory holding the configured name, and against the
+// directory holding every link met on the way to the file — a link that is the
+// last element of a path and a link met as a directory in the middle of one
+// alike: each of those names, if replaceable, chooses what runs just as surely as
+// the target itself. Resolving only ever ADDS directories to check; no check the
+// configured path used to get is dropped.
 func calloutExecutable(path string) error {
-	resolved, err := filepath.EvalSymlinks(path)
+	resolved, linkDirs, err := calloutResolve(path)
 	if err != nil {
 		return fmt.Errorf("callout %q cannot be read: %w", path, err)
 	}
@@ -200,14 +202,14 @@ func calloutExecutable(path string) error {
 		return fmt.Errorf("callout %s is group- or world-writable (mode %04o): anything that can "+
 			"write it chooses what this gate decides. Fix with `chmod 0755 %s`", name, m, resolved)
 	}
-	dirs, err := calloutLinkDirs(path)
-	if err != nil {
-		return fmt.Errorf("callout %q cannot be read: %w", path, err)
-	}
-	// filepath.Dir(path) is the directory this function has always checked; it is
-	// kept verbatim (it differs from the raw prefix only for a path spelled with
-	// ".." after a linked directory) so no check the configured path got is dropped.
-	dirs = append(dirs, filepath.Dir(path), filepath.Dir(resolved))
+	// The set: the directory holding every link met (linkDirs), the directory the
+	// configured path's text names (filepath.Dir(path), the directory this
+	// function has always checked, kept verbatim: for a path spelled with ".."
+	// after a linked directory it can be a directory no other term reaches), and
+	// the directory that really holds the file. The directory that really holds
+	// the configured name is in it either way: it is a linkDirs entry when that
+	// name is a link, and filepath.Dir(resolved) when it is not.
+	dirs := append(linkDirs, filepath.Dir(path), filepath.Dir(resolved))
 	seen := make(map[string]bool, len(dirs))
 	for _, dir := range dirs {
 		if seen[dir] {
@@ -221,52 +223,79 @@ func calloutExecutable(path string) error {
 	return nil
 }
 
-// calloutLinkDirs follows path one symbolic link at a time and returns the
-// directory holding each name along the way: the configured name first, then each
-// link target in turn, ending with the final non-link file.
+// calloutResolve resolves the absolute path one component at a time, the way the
+// kernel does, and returns the file it resolves to together with the directory
+// holding EVERY symbolic link met on the way: a link that is the last element of
+// the path, a link met as a directory in the middle of it, and the same again
+// inside each link's target. Resolving only the last element of each path would
+// miss a linked directory in the middle (open/via/callout with via a link), and
+// whoever can write the directory holding via chooses what runs.
 //
-// Each directory is returned as the raw prefix of the name it holds, not as a
-// lexically cleaned path: os.Stat on that prefix then resolves it exactly as the
-// kernel resolved the link (a ".." after a linked directory component is taken
-// physically, not textually), so the directory checked is the one that really
-// holds the name.
-func calloutLinkDirs(path string) ([]string, error) {
-	var dirs []string
-	cur := path
-	for hops := 0; ; hops++ {
-		dirs = append(dirs, calloutParent(cur))
-		fi, err := os.Lstat(cur)
+// The part resolved so far is kept free of links, so every directory returned is
+// the physical directory that really holds its link, and a ".." is taken
+// physically, as the kernel takes it. A name followed by a separator must be a
+// directory, as it must for the kernel.
+func calloutResolve(path string) (string, []string, error) {
+	if !filepath.IsAbs(path) {
+		return "", nil, errors.New("not an absolute path")
+	}
+	sep := string(filepath.Separator)
+	vol := filepath.VolumeName(path)
+	dest := vol + sep // the resolved, link-free prefix
+	rest := path[len(vol):]
+	var linkDirs []string
+	hops := 0
+	for {
+		for rest != "" && os.IsPathSeparator(rest[0]) {
+			rest = rest[1:]
+		}
+		if rest == "" {
+			return dest, linkDirs, nil
+		}
+		i := 0
+		for i < len(rest) && !os.IsPathSeparator(rest[i]) {
+			i++
+		}
+		comp, more := rest[:i], i < len(rest)
+		rest = rest[i:]
+		switch comp {
+		case ".":
+			continue
+		case "..":
+			dest = filepath.Dir(dest)
+			continue
+		}
+		next := filepath.Join(dest, comp)
+		fi, err := os.Lstat(next)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
 		if fi.Mode()&fs.ModeSymlink == 0 {
-			return dirs, nil
+			if more && !fi.IsDir() {
+				return "", nil, fmt.Errorf("%q is not a directory", next)
+			}
+			dest = next
+			continue
 		}
-		if hops >= maxCalloutLinkHops {
-			return nil, fmt.Errorf("more than %d symbolic links", maxCalloutLinkHops)
+		if hops++; hops > maxCalloutLinkHops {
+			return "", nil, fmt.Errorf("more than %d symbolic links", maxCalloutLinkHops)
 		}
-		target, err := os.Readlink(cur)
+		linkDirs = append(linkDirs, dest)
+		target, err := os.Readlink(next)
 		if err != nil {
-			return nil, err
+			return "", nil, err
 		}
-		if !filepath.IsAbs(target) {
-			target = calloutParent(cur) + string(filepath.Separator) + target
+		if tvol := filepath.VolumeName(target); tvol != "" || (target != "" && os.IsPathSeparator(target[0])) {
+			if tvol == "" {
+				tvol = vol
+			}
+			dest = tvol + sep
+			target = target[len(filepath.VolumeName(target)):]
 		}
-		cur = target
+		// rest is empty or starts with the separator that followed the link, so a
+		// trailing separator on the link still demands a directory at its target.
+		rest = target + rest
 	}
-}
-
-// calloutParent returns everything before the last path separator of p, without
-// cleaning it — see calloutLinkDirs for why the raw prefix is the right one.
-func calloutParent(p string) string {
-	i := strings.LastIndexAny(p, `/`+string(filepath.Separator))
-	if i < 0 {
-		return "."
-	}
-	if i <= len(filepath.VolumeName(p)) {
-		return p[:i+1] // the root itself: "/" or a volume's root
-	}
-	return p[:i]
 }
 
 // calloutDirNotWritable refuses a callout whose own DIRECTORY is group- or

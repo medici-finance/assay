@@ -428,4 +428,20 @@ func TestRiskCalloutResolvedDir(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "group- or world-writable") {
 		t.Fatalf("a link to a target in a world-writable directory was not refused: %v", err)
 	}
+
+	// A linked directory in the MIDDLE of the path, held in a world-writable
+	// directory: <open>/via/<callout> with via a link to the fixture's safe
+	// directory. The file and its real directory pass; the directory holding
+	// via does not.
+	viaDir := t.TempDir()
+	if err := os.Symlink(filepath.Dir(good), filepath.Join(viaDir, "via")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if err := os.Chmod(viaDir, 0o777); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	_, err = runRiskCallout(filepath.Join(viaDir, "via", filepath.Base(good)), "{}")
+	if err == nil || !strings.Contains(err.Error(), "group- or world-writable") {
+		t.Fatalf("a linked directory held in a world-writable directory was not refused: %v", err)
+	}
 }
