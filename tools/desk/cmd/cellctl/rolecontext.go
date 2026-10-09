@@ -704,9 +704,10 @@ func roleContextVersionNotice() string {
 
 // ── Claude Code binding ─────────────────────────────────────────────────────────────────────
 
-// claudeContextSettings is the role context's share of the --settings object. Every key is one a
-// launch can only use to take something away: a plugin switched off, a skill hidden, the memory
-// index relocated or disabled, instruction files excluded, connectors disabled, deny rules.
+// claudeContextSettings is the role context's share of the --settings object. No key enables or
+// allows anything: a plugin switched off (whole, hooks included), a skill hidden, the memory
+// directory disabled or set to the contained directory resolve() accepted, instruction files
+// excluded, connectors disabled, deny rules.
 func (rc *roleContext) claudeContextSettings() map[string]any {
 	s := rc.Spec
 	out := map[string]any{}
@@ -898,7 +899,7 @@ func (c *Cell) cellRoleContext() (*roleContextDecl, error) {
 
 // roleContextFor is the validated context one role launches with on its resolved harness.
 // The role context is nil when the cell declares nothing for the role. A non-empty context on a
-// harness with no binding is an error: the operator asked for a narrowing this launch cannot do.
+// harness with no binding is an error: the operator asked for a context this launch cannot apply.
 func (c *Cell) roleContextFor(role, harness string) (*roleContextDecl, *roleContext, error) {
 	d, err := c.cellRoleContext()
 	if err != nil || d == nil {
