@@ -18,7 +18,7 @@ why: >-
   those refusals on.
 wave: 6
 depends: ["forge-neutral/18", "forge-neutral/33"]
-unblocks: []
+unblocks: ["desktools-v2/08"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -82,7 +82,7 @@ consumers:
   - "statusgen/transcribeverdict.go `ghVerdictIssueResolver`: follow-up forge-neutral/35 (this brief; flips to fixed-here when the implementation edits the path — the verdict-issue read at `:505-531` and its launch at `:506`. The R-6 gate at `:423` and the clause battery at `:747-760` read the unchanged `commentResolver` and `verdictIssueResolver` types and are not edited. `ghVerdictMainHealth` at `:579` in the same file is forge-neutral/18's)"
   - "tools/desk/cmd/deskread: out-of-scope (the `comments` and `issue` kinds, their fields and the `comments` kind's change target are forge-neutral/33's, which adds transport only; `issue` on the CI-transport kind set is forge-neutral/18's)"
   - "tools/desk/internal/deskkit/forge.go: out-of-scope (no operation added; every read here already exists or is forge-neutral/33's)"
-version: 1
+version: 2
 id: 61620d38-216a-4c21-b390-046d3d03402c
 ---
 
@@ -293,6 +293,18 @@ facts — measured at `35c303e47`:
   author type, an edit flag or a target to an outcome is made here, in statusgen, and none is
   pushed into `deskread`.
 - Touch no file under `tools/desk/` and no workflow.
+
+## Library-first amendment — 2026-10-08 (ruled: `DR-forge-neutral-36`)
+
+`docs/library-first.md` sets out library-first reuse. The driver ruled on #2395 for offline and
+frozen inputs only (`DR-forge-neutral-36`): every online forge read stays on the read verb.
+**This amendment adds no deliverable and changes no transport.** The ruling resolvers' two
+reads move onto `deskread`, as Task 1 says. The direct HTTP
+client and its ambient-token fallback still retire. statusgen links no authenticated read
+adapter from the shared module, so the resolvers neither hold a credential nor become generic
+queries. Every author-type, edit-history, subject-binding and sign-off refusal and the human
+gate stay as written. A later move of these reads into the shared module would be its own
+human-gated brief.
 
 ## Task
 

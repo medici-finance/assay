@@ -185,6 +185,20 @@ cell to `verified`/`done` is the pure engine in `lifecycle.go`; the demotions
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
 
+`--backfill --apply` writes a witnessed `todo`/`in-progress` → `implemented`
+Status cell back into the stream README and lists the rows it wrote under
+`applied`. `--backfill` WITHOUT `--apply` is the read-only form: it writes nothing
+and lists, under `wouldApply`, the rows `--apply` would write on the same tree —
+computed by the same function that writes, so the two cannot disagree. Each row
+carries `id`, `readme`, `from`, `to`, `witness`, and the whole table line before and
+after the edit (`rowBefore`, `rowAfter`). `wouldApply` is `[]` when nothing would be
+written; it is absent only when `--backfill` was not given or `--apply` was.
+
+```bash
+# Read-only: which board rows would --apply promote? No tree write.
+statusgen reconcile --backfill --root . --repo medici-finance/assay --token-file "$TOKEN_FILE" --json
+```
+
 ### `brief` — resolve an item key to its file, frontmatter and board row
 
 `statusgen brief <stream>/<NN>` is a positional sub-command (like `verifyrun`) that

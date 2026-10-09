@@ -21,12 +21,13 @@ package deskkit
 //
 // NOTE ON deskkit.Callout. The writeguard callout (ASSAY_WRITEGUARD_CALLOUT)
 // provides SHARED exec/timeout/fail-closed plumbing in this package. This file's
-// exec wrapper is deliberately self-contained, under names distinct from that
-// shared type (`riskCallout*` rather than `callout*`/`Callout`), so it carries no
-// build dependency on it. A follow-up could collapse this file's exec/timeout/
-// fail-closed loop onto the shared deskkit.Callout type and delete the
-// duplication. Nothing about the SAFETY PROPERTIES below is provisional; only
-// which package supplies the plumbing is.
+// exec wrapper is self-contained, under names distinct from that shared type
+// (`riskCallout*` rather than `callout*`/`Callout`). Its file and directory
+// checks are NOT a copy: riskCalloutExecutableCheck calls the shared
+// calloutExecutable, so both runners check the same resolved path the same way.
+// A follow-up could collapse the rest of this file's exec/timeout/fail-closed
+// loop onto deskkit.Callout too. Nothing about the SAFETY PROPERTIES below is
+// provisional; only which package supplies the plumbing is.
 //
 // ONLY-WIDENS lives structurally in unionClassifier (riskclassifier.go): the
 // callout is one member of a union with patternClassifier, and no member's
@@ -38,8 +39,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -190,41 +189,14 @@ func runRiskCallout(path, stdin string) (string, error) {
 // run that invokes the callout, so this is checked fresh on every call rather
 // than once at config load.
 //
-// Anything that can WRITE the callout (or the directory holding it) chooses what
-// this gate decides, so a group- or world-writable callout, or one sitting in a
-// group- or world-writable directory, is refused — a fail-closed caller treats
-// that exactly like a missing binary rather than trusting it anyway.
+// Anything that can WRITE the callout (or a directory holding it, or holding a
+// link on the way to it) chooses what this gate decides, so such a callout is
+// refused — a fail-closed caller treats that exactly like a missing binary rather
+// than trusting it anyway. The checks themselves are the shared
+// calloutExecutable's (callout.go), so this runner and deskkit.Callout make the
+// same checks against the same resolved path rather than two copies that drift.
 func riskCalloutExecutableCheck(path string) error {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("cannot be read: %w", err)
-	}
-	if fi.IsDir() {
-		return errors.New("is a directory, not an executable")
-	}
-	if !fi.Mode().IsRegular() {
-		return errors.New("is not a regular file")
-	}
-	if fi.Mode().Perm()&0o111 == 0 {
-		return fmt.Errorf("is not executable (mode %04o)", fi.Mode().Perm())
-	}
-	if m := fi.Mode().Perm(); m&0o022 != 0 {
-		return fmt.Errorf("is group- or world-writable (mode %04o): anything that can write it "+
-			"chooses what this gate decides", m)
-	}
-	dir := filepath.Dir(path)
-	dfi, err := os.Stat(dir)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("directory %q does not exist", dir)
-		}
-		return fmt.Errorf("directory %q cannot be read: %w", dir, err)
-	}
-	if m := dfi.Mode().Perm(); m&0o022 != 0 {
-		return fmt.Errorf("directory %q is group- or world-writable (mode %04o): the executable in "+
-			"it can be replaced without ever changing its own mode", dir, m)
-	}
-	return nil
+	return calloutExecutable(path)
 }
 
 // riskCalloutLimitedWriter writes at most n bytes and silently discards the rest.
