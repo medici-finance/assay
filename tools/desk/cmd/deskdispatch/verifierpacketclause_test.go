@@ -20,15 +20,15 @@ import (
 	"testing"
 )
 
-// foldSpace collapses every run of whitespace, so a re-wrap of the kit is not a change.
-func foldSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
+// vpKitFoldSpace collapses every run of whitespace, so a re-wrap of the kit is not a change.
+func vpKitFoldSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 func TestVerifierKitPacketClauseIsFirstReadAndNeverEvidence(t *testing.T) {
 	kit, err := kitText("verifier")
 	if err != nil {
 		t.Fatalf("kitText(verifier): %v", err)
 	}
-	clause := foldSpace(clauseBody(kit, "Packet first — a reading aid, never evidence"))
+	clause := vpKitFoldSpace(clauseBody(kit, "Packet first — a reading aid, never evidence"))
 	if clause == "" {
 		t.Fatal("the verifier kit has no \"Packet first — a reading aid, never evidence\" clause")
 	}
@@ -60,7 +60,7 @@ func TestVerifierKitKeepsEveryRowObligationBesideThePacket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("kitText(verifier): %v", err)
 	}
-	folded := foldSpace(kit)
+	folded := vpKitFoldSpace(kit)
 	for _, want := range []string{
 		"Run EVERY Verify row",
 		"real observed output, never a claim",

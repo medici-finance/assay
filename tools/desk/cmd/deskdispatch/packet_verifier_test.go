@@ -202,7 +202,9 @@ func TestVerifierPacketCarriesNoResultContent(t *testing.T) {
 	}
 	// It says so itself, and names what it left out.
 	for _, want := range []string{
-		"It holds no result of any row",
+		"The dispatcher ran no row, so nothing in this file is a result of this run",
+		"Left out: the brief from its first Evidence heading to its end; the Expect cells from the command list; " +
+			"every commit subject, message and date",
 		"A row's result comes only from running the row at the verified commit; nothing in this file is evidence",
 		"The dispatcher ran none of them",
 		"`the Evidence section and the sections after it` (section \"Earlier Evidence: its size, never its rows\")",
