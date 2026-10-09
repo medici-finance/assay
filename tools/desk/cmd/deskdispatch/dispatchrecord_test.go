@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -155,9 +156,9 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 			fixEntropy(t)
 			s.replies = happyReplies(t.TempDir())
 			var rc int
+			pf := filepath.Join(t.TempDir(), "p.md")
 			errOut := captureStderr(t, func() {
-				rc = run([]string{"tier-case--03", "--root", root, "--tier", tc.in,
-					"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+				rc = run([]string{"tier-case--03", "--root", root, "--tier", tc.in, "--prompt-file", pf})
 			})
 			if rc != deskkit.ExitOK {
 				t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
@@ -168,6 +169,14 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 			}
 			if r := recs[0]; r.Tier == nil || *r.Tier != tc.want {
 				t.Errorf("--tier %q recorded tier %s, want %q", tc.in, sv(r.Tier), tc.want)
+			}
+			// The prompt reads the same canonical tier: a strong spelling carries the hand-back clause.
+			prompt, err := os.ReadFile(pf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Contains(string(prompt), tierClause); got != (tc.want == "strong") {
+				t.Errorf("--tier %q: strong-tier clause in prompt = %v, want %v", tc.in, got, tc.want == "strong")
 			}
 		})
 	}
@@ -192,6 +201,41 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 		recs := recordLines(t, home)
 		if len(recs) != 1 || recs[0].Brief != nil {
 			t.Fatalf("want one line with a null brief, got %d lines\n%s", len(recs), errOut)
+		}
+	})
+	// Free text reaching the record from the two sources the dispatcher does not itself narrow —
+	// the brief's own `brief:` line and the DESK_SESSION environment value — is dropped (brief to
+	// null, session to "unknown"); the line is still written, and the text never lands in it.
+	t.Run("free text never recorded", func(t *testing.T) {
+		s := &stub{}
+		home, root := s.install(t)
+		plantScripts(t, root)
+		fixEntropy(t)
+		s.replies = happyReplies(t.TempDir())
+		prose := "vendor-model-9 ran this; see [notes](https://example.invalid/x) @someone ‮desrever <b>&"
+		body := "---\nbrief: " + prose + "\ngate: model\n---\n\n# fixture\n"
+		if err := os.WriteFile(filepath.Join(root, "prose.md"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("DESK_SESSION", "any words at all, a name included")
+		var rc int
+		errOut := captureStderr(t, func() {
+			rc = run([]string{"prose--03", "--root", root, "--brief", "prose.md", "--kit", "Worker",
+				"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+		})
+		if rc != deskkit.ExitOK {
+			t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
+		}
+		recs := recordLines(t, home)
+		if len(recs) != 1 {
+			t.Fatalf("want exactly one line, got %d\n%s", len(recs), errOut)
+		}
+		r := recs[0]
+		if r.Brief != nil || r.SessionTag != "unknown" {
+			t.Errorf("brief %s session_tag %q: want null / \"unknown\"", sv(r.Brief), r.SessionTag)
+		}
+		if r.Kit == nil || *r.Kit != "worker" {
+			t.Errorf("kit %s: want the canonical \"worker\" for --kit Worker", sv(r.Kit))
 		}
 	})
 	t.Run("dry run writes nothing", func(t *testing.T) {
@@ -225,9 +269,47 @@ func TestTierReadersAgree(t *testing.T) {
 			t.Errorf("tier %q: validTier=%v, label error=%v, canonical ok=%v — the readers disagree",
 				in, validTier(in), labelErr, ok)
 		}
-		if ok && !deskkit.ValidDispatchRecordString(c) {
+		if ok && !deskkit.ValidDispatchRecordField("tier", c) {
 			t.Errorf("tier %q canonicalises to %q, which the record refuses", in, c)
 		}
+	}
+}
+
+// TestBriefFieldsStayOnLine: an empty `brief:`, `exec-tier:` or `effort:` line reads as no value,
+// never as the NEXT frontmatter line.
+func TestBriefFieldsStayOnLine(t *testing.T) {
+	root := t.TempDir()
+	body := "---\nbrief:\nexample-stream/29\nexec-tier:\nstrong\neffort:\nM\n---\n"
+	if err := os.WriteFile(filepath.Join(root, "b.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f := readBriefRecordFields(root, "b.md")
+	if f.id != nil || f.execTier != nil || f.effort != nil {
+		t.Errorf("empty fields read across a line: brief %s exec-tier %s effort %s",
+			sv(f.id), sv(f.execTier), sv(f.effort))
+	}
+}
+
+// TestModelStampOutcome: only an OK report records `applied`; an unrecognised one never does.
+func TestModelStampOutcome(t *testing.T) {
+	for in, want := range map[string]string{
+		"OK: applied x": deskkit.ModelStampApplied, "PENDING: apply x": deskkit.ModelStampPending,
+		"SKIPPED: no --model": deskkit.ModelStampSkipped, "": deskkit.ModelStampSkipped,
+		"something else": deskkit.ModelStampSkipped,
+	} {
+		if got := modelStampOutcome(in); got != want {
+			t.Errorf("modelStampOutcome(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestRecordKitsAgree: the record's closed kit set is exactly the kits this binary carries.
+func TestRecordKitsAgree(t *testing.T) {
+	got := append([]string(nil), kitNames()...)
+	want := deskkit.DispatchKits()
+	sort.Strings(got)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("kit vocabularies disagree: deskdispatch carries %v, the record accepts %v", got, want)
 	}
 }
 

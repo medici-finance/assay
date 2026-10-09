@@ -49,6 +49,30 @@ func TestDispatchRecord_Refusals(t *testing.T) {
 			t.Fatalf("a valid released record was refused: %v", err)
 		}
 	})
+	// Positive controls for the identifier grammars: every shape the dispatcher really writes.
+	for _, c := range []struct {
+		name string
+		mut  func(*DispatchRecord)
+	}{
+		{"brief v1 id", func(r *DispatchRecord) { r.Brief = strp("windows-port/02") }},
+		{"brief v2 id", func(r *DispatchRecord) { r.Brief = strp("assay:assay:desk-supervision:28") }},
+		{"aliased item", func(r *DispatchRecord) { r.Item = strp("assay:desk-supervision/28") }},
+		{"pr item key", func(r *DispatchRecord) { r.Item = strp("assay--pr-2427") }},
+		{"kit review", func(r *DispatchRecord) { r.Kit = strp("review") }},
+		{"kit verifier", func(r *DispatchRecord) { r.Kit = strp("verifier") }},
+		{"kit worker-objective", func(r *DispatchRecord) { r.Kit = strp("worker-objective") }},
+		{"uuid session", func(r *DispatchRecord) { r.SessionTag = "0b5e6a1c-3f2d-4e8a-9c71-2d4f6a8b0e13" }},
+		{"unknown session", func(r *DispatchRecord) { r.SessionTag = "unknown" }},
+		{"dotted repo", func(r *DispatchRecord) { r.Repo = "example.org/my_project-2" }},
+	} {
+		t.Run(c.name+" accepted", func(t *testing.T) {
+			r := validDispatched()
+			c.mut(&r)
+			if err := ValidateDispatchRecord(r); err != nil {
+				t.Fatalf("a record the dispatcher writes was refused (%s): %v", c.name, err)
+			}
+		})
+	}
 	t.Run("released null ref accepted", func(t *testing.T) {
 		r := validReleased()
 		r.DispatchRef = nil
@@ -80,13 +104,34 @@ func TestDispatchRecord_Refusals(t *testing.T) {
 		{"claim_key carries @", func(r *DispatchRecord) { r.ClaimKey = "a@b--1"; r.DispatchRef = nil }},
 		{"no attempt_local", func(r *DispatchRecord) { r.AttemptLocal = nil }},
 		{"released with a tier", func(r *DispatchRecord) { *r = validReleased(); r.Tier = strp("any") }},
+		// No string field is free text: each identifier field is refused prose, a link, a
+		// mention, markup and the format characters that reorder or hide what a reader sees.
+		{"brief is prose", func(r *DispatchRecord) { r.Brief = strp("vendor-model-9 ran this; see notes @someone") }},
+		{"brief is a link", func(r *DispatchRecord) { r.Brief = strp("https://example.invalid/x") }},
+		{"brief is markup", func(r *DispatchRecord) { r.Brief = strp("<b>x</b>/1") }},
+		{"brief has RLO", func(r *DispatchRecord) { r.Brief = strp("x/‮1") }},
+		{"brief has ZWSP", func(r *DispatchRecord) { r.Brief = strp("x​/1") }},
+		{"brief has LSEP", func(r *DispatchRecord) { r.Brief = strp("x/1 ") }},
+		{"brief v2 short", func(r *DispatchRecord) { r.Brief = strp("assay:x:1") }},
+		{"item is prose", func(r *DispatchRecord) { r.Item = strp("any words at all") }},
+		{"kit outside set", func(r *DispatchRecord) { r.Kit = strp("auditor") }},
+		{"kit is prose", func(r *DispatchRecord) { r.Kit = strp("a worker, probably") }},
+		{"kit not canonical", func(r *DispatchRecord) { r.Kit = strp("Worker") }},
+		{"branch is prose", func(r *DispatchRecord) { r.Branch = strp("feat/any words") }},
+		{"branch has dotdot", func(r *DispatchRecord) { r.Branch = strp("feat/../x") }},
+		{"repo is prose", func(r *DispatchRecord) { r.Repo = "any sentence / with a slash" }},
+		{"repo two slashes", func(r *DispatchRecord) { r.Repo = "a/b/c" }},
+		{"session is prose", func(r *DispatchRecord) { r.SessionTag = "any words at all, a name included" }},
+		{"session has PSEP", func(r *DispatchRecord) { r.SessionTag = "sess A" }},
+		{"session empty", func(r *DispatchRecord) { r.SessionTag = "" }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r := validDispatched()
 			c.mut(&r)
 			if err := ValidateDispatchRecord(r); err == nil {
-				t.Fatalf("ValidateDispatchRecord accepted an out-of-schema record (%s): %+v", c.name, r)
+				line, _ := json.Marshal(r)
+				t.Fatalf("ValidateDispatchRecord accepted an out-of-schema record (%s): %s", c.name, line)
 			}
 		})
 	}

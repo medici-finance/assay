@@ -48,15 +48,17 @@ func recordDispatchRefInWorktree(o dispatchOpts, home, ref string) {
 	o.say("%s OK: recorded dispatch ref (assay.dispatchRef) in %s", stepWorktreeCreate, home)
 }
 
-// modelStampOutcome maps the model-stamp step's report onto the record's closed vocabulary.
+// modelStampOutcome maps the model-stamp step's report onto the record's closed vocabulary. Only
+// an OK report records `applied`; any report it does not recognise records the non-asserting
+// `skipped`, never a stamp it cannot vouch for.
 func modelStampOutcome(stamp string) string {
 	switch {
-	case strings.HasPrefix(stamp, "SKIPPED"):
-		return deskkit.ModelStampSkipped
+	case strings.HasPrefix(stamp, "OK"):
+		return deskkit.ModelStampApplied
 	case strings.HasPrefix(stamp, "PENDING"):
 		return deskkit.ModelStampPending
 	default:
-		return deskkit.ModelStampApplied
+		return deskkit.ModelStampSkipped
 	}
 }
 
@@ -81,7 +83,7 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		item = o.itemAlias + ":" + o.item
 	}
 	var branch *string
-	if !plan.detached {
+	if !plan.detached && deskkit.ValidDispatchRecordField("branch", plan.branch) {
 		branch = opt(plan.branch)
 	}
 	var pr *int
@@ -90,20 +92,18 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		pr = &n
 	}
 	bf := readBriefRecordFields(o.root, o.brief)
-	// A frontmatter value outside the record's vocabulary is dropped to null, never guessed and
-	// never allowed to refuse the whole record.
-	execTier := bf.execTier
-	if execTier != nil && !isDispatchTierValue(*execTier) {
-		execTier = nil
+	// A frontmatter value outside the record's grammar or vocabulary is dropped to null, never
+	// guessed, never recorded as the text it was, and never allowed to refuse the whole record.
+	keep := func(name string, v *string) *string {
+		if v == nil || !deskkit.ValidDispatchRecordField(name, *v) {
+			return nil
+		}
+		return v
 	}
-	effort := bf.effort
-	if effort != nil && *effort != "S" && *effort != "M" && *effort != "L" {
-		effort = nil
-	}
-	briefID := bf.id
-	if briefID != nil && !deskkit.ValidDispatchRecordString(*briefID) {
-		briefID = nil
-	}
+	execTier, effort, briefID := keep("brief_exec_tier", bf.execTier), keep("brief_effort", bf.effort), keep("brief", bf.id)
+	// --kit is accepted in any case and with surrounding space (kitText); the record carries the
+	// canonical name, as it does the tier.
+	kit := strings.ToLower(strings.TrimSpace(o.kit))
 	// --tier is accepted in any case and with surrounding space (validTier); the record carries
 	// the canonical token, from the same normalisation the stamp label uses.
 	tier := o.tier
@@ -118,22 +118,13 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		Repo:        plan.repo,
 		Item:        opt(item),
 		Brief:       briefID,
-		Kit:         opt(o.kit),
+		Kit:         opt(kit),
 		Branch:      branch,
 		PR:          pr,
-		SessionTag:  deskkit.SessionTag(),
+		SessionTag:  deskkit.DispatchRecordSessionTag(),
 		Tier:        opt(tier),
 		BriefExec:   execTier,
 		BriefEffort: effort,
 		ModelStamp:  &ms,
 	}
-}
-
-func isDispatchTierValue(v string) bool {
-	for _, t := range deskkit.DispatchTiers() {
-		if v == t {
-			return true
-		}
-	}
-	return false
 }

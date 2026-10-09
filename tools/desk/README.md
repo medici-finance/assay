@@ -5903,8 +5903,9 @@ Every real dispatch writes one structured line saying which brief, pull request,
 tier it was. `deskdispatch` writes a `dispatched` line after the model-stamp step (step 5).
 `deskclaim-ref release` writes a `released` line after a release that removed an existing
 claim. Both go to `<StateDir>/dispatch-records.jsonl` (`~/.config/assay/`, beside
-`audit.jsonl`). The file is mode 0600, append-only and never committed to git. It is not
-rotated, since it gets one line per dispatch. The type, validator and writer live in
+`audit.jsonl`). The tool creates the file mode 0600 (the mode is set on creation only, as
+for the audit log), appends to it and never commits it to git. It is not rotated, since it
+gets one line per dispatch. The type, validator and writer live in
 `internal/deskkit/dispatchrecord.go` (`DispatchRecord`, `ValidateDispatchRecord`,
 `AppendDispatchRecord`, `MintDispatchRef`).
 
@@ -5917,8 +5918,8 @@ dispatch), `pr`, `session_tag`, `tier` (`--tier`, recorded as its canonical lowe
 `brief_effort` (the brief's frontmatter values), `model_stamp` (`applied` | `pending` |
 `skipped`) and `attempt_local`.
 
-- A frontmatter value that is absent, unreadable or outside the vocabulary is null, never
-  guessed.
+- A frontmatter value that is absent, unreadable or outside its grammar or vocabulary is
+  null, never guessed and never recorded as the text it was.
 - A `released` line carries null in every dispatch-only field.
 - `attempt_local` is 1 plus the number of earlier `dispatched` lines with the same
   `claim_key` in THIS file. It is a local ordinal: another machine dispatching the same item
@@ -5955,7 +5956,10 @@ The prepared-dispatch audit line carries it too, as `dispatch_ref=<ref>`. `--dry
 nothing and writes nothing.
 
 **Visibility rule.** `dispatch_ref` embeds the claim key, which contains a repo label and an
-item key. It is local state, so it appears in clear only in:
+item key. `claim_key`, `repo`, `item`, `branch` and `brief` carry the same information
+directly, so for a dispatch into a private repo every one of them is as unfit for a public
+surface as the ref. The rule below is stated for `dispatch_ref`; it binds those fields too.
+`dispatch_ref` is local state, so it appears in clear only in:
 
 - the desk's state directory (this file and the audit log);
 - the agent worktree's config.
@@ -5988,10 +5992,36 @@ changes a release's exit code.
 fallback for trees without the Go binary, and record writing is not ported into shell.
 
 **Never recorded:** prompt text, the brief body, PR or issue text, tool output, transcripts,
-vendor model names, or any per-person metric. No field is free text. The tier fields accept
-only `any` and `strong`, so a model slug cannot land in one; the slug stays on the PR's
-`dispatched-model:` label, which joins via `pr`. These records support aggregate analysis per
-brief, tier and kit. They are never used to rank people or agents.
+vendor model names, or any per-person metric. No field is free text, and the validator is what
+enforces it: a line whose field is outside its grammar is never written.
+
+| Field | What the validator accepts |
+|---|---|
+| `repo` | `owner/name`: two segments of letters, digits, `.`, `_`, `-` |
+| `item` | an item key (letters, digits, `.`, `_`, `/`, `-`), optionally prefixed `alias:` |
+| `brief` | `<stream>/<NN>` or `<cell>:<alias>:<stream>:<NN>`; each segment letters, digits, `.`, `_`, `-` |
+| `kit` | `worker` \| `worker-objective` \| `review` \| `verifier` |
+| `branch` | letters, digits, `.`, `_`, `/`, `-`; no `..` |
+| `session_tag` | one token of letters, digits, `.`, `_`, `:`, `-` |
+| `tier`, `brief_exec_tier` | `any` \| `strong` |
+| `brief_effort` | `S` \| `M` \| `L` |
+| `model_stamp` | `applied` \| `pending` \| `skipped` |
+
+No space, link, mention, markup, control character or invisible format character fits any of
+these. Two fields are not chosen by the dispatcher. `brief` is copied from the brief file's own
+`brief:` line, and `session_tag` from `DESK_SESSION` (or the session id). A value outside its
+grammar is dropped: `brief` to null, `session_tag` to `unknown`. A grammar fixes a field's
+shape, not its meaning: a one-word `DESK_SESSION` is still whatever word the operator chose. The
+tier fields accept only `any` and `strong`, so a model slug cannot land in one; the slug stays
+on the PR's `dispatched-model:` label, which joins via `pr`.
+
+The record is the dispatcher's own account. `tier` is the `--tier` flag, `session_tag` is an
+environment value, a `released` line's `dispatch_ref` is read from worktree config, and
+`attempt_local` counts lines already in this file. Only `model_stamp: applied` reports an act,
+the stamp step's own OK. The record is analysis data: never an authenticated log, and never an input to a
+control. A missing line is not evidence that no dispatch ran, since a failed write is
+non-fatal. These records support aggregate analysis per brief, tier and kit. They are never
+used to rank people or agents.
 
 ## The dispatch-claim store — `ResolveClaimStore`
 

@@ -240,7 +240,7 @@ func (d deliverable) crossRepo(root string) bool {
 var (
 	briefDeliverableRe = regexp.MustCompile(`(?m)^deliverable_repo:\s*(.*)$`)
 	briefHomedInRe     = regexp.MustCompile(`(?m)^homed-in:\s*(.*)$`)
-	briefIDRe          = regexp.MustCompile(`(?m)^brief:\s*(.*)$`)
+	briefIDRe          = regexp.MustCompile(`(?m)^brief:[ \t]*(.*)$`)
 )
 
 // briefV2Alias returns the repo-alias segment of a brief-v2 typed id (`<cell>:<alias>:<stream>:<NN>`),

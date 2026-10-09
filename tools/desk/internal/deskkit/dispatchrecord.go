@@ -19,11 +19,16 @@ package deskkit
 // on a non-private surface, where a consumer writes at most a sha256 of the full ref.
 //
 // WHAT IS NEVER RECORDED. No prompt text, brief body, PR/issue text, tool output, transcript,
-// vendor model name or per-person metric. There is no free-text field: every string is a key, an
-// identifier or a closed-vocabulary value, bounded to 256 bytes with no control character, and
-// the tier fields accept only the dispatch tier vocabulary, so a model slug can never land in
-// one. These records are for aggregate analysis per brief / tier / kit, never for ranking people
-// or agents.
+// vendor model name or per-person metric. There is no free-text field, and the validator is what
+// makes that true: every string is a fixed token, an identifier matching its own grammar (repo,
+// item, brief, branch, session_tag, claim_key, dispatch_ref) or a closed-vocabulary value (kit,
+// the two tier fields, brief_effort, model_stamp), so no space, link, mention, markup or
+// format character can land in one, and a model slug cannot land in a tier field. Two fields
+// are not chosen by the dispatcher: `brief` is copied from the brief file's own `brief:` line and
+// `session_tag` from the environment, so the writer drops a value outside its grammar (brief to
+// null, session_tag to "unknown") rather than record it. An identifier still names its repo,
+// item, branch and brief, so a dispatch into a private repo is not public-safe as written. These
+// records are for aggregate analysis per brief / tier / kit, never for ranking people or agents.
 
 import (
 	"bufio"
@@ -78,6 +83,29 @@ var claimKeyRe = regexp.MustCompile(`^[\x21-\x3F\x41-\x7E]{1,226}$`)
 
 // dispatchRefSuffixRe is everything after the claim key: "@" timestamp "." nonce.
 var dispatchRefSuffixRe = regexp.MustCompile(`^@[0-9]{8}T[0-9]{6}Z\.[0-9a-f]{12}$`)
+
+// The identifier grammars of the remaining string fields. Each is the writer's own input grammar
+// (deskdispatch's repo slug, alias, item key and branch rules) or, for the two fields the
+// dispatcher does not choose, the shape the real values take: a brief id is `<stream>/<NN>` (v1)
+// or `<cell>:<alias>:<stream>:<NN>` (v2), and a session tag is a token such as a session UUID.
+var (
+	recordRepoRe    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
+	recordItemRe    = regexp.MustCompile(`^(?:[a-z][a-z0-9_-]{0,31}:)?[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
+	recordBranchRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$`)
+	recordBriefV1Re = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	recordBriefV2Re = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,63}){3}$`)
+	recordSessionRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+)
+
+// dispatchKits is the closed kit vocabulary, the kits deskdispatch carries, sorted.
+var dispatchKits = []string{"review", "verifier", "worker", "worker-objective"}
+
+// DispatchKits returns the record's kit vocabulary (a copy).
+func DispatchKits() []string { return append([]string(nil), dispatchKits...) }
+
+// UnknownSessionTag is the session_tag of a line whose session label is absent or outside the
+// session grammar.
+const UnknownSessionTag = "unknown"
 
 // DispatchRecord is one line of the dispatch record store. Nullable fields are pointers so a
 // missing value serializes as JSON null — never as a guessed default. The JSON keys and their
@@ -140,19 +168,30 @@ func dispatchRefErr(claimKey, ref string) error {
 	return checkRecordString("dispatch_ref", ref)
 }
 
-// ValidDispatchRecordString reports whether s passes the record's per-string bound (at most 256
-// bytes, valid UTF-8, no control character), so a writer can drop an optional value to null
-// instead of having the whole line refused. It is the validator's own check, not a copy.
-func ValidDispatchRecordString(s string) bool {
-	return checkRecordString("", s) == nil
+// ValidDispatchRecordField reports whether v is a value the validator accepts for the named
+// string field (its JSON key), so a writer can drop an optional value to null instead of having
+// the whole line refused. It is the validator's own check, not a copy.
+func ValidDispatchRecordField(name, v string) bool {
+	return checkRecordField(name, v) == nil
+}
+
+// DispatchRecordSessionTag is SessionTag() when it fits the session grammar, else "unknown": the
+// environment value is recorded only when it is a token, never as whatever text it held.
+func DispatchRecordSessionTag() string {
+	if s := SessionTag(); recordSessionRe.MatchString(s) {
+		return s
+	}
+	return UnknownSessionTag
 }
 
 // ValidateDispatchRecord refuses a record that is not exactly the schema: an unknown schema or
 // event, a timestamp that is not RFC3339, a claim key outside the prefix grammar, a dispatch_ref
 // that is not `<the record's OWN claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>`, a tier outside
 // the dispatch tier vocabulary, an effort outside S/M/L, a model_stamp outside
-// applied/pending/skipped, any string over 256 bytes or carrying a control character, and the
-// per-event field shape (a `released` line carries none of the dispatch-only fields).
+// applied/pending/skipped, a kit outside the kit vocabulary, a repo, item, brief, branch or
+// session_tag outside its identifier grammar, any string over 256 bytes or carrying a control
+// character, and the per-event field shape (a `released` line carries none of the dispatch-only
+// fields).
 func ValidateDispatchRecord(r DispatchRecord) error {
 	if r.Schema != DispatchRecordSchema {
 		return fmt.Errorf("schema %q is not %q", r.Schema, DispatchRecordSchema)
@@ -173,7 +212,7 @@ func ValidateDispatchRecord(r DispatchRecord) error {
 		if s.v == nil {
 			continue
 		}
-		if err := checkRecordString(s.name, *s.v); err != nil {
+		if err := checkRecordField(s.name, *s.v); err != nil {
 			return err
 		}
 	}
@@ -183,37 +222,9 @@ func ValidateDispatchRecord(r DispatchRecord) error {
 	if !claimKeyRe.MatchString(r.ClaimKey) {
 		return fmt.Errorf("claim_key %q is outside the prefix grammar (1-226 printable ASCII bytes, no '@')", r.ClaimKey)
 	}
-	if strings.TrimSpace(r.Repo) == "" || !strings.Contains(r.Repo, "/") {
-		return fmt.Errorf("repo %q is not owner/name", r.Repo)
-	}
-	if strings.TrimSpace(r.SessionTag) == "" {
-		return errors.New("session_tag is empty")
-	}
 	if r.DispatchRef != nil {
 		if err := dispatchRefErr(r.ClaimKey, *r.DispatchRef); err != nil {
 			return err
-		}
-	}
-	for _, t := range []struct {
-		name string
-		v    *string
-	}{{"tier", r.Tier}, {"brief_exec_tier", r.BriefExec}} {
-		if t.v != nil && !isDispatchTier(*t.v) {
-			return fmt.Errorf("%s %q is not one of %s", t.name, *t.v, strings.Join(DispatchTiers(), "|"))
-		}
-	}
-	if r.BriefEffort != nil {
-		switch *r.BriefEffort {
-		case "S", "M", "L":
-		default:
-			return fmt.Errorf("brief_effort %q is not S|M|L", *r.BriefEffort)
-		}
-	}
-	if r.ModelStamp != nil {
-		switch *r.ModelStamp {
-		case ModelStampApplied, ModelStampPending, ModelStampSkipped:
-		default:
-			return fmt.Errorf("model_stamp %q is not applied|pending|skipped", *r.ModelStamp)
 		}
 	}
 	if r.PR != nil && *r.PR <= 0 {
@@ -237,6 +248,42 @@ func ValidateDispatchRecord(r DispatchRecord) error {
 			r.Tier != nil || r.BriefExec != nil || r.BriefEffort != nil || r.ModelStamp != nil || r.AttemptLocal != nil {
 			return errors.New("a released record carries no dispatch-only field (item, brief, kit, branch, pr, tier, brief_exec_tier, brief_effort, model_stamp, attempt_local must be null)")
 		}
+	}
+	return nil
+}
+
+// checkRecordField applies the per-string bound and then the named field's own grammar or
+// closed vocabulary. Every string field has one; schema, event, ts, claim_key and dispatch_ref
+// are checked exactly by ValidateDispatchRecord itself.
+func checkRecordField(name, v string) error {
+	if err := checkRecordString(name, v); err != nil {
+		return err
+	}
+	var ok bool
+	switch name {
+	case "repo":
+		ok = recordRepoRe.MatchString(v)
+	case "item":
+		ok = recordItemRe.MatchString(v)
+	case "brief":
+		ok = recordBriefV1Re.MatchString(v) || recordBriefV2Re.MatchString(v)
+	case "kit":
+		ok = containsString(dispatchKits, v)
+	case "branch":
+		ok = recordBranchRe.MatchString(v) && !strings.Contains(v, "..")
+	case "session_tag":
+		ok = recordSessionRe.MatchString(v)
+	case "tier", "brief_exec_tier":
+		ok = isDispatchTier(v)
+	case "brief_effort":
+		ok = v == "S" || v == "M" || v == "L"
+	case "model_stamp":
+		ok = v == ModelStampApplied || v == ModelStampPending || v == ModelStampSkipped
+	default:
+		return nil
+	}
+	if !ok {
+		return fmt.Errorf("%s %q is outside its grammar or vocabulary", name, v)
 	}
 	return nil
 }
@@ -280,7 +327,7 @@ func AppendDispatchRecord(r *DispatchRecord) error {
 		r.TS = time.Now().UTC().Format(time.RFC3339)
 	}
 	if r.SessionTag == "" {
-		r.SessionTag = SessionTag()
+		r.SessionTag = DispatchRecordSessionTag()
 	}
 	dir, err := deskDir()
 	if err != nil {
