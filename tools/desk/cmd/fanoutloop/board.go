@@ -302,9 +302,10 @@ func isDispatchableStatus(status string) bool {
 
 // dispatchableAsRework reports whether a bare lifecycle token is one the `Awaiting implementer
 // rework` lane may still offer for RESUME. It is exactly the two statuses statusgen's own
-// classifyAwaiting operates on — `implemented` and `verified` — because a brief awaiting implementer
+// bucketAwaiting operates on — `implemented` and `verified` — because a brief awaiting implementer
 // rework is one whose deliverable is implemented (or verified) but whose LAST verification verdict
-// was FAIL (statusgen/emit.go classifyAwaiting → segmentRework). Every other token means the row has
+// was FAIL with an implementation/check-definition blocker naming an issue (statusgen/awaiting_bucket.go
+// bucketAwaiting → bucketRework). Every other token means the row has
 // LEFT that state since STATUS.md was rendered: `done` (the rework already landed and the brief is
 // complete), or `todo`/`in-progress`/`blocked` (the deliverable was reset or held). A rework row on
 // any of those is a stale render and must not be re-offered.
@@ -346,7 +347,7 @@ func statusMDContent(root string) (string, error) {
 }
 
 // readAwaitingRework parses the `### Awaiting implementer rework` STATUS.md section
-// (statusgen's own classifyAwaiting output, statusgen/emit.go) into BoardRows tagged as REWORK
+// (statusgen's own bucketAwaiting output, statusgen/awaiting_bucket.go) into BoardRows tagged as REWORK
 // items — worker-desk §Sources of work row 5, which this makes a live `plan` source rather than
 // a section an operator reads by hand. The section's Brief cell carries only the number and an
 // optional `[exec:strong]` tag (`11 [exec:strong]`, statusgen/emit.go's rendering) — unlike the
@@ -357,7 +358,7 @@ func readAwaitingRework(root string) ([]BoardRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The `### Awaiting implementer rework` section is statusgen's RENDERED classifyAwaiting output,
+	// The `### Awaiting implementer rework` section is statusgen's RENDERED bucketAwaiting output,
 	// carrying the identical render-lag readNextUp's `## Next up` re-check closes (#1028/#1047): the
 	// section still lists a row whose own README Status cell has since moved past the awaiting-rework
 	// state (the rework landed and the brief flipped to `done`, or the deliverable was reset to

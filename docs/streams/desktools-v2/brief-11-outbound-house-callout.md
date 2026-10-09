@@ -16,6 +16,7 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-outbound-callout
 issues: []
 schema: brief-v2
 authored: 2026-09-17 by desktools-v2 authoring session

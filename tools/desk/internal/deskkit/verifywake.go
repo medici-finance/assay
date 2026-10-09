@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -350,8 +351,9 @@ const (
 )
 
 // Revision content-hashes a declared input against the local tree. A "tool" key returns the
-// configured tool version; a "file:<relpath>" key returns the sha256 of that file's bytes; any
-// unreadable file or unknown key is ok=false (could-not-check).
+// configured tool version; a "file:<relpath>" key returns the sha256 of that file's bytes (of a
+// symlink's target text, as git stores it); any unreadable file or unknown key is ok=false
+// (could-not-check).
 func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 	switch {
 	case input == inputKeyTool:
@@ -367,8 +369,20 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
 			return "", false
 		}
-		b, err := os.ReadFile(filepath.Join(rr.Root, clean))
-		if err != nil {
+		// A symlink is hashed as its target text, never followed — exactly the blob git stores
+		// for it, which is what the receipt writer hashed at the record's sha. Following it would
+		// disagree with the writer on every symlinked input and could read outside the root.
+		full := filepath.Join(rr.Root, clean)
+		var b []byte
+		if fi, err := os.Lstat(full); err != nil {
+			return "", false
+		} else if fi.Mode()&os.ModeSymlink != 0 {
+			target, lerr := os.Readlink(full)
+			if lerr != nil {
+				return "", false
+			}
+			b = []byte(target)
+		} else if b, err = os.ReadFile(full); err != nil {
 			return "", false
 		}
 		sum := sha256.Sum256(b)
@@ -385,3 +399,173 @@ func (rr *RootRevisionReader) ActionCompleted(string) (bool, bool) { return fals
 
 // compile-time assertion: the offline reader satisfies the interface.
 var _ WakeInputs = (*RootRevisionReader)(nil)
+
+// --- the two independent hold reads (verify-reset/03) ---------------------------------------
+//
+// A held non-pass stays held only while BOTH reads say nothing moved: the declared inputs
+// (Unchanged, a content digest of the local tree) and the blocker issue (ReadBlocker, a forge
+// read). They fail on different signals in different components, so either one alone wakes the
+// brief. Each read is three-state; could-not-check is never rounded to "unchanged" or "closed".
+
+// InputsState is Unchanged's three-state verdict over a receipt's declared inputs.
+type InputsState int
+
+const (
+	InputsUnchanged     InputsState = iota // every declared input read, every revision equal
+	InputsChanged                          // at least one declared input read with a different revision
+	InputsCouldNotCheck                    // no change observed, but some input could not be read
+)
+
+// Unchanged hashes every declared input of r at the current tree and compares it with the
+// revision the receipt recorded. It returns the state and a reason: "unchanged",
+// "changed <path>[, <path>…]" or "could-not-check <why>". An observed change wins over an
+// unreadable sibling (a change is enough to wake); otherwise one unreadable input makes the
+// whole read could-not-check, because unchangedness cannot be established on a partial scope.
+// An empty scope, or no tree reader, is could-not-check too.
+func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
+	if tree == nil {
+		return InputsCouldNotCheck, "could-not-check no tree reader"
+	}
+	if len(r.Inputs) == 0 {
+		return InputsCouldNotCheck, "could-not-check the receipt declares no inputs"
+	}
+	var changed, unreadable []string
+	for _, in := range wakeSortedKeys(r.Inputs) {
+		cur, ok := tree.Revision(in)
+		switch {
+		case !ok:
+			unreadable = append(unreadable, inputLabel(in))
+		case !strings.EqualFold(strings.TrimSpace(cur), strings.TrimSpace(r.Inputs[in])):
+			changed = append(changed, inputLabel(in))
+		}
+	}
+	if len(changed) > 0 {
+		return InputsChanged, "changed " + strings.Join(changed, ", ")
+	}
+	if len(unreadable) > 0 {
+		return InputsCouldNotCheck, "could-not-check unreadable input(s): " + strings.Join(unreadable, ", ")
+	}
+	return InputsUnchanged, "unchanged"
+}
+
+// inputLabel is the human-facing name of an input key: the path of a file: key, else the key.
+func inputLabel(in string) string {
+	return strings.TrimPrefix(in, inputKeyFilePrefix)
+}
+
+// BlockerState is ReadBlocker's three-state verdict on the issue a receipt's blocker_ref names.
+// The zero value is BlockerCouldNotCheck, so a source that returns nothing fails closed (held,
+// surfaced) rather than reading as an open blocker.
+type BlockerState int
+
+const (
+	BlockerCouldNotCheck BlockerState = iota // no read, a failed read, or an unreadable answer
+	BlockerOpen                              // the forge read the issue and it is open
+	BlockerClosed                            // the forge read the issue and it is closed
+)
+
+func (s BlockerState) String() string {
+	switch s {
+	case BlockerOpen:
+		return "open"
+	case BlockerClosed:
+		return "closed"
+	default:
+		return "could-not-check"
+	}
+}
+
+// BlockerRef is a parsed blocker_ref: a forge issue, change or run named by number, never free
+// text and never fetched as a URL.
+type BlockerRef struct {
+	Raw    string
+	Owner  string // empty for a bare #N parsed with no default repository
+	Name   string
+	Kind   string // "numbered" (#N or owner/repo#N), "issue", "change" or "run"
+	Number int    // 0 for a run
+	RunID  string // set for a run
+}
+
+// Repo is the forge coordinate the reference resolves against.
+func (b BlockerRef) Repo() ForgeRepo { return ForgeRepo{Owner: b.Owner, Name: b.Name} }
+
+var (
+	blockerRefBareRe = regexp.MustCompile(`^#([0-9]+)$`)
+	blockerRefRepoRe = regexp.MustCompile(`^([\w.-]+)/([\w.-]+)#([0-9]+)$`)
+	blockerRefURLRe  = regexp.MustCompile(`^https?://[^/]+/([\w.-]+)/([\w.-]+)/(issues|pull|actions/runs)/([0-9]+)(?:[/?#].*)?$`)
+)
+
+// ParseBlockerRef parses raw as #<N>, <owner>/<repo>#<N>, or a forge issue/PR/run URL. A bare
+// #<N> resolves against defaultOwner/defaultName (left empty when those are). Anything else —
+// an empty value, "to file", an "action: …" sentence — is refused, naming blocker_ref.
+func ParseBlockerRef(raw, defaultOwner, defaultName string) (BlockerRef, error) {
+	raw = strings.TrimSpace(raw)
+	ref := BlockerRef{Raw: raw}
+	switch {
+	case blockerRefBareRe.MatchString(raw):
+		m := blockerRefBareRe.FindStringSubmatch(raw)
+		ref.Owner, ref.Name, ref.Kind = defaultOwner, defaultName, "numbered"
+		ref.Number, _ = strconv.Atoi(m[1])
+	case blockerRefRepoRe.MatchString(raw):
+		m := blockerRefRepoRe.FindStringSubmatch(raw)
+		ref.Owner, ref.Name, ref.Kind = m[1], m[2], "numbered"
+		ref.Number, _ = strconv.Atoi(m[3])
+	case blockerRefURLRe.MatchString(raw):
+		m := blockerRefURLRe.FindStringSubmatch(raw)
+		ref.Owner, ref.Name = m[1], m[2]
+		switch m[3] {
+		case "issues":
+			ref.Kind = "issue"
+			ref.Number, _ = strconv.Atoi(m[4])
+		case "pull":
+			ref.Kind = "change"
+			ref.Number, _ = strconv.Atoi(m[4])
+		default:
+			ref.Kind = "run"
+			ref.RunID = m[4]
+		}
+	default:
+		return BlockerRef{}, Refused("refused: blocker_ref " + strconv.Quote(raw) +
+			" is not a reference — must be #<N>, <owner>/<repo>#<N>, or a forge issue/PR/run URL " +
+			"(free text, a placeholder and an action: … sentence are refused)")
+	}
+	return ref, nil
+}
+
+// IssueStateSource reads whether the issue or change a blocker reference names is open or
+// closed. Production is a forge client; tests inject a fake. Any answer other than BlockerOpen
+// or BlockerClosed is read as could-not-check.
+type IssueStateSource interface {
+	IssueState(ref BlockerRef) (state BlockerState, why string)
+}
+
+// ReadBlocker is the blocker half of the hold: the open/closed state of the issue the receipt's
+// blocker_ref names, read through src. It never reports closed without a read that said so: no
+// source (plan --no-forge), an unparseable reference, a bare #N with no repository to resolve it
+// against, a run reference (a run has no issue state) and every failed read are could-not-check.
+// defaultRepo is "<owner>/<repo>", used only for a bare #N.
+func ReadBlocker(raw, defaultRepo string, src IssueStateSource) (BlockerState, string) {
+	owner, name, _ := strings.Cut(strings.TrimSpace(defaultRepo), "/")
+	ref, err := ParseBlockerRef(raw, owner, name)
+	if err != nil {
+		return BlockerCouldNotCheck, "blocker_ref " + strconv.Quote(strings.TrimSpace(raw)) + " is not a reference"
+	}
+	if ref.Owner == "" || ref.Name == "" {
+		return BlockerCouldNotCheck, "blocker_ref " + ref.Raw + " names no repository to read it in"
+	}
+	if ref.Kind == "run" {
+		return BlockerCouldNotCheck, "blocker_ref " + ref.Raw + " is a run, which has no open/closed state"
+	}
+	if src == nil {
+		return BlockerCouldNotCheck, "no issue-state source (forge reads off)"
+	}
+	st, why := src.IssueState(ref)
+	switch st {
+	case BlockerOpen, BlockerClosed:
+		return st, why
+	}
+	if strings.TrimSpace(why) == "" {
+		why = "the issue-state read returned no state"
+	}
+	return BlockerCouldNotCheck, why
+}
