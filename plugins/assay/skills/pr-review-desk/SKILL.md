@@ -705,24 +705,35 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        the code-existence check reads the board repo's own main at a ref fetched this cycle. Being
        same-repo relaxes nothing.
      - **Reproduces under reconcile on main.** In a throwaway worktree checked out at the target
-       repo's `refs/remotes/origin/main`, fetched this cycle, run
-       `statusgen reconcile --backfill --apply --repo <delivery owner/name> --root <that worktree> --json`
-       with the delivery repo read above. Rows with different delivery repos need one run per
-       delivery repo, each in its OWN fresh throwaway worktree (`--apply` writes into the worktree it
-       runs on), and each row is compared only against the run for its own delivery repo. Admit only
-       when every row the hunk changes is reproduced byte-identically by the rows that run wrote (its
-       `applied` list and the resulting README diff); a hunk row the run did not write, or wrote
-       differently, bounces. A row current main already shows as `implemented` is never written by
-       the run, so it bounces with the one line "already `implemented` on main — merge main and drop
-       the hunk." Rows the run writes that the PR does not carry do not affect admission. A run
-       that could not look — a non-zero exit, missing or unparseable JSON on stdout,
-       `lookedAt: false` in its JSON, or a `could-not-check` on stderr (no token, a failed or
-       rate-limited PR fetch) — is not a reproduction: hold the verdict and say so, never admit on
-       it. The binary is the pinned release binary the target repo's CI uses; where the target
-       repo vendors `statusgen/`, build it from the throwaway `origin/main` worktree's own
-       `statusgen/` — NEVER one built or resolved from the PR head or the PR tree (carve-out A's
-       PR-head build allowance does not carry over) — and never run it against a desk's own
-       checkout.
+       repo's `refs/remotes/origin/main`, fetched this cycle, run the READ-ONLY form by default:
+       `statusgen reconcile --backfill --repo <delivery owner/name> --root <that worktree> --token-file <file> --json`
+       with the delivery repo read above, and with neither `--apply` nor `--report`. It writes
+       nothing; its `wouldApply` list is the rows `--apply` would write on that tree, computed by
+       the same code that writes, each with its `readme`, `from`/`to` and the whole table line
+       before and after (`rowBefore`/`rowAfter`). The token comes ONLY from `--token-file`, a
+       file holding the reviewer role's own read credential (the path `desktoken reviewer --repo
+       <delivery owner/name>` prints) — never a token placed in the environment
+       (`GITHUB_TOKEN`), never a human account's. The `--apply` form stays valid: the same
+       command with `--apply`, whose `applied` list carries the same fields; because it writes
+       into the worktree it runs on, each `--apply` run needs its OWN fresh throwaway worktree.
+       Rows with different delivery repos need one run per delivery repo, and each row is
+       compared only against the run for its own delivery repo. Admit only when every row the
+       hunk changes is reproduced byte-identically by that run's rows — the hunk's removed and
+       added line equal an entry's `rowBefore` and `rowAfter` in `wouldApply` (read-only form),
+       or in `applied` and the resulting README diff (`--apply` form); a hunk row the run does
+       not report, or reports differently, bounces. A row current main already shows as
+       `implemented` is never reported by the run, so it bounces with the one line "already
+       `implemented` on main — merge main and drop the hunk." Rows the run reports that the PR
+       does not carry do not affect admission. A run that could not look — a non-zero exit,
+       missing or unparseable JSON on stdout, `lookedAt: false` in its JSON, a `could-not-check`
+       on stderr (no token, a failed or rate-limited PR fetch), or a read-only run whose JSON
+       carries no `wouldApply` key at all (a binary that predates the read-only form: use the
+       `--apply` form, never read the absent key as zero rows) — is not a reproduction: hold the
+       verdict and say so, never admit on it. The binary is the pinned release binary the target
+       repo's CI uses; where the target repo vendors `statusgen/`, build it from the throwaway
+       `origin/main` worktree's own `statusgen/` — NEVER one built or resolved from the PR head
+       or the PR tree (carve-out A's PR-head build allowance does not carry over) — and never
+       run it against a desk's own checkout.
      - **The reviewer checks the code exists, on every row.** For each admitted row, read the same
        run's `--json` entry for that brief. `source: "pr"` means the witness is a merged PR in the
        delivery repo carrying a `Brief: <stream>/<NN>` trailer (a source PR): confirm on the forge
@@ -746,8 +757,9 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        whole, one line: "hunk touches a row carve-out B does not admit; drop it."
      - **Not a statusgen-source PR.** As in carve-out A.
 
-     The PR body must state that the hunk is `reconcile --backfill --apply` output and name the
-     witness PR for each row; that statement is a CLAIM, and the run above is the only evidence.
+     The PR body must state that the hunk is `reconcile --backfill --apply` output (the rows the
+     read-only form reports as `wouldApply`) and name the witness PR for each row; that statement
+     is a CLAIM, and the run above is the only evidence.
      The carve-out exists because `--apply` only ever writes this one Status-only transition, and
      only from a real merged-PR witness, so a PR carrying its output byte-for-byte adds nothing the
      tool would not write itself. The code-existence check is the second layer on every admitted
@@ -887,9 +899,8 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   red state was never observed is a finding, not evidence**: treat its pass as unproven and
   `--request-changes` asking for the red run. The single failure mode this catches is *a control
   that reads as present and cannot fail*: an assertion comparing an emitted value against the
-  constant it came from; a counter documented as a cross-check but incremented unconditionally
-  alongside its comparand; a fail-open delete guard disarmed by a stray character in a comment; a
-  build step comparing an artifact against itself; a large subtest suite that had never run in CI.
+  constant it came from; a counter incremented unconditionally alongside its comparand; a guard
+  disarmed by a stray character; a self-compared build artifact; a subtest suite never run in CI.
   **Scope — do not over-apply:** the rule binds tests asserting behaviour or pinning a guard; it
   does NOT bind docs, formatting, register/status-row flips, comment-only diffs, or changes
   carrying no test-based claim. The line: if the PR's evidence includes "this test passes", ask
@@ -899,10 +910,11 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   unresolved evidence-pattern NOTICEs as findings before inspecting anything by hand — it decides
   the mechanical subset for free (a literal `\|` inside a `grep -E`/`go test -run` pattern, `grep -c`
   gated on an expected `0` that fails on its own success path, an exit status swallowed by an
-  always-zero pipeline sink). **Preferred proof shape where a real mutation suite exists:** a
-  committed, re-runnable script (`testdata/mutate.sh`) so a verifier re-runs the claim instead of
-  taking a transcript on trust — worth asking for on guard-heavy PRs, but the hard requirement is
-  an observed red run *or* a re-runnable check.
+  always-zero pipeline sink). **Preferred proof shape:** a committed, re-runnable mutation script
+  (`testdata/mutate.sh`), worth asking for on guard-heavy PRs; the hard requirement is an observed
+  red run *or* a re-runnable check. **Departures** (review kit §4): from a current-main checkout run `cd
+  tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -v -args -base=<merge-base sha>
+  -head=<PR head sha>`; an unjustified departure in its report, trailed or not, is a `test-evidence` finding.
   **Honest-failure corollary:** a row the author legitimately cannot make pass is a finding to
   report, not a row to soften or delete. Quietly weakening a correctly-red check to reach green is
   worse than leaving it red with a note explaining why; a correctly-red row is doing exactly its

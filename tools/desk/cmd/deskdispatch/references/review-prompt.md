@@ -64,18 +64,19 @@ must show it failing on the unfixed code — a red run quoted in the PR body or 
 or a committed mutation script the reviewer can re-run.
 
 **A test whose red state was never observed is a finding, not evidence.** Treat its pass as
-unproven and request changes asking for the red run.
+unproven and request changes asking for the red run. The single failure mode this catches is
+*a control that reads as present and cannot fail*: an assertion against its own source
+constant; a counter bumped with its comparand; a guard disarmed by a stray character; a
+self-compared artifact; a suite never run in CI; escape conditions that survive their own mutations.
 
-The single failure mode this catches is *a control that reads as present and cannot fail*: an
-assertion against its own source constant; a counter bumped with its comparand, so it is
-structurally incapable of diverging; a guard disarmed by a stray character; a self-compared
-artifact; a suite never run in CI; escape conditions that survive their own mutations.
+**Scope — do not over-apply.** The rule binds tests asserting behaviour or pinning a guard, not
+docs, formatting, status-row flips, comment-only diffs, or changes with no test-based claim: if
+the evidence says "this test passes", ask "was it ever seen red, and where?". A Verify row IS a check.
 
-**Scope — do not over-apply.** The rule does NOT bind docs, formatting, status-row flips,
-comment-only diffs, or changes that carry no test-based claim. The line: if the PR's evidence
-includes "this test passes", ask "was it ever seen red, and where?"; if the PR makes no
-test-based claim, the rule is silent. A Verify row IS a check for this purpose — "docs" above
-means prose, not a Verify row.
+**Departures.** From a current-main checkout, never the PR's, run `cd tools/desk && go test ./internal/testledger/
+-run TestReportTestLedger -v -args -base=<merge-base sha> -head=<PR head sha>` (full commit ids). Of each
+line ask: is what it pinned still pinned, and by which test; is the `Retires-test:` reason it shows
+sound; Verify rows re-pointed? An unjustified departure, trailed or not, is a `test-evidence` finding.
 
 ## 5. Could-not-check is never an approval
 
