@@ -145,16 +145,19 @@ func vpBuild(t *testing.T, in packetInput) string {
 	return built.Text
 }
 
-// vpItem returns the body of the quoted item whose boundary line names label.
+// vpItem returns the body of the quoted item whose boundary line names label. The label on a
+// boundary line is a value, so it is looked for the way the builder writes one.
 func vpItem(t *testing.T, text, label string) string {
 	t.Helper()
-	i := strings.Index(text, " — "+label+" — ")
+	i := strings.Index(text, " — "+packet.Code(label)+" — ")
 	if i < 0 {
 		t.Fatalf("packet has no item labelled %q:\n%s", label, text)
 	}
 	rest := text[i:]
 	rest = rest[strings.Index(rest, "\n")+1:]
-	end := strings.Index(rest, "<<<END-UNTRUSTED-CONTENT")
+	// The closing line is matched whole and with the fixture's token: a body may hold a line
+	// that only looks like one.
+	end := strings.Index("\n"+rest, "\n<<<END-UNTRUSTED-CONTENT t0ken>>>\n")
 	if end < 0 {
 		t.Fatalf("item %q is not closed", label)
 	}

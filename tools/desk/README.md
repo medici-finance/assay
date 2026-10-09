@@ -5472,6 +5472,15 @@ differs from its header's (an unescaped pipe in a command), gets no command list
 text still carries the table as written. The cut at the Evidence heading is the first such heading at
 any level and ignores code fences, which errs toward carrying less.
 
+Nothing read from the repository is written at the tool's own level except as a value in a
+code span: the brief's path, a commit id, the brief id in the `Brief:` line searched for.
+Each is written with the shared builder's `packet.Code`, so a path chosen by a brief's author
+cannot close the span or start a line of its own, and a note that a long value was cut
+stands outside the span. Everything copied whole — the gate and risk lines, the brief text,
+the row commands, a commit's changed paths — is between a boundary pair, where the builder
+puts `[quoted] ` in front of any line that would begin like a boundary line. The packet
+lists no review and counts no earlier verdict, so no author identity is involved.
+
 Caps are the shared builder's — 64 KiB for one item, 512 KiB overall — plus the limits
 above, all stated in the file; an item over a cap is listed by name and size, never cut short. The file is written
 beside `--prompt-file`, else under the user cache directory, and **never inside the verifier

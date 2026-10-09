@@ -39,6 +39,16 @@ package main
 // are built. The brief is read from that commit's tree, not from the working tree, so the
 // packet describes exactly the commit its header records.
 //
+// WHAT IT WRITES AT ITS OWN LEVEL. Only its own words, and three kinds of value read from the
+// repository: the brief's path, a commit id, and the brief id inside the `Brief:` line it
+// looked for. Each goes through packet.Code, so it sits in a code span it cannot close and
+// what the tool says about it stays outside the span. Everything copied whole (the gate and
+// risk lines, the brief text, the row commands, a commit's changed paths) goes through
+// Content.Untrusted, so the builder's boundary guard applies to every line of it. An error
+// from a read is never written into the packet in the reader's words; the packet states the
+// omission in the tool's own. It lists no review and counts no verdict, so there is no
+// author whose identity it would have to check.
+//
 // IT STARTS NO PROCESS. Every read goes through internal/gitcore, in this process: no git
 // binary, no hook, no helper, no configured diff or text-conversion program. This package's
 // subprocess inventory (reviewguard_test.go) is therefore unchanged by this file.
@@ -139,10 +149,10 @@ func verifierPacket(in packetInput) (packet.Spec, error) {
 					"row, from this run or an earlier one. A row's result comes only from running the row at the "+
 					"verified commit; nothing in this file is evidence, and no line of it belongs in an observed "+
 					"cell. Run every row yourself.\n\n"+
-					"- Brief: `%s`, read at the head commit above.\n"+
+					"- Brief: %s, read at the head commit above.\n"+
 					"- If that commit is not the one you are verifying, say so and gather yourself.\n"+
 					"- Where this file and the brief at the verified commit disagree, the brief governs.",
-					packet.Inline(brief))
+					packet.Code(brief))
 				return c, nil
 			}),
 			packet.NewSection("Gate and risk (frontmatter lines, as written)", func() (packet.Content, error) {
@@ -500,7 +510,7 @@ func verifierPacketCommitsSection(repo *gitcore.Repo, head, brief, id string, sc
 			k.why = append(k.why, "changed the brief file")
 		}
 		if id != "" && vpNamesBrief(pc.Message, id) {
-			k.why = append(k.why, "its message has a `Brief: "+id+"` line")
+			k.why = append(k.why, "its message has a "+packet.Code("Brief: "+id)+" line")
 		}
 		if len(k.why) > 0 {
 			commits = append(commits, k)
@@ -533,7 +543,7 @@ func verifierPacketCommitsSection(repo *gitcore.Repo, head, brief, id string, sc
 		if len(k.parents) > 1 {
 			kind = "; a merge commit"
 		}
-		c.Textf("- `%s`: %s%s", k.sha, strings.Join(k.why, " and "), kind)
+		c.Textf("- %s: %s%s", packet.Code(k.sha), strings.Join(k.why, " and "), kind)
 		label := "paths changed by " + k.sha[:12]
 		if len(k.parents) == 0 {
 			c.Omit(label, packet.SizeUnknown, "the commit has no parent to compare against")
