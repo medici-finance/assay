@@ -5,5 +5,6 @@
   worker window running at a provider's mid tier with no stated way to dispatch one: its default
   launches landed on the mid model and stopped at the kit's pickup check. The skill now says such
   a session names the strong tier explicitly in the launch and stamps the model the worker was
-  launched on; the Claude Code reference states which `model` alias resolves to which provider
-  tier under a `cellctl` provider launch. No tool, kit text or gate changes.
+  launched on, and holds the item when it cannot read which model that was; the Claude Code
+  reference states that a `model` alias is a slot whose model the launch pins, where the session
+  reads the pin, and which documents own the launcher's maps. No tool, kit text or gate changes.

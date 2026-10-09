@@ -541,8 +541,10 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   tier or above launches it at session tier; a session that runs BELOW strong names the strong tier
   explicitly in the launch (`../../references/<harness>.md`, the `capability:dispatch-worker` row) —
   a default launch there lands below strong and the worker stops at pickup, correctly. `--model`
-  states the model the worker was LAUNCHED on, never the session's own. A session with no way to
-  launch a strong-tier worker holds the item and files it; it never edits the pickup text. Effort S
+  states the model the worker was LAUNCHED on — the identifier the launch resolved that tier name
+  to, read where the same row says — never the session's own and never a guessed mapping. A session
+  with no way to launch a strong-tier worker, or that cannot read which model the launch resolved,
+  holds the item and files it; it never edits the pickup text. Effort S
   may run at your session tier, M/L go to a cheap tier behind the review/verify gates.
   A re-dispatch or shepherd pass on a PR whose open finding class is at round ≥ 2 runs at **strong**
   tier. A worker's `NEEDS_CONTEXT: strike two` (kit clause 8) returns the item to intake as
