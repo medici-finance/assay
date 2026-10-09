@@ -278,26 +278,35 @@ func TestWorkerKitForKindCuts(t *testing.T) {
 // A kit whose boundaries cannot be read is refused, never guessed at.
 func TestWorkerKitForKindRefusesUnreadableMarkers(t *testing.T) {
 	for name, kit := range map[string]string{
-		"unknown kind":        "a\n<!-- kind:reviewing:begin -->\nb\n<!-- kind:reviewing:end -->\n",
-		"not a whole line":    "a\ntext <!-- kind:implementing:begin -->\nb\n<!-- kind:implementing:end -->\n",
-		"bad edge":            "a\n<!-- kind:implementing:start -->\nb\n",
-		"nested":              "<!-- kind:implementing:begin -->\n<!-- kind:shepherding:begin -->\nb\n<!-- kind:shepherding:end -->\n<!-- kind:implementing:end -->\n",
-		"stray end":           "a\n<!-- kind:implementing:end -->\n",
-		"mismatched end":      "<!-- kind:implementing:begin -->\nb\n<!-- kind:shepherding:end -->\n",
-		"unclosed":            "a\n<!-- kind:shepherding:begin -->\nb\n",
-		"unclosed copy":       "a\n<!-- common-clauses:begin -->\nb\n",
-		"stray copy end":      "a\n<!-- common-clauses:end -->\n",
-		"second copy":         "<!-- common-clauses:begin -->\nb\n<!-- common-clauses:end -->\n<!-- common-clauses:begin -->\nb\n<!-- common-clauses:end -->\n",
-		"marker inside copy":  "<!-- common-clauses:begin -->\n<!-- kind:implementing:begin -->\n<!-- kind:implementing:end -->\n<!-- common-clauses:end -->\n",
-		"copy inside stretch": "<!-- kind:implementing:begin -->\n<!-- common-clauses:begin -->\nb\n<!-- common-clauses:end -->\n<!-- kind:implementing:end -->\n",
-		"empty after the cut": "<!-- kind:implementing:begin -->\nb\n<!-- kind:implementing:end -->\n",
+		"unknown kind":     "a\n<!-- kind:reviewing:begin -->\nb\n<!-- kind:reviewing:end -->\n",
+		"not a whole line": "a\ntext <!-- kind:implementing:begin -->\nb\n<!-- kind:implementing:end -->\n",
+		"bad edge":         "a\n<!-- kind:implementing:start -->\nb\n",
+		"nested":           "<!-- kind:implementing:begin -->\n<!-- kind:shepherding:begin -->\nb\n<!-- kind:shepherding:end -->\n<!-- kind:implementing:end -->\n",
+		// Closed in order, so only the refusal to open one stretch inside another catches it.
+		"nested, inner closed": "<!-- kind:implementing:begin -->\na\n<!-- kind:shepherding:begin -->\nb\n<!-- kind:shepherding:end -->\nc\n",
+		"stray end":            "a\n<!-- kind:implementing:end -->\n",
+		"mismatched end":       "<!-- kind:implementing:begin -->\nb\n<!-- kind:shepherding:end -->\n",
+		"unclosed":             "a\n<!-- kind:shepherding:begin -->\nb\n",
+		"unclosed copy":        "a\n<!-- common-clauses:begin -->\nb\n",
+		"stray copy end":       "a\n<!-- common-clauses:end -->\n",
+		"second copy":          "<!-- common-clauses:begin -->\nb\n<!-- common-clauses:end -->\n<!-- common-clauses:begin -->\nb\n<!-- common-clauses:end -->\n",
+		"marker inside copy":   "<!-- common-clauses:begin -->\n<!-- kind:implementing:begin -->\n<!-- kind:implementing:end -->\n<!-- common-clauses:end -->\n",
+		"copy inside stretch":  "<!-- kind:implementing:begin -->\n<!-- common-clauses:begin -->\nb\n<!-- common-clauses:end -->\n<!-- kind:implementing:end -->\n",
+		"empty after the cut":  "<!-- kind:implementing:begin -->\nb\n<!-- kind:implementing:end -->\n",
 	} {
 		kind := kindImplementing
 		if name == "empty after the cut" {
 			kind = kindShepherding
 		}
-		if got, err := workerKitForKind(kit, kind); err == nil {
+		got, err := workerKitForKind(kit, kind)
+		if err == nil {
 			t.Errorf("%s: the cut was accepted and emitted %q", name, got)
+			continue
+		}
+		// The nested shapes are refused FOR being nested, not by a later check that
+		// happens to trip on the same text.
+		if strings.HasPrefix(name, "nested") && !strings.Contains(err.Error(), "opens shepherding inside the open implementing stretch") {
+			t.Errorf("%s: refused for another reason: %v", name, err)
 		}
 	}
 	if _, err := workerKitForKind("a\n", workerKind("reviewing")); err == nil {

@@ -433,7 +433,8 @@ section, near the top, lists what was left out.
 
 - **Read it first, whole, in one read**, before any other fetch. **Do not re-fetch what it
   holds; fetch only what it lacks**, batched per clause 16 — a file the brief does not name, a
-  failing job's log, anything the packet lists as omitted.
+  failing job's log, a review comment anchored to a file and a line, anything the packet
+  lists as omitted.
 - **Head check — made when you read it.** If the head the packet records differs from the
   head your worktree is at when you start — or the packet is missing, unreadable, or records
   no head — say so in your report, use nothing from it as evidence, and gather everything
@@ -458,9 +459,10 @@ finished, do not spend a request on each look. This changes how you wait, never 
 for: whatever you must see settled before you hand back, you must still see settled.
 
 - **One command, one stated limit.** Wait in a single command that blocks until the state
-  changes or a time limit you set up front runs out — the forge client's own watch under a
-  limit (`timeout <seconds> gh pr checks <N> -R <owner/repo> --watch`), or one loop under a
-  limit (`timeout <seconds> sh -c 'until <the state read>; do sleep 30; done'`). Keep the limit
+  changes or a time limit you set up front runs out. One loop that carries its own deadline:
+  `end=$(($(date +%s)+<seconds>)); until <the state read> || [ $(date +%s) -ge $end ]; do sleep 30; done`
+  — or, where the host has a `timeout` command (not every host does), the forge client's own
+  watch under it: `timeout <seconds> gh pr checks <N> -R <owner/repo> --watch`. Keep the limit
   inside your own time budget (clause 12's watchdog), and push before a long wait.
 - **Never `sleep` and then read as a request of its own**, and never re-read an unchanged
   state request after request.

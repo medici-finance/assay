@@ -13,6 +13,13 @@
   from a review the forge attributes to the reviewer identity: a review by any other account
   is listed under its own heading as not the reviewer's, and when that identity cannot be
   resolved no review is listed as the reviewer's, no record is read and no body is quoted.
+- In a worker packet for an open change, a finding record in a review at an earlier commit is
+  judged against that review's commit: `resolved` with no evidence commit of its own is not a
+  resolution at the current head, and the line says so. Comments are quoted newest first, so
+  the packet's cap leaves out the oldest; each comment, and each review by another account,
+  says whether its author is the reviewer identity, on the trusted list, not on it, or not
+  checked because no list is configured; a comment by an account that is neither is quoted
+  only up to 16 KiB (#2439).
 - Both worker kits gain three clauses about how a run gathers and waits — batch independent
   reads into one request, read the packet first when the assignment names one, and wait on a
   check or a review in one bounded command — none of which changes what a worker must do or

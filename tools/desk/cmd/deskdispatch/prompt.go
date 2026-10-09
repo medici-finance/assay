@@ -326,8 +326,10 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 // writeWorkerAssignment emits the IMPLEMENTER's action half: open the draft PR in the target
 // repo, self-register the instant it opens, and release the dispatch claim once the branch is
 // pushed so branch-as-claim takes over. This is the scaffold an agent that PRODUCES a change
-// needs; a reviewer, which produces a verdict and no branch, gets writeReviewAssignment. The
-// text here is byte-for-byte what every worker dispatch has always carried.
+// needs; a reviewer, which produces a verdict and no branch, gets writeReviewAssignment. A
+// run dispatched onto an open change (`--pr`) gets the shepherding half instead, first branch
+// below; for every other worker dispatch the text is what a worker dispatch carried before
+// the kinds were told apart.
 func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
 	if workerResume(o) {
 		// A run dispatched onto an OPEN change opens nothing — it gets the shepherding half

@@ -339,7 +339,7 @@ func TestWorkerImplementPacketWithoutABrief(t *testing.T) {
 	issue := packetSection(t, p.Text, "Issue")
 	wpWantAll(t, "Issue", issue, "example-org/tracker#31 — `Widget drops the last row`", "**Author:** `reporter`",
 		"**Labels:** `bug`, `area/widget`", "Steps: load 3 rows, see 2.",
-		"10 comment(s) on the issue, oldest first; the newest 8 are quoted in full", "- comment 10 — by `someone`", "note 3\n")
+		"10 comment(s) on the issue. The newest 8 are below, NEWEST FIRST", "- comment 10 — by `someone`", "note 3\n")
 	wpWantNone(t, "Issue", issue, "note 2\n", "- comment 2 —")
 	if o, ok := omissionNamed(p, "the 2 earlier comment(s) on the issue"); !ok || o.Size != int64(len("note 1\n")+len("note 2\n")) {
 		t.Errorf("the earlier comments were not listed as omitted with their size: %+v", p.Omitted)
@@ -632,6 +632,12 @@ func baseWorkerForge() *fakeWorkerForge {
 						State: deskkit.StateOpen, OriginHead: wpOldHead, Failure: "TestRows fails at the head"},
 					deskkit.Finding{ID: "F-2", Class: "naming", Severity: deskkit.SeverityBlocking,
 						State: deskkit.StateResolved, OriginHead: wpOldHead, EvidenceHead: rpHead, Resolution: "renamed"},
+					// The two entries an open-state test would get wrong: open and not blocking,
+					// and blocking but resolved with evidence at a commit that is not the head.
+					deskkit.Finding{ID: "F-3", Class: "wording", Severity: deskkit.SeverityAdvisory,
+						State: deskkit.StateOpen, OriginHead: wpOldHead},
+					deskkit.Finding{ID: "F-4", Class: "leak", Severity: deskkit.SeverityBlocking,
+						State: deskkit.StateResolved, OriginHead: wpOldHead, EvidenceHead: wpOldHead, Resolution: "closed"},
 				), "2026-03-02T00:00:00Z"),
 		},
 		comments: []deskkit.Comment{
@@ -656,6 +662,7 @@ func wpShepherdInput(root, home string) packetInput {
 // forge has it at one recorded head — what is red, what each review asked for, whether the
 // base moved — and says plainly what the forge client cannot read.
 func TestWorkerShepherdPacketContents(t *testing.T) {
+	wpNoTrustedList(t) // one comment line below is asserted whole, mark included
 	root, home := wpRoot(t), wpWorktree(t)
 	f := baseWorkerForge()
 	useWorkerForge(t, f)
@@ -700,7 +707,10 @@ func TestWorkerShepherdPacketContents(t *testing.T) {
 		"### Reviews by other accounts — not the reviewer's — 0, oldest first",
 		"**Review comments anchored to a file and line are NOT in this packet.**",
 		"  - finding `F-1` (`correctness`) — class `off-by-one` — state `open` — a STANDING BLOCKER at this head by this record",
-		"  - finding `F-2` — class `naming` — state `resolved` — not a standing blocker at this head by this record",
+		"  - finding `F-2` — class `naming` — state `resolved` — not a standing blocker at this head by this record\n",
+		"  - finding `F-3` — class `wording` — state `open` — not a standing blocker at this head by this record\n",
+		"  - finding `F-4` — class `leak` — state `resolved` — a STANDING BLOCKER at this head by this record: "+
+			"resolved with evidence at commit `"+wpOldHead+"`, which is not this head\n",
 		"`widget.go:12` still drops the last row", "second round: `widget.go:12` drops the last row", "third round, nothing new")
 	// The oldest review not at the head is past the limit: listed, not quoted.
 	wpWantNone(t, "Reviews and findings", reviews, "first round: rename the helper")
@@ -713,7 +723,7 @@ func TestWorkerShepherdPacketContents(t *testing.T) {
 
 	comments := packetSection(t, p.Text, "Comments")
 	wpWantAll(t, "Comments", comments, "2 comment(s) on the change", "- comment 11 — by `worker-app[bot]`", "pushed the rename",
-		"- comment 12 — by `someone` — created `2026-03-02T00:00:00Z` — minimized on the forge; not quoted")
+		"- comment 12 — by `someone` (no trusted list is configured here: not checked) — created `2026-03-02T00:00:00Z` — minimized on the forge; not quoted")
 	wpWantNone(t, "Comments", comments, "spam")
 	wpWantAll(t, "Diff", packetSection(t, p.Text, "Diff"), "+new", "base `main` to head `"+rpHead+"`")
 }
