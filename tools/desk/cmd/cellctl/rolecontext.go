@@ -6,8 +6,10 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -43,8 +45,8 @@ import (
 //     and the launch itself.
 //   - Nothing the session can edit. The whole binding travels inline in the launch argv, at the
 //     harness's command-line precedence — above every settings file a session can write — and
-//     neither the declaration nor a file it names may resolve into a role worktree or a memory
-//     directory.
+//     neither the declaration nor a file it names may lie in a role worktree (the tree a
+//     worktrees/ entry leads to, wherever it is) or a memory directory.
 //
 // The declaration is harness-neutral; the binding below is Claude Code's. A role the cell runs
 // on another harness refuses a non-empty declaration rather than silently ignoring it.
@@ -180,7 +182,9 @@ func decodeStrict(raw []byte, v any) error {
 // its object. encoding/json keeps the LAST of two equal keys and says nothing, so without this
 // a second "pr-review-desk" entry would replace the first and `check` would print ok. Keys are
 // compared the way the decoder matches struct fields — without regard to case — so a repeat
-// spelled in another case is refused too. Malformed JSON is left for the typed decode to report.
+// spelled in another case is refused too. A role name is a map key and is matched exactly, so
+// for two role names that differ only by case the refusal gives that as its reason instead.
+// Malformed JSON is left for the typed decode to report.
 func duplicateKey(raw []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
@@ -208,6 +212,9 @@ func duplicateKey(raw []byte) error {
 				}
 				folded := foldKey(key)
 				if first, dup := seen[folded]; dup {
+					if first != key && where == "roles" {
+						return false, fmt.Errorf("key %q is given twice %s (it differs from %q only by letter case; a role is declared once, under its lower-case name)", key, at, first)
+					}
 					if first != key {
 						return false, fmt.Errorf("key %q is given twice %s (it is the same key as %q: key names are matched without regard to case)", key, at, first)
 					}
@@ -297,42 +304,97 @@ func strictlyBelow(dir, p string) bool {
 	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// sessionWritablePlace names the cell subdirectory a role session writes that path resolves
-// into, or "" when it resolves into neither. The two are the role worktrees (a session's
-// working tree) and the memory directories (which memory_dir hands to a role). A file there
-// could be rewritten by one session and decide the next launch, so the declaration and every
-// file it names are refused when they resolve into either — directly or through a symlink.
+// custodyStat is os.Stat; a test replaces it to make one path impossible to examine.
+var custodyStat = os.Stat
+
+// writablePlace is one directory a role session writes, held by file identity: what it is
+// called in a refusal, and the directory its name leads to once every link is followed.
+type writablePlace struct {
+	label string
+	info  os.FileInfo
+}
+
+// sessionWritablePlaces lists the directories of a cell that a role session writes:
+// <cell-dir>/worktrees and <cell-dir>/memory, and the directory every entry of worktrees/
+// leads to. The launcher links worktrees/<role> to a tree elsewhere when the worktree tool
+// makes the tree, and that tree is the session's working tree wherever it lives. A name with
+// nothing behind it is passed over. Any other failure is returned: a place that cannot be
+// examined cannot be ruled out.
+func sessionWritablePlaces(cellDir string) ([]writablePlace, error) {
+	var places []writablePlace
+	add := func(label, dir string) error {
+		info, err := custodyStat(dir)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		places = append(places, writablePlace{label, info})
+		return nil
+	}
+	worktrees := filepath.Join(cellDir, "worktrees")
+	entries, err := os.ReadDir(worktrees)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	// Role worktrees first, so a refusal names the tree and not only the directory above it.
+	for _, e := range entries {
+		dir := filepath.Join(worktrees, e.Name())
+		if err := add("the role worktree "+dir, dir); err != nil {
+			return nil, err
+		}
+	}
+	for _, dir := range []string{worktrees, filepath.Join(cellDir, roleMemoryRoot)} {
+		if err := add(dir, dir); err != nil {
+			return nil, err
+		}
+	}
+	return places, nil
+}
+
+// sessionWritablePlace names the place a role session writes that path lies in, or "" when it
+// lies in none. A file there could be rewritten by one session and decide the next launch, so
+// the declaration and every file it names are refused when they resolve into one.
+//
+// The question is settled by file identity, never by spelling. The path is resolved, then it
+// and each directory above it is compared (os.SameFile) with every place. A path spelling
+// proves nothing here: a linked role worktree resolves outside the cell, and on a volume that
+// ignores letter case WORKTREES/ and worktrees/ are one directory under two names.
 func sessionWritablePlace(cellDir, path string) (string, error) {
 	real, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return "", err
 	}
-	base, err := filepath.EvalSymlinks(cellDir)
+	if real, err = filepath.Abs(real); err != nil {
+		return "", err
+	}
+	places, err := sessionWritablePlaces(cellDir)
 	if err != nil {
 		return "", err
 	}
-	for _, name := range []string{"worktrees", roleMemoryRoot} {
-		place := filepath.Join(base, name)
-		places := []string{place}
-		// The subdirectory may itself be a link (worktrees kept on another volume); what lies
-		// behind the link is as writable as what lies behind the name.
-		if resolved, err := filepath.EvalSymlinks(place); err == nil && resolved != place {
-			places = append(places, resolved)
+	for at := real; ; at = filepath.Dir(at) {
+		info, err := custodyStat(at)
+		if err != nil {
+			return "", err
 		}
 		for _, pl := range places {
-			if real == pl || strictlyBelow(pl, real) {
-				return filepath.Join(cellDir, name), nil
+			if os.SameFile(info, pl.info) {
+				return pl.label, nil
 			}
 		}
+		if filepath.Dir(at) == at {
+			return "", nil
+		}
 	}
-	return "", nil
 }
 
-// refuseSessionWritable is sessionWritablePlace as a refusal; what names the file in the error.
+// refuseSessionWritable is sessionWritablePlace as a refusal; path names the file in the error.
+// It fails closed: when the file or a place cannot be examined, the file is refused.
 func refuseSessionWritable(cellDir, path string) error {
 	place, err := sessionWritablePlace(cellDir, path)
 	if err != nil {
-		return fmt.Errorf("%s: cannot resolve where it lives: %v", path, err)
+		return fmt.Errorf("%s: cannot tell whether a role session can write it: %v", path, err)
 	}
 	if place != "" {
 		return fmt.Errorf("%s resolves into %s, which a role session can write; keep the declaration and every file it names outside the role worktrees and the memory directories", path, place)
@@ -346,6 +408,12 @@ func refuseSessionWritable(cellDir, path string) error {
 // an ancestor, the cell home, a worktree, or anything outside the cell. Symlinks are resolved
 // before judging, and <cell-dir>/memory itself is not followed — a link in its place is refused
 // along with everything behind it.
+//
+// This one compares resolved path spellings, and can: it is an allow-list. A fully resolved
+// path spelled below <cell-dir>/memory is below it, so nothing outside gets in; a spelling the
+// comparison does not recognise (another letter case, a memory directory that is itself a link)
+// is refused. The custody rule above is a deny-list, where a missed spelling is an acceptance —
+// which is why that one goes by file identity.
 func containedMemoryDir(cellDir, dir string) (string, error) {
 	base, err := filepath.EvalSymlinks(cellDir)
 	if err != nil {
@@ -566,7 +634,9 @@ func (rc *roleContext) resolve(cellDir string) error {
 		}
 	}
 	for _, id := range s.PluginsOff {
-		if name, _, _ := strings.Cut(id, "@"); name == roleSkillPlugin {
+		// Without regard to letter case: whether the harness tells plugin ids apart by case is
+		// not something this code can know, so a case variant of the role's own plugin is refused.
+		if name, _, _ := strings.Cut(id, "@"); strings.EqualFold(name, roleSkillPlugin) {
 			return roleContextFail("role %s: plugins_off: %q is the plugin the role's own skill and session hooks come from; plugins_off drops a plugin whole, so a role window cannot switch this one off", role, id)
 		}
 	}
@@ -916,7 +986,9 @@ func (c *Cell) roleContextFor(role, harness string) (*roleContextDecl, *roleCont
 }
 
 // mustRoleContext is cmdDesk's early gate: a broken declaration stops the launch before a
-// worktree is created or a lease is taken.
+// worktree is created or a lease is taken. It is not the only gate. roleContextArgv loads the
+// declaration again once the role worktree exists, which is the first moment a tree the
+// worktree tool has just linked can be recognised as a place the session writes.
 func (c *Cell) mustRoleContext(role, harness string) {
 	if _, _, err := c.roleContextFor(role, harness); err != nil {
 		die("%s", err)
@@ -1072,7 +1144,12 @@ func (c *Cell) checkRoleContext(k *checker, cfgArg string, harnessOf func(role s
 			}
 		}
 	}
+	declared := make([]string, 0, len(d.Roles))
 	for role := range d.Roles {
+		declared = append(declared, role)
+	}
+	sort.Strings(declared)
+	for _, role := range declared {
 		if !valueIn(role, c.Roles) {
 			k.warn("role context: %s is declared but this cell does not run it", role)
 		}

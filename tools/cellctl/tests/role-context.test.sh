@@ -15,7 +15,9 @@
 #               a non-zero exit
 #   refusal     desk refuses a declaration naming something missing BEFORE the harness runs;
 #               a memory_dir that is not below <cell-dir>/memory/, the role's own plugin in
-#               plugins_off and a repeated role key are refused the same way
+#               plugins_off, a repeated role key, and an instruction file inside a role
+#               worktree (a plain directory, or a link to a tree outside the cell) are
+#               refused the same way
 #
 # The feature exists in the Go implementation only; the shell oracle (the default $CELLCTL) has
 # nothing to exercise, so against it the suite states itself n/a rather than failing — the same
@@ -203,6 +205,18 @@ declare_role '"pr-review-desk":{"plugins_off":["assay@assay"]}'
 assert "plugins_off naming the role's own plugin is refused" 'refused "$T/plugin-refused" "plugins_off: \"assay@assay\" is the plugin the role.s own skill and session hooks come from"'
 declare_role '"pr-review-desk":{"connectors_off":true},"pr-review-desk":{}'
 assert "a role given twice is refused, not last-wins" 'refused "$T/twice-refused" "key \"pr-review-desk\" is given twice in roles"'
+
+echo "[refusal: a named file where a role session writes]"
+echo "Notes." > "$CELL/worktrees/pr-review-desk/notes.md"
+declare_role '"pr-review-desk":{"instructions":"worktrees/pr-review-desk/notes.md"}'
+assert "an instruction file inside the role worktree is refused" 'refused "$T/custody-refused" "which a role session can write"'
+# The worktree tool's layout: worktrees/<role> is a link to a tree outside the cell. The file is
+# named by the tree's own path, which no spelling ties to the cell.
+mkdir -p "$T/linked-tree"; echo "Notes." > "$T/linked-tree/notes.md"
+ln -s "$T/linked-tree" "$CELL/worktrees/verify-desk"
+declare_role '"pr-review-desk":{"instructions":"'"$T"'/linked-tree/notes.md"}'
+assert "so is one in a tree a role worktree links to, named by the tree's own path" 'refused "$T/linked-refused" "resolves into the role worktree $CELL/worktrees/verify-desk, which a role session can write"'
+rm "$CELL/worktrees/verify-desk"
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "role-context.test.sh: OK"; else echo "role-context.test.sh: $fails FAILED"; exit 1; fi

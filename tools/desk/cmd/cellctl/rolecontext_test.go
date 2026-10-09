@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -684,9 +685,9 @@ func mustSymlink(t *testing.T, target, link string) {
 
 // TestRoleContextOwnPlugin: plugins_off switches off a WHOLE plugin, hooks included, so naming
 // the plugin every role's own skill and session hooks come from is refused, whichever
-// marketplace suffix it is written with.
+// marketplace suffix and whichever letter case it is written with.
 func TestRoleContextOwnPlugin(t *testing.T) {
-	for _, id := range []string{"assay@assay", "assay", "assay@example-market"} {
+	for _, id := range []string{"assay@assay", "assay", "assay@example-market", "Assay@assay", "ASSAY"} {
 		_, err := loadRoleEntry(t, roleContextCell(t), map[string]any{"plugins_off": []string{"extras@example-market", id}})
 		if err == nil || !strings.Contains(err.Error(), "plugins_off") || !strings.Contains(err.Error(), "role's own skill") {
 			t.Errorf("plugins_off %q: want a refusal naming the role's own plugin, got %v", id, err)
@@ -751,6 +752,43 @@ func TestRoleContextMemoryContained(t *testing.T) {
 			t.Errorf("MemoryDir = %q, want the resolved directory %q", got, want)
 		}
 	})
+
+	// Containment goes by the resolved spelling, which is sound for an allow-list only while a
+	// spelling it does not recognise is REFUSED. These two pin that: the shapes that got past
+	// the file-custody rule when it went by spelling are refusals here, never acceptances.
+	t.Run("a memory root that is itself a link is refused", func(t *testing.T) {
+		dir := roleContextCell(t)
+		tree := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(tree, "notes"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(filepath.Join(dir, "memory")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, "worktrees"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mustSymlink(t, tree, filepath.Join(dir, "worktrees", "pr-review-desk"))
+		mustSymlink(t, tree, filepath.Join(dir, "memory"))
+		_, err := loadRoleEntry(t, dir, map[string]any{"memory_dir": "memory/notes"})
+		if err == nil || !strings.Contains(err.Error(), "must be a directory below") {
+			t.Fatalf("want a containment refusal, got %v", err)
+		}
+	})
+	t.Run("a memory root spelled in another letter case is refused", func(t *testing.T) {
+		dir := roleContextCell(t)
+		lower, lerr := os.Stat(filepath.Join(dir, "memory"))
+		upper, uerr := os.Stat(filepath.Join(dir, "MEMORY"))
+		if lerr != nil || uerr != nil || !os.SameFile(lower, upper) {
+			t.Skip("this volume tells letter case apart: a case-variant path names no directory here")
+		}
+		for _, value := range []string{"MEMORY/pr-review-desk", "Memory/pr-review-desk"} {
+			_, err := loadRoleEntry(t, dir, map[string]any{"memory_dir": value})
+			if err == nil || !strings.Contains(err.Error(), "must be a directory below") {
+				t.Fatalf("memory_dir %q: want a containment refusal, got %v", value, err)
+			}
+		}
+	})
 }
 
 // TestRoleContextFileCustody: the declaration and every file it names decide the NEXT launch,
@@ -810,6 +848,206 @@ func TestRoleContextFileCustody(t *testing.T) {
 	}
 }
 
+// custodyFiles writes, into dir, one of each kind of file a declaration can name.
+func custodyFiles(t *testing.T, dir string) {
+	t.Helper()
+	for name, body := range map[string]string{
+		"notes.md":          "Notes.\n",
+		"a.json":            `{"name":"a","description":"d","prompt":"p","capabilities":["shell"]}`,
+		"role-context.json": `{"version":1,"roles":{}}`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestRoleContextLinkedWorktree: the launcher links worktrees/<role> to a tree elsewhere when
+// the worktree tool makes it. That tree is the role session's to write wherever it lives, so a
+// declaration, instruction file or agent definition in it is refused — named through the link,
+// by the tree's own path, or through a link of its own.
+func TestRoleContextLinkedWorktree(t *testing.T) {
+	const want = "which a role session can write"
+	setup := func(t *testing.T) (dir, tree string) {
+		t.Helper()
+		dir, tree = roleContextCell(t), t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "worktrees"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mustSymlink(t, tree, filepath.Join(dir, "worktrees", "pr-review-desk"))
+		if err := os.MkdirAll(filepath.Join(tree, "docs"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		custodyFiles(t, tree)
+		custodyFiles(t, filepath.Join(tree, "docs"))
+		return dir, tree
+	}
+	// Each spelling of the tree: through the cell's link, and by the path the tree has itself.
+	for _, spelling := range []string{"through the link", "by its own path"} {
+		at := func(dir, tree, rel string) string {
+			if spelling == "through the link" {
+				return filepath.Join("worktrees", "pr-review-desk", rel)
+			}
+			return filepath.Join(tree, rel)
+		}
+		for _, rel := range []string{"notes.md", filepath.Join("docs", "notes.md")} {
+			t.Run("instructions "+spelling+" "+filepath.ToSlash(rel), func(t *testing.T) {
+				dir, tree := setup(t)
+				if _, err := loadRoleEntry(t, dir, map[string]any{"instructions": at(dir, tree, rel)}); err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("want a custody refusal, got %v", err)
+				}
+			})
+		}
+		t.Run("agent definition "+spelling, func(t *testing.T) {
+			dir, tree := setup(t)
+			if _, err := loadRoleEntry(t, dir, map[string]any{"agents": []string{at(dir, tree, "a.json")}}); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("want a custody refusal, got %v", err)
+			}
+		})
+		t.Run("declaration "+spelling, func(t *testing.T) {
+			dir, tree := setup(t)
+			p := at(dir, tree, "role-context.json")
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(dir, p)
+			}
+			if _, err := loadRoleContext(p, dir); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("want a custody refusal, got %v", err)
+			}
+		})
+	}
+	t.Run("instructions through a link of its own", func(t *testing.T) {
+		dir, tree := setup(t)
+		mustSymlink(t, filepath.Join(tree, "notes.md"), filepath.Join(dir, "context", "link.md"))
+		if _, err := loadRoleEntry(t, dir, map[string]any{"instructions": "context/link.md"}); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("want a custody refusal, got %v", err)
+		}
+	})
+	t.Run("the refusal names the role worktree", func(t *testing.T) {
+		dir, tree := setup(t)
+		_, err := loadRoleEntry(t, dir, map[string]any{"instructions": filepath.Join(tree, "notes.md")})
+		if err == nil || !strings.Contains(err.Error(), "the role worktree "+filepath.Join(dir, "worktrees", "pr-review-desk")) {
+			t.Fatalf("want the refusal to name the cell's link to the tree, got %v", err)
+		}
+	})
+	t.Run("a file beside the linked tree is still accepted", func(t *testing.T) {
+		dir, _ := setup(t)
+		if _, err := loadRoleEntry(t, dir, map[string]any{"instructions": "context/review.md"}); err != nil {
+			t.Fatalf("a file outside every role worktree must load: %v", err)
+		}
+	})
+}
+
+// TestRoleContextCustodyCaseVariant: on a volume that ignores letter case WORKTREES/ and
+// worktrees/ are one directory, so the refusal may not depend on how the path is spelled.
+// Skips where the volume tells the two apart: there the variant names nothing.
+func TestRoleContextCustodyCaseVariant(t *testing.T) {
+	const want = "which a role session can write"
+	setup := func(t *testing.T) string {
+		t.Helper()
+		dir := roleContextCell(t)
+		if err := os.MkdirAll(filepath.Join(dir, "worktrees", "pr-review-desk"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		custodyFiles(t, filepath.Join(dir, "worktrees", "pr-review-desk"))
+		custodyFiles(t, filepath.Join(dir, "memory", "pr-review-desk"))
+		return dir
+	}
+	probe := setup(t)
+	lower, lerr := os.Stat(filepath.Join(probe, "worktrees"))
+	upper, uerr := os.Stat(filepath.Join(probe, "WORKTREES"))
+	if lerr != nil || uerr != nil || !os.SameFile(lower, upper) {
+		t.Skip("this volume tells letter case apart: a case-variant path names no file here")
+	}
+	for _, place := range []string{"WORKTREES", "Worktrees", "MEMORY", "Memory"} {
+		under := filepath.Join(place, "pr-review-desk")
+		t.Run("instructions under "+place, func(t *testing.T) {
+			if _, err := loadRoleEntry(t, setup(t), map[string]any{"instructions": filepath.Join(under, "notes.md")}); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("want a custody refusal, got %v", err)
+			}
+		})
+		t.Run("agent definition under "+place, func(t *testing.T) {
+			if _, err := loadRoleEntry(t, setup(t), map[string]any{"agents": []string{filepath.Join(under, "a.json")}}); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("want a custody refusal, got %v", err)
+			}
+		})
+		t.Run("declaration under "+place, func(t *testing.T) {
+			dir := setup(t)
+			if _, err := loadRoleContext(filepath.Join(dir, under, "role-context.json"), dir); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("want a custody refusal, got %v", err)
+			}
+		})
+	}
+	t.Run("role directory in another case", func(t *testing.T) {
+		if _, err := loadRoleEntry(t, setup(t), map[string]any{"instructions": "Worktrees/PR-REVIEW-DESK/notes.md"}); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("want a custody refusal, got %v", err)
+		}
+	})
+}
+
+// TestRoleContextCustodyFailsClosed: a place that cannot be examined cannot be ruled out. An
+// entry of worktrees/ that does not resolve — for a reason other than leading nowhere — refuses
+// the declaration; an entry that leads nowhere has no tree behind it and is passed over.
+func TestRoleContextCustodyFailsClosed(t *testing.T) {
+	setup := func(t *testing.T) string {
+		t.Helper()
+		dir := roleContextCell(t)
+		if err := os.MkdirAll(filepath.Join(dir, "worktrees"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	t.Run("a worktree link that loops", func(t *testing.T) {
+		dir := setup(t)
+		mustSymlink(t, "the-desk", filepath.Join(dir, "worktrees", "the-desk"))
+		_, err := loadRoleEntry(t, dir, map[string]any{"instructions": "context/review.md"})
+		if err == nil || !strings.Contains(err.Error(), "cannot tell whether a role session can write it") {
+			t.Fatalf("want a refusal that says the place could not be examined, got %v", err)
+		}
+	})
+	t.Run("a worktree link that leads nowhere", func(t *testing.T) {
+		dir := setup(t)
+		mustSymlink(t, filepath.Join(dir, "absent-tree"), filepath.Join(dir, "worktrees", "the-desk"))
+		if _, err := loadRoleEntry(t, dir, map[string]any{"instructions": "context/review.md"}); err != nil {
+			t.Fatalf("a link with nothing behind it holds no file: %v", err)
+		}
+	})
+	// The file resolves and reads, but one directory above it cannot be examined: whether that
+	// directory is a role worktree is unknown, so the file is refused.
+	t.Run("a directory above the file that cannot be examined", func(t *testing.T) {
+		dir := setup(t)
+		above, err := filepath.EvalSymlinks(filepath.Join(dir, "context"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		custodyStat = func(name string) (os.FileInfo, error) {
+			if name == above {
+				return nil, errors.New("examination refused")
+			}
+			return os.Stat(name)
+		}
+		t.Cleanup(func() { custodyStat = os.Stat })
+		_, err = loadRoleEntry(t, dir, map[string]any{"instructions": "context/review.md"})
+		if err == nil || !strings.Contains(err.Error(), "cannot tell whether a role session can write it") || !strings.Contains(err.Error(), "examination refused") {
+			t.Fatalf("want a refusal that says the place could not be examined, got %v", err)
+		}
+	})
+	t.Run("a worktrees directory that cannot be listed", func(t *testing.T) {
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("needs a directory this process cannot list")
+		}
+		dir := setup(t)
+		wts := filepath.Join(dir, "worktrees")
+		if err := os.Chmod(wts, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(wts, 0o755) })
+		_, err := loadRoleEntry(t, dir, map[string]any{"instructions": "context/review.md"})
+		if err == nil || !strings.Contains(err.Error(), "cannot tell whether a role session can write it") {
+			t.Fatalf("want a refusal that says the place could not be examined, got %v", err)
+		}
+	})
+}
+
 // TestRoleContextDuplicateKeys: a repeated object key is last-wins to a JSON decoder, which
 // would drop the earlier entry without a word. Every level refuses it.
 func TestRoleContextDuplicateKeys(t *testing.T) {
@@ -832,6 +1070,18 @@ func TestRoleContextDuplicateKeys(t *testing.T) {
 			}
 		})
 	}
+	// A role name is matched exactly, so the reason given for a field name does not hold for it.
+	t.Run("role differing only by case", func(t *testing.T) {
+		dir := roleContextCell(t)
+		p := filepath.Join(dir, "role-context.json")
+		if err := os.WriteFile(p, []byte(`{"version":1,"roles":{"pr-review-desk":{},"PR-Review-Desk":{}}}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := loadRoleContext(p, dir)
+		if err == nil || !strings.Contains(err.Error(), "given twice") || !strings.Contains(err.Error(), "only by letter case") || strings.Contains(err.Error(), "key names are matched") {
+			t.Fatalf("want a refusal that says the two role names differ only by case, got %v", err)
+		}
+	})
 	t.Run("agent definition key twice", func(t *testing.T) {
 		dir := roleContextCell(t)
 		body := `{"name":"a","description":"d","prompt":"first","prompt":"second","capabilities":["shell"]}`
@@ -1086,6 +1336,119 @@ func TestRoleContextInstructionGlob(t *testing.T) {
 	} {
 		if got := instructionGlobMatches(tc.glob, tc.file); got != tc.want {
 			t.Errorf("instructionGlobMatches(%q, %q) = %v, want %v", tc.glob, tc.file, got, tc.want)
+		}
+	}
+}
+
+// TestBinaryLinkedWorktreeCustody runs the built binary in the layout the launcher makes when
+// the worktree tool creates the role tree: worktrees/<role> is a link to a tree elsewhere. A
+// declaration, instruction file or agent definition in that tree is refused by `check` and by
+// the launch, and the harness never starts — also on the launch that makes the link itself.
+func TestBinaryLinkedWorktreeCustody(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell stubs")
+	}
+	const want = "which a role session can write"
+	f := newPolicyFixture(t, "2.1.295")
+	f.plainCell(t)
+	f.prepareLocalLaunch(t)
+	f.stub(t, "tmux", "#!/bin/sh\nexit 0\n")
+	f.stub(t, "claude", "#!/bin/sh\ncase \"$1\" in\n --version) echo '2.1.295 (stub)'; exit 0;;\n plugin) exit 0;;\nesac\nfor a in \"$@\"; do printf 'ARG=%s\\n' \"$a\"; done\n")
+	// The worktree tool, reduced to its contract: make (or find) the role's tree outside the
+	// cell and print its path on the last line.
+	tree := filepath.Join(t.TempDir(), "review-tree")
+	f.stub(t, "deskwt", "#!/bin/sh\n[ \"$2\" = --help ] && exit 0\n[ -e \"$STUB_TREE/.git\" ] || git worktree add -q \"$STUB_TREE\" -b \"stub-$2\" >&2 || exit 1\nprintf '%s\\n' \"$STUB_TREE\"\n")
+	env := []string{"STUB_TREE=" + tree}
+	link := filepath.Join(f.cellDir, "worktrees", "pr-review-desk")
+	linked := func() bool {
+		fi, err := os.Lstat(link)
+		return err == nil && fi.Mode()&os.ModeSymlink != 0
+	}
+
+	r := f.run(t, env, "desk", "example", "pr-review-desk")
+	if r.code != 0 || !strings.Contains(r.stdout, "(linked from ") || !linked() {
+		t.Fatalf("the first launch should link the role worktree to the tool's tree: %+v", r)
+	}
+	custodyFiles(t, tree)
+	const secret = "Notes."
+	declare := func(t *testing.T, source string, entry map[string]any) {
+		t.Helper()
+		raw, err := json.Marshal(map[string]any{"version": 1, "roles": map[string]any{"pr-review-desk": entry}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := source
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(f.cellDir, target)
+		}
+		if err := os.WriteFile(target, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f.plainCell(t, "CELL_ROLE_CONTEXT="+source)
+	}
+	refused := func(t *testing.T) {
+		t.Helper()
+		if r := f.run(t, append([]string{f.hermeticPath()}, env...), "check", "example"); r.code == 0 || !strings.Contains(r.stdout, "  MISS  role-context: ") || !strings.Contains(r.stdout, want) {
+			t.Errorf("check should MISS and fail: %+v", r)
+		}
+		r := f.run(t, env, "desk", "example", "pr-review-desk")
+		if r.code != 3 || !strings.Contains(r.stderr, want) || len(launchArgv(r.stdout)) != 0 || strings.Contains(r.stdout, secret) {
+			t.Errorf("desk should refuse and never start the harness: %+v", r)
+		}
+	}
+	inLink := filepath.Join("worktrees", "pr-review-desk")
+	t.Run("declaration and instructions through the link", func(t *testing.T) {
+		declare(t, filepath.Join(inLink, "role-context.json"), map[string]any{"instructions": filepath.Join(inLink, "notes.md")})
+		refused(t)
+	})
+	t.Run("instructions by the tree's own path", func(t *testing.T) {
+		declare(t, "role-context.json", map[string]any{"instructions": filepath.Join(tree, "notes.md")})
+		refused(t)
+	})
+	t.Run("agent definition through the link", func(t *testing.T) {
+		declare(t, "role-context.json", map[string]any{"agents": []string{filepath.Join(inLink, "a.json")}})
+		refused(t)
+	})
+	t.Run("declaration by the tree's own path", func(t *testing.T) {
+		custodyFiles(t, tree)
+		f.plainCell(t, "CELL_ROLE_CONTEXT="+filepath.Join(tree, "role-context.json"))
+		refused(t)
+	})
+	// The cell has no link yet, so nothing in it says the tree is a role worktree: the launch
+	// makes the link and must then refuse, before the harness, what it has just made writable.
+	t.Run("the launch that makes the link", func(t *testing.T) {
+		if err := os.Remove(link); err != nil {
+			t.Fatal(err)
+		}
+		declare(t, "role-context.json", map[string]any{"instructions": filepath.Join(tree, "notes.md")})
+		r := f.run(t, env, "desk", "example", "pr-review-desk")
+		if !linked() {
+			t.Fatalf("this launch should have linked the role worktree again: %+v", r)
+		}
+		if r.code != 3 || !strings.Contains(r.stderr, want) || len(launchArgv(r.stdout)) != 0 || strings.Contains(r.stdout, secret) {
+			t.Errorf("desk should refuse once the tree is the role's worktree: %+v", r)
+		}
+	})
+}
+
+// TestBinaryCheckUndeclaredRoleRows: the rows for declared roles the cell does not run come in
+// one order, run after run.
+func TestBinaryCheckUndeclaredRoleRows(t *testing.T) {
+	f := newPolicyFixture(t, "2.1.295")
+	f.plainCell(t, "ROLES=the-desk")
+	f.stub(t, "tmux", "#!/bin/sh\nexit 0\n")
+	off := map[string]any{"connectors_off": true}
+	f.declareRoleContext(t, map[string]any{"worker-desk": off, "verify-desk": off, "pr-review-desk": off, "intake-desk": off})
+	for i := 0; i < 3; i++ {
+		r := f.run(t, []string{f.hermeticPath()}, "check", "example")
+		var got []string
+		for _, line := range strings.Split(r.stdout, "\n") {
+			if role, ok := strings.CutSuffix(line, " is declared but this cell does not run it"); ok {
+				got = append(got, role[strings.LastIndex(role, " ")+1:])
+			}
+		}
+		if want := []string{"intake-desk", "pr-review-desk", "verify-desk", "worker-desk"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("run %d: rows for roles the cell does not run = %v, want %v\n%s", i, got, want, r.stdout)
 		}
 	}
 }
