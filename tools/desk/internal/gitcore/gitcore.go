@@ -527,12 +527,15 @@ type FetchOpts struct {
 // staging namespace, and Fetch then applies each value under git's rules. A destination a
 // non-forced refspec would move to a commit that does not descend from its current one is
 // left where it is and REPORTED — the returned error wraps ErrRefsNotUpdated and names it —
-// as is a destination that is a symbolic ref, which is never written through. Prune drops a
-// local ref the refspecs cover that the origin no longer advertises, never a symbolic ref
-// (so refs/remotes/origin/HEAD survives). Every RefSpec destination must be a full refs/ name.
+// as is a destination that is a symbolic ref, which is never written through, an existing tag
+// a non-forced refspec would move, a new name that conflicts with an existing ref (X vs X/a),
+// and a destination that cannot be written; none of them stops the other destinations.
+// Prune runs first, as in git fetch: it drops a local ref the refspecs cover that the origin
+// no longer advertises, never a symbolic ref (so refs/remotes/origin/HEAD survives), and the
+// directories that leaves empty. Every RefSpec destination must be a full refs/ name.
 //
-// Returns nil only when every advertised value landed, including when the remote was
-// already up to date.
+// Returns nil only when every advertised value landed and every prune succeeded, including
+// when the remote was already up to date.
 func (r *Repo) Fetch(opts FetchOpts) (err error) {
 	specs, err := buildRefSpecs(opts.RefSpecs, opts.Force)
 	if err != nil {

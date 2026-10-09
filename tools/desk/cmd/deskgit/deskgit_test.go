@@ -741,6 +741,117 @@ func TestFetch_PruneKeepsOriginHEAD(t *testing.T) {
 	}
 }
 
+// Review finding ref-name-conflict-wedges-fetch: upstream replaces branch X with X/a (or X/a
+// with X) while a clone still holds the old tracking ref — loose, as a fetch after the clone
+// leaves it, or packed, as a fresh clone or a gc leaves it. The two names cannot both exist.
+// git prunes before it updates, so `fetch --prune` clears the old name and lands everything;
+// a plain fetch refuses that one ref (git exits 1; deskgit exits 6) and still updates every
+// other. Each shape runs the git binary in one clone and deskgit in an identical twin, twice,
+// and requires the same outcome and the same refs — and refs/remotes/origin/main current.
+func TestFetch_RefNameConflictMatchesGit(t *testing.T) {
+	for _, names := range [][2]string{{"feat", "feat/a"}, {"feat/a", "feat"}, {"zed", "zed/a"}, {"zed/a", "zed"}} {
+		for _, packed := range []bool{false, true} {
+			for _, prune := range []bool{true, false} {
+				old, nu := names[0], names[1]
+				name := old + "->" + nu
+				if packed {
+					name += "/packed"
+				} else {
+					name += "/loose"
+				}
+				if prune {
+					name += "/prune"
+				}
+				t.Run(strings.ReplaceAll(name, "/", "_"), func(t *testing.T) {
+					work := newRepo(t, allowedSlug)
+					upstream := mustGit(t, work, "remote", "get-url", "origin")
+					root := t.TempDir()
+					twins := [2]string{filepath.Join(root, "git"), filepath.Join(root, "deskgit")}
+					mustGit(t, upstream, "branch", old, "main")
+					for _, c := range twins {
+						mustGit(t, "", "clone", "-q", upstream, c)
+						if packed {
+							mustGit(t, c, "pack-refs", "--all")
+						} else {
+							// Re-write it loose, as a fetch after the clone leaves it.
+							sha := mustGit(t, c, "rev-parse", "refs/remotes/origin/"+old)
+							mustGit(t, c, "update-ref", "-d", "refs/remotes/origin/"+old)
+							mustGit(t, c, "pack-refs", "--all")
+							mustGit(t, c, "update-ref", "refs/remotes/origin/"+old, sha)
+						}
+						loose := filepath.Join(c, ".git", "refs", "remotes", "origin", filepath.FromSlash(old))
+						if _, err := os.Stat(loose); (err == nil) == packed {
+							t.Fatalf("fixture: %s loose = %v, want %v", loose, err == nil, !packed)
+						}
+					}
+					// Upstream swaps the branch, moves main and adds a branch named after both.
+					mustGit(t, upstream, "branch", "-D", old)
+					mustGit(t, upstream, "branch", nu, "main")
+					mustGit(t, work, "commit", "-q", "--allow-empty", "-m", "ahead")
+					mustGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/main", "HEAD:refs/heads/zzz")
+					want := mustGit(t, upstream, "rev-parse", "refs/heads/main")
+
+					args := []string{"fetch"}
+					if prune {
+						args = append(args, "--prune")
+					}
+					withEnv(t, twins[1])
+					for i := 1; i <= 2; i++ {
+						gitErr := exec.Command("git", append([]string{"-C", twins[0]}, append(args, "origin")...)...).Run()
+						code := run(args)
+						if wantCode := map[bool]int{true: deskkit.ExitOK, false: deskkit.ExitUnverifiable}[gitErr == nil]; code != wantCode {
+							t.Fatalf("run %d: deskgit %v exit = %d, want %d (git: %v)", i, args, code, wantCode, gitErr)
+						}
+						refs := [2]string{}
+						for j, c := range twins {
+							refs[j] = mustGit(t, c, "for-each-ref", "--format=%(refname) %(objectname) %(symref)")
+							if got := mustGit(t, c, "rev-parse", "refs/remotes/origin/main"); got != want {
+								t.Fatalf("run %d: %s refs/remotes/origin/main = %s, want %s", i, filepath.Base(c), got, want)
+							}
+						}
+						if refs[0] != refs[1] {
+							t.Fatalf("run %d: refs differ from git's\ngit:\n%s\ndeskgit:\n%s", i, refs[0], refs[1])
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+// --prune drops only what the tracking refspec covers: a local branch, a local tag and another
+// remote's tracking ref survive it, as under git. And without --prune nothing is dropped.
+func TestFetch_PruneScopeIsTheRefspec(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	clone := filepath.Join(t.TempDir(), "clone")
+	mustGit(t, "", "clone", "-q", upstream, clone)
+	sha := mustGit(t, clone, "rev-parse", "HEAD")
+	keep := []string{"refs/heads/keep", "refs/tags/v1", "refs/remotes/other/x"}
+	for _, ref := range append(keep, "refs/remotes/origin/stale") {
+		mustGit(t, clone, "update-ref", ref, sha)
+	}
+
+	withEnv(t, clone)
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch exit = %d, want 0", code)
+	}
+	if _, err := exec.Command("git", "-C", clone, "rev-parse", "--verify", "-q", "refs/remotes/origin/stale").CombinedOutput(); err != nil {
+		t.Fatal("a fetch without --prune dropped the stale tracking ref")
+	}
+	if code := run([]string{"fetch", "--prune"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch --prune exit = %d, want 0", code)
+	}
+	if out, err := exec.Command("git", "-C", clone, "rev-parse", "--verify", "-q", "refs/remotes/origin/stale").CombinedOutput(); err == nil {
+		t.Fatalf("--prune left the stale ref in place (%s)", out)
+	}
+	for _, ref := range keep {
+		if out, err := exec.Command("git", "-C", clone, "rev-parse", "--verify", "-q", ref).CombinedOutput(); err != nil {
+			t.Errorf("--prune dropped %s, which the tracking refspec does not cover (%s)", ref, out)
+		}
+	}
+}
+
 // When the checked-out set cannot be read, a fetch that would write a local branch stops
 // (unverifiable) rather than assuming no worktree holds it.
 func TestFetch_CheckedOutSetUnreadableFailsClosed(t *testing.T) {

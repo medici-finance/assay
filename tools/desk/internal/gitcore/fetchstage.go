@@ -31,8 +31,12 @@ import (
 // So go-git only TRANSFERS: every refspec is rewritten into a forced one whose destination is
 // a private per-call namespace (stageNamespace/<nonce>/<spec index>/<real destination>), and
 // gitcore then applies the staged values to the real destinations itself, under git's rules —
-// a non-forced update must fast-forward or it is refused and reported; a symbolic ref is never
-// written through and never pruned — and drops the staging namespace on every path.
+// prune runs BEFORE the updates and removes the directories it empties, so a stale ref whose
+// name conflicts with a new one (branch X replaced by X/a, or the reverse) is cleared first;
+// a non-forced update must fast-forward or it is refused and reported; a new ref whose name
+// conflicts with an existing one is refused and reported; one destination that cannot be
+// written never stops the others; a symbolic ref is never written through and never pruned —
+// and drops the staging namespace on every path.
 
 // stageNamespace is the ref namespace a Fetch stages the advertised values in. A refspec whose
 // destination lies inside it is refused, so a caller can never write or prune a staged ref.
@@ -40,8 +44,9 @@ const stageNamespace = "refs/gitcore-fetch/"
 
 // ErrRefsNotUpdated is wrapped by the error Fetch returns when one or more destinations could
 // not be updated to the value the origin advertised (an update that is not a fast-forward
-// without force, or a destination that is a symbolic ref). Every other destination was still
-// applied, as `git fetch` does; the error names each one that was not.
+// without force, a destination that is a symbolic ref, a new name that conflicts with an
+// existing ref, or a write that failed) or a stale ref could not be pruned. Every other
+// destination was still applied, as `git fetch` does; the error names each one that was not.
 var ErrRefsNotUpdated = errors.New("some refs were not updated")
 
 // stagedSpec is one caller refspec and the forced staging refspec go-git fetches it as.
@@ -83,10 +88,17 @@ type stagedUpdate struct {
 	force bool
 }
 
-// applyStaged writes every staged value to its real destination under git's rules, then (when
-// prune is set) drops each local ref a refspec covers that the origin no longer advertises —
-// never a symbolic ref. It returns an error wrapping ErrRefsNotUpdated naming every
-// destination it refused; the other destinations are still applied.
+// applyStaged applies the fetched values as `git fetch` does: first (when prune is set) it
+// drops each local ref a refspec covers that the origin no longer advertises — never a
+// symbolic ref — removing the directories that leaves empty; then it writes every staged
+// value to its real destination under git's rules. It returns an error wrapping
+// ErrRefsNotUpdated naming every destination it refused or could not write and every stale
+// ref it could not prune; everything else is still applied.
+//
+// The order is git's (prune before update) and it matters: a stale tracking ref whose NAME
+// conflicts with a new one — upstream replaced branch X with X/a, or X/a with X — cannot
+// coexist with it on disk, so updating first would refuse the new name and leave the stale
+// one in place on every run.
 func (r *Repo) applyStaged(specs []stagedSpec, prune bool) error {
 	st := r.repo.Storer
 	iter, err := st.IterReferences()
@@ -96,8 +108,10 @@ func (r *Repo) applyStaged(specs []stagedSpec, prune bool) error {
 	var updates []stagedUpdate
 	advertised := map[plumbing.ReferenceName]bool{}
 	var local []*plumbing.Reference
+	names := newRefNameSet()
 	err = iter.ForEach(func(ref *plumbing.Reference) error {
 		name := ref.Name().String()
+		names.add(name)
 		if !strings.HasPrefix(name, stageNamespace) {
 			local = append(local, ref)
 			return nil
@@ -121,34 +135,8 @@ func (r *Repo) applyStaged(specs []stagedSpec, prune bool) error {
 	}
 	sort.SliceStable(updates, func(i, j int) bool { return updates[i].dst < updates[j].dst })
 
+	refsDir, _ := r.commonRefsDir() // "" when unresolvable: no directory is then touched
 	var refused []string
-	for _, u := range updates {
-		old, rerr := st.Reference(u.dst)
-		if errors.Is(rerr, plumbing.ErrReferenceNotFound) {
-			old, rerr = nil, nil
-		}
-		if rerr != nil {
-			return fmt.Errorf("gitcore: fetch: read %s: %w", u.dst, rerr)
-		}
-		if old != nil {
-			if old.Type() != plumbing.HashReference {
-				refused = append(refused, u.dst.String()+" (a symbolic ref; not written through)")
-				continue
-			}
-			if old.Hash() == u.hash {
-				continue
-			}
-			if !u.force {
-				if ok, why := r.fastForwards(old.Hash(), u.hash); !ok {
-					refused = append(refused, u.dst.String()+" ("+why+")")
-					continue
-				}
-			}
-		}
-		if err := st.CheckAndSetReference(plumbing.NewHashReference(u.dst, u.hash), old); err != nil {
-			return fmt.Errorf("gitcore: fetch: update %s: %w", u.dst, err)
-		}
-	}
 
 	if prune {
 		for _, ref := range local {
@@ -160,18 +148,176 @@ func (r *Repo) applyStaged(specs []stagedSpec, prune bool) error {
 			for _, s := range specs {
 				if s.real.Reverse().Match(ref.Name()) {
 					if err := st.RemoveReference(ref.Name()); err != nil {
-						return fmt.Errorf("gitcore: fetch: prune %s: %w", ref.Name(), err)
+						refused = append(refused, ref.Name().String()+" (could not be pruned: "+err.Error()+")")
+						break
 					}
+					names.remove(ref.Name().String())
+					removeEmptyParents(refsDir, ref.Name().String())
 					break
 				}
 			}
 		}
 	}
 
+	for _, u := range updates {
+		old, rerr := st.Reference(u.dst)
+		if errors.Is(rerr, plumbing.ErrReferenceNotFound) {
+			old, rerr = nil, nil
+		}
+		if rerr != nil {
+			refused = append(refused, u.dst.String()+" (could not be read: "+rerr.Error()+")")
+			continue
+		}
+		if old != nil {
+			if old.Type() != plumbing.HashReference {
+				refused = append(refused, u.dst.String()+" (a symbolic ref; not written through)")
+				continue
+			}
+			if old.Hash() == u.hash {
+				continue
+			}
+			if !u.force {
+				// git refuses to move an existing tag without force, fast-forward or not.
+				if strings.HasPrefix(u.dst.String(), "refs/tags/") {
+					refused = append(refused, u.dst.String()+" (would clobber an existing tag)")
+					continue
+				}
+				if ok, why := r.fastForwards(old.Hash(), u.hash); !ok {
+					refused = append(refused, u.dst.String()+" ("+why+")")
+					continue
+				}
+			}
+		} else {
+			// A new name must not be a directory of an existing ref, nor have one as a directory:
+			// git refuses that pair, and so does a loose ref store.
+			if conflict := names.conflict(u.dst.String()); conflict != "" {
+				refused = append(refused, u.dst.String()+" (cannot create it: "+conflict+" exists)")
+				continue
+			}
+			// As git does, an empty directory left where the new ref goes is cleared first.
+			removeEmptyTree(refsDir, u.dst.String())
+		}
+		if err := st.CheckAndSetReference(plumbing.NewHashReference(u.dst, u.hash), old); err != nil {
+			refused = append(refused, u.dst.String()+" (could not be written: "+err.Error()+")")
+			continue
+		}
+		names.add(u.dst.String())
+	}
+
 	if len(refused) > 0 {
 		return fmt.Errorf("gitcore: fetch: %w: %s", ErrRefsNotUpdated, strings.Join(refused, ", "))
 	}
 	return nil
+}
+
+// refNameSet is the set of ref names in the repository, kept current as applyStaged prunes
+// and writes, with the count of names under each directory prefix — so it can tell, as git
+// does, when a new name and an existing one cannot both exist (one is a directory of the
+// other), whether the existing one is loose or packed.
+type refNameSet struct {
+	names map[string]bool
+	under map[string]int // "refs/remotes/origin/feat" -> how many names lie below it
+}
+
+func newRefNameSet() *refNameSet {
+	return &refNameSet{names: map[string]bool{}, under: map[string]int{}}
+}
+
+func (s *refNameSet) add(name string) {
+	if s.names[name] {
+		return
+	}
+	s.names[name] = true
+	for i := 0; i < len(name); i++ {
+		if name[i] == '/' {
+			s.under[name[:i]]++
+		}
+	}
+}
+
+func (s *refNameSet) remove(name string) {
+	if !s.names[name] {
+		return
+	}
+	delete(s.names, name)
+	for i := 0; i < len(name); i++ {
+		if name[i] == '/' {
+			s.under[name[:i]]--
+		}
+	}
+}
+
+// conflict returns the existing ref (or "<name>/…" for refs below it) that a new ref called
+// name cannot coexist with, or "" when there is none.
+func (s *refNameSet) conflict(name string) string {
+	for i := 0; i < len(name); i++ {
+		if name[i] == '/' && s.names[name[:i]] {
+			return name[:i]
+		}
+	}
+	if s.under[name] > 0 {
+		return name + "/…"
+	}
+	return ""
+}
+
+// looseRefPath is where ref name's loose file lives under refsDir, or "" when refsDir is
+// unknown or name is not a plain refs/ name (no empty, "." or ".." component).
+func looseRefPath(refsDir, name string) string {
+	rel, ok := strings.CutPrefix(name, "refs/")
+	if refsDir == "" || !ok || rel == "" {
+		return ""
+	}
+	for _, part := range strings.Split(rel, "/") {
+		if part == "" || part == "." || part == ".." {
+			return ""
+		}
+	}
+	return filepath.Join(refsDir, filepath.FromSlash(rel))
+}
+
+// removeEmptyParents removes the directories a pruned ref's removal left empty, deepest first,
+// as git does — never refs/ or refs/<kind>/ themselves. Without it a pruned loose X/a leaves a
+// directory X that a ref named X can never be written over.
+func removeEmptyParents(refsDir, name string) {
+	path := looseRefPath(refsDir, name)
+	if path == "" {
+		return
+	}
+	keep := len(strings.Split(strings.TrimPrefix(name, "refs/"), "/"))
+	for dir := filepath.Dir(path); keep > 2; keep-- {
+		if os.Remove(dir) != nil {
+			return
+		}
+		dir = filepath.Dir(dir)
+	}
+}
+
+// removeEmptyTree clears a directory tree that holds no files from where a new loose ref is
+// about to be written, as git does; a tree holding any file is left alone (the write then fails
+// and is reported).
+func removeEmptyTree(refsDir, name string) {
+	path := looseRefPath(refsDir, name)
+	if path == "" {
+		return
+	}
+	if fi, err := os.Lstat(path); err != nil || !fi.IsDir() {
+		return
+	}
+	removeIfEmptyTree(path)
+}
+
+func removeIfEmptyTree(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !removeIfEmptyTree(filepath.Join(dir, e.Name())) {
+			return false
+		}
+	}
+	return os.Remove(dir) == nil
 }
 
 // fastForwards reports whether moving a ref from old to new is a fast-forward (old is an
