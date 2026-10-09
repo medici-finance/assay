@@ -38,7 +38,7 @@ empty string, never omitted.
 | `schema` | string | Always `intake-exit-v1`. |
 | `source` | `issue` \| `intake` | Which front door the item came through. |
 | `item` | string | `owner/repo#N` for an issue, `I-<slug>` for an intake entry. |
-| `repo` | `owner/repo` | The repository the item belongs to. The intake writer leaves it empty only when it cannot resolve the checkout's `origin`. |
+| `repo` | `owner/repo` | The repository the item belongs to. The intake writer leaves it empty only when it cannot resolve the checkout's `origin` to an `owner/repo` path. |
 | `exit` | one of the five exits | `placeholder`, `bug`, `finding`, `needs-decision` or `rejected-watching`. `unrouted` is never an exit. |
 | `detail` | `rejected` \| `watching` \| empty | Present only when `exit` is `rejected-watching`, and required then. |
 | `artifact` | typed ref \| empty | What the item became (see "Typed refs" below). Required unless `exit` is `rejected-watching`. |

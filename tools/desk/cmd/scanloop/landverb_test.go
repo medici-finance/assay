@@ -48,29 +48,36 @@ func TestLandVerb_OneExitPerItem(t *testing.T) {
 		return cmdLand(append(append([]string(nil), base...), extra...), &strings.Builder{})
 	}
 
-	if err := land("--exit", "needs-decision"); err != nil {
-		t.Fatalf("first land: %v", err)
-	}
-	lines := readRecordLines(t, stateDir)
-	if len(lines) != 1 {
-		t.Fatalf("first land wrote %d record lines, want 1", len(lines))
-	}
-	if n := auditLandLines(t, stateDir); n != 1 {
-		t.Fatalf("first land wrote %d audit land lines, want 1", n)
-	}
-	r, _ := decodeRecord(t, lines[0])
-	if r.DecidedBy != decidedJudgment || r.TriagerRole != "intake-desk" || r.TriagerTier != tierStrong ||
-		r.Exit != ExitNeedsDecision || r.Repo != "medici-finance/assay" {
-		t.Fatalf("record = %+v", r)
+	ok := t.Run("first land writes one record and one audit line", func(t *testing.T) {
+		if err := land("--exit", "needs-decision"); err != nil {
+			t.Fatalf("first land: %v", err)
+		}
+		lines := readRecordLines(t, stateDir)
+		if len(lines) != 1 {
+			t.Fatalf("first land wrote %d record lines, want 1", len(lines))
+		}
+		if n := auditLandLines(t, stateDir); n != 1 {
+			t.Fatalf("first land wrote %d audit land lines, want 1", n)
+		}
+		r, _ := decodeRecord(t, lines[0])
+		if r.DecidedBy != decidedJudgment || r.TriagerRole != "intake-desk" || r.TriagerTier != tierStrong ||
+			r.Exit != ExitNeedsDecision || r.Repo != "medici-finance/assay" {
+			t.Fatalf("record = %+v", r)
+		}
+	})
+	if !ok {
+		t.FailNow()
 	}
 	before := recordFileBytes(t, stateDir)
 
-	if err := land("--exit", "needs-decision"); err != nil {
-		t.Fatalf("same exit again must be a no-op (exit 0): %v", err)
-	}
-	if recordFileBytes(t, stateDir) != before || auditLandLines(t, stateDir) != 1 {
-		t.Fatal("same exit again wrote a line")
-	}
+	t.Run("same exit again is a no-op", func(t *testing.T) {
+		if err := land("--exit", "needs-decision"); err != nil {
+			t.Fatalf("same exit again must be a no-op (exit 0): %v", err)
+		}
+		if recordFileBytes(t, stateDir) != before || auditLandLines(t, stateDir) != 1 {
+			t.Fatal("same exit again wrote a line")
+		}
+	})
 
 	refusals := []struct {
 		name string

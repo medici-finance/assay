@@ -1650,7 +1650,7 @@ func main() {
 	staleIssueDays := flag.Int("stale-issue-days", defaultStaleIssueDays, "--issues/--lint: age in days past which an open issue trips the stale-issue alarm (default 7)")
 	teamLogins := flag.String("team-logins", "", "--issues/--self-improvement: extra comma-separated team/internal logins beyond the roster trusted logins + bots")
 	cynefinMode := flag.Bool("cynefin", false, "classify active work by Cynefin domain (clear/complicated/complex/chaotic): distribution, drift, and a Disorder list of untagged briefs; reuses --json / --weekly / --daily (does not read/write STATUS.md)")
-	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --eligibility / --coverage")
+	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --intake-exits / --eligibility / --coverage")
 	doraSeries := flag.Bool("series", false, "time series (per-period buckets) instead of a single aggregate. Used with --issues")
 	since := flag.String("since", "", "period start (YYYY-MM-DD) for --verif-backlog / --autonomy / --ladder / --issues")
 	weekly := flag.Bool("weekly", false, "bucket by ISO week (default) for --verif-backlog / --cynefin")
@@ -1702,6 +1702,7 @@ func main() {
 	// WIP + dwell, constraint location, shift detection, prescribed ToC action.
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
 	bottleneckMode := flag.Bool("bottleneck", false, "emit the daily factory-floor bottleneck report (per-stage WIP + dwell, constraint, shift, action). With --json: a side-effect-free machine-readable emitter (no dated file written) for the publish pipeline")
+	intakeExitsMode := flag.Bool("intake-exits", false, "emit the intake register's intake-exit-v1 records (docs/streams/desk-supervision/intake-exit-v1.md): with --json, one JSON line per triaged entry that maps to an exit AND carries a complete triage stamp, then a {stamped, unstamped, unmapped} summary line. Could-not-check (exit 6) when no intake register exists")
 	intakeDebtMode := flag.Bool("intake-debt", false, "emit the intake front-door debt aggregate (untriaged count, over-threshold, oldest age). With --json: a leak-safe counts-only object for the publish pipeline (no entry ids/dates)")
 	// Brief-flow metrics (statusgen/07): the AssayScore (statusgen/08) input
 	// family. Every one is a self-contained sub-command (STATUS.md-free),
@@ -1840,6 +1841,7 @@ func main() {
 			"--issues":                *issuesMode,
 			"--cynefin":               *cynefinMode,
 			"--intake-debt":           *intakeDebtMode,
+			"--intake-exits":          *intakeExitsMode,
 			"--throughput":            *throughputMode,
 			"--leadtime":              *leadtimeMode,
 			"--flow-efficiency":       *flowEfficiencyMode,
@@ -2115,6 +2117,10 @@ func main() {
 	// offline, STATUS.md-free — same discipline as --bottleneck --json.
 	if *intakeDebtMode {
 		os.Exit(runIntakeDebt(*root, *doraJSON))
+	}
+	// Intake exit records (desk-supervision/33): self-contained, offline, STATUS.md-free.
+	if *intakeExitsMode {
+		os.Exit(runIntakeExits(*root, *doraJSON))
 	}
 	// Brief-flow metrics (statusgen/07). All seven are self-contained,
 	// STATUS.md-free sub-commands, same discipline as --dora-timing/--bottleneck;
