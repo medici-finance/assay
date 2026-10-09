@@ -17,10 +17,24 @@ package main
 //     base, the status was earlier or the brief was not on the board (a MOVE);
 //   - it moves the brief's gate away from `human`, or deletes the key (a RELABEL);
 //   - no brief after the change is the SAME brief as a `gate: human` base brief
-//     (below) — a DROP;
+//     (below) still on the board — a DROP. The README table is the board: a
+//     base brief that had a row and has none after the change is dropped, even
+//     when its brief file stays behind (at the stream root, under done/ or in
+//     the archive tree);
 //   - it leaves a board id the hold covers resolving to more than one record
 //     (an AMBIGUITY): no single transition can be judged, and no recorded
-//     ruling can lift it.
+//     ruling can lift it;
+//   - it leaves a board record the hold cannot read the way the board reads it
+//     (UNREADABLE) — a stream index, brief file, done/ folder, stream directory
+//     or board tree that is not a plain file or directory in the tree, or a
+//     board file that cannot be read. No recorded ruling can lift it.
+//
+// ONE READING RULE. The base is read from the git tree and the change from the
+// working tree, and both listings are classified by one rule (buildGateSnapshot
+// over gateEntry kinds) before any content is read, so a record either side
+// cannot read as the board does is unreadable on both — never a brief with no
+// gate. At the base an unreadable record reads conservatively: gate: human, no
+// ruling.
 //
 // A brief is matched across the base and the change by EITHER key — its board
 // id (<stream>/<NN>) or its permanent frontmatter `id:` — and either key alone
@@ -120,7 +134,68 @@ type gateBrief struct {
 	Records   []string // canonical form of every row and brief file read for this board id
 	PermIDs   []string // every non-empty permanent id: among those files
 	Ambiguous string   // why this board id resolves to more than one record ("" = exactly one)
+
+	// Unreadable: a record of this board id (or, for a SCOPE record — Key
+	// beginning gateScopeKeyPrefix — a whole stream index, stream directory,
+	// done/ folder or board tree) is not a plain file or directory in the tree,
+	// or could not be read, so the hold cannot read it the way the board does.
+	// Such a record is never taken as carrying no gate: its fields are the
+	// conservative reading (gate: human, no ruling), and a change that leaves
+	// one is refused (judgeDecisionGate).
+	Unreadable string
 }
+
+// gateScopeKeyPrefix keys an unreadable SCOPE record: a board path whose
+// records the hold cannot enumerate (a stream index, a stream directory, a
+// done/ folder, or docs/streams or docs/archive themselves). No board id
+// starts with it.
+const gateScopeKeyPrefix = "!"
+
+// gateEntryKind is what a board path is in the tree it was read from. Both
+// sides of a change are classified by this one rule: the base from the git tree
+// (gitTreeEntryKind), the working tree by lstat (diskEntryKind), so a path
+// the board would follow somewhere else reads alike on both sides — as not a
+// plain file.
+type gateEntryKind int
+
+const (
+	gateEntryFile    gateEntryKind = iota // a plain file (git 100644/100755)
+	gateEntryDir                          // a plain directory (git tree)
+	gateEntrySymlink                      // a symbolic link (git 120000)
+	gateEntryNested                       // a submodule / nested repository (git 160000, or a directory holding .git)
+	gateEntryOther                        // anything else
+)
+
+func (k gateEntryKind) String() string {
+	switch k {
+	case gateEntryFile:
+		return "a plain file"
+	case gateEntryDir:
+		return "a directory"
+	case gateEntrySymlink:
+		return "a symbolic link"
+	case gateEntryNested:
+		return "a submodule or nested repository"
+	}
+	return "not a plain file"
+}
+
+// gateEntry is one path under docs/streams or docs/archive (or docs itself),
+// repo-relative with forward slashes, and what it is.
+type gateEntry struct {
+	Path string
+	Kind gateEntryKind
+}
+
+// gateTreeRootRe, gateStreamDirRe and gateDoneDirRe select the directories the
+// board descends through to reach its files. Each must be a plain directory
+// (or absent): the board's own readers follow a link or read into a nested
+// repository there, which the base's git tree does not.
+var (
+	gateTreeRootRe  = regexp.MustCompile(`^docs(/(streams|archive))?$`)
+	gateStreamDirRe = regexp.MustCompile(`^docs/(streams|archive)/([^/]+)$`)
+	gateDoneDirRe   = regexp.MustCompile(`^docs/(streams|archive)/([^/]+)/done$`)
+)
 
 // fingerprint is the board id's full record set, order-independent: two
 // snapshots hold the same records for a board id exactly when these match.
@@ -151,18 +226,44 @@ func gateStatusRank(s string) int {
 	return 0
 }
 
-// buildGateSnapshot reads a board from a list of repo-relative paths. read
-// returns a file's bytes; an unreadable file contributes what could be read (a
-// brief whose file cannot be read has no gate, which the judge treats as not
-// `human` — the fail-closed direction for a brief that was `human` at the base).
-func buildGateSnapshot(paths []string, read func(string) ([]byte, error)) gateSnapshot {
+// buildGateSnapshot reads a board from a list of repo-relative entries. read
+// returns a plain file's bytes. Both sides of a change come through here, so
+// one rule decides what a record says: a board file that is not a plain file,
+// or that cannot be read, is UNREADABLE — never a brief with no gate — and so
+// is a stream index, a stream directory, a done/ folder or a board tree that
+// is not a plain directory (gateUnreadableScope). The judge refuses a change
+// that leaves an unreadable record, and reads one at the base conservatively.
+func buildGateSnapshot(entries []gateEntry, read func(string) ([]byte, error)) gateSnapshot {
 	type group struct {
 		tree, name, readme string
 		briefs             []string
 	}
+	snap := gateSnapshot{}
+	kinds := map[string]gateEntryKind{}
 	groups := map[string]*group{}
-	for _, p := range paths {
-		p = filepath.ToSlash(strings.TrimSpace(p))
+	for _, e := range entries {
+		p := filepath.ToSlash(strings.TrimSpace(e.Path))
+		kinds[p] = e.Kind
+		if gateTreeRootRe.MatchString(p) {
+			if e.Kind != gateEntryDir {
+				gateUnreadableScope(snap, p, e.Kind.String()+", not a plain directory, where the board reads its streams")
+			}
+			continue
+		}
+		if m := gateStreamDirRe.FindStringSubmatch(p); m != nil {
+			// A plain file beside the streams is not a stream; a link or a
+			// nested repository can be read as one by the board's own readers.
+			if !reservedRegisterNames[m[2]] && (e.Kind == gateEntrySymlink || e.Kind == gateEntryNested) {
+				gateUnreadableScope(snap, p, e.Kind.String()+" in place of a stream directory")
+			}
+			continue
+		}
+		if m := gateDoneDirRe.FindStringSubmatch(p); m != nil {
+			if !reservedRegisterNames[m[2]] && e.Kind != gateEntryDir && e.Kind != gateEntryFile {
+				gateUnreadableScope(snap, p, e.Kind.String()+" in place of the stream's done/ folder")
+			}
+			continue
+		}
 		m := gateBoardPathRe.FindStringSubmatch(p)
 		if m == nil || reservedRegisterNames[m[2]] {
 			continue
@@ -198,7 +299,6 @@ func buildGateSnapshot(paths []string, read func(string) ([]byte, error)) gateSn
 	// supplies Board, Path and Readme; a second record for the same board id
 	// marks it ambiguous and the gate-relevant fields become a conservative
 	// merge (mergeGateRecord).
-	snap := gateSnapshot{}
 	type tally struct {
 		rows, files int
 		trees       map[string]bool
@@ -232,14 +332,26 @@ func buildGateSnapshot(paths []string, read func(string) ([]byte, error)) gateSn
 			}
 			key := g.name + "/" + normBriefNum(m[1])
 			rec := &gateBrief{Key: key, Board: g.name + "/" + m[1], Path: p, Readme: g.readme}
-			if raw, err := read(p); err == nil {
+			if k := kinds[p]; k != gateEntryFile {
+				rec.Unreadable = fmt.Sprintf("%s is %s", p, k)
+			} else if raw, err := read(p); err != nil {
+				rec.Unreadable = fmt.Sprintf("%s could not be read (%v)", p, err)
+			} else {
 				readGateFrontmatter(rec, raw)
+			}
+			var fileRec string
+			if rec.Unreadable != "" {
+				// What the board would read there cannot be told: the record
+				// reads conservatively (gate: human, no ruling — set below for
+				// every board id holding an unreadable record).
+				fileRec = "unreadable " + rec.Unreadable
+			} else {
+				fileRec = fmt.Sprintf("file %s gate=%s id=%s brief=%s decision-issue=%d ruling=%s fmerr=%t",
+					p, rec.Gate, rec.PermID, rec.BriefID, rec.DecisionIssue, rec.Ruling, rec.FMErr)
 			}
 			t := note(key, g.tree)
 			t.files++
 			t.fileNames = append(t.fileNames, p)
-			fileRec := fmt.Sprintf("file %s gate=%s id=%s brief=%s decision-issue=%d ruling=%s fmerr=%t",
-				p, rec.Gate, rec.PermID, rec.BriefID, rec.DecisionIssue, rec.Ruling, rec.FMErr)
 			gb := snap[key]
 			if gb == nil {
 				gb = rec
@@ -251,13 +363,23 @@ func buildGateSnapshot(paths []string, read func(string) ([]byte, error)) gateSn
 			if rec.PermID != "" {
 				gb.addPermID(rec.PermID)
 			}
+			if rec.Unreadable != "" {
+				gb.addUnreadable(rec.Unreadable)
+			}
 			gb.Records = append(gb.Records, fileRec)
 		}
 		if g.readme == "" {
 			continue
 		}
+		// An index the hold cannot read leaves every row of the stream unknown:
+		// the whole stream is an unreadable scope, not a stream with no rows.
+		if k := kinds[g.readme]; k != gateEntryFile {
+			gateUnreadableScope(snap, g.readme, k.String()+", not a plain file")
+			continue
+		}
 		raw, err := read(g.readme)
 		if err != nil {
+			gateUnreadableScope(snap, g.readme, fmt.Sprintf("could not be read (%v)", err))
 			continue
 		}
 		body := string(raw)
@@ -309,7 +431,35 @@ func buildGateSnapshot(paths []string, read func(string) ([]byte, error)) gateSn
 			gb.DecisionIssue, gb.Ruling = 0, ""
 		}
 	}
+	for _, gb := range snap {
+		if gb.Unreadable != "" {
+			// The conservative reading of a record the hold cannot read: it
+			// may say gate: human, and no ruling can be read off it.
+			gb.Gate, gb.DecisionIssue, gb.Ruling = gateHumanValue, 0, ""
+		}
+	}
 	return snap
+}
+
+// gateUnreadableScope records a board path whose records the hold cannot
+// enumerate the way the board does, as one SCOPE record: gate: human, no
+// ruling, never matched by a board id.
+func gateUnreadableScope(snap gateSnapshot, p, why string) {
+	key := gateScopeKeyPrefix + p
+	if snap[key] != nil {
+		return
+	}
+	u := p + " is " + why
+	snap[key] = &gateBrief{Key: key, Board: p, Path: p, Gate: gateHumanValue, Unreadable: u,
+		Records: []string{"unreadable " + u}}
+}
+
+func (gb *gateBrief) addUnreadable(why string) {
+	if gb.Unreadable == "" {
+		gb.Unreadable = why
+	} else if !strings.Contains(gb.Unreadable, why) {
+		gb.Unreadable += "; " + why
+	}
 }
 
 // mergeGateRecord folds a second brief file for the same board id into gb,
@@ -338,6 +488,26 @@ func (gb *gateBrief) addPermID(id string) {
 		}
 	}
 	gb.PermIDs = append(gb.PermIDs, id)
+}
+
+// hasRow reports whether a README row stands for the board id. The README
+// table is the board: a brief file with no row behind it is off the board.
+func (gb *gateBrief) hasRow() bool {
+	for _, r := range gb.Records {
+		if strings.HasPrefix(r, "row ") {
+			return true
+		}
+	}
+	return false
+}
+
+// gateKeeps reports whether brief h after the change keeps base brief b on the
+// board: it must be the SAME brief (gateSameBriefPairs), and when a README row
+// stood behind b at the base, a row must still stand behind h. A brief file
+// left behind — at the stream root, under done/ or in the archive tree — is not
+// a brief on the board.
+func gateKeeps(same map[gatePair]bool, b, h *gateBrief) bool {
+	return same[gatePair{b, h}] && !(b.hasRow() && !h.hasRow())
 }
 
 func (gb *gateBrief) addSpelling(s string) {
@@ -394,38 +564,53 @@ func gateSnapshotOnDisk(root string) gateSnapshot {
 
 // gateSnapshotOnDiskWith is gateSnapshotOnDisk with one repo-relative file's
 // content replaced — the board a write WOULD leave, before it is written.
+//
+// The working tree is listed by lstat, never by following a link: each entry
+// is classified (diskEntryKind) and buildGateSnapshot applies the same rule to
+// it as to the base's git tree.
 func gateSnapshotOnDiskWith(root, overrideRel string, override []byte) gateSnapshot {
-	var paths []string
-	for _, tree := range []string{"streams", "archive"} {
-		dir := filepath.Join(root, "docs", tree)
-		streams, err := os.ReadDir(dir)
+	var entries []gateEntry
+	add := func(rel string) gateEntryKind {
+		k := diskEntryKind(filepath.Join(root, filepath.FromSlash(rel)))
+		entries = append(entries, gateEntry{Path: rel, Kind: k})
+		return k
+	}
+	list := func(rel string) []string {
+		ents, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
-			continue
+			return nil
 		}
-		for _, s := range streams {
-			if !s.IsDir() {
+		names := make([]string, 0, len(ents))
+		for _, e := range ents {
+			names = append(names, e.Name())
+		}
+		return names
+	}
+	if _, err := os.Lstat(filepath.Join(root, "docs")); err == nil && add("docs") == gateEntryDir {
+		for _, tree := range []string{"streams", "archive"} {
+			treeRel := "docs/" + tree
+			if _, err := os.Lstat(filepath.Join(root, "docs", tree)); err != nil || add(treeRel) != gateEntryDir {
 				continue
 			}
-			sub := filepath.Join(dir, s.Name())
-			_ = filepath.WalkDir(sub, func(p string, d fs.DirEntry, err error) error {
-				if err != nil {
-					return nil
+			for _, s := range list(treeRel) {
+				sub := treeRel + "/" + s
+				if add(sub) != gateEntryDir {
+					continue
 				}
-				if d.IsDir() {
-					if p != sub && d.Name() != archiveDirName {
-						return filepath.SkipDir
+				for _, f := range list(sub) {
+					fr := sub + "/" + f
+					k := add(fr)
+					if f == archiveDirName && k == gateEntryDir {
+						for _, d := range list(fr) {
+							add(fr + "/" + d)
+						}
 					}
-					return nil
 				}
-				if rel, rerr := filepath.Rel(root, p); rerr == nil {
-					paths = append(paths, filepath.ToSlash(rel))
-				}
-				return nil
-			})
+			}
 		}
 	}
 	overrideRel = filepath.ToSlash(overrideRel)
-	return buildGateSnapshot(paths, func(rel string) ([]byte, error) {
+	return buildGateSnapshot(entries, func(rel string) ([]byte, error) {
 		if overrideRel != "" && rel == overrideRel {
 			return override, nil
 		}
@@ -433,14 +618,85 @@ func gateSnapshotOnDiskWith(root, overrideRel string, override []byte) gateSnaps
 	})
 }
 
-// gateSnapshotAtRev reads the board as committed at rev.
+// diskEntryKind classifies a working-tree path without following a link. A
+// directory holding .git is a nested repository: the base's git tree records
+// it as a submodule and cannot read into it.
+func diskEntryKind(p string) gateEntryKind {
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return gateEntryOther
+	}
+	switch m := fi.Mode(); {
+	case m&fs.ModeSymlink != 0:
+		return gateEntrySymlink
+	case m.IsDir():
+		if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
+			return gateEntryNested
+		}
+		return gateEntryDir
+	case m.IsRegular():
+		return gateEntryFile
+	}
+	return gateEntryOther
+}
+
+// gitTreeEntryKind classifies a git tree entry by its mode.
+func gitTreeEntryKind(mode string) gateEntryKind {
+	switch mode {
+	case "100644", "100755":
+		return gateEntryFile
+	case "040000":
+		return gateEntryDir
+	case "120000":
+		return gateEntrySymlink
+	case "160000":
+		return gateEntryNested
+	}
+	return gateEntryOther
+}
+
+// gateSnapshotAtRev reads the board as committed at rev. The tree is listed
+// with each entry's mode (and the directories on the way, -t), and docs itself
+// is classified from its parent, so a link anywhere on the board's path reads
+// as one here exactly as it does in the working tree.
 func gateSnapshotAtRev(root, rev string) (gateSnapshot, error) {
-	out, err := exec.Command("git", "-C", root, "ls-tree", "-r", "-z", "--name-only", rev, "--", "docs/streams", "docs/archive").Output()
+	var entries []gateEntry
+	parse := func(out []byte) {
+		for _, line := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+			meta, p, ok := strings.Cut(line, "\t")
+			if !ok {
+				continue
+			}
+			mode, _, _ := strings.Cut(meta, " ")
+			entries = append(entries, gateEntry{Path: p, Kind: gitTreeEntryKind(mode)})
+		}
+	}
+	top, err := exec.Command("git", "-C", root, "ls-tree", "-z", rev, "--", "docs").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git ls-tree %s: %w", rev, err)
 	}
-	paths := strings.Split(strings.TrimRight(string(out), "\x00"), "\x00")
-	return buildGateSnapshot(paths, func(p string) ([]byte, error) { return gitShowObject(root, rev, p) }), nil
+	// docs itself, classified from its parent: only a plain directory there is
+	// descended into; a link at docs is one unreadable entry, as on disk.
+	docsKind, docsSeen := gateEntryOther, false
+	for _, line := range strings.Split(strings.TrimRight(string(top), "\x00"), "\x00") {
+		if meta, p, ok := strings.Cut(line, "\t"); ok && p == "docs" {
+			mode, _, _ := strings.Cut(meta, " ")
+			docsKind, docsSeen = gitTreeEntryKind(mode), true
+		}
+	}
+	switch {
+	case !docsSeen:
+		// No docs at this revision: no board.
+	case docsKind != gateEntryDir:
+		entries = append(entries, gateEntry{Path: "docs", Kind: docsKind})
+	default:
+		out, err := exec.Command("git", "-C", root, "ls-tree", "-r", "-t", "-z", rev, "--", "docs/streams", "docs/archive").Output()
+		if err != nil {
+			return nil, fmt.Errorf("git ls-tree %s: %w", rev, err)
+		}
+		parse(out)
+	}
+	return buildGateSnapshot(entries, func(p string) ([]byte, error) { return gitShowObject(root, rev, p) }), nil
 }
 
 // gateFault is one change the hold judges: a brief moved, relabelled or dropped
@@ -450,7 +706,15 @@ type gateFault struct {
 	// Ambiguous: the change leaves a board id the hold covers resolving to
 	// more than one record (Head.Ambiguous says which), so no single
 	// transition can be judged and no recorded ruling can lift it.
-	Ambiguous  bool
+	Ambiguous bool
+	// Unreadable: a record the change leaves (Head), or a base record no
+	// brief after the change stands for (Base[0]), cannot be read the way the
+	// board reads it (gateBrief.Unreadable says why), so nothing about it can
+	// be judged and no recorded ruling can lift it.
+	Unreadable bool
+	// RowGone (with Drop): the dropped brief's board id still has a brief file
+	// after the change, but no README row stands for it.
+	RowGone    bool
 	Head       *gateBrief   // the brief after the change (nil for a drop)
 	Base       []*gateBrief // the base briefs it matches (for a drop, the dropped one)
 	RulingBase []*gateBrief // the matched base briefs that are the SAME brief (isGateRenumber); nil for a drop
@@ -513,6 +777,14 @@ func (f gateFault) briefIDs() []string {
 // what describes the change in words a reader can act on.
 func (f gateFault) what() string {
 	var parts []string
+	if f.Unreadable {
+		if f.Head != nil {
+			parts = append(parts, fmt.Sprintf("leaves a board record the hold cannot read the way the board reads it (%s), so its gate, status and ruling cannot be judged — it is refused, never taken as carrying no gate", f.Head.Unreadable))
+		} else {
+			parts = append(parts, fmt.Sprintf("is judged against a base board record the hold could not read the way the board reads it (%s), and no brief after the change stands for it, so what the change does to it cannot be judged", f.Base[0].Unreadable))
+		}
+		return strings.Join(parts, "; and ")
+	}
 	if f.Ambiguous {
 		parts = append(parts, fmt.Sprintf("leaves its board id resolving to more than one record (%s), so no single status move can be judged", f.Head.Ambiguous))
 	}
@@ -541,7 +813,11 @@ func (f gateFault) what() string {
 		if b.PermID != "" {
 			why = "nor its permanent id: as the same brief (only a renumber onto a NEW board id, with no other claimant, keeps a brief — a permanent id: parked on a brief already on the board does not)"
 		}
-		parts = append(parts, fmt.Sprintf("drops it — no brief after the change carries its board id %s, %s", b.Board, why))
+		if f.RowGone {
+			parts = append(parts, fmt.Sprintf("drops it — its README row for board id %s is gone, and a brief file left behind (at the stream root, under done/ or in the archive tree) is not a brief on the board", b.Board))
+		} else {
+			parts = append(parts, fmt.Sprintf("drops it — no brief after the change carries its board id %s, %s", b.Board, why))
+		}
 	}
 	return strings.Join(parts, "; and ")
 }
@@ -555,7 +831,14 @@ func (f gateFault) what() string {
 // id, or by a renumber that pairs exactly one base brief with exactly one new
 // board id; only the same brief lends a prior status or a ruling, and only the
 // same brief keeps a base brief on the board (a permanent id: parked on another
-// brief keeps that brief in SCOPE, never the base brief PRESENT). A board id
+// brief keeps that brief in SCOPE, never the base brief PRESENT) — and only
+// while a README row still stands behind it, if one stood at the base
+// (gateKeeps): a brief file without its row is off the board, a drop. A record the
+// change leaves that the hold cannot read the way the board reads it
+// (gateBrief.Unreadable) is refused outright, changed or not: its content can
+// change behind an unchanged entry. At the base such a record reads
+// conservatively (gate: human, no ruling), and an unreadable base SCOPE record
+// that nothing after the change stands for is refused too. A board id
 // the hold covers that resolves to more than one record after the change, and
 // whose records differ from the base's, is refused outright: which record is
 // the brief cannot be told, so no transition and no ruling can be judged.
@@ -591,12 +874,19 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 		}
 		baseHuman := false
 		for _, b := range ms {
-			if same[gatePair{b, h}] {
-				matched[b] = true // only the same brief keeps a base brief present
+			if gateKeeps(same, b, h) {
+				matched[b] = true // only the same brief, still on the board, keeps a base brief present
 			}
 			if b.Gate == gateHumanValue {
 				baseHuman = true
 			}
+		}
+		if h.Unreadable != "" {
+			if b := base[h.Key]; b != nil {
+				matched[b] = true // reported here, not again as a drop
+			}
+			faults = append(faults, gateFault{Unreadable: true, Head: h, Base: ms})
+			continue
 		}
 		if h.Gate != gateHumanValue && !baseHuman {
 			continue // not in scope on either side
@@ -654,7 +944,15 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 	for _, k := range sortedGateKeys(base) {
 		b := base[k]
 		if b.Gate == gateHumanValue && !matched[b] {
-			faults = append(faults, gateFault{Drop: true, Base: []*gateBrief{b}})
+			if strings.HasPrefix(b.Key, gateScopeKeyPrefix) {
+				faults = append(faults, gateFault{Unreadable: true, Base: []*gateBrief{b}})
+				continue
+			}
+			f := gateFault{Drop: true, Base: []*gateBrief{b}}
+			if h := head[b.Key]; h != nil && b.hasRow() && !h.hasRow() {
+				f.RowGone = true
+			}
+			faults = append(faults, f)
 		}
 	}
 	return faults
@@ -749,12 +1047,15 @@ type gateRecordedRuling struct {
 // decision issue AND a well-formed ruling link to a comment on that issue. When
 // none does, missing says what the PRIMARY record lacks.
 func offlineRuling(f gateFault) (r gateRecordedRuling, ok bool, missing string) {
+	if f.Unreadable {
+		return r, false, "no recorded ruling can stand for a board record the hold cannot read the way the board reads it — make every stream index, brief file and done/ folder under docs/streams and docs/archive a plain file or directory in the tree (no symbolic link, submodule or nested repository), then make any status move in a change of its own"
+	}
 	if f.Ambiguous {
 		return r, false, "no recorded ruling can stand for a board id that resolves to more than one record — give each brief its own board number (and each stream its own name across docs/streams and docs/archive), then make the status move in a change of its own"
 	}
 	for _, c := range f.candidates() {
-		if c.Ambiguous != "" {
-			continue // an ambiguous record's ruling is no single brief's ruling
+		if c.Ambiguous != "" || c.Unreadable != "" {
+			continue // an ambiguous or unreadable record's ruling is no single brief's ruling
 		}
 		if c.DecisionIssue == 0 {
 			continue

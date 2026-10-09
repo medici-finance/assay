@@ -148,8 +148,8 @@
     {
       "name": "archived boards dropped from the PR lane's board paths (an archive-only change is not judged)",
       "file": "decisiongatehold.go",
-      "old": "`^docs/(streams|archive)/",
-      "new": "`^docs/(streams)/"
+      "old": "gateBoardPathRe = regexp.MustCompile(`^docs/(streams|archive)/",
+      "new": "gateBoardPathRe = regexp.MustCompile(`^docs/(streams)/"
     },
     {
       "name": "a permanent-id donor still on the board supplies the prior status (a new row taking its id: reads as already advanced)",
@@ -196,7 +196,7 @@
     {
       "name": "any permanent-id match keeps a base brief on the board (an id parked on an existing brief hides a drop)",
       "file": "decisiongatehold.go",
-      "old": "if same[gatePair{b, h}] {\n\t\t\t\tmatched[b] = true",
+      "old": "if gateKeeps(same, b, h) {\n\t\t\t\tmatched[b] = true",
       "new": "if true {\n\t\t\t\tmatched[b] = true"
     },
     {
@@ -204,6 +204,42 @@
       "file": "decisiongatehold.go",
       "old": "if rec.Gate == gateHumanValue {\n\t\tgb.Gate = gateHumanValue",
       "new": "if false {\n\t\tgb.Gate = gateHumanValue"
+    },
+    {
+      "name": "a board record the change leaves that the hold cannot read is judged like any other (a linked brief file lands unrefused)",
+      "file": "decisiongatehold.go",
+      "old": "if h.Unreadable != \"\" {\n\t\t\tif b := base[h.Key]; b != nil {",
+      "new": "if false {\n\t\t\tif b := base[h.Key]; b != nil {"
+    },
+    {
+      "name": "an unreadable base record is taken as carrying no gate (a landed linked brief is dropped, or relabelled and moved, unruled)",
+      "file": "decisiongatehold.go",
+      "old": "gb.Gate, gb.DecisionIssue, gb.Ruling = gateHumanValue, 0, \"\"",
+      "new": "gb.DecisionIssue, gb.Ruling = 0, \"\""
+    },
+    {
+      "name": "the working tree is read by following links (the two readers disagree on a linked board record)",
+      "file": "decisiongatehold.go",
+      "old": "fi, err := os.Lstat(p)\n\tif err != nil {\n\t\treturn gateEntryOther",
+      "new": "fi, err := os.Stat(p)\n\tif err != nil {\n\t\treturn gateEntryOther"
+    },
+    {
+      "name": "the base's git tree is read without entry modes (a linked board record reads as a plain file)",
+      "file": "decisiongatehold.go",
+      "old": "entries = append(entries, gateEntry{Path: p, Kind: gitTreeEntryKind(mode)})",
+      "new": "entries = append(entries, gateEntry{Path: p, Kind: map[bool]gateEntryKind{true: gateEntryDir, false: gateEntryFile}[mode == \"040000\"]})"
+    },
+    {
+      "name": "an unreadable base scope record that nothing after the change stands for is not refused (a landed linked done/ folder is removed with its gate: human brief, unruled)",
+      "file": "decisiongatehold.go",
+      "old": "faults = append(faults, gateFault{Unreadable: true, Base: []*gateBrief{b}})\n\t\t\t\tcontinue",
+      "new": "continue"
+    },
+    {
+      "name": "a base gate: human brief whose README row is gone stays on the board while a brief file keys to its board id (the row is removed and the file moved under done/, unruled)",
+      "file": "decisiongatehold.go",
+      "old": "return same[gatePair{b, h}] && !(b.hasRow() && !h.hasRow())",
+      "new": "return same[gatePair{b, h}]"
     }
   ]
 }

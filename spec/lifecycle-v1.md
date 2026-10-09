@@ -316,11 +316,29 @@ issue has no human ruling, a change that:
    `implemented` < `verified` < `done`, and every other status ranks below all three);
 2. changes the brief's `gate` away from `human`, or removes the key (a **relabel**);
 3. leaves no brief after the change that is the same brief as a `gate: human` base brief
-   (a **drop**);
+   and still on the board (a **drop**). The README table is the board: a base brief that
+   had a README row and has none after the change is dropped, even when its brief file
+   remains at the stream root, under `done/` or in the archive tree. A brief file alone
+   keeps no brief on the board;
 4. leaves an in-scope board id resolving to more than one record, where the base did not
    carry exactly the same records (an **ambiguity**). No recorded ruling lifts this refusal:
    which record is the brief cannot be told, so the change must first give each brief its
-   own board id.
+   own board id;
+5. leaves a board record the implementation cannot read the way the board reads it (an
+   **unreadable record**): a stream index, brief file, `done/` folder, stream directory,
+   or the `docs/streams` or `docs/archive` tree itself that is not a plain file or
+   directory in the repository tree (a symbolic link, a submodule or a nested
+   repository), or a board file that cannot be read. This is refused whether or not the
+   entry itself changed, since what it stands for can change behind it. No recorded
+   ruling lifts this refusal.
+
+**One reading rule.** Both sides of a change MUST be read by one rule: the base and the
+change are each listed with what every board path is (plain file, directory, link,
+submodule) before any content is read, and a record either side cannot read as the board
+does is unreadable on both. An unreadable record is never taken as carrying no gate: at
+the base it is judged as `gate: human` with no ruling, and an unreadable base stream
+index, `done/` folder, stream directory or tree that no record after the change stands
+for is refused.
 
 A brief is matched across the base and the change by EITHER its board id
 (`<stream>/<NN>`, any spelling of the number) OR its permanent frontmatter `id:`, and
@@ -354,7 +372,7 @@ decided, never what they decided.
 
 - **Layer one (offline).** Part of the board lint (section 7.3). An in-scope move, relabel
   or drop is a PROBLEM unless the brief records a `decision-issue:` and a well-formed
-  `ruling:` issue-comment URL pointing at that issue; an ambiguity is always a PROBLEM. This layer cannot tell who wrote the
+  `ruling:` issue-comment URL pointing at that issue; an ambiguity or an unreadable record is always a PROBLEM. This layer cannot tell who wrote the
   linked comment, and its refusal MUST say that it checked only for a well-formed link.
   Where the base revision cannot be resolved or its board cannot be read, this layer
   MUST fail closed (a PROBLEM) while any `gate: human` brief after the change sits at
@@ -564,8 +582,9 @@ A conforming linter MUST:
    alternatives.
 10. Flag, as the offline layer of the decision-gate hold (section 4.5), any change that
     moves, relabels or drops a `gate: human` brief whose frontmatter does not record a
-    `decision-issue:` and a well-formed `ruling:` link to that issue, and any change that
-    leaves such a brief's board id resolving to more than one record. The finding MUST say
+    `decision-issue:` and a well-formed `ruling:` link to that issue, any change that
+    leaves such a brief's board id resolving to more than one record, and any change that
+    leaves an unreadable board record (section 4.5, item 5). The finding MUST say
     that it checked only for a well-formed link, not who wrote the linked comment.
 
 ## 8. Spec and scoping-doc lifecycle
