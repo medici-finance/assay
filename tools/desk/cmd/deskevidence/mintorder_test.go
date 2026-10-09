@@ -196,7 +196,7 @@ func TestLandingMintsBeforeAdmission(t *testing.T) {
 	writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
 	evidence := []string{"--root", lf.home, "--brief-path", fixtureBrief, "--evidence-file", fragment}
 
-	t.Run("dry-run-passes-every-pre-write-gate-and-writes-nothing", func(t *testing.T) {
+	t.Run("dry-run-writes-nothing", func(t *testing.T) {
 		code, calls := lf.land(t, append(evidence, "--dry-run")...)
 		if code != deskkit.ExitOK {
 			t.Fatalf("dry-run landing exit = %d: %s", code, lf.errBuf)
@@ -214,7 +214,7 @@ func TestLandingMintsBeforeAdmission(t *testing.T) {
 		}
 	})
 
-	t.Run("evidence-lands-under-the-minted-token", func(t *testing.T) {
+	t.Run("evidence-lands", func(t *testing.T) {
 		code, calls := lf.land(t, evidence...)
 		if code != deskkit.ExitOK {
 			t.Fatalf("Evidence landing exit = %d: %s", code, lf.errBuf)
@@ -230,7 +230,7 @@ func TestLandingMintsBeforeAdmission(t *testing.T) {
 		}
 	})
 
-	t.Run("outcome-record-lands-under-the-minted-token", func(t *testing.T) {
+	t.Run("outcome-record-lands", func(t *testing.T) {
 		// The documented refresh: the landed brief replaces the home's copy; HEAD stays.
 		writeFixtureFile(t, filepath.Join(lf.home, fixtureBrief), lf.api.files[fixtureBrief])
 		record := filepath.Join(t.TempDir(), "outcome.json")
@@ -324,5 +324,79 @@ func TestAdmissionStillPrecedesEveryLandingRead(t *testing.T) {
 	}
 	if len(lf.api.unexpected) != 0 {
 		t.Fatalf("unexpected forge calls: %v", lf.api.unexpected)
+	}
+}
+
+// TestLandingUsesOneForgeForAdmissionAndWrite pins the shape of the fix at the seams, for
+// both landing shapes: the token is minted once, the forge is resolved once, admission is
+// handed THAT forge, and admission returns before the landing's first branch read.
+func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
+	rec := `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`
+	for name, args := range map[string][]string{
+		"evidence":       {"--evidence-file", "docs/streams/x/brief.md"},
+		"outcome-record": {"--outcome-record", "record.json"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			var steps []string
+			var resolved, admitted deskkit.Forge
+			mintTokenFn = func(string) error {
+				steps = append(steps, "mint")
+				ghToken = fakeVerifierToken
+				return nil
+			}
+			forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+				steps = append(steps, "forge")
+				resolved = deskkit.OutboundChecked(f, "verifier")
+				return resolved, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+			}
+			verifierEvidenceAdmissionFn = func(_, _, _ string, fg deskkit.Forge) (deskkit.VerifierReceipt, error) {
+				steps = append(steps, "admission")
+				admitted = fg
+				if len(f.hits) != 0 {
+					t.Errorf("the landing reached the forge before admission: %v", f.hits)
+				}
+				return deskkit.VerifierReceipt{}, nil
+			}
+			root := rootWithFile(t, "docs/streams/x/brief.md", "# Brief\n\n## Evidence\n| 1 | fixture | 0 | ok |\n")
+			writeFixtureFile(t, filepath.Join(root, "record.json"), rec)
+			f.setFile("docs/streams/x/brief.md", "# Brief\n\n## Evidence\n")
+
+			if code := run(append([]string{fixtureRepo, "main", "--root", root}, args...)); code != deskkit.ExitOK {
+				t.Fatalf("landing exit = %d: %s", code, errBuf)
+			}
+			if got := strings.Join(steps, " "); got != "mint forge admission" {
+				t.Fatalf("landing ran %q, want exactly one mint, one forge resolution, then admission", got)
+			}
+			if admitted == nil || admitted != resolved {
+				t.Fatal("admission was not handed the forge the landing resolved")
+			}
+			if f.putCalls != 1 {
+				t.Fatalf("landing made %d write(s), want 1", f.putCalls)
+			}
+		})
+	}
+}
+
+// TestAdmissionRefusesWithNoResolvedForge: admission handed no forge refuses outright. It
+// must never pass a nil on to the shared reader, which would resolve a forge of its own —
+// outside the landing's mint.
+func TestAdmissionRefusesWithNoResolvedForge(t *testing.T) {
+	setupFake(t)
+	called := false
+	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		called = true
+		return deskkit.VerifierReceipt{}, nil
+	}
+	ac := &auditCtx{}
+	_, err := admitVerifierEvidence(t.TempDir(), fixtureRepo, fixtureBrief, nil, ac)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+		t.Fatalf("admission with no forge returned %v, want a refusal", err)
+	}
+	if called {
+		t.Fatal("admission with no forge still reached the shared reader")
+	}
+	if ac.attestation != "" {
+		t.Fatalf("a refused admission recorded a binding: %q", ac.attestation)
 	}
 }
