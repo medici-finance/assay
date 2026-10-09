@@ -139,6 +139,15 @@ func cmdCheck(cell, cfgArg string) {
 			k.chk(true, "model pin: role=%s harness=%s model=%s (from %s)", role, c.Harness, rm.Model, rm.Src)
 		}
 	}
+	// Per-role starting context (#2438). No rows at all unless CELL_ROLE_CONTEXT is set.
+	c.checkRoleContext(k, policyConfigDir(c.Env, cfgArg), func(role string) string {
+		if policy != nil {
+			if route, err := policy.Resolve(role, "", "", ""); err == nil {
+				return route.Harness
+			}
+		}
+		return c.Harness
+	})
 
 	// The cell's DEFAULT provider. Unset is a legitimate n/a (Anthropic, the long-standing
 	// default) rather than a MISS — a provider is opt-in per cell. Values shown are the
