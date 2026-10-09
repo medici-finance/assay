@@ -1702,7 +1702,7 @@ func main() {
 	// WIP + dwell, constraint location, shift detection, prescribed ToC action.
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
 	bottleneckMode := flag.Bool("bottleneck", false, "emit the daily factory-floor bottleneck report (per-stage WIP + dwell, constraint, shift, action). With --json: a side-effect-free machine-readable emitter (no dated file written) for the publish pipeline")
-	intakeExitsMode := flag.Bool("intake-exits", false, "emit the intake register's intake-exit-v1 records (docs/streams/desk-supervision/intake-exit-v1.md): with --json, one JSON line per triaged entry that maps to an exit AND carries a complete triage stamp, then a {stamped, unstamped, unmapped} summary line. Could-not-check (exit 6) when no intake register exists")
+	intakeExitsMode := flag.Bool("intake-exits", false, "emit the intake register's intake-exit-v1 records (spec/intake-exit-v1.md): with --json, one JSON line per triaged entry that maps to an exit AND carries a complete triage stamp, then a {stamped, unstamped, unmapped} summary line. Could-not-check (exit 6) when no intake register exists")
 	intakeDebtMode := flag.Bool("intake-debt", false, "emit the intake front-door debt aggregate (untriaged count, over-threshold, oldest age). With --json: a leak-safe counts-only object for the publish pipeline (no entry ids/dates)")
 	// Brief-flow metrics (statusgen/07): the AssayScore (statusgen/08) input
 	// family. Every one is a self-contained sub-command (STATUS.md-free),

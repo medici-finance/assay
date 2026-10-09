@@ -41,7 +41,7 @@ job is to convert each inbound item into exactly one of **five tracked exits**:
 An item that lands with none of them, or with two, is a refusal — `scanloop` records exactly one
 tracked exit per item and fails the pass otherwise. The code slug is what the exit record and the
 `scanloop land --exit` flag carry; each landed exit is one `intake-exit-v1` record
-(`docs/streams/desk-supervision/intake-exit-v1.md`) — no title, body or login ever enters one.
+(`spec/intake-exit-v1.md`) — no title, body or login ever enters one.
 
 - **worker-desk** dispatches workers against the Next-up batch, **including the issue-placeholders
   this desk emits** (`F-desk-emits-briefs`, human:<name> 2026-07-20). This desk's issue-lane

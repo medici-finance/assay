@@ -244,7 +244,7 @@ func TestIntakeExits_MappingAndStamp(t *testing.T) {
 }
 
 // schemaDocPath is the schema document, relative to this package directory.
-const schemaDocPath = "../docs/streams/desk-supervision/intake-exit-v1.md"
+const schemaDocPath = "../spec/intake-exit-v1.md"
 
 // schemaDocColumn returns the backticked first-column values of the table under the "## " heading
 // named section.

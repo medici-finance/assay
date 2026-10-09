@@ -293,7 +293,7 @@ login.
 Every triaged entry maps to exactly one of the intake desk's five tracked exits, and
 `statusgen --intake-exits --json` exports one `intake-exit-v1` record per entry that maps AND
 carries a complete, valid stamp (section 5.2). The record schema lives in
-`docs/streams/desk-supervision/intake-exit-v1.md`.
+[`intake-exit-v1.md`](./intake-exit-v1.md).
 
 | Disposition | Exit | `artifact` | `detail` |
 |---|---|---|---|

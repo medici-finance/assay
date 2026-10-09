@@ -3,7 +3,7 @@ package main
 // intakeexits.go — `statusgen --intake-exits --json`: the intake register's half of the
 // intake-exit-v1 record (desk-supervision/33).
 //
-// The schema is docs/streams/desk-supervision/intake-exit-v1.md. A second writer of the same record
+// The schema is spec/intake-exit-v1.md. A second writer of the same record
 // lives in a different Go module (tools/desk/cmd/scanloop/exitrecord.go); this module cannot import
 // it, so the key set and the closed role set are spelled here as literals and pinned to the schema
 // document by TestIntakeExitSchema_MatchesDoc in BOTH modules.
@@ -112,18 +112,18 @@ func intakeStampProblems(e intakeEntry) []string {
 	if v := strings.TrimSpace(e.Triaged); v != "" {
 		if _, ok := parseStampTime(v); !ok {
 			out = append(out, fmt.Sprintf(
-				"intake register: %s: triaged %q is neither a date (YYYY-MM-DD) nor RFC3339 (desk-supervision/33)",
+				"intake register: %s: triaged %q is neither a date (YYYY-MM-DD) nor RFC3339 (spec/registers-v1.md §5.2)",
 				e.ID, clipStamp(v)))
 		}
 	}
 	if v := strings.TrimSpace(e.TriagedBy); v != "" && !inClosedSet(v, intakeExitRoles) {
 		out = append(out, fmt.Sprintf(
-			"intake register: %s: triaged-by must be one of the closed role set (%s), never a person's login — got %q (desk-supervision/33)",
+			"intake register: %s: triaged-by must be one of the closed role set (%s), never a person's login — got %q (spec/registers-v1.md §5.2)",
 			e.ID, strings.Join(intakeExitRoles, ", "), clipStamp(v)))
 	}
 	if v := strings.TrimSpace(e.TriagerTier); v != "" && !inClosedSet(v, intakeExitTiers) {
 		out = append(out, fmt.Sprintf(
-			"intake register: %s: triager-tier must be any or strong — got %q (desk-supervision/33)",
+			"intake register: %s: triager-tier must be any or strong — got %q (spec/registers-v1.md §5.2)",
 			e.ID, clipStamp(v)))
 	}
 	return out

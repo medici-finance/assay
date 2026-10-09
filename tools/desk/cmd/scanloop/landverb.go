@@ -44,7 +44,7 @@ func cmdLand(args []string, w io.Writer) error {
 	tier := fs.String("tier", "", "the deciding session's tier: any | strong")
 	detail := fs.String("detail", "", "rejected | watching (exit rejected-watching only)")
 	kind := fs.String("kind", "", "the classifier reason the item was parked with")
-	dispatchRef := fs.String("dispatch-ref", "", "desk-supervision/28 dispatch_ref, when known")
+	dispatchRef := fs.String("dispatch-ref", "", "the dispatch_ref join key, when known")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("scanloop land: bad flags: " + err.Error())
 	}

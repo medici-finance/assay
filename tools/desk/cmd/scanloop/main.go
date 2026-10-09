@@ -107,7 +107,7 @@ strong, a --kind outside the classifier's reasons, a --dispatch-ref that does no
 $DESK_LOOP that is not a canonical desk loop name. A second DIFFERENT exit for an item already in
 the record file is refused; the same exit again is a no-op (exit 0). It writes the record
 (decided_by: judgment) and the audit 'land' line. Schema:
-docs/streams/desk-supervision/intake-exit-v1.md.
+spec/intake-exit-v1.md.
 
 --dry-run prints every lane step without running it, and it does not advance the poller's per-repo
 baselines. A live dry-run polls a THROWAWAY COPY of the state dir, so the preview starts from the

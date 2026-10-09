@@ -16,7 +16,7 @@ import (
 
 // exitrecord.go — the intake-exit-v1 record, issue-lane writer.
 //
-// The schema is docs/streams/desk-supervision/intake-exit-v1.md. statusgen writes the same record
+// The schema is spec/intake-exit-v1.md. statusgen writes the same record
 // for the intake register, in another Go module that cannot import this one, so both carry a test
 // (TestIntakeExitSchema_MatchesDoc) that pins their JSON keys and closed role set to that
 // document's tables. Change the document and both writers together.
@@ -94,7 +94,7 @@ var (
 		regexp.MustCompile(`^scan-pr:[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$`),     // a new scan PR
 	}
 
-	// dispatchRefRe is desk-supervision/28's grammar, `<claim_key>@YYYYMMDDTHHMMSSZ.<12 hex>`.
+	// dispatchRefRe is the dispatch_ref grammar (spec/intake-exit-v1.md), `<claim_key>@YYYYMMDDTHHMMSSZ.<12 hex>`.
 	// This record does not know its own claim key, so the claim-key part is checked for the
 	// shape claimKeyFor produces: item-key characters, always containing the `--` separator.
 	dispatchRefRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*--[A-Za-z0-9._/-]+@[0-9]{8}T[0-9]{6}Z\.[0-9a-f]{12}$`)
@@ -239,7 +239,7 @@ func (r IntakeExitRecord) Validate() error {
 	}
 	if r.DispatchRef != "" && !dispatchRefRe.MatchString(r.DispatchRef) {
 		return refuseRecord("dispatch_ref does not parse as <claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex> " +
-			"(desk-supervision/28); got " + clipValue(r.DispatchRef, 64))
+			"(spec/intake-exit-v1.md); got " + clipValue(r.DispatchRef, 64))
 	}
 	return nil
 }

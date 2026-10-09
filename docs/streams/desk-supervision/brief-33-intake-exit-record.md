@@ -57,7 +57,7 @@ files:
 - **edit** `spec/registers-v1.md` — §5.2: three OPTIONAL frontmatter keys on an intake entry
   (`triaged`, `triaged-by`, `triager-tier`); new §5.4 "Exit record": the disposition → exit
   mapping table and a pointer to the record schema doc.
-- **add** `docs/streams/desk-supervision/intake-exit-v1.md` (planned) — the record schema: fields
+- **add** `spec/intake-exit-v1.md` (first planned in this stream's directory; moved because `tools/desk` ships and its schema test must not name a withheld stream path) — the record schema: fields
   table, closed vocabularies, the never-recorded list, where each writer puts records.
 - **edit** `statusgen/registerentries.go` (+ test) — `intakeEntry` gains `Triaged`, `TriagedBy`,
   `TriagerTier`; value checks when present.

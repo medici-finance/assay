@@ -1,5 +1,11 @@
 # intake-exit-v1 — the intake exit record
 
+**Version:** v1.0-draft
+**Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
+made without a major-version bump; no stability commitment.
+**Describes reference implementation:** `tools/desk/cmd/scanloop/exitrecord.go` (issue lane) and
+`statusgen/intakeexits.go` (intake register export).
+
 Every inbound item the intake desk triages leaves by exactly one of five tracked exits. This
 record writes down that one decision as a small, text-free line: what came in, which exit it
 took, who decided and at what tier, when, and what it became. Two writers produce it, in two Go
@@ -50,7 +56,7 @@ empty string, never omitted.
 | `kind` | classifier reason \| empty | For an issue: the classifier's reason, one of `new-issue`, `update`, `unreadable-placeholder-state`, `no-scan-target`, `scan-target-outside-write-boundary`. Empty for an intake entry. |
 | `trust` | admission state \| empty | For an issue: the trust gate's admission state (`ADMITTED`, `QUARANTINED`, `COULD-NOT-CHECK`). Empty for an intake entry. |
 | `session_tag` | string \| empty | Join key: the same value the desk audit log's `sessionTag` carries for the writing session. |
-| `dispatch_ref` | string \| empty | Join key defined by desk-supervision/28: `<claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>`. Allowed in clear here only because the record file is local state; never copy it onto a public surface. A record that cannot know it joins by `item`. |
+| `dispatch_ref` | string \| empty | Join key to the dispatch that worked the item: `<claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>`, where `<claim_key>` is the dispatch claim's key (for example `example-repo--example-stream--33`). Allowed in clear here only because the record file is local state; never copy it onto a public surface. A record that cannot know it joins by `item`. |
 
 ## Closed role set
 
@@ -74,8 +80,8 @@ PROBLEM in the register.
 
 | Shape | Example | Used for |
 |---|---|---|
-| `<stream>/<NN>` | `desk-supervision/33` | a brief in a stream (`placeholder`) |
-| `<stream>` | `desk-supervision` | a stream an intake entry was scoped into (`placeholder`; only the register export writes it, and `scanloop` refuses it) |
+| `<stream>/<NN>` | `example-stream/33` | a brief in a stream (`placeholder`) |
+| `<stream>` | `example-stream` | a stream an intake entry was scoped into (`placeholder`; only the register export writes it, and `scanloop` refuses it) |
 | `owner/repo#N` | `example-org/tracker#12` | an issue or pull request on a named repo |
 | `#N` | `#12` | an issue on the record's own `repo` |
 | `F-<slug>` | `F-desk-emits-briefs` | a finding entry (`finding`) |

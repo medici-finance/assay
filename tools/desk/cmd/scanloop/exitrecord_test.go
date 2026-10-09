@@ -69,7 +69,7 @@ func TestExitRecord_Validate(t *testing.T) {
 		{"missing artifact on bug", func(r *IntakeExitRecord) { r.Exit = ExitBug; r.Artifact = "" }},
 		{"free-text artifact", func(r *IntakeExitRecord) { r.Artifact = "an issue in the decision queue" }},
 		{"bare repo artifact", func(r *IntakeExitRecord) { r.Artifact = "medici-finance/assay" }},
-		{"bare stream artifact", func(r *IntakeExitRecord) { r.Artifact = "desk-supervision" }},
+		{"bare stream artifact", func(r *IntakeExitRecord) { r.Artifact = "example-stream" }},
 		{"vendor model as tier", func(r *IntakeExitRecord) { r.DecidedBy = decidedJudgment; r.TriagerTier = "claude-opus" }},
 		{"mechanical with a tier", func(r *IntakeExitRecord) { r.TriagerTier = tierStrong }},
 		{"judgment with tier none", func(r *IntakeExitRecord) { r.DecidedBy = decidedJudgment }},
@@ -148,7 +148,7 @@ func TestExitRecord_Validate(t *testing.T) {
 	intake.TriagerRole = "driver"
 	intake.Exit, intake.Artifact = ExitFinding, "F-desk-emits-briefs"
 	accepted["intake record"] = intake
-	for _, ref := range []string{"desk-supervision/33", "example-org/tracker#12", "#12", "F-desk-emits-briefs", "scan-pr:medici-finance/assay"} {
+	for _, ref := range []string{"example-stream/33", "example-org/tracker#12", "#12", "F-desk-emits-briefs", "scan-pr:medici-finance/assay"} {
 		r := validJudgment()
 		r.Artifact = ref
 		accepted["artifact "+ref] = r
@@ -196,7 +196,7 @@ func TestClassifierKinds_AreTheRecordKinds(t *testing.T) {
 }
 
 // schemaDocPath is the schema document, relative to this package directory.
-const schemaDocPath = "../../../../docs/streams/desk-supervision/intake-exit-v1.md"
+const schemaDocPath = "../../../../spec/intake-exit-v1.md"
 
 // docTableFirstColumn returns the backticked first-column values of the table under the "## "
 // heading named section.
