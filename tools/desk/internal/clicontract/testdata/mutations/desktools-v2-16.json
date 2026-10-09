@@ -1,5 +1,5 @@
 {
-  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 280s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv)$' ./cmd/cellctl/",
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv|TestScratchRunFlagsBeforeVerb|TestCLILegacyShapeRefusals|TestCLILegacyShapeAccepted|TestCLIEveryVerbDeclaresItsPositionals|TestCLIOpaqueArgvVerbResolvedLikeTheParser)$' ./cmd/cellctl/ ./internal/cli/",
   "control": {
     "name": "CONTROL — a parse failure exits with the wrong code (usage exit 3 becomes 4)",
     "file": "cmd/cellctl/cobra.go",
@@ -32,10 +32,10 @@
       "new": "\"model for THIS run only, passed through verbatim to the harness\", \"DESK_MODEL_OVERRIDE\", \"ANTHROPIC_MODEL\"),"
     },
     {
-      "name": "one legacy flag form dropped (single-dash -model stops being accepted)",
+      "name": "one legacy flag form dropped (scratch's single-dash -apply stops being accepted)",
       "file": "cmd/cellctl/cobra.go",
-      "old": "GoFlagCompat:    !raw,",
-      "new": "GoFlagCompat:    false,"
+      "old": "GoFlagCompat: scratchLine(args),",
+      "new": "GoFlagCompat: false,"
     },
     {
       "name": "the-desk Opus refusal removed from the domain check (nothing below the adapter refuses; a parser-bypassing caller is admitted)",
@@ -56,10 +56,10 @@
       "new": ""
     },
     {
-      "name": "the adapter stops inserting the opaque-argv boundary (splitOpaqueArgv no longer called by Run)",
+      "name": "the adapter stops inserting the opaque-argv boundary (the split splitOpaqueArgv computes is discarded)",
       "file": "internal/cli/cli.go",
-      "old": "\targs = splitOpaqueArgv(root, args)\n",
-      "new": "\t_ = splitOpaqueArgv\n"
+      "old": "\targs, walked := splitOpaqueArgv(root, args)\n",
+      "new": "\t_, walked := splitOpaqueArgv(root, args)\n"
     },
     {
       "name": "the hidden completion entrypoints answer again (the refusal command is not registered)",
@@ -68,28 +68,40 @@
       "new": "\n"
     },
     {
-      "name": "the single-dash selector before a raw verb is no longer respelled, so Cobra reads its value as the verb",
+      "name": "the legacy-shape check is skipped: a flag before the verb, a selector after it or in another spelling, a flag in a positional's place and a single-dash long flag outside scratch all parse again",
       "file": "cmd/cellctl/cobra.go",
-      "old": "!strings.HasPrefix(args[0], \"--\") {",
-      "new": "false {"
+      "old": "if err := legacyShape(buildRoot(), args); err != nil {",
+      "new": "if err := legacyShape(buildRoot(), args); false && err != nil {"
     },
     {
-      "name": "the hook watchdog and raw-verb detection see only the separated double-dash selector (the = and single-dash spellings hide the verb)",
+      "name": "the hook watchdog and fail-closed detection see only the separated double-dash selector (a refused = or single-dash spelling before the hook exits with the non-blocking 3)",
       "file": "cmd/cellctl/main.go",
-      "old": "if n := selectorSpan(args); n > 0 && len(args) > n {",
-      "new": "if n := selectorSpan(args); n > 0 && len(args) > n && args[0] == \"--cells-root\" {"
+      "old": "for n := selectorSpan(args); n > 0 && len(args) > n; n = selectorSpan(args) {",
+      "new": "for n := selectorSpan(args); n > 0 && len(args) > n && args[0] == \"--cells-root\"; n = selectorSpan(args) {"
     },
     {
-      "name": "a raw verb keeps the = selector in its argv (the = form is not stripped before the verb sees its words)",
+      "name": "a raw verb takes its own first words as the selector (a --cells-root after the verb is stripped and applied instead of reaching the child)",
       "file": "cmd/cellctl/cobra.go",
-      "old": "\t\tselectCellsRoot(strings.SplitN(args[0], \"=\", 2)[1])\n\t\treturn args[1:]",
-      "new": "\t\tselectCellsRoot(strings.SplitN(args[0], \"=\", 2)[1])\n\t\treturn args"
+      "old": "\tif rawSelected {\n\t\tselectCellsRoot(rawSelector)\n\t}\n\treturn args\n",
+      "new": "\tif rawSelected {\n\t\tselectCellsRoot(rawSelector)\n\t}\n\tif len(args) > 2 && args[0] == \"--cells-root\" {\n\t\tselectCellsRoot(args[1])\n\t\treturn args[2:]\n\t}\n\treturn args\n"
     },
     {
       "name": "the desk role is no longer checked ahead of the flags (a bad role is reported only after flag values resolve)",
       "file": "cmd/cellctl/cobra.go",
       "old": "\t\tif !valueIn(args[1], knownRoles) {\n\t\t\tdie(\"unknown role '%s'\", args[1])\n\t\t}\n\t\tv := resolve(set, c)",
       "new": "\t\tv := resolve(set, c)"
+    },
+    {
+      "name": "the adapter no longer refuses a line whose opaque-argv command its split walk did not reach (a flag before the verb moves the supervised command's start)",
+      "file": "internal/cli/cli.go",
+      "old": "if found, _, ferr := root.Find(args); ferr == nil && found != walked {",
+      "new": "if found, _, ferr := root.Find(args); ferr == nil && false && found != walked {"
+    },
+    {
+      "name": "a verb loses its declared positional count (show reads a flag in its cell's place again)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\"Launches and writes nothing.\",\n\t\tAnnotations: map[string]string{leadingArgsKey: \"1\"},",
+      "new": "\"Launches and writes nothing.\",\n\t\tAnnotations: map[string]string{leadingArgsKey: \"0\"},"
     }
   ]
 }

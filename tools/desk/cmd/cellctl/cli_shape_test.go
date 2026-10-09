@@ -157,6 +157,15 @@ func TestCLILegacyShapeAccepted(t *testing.T) {
 	if r := w.run(t, nil, "show", "example", "--harness", "codex", "--cockpit", "tmux"); r.Code != 0 || !strings.Contains(r.Stdout, "CELL_HARNESS=codex (flag)") {
 		t.Errorf("flags after the positionals: exit %d\n%s%s", r.Code, r.Stdout, r.Stderr)
 	}
+	// scratch read its flags with the Go flag package, so its single-dash spellings still work.
+	for _, args := range [][]string{
+		{"scratch", "example", "sweep", "-apply"},
+		{"--cells-root", w.cellsRoot, "scratch", "example", "sweep", "-apply=true"},
+	} {
+		if r := w.run(t, nil, args...); r.Code != 0 || !strings.Contains(r.Stdout, `"apply":true`) {
+			t.Errorf("%v: exit %d\n%s%s", args, r.Code, r.Stdout, r.Stderr)
+		}
+	}
 	// A selector AFTER a raw verb is that verb's own word, as it always was: it reaches the child.
 	if runtime.GOOS != "windows" {
 		out := filepath.Join(w.root, "raw-probe.out")
@@ -167,6 +176,13 @@ func TestCLILegacyShapeAccepted(t *testing.T) {
 		r := w.run(t, nil, "--cells-root", w.cellsRoot, "cache-run", "raw-probe", "--cells-root", "/nope", "x")
 		if got := string(readFileOrEmpty(out)); r.Code != 0 || got != "arg=--cells-root\narg=/nope\narg=x\n" {
 			t.Errorf("selector after cache-run: exit %d, child argv %q\n%s", r.Code, got, r.Stderr)
+		}
+		// Directly after the verb it is the verb's first word too, never a selector: cache-run is
+		// asked to run a program named --cells-root, and raw-probe does not run.
+		_ = os.Remove(out)
+		r = w.run(t, nil, "cache-run", "--cells-root", w.cellsRoot, "raw-probe", "x")
+		if got := readFileOrEmpty(out); r.Code == 0 || len(got) != 0 {
+			t.Errorf("cache-run --cells-root <abs> raw-probe: exit %d, child argv %q: a word after the verb was taken as the selector\n%s", r.Code, got, r.Stderr)
 		}
 	}
 }
