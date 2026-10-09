@@ -123,6 +123,14 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		in.PRs = prs
 		in.LookedAt = lookedAt
 		in.Reason = reason
+		// The witness fold (#1787): populate the four inputs DeriveLifecycle
+		// needs to derive above `implemented` — the tree witness and ruling
+		// always; the forge labels and approvals with each failed read
+		// disclosed and its overlay left off. Online only: --offline keeps
+		// every map nil and every cell unknown.
+		if boardRoot, found := findBoardRoot(*root); found {
+			wireFoldInputs(&in, boardRoot, client, *repo, stderr)
+		}
 	}
 
 	cells := DeriveLifecycle(in)
@@ -237,35 +245,16 @@ func reconcileBriefIdents(root string) ([]BriefIdent, error) {
 	if !found {
 		return nil, nil
 	}
-	streams, _, err := loadStreams(boardRoot)
+	// The enumeration lives in loadReconcileFoldData (reconcilefold.go), which
+	// keeps the fold's raw material alongside each ident; this is the ident-only
+	// view of the same walk, so the two can never drift apart.
+	data, err := loadReconcileFoldData(boardRoot)
 	if err != nil {
 		return nil, err
 	}
-	var idents []BriefIdent
-	seen := map[string]bool{}
-	for _, s := range streams {
-		for _, path := range briefFilePaths(s) {
-			bf, ok, perr := parseBriefFile(path)
-			var id, gate string
-			version := 1
-			if perr == nil && ok {
-				id, gate, version = bf.Brief, bf.Gate, bf.Version
-				if version == 0 {
-					version = 1
-				}
-			} else {
-				derived, _, okName := expectedBriefID(path)
-				if !okName {
-					continue // not a brief file shape we can key on
-				}
-				id = derived
-			}
-			if id == "" || seen[id] {
-				continue
-			}
-			seen[id] = true
-			idents = append(idents, BriefIdent{ID: id, Gate: gate, Version: version})
-		}
+	idents := make([]BriefIdent, 0, len(data))
+	for _, d := range data {
+		idents = append(idents, d.ident)
 	}
 	return idents, nil
 }

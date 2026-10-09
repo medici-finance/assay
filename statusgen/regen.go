@@ -19,7 +19,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 )
 
 func runRegen(args []string, stdout, stderr *os.File) int {
@@ -102,16 +101,25 @@ func regenDriftNotices(boardRoot string, streams []*Stream, repo string, offline
 			fmt.Fprintf(stderr, "NOTICE: drift comparator skipped — could-not-check token: %v\n", terr)
 			return nil
 		}
-		prs, lookedAt, reason := newGHClient(token).ListPRs(repo)
+		client := reconcileGHClient(token)
+		prs, lookedAt, reason := client.ListPRs(repo)
 		in.PRs = prs
 		in.LookedAt = lookedAt
 		in.Reason = reason
+		// The witness fold (#1787): the drift comparator compares against the
+		// SAME derivation the reconcile verb prints, so it shares the verb's
+		// wiring — the client seam included — rather than rebuilding it.
+		wireFoldInputs(&in, boardRoot, client, repo, stderr)
 	}
 	derived := DeriveLifecycle(in)
 	byStream := map[string][]BriefCell{}
 	for _, c := range derived {
-		if i := strings.IndexByte(c.ID, '/'); i > 0 {
-			byStream[c.ID[:i]] = append(byStream[c.ID[:i]], c)
+		// briefStreamNum, not a raw split at '/': a brief-v2 hierarchical id
+		// (<cell>:<repo>:<stream>:<NN>) has no '/' at all, which left the
+		// comparator blind on a v2 tree — every derived cell fell out of the
+		// byStream map and no drift could ever be NOTICEd there.
+		if stream, _, ok := briefStreamNum(c.ID); ok {
+			byStream[stream] = append(byStream[stream], c)
 		}
 	}
 	var notices []string

@@ -176,11 +176,20 @@ statusgen reconcile --root . --offline --json
 ```
 
 It is the **only verb that reads the network**, and only read-only REST endpoints
-(`GET /pulls`, `GET /pulls/{n}/reviews`) — never GraphQL. The token comes from
-`--token-file` or `GITHUB_TOKEN`. Every fetch is three-state: a failure is
+(`GET /pulls`, `GET /pulls/{n}/reviews`, `GET /issues`) — never GraphQL. The token
+comes from `--token-file` or `GITHUB_TOKEN`. Every fetch is three-state: a failure is
 `lookedAt: false` with the HTTP status as the reason, never an empty board that
 reads like "nothing found". The verify-witness / approval-at-head fold that lifts a
-cell to `verified`/`done` is the pure engine in `lifecycle.go`; the demotions
+cell to `verified`/`done` is the pure engine in `lifecycle.go`, and online runs wire
+its four inputs from real reads (`reconcilefold.go`, shared with `regen`'s drift
+comparator so the two derive identically): the verify witness is each brief's own
+Evidence table audited by the `verifyrun --check` code path; a gate:human ruling is
+the README Reviewed cell's `human:<login>` stamp; the App approval is read at the
+merged head of each witnessed gate:model brief's latest merged PR (the only briefs
+an approval can promote, so the per-PR reviews read stays bounded); and the blocked
+overlay comes from one paged open-issues read mapped onto each brief's `issues:`
+list. A failed labels or reviews read never reaches `done` or `blocked`: the run
+discloses it on stderr and leaves that overlay off. The demotions
 (a reverted merge, a red witness, a dismissed approval, a stale-version witness)
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).

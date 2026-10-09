@@ -28,7 +28,7 @@ domain: complicated
 consumers:
   - "statusgen/README.md (verbs): fixed-here"
   - "docs/streams/derived-board/spec.md §8 Q2: fixed-here"
-version: 2
+version: 3
 id: c4f45c56-1898-4dcc-aaaa-d10ecda4df98
 ---
 
@@ -54,8 +54,10 @@ files:
   the HTTP status, never an empty "nothing found".
 - `statusgen/main.go` — new verb `reconcile [--root . --repo owner/name --json --offline]`;
   `--lint` gains the offline arm (PR-derived cells `unknown (offline)`).
-- `statusgen/testdata/lifecycle/` — fixtures: one per row of the spec §2 table plus
-  demotion cases (reopened PR, red witness, dismissed approval) and the offline arm.
+- `statusgen/lifecycle_test.go` — the fixture matrix: one per row of the spec §2 table
+  plus demotion cases (reopened PR, red witness, dismissed approval) and the offline
+  arm. (Authored above as `statusgen/testdata/lifecycle/`; the matrix landed inline in
+  the test file — text corrected 2026-10-09, the /03 half of #1909.)
 
 facts:
 - Cell precedence (highest witnessed wins): `done` > `verified` > `implemented` >
@@ -91,7 +93,7 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `cd statusgen && go test . -run 'Lifecycle' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'BriefV2' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (7 cells + 3 demotions + offline + 3 v2-parse cases) |
+| 1 | `cd statusgen && go test . -run 'Lifecycle\|BriefV2\|GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (Lifecycle cells + demotions + offline + BriefV2 parse + GHFetch cases) — ONE summed count, so the witness scores the whole suite. Re-authored 2026-10-09 (#1787): the original three-command form printed three counts but a witness records only the command's last pipeline value, so the Lifecycle and BriefV2 suites went unscored (the recorded 5 was GHFetch alone) |
 | 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | `ok` — offline never renders a PR-derived cell as todo |
 | 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | `ok` — an auth failure is an `unknown` with the status, not a clean board |
 | 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell — DEREFERENCES the real merged PR #80, whose body carries `Brief: derived-board/02` (the trailer the engine witnesses; needs a read token in env). Re-anchored from the original `desk-containers/02`/`PR #67`, which the engine correctly returns `todo` for: that brief's deliverable PR lives in another repository and carries no `Brief:` trailer (its board flip went via a separate PR), so this `--repo medici-finance/assay` run has no witness for it. The engine is sound; the old row anchored on a brief whose deliverable it cannot witness from this repo. Re-baselined 2026-09-19 (issue #1305): the `id` field is the hierarchical `assay:assay:derived-board:02` since the derived-board/07 flag-day, so the lookup is now id-shape-tolerant (`endswith(':derived-board:02')` pins stream/NN, tolerating a cell/repo prefix change) — a flat-literal match broke on this anchor a second time. |
@@ -99,6 +101,7 @@ facts:
 | 6 | `cd statusgen && go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | ≥ 3 |
 | 7 | `grep -c 'reconcile' statusgen/README.md` | ≥ 1 |
 | 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 — the derivation's own network layer uses REST, never GraphQL (the grep is scoped to the files THIS brief introduces; a repo-wide grep additionally matches the pre-existing `trustgate.go` trust-query `gh api graphql`, a security control landed by forward-sync after this brief was authored and out of this brief's scope) |
+| 9 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);done=[b for b in d['briefs'] if b['cell']=='done'];assert len(done)>=1,'no brief derives done — the witness/approval/ruling fold is not wired (#1787)';print(len(done),'done')"` | prints a count ≥ 1 — the fold inputs (#1787) are wired from real reads: a witnessed gate:model brief with an App approval at head (e.g. build-less-brittle/01, approved PR #1671) or a witnessed gate:human brief with a Reviewed-cell `human:` ruling (e.g. windows-port/01) derives `done`. Zero means the production constructors left the four maps nil again. Online read-only, needs a read token in env (same lane as rows 3/4) |
 
 ## Evidence
 ### Non-implementer verifier run — VERIFY: FAIL (row 4 — stale Verify-row anchor, not an engine defect); rows 3/4 re-run ONLINE read-only per the desk online-read-only-lane ruling — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
@@ -383,7 +386,7 @@ Runner is not the implementer. Isolated detached worktree at merged main e1d9948
 
 | # | Command | Expect | Observed (exit + key output line) | Date / runner |
 |---|---------|--------|-----------------------------------|---------------|
-| 1 | `cd statusgen && go test . -run 'Lifecycle' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'BriefV2' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (7 cells + 3 demotions + offline + 3 v2-parse cases) | exit 0; prints three counts: 18, 14, 5 (Lifecycle, BriefV2, GHFetch), sum 37. The sum and the first two counts meet ≥ 14; the last count (5) does not. With -v, each suite ended `ok` with 0 FAIL and 0 SKIP lines, so the counts are real passes, not a vacuous pattern. Which of the three numbers the Expect binds is not stated by the row (see finding 1) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 1 | `cd statusgen && go test . -run 'Lifecycle\|BriefV2\|GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (Lifecycle cells + demotions + offline + BriefV2 parse + GHFetch cases) — ONE summed count, so the witness scores the whole suite. Re-authored 2026-10-09 (#1787): the original three-command form printed three counts but a witness records only the command's last pipeline value, so the Lifecycle and BriefV2 suites went unscored (the recorded 5 was GHFetch alone) | exit 0; prints three counts: 18, 14, 5 (Lifecycle, BriefV2, GHFetch), sum 37. The sum and the first two counts meet ≥ 14; the last count (5) does not. With -v, each suite ended `ok` with 0 FAIL and 0 SKIP lines, so the counts are real passes, not a vacuous pattern. Which of the three numbers the Expect binds is not stated by the row (see finding 1) | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | `ok` | exit 0, `ok`; 311 briefs, all 311 are pr-source and all render unknown (so the assert is not vacuous); top-level lookedAt=false, reason "offline (--offline) — the PR fetch was not attempted" | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | `ok` — an auth failure is unknown with the status | exit 0, `ok`; lookedAt=False, reason "HTTP 401: Bad credentials" | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell; witness dereferences merged PR #80 | exit 0, prints `implemented`; id assay:assay:derived-board:02, witness "PR #80 (merged c93ae91)"; whole run lookedAt=true, 311 briefs (207 implemented, 102 todo, 2 in-progress; none verified, done or blocked); this brief's own cell is implemented, witness "PR #1358 (merged f645d2f)" | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
@@ -440,7 +443,7 @@ What changed since the 2026-10-02 run (e1d99484): among the reconcile-path files
 
 | # | Command | Expect | Observed (exit + key output line) | Date | Runner |
 |---|---------|--------|-----------------------------------|------|--------|
-| 1 | `cd statusgen && go test . -run 'Lifecycle' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'BriefV2' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (7 cells + 3 demotions + offline + 3 v2-parse cases) | exit 0. Prints three counts: 18, 14, 5 (Lifecycle, BriefV2, GHFetch), sum 37. The combined -v run of the three suites ended `ok` with 37 `--- PASS` lines and 0 FAIL or SKIP lines. The sum meets ≥ 14, but the last count (5) does not, and the row does not say which number the Expect binds. The execution witness scores this row as fail ("count 5 is below the expected minimum 14"). Recorded as check-definition (#1909, open) | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
+| 1 | `cd statusgen && go test . -run 'Lifecycle\|BriefV2\|GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (Lifecycle cells + demotions + offline + BriefV2 parse + GHFetch cases) — ONE summed count, so the witness scores the whole suite. Re-authored 2026-10-09 (#1787): the original three-command form printed three counts but a witness records only the command's last pipeline value, so the Lifecycle and BriefV2 suites went unscored (the recorded 5 was GHFetch alone) | exit 0. Prints three counts: 18, 14, 5 (Lifecycle, BriefV2, GHFetch), sum 37. The combined -v run of the three suites ended `ok` with 37 `--- PASS` lines and 0 FAIL or SKIP lines. The sum meets ≥ 14, but the last count (5) does not, and the row does not say which number the Expect binds. The execution witness scores this row as fail ("count 5 is below the expected minimum 14"). Recorded as check-definition (#1909, open) | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
 | 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | `ok` — offline never renders a PR-derived cell as todo | exit 0, `ok`. 367 briefs, all 367 pr-source, all unknown, so the assert checks every brief. Top-level lookedAt=false, reason "offline (--offline) — the PR fetch was not attempted" | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
 | 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | `ok` — an auth failure is unknown with the status | exit 0, `ok`; lookedAt=False, reason "HTTP 401: Bad credentials" | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
 | 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell; witness dereferences merged PR #80 | exit 0, prints `implemented`; id assay:assay:derived-board:02, witness "PR #80 (merged c93ae91)". The whole run had lookedAt=true across 367 briefs: 215 implemented, 152 todo, and none verified, done, blocked or in-progress. This brief's own cell is implemented, witness "PR #1358 (merged f645d2f)" | 2026-10-07 | assay-verifier-app[bot] @ 91f04b81ba06 (on-behalf-of human:ian) (forge-identity) |
@@ -485,6 +488,48 @@ rows_passed=7 rows_total=8
 VERIFY: BLOCKED — check-definition. Verify row 1 prints three counts against a single ≥ 14 Expect, so the execution witness scores it fail (7/8), although all 37 tests pass (18, 14, 5). The engine gap in #1787 also still reproduces on this main: reconcile never populates the fold's Witnesses, Approvals, Rulings or IssueLabels, and 0 of 367 live cells derive above implemented. Rows 2 to 8 are checked-clean on merged main 91f04b81ba064394aa121a4940cf11a138b55402. Status stays implemented.
 
 Blocker re-confirmed and attached: https://github.com/medici-finance/assay/issues/1787#issuecomment-6037701998. The NAMED, NOT DERIVED value (version = 1 at statusgen/reconcile.go:203) is already routed to https://github.com/medici-finance/assay/issues/1910.
+
+<!-- appended at rework time (#1787) -->
+
+Rework on `feat/assay--derived-board--03` — the #1787 defect: both production callers
+(`reconcile.go`, `regen.go`'s drift comparator) built `LifecycleInput{Briefs: idents}`
+alone, so the fold's Witnesses/Approvals/Rulings/IssueLabels were always nil and no live
+cell derived above `implemented` (0 of 367 at the 2026-10-07 verify). New
+`statusgen/reconcilefold.go` is the single wiring point both callers share: the verify
+witness from each brief's own Evidence audit (`closureWitnesses` — the `verifyrun
+--check` code path, per the htmlcomment.go caller allow-list), the gate:human ruling from
+the README Reviewed-cell `human:` stamp, the App approval from `ReviewsAtHead` on the
+latest merged PR of each witnessed gate:model brief (bounded to the promotable set), and
+one paged open-issues read for the blocked overlay (PR entries filtered). Every failed
+forge read is disclosed on stderr and its overlay left off — fail closed, never a silent
+`done`; `--offline` keeps every map nil (row 2 unchanged). The drift comparator's join
+was also blind on brief-v2 hierarchical ids (raw `c.ID` vs the `stream/NN` keyed asserted
+map, and a `/`-split in `regenDriftNotices`); both sides now key on
+`canonicalBriefKey`/`briefStreamNum`. Verify row 1 re-authored to one summed count (the
+#1787 "Also": the three-command form scored only the last pipeline value); row 9 added —
+a live assertion that a known-done brief derives `done`. `version:` bumped 2 → 3 for the
+Verify-table edit.
+
+Fail-first (clause 9) — the six new tests of `reconcilefold_test.go` against the UNFIXED
+callers (fix stashed): five red with the fold's exact signature, one (offline) green by
+design:
+
+```
+--- FAIL: TestReconcileFoldWiresAllFourInputs — fx/01 cell "implemented", want done; fx/02 "todo", want done; fx/03 "todo", want blocked
+--- FAIL: TestReconcileFoldApprovalsFailClosed — fx/01 "implemented", want verified
+--- FAIL: TestReconcileFoldIssueLabelsFailClosed — no could-not-check disclosure on stderr
+--- FAIL: TestRegenDriftComparatorDerivesFromWiredFold — no drift NOTICEs at all (got: "")
+--- FAIL: TestDriftNoticeHierarchicalID — want 1 drift NOTICE, got 0
+--- PASS: TestReconcileFoldOfflineStaysUnknown
+```
+
+Implementer runs (the independent verifier re-runs all rows):
+
+| # | Result | Runner |
+|---|--------|--------|
+| 1 | PASS — `go test . -run 'Lifecycle\|BriefV2\|GHFetch' -count=1 -v \| grep -c '^--- PASS'` → 37 (≥14) | 2026-10-09 worker |
+| 9 | PASS (live, read-only) — wired reconcile against medici-finance/assay → 33 briefs derive `done` (≥1), zero stderr notices; the 2026-10-07 verify measured 0 of 367 above `implemented` on the unwired engine | 2026-10-09 worker |
+| — | full `go test .` (statusgen package, 125s) green, incl. the six new tests and the pre-existing reconcile/regen CLI fixtures | 2026-10-09 worker |
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
