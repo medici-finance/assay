@@ -63,9 +63,10 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	if err != nil {
 		return "", err
 	}
-	// The class kit as THIS dispatch quotes it: a worker kit is cut for the kind of run
-	// (workerkind.go); every other kit is the file as written.
-	kit, err := workerKitText(o)
+	// The class kit as THIS dispatch quotes it: a review kit is cut for its lane
+	// (reviewlane.go), a worker kit for the kind of run (workerkind.go); every other kit is
+	// the file as written.
+	kit, lane, err := classKitText(o, plan)
 	if err != nil {
 		return "", err
 	}
@@ -178,7 +179,13 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	// the assignment rather than something the agent meets halfway down.
 	b.WriteString("\n---\n\n# Standing clauses — common (quoted verbatim, not paraphrased)\n\n")
 	b.WriteString(common)
-	fmt.Fprintf(&b, "\n\n---\n\n# Standing clauses — %s (quoted verbatim, not paraphrased)\n\n", o.kit)
+	// A review kit cut for a lane says so in its heading: the reader, and anyone comparing
+	// two dispatches' prompts, can see which cut this is without diffing the clause text.
+	kitName := o.kit
+	if lane != "" {
+		kitName += ", " + lane + " lane"
+	}
+	fmt.Fprintf(&b, "\n\n---\n\n# Standing clauses — %s (quoted verbatim, not paraphrased)\n\n", kitName)
 	b.WriteString(kit)
 	b.WriteString("\n")
 	return b.String(), nil
