@@ -12,7 +12,7 @@ import (
 )
 
 const cacheUsage = `
-# Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env; macOS/Linux):
+# Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env or defaults.env; macOS/Linux):
 #   cellctl cache <cell> status           (dry-run JSON; no cleanup)
 #   cellctl cache <cell> clean            (inactive caches, only under pressure)
 #   cellctl cache <cell> recover --confirm-stopped
@@ -72,7 +72,7 @@ func cmdCache(cell string, args []string) {
 		die("Go cache policy: %v", err)
 	}
 	if p == nil {
-		die("cache requires CELL_GO_CACHE=on in cell.env")
+		die("cache requires CELL_GO_CACHE=on in cell.env, or in the cells root's %s (%s)", cellDefaultsFile, c.goCacheSupply())
 	}
 	if len(args) == 2 && args[0] == "recover" && args[1] == "--confirm-stopped" {
 		if err = cellcache.Recover(*p, true); err != nil {

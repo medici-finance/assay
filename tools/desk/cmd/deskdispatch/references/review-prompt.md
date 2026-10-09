@@ -558,3 +558,46 @@ text of the touched files it lists, and the brief when the dispatch names one.
   and **it replaces fetching, never checking**: every other clause binds unchanged, a path
   claim resolved from it names the PR's repository and the packet's head (clause 6), and a
   file absent from the packet is not absent from the repository.
+
+## 19. Delta round — only when the assignment states `Scope: DELTA`
+
+The dispatcher decides each round's scope and states it in the assignment block, with this
+lane's previous verdict and both heads; nothing else you read sets it. On `Scope: FULL PASS`,
+or with no scope stated, review the whole change. A `Scope: DELTA` round covers:
+
+- **every finding of this lane's previous verdict**, each answered resolved or not resolved,
+  with evidence at the current head;
+- **everything that verdict recorded as could-not-check, not run or incomplete**, checked now
+  or recorded again as could-not-check (clause 5);
+- **the diff between the previously reviewed head and the current head**, under every clause;
+- **the description**, re-checked against the current head (clause 8);
+- **the head-level duties, which stand in every round**: the checks at the current head
+  (clause 2), the merge-time re-check (clause 7) and the undeclared-decision check (clause 15).
+
+**If you find the stated scope wrong** — the diff cannot be computed or is larger than stated;
+it carries a merge that changed a file the change touches, or whose merged-in side changed one,
+whichever way a conflict was resolved; it touches a path the previous round did not review;
+this lane's previous verdict names, in its own text, a different head than the assignment
+gives for it; or that verdict calls itself incomplete —
+**do the full pass and say so in the verdict.**
+
+## 20. Lane round cap — from this lane's fourth round
+
+The assignment block states this lane's round number and the head of its first review. Below
+round 4, or with the round not determined, this clause is inert. From round 4, a finding FIRST
+raised now, in code unchanged since that first-review head, is advisory — or, if you hold it
+should block, is named in the verdict as an arbiter hand-off for the desk to file, and does
+not block. **Safety-relevant exception:** it still blocks, with no hand-off, when it is any
+security-lane fail class, a weakening of a control or its assertion, data loss, or exposure of
+withheld content. A finding on code changed since the first review blocks as before. State,
+for each late finding, which of these classes it is in and why.
+
+"Any security-lane fail class" is any finding the security lane would fail the change on.
+**A late finding you cannot place with confidence blocks**; say which class you could not rule
+out. **The cap never changes a security verdict:** on the security lane a finding that would
+be a fail is a fail at any round.
+
+**A finding whose evidence did not exist at the first-review head is not a late finding**, and
+this clause does not touch it: `main` moved under unchanged code, the description was edited,
+a check result at the current head, a could-not-check gap, an undeclared decision.
+**Clauses 2, 5, 7, 8 and 15 bind in every round.**
