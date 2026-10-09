@@ -52,6 +52,7 @@ func TestStripRowComments(t *testing.T) {
 // shape the readers deliberately see rows the page hides; the lint PROBLEM
 // (TestRunLintRefusesOpener) and the closure verbs' refusal
 // (TestClosureVerbsRefuseOpener) are what stop it landing.
+// regression: #1939
 func TestLaterWitnessAfterOpener(t *testing.T) {
 	const verify = "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n"
 	witness := witnessHeader + "\n| 1 | `true` | pass exit=0 | sha256:aaaaaaaaaaaa | 2026-09-22 | sample-verifier |\n"
