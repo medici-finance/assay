@@ -338,7 +338,7 @@ as the planner and acts on its rows.
 
   `<alias>` is the repo's short label/basename. It takes the durable claim, cuts the reviewer a
   worktree in the PR's OWN repo, stamps the dispatcher's model attestation, and emits the prompt —
-  `common-clauses` + the `review` kit, verbatim and byte-identical across sessions. A claim held by
+  `common-clauses` + the `review` kit cut for the key's lane, byte-identical across sessions. A claim held by
   someone else exits 5 with the holder named: never steal. The board's SECURITY-REVIEW-REQUIRED row
   is a MISSED-DISPATCH alarm, not the trigger — it only appears AFTER a correctness approval, so
   waiting for it serialises the two lanes; dispatch the security lane off the actions row's
@@ -347,11 +347,51 @@ as the planner and acts on its rows.
   dispatch through the normal stamp step, allocating a fresh DETACHED worktree without removing
   earlier reviewer evidence. A live claim still refuses; never change the key to get around it.
   Then resume EACH lane's *original* reviewer (`capability:message-agent`, so it keeps that lane's
-  prior findings), give it the NEW emitted kit and home worktree, and ask for a **delta** review
-  of `<lastReviewed>..<head>`; a gone session gets a fresh agent (`capability:dispatch-worker`)
+  prior findings), give it the NEW emitted kit and home worktree, and ask for the round the
+  emitted assignment states (below); a gone session gets a fresh agent (`capability:dispatch-worker`)
   carrying that lane's FULL open-findings set, never a subset (re-approving against a SUBSET fix-list
   is the 2026-08-15 laundering); for a first review, dispatch a fresh reviewer
   (`capability:dispatch-worker`) with the emitted prompt.
+
+  **The dispatcher states each round's scope — the desk never narrows it.** Before it claims, a
+  `--kit review --pr <N>` dispatch reads the forge and writes a "This round" block into the
+  assignment: the lane's round number, the head of that lane's first review, and
+  `Scope: DELTA` or `Scope: FULL PASS` with its reason. A delta round (kit clause 19) covers
+  every finding of that lane's previous verdict, each answered resolved or not resolved with
+  evidence; everything that verdict recorded as could-not-check, not run or incomplete; the
+  diff between the previously reviewed head and the new head; the body check; and the
+  head-level duties, which stand in every round (CI at the head, the merge-time re-check, the
+  undeclared-decision check). The scope is a FULL PASS when the lane has no verdict of its own
+  on the PR, its latest verdict is already at this head, the inter-head diff cannot be
+  computed, the delta is large (more than 20 commits, or more than 10 of the PR's own paths),
+  a merge in the delta changed a file the PR touches or its merged-in side did, whichever way
+  a conflict was resolved, the PR touches a path it did not touch at the previously reviewed
+  head, one of the lane's verdicts names, on a head line of its text or in its typed block, a
+  different head than the forge records for it or carries a typed block that cannot be read,
+  or any of that could not be determined. Hand
+  the reviewer the emitted assignment unchanged and never ask for a delta it does not state; a
+  reviewer that finds the stated scope wrong, or finds that its lane's previous verdict names
+  another head than the assignment gives for it, or calls itself incomplete, does the full
+  pass and says so.
+
+  **Pre-dispatch gate — a HELD dispatch is a delay, never a verdict.** The same read refuses
+  the dispatch before the claim — exit 5, first line
+  `review dispatch HELD — <owner/repo>#<N> at head <sha>: <reasons>`, which is what tells it
+  from a held claim — while one of these is true of the head:
+
+  | reason | what the dispatcher read |
+  |---|---|
+  | `required-check-red` | every latest report under a check the base branch requires is a failure — a pending, queued, re-running, cancelled or missing check does not hold |
+  | `description-stale` | the PR body's `## Weight` section declares a `head` commit that is not the head on the forge |
+  | `decision-not-ruled` | the PR carries `needs-decision` and the roster's blessing authority has written nothing on it since that label was applied |
+  | `lane-awaits-ruling` | this lane's latest verdict, at this head, blocked only on open `needs-decision` items of this repo, and one of them has no ruling recorded |
+
+  A held head has NOT been reviewed: record no verdict for it and never feed it to a
+  ready-flip. Name each held head and its reasons in the sweep (the refusal's first line is
+  also the dispatch audit row's detail), and run the same dispatch again on a later tick —
+  every condition is read fresh. A gate read that fails does not hold: the dispatcher says so
+  on stderr and dispatches. `--dry-run` runs no gate. The reviewer's own body check (kit
+  clause 8) still runs on every dispatched round.
 
   **Tiering is risk-keyed, not a blanket rule (methodology/19):** a risk-clear item (all four risk answers `no`,
   gate `model`) may be reviewed at any tier; a risk-flagged item (`gate: human` OR any risk answer
@@ -541,6 +581,23 @@ opening a fresh one. A worker cannot author your resolution of a blocking findin
 authenticated actor or head is could-not-check — it clears nothing. Blocking policy and the
 cap threshold are unchanged; the record only makes them survive replacement.
 
+**From a lane's fourth round the cap binds on late findings (kit clause 20).** The assignment
+states the lane's round — one per head the lane holds a verdict at, counting the head being
+dispatched — and the head of that lane's first review. From round four, a finding first
+raised in that round, in code unchanged since that first-review head, is advisory; if the
+reviewer holds it should block, the verdict names it as an arbiter hand-off, it does not block,
+and the desk files the arbiter packet above for it. **Safety-relevant exception:** it still
+blocks, with no hand-off, when it is any security-lane fail class, a weakening of a control or
+its assertion, data loss, or exposure of withheld content. A finding on code changed since the
+first review blocks as before. The reviewer states which class each late finding is in and
+why. "Any security-lane fail class" is any finding the security lane would fail the change on;
+a late finding the reviewer cannot place with confidence blocks; and the cap never changes a
+security verdict: on the security lane a finding that would be a fail is a fail at any round.
+A finding whose evidence did not exist at the first-review head is not a late finding (`main`
+moved under unchanged code, an edited description, a check result at the head, a
+could-not-check gap, an undeclared decision): kit clauses 2, 5, 7, 8 and 15 bind in every
+round. A round the dispatcher could not determine applies no cap.
+
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
 separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard to add:
 `deskfile attach` it as an instance to the open `error-class` issue for that mechanism, or
@@ -598,8 +655,8 @@ provisioning gap to file (`create-labels`, `the adoption guide`), never a reason
 
 ## The reviewer's bar
 
-`deskdispatch --kit review` hands the agent the `common-clauses` and `review-prompt` kits verbatim,
-embedded in the binary, so a fleet on one pinned release is a fleet on one set of clauses. **This
+`deskdispatch --kit review` hands the agent the `common-clauses` kit and its lane's cut of the `review-prompt`
+kit, embedded in the binary, so a fleet on one pinned release is a fleet on one set of clauses. **This
 section is the DESK's bar — what a review must show before the desk acts on it, plus the
 house-specific detail a public, generic kit cannot carry.** Edit a clause here, check the kit.
 
@@ -694,8 +751,13 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        PR.
      - **The delivery repo comes from the brief, never from the PR.** For each changed row, read
        the delivery repo from the brief file at the target repo's fetched `refs/remotes/origin/main`:
-       its `homed-in:` frontmatter when present, else its stream README's `repo:` frontmatter, else
-       the board repo itself. NEVER take it from the PR body, the PR head, or the author's say-so.
+       its `homed-in:` frontmatter; its `deliverable_repo:` alias, resolved to the `repo:` value of
+       that alias's entry under `repos:` in `docs/streams/graph-repos.yaml` at the same ref; else
+       its stream README's `repo:` frontmatter; else the board repo itself. NEVER take it from the
+       PR body, the PR head, or the author's say-so. An alias that does not resolve to a valid
+       `<owner>/<name>`, or a brief whose `homed-in:` and `deliverable_repo:` resolve to different
+       repos, is could-not-check and bounces the row — it never falls through to the next source,
+       and never to the board repo.
        It must be a member of `deskroster repos`; a delivery repo outside that set bounces the row.
        The verdict records the delivery repo for each row and where it was read from.
      - **Same-repo rows on the same bar.** The delivery repo read above may equal the board repo —

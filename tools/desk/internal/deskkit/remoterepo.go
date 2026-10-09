@@ -15,6 +15,19 @@ import (
 // returned as a bogus owner.
 var slugSegmentRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
+// ValidRepoSlug reports whether s is exactly one owner segment, one slash and one repo segment,
+// each non-empty, each drawn from slugSegmentRe's charset, and neither a dot-segment ("." or
+// ".."). It is the one shape check for an owner/name a caller hands in as a string, so a verb's
+// argument check and a constructor's own re-check cannot drift apart.
+func ValidRepoSlug(s string) bool {
+	owner, name, ok := strings.Cut(s, "/")
+	return ok && validSlugSegment(owner) && validSlugSegment(name)
+}
+
+func validSlugSegment(seg string) bool {
+	return seg != "." && seg != ".." && slugSegmentRe.MatchString(seg)
+}
+
 // ParseRemoteRepo extracts the trailing owner/repo pair from a git remote URL in every
 // shape git itself accepts, and from the rewritten/hybrid forms an `insteadOf` config or a
 // bad URL-composition can bake into `remote.origin.url`:

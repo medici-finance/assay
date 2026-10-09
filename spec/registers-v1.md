@@ -421,6 +421,28 @@ These checks reach a consumer only on an `.assay-versions` statusgen pin bump, w
 they land advisory: an un-bumped adopter is unaffected, and a bumped one gets NOTICEs, not a
 red gate, over a corpus authored before the register existed.
 
+### 6.6 Source-obligation mappings that reference requirements
+
+A requirement may be the target of a **source-obligation mapping** (`project-obligations-v1.md`):
+a versioned record tying one clause of a permitted source revision to one or more existing
+`REQ-<slug>` ids for a project profile. The mapping REFERENCES requirements and never adds a
+lifecycle, status or meaning to one; this register stays the only owner of what a requirement is.
+
+The link contract a consumer of this register MUST honour:
+
+- An in-repo reference dereferences against this register, read three-state. An id no entry
+  defines does not resolve, and a requirement whose status is `withdrawn` (section 3.3) does not
+  satisfy a mapping. The reference is never silently dropped.
+- A cross-repo `<alias>:REQ-<slug>` names a register the offline reader cannot see. It is
+  could-not-check and holds the mapping; it is never treated as resolved or as absent.
+- An absent register is a valid empty register, so every in-repo reference fails to resolve. An
+  unreadable one is an error, never an empty one (section 6.3).
+- Because the register is append-only, a mapping bound to a requirement id stays resolvable for
+  the life of the repository, and a withdrawal is visible as a tombstone, not a disappearance.
+
+These are rules about the consumer. They change no field in section 6.2 and no linter check in
+section 9.2.
+
 ## 7. DECISIONS register
 
 ### 7.1 Purpose
@@ -680,6 +702,11 @@ A conforming linter MUST:
     (section 7, `brief-v1.md` §3.2) that does not match the `DR-<slug>` grammar or
     dereferences to no record — subject to the grandfathering and three-state rules the
     design-approval gate carries (`lifecycle-v1.md` §4.4).
+
+A conforming consumer of the REQUIREMENTS register that dereferences requirement ids on behalf
+of another record (section 6.6) MUST resolve them three-state and MUST NOT treat an unknown,
+withdrawn or unreadable reference as satisfied. This is a rule on the consumer, not an
+additional linter check.
 
 A conforming linter MUST NOT claim sequence-contiguity or gap detection (section 3.2),
 and MUST NOT let a `satisfies:` citation or a REQUIREMENTS entry change an exit code on

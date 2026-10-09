@@ -507,6 +507,20 @@ func UntrustNeutralize(content []byte) string {
 	var b strings.Builder
 	b.WriteString(untrustFenceHeader)
 	b.WriteByte('\n')
+	b.WriteString(UntrustEscape(content))
+	b.WriteByte('\n')
+	b.WriteString(untrustFenceFooter)
+	return b.String()
+}
+
+// UntrustEscape is the escaping half of UntrustNeutralize WITHOUT the fence: every
+// invisible, bidi, or non-tab/newline control codepoint becomes a visible \uXXXX and
+// everything else is kept. It exists for a caller that draws its own boundary around
+// several untrusted bodies in one document (the dispatch packet) and must apply the SAME
+// escape table as the fenced rendering rather than a second copy of it.
+func UntrustEscape(content []byte) string {
+	var b strings.Builder
+	b.Grow(len(content))
 	for _, r := range string(content) {
 		if isNeutralizeEscape(r) {
 			fmt.Fprintf(&b, `\u%04X`, r)
@@ -514,8 +528,6 @@ func UntrustNeutralize(content []byte) string {
 		}
 		b.WriteRune(r)
 	}
-	b.WriteByte('\n')
-	b.WriteString(untrustFenceFooter)
 	return b.String()
 }
 

@@ -38,7 +38,10 @@ import (
 // form (#2440): set on every --backfill run WITHOUT --apply, to the rows --apply
 // would write on the same tree, computed by the same function that writes
 // (reconcileWrites) — an empty list `[]` when there are none, so "looked and
-// found nothing" is distinguishable from "not computed" (field absent).
+// found nothing" is distinguishable from "not computed" (field absent). Held
+// lists the witnessed rows the write did NOT take (on the read-only form: would
+// not take) because the move would add a lint PROBLEM (reconcilehold.go),
+// decided by the same function — omitted (nil) when none.
 type reconcileResult struct {
 	Repo       string        `json:"repo"`
 	LookedAt   bool          `json:"lookedAt"`
@@ -46,17 +49,23 @@ type reconcileResult struct {
 	Briefs     []BriefCell   `json:"briefs"`
 	Applied    []appliedRow  `json:"applied,omitempty"`
 	WouldApply *[]appliedRow `json:"wouldApply,omitempty"`
+	Held       []heldRow     `json:"held,omitempty"`
 }
 
 const (
 	reconcileOK       = 0
 	reconcileUsageErr = 2
+	// reconcileCouldNotCheck is --apply's exit when the PR read did not happen
+	// (HTTP error, no token, offline): a writer that looked at nothing must not
+	// exit like one that looked and found nothing to write.
+	reconcileCouldNotCheck = 3
 )
 
 // reconcileGHClient builds the read-only REST client runReconcile reads PRs
 // through. It is a variable only so a test can point the whole verb at a local
 // recorded-response server (the offline envelope); production always uses
-// newGHClient.
+// newGHClient. It is never a flag or an environment variable, so no run can
+// send the token to another host.
 var reconcileGHClient = newGHClient
 
 func runReconcile(args []string, stdout, stderr *os.File) int {
@@ -70,7 +79,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN)")
 	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo. Without --apply it also reports, read-only, the rows --apply would write (JSON: wouldApply)")
 	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
-	apply := fs.Bool("apply", false, "with --backfill: WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion); requires --backfill")
+	apply := fs.Bool("apply", false, "WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion). Without --backfill only a `Brief:` trailer witness is written; with --backfill the declared branch/body match is written too. A row whose move would add a lint PROBLEM is held and reported, never written. Exits 3 when the PR read could not be done")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return reconcileOK
@@ -79,10 +88,6 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 	if *report && !*backfill {
 		fmt.Fprintln(stderr, "reconcile: --report requires --backfill (the report compares against the backfill-adjusted cells)")
-		return reconcileUsageErr
-	}
-	if *apply && !*backfill {
-		fmt.Fprintln(stderr, "reconcile: --apply requires --backfill (the write only fires for a backfill-witnessed transition)")
 		return reconcileUsageErr
 	}
 	if *backfill && hasNoGitDir(*root) {
@@ -134,23 +139,37 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 			pulls, pullsLookedAt, reason = client.fetchAllPulls(*repo)
 			if !pullsLookedAt {
 				fmt.Fprintf(stderr, "reconcile --backfill: could-not-check the raw pull list: %s\n", reason)
+				if *apply {
+					// The backfill witness set is unread: writing the trailer half
+					// alone would pass for a complete backfill run.
+					return reconcileCouldNotCheck
+				}
 			}
 		}
 		cells = applyReconcileBackfill(cells, pulls, pullsLookedAt, lookup)
 	}
 
+	if *apply && !in.LookedAt {
+		// Nothing was read, so nothing can be written — and the exit must say
+		// so: a scheduled writer exiting 0 here reads as "board current".
+		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %s; nothing written\n", in.Reason)
+		return reconcileCouldNotCheck
+	}
+
 	var applied []appliedRow
 	var wouldApply *[]appliedRow
-	if *backfill {
-		// One decision path for both forms (reconcileWrites): --apply writes the
-		// rows; without it the same rows are reported as wouldApply and nothing
-		// is written. boardRoot mirrors reconcileBriefIdents' own resolution
+	var held []heldRow
+	if *backfill || *apply {
+		// One decision path for both forms (reconcileWrites), lint hold
+		// included: --apply writes the rows (trailer-only without --backfill);
+		// --backfill without it reports the same rows as wouldApply and writes
+		// nothing. boardRoot mirrors reconcileBriefIdents' own resolution
 		// (reconcile is commonly run from a subdirectory), so the rows land on
 		// the same docs/streams tree the briefs above were enumerated from.
 		rows := []appliedRow{}
 		if boardRoot, found := findBoardRoot(*root); found {
 			var werr error
-			if rows, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {
+			if rows, held, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {
 				label := "reconcile --backfill (read-only)"
 				if *apply {
 					label = "reconcile --apply"
@@ -176,6 +195,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		Briefs:     cells,
 		Applied:    applied,
 		WouldApply: wouldApply,
+		Held:       held,
 	}
 
 	if *report {
@@ -289,11 +309,25 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 			fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
 		}
 	}
-	if len(res.Applied) == 0 {
-		return
+	if len(res.Applied) > 0 {
+		fmt.Fprintf(w, "reconcile --apply: wrote %d row(s)\n", len(res.Applied))
+		for _, a := range res.Applied {
+			fmt.Fprintf(w, "  %-40s %s -> %s   %s   [%s]\n", a.ID, a.From, a.To, a.Path, a.Witness)
+		}
 	}
-	fmt.Fprintf(w, "reconcile --apply: wrote %d row(s)\n", len(res.Applied))
-	for _, a := range res.Applied {
-		fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
+	// Held rows print whether or not anything was written: a tick that holds
+	// every row must still show each one.
+	if len(res.Held) > 0 {
+		if res.WouldApply != nil {
+			fmt.Fprintf(w, "reconcile --backfill (read-only): --apply would hold %d row(s) — writing them would add a lint PROBLEM\n", len(res.Held))
+		} else {
+			fmt.Fprintf(w, "reconcile --apply: held %d row(s) — writing them would add a lint PROBLEM; not written\n", len(res.Held))
+		}
+		for _, h := range res.Held {
+			fmt.Fprintf(w, "  %-40s %s -> %s   [%s]\n", h.ID, h.From, h.To, h.Witness)
+			for _, p := range h.Problems {
+				fmt.Fprintf(w, "      would add: %s\n", p)
+			}
+		}
 	}
 }

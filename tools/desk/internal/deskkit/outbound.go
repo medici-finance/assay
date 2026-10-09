@@ -234,7 +234,21 @@ func outboundPublicLayers(repo string) bool { return SelfContainApplies(repo) }
 // OutboundCheck runs every layer over w and returns nil (the write may proceed), or a
 // Refused error (exit 5) naming the rule, the field and the line, or an Unverifiable error
 // when an override's audit row could not be written.
+//
+// The house callout (outboundcallout.go) is consulted LAST, and only when the compiled layer
+// returned nil: it can add a refusal, and no answer of its can clear one raised here.
 func OutboundCheck(w OutboundWrite) error {
+	if err := outboundCompiledCheck(&w); err != nil {
+		return err
+	}
+	return outboundHouseCheck(w)
+}
+
+// outboundCompiledCheck is every compiled layer, with the override policy. It normalises w
+// (tool, verb, visibility) in place so the house step sees the same write.
+func outboundCompiledCheck(wp *OutboundWrite) error {
+	w := *wp
+	defer func() { *wp = w }()
 	ctx := currentOutboundContext()
 	if w.Tool == "" {
 		w.Tool = ctx.Tool
@@ -293,6 +307,13 @@ func nonOverridableWhy(rule string) string {
 func outboundRefusal(w OutboundWrite, r outboundFinding) string {
 	return fmt.Sprintf("refused: %s at %s:%d — %s (%s write to %s, visibility %s).",
 		r.rule, r.field, r.line, r.detail, w.Kind, w.Repo, w.Visibility)
+}
+
+// outboundWriter is where refusal text for the user goes (stderr unless a test redirected it).
+func outboundWriter() io.Writer {
+	outboundMu.Lock()
+	defer outboundMu.Unlock()
+	return outboundNotices
 }
 
 // outboundScanField runs every layer over one field.
