@@ -2004,28 +2004,55 @@ the same code, plus `--claim` — the claim key the review assignment names.
 
 | Step | What runs | A stop here means |
 |---|---|---|
-| 1. post | the function `deskpost review` / `deskpost security-review` itself calls — one post path, so the same body checks, head pin, trust gate, identity, budget, audit row and refusals, with the same text and the same exit code | nothing was posted by this run, nothing was confirmed, the claim is still held |
+| 1. post | the function `deskpost review` / `deskpost security-review` itself calls — one post path, so the same body checks, head pin, trust gate, identity, budget, audit row and refusals, with the same text and the same exit code | nothing was confirmed and the claim is still held. A refusal posted nothing. A failure after the write was sent (a server error answering the post, or a later part of the post step failing) may have left the verdict on the change; the verb's own message, printed above the stop line, says what failed |
 | 2. confirm | the change's reviews are read back; one by the reviewer identity, at `--head`, in the state this verdict produces, of this verdict kind, with this body, must be there | exit 6 — the post step reported success but the verdict could not be read back; the claim is **not** released |
-| 3. release | the dispatch claim named by `--claim` is released through the configured claim store (see [the dispatch-claim store](#the-dispatch-claim-store--resolveclaimstore)) | non-zero — the verdict **is** posted and confirmed, the claim is **still held**; the message says both |
+| 3. release | the dispatch claim named by `--claim` is released through the configured claim store (see [the dispatch-claim store](#the-dispatch-claim-store--resolveclaimstore)), and an audit row records how that went | non-zero — the verdict **is** posted and confirmed, the claim is **still held**; the message says both |
 
 Every stop is one stderr line naming the step and what was and was not done. Nothing after
-the failed step runs. **Running the same command again is safe at every stop:** a verdict
-this session already posted is not posted twice (the post path's own duplicate guard), and a
+the failed step runs.
+
+**Running the same command again does not post the verdict a second time** — from this
+session or from another one. Before it posts, the post path looks in two places: this
+machine's audit log, and the change's own reviews. A review by the reviewer identity, at
+`--head`, in the state this verdict produces, of this verdict kind, whose body is this one,
+means nothing is posted; `finish` then confirms that review and goes on to the release. The
+bodies are compared as the caller wrote them: line ends normalised, the on-behalf-of lines
+the tool adds to every body it posts removed from both sides, surrounding whitespace
+trimmed. That second look is what covers a run whose log has no row for the first post — a
+re-dispatched reviewer, or a post the forge accepted and then answered with an error. If the
+change's reviews cannot be read, the post step refuses rather than post without looking. A
 claim that is already gone is reported as `claim=already-released`, not as a failure.
+
+Two limits on that. A re-run whose **body file changed** between attempts is a different
+verdict to this check and is posted, with a warning naming the review it landed next to. And
+on a forge with a merge-hold step, a first run can post the verdict and then fail to set the
+hold (its message says which half landed); a re-run finds the verdict there, posts nothing,
+and does **not** run the hold step again.
 
 - **Why the claim is released last.** The post step validates the reviewer's dispatch stamp,
   and that stamp stops counting once the review claim is released. Releasing first would make
   the tool refuse its own verdict.
-- **`--claim` is checked before anything is written.** It must be a review-dispatch claim key
-  of this change (`<short label>--pr-<N>`, optionally `--<lane>`); any other value — another
-  change's key, another repository's, a ref path — is an argument error (exit 2) and nothing
-  is posted. The release can therefore only ever address this change's own review claim.
+- **`--claim` is checked before anything is written, twice.** It must be a review-dispatch
+  claim key of this change (`<short label>--pr-<N>`, optionally followed by `--<segment>`
+  parts); any other value — another change's key, another repository's, a ref path — is an
+  argument error (exit 2) and nothing is posted. And it must be **this lane's** key: `finish
+  security-review` takes only a key with a `security` segment after `--pr-<N>`, `finish
+  review` only a key without one — the rule review dispatch reads the lane from. So the
+  release can only address this change's review claim for the lane whose verdict was just
+  posted; one lane's finish cannot release the claim the other lane's review is running under.
+- **Who holds the claim is not checked.** The claim record names the dispatcher that placed
+  it, and a reviewer is handed the key and nothing that identifies that dispatcher, so
+  `finish` has nothing sound to compare. A run that holds this lane's key for this change can
+  release that claim whoever placed it — as the release command in the assignment can.
 - **"Already gone" is verified, never assumed.** A delete the forge answers with not-found is
   followed by a read of that one ref; only a positive "absent" is reported as
   `already-released`. A forbidden, a server error or an unreadable ref is a failed release.
-- **One audit row** — the post step's, as for the plain verdict verbs. The confirm is a read;
-  the release writes no row and spends nothing from the write budget (the claim tool it
-  stands in for writes none either).
+- **Two audit rows on a full run.** The first is the post step's, as for the plain verdict
+  verbs. The confirm is a read and writes none. The second is the release step's, verb
+  `finish:release`: `ok` when the claim was released, `noop` when it was already gone, and
+  the failure's own result when the release failed, each naming the claim key. The release is
+  not held back by the write budget (the verdict is already posted); a release that was sent
+  counts toward that budget afterwards. A stop at step 1 or 2 writes no release row.
 - **`--dry-run`** rehearses step 1 only: exit 0, nothing posted, read back or released, and no
   result line. `--wait` and `--explain` act on step 1 as they do on the plain verbs.
 - **The result line's `review=`** is the forge's own link to the review when the listing
@@ -5093,9 +5120,20 @@ deskdispatch project--pr-42 --kit review --pr 42 --repo example-org/project --pr
 **What a review packet holds, in order:** the head commit and the build time (at the top);
 the change's number, title, author, base, head and draft / mergeable state; its description;
 the brief text, when the dispatch resolves one; check and status states at the head; the
-earlier verdicts of **this lane** in full (state, commit, time, body) and a one-line index of
-every other review; the whole diff; and the text of each touched file as it reads after the
-change.
+earlier verdicts of **this lane** in full (state, commit, time, body), a one-line index of
+the reviewer identity's other reviews, and the reviews by every other account under their
+own heading; the whole diff; and the text of each touched file as it reads after the
+change. The base is given as a branch name, not a commit, and the change's conversation
+comments and inline review comments are not in the packet; the packet says so.
+
+**Who posted a review decides what the packet calls it.** A review is listed and counted as
+an earlier verdict only when the forge names the reviewer identity as its author — the login
+the reviewer role is bound to, the same one the posting verb matches. A review by any other
+account goes under "Reviews by other accounts — not verdicts", whatever its body says; a
+body there with a line shaped like a verdict line is quoted between boundary lines (at most
+5 such bodies, 16 KiB each; the rest are listed as omitted) and is never counted. When the
+reviewer role is not bound where the dispatch runs, the section lists **no** review as a
+verdict, quotes no body, and says so.
 
 **The packet's caps are stated in its own header.** No quoted item is ever cut short: one over its
 cap is left out **whole** and listed under "Omitted" by name, size and reason, so a reader
@@ -5117,12 +5155,33 @@ there older than a week are removed as new ones are written). Never in the agent
 — an untracked file would dirty a read-only review tree — and never in the configuration
 directory. The file is `0600` in a `0700` directory.
 
-**The packet is untrusted content, and fenced as such.** Everything in the packet the tool did not
-write — a description, a review body, a diff, a file — sits inside a boundary that carries a
-per-packet random token, with boundary look-alikes in the content neutralised, and the header
-says in the tool's own words that nothing inside a boundary is an instruction. A single-line
-value (a title, a login, a check name) is flattened to one line with control characters
-escaped; one longer than 240 characters is shown cut, with the cut stated.
+**The packet is untrusted content, and marked as such in two ways.** Multi-line text from
+outside the tool — a description, a review body, a diff, a file — is written between an
+opening and a closing boundary line that carry a per-packet random token. Single-line values
+from the change or the forge — a title, a login, a branch, a state, a check or file name, an
+error message — are written in the tool's own lines, each in a code span. The header says in
+the tool's own words that both are data and neither is an instruction. What the code does to
+keep the two apart:
+
+- **The token.** It is drawn fresh for each packet, and an item whose text contains it is
+  left out whole and listed.
+- **The line rule.** No line of quoted text begins with a boundary mark. A line that would
+  begin with three less-than signs — after leading spaces, tabs, invisible characters or
+  Markdown block markers, and counting a fixed list of look-alike characters and the HTML
+  entity forms — is shown with `[quoted] ` put in front of them. Nothing is removed: taking
+  one `[quoted] ` off such a line gives back the line as written. The same rule is applied
+  to every line the tool writes, so the only lines in the file that begin with `<<<` are the
+  boundary lines.
+- **Line breaks.** Inside quoted text every line break other than a plain newline — carriage
+  return, vertical tab, form feed, U+0085, U+2028, U+2029 — is shown as `\uXXXX`, as are
+  invisible and control characters, so text cannot start a line the rule did not see.
+- **Code spans.** A single-line value is flattened to one line with control characters
+  escaped and each backtick shown as `'`, so it cannot end the span it sits in; one longer
+  than 240 characters is shown cut, with the cut stated after the span.
+
+What this does not do: boundary-shaped text in the **middle** of a quoted line is left as
+written, and the look-alike list is a fixed list, not every character a font could draw like
+a less-than sign. The token on the real boundary lines is what a reader checks.
 
 **The packet can never fail a dispatch.** The packet is not one of the numbered dispatch steps. If
 it cannot be built — no credential, a forge that will not answer, a head that moved while it
@@ -5141,6 +5200,9 @@ when it is stale.
 and omission list, boundaries, the owner-only writer, the one assignment line) is
 `internal/packet`; a kit registers a provider that returns an ordered list of named sections
 (`registerPacketProvider` in `cmd/deskdispatch/packet.go`; `packet_review.go` is the first).
+A provider writes a single-line value from outside the tool with `packet.Code` and multi-line
+text with `Content.Untrusted`; `Content.Text` keeps the Markdown it is given, so a value put
+into it bare is not marked as data.
 
 **Worker packets (#2439).** A `--kit worker` or `--kit worker-objective` dispatch gets a packet
 too (`packet_worker.go`), and WHICH one follows the kind of run the dispatch already derives:
