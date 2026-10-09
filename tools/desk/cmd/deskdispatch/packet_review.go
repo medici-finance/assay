@@ -104,25 +104,14 @@ const (
 	laneSecurity    = "security"
 )
 
-// reviewLaneOf reads the lane of a review dispatch off its claim key: a key whose suffix
-// after "--pr-<N>" has a "security" segment is the security lane; any other key is the
-// correctness lane. The dispatch carries no other statement of its lane. The packet says
-// which lane it assumed and from which key, and the other lane's reviews are still indexed,
-// so a wrong guess moves text between two headings and hides nothing.
+// reviewLaneOf reads the lane of a review dispatch off its claim key, by the one rule
+// deskkit.ReviewClaimKeyIsSecurity states (a "security" segment after "--pr-<N>"; any other
+// key is the correctness lane). The dispatch carries no other statement of its lane. The
+// packet says which lane it assumed and from which key, and the other lane's reviews are
+// still indexed, so a wrong guess moves text between two headings and hides nothing.
 func reviewLaneOf(claimKey string, pr int) string {
-	marker := fmt.Sprintf("--pr-%d", pr)
-	i := strings.LastIndex(claimKey, marker)
-	if i < 0 {
-		return laneCorrectness
-	}
-	suffix := claimKey[i+len(marker):]
-	if suffix != "" && !strings.HasPrefix(suffix, "--") {
-		return laneCorrectness // "--pr-770" is another change's key, not a suffix of this one's
-	}
-	for _, seg := range strings.Split(suffix, "--") {
-		if strings.EqualFold(seg, laneSecurity) {
-			return laneSecurity
-		}
+	if deskkit.ReviewClaimKeyIsSecurity(claimKey, pr) {
+		return laneSecurity
 	}
 	return laneCorrectness
 }

@@ -2023,11 +2023,36 @@ re-dispatched reviewer, or a post the forge accepted and then answered with an e
 change's reviews cannot be read, the post step refuses rather than post without looking. A
 claim that is already gone is reported as `claim=already-released`, not as a failure.
 
-Two limits on that. A re-run whose **body file changed** between attempts is a different
-verdict to this check and is posted, with a warning naming the review it landed next to. And
-on a forge with a merge-hold step, a first run can post the verdict and then fail to set the
-hold (its message says which half landed); a re-run finds the verdict there, posts nothing,
-and does **not** run the hold step again.
+One limit on that: a re-run whose **body file changed** between attempts is a different
+verdict to this check and is posted, with a warning naming the review it landed next to.
+
+**A re-run still does the merge-hold step.** On a forge with a merge-hold, a correctness
+verdict has a second half after the post: an approve releases the change's hold at the head,
+a request-changes re-arms it. A run can land the verdict and not complete that half. Either
+the hold write fails, and the message names the half that landed; or the forge accepts the
+post and its answer is lost, and the message is that error alone, with the hold step never
+reached. Both exit non-zero. The run that then finds the verdict on the change posts nothing
+and checks the hold against it before it may exit 0. On that path it **arms or confirms** the
+hold and **never releases** one. This applies to `deskpost review` as it does to `finish
+review`; the security lane's verdict has no hold step.
+
+| The verdict found recorded | The hold reads | What the re-run does |
+|---|---|---|
+| request-changes, with no later approve or request-changes by the reviewer identity after it (a later security-lane verdict does not count) | armed, or resolved in any way | runs the hold step again — a re-arm, as after a post. Exit 0, audit row `ok` whose detail says the verdict was not posted again |
+| request-changes, with such a later verdict after it | armed | no write. Exit 0 |
+| request-changes, with such a later verdict after it | released at this head, or resolved with no head named | no write. Exit 6, naming the later review: this run cannot tell which of the two the hold should follow |
+| approve | released at this head by the reviewer identity | no write. Exit 0 |
+| approve | still up, resolved with no head named, or resolved by another account | no release is sent. Exit 6, saying so |
+| either | resolved at a head other than this one | re-armed, whatever the verdict. A request-changes then exits 0; an approve exits 6, because the release it needs was not at this head and this path does not send one |
+| either | unreadable, or the change has no hold thread | no write. Exit 6 |
+
+A re-arm on this path is an outward write with no post before it, so it first passes the two
+gates the post passes (the trust gate and the public-repo gate), and `--dry-run` sends none.
+A non-zero exit here stops `finish` at step 1, with the claim held. A hold that an approving
+run failed to release is not released by running the same command again: post the approve
+again with a body that says the release is being retried (a body that differs is posted as a
+new review, and its hold step releases). On a forge with no merge-hold the step does not
+apply and none of this runs.
 
 - **Why the claim is released last.** The post step validates the reviewer's dispatch stamp,
   and that stamp stops counting once the review claim is released. Releasing first would make
@@ -2037,9 +2062,13 @@ and does **not** run the hold step again.
   parts); any other value — another change's key, another repository's, a ref path — is an
   argument error (exit 2) and nothing is posted. And it must be **this lane's** key: `finish
   security-review` takes only a key with a `security` segment after `--pr-<N>`, `finish
-  review` only a key without one — the rule review dispatch reads the lane from. So the
-  release can only address this change's review claim for the lane whose verdict was just
-  posted; one lane's finish cannot release the claim the other lane's review is running under.
+  review` only a key without one. The review dispatch packet reads the lane it lays out from
+  the same function. So the release can only address this change's review claim, and one
+  lane's finish cannot release a claim named for the other lane.
+- **The lane tie is by claim-key naming, and only that.** Whoever dispatches a review picks
+  its key, and no record behind the key states a lane. A security review dispatched under a
+  key with no `security` segment would be accepted by `finish review` and refused by `finish
+  security-review`. The check does not prove which lane a key was dispatched for.
 - **Who holds the claim is not checked.** The claim record names the dispatcher that placed
   it, and a reviewer is handed the key and nothing that identifies that dispatcher, so
   `finish` has nothing sound to compare. A run that holds this lane's key for this change can
@@ -5166,12 +5195,16 @@ keep the two apart:
 - **The token.** It is drawn fresh for each packet, and an item whose text contains it is
   left out whole and listed.
 - **The line rule.** No line of quoted text begins with a boundary mark. A line that would
-  begin with three less-than signs — after leading spaces, tabs, invisible characters or
-  Markdown block markers, and counting a fixed list of look-alike characters and the HTML
-  entity forms — is shown with `[quoted] ` put in front of them. Nothing is removed: taking
-  one `[quoted] ` off such a line gives back the line as written. The same rule is applied
-  to every line the tool writes, so the only lines in the file that begin with `<<<` are the
-  boundary lines.
+  begin with three less-than signs is shown with `[quoted] ` put in front of them. "Would
+  begin" skips, before the signs, leading spaces and tabs, invisible characters, `\uXXXX`
+  escapes and any run of these nine characters: `>` `+` `-` `*` `#` `` ` `` `_` `~` `|`. It
+  counts as a less-than sign a fixed list of look-alike characters and the HTML entity
+  forms. The skipped set is that fixed list, not Markdown's grammar: a line with an
+  ordered-list number (`1. `) or a task-list box before the signs is not prefixed. Such a
+  line does not begin with `<<<`, so what the packet tells its reader still holds. Nothing
+  is removed: taking one `[quoted] ` off a prefixed line gives back the line as written. The
+  same rule is applied to every line the tool writes, so the only lines in the file that
+  begin with `<<<` are the boundary lines.
 - **Line breaks.** Inside quoted text every line break other than a plain newline — carriage
   return, vertical tab, form feed, U+0085, U+2028, U+2029 — is shown as `\uXXXX`, as are
   invisible and control characters, so text cannot start a line the rule did not see.
