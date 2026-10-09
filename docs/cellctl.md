@@ -1508,7 +1508,7 @@ travels, and the package contains no `crypto/rsa`, no `crypto/x509`, no JWT and 
 shell-out. That is asserted at the source level rather than by diff.
 
 **Two independent layers, not one.** The plan diff above is the first. The second is the
-seventeen behavioural suites beside it (`tools/cellctl/tests/*.test.sh`), which assert what was
+eighteen behavioural suites beside it (`tools/cellctl/tests/*.test.sh`), which assert what was
 WRITTEN, what a stub RECORDED and which exit code came back — so they fail for different reasons
 than a textual diff:
 
@@ -1547,6 +1547,13 @@ For shared provider model defaults and per-desk effort with cell-level exception
 see [Shared provider defaults](cellctl-provider-defaults.md). For a complete standalone
 policy, see [Cell model policy](cellctl-model-policy.md); `CELL_MODEL_POLICY` takes
 precedence over shared defaults. Existing legacy cell pins apply when neither is configured.
+
+## Per-role starting context
+
+To give each role its own plugins, skills, memory directory, instruction file, dispatched-agent
+definitions and connector set — instead of one shared starting context for every window and
+every agent it dispatches — see [Per-role starting context](cellctl-role-context.md).
+`CELL_ROLE_CONTEXT` is unset by default, and a cell without it launches exactly as before.
 
 
 ### Claude prompt suggestions
