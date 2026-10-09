@@ -1,0 +1,47 @@
+{
+  "test": "go test . -run 'WouldApply|ApplyReconcile|WriteStatusCell' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the Status write puts a different token than the one asked for",
+    "file": "reconcileapply.go",
+    "old": "cells[statusIdx] = leading + newStatus + trailing",
+    "new": "cells[statusIdx] = leading + \"verified\" + trailing"
+  },
+  "mutations": [
+    {
+      "name": "read-only form ignores its own earlier edits (a second id for the same row is decided against the stale file)",
+      "file": "reconcileapply.go",
+      "old": "content, ok := overlay[path]",
+      "new": "content, ok := \"\", false"
+    },
+    {
+      "name": "read-only form writes to disk",
+      "file": "reconcileapply.go",
+      "old": "if write {",
+      "new": "if true {"
+    },
+    {
+      "name": "rowAfter reports the unedited line",
+      "file": "reconcileapply.go",
+      "old": "rowAfter:  lines[i],",
+      "new": "rowAfter:  before,"
+    },
+    {
+      "name": "the verb drops wouldApply from the read-only run",
+      "file": "reconcile.go",
+      "old": "wouldApply = &rows",
+      "new": "_ = rows"
+    },
+    {
+      "name": "the verb's read-only run takes the write path",
+      "file": "reconcile.go",
+      "old": "if rows, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {",
+      "new": "if rows, werr = reconcileWrites(boardRoot, cells, true); werr != nil {"
+    },
+    {
+      "name": "a read-only run that found nothing reports null instead of an empty list",
+      "file": "reconcile.go",
+      "old": "\t\t\t\trows = []appliedRow{}",
+      "new": "\t\t\t\trows = nil"
+    }
+  ]
+}
