@@ -1,0 +1,24 @@
+package planted
+
+// PLANTED instances of the defect class fetchtags_guard_test.go's update guard catches: go-git
+// fetch options that leave a ref-update decision to go-git. It MUST flag 11, 15 and 19, not 23.
+
+import (
+	gogit "github.com/go-git/go-git/v5"
+)
+
+func plantedUnforced(r *gogit.Remote) error {
+	return r.Fetch(&gogit.FetchOptions{Tags: gogit.NoTags})
+}
+
+func plantedForceFalse(r *gogit.Remote) error {
+	return r.Fetch(&gogit.FetchOptions{Tags: gogit.NoTags, Force: false})
+}
+
+func plantedPrune(r *gogit.Remote) error {
+	return r.Fetch(&gogit.FetchOptions{Tags: gogit.NoTags, Force: true, Prune: true})
+}
+
+func clean(r *gogit.Remote) error {
+	return r.Fetch(&gogit.FetchOptions{Tags: gogit.NoTags, Force: true})
+}

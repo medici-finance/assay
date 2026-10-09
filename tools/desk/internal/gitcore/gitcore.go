@@ -522,27 +522,51 @@ type FetchOpts struct {
 // default tag mode writes every advertised tag whose object is present, replacing a local tag
 // of the same name that differs): no refs/tags/* ref is created or moved by a fetch, so an
 // existing local tag is never replaced. A caller that wants a tag names it in a refspec.
-// Returns nil on success, including when the remote was already up to date.
-func (r *Repo) Fetch(opts FetchOpts) error {
+//
+// The ref updates are gitcore's, not go-git's (fetchstage.go): go-git fetches into a private
+// staging namespace, and Fetch then applies each value under git's rules. A destination a
+// non-forced refspec would move to a commit that does not descend from its current one is
+// left where it is and REPORTED — the returned error wraps ErrRefsNotUpdated and names it —
+// as is a destination that is a symbolic ref, which is never written through. Prune drops a
+// local ref the refspecs cover that the origin no longer advertises, never a symbolic ref
+// (so refs/remotes/origin/HEAD survives). Every RefSpec destination must be a full refs/ name.
+//
+// Returns nil only when every advertised value landed, including when the remote was
+// already up to date.
+func (r *Repo) Fetch(opts FetchOpts) (err error) {
 	specs, err := buildRefSpecs(opts.RefSpecs, opts.Force)
 	if err != nil {
 		return err
+	}
+	stage, staged, err := stageRefSpecs(specs)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if derr := r.dropStage(stage); derr != nil && err == nil {
+			err = derr
+		}
+	}()
+	stagedSpecs := make([]config.RefSpec, len(staged))
+	for i, s := range staged {
+		stagedSpecs[i] = s.staged
 	}
 	remote := git.NewRemote(r.repo.Storer, &config.RemoteConfig{
 		Name: transientRemoteName,
 		URLs: []string{opts.URL},
 	})
-	err = remote.Fetch(&git.FetchOptions{
-		RefSpecs: specs,
+	// Force: every staging refspec is forced, so go-git never makes (or silently drops) a
+	// fast-forward decision; applyStaged makes it. No Prune: applyStaged prunes.
+	ferr := remote.Fetch(&git.FetchOptions{
+		RefSpecs: stagedSpecs,
 		Auth:     opts.Auth,
-		Force:    opts.Force,
-		Prune:    opts.Prune,
+		Force:    true,
 		Tags:     git.NoTags,
 	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return fmt.Errorf("gitcore: fetch: %w", err)
+	if ferr != nil && ferr != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("gitcore: fetch: %w", ferr)
 	}
-	return nil
+	return r.applyStaged(staged, opts.Prune)
 }
 
 // PushOpts configures an in-process Push. Same shape and same containment guarantee

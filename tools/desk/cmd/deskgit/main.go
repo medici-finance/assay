@@ -71,7 +71,7 @@ import (
 const usage = `deskgit — the desk's narrow git verb: refresh refs from origin, and push the current branch.
 
 USAGE:
-  deskgit fetch [--prune]         # refs/remotes/origin/* only (--prune drops stale ones; no tags fetched)
+  deskgit fetch [--prune]         # refs/remotes/origin/* only (--prune drops stale ones, never a symbolic ref; no tags fetched)
   deskgit fetch --pr <N>          # pull/<N>/head -> local branch pr<N> (N digits only)
   deskgit fetch --branch <B>      # origin's <B> -> local branch <B> (not main/master in any case)
   deskgit fetch --as <role>       # any fetch mode above, authenticated from <role>'s token file
@@ -81,7 +81,8 @@ USAGE:
 deskgit is safe by construction: each mode builds a FIXED refspec from a validated value —
 no caller flag and no arbitrary refspec reach the transport, and fetch writes only that
 refspec's refs (no tag is followed or replaced; a branch any worktree is using — checked out,
-being rebased or bisected — is never written). fetch runs in-process (no git
+being rebased or bisected — is never written; an existing --pr/--branch ref moves only by
+fast-forward, and a refused update exits 6, never 0). fetch runs in-process (no git
 child, so no program to name, no child environment, no credential helper); push runs git with a
 fixed argv that pins --receive-pack=git-receive-pack and refuses --force/--delete/--no-verify
 by name. Both gate on the origin URL. --as reads the role's 0600 token file and sends the token

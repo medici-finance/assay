@@ -6,3 +6,5 @@
 ### Fixed
 - `deskgit fetch --branch`/`--pr` refuses a branch checked out in any worktree of the repository, a linked one included (previously only the current worktree's branch), and stops when that set cannot be read. The set is git's own: a branch a worktree is rebasing or bisecting, and the branches an in-progress `rebase --update-refs` will rewrite, are refused too.
 - A fetch from a local-path or `file://` origin succeeds from a checkout that holds commits the origin lacks, instead of failing with `object not found`.
+- An in-process fetch whose origin ref was rewritten to a commit that does not descend from the local one no longer reports success with the local ref unchanged: `deskgit fetch --pr`/`--branch` refuses the non-fast-forward update and exits 6 naming the ref, as `git fetch` did.
+- `deskgit fetch --prune` no longer deletes `refs/remotes/origin/HEAD`: a symbolic ref is never pruned or written through by the in-process fetch.

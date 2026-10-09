@@ -4106,7 +4106,7 @@ this tool does. Same structural argument as `deskrelease`.
 
 ```bash
 deskgit fetch                 # refs/remotes/origin/* only (no tags)
-deskgit fetch --prune         # + drop stale remote-tracking refs
+deskgit fetch --prune         # + drop stale remote-tracking refs (never a symbolic one)
 deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only)
 deskgit fetch --branch <B>    # origin's <B> -> local branch <B>      (see --branch guards)
 deskgit fetch --as <role>     # any fetch mode above, authenticated from <role>'s token file
@@ -4174,6 +4174,21 @@ so there is nothing for a pin to pin. It calls `gitcore`'s go-git fetch directly
   fetch option literal under `tools/desk` that leaves tag-following on, with a planted
   positive control (`TestFetchTagsGuardFlagsPlant`). The same holds for `deskmerge`'s
   in-process fetch, which shares `gitcore.Fetch`.
+- **gitcore, not go-git, applies the ref updates.** go-git only transfers: every refspec is
+  rewritten into a forced one whose destination is a private per-call staging namespace
+  (`refs/gitcore-fetch/<nonce>/…`, dropped on every path), and `gitcore` then writes each
+  advertised value to its real destination under git's rules (`internal/gitcore/fetchstage.go`).
+  Two go-git v5.19.2 behaviours forced this. With tags off it returns from its reference update
+  *before* turning a refused non-fast-forward into an error, so `--pr`/`--branch` over an origin
+  ref rewritten to a non-descendant exited 0 with the local ref still on the superseded commit;
+  now that update is refused, the other destinations still land, and the fetch fails closed
+  (exit 6) naming the refused ref (`TestFetch_RewrittenRefFailsClosed`,
+  `TestFetchRefusesNonFastForward`). And its prune removed every unadvertised ref under the
+  destination, symbolic ones included, so `--prune` deleted `refs/remotes/origin/HEAD`; now a
+  symbolic ref is never pruned and never written through (`TestFetch_PruneKeepsOriginHEAD`,
+  `TestFetchPruneKeepsSymref`). `TestEveryFetchLeavesUpdatesToGitcore` fails on any go-git
+  `FetchOptions`/`PullOptions` literal under `tools/desk` that is not `Force: true` or that
+  sets `Prune`, with a planted positive control (`TestFetchUpdateGuardFlagsPlant`).
 - **A local origin tolerates local-only commits.** A checkout routinely holds commits its
   origin has never seen; the client offers them as "haves", and the local in-process session
   drops any have the origin cannot resolve before the server walks them — as `git

@@ -671,6 +671,76 @@ func TestFetch_LocalOnlyCommitOK(t *testing.T) {
 	}
 }
 
+// --branch and --pr refresh an EXISTING local ref only by fast-forward. When the origin's ref
+// was rewritten to a commit that does not descend from the local one, the fetch fails closed
+// (exit 6, as `git fetch` refused "non-fast-forward") and the local ref is left where it was —
+// never a success that silently kept the superseded commit.
+func TestFetch_RewrittenRefFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, local string
+		args             []string
+	}{
+		{"branch", "refs/heads/side", "refs/heads/side", []string{"fetch", "--branch", "side"}},
+		{"pr", "refs/pull/7/head", "refs/heads/pr7", []string{"fetch", "--pr", "7"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newRepo(t, allowedSlug)
+			upstream := mustGit(t, work, "remote", "get-url", "origin")
+			mustGit(t, work, "commit", "-q", "--allow-empty", "-m", "first")
+			first := mustGit(t, work, "rev-parse", "HEAD")
+			mustGit(t, work, "push", "-q", "origin", "HEAD:"+tc.src)
+			mustGit(t, work, "reset", "-q", "--hard", "HEAD~1")
+
+			withEnv(t, work)
+			if code := run(tc.args); code != deskkit.ExitOK {
+				t.Fatalf("first %v exit = %d, want 0", tc.args, code)
+			}
+			if got := mustGit(t, work, "rev-parse", tc.local); got != first {
+				t.Fatalf("%s = %s after the first fetch, want %s", tc.local, got, first)
+			}
+
+			// Rewrite the origin's ref to a commit off main that does not descend from first.
+			mustGit(t, work, "commit", "-q", "--allow-empty", "-m", "rewritten")
+			rewritten := mustGit(t, work, "rev-parse", "HEAD")
+			mustGit(t, work, "push", "-q", "--force", "origin", "HEAD:"+tc.src)
+			if got := mustGit(t, upstream, "rev-parse", tc.src); got != rewritten {
+				t.Fatalf("fixture: origin %s = %s, want %s", tc.src, got, rewritten)
+			}
+
+			if code := run(tc.args); code != deskkit.ExitUnverifiable {
+				t.Fatalf("%v over a rewritten origin ref exit = %d, want %d (unverifiable): the update was not applied",
+					tc.args, code, deskkit.ExitUnverifiable)
+			}
+			if got := mustGit(t, work, "rev-parse", tc.local); got != first {
+				t.Fatalf("%s moved %s -> %s on a non-fast-forward", tc.local, first, got)
+			}
+		})
+	}
+}
+
+// --prune drops a stale remote-tracking ref but never a symbolic one: in a real clone,
+// refs/remotes/origin/HEAD (the origin's default branch) survives, as it does under git.
+func TestFetch_PruneKeepsOriginHEAD(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	clone := filepath.Join(t.TempDir(), "clone")
+	mustGit(t, "", "clone", "-q", upstream, clone)
+	head := mustGit(t, clone, "symbolic-ref", "refs/remotes/origin/HEAD")
+	mustGit(t, clone, "update-ref", "refs/remotes/origin/stale", mustGit(t, clone, "rev-parse", "HEAD"))
+
+	withEnv(t, clone)
+	if code := run([]string{"fetch", "--prune"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch --prune exit = %d, want 0", code)
+	}
+	if out, err := exec.Command("git", "-C", clone, "rev-parse", "--verify", "-q", "refs/remotes/origin/stale").CombinedOutput(); err == nil {
+		t.Fatalf("--prune left the stale ref in place (%s)", out)
+	}
+	out, err := exec.Command("git", "-C", clone, "symbolic-ref", "refs/remotes/origin/HEAD").CombinedOutput()
+	if got := strings.TrimSpace(string(out)); err != nil || got != head {
+		t.Fatalf("refs/remotes/origin/HEAD after --prune = %q (%v), want the symbolic ref to %s kept", got, err, head)
+	}
+}
+
 // When the checked-out set cannot be read, a fetch that would write a local branch stops
 // (unverifiable) rather than assuming no worktree holds it.
 func TestFetch_CheckedOutSetUnreadableFailsClosed(t *testing.T) {
