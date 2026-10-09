@@ -3398,6 +3398,41 @@ a stronger authority than a reviewer's confirmation. The design note (`supersede
 in the desk-tools planning stream) carries the flow, the pros/cons and the brief-level semantics;
 the mutation sweep is `cmd/deskclose/mutations.json`.
 
+### The human-decided triage close writes a decision record
+
+`deskclose triage --disposition human-decided --decision <ruling permalink> --tracker <ref>`
+closes a ruled decision issue. It authorizes only on the ruling comment on that issue, after
+verifying that its author is the blessing authority. It also writes one `human-decision-v1`
+record. The record holds:
+
+- the offered option ids, each with the sha256 of the option's text;
+- the recommended id;
+- the picked id, or `ambiguous` / `unparsed`;
+- `ruler: driver`;
+- the issue-opened, ask, ruling and recording times, with the two latencies in seconds.
+
+It never holds option or ruling text, and never a login or account id. The record is written
+twice, as the same JSON bytes:
+
+| Copy | Where | When |
+|---|---|---|
+| forge | a `<!-- human-decision-v1 {…} -->` block appended to the close comment | rides the comment write, before the close |
+| local | one line of `~/.config/assay/decision-records.jsonl` (0600, append-only) | after the close succeeds |
+
+Neither copy ever blocks the close:
+
+- An invalid record is not written. The audit line says `decision-record: invalid (<field>)`.
+- A failed local append leaves the forge copy standing. The audit line and stderr say
+  `decision-record: local-unwritten`.
+- `--dry-run` prints the block and writes nothing.
+
+The not-planned triage lane and every other lane write no record.
+
+The Options parse is `deskkit.ParseDecisionOptions`, shared with `deskinbox`. The schema,
+the pick rules (anchor, lettering, `ambiguous`), the visibility and authenticity rules, and
+the never-recorded list are in the `human-decision-v1` schema doc, which lives in the planning
+stream that specified the record.
+
 ### Two identity+structure lanes — no artifact cited, because nothing of anyone else's is closed
 
 Every ruled lane above authorizes on a FETCHED HUMAN ARTIFACT because it closes OTHER

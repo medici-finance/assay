@@ -659,7 +659,8 @@ func (g *GitLabForge) getIssue(repo ForgeRepo, number int) (*Issue, error) {
 // gitlabIssueAsIssue maps a GitLab issue onto the forge-neutral Issue (IsPullRequest false).
 func gitlabIssueAsIssue(iss *gitlab.Issue) *Issue {
 	out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false,
-		URL: iss.WebURL, Body: iss.Description, Labels: append([]string(nil), iss.Labels...)}
+		URL: iss.WebURL, Body: iss.Description, Labels: append([]string(nil), iss.Labels...),
+		CreatedAt: gitlabTime(iss.CreatedAt)}
 	if iss.Author != nil {
 		out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
 	}
@@ -674,7 +675,8 @@ func gitlabIssueAsIssue(iss *gitlab.Issue) *Issue {
 // gitlabMRAsIssue maps a GitLab merge request onto the forge-neutral Issue (IsPullRequest true).
 func gitlabMRAsIssue(mr *gitlab.MergeRequest) *Issue {
 	out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true,
-		URL: mr.WebURL, Body: mr.Description, Labels: append([]string(nil), mr.Labels...)}
+		URL: mr.WebURL, Body: mr.Description, Labels: append([]string(nil), mr.Labels...),
+		CreatedAt: gitlabTime(mr.CreatedAt)}
 	if mr.Author != nil {
 		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 	}

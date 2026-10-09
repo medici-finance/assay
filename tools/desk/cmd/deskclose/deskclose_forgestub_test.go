@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -26,6 +27,7 @@ type stubIssueWire struct {
 	PullRequest *struct {
 		MergedAt *string `json:"merged_at"`
 	} `json:"pull_request"`
+	CreatedAt string `json:"created_at"`
 }
 
 type stubPullWire struct {
@@ -47,6 +49,7 @@ type stubCommentWire struct {
 	IssueURL  string `json:"issue_url"`
 	Body      string `json:"body"`
 	Minimized bool   `json:"minimized"`
+	CreatedAt string `json:"created_at"`
 	User      struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
@@ -108,7 +111,7 @@ func (s *stubRemote) stubIssueAt(key string) (*deskkit.Issue, error) {
 	}
 	return &deskkit.Issue{
 		Number: w.Number, Title: w.Title, State: w.State, Body: w.Body,
-		Labels: labels, IsPullRequest: w.PullRequest != nil,
+		Labels: labels, IsPullRequest: w.PullRequest != nil, CreatedAt: w.CreatedAt,
 	}, nil
 }
 
@@ -304,9 +307,19 @@ func (s *stubRemote) listCommentsAt(fr deskkit.ForgeRepo, n int, key string) ([]
 			Body:       w.Body,
 			URL:        w.HTMLURL,
 			Minimized:  w.Minimized,
+			CreatedAt:  w.CreatedAt,
 			Author:     deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
 		})
 	}
+	// A real thread is chronological; the fixture map is not. Order by creation time, then id,
+	// so a reader that walks the thread (the decision record's anchor and relay search) sees a
+	// deterministic, forge-shaped order.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt < out[j].CreatedAt
+		}
+		return out[i].DatabaseID < out[j].DatabaseID
+	})
 	// Proposal-thread comments (the two-role superseded reader walks these).
 	for _, j := range s.threads[key] {
 		var w stubCommentWire
@@ -314,8 +327,9 @@ func (s *stubRemote) listCommentsAt(fr deskkit.ForgeRepo, n int, key string) ([]
 			return nil, err
 		}
 		out = append(out, deskkit.Comment{
-			Body:   w.Body,
-			Author: deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
+			Body:      w.Body,
+			CreatedAt: w.CreatedAt,
+			Author:    deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
 		})
 	}
 	return out, nil

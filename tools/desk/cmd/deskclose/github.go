@@ -41,6 +41,9 @@ type item struct {
 	Body   string
 	Labels []string
 	IsPR   bool
+	// CreatedAt is the issue's creation time as the forge reports it (empty when unreported);
+	// the human-decided lane's decision record measures latency from it.
+	CreatedAt string
 }
 
 func (i item) isPR() bool   { return i.IsPR }
@@ -87,6 +90,8 @@ func fetchItem(repo string, n int, kind deskkit.TargetKind) (item, error) {
 		Body:   iss.Body,
 		Labels: append([]string(nil), iss.Labels...),
 		IsPR:   iss.IsPullRequest,
+
+		CreatedAt: iss.CreatedAt,
 	}, nil
 }
 

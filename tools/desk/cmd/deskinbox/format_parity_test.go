@@ -308,6 +308,19 @@ func TestParityWalk(t *testing.T) {
 			body: "## Options\nA. First choice\nB. Second choice\nC. Third choice, this one is recommended\nD. Fourth choice\n",
 			k:    0, n: 1,
 		},
+		{
+			// The parse now lives in deskkit: a marked option whose text
+			// cleans to empty is dropped (and so is its mark), a fifth list line is never read,
+			// and numeric ids are re-lettered A–D like letters.
+			name: "lifted parse edges: empty marked option, five lines, digits",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 12, Title: "Edges",
+				URL: "https://example.invalid/issues/12", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\n1. Keep it\n2) (recommended)\n- 3. **Drop** it\n4. Defer it — recommended\n4. A fifth line\n",
+			k:    0, n: 1,
+		},
 	}
 
 	for _, tc := range cases {
