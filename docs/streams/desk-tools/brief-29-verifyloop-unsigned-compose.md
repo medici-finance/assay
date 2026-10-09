@@ -439,7 +439,7 @@ First verify pass on merged main. **This is Evidence for the human gate. It is n
   - Any non-unix build. On those both directory checks are skipped (signopen_other.go:17), as Task 8 says.
   - The keyless mode run as a built binary, with or without a roster.
   - Anything that needs a live forge or a real key. No real key and no real config home was read.
-- **Why there is no witness.** Rows 1 to 4, 10, 11 and 12 are class check:ci, and this host cannot give the witness runner the network-off sandbox it needs for that class (#1800). Rows 1 to 6, 11 and 12 also run go test over tools/desk packages, which the desk does not run against an operator's real home (#1618). For the record, the throwaway home held no audit lines after these runs.
+- **Why there is no witness.** Ten rows are class check:ci: rows 1 to 6 and 9 to 12. This host cannot give the witness runner the network-off sandbox it needs for that class (#1800). Rows 1 to 6, 11 and 12 also run go test over tools/desk packages, which the desk does not run against an operator's real home (#1618). The witness runner was not run on this brief at all, so rows 7 and 8, which are plain check, have no witness either. For the record, the throwaway home held no audit lines after these runs. (Corrected 2026-10-09 in review: this line first named seven check:ci rows and left out rows 5, 6 and 9.)
 
 For the human gate, on the two Review questions. This is what the run observed, not an answer.
 
