@@ -1386,6 +1386,32 @@ func TestDeleteLocalRefRemovesAndIsNoopOnAbsent(t *testing.T) {
 	}
 }
 
+// DeleteLocalRef removes the ref's reflog and the ref and log directories that leaves empty,
+// as `git update-ref -d` does, so a later ref named after a parent of it can be created.
+func TestDeleteLocalRefRemovesReflog(t *testing.T) {
+	f := gittest.NewFixture(t)
+	sha := mustGitOutput(t, f, "rev-parse", "HEAD")
+	mustGit2(t, f, "update-ref", "refs/heads/gone/x", sha)
+	log := filepath.Join(f.Dir, ".git", "logs", "refs", "heads", "gone", "x")
+	if _, err := os.Stat(log); err != nil {
+		t.Fatalf("fixture: no reflog for refs/heads/gone/x: %v", err)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteLocalRef("refs/heads/gone/x"); err != nil {
+		t.Fatalf("DeleteLocalRef: %v", err)
+	}
+	for _, p := range []string{log, filepath.Dir(log), filepath.Join(f.Dir, ".git", "refs", "heads", "gone")} {
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Fatalf("DeleteLocalRef left %s (%v)", p, err)
+		}
+	}
+	mustGit2(t, f, "update-ref", "refs/heads/gone", sha)
+}
+
 // TestUpdateRemoteTracking — the tracking ref is the one origin's fetch refspec maps the
 // pushed ref to (here a non-default layout, so the default is not assumed); an unmapped ref
 // writes nothing, and a short or malformed hash is refused.

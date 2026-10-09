@@ -228,6 +228,48 @@ func TestFetchPruneAndWriteClearEmptyDirectories(t *testing.T) {
 	}
 }
 
+// Prune removes a pruned ref's reflog and the log directories that leaves empty, as git does.
+// A reflog left behind conflicts with the reflog of a later ref named X/a (or X), and the git
+// binary's own fetch in that checkout then fails to update that ref on every run.
+func TestFetchPruneRemovesReflog(t *testing.T) {
+	for _, names := range [][2]string{{"x", "x/a"}, {"y/a", "y"}} {
+		old, nu := names[0], names[1]
+		t.Run(strings.ReplaceAll(old+"->"+nu, "/", "_"), func(t *testing.T) {
+			origin := gittest.NewFixture(t)
+			work := cloneFixture(t, origin.Dir)
+			mustFixtureGit(t, origin, "branch", old)
+			mustFixtureGit(t, work, "fetch", "origin") // a fetch logs the tracking ref it creates
+			logs := filepath.Join(work.Dir, ".git", "logs", "refs", "remotes", "origin")
+			oldLog := filepath.Join(logs, filepath.FromSlash(old))
+			if _, err := os.Stat(oldLog); err != nil {
+				t.Fatalf("fixture: git fetch wrote no reflog for origin/%s: %v", old, err)
+			}
+			mustFixtureGit(t, origin, "branch", "-D", old)
+
+			err := openFixture(t, work).Fetch(FetchOpts{URL: origin.Dir, Prune: true, RefSpecs: []string{trackingSpec}})
+			if err != nil {
+				t.Fatalf("Fetch(prune): %v", err)
+			}
+			if _, err := os.Lstat(oldLog); !os.IsNotExist(err) {
+				t.Fatalf("prune left the reflog of refs/remotes/origin/%s (%v)", old, err)
+			}
+			if dir, _, nested := strings.Cut(old, "/"); nested {
+				if _, err := os.Lstat(filepath.Join(logs, dir)); !os.IsNotExist(err) {
+					t.Fatalf("prune left the emptied log directory %s (%v)", dir, err)
+				}
+			}
+
+			mustFixtureGit(t, origin, "branch", nu)
+			if out, err := work.Git("fetch", "origin"); err != nil {
+				t.Fatalf("git fetch origin after the prune: %v: %s", err, out)
+			}
+			if got, want := mustFixtureGit(t, work, "rev-parse", "refs/remotes/origin/"+nu), mustFixtureGit(t, origin, "rev-parse", nu); got != want {
+				t.Fatalf("refs/remotes/origin/%s = %s, want %s", nu, got, want)
+			}
+		})
+	}
+}
+
 // Two destinations of one fetch whose names conflict: the first lands, the second is refused
 // as a name conflict (git: "'…' exists; cannot create '…'"), not attempted as a write.
 func TestFetchRefusesConflictingNewNames(t *testing.T) {

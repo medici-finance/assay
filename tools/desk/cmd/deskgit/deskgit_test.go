@@ -813,6 +813,22 @@ func TestFetch_RefNameConflictMatchesGit(t *testing.T) {
 							t.Fatalf("run %d: refs differ from git's\ngit:\n%s\ndeskgit:\n%s", i, refs[0], refs[1])
 						}
 					}
+					if !prune {
+						return
+					}
+					// The checkout stays usable by the git binary: a prune that left the old ref's
+					// reflog behind makes git's next update of the new name fail on every run
+					// ("unable to append to …/logs/…" or "there are still logs under …").
+					mustGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/"+nu)
+					moved := mustGit(t, upstream, "rev-parse", "refs/heads/"+nu)
+					for _, c := range twins {
+						if out, err := exec.Command("git", "-C", c, "fetch", "origin").CombinedOutput(); err != nil {
+							t.Fatalf("%s: git fetch origin after the prune: %v\n%s", filepath.Base(c), err, out)
+						}
+						if got := mustGit(t, c, "rev-parse", "refs/remotes/origin/"+nu); got != moved {
+							t.Fatalf("%s: refs/remotes/origin/%s = %s after git fetch, want %s", filepath.Base(c), nu, got, moved)
+						}
+					}
 				})
 			}
 		}

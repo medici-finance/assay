@@ -4191,14 +4191,18 @@ so there is nothing for a pin to pin. It calls `gitcore`'s go-git fetch directly
   (exit 6) naming the refused ref (`TestFetch_RewrittenRefFailsClosed`,
   `TestFetchRefusesNonFastForward`). And its prune removed every unadvertised ref under the
   destination, symbolic ones included, so `--prune` deleted `refs/remotes/origin/HEAD`; now a
-  symbolic ref is never pruned and never written through (`TestFetch_PruneKeepsOriginHEAD`,
-  `TestFetchPruneKeepsSymref`). As in `git fetch`, the prune runs *before* the updates and
-  removes the directories it empties, so when upstream replaces branch `X` with `X/a` (or the
-  reverse) `--prune` clears the stale tracking ref and lands everything; without `--prune` the
-  new name is refused (exit 6, naming it) and every other ref still updates. A non-forced
-  refspec never moves an existing tag, and one destination that cannot be written never stops
-  the rest (`TestFetch_RefNameConflictMatchesGit`, which runs the git binary on an identical
-  twin of each fixture and compares; `TestFetch_PruneScopeIsTheRefspec`).
+  symbolic ref is never pruned (`TestFetch_PruneKeepsOriginHEAD`, `TestFetchPruneKeepsSymref`)
+  and never written through. As in `git fetch`, the prune runs *before* the updates and
+  removes each pruned ref's reflog and the directories it empties, so when upstream replaces
+  branch `X` with `X/a` (or the reverse) `--prune` clears the stale tracking ref and lands
+  everything, and the git binary's own `git fetch` in that checkout still updates the new
+  name (`TestFetchPruneRemovesReflog`); without `--prune` the new name is refused (exit 6,
+  naming it) and every other ref still updates. A non-forced refspec never moves an existing
+  tag, and one destination that cannot be written never stops the rest
+  (`TestFetch_RefNameConflictMatchesGit`, which runs the git binary on an identical twin of
+  each fixture, compares, then runs `git fetch` in both after a prune;
+  `TestFetch_PruneScopeIsTheRefspec`). Unlike `git fetch`, the in-process fetch writes no
+  reflog entry for a ref it creates or moves, and no `FETCH_HEAD`.
   `TestEveryFetchLeavesUpdatesToGitcore` fails on any go-git
   `FetchOptions`/`PullOptions` literal under `tools/desk` that is not `Force: true` or that
   sets `Prune`, with a planted positive control (`TestFetchUpdateGuardFlagsPlant`).

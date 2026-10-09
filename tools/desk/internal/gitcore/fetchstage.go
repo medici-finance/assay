@@ -31,7 +31,8 @@ import (
 // So go-git only TRANSFERS: every refspec is rewritten into a forced one whose destination is
 // a private per-call namespace (stageNamespace/<nonce>/<spec index>/<real destination>), and
 // gitcore then applies the staged values to the real destinations itself, under git's rules —
-// prune runs BEFORE the updates and removes the directories it empties, so a stale ref whose
+// prune runs BEFORE the updates and removes each pruned ref's reflog and the directories it
+// empties, so a stale ref whose
 // name conflicts with a new one (branch X replaced by X/a, or the reverse) is cleared first;
 // a non-forced update must fast-forward or it is refused and reported; a new ref whose name
 // conflicts with an existing one is refused and reported; one destination that cannot be
@@ -90,7 +91,7 @@ type stagedUpdate struct {
 
 // applyStaged applies the fetched values as `git fetch` does: first (when prune is set) it
 // drops each local ref a refspec covers that the origin no longer advertises — never a
-// symbolic ref — removing the directories that leaves empty; then it writes every staged
+// symbolic ref — removing its reflog and the directories that leaves empty; then it writes every staged
 // value to its real destination under git's rules. It returns an error wrapping
 // ErrRefsNotUpdated naming every destination it refused or could not write and every stale
 // ref it could not prune; everything else is still applied.
@@ -147,12 +148,13 @@ func (r *Repo) applyStaged(specs []stagedSpec, prune bool) error {
 			}
 			for _, s := range specs {
 				if s.real.Reverse().Match(ref.Name()) {
-					if err := st.RemoveReference(ref.Name()); err != nil {
-						refused = append(refused, ref.Name().String()+" (could not be pruned: "+err.Error()+")")
-						break
+					removed, err := r.removeRef(ref.Name())
+					if removed {
+						names.remove(ref.Name().String())
 					}
-					names.remove(ref.Name().String())
-					removeEmptyParents(refsDir, ref.Name().String())
+					if err != nil {
+						refused = append(refused, ref.Name().String()+" (could not be pruned: "+err.Error()+")")
+					}
 					break
 				}
 			}
@@ -276,6 +278,34 @@ func looseRefPath(refsDir, name string) string {
 	return filepath.Join(refsDir, filepath.FromSlash(rel))
 }
 
+// removeRef deletes ref name as git does: the ref itself (loose or packed), then its reflog,
+// then the ref and log directories that leaves empty. It is the one way gitcore removes a
+// ref that may carry a reflog (prune and DeleteLocalRef): a reflog left behind at logs/<name>
+// conflicts with the reflog of a later ref named <name>/x (or a parent of <name>), and the git
+// binary then fails to update that ref on every run. removed reports whether the ref itself
+// went; err names whatever could not be removed.
+func (r *Repo) removeRef(name plumbing.ReferenceName) (removed bool, err error) {
+	if err := r.repo.Storer.RemoveReference(name); err != nil {
+		return false, err
+	}
+	gitDir, err := r.commonGitDir()
+	if err != nil {
+		return true, fmt.Errorf("removed, but its reflog could not be located: %w", err)
+	}
+	removeEmptyParents(filepath.Join(gitDir, "refs"), name.String())
+	logsDir := filepath.Join(gitDir, "logs", "refs")
+	if p := looseRefPath(logsDir, name.String()); p != "" {
+		// Only a file is a reflog; a directory (or a path through a file) is none of this ref's.
+		if fi, lerr := os.Lstat(p); lerr == nil && !fi.IsDir() {
+			if rerr := os.Remove(p); rerr != nil {
+				return true, fmt.Errorf("removed, but its reflog could not be: %w", rerr)
+			}
+		}
+		removeEmptyParents(logsDir, name.String())
+	}
+	return true, nil
+}
+
 // removeEmptyParents removes the directories a pruned ref's removal left empty, deepest first,
 // as git does — never refs/ or refs/<kind>/ themselves. Without it a pruned loose X/a leaves a
 // directory X that a ref named X can never be written over.
@@ -374,6 +404,16 @@ func (r *Repo) dropStage(stage string) error {
 // commonRefsDir is the refs/ directory of this repository's common git directory (where a
 // linked worktree's refs live too).
 func (r *Repo) commonRefsDir() (string, error) {
+	gitDir, err := r.commonGitDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(gitDir, "refs"), nil
+}
+
+// commonGitDir is this repository's common git directory: the one a linked worktree shares
+// with its main checkout, holding refs/ and the reflogs under logs/refs/.
+func (r *Repo) commonGitDir() (string, error) {
 	gitDir, _, err := resolveGitDir(r.dir)
 	if err != nil {
 		return "", err
@@ -381,5 +421,5 @@ func (r *Repo) commonRefsDir() (string, error) {
 	if common, cerr := commonDirOf(gitDir); cerr == nil && common != "" {
 		gitDir = common
 	}
-	return filepath.Join(gitDir, "refs"), nil
+	return gitDir, nil
 }
