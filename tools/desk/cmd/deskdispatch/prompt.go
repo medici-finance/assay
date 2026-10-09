@@ -444,6 +444,7 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 		fmt.Fprintf(b, "```\ngit -C %s fetch origin %s/<N>/head && git -C %s checkout FETCH_HEAD\n```\n\n",
 			home, head, home)
 	}
+	writeReviewRound(b, plan.round)
 	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
 }
