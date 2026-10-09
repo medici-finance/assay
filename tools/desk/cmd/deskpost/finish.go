@@ -183,17 +183,13 @@ func finishPost(lane finishLane, a verdictArgs, args []string) int {
 // reviewer identity, at head, in shape's state, of shape's kind, with this body.
 //
 // The predicate is appReviewExistsAt, asked about one review at a time so the caller learns
-// WHICH review matched. The one thing added is that the on-behalf-of trailer — which the
-// writer appends to every body it posts (deskkit.AppendOnBehalfOf), so no posted review
-// carries the caller's bytes verbatim — is taken off both sides before the comparison, along
-// with surrounding whitespace a forge may trim. The expected body is derived by the same call
-// the post path makes, so a line that call removes from the caller's body is removed here too.
+// WHICH review matched. The one thing added is that on-behalf-of lines are taken off both
+// sides before the comparison: the writer appends one to every body it posts and removes any
+// the caller's body held (deskkit.AppendOnBehalfOf), so no posted review carries the caller's
+// bytes verbatim. deskkit.WithoutOnBehalfOf is that same removal, so what is compared is what
+// the caller wrote. Nothing is rendered here and no principal is resolved.
 func finishConfirm(a verdictArgs, repo string, shape reviewShape) (reviewInfo, error) {
-	postBody, err := deskkit.AppendOnBehalfOf(a.body, "", repo)
-	if err != nil {
-		return reviewInfo{}, fmt.Errorf("the posted body could not be reconstructed to compare against: %s", firstLineOf(err.Error()))
-	}
-	want := reviewBodyDigest([]byte(finishComparableBody(string(postBody))))
+	want := reviewBodyDigest([]byte(finishComparableBody(string(a.body))))
 
 	client, err := newPostBackend(a.owner, a.name)
 	if err != nil {
@@ -215,11 +211,11 @@ func finishConfirm(a verdictArgs, repo string, shape reviewShape) (reviewInfo, e
 		shape.state, reviewerBotDisplay(), repo, a.pr, a.head, len(reviews))
 }
 
-// finishComparableBody is a review body with the trailing on-behalf-of trailer and the
-// surrounding whitespace removed — the part of a posted body the caller wrote.
+// finishComparableBody is a review body with its on-behalf-of lines and the surrounding
+// whitespace removed — the part of a posted body the caller wrote.
 func finishComparableBody(body string) string {
 	s := strings.ReplaceAll(body, "\r\n", "\n")
-	return strings.TrimSpace(deskkit.StripOnBehalfOfSuffix(s))
+	return strings.TrimSpace(deskkit.WithoutOnBehalfOf(s))
 }
 
 // finishReviewRef names the confirmed review for a human: the forge's own link when the

@@ -337,6 +337,21 @@ func TestFinishConfirmIgnoresTheTrailerOnly(t *testing.T) {
 	if finishComparableBody(edited) == finishComparableBody(string(postBody)) {
 		t.Fatal("a substantive edit did not change the comparable body")
 	}
+
+	// A caller body that itself holds such a line: the writer removes it on the way out, so
+	// the posted body and the caller's body must still compare equal.
+	planted := "First paragraph.\n" + deskkit.OnBehalfOfPrefix + " human:somebody-else\n" + okReviewBody
+	postedPlanted, err := deskkit.AppendOnBehalfOf([]byte(planted), "", exampleRepo)
+	if err != nil {
+		t.Fatalf("AppendOnBehalfOf(planted): %v", err)
+	}
+	if strings.Contains(string(postedPlanted), "somebody-else") {
+		t.Fatal("fixture defect: the writer kept the planted line, so this case would prove nothing")
+	}
+	if finishComparableBody(string(postedPlanted)) != finishComparableBody(planted) {
+		t.Fatalf("a caller body holding its own on-behalf-of line did not compare equal to what was posted from it:\n posted=%q\n caller=%q",
+			finishComparableBody(string(postedPlanted)), finishComparableBody(planted))
+	}
 }
 
 // TestFinishReleaseFails: verdict posted and confirmed, release fails — non-zero, the message
