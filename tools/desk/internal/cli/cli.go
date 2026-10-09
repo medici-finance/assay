@@ -115,9 +115,20 @@ func Run(build func() *cobra.Command, args []string, opts Options) int {
 	}
 	// The opaque-argv split runs first, so the "--" it inserts also stops the single-dash
 	// rewrite below from touching the command line a verb runs.
-	args = splitOpaqueArgv(root, args)
+	args, walked := splitOpaqueArgv(root, args)
 	if opts.GoFlagCompat {
 		args = normalizeGoFlags(root, args)
+	}
+	// The split is only as good as its walk. Where the parser resolves an opaque-argv command the
+	// walk did not reach (a flag the walk does not know at the level it sits, which the parser
+	// skips together with the next word), no "--" was inserted and the parser would take the
+	// command's own words as flags. Such a line is refused before any handler runs.
+	if found, _, ferr := root.Find(args); ferr == nil && found != walked {
+		if _, opaque := found.Annotations[opaqueArgvKey]; opaque {
+			fmt.Fprintf(stderr, "%s: flags of %q must follow its arguments, not precede them\nRun '%s --help' for usage.\n",
+				root.Name(), found.CommandPath(), root.Name())
+			return usageExit
+		}
 	}
 	root.SetArgs(args)
 	_, err := root.ExecuteC()
@@ -214,15 +225,26 @@ func OpaqueArgv(cmd *cobra.Command, n int) {
 	cmd.Annotations[opaqueArgvKey] = strconv.Itoa(n)
 }
 
+// OpaqueAfter reports the count OpaqueArgv declared on cmd, and whether it declared one.
+func OpaqueAfter(cmd *cobra.Command) (int, bool) {
+	v, ok := cmd.Annotations[opaqueArgvKey]
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	return n, err == nil && n >= 0
+}
+
 // splitOpaqueArgv walks args the way Cobra resolves them (flags, their separate values, then
 // positionals naming subcommands) and, on reaching a command declared by OpaqueArgv, inserts
 // "--" before the first positional past the declared count. An explicit "--" is left as given.
-func splitOpaqueArgv(root *cobra.Command, args []string) []string {
+// It also returns the command the walk resolved, which Run compares with the parser's own.
+func splitOpaqueArgv(root *cobra.Command, args []string) ([]string, *cobra.Command) {
 	cur, pos := root, 0
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
-			return args
+			return args, cur
 		}
 		if len(a) > 1 && a[0] == '-' {
 			if flagTakesValue(cur, a) {
@@ -238,7 +260,7 @@ func splitOpaqueArgv(root *cobra.Command, args []string) []string {
 			if pos == n {
 				out := make([]string, 0, len(args)+1)
 				out = append(append(out, args[:i]...), "--")
-				return append(out, args[i:]...)
+				return append(out, args[i:]...), cur
 			}
 			pos++
 			continue
@@ -251,7 +273,7 @@ func splitOpaqueArgv(root *cobra.Command, args []string) []string {
 		}
 		pos++
 	}
-	return args
+	return args, cur
 }
 
 // subcommand is the child of c named (or aliased) a, nil when there is none.
@@ -267,7 +289,8 @@ func subcommand(c *cobra.Command, a string) *cobra.Command {
 // flagTakesValue reports whether flag token a, as c would parse it, consumes the next word as its
 // value: a known non-boolean flag spelled without "=". Long names are matched with one or two
 // dashes (the single-dash form is what GoFlagCompat rewrites); a one-letter single-dash token is a
-// shorthand. An unknown flag consumes nothing — Cobra refuses it anyway.
+// shorthand. An unknown flag consumes nothing here; the parser's command lookup instead skips the
+// next word with it, and Run refuses a line where that makes the two disagree on an opaque command.
 func flagTakesValue(c *cobra.Command, a string) bool {
 	name := strings.TrimPrefix(strings.TrimPrefix(a, "-"), "-")
 	if strings.Contains(name, "=") {
