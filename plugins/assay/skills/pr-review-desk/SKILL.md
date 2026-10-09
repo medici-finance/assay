@@ -638,13 +638,15 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   1. **The diff touches a generated-table region** — the default for any hunk inside a stream
      README's `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is
      `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
-     row from the PR's own trailer + state; drop the hunk." TWO narrow carve-outs admit a hunk —
-     (A) newly added rows, below, and (B) a witnessed `implemented` promotion of an existing
-     brief's row — cross-repo or same-repo — after it. Each is mechanical, not a judgment call; a hunk that fits neither bounces. Carve-out
+     row from the PR's own trailer + state; drop the hunk." THREE narrow carve-outs admit a hunk —
+     (A) newly added rows, below; (B) a witnessed `implemented` promotion of an existing
+     brief's row — cross-repo or same-repo — after it; and (C) a hand-back `implemented` promotion
+     of ONE cross-repo brief's row whose delivering PR carries no trailer for the brief, last. Each
+     is mechanical, not a judgment call; a hunk that fits none of the three bounces. Carve-out
      A admits a hunk only when ALL of the following hold:
      - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
        row; ANY change to an existing row — down to a single cell — bounces unconditionally unless
-       carve-out B admits it.
+       carve-out B or carve-out C admits it.
      - **Every added row is honest-base — `todo` with empty stamps.** Each added row's `Status` must
        be the bare token `todo` and its `Verified` and `Reviewed` cells must be empty (`—` or blank).
        ANY row in an added-rows hunk carrying a non-`todo` `Status`, or a non-empty `Verified` or
@@ -757,6 +759,69 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      run can witness — including backfill-only matches whose work has not landed. B lets a PR carry
      just the rows the reviewer has checked. Widening B further — to any other transition, cell or
      row shape — needs a new ruling, never a reviewer's reading.
+
+     Carve-out C (the driver's ruling of 2026-10-09, tracked as #2428) admits a hunk that promotes
+     ONE existing row of a brief delivered into ANOTHER repo to `implemented` when the delivering
+     PR carries no `Brief:` trailer for the brief, so carve-out B's run has no trailer to fold —
+     only when ALL of the following hold:
+     - **One row, Status-only, one transition.** The hunk changes exactly one row, and on it the
+       ONLY changed cell is `Status`, from the bare token `todo` or `in-progress` to the bare
+       token `implemented`; every other cell and every other row is byte-identical to the base.
+       A second changed row, or ANY other change, bounces the hunk whole.
+     - **The flip PR is that row and nothing else.** The PR's whole diff is the one hunk, in one
+       stream README under `docs/streams/`, and its link trailer is `Issue: #<N>` — never
+       `Brief:` or `Authors:`. Any other file, or a `Brief:` trailer naming the brief, bounces
+       the PR: the model auto-flip credits a merged `Brief:`-trailer PR that carries a file
+       outside the stream docs as the brief's delivering PR, and the approval of a one-cell
+       board edit must never be read as the review of the delivery.
+     - **The delivery repo comes from the brief, and is not the board repo.** Read it from the
+       brief file at the target repo's fetched `refs/remotes/origin/main`: its `homed-in:`
+       frontmatter; its `deliverable_repo:` alias, resolved to the `repo:` value of that alias's
+       entry under `repos:` in `docs/streams/graph-repos.yaml` at the same ref; else its stream
+       README's `repo:` frontmatter. NEVER take it from the PR body, the PR head, or the author's
+       say-so. An alias that does not resolve to a valid `<owner>/<name>`, or a brief whose
+       `homed-in:` and `deliverable_repo:` resolve to different repos, is could-not-check and
+       bounces the row — it never falls through to the next source. The delivery repo must be
+       in `deskroster repos --scope write` and must differ from the board repo: a same-repo row
+       is carve-out B's, never C's. The verdict records the delivery repo and where it was read
+       from, and the brief's `gate:` and risk terms — a trailer-less delivery drew no
+       brief-declared risk review.
+     - **The counted files come from the brief's `files:` list.** Read the `files:` list in the
+       brief's `## Context` at the same ref — never from the PR body or the PR head. An entry
+       COUNTS only when, with any trailing ` — ` note or parenthesised mark dropped, it names
+       exactly one concrete file path. A directory, a glob, a placeholder (`<…>`), an entry
+       naming several paths, and any path under the delivery repo's `changelog/` (each release
+       clears it) count for nothing: they pass no check below and fail none. A brief with no
+       `files:` list, or none of whose entries counts, bounces the row. Files only; symbols are
+       not checked.
+     - **The PR body names one delivering PR; the forge binds it to the brief.** The body names
+       exactly one PR as the delivery — none, or more than one, bounces the row. That is a
+       CLAIM. Read the named PR on the forge and admit the row only when ALL hold: it is a PR of
+       the delivery repo read above; it is merged, and its merge commit is on the delivery
+       repo's main at a ref fetched this cycle; it merged AFTER the commit that added the brief
+       file to the target repo's main; and its changed-files list shows at least one counted
+       file with status `added`. A named PR that only modifies files that already existed binds
+       nothing and bounces the row: a delivery that adds no counted file has no path through C.
+       A named PR whose body carries `Brief: <stream>/<NN>` for this brief also bounces the row,
+       one line: "the delivering PR carries the brief's trailer — carve-out B's run can witness
+       it; carry that run's output."
+     - **Every counted file exists on the delivery repo's main**, read at a ref fetched this
+       cycle (not a sibling checkout). The verdict records the counted paths, which of them the
+       named PR added, and the commit read. A counted file that is missing bounces the row.
+     - **Could-not-check is never a pass.** A brief, registry, forge or tree read that could not
+       be made bounces the row.
+     - **Not a statusgen-source PR.** As in carve-out A.
+
+     Carve-out C has no tool reproduction: the brief, the registry, the named PR with its
+     changed-files list, and the delivery repo's tree are the only evidence, and the PR body is a
+     claim throughout. It exists because a delivering PR can be barred from naming the brief at
+     all — a delivery repo whose PRs carry an `Issue:` trailer and no stream slug — so the
+     trailer fold has nothing to join, the row stays `todo` after the work has merged, and the
+     planner re-offers a delivered brief. C admits `implemented` and nothing else: it never
+     touches the row's `Verified` or `Reviewed` cell, and the brief's Verify run is still owed —
+     that run is the layer behind a wrong flip. Widening C — to a same-repo row, a second row,
+     any other transition, an unmerged delivery, a delivery that adds no counted file, or a
+     counted file that is missing — needs a new ruling, never a reviewer's reading.
   2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer:
      `Brief: <stream>/<NN>` (the brief this PR delivers), `Authors: <stream>/<NN>[, …]` (a
      briefs-authoring PR — it writes those briefs and delivers none of them), **or** `Issue: #<N>`
