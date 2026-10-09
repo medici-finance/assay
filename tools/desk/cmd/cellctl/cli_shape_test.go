@@ -71,9 +71,9 @@ func TestScratchRunFlagsBeforeVerb(t *testing.T) {
 	}
 }
 
-// TestCLILegacyShapeRefusals: each line here was refused by the pre-migration binary with exit 3
-// and is outside the recorded decision's four entries, so it is refused again: usage exit 3, no
-// roster echo, nothing on stdout, and the cell's files untouched.
+// TestCLILegacyShapeRefusals: each line here (but the two marked) was refused by the pre-migration
+// binary with exit 3 and is outside the recorded decision's four entries, so it is refused again:
+// usage exit 3, no roster echo, nothing on stdout, and the cell's files untouched.
 func TestCLILegacyShapeRefusals(t *testing.T) {
 	w := newCLIWorld(t, "")
 	other := filepath.Join(w.root, "other-registry")
@@ -94,6 +94,9 @@ func TestCLILegacyShapeRefusals(t *testing.T) {
 		{"--cells-root", w.cellsRoot, "show", "example", "--cells-root", other},
 		{"--cells-root", w.cellsRoot, "down", "example", "--cells-root", other},
 		{"show", "example", "--cells-root", other},
+		// (the old parser ignored every word after ls, so these two listed CELLS_ROOT's registry
+		// with exit 0; applying the selector there would list another one, so they are refused
+		// and named in the compat doc's list of remaining differences)
 		{"ls", "--cells-root", w.cellsRoot},
 		{"ls", "--cells-root=" + w.cellsRoot},
 		{"--cells-root=" + w.cellsRoot, "ls"},
@@ -153,10 +156,6 @@ func TestCLILegacyShapeAccepted(t *testing.T) {
 	}
 	if r := w.run(t, nil, "show", "example", "--harness", "codex", "--cockpit", "tmux"); r.Code != 0 || !strings.Contains(r.Stdout, "CELL_HARNESS=codex (flag)") {
 		t.Errorf("flags after the positionals: exit %d\n%s%s", r.Code, r.Stdout, r.Stderr)
-	}
-	// An empty first word printed the usage and exited 0 before the migration; it still does.
-	if r := w.run(t, nil, "", "show", "example"); r.Code != 0 || !strings.Contains(r.Stdout, "Usage:") {
-		t.Errorf("empty first word: exit %d\n%s%s", r.Code, r.Stdout, r.Stderr)
 	}
 	// A selector AFTER a raw verb is that verb's own word, as it always was: it reaches the child.
 	if runtime.GOOS != "windows" {

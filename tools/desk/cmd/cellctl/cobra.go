@@ -54,6 +54,8 @@ func rawVerb(args []string) bool {
 // runTree executes one invocation against a fresh tree and returns its exit code. It is the
 // only place that turns the exit panic into a code.
 func runTree(args []string) (code int) {
+	rawSelector, rawSelected = "", false
+	hook := hookVerb(args)
 	defer func() {
 		if r := recover(); r != nil {
 			ec, ok := r.(exitCode)
@@ -65,28 +67,41 @@ func runTree(args []string) (code int) {
 		// Fail closed. A parse failure of the hook's own argv exits with the usage code (3),
 		// which Claude Code treats as a NON-blocking hook error and lets the action through.
 		// Whatever stopped the hook, a non-zero result is the blocking status.
-		if code != 0 && hookVerb(args) {
+		if code != 0 && hook {
 			code = hookBlockExit
 		}
 	}()
+	// The pre-migration command-line shape, checked before anything parses or echoes.
+	if err := legacyShape(buildRoot(), args); err != nil {
+		fmt.Fprintf(os.Stderr, "cellctl: %v\nRun 'cellctl --help' for usage.\n", err)
+		return 3
+	}
 	raw := rawVerb(args)
-	if raw && selectorSpan(args) > 0 && !strings.HasPrefix(args[0], "--") {
-		// The single-dash flag rewrite is off for a raw verb (its words are not ours to touch),
-		// and Cobra would take the selector's separate value for the verb name. Only the leading
-		// selector token is respelled; the verb's own words are passed through untouched.
-		args = append([]string{"-" + args[0]}, args[1:]...)
+	if raw && args[0] == "--cells-root" {
+		// The selector is taken off here, where only its leading position counts: past the verb,
+		// Cobra hands a flag-less command its words with the verb name removed, so a selector
+		// before the verb and the same words after it would otherwise look alike to the verb.
+		rawSelector, rawSelected = args[1], true
+		args = args[2:]
 	}
 	return cli.Run(buildRoot, args, cli.Options{
 		IO:              cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr},
 		Version:         versionLine(),
 		VersionTemplate: "{{.Version}}\n",
 		UsageExit:       3,
-		GoFlagCompat:    !raw,
+		// Single-dash long flags are the Go flag package's spelling, which only scratch read.
+		GoFlagCompat: scratchLine(args),
 	})
 }
 
-// selectCellsRoot applies the --cells-root selector. The legacy parser accepted it only as the
-// first token; the persistent flag accepts it anywhere, with the same absolute-path refusal.
+// rawSelector is the leading `--cells-root <value>` runTree took off a raw entrypoint's line.
+var (
+	rawSelector string
+	rawSelected bool
+)
+
+// selectCellsRoot applies the --cells-root selector. As for the legacy parser it is accepted only
+// as the first word (legacyShape refuses it anywhere else), with the same absolute-path refusal.
 func selectCellsRoot(path string) {
 	if !filepath.IsAbs(path) {
 		die("--cells-root requires an absolute registry path and a command")
@@ -97,8 +112,9 @@ func selectCellsRoot(path string) {
 }
 
 // selectorSpan is how many leading tokens of args spell the --cells-root selector: 2 for the
-// separated form (--cells-root <abs>), 1 for the = form, 0 when args do not start with one. The
-// single-dash spellings are the Go flag package's, which the tree accepts for every long flag.
+// separated form (--cells-root <abs>), 1 for the = form, 0 when args do not start with one. Only
+// the separated form is accepted (legacyShape refuses the others); the hook's fail-closed exit and
+// its deadline still recognize every spelling, so no refused spelling can make the hook non-blocking.
 func selectorSpan(args []string) int {
 	if len(args) == 0 {
 		return 0
@@ -114,23 +130,12 @@ func selectorSpan(args []string) int {
 	return 0
 }
 
-// rawArgs strips a leading --cells-root selector (any spelling selectorSpan knows) from a
-// flag-less command's argv (Cobra does not parse flags for it) and applies it; everything else
-// is the command's own argv, untouched.
+// rawArgs applies the leading --cells-root selector runTree took off a flag-less command's line
+// (Cobra parses no flags for it) and returns the command's own argv untouched: a selector spelled
+// after the verb is one of the verb's words, as it was for the legacy parser.
 func rawArgs(args []string) []string {
-	switch selectorSpan(args) {
-	case 2:
-		if len(args) < 3 {
-			die("--cells-root requires an absolute registry path and a command")
-		}
-		selectCellsRoot(args[1])
-		return args[2:]
-	case 1:
-		if len(args) < 2 {
-			die("--cells-root requires an absolute registry path and a command")
-		}
-		selectCellsRoot(strings.SplitN(args[0], "=", 2)[1])
-		return args[1:]
+	if rawSelected {
+		selectCellsRoot(rawSelector)
 	}
 	return args
 }
@@ -259,7 +264,7 @@ func versionCmd() *cobra.Command {
 		Use:         "version",
 		Short:       "print the release tag this copy ships at",
 		Long:        "Print the release tag this copy ships at (\"dev-<commit>\" for a source checkout), the same contract\n`statusgen --version` uses, so a stale copy is detectable.",
-		Annotations: map[string]string{noEcho: "1"},
+		Annotations: map[string]string{noEcho: "1", leadingArgsKey: "0"},
 		Args:        cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println(versionLine())
@@ -270,11 +275,12 @@ func versionCmd() *cobra.Command {
 
 func lsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "ls",
-		Short: "list the cells under the registry",
-		Long:  "List the cells under CELLS_ROOT. No cells yet is a legitimate state: nothing is printed and the exit is 0.",
-		Args:  cobra.ArbitraryArgs,
-		RunE:  func(cmd *cobra.Command, args []string) error { cmdLs(); return nil },
+		Use:         "ls",
+		Short:       "list the cells under the registry",
+		Long:        "List the cells under CELLS_ROOT. No cells yet is a legitimate state: nothing is printed and the exit is 0.",
+		Annotations: map[string]string{leadingArgsKey: "0"},
+		Args:        cobra.ArbitraryArgs,
+		RunE:        func(cmd *cobra.Command, args []string) error { cmdLs(); return nil },
 	}
 }
 
@@ -287,7 +293,8 @@ func checkCmd() *cobra.Command {
 			"CELL_HARNESS=codex it also checks the codex harness block (binary, auth, multi_agent, resident rules,\n" +
 			"skills discovery). It prints one \"model pin\" row per role naming that role's harness and its RESOLVED\n" +
 			"model; a role with no per-harness pin and no tier match is a MISS here, before boot, not a startup failure.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cell := cellArg(args)
 			cfg := ""
@@ -302,11 +309,12 @@ func checkCmd() *cobra.Command {
 
 func deskdCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "deskd <cell>",
-		Short: "stand the cell's persistent deskd",
-		Long:  "Stand the cell's persistent deskd (attended: mints per-org read tokens).",
-		Args:  cobra.ArbitraryArgs,
-		RunE:  func(cmd *cobra.Command, args []string) error { cmdDeskd(cellArg(args)); return nil },
+		Use:         "deskd <cell>",
+		Short:       "stand the cell's persistent deskd",
+		Long:        "Stand the cell's persistent deskd (attended: mints per-org read tokens).",
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
+		RunE:        func(cmd *cobra.Command, args []string) error { cmdDeskd(cellArg(args)); return nil },
 	}
 }
 
@@ -316,8 +324,9 @@ func statusCmd() *cobra.Command {
 		Short: "report a cell's session state",
 		Long: "Scrubbed cell: `running <session>`, `stopped` or `stale-lock <pid>`. House cell: one cadence line per role.\n" +
 			"A read: exit 0 unless the cell fails to load.",
-		Args: cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, args []string) error { cmdStatus(cellArg(args)); return nil },
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
+		RunE:        func(cmd *cobra.Command, args []string) error { cmdStatus(cellArg(args)); return nil },
 	}
 }
 
@@ -383,7 +392,8 @@ func deskCmd() *cobra.Command {
 			"one-backup path `cellctl set` uses; an override not given is never re-written. --kind, --cockpit and\n" +
 			"--provider override cell.env's CELL_KIND, CELL_COCKPIT and CELL_PROVIDER for this run; a --kind the cell\n" +
 			"is not provisioned for is refused naming the missing key.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "2"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd, launchBindings()...)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -419,7 +429,8 @@ func upCmd() *cobra.Command {
 			"commands and launches nothing.\n\n" +
 			"On a container or scrubbed cell up hands the single desk the same typed options; the host-cockpit flags\n" +
 			"(--no-the-desk, --with-the-desk, --no-attach, --automate) are refused there.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	bs := append(launchBindings(),
 		bBool("no-the-desk", "do not open the the-desk window"),
@@ -447,7 +458,8 @@ func downCmd() *cobra.Command {
 		Long: "Tear the session (and this cell's deskd) down. What `up` opened in a non-tmux cockpit is closed where that\n" +
 			"cockpit offers a verb for it, and named for you to close by hand where it does not. A container or scrubbed\n" +
 			"cell accepts no host cockpit or deskd flags.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd,
 		bBool("keep-deskd", "leave the cell's deskd running"),
@@ -469,7 +481,8 @@ func smokeCmd() *cobra.Command {
 		Long: "Scrubbed-cell only: a one-shot, tool-free, read-only readiness probe. The harness answers `READY` or the\n" +
 			"verb exits 1 naming what it said instead. Never a Verify row on a live harness; DRY_RUN=1 prints the plan\n" +
 			"and runs nothing.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd,
 		bStr("harness", "harness to probe (claude|codex)"),
@@ -491,7 +504,8 @@ func showCmd() *cobra.Command {
 			"CELL_HARNESS, CELL_PROVIDER) and one `[show] model <role>=<m> (source)` line per role: the effective values,\n" +
 			"with the flags given applied, so what an invocation would resolve to is greppable before booting it.\n" +
 			"Launches and writes nothing.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd,
 		bStr("kind", "cell kind ("+joinPipe(kindValues)+")"),
@@ -521,7 +535,8 @@ func setCmd() *cobra.Command {
 			"model-pin KEY from the ACTIVE harness (DESK_MODEL_<role> on claude, CODEX_MODEL_<role> on codex); and the\n" +
 			"flag form `<cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]`, sugar for the matching\n" +
 			"KEY=VALUE (CELL_KIND / CELL_COCKPIT / CELL_HARNESS / CELL_PROVIDER), validated by the same rules.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd,
 		bBool("force", "write a KEY that is not a known cell.env key"),
@@ -555,7 +570,8 @@ func newCmd() *cobra.Command {
 			"credentials copied) or --container-config <absolute JSON file> (the native Go runtime; see docs/cellctl.md).\n\n" +
 			"--kind scrubbed: --repo <checkout> --repo-slug <owner/repo> [--roots '...'] [--roles \"...\"], a host-local\n" +
 			"cell whose harness runs inside an environment cellctl fully COMPOSES. See docs/cellctl.md.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "0"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd,
 		bDef("kind", "k8s|house|container|scrubbed", "k8s"),
@@ -605,7 +621,8 @@ func cadenceCmd() *cobra.Command {
 			"CELL_CADENCE / CELL_TICK_BUDGET persist the same settings; cadence off disables it. The foreground process\n" +
 			"survives model turns. Restart resumes its checkpoint; an unfinished prior child refuses until inspected and\n" +
 			"explicitly recovered. No OS startup service is installed.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "2"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior harness and all its children have stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -627,7 +644,8 @@ func cacheCmd() *cobra.Command {
 			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor. Configure CELL_GO_CACHE_ROOT /\n" +
 			"CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE. Recovery requires external proof ALL cache consumers have\n" +
 			"stopped. See docs/cellctl-go-cache.md.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "2"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm every cache consumer has stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -644,7 +662,8 @@ func commsCmd() *cobra.Command {
 		Short: "check, run or recover a cell's interim comms service",
 		Long: "Set the manifest: cellctl set <cell> CELL_COMMS_CONFIG=<absolute-path>. `up` opens one configured interim\n" +
 			"service window; `down` stops it. `recover` needs --confirm-stopped. See docs/cellctl-comms.md.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "2"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior gateway, drain and every owned child have stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -662,7 +681,8 @@ func scratchCmd() *cobra.Command {
 		Long: "Managed task scratch and evidence handoff; see docs/cellctl-scratch.md. `run` executes the command after\n" +
 			"`--` in a private TMPDIR under a lease; `ack` hands the evidence off; `sweep` removes expired scratch (dry run\n" +
 			"unless --apply); `inventory` reads a legacy root.",
-		Args: cobra.ArbitraryArgs,
+		Annotations: map[string]string{leadingArgsKey: "2"},
+		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd,
 		bBool("apply", "apply cleanup; default is dry-run"),
@@ -711,11 +731,12 @@ func scratchCmd() *cobra.Command {
 
 func providersCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "providers init",
-		Short: "create the shared providers.json",
-		Long:  "Create CELLS_ROOT/providers.json (per-provider desk models/effort; <cell>/providers.json overrides) without overwriting an existing one.",
-		Args:  cobra.ArbitraryArgs,
-		RunE:  func(cmd *cobra.Command, args []string) error { cmdProviders(args); return nil },
+		Use:         "providers init",
+		Short:       "create the shared providers.json",
+		Long:        "Create CELLS_ROOT/providers.json (per-provider desk models/effort; <cell>/providers.json overrides) without overwriting an existing one.",
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ArbitraryArgs,
+		RunE:        func(cmd *cobra.Command, args []string) error { cmdProviders(args); return nil },
 	}
 }
 
