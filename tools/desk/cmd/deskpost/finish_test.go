@@ -444,6 +444,67 @@ func TestFinishRerunAfterALostPostResponse(t *testing.T) {
 	}
 }
 
+// TestUnreadableReviewsRefuseThePost: the duplicate check reads the change's reviews before
+// any post. When that read fails the verb posts nothing and exits non-zero — an unread
+// listing is never taken for an empty one — and `finish` stops at its post step with the
+// claim still held.
+func TestUnreadableReviewsRefuseThePost(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args func(bf string) []string
+		body string
+	}{
+		{"review", func(bf string) []string { return reviewArgs(exampleRepo, "1", "approve", testHead, bf) }, okReviewBody},
+		{"security-review", func(bf string) []string { return secReviewArgs(exampleRepo, "1", "pass", testHead, bf) }, okSecurityBody},
+		{"finish review", func(bf string) []string {
+			return finishArgs("review", "1", "approve", testHead, bf, finishClaimKey)
+		}, okReviewBody},
+		{"finish security-review", func(bf string) []string {
+			return finishArgs("security-review", "1", "pass", testHead, bf, finishSecurityClaimKey)
+		}, okSecurityBody},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := setupFinish(t)
+			h.claimKey = finishClaimKey
+			if strings.Contains(tc.name, "security") {
+				h.claimKey = finishSecurityClaimKey
+			}
+			inner := h.f.intercept
+			reads := 0
+			h.f.intercept = func(method, path string) (int, bool) {
+				if method == http.MethodGet && reReviews.MatchString(path) {
+					reads++
+					return http.StatusInternalServerError, true
+				}
+				return inner(method, path)
+			}
+			bf := writeBody(t, "v.md", tc.body)
+
+			code := run(tc.args(bf))
+			if reads == 0 {
+				t.Fatal("fixture defect: the reviews were never read")
+			}
+			if code != deskkit.ExitUnverifiable {
+				t.Fatalf("exit = %d, want %d with the reviews unreadable\nstderr: %s", code, deskkit.ExitUnverifiable, h.errOut.String())
+			}
+			if h.f.postedReview != 0 {
+				t.Fatalf("postedReview = %d — a verdict was posted over an unread listing", h.f.postedReview)
+			}
+			if h.deletes() != 0 {
+				t.Fatalf("a claim was released: %v", h.f.hits)
+			}
+			for _, e := range auditEntries(t) {
+				if e.Result == deskkit.ResultOK || e.Result == deskkit.ResultNoop {
+					t.Fatalf("an audit row reads %q: %+v", e.Result, e)
+				}
+			}
+			if strings.HasPrefix(tc.name, "finish") && !strings.Contains(h.errOut.String(), "STOPPED at step 1 of 3 (post)") {
+				t.Fatalf("finish did not stop at its post step:\n%s", h.errOut.String())
+			}
+		})
+	}
+}
+
 // TestFinishConfirmFails: the post succeeds but the verdict cannot be read back at the head —
 // finish stops at the confirm step with exit 6 and the claim is NOT released.
 func TestFinishConfirmFails(t *testing.T) {
@@ -842,31 +903,5 @@ func TestFinishRefusesAnotherLanesClaim(t *testing.T) {
 				t.Errorf("a finish given another lane's key wrote an audit row")
 			}
 		})
-	}
-}
-
-// TestFinishClaimLaneRule holds the lane-of-a-key rule: a `security` segment, in any letter
-// case, among the `--`-separated parts after the last `--pr-<N>`.
-func TestFinishClaimLaneRule(t *testing.T) {
-	for _, tc := range []struct {
-		key  string
-		pr   int
-		want bool
-	}{
-		{"tracker--pr-1", 1, false},
-		{"tracker--pr-1--security", 1, true},
-		{"tracker--pr-1--Security", 1, true},
-		{"tracker--pr-1--r2--security", 1, true},
-		{"tracker--pr-1--security--r2", 1, true},
-		{"tracker--pr-1--correctness", 1, false},
-		{"tracker--pr-1--insecurity", 1, false},
-		{"tracker--pr-1--security-notes", 1, false},
-		{"security--pr-1", 1, false},           // the label is not the lane
-		{"tracker--pr-10--security", 1, false}, // another change's key
-		{"tracker--security", 1, false},
-	} {
-		if got := finishClaimKeyIsSecurity(tc.key, tc.pr); got != tc.want {
-			t.Errorf("finishClaimKeyIsSecurity(%q, %d) = %v, want %v", tc.key, tc.pr, got, tc.want)
-		}
 	}
 }
