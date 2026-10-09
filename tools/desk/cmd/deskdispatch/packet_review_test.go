@@ -17,7 +17,7 @@ import (
 
 const (
 	rpHead  = "1111111111111111111111111111111111111111"
-	rpToken = "00112233445566778899aabbccddeeff"
+	rpToken = "test-boundary-token"
 )
 
 // fakeReviewForge is the review packet's forge: canned records, a log of the files it was
