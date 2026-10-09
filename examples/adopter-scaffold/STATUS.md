@@ -22,11 +22,29 @@
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (0 desk-actionable of 0 total — 0 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (0 for the desk · 0 for the driver · 0 for workers · 0 for an operator · 0 runner-pending — of 0 total)
 
-_Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
+_Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
+
+### Awaiting human gate (0)
+
+_None._
+
+### Awaiting implementer rework (0)
+
+_None._
+
+### Environment-blocked (0)
+
+_None._
+
+### Runner-pending (0)
+
+_None._
+
+### Desk-actionable (0)
 
 _None._
 
