@@ -376,6 +376,11 @@ func cmdUp(cell string, args []string) {
 			harness = route.Harness
 			fmt.Printf("[policy] role=%s provider=%s model=%s effort=%s source=%s sha256=%s\n", role, route.Provider, route.Model, route.Effort, policySource, policy.SHA256)
 		}
+		if _, rc, err := c.roleContextFor(role, harness); err != nil {
+			die("up: %v; no role windows launched", err)
+		} else if rc != nil && automate != "" {
+			die("up: --automate cannot apply the role context declared for %s; use live desk windows", role)
+		}
 		o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)
 		if automate != "" && (o.roleCadence[role] != nil || harness != "claude") {
 			die("up: --automate cannot preserve this cell launch; use --cadence with cockpit terminals")
