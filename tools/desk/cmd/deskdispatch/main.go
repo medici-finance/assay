@@ -190,6 +190,23 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       SKIPPED for a worker/verifier dispatch; DEFERRED when no --pr is known.
   7 prompt-emit       writes the assembled agent prompt to stdout, or to --prompt-file.
 
+THE PACKET. Between the before_run hook and step 7, a --kit review dispatch with --pr known
+reads the change ONCE and writes one owner-only Markdown file: the change's facts and
+description, the checks at its head, the reviewer identity's earlier verdicts of this lane
+in full, an index of its other reviews, the reviews by other accounts under their own
+heading (never counted as verdicts), the diff, each touched file as it reads after the
+change, and the brief when --brief names one. The head commit and the build time are at the top. Caps are stated
+in the file (64 KiB per file, 192 KiB for the diff, 512 KiB in all, 60 files); anything over
+one is left out WHOLE and listed by name and size, never cut short. Multi-line text from
+the change sits between boundary lines carrying a per-packet random token, and no line of it
+begins with a boundary mark; single-line values from the change (a title, a branch, a check
+or file name) are shown in code spans. The packet's header says both are data. The file
+goes beside the prompt file ("<prompt file>.packet.md"), or, when the prompt is printed, in
+the user cache directory ("assay/packets/<item-key>.packet.md"); the assignment gains ONE
+line, "Packet: <absolute path>". It is not a step and cannot fail the dispatch: when it
+cannot be built, stderr says why and the assignment carries no such line. Not built on
+--dry-run. No flag and no configuration.
+
 --claim-root separates "where the consumer scripts live" from "which repo the worker's
 worktree branches from". The scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
 were centralized out of the consumer repos, so a cross-repo dispatch points --claim-root

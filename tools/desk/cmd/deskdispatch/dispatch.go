@@ -508,6 +508,9 @@ func dispatch(o dispatchOpts) error {
 			released, herr), herr))
 	}
 
+	// The read-ahead packet (packet.go). Never an error: no packet means no `Packet:` line.
+	plan.packetPath = buildPacketFn(o, plan, repo, home)
+
 	prompt, perr := assemblePrompt(o, plan, home)
 	if perr != nil {
 		return held.settle(perr)
@@ -629,6 +632,10 @@ type dispatchPlan struct {
 	// from the roster — never a flag. Resolved pre-claim, so a store that
 	// cannot be used refuses before any worktree is cut and before any credential is minted.
 	claimStore deskkit.ClaimStoreResolution
+	// packetPath is the absolute path of the read-ahead packet written for this dispatch, or
+	// "" when none was (no provider for the kit, --dry-run, or the build did not succeed).
+	// Set once, after the worktree exists; the prompt carries a `Packet:` line iff it is set.
+	packetPath string
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
