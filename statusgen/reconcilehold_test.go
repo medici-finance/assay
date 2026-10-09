@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -160,5 +161,87 @@ func TestTransitionProblemsCannotSeeRow(t *testing.T) {
 	}
 	if _, found := env.transitionProblems("dg", "05", "implemented"); !found {
 		t.Fatal("dg/05 is in the lint model and must be found")
+	}
+}
+
+// TestHoldParityReadOnly is the parity check with a held row in the fixture:
+// on the design-gate tree the read-only form reports exactly the rows and the
+// holds --apply then produces, and writes nothing itself. Without the hold in
+// the shared path, the read-only form lists dg/05 as a row --apply would write.
+func TestHoldParityReadOnly(t *testing.T) {
+	root := copyDesignGateFixture(t)
+	cells := []BriefCell{
+		{ID: "dg/05", Cell: "implemented", Source: "pr", Witness: "PR #5 (merged 0000005)"},
+		{ID: "dg/03", Cell: "implemented", Source: "pr", Witness: "PR #3 (merged 0000003)"},
+	}
+	before := readFixtureReadme(t, root)
+	planned, plannedHeld, err := planReconcileWrites(root, cells)
+	if err != nil {
+		t.Fatalf("planReconcileWrites: %v", err)
+	}
+	if got := readFixtureReadme(t, root); got != before {
+		t.Fatalf("the read-only form wrote to the tree:\n%s", got)
+	}
+	applied, appliedHeld, err := applyReconcileWrites(root, cells)
+	if err != nil {
+		t.Fatalf("applyReconcileWrites: %v", err)
+	}
+	if len(appliedHeld) != 1 || appliedHeld[0].ID != "dg/05" || len(applied) != 1 {
+		t.Fatalf("fixture drift: want dg/03 applied and dg/05 held, got applied=%+v held=%+v", applied, appliedHeld)
+	}
+	if !reflect.DeepEqual(planned, applied) {
+		t.Fatalf("wouldApply differs from applied:\nplanned: %+v\napplied: %+v", planned, applied)
+	}
+	if !reflect.DeepEqual(plannedHeld, appliedHeld) {
+		t.Fatalf("the read-only holds differ from --apply's:\nplanned: %+v\napplied: %+v", plannedHeld, appliedHeld)
+	}
+}
+
+// TestHoldTreeRuleSeesStage pins the staging the hold decides by: a rule that
+// re-reads the board from disk (as the drive-snapshot region check does) must
+// see the move under evaluation in BOTH forms, while nothing is written. A
+// planted rule of that shape flags dg/03 at implemented; dg/03 must be held by
+// the read-only form and by --apply alike, the README byte-for-byte unchanged.
+func TestHoldTreeRuleSeesStage(t *testing.T) {
+	prev := statusKeyedLintRules
+	statusKeyedLintRules = append(append([]statusKeyedLintRule(nil), prev...), statusKeyedLintRule{
+		name: "plantedTreeRule",
+		problems: func(e *lintEnv) []string {
+			streams, _, err := loadStreams(e.root)
+			if err != nil {
+				return []string{"planted: " + err.Error()}
+			}
+			for _, s := range streams {
+				for _, b := range s.Briefs {
+					if s.Name == "dg" && b.Num == "03" && b.Status == "implemented" {
+						return []string{"planted: dg/03 read from the tree at implemented"}
+					}
+				}
+			}
+			return nil
+		},
+	})
+	t.Cleanup(func() { statusKeyedLintRules = prev })
+
+	cells := []BriefCell{{ID: "dg/03", Cell: "implemented", Source: "pr", Witness: "PR #3 (merged 0000003)"}}
+	for _, write := range []bool{false, true} {
+		root := copyDesignGateFixture(t)
+		before := readFixtureReadme(t, root)
+		rows, held, err := reconcileWrites(root, cells, write)
+		if err != nil {
+			t.Fatalf("write=%v: %v", write, err)
+		}
+		if len(rows) != 0 || len(held) != 1 || !strings.Contains(strings.Join(held[0].Problems, "\n"), "planted: dg/03") {
+			t.Fatalf("write=%v: a tree-reading rule must see the staged move and hold dg/03, got rows=%+v held=%+v", write, rows, held)
+		}
+		if got := readFixtureReadme(t, root); got != before {
+			t.Fatalf("write=%v: a held row left the README changed:\n%s", write, got)
+		}
+	}
+	stagedReadmes.RLock()
+	left := len(stagedReadmes.m)
+	stagedReadmes.RUnlock()
+	if left != 0 {
+		t.Fatalf("reconcileWrites left %d staged README(s) behind", left)
 	}
 }

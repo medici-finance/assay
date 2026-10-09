@@ -6,7 +6,6 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,53 +42,19 @@ func tarGz(t *testing.T, name string, content []byte) []byte {
 }
 
 // fixture builds a temp manifest + the asset bytes it pins, for platform
-// windows-amd64. Returns the manifest path, the two asset byte blobs, and a
-// Fetcher that serves them by URL. The returned statusgen bytes are what the
-// manifest's sha256 was computed over — callers TAMPER them to drive the
-// negative path.
-func fixture(t *testing.T, tag string) (manifestPath string, statusgen, desktools []byte, fetch Fetcher) {
+// windows-amd64, plus a valid attestation bundle per asset signed under a
+// throwaway test trust root (attest_test.go). Returns the manifest path, the two
+// asset byte blobs, a Fetcher that serves assets and bundles by URL, and the
+// trust root to pass as Options.TrustedRoot. The returned statusgen bytes are
+// what the manifest's sha256 was computed over — callers TAMPER them to drive
+// the negative path.
+func fixture(t *testing.T, tag string) (manifestPath string, statusgen, desktools []byte, fetch Fetcher, trust []byte) {
 	t.Helper()
-	statusgen = []byte("STATUSGEN-WINDOWS-AMD64-EXE-fixture-bytes\x00\x01\x02")
-	deskInner := []byte("deskboard.exe fixture bytes")
-	desktools = tarGz(t, "deskboard.exe", deskInner)
-
-	sgAsset := "statusgen-windows-amd64.exe"
-	dtAsset := "desk-tools-windows-amd64.tar.gz"
-	sgSum := sum(statusgen)
-	dtSum := sum(desktools)
-
-	manifest := fmt.Sprintf(`schema: paired-versions-v1
-plugin: "0.5.1"
-statusgen:
-  release_home: medici-finance/assay
-  tag: %[1]s
-  platforms:
-    windows-amd64: %[2]s %[1]s %[3]s
-desk-tools:
-  release_home: medici-finance/assay
-  tag: %[1]s
-  platforms:
-    windows-amd64: %[4]s %[1]s %[5]s
-`, tag, sgAsset, sgSum, dtAsset, dtSum)
-
-	dir := t.TempDir()
-	manifestPath = filepath.Join(dir, "paired-versions.yaml")
-	if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
-		t.Fatal(err)
+	f := newAttestFixture(t)
+	if tag != f.tag {
+		t.Fatalf("fixture pins tag %s, test asked for %s", f.tag, tag)
 	}
-
-	sgURL := fmt.Sprintf("https://github.com/medici-finance/assay/releases/download/%s/%s", tag, sgAsset)
-	dtURL := fmt.Sprintf("https://github.com/medici-finance/assay/releases/download/%s/%s", tag, dtAsset)
-	fetch = func(url string) ([]byte, error) {
-		switch url {
-		case sgURL:
-			return statusgen, nil
-		case dtURL:
-			return desktools, nil
-		}
-		return nil, fmt.Errorf("unexpected url %q", url)
-	}
-	return manifestPath, statusgen, desktools, fetch
+	return f.manifest, f.sg, f.dt, f.fetch, f.trust
 }
 
 // TestWindowsInstallVerifiesCorrectHash — POSITIVE PATH (Verify row 4).
@@ -97,7 +62,7 @@ desk-tools:
 // line naming the pinned version + verified sha256 is emitted.
 func TestWindowsInstallVerifiesCorrectHash(t *testing.T) {
 	const tag = "v0.26.0"
-	manifest, _, _, fetch := fixture(t, tag)
+	manifest, _, _, fetch, trust := fixture(t, tag)
 	dest := t.TempDir()
 	var out bytes.Buffer
 
@@ -107,6 +72,7 @@ func TestWindowsInstallVerifiesCorrectHash(t *testing.T) {
 		Platform:     "windows-amd64",
 		Fetch:        fetch,
 		Out:          &out,
+		TrustedRoot:  trust,
 	})
 	if err != nil {
 		t.Fatalf("expected clean install, got refusal: %v", err)
@@ -140,7 +106,7 @@ func TestWindowsInstallVerifiesCorrectHash(t *testing.T) {
 // placement), a mismatch on one component leaves the WHOLE install empty.
 func TestWindowsInstallRefusesOnHashMismatch(t *testing.T) {
 	const tag = "v0.26.0"
-	manifest, statusgen, desktools, _ := fixture(t, tag)
+	manifest, statusgen, _, fetch, trust := fixture(t, tag)
 	dest := t.TempDir()
 
 	// Tamper statusgen bytes AFTER the manifest pinned the original hash.
@@ -148,15 +114,11 @@ func TestWindowsInstallRefusesOnHashMismatch(t *testing.T) {
 	tampered[0] ^= 0xff
 
 	sgURL := "https://github.com/medici-finance/assay/releases/download/" + tag + "/statusgen-windows-amd64.exe"
-	dtURL := "https://github.com/medici-finance/assay/releases/download/" + tag + "/desk-tools-windows-amd64.tar.gz"
 	tamperFetch := func(url string) ([]byte, error) {
-		switch url {
-		case sgURL:
+		if url == sgURL {
 			return tampered, nil
-		case dtURL:
-			return desktools, nil
 		}
-		return nil, fmt.Errorf("unexpected url %q", url)
+		return fetch(url)
 	}
 
 	err := Install(Options{
@@ -164,6 +126,7 @@ func TestWindowsInstallRefusesOnHashMismatch(t *testing.T) {
 		DestDir:      dest,
 		Platform:     "windows-amd64",
 		Fetch:        tamperFetch,
+		TrustedRoot:  trust,
 	})
 	if err == nil {
 		t.Fatal("SECURITY: tampered binary was accepted — install must REFUSE on hash mismatch")
@@ -183,13 +146,14 @@ func TestWindowsInstallRefusesOnHashMismatch(t *testing.T) {
 // TestWindowsInstallRefusesAbsentPin — the pin for a detected platform is absent:
 // the installer REFUSES (never guesses), placing nothing.
 func TestWindowsInstallRefusesAbsentPin(t *testing.T) {
-	manifest, _, _, fetch := fixture(t, "v0.26.0")
+	manifest, _, _, fetch, trust := fixture(t, "v0.26.0")
 	dest := t.TempDir()
 	err := Install(Options{
 		ManifestPath: manifest,
 		DestDir:      dest,
 		Platform:     "windows-arm64", // fixture only pins windows-amd64
 		Fetch:        fetch,
+		TrustedRoot:  trust,
 	})
 	if err == nil {
 		t.Fatal("expected refusal for an unpinned platform, got clean install")

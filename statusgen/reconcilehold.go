@@ -8,11 +8,13 @@ package main
 // A writer that moves a row into a state the lint rejects produces a tree its own
 // lint step then fails on, which wedges an unattended job. The hold makes the
 // writer ask the lint before keeping a write: for each row the write would move,
-// it moves the row (on disk AND in the loaded board, so rules that re-read the
-// tree — the drive-snapshot region check — see the move too), re-runs every
-// Status-keyed lint rule, and if any PROBLEM appears that was not there before,
-// restores the README's exact prior bytes and HOLDS the row — reported with the
-// PROBLEM it would cause, never kept. Nothing in the lint changes
+// it moves the row in the loaded board AND stages the edited README in memory
+// (readmeStage: stream-README reads return the staged bytes, so rules that
+// re-read the tree — the drive-snapshot region check — see the move too, with
+// nothing written to disk), re-runs every Status-keyed lint rule, and if any
+// PROBLEM appears that was not there before, unstages the edit and HOLDS the
+// row — reported with the PROBLEM it would cause, never kept. The read-only
+// form of reconcile runs the same evaluation, so it reports the same holds. Nothing in the lint changes
 // and nothing is invented (no design record is created, no gate is skipped);
 // the held row stays exactly what the board said until a human supplies what
 // the rule needs.
@@ -25,8 +27,74 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"sync"
 )
+
+// stagedReadmes is the in-memory README content the hold evaluates a move
+// against: readStreamREADME returns a staged entry in place of the file on
+// disk. Entries exist only while reconcileWrites runs (readmeStage.clear); the
+// lock is there because parallel tests load boards concurrently, each under
+// its own root.
+var stagedReadmes = struct {
+	sync.RWMutex
+	m map[string]string
+}{m: map[string]string{}}
+
+func stageKey(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return filepath.Clean(path)
+}
+
+// readStreamREADME reads a stream README, preferring content staged by the
+// lint hold over the bytes on disk.
+func readStreamREADME(path string) ([]byte, error) {
+	stagedReadmes.RLock()
+	c, ok := stagedReadmes.m[stageKey(path)]
+	stagedReadmes.RUnlock()
+	if ok {
+		return []byte(c), nil
+	}
+	return os.ReadFile(path)
+}
+
+// readmeStage is one reconcileWrites run's set of staged READMEs.
+type readmeStage struct{ keys map[string]bool }
+
+func newReadmeStage() *readmeStage { return &readmeStage{keys: map[string]bool{}} }
+
+// put stages content for path and returns the undo that puts back what was
+// staged before (or nothing).
+func (s *readmeStage) put(path, content string) (undo func() error) {
+	key := stageKey(path)
+	stagedReadmes.Lock()
+	prev, had := stagedReadmes.m[key]
+	stagedReadmes.m[key] = content
+	stagedReadmes.Unlock()
+	s.keys[key] = true
+	return func() error {
+		stagedReadmes.Lock()
+		defer stagedReadmes.Unlock()
+		if had {
+			stagedReadmes.m[key] = prev
+		} else {
+			delete(stagedReadmes.m, key)
+		}
+		return nil
+	}
+}
+
+// clear drops every entry this run staged.
+func (s *readmeStage) clear() {
+	stagedReadmes.Lock()
+	defer stagedReadmes.Unlock()
+	for k := range s.keys {
+		delete(stagedReadmes.m, k)
+	}
+}
 
 // lintEnv is the loaded board a status-keyed rule evaluates: the same inputs
 // run() assembles for its per-stream checks (active streams with issue-loop
@@ -114,13 +182,13 @@ func (e *lintEnv) transitionProblems(stream, num, to string) (added []string, fo
 }
 
 // tryMove moves stream/num to `to` and returns the PROBLEM lines that adds
-// (multiset difference against the board as currently written). onDisk, when
-// non-nil, performs the matching README write and returns its undo; it runs
-// BEFORE the rules re-evaluate, so a rule that re-reads the tree sees the move.
-// With keepIfClean and nothing added, the move is kept (in memory too, so later
-// rows are judged against the board as written); otherwise the row and the
-// file are restored to their exact prior state.
-func (e *lintEnv) tryMove(stream, num, to string, onDisk func() (undo func() error, err error), keepIfClean bool) (added []string, found bool, err error) {
+// (multiset difference against the board as currently written). stage, when
+// non-nil, stages the matching README edit (readmeStage.put) and returns its
+// undo; it runs BEFORE the rules re-evaluate, so a rule that re-reads the tree
+// sees the move. With keepIfClean and nothing added, the move is kept (the row
+// and the staged README, so later rows are judged against the board as it
+// would be written); otherwise both are restored to their exact prior state.
+func (e *lintEnv) tryMove(stream, num, to string, stage func() (undo func() error, err error), keepIfClean bool) (added []string, found bool, err error) {
 	row := e.findRow(stream, num)
 	if row == nil {
 		return nil, false, nil
@@ -130,8 +198,8 @@ func (e *lintEnv) tryMove(stream, num, to string, onDisk func() (undo func() err
 	}
 	prev := row.Status
 	undo := func() error { return nil }
-	if onDisk != nil {
-		if undo, err = onDisk(); err != nil {
+	if stage != nil {
+		if undo, err = stage(); err != nil {
 			return nil, true, err
 		}
 	}

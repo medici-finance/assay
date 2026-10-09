@@ -10,7 +10,7 @@ import (
 )
 
 // stubPullsServer serves one page of REST pulls (or a fixed error status) and
-// points reconcileNewClient at it for the duration of the test.
+// points reconcileGHClient at it for the duration of the test.
 func stubPullsServer(t *testing.T, status int, pulls []map[string]any) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -22,11 +22,11 @@ func stubPullsServer(t *testing.T, status int, pulls []map[string]any) {
 		_ = json.NewEncoder(w).Encode(pulls)
 	}))
 	t.Cleanup(srv.Close)
-	prev := reconcileNewClient
-	reconcileNewClient = func(token string) *ghClient {
+	prev := reconcileGHClient
+	reconcileGHClient = func(token string) *ghClient {
 		return &ghClient{doer: srv.Client(), base: srv.URL, token: token}
 	}
-	t.Cleanup(func() { reconcileNewClient = prev })
+	t.Cleanup(func() { reconcileGHClient = prev })
 }
 
 func mergedPull(n int, ref, body string) map[string]any {
