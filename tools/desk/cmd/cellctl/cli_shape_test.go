@@ -157,6 +157,13 @@ func TestCLILegacyShapeAccepted(t *testing.T) {
 	if r := w.run(t, nil, "show", "example", "--harness", "codex", "--cockpit", "tmux"); r.Code != 0 || !strings.Contains(r.Stdout, "CELL_HARNESS=codex (flag)") {
 		t.Errorf("flags after the positionals: exit %d\n%s%s", r.Code, r.Stdout, r.Stderr)
 	}
+	// An empty word where the verb goes printed the usage, exit 0, before the migration; it still
+	// does, and the next word is not run as the verb.
+	for _, args := range [][]string{{"", "show", "example"}, {"", "ls"}, {"--cells-root", w.cellsRoot, "", "ls"}} {
+		if r := w.run(t, nil, args...); r.Code != 0 || !strings.Contains(r.Stdout, "Usage:") || strings.Contains(r.Stdout, "example\n") || strings.Contains(r.Stderr, echoFragment) {
+			t.Errorf("%q: exit %d, want the usage and exit 0 with nothing run\n%s%s", args, r.Code, r.Stdout, r.Stderr)
+		}
+	}
 	// scratch read its flags with the Go flag package, so its single-dash spellings still work.
 	for _, args := range [][]string{
 		{"scratch", "example", "sweep", "-apply"},

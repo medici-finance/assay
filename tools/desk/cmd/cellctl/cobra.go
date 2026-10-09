@@ -76,6 +76,11 @@ func runTree(args []string) (code int) {
 		fmt.Fprintf(os.Stderr, "cellctl: %v\nRun 'cellctl --help' for usage.\n", err)
 		return 3
 	}
+	// An empty word where the verb goes printed the usage, exit 0, before the migration; Cobra
+	// would skip it and run the next word as the verb.
+	if i := verbIndex(args); i < len(args) && args[i] == "" {
+		args = append(append([]string{}, args[:i]...), "--help")
+	}
 	raw := rawVerb(args)
 	if raw && args[0] == "--cells-root" {
 		// The selector is taken off here, where only its leading position counts: past the verb,

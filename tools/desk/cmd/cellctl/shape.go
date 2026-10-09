@@ -26,16 +26,11 @@ import (
 // The internal raw entrypoints take their argv verbatim and are not checked past the selector.
 // A refusal is a usage error: exit 3, nothing on stdout, no roster echo, nothing run.
 func legacyShape(root *cobra.Command, args []string) error {
-	rest := args
-	if len(args) > 0 && args[0] == "--cells-root" {
-		if len(args) < 3 {
-			return nil // the selector's own refusals (missing value, missing command) apply
-		}
-		rest = args[2:]
+	i := verbIndex(args)
+	if i >= len(args) {
+		return nil // no verb: the selector's own refusals (missing value, missing command) apply
 	}
-	if len(rest) == 0 {
-		return nil
-	}
+	rest := args[i:]
 	verb := rest[0]
 	if strings.HasPrefix(verb, "-") && verb != "-" {
 		switch {
@@ -120,15 +115,21 @@ func lookupFlag(cmd *cobra.Command, name string) *pflag.Flag {
 	return cmd.InheritedFlags().Lookup(name)
 }
 
+// verbIndex is the index of the verb word in args: past the one accepted selector when a verb
+// follows it, else 0. It is len(args) when there is no word there.
+func verbIndex(args []string) int {
+	if len(args) >= 3 && args[0] == "--cells-root" {
+		return 2
+	}
+	if len(args) > 0 && args[0] == "--cells-root" {
+		return len(args)
+	}
+	return 0
+}
+
 // scratchLine reports whether args (after a leading selector) run the scratch verb, the one verb
 // whose flags the legacy parser read with the Go flag package (single-dash long forms included).
 func scratchLine(args []string) bool {
-	a := args
-	if len(a) > 0 && a[0] == "--cells-root" {
-		if len(a) < 3 {
-			return false
-		}
-		a = a[2:]
-	}
-	return len(a) > 0 && a[0] == "scratch"
+	i := verbIndex(args)
+	return i < len(args) && args[i] == "scratch"
 }
