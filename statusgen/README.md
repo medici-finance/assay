@@ -194,6 +194,14 @@ carries `id`, `readme`, `from`, `to`, `witness`, and the whole table line before
 after the edit (`rowBefore`, `rowAfter`). `wouldApply` is `[]` when nothing would be
 written; it is absent only when `--backfill` was not given or `--apply` was.
 
+`--apply` WITHOUT `--backfill` is trailer-only: it writes only rows witnessed by a
+merged PR's trailer, never a branch or body match — the mode the scheduled
+reconcile job runs. Either way, a row whose move would add a lint PROBLEM (a
+risk-gated brief with no design record, say) is held: listed under `held` with the
+PROBLEM it would cause, never written. The read-only form reports the same `held`
+rows, decided the same way with nothing written. When the pulls cannot be read,
+`--apply` exits 3 and writes nothing.
+
 ```bash
 # Read-only: which board rows would --apply promote? No tree write.
 statusgen reconcile --backfill --root . --repo medici-finance/assay --token-file "$TOKEN_FILE" --json

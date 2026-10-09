@@ -44,7 +44,7 @@ func TestApplyReconcileWrites_TodoToImplemented(t *testing.T) {
 	cells := []BriefCell{
 		{ID: "apstream/01", Cell: "implemented", Source: "backfill", Witness: "PR #42 (merged abc1234) — backfill: branch/body match, no trailer"},
 	}
-	applied, err := applyReconcileWrites(root, cells)
+	applied, _, err := applyReconcileWrites(root, cells)
 	if err != nil {
 		t.Fatalf("applyReconcileWrites: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestApplyReconcileWrites_DoneRowImmutable(t *testing.T) {
 			cells := []BriefCell{
 				{ID: "apstream/01", Cell: "implemented", Source: "backfill", Witness: "PR #99 (merged deadbee) — backfill: branch/body match, no trailer"},
 			}
-			applied, err := applyReconcileWrites(root, cells)
+			applied, _, err := applyReconcileWrites(root, cells)
 			if err != nil {
 				t.Fatalf("applyReconcileWrites: %v", err)
 			}
@@ -109,7 +109,7 @@ func TestApplyReconcileWrites_NeverTouchesHumanStamp(t *testing.T) {
 	cells := []BriefCell{
 		{ID: "apstream/01", Cell: "implemented", Source: "pr", Witness: "PR #7 (merged cafefee)"},
 	}
-	applied, err := applyReconcileWrites(root, cells)
+	applied, _, err := applyReconcileWrites(root, cells)
 	if err != nil {
 		t.Fatalf("applyReconcileWrites: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestApplyReconcileWrites_NoWitnessLeftAlone(t *testing.T) {
 	cells := []BriefCell{
 		{ID: "apstream/01", Cell: "todo", Source: "pr", Reason: "PR search ran; no open or merged PR carries this brief's trailer"},
 	}
-	applied, err := applyReconcileWrites(root, cells)
+	applied, _, err := applyReconcileWrites(root, cells)
 	if err != nil {
 		t.Fatalf("applyReconcileWrites: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestApplyReconcileWrites_ExcludesBackfillHandSaidUnknown(t *testing.T) {
 	cells := []BriefCell{
 		{ID: "apstream/01", Cell: "unknown", Source: "backfill", Reason: "no witness — hand-asserted implemented at abc1234"},
 	}
-	applied, err := applyReconcileWrites(root, cells)
+	applied, _, err := applyReconcileWrites(root, cells)
 	if err != nil {
 		t.Fatalf("applyReconcileWrites: %v", err)
 	}
