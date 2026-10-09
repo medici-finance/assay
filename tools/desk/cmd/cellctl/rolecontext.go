@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -785,22 +784,6 @@ func enabledClaudePlugins(config string, projects ...string) map[string]bool {
 		}
 	}
 	return out
-}
-
-func claudeVersionTriple() ([3]int, bool) {
-	var v [3]int
-	out, err := exec.Command(claudeBinary, "--version").Output()
-	if err != nil {
-		return v, false
-	}
-	m := semverRe.FindStringSubmatch(string(out))
-	if m == nil {
-		return v, false
-	}
-	for i := 0; i < 3; i++ {
-		v[i], _ = strconv.Atoi(m[i+1])
-	}
-	return v, true
 }
 
 func versionLess(a, b [3]int) bool {
