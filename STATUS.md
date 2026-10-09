@@ -75,7 +75,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-supervisio
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 838380a 2026-10-09T02:55:44Z_
+_last regen: f76d904 2026-10-09T03:46:17-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -96,7 +96,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 838380a 2026-10-09T02:55:44Z_
+_last regen: f76d904 2026-10-09T03:46:17-05:00_
 
 **Progress:** 16/71 brief items done.
 
