@@ -308,7 +308,11 @@ preflight probe was one). Under the widened script main read **163** before this
 never appeared in the count: they called a per-tool `git(` / `run(` wrapper that is not one
 of the four counted seam names.
 
-Brief 05: `sh tools/desk/scripts/count-git-exec.sh` read **165** (45 direct + 120 seam) before
-this brief and **158** (45 direct + 113 seam) after: deskgit's fetch invocation and
+Brief 05: `sh tools/desk/scripts/count-git-exec.sh` read **179** (49 direct + 130 seam) on the
+main commit the brief's branch last merged (`3c8326f95`) and **172** (49 direct + 123 seam) on
+the branch head that merges it (`d6c91cadc`) — like-for-like, the same main on both sides, so
+the drop of 7 seam call sites is the brief's alone: deskgit's fetch invocation and
 hardened-env helper, deskadvisory's `init`/`fetch`/`checkout` runner, and deskmerge's fetch
-seam call are gone.
+seam call are gone. (Earlier figures for this brief — 165 → 158 — were read on an older main
+and went stale as main grew; re-derive the pair on the merged main parent and the head, never
+carry one forward.)
