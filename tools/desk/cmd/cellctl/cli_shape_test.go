@@ -72,7 +72,7 @@ func TestScratchRunFlagsBeforeVerb(t *testing.T) {
 }
 
 // TestCLILegacyShapeRefusals: each line here (but the two marked) was refused by the pre-migration
-// binary with exit 3 and is outside the recorded decision's four entries, so it is refused again:
+// binary with exit 3 and is outside the recorded decision's entries, so it is refused again:
 // usage exit 3, no roster echo, nothing on stdout, and the cell's files untouched.
 func TestCLILegacyShapeRefusals(t *testing.T) {
 	w := newCLIWorld(t, "")
@@ -96,7 +96,7 @@ func TestCLILegacyShapeRefusals(t *testing.T) {
 		{"show", "example", "--cells-root", other},
 		// (the old parser ignored every word after ls, so these two listed CELLS_ROOT's registry
 		// with exit 0; applying the selector there would list another one, so they are refused
-		// and named in the compat doc's list of remaining differences)
+		// and the compat doc lists that as decision entry 6)
 		{"ls", "--cells-root", w.cellsRoot},
 		{"ls", "--cells-root=" + w.cellsRoot},
 		{"--cells-root=" + w.cellsRoot, "ls"},

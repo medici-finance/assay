@@ -15,7 +15,8 @@ it also fails when a listed row stops differing, so this table cannot go stale i
 
 - **Verbs, arguments and flags.** Every verb and flag keeps its name, its meaning and its exit
   code. A line that worked before still does what it did. A line the old parser refused is still
-  refused, by the shape check below when the new parser would otherwise have accepted it.
+  refused, by the shape check below when the new parser would otherwise have accepted it. The
+  exceptions are decision entries 5 to 11, listed under "Other deliberate differences".
 - **Command-line shape.** `cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the
   selector is the separated `--cells-root <abs>`, and only as the first word; a verb's fixed
   positionals (its cell, role or action) come before its flags; the single-dash spelling of a long
@@ -81,7 +82,7 @@ verb. The parity test replays each against the recorded transcript of the pre-mi
 | `single-dash-outside-scratch/2` | `-version` | `unknown verb '-version' (try --help)` | `unknown command "-version" for "cellctl"` |
 | `single-dash-outside-scratch/3` | `version extra` | `unknown verb 'version'` | `unknown command "extra" for "cellctl version"` |
 | `cells-root-spellings/0`, `cells-root-spellings/1`, `cells-root-spellings/2` | `--cells-root=<abs> <verb>`, `-cells-root <abs> <verb>` | `unknown verb '--cells-root=...'` / `unknown verb '-cells-root'` | `unknown command "..." for "cellctl"` |
-| `cells-root-spellings/3`, `cells-root-spellings/4` | the same spellings in front of `model-policy hook ...` | the same unknown verb, exit 3 | the same refusal, but exit **2**: a refused line that names the hook verb exits with the hook's blocking code (listed below for a ruling) |
+| `cells-root-spellings/3`, `cells-root-spellings/4` | the same spellings in front of `model-policy hook ...` | the same unknown verb, exit 3 | the same refusal, but exit **2**: a refused line that names the hook verb exits with the hook's blocking code (decision entry 7, below) |
 | `completion-entrypoints/0`, `completion-entrypoints/1`, `completion-entrypoints/2` | `__complete ...`, `__completeNoDesc ...` | `unknown verb '__complete'` | `unknown command "__complete" for "cellctl"`; the parser's hidden completion entrypoint is replaced so it never answers |
 
 Also refused, with no recorded case of its own: a `--cells-root` anywhere after the verb (`ls
@@ -106,20 +107,19 @@ a bad role is refused first whatever flags follow (`refusal-order/0` replays it 
   one-run overrides.
 - Environment names match the platform's own rule: case-insensitive on Windows, exact elsewhere.
 
-## Remaining differences for a ruling
+These seven cannot be restored by a refusal. Each is one of decision entries 5 to 11, which the
+driver's second answer on #2240 accepted (`1 — DR-cellctl-cobra`, accepting all seven items of
+the question put to it).
 
-These lines behave differently and are neither named by the recorded decision nor restorable by a
-refusal; each needs a ruling before the migration is accepted as-is.
-
-| Line | Before | Now |
-|---|---|---|
-| `ls --bogus`, `status <cell> --bogus` (an unknown flag on a verb that ignored extra words) | exit 0, the word ignored | exit 3, `unknown flag` |
-| `ls --cells-root <abs>`, `ls --cells-root=<abs>` | exit 0, lists the default registry and ignores the words | exit 3, refused |
-| a refused or relative selector in front of `model-policy hook ...` (`--cells-root relative`, `--cells-root=<abs>`, `-cells-root <abs>`, a repeated selector) | exit 3, which the hook's caller reads as non-blocking | exit 2, the hook's blocking code (fail-closed) |
-| `help`, `help <verb>` | `unknown verb 'help'`, exit 3 | the usage or the verb's help, exit 0 |
-| `<verb> --help`, `<verb> -h` (for example `desk --help`, `ls -h`) | the word taken as a cell or role, or ignored | the verb's help, exit 0 |
-| `-help`, `desk -help` and other refusals the shape check does not reach | exit 3 with the domain wording after the echo | exit 3 with the parser's wording and no echo |
-| `scratch <cell> <action> --nosuch` and other `scratch` flag-parse failures except `--max-age bogus` | exit 2 (Go flag package) | exit 3 |
+| Decision entry | Line | Before | Now |
+|---|---|---|---|
+| 5 | `ls --bogus`, `status <cell> --bogus` (an unknown flag on a verb that ignored extra words) | exit 0, the word ignored | exit 3, `unknown flag` |
+| 6 | `ls --cells-root <abs>`, `ls --cells-root=<abs>` | exit 0, lists the default registry and ignores the words | exit 3, refused |
+| 7 | a refused or relative selector in front of `model-policy hook ...` (`--cells-root relative`, `--cells-root=<abs>`, `-cells-root <abs>`, a repeated selector) | exit 3, which the hook's caller reads as non-blocking | exit 2, the hook's blocking code (fail-closed) |
+| 8 | `help`, `help <verb>` | `unknown verb 'help'`, exit 3 | the usage or the verb's help, exit 0 |
+| 9 | `<verb> --help`, `<verb> -h` (for example `desk --help`, `ls -h`) | the word taken as a cell or role, or ignored | the verb's help, exit 0 |
+| 10 | `-help`, `desk -help` and other refusals the shape check does not reach | exit 3 with the domain wording after the echo | exit 3 with the parser's wording and no echo |
+| 11 | `scratch <cell> <action> --nosuch` and other `scratch` flag-parse failures except `--max-age bogus` | exit 2 (Go flag package) | exit 3 |
 
 ## Co-execution notes for the human gate
 

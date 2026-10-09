@@ -377,7 +377,7 @@ var deliberateDiffs = map[string]deliberateDiff{
 	// Shapes the legacy parser refused and the shape check (shape.go) refuses again, before
 	// anything parses: the same exit 3 with nothing run, in the parser's words and without the
 	// roster echo. The verb-position lines are unknown verbs (decision entry 2); the wording of the
-	// others is a remaining difference the compatibility report lists for a ruling.
+	// others is the change the compatibility report's "Refused shapes" section sets out.
 	"flags-before-positionals/0": {code: 3, stderr: shapeErr(`scratch: flag "--apply" comes before the command's positional arguments; flags follow them`), why: whyShape},
 	"flags-before-positionals/1": {code: 3, stderr: shapeErr(`cadence: flag "--confirm-stopped" comes before the command's positional arguments; flags follow them`), why: whyShape},
 	"flags-before-positionals/2": {code: 3, stderr: shapeErr(`desk: flag "--model" comes before the command's positional arguments; flags follow them`), why: whyShape},
