@@ -802,8 +802,10 @@ const ciTokenPrefix = "ghs_"
 // and reads no environment variable (the caller hands it the token and the job repository).
 //
 // Every check runs BEFORE any network call, in this order, and refuses (exit 5) rather than
-// falls back: the token must be an installation token (ghs_), the requested repo must be the
-// job's own repository (case-insensitive owner/name), and the repo must resolve to GitHub.
+// falls back: the token must be an installation token (ghs_), the job repository and the
+// requested repo must each be a well-formed owner/name (ValidRepoSlug: one slash, both parts
+// non-empty, no dot-segment, a fixed charset), the requested repo must be the job's own
+// repository (case-insensitive), and the repo must resolve to GitHub.
 // The backend leaves wrapped by BOTH the outbound-write check and the read-only fence, so even
 // a future read-only-violating call site cannot write.
 func ReadOnlyForgeForCIToken(repo ForgeRepo, jobRepo, token string) (Forge, ForgeResolution, error) {
@@ -811,7 +813,12 @@ func ReadOnlyForgeForCIToken(repo ForgeRepo, jobRepo, token string) (Forge, Forg
 		return nil, ForgeResolution{}, Refused("the CI workflow token is not an app installation token " +
 			"(a personal, OAuth or user-to-server token is never accepted)")
 	}
-	if jobRepo == "" || !strings.EqualFold(repo.Slug(), jobRepo) {
+	if !ValidRepoSlug(jobRepo) || !ValidRepoSlug(repo.Slug()) {
+		return nil, ForgeResolution{}, Refused(fmt.Sprintf("the CI workflow-token transport needs the job "+
+			"repository and the requested repository each as one owner/name (one slash, both parts "+
+			"non-empty, [A-Za-z0-9._-], no dot-segment); got %q and %q", jobRepo, repo.Slug()))
+	}
+	if !strings.EqualFold(repo.Slug(), jobRepo) {
 		return nil, ForgeResolution{}, Refused(fmt.Sprintf("the CI workflow-token transport reads only the job's own "+
 			"repository (%q); %q is another repository", jobRepo, repo.Slug()))
 	}

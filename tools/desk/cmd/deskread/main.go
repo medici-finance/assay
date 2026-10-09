@@ -486,10 +486,9 @@ func parseFlags(args []string) (readOpts, error) {
 	return o, nil
 }
 
-func validRepoSlug(r string) bool {
-	owner, name, ok := strings.Cut(r, "/")
-	return ok && owner != "" && name != "" && strings.Count(r, "/") == 1
-}
+// validRepoSlug is deskkit.ValidRepoSlug, the same check the CI-token constructor re-runs, so the
+// verb's argument check and the constructor's cannot drift apart.
+func validRepoSlug(r string) bool { return deskkit.ValidRepoSlug(r) }
 
 // parseItemTarget reads `owner/name#N` for --issue or --change. N must be a positive decimal
 // integer and the repo a well-formed slug; anything else is refused, never half-parsed into a

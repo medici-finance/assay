@@ -225,7 +225,8 @@ func unwrapGitHub(t *testing.T, f Forge) *GitHubForge {
 }
 
 // TestCITransportConstructorRefusals covers the constructor's own checks with deskread bypassed:
-// a non-installation token, a repository other than the job's, a non-GitHub forge. Each is Refused
+// a non-installation token, a malformed job or requested repository, a repository other than the
+// job's, a non-GitHub forge. Each is Refused
 // and the server records zero requests.
 func TestCITransportConstructorRefusals(t *testing.T) {
 	a := ForgeRepo{Owner: "o", Name: "a"}
@@ -244,6 +245,21 @@ func TestCITransportConstructorRefusals(t *testing.T) {
 	}
 	if _, _, err := ReadOnlyForgeForCIToken(a, "", ciTestToken); err == nil || !IsRefused(err) {
 		t.Errorf("an empty job repository: want Refused, got %v", err)
+	}
+	// A malformed job repository is refused even when the requested repo matches it, and a
+	// malformed requested repo is refused even when the job repository matches it: the shape is
+	// the constructor's own check, not only the verb's.
+	for _, bad := range []string{"o/a/b", "o/", "/a", "/", "o", "o/..", "./a", "o/a?x", "o/a%2fb", "o/a b"} {
+		owner, name, _ := strings.Cut(bad, "/")
+		fr := ForgeRepo{Owner: owner, Name: name}
+		if _, _, err := ReadOnlyForgeForCIToken(fr, bad, ciTestToken); err == nil || !IsRefused(err) || !strings.Contains(err.Error(), "one owner/name") {
+			t.Errorf("malformed repository %q: want Refused naming the shape, got %v", bad, err)
+		}
+	}
+	for _, fr := range []ForgeRepo{{Owner: "o/a", Name: "b"}, {Owner: "", Name: "a"}, {Owner: "o", Name: ""}, {Owner: "o", Name: "a/b"}} {
+		if _, _, err := ReadOnlyForgeForCIToken(fr, fr.Slug(), ciTestToken); err == nil || !IsRefused(err) || !strings.Contains(err.Error(), "one owner/name") {
+			t.Errorf("malformed requested repo %+v: want Refused naming the shape, got %v", fr, err)
+		}
 	}
 	if _, _, err := ReadOnlyForgeForCIToken(a, "O/A", ciTestToken); err != nil {
 		t.Errorf("the job repository compares case-insensitively: %v", err)

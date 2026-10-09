@@ -303,6 +303,8 @@ func TestCITransportRefusedOutsideCI(t *testing.T) {
 		{"run id not numeric", "GITHUB_RUN_ID", "abc", layerOutsideCI},
 		{"repository empty", "GITHUB_REPOSITORY", "", layerOutsideCI},
 		{"repository malformed", "GITHUB_REPOSITORY", "noslash", layerOutsideCI},
+		{"repository bad charset", "GITHUB_REPOSITORY", "example-org/a?x", layerOutsideCI},
+		{"repository dot-segment", "GITHUB_REPOSITORY", "example-org/..", layerOutsideCI},
 		{"fork-triggered event", "GITHUB_EVENT_NAME", "pull_request_target", layerEvent},
 	}
 	for _, tc := range cases {
