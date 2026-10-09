@@ -1,0 +1,848 @@
+name: statusgen-board
+# This repo's OWN statusgen board CI — the two-half single-writer shape.
+#
+#   - pull_request: run `statusgen --root . --lint` only. STATUS.md is a
+#     GENERATED artifact with exactly ONE writer (the push-to-main regen job
+#     below); a branch must never modify it, so this half never reads or writes
+#     STATUS.md.
+#   - push to main: regenerate STATUS.md and commit it if it changed. This job
+#     is STATUS.md's single writer.
+#   - schedule (hourly): the `reconcile` job below (derived-board/04). It writes
+#     the GENERATED stream-README Briefs tables and never pushes main: it carries
+#     any change as ONE draft PR on the fixed branch board/reconcile. The
+#     push-to-main job above stays STATUS.md-only.
+#
+# statusgen is built FROM THIS REPO'S OWN SOURCE (statusgen/), not downloaded as a
+# pinned release binary: this IS the repo statusgen lives in, so a released binary
+# would lag the very source the PR is changing. Adopter repos consume the pinned
+# release binary instead (see statusgen init's scaffolded workflow); a source repo
+# builds and lints with its in-tree tool.
+#
+# Runner + Go install mirror ci.yml: the self-hosted `medici-builder-public`
+# runner has no Docker and no reach to GitHub's release-asset CDN, so Go is
+# fetched by hand from go.dev/dl rather than actions/setup-go.
+on:
+  pull_request:
+    # `edited` is listed so a base retarget re-runs the corroborate job (a
+    # register transition judged against the old base proves nothing about the
+    # new one). The PR jobs run on every `edited` event, title and body edits
+    # included: a job skipped by its `if:` still posts a `skipped` check run on
+    # the same head, which would sit beside, and hide, an earlier red.
+    types: [opened, synchronize, reopened, edited]
+    # Fire on anything --lint reads: the stream docs, STATUS.md itself, the
+    # statusgen source (the lint binary is built from it), and this workflow.
+    paths:
+      - "docs/**"
+      - "changelog/**"
+      - "STATUS.md"
+      - "statusgen/**"
+      - ".github/workflows/assay-statusgen.yml"
+      # The reconcile job's run: texts below are what statusgen's job tests
+      # execute, so a change to this file's staged copy runs those tests too.
+      - "ci/staged-workflows/assay-statusgen.yml"
+  push:
+    branches: [main]
+    # STATUS.md is deliberately NOT listed and lives at the repo root (outside
+    # docs/**), so the regen job's own commit — which touches only STATUS.md —
+    # cannot retrigger this workflow (loop guard 1). The regen job's `if:` also
+    # skips any [skip-status-regen] commit (loop guard 2, belt and suspenders).
+    paths:
+      - "docs/**"
+      # A release clears changelog/; lint reads brief paths into it, so a release
+      # that reds the lint must red it on its own commit (#722).
+      - "changelog/**"
+      - "statusgen/**"
+      - ".github/workflows/assay-statusgen.yml"
+  # Hourly board reconcile (derived-board/04). Scheduled workflows run only from
+  # the default branch, so the reconcile job always executes main's copy of this
+  # file. Minute 17 keeps clear of the top-of-hour burst.
+  schedule:
+    - cron: "17 * * * *"
+
+# Serialize runs per ref. A merge burst on main fires one regen run per push;
+# without this they run concurrently and all but the last lose the `git push`
+# race against a moving main ("! [rejected] main -> main (fetch first)"), so
+# main shows red runs indistinguishable from a real regen failure.
+# cancel-in-progress is deliberately FALSE: queue, never cancel — a cancelled
+# regen throws away that push's board rather than merely delaying it.
+# pull_request runs get a group of their own per run: a group holds one
+# pending run, so a newer event (a title edit) would otherwise cancel a pending
+# synchronize or retarget run of the corroborate guard.
+# A scheduled run also gets a group of its own. A schedule event's github.ref is
+# refs/heads/main, the same group the push-to-main regen runs queue in; a group
+# holds one pending run, so a pending hourly tick sharing it could displace a
+# pending push regen and leave STATUS.md stale until the next push. The reconcile
+# job never writes main, so it has no reason to queue behind them. It queues
+# behind itself: one reconcile at a time, never two writers on board/reconcile.
+concurrency:
+  group: statusgen-board-${{ github.event_name == 'pull_request' && format('pr-run-{0}', github.run_id) || github.event_name == 'schedule' && 'reconcile' || github.ref }}
+  cancel-in-progress: false
+
+# Least-privilege default: the PR lint job needs only read. The push-to-main
+# regen job is the sole thing that commits, so it alone gets contents: write
+# (job-scoped below).
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.0"
+  # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl; the corroborate
+  # job refuses any other tarball. Bump both together.
+  GO_LINUX_AMD64_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+
+jobs:
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # consumedFragmentIndex needs changelog/ history — a shallow clone reads a consumed fragment as a false PROBLEM (#999)
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      - name: statusgen --lint
+        run: |
+          "${RUNNER_TEMP}/statusgen" --root . --lint
+      # The reconcile job's tests (statusgen/reconcilejob_test.go), and the
+      # registry check that keeps its write-then-lint sequence passable. The job
+      # tests execute that job's run: texts from this file's staged copy, so an
+      # edit to either meets them on its PR, not first on the hourly schedule.
+      # Hermetic: a local bare origin, stub statusgen and gh, no network, no token.
+      - name: Reconcile job tests
+        run: |
+          set -euo pipefail
+          cd statusgen
+          go test -count=1 -timeout 600s -run '^(TestReconcileJob|TestCredentialedJobIsolation|TestIsolationGuardFlagsPlant|TestStatusKeyedLintRulesRegistered)' .
+
+  # Findings-register transition corroboration (statusgen/06, deliverable 7).
+  # A job of its own, so no PR-authored code runs before or beside the guard:
+  # steps in one job share the workspace, .git, the toolchain and
+  # GITHUB_ENV/GITHUB_PATH, and the lint job above builds and runs the PR's own
+  # statusgen. Here the only binary executed is built from the base commit;
+  # the PR tree is read as data. Every step fails closed (set -e) — an
+  # unreadable base, a base mismatch or a retarget mid-run reds the check,
+  # never skips it. Residual: under pull_request this workflow file itself
+  # comes from the PR merge commit, so a PR that edits it can change this job;
+  # human review of workflow edits is what catches that.
+  corroborate:
+    if: github.event_name == 'pull_request'
+    runs-on: medici-builder-public
+    # --corroborate reads the PR's reviews, comments and file list.
+    permissions:
+      contents: read
+      pull-requests: read
+    # GOENV=off: Go's per-user env file (written by `go env -w`, which an
+    # earlier job on a reused runner could have run) is ignored. GOTOOLCHAIN=local:
+    # the job-local toolchain builds, never one a go.mod line asks to download.
+    env:
+      GOENV: "off"
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the merge-base check below needs full history
+          persist-credentials: false
+      # HEAD is the PR merge commit and HEAD^1 its base parent: the base-branch
+      # tip GitHub merged against, which moves with the base branch (the
+      # payload's base.sha does not). The guard is built from HEAD^1 and
+      # resolves its own merge-base from the remote base ref, so tie them:
+      # merge-base(base ref, HEAD) must be HEAD^1 — the commit the guard is
+      # built from is the commit it compares against. The payload's base.sha
+      # must be an ancestor of HEAD^1 (a sanity check, not an equality: the
+      # base branch may have moved since the PR was opened or last pushed).
+      - name: Tie the compared base to the merge commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
+          if ! git merge-base --is-ancestor "$BASE_SHA" "$parent"; then
+            echo "::error::the event's base sha ${BASE_SHA} is not an ancestor of the merge commit's base parent ${parent}"
+            exit 1
+          fi
+          tip="$(git rev-parse --verify "refs/remotes/origin/${BASE_REF}^{commit}")"
+          mb="$(git merge-base --end-of-options "$tip" HEAD)"
+          if [ "$mb" != "$parent" ]; then
+            echo "::error::merge-base(origin/${BASE_REF}, HEAD) is ${mb}, not HEAD^1 ${parent} — the guard would compare against a different base"
+            exit 1
+          fi
+      # Go and every Go cache live under RUNNER_TEMP, never $HOME: if a runner
+      # outlives one job, a toolchain or cache left by an earlier job that ran
+      # PR code must not reach the guard build. GOFLAGS is cleared, and GOENV
+      # and GOTOOLCHAIN are pinned in the job env, for the same reason. The
+      # tarball is checksum-pinned.
+      - name: Install Go (job-local toolchain and caches, checksum-verified)
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/go.tar.gz" | cut -d' ' -f1)"
+          if [ "$GO_LINUX_AMD64_SHA256" != "$got" ]; then
+            echo "::error::Go tarball sha256 mismatch — want ${GO_LINUX_AMD64_SHA256}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          mkdir -p "${RUNNER_TEMP}/go-toolchain"
+          tar -C "${RUNNER_TEMP}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${RUNNER_TEMP}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+          {
+            echo "GOPATH=${RUNNER_TEMP}/gopath"
+            echo "GOCACHE=${RUNNER_TEMP}/gocache"
+            echo "GOMODCACHE=${RUNNER_TEMP}/gopath/pkg/mod"
+            echo "GOFLAGS="
+          } >> "${GITHUB_ENV}"
+      # Built from HEAD^1, the base the tie step verified. `git archive` reads
+      # the tree without registering a worktree, so a runner reused across jobs
+      # carries no stale worktree entry into the next run.
+      - name: Build the corroboration guard from the base commit
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
+          rm -rf "${RUNNER_TEMP}/base"
+          mkdir -p "${RUNNER_TEMP}/base"
+          git archive "$parent" statusgen | tar -x -C "${RUNNER_TEMP}/base"
+          ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
+      # Always the pinned tarball, never a gh already on PATH: the guard's review
+      # and comment reads go through it.
+      - name: Install gh CLI (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+      - name: statusgen --corroborate (findings-register transitions)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # name:login pairs; unset leaves every human:<name> unmapped, so every
+          # register transition is MISSING-CORROBORATION. Fails closed.
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # Assign first, then test: a failing git diff must red the step, not
+          # read as "no findings touched".
+          changed="$(git diff --no-ext-diff --no-textconv --name-only HEAD^1 HEAD -- docs/streams/findings/)"
+          if [ -z "$changed" ]; then
+            echo "PR touches no docs/streams/findings/ entry — register-transition check not applicable"
+            exit 0
+          fi
+          # The guard reads the base name live; the tie step checked the event's.
+          # A retarget between the two would compare against an untied base.
+          live="$(gh pr view "${PR_NUMBER}" --json baseRefName --jq .baseRefName)"
+          if [ "$live" != "$BASE_REF" ]; then
+            echo "::error::PR base is now ${live}, not ${BASE_REF} as tied above (retargeted mid-run) — the retarget's own run judges it"
+            exit 1
+          fi
+          "${RUNNER_TEMP}/statusgen-base" --root . --corroborate --pr "${PR_NUMBER}"
+
+  regen:
+    # STATUS.md is generated on main only, never on a branch (single writer).
+    # loop guard 2: skip our own [skip-status-regen] regen commit.
+    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') }}
+    runs-on: medici-builder-public
+    # Sole writer of STATUS.md. The push authenticates as the assay-board-writer
+    # App (minted below), NOT the default GITHUB_TOKEN — so the default token
+    # needs only read; the App token carries the write.
+    permissions:
+      contents: read
+    steps:
+      # Mint a token for the assay-board-writer App. This App is the sole actor
+      # on the protect-main + leak-sweep ruleset bypass lists, so its push to
+      # main is admitted where the default GITHUB_TOKEN's is rejected (GH013:
+      # PR-required + leak-sweep-required). App perms: contents:write on THIS
+      # repo only; key held as repo Actions secrets (BOARD_APP_*).
+      - name: Mint assay-board-writer App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Persist the App token as the push credential (checkout default), so
+          # the STATUS.md `git push` below authenticates as assay-board-writer[bot].
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      - name: Regenerate STATUS.md
+        run: |
+          "${RUNNER_TEMP}/statusgen" --root .
+      - name: Commit STATUS.md if it changed
+        run: |
+          set -euo pipefail
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          # BOUNDED RETRY (3 attempts). The concurrency: group above serializes
+          # regen runs, but main can still move under us between this job's
+          # checkout and its push (a human merge, or any push on a path this
+          # workflow does not watch). A bare `git push` loses that race and
+          # reddens main; here a rejection re-syncs to the new head and
+          # REGENERATES against it.
+          #
+          # Never `git pull --rebase`: STATUS.md is a generated artifact, so a
+          # rebase conflict in it is meaningless — regeneration against the new
+          # head IS the resolution.
+          attempts=3
+          attempt=1
+          while : ; do
+            git add STATUS.md
+            # BOOTSTRAP-SAFE GUARD: guard on `git status --porcelain -- STATUS.md`,
+            # NOT `git diff --quiet -- STATUS.md`. git diff sees only TRACKED files,
+            # so on a repo with no STATUS.md yet the diff guard mis-fires ("nothing
+            # to commit") and the first board is NEVER created; porcelain reports
+            # the new/staged file.
+            if [ -z "$(git status --porcelain -- STATUS.md)" ]; then
+              echo "STATUS.md already current — nothing to commit"
+              exit 0
+            fi
+            git commit -m 'chore(status): regenerate [skip-status-regen]'
+            if git push; then
+              echo "STATUS.md pushed on attempt ${attempt}/${attempts}"
+              exit 0
+            fi
+            if [ "${attempt}" -ge "${attempts}" ]; then
+              echo "::error::statusgen board regen: push rejected on all ${attempts} attempts — main is moving faster than the regen can re-sync. Re-run this job once the merge burst settles."
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "push rejected: main moved. Re-syncing and regenerating (attempt ${attempt}/${attempts})"
+            git fetch origin main
+            git reset --hard origin/main
+            "${RUNNER_TEMP}/statusgen" --root .
+          done
+  # verified→done auto-flip for `gate: model` briefs (the third half of the
+  # single-writer shape; wired per the 2026-09-02 ruling on the house tracker).
+  # Mirrors the house `model-autoflip` job: after every push to main,
+  # `statusgen --auto-flip-model` walks each brief sitting at `verified`, finds
+  # the PR that merged it, and flips it to `done` ONLY when the reviewer App
+  # bound in ASSAY_TRUSTED_BOT_SLUGS has an APPROVED review at that PR's merged
+  # head. Every failure is a NON-flip, but NOT every could-not-check fails this
+  # job — the binary's own two-tier exit policy decides that (autoflip.go's
+  # reportAutoFlipModel, "Fix B"; pinned by TestReportAutoFlipStructuralNonFatal
+  # / TestReportAutoFlipMisconfigFatal). Only a candidate flagged a fixable
+  # MISCONFIGURATION (no `reviewer=` App bound in ASSAY_TRUSTED_BOT_SLUGS, or a
+  # stream resolves no owning repo) fails this job loudly (exit 1) — an operator
+  # fixes the roster or `repo:` frontmatter to unblock it. A STRUCTURALLY
+  # unresolvable could-not-check (most commonly: no merged PR resolves in the
+  # brief's recent history, since the desk commits Evidence straight to main) is
+  # a loud NOTICE on stderr but exits 0 — expected, not an outage. There is no
+  # override flag for either kind. The flip commits stream README rows straight
+  # to main under the board-writer App (the same identity that writes
+  # STATUS.md), and `regen` re-runs on that push so the board catches up by
+  # itself.
+  #
+  # Reads go through `gh` with the default token (this repo is public, so
+  # reviews are readable without the App); the WRITE is the App token, exactly
+  # as in `regen`. The trust roster resolves from repository Actions variables
+  # when set, else falls back to this repo's own reviewer App — the one
+  # identity whose approval the flip corroborates.
+  model-autoflip:
+    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') && !contains(github.event.head_commit.message, '[skip-autoflip]') }}
+    runs-on: medici-builder-public
+    permissions:
+      contents: read
+    steps:
+      - name: Mint assay-board-writer App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the PR resolver walks the brief file's own history
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      # gh is what the flip reads PR reviews with. Pinned + sha256-verified
+      # before unpack (same release + digest the house job uses); skipped when
+      # the runner image already ships it.
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+      - name: Auto-flip gate:model briefs from the App approval at the merged head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The roster is repository configuration, never a literal here: set the
+          # ASSAY_TRUSTED_BOT_SLUGS Actions variable (role=slug:id, the reviewer=
+          # binding is what the flip corroborates). Unset → every candidate is
+          # could-not-check and this job fails loudly — by design.
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
+        run: |
+          set -uo pipefail
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          flip_rc=0
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin main
+            git reset --hard FETCH_HEAD
+            flip_rc=0
+            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model || flip_rc=$?
+            if [ -z "$(git status --porcelain -- docs/streams)" ]; then
+              echo "no brief flipped — nothing to commit"
+              break
+            fi
+            # Sources must stay valid before we commit them.
+            "${RUNNER_TEMP}/statusgen" --root . --lint
+            # Path-scoped add: never STATUS.md (single writer = the regen job).
+            git add -- docs/streams
+            git commit -m "chore(verify): auto-flip gate:model briefs verified→done from the App approval at head [skip-autoflip]"
+            if git push origin HEAD:main; then
+              echo "pushed model-path flips (attempt $attempt)"
+              break
+            fi
+            echo "push attempt $attempt lost a race with a concurrent push — retrying"
+          done
+          if [ "$flip_rc" -ne 0 ]; then
+            echo "::error::statusgen --auto-flip-model reported a fixable MISCONFIGURATION (no reviewer= App bound / no owning repo) — see the COULD-NOT-CHECK lines above. None of those briefs was flipped; each stays \`verified\` until the setup is fixed and an App approval at its merged head can be read. (A structurally-unresolvable could-not-check, e.g. no merged PR in a brief's window, is a non-fatal NOTICE and does not reach this exit — see the job's own header comment.)"
+            exit 1
+          fi
+
+
+  # Hourly board reconcile (derived-board/04): writes the GENERATED Briefs tables
+  # in every `board: generated` stream README, by pull request only.
+  #
+  # The three `run:` blocks that touch git (the clone, compute and publish steps
+  # below) are tested end to end: statusgen/reconcilejob_test.go extracts them,
+  # with their `env:` and `working-directory:`, and executes them against a
+  # throwaway origin with stub statusgen and gh. Once this file is promoted, the
+  # board workflow's PR lint job (above) runs that suite on any change to
+  # statusgen/, this file or its staged copy, so an edit here meets those tests;
+  # TestReconcileJobMutantsFail holds a list of edits to this job, each of which
+  # must turn a named test red. What the tests pin, and the job
+  # promises: the reconcile runs without --backfill; a push is a fast-forward,
+  # never forced; a branch carrying a commit not of this job's shape is refused —
+  # any commit on the branch, not only its tip — whether its subject is another
+  # (one parent or two; another `chore(board): ` subject included) or its change
+  # reaches past stream READMEs (another path under docs/streams/, or a file
+  # renamed onto a README path, included); only stream READMEs may change; the
+  # job builds statusgen with GOWORK off. One tick, in order:
+  #   1. `statusgen reconcile --apply` (trailer-only: a row is written only for a
+  #      merged PR carrying that brief's `Brief:` trailer; the --backfill branch-
+  #      name / body-mention / hand-said rules are NOT on this path) — reads PR
+  #      witnesses with the job's read-only default token and writes ONLY a
+  #      witnessed todo|in-progress -> implemented Status cell. A row whose write
+  #      would add a lint PROBLEM (a risk-gated brief with no design record) is
+  #      held: reported in the job log on every tick, and in the commit and PR
+  #      body, never written. A reconcile that could not read the PRs exits
+  #      nonzero and fails the tick.
+  #   2. `statusgen regen --readmes` — re-renders the marker-wrapped tables from
+  #      brief frontmatter. Everything outside the markers is untouched.
+  #   3. `statusgen --lint` — the full lint over the result; a failure fails the
+  #      tick and nothing is committed.
+  # Steps 1-3 run on main's tree, never on the carried branch's, so the result
+  # is a pure function of main plus the PR witnesses. It is committed onto the
+  # fixed branch board/reconcile (parents: the old branch tip, plus main when the
+  # branch does not already contain it) and pushed as a fast-forward; one draft
+  # PR carries it, and its title and body are rewritten on every push.
+  #
+  # Noise floor (spec Q3). The only inputs that can change a README here are a
+  # Status cell changing STATE and a frontmatter authoring column changing. A
+  # witness link or SHA is never written into the table by this job, so a run in
+  # which nothing changed state leaves the tree clean and opens nothing.
+  #
+  # Races:
+  #   - vs the push-to-main regen job: that job writes STATUS.md only and never a
+  #     stream README; this job writes stream READMEs only and never main. They
+  #     touch disjoint files on disjoint refs, and this job has a concurrency
+  #     group of its own (see the top of the file).
+  #   - vs main moving under the branch (any merge, including one that edits the
+  #     very README rows the branch flipped): each tick recomputes from main's
+  #     tree and commits that result on top of the branch, so there is no merge
+  #     to conflict — a stale branch is rebuilt, not patched.
+  #   - vs the desk-side `deskreconcile` verb, which writes the same branch and
+  #     PR title: a push that loses the race is rejected (never forced) and fails
+  #     that tick; the next tick recomputes. Its `chore(board): reconcile` and
+  #     `Merge` commits are accepted as this writer family's.
+  #   - Which commits count as this writer family's is decided by SUBJECT and
+  #     CHANGE, not by author: a `chore(board): reconcile` commit (or a `Merge`
+  #     commit) whose change against one of its parents is stream READMEs only.
+  #     Any repository writer can make a commit of that shape and it is accepted
+  #     (forks cannot push this branch); the next tick replaces the tree with the
+  #     one computed from main. Every other commit on the branch, wherever it
+  #     sits under the tip — another subject (`chore(board): ` with anything
+  #     but `reconcile` after it included), or one touching more than stream
+  #     READMEs (a rename onto a README path included) — fails the tick loudly,
+  #     naming the commit, and is never overwritten. A git read that fails
+  #     while walking the branch fails the tick too.
+  #   - A remote that cannot be listed, or a PR list that cannot be read, fails
+  #     the tick: a could-not-check is never read as "branch absent" or "PR open".
+  #   - Which open PR is ours. The query names the head as
+  #     <owner>:board/reconcile; the step then keeps only entries whose head
+  #     repository is this one, whose head ref is the branch AND whose base is
+  #     main, naming and skipping every other entry. A head filter on the bare
+  #     branch name also returns pull requests from forks whose branch has the
+  #     same name, and anyone can open a pull request from THIS repository's own
+  #     branch into any base: neither may read as "our PR is already open". More
+  #     than one entry left fails the tick rather than pick one. The one entry
+  #     left is adopted whoever opened it — the forge does not let this job bind
+  #     the opener (the desk-side writer opens the same PR under another
+  #     identity) — so every push rewrites its title and body: what a maintainer
+  #     is asked to merge is this branch into main, under this job's text.
+  #
+  # Loop guards. The scheduled event cannot match the pull_request/push `if:`
+  # of any other job, and the repository guard keeps a fork's schedule from
+  # running it. The commit here carries NO [skip-status-regen] marker, on
+  # purpose: when this PR merges, STATUS.md must regenerate, because a Status
+  # cell moved. The push-to-main loop guard still holds: that regen commit
+  # touches STATUS.md only and carries the marker.
+  #
+  # Credentials and isolation. The job runs on the runner label that also runs
+  # pull-request code, so it assumes the runner may carry state an earlier job
+  # left, and reads none of it:
+  #   - Go and every Go cache under RUNNER_TEMP (emptied by the runner at the
+  #     start of every job), the Go tarball checksum-verified before unpack, GOENV
+  #     off, GOFLAGS cleared, GOTOOLCHAIN local; gh always the pinned,
+  #     checksum-verified tarball, never one already on PATH — the corroborate
+  #     job's isolation. And GOWORK off, so no go.work above RUNNER_TEMP (in the
+  #     runner's work directory, which outlives a job) is read by the build.
+  #   - No git command runs in the workspace. actions/checkout keeps an existing
+  #     workspace repository, and with it any hooks and local configuration
+  #     (remote and push addresses, URL rewrites) an earlier job planted there,
+  #     so this job does not use it: the first step clones main into a fresh
+  #     directory under RUNNER_TEMP, and every later git command runs there.
+  #   - No git command reads the runner user's or the system git configuration:
+  #     the first step points GIT_CONFIG_GLOBAL at a job-local file that turns
+  #     hooks off (core.hooksPath=/dev/null), sets GIT_CONFIG_NOSYSTEM, and stops
+  #     repository discovery at RUNNER_TEMP; gh reads a job-local GH_CONFIG_DIR.
+  #   - The push names the forge URL explicitly, never a configured remote, and
+  #     the credential helper answers for that host only.
+  # The compute step (git reads of this public repository, and every statusgen
+  # run) holds only the read-only default token. The assay-board-writer App
+  # token — the bypass actor on the default branch's rulesets, see the regen job
+  # — is minted only AFTER the compute step, only when it produced a commit to
+  # carry, narrowed to `contents: write` and `pull-requests: write` on this
+  # repository, and is referenced by the publish step alone: the branch push (a
+  # credential helper reading it from the step env, never a persisted header)
+  # and the PR calls. If the App does not hold both grants the mint fails and
+  # nothing is pushed. (An App push, unlike a GITHUB_TOKEN push, triggers the PR
+  # lint workflow on the branch.) Out of reach of this job, and assumed: the
+  # runner's own binaries (git, bash, curl), which no job may write, and a
+  # runner that ends every process of an earlier job when that job ends.
+  reconcile:
+    if: ${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}
+    runs-on: medici-builder-public
+    # Read-only token for the witness reads. The writes below use the App token.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    # GOENV=off and GOTOOLCHAIN=local, as in the corroborate job above.
+    # GOWORK=off: Go looks for a go.work in every directory above the build
+    # directory, and GOENV=off does not stop that walk. RUNNER_TEMP sits inside
+    # the runner's work directory, which outlives a job, so a go.work an earlier
+    # job left there would choose the source statusgen is built from.
+    env:
+      GOENV: "off"
+      GOTOOLCHAIN: local
+      GOWORK: "off"
+    steps:
+      # First, before any git command: a fresh clone under RUNNER_TEMP, and git
+      # and gh configuration that is this job's own. The workspace (and any
+      # repository an earlier job left in it) is never read.
+      - name: Clone main into a fresh job-local directory
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          cfg="${RUNNER_TEMP}/board-gitconfig"
+          printf '[core]\n\thooksPath = /dev/null\n' > "$cfg"
+          export GIT_CONFIG_GLOBAL="$cfg" GIT_CONFIG_NOSYSTEM=1 GIT_CEILING_DIRECTORIES="${RUNNER_TEMP}"
+          {
+            echo "GIT_CONFIG_GLOBAL=${cfg}"
+            echo "GIT_CONFIG_NOSYSTEM=1"
+            echo "GIT_CEILING_DIRECTORIES=${RUNNER_TEMP}"
+            echo "GH_CONFIG_DIR=${RUNNER_TEMP}/board-gh-config"
+          } >> "${GITHUB_ENV}"
+          git clone --quiet --no-tags --single-branch --branch main --template= \
+            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" "${RUNNER_TEMP}/board-src"
+      # The corroborate job's install, unchanged: toolchain and caches under
+      # RUNNER_TEMP, never $HOME; the tarball checksum-pinned.
+      - name: Install Go (job-local toolchain and caches, checksum-verified)
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/go.tar.gz" | cut -d' ' -f1)"
+          if [ "$GO_LINUX_AMD64_SHA256" != "$got" ]; then
+            echo "::error::Go tarball sha256 mismatch — want ${GO_LINUX_AMD64_SHA256}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          mkdir -p "${RUNNER_TEMP}/go-toolchain"
+          tar -C "${RUNNER_TEMP}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${RUNNER_TEMP}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+          {
+            echo "GOPATH=${RUNNER_TEMP}/gopath"
+            echo "GOCACHE=${RUNNER_TEMP}/gocache"
+            echo "GOMODCACHE=${RUNNER_TEMP}/gopath/pkg/mod"
+            echo "GOFLAGS="
+          } >> "${GITHUB_ENV}"
+      - name: Build statusgen from source
+        working-directory: ${{ runner.temp }}/board-src/statusgen
+        run: |
+          set -euo pipefail
+          go version
+          go build -o "${RUNNER_TEMP}/statusgen" .
+      # Always the pinned tarball, never a gh already on PATH: the publish step
+      # hands it the board-writer token.
+      - name: Install gh CLI (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+      # Compute: read-only. No write credential exists yet in this job.
+      - name: Reconcile and regenerate the stream README tables
+        id: compute
+        working-directory: ${{ runner.temp }}/board-src
+        env:
+          # The READ token: statusgen reconcile resolves it from GITHUB_TOKEN.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          statusgen="${RUNNER_TEMP}/statusgen"
+          repo="${GITHUB_REPOSITORY}"
+          branch="board/reconcile"
+          readme_re='^docs/streams/[^/]+/README\.md$'
+          subject_re='^chore\(board\): reconcile( |$)'
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          git fetch --no-tags origin main
+          base="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          # A transport error must fail here, never read as "branch absent": no
+          # --exit-code and no silencing, so errexit sees git's own failure.
+          heads="$(git ls-remote --heads origin "refs/heads/${branch}")"
+          tip=""
+          if [ -n "$heads" ]; then
+            git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}"
+            tip="$(git rev-parse --verify "refs/remotes/origin/${branch}^{commit}")"
+            # Accept only commits of this writer family's SHAPE: a
+            # `chore(board): reconcile` commit (or a `Merge` commit, which the
+            # desk-side writer makes) whose change against one of its parents is
+            # stream READMEs only. This is a check of subject and change, not of
+            # author. Any other commit is refused, never overwritten. Every
+            # commit on the branch is walked, not only its tip. Each git read is
+            # a plain assignment, so errexit sees its failure: a read that fails
+            # never reads as "nothing foreign". Renames are listed as a removal
+            # plus an addition, so a file moved onto a README path still shows
+            # the path it came from.
+            foreign=""
+            commits="$(git rev-list "${base}..${tip}")"
+            for c in $commits; do
+              subj="$(git log -1 --format=%s "$c")"
+              parents="$(git rev-list --parents -n 1 "$c" | cut -d' ' -f2-)"
+              nparents="$(echo "$parents" | wc -w | tr -d ' ')"
+              if [ "$nparents" -ge 2 ]; then
+                echo "$subj" | grep -q -E "${subject_re}|^Merge " || { foreign="${foreign}${c} ${subj}"$'\n'; continue; }
+              else
+                echo "$subj" | grep -q -E "$subject_re" || { foreign="${foreign}${c} ${subj}"$'\n'; continue; }
+              fi
+              readme_only=false
+              for p in $parents; do
+                changed="$(git diff --no-renames --name-only "$p" "$c")"
+                if [ -z "$(printf '%s\n' "$changed" | grep -v -E "$readme_re" || true)" ]; then
+                  readme_only=true
+                  break
+                fi
+              done
+              "$readme_only" || foreign="${foreign}${c} ${subj} (touches more than stream READMEs)"$'\n'
+            done
+            if [ -n "$foreign" ]; then
+              echo "::error::${branch} carries commit(s) whose subject or change is not this job's — not overwriting them. Close its PR and delete the branch (or land those commits elsewhere), and the next tick re-cuts it:"
+              printf '%s' "$foreign"
+              exit 1
+            fi
+          fi
+          # Compute on main's tree, never the branch's: the result is a pure function
+          # of main plus the PR witnesses, so main moving can never conflict with it.
+          git checkout -q --detach "$base"
+          out="${RUNNER_TEMP}/reconcile-out.txt"
+          # tee: the report — rows written AND rows held, with the problem each
+          # would add — reaches the job log on every tick, including a tick on
+          # which every witnessed row is held and nothing is carried.
+          "$statusgen" reconcile --apply --root . --repo "$repo" | tee "$out"
+          "$statusgen" regen --readmes --root .
+          "$statusgen" --root . --lint
+          # This job may change stream READMEs and nothing else.
+          # The same README pattern as the foreign-commit check above. The
+          # status read is a plain assignment, so errexit sees its failure: a
+          # failed read never reads as "nothing stray".
+          porcelain="$(git status --porcelain --untracked-files=all)"
+          stray="$(printf '%s\n' "$porcelain" | grep -v -E "^ M ${readme_re#^}" || true)"
+          if [ -n "$stray" ]; then
+            echo "::error::reconcile changed paths other than stream READMEs — refusing to commit:"
+            echo "$stray"
+            exit 1
+          fi
+          git add -- 'docs/streams/*/README.md'
+          tree="$(git write-tree)"
+          # Parents: the old branch tip (so the push is a fast-forward, never forced)
+          # plus main when the branch does not already contain it.
+          if [ -z "$tip" ]; then
+            if [ "$tree" = "$(git rev-parse "${base}^{tree}")" ]; then
+              echo "no stream README changed state — nothing to carry"
+              exit 0
+            fi
+            set -- -p "$base"
+          else
+            if [ "$tree" = "$(git rev-parse "${tip}^{tree}")" ] && git merge-base --is-ancestor "$base" "$tip"; then
+              echo "${branch} already carries this tick's result — nothing to push"
+              exit 0
+            fi
+            set -- -p "$tip"
+            git merge-base --is-ancestor "$base" "$tip" || set -- "$@" -p "$base"
+          fi
+          msg="${RUNNER_TEMP}/reconcile-msg.txt"
+          {
+            echo "chore(board): reconcile $(date -u +%F)"
+            echo
+            sed -n '/^reconcile --apply:/,$p' "$out"
+          } > "$msg"
+          commit="$(git commit-tree "$tree" "$@" -F "$msg")"
+          # The publish step runs only when this output is set.
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
+      - name: Mint assay-board-writer App token
+        if: ${{ steps.compute.outputs.commit != '' }}
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+          # Narrowed to what the publish step does: one branch push, one PR
+          # create or edit. With no owner input the token covers this
+          # repository only.
+          permission-contents: write
+          permission-pull-requests: write
+      # Publish: the only step that holds the write token. It runs no statusgen.
+      - name: Push board/reconcile and open or refresh its draft PR
+        if: ${{ steps.compute.outputs.commit != '' }}
+        working-directory: ${{ runner.temp }}/board-src
+        env:
+          # The WRITE token: the push (through the credential helper below) and
+          # the PR list/create/edit calls.
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMIT: ${{ steps.compute.outputs.commit }}
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          owner="${repo%%/*}"
+          branch="board/reconcile"
+          default_branch="main"
+          title='chore(board): reconcile'
+          case "$COMMIT" in
+            ''|*[!0-9a-f]*) echo "::error::the compute step's commit output is not an object name"; exit 1 ;;
+          esac
+          git cat-file -e "${COMMIT}^{commit}"
+          # The push names the forge URL, never a configured remote, and the
+          # helper answers for that host only. It reads the token from this
+          # step's env at request time: nothing is written to .git/config.
+          helper='!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=${GH_TOKEN}"; fi; }; f'
+          git -c credential.helper= -c "credential.${GITHUB_SERVER_URL}.helper=${helper}" \
+            push "${GITHUB_SERVER_URL}/${repo}.git" "${COMMIT}:refs/heads/${branch}"
+          body="${RUNNER_TEMP}/reconcile-pr-body.md"
+          {
+            echo "Scheduled board reconcile."
+            echo
+            echo "Flips a stream README Status cell from todo or in-progress to implemented when a merged PR carrying that brief's \`Brief:\` trailer witnesses it, and re-renders the generated Briefs tables from brief frontmatter. Only stream README files change; Verified and Reviewed cells and everything outside the generated markers are untouched. A row whose flip would add a lint problem is held and listed below, not written. This text and the title are rewritten on every push to the branch."
+            echo
+            echo '```'
+            sed -n '/^reconcile --apply:/,$p' "${RUNNER_TEMP}/reconcile-out.txt"
+            echo '```'
+          } > "$body"
+          # Our PR is the one open PR from THIS repository's own branch into main.
+          # The owner-qualified head narrows the query; the loop then binds each
+          # entry by value — head repository, head ref and base — so a fork's
+          # same-named branch, or a PR from this branch into another base, is
+          # named and skipped, whatever the filter returns. Two left fail the tick.
+          # A list that cannot be read fails here (errexit on the assignment): a
+          # could-not-check is never read as "a PR is open".
+          pulls="$(gh api --paginate "repos/${repo}/pulls?state=open&per_page=100&head=${owner}:${branch}" --jq '.[] | [.number, (.head.repo.full_name // "-"), .head.ref, .base.ref] | @tsv')"
+          own=""
+          while IFS=$'\t' read -r num head_repo head_ref base_ref; do
+            [ -n "$num" ] || continue
+            case "$num" in
+              *[!0-9]*) echo "::error::the PR list returned an entry with no PR number — refusing to guess"; exit 1 ;;
+            esac
+            if [ "$head_repo" != "$repo" ] || [ "$head_ref" != "$branch" ]; then
+              echo "ignoring open PR #${num}: its head is not this repository's ${branch}"
+            elif [ "$base_ref" != "$default_branch" ]; then
+              echo "ignoring open PR #${num}: it targets ${base_ref}, not ${default_branch}"
+            elif [ -n "$own" ]; then
+              echo "::error::open PRs #${own} and #${num} both carry ${branch} into ${default_branch} — refusing to pick one; close all but one"
+              exit 1
+            else
+              own="$num"
+            fi
+          done <<< "$pulls"
+          if [ -n "$own" ]; then
+            gh api --method PATCH "repos/${repo}/pulls/${own}" -f "title=${title}" -F "body=@${body}" > /dev/null
+            echo "PR #${own} already carries ${branch} — the push above updated it, and its title and body were rewritten"
+            exit 0
+          fi
+          gh pr create --repo "$repo" --draft --base "$default_branch" --head "$branch" --title "$title" --body-file "$body"

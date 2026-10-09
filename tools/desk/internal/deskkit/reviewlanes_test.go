@@ -243,6 +243,33 @@ func TestClaimEveryClaimCarriesAState(t *testing.T) {
 // The dispatch reference and the selection path
 // ---------------------------------------------------------------------------
 
+// The review kit's security cut tells that lane a correctness-only pass is still run for
+// the pull request, because "every tier's lane set includes that lane". The sentence is
+// held to the lane table here: a tier dispatched without the correctness lane makes it false.
+func TestEveryTierLaneSetIncludesCorrectness(t *testing.T) {
+	kit, err := os.ReadFile(filepath.Join(filepath.Dir(referencePath), "review-prompt.md"))
+	if err != nil {
+		t.Fatalf("cannot read the review kit beside %s: %v", referencePath, err)
+	}
+	const claim = "every tier's lane set includes that lane"
+	if !strings.Contains(strings.Join(strings.Fields(string(kit)), " "), claim) {
+		t.Fatalf("the review kit no longer says %q — this test pins that sentence to the lane table; retire or re-point it with the sentence", claim)
+	}
+	sets := map[string][]Lane{"an out-of-range tier": LanesFor(Tier(-1))}
+	for tier, set := range laneTable {
+		sets[tier.String()] = set
+	}
+	for name, set := range sets {
+		found := false
+		for _, l := range set {
+			found = found || l.Name == LaneCorrectness.Name
+		}
+		if !found {
+			t.Errorf("%s dispatches %v with no %s lane — the review kit tells the security lane that lane always runs", name, laneNames(set), LaneCorrectness.Name)
+		}
+	}
+}
+
 // referencePath is the dispatch reference this package's lane table is held to.
 // The path is relative to this package's directory and MUST stay inside this
 // module (tools/desk) — it may never climb above the module root and descend

@@ -30,7 +30,8 @@ type commsSurface struct {
 }
 
 func (c *Cell) commsCmdIn(sh paneShell, self string) string {
-	return sh.invoke(sh.quote(self)) + " --cells-root " + sh.quote(filepath.Dir(c.Dir)) + " comms " + sh.quote(c.Name) + " run"
+	root, name := c.reenter()
+	return sh.invoke(sh.quote(self)) + " --cells-root " + sh.quote(root) + " comms " + sh.quote(name) + " run"
 }
 
 func (c *Cell) commsPreflight() (bool, error) {

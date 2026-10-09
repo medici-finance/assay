@@ -69,11 +69,22 @@ func cmdCheck(cell, cfgArg string) {
 			}
 			fmt.Printf("[model] role=%s harness=%s model=%s\n", role, c.Harness, rm.Model)
 		}
+		c.checkCellDefaults(k)
+		// Every launch of a container cell refuses CELL_ROLE_CONTEXT, so its check must say so
+		// instead of passing: the row is a MISS and the exit is non-zero. The container's own
+		// check still runs. Nothing is printed for a cell that does not set the key.
+		if _, err := c.cellRoleContext(); err != nil {
+			k.chk(false, "%s", err)
+		}
 		c.containerRun("check")
+		if !k.ok {
+			exitWith(1)
+		}
 		return
 	}
 
 	fmt.Printf("[check] cell=%s dir=%s kind=%s forge=%s\n", c.Name, c.Dir, c.Kind, c.Forge)
+	c.checkCellDefaults(k)
 	// A scrubbed cell's whole point is that it never touches the operator's real config home —
 	// this row is n/a there (checkScrubbed proves the cell's OWN config home instead), unlike
 	// k8s/house where the cell's custody IS (a copy of, or a symlink to) that directory.
@@ -139,6 +150,15 @@ func cmdCheck(cell, cfgArg string) {
 			k.chk(true, "model pin: role=%s harness=%s model=%s (from %s)", role, c.Harness, rm.Model, rm.Src)
 		}
 	}
+	// Per-role starting context (#2438). No rows at all unless CELL_ROLE_CONTEXT is set.
+	c.checkRoleContext(k, cfgArg, func(role string) string {
+		if policy != nil {
+			if route, err := policy.Resolve(role, "", "", ""); err == nil {
+				return route.Harness
+			}
+		}
+		return c.Harness
+	})
 
 	// The cell's DEFAULT provider. Unset is a legitimate n/a (Anthropic, the long-standing
 	// default) rather than a MISS — a provider is opt-in per cell. Values shown are the
