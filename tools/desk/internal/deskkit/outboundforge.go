@@ -19,11 +19,17 @@ package deskkit
 //                 MarkReadyForReview, SetMergeHold, DeleteRef — plus OpenMergeHold,
 //                 RunWorkflow and ApproveGate, whose only text is composed by the backend
 //                 from fixed strings or is a workflow input that never renders as prose.
-//   reads         everything else.
+//   reads         everything else, and three of them are overridden ONLY to record:
+//                 ChecksAtHead, ListOpenChanges and ReviewQueueSnapshot delegate, then — on
+//                 success — hand the finished CI results they already carry to the CI-check
+//                 history recorder (cicheckhistory.go). They return the inner result pointer
+//                 and error unchanged, make no extra forge call, and a recorder failure or
+//                 panic never reaches the caller.
 
 import (
 	"bytes"
 	"strings"
+	"time"
 )
 
 // outboundForge wraps a backend. Embedding the inner Forge delegates every method this
@@ -231,4 +237,48 @@ func addedLinesAgainst(prior, next []byte) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// ChecksAtHead delegates, then records the finished check runs and terminal statuses the read
+// returned (ci-check-v1). The inner result and error are returned unchanged.
+func (o *outboundForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, error) {
+	c, err := o.Forge.ChecksAtHead(repo, sha)
+	if err == nil {
+		recordCIBestEffort(func(now time.Time) []CICheckRecord {
+			return ciRecordsFromChecks(repo, sha, c, now)
+		})
+	}
+	return c, err
+}
+
+// ListOpenChanges delegates, then records the finished entries of every change's rollup
+// (ci-check-v1). The inner result and error are returned unchanged.
+func (o *outboundForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
+	oc, err := o.Forge.ListOpenChanges(repo)
+	if err == nil && oc != nil {
+		recordCIBestEffort(func(now time.Time) []CICheckRecord {
+			var out []CICheckRecord
+			for _, ch := range oc.Changes {
+				out = append(out, ciRecordsFromRollup(repo, ch, now)...)
+			}
+			return out
+		})
+	}
+	return oc, err
+}
+
+// ReviewQueueSnapshot delegates, then records the finished entries of every change's rollup
+// (ci-check-v1). The inner result and error are returned unchanged.
+func (o *outboundForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) {
+	q, err := o.Forge.ReviewQueueSnapshot(repo)
+	if err == nil && q != nil {
+		recordCIBestEffort(func(now time.Time) []CICheckRecord {
+			var out []CICheckRecord
+			for _, ch := range q.Changes {
+				out = append(out, ciRecordsFromRollup(repo, ch.OpenChange, now)...)
+			}
+			return out
+		})
+	}
+	return q, err
 }

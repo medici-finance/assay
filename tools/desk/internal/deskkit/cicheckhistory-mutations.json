@@ -1,0 +1,95 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskflip/ -count=1 -timeout 300s -run 'TestCICheck|TestCIRollup|TestCIDuration|TestCISegments|TestSetCICheck|TestFlip_LeavesCICheckRecords'",
+  "control": {
+    "name": "CONTROL — the recorder never runs (the whole feature: every read is thrown away, as before)",
+    "file": "internal/deskkit/cicheckhistory.go",
+    "old": "\tif !ciEnabled() {\n\t\treturn\n\t}",
+    "new": "\tif true || !ciEnabled() {\n\t\treturn\n\t}"
+  },
+  "mutations": [
+    {
+      "name": "row 3 — the GraphQL rollup drops databaseId, so the REST and GraphQL reads of one run key differently and every run is recorded twice",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "Typename: c.Typename, ID: checkRunID(c.DatabaseID),",
+      "new": "Typename: c.Typename, ID: \"\","
+    },
+    {
+      "name": "row 2 — a queued/in-progress check run is recorded (it claims the key before the result arrives)",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "if name == \"\" || strings.ToLower(status) != \"completed\" {",
+      "new": "if name == \"\" {"
+    },
+    {
+      "name": "row 2 — a pending status is recorded",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "(st != \"success\" && st != \"failure\" && st != \"error\")",
+      "new": "false"
+    },
+    {
+      "name": "row 2 — commit statuses are dropped (only check runs recorded; a required external scanner vanishes)",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\tfor _, s := range c.Statuses {",
+      "new": "\tfor _, s := range c.Statuses[:0] {"
+    },
+    {
+      "name": "row 3 — the writer stops consulting the live file, so a second process re-writes a key already on disk",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\tif _, ok := onDisk[k]; ok {",
+      "new": "\t\tif _, ok := onDisk[k]; ok && false {"
+    },
+    {
+      "name": "row 3 — LoadCIChecks stops de-duplicating, so a cross-day duplicate reaches an analysis",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\t\tif _, dup := seen[k]; dup {",
+      "new": "\t\t\tif _, dup := seen[k]; dup && false {"
+    },
+    {
+      "name": "row 3 — the attempt key ignores the run id, so a re-run collapses into the first attempt",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\treturn strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name, r.Attempt}, \"\\x1f\")",
+      "new": "\treturn strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name}, \"\\x1f\")"
+    },
+    {
+      "name": "row 4 — recording adds a forge read (the decorator reads the checks a second time)",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "\tc, err := o.Forge.ChecksAtHead(repo, sha)\n\tif err == nil {",
+      "new": "\tc, err := o.Forge.ChecksAtHead(repo, sha)\n\tif err == nil {\n\t\t_, _ = o.Forge.ChecksAtHead(repo, sha)"
+    },
+    {
+      "name": "row 5 — a recorder panic is not recovered and reaches the caller",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\tif p := recover(); p != nil {",
+      "new": "\t\tif p := any(nil); p != nil {"
+    },
+    {
+      "name": "row 5 — a held lock blocks the read far past the bounded wait",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\tdeadline := time.Now().Add(ciLockWait)",
+      "new": "\tdeadline := time.Now().Add(ciLockWait * 40)"
+    },
+    {
+      "name": "row 5 — a failed inner read is still recorded",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "\tc, err := o.Forge.ChecksAtHead(repo, sha)\n\tif err == nil {",
+      "new": "\tc, err := o.Forge.ChecksAtHead(repo, sha)\n\tif true {"
+    },
+    {
+      "name": "row 5 — the decorator returns a copy of the read, not the inner result pointer (a caller holding the inner value now sees a different one)",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "\treturn c, err\n}",
+      "new": "\tif c != nil {\n\t\tcp := *c\n\t\treturn &cp, err\n\t}\n\treturn c, err\n}"
+    },
+    {
+      "name": "row 6 — the ChecksAtHead override is lost, so the flip path (and every ChecksAtHead reader) records nothing",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "func (o *outboundForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, error) {",
+      "new": "func (o *outboundForge) checksAtHeadUnwired(repo ForgeRepo, sha string) (*ChecksAtHead, error) {"
+    },
+    {
+      "name": "row 7 — a details-URL field is added to the record",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\tDurationS *int `json:\"duration_s,omitempty\"`",
+      "new": "\tDurationS  *int   `json:\"duration_s,omitempty\"`\n\tDetailsURL string `json:\"details_url,omitempty\"`"
+    }
+  ]
+}
