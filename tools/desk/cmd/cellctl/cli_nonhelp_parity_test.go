@@ -346,17 +346,18 @@ type deliberateDiff struct {
 }
 
 const (
-	whyNoEcho       = "help, --version, version and parse failures print no roster echo: nothing acts, so there is no effective configuration to show"
-	whyParseText    = "a malformed command line is now refused by the parser with its own wording and the usage exit (3)"
-	whyInterspersed = "flags are accepted before and between positionals on every non-raw verb, so a line the legacy parser refused now runs"
-	whyDashLong     = "the single-dash spelling of a long flag is accepted on every non-raw verb, and -version names the version, not only scratch's flags"
-	whySelector     = "the cells-root selector is accepted as --cells-root=<abs> and -cells-root <abs> before a verb, and a raw verb strips the = form like the separated one"
-	echoFragment    = "assay-config:"
+	whyNoEcho     = "help, --version, version and parse failures print no roster echo: nothing acts, so there is no effective configuration to show"
+	whyParseText  = "a malformed command line is now refused by the parser with its own wording and the usage exit (3)"
+	whyShape      = "refused as before (exit 3, nothing run), by the shape check in the parser's words and without the roster echo"
+	whyHookBlocks = "a refused line that names the model-policy hook exits with the hook's blocking 2, where the legacy unknown-verb exit 3 was non-blocking"
+	echoFragment  = "assay-config:"
 )
 
 func unknownCmd(name string) string {
-	return "cellctl: unknown command \"" + name + "\" for \"cellctl\"\nRun 'cellctl --help' for usage.\n"
+	return shapeErr("unknown command \"" + name + "\" for \"cellctl\"")
 }
+
+func shapeErr(msg string) string { return "cellctl: " + msg + "\nRun 'cellctl --help' for usage.\n" }
 
 var deliberateDiffs = map[string]deliberateDiff{
 	"version-flag/0":  {code: 0, stderr: "", why: whyNoEcho},
@@ -373,21 +374,25 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"completion-entrypoints/1": {code: 3, stderr: unknownCmd("__completeNoDesc"), why: whyParseText},
 	"completion-entrypoints/2": {code: 3, stderr: unknownCmd("__complete"), why: whyParseText},
 
-	"flags-before-positionals/0": {code: 0, why: whyInterspersed, stdoutHas: []string{`"apply":true`}, stderrHas: []string{echoFragment}},
-	"flags-before-positionals/1": {code: 0, why: whyInterspersed, stdoutHas: []string{"worker-desk recover recorded"}, stderrHas: []string{echoFragment}},
-	"flags-before-positionals/2": {code: 0, why: whyInterspersed, stdoutHas: []string{"model=early (override)"}, stderrHas: []string{echoFragment}},
-	"flags-before-positionals/3": {code: 0, why: whyInterspersed, stdoutHas: []string{"CELL_HARNESS=codex (flag)"}, stderrHas: []string{echoFragment}},
+	// Shapes the legacy parser refused and the shape check (shape.go) refuses again, before
+	// anything parses: the same exit 3 with nothing run, in the parser's words and without the
+	// roster echo. The verb-position lines are unknown verbs (decision entry 2); the wording of the
+	// others is a remaining difference the compatibility report lists for a ruling.
+	"flags-before-positionals/0": {code: 3, stderr: shapeErr(`scratch: flag "--apply" comes before the command's positional arguments; flags follow them`), why: whyShape},
+	"flags-before-positionals/1": {code: 3, stderr: shapeErr(`cadence: flag "--confirm-stopped" comes before the command's positional arguments; flags follow them`), why: whyShape},
+	"flags-before-positionals/2": {code: 3, stderr: shapeErr(`desk: flag "--model" comes before the command's positional arguments; flags follow them`), why: whyShape},
+	"flags-before-positionals/3": {code: 3, stderr: shapeErr(`show: flag "--harness" comes before the command's positional arguments; flags follow them`), why: whyShape},
 
-	"single-dash-outside-scratch/0": {code: 0, why: whyDashLong, stdoutHas: []string{"model=dash (override)"}, stderrHas: []string{echoFragment}},
-	"single-dash-outside-scratch/1": {code: 0, why: whyDashLong, stdoutHas: []string{"CELL_HARNESS=codex (flag)"}, stderrHas: []string{echoFragment}},
-	"single-dash-outside-scratch/2": {code: 0, why: whyDashLong, stdoutHas: []string{"dev-"}},
-	"single-dash-outside-scratch/3": {code: 0, why: whyDashLong, stdoutHas: []string{"dev-"}},
+	"single-dash-outside-scratch/0": {code: 3, stderr: shapeErr(`desk: single-dash flag "-model" (only scratch takes that spelling; write --model)`), why: whyShape},
+	"single-dash-outside-scratch/1": {code: 3, stderr: shapeErr(`show: single-dash flag "-harness" (only scratch takes that spelling; write --harness)`), why: whyShape},
+	"single-dash-outside-scratch/2": {code: 3, stderr: unknownCmd("-version"), why: whyParseText},
+	"single-dash-outside-scratch/3": {code: 3, stderr: shapeErr(`unknown command "extra" for "cellctl version"`), why: whyParseText},
 
-	"cells-root-spellings/0": {code: 0, why: whySelector, stdoutHas: []string{"example\nscrub\n"}, stderrHas: []string{echoFragment}},
-	"cells-root-spellings/1": {code: 0, why: whySelector, stdoutHas: []string{"example\nscrub\n"}, stderrHas: []string{echoFragment}},
-	"cells-root-spellings/2": {code: 0, why: whySelector, stderrHas: []string{echoFragment}},
-	"cells-root-spellings/3": {code: 2, why: whySelector, stderrHas: []string{"model-policy: cell directory must be absolute: relative"}},
-	"cells-root-spellings/4": {code: 2, why: whySelector, stderrHas: []string{"--cells-root requires an absolute registry path"}},
+	"cells-root-spellings/0": {code: 3, stderr: unknownCmd("--cells-root=<ROOT>/cells"), why: whyParseText},
+	"cells-root-spellings/1": {code: 3, stderr: unknownCmd("-cells-root"), why: whyParseText},
+	"cells-root-spellings/2": {code: 3, stderr: unknownCmd("--cells-root=<ROOT>/cells"), why: whyParseText},
+	"cells-root-spellings/3": {code: 2, stderr: unknownCmd("--cells-root=<ROOT>/cells"), why: whyParseText + "; " + whyHookBlocks},
+	"cells-root-spellings/4": {code: 2, stderr: unknownCmd("-cells-root"), why: whyParseText + "; " + whyHookBlocks},
 }
 
 // diffHolds reports whether a listed difference still has exactly the recorded new shape.

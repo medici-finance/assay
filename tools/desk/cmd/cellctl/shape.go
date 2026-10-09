@@ -61,8 +61,8 @@ func legacyShape(root *cobra.Command, args []string) error {
 	if cmd == nil || cmd.DisableFlagParsing {
 		return nil // an unknown verb is the parser's refusal; a raw verb's argv is its own
 	}
-	if verb == "version" && len(rest) > 1 {
-		return fmt.Errorf("unknown command %q for %q", strings.Join(rest, " "), root.Name())
+	if verb == "version" && len(rest) > 1 && !(len(rest) == 2 && (rest[1] == "-h" || rest[1] == "--help")) {
+		return fmt.Errorf("unknown command %q for %q", rest[1], root.Name()+" version")
 	}
 	n, err := strconv.Atoi(cmd.Annotations[leadingArgsKey])
 	if err != nil {
@@ -86,7 +86,7 @@ func legacyShape(root *cobra.Command, args []string) error {
 			continue
 		}
 		if pos < n {
-			return fmt.Errorf("%s: flag %q stands before the command's positional arguments (%s); flags follow them", verb, w, cmd.Use)
+			return fmt.Errorf("%s: flag %q comes before the command's positional arguments; flags follow them", verb, w)
 		}
 		name, _, hasValue := strings.Cut(strings.TrimLeft(w, "-"), "=")
 		if name == "cells-root" {

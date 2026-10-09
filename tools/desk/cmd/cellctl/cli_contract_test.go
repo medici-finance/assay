@@ -119,10 +119,12 @@ func TestCLIHelpOffline(t *testing.T) {
 	}})
 	forms := [][]string{}
 	forms = append(forms, clicontract.HelpForms("desk")...)
-	forms = append(forms, clicontract.GoFlagHelpForms("desk")...)
 	forms = append(forms, clicontract.VersionForms...)
-	forms = append(forms, clicontract.GoFlagVersionForms...)
 	forms = append(forms, []string{"version"})
+	// The Go-flag spellings of help and version (-help, desk -help, -version) were unknown verbs
+	// to the legacy parser, which read single-dash flags for scratch only; they stay refused, and
+	// a refusal is as offline as help: usage exit 3, nothing on stdout, nothing echoed or read.
+	refused := append(append([][]string{}, clicontract.GoFlagHelpForms("desk")...), clicontract.GoFlagVersionForms...)
 	for _, v := range visibleVerbs {
 		forms = append(forms, []string{v, "--help"}, []string{"help", v})
 	}
@@ -156,6 +158,12 @@ func TestCLIHelpOffline(t *testing.T) {
 				}
 				if strings.TrimSpace(r.Stdout) == "" {
 					t.Errorf("%v: printed nothing", args)
+				}
+			}
+			for _, args := range refused {
+				r := execIn(t, bin, env, args...)
+				if r.Code != 3 || r.Stdout != "" || strings.Contains(r.Stderr, echoFragment) {
+					t.Errorf("%v: exit %d, want the usage refusal 3 with nothing on stdout and no echo\nstdout:\n%s\nstderr:\n%s", args, r.Code, r.Stdout, r.Stderr)
 				}
 			}
 			if _, err := os.Stat(logPath); err == nil {
@@ -218,6 +226,13 @@ func TestCLIConfigFlow(t *testing.T) {
 		for _, form := range clicontract.OptionForms {
 			for _, pv := range clicontract.PathValues {
 				r, model, _ := w.deskPlan(t, nil, form.Args("model", pv.Value)...)
+				if form.GoFlagOnly {
+					// Go-flag spellings are scratch's alone (the legacy parser's rule).
+					if r.Code != 3 || model != "" {
+						t.Errorf("%s/%s: exit %d, model %q, want the usage refusal 3\n%s", form.Name, pv.Name, r.Code, model, r.Stderr)
+					}
+					continue
+				}
 				if r.Code != 0 || model != pv.Value {
 					t.Errorf("%s/%s: exit %d, model %q, want %q\n%s", form.Name, pv.Name, r.Code, model, pv.Value, r.Stderr)
 				}
@@ -451,26 +466,31 @@ func TestCLILegacyForms(t *testing.T) {
 		}
 	})
 
+	// The legacy shape: one selector, separated, first; single-dash flags for scratch only. The
+	// other spellings were unknown verbs or ignored words to the legacy parser and stay refused.
 	t.Run("go-style-and-leading-global", func(t *testing.T) {
 		for _, form := range clicontract.OptionForms {
 			if !form.GoFlagOnly {
 				continue
 			}
 			r, model, _ := w.deskPlan(t, nil, form.Args("model", "go-style")...)
-			if r.Code != 0 || model != "go-style" {
-				t.Errorf("%s: exit %d model %q\n%s", form.Name, r.Code, model, r.Stderr)
+			if r.Code != 3 || model != "" {
+				t.Errorf("%s: exit %d model %q, want the usage refusal 3\n%s", form.Name, r.Code, model, r.Stderr)
 			}
 		}
-		for _, pre := range [][]string{{"--cells-root", w.cellsRoot}, {"-cells-root", w.cellsRoot}, {"--cells-root=" + w.cellsRoot}} {
-			args := append(append([]string{}, pre...), "ls")
-			env := []string{"CELLS_ROOT=" + filepath.Join(w.root, "elsewhere")}
-			if r := w.run(t, env, args...); r.Code != 0 || !strings.Contains(r.Stdout, "example") {
-				t.Errorf("%v: exit %d, cell list %q\n%s", pre, r.Code, r.Stdout, r.Stderr)
-			}
+		env := []string{"CELLS_ROOT=" + filepath.Join(w.root, "elsewhere")}
+		if r := w.run(t, env, "--cells-root", w.cellsRoot, "ls"); r.Code != 0 || !strings.Contains(r.Stdout, "example") {
+			t.Errorf("--cells-root <abs> ls: exit %d, cell list %q\n%s", r.Code, r.Stdout, r.Stderr)
 		}
-		// the same flag may also follow the verb
-		if r := w.run(t, []string{"CELLS_ROOT=" + filepath.Join(w.root, "elsewhere")}, "ls", "--cells-root", w.cellsRoot); r.Code != 0 || !strings.Contains(r.Stdout, "example") {
-			t.Errorf("ls --cells-root: exit %d %q", r.Code, r.Stdout)
+		for _, args := range [][]string{
+			{"-cells-root", w.cellsRoot, "ls"},
+			{"--cells-root=" + w.cellsRoot, "ls"},
+			{"-cells-root=" + w.cellsRoot, "ls"},
+			{"ls", "--cells-root", w.cellsRoot},
+		} {
+			if r := w.run(t, env, args...); r.Code != 3 || r.Stdout != "" || strings.Contains(r.Stderr, echoFragment) {
+				t.Errorf("%v: exit %d, stdout %q, want the usage refusal 3\n%s", args, r.Code, r.Stdout, r.Stderr)
+			}
 		}
 	})
 
@@ -495,7 +515,7 @@ func TestCLILegacyForms(t *testing.T) {
 
 	// A rejection message proves the parser stayed out; it does not prove the verb got the words.
 	// This runs a child that records its own argv and requires exactly the words typed, flag-shaped
-	// or not, with the selector in front of the verb in each spelling stripped and nothing else.
+	// or not, with the one accepted selector in front of the verb stripped and nothing else.
 	t.Run("raw-verb-child-receives-every-word", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("the argv probe is a POSIX shell script")
@@ -513,9 +533,6 @@ func TestCLILegacyForms(t *testing.T) {
 		for _, pre := range [][]string{
 			nil,
 			{"--cells-root", w.cellsRoot},
-			{"--cells-root=" + w.cellsRoot},
-			{"-cells-root", w.cellsRoot},
-			{"-cells-root=" + w.cellsRoot},
 		} {
 			_ = os.Remove(out)
 			args := append(append(append([]string{}, pre...), "cache-run", "raw-probe"), words...)
@@ -526,19 +543,24 @@ func TestCLILegacyForms(t *testing.T) {
 		}
 	})
 
-	// The same selector spellings in front of the hook: it must see its own tokens, whichever
-	// spelling, and a bad token is its own refusal (2), never the parser's usage exit.
+	// The selector in front of the hook: behind the accepted spelling the hook sees its own tokens
+	// and a bad token is its own refusal (2). The refused spellings never reach the hook, and the
+	// refusal is still the blocking 2, never the parser's non-blocking usage exit.
 	t.Run("hook-selector-spellings", func(t *testing.T) {
+		hookWords := []string{"model-policy", "hook", "relative", "worker-desk", "anthropic", "", "claude", "abc"}
+		args := append([]string{"--cells-root", w.cellsRoot}, hookWords...)
+		if r := w.run(t, nil, args...); r.Code != 2 || !strings.Contains(r.Stderr, "cell directory must be absolute: relative") {
+			t.Errorf("--cells-root <abs>: exit %d, want the hook's own refusal (2) of its first token\n%s", r.Code, r.Stderr)
+		}
 		for _, pre := range [][]string{
-			{"--cells-root", w.cellsRoot},
 			{"--cells-root=" + w.cellsRoot},
 			{"-cells-root", w.cellsRoot},
 			{"-cells-root=" + w.cellsRoot},
 		} {
-			args := append(append([]string{}, pre...), "model-policy", "hook", "relative", "worker-desk", "anthropic", "", "claude", "abc")
+			args := append(append([]string{}, pre...), hookWords...)
 			r := w.run(t, nil, args...)
-			if r.Code != 2 || !strings.Contains(r.Stderr, "cell directory must be absolute: relative") {
-				t.Errorf("%v: exit %d, want the hook's own refusal (2) of its first token\n%s", pre, r.Code, r.Stderr)
+			if r.Code != 2 || strings.Contains(r.Stderr, "cell directory must be absolute") || !strings.Contains(r.Stderr, "unknown command") {
+				t.Errorf("%v: exit %d, want the blocking 2 for a refused selector spelling, the hook not run\n%s", pre, r.Code, r.Stderr)
 			}
 		}
 	})
