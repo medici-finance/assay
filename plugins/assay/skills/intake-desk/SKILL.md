@@ -30,16 +30,18 @@ work *leaving* the system (PRs → ready), this desk watches work *arriving* fro
 GitHub issues filed by anyone, intake-register entries (raw ideas), and any incoming request. Its
 job is to convert each inbound item into exactly one of **five tracked exits**:
 
-| Exit | What it becomes | Route |
-|------|-----------------|-------|
-| **spec/brief** | A stream brief (via the author-brief flow) | `scoped → <stream>` |
-| **bug/issue** | A GitHub issue (label `bug` when bug-shaped) | `scoped → issue #NN` |
-| **finding** | An F-NN finding entry | `docs/streams/findings/` |
-| **needs-decision** | A `needs-decision` issue (the single human-decision queue) | `decision-needed` |
-| **rejected/watching** | An explicit rejection or watch entry | `rejected — <why>` / `watching` |
+| Exit | Code slug | What it becomes | Route |
+|------|-----------|-----------------|-------|
+| **spec/brief** | `placeholder` | A stream brief (via the author-brief flow) | `scoped → <stream>` |
+| **bug/issue** | `bug` | A GitHub issue (label `bug` when bug-shaped) | `scoped → issue #NN` |
+| **finding** | `finding` | An F-NN finding entry | `docs/streams/findings/` (`scoped → F-<slug>`) |
+| **needs-decision** | `needs-decision` | A `needs-decision` issue (the single human-decision queue) | `decision-needed` |
+| **rejected/watching** | `rejected-watching` | An explicit rejection or watch entry | `rejected — <why>` / `watching` |
 
 An item that lands with none of them, or with two, is a refusal — `scanloop` records exactly one
-tracked exit per item and fails the pass otherwise.
+tracked exit per item and fails the pass otherwise. The code slug is what the exit record and the
+`scanloop land --exit` flag carry; each landed exit is one `intake-exit-v1` record
+(`docs/streams/desk-supervision/intake-exit-v1.md`) — no title, body or login ever enters one.
 
 - **worker-desk** dispatches workers against the Next-up batch, **including the issue-placeholders
   this desk emits** (`F-desk-emits-briefs`, human:<name> 2026-07-20). This desk's issue-lane
@@ -229,6 +231,16 @@ unarmed poller or an untakeable trust read all make the pass unverifiable — re
 as idle, and confirm `plan`'s arming-coverage line before trusting a quiet pass. `--dry-run` prints
 every lane step without running it; `--offline --inbound <file>` opens no network read at all.
 
+**Exit records.** Every exit `run` lands is also appended as a `decided_by: mechanical` record to
+`<state dir>/intake-exits.jsonl` (`--dry-run` writes none). A JUDGMENT item is parked, never
+landed by the drain: **after routing a parked item, record its exit** with
+`scanloop land --item <owner/repo#N> --exit <code slug> --artifact <typed ref> --tier any|strong`
+(plus `--detail rejected|watching` for `rejected-watching`, `--kind <reason>` as the drain parked
+it, and `--dispatch-ref <ref>` when known). Run it from the desk window, so `$DESK_LOOP` names the
+running loop — the record's role. The artifact is a typed ref (`<stream>/<NN>`, `owner/repo#N`,
+`#N`, `F-<slug>`), never prose. One exit per item: the same exit again is a no-op, a different one is
+refused (exit 5).
+
 **Standing-doctrine pointer.** A successor scan-transcription lane (ruling R-7) would have an
 `issues`-event workflow commit the placeholder delta for trusted-author issues. Until R-7 signs and
 its cutover lands, the scan-carrier flow above stands. Do not anticipate it.
@@ -405,6 +417,12 @@ issue; if it needs judgment first, it's intake.* Intake routes INTO the issue la
 commit that does both**: the frontmatter `disposition:` update AND a `git mv` into the matching
 subdir. Never one without the other — a mismatch is what `--lint` catches. New entries file under
 `intake/new/`; flat-layout repos (an append-only `INTAKE.md` too) parse unchanged.
+
+**Stamp the triage in the same commit.** Alongside `disposition:`, set `triaged:` (the date, or
+RFC3339), `triaged-by:` (the running loop's canonical name, or `driver` when a human triages by
+hand — never a person's login; anything outside that closed set is a `--lint` PROBLEM) and
+`triager-tier:` (`any` or `strong`). `statusgen --intake-exits --json` exports only stamped entries;
+an older entry without a stamp is counted, never backfilled.
 
 1. **Untriaged-age alarm** (issue-loop/07) → the intake-debt line NOTICEs entries past **3 days** in
    `disposition: new`. Draining that list is this desk's standing job — an untriaged front door is
