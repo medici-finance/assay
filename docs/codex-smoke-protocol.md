@@ -91,7 +91,7 @@ harness-portability/05 (resident-rules delivery).
 Action: For **each** bundled skill, invoke it by its namespaced name
 (`assay:adopt`, `assay:ask-decision`, `assay:author-brief`, `assay:author-spec`, `assay:cut-release`,
 `assay:human-runsheet`, `assay:install`, `assay:intake-desk`, `assay:pdfingest`, `assay:pr-review-desk`,
-`assay:pr-shepherd`, `assay:system-demo`, `assay:the-desk`, `assay:upgrade-assay`,
+`assay:pr-shepherd`, `assay:session-coach`, `assay:system-demo`, `assay:the-desk`, `assay:upgrade-assay`,
 `assay:verify-desk`, `assay:worker-desk`) and confirm the full SKILL.md body loads (not
 merely the description). Paste one identifying line from each loaded body.
 
