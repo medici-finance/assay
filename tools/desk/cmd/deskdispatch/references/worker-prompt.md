@@ -427,9 +427,11 @@ section, near the top, lists what was left out.
 - **Read it first, whole, in one read**, before any other fetch. **Do not re-fetch what it
   holds; fetch only what it lacks**, batched per clause 16 — a file the brief does not name, a
   failing job's log, anything the packet lists as omitted.
-- **Head check.** If the head the packet records differs from the head you are working on —
-  or the packet is missing, unreadable, or records no head — say so in your report, use
-  nothing from it as evidence, and gather everything yourself.
+- **Head check — made when you read it.** If the head the packet records differs from the
+  head your worktree is at when you start — or the packet is missing, unreadable, or records
+  no head — say so in your report, use nothing from it as evidence, and gather everything
+  yourself. Your own later commits do not make the rest of the packet stale; they do make it
+  stale for every file you changed, and for the check states (next point).
 - **Unfinished checks are not results.** A check the packet shows pending or absent is re-read
   before you rely on it, and a check state in the packet is the state at the packet's head,
   never at a head you pushed afterwards.
