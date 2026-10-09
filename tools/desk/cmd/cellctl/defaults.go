@@ -89,8 +89,10 @@ func cellDefaultsPath(e *Env) string {
 // cellDefaultsFor is the same file, reached from a cell.env's own path — which is all `set`'s
 // readers are handed. A cell.env that lives under the cells root, at any depth (a cell may be
 // named `team/demo`), resolves to the root's one file, exactly as loadCell does. A cell.env
-// anywhere else is not a cell loadCell could load from this environment; it resolves to the file
-// beside its own cell directory, so the answer never depends on a cells root it is not in.
+// anywhere else is not one `set` can reach — it finds its cell.env through cellDir, which refuses
+// a name that is not under the cells root — so that case arises only for a caller that hands
+// these readers a file directly, and it resolves to the file beside that file's own cell
+// directory: the answer never depends on a cells root the file is not in.
 func cellDefaultsFor(envfile string) string {
 	if abs, err := filepath.Abs(envfile); err == nil {
 		envfile = abs
@@ -130,6 +132,16 @@ func overlayCellDefaults(e *Env, path string) (keys []string, read bool, err err
 // overlayCellDefaultsText is the strict reading of a defaults file's text: every line is blank,
 // a comment or an assignment, and no assignment sets a key the file refuses. path only names the
 // file in a refusal.
+//
+// An assignment whose value is empty sets nothing, for every key (emptyEnvValue says what empty
+// is). This file outranks the process environment, so a line that assigned the empty string
+// would take a value the launching shell exported away from every cell under the root, and the
+// template prints exactly such a line — `# KEY=` — for every key with no compiled default: for
+// CELL_MODEL_POLICY, uncommenting it unchanged would have meant "no policy" on every cell and no
+// enforcement hook. So the line is read, vetted like any other (a refused key is refused
+// whatever its value), and then assigns nothing: the key is not among the keys the file set,
+// and its value and source stay those of the layer below. Only a cell's own cell.env can set a
+// key to the empty string.
 func overlayCellDefaultsText(goos string, e *Env, raw []byte, path string) ([]string, error) {
 	return overlayEnvLines(goos, e, raw, layerDefaults, func(line int, key string) error {
 		if key == "" {
@@ -139,7 +151,7 @@ func overlayCellDefaultsText(goos string, e *Env, raw []byte, path string) ([]st
 			return fmt.Errorf("cell defaults file %s: line %d sets %s, which %s — it cannot be a machine-wide default; %s", path, line, key, why, instead)
 		}
 		return nil
-	})
+	}, true)
 }
 
 // createCellDefaults writes the template to path when nothing is there, and reports whether it
@@ -157,25 +169,35 @@ func createCellDefaults(path string) (created bool, err error) {
 		}
 		return false, err
 	}
-	_, werr := f.WriteString(cellDefaultsTemplate())
+	werr := writeCellDefaultsTemplate(f)
 	cerr := f.Close()
 	if werr == nil {
 		werr = cerr
 	}
 	if werr != nil {
-		// Only ever the file this call created a moment ago.
+		// A write that failed part-way leaves no file: half a template would be a defaults file
+		// that is there, so it would never be written again, and one cut off inside a line could
+		// refuse every cell under the root. Only ever the file this call created a moment ago.
 		os.Remove(path)
 		return false, werr
 	}
 	return true, nil
 }
 
+// writeCellDefaultsTemplate writes the template into the file createCellDefaults has just
+// created. It is a variable for one reason: a test replaces it with a write that fails part-way,
+// which no real file system can be asked to do on demand.
+var writeCellDefaultsTemplate = func(f *os.File) error {
+	_, err := f.WriteString(cellDefaultsTemplate())
+	return err
+}
+
 const cellDefaultsCreated = "[defaults] created %s; every key in it is commented out, so it sets nothing until you uncomment a line\n"
 
 // seedCellDefaults is `cellctl new`'s last step: a cells root that has no defaults file gets the
-// template, once. It says one line when it writes the file and nothing when one is already
-// there. A root it cannot write to is a notice, never a failed `new` — the cell is already
-// scaffolded, and the file is optional.
+// template, once. It says one line when it writes the file, nothing when a file is already
+// there, and a notice when what is there is not a regular file. A root it cannot write to is a
+// notice, never a failed `new` — the cell is already scaffolded, and the file is optional.
 func seedCellDefaults() {
 	path := cellDefaultsPath(newEnvFromProcess())
 	created, err := createCellDefaults(path)
@@ -185,6 +207,13 @@ func seedCellDefaults() {
 	}
 	if created {
 		fmt.Printf(cellDefaultsCreated, path)
+		return
+	}
+	// Something was already at the path, and it is left as it is. A file is the ordinary case
+	// and needs no word. Anything else — a directory, a symlink to nothing — is read by no cell:
+	// the loader refuses it, so the cell just scaffolded will not load until it is dealt with.
+	if fi, err := os.Stat(path); err != nil || !fi.Mode().IsRegular() {
+		fmt.Fprintf(os.Stderr, "NOTICE: %s is there and is not a regular file, so no cell under this cells root loads until it is replaced by one or removed (`cellctl defaults init` writes the template once nothing is there)\n", path)
 	}
 }
 
@@ -193,6 +222,9 @@ func seedCellDefaults() {
 // default, and what to diff an existing file against. `init` creates the file for a cells root
 // that predates it, on the same never-overwrite rule `cellctl new` follows.
 func cmdDefaults(args []string) {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		usage(0)
+	}
 	if len(args) != 1 || (args[0] != "init" && args[0] != "print") {
 		die("usage: cellctl defaults init|print (init creates CELLS_ROOT/%s without overwriting; print writes the template to stdout)", cellDefaultsFile)
 	}

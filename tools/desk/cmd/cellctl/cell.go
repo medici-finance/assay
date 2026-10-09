@@ -145,7 +145,7 @@ func parseCellEnvFor(goos string, e *Env, path string) error {
 	if err != nil {
 		return err
 	}
-	_, err = overlayEnvLines(goos, e, raw, layerCellEnv, nil)
+	_, err = overlayEnvLines(goos, e, raw, layerCellEnv, nil, false)
 	return err
 }
 
@@ -158,7 +158,11 @@ func parseCellEnvFor(goos string, e *Env, path string) error {
 // assignment is skipped, as it always was. A non-nil vet is called with the 1-based line number
 // and the key of every assignment ("" for a line that is neither blank, a comment, nor an
 // assignment) BEFORE anything on that line is assigned, and its error stops the read.
-func overlayEnvLines(goos string, e *Env, raw []byte, layer string, vet func(line int, key string) error) ([]string, error) {
+//
+// emptySetsNothing is the machine-wide file's rule (defaults.go): an assignment whose value is
+// empty assigns nothing and is not among the keys returned, so the layer below stands. cell.env
+// passes false — an empty value there IS an assignment, as it always was.
+func overlayEnvLines(goos string, e *Env, raw []byte, layer string, vet func(line int, key string) error, emptySetsNothing bool) ([]string, error) {
 	var keys []string
 	seen := map[string]bool{}
 	for n, line := range strings.Split(string(raw), "\n") {
@@ -182,7 +186,11 @@ func overlayEnvLines(goos string, e *Env, raw []byte, layer string, vet func(lin
 		if key == "" {
 			continue
 		}
-		e.putFrom(key, unquoteShellValueFor(goos, s[i+1:], e), layer)
+		value := unquoteShellValueFor(goos, s[i+1:], e)
+		if emptySetsNothing && emptyEnvValue(value) {
+			continue
+		}
+		e.putFrom(key, value, layer)
 		if !seen[key] {
 			seen[key] = true
 			keys = append(keys, key)
@@ -190,6 +198,13 @@ func overlayEnvLines(goos string, e *Env, raw []byte, layer string, vet func(lin
 	}
 	return keys, nil
 }
+
+// emptyEnvValue is the test the machine-wide file's empty-value rule applies to a value AFTER the
+// grammar has reduced it — quotes removed, `$VAR` references expanded — so `KEY=`, a pair of
+// quotes of either kind with nothing between them, and `KEY=$UNSET` are all empty. A value that
+// is only the carriage return a CRLF line ending leaves behind is empty too: to the person who
+// saved the file, that line has no value. Anything else, a single space included, is a value.
+func emptyEnvValue(v string) bool { return v == "" || v == "\r" }
 
 func validEnvKeyShape(k string) bool {
 	if k == "" {
@@ -317,10 +332,19 @@ type Cell struct {
 	Name string
 	Dir  string
 	// Root is the cells root this load resolved, absolute, and Ref the cell's path under it — the
-	// name it was loaded by (`demo`, or `team/demo` for a nested cell). Anything that makes a
-	// child cellctl load THIS cell again hands it exactly this pair, through reenter: the cell
-	// directory's parent is the cells root only for a cell one level down, and the root is also
-	// where the machine-wide defaults file and the shared provider catalog are read from.
+	// name it was loaded by (`demo`, or `team/demo` for a nested cell). The cell directory's
+	// parent is the cells root only for a cell one level down, and the root is also where the
+	// machine-wide defaults file and the shared provider catalog are read from.
+	//
+	// The pair comes from reenter, and these are the places that hand it to a later cellctl:
+	// the model-policy hook command (--cells-root and the cell directory), the container
+	// console, the comms pane, a cadence-supervised role pane, and the environment of both
+	// scratch launches (CELLS_ROOT and ASSAY_SCRATCH_CELL). An ordinary role pane carries Ref
+	// and not Root: it is started by this process and takes the cells root from the environment
+	// it inherits. Two commands carry neither — the deskd stand pane and a scheduled run's
+	// precheck name the cell by Name, its CELL= value, and take the cells root from their
+	// environment; so do `up`'s own in-process hand-offs to `desk`. For a cell one level under
+	// the root whose CELL= is its directory name, all of these are the same cell.
 	Root string
 	Ref  string
 
@@ -361,22 +385,39 @@ func cellsRoot(e *Env) string {
 	return filepath.Join(xdg, "assay", "cells")
 }
 
-// cellAddress is the (cells root, name) pair that loads the cell at dir again: the root the load
-// resolved, made absolute, and dir's path under it. A directory that is not under the root —
-// reached by a name that climbs out of it — is addressed the only way left, by its own parent.
-func cellAddress(root, dir string) (string, string) {
-	if abs, err := filepath.Abs(root); err == nil {
-		if rel, err := filepath.Rel(abs, dir); err == nil && rel != "." && filepath.IsLocal(rel) {
-			return abs, rel
-		}
-	}
-	return filepath.Dir(dir), filepath.Base(dir)
+// cellNameLocal reports whether name names a directory UNDER the cells root: a relative path
+// that stays inside the root and is not the root itself. `demo` and `team/demo` are; an absolute
+// path, `.`, `..`, `../other/x` and `team/..` are not. The test is on the name as written,
+// cleaned — it follows no link, so a cell directory that is a symlink to somewhere else is still
+// named by a local name and still loads.
+//
+// A cell is refused under any other name (cellNameNotLocal), by `new`, by the loader and by
+// `set`. That is what lets a cell be addressed by ONE pair — the cells root and its path under
+// it — everywhere a later cellctl process is told to load it again: a cell directory outside
+// the root would need a second address (its own parent, with a different defaults file and a
+// different provider catalog beside it), and every re-entry would have to choose between them.
+func cellNameLocal(name string) bool {
+	return filepath.IsLocal(name) && filepath.Clean(name) != "."
 }
 
-// reenter is the (cells root, name) pair a child cellctl is given to load this cell again. A
-// Cell that loadCell did not build carries no root and is addressed the way every cell was
-// before the root was carried: by its directory's parent and its name — the same pair, for a
-// cell one level under its root.
+// cellNameNotLocal is the refusal for a name cellNameLocal rejects: the name, then the root.
+const cellNameNotLocal = "cell name '%s' is not a path under the cells root %s — a cell is named by its directory under the cells root (demo, team/demo), never by an absolute path, by the root itself, or by a path that leaves the root through '..'"
+
+// cellAddress is the (cells root, name) pair that loads the cell named name again: the root the
+// load resolved, made absolute, and the name cleaned — its path under that root. name is one
+// cellNameLocal accepted, so the pair names the directory the load read, and no other.
+func cellAddress(root, name string) (string, string) {
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	return root, filepath.Clean(name)
+}
+
+// reenter is the (cells root, name) pair that loads this cell again; the Root field says which
+// commands are built from it and which are not. A Cell that loadCell did not build — only a
+// test's own literal is one — carries no root and is addressed the way every cell was before
+// the root was carried: by its directory's parent and its name, the same pair for a cell one
+// level under its root.
 func (c *Cell) reenter() (root, name string) {
 	if c.Root == "" {
 		return filepath.Dir(c.Dir), c.Name
@@ -397,7 +438,12 @@ func realConfigHome(e *Env) string {
 	return mustResolve(configHomeFor(runtime.GOOS, e))
 }
 
+// cellDir is the directory of the cell named name, which must be a name under the cells root
+// (cellNameLocal) with a cell.env in it.
 func cellDir(e *Env, name string) string {
+	if !cellNameLocal(name) {
+		die(cellNameNotLocal, name, cellsRoot(e))
+	}
 	d := filepath.Join(cellsRoot(e), name)
 	if st, err := os.Stat(filepath.Join(d, "cell.env")); err != nil || st.IsDir() {
 		die("no cell '%s' under %s (cell.env missing)", name, cellsRoot(e))
@@ -417,7 +463,7 @@ func loadCell(name string) *Cell {
 		die("cannot resolve cell directory: %v", err)
 	}
 	c.Dir = abs
-	c.Root, c.Ref = cellAddress(cellsRoot(e), c.Dir)
+	c.Root, c.Ref = cellAddress(cellsRoot(e), name)
 	// The machine-wide defaults go on BEFORE the cell's own file, so cell.env overrides them key
 	// by key; they go on AFTER the process environment, as cell.env does. A file that is not
 	// there sets nothing; one that is there and unusable stops here, before any verb acts.

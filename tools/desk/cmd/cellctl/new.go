@@ -100,6 +100,12 @@ func scaffoldCell(args []string) {
 	tokenStore = cellEnvPathFor(runtime.GOOS, tokenStore)
 
 	root := cellsRoot(e)
+	// A cell lives under the cells root: a name that is anything else is refused here, before
+	// anything is created, exactly as the loader would refuse to load it (cellNameLocal). A
+	// missing name is left to the usage refusal below.
+	if cell != "" && !cellNameLocal(cell) {
+		die("new: "+cellNameNotLocal, cell, root)
+	}
 	// A cell directory at the defaults file's own path — or a nested cell below it — would make
 	// every cell on the machine refuse to load (the file would be a directory), so the name is
 	// not available to a cell.

@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 	"github.com/medici-finance/assay/tools/desk/internal/cellcontainer"
 )
 
@@ -94,9 +97,86 @@ func TestNestedCellReentryNamesTheLaunchRoot(t *testing.T) {
 			if line := c.roleCmdIn(shellPOSIX, "/opt/example/cellctl", "worker-desk", "", upOverrides{}); !strings.Contains(line, wantRoot+" desk "+wantName+" 'worker-desk'") {
 				t.Errorf("role pane command does not name the launch root and the cell under it: %s", line)
 			}
-			// What the scratch environment carries, and what every site above is built from.
+			// What every site above is built from.
 			r, n := c.reenter()
 			same("reenter", r, n)
+
+			// A cadence pass's scratch environment (scratch_launch.go): the harness child and
+			// every cellctl it starts take the cell from CELLS_ROOT and ASSAY_SCRATCH_CELL. The
+			// environment handed in carries a stale CELLS_ROOT, which must be replaced.
+			sl, env, err := c.beginScratch("worker-desk", []string{"ASSAY_SOURCE_REVISION=fixture-revision", "CELLS_ROOT=" + filepath.Join(root, "team")})
+			if err != nil {
+				t.Fatalf("beginScratch: %v", err)
+			}
+			sl.finish(&cellcadence.Result{})
+			gotRoot, gotName := envValue(env, "CELLS_ROOT"), envValue(env, "ASSAY_SCRATCH_CELL")
+			if gotRoot != root || gotName != filepath.Join("team", "demo") {
+				t.Errorf("a cadence pass's scratch environment names CELLS_ROOT=%s ASSAY_SCRATCH_CELL=%s, want %s and %s", gotRoot, gotName, root, filepath.Join("team", "demo"))
+			}
+			same("a cadence pass's scratch environment", gotRoot, gotName)
+		})
+	}
+}
+
+// TestNestedCellReentryScratchRunBinary drives `cellctl scratch <cell> run` for a nested cell
+// against a local Git checkout — no forge and no credentials — and reads the environment the
+// task command was started with: CELLS_ROOT and ASSAY_SCRATCH_CELL must be the pair that loads
+// the same cell again, under the cells root the run itself used, whichever way cell.env spells
+// CELL=.
+func TestNestedCellReentryScratchRunBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the task command is a POSIX shell line")
+	}
+	for _, tool := range []string{"git", "sh"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s not on PATH", tool)
+		}
+	}
+	source := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-q", source},
+		{"-C", source, "-c", "user.name=example", "-c", "user.email=example@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "fixture"},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	for _, cellName := range []string{"team/demo", "demo"} {
+		t.Run("CELL="+cellName, func(t *testing.T) {
+			root := defaultsRoot(t)
+			if resolved, err := filepath.EvalSymlinks(root); err == nil {
+				root = resolved
+				t.Setenv("CELLS_ROOT", root)
+			}
+			rootFile := writeDefaults(t, root, "CELL_HARNESS=codex\n")
+			writeCell(t, root, filepath.Join("team", "demo"), strings.Replace(demoCell, "CELL=demo", "CELL="+cellName, 1))
+			if err := os.WriteFile(filepath.Join(root, "team", cellDefaultsFile), []byte("CELL_HARNESS=cursor\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			probe := filepath.Join(t.TempDir(), "task-environment")
+			cmd := exec.Command(cellctlBinary(t), "scratch", "team/demo", "run", "--source", source, "--task", "probe", "--session", "example-session",
+				"--", "sh", "-c", `printf '%s\n%s\n' "$CELLS_ROOT" "$ASSAY_SCRATCH_CELL" > "$SCRATCH_PROBE"`)
+			cmd.Env = append(os.Environ(), "SCRATCH_PROBE="+probe)
+			out, err := cmd.CombinedOutput()
+			raw, rerr := os.ReadFile(probe)
+			if rerr != nil {
+				t.Fatalf("the task command did not run (%v; cellctl: %v):\n%s", rerr, err, out)
+			}
+			got := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+			if len(got) != 2 || got[0] != root || got[1] != filepath.Join("team", "demo") {
+				t.Errorf("the scratch task was started with CELLS_ROOT and ASSAY_SCRATCH_CELL = %q, want %q and %q", got, root, filepath.Join("team", "demo"))
+			}
+			if len(got) != 2 {
+				return
+			}
+			again := loadAgain(t, "a scratch task", got[0], got[1])
+			if again == nil {
+				return
+			}
+			if again.Dir != filepath.Join(root, "team", "demo") || again.DefaultsPath != rootFile || again.Harness != "codex" {
+				t.Errorf("a scratch task re-enters with CELLS_ROOT=%s and cell %q, which loads %s reading %q (harness %s); the run loaded %s reading %q (harness codex)",
+					got[0], got[1], again.Dir, again.DefaultsPath, again.Harness, filepath.Join(root, "team", "demo"), rootFile)
+			}
 		})
 	}
 }
@@ -202,8 +282,34 @@ func TestBinaryNestedCellHookReadsTheLaunchDefaults(t *testing.T) {
 	if code, stderr := runHook(t, f, hook([]string{"--cells-root", elsewhere}, cellDir), agentEvent("opus")); code != wantBlock || !strings.Contains(stderr, "is not under the cells root") {
 		t.Errorf("a cell directory outside the named root: exit %d, want %d; stderr: %s", code, wantBlock, stderr)
 	}
-	if code, stderr := runHook(t, f, hook([]string{"--cells-root", cellDir}, cellDir), agentEvent("opus")); code != wantBlock {
-		t.Errorf("the cell directory named as its own root: exit %d, want %d; stderr: %s", code, wantBlock, stderr)
+	// The hook's OWN refusal, by its text: the loader refuses these shapes too (a cell is never
+	// named `.` or by a path that leaves the root), so the exit code alone would not show that
+	// the hook's check is there.
+	notUnder := func(dir, root string) string {
+		return "cell directory " + dir + " is not under the cells root " + root + " this window launched from"
+	}
+	// The root itself is not a cell under it.
+	if code, stderr := runHook(t, f, hook([]string{"--cells-root", cellDir}, cellDir), agentEvent("opus")); code != wantBlock || !strings.Contains(stderr, notUnder(cellDir, cellDir)) {
+		t.Errorf("the cell directory named as its own root: exit %d, want %d and %q; stderr: %s", code, wantBlock, notUnder(cellDir, cellDir), stderr)
+	}
+	// A directory whose path merely BEGINS with the root's path is not under it: `<root>-other`
+	// is the root's sibling. A containment test on the strings would let it through.
+	sibling := filepath.Join(f.cellsRoot+"-other", "demo")
+	if err := os.MkdirAll(sibling, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(cellDir, "cell.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sibling, "cell.env"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(sibling, f.cellsRoot) {
+		t.Fatalf("the sibling fixture %s does not share the root's path as a prefix (%s)", sibling, f.cellsRoot)
+	}
+	if code, stderr := runHook(t, f, hook([]string{"--cells-root", f.cellsRoot}, sibling), agentEvent("opus")); code != wantBlock || !strings.Contains(stderr, notUnder(sibling, f.cellsRoot)) {
+		t.Errorf("a cell directory beside the root, sharing its path as a prefix: exit %d, want %d and %q; stderr: %s", code, wantBlock, notUnder(sibling, f.cellsRoot), stderr)
 	}
 	// The same explicit command with the right root is the control for the two refusals above.
 	if code, stderr := runHook(t, f, hook([]string{"--cells-root", f.cellsRoot}, cellDir), agentEvent("opus")); code != 0 {

@@ -23,9 +23,21 @@ import (
 
 // The key registry (envkeys.go) and the machine-wide defaults template generated from it.
 //
-// The first test is the completeness guard: it finds every place this package reads a key and
-// fails when the registry does not classify it. The rest hold the template, the refused list,
-// `set`'s known keys and the documented lists to the same registry.
+// The first test is the completeness guard: it walks this package's syntax for the read shapes
+// listed below and fails when the registry does not classify a key one of them reads. The rest
+// hold the template, the refused list, `set`'s known keys and the documented lists to the same
+// registry.
+//
+// What the walk recognises: a call to os.Getenv or os.LookupEnv written through an identifier
+// named `os`; a call to one of Env's readers (envReaderMethods), matched by method name on any
+// receiver; a call to a function that reads the key it is handed (envKeyParamFuncs); and one of
+// those readers taken as a value instead of called.
+//
+// What it does not see, so a key read ONLY this way can be missing from the registry and from
+// the template without this test failing: a scan of os.Environ() for a name or a prefix;
+// syscall.Getenv; os.Getenv behind a renamed import or held in a function value;
+// os.ExpandEnv and the $VAR expansion of a file value; a variable read by a child shell or
+// process this package starts; and a direct read or range of Env's own maps.
 
 // envRead is one place a key is read.
 type envRead struct {
@@ -236,7 +248,7 @@ var envKeyOtherReads = map[string]envOtherRead{
 	"Get(key)@provider_defaults.go:configuredPath": {why: "configuredPath reads the key it is handed; its callers are checked (envKeyParamFuncs)"},
 
 	// ── not configuration ──
-	"Get(p.TokenEnv)@provider.go:providerCredential":           {why: "the credential variable a provider's TOKEN_ENV names: the operator's own variable, read from the launching shell"},
+	"Get(p.TokenEnv)@provider.go:providerCredential":           {why: "the credential variable a provider's TOKEN_ENV names: the operator's own variable, read from the layered environment (process environment, defaults file, cell.env) like any other key"},
 	"Get(pt)@show.go:cmdShow":                                  {why: "the same credential variable, read only to say set or unset"},
 	"Get(tokenVar)@check.go:cmdCheck":                          {why: "the same credential variable, checked for presence"},
 	"Get(tokVal)@check.go:cmdCheck":                            {why: "the same credential variable, checked for presence"},
@@ -689,9 +701,13 @@ func cellSnapshot(t *testing.T, c *Cell) map[string]string {
 }
 
 // TestCellDefaultsTemplateUncommentedLines: each commented-out line, uncommented on its own, is
-// read by the strict reader, is not refused, and assigns its key the registry's default; and a
-// cell under a file with EVERY line uncommented resolves to what it resolves to with no file —
-// which is what makes the value after each `=` the compiled default rather than a claim.
+// read by the strict reader and is not refused; a line that prints a value assigns its key the
+// registry's default, and a line that prints none assigns nothing (an empty value in this file
+// sets nothing). A cell under a file with EVERY line uncommented resolves to what it resolves to
+// with no file — which is what makes the value after each `=` the compiled default rather than a
+// claim — and that holds with the environment setting the keys the template prints empty, too:
+// those lines do not displace what the launching shell exported. A line that prints a value DOES
+// outrank the environment, by design, and the last part pins that as well.
 func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 	tpl := cellDefaultsTemplate()
 	lines := strings.Split(tpl, "\n")
@@ -708,6 +724,18 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 		}
 		return strings.Join(out, "\n")
 	}
+	// valued is the keys whose line prints a value, in the template's order; the rest print none.
+	var valued, valueless []string
+	for _, key := range keys {
+		if k, _ := envKeyLookup(key); k.def != "" {
+			valued = append(valued, key)
+		} else {
+			valueless = append(valueless, key)
+		}
+	}
+	if len(valued) == 0 || len(valueless) == 0 {
+		t.Fatalf("the template prints %d line(s) with a value and %d without; this test needs both", len(valued), len(valueless))
+	}
 	for _, goos := range []string{"linux", "windows"} {
 		for n, key := range keys {
 			e := emptyEnv()
@@ -717,12 +745,31 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 				continue
 			}
 			k, _ := envKeyLookup(key)
-			if !reflect.DeepEqual(got, []string{key}) || !e.IsSet(key) || e.Get(key) != k.def {
+			if k.def == "" {
+				if len(got) != 0 || e.IsSet(key) {
+					t.Errorf("%s: uncommenting %s, which prints no value, set %v (set=%v), want nothing set", goos, key, got, e.IsSet(key))
+				}
+			} else if !reflect.DeepEqual(got, []string{key}) || !e.IsSet(key) || e.Get(key) != k.def {
 				t.Errorf("%s: uncommenting %s set %v to %q, want that one key set to %q", goos, key, got, e.Get(key), k.def)
 			}
+			// The same line over an environment that sets the key: a line with no value leaves
+			// the environment's value and its source; a line with one replaces both.
+			e = emptyEnv()
+			e.putFrom(key, "from the shell", layerProcess)
+			if _, err := overlayCellDefaultsText(goos, e, []byte(uncomment(n)), "defaults.env"); err != nil {
+				t.Errorf("%s: uncommenting %s over an environment that sets it is refused: %v", goos, key, err)
+				continue
+			}
+			wantValue, wantSource := k.def, layerDefaults
+			if k.def == "" {
+				wantValue, wantSource = "from the shell", layerProcess
+			}
+			if e.Get(key) != wantValue || e.Source(key) != wantSource {
+				t.Errorf("%s: with the environment setting %s, its uncommented line leaves %q from %s, want %q from %s", goos, key, e.Get(key), e.Source(key), wantValue, wantSource)
+			}
 		}
-		if got, err := overlayCellDefaultsText(goos, emptyEnv(), []byte(uncomment(-1)), "defaults.env"); err != nil || !reflect.DeepEqual(got, keys) {
-			t.Errorf("%s: every line uncommented set %v (%v), want %v", goos, got, err, keys)
+		if got, err := overlayCellDefaultsText(goos, emptyEnv(), []byte(uncomment(-1)), "defaults.env"); err != nil || !reflect.DeepEqual(got, valued) {
+			t.Errorf("%s: every line uncommented set %v (%v), want the keys that print a value, %v", goos, got, err, valued)
 		}
 	}
 
@@ -755,8 +802,8 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 	want, ref := resolve()
 	writeDefaults(t, root, uncomment(-1))
 	got, c := resolve()
-	if len(c.DefaultsKeys) != len(keys) {
-		t.Fatalf("the file with every line uncommented set %d key(s), want %d", len(c.DefaultsKeys), len(keys))
+	if !reflect.DeepEqual(c.DefaultsKeys, valued) {
+		t.Fatalf("the file with every line uncommented set %v, want the keys that print a value, %v", c.DefaultsKeys, valued)
 	}
 	for name, w := range want {
 		if got[name] != w {
@@ -808,6 +855,73 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 		if k, ok := envKeyLookup(key); !ok || k.class != envMachine {
 			t.Errorf("templateDefaultProof lists %s, which is not a key the template prints", key)
 		}
+	}
+
+	// The environment sets keys. Everything above ran with every machine-wide key unset, which
+	// is the one arrangement in which a line that assigned the empty string could not be told
+	// from a line that assigns nothing. So: export a value for EVERY key the template prints
+	// with no value, and the file with every line uncommented must still resolve both cells as
+	// no file does — each of those keys keeping the exported value and naming the environment
+	// as its source.
+	if err := os.Remove(filepath.Join(root, cellDefaultsFile)); err != nil {
+		t.Fatal(err)
+	}
+	exported := map[string]string{}
+	for _, key := range valueless {
+		exported[key] = "shell-" + strings.ToLower(key)
+	}
+	for key, v := range map[string]string{
+		"CELL_CADENCE":     "45m",
+		"CELL_TICK_BUDGET": "7",
+		"CELL_PROVIDER":    "kimi",
+	} {
+		if _, ok := exported[key]; !ok {
+			t.Fatalf("%s is no longer a key the template prints with no value; this table is stale", key)
+		}
+		exported[key] = v
+	}
+	for key, v := range exported {
+		t.Setenv(key, v)
+	}
+	want, ref = resolve()
+	for _, key := range valueless {
+		if ref.Env.Get(key) != exported[key] {
+			t.Fatalf("with no file, %s = %q, want the exported %q", key, ref.Env.Get(key), exported[key])
+		}
+	}
+	writeDefaults(t, root, uncomment(-1))
+	got, c = resolve()
+	if !reflect.DeepEqual(c.DefaultsKeys, valued) {
+		t.Errorf("with the environment setting %d key(s), the file with every line uncommented set %v, want %v", len(valueless), c.DefaultsKeys, valued)
+	}
+	for _, key := range valueless {
+		if c.Env.Get(key) != exported[key] || c.Env.Source(key) != layerProcess {
+			t.Errorf("%s = %q from %s with every template line uncommented, want the exported %q from %s: a line with no value displaced the environment", key, c.Env.Get(key), c.Env.Source(key), exported[key], layerProcess)
+		}
+	}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("with the environment setting the keys the template prints empty, %s resolves to %q with every template line uncommented, %q with no file", name, got[name], w)
+		}
+	}
+
+	// And the other half, which is the design and not a defect: a line that prints a value
+	// outranks the environment. CELL_GO_CACHE is exported `on`; the template's own line says
+	// `off`; uncommented unchanged, every cell that does not set the key itself gets `off`.
+	if err := os.Remove(filepath.Join(root, cellDefaultsFile)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CELL_GO_CACHE", "on")
+	if p := loadCell("plain"); p.Env.Get("CELL_GO_CACHE") != "on" || p.Env.Source("CELL_GO_CACHE") != layerProcess {
+		t.Fatalf("with no file, CELL_GO_CACHE = %q from %s, want the exported on", p.Env.Get("CELL_GO_CACHE"), p.Env.Source("CELL_GO_CACHE"))
+	}
+	for n, key := range keys {
+		if key == "CELL_GO_CACHE" {
+			writeDefaults(t, root, uncomment(n))
+		}
+	}
+	if p := loadCell("plain"); p.Env.Get("CELL_GO_CACHE") != "off" || p.Env.Source("CELL_GO_CACHE") != layerDefaults {
+		t.Errorf("CELL_GO_CACHE is exported on and the template's line is uncommented unchanged: the cell reads %q from %s, want off from the %s — a line that prints a value outranks the environment", p.Env.Get("CELL_GO_CACHE"), p.Env.Source("CELL_GO_CACHE"), layerDefaults)
 	}
 }
 

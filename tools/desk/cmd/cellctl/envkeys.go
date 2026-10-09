@@ -410,6 +410,10 @@ func cellDefaultsTemplate() string {
 		"# The value shown is the compiled default. An empty value means the key is unset by",
 		"# default, or its default is derived; the line above it says which.",
 		"#",
+		"# A line whose value is empty sets nothing: the layer below stands, as if the line were",
+		"# still commented out. A line WITH a value outranks the same key exported in the shell,",
+		"# also when the value is the compiled default shown here.",
+		"#",
 		"# cellctl writes this file once, when there is none (`cellctl new`, `cellctl defaults init`),",
 		"# and never changes it afterwards. `cellctl defaults print` prints the current template, to",
 		"# compare against. `cellctl check <cell>` names the keys this file sets for that cell.")

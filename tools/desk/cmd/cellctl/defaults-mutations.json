@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl/ -count=1 -timeout 30m -run '^(TestCellDefaults|TestBinaryCheckReportsCellDefaults|TestBinaryCellDefaults|TestShowNamesTheDefaultsFile|TestEnvKey|TestSetKnowsEveryLever|TestSetExpandsVariablesAsBootDoes|TestNewSeedsCellDefaults|TestSeedCellDefaults|TestDefaultsVerb|TestNestedCellReentry|TestBinaryNestedCellHook|TestCellEnvValueReaders|TestKnownCellEnvKeyFamilies)'",
+  "test": "go test ./cmd/cellctl/ -count=1 -timeout 30m -run '^(TestCellDefaults|TestBinaryCheckReportsCellDefaults|TestBinaryCellDefaults|TestShowNamesTheDefaultsFile|TestEnvKey|TestSetKnowsEveryLever|TestSetExpandsVariablesAsBootDoes|TestNewSeedsCellDefaults|TestSeedCellDefaults|TestDefaultsVerb|TestNestedCellReentry|TestBinaryNestedCellHook|TestCellEnvValueReaders|TestKnownCellEnvKeyFamilies|TestCellName)'",
   "control": {
     "name": "CONTROL — invert the file-order assertion (the keys a defaults file sets must NOT be the ones it sets)",
     "file": "cmd/cellctl/defaults_test.go",
@@ -22,8 +22,8 @@
     {
       "name": "a defaults line does not replace a value the process environment already holds (TestCellDefaultsLayering: the defaults file wins over the process environment)",
       "file": "cmd/cellctl/cell.go",
-      "old": "\t\te.putFrom(key, unquoteShellValueFor(goos, s[i+1:], e), layer)",
-      "new": "\t\tif layer != layerDefaults || e.vals[key] == \"\" {\n\t\t\te.putFrom(key, unquoteShellValueFor(goos, s[i+1:], e), layer)\n\t\t}"
+      "old": "\t\te.putFrom(key, value, layer)",
+      "new": "\t\tif layer != layerDefaults || e.vals[key] == \"\" {\n\t\t\te.putFrom(key, value, layer)\n\t\t}"
     },
     {
       "name": "the keys a defaults file sets are reported newest first, not in file order (TestCellDefaultsKeysAreReportedInFileOrder)",
@@ -294,6 +294,120 @@
       "file": "cmd/cellctl/policy_enforce.go",
       "old": "\t\tif err != nil || rel == \".\" || !filepath.IsLocal(rel) {\n\t\t\thookFail(\"cell directory %s is not under",
       "new": "\t\tif err != nil && false {\n\t\t\thookFail(\"cell directory %s is not under"
+    },
+    {
+      "name": "an empty line in the defaults file sets its key to empty, displacing the layer below (TestCellDefaultsEmptyValueSetsNothing, TestBinaryCellDefaultsEmptyLineKeepsEnvironmentPolicy, TestCellDefaultsTemplateUncommentedLines)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\t\tif emptySetsNothing && emptyEnvValue(value) {",
+      "new": "\t\tif false && emptyEnvValue(value) {"
+    },
+    {
+      "name": "the defaults file is overlaid without the empty-value rule (TestCellDefaultsEmptyValueSetsNothing, TestCellDefaultsEmptyLineInShowAndSet)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\treturn nil\n\t}, true)",
+      "new": "\t\treturn nil\n\t}, false)"
+    },
+    {
+      "name": "cell.env takes the empty-value rule too, so a cell can no longer set a key to empty (TestCellDefaultsEmptyValueEdges)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "overlayEnvLines(goos, e, raw, layerCellEnv, nil, false)",
+      "new": "overlayEnvLines(goos, e, raw, layerCellEnv, nil, true)"
+    },
+    {
+      "name": "the bare carriage return a CRLF line ending leaves is a value, not an empty one (TestCellDefaultsEmptyValueSetsNothing)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "func emptyEnvValue(v string) bool { return v == \"\" || v == \"\\r\" }",
+      "new": "func emptyEnvValue(v string) bool { return v == \"\" }"
+    },
+    {
+      "name": "a value of spaces counts as empty (TestCellDefaultsEmptyValueEdges)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "func emptyEnvValue(v string) bool { return v == \"\" || v == \"\\r\" }",
+      "new": "func emptyEnvValue(v string) bool { return strings.TrimSpace(v) == \"\" }"
+    },
+    {
+      "name": "an empty line below a line that set the key blanks it again (TestCellDefaultsEmptyValueEdges)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\t\tif emptySetsNothing && emptyEnvValue(value) {",
+      "new": "\t\tif emptySetsNothing && emptyEnvValue(value) && !seen[key] {"
+    },
+    {
+      "name": "an empty assignment to a refused key is skipped before it is checked (TestCellDefaultsEmptyValueEdges)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\t\tif vet != nil {\n\t\t\tif err := vet(n+1, key); err != nil {",
+      "new": "\t\tif vet != nil && !(emptySetsNothing && key != \"\" && emptyEnvValue(unquoteShellValueFor(goos, s[i+1:], e))) {\n\t\t\tif err := vet(n+1, key); err != nil {"
+    },
+    {
+      "name": "the loader and `set` take a cell name that is not under the cells root (TestCellNameLoaderRefusesANameOutsideTheRoot)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\tif !cellNameLocal(name) {\n\t\tdie(cellNameNotLocal, name, cellsRoot(e))",
+      "new": "\tif false {\n\t\tdie(cellNameNotLocal, name, cellsRoot(e))"
+    },
+    {
+      "name": "`new` scaffolds a cell whose name is not under the cells root (TestCellNameNewRefusesANameOutsideTheRoot)",
+      "file": "cmd/cellctl/new.go",
+      "old": "\tif cell != \"\" && !cellNameLocal(cell) {",
+      "new": "\tif false && !cellNameLocal(cell) {"
+    },
+    {
+      "name": "the cells root itself is a cell name (TestCellNameLoaderRefusesANameOutsideTheRoot, TestCellNameNewRefusesANameOutsideTheRoot)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\treturn filepath.IsLocal(name) && filepath.Clean(name) != \".\"",
+      "new": "\treturn filepath.IsLocal(name)"
+    },
+    {
+      "name": "a relative name that climbs out of the cells root is a cell name; only an absolute path is refused (TestCellNameLoaderRefusesANameOutsideTheRoot)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\treturn filepath.IsLocal(name) && filepath.Clean(name) != \".\"",
+      "new": "\treturn !filepath.IsAbs(name) && filepath.Clean(name) != \".\""
+    },
+    {
+      "name": "a cell re-enters by its name as typed, not by its cleaned path under the root (TestCellNameLoaderRefusesANameOutsideTheRoot)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\treturn root, filepath.Clean(name)",
+      "new": "\treturn root, name"
+    },
+    {
+      "name": "the model-policy hook has no refusal of its own for the cells root named as the cell directory (TestBinaryNestedCellHookReadsTheLaunchDefaults)",
+      "file": "cmd/cellctl/policy_enforce.go",
+      "old": "\t\tif err != nil || rel == \".\" || !filepath.IsLocal(rel) {\n\t\t\thookFail(\"cell directory %s is not under",
+      "new": "\t\tif err != nil || !filepath.IsLocal(rel) {\n\t\t\thookFail(\"cell directory %s is not under"
+    },
+    {
+      "name": "the model-policy hook tests containment by string prefix, so a sibling directory passes its check (TestBinaryNestedCellHookReadsTheLaunchDefaults)",
+      "file": "cmd/cellctl/policy_enforce.go",
+      "old": "\t\tif err != nil || rel == \".\" || !filepath.IsLocal(rel) {\n\t\t\thookFail(\"cell directory %s is not under",
+      "new": "\t\tif err != nil || rel == \".\" || !strings.HasPrefix(cellDir, cellsRootSelected) {\n\t\t\thookFail(\"cell directory %s is not under"
+    },
+    {
+      "name": "a template write that fails part-way leaves the partial file behind (TestCellDefaultsCreateFailureLeavesNoFile)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\tos.Remove(path)\n\t\treturn false, werr",
+      "new": "\t\treturn false, werr"
+    },
+    {
+      "name": "`scratch run` hands its task the cell directory's parent as the cells root (TestNestedCellReentryScratchRunBinary)",
+      "file": "cmd/cellctl/scratch.go",
+      "old": "cellsRoot, cellName := c.reenter()",
+      "new": "cellsRoot, cellName := filepath.Dir(c.Dir), c.Name"
+    },
+    {
+      "name": "a cadence pass's scratch environment names the cell directory's parent as the cells root (TestNestedCellReentryNamesTheLaunchRoot)",
+      "file": "cmd/cellctl/scratch_launch.go",
+      "old": "cellsRoot, cellName := c.reenter()",
+      "new": "cellsRoot, cellName := filepath.Dir(c.Dir), c.Name"
+    },
+    {
+      "name": "`new` says nothing about a directory or a dangling symlink at the defaults path (TestSeedCellDefaultsNotARegularFileIsANotice)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\tif fi, err := os.Stat(path); err != nil || !fi.Mode().IsRegular() {",
+      "new": "\tif fi, err := os.Stat(path); false && (err != nil || !fi.Mode().IsRegular()) {"
+    },
+    {
+      "name": "`defaults --help` is answered with the usage refusal (TestBinaryCellDefaultsHelp)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\tif len(args) == 1 && (args[0] == \"-h\" || args[0] == \"--help\") {",
+      "new": "\tif false && len(args) == 1 && (args[0] == \"-h\" || args[0] == \"--help\") {"
     }
   ]
 }
