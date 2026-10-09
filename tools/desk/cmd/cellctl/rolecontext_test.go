@@ -1453,6 +1453,53 @@ func TestBinaryCheckUndeclaredRoleRows(t *testing.T) {
 	}
 }
 
+// TestBinaryRoleContextKeySource pins where the key's value comes from: a line in cell.env
+// wins — an empty one included, which leaves the cell without a declaration — and an exported
+// value applies only to a cell whose cell.env has no line for the key.
+func TestBinaryRoleContextKeySource(t *testing.T) {
+	const row = "role context: source="
+	for _, tc := range []struct {
+		name, line, exported, want string // want: the declaration file check names, "" for none
+	}{
+		{"no line, exported value applies", "", "other.json", "other.json"},
+		{"no line, exported empty value is unset", "", "", ""},
+		{"empty line stops an exported value", "CELL_ROLE_CONTEXT=", "other.json", ""},
+		{"a line with a value wins over an exported one", "CELL_ROLE_CONTEXT=role-context.json", "other.json", "role-context.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newPolicyFixture(t, "2.1.295")
+			if tc.line == "" {
+				f.plainCell(t)
+			} else {
+				f.plainCell(t, tc.line)
+			}
+			f.stub(t, "tmux", "#!/bin/sh\nexit 0\n")
+			raw, err := os.ReadFile(writeRoleContext(t, f.cellDir, map[string]any{"pr-review-desk": map[string]any{"connectors_off": true}}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			other := filepath.Join(f.cellDir, "other.json")
+			if err := os.WriteFile(other, raw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			exported := "CELL_ROLE_CONTEXT="
+			if tc.exported != "" {
+				exported += other
+			}
+			r := f.run(t, []string{f.hermeticPath(), exported}, "check", "example")
+			if !strings.Contains(r.stdout, "cockpit:") || !strings.Contains(r.stdout, "[check] ") {
+				t.Fatalf("check did not run to its end (exit %d)\n%s%s", r.code, r.stdout, r.stderr)
+			}
+			switch {
+			case tc.want == "" && strings.Contains(r.stdout, row):
+				t.Fatalf("want no declaration applied, got a source row\n%s", r.stdout)
+			case tc.want != "" && !strings.Contains(r.stdout, row+filepath.Join(f.cellDir, tc.want)+" "):
+				t.Fatalf("want the source row to name %s\n%s%s", tc.want, r.stdout, r.stderr)
+			}
+		})
+	}
+}
+
 // TestRoleContextShellSuite runs the behavioural shell suite against a binary built from this
 // tree. No workflow names the suite, and run by hand without CELLCTL it meets the shell oracle
 // and asserts nothing — this test is what makes its assertions part of every `go test`.
