@@ -67,6 +67,11 @@ func main() {
 	os.Exit(code)
 }
 
+// cellsRootSelected is the cells root this invocation was given with --cells-root, or empty. It
+// is kept apart from CELLS_ROOT, which the same flag sets, for the one caller that must tell a
+// root named on its own command line from one inherited through the environment (cmdModelPolicy).
+var cellsRootSelected string
+
 func run() (code int) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -78,6 +83,7 @@ func run() (code int) {
 		}
 	}()
 	args := os.Args[1:]
+	cellsRootSelected = ""
 	if len(args) > 0 && args[0] == "--cells-root" {
 		if len(args) < 3 || !filepath.IsAbs(args[1]) {
 			die("--cells-root requires an absolute registry path and a command")
@@ -85,6 +91,7 @@ func run() (code int) {
 		if err := os.Setenv("CELLS_ROOT", args[1]); err != nil {
 			die("cannot select cell registry: %v", err)
 		}
+		cellsRootSelected = args[1]
 		args = args[2:]
 	}
 
@@ -110,6 +117,8 @@ func run() (code int) {
 		cmdContainerRun(rest)
 	case "providers":
 		cmdProviders(rest)
+	case "defaults":
+		cmdDefaults(rest)
 	case "model-policy":
 		// The runtime hook a policy launch installs in Claude's --settings (policy_enforce.go);
 		// not an operator verb, so it is not in the usage text.
