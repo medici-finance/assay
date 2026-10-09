@@ -1,0 +1,2 @@
+### Changed
+- The pr-review-desk skill's generated-table bounce gains carve-out C. A one-row hand flip to `implemented` is admitted for a brief delivered into another repo when the delivering PR could not carry the brief's trailer. The flip PR carries that row and nothing else; it names one merged delivering PR, which must have merged after the brief was authored and added at least one file the brief's `files:` list names; and every concrete file in that list exists on the delivery repo's main. Carve-outs A and B are unchanged.
