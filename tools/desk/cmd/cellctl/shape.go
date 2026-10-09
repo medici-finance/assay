@@ -12,8 +12,8 @@ import (
 )
 
 // legacyShape refuses, before the tree parses anything, a command line whose SHAPE the
-// pre-migration parser did not accept and the recorded decision (docs/streams/decisions/
-// DR-cellctl-cobra.md) does not name. That shape is:
+// pre-migration parser did not accept and the recorded decision (DR-cellctl-cobra) does not
+// name. That shape is:
 //
 //	[--cells-root <abs>] <verb> <fixed positionals...> [flags and further words]
 //
