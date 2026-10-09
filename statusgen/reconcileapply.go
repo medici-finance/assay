@@ -32,6 +32,13 @@ package main
 //     rows are immutable to this verb.
 //   - A row with no witness at all (still `todo`) is left untouched — exactly
 //     what --report already lists for a human, never guessed at here.
+//
+// The read-only form (#2440): `reconcile --backfill` WITHOUT --apply reports, as
+// `wouldApply`, the rows --apply would write, so a reviewer can reproduce a
+// board promotion with no tree write. It is not a second implementation: both
+// forms run reconcileWrites, and only its last step — write to disk, or keep
+// the edited README in memory — differs. Nothing about which rows are admitted
+// changes between them.
 
 import (
 	"fmt"
@@ -41,13 +48,20 @@ import (
 )
 
 // appliedRow is one stream-README Status cell reconcile --apply actually
-// wrote, for the printed/JSON report of what changed.
+// wrote — or, on the read-only form (--backfill without --apply), one it WOULD
+// write — for the printed/JSON report of what changed. Both lists carry this
+// one type, built by the one decision path (reconcileWrites), so the read-only
+// report and the write can never describe a row differently. RowBefore and
+// RowAfter are the whole table line before and after the edit, byte for byte,
+// so a reviewer can compare them with a diff hunk directly.
 type appliedRow struct {
-	ID      string `json:"id"`
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Path    string `json:"readme"`
-	Witness string `json:"witness"`
+	ID        string `json:"id"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Path      string `json:"readme"`
+	Witness   string `json:"witness"`
+	RowBefore string `json:"rowBefore"`
+	RowAfter  string `json:"rowAfter"`
 }
 
 // witnessedImplemented reports whether c is a real PR-backed `implemented`
@@ -66,7 +80,28 @@ func witnessedImplemented(c BriefCell) bool {
 // beyond) or with no witness is silently skipped, never an error, so a
 // re-run with nothing left to do still exits clean.
 func applyReconcileWrites(root string, cells []BriefCell) ([]appliedRow, error) {
-	var applied []appliedRow
+	return reconcileWrites(root, cells, true)
+}
+
+// planReconcileWrites is the read-only form of applyReconcileWrites: it
+// returns exactly the rows applyReconcileWrites would write on the same tree
+// and cells, and writes nothing. It is the same function with the final disk
+// write swapped for an in-memory overlay, never a second implementation.
+func planReconcileWrites(root string, cells []BriefCell) ([]appliedRow, error) {
+	return reconcileWrites(root, cells, false)
+}
+
+// reconcileWrites is the ONE decision path behind both --apply and the
+// read-only report. Every admission decision — which cells are eligible, which
+// README and row they map to, whether the row's current Status permits the
+// transition, and what the edited line is — is made here, identically in both
+// modes. The modes differ only at the last step: write=true writes the edited
+// README to disk; write=false keeps it in an overlay that later reads of the
+// same README see, so a second cell mapping to the same file is decided
+// against exactly the content --apply would have left there.
+func reconcileWrites(root string, cells []BriefCell, write bool) ([]appliedRow, error) {
+	var rows []appliedRow
+	overlay := map[string]string{}
 	for _, c := range cells {
 		if !witnessedImplemented(c) {
 			continue
@@ -76,15 +111,34 @@ func applyReconcileWrites(root string, cells []BriefCell) ([]appliedRow, error) 
 			continue
 		}
 		path := filepath.Join(root, "docs", "streams", stream, "README.md")
-		wrote, from, err := writeStatusCell(path, num, "implemented")
-		if err != nil {
-			return applied, fmt.Errorf("%s: %w", path, err)
+		content, ok := overlay[path]
+		if !ok {
+			raw, err := os.ReadFile(path)
+			if os.IsNotExist(err) {
+				continue // no README for the stream: a board inconsistency, not a write failure
+			}
+			if err != nil {
+				return rows, fmt.Errorf("%s: %w", path, err)
+			}
+			content = string(raw)
 		}
-		if wrote {
-			applied = append(applied, appliedRow{ID: c.ID, From: from, To: "implemented", Path: path, Witness: c.Witness})
+		edit, changed := rewriteStatusCell(content, num, "implemented")
+		if !changed {
+			continue
 		}
+		if write {
+			if err := os.WriteFile(path, []byte(edit.content), 0o644); err != nil {
+				return rows, fmt.Errorf("%s: %w", path, err)
+			}
+		} else {
+			overlay[path] = edit.content
+		}
+		rows = append(rows, appliedRow{
+			ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: c.Witness,
+			RowBefore: edit.rowBefore, RowAfter: edit.rowAfter,
+		})
 	}
-	return applied, nil
+	return rows, nil
 }
 
 // isBriefsTableHeaderRow reports whether cells is a briefs-table header row —
@@ -127,22 +181,23 @@ func cellPadding(cell string) (leading, trailing string) {
 	return cell[:idx], cell[idx+len(trimmed):]
 }
 
+// statusCellEdit is the outcome of rewriteStatusCell: the whole README after
+// the edit, the row's previous Status token, and the edited table line before
+// and after.
+type statusCellEdit struct {
+	content   string
+	from      string
+	rowBefore string
+	rowAfter  string
+}
+
 // writeStatusCell edits IN PLACE the Status cell of the row for brief num in
-// path's briefs table — marker-wrapped (derived-board/04 generated) or plain
-// hand-written, the row shape is identical either way — replacing it with
-// newStatus. It writes ONLY when the row's CURRENT Status is "todo" or
-// "in-progress" (case-insensitive); any other current value (already
-// implemented, verified, done, blocked, or some unrecognised token) is left
-// byte-for-byte untouched and wrote is false — that is the narrow-transition
-// guarantee, enforced here rather than trusted to the caller. Every other
-// cell in the row — Verified, Reviewed, any extra column, and the row's own
-// padding style — is preserved exactly; only the Status cell's inner text
-// changes.
-//
-// wrote is false with err nil (never an error) when the README does not
-// exist, carries no briefs table, or has no row for num — an --apply caller
-// already knows a witness exists for the id; failing to find a row for it is
-// a pre-existing board inconsistency, not a failure of this write.
+// path's briefs table, via rewriteStatusCell (which holds the whole rule), and
+// writes the result back only when the rule permits the edit. wrote is false
+// with err nil (never an error) when the README does not exist, carries no
+// briefs table, or has no row for num — an --apply caller already knows a
+// witness exists for the id; failing to find a row for it is a pre-existing
+// board inconsistency, not a failure of this write.
 func writeStatusCell(path, num, newStatus string) (wrote bool, from string, err error) {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -151,7 +206,30 @@ func writeStatusCell(path, num, newStatus string) (wrote bool, from string, err 
 	if err != nil {
 		return false, "", err
 	}
-	lines := strings.Split(string(raw), "\n")
+	edit, changed := rewriteStatusCell(string(raw), num, newStatus)
+	if !changed {
+		return false, edit.from, nil
+	}
+	if werr := os.WriteFile(path, []byte(edit.content), 0o644); werr != nil {
+		return false, edit.from, werr
+	}
+	return true, edit.from, nil
+}
+
+// rewriteStatusCell is the pure rule behind every Status-cell write. It finds
+// the row for brief num in content's briefs table — marker-wrapped
+// (derived-board/04 generated) or plain hand-written, the row shape is
+// identical either way — and replaces its Status cell with newStatus. It edits
+// ONLY when the row's CURRENT Status is "todo" or "in-progress"
+// (case-insensitive); any other current value (already implemented, verified,
+// done, blocked, or some unrecognised token) is left byte-for-byte untouched
+// and changed is false — that is the narrow-transition guarantee, enforced here
+// rather than trusted to the caller. Every other cell in the row — Verified,
+// Reviewed, any extra column, and the row's own padding style — is preserved
+// exactly; only the Status cell's inner text changes. changed is false, with an
+// empty from, when content carries no briefs table or has no row for num.
+func rewriteStatusCell(content, num, newStatus string) (edit statusCellEdit, changed bool) {
+	lines := strings.Split(content, "\n")
 	statusIdx := -1
 	headerWidth := -1
 	for i, line := range lines {
@@ -175,15 +253,18 @@ func writeStatusCell(path, num, newStatus string) (wrote bool, from string, err 
 		cur := cells[statusIdx]
 		curTrim := strings.ToLower(strings.TrimSpace(cur))
 		if curTrim != "todo" && curTrim != "in-progress" {
-			return false, curTrim, nil // narrow transition only — every other state is immutable here
+			return statusCellEdit{from: curTrim}, false // narrow transition only — every other state is immutable here
 		}
 		leading, trailing := cellPadding(cur)
 		cells[statusIdx] = leading + newStatus + trailing
+		before := line
 		lines[i] = "|" + strings.Join(cells, "|") + "|"
-		if werr := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); werr != nil {
-			return false, curTrim, werr
-		}
-		return true, curTrim, nil
+		return statusCellEdit{
+			content:   strings.Join(lines, "\n"),
+			from:      curTrim,
+			rowBefore: before,
+			rowAfter:  lines[i],
+		}, true
 	}
-	return false, "", nil
+	return statusCellEdit{}, false
 }

@@ -32,6 +32,9 @@ type Options struct {
 	Platform     string  // "windows-amd64" etc.; empty => detect from this host
 	Fetch        Fetcher // nil => httpFetch
 	Out          io.Writer
+	// TrustedRoot is a Sigstore trusted_root.json the attestation check trusts;
+	// nil => the embedded public-good root. Tests inject a throwaway root.
+	TrustedRoot []byte
 }
 
 // componentManifest is one component's (statusgen / desk-tools) pin block in the
@@ -100,10 +103,11 @@ func assetURL(p pin) string {
 	return fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", p.home, p.tag, p.asset)
 }
 
-// verifySHA256 is the single load-bearing control: it computes the sha256 of the
-// downloaded bytes and REFUSES on any mismatch. This is the ONE check between a
-// substituted release asset and unverified bytes on disk. It never warns-and-
-// continues: a mismatch is a returned error, and the caller places nothing.
+// verifySHA256 is the first of the two controls every downloaded asset passes:
+// it computes the sha256 of the downloaded bytes and REFUSES on any mismatch
+// with the reviewed pin. The second, the attestation check (attest.go), runs
+// after it and fails for a different reason. It never warns-and-continues: a
+// mismatch is a returned error, and the caller places nothing.
 func verifySHA256(got []byte, wantHex string) error {
 	sum := sha256.Sum256(got)
 	gotHex := hex.EncodeToString(sum[:])
@@ -114,9 +118,11 @@ func verifySHA256(got []byte, wantHex string) error {
 }
 
 // Install runs the full acquire→verify→place flow. It is two-phase by design:
-// EVERY component is fetched and sha256-verified FIRST; only if all verify does
-// anything get written to DestDir. A mismatch on any component therefore leaves
-// nothing installed — the negative-path guarantee the security row asserts.
+// EVERY component is fetched, sha256-verified AND attestation-verified FIRST;
+// only if all verify does anything get written to DestDir. A failure of either
+// check on any component therefore leaves nothing installed — the negative-path
+// guarantee the security rows assert. The attestation check (attest.go) is
+// mandatory: no option or flag skips it.
 func Install(opts Options) error {
 	out := opts.Out
 	if out == nil {
@@ -126,9 +132,18 @@ func Install(opts Options) error {
 	if platform == "" {
 		platform = detectPlatform()
 	}
-	fetch := opts.Fetch
+	fetch, fetchBundle := opts.Fetch, opts.Fetch
 	if fetch == nil {
-		fetch = httpFetch
+		fetch, fetchBundle = httpFetch, httpFetchBundle
+	}
+
+	trust := opts.TrustedRoot
+	if trust == nil {
+		trust = embeddedTrustedRoot
+	}
+	tm, err := parseTrustedRoot(trust)
+	if err != nil {
+		return fmt.Errorf("attestation: %w", err)
 	}
 
 	raw, err := os.ReadFile(opts.ManifestPath)
@@ -152,7 +167,8 @@ func Install(opts Options) error {
 		resolved = append(resolved, p)
 	}
 
-	// Phase 1 — fetch + VERIFY every component. Nothing is written yet.
+	// Phase 1 — fetch + VERIFY (sha256 pin, then attestation) every component.
+	// Nothing is written yet.
 	type verified struct {
 		pin   pin
 		bytes []byte
@@ -167,10 +183,23 @@ func Install(opts Options) error {
 			// Load-bearing refusal: FIRST post-download step, before any placement.
 			return fmt.Errorf("%s (%s): %w", p.component, p.asset, err)
 		}
+		// Second, independent check: the pinned bytes must be the bytes this
+		// repo's release workflow attested, run either by the push of the pinned
+		// tag or by workflow_dispatch from main (releasePolicy). A re-pin to
+		// substituted bytes passes the sha256 check and fails here.
+		bundle, err := fetchBundle(assetURL(p) + bundleAssetExt)
+		if err != nil {
+			return fmt.Errorf("%s (%s): attestation: downloading %s%s: %w — refusing to install bytes without a verifiable attestation",
+				p.component, p.asset, p.asset, bundleAssetExt, err)
+		}
+		if err := verifyAttestation(bundle, p.sha256, releasePolicy(p.tag), tm); err != nil {
+			return fmt.Errorf("%s (%s): attestation: %w — refusing to install", p.component, p.asset, err)
+		}
 		staged = append(staged, verified{pin: p, bytes: body})
 	}
 
-	// Phase 2 — place only verified bytes. Reached only when every hash matched.
+	// Phase 2 — place only verified bytes. Reached only when every hash matched
+	// and every attestation verified.
 	if err := os.MkdirAll(opts.DestDir, 0o755); err != nil {
 		return fmt.Errorf("creating dest dir %s: %w", opts.DestDir, err)
 	}
@@ -242,9 +271,18 @@ func extractTarGz(destDir string, body []byte) error {
 	}
 }
 
-// httpFetch is the production downloader: net/http, no external tool dependency,
-// so the Go path carries no `gh`/shell requirement.
-func httpFetch(url string) ([]byte, error) {
+// httpFetch is the production downloader for release assets: net/http, no
+// external tool dependency, so the Go path carries no `gh`/shell requirement.
+// Asset size carries no bound of its own; the sha256 pin decides the bytes.
+func httpFetch(url string) ([]byte, error) { return httpGet(url, 0) }
+
+// httpFetchBundle is the production downloader for attestation bundles. It
+// refuses a response over maxBundleBytes without buffering it.
+func httpFetchBundle(url string) ([]byte, error) { return httpGet(url, maxBundleBytes) }
+
+// httpGet GETs url and returns the body. limit > 0 bounds the body: it is read
+// through readBounded, never io.ReadAll on the raw response.
+func httpGet(url string, limit int64) ([]byte, error) {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -254,5 +292,27 @@ func httpFetch(url string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: status %s", url, resp.Status)
 	}
-	return io.ReadAll(resp.Body)
+	if limit <= 0 {
+		return io.ReadAll(resp.Body)
+	}
+	b, err := readBounded(resp.Body, limit)
+	if err != nil {
+		return nil, fmt.Errorf("GET %s: %w", url, err)
+	}
+	return b, nil
+}
+
+// readBounded reads r to EOF and refuses a stream longer than limit bytes. It
+// reads through io.LimitReader(r, limit+1), so at most limit+1 bytes are ever
+// pulled from r: an oversized response is refused, not buffered first and
+// measured afterwards.
+func readBounded(r io.Reader, limit int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > limit {
+		return nil, fmt.Errorf("response is over the %d-byte bound — refusing it", limit)
+	}
+	return b, nil
 }

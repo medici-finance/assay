@@ -1,2 +1,0 @@
-### Fixed
-- `deskboard`'s concurrency brief now has real tests behind every Verify row: pooled `prs`, `stalled` and drift output is proven byte-identical to a one-at-a-time run, `throughput` is proven to resolve its roots exactly once, a failing repo or root is proven to be named (the lowest-index one when two fail), and a blind `throughput` stage is proven never to count as read. `deskwt` and `deskfile` gain runtime tests that a `--help` request writes no audit row, while a bad flag still refuses and still records one.
