@@ -996,8 +996,11 @@ path to a regular, executable file that is not group- or world-writable, in a di
 is not either. Its environment is exactly `PATH`, `HOME`, `TMPDIR` and `LANG`: it never
 holds the caller's token or any `ASSAY_*` variable. Those four carry the **calling process's
 own values** (one that is unset there is left out), so whoever runs the desk verb chooses
-them. A callout must not let them decide anything: it sets its own `PATH` or names its tools
-by absolute path, as the example below does, or a missing or substituted tool decides for it.
+them. A callout must not let them decide anything. It sets its own `PATH` or names its tools
+by absolute path, or a missing or substituted tool decides for it; and it sets its own locale
+(`LC_ALL=C`, exported), or a caller's `LANG` naming a multibyte locale in which the write's
+UTF-8 bytes are not all characters makes a text tool skip that field without an error. The
+example below does both.
 It receives ONE JSON object on stdin:
 
 ```json
@@ -1047,9 +1050,12 @@ An example executable (invented word list; the shipped test fixture is
 # words, no blank lines, LF line endings; matched case-insensitively as fixed strings.
 # It answers `allow` ONLY when every step below ran and the match reported "no match": a tool
 # that is missing, fails or is killed is a block, as an unreadable list is.
-# Its own tools, never the caller's: the PATH value it is handed is the calling process's.
+# Its own tools and its own locale, never the caller's: the PATH and LANG values it is handed
+# are the calling process's. In a locale where the write's bytes are not all characters, the
+# extraction below would leave a field out with no error; in C every byte matches as itself.
 PATH=/usr/bin:/bin
-export PATH
+LC_ALL=C
+export PATH LC_ALL
 words=/etc/example-house/withheld-words.txt
 # A blank line would match every write and a CRLF ending would match none: refuse either.
 grep -q -e "$(printf '\r')" -e '^$' "$words"
@@ -1097,7 +1103,10 @@ The example is an example. It reads its tools from `/usr/bin` and `/bin` only: w
 live elsewhere, change its `PATH` line, or every write is refused because the match cannot
 run. It folds ASCII whitespace only, so a listed phrase whose words a no-break space separates
 in the write is not matched. And it refuses every write while its list has a blank line or
-CRLF line endings, rather than matching everything or nothing.
+CRLF line endings, rather than matching everything or nothing. It matches in the `C` locale,
+so case is folded for ASCII letters only: a non-ASCII letter in a listed word matches only
+in the case the list spells it. An empty list (a file of zero bytes) names
+nothing, so every write is allowed.
 
 The shipped fixture is this script with its list beside it, and a test holds the two
 identical and drives the fixture through the real request encoding with listed words that

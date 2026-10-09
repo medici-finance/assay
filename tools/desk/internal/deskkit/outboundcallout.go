@@ -31,8 +31,9 @@ package deskkit
 //	               content digest — never the reason, never the text. Nothing composes a forge
 //	               write from a refusal.
 //	NO CREDENTIAL  the callout runs with an explicit environment — PATH, HOME, TMPDIR, LANG —
-//	               never the caller's: the caller may hold a minted forge token and the
-//	               executable is third-party to the tools.
+//	               never the caller's whole one: the caller may hold a minted forge token and
+//	               the executable is third-party to the tools. Those four carry the CALLER's
+//	               values, so a callout fixes its own PATH and locale (README, the example).
 //
 // A house.callout refusal is NEVER overridable: a block follows the withheld-identifier class
 // (a written reason does not publish a withheld word), and a broken callout is fixed or unset

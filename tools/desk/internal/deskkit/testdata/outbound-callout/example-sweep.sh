@@ -5,9 +5,12 @@
 # words, no blank lines, LF line endings; matched case-insensitively as fixed strings.
 # It answers `allow` ONLY when every step below ran and the match reported "no match": a tool
 # that is missing, fails or is killed is a block, as an unreadable list is.
-# Its own tools, never the caller's: the PATH value it is handed is the calling process's.
+# Its own tools and its own locale, never the caller's: the PATH and LANG values it is handed
+# are the calling process's. In a locale where the write's bytes are not all characters, the
+# extraction below would leave a field out with no error; in C every byte matches as itself.
 PATH=/usr/bin:/bin
-export PATH
+LC_ALL=C
+export PATH LC_ALL
 words="${0%/*}/words.txt"
 # A blank line would match every write and a CRLF ending would match none: refuse either.
 grep -q -e "$(printf '\r')" -e '^$' "$words"

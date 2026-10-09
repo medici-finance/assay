@@ -845,6 +845,80 @@ func TestExampleCallerPathCannotDecide(t *testing.T) {
 	}
 }
 
+// ocMultibyteLocales are non-UTF-8 multibyte locales in which a UTF-8 write's bytes are not
+// all characters: a text tool running in one of them skips such a field without an error.
+var ocMultibyteLocales = []string{
+	"ja_JP.SJIS", "ja_JP.eucJP", "zh_TW.Big5", "zh_CN.GBK", "zh_CN.GB18030", "ko_KR.eucKR",
+}
+
+// ocInstalledLocales returns the members of want this machine has installed, matched as
+// `locale -a` lists them (case and the charset's punctuation vary by system); nil when
+// `locale -a` cannot be run.
+func ocInstalledLocales(t *testing.T, want []string) []string {
+	t.Helper()
+	out, err := exec.Command("locale", "-a").Output()
+	if err != nil {
+		return nil
+	}
+	norm := func(s string) string {
+		return strings.NewReplacer("-", "", "_", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(s)))
+	}
+	have := map[string]string{}
+	for _, ln := range strings.Split(string(out), "\n") {
+		if ln = strings.TrimSpace(ln); ln != "" {
+			have[norm(ln)] = ln
+		}
+	}
+	var got []string
+	for _, w := range want {
+		if name, ok := have[norm(w)]; ok {
+			got = append(got, name)
+		}
+	}
+	return got
+}
+
+// TestExampleLocaleCannotDecide — the callout is handed the CALLING process's LANG value, so
+// the example must not match in that locale. With LANG set to a multibyte locale in which the
+// write's UTF-8 bytes are not text, a write naming a listed word beside a non-ASCII character
+// is still refused with zero forge calls, and a clean write with the same characters is still
+// allowed. Where the machine has none of those locales the behaviour proves nothing and
+// skips; the fixture's own locale line is pinned first, so that skip never hides its removal.
+func TestExampleLocaleCannotDecide(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("testdata", "outbound-callout", "example-sweep.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "\nLC_ALL=C\nexport PATH LC_ALL\n") {
+		t.Fatal("the example does not set and export its own locale (want `LC_ALL=C` exported beside PATH)")
+	}
+	locales := ocInstalledLocales(t, ocMultibyteLocales)
+	if len(locales) == 0 {
+		t.Skip("could-not-check: none of the multibyte locales is installed on this machine")
+	}
+	path, _ := ocExampleSweep(t)
+	ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+	for _, loc := range locales {
+		t.Run(loc, func(t *testing.T) {
+			t.Setenv("LANG", loc)
+			for _, body := range []string{
+				"the rollout notes — mention example-other-word twice",
+				"café 日本 the rollout notes mention example-other-word twice",
+			} {
+				ocStderr(t)
+				calls, err := ocFileIssue(obPublic, body)
+				if err == nil || !strings.Contains(err.Error(), RuleHouseCallout) || calls != 0 {
+					t.Errorf("LANG=%s decided the example's answer: a listed word reached the forge: calls=%d err=%v", loc, calls, err)
+				}
+			}
+			ocStderr(t)
+			if calls, err := ocFileIssue(obPublic, "the rollout notes — café 日本, nothing listed"); err != nil || calls != 1 {
+				t.Errorf("LANG=%s: a clean non-ASCII write was refused: calls=%d err=%v", loc, calls, err)
+			}
+		})
+	}
+}
+
 // ocExampleTools installs the example with its own PATH line pointed at a directory holding
 // exactly the given tools (name → script body), so a test can take each tool away or make
 // it fail. The fixture must fix its own PATH: a fixture without that line fails here.
