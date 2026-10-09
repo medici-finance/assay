@@ -39,6 +39,7 @@ findings-register state machine.
 | 12 | [`homed-in: <owner/repo>` brief field — exclude a brief whose deliverable lives in another repo from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #404 @ 894d5e5f73ce417aa49c55134d10db3dc3675cfb) |
 | 13 | [Cadenced roadmap artifacts — `--cadence weekly\|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #409 @ 3b022c17ea158700be8cfab679d1719c75afb7a4) |
 | 14 | [`--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule)](brief-14-vacuous-gotest-run-lint.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 43420f7ecd74 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1659 @ f0355f1b57794105b59a1408522a44c7de59eb93) |
+| 15 | [Extract canonical eligibility and coverage evaluation API](brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md) | 1 | L | todo | — | — |
 | 16 | [Hold an issue out of dispatch when a non-human removed its excluded label: both scanners hold the placeholder, the issue board holds the un-briefed row](brief-16-label-removal-hold.md) | 1 | L | todo | — | — |
 | 17 | [`--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not)](brief-17-risk-high-label-gate.md) | 1 | S | todo | — | — |
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | todo | — | — |
@@ -61,7 +62,7 @@ Every other brief is independent and self-contained.
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
-  statusgen/14 (all independent; parallelizable).
+  statusgen/14, statusgen/15 (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07),
   statusgen/18 (depends on statusgen/17).
 
@@ -69,3 +70,9 @@ Every other brief is independent and self-contained.
 - `statusgen --lint-audit` reports 30-day per-rule firing counts; COLD (0-firing,
   un-tested) rules are retirement candidates — retirement stays a human call. Implemented
   by statusgen/01, PR #78.
+
+## Library-first work — 2026-10-08
+
+New work: `statusgen/15` extracts the evaluation API independently of forge reads.
+`graph-execution/19` consumes it; no workflow-store dependency flows back into extraction.
+See [the component contract](../../library-first.md). Existing completed history is unchanged.
