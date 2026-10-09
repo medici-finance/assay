@@ -7,6 +7,12 @@
   review with the findings it records, the newest comments and the diff. Caps are tighter than
   the review packet's (32 KiB an item, 192 KiB in all) because a worker run re-reads the packet
   on every later request. A packet that cannot be built never fails the dispatch.
+- A worker packet shows every value it did not write — a title, a login, a branch, a label, a
+  check or file name, a finding's id and state, an error's text — inside a code span the value
+  cannot end, and quotes longer text between boundary lines. It reads a finding record only
+  from a review the forge attributes to the reviewer identity: a review by any other account
+  is listed under its own heading as not the reviewer's, and when that identity cannot be
+  resolved no review is listed as the reviewer's, no record is read and no body is quoted.
 - Both worker kits gain three clauses about how a run gathers and waits — batch independent
   reads into one request, read the packet first when the assignment names one, and wait on a
   check or a review in one bounded command — none of which changes what a worker must do or

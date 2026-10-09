@@ -118,8 +118,15 @@ func useWorkerHead(t *testing.T, head string, err error) {
 	t.Cleanup(func() { workerPacketHeadFn = old })
 }
 
+// wpReviewer is the login the worker packet tests bind the reviewer role to, and the author
+// of every review in baseWorkerForge.
+const wpReviewer = "reviewer-app[bot]"
+
+// useWorkerForge installs f as the forge the worker packet reads, and binds the reviewer role
+// to wpReviewer. A test of another binding calls useReviewer after it.
 func useWorkerForge(t *testing.T, f *fakeWorkerForge) {
 	t.Helper()
+	useReviewer(t, wpReviewer, true)
 	old := workerPacketForgeFn
 	workerPacketForgeFn = func(repo string) (workerPacketForge, deskkit.ForgeRepo, error) {
 		fr, err := forgeRepoOf(repo)
@@ -238,7 +245,7 @@ func TestWorkerImplementPacketContents(t *testing.T) {
 	wpWantAll(t, "Run", packetSection(t, p.Text, "Run"),
 		"**Kind of run:** implementing", "**Item:** `alpha--03`", "**Repository:** `example-org/tracker`",
 		"**Worktree:** `"+home+"`", "**Branch:** `feat/alpha-03`", "**Base commit:** `"+wpBase+"`",
-		"**Claim:** `alpha--03` — taken by this dispatch", "claim store: refs")
+		"**Claim:** `alpha--03` — taken by this dispatch", "claim store: `refs`")
 
 	brief := packetSection(t, p.Text, "Brief")
 	wpWantAll(t, "Brief", brief, "in the run's worktree, at the head commit above", "`"+wpBriefRel+"`", "\n# Thing\n", "go test ./cmd/thing/...")
@@ -330,9 +337,9 @@ func TestWorkerImplementPacketWithoutABrief(t *testing.T) {
 	}
 	wpWantAll(t, "Run", packetSection(t, p.Text, "Run"), "**Follows up:** merged change #12")
 	issue := packetSection(t, p.Text, "Issue")
-	wpWantAll(t, "Issue", issue, "example-org/tracker#31 — Widget drops the last row", "**Author:** reporter",
+	wpWantAll(t, "Issue", issue, "example-org/tracker#31 — `Widget drops the last row`", "**Author:** `reporter`",
 		"**Labels:** `bug`, `area/widget`", "Steps: load 3 rows, see 2.",
-		"10 comment(s) on the issue, oldest first; the newest 8 are quoted in full", "- comment 10 — by someone", "note 3\n")
+		"10 comment(s) on the issue, oldest first; the newest 8 are quoted in full", "- comment 10 — by `someone`", "note 3\n")
 	wpWantNone(t, "Issue", issue, "note 2\n", "- comment 2 —")
 	if o, ok := omissionNamed(p, "the 2 earlier comment(s) on the issue"); !ok || o.Size != int64(len("note 1\n")+len("note 2\n")) {
 		t.Errorf("the earlier comments were not listed as omitted with their size: %+v", p.Omitted)
@@ -406,7 +413,7 @@ func TestWorkerImplementPacketBoundsTheFilesItReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(p.Text, "<<<UNTRUSTED-CONTENT "+rpToken+" — file pkg/"); n != workerPacketMaxFiles {
+	if n := strings.Count(p.Text, "<<<UNTRUSTED-CONTENT "+rpToken+" — `file pkg/"); n != workerPacketMaxFiles {
 		t.Errorf("%d named files quoted, want %d", n, workerPacketMaxFiles)
 	}
 	past := 0
@@ -434,7 +441,7 @@ func TestWorkerImplementPacketLosesOnlyTheSectionThatFails(t *testing.T) {
 	}
 	wpWantAll(t, "the packet", p.Text, "**Kind of run:** implementing", "Run `make check` before you push.")
 	for _, name := range []string{"Brief", "Dependencies", "Files the brief names"} {
-		wpWantAll(t, name, packetSection(t, p.Text, name), "_Not in this packet: could not be built: the brief could not be read")
+		wpWantAll(t, name, packetSection(t, p.Text, name), "_Not in this packet: could not be built: `the brief could not be read")
 	}
 }
 
@@ -509,6 +516,7 @@ type fakeWorkerForge struct {
 	issueErr          error
 	issueKind         deskkit.TargetKind
 	issueComments     []deskkit.Comment
+	issueCommentsErr  error
 	issueCommentsKind deskkit.TargetKind
 
 	comments    []deskkit.Comment
@@ -550,7 +558,7 @@ func (f *fakeWorkerForge) ListComments(deskkit.ForgeRepo, int) ([]deskkit.Commen
 
 func (f *fakeWorkerForge) ListCommentsTyped(_ deskkit.ForgeRepo, _ int, kind deskkit.TargetKind) ([]deskkit.Comment, error) {
 	f.issueCommentsKind = kind
-	return f.issueComments, nil
+	return f.issueComments, f.issueCommentsErr
 }
 
 func (f *fakeWorkerForge) ChecksAtHead(deskkit.ForgeRepo, string) (*deskkit.ChecksAtHead, error) {
@@ -615,10 +623,10 @@ func baseWorkerForge() *fakeWorkerForge {
 		},
 		required: []string{"build", "test"},
 		reviews: []deskkit.Review{
-			review(1, "reviewer-app[bot]", "CHANGES_REQUESTED", wpOldHead, "first round: rename the helper\n", "2026-03-01T00:00:00Z"),
-			review(2, "reviewer-app[bot]", "CHANGES_REQUESTED", wpOldHead, "second round: `widget.go:12` drops the last row\n", "2026-03-01T01:00:00Z"),
-			review(3, "reviewer-app[bot]", "COMMENTED", wpOldHead, "third round, nothing new\n", "2026-03-01T02:00:00Z"),
-			review(4, "reviewer-app[bot]", "CHANGES_REQUESTED", rpHead,
+			review(1, wpReviewer, "CHANGES_REQUESTED", wpOldHead, "first round: rename the helper\n", "2026-03-01T00:00:00Z"),
+			review(2, wpReviewer, "CHANGES_REQUESTED", wpOldHead, "second round: `widget.go:12` drops the last row\n", "2026-03-01T01:00:00Z"),
+			review(3, wpReviewer, "COMMENTED", wpOldHead, "third round, nothing new\n", "2026-03-01T02:00:00Z"),
+			review(4, wpReviewer, "CHANGES_REQUESTED", rpHead,
 				"`widget.go:12` still drops the last row; the rename is done.\n\n"+wpFindings(
 					deskkit.Finding{ID: "F-1", Lane: "Correctness", Class: "off-by-one", Severity: deskkit.SeverityBlocking,
 						State: deskkit.StateOpen, OriginHead: wpOldHead, Failure: "TestRows fails at the head"},
@@ -675,10 +683,10 @@ func TestWorkerShepherdPacketContents(t *testing.T) {
 	}
 
 	checks := packetSection(t, p.Text, "Checks at head")
-	wpWantAll(t, "Checks at head", checks, "**Combined status:** failure",
-		"  - `leak-sweep` — success", "  - `test` — completed / failure (run 902)",
+	wpWantAll(t, "Checks at head", checks, "**Combined status:** `failure`",
+		"  - `leak-sweep` — `success`", "  - `test` — `completed` / `failure` (run `902`)",
 		"**Not reported as passing:** 3",
-		"  - status `deploy/preview` — pending", "  - check run `test` — completed / failure (run 902)", "  - check run `lint` — in_progress (run 903)",
+		"  - status `deploy/preview` — `pending`", "  - check run `test` — `completed` / `failure` (run `902`)", "  - check run `lint` — `in_progress` (run `903`)",
 		"**Checks `main` requires:** `build` `test`",
 		"**A failing job's log is NOT in this packet.**")
 	wpWantNone(t, "Checks at head", checks, "  - check run `build`", "  - check run `docs`", "  - status `leak-sweep`")
@@ -687,9 +695,11 @@ func TestWorkerShepherdPacketContents(t *testing.T) {
 	}
 
 	reviews := packetSection(t, p.Text, "Reviews and findings")
-	wpWantAll(t, "Reviews and findings", reviews, "Every review on the change, oldest first, under the author the forge reports: 4.",
+	wpWantAll(t, "Reviews and findings", reviews, "Every review on the change, under the author the forge reports: 4.",
+		"only when that author is the reviewer identity (`"+wpReviewer+"`)", "### Reviews by the reviewer identity — 4, oldest first",
+		"### Reviews by other accounts — not the reviewer's — 0, oldest first",
 		"**Review comments anchored to a file and line are NOT in this packet.**",
-		"  - finding `F-1` (correctness) — class `off-by-one` — state `open` — a STANDING BLOCKER at this head by this record",
+		"  - finding `F-1` (`correctness`) — class `off-by-one` — state `open` — a STANDING BLOCKER at this head by this record",
 		"  - finding `F-2` — class `naming` — state `resolved` — not a standing blocker at this head by this record",
 		"`widget.go:12` still drops the last row", "second round: `widget.go:12` drops the last row", "third round, nothing new")
 	// The oldest review not at the head is past the limit: listed, not quoted.
@@ -702,8 +712,8 @@ func TestWorkerShepherdPacketContents(t *testing.T) {
 	}
 
 	comments := packetSection(t, p.Text, "Comments")
-	wpWantAll(t, "Comments", comments, "2 comment(s) on the change", "- comment 11 — by worker-app[bot]", "pushed the rename",
-		"- comment 12 — by someone — created 2026-03-02T00:00:00Z — minimized on the forge; not quoted")
+	wpWantAll(t, "Comments", comments, "2 comment(s) on the change", "- comment 11 — by `worker-app[bot]`", "pushed the rename",
+		"- comment 12 — by `someone` — created `2026-03-02T00:00:00Z` — minimized on the forge; not quoted")
 	wpWantNone(t, "Comments", comments, "spam")
 	wpWantAll(t, "Diff", packetSection(t, p.Text, "Diff"), "+new", "base `main` to head `"+rpHead+"`")
 }
@@ -749,10 +759,10 @@ func TestWorkerShepherdPacketSaysWhatItCouldNotCheck(t *testing.T) {
 	base := packetSection(t, p.Text, "Against the base branch")
 	wpWantAll(t, "Against the base branch", base,
 		"**Conflict with the base:** could not check — the forge says `UNKNOWN`",
-		"**Has the base moved:** could not check — HTTP 404: no common ancestor")
+		"**Has the base moved:** could not check — `HTTP 404: no common ancestor`")
 	wpWantNone(t, "Against the base branch", base, "none reported", "moved:** no")
 	wpWantAll(t, "Checks at head", packetSection(t, p.Text, "Checks at head"),
-		"**Checks `main` requires:** could not check — HTTP 403: resource not accessible")
+		"**Checks `main` requires:** could not check — `HTTP 403: resource not accessible`")
 	wpWantAll(t, "Reviews and findings", packetSection(t, p.Text, "Reviews and findings"), "_No review has been posted on the change._")
 	wpWantAll(t, "Comments", packetSection(t, p.Text, "Comments"), "_No comments on the change._")
 
@@ -790,7 +800,7 @@ func TestWorkerShepherdPacketLosesOnlyTheSectionThatFails(t *testing.T) {
 	}
 	for name, why := range map[string]string{"Checks at head": "HTTP 500: checks backend down", "Reviews and findings": "HTTP 502",
 		"Comments": "HTTP 503", "Diff": "HTTP 406: diff too large"} {
-		wpWantAll(t, name, packetSection(t, p.Text, name), "_Not in this packet: could not be built: "+why)
+		wpWantAll(t, name, packetSection(t, p.Text, name), "_Not in this packet: could not be built: `"+why+"`_")
 	}
 	wpWantAll(t, "the packet", p.Text, "**Kind of run:** shepherding", "Fixes the widget.", "**Has the base moved:** YES")
 }
@@ -818,7 +828,8 @@ func TestWorkerShepherdPacketCapsAndOmissions(t *testing.T) {
 		t.Errorf("packet quotes %d bytes, over its %d overall cap", p.UntrustedBytes, workerPacketOverall)
 	}
 	wpWantAll(t, "the header", p.Text, "The brief and the diff may each be up to 65536 bytes.",
-		"Every review at the head commit is quoted, with the newest 2 earlier ones and the newest 8 comments.")
+		"Every review by the reviewer identity at the head commit is quoted, with its newest 2 earlier ones and the newest 8 comments.",
+		"At most 5 review bodies from accounts other than the reviewer identity are quoted, up to 16384 bytes each.")
 }
 
 // TestWorkerPacketStatesItsCaps: the limits a reader has to know are in the packet's header,
