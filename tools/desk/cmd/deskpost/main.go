@@ -17,6 +17,9 @@
 //     to it (#513 / #438);
 //   - ready = "ready for HUMAN review"; merge is always the owner's.
 //
+// `finish` (finish.go) is not a fourth kind of write: it runs one of the two verdict verbs,
+// reads the verdict back, and releases the reviewer's own dispatch claim.
+//
 // The tool has NO other verbs — no merge, close, un-ready, edit, or label.
 // Every invocation runs the deskkit kill switch first, audits exactly one line,
 // and fails closed on anything it cannot positively verify.
@@ -77,7 +80,7 @@ func run(argv []string) int {
 	// the unambiguous single-token shape, so a `--help` that is another flag's VALUE cannot
 	// be mistaken for one; every wider spelling falls through to the verb's own parse, which
 	// hands flag.ErrHelp to parseFailCode (tier two): usage on stderr, exit 0, no audit row.
-	if deskkit.HelpOnly(argv) {
+	if deskkit.HelpOnly(argv) || (argv[0] == "finish" && deskkit.HelpOnly(argv[1:])) {
 		usage()
 		return 0
 	}
@@ -108,6 +111,8 @@ func run(argv []string) int {
 		return cmdComment(argv)
 	case "ready":
 		return cmdReady(argv)
+	case "finish":
+		return cmdFinish(argv)
 	default:
 		fmt.Fprintln(stderr, "deskpost: unknown subcommand "+argv[0])
 		usage()
@@ -163,7 +168,10 @@ type verdictArgs struct {
 // 40- (or 64-) char SHA on both verbs — an abbreviated one is a form error, not a head mismatch
 // (#214): the two call for opposite responses, and a verdict that lands on a commit the
 // reviewer did not read is the failure the flag exists to prevent (#197).
-func parseVerdictArgs(verb, verdictValues string, argv []string) (verdictArgs, int, bool) {
+//
+// extra registers further flags on the same FlagSet (`finish` adds --claim), so a verb that
+// wraps a verdict verb parses its arguments HERE rather than in a second copy.
+func parseVerdictArgs(verb, verdictValues string, argv []string, extra ...func(*flag.FlagSet)) (verdictArgs, int, bool) {
 	var a verdictArgs
 	rest := argv[1:]
 	if len(rest) < 2 {
@@ -187,6 +195,9 @@ func parseVerdictArgs(verb, verdictValues string, argv []string) (verdictArgs, i
 	head := fs.String("head", "", "the reviewed head SHA — FULL 40- (or 64-) char lowercase hex, not abbreviated (required)")
 	bodyFile := fs.String("body-file", "", "path to the review body file (required)")
 	raw := addPostFlags(fs)
+	for _, add := range extra {
+		add(fs)
+	}
 	if err := fs.Parse(rest[2:]); err != nil {
 		return a, parseFailCode(err), false
 	}
@@ -472,6 +483,7 @@ usage:
   deskpost security-review <owner/repo> <pr>     --verdict pass|fail              --head <full-40-or-64-char-sha> --body-file F
   deskpost comment         <owner/repo> <number> --body-file F [--head <full-40-or-64-char-sha>] [--kind issue|mr]
   deskpost ready           <owner/repo> <pr>
+  deskpost finish review|security-review <owner/repo> <pr> --verdict <…> --head <full-40-or-64-char-sha> --body-file F --claim <claim key>
   deskpost version
 
 the two verdict verbs (a risk-classed PR needs BOTH at the same head):
@@ -505,6 +517,23 @@ targets:
   review, security-review, ready
                  pull requests ONLY. Given an issue number they refuse (exit 5) and name
                  `+"`comment`"+` — they never report it as unverifiable (exit 6).
+
+finishing a review (one command instead of three):
+  finish         `+"`finish review …`"+` / `+"`finish security-review …`"+` take that verb's arguments plus
+                 --claim <claim key> (the dispatch claim your assignment names). In order,
+                 stopping at the first step that does not succeed:
+                   1. post the verdict — the SAME checks, identity, budget and refusals as
+                      the verb it names, with that verb's exit code;
+                   2. confirm a review by the reviewer identity with this body is recorded
+                      at --head (exit 6 if it cannot be read back);
+                   3. release the dispatch claim (a claim already gone is not a failure).
+                 Then ONE line on stdout:
+                   deskpost finish: review=<link or id> state=<STATE> head=<sha> claim=released|already-released
+                 A stop names the step and what was and was not done; nothing after the
+                 failed step runs, and running the same command again is safe. The claim is
+                 released LAST because the post step needs it held. --claim must be a review
+                 claim of this change (exit 2 otherwise, before anything is posted).
+                 With --dry-run only step 1 is rehearsed.
 
 modifiers (every mutating verb; both default off):
   --dry-run       run every check, then STOP before the write. Exit 0, audited 'dryrun' —
