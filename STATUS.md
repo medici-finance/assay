@@ -74,7 +74,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-supervisio
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: e107c93 2026-10-09T06:29:53-05:00_
+_last regen: 3960ba2 2026-10-09T12:13:17-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -95,7 +95,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: e107c93 2026-10-09T06:29:53-05:00_
+_last regen: 3960ba2 2026-10-09T12:13:17-05:00_
 
 **Progress:** 16/71 brief items done.
 
@@ -127,7 +127,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (12 for the desk · 25 for the driver · 34 for workers · 14 for an operator · 13 runner-pending — of 101 total; 3 could-not-check)
+## Awaiting verification / review (13 for the desk · 25 for the driver · 34 for workers · 14 for an operator · 13 runner-pending — of 102 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -239,11 +239,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 09 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | desktools-v2 | 14 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 
-### Desk-actionable (12)
+### Desk-actionable (13)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | verify-desk | triage, then re-bucket | — | — |
+| forge-neutral | 34 [exec:strong] | implemented | 3500 | 3 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | verify-desk | dispatch one judge | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | verify-desk | dispatch one judge | — | — |
@@ -535,7 +536,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 31 Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live — todo (wave 8)
 - 32 Release-N+1 deletion — the forge claim store is removed and an unset store key is refused — todo (wave 8)
 - 33 Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind — implemented (wave 1)
-- 34 deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default — todo (wave 1)
+- 34 deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default — implemented (wave 1)
 - 35 Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own — todo (wave 6)
 - 36 Importable fact reader SDK and first shared read — todo (wave 1)
 
