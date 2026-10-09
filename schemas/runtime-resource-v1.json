@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/runtime-resource-v1.json",
+  "title": "runtime-resource-v1",
+  "description": "Machine-readable contract for one runtime resource record (docs/runtime-adapters.md): a stateful resource an agent run needs (a database branch, a snapshot, an eval corpus, an object-storage prefix, a disposable app backend), the adapter that holds it, the bounds it was provisioned under, and the ordered list of external effects performed on it, each with its own typed receipt. This contract is DESCRIPTIVE of per-value shape only: required keys, field types, closed value sets. It deliberately does NOT encode the cross-field rules `statusgen runtime-resource --lint` owns: whether the adapter is registered for this class and verb, whether the resource has outlived its TTL unclaimed, whether a claim names a human or organization principal, whether every effect whose outcome is unknown was reconciled against an authoritative receipt before the run continued, whether a release was reconciled to absence, whether the agent credential was rotated or revoked after a claim or release, and whether the recorded state is backed by a receipt. Those need the effect list resolved in order, which a per-value schema cannot express. Where the two would disagree the schema is the LOOSER of the two on purpose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "class", "adapter", "owner", "input-revision", "ttl", "quota", "data-classification", "provisioning", "credentials", "cleanup-owner", "evidence-kind", "cost", "recovery", "state", "effects"],
+  "properties": {
+    "schema": {
+      "description": "The schema marker. For this contract it is exactly runtime-resource-v1.",
+      "const": "runtime-resource-v1"
+    },
+    "id": {
+      "description": "The resource record's stable identity. Assigned by the control plane when the resource is requested, before any adapter call, so a lost acknowledgment never loses the record.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "class": {
+      "description": "Exactly one resource class (docs/runtime-adapters.md, Resource classes).",
+      "type": "string",
+      "enum": ["database-branch", "snapshot", "eval-corpus", "object-prefix", "app-backend"]
+    },
+    "adapter": {
+      "description": "The adapter that holds the resource. `id` must name an adapter in the adapter registry the validator is given; an unregistered adapter is refused, never trusted on its own say-so.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "version": { "type": "string", "pattern": "^\\S+$" }
+      }
+    },
+    "owner": {
+      "description": "The brief and the run the resource was provisioned for. Every resource belongs to exactly one run of exactly one brief; a resource with no owning run cannot be reconciled or cleaned up.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["brief", "run"],
+      "properties": {
+        "brief": { "type": "string", "pattern": "^\\S+$" },
+        "run": { "type": "string", "pattern": "^\\S+$" }
+      }
+    },
+    "input-revision": {
+      "description": "The revision of the inputs the resource was created from (a commit SHA, a parent snapshot id, a corpus version). Evidence produced against the resource is valid only for this revision.",
+      "type": "string",
+      "pattern": "^\\S+$"
+    },
+    "ttl": {
+      "description": "Time to live from the receipt that established the resource: a positive integer and one unit, s/m/h/d. An unclaimed resource past its TTL is expired; only a claim by a human or organization principal retains it longer.",
+      "type": "string",
+      "pattern": "^[1-9][0-9]*[smhd]$"
+    },
+    "quota": {
+      "description": "The bounds the resource was provisioned under, one entry per dimension the adapter meters (storage, compute time, object count). At least one bound is required: an unbounded ephemeral resource is not one an agent may request.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dimension", "limit"],
+        "properties": {
+          "dimension": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "limit": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "data-classification": {
+      "description": "The most sensitive class of data the resource may hold. `synthetic` means generated data only.",
+      "type": "string",
+      "enum": ["synthetic", "public", "internal", "confidential", "restricted"]
+    },
+    "provisioning": {
+      "description": "Provisioning authority: who asked for the resource, and the fact that the request went through the control plane. An agent may be `requested-by`; it never reaches an adapter directly.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested-by", "via"],
+      "properties": {
+        "requested-by": { "type": "string", "pattern": "^(agent|human|org):\\S+$" },
+        "via": { "const": "control-plane" }
+      }
+    },
+    "credentials": {
+      "description": "Credential custody. Durable credentials stay with the control plane; the agent holds only a short-lived credential scoped to this one resource. `rotations` records every rotation or revocation, each naming the effect that required it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["durable-custody", "agent-credential", "rotations"],
+      "properties": {
+        "durable-custody": { "const": "control-plane" },
+        "agent-credential": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scope", "lifetime"],
+          "properties": {
+            "scope": { "const": "resource" },
+            "lifetime": { "type": "string", "pattern": "^[1-9][0-9]*[smhd]$" }
+          }
+        },
+        "rotations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["after", "action", "at"],
+            "properties": {
+              "after": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+              "action": { "type": "string", "enum": ["rotated", "revoked"] },
+              "at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" }
+            }
+          }
+        }
+      }
+    },
+    "cleanup-owner": {
+      "description": "Who removes the resource when it expires or is released: the control plane, or a named human or organization principal. Never an agent.",
+      "type": "string",
+      "pattern": "^(control-plane|human:\\S+|org:\\S+)$"
+    },
+    "evidence-kind": {
+      "description": "The evidence kind every effect on this record produces.",
+      "const": "runtime-receipt"
+    },
+    "cost": {
+      "description": "What the resource costs. `basis: estimate` is the control plane's figure at request time; `metered` is read from the adapter. A local adapter records 0.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "unit", "basis"],
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "unit": { "type": "string", "pattern": "^\\S+$" },
+        "basis": { "type": "string", "enum": ["estimate", "metered"] }
+      }
+    },
+    "recovery": {
+      "description": "The recovery semantics, declared. The only value is reconcile-before-retry: an effect whose outcome is unknown is reconciled against an authoritative receipt before the run repeats it or does anything else.",
+      "const": "reconcile-before-retry"
+    },
+    "state": {
+      "description": "The resource's recorded state (docs/runtime-adapters.md, State machine). It must be backed by the receipts in `effects`.",
+      "type": "string",
+      "enum": ["requested", "provisioned", "claimed", "expired", "released", "failed"]
+    },
+    "ownership": {
+      "description": "Ownership authority, present only once a principal has claimed the resource. A claim retains, promotes or pays for the resource beyond its TTL, so only a human or organization principal may hold it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["principal", "claimed-at"],
+      "properties": {
+        "principal": { "type": "string", "pattern": "^(human|org):\\S+$" },
+        "claimed-at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" },
+        "retain-until": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" }
+      }
+    },
+    "effects": {
+      "description": "Every external effect performed on the resource, in the order the control plane issued them. Each carries a stable effect id and the idempotency key the adapter deduplicates on.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "verb", "idempotency-key", "requested-at", "outcome"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+          "verb": { "type": "string", "enum": ["create", "inspect", "snapshot", "restore", "claim", "release", "reconcile"] },
+          "idempotency-key": { "type": "string", "pattern": "^\\S+$" },
+          "requested-at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" },
+          "outcome": {
+            "description": "`succeeded` and `failed` are acknowledged outcomes. `unknown` means the caller never received an acknowledgment: the effect may or may not have happened.",
+            "type": "string",
+            "enum": ["succeeded", "failed", "unknown"]
+          },
+          "principal": {
+            "description": "The identity that authorized this effect. Required on a claim, where it must be a human or organization principal.",
+            "type": "string",
+            "pattern": "^((agent|human|org):\\S+|control-plane)$"
+          },
+          "reconciles": {
+            "description": "On a reconcile effect: the id of the earlier effect this reconcile resolves.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "receipt": {
+            "description": "The adapter's typed receipt. Required on every succeeded effect. On a reconcile it is the authoritative read of the resource's real state at the adapter.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["adapter-ref", "observed-at", "observed-state"],
+            "properties": {
+              "adapter-ref": { "type": "string", "pattern": "^\\S+$" },
+              "observed-at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$" },
+              "observed-state": { "type": "string", "enum": ["present", "absent"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

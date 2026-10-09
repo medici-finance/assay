@@ -1,0 +1,57 @@
+# BAD: a 1h resource still recorded provisioned two hours after its create
+# receipt, unclaimed. Checked as of 2026-01-01T02:00:00Z it is expired.
+schema: runtime-resource-v1
+id: rr-expired-01
+class: database-branch
+adapter:
+  id: local-mock
+  version: "1"
+owner:
+  brief: example/01
+  run: run-0001
+input-revision: 3f2a9c1
+ttl: 1h
+quota:
+  - dimension: storage-mb
+    limit: 512
+  - dimension: compute-minutes
+    limit: 60
+data-classification: synthetic
+provisioning:
+  requested-by: agent:worker-1
+  via: control-plane
+credentials:
+  durable-custody: control-plane
+  agent-credential:
+    scope: resource
+    lifetime: 1h
+  rotations: []
+cleanup-owner: control-plane
+evidence-kind: runtime-receipt
+cost:
+  amount: 0
+  unit: USD
+  basis: estimate
+recovery: reconcile-before-retry
+state: provisioned
+effects:
+  - id: eff-0001
+    verb: create
+    idempotency-key: run-0001/create
+    requested-at: "2026-01-01T00:00:00Z"
+    outcome: succeeded
+    principal: agent:worker-1
+    receipt:
+      adapter-ref: mock://branch/rr-expired-01
+      observed-at: "2026-01-01T00:00:05Z"
+      observed-state: present
+  - id: eff-0002
+    verb: inspect
+    idempotency-key: run-0001/inspect-1
+    requested-at: "2026-01-01T01:00:00Z"
+    outcome: succeeded
+    principal: agent:worker-1
+    receipt:
+      adapter-ref: mock://branch/rr-expired-01
+      observed-at: "2026-01-01T01:00:01Z"
+      observed-state: present
