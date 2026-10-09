@@ -1,6 +1,7 @@
 # ci-check-v1 — CI check history
 
-Status: implemented (desk-supervision/31). Local operational state for later analysis. A record
+Status: implemented (`cicheckhistory.go`, beside this file). Local operational state for later
+analysis. A record
 never grants, refuses or changes anything: no desk decision reads it, and the read that produced
 it returns exactly what it would have returned without it.
 
@@ -99,5 +100,5 @@ own CI configuration, already visible to anyone who can read the pull request.
 ## Joining
 
 The record joins other desk records (review rounds, verify outcomes) by `repo` + `head_sha`
-(+ `pr` when present). The dispatch reference of desk-supervision/28 is not known at a CI read, so
-the record does not carry one.
+(+ `pr` when present). A dispatch reference is not known at a CI read, so the record does not
+carry one.

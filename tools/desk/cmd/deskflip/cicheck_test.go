@@ -1,6 +1,6 @@
 package main
 
-// cicheck_test.go — desk-supervision/31's flow proof: a real deskflip run, whose Forge comes
+// cicheck_test.go — the CI-check history's flow proof: a real deskflip run, whose Forge comes
 // from the production construction path (ResolveForge → OutboundChecked over the GitHub
 // backend, pointed at the recording stub; HOME — and so the state dir — is a temp dir), leaves
 // CI-check records for the head it evaluated, and its verdict is the verdict it reaches with

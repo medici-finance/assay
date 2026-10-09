@@ -376,7 +376,7 @@ At runtime the tools read/write, under `~/.config/assay/`:
   exit 6; a malformed line is printed with a note naming `deskaudit recover`, never
   dropped.
 - `ci-checks.jsonl` (+ `ci-checks.jsonl.<YYYY-MM-DD>` segments, `ci-checks.lock`) — **CI
-  check history** (desk-supervision/31). One line per FINISHED check run or terminal commit
+  check history**. One line per FINISHED check run or terminal commit
   status (`success`/`failure`/`error`) that a desk tool read: repo, head SHA, PR when the
   read carried one, kind, name, attempt (the forge run id, or the creation/start stamp),
   conclusion, timestamps and duration — never check output, URLs, or who posted it. It is
@@ -387,9 +387,8 @@ At runtime the tools read/write, under `~/.config/assay/`:
   rotates daily like the audit log; no tool deletes a segment (retention is yours), and no
   desk decision reads it — it is local operational state for later analysis, never
   committed. `deskkit.LoadCIChecks` reads every segment, de-duplicated on (repo, head SHA,
-  kind, name, attempt). Schema: [`ci-check-v1`](../../docs/streams/desk-supervision/ci-check-v1.md);
-  fail-first: `muhar -spec internal/deskkit/cicheckhistory-mutations.json` (sequential —
-  the schema-sync test reads that doc, outside a `-j` worker's module copy).
+  kind, name, attempt). Schema: [`ci-check-v1`](internal/deskkit/ci-check-v1.md);
+  fail-first: `muhar -spec internal/deskkit/cicheckhistory-mutations.json`.
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing
   `result=disabled`. Its first line is shown as the reason.

@@ -575,9 +575,9 @@ func TestCICheckHistory_ReadUnchangedOnRecorderFailure(t *testing.T) {
 
 // --- row 7 ---------------------------------------------------------------------------------
 
-// ciSchemaDoc is the canonical schema, read from the repository so the record type and the
-// document cannot drift apart.
-const ciSchemaDoc = "../../../../docs/streams/desk-supervision/ci-check-v1.md"
+// ciSchemaDoc is the canonical schema, which ships beside this package, read here so the
+// record type and the document cannot drift apart.
+const ciSchemaDoc = "ci-check-v1.md"
 
 // ciDocFields returns the backticked first-column names of the doc's "## Fields" table.
 func ciDocFields(t *testing.T) []string {

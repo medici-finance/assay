@@ -35,6 +35,7 @@
         "Rollup": [
           {
             "Typename": "GitLabRollupUnmapped",
+            "ID": "",
             "Name": "",
             "Status": "",
             "Conclusion": "",

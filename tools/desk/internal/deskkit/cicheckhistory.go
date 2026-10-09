@@ -20,7 +20,7 @@ package deskkit
 //
 // The record type has no field for check output, title, summary, annotations, log text,
 // URLs, the actor or app that posted a check, or any session transcript — names and
-// conclusions only. docs/streams/desk-supervision/ci-check-v1.md is the canonical schema;
+// conclusions only. ci-check-v1.md, beside this file, is the canonical schema;
 // TestCICheckRecord_NoFreeTextFields holds the two together.
 
 import (
