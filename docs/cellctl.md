@@ -101,6 +101,11 @@ that context. This is automatic launch metadata, not a replacement for the
 active roster override. Existing config aliases are resolved before composition;
 missing inputs remain missing and fail preflight. Operator Claude configuration,
 including an explicit positional override, is preserved for policy rechecks.
+When the composing environment is already cell-scoped (its config candidate is
+the cell's config link under any spelling, or resolves inside the cell home),
+nothing is recorded: the context stays unset and the house check compares the
+cell link with itself and refuses it, rather than accepting whatever the link
+points at.
 
 Only `cellctl` consumes this context: the operator-config resolver serves the
 common operator-directory check, the house config-link check, and configuration
@@ -1043,8 +1048,10 @@ codex --sandbox danger-full-access -C <worktree> -m <model> "Invoke the \"assay:
 ```
 
 The same exported env the claude arm gets — `DESK_LOOP`, `DESK_SESSION`, `DESK_ROOTS` (when
-`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. `CLAUDE_CONFIG_DIR` is irrelevant on
-this arm and is not passed; the model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
+`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. The Codex process itself gets no
+`CLAUDE_CONFIG_DIR`; the command environment `cellctl` composes for its subprocesses carries the
+operator's Claude config directory, resolved before `HOME` changes, so a policy recheck that routes
+through Claude reads the operator's configuration. The model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
 `CODEX_MODEL_default`, falling back to the tier map — never the claude arm's `DESK_MODEL_<role>` /
 `DESK_MODEL_DEFAULT` (`#986`: the two were conflated before this, which is why a Claude-only pin
 used to reach `codex -m` unchanged and fail there). See *Per-harness namespaces and the tier-map
