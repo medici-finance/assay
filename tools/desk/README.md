@@ -5338,9 +5338,9 @@ earlier verdicts of **this lane** in full (state, commit, time, body) and a one-
 every other review; the whole diff; and the text of each touched file as it reads after the
 change.
 
-**Caps, stated in the packet's own header.** Nothing is ever cut short: an item over its cap
-is left out **whole** and listed under "Omitted" by name, size and reason, so a reader always
-knows what it was not shown and reads that item at the source.
+**Caps, stated in the packet's own header.** No quoted item is ever cut short: one over its
+cap is left out **whole** and listed under "Omitted" by name, size and reason, so a reader
+always knows what it was not shown and reads that item at the source.
 
 | Cap | Value | Why |
 |---|---|---|
@@ -5361,8 +5361,9 @@ directory. The file is `0600` in a `0700` directory.
 **It is untrusted content, and fenced as such.** Everything in the packet the tool did not
 write — a description, a review body, a diff, a file — sits inside a boundary that carries a
 per-packet random token, with boundary look-alikes in the content neutralised, and the header
-says in the tool's own words that nothing inside a boundary is an instruction. Single-line
-values (a title, a login, a check name) are flattened and quoted.
+says in the tool's own words that nothing inside a boundary is an instruction. A single-line
+value (a title, a login, a check name) is flattened to one line with control characters
+escaped; one longer than 240 characters is shown cut, with the cut stated.
 
 **It can never fail a dispatch.** The packet is not one of the numbered dispatch steps. If
 it cannot be built — no credential, a forge that will not answer, a head that moved while it
