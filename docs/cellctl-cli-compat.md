@@ -14,20 +14,30 @@ it also fails when a listed row stops differing, so this table cannot go stale i
 ## What did not change
 
 - **Verbs, arguments and flags.** Every verb and flag keeps its name, its meaning and its exit
-  code. A line that worked before still does what it did; the lines that now run and used to be
-  refused are listed under "What differs" and "Beyond the ruled list".
-- **`--cells-root`.** Still accepted before the verb. It is now also accepted after it.
+  code. A line that worked before still does what it did. A line the old parser refused is still
+  refused, by the shape check below when the new parser would otherwise have accepted it.
+- **Command-line shape.** `cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the
+  selector is the separated `--cells-root <abs>`, and only as the first word; a verb's fixed
+  positionals (its cell, role or action) come before its flags; the single-dash spelling of a long
+  flag (`-apply`, `-max-age 1h`) is accepted by `scratch` only, which read its flags with the Go
+  flag package. A line of any other shape is refused before anything runs: exit 3, the parser's
+  wording, nothing on stdout and no roster echo (rows under "Refused shapes"). Every verb declares
+  how many fixed positionals it takes, and a test plants a verb without that declaration and
+  requires the guard to name it.
+- **An empty verb word** prints the usage, exit 0, and runs nothing, as before.
 - **Raw entrypoints.** `model-policy`, `cache-run` and `container-run` receive the tokens after
-  the verb verbatim; a flag-shaped token after one of these verbs belongs to the verb. The
-  cells-root selector in front of the verb is stripped first, in any of its spellings (separate
-  value, `=` form, single or double dash), and then the verb sees what follows. The hook verb keeps
-  its own exit codes (a parse failure is 2, never the usage code 3).
+  the verb verbatim; a flag-shaped token after one of these verbs belongs to the verb, including a
+  `--cells-root` (it reaches the child and is never applied as the selector). Only the separated
+  selector in front of the verb is stripped. The hook verb keeps its own exit codes (a parse
+  failure is 2, never the usage code 3).
 - **`scratch ... run` command boundary.** Everything after `scratch <cell> <action>` and the
   verb's own flags is the command, with or without `--`: the first word that is not a flag or a
   flag's value starts it, and nothing after that word is parsed as a `scratch` flag, `--help`,
   `--version` or `--cells-root`. A command that itself begins with `-` needs `--` before it, as
-  it always did. `TestScratchRunArgvBoundary` runs a child whose arguments spell those flags and
-  checks the argv it receives.
+  it always did. A flag ahead of the action or the cell is refused, so it cannot move where the
+  command starts. `TestScratchRunArgvBoundary` and `TestScratchRunFlagsBeforeVerb` run a child and
+  check the argv it receives; the shared adapter also refuses any line whose opaque-argv command it
+  did not reach by its own walk.
 - **Setting precedence.** For `--model`, `--cadence` and `--tick-budget`: the flag, then the
   environment (the process environment with `cell.env` overlaid, so `cell.env` wins over the
   process), then the cell's own pin or default. An empty environment value counts as unset; an
@@ -53,37 +63,63 @@ it also fails when a listed row stops differing, so this table cannot go stale i
 | `scratch/10` | `scratch <cell> sweep --max-age bogus` exited **2** (Go flag package, which also printed the whole flag list) | Cobra's `invalid argument "bogus" for "--max-age" flag: ...`, exit **3** | One usage exit code for the whole command; the only verb that used 2 for a parse failure was `scratch`. The hook verb keeps 2. |
 | `cells-root/3` | `--cells-root` with no value: `cellctl: --cells-root requires an absolute registry path and a command` after the echo, exit 3 | Cobra's `flag needs an argument: --cells-root`, exit 3, no echo | Parse failure. |
 
-## Beyond the ruled list
+## Refused shapes
 
-The migration also widens what the parser accepts in four ways. Each was found in review, each is
-pinned by a recorded transcript of the pre-migration binary in the same parity test, and the
-recorded decision does not list them: they are stated here so that no reader takes the table above
-for the whole surface, and a maintainer who prefers the narrower surface can have them refused.
-None of them can reach a refusal in the domain code, which still runs after the parse.
+The old parser refused each of these lines (exit 3) and the new parser on its own would have run
+them. They are refused again, exit 3 and nothing run, by the shape check; what changed is the
+wording and the missing roster echo, the same change decision entries 1 and 2 make for an unknown
+verb. The parity test replays each against the recorded transcript of the pre-migration binary.
 
-| Case key | Before | Now |
-|---|---|---|
-| `flags-before-positionals/0`, `flags-before-positionals/1`, `flags-before-positionals/2`, `flags-before-positionals/3` | a flag ahead of, or between, positionals (`scratch <cell> --apply sweep`, `cadence <cell> --confirm-stopped recover <role>`, `desk <cell> --model m <role>`, `show --harness h <cell>`) was refused as an unknown operation, role or cell, exit 3 | the line runs and does what its reordered form does |
-| `single-dash-outside-scratch/0`, `single-dash-outside-scratch/1` | `-model x` and `-harness x` after the positionals were taken as an extra positional (a config-directory path, or an unexpected argument), exit 3 | the single-dash spelling of a long flag is that flag on every non-raw verb |
-| `single-dash-outside-scratch/2`, `single-dash-outside-scratch/3` | `-version` and `version extra` were unknown verbs, exit 3 | `-version` prints the version, and `version` ignores extra words |
-| `cells-root-spellings/0`, `cells-root-spellings/1`, `cells-root-spellings/2`, `cells-root-spellings/3` | only the separated `--cells-root <abs>` before the verb was a selector; `--cells-root=<abs>` and `-cells-root <abs>` were unknown verbs, exit 3 | both select the registry on every verb; a raw verb (`cache-run`, `model-policy`, `container-run`) strips the `=` form exactly like the separated one and then sees the tokens after it, so the hook's own checks run (a relative directory is refused by the hook, exit 2) |
-| `cells-root-spellings/4` | `-cells-root relative model-policy hook ...` was an unknown verb, exit 3 | the selector is applied like the double-dash form (a relative path is refused with the absolute-path message), and on the hook verb every failure exits 2 |
-| `completion-entrypoints/0`, `completion-entrypoints/1`, `completion-entrypoints/2` | `__complete` and `__completeNoDesc` were unknown verbs after the roster echo, exit 3 | the same refusal as any unknown verb (`unknown command "__complete" for "cellctl"`, exit 3, no echo); the parser's hidden completion entrypoint is replaced so it never answers |
+| Case key | Line | Before (exit 3, after the echo) | Now (exit 3, no echo) |
+|---|---|---|---|
+| `flags-before-positionals/0` | `scratch <cell> --apply sweep` | `unknown scratch operation "--apply"` | `scratch: flag "--apply" comes before the command's positional arguments; flags follow them` |
+| `flags-before-positionals/1` | `cadence <cell> --confirm-stopped recover <role>` | `cadence: unknown role "recover"` | the same "comes before" refusal |
+| `flags-before-positionals/2` | `desk <cell> --model m <role>` | `unknown role '--model'` | the same "comes before" refusal |
+| `flags-before-positionals/3` | `show --harness h <cell>` | `no cell '--harness' ...` | the same "comes before" refusal |
+| `single-dash-outside-scratch/0` | `desk <cell> <role> -model x` | `CLAUDE_CONFIG_DIR not a directory: ...` | `desk: single-dash flag "-model" (only scratch takes that spelling; write --model)` |
+| `single-dash-outside-scratch/1` | `show <cell> -harness x` | `show: unexpected argument '-harness'` | the same single-dash refusal |
+| `single-dash-outside-scratch/2` | `-version` | `unknown verb '-version' (try --help)` | `unknown command "-version" for "cellctl"` |
+| `single-dash-outside-scratch/3` | `version extra` | `unknown verb 'version'` | `unknown command "extra" for "cellctl version"` |
+| `cells-root-spellings/0`, `cells-root-spellings/1`, `cells-root-spellings/2` | `--cells-root=<abs> <verb>`, `-cells-root <abs> <verb>` | `unknown verb '--cells-root=...'` / `unknown verb '-cells-root'` | `unknown command "..." for "cellctl"` |
+| `cells-root-spellings/3`, `cells-root-spellings/4` | the same spellings in front of `model-policy hook ...` | the same unknown verb, exit 3 | the same refusal, but exit **2**: a refused line that names the hook verb exits with the hook's blocking code (listed below for a ruling) |
+| `completion-entrypoints/0`, `completion-entrypoints/1`, `completion-entrypoints/2` | `__complete ...`, `__completeNoDesc ...` | `unknown verb '__complete'` | `unknown command "__complete" for "cellctl"`; the parser's hidden completion entrypoint is replaced so it never answers |
+
+Also refused, with no recorded case of its own: a `--cells-root` anywhere after the verb (`ls
+--cells-root <abs>`), a flag in the verb's place (`-- ls`, `--bogus`), `help` with more than one
+word or with a hidden or unknown verb (`help __complete`, `help completion`), and `version` with
+any word but `-h`/`--help`.
 
 One ordering is also held: the `desk` role is validated before any flag, as the old parser did, so
 a bad role is refused first whatever flags follow (`refusal-order/0` replays it unchanged).
 
 ## Other deliberate differences
 
-- `--flag=value` and a bare `--` terminator are now accepted by every non-raw verb.
+- `--flag=value` and a bare `--` terminator are now accepted by every non-raw verb (decision
+  entry 4).
 - `-h` means help. A single-dash token that is not a known long flag is an error rather than a
-  config-directory positional; a single-dash token that is a known long flag is that flag
-  (`single-dash-outside-scratch`, above).
-- No roster echo is printed for `help`, `-h`, `--help`, `--version`, `version` or a parse failure.
-- `cadence recover` without a role is refused.
+  config-directory positional (decision entry 4); a single-dash long flag outside `scratch` is
+  refused (above).
+- No roster echo is printed for `help`, `-h`, `--help`, `--version`, `version` or a parse failure
+  (decision entry 1).
+- `cadence recover` without a role is refused (decision entry 4).
 - `show` ignores `DESK_MODEL_OVERRIDE` in the environment, exactly as before: it reports pins, not
   one-run overrides.
 - Environment names match the platform's own rule: case-insensitive on Windows, exact elsewhere.
+
+## Remaining differences for a ruling
+
+These lines behave differently and are neither named by the recorded decision nor restorable by a
+refusal; each needs a ruling before the migration is accepted as-is.
+
+| Line | Before | Now |
+|---|---|---|
+| `ls --bogus`, `status <cell> --bogus` (an unknown flag on a verb that ignored extra words) | exit 0, the word ignored | exit 3, `unknown flag` |
+| `ls --cells-root <abs>`, `ls --cells-root=<abs>` | exit 0, lists the default registry and ignores the words | exit 3, refused |
+| a refused or relative selector in front of `model-policy hook ...` (`--cells-root relative`, `--cells-root=<abs>`, `-cells-root <abs>`, a repeated selector) | exit 3, which the hook's caller reads as non-blocking | exit 2, the hook's blocking code (fail-closed) |
+| `help`, `help <verb>` | `unknown verb 'help'`, exit 3 | the usage or the verb's help, exit 0 |
+| `<verb> --help`, `<verb> -h` (for example `desk --help`, `ls -h`) | the word taken as a cell or role, or ignored | the verb's help, exit 0 |
+| `-help`, `desk -help` and other refusals the shape check does not reach | exit 3 with the domain wording after the echo | exit 3 with the parser's wording and no echo |
+| `scratch <cell> <action> --nosuch` and other `scratch` flag-parse failures except `--max-age bogus` | exit 2 (Go flag package) | exit 3 |
 
 ## Co-execution notes for the human gate
 
