@@ -315,19 +315,31 @@ issue has no human ruling, a change that:
    status ranked lower or the brief was not on the board (a **move**; the ranks are
    `implemented` < `verified` < `done`, and every other status ranks below all three);
 2. changes the brief's `gate` away from `human`, or removes the key (a **relabel**);
-3. leaves no brief after the change that matches a `gate: human` base brief (a **drop**).
+3. leaves no brief after the change that is the same brief as a `gate: human` base brief
+   (a **drop**);
+4. leaves an in-scope board id resolving to more than one record, where the base did not
+   carry exactly the same records (an **ambiguity**). No recorded ruling lifts this refusal:
+   which record is the brief cannot be told, so the change must first give each brief its
+   own board id.
 
 A brief is matched across the base and the change by EITHER its board id
-(`<stream>/<NN>`, any spelling of the number) OR its permanent frontmatter `id:`, so a
-change has to alter both keys to lose the match, and either key alone carries the hold.
-Matching decides SCOPE only; it never lends a ruling and it never lends a status. A base
-brief's recorded ruling, and its base status, count for the brief after the change only
-when the two are the same brief: the same board id, or a renumber (the base brief's board
-id is gone after the change, and the changed brief's board id was not on the base board).
+(`<stream>/<NN>`, any spelling of the number) OR its permanent frontmatter `id:`, and
+either key alone carries the hold. Matching decides SCOPE only; it never lends a ruling, a
+status, or presence. **Identity is one-to-one:** a base brief and a brief after the change
+are the same brief only by the same board id, or by a renumber (the base brief's board id
+is gone after the change, and the changed brief's board id was not on the base board) that
+pairs exactly one base brief with exactly one changed brief. A base brief's recorded
+ruling, its base status, and its survival past the change count only for the same brief.
 A brief that takes another brief's permanent `id:` is therefore in scope, but must carry
-a ruling of its own; and a row whose board id was not on the base board is a move from
-"not on the board" even when it takes the permanent `id:` of a brief that is still on the
-board and already advanced.
+a ruling of its own; a brief removed while its `id:` moves onto a brief already on the
+board is dropped; a row whose board id was not on the base board is a move from "not on
+the board" even when it takes the permanent `id:` of a brief that is still on the board and
+already advanced; and one base brief stands behind at most one brief after the change.
+Because number spellings normalise and the active and archived trees share board ids, a
+board id with more than one README row, more than one brief file, or records in both trees
+resolves to more than one record. Every record read MUST count: such a board id is judged
+from its lowest row status and is `gate: human` if any of its brief files is, never from
+whichever record happens to be read first.
 A row of the same brief already at or past its new status at the base is not a move; a pin bump that
 introduces the hold therefore turns no landed row red, which is this rule's forward-only
 mechanism (section 4.4, "Grandfathering").
@@ -342,7 +354,7 @@ decided, never what they decided.
 
 - **Layer one (offline).** Part of the board lint (section 7.3). An in-scope move, relabel
   or drop is a PROBLEM unless the brief records a `decision-issue:` and a well-formed
-  `ruling:` issue-comment URL pointing at that issue. This layer cannot tell who wrote the
+  `ruling:` issue-comment URL pointing at that issue; an ambiguity is always a PROBLEM. This layer cannot tell who wrote the
   linked comment, and its refusal MUST say that it checked only for a well-formed link.
   Where the base revision cannot be resolved or its board cannot be read, this layer
   MUST fail closed (a PROBLEM) while any `gate: human` brief after the change sits at
@@ -552,7 +564,8 @@ A conforming linter MUST:
    alternatives.
 10. Flag, as the offline layer of the decision-gate hold (section 4.5), any change that
     moves, relabels or drops a `gate: human` brief whose frontmatter does not record a
-    `decision-issue:` and a well-formed `ruling:` link to that issue. The finding MUST say
+    `decision-issue:` and a well-formed `ruling:` link to that issue, and any change that
+    leaves such a brief's board id resolving to more than one record. The finding MUST say
     that it checked only for a well-formed link, not who wrote the linked comment.
 
 ## 8. Spec and scoping-doc lifecycle

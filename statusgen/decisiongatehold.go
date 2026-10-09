@@ -16,23 +16,39 @@ package main
 //   - it leaves the brief's status at implemented, verified or done and, at the
 //     base, the status was earlier or the brief was not on the board (a MOVE);
 //   - it moves the brief's gate away from `human`, or deletes the key (a RELABEL);
-//   - no brief after the change matches a `gate: human` base brief by either its
-//     board id (<stream>/<NN>) or its permanent frontmatter `id:` (a DROP).
+//   - no brief after the change is the SAME brief as a `gate: human` base brief
+//     (below) — a DROP;
+//   - it leaves a board id the hold covers resolving to more than one record
+//     (an AMBIGUITY): no single transition can be judged, and no recorded
+//     ruling can lift it.
 //
-// A brief is matched across the base and the change by EITHER key, so a change
-// has to alter both to lose the match, and either key alone puts a brief in
-// scope. A row already at or past its new status at the base is left alone, so
-// a pin bump turns nothing red that has already landed.
+// A brief is matched across the base and the change by EITHER key — its board
+// id (<stream>/<NN>) or its permanent frontmatter `id:` — and either key alone
+// puts a brief in SCOPE. A row already at or past its new status at the base is
+// left alone, so a pin bump turns nothing red that has already landed.
 //
-// Matching decides SCOPE; it never lends a ruling or a prior status. A ruling
-// recorded for a base brief, and the base status that tells a move from a landed
-// row, stand for the brief after the change only when they are the same brief:
-// the same board id, or a RENUMBER (the base brief's board id is gone after the
-// change AND the other board id is new in it — isGateRenumber). So moving a
-// ruled brief's permanent id: onto another brief puts that brief in scope but
-// cannot hand it the ruling, and a NEW board row that takes the id: of a brief
-// still on the board is a move from "not on the board", however far that brief
-// had advanced.
+// IDENTITY IS ONE-TO-ONE. Matching decides scope; it never lends a ruling, a
+// prior status, or presence. A base brief and a brief after the change are the
+// SAME brief only by the same board id, or by a RENUMBER (the base brief's board
+// id is gone after the change AND the other board id is new in it —
+// isGateRenumber) that pairs exactly one base brief with exactly one new board
+// id (gateSameBriefPairs). Only the same brief supplies the prior status that
+// tells a move from a landed row, lends its recorded ruling, and keeps a base
+// brief on the board. So moving a ruled brief's permanent id: onto another brief
+// puts that brief in scope but cannot hand it the ruling; parking a removed
+// brief's id: on a brief already on the board does not keep the removed brief
+// (it is a drop); a NEW row that takes the id: of a brief still on the board is
+// a move from "not on the board"; and one base brief cannot stand behind two
+// renumbers, nor one renumber absorb two base briefs.
+//
+// Every README row and brief file read is accounted to exactly one board id
+// (buildGateSnapshot keeps them all in Records). Number spellings normalise
+// (018 and 18 are one board id) and docs/streams and docs/archive share board
+// ids, so a board id with two rows, two brief files, or records in both trees
+// is AMBIGUOUS. An ambiguous board id is judged from a conservative merge — the
+// lowest row status, gate: human if any file says so, no ruling — and a change
+// that leaves one in scope with records different from the base's is refused
+// outright. The same colliding records left untouched turn nothing red.
 //
 // WHAT COUNTS AS RULED. The brief records its decision issue (`decision-issue:`)
 // and a link to the ruling comment (`ruling:`) in its frontmatter. Two layers:
@@ -93,6 +109,25 @@ type gateBrief struct {
 	Ruling        string   // frontmatter ruling: ("" = absent)
 	Path          string   // repo-relative brief file ("" = a row with no file)
 	Readme        string   // repo-relative stream README ("" = none)
+
+	// Identity accounting. Every README row and every brief file the snapshot
+	// reads lands in exactly one board id's Records, so nothing read is ever
+	// silently discarded. A board id with more than one row, more than one
+	// brief file, or records from both docs/streams and docs/archive is
+	// AMBIGUOUS: the fields above then hold a conservative merge (the lowest
+	// row status, gate: human if any file says so, no ruling), never the first
+	// record's word.
+	Records   []string // canonical form of every row and brief file read for this board id
+	PermIDs   []string // every non-empty permanent id: among those files
+	Ambiguous string   // why this board id resolves to more than one record ("" = exactly one)
+}
+
+// fingerprint is the board id's full record set, order-independent: two
+// snapshots hold the same records for a board id exactly when these match.
+func (gb *gateBrief) fingerprint() string {
+	rs := append([]string(nil), gb.Records...)
+	sort.Strings(rs)
+	return strings.Join(rs, "\n")
 }
 
 // gateSnapshot is a board, keyed by gateBrief.Key.
@@ -158,12 +193,31 @@ func buildGateSnapshot(paths []string, read func(string) ([]byte, error)) gateSn
 		return keys[i] < keys[j]
 	})
 
+	// Every row and brief file is folded into its board id's record; nothing
+	// read is skipped. The first record (active tree, stream root, path order)
+	// supplies Board, Path and Readme; a second record for the same board id
+	// marks it ambiguous and the gate-relevant fields become a conservative
+	// merge (mergeGateRecord).
 	snap := gateSnapshot{}
+	type tally struct {
+		rows, files int
+		trees       map[string]bool
+		rowNames    []string
+		fileNames   []string
+	}
+	tallies := map[string]*tally{}
+	note := func(key, tree string) *tally {
+		t := tallies[key]
+		if t == nil {
+			t = &tally{trees: map[string]bool{}}
+			tallies[key] = t
+		}
+		t.trees[tree] = true
+		return t
+	}
 	for _, k := range keys {
 		g := groups[k]
-		local := map[string]*gateBrief{}
-		var order []string
-		// A brief at the stream root wins over a same-numbered one in done/.
+		// A brief at the stream root is read before a same-numbered one in done/.
 		sort.Slice(g.briefs, func(i, j int) bool {
 			di, dj := strings.Contains(g.briefs[i], "/done/"), strings.Contains(g.briefs[j], "/done/")
 			if di != dj {
@@ -177,48 +231,113 @@ func buildGateSnapshot(paths []string, read func(string) ([]byte, error)) gateSn
 				continue
 			}
 			key := g.name + "/" + normBriefNum(m[1])
-			if _, dup := local[key]; dup {
-				continue
-			}
-			gb := &gateBrief{Key: key, Board: g.name + "/" + m[1], Path: p, Readme: g.readme}
-			gb.addSpelling(gb.Board)
+			rec := &gateBrief{Key: key, Board: g.name + "/" + m[1], Path: p, Readme: g.readme}
 			if raw, err := read(p); err == nil {
-				readGateFrontmatter(gb, raw)
+				readGateFrontmatter(rec, raw)
 			}
-			local[key] = gb
-			order = append(order, key)
+			t := note(key, g.tree)
+			t.files++
+			t.fileNames = append(t.fileNames, p)
+			fileRec := fmt.Sprintf("file %s gate=%s id=%s brief=%s decision-issue=%d ruling=%s fmerr=%t",
+				p, rec.Gate, rec.PermID, rec.BriefID, rec.DecisionIssue, rec.Ruling, rec.FMErr)
+			gb := snap[key]
+			if gb == nil {
+				gb = rec
+				snap[key] = gb
+			} else {
+				mergeGateRecord(gb, rec)
+			}
+			gb.addSpelling(g.name + "/" + m[1])
+			if rec.PermID != "" {
+				gb.addPermID(rec.PermID)
+			}
+			gb.Records = append(gb.Records, fileRec)
 		}
-		if g.readme != "" {
-			if raw, err := read(g.readme); err == nil {
-				body := string(raw)
-				if _, b, ferr := splitFrontmatter(body); ferr == nil {
-					body = b
-				}
-				rows, _ := parseBriefTable(body)
-				for _, r := range rows {
-					key := g.name + "/" + normBriefNum(r.Num)
-					gb := local[key]
-					if gb == nil {
-						gb = &gateBrief{Key: key, Board: g.name + "/" + r.Num, Readme: g.readme}
-						local[key] = gb
-						order = append(order, key)
-					}
-					if gb.Status == "" {
-						gb.Status = r.Status
-						gb.Board = g.name + "/" + r.Num
-					}
-					gb.addSpelling(g.name + "/" + r.Num)
-				}
-			}
+		if g.readme == "" {
+			continue
 		}
-		for _, key := range order {
-			if _, taken := snap[key]; taken {
-				continue
+		raw, err := read(g.readme)
+		if err != nil {
+			continue
+		}
+		body := string(raw)
+		if _, b, ferr := splitFrontmatter(body); ferr == nil {
+			body = b
+		}
+		rows, _ := parseBriefTable(body)
+		for _, r := range rows {
+			key := g.name + "/" + normBriefNum(r.Num)
+			t := note(key, g.tree)
+			t.rows++
+			t.rowNames = append(t.rowNames, g.name+"/"+r.Num)
+			gb := snap[key]
+			if gb == nil {
+				gb = &gateBrief{Key: key, Board: g.name + "/" + r.Num, Readme: g.readme}
+				snap[key] = gb
 			}
-			snap[key] = local[key]
+			switch {
+			case t.rows == 1 && gb.Status == "":
+				gb.Status = r.Status
+				gb.Board = g.name + "/" + r.Num
+				if gb.Readme == "" {
+					gb.Readme = g.readme
+				}
+			case gateStatusRank(r.Status) < gateStatusRank(gb.Status):
+				// A second row for the board id: judge from the LOWEST status, so
+				// no row can make the brief read as already landed.
+				gb.Status = r.Status
+			}
+			gb.addSpelling(g.name + "/" + r.Num)
+			gb.Records = append(gb.Records, fmt.Sprintf("row %s %s status=%s", g.readme, r.Num, r.Status))
+		}
+	}
+	for key, t := range tallies {
+		var why []string
+		if t.rows > 1 {
+			why = append(why, fmt.Sprintf("%d README rows (%s)", t.rows, strings.Join(t.rowNames, ", ")))
+		}
+		if t.files > 1 {
+			why = append(why, fmt.Sprintf("%d brief files (%s)", t.files, strings.Join(t.fileNames, ", ")))
+		}
+		if len(t.trees) > 1 {
+			why = append(why, "records under both docs/streams and docs/archive")
+		}
+		if len(why) > 0 {
+			gb := snap[key]
+			gb.Ambiguous = strings.Join(why, " and ")
+			// No single record's ruling can stand for an ambiguous board id.
+			gb.DecisionIssue, gb.Ruling = 0, ""
 		}
 	}
 	return snap
+}
+
+// mergeGateRecord folds a second brief file for the same board id into gb,
+// fail-closed: the gate is human if any file says so, an unparseable file
+// counts, and the permanent id: of every file is kept for matching.
+func mergeGateRecord(gb, rec *gateBrief) {
+	if rec.Gate == gateHumanValue {
+		gb.Gate = gateHumanValue
+	}
+	if rec.FMErr {
+		gb.FMErr = true
+	}
+	if gb.Path == "" {
+		gb.Path = rec.Path
+		gb.Gate, gb.PermID, gb.BriefID = rec.Gate, rec.PermID, rec.BriefID
+	}
+	if gb.Readme == "" {
+		gb.Readme = rec.Readme
+	}
+}
+
+func (gb *gateBrief) addPermID(id string) {
+	for _, have := range gb.PermIDs {
+		if have == id {
+			return
+		}
+	}
+	gb.PermIDs = append(gb.PermIDs, id)
 }
 
 func (gb *gateBrief) addSpelling(s string) {
@@ -328,10 +447,14 @@ func gateSnapshotAtRev(root, rev string) (gateSnapshot, error) {
 // while in scope.
 type gateFault struct {
 	Move, Relabel, Drop bool
-	Head                *gateBrief   // the brief after the change (nil for a drop)
-	Base                []*gateBrief // the base briefs it matches (for a drop, the dropped one)
-	RulingBase          []*gateBrief // the matched base briefs that are the SAME brief (isGateRenumber); nil for a drop
-	From                string       // the lowest matched base status ("" = not on the board)
+	// Ambiguous: the change leaves a board id the hold covers resolving to
+	// more than one record (Head.Ambiguous says which), so no single
+	// transition can be judged and no recorded ruling can lift it.
+	Ambiguous  bool
+	Head       *gateBrief   // the brief after the change (nil for a drop)
+	Base       []*gateBrief // the base briefs it matches (for a drop, the dropped one)
+	RulingBase []*gateBrief // the matched base briefs that are the SAME brief (isGateRenumber); nil for a drop
+	From       string       // the lowest matched base status ("" = not on the board)
 }
 
 // primary is the record a refusal names: the brief after the change, or the
@@ -390,6 +513,9 @@ func (f gateFault) briefIDs() []string {
 // what describes the change in words a reader can act on.
 func (f gateFault) what() string {
 	var parts []string
+	if f.Ambiguous {
+		parts = append(parts, fmt.Sprintf("leaves its board id resolving to more than one record (%s), so no single status move can be judged", f.Head.Ambiguous))
+	}
 	if f.Move {
 		from := "it was not on the board at the base"
 		if f.From != "" {
@@ -411,9 +537,9 @@ func (f gateFault) what() string {
 	}
 	if f.Drop {
 		b := f.Base[0]
-		why := "it has no permanent id:"
+		why := "and it has no permanent id:"
 		if b.PermID != "" {
-			why = "nor its permanent id:"
+			why = "nor its permanent id: as the same brief (only a renumber onto a NEW board id, with no other claimant, keeps a brief — a permanent id: parked on a brief already on the board does not)"
 		}
 		parts = append(parts, fmt.Sprintf("drops it — no brief after the change carries its board id %s, %s", b.Board, why))
 	}
@@ -423,14 +549,25 @@ func (f gateFault) what() string {
 // judgeDecisionGate compares two board snapshots and returns every change the
 // hold covers, ruled or not. Deterministic order: briefs after the change by
 // key, then dropped base briefs by key.
+//
+// Identity is one-to-one or the change is refused. A base brief and a brief
+// after the change are the SAME brief (sameGateBrief) only by the same board
+// id, or by a renumber that pairs exactly one base brief with exactly one new
+// board id; only the same brief lends a prior status or a ruling, and only the
+// same brief keeps a base brief on the board (a permanent id: parked on another
+// brief keeps that brief in SCOPE, never the base brief PRESENT). A board id
+// the hold covers that resolves to more than one record after the change, and
+// whose records differ from the base's, is refused outright: which record is
+// the brief cannot be told, so no transition and no ruling can be judged.
 func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 	byPerm := map[string][]*gateBrief{}
 	for _, k := range sortedGateKeys(base) {
 		b := base[k]
-		if b.PermID != "" {
-			byPerm[b.PermID] = append(byPerm[b.PermID], b)
+		for _, id := range gatePermIDs(b) {
+			byPerm[id] = append(byPerm[id], b)
 		}
 	}
+	same := gateSameBriefPairs(base, head, byPerm)
 	matched := map[*gateBrief]bool{}
 	var faults []gateFault
 	for _, k := range sortedGateKeys(head) {
@@ -447,14 +584,16 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 		if b := base[h.Key]; b != nil {
 			add(b)
 		}
-		if h.PermID != "" {
-			for _, b := range byPerm[h.PermID] {
+		for _, id := range gatePermIDs(h) {
+			for _, b := range byPerm[id] {
 				add(b)
 			}
 		}
 		baseHuman := false
 		for _, b := range ms {
-			matched[b] = true
+			if same[gatePair{b, h}] {
+				matched[b] = true // only the same brief keeps a base brief present
+			}
 			if b.Gate == gateHumanValue {
 				baseHuman = true
 			}
@@ -462,17 +601,30 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 		if h.Gate != gateHumanValue && !baseHuman {
 			continue // not in scope on either side
 		}
+		if h.Ambiguous != "" {
+			if b := base[h.Key]; b != nil && b.fingerprint() == h.fingerprint() {
+				// The same colliding records stood at the base: nothing about
+				// this board id changed, so a pin bump turns nothing red. Judged
+				// below like any other brief, from the conservative merge.
+			} else {
+				if b := base[h.Key]; b != nil {
+					matched[b] = true // reported here, not again as a drop
+				}
+				faults = append(faults, gateFault{Ambiguous: true, Head: h, Base: ms})
+				continue
+			}
+		}
 		f := gateFault{Head: h, Base: ms}
 		for _, b := range ms {
-			if isGateRenumber(base, head, b, h) {
+			if same[gatePair{b, h}] {
 				f.RulingBase = append(f.RulingBase, b)
 			}
 		}
-		// The prior status comes only from the brief's own base counterpart (the
-		// same board id) or a true renumber — the same set that may lend a ruling
-		// (RulingBase). A permanent-id donor that is neither stays in ms for
-		// SCOPE, but a row that takes a still-present donor's id: is a NEW row
-		// and a move: it cannot inherit the donor's landed status.
+		// The prior status comes only from the same brief (RulingBase): its own
+		// base counterpart (the same board id) or its one renumber. A
+		// permanent-id donor that is neither stays in ms for SCOPE, but a row
+		// that takes a donor's id: is a NEW row and a move: it cannot inherit
+		// the donor's landed status.
 		if hr := gateStatusRank(h.Status); hr >= 1 {
 			if len(f.RulingBase) == 0 {
 				f.Move = true
@@ -508,13 +660,66 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 	return faults
 }
 
-// isGateRenumber reports whether base brief b and brief h after the change are
-// the same brief for the purpose of a recorded ruling: the same board id, or a
-// renumber — b's board id is gone after the change and h's board id is new in
-// it. Only then may a ruling recorded for b stand for h. Anything else — an id:
-// moved or copied onto a brief whose own board id already existed, or taken
-// from a brief still on the board — keeps h in scope (the match stands) but
-// leaves h to be ruled on its own record.
+// gatePair is one (base brief, brief after the change) pairing.
+type gatePair struct{ b, h *gateBrief }
+
+// gatePermIDs is every permanent id: a record carries (an ambiguous board id can
+// carry several; a record built without the identity accounting carries its
+// own PermID).
+func gatePermIDs(gb *gateBrief) []string {
+	if len(gb.PermIDs) > 0 {
+		return gb.PermIDs
+	}
+	if gb.PermID != "" {
+		return []string{gb.PermID}
+	}
+	return nil
+}
+
+// gateSameBriefPairs is every (base, after) pairing that is the SAME brief: the
+// same board id, or a renumber (isGateRenumber) in which the base brief has
+// exactly one renumber claimant after the change and the new brief exactly one
+// renumber donor at the base. One base record stands behind at most one brief
+// after the change, and one brief after it is the renumber of at most one base
+// brief — a one-to-many or many-to-one "renumber" pairs nothing, so each side is
+// judged on its own record (moves from "not on the board", drops of the base
+// briefs).
+func gateSameBriefPairs(base, head gateSnapshot, byPerm map[string][]*gateBrief) map[gatePair]bool {
+	same := map[gatePair]bool{}
+	claimants := map[*gateBrief][]*gateBrief{}
+	donors := map[*gateBrief][]*gateBrief{}
+	for _, k := range sortedGateKeys(head) {
+		h := head[k]
+		if b := base[h.Key]; b != nil {
+			same[gatePair{b, h}] = true
+		}
+		seen := map[*gateBrief]bool{}
+		for _, id := range gatePermIDs(h) {
+			for _, b := range byPerm[id] {
+				if seen[b] || b.Key == h.Key || !isGateRenumber(base, head, b, h) {
+					continue
+				}
+				seen[b] = true
+				claimants[b] = append(claimants[b], h)
+				donors[h] = append(donors[h], b)
+			}
+		}
+	}
+	for h, bs := range donors {
+		if len(bs) == 1 && len(claimants[bs[0]]) == 1 {
+			same[gatePair{bs[0], h}] = true
+		}
+	}
+	return same
+}
+
+// isGateRenumber reports whether base brief b and brief h after the change can
+// be the same brief for the purpose of a recorded ruling: the same board id, or
+// a renumber — b's board id is gone after the change and h's board id is new in
+// it. Anything else — an id: moved or copied onto a brief whose own board id
+// already existed, or taken from a brief still on the board — keeps h in scope
+// (the match stands) but leaves h to be ruled on its own record. A renumber
+// pairs only one-to-one (gateSameBriefPairs).
 func isGateRenumber(base, head gateSnapshot, b, h *gateBrief) bool {
 	if b.Key == h.Key {
 		return true // the same board id: already matched by key
@@ -544,7 +749,13 @@ type gateRecordedRuling struct {
 // decision issue AND a well-formed ruling link to a comment on that issue. When
 // none does, missing says what the PRIMARY record lacks.
 func offlineRuling(f gateFault) (r gateRecordedRuling, ok bool, missing string) {
+	if f.Ambiguous {
+		return r, false, "no recorded ruling can stand for a board id that resolves to more than one record — give each brief its own board number (and each stream its own name across docs/streams and docs/archive), then make the status move in a change of its own"
+	}
 	for _, c := range f.candidates() {
+		if c.Ambiguous != "" {
+			continue // an ambiguous record's ruling is no single brief's ruling
+		}
 		if c.DecisionIssue == 0 {
 			continue
 		}
@@ -555,6 +766,8 @@ func offlineRuling(f gateFault) (r gateRecordedRuling, ok bool, missing string) 
 	}
 	p := f.primary()
 	switch {
+	case p.Ambiguous != "":
+		return r, false, fmt.Sprintf("its board id resolves to more than one record (%s), so no single recorded ruling can stand for it — give each brief its own board number first", p.Ambiguous)
 	case p.DecisionIssue == 0:
 		return r, false, "no decision issue is recorded (frontmatter decision-issue: is absent) — no decision issue at all is a refusal, not a pass; file the brief's decision issue, record its number in decision-issue:, and record the ruling once given"
 	case strings.TrimSpace(p.Ruling) == "":

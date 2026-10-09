@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'DecisionGate' -count=1 -timeout 300s",
+  "test": "go test . -run 'DecisionGate|TestDG' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the decision-gate hold judges nothing (every fault dropped)",
     "file": "decisiongatehold.go",
@@ -46,14 +46,14 @@
     {
       "name": "permanent-id matching disabled (a renumber keeping id: reads as a drop)",
       "file": "decisiongatehold.go",
-      "old": "if h.PermID != \"\" {\n\t\t\tfor _, b := range byPerm[h.PermID] {",
-      "new": "if false && h.PermID != \"\" {\n\t\t\tfor _, b := range byPerm[h.PermID] {"
+      "old": "for _, id := range gatePermIDs(h) {\n\t\t\tfor _, b := range byPerm[id] {\n\t\t\t\tadd(b)",
+      "new": "for _, id := range gatePermIDs(h) {\n\t\t\tfor _, b := range byPerm[id] {\n\t\t\t\t_ = b"
     },
     {
       "name": "unparseable frontmatter read as still human",
       "file": "decisiongatehold.go",
-      "old": "\t\tgb.FMErr = true\n",
-      "new": "\t\tgb.FMErr = true\n\t\tgb.Gate = gateHumanValue\n"
+      "old": "\t\tgb.FMErr = true\n\t\treturn\n",
+      "new": "\t\tgb.FMErr = true\n\t\tgb.Gate = gateHumanValue\n\t\treturn\n"
     },
     {
       "name": "Verify 3: no decision issue read as permission by layer one",
@@ -162,6 +162,48 @@
       "file": "decisiongatehold.go",
       "old": "if len(f.RulingBase) == 0 {\n\t\t\t\tf.Move = true",
       "new": "if true {\n\t\t\t\tf.Move = true"
+    },
+    {
+      "name": "a board id that resolves to more than one record after the change is judged as one brief (a number-spelling decoy hides a move)",
+      "file": "decisiongatehold.go",
+      "old": "if h.Ambiguous != \"\" {",
+      "new": "if false && h.Ambiguous != \"\" {"
+    },
+    {
+      "name": "a board id with two README rows is judged from its first row (a landed decoy row on the base hides a move)",
+      "file": "decisiongatehold.go",
+      "old": "case gateStatusRank(r.Status) < gateStatusRank(gb.Status):",
+      "new": "case false && gateStatusRank(r.Status) < gateStatusRank(gb.Status):"
+    },
+    {
+      "name": "records from docs/streams and docs/archive under one board id are not ambiguous (an archived row lends a new brief its status)",
+      "file": "decisiongatehold.go",
+      "old": "if len(t.trees) > 1 {",
+      "new": "if false && len(t.trees) > 1 {"
+    },
+    {
+      "name": "an ambiguity fault can be lifted by a ruling (a landed row's ruling covers a decoy riding its number)",
+      "file": "decisiongatehold.go",
+      "old": "if f.Ambiguous {\n\t\treturn r, false,",
+      "new": "if false {\n\t\treturn r, false,"
+    },
+    {
+      "name": "renumber exclusivity removed (one base brief's ruling serves two renumbers; one renumber absorbs two base briefs)",
+      "file": "decisiongatehold.go",
+      "old": "if len(bs) == 1 && len(claimants[bs[0]]) == 1 {\n\t\t\tsame[gatePair{bs[0], h}] = true",
+      "new": "for _, b := range bs {\n\t\t\tsame[gatePair{b, h}] = true"
+    },
+    {
+      "name": "any permanent-id match keeps a base brief on the board (an id parked on an existing brief hides a drop)",
+      "file": "decisiongatehold.go",
+      "old": "if same[gatePair{b, h}] {\n\t\t\t\tmatched[b] = true",
+      "new": "if true {\n\t\t\t\tmatched[b] = true"
+    },
+    {
+      "name": "a second brief file for a board id is skipped as a duplicate (its gate: human is never read)",
+      "file": "decisiongatehold.go",
+      "old": "if rec.Gate == gateHumanValue {\n\t\tgb.Gate = gateHumanValue",
+      "new": "if false {\n\t\tgb.Gate = gateHumanValue"
     }
   ]
 }

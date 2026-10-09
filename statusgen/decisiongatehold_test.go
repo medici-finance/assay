@@ -770,8 +770,10 @@ func TestDecisionGatePermIDSwapCannotBorrowRuling(t *testing.T) {
 
 // The same borrow with the ruled brief deleted: sdlc/18 is removed and sdlc/19,
 // whose board id already existed, takes its permanent id. The id match keeps
-// sdlc/18's gate and status on sdlc/19 (scope), but this is not a renumber, so
-// sdlc/18's ruling does not stand for it: sdlc/19 is refused on its own record.
+// sdlc/18's gate on sdlc/19 (scope), but this is not a renumber, so sdlc/18's
+// ruling does not stand for it: sdlc/19 is refused on its own record. Nor does
+// the parked id keep sdlc/18 on the board: sdlc/18 is judged as dropped (its
+// own recorded ruling covers that drop; sdlc/19's move stays refused).
 func TestDecisionGatePermIDTakenFromDroppedBriefCannotBorrowRuling(t *testing.T) {
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
 	root := dhFixture(t, map[string]string{
@@ -785,8 +787,11 @@ func TestDecisionGatePermIDTakenFromDroppedBriefCannotBorrowRuling(t *testing.T)
 		dhBrief19Path: dhBrief19("id: " + dhPermID + "\n"),
 	})
 	faults := judgeDecisionGate(mustGateAtRev(t, root), gateSnapshotOnDisk(root))
-	if len(faults) != 1 || faults[0].Head == nil || len(faults[0].Base) != 2 {
-		t.Fatalf("want one move fault for sdlc/19 matching both base briefs (scope), got %+v", faults)
+	if len(faults) != 2 || faults[0].Head == nil || len(faults[0].Base) != 2 || !faults[0].Move {
+		t.Fatalf("want a move fault for sdlc/19 matching both base briefs (scope) and a drop of %s, got %+v", dhBoardID, faults)
+	}
+	if !faults[1].Drop || faults[1].Base[0].Key != dhBoardID {
+		t.Fatalf("want the second fault to be the drop of %s, got %+v", dhBoardID, faults[1])
 	}
 	for _, c := range faults[0].candidates() {
 		if c.Key == dhBoardID {
