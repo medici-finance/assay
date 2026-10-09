@@ -39,7 +39,7 @@ func stuckFlipLines(streams []*Stream, ages map[string]string) []string {
 		"",
 		fmt.Sprintf("### Stuck auto-flips (%d)", len(rows)),
 		"",
-		"_gate:model briefs at `verified` that the model auto-flip has not moved to `done`. See docs/board.md._",
+		"_gate:model briefs at `verified` that the model auto-flip has not moved to `done`. See docs/board-stuck-autoflips.md._",
 		"",
 		"| Brief | Title | Waiting | Flip result |",
 		"|---|---|---|---|",
