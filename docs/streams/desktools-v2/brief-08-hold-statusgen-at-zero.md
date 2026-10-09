@@ -58,9 +58,12 @@ needs the binary fails when `PATH` does not carry one, whatever the source looks
 shell-out reached through a helper or a differently-spelled argv defeats a grep, not the test).
 
 facts:
-- PRECONDITION, checked by Verify row 1 before anything else: `forge-neutral/18` and `forge-neutral/35` have landed
-  and `grep -rn 'exec.Command("gh"' statusgen --include='*.go'` (tests excluded) finds
-  nothing. At the freshness base it finds 26 sites, so this brief is NOT startable yet. If row 1
+- PRECONDITION, checked by Verify rows 1 and 8 before anything else: `forge-neutral/18` and
+  `forge-neutral/35` have landed (row 8, the board), and no non-test, non-comment statusgen
+  line carries the double-quoted literal `"gh"` (row 1, which sees `exec.Command` and
+  `exec.CommandContext` launches alike). Row 1 counts 31 lines at this amendment (the earlier
+  single-form `exec.Command("gh"` grep found 26 sites at the freshness base), so this brief is
+  NOT startable yet. If row 1 or row 8
   fails at pickup, report NEEDS_CONTEXT — do not migrate the remaining sites here; they are the
   sibling brief's deliverable.
 - statusgen does not import `deskkit` and must not start to (`statusgen/forgeread.go` header;
@@ -106,7 +109,7 @@ changes below do not depend on that ruling. None of them loosens a row.
   lands with that extraction, not here.
 
 ## Task
-1. Confirm the precondition (Verify row 1). Stop with NEEDS_CONTEXT if it fails.
+1. Confirm the precondition (Verify rows 1 and 8). Stop with NEEDS_CONTEXT if either fails.
 2. Make `forge-ban.sh` exit non-zero when its `statusgen sites:` count is above zero, leaving
    the desk-tools half advisory. Make the workflow step a gate for that half.
 3. Add `TestScanNeverEmptyWithoutForgeBinary` in `statusgen/forgeread_nogh_test.go` (planned): with `PATH`

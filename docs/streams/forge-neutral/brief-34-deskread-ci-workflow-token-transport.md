@@ -315,13 +315,15 @@ Default if no answer: none — blocks until answered.
 
 ## Library-first amendment — 2026-10-08
 
-Read `docs/library-first.md`. Keep this brief's existing identity ruling, kinds, explicit
-opt-in, host/repository binding, token checks and negative tests unchanged. Where /36 has
-landed, call its shared read implementation below the existing CI admission constructor;
-do not put CI admission in the generic Reader API. The CLI remains a supported composition.
-This brief does not authorize moving the CI credential into another process, an ambient
-fallback or reuse of a role-owned token. No new SDK dependency is required merely to finish
-this already-scoped identity change; subsequent read migration uses the landed constructor.
+Read `docs/library-first.md`. **This amendment adds no deliverable and changes no
+transport.** Keep this brief's existing identity ruling, kinds, explicit opt-in,
+host/repository binding, token checks and negative tests unchanged. This brief has no
+edge to forge-neutral/36 and does not call its shared read implementation, whether or not
+/36 has landed. Routing the CI admission constructor onto the shared module would be a later
+/36-class change under its own human gate, with its own Verify rows; if that happens, CI
+admission stays out of the generic Reader API. The CLI remains a supported composition. This
+brief does not authorize moving the CI credential into another process, an ambient fallback
+or reuse of a role-owned token.
 
 ## Task
 

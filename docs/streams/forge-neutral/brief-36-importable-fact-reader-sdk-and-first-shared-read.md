@@ -48,6 +48,11 @@ files: `forgeread/go.mod` (new), `forgeread/reader.go` (planned), `forgeread/off
 `docs/library-first.md`, `docs/streams/forge-gitlab/inventory.md`,
 `changelog/fact-reader-sdk.md` (new).
 
+layout: the module's root package (`reader.go`, `offline.go`, `envelope.go`) is its offline
+and frozen surface and the only package a credential-free consumer such as statusgen may link.
+Every authenticated read adapter lives in a subpackage (`forgeread/adapters/`). Rows 10 and 11
+hold that split where the link is made.
+
 facts (403b8ec8c26b21b85d88b5faea4cff619550e602, 2026-10-08): statusgen has an offline
 reader and a deskread process adapter; tools/desk's Forge interface and implementations are
 internal. The SDK module does not exist. OpenIssues already has GitHub and GitLab behavior;
@@ -55,7 +60,7 @@ internal. The SDK module does not exist. OpenIssues already has GitHub and GitLa
 /34 owns CI workflow-token admission and /35 owns the human-ruling control migrations.
 
 layering: a narrow consumer read API plus separate effectful read adapters; credential
-composition remains at the existing trusted boundary. Tasks 1–3 and 5 and Verify 2–9 enforce this.
+composition remains at the existing trusted boundary. Tasks 1–3 and 5 and Verify 2–11 enforce this.
 design-fit:
   owner: forgeread (read implementation extracted from existing forge adapters)
   contract: "none — typed read transport; S-identity stays owned by existing custody"
@@ -65,8 +70,9 @@ design-fit:
 single-point-of-failure: the credential composition inside desk-tools — `deskkit`'s resolver,
 reached through `deskread`, is the one place a token meets a read adapter. Behind it: the
 provider installation's own repository scope, which the forge enforces whatever the client
-does, and rows 3, 6, 7 and 9 (no ambient fallback, scans over the moved code, and a
-lower-layer refusal with the upper check bypassed). SDK types carry no caller authority, and a
+does, and rows 3, 6, 7, 9, 10 and 11 (no ambient fallback, scans over the moved code, a
+lower-layer refusal with the upper check bypassed, and statusgen linking only the root package,
+whose dependency closure reaches no network client). SDK types carry no caller authority, and a
 read-only method set alone is not a sandbox for an overprivileged token.
 
 Read first: `docs/library-first.md`, `docs/streams/desktools-v2/spec.md`,
@@ -99,8 +105,10 @@ all remaining read kinds stay with their existing migration owners.
    context; reuse the existing three-state envelope and keep unknown schema fail-closed.
    Each requested repo appears exactly once as data or unavailable, including mixed failures,
    pagination truncation and known-empty success. Supply offline and frozen-result adapters.
+   All of this is the module's root package (see `layout:`); it imports no subpackage of the
+   module, no HTTP client and no process launch (row 11).
 2. Move the existing OpenIssues read behavior for both providers into separate read-adapter
-   packages. Existing deskkit methods delegate to it; delete duplicate implementations. Keep
+   packages under `forgeread/adapters/`, never into the root package. Existing deskkit methods delegate to it; delete duplicate implementations. Keep
    existing credential resolution, host/repo validation and activation at their owning boundary.
    Consumer API packages expose no raw transport/token/query or write methods and have no
    transitive custody/write dependency. Effectful adapters accept only explicitly supplied,
@@ -143,6 +151,8 @@ case retains a fail-first mutation and exercises a production path, not a mirror
 | 7 | check:ci +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && go test -count=1 -v -run "^TestAmbientTokenGuardCoversForgeread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestAmbientTokenGuardCoversForgeread " "$result")` | exit 0; named PASS. `TestAmbientTokenGuardCoversForgeread` (planned) runs the ambient-token-read rule over `forgeread/` and requires zero findings there with no permit; on a temporary copy with a planted `os.Getenv("GH_TOKEN")` in an adapter it requires exactly one finding |
 | 8 | check +dereference | `grep -c -F '"forgeread/**"' .github/workflows/forge-surface-control.yml` | prints `2`: both path lists trigger the forge-surface control on a `forgeread/` change. Measured at this brief's authoring: `0` |
 | 9 | check:ci +flow +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && go test -count=1 -v -run "^TestSharedReadLowerScope$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestSharedReadLowerScope " "$result")` | exit 0; named PASS. `TestSharedReadLowerScope` (planned) bypasses the consumer-side repository check and hands the shared adapter, as composed by `deskkit`, a repository outside the composed credential's scope: it is refused before any request reaches the fake provider (zero recorded requests), and an in-scope control repository reads. **+mutation**: removing the composition's scope check makes the out-of-scope request reach the fake provider and fails the test |
+| 10 | check +dereference +mutation | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"([^"]*/)?forgeread/[^"]+"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: no non-test, non-comment statusgen line quotes an import path below the module's root package, whatever the subpackage is called. It is forge-neutral/18 row 21, copied here so the ruled limit binds on the change that creates the link. **+mutation**: a planted statusgen import of `.../forgeread/adapters/github`, or of any other subpackage, counts `1` |
+| 11 | check +dereference +mutation | `test -f forgeread/go.mod && (cd forgeread && GOWORK=off go list -deps . > "${TMPDIR:-/tmp}/b36-r11.out") && { grep -E '^(net/http\|os/exec)$\|(^\|/)forgeread/' "${TMPDIR:-/tmp}/b36-r11.out" \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: the root package's whole dependency closure carries no HTTP client, no process launch and no subpackage of the module, so an authenticated adapter cannot sit in, or be reached through, the one package statusgen may link. A missing module prints nothing and fails the row. **+mutation**: a root-package file importing `net/http`, or importing `forgeread/adapters/...`, counts `1` or more |
 
 ## Pre-mortem
 
@@ -150,7 +160,8 @@ Duplicate backend mapping drifts (row 1); partial reads become empty queues (row
 silently inherits ambient or excessive access (row 3); a workspace-only dependency ships
 unbuildable consumers (row 4); the moved adapters fall outside the forge-CLI scan, the
 ambient-token rule or the CI trigger (rows 5–8); a consumer-side bypass reaches another
-repository through the shared adapter (row 9). Package selection and independence remain
+repository through the shared adapter (row 9); statusgen links an authenticated adapter, under
+any package name, or an adapter is placed in the root package it may link (rows 10 and 11). Package selection and independence remain
 human review judgments.
 
 ## Evidence

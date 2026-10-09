@@ -49,10 +49,6 @@ level. It is a desk default declared in the pull request that adds this record (
 `## Desk-decided` section), amendable by the maintainer; it is not part of what the driver
 ruled.
 
-**Corroboration.** The body of #2395 carries no `decision-gate` marker, so the register's
-`ruling:` corroboration (`registers-v1.md` §7.5) may report `unrelated-issue` for this link.
-That is a fact about the issue body; this record does not claim otherwise.
-
 **What this record does not decide.** It does not sign off forge-neutral/36: that brief keeps
 `gate: human` and its own `## Human decision`, and its implementation still needs that human's
 answer. It does not retire the read-verb bridge for any online read, and it does not let
