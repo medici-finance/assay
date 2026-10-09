@@ -132,7 +132,8 @@ reviewable artifact, not a run.
   token is minted only when there is a commit, narrowed to `contents` and
   `pull-requests` write, and only the publish step's environment holds it. The job uses
   the corroborate job's isolation: a job-local, checksum-verified Go toolchain and
-  caches, `GOENV=off`, and a pinned gh (never one already on PATH). It also keeps no
+  caches, `GOENV=off`, and a pinned gh (never one already on PATH), plus `GOWORK=off`,
+  so no `go.work` left above `RUNNER_TEMP` chooses the source it builds. It also keeps no
   state an earlier job on the runner could leave: no checkout into the workspace, but a
   fresh clone of the default branch under `RUNNER_TEMP`, a git configuration of its own
   with hooks off (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`, a discovery ceiling at

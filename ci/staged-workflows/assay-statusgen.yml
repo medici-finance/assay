@@ -470,10 +470,12 @@ jobs:
   # TestReconcileJobMutantsFail holds a list of edits to this job, each of which
   # must turn a named test red. What the tests pin, and the job
   # promises: the reconcile runs without --backfill; a push is a fast-forward,
-  # never forced; a branch carrying a commit not of this job's shape is refused,
-  # whether its subject is another (one parent or two) or its change reaches
-  # past stream READMEs (another path under docs/streams/ included); only stream
-  # READMEs may change. One tick, in order:
+  # never forced; a branch carrying a commit not of this job's shape is refused —
+  # any commit on the branch, not only its tip — whether its subject is another
+  # (one parent or two; another `chore(board): ` subject included) or its change
+  # reaches past stream READMEs (another path under docs/streams/, or a file
+  # renamed onto a README path, included); only stream READMEs may change; the
+  # job builds statusgen with GOWORK off. One tick, in order:
   #   1. `statusgen reconcile --apply` (trailer-only: a row is written only for a
   #      merged PR carrying that brief's `Brief:` trailer; the --backfill branch-
   #      name / body-mention / hand-said rules are NOT on this path) — reads PR
@@ -516,9 +518,12 @@ jobs:
   #     commit) whose change against one of its parents is stream READMEs only.
   #     Any repository writer can make a commit of that shape and it is accepted
   #     (forks cannot push this branch); the next tick replaces the tree with the
-  #     one computed from main. Every other commit — another subject, or one
-  #     touching more than stream READMEs — fails the tick loudly, naming the
-  #     commit, and is never overwritten.
+  #     one computed from main. Every other commit on the branch, wherever it
+  #     sits under the tip — another subject (`chore(board): ` with anything
+  #     but `reconcile` after it included), or one touching more than stream
+  #     READMEs (a rename onto a README path included) — fails the tick loudly,
+  #     naming the commit, and is never overwritten. A git read that fails
+  #     while walking the branch fails the tick too.
   #   - A remote that cannot be listed, or a PR list that cannot be read, fails
   #     the tick: a could-not-check is never read as "branch absent" or "PR open".
   #   - Which open PR is ours. The query names the head as
@@ -548,7 +553,8 @@ jobs:
   #     start of every job), the Go tarball checksum-verified before unpack, GOENV
   #     off, GOFLAGS cleared, GOTOOLCHAIN local; gh always the pinned,
   #     checksum-verified tarball, never one already on PATH — the corroborate
-  #     job's isolation.
+  #     job's isolation. And GOWORK off, so no go.work above RUNNER_TEMP (in the
+  #     runner's work directory, which outlives a job) is read by the build.
   #   - No git command runs in the workspace. actions/checkout keeps an existing
   #     workspace repository, and with it any hooks and local configuration
   #     (remote and push addresses, URL rewrites) an earlier job planted there,
@@ -581,9 +587,14 @@ jobs:
       pull-requests: read
       issues: read
     # GOENV=off and GOTOOLCHAIN=local, as in the corroborate job above.
+    # GOWORK=off: Go looks for a go.work in every directory above the build
+    # directory, and GOENV=off does not stop that walk. RUNNER_TEMP sits inside
+    # the runner's work directory, which outlives a job, so a go.work an earlier
+    # job left there would choose the source statusgen is built from.
     env:
       GOENV: "off"
       GOTOOLCHAIN: local
+      GOWORK: "off"
     steps:
       # First, before any git command: a fresh clone under RUNNER_TEMP, and git
       # and gh configuration that is this job's own. The workspace (and any
@@ -675,9 +686,15 @@ jobs:
             # `chore(board): reconcile` commit (or a `Merge` commit, which the
             # desk-side writer makes) whose change against one of its parents is
             # stream READMEs only. This is a check of subject and change, not of
-            # author. Any other commit is refused, never overwritten.
+            # author. Any other commit is refused, never overwritten. Every
+            # commit on the branch is walked, not only its tip. Each git read is
+            # a plain assignment, so errexit sees its failure: a read that fails
+            # never reads as "nothing foreign". Renames are listed as a removal
+            # plus an addition, so a file moved onto a README path still shows
+            # the path it came from.
             foreign=""
-            for c in $(git rev-list "${base}..${tip}"); do
+            commits="$(git rev-list "${base}..${tip}")"
+            for c in $commits; do
               subj="$(git log -1 --format=%s "$c")"
               parents="$(git rev-list --parents -n 1 "$c" | cut -d' ' -f2-)"
               nparents="$(echo "$parents" | wc -w | tr -d ' ')"
@@ -688,7 +705,8 @@ jobs:
               fi
               readme_only=false
               for p in $parents; do
-                if [ -z "$(git diff --name-only "$p" "$c" | grep -v -E "$readme_re" || true)" ]; then
+                changed="$(git diff --no-renames --name-only "$p" "$c")"
+                if [ -z "$(printf '%s\n' "$changed" | grep -v -E "$readme_re" || true)" ]; then
                   readme_only=true
                   break
                 fi

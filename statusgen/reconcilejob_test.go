@@ -597,8 +597,47 @@ func TestReconcileJobRefusesForeignCommit(t *testing.T) {
 // commit with this job's own subject that touches more than stream READMEs is
 // refused — the subject alone never makes a commit this job's. The boundary is
 // a stream's own README: a path outside docs/streams/, a brief file beside the
-// README, and a README one directory further down are each refused.
+// README, and a README one directory further down are each refused — and so is
+// a file moved from outside docs/streams/ onto a README path, which a diff with
+// rename detection would list as the README alone.
 func TestReconcileJobRefusesNonReadmeCommit(t *testing.T) {
+	t.Run("rename onto a README path", func(t *testing.T) {
+		r := newJobRig(t)
+		r.git(r.seed, "pull", "-q", "--ff-only", "origin", "main")
+		if err := os.MkdirAll(filepath.Join(r.seed, "tools"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(r.seed, "tools", "x.go"), []byte("package x\n\nfunc X() int { return 1 }\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r.git(r.seed, "add", "-A")
+		r.git(r.seed, "commit", "-q", "-m", "feat: tools/x.go")
+		r.git(r.seed, "push", "-q", "origin", "main")
+		if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+			t.Fatalf("first tick exit %d:\n%s", code, out)
+		}
+		hand := filepath.Join(r.dir, "hand-rename")
+		r.git("", "clone", "-q", "-b", "board/reconcile", r.origin, hand)
+		if err := os.MkdirAll(filepath.Join(hand, "docs", "streams", "zz"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		r.git(hand, "mv", "tools/x.go", "docs/streams/zz/README.md")
+		r.git(hand, "commit", "-q", "-m", "chore(board): reconcile 2026-10-08")
+		r.git(hand, "push", "-q", "origin", "board/reconcile")
+		before := r.remoteRef("refs/heads/board/reconcile")
+		r.commitOnMain(jobReadmeMain+"\nmore\n", "docs: main moves")
+
+		code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR)
+		if code == 0 {
+			t.Fatalf("a same-subject commit moving tools/x.go onto a README path must fail the tick:\n%s", out)
+		}
+		if !strings.Contains(out, "(touches more than stream READMEs)") {
+			t.Fatalf("the refusal must say the commit touches more than stream READMEs:\n%s", out)
+		}
+		if r.remoteRef("refs/heads/board/reconcile") != before {
+			t.Fatal("the branch carrying the rename was overwritten")
+		}
+	})
 	for _, file := range []string{"NOTES.md", "docs/streams/s/brief-01.md", "docs/streams/s/sub/README.md"} {
 		t.Run(file, func(t *testing.T) {
 			r := newJobRig(t)
@@ -625,24 +664,143 @@ func TestReconcileJobRefusesNonReadmeCommit(t *testing.T) {
 // TestReconcileJobForeignSubject is review B6's subject half, one parent: a
 // commit whose change is the stream README only, but whose subject is not this
 // job's, is refused and named — the change alone never makes a commit this
-// job's, so a hand edit of the table is never silently replaced.
+// job's, so a hand edit of the table is never silently replaced. The subject
+// is matched in full: the board prefix with anything but `reconcile` after it
+// is another writer's subject too.
 func TestReconcileJobForeignSubject(t *testing.T) {
+	for _, subject := range []string{"wip: hand edit of the table", "chore(board): tidy the table"} {
+		t.Run(subject, func(t *testing.T) {
+			r := newJobRig(t)
+			if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+				t.Fatalf("first tick exit %d:\n%s", code, out)
+			}
+			before := r.handCommit("docs/streams/s/README.md", subject)
+			r.commitOnMain(jobReadmeMain+"\nmore\n", "docs: main moves")
+
+			code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR)
+			if code == 0 {
+				t.Fatalf("a README-only commit with subject %q must fail the tick:\n%s", subject, out)
+			}
+			if !strings.Contains(out, subject) {
+				t.Fatalf("the refusal must name the commit:\n%s", out)
+			}
+			if r.remoteRef("refs/heads/board/reconcile") != before {
+				t.Fatal("the branch carrying a hand edit of the table was overwritten")
+			}
+		})
+	}
+}
+
+// TestReconcileJobRefusesBuriedForeign: the foreign-commit check walks every
+// commit the branch carries past main, not only its tip. A commit of another
+// shape beneath a tip of this job's shape is refused and named.
+func TestReconcileJobRefusesBuriedForeign(t *testing.T) {
 	r := newJobRig(t)
 	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
 		t.Fatalf("first tick exit %d:\n%s", code, out)
 	}
-	before := r.handCommit("docs/streams/s/README.md", "wip: hand edit of the table")
+	r.handCommit("NOTES.md", "wip: buried notes")
+	before := r.handCommit("docs/streams/s/README.md", "chore(board): reconcile 2026-10-08")
 	r.commitOnMain(jobReadmeMain+"\nmore\n", "docs: main moves")
 
 	code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR)
 	if code == 0 {
-		t.Fatalf("a README-only commit with another subject must fail the tick:\n%s", out)
+		t.Fatalf("a foreign commit beneath a job-shaped tip must fail the tick:\n%s", out)
 	}
-	if !strings.Contains(out, "wip: hand edit of the table") {
-		t.Fatalf("the refusal must name the commit:\n%s", out)
+	if !strings.Contains(out, "wip: buried notes") {
+		t.Fatalf("the refusal must name the buried commit:\n%s", out)
 	}
 	if r.remoteRef("refs/heads/board/reconcile") != before {
-		t.Fatal("the branch carrying a hand edit of the table was overwritten")
+		t.Fatal("the branch carrying a buried foreign commit was overwritten")
+	}
+}
+
+// stubGitFail passes every git call to the real git except the one read named
+// by STUB_GIT_FAIL, which fails as a damaged object store would: the branch
+// walk's range listing (rev-list) or its per-parent change listing (diff).
+const stubGitFail = `#!/usr/bin/env bash
+case "${STUB_GIT_FAIL:-}" in
+  rev-list) if [ "$1" = rev-list ] && [ "${2:-}" != --parents ]; then echo "fatal: stub: bad object" >&2; exit 128; fi ;;
+  diff) if [ "$1" = diff ]; then echo "fatal: stub: bad object" >&2; exit 128; fi ;;
+esac
+exec REALGIT "$@"
+`
+
+// TestReconcileJobBrokenReadFails: a git read that fails while the branch is
+// walked fails the tick. It never reads as "no commits" or "README only", which
+// would let the tick carry on past commits it never checked.
+func TestReconcileJobBrokenReadFails(t *testing.T) {
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not on PATH")
+	}
+	for _, read := range []string{"rev-list", "diff"} {
+		t.Run(read, func(t *testing.T) {
+			r := newJobRig(t)
+			if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+				t.Fatalf("first tick exit %d:\n%s", code, out)
+			}
+			r.handCommit("docs/streams/s/README.md", "chore(board): reconcile 2026-10-08")
+			r.commitOnMain(jobReadmeMain+"\nmore\n", "docs: main moves")
+			if err := os.WriteFile(filepath.Join(r.bin, "git"), []byte(strings.Replace(stubGitFail, "REALGIT", realGit, 1)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR, "STUB_GIT_FAIL="+read)
+			if code == 0 {
+				t.Fatalf("a failed git %s while walking the branch must fail the tick:\n%s", read, out)
+			}
+			if !strings.Contains(out, "stub: bad object") {
+				t.Fatalf("the tick failed, but not on the git %s read:\n%s", read, out)
+			}
+		})
+	}
+}
+
+// TestReconcileJobBuildIgnoresGoWork: with the job's env, Go reads no go.work
+// left in a directory above the build directory (the runner's work directory
+// holds RUNNER_TEMP and outlives a job). The control, without the job's env,
+// shows the planted file would otherwise be read.
+func TestReconcileJobBuildIgnoresGoWork(t *testing.T) {
+	requireTool(t, "go")
+	job := stagedWorkflow(t).Jobs["reconcile"]
+	root := t.TempDir()
+	work := filepath.Join(root, "_work")
+	build := filepath.Join(work, "_temp", "board-src", "statusgen")
+	if err := os.MkdirAll(build, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(build, "go.mod"), []byte("module example.invalid/statusgen\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "go.work"), []byte("go 1.21\n\nuse ./_temp/board-src/statusgen\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var base []string
+	for _, kv := range scrubbedEnv() {
+		if !strings.HasPrefix(kv, "GO") {
+			base = append(base, kv)
+		}
+	}
+	base = append(base, "HOME="+t.TempDir(), "GOENV=off", "GOTOOLCHAIN=local", "GOFLAGS=")
+	goWork := func(env []string) string {
+		cmd := exec.Command("go", "env", "GOWORK")
+		cmd.Dir = build
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("go env GOWORK: %v\n%s", err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if got := goWork(base); filepath.Base(got) != "go.work" {
+		t.Fatalf("control: without GOWORK set, go must find the planted go.work, got %q", got)
+	}
+	jobEnv := append([]string(nil), base...)
+	for k, v := range job.Env {
+		jobEnv = append(jobEnv, k+"="+v)
+	}
+	if got := goWork(jobEnv); got != "off" {
+		t.Fatalf("with the reconcile job's env, the build reads a go.work left above RUNNER_TEMP: %q", got)
 	}
 }
 
@@ -1321,6 +1479,9 @@ func isolationProblems(wf workflow, job wfJob) []string {
 	if job.Env["GOTOOLCHAIN"] != "local" {
 		p = append(p, "job env GOTOOLCHAIN is not local")
 	}
+	if job.Env["GOWORK"] != "off" {
+		p = append(p, "job env GOWORK is not off")
+	}
 	if wf.Env["GO_LINUX_AMD64_SHA256"] == "" {
 		p = append(p, "workflow env pins no GO_LINUX_AMD64_SHA256")
 	}
@@ -1454,7 +1615,7 @@ jobs:
 `
 	wf := parseWorkflow(t, []byte(planted), "planted")
 	got := strings.Join(isolationProblems(wf, wf.Jobs["planted"]), "\n")
-	for _, want := range []string{"GOENV is not off", "GOTOOLCHAIN is not local", "uses actions/checkout", "checkout persists a credential",
+	for _, want := range []string{"GOENV is not off", "GOTOOLCHAIN is not local", "GOWORK is not off", "uses actions/checkout", "checkout persists a credential",
 		"without sha256sum", "under the runner home", "accepts a gh already on PATH", "no pinned, checksum-verified install",
 		"no step gives the job git and gh configuration of its own", "runs before the job's own git configuration",
 		`step "use" runs git, gh or go outside a directory under RUNNER_TEMP`, "pushes to a configured remote",
@@ -1594,6 +1755,21 @@ var reconcileMutants = []struct {
 	{"gh extracted before its checksum gate", ghGate, ghTarFirst, "TestIsolationGuardFlagsPlant"},
 	{"Go checksum gate removed (guard)", goGate, goNoGate, "TestIsolationGuardFlagsPlant"},
 	{"Go checksum gate removed (effect)", goGate, goNoGate, "TestReconcileJobInstallVerifies"},
+	{"branch walk narrowed to the tip",
+		`commits="$(git rev-list "${base}..${tip}")"`, `commits="$(git rev-list -n 1 "${base}..${tip}")"`, "TestReconcileJobRefusesBuriedForeign"},
+	{"subject pattern loosened to the board prefix",
+		`subject_re='^chore\(board\): reconcile( |$)'`, `subject_re='^chore\(board\): '`, "TestReconcileJobForeignSubject"},
+	{"rename detection back on the README-only check",
+		`git diff --no-renames --name-only`, `git diff --name-only`, "TestReconcileJobRefusesNonReadmeCommit"},
+	{"failed change listing reads as README-only",
+		"changed=\"$(git diff --no-renames --name-only \"$p\" \"$c\")\"\n                if [ -z \"$(printf '%s\\n' \"$changed\" | grep",
+		"changed=\"$(git diff --no-renames --name-only \"$p\" \"$c\" || true)\"\n                if [ -z \"$(printf '%s\\n' \"$changed\" | grep", "TestReconcileJobBrokenReadFails"},
+	{"failed range listing reads as no commits",
+		`commits="$(git rev-list "${base}..${tip}")"`, `commits="$(git rev-list "${base}..${tip}" || true)"`, "TestReconcileJobBrokenReadFails"},
+	{"GOWORK not off (guard)",
+		"      GOTOOLCHAIN: local\n      GOWORK: \"off\"\n    steps:", "      GOTOOLCHAIN: local\n    steps:", "TestIsolationGuardFlagsPlant"},
+	{"GOWORK not off (effect)",
+		"      GOTOOLCHAIN: local\n      GOWORK: \"off\"\n    steps:", "      GOTOOLCHAIN: local\n    steps:", "TestReconcileJobBuildIgnoresGoWork"},
 	{"workspace checkout re-added",
 		"      - name: Clone main into a fresh job-local directory\n", "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: false\n      - name: Clone main into a fresh job-local directory\n", "TestReconcileJobStepWiring"},
 }
