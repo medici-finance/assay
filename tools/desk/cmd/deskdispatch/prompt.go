@@ -63,6 +63,9 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	if err != nil {
 		return "", err
 	}
+	// The class kit as THIS dispatch quotes it: a review kit is cut for its lane
+	// (reviewlane.go), a worker kit for the kind of run (workerkind.go); every other kit is
+	// the file as written.
 	kit, lane, err := classKitText(o, plan)
 	if err != nil {
 		return "", err
@@ -101,6 +104,9 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		// main, never an implementer's branch. Naming the repo as where a PR "opens" would be
 		// exactly the scaffold #1029 reported leaking into a verifier's Assignment.
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the repository whose MERGED MAIN your Verify table runs against; resolve every path claim there.\n", repo)
+	case workerResume(o):
+		// A resumed change is already open: "the PR opens THERE" would invite a second one.
+		fmt.Fprintf(&b, "- **Target repo:** `%s` — the open change you are resuming belongs THERE; open no other.\n", repo)
 	default:
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the PR opens THERE, not anywhere else.\n", repo)
 	}
@@ -135,8 +141,12 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 			"implement what is already settled and stop where the decision begins.\n")
 	}
 	b.WriteString("\n## Isolate first\n\n")
-	b.WriteString("Work in an owned worktree OF THAT REPO. It already exists; if you must recreate it:\n\n")
-	fmt.Fprintf(&b, "```\ngit -C %s worktree add %s refs/remotes/origin/main --detach\n```\n\n", base, home)
+	if workerResume(o) {
+		writeResumeIsolation(&b, plan, base, home)
+	} else {
+		b.WriteString("Work in an owned worktree OF THAT REPO. It already exists; if you must recreate it:\n\n")
+		fmt.Fprintf(&b, "```\ngit -C %s worktree add %s refs/remotes/origin/main --detach\n```\n\n", base, home)
+	}
 	b.WriteString("Check `git rev-parse --show-toplevel` before your first write and ABORT if it resolves " +
 		"anywhere but your home worktree.\n\n")
 	// The assignment's action half is the ONE thing that differs by class: an implementer
@@ -323,9 +333,17 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 // writeWorkerAssignment emits the IMPLEMENTER's action half: open the draft PR in the target
 // repo, self-register the instant it opens, and release the dispatch claim once the branch is
 // pushed so branch-as-claim takes over. This is the scaffold an agent that PRODUCES a change
-// needs; a reviewer, which produces a verdict and no branch, gets writeReviewAssignment. The
-// text here is byte-for-byte what every worker dispatch has always carried.
+// needs; a reviewer, which produces a verdict and no branch, gets writeReviewAssignment. A
+// run dispatched onto an open change (`--pr`) gets the shepherding half instead, first branch
+// below; for every other worker dispatch the text is what a worker dispatch carried before
+// the kinds were told apart.
 func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
+	if workerResume(o) {
+		// A run dispatched onto an OPEN change opens nothing — it gets the shepherding half
+		// (workerkind.go), never "open the draft PR". Everything below is the implementing half.
+		writeShepherdAssignment(b, o, plan, repo)
+		return
+	}
 	if plan.followUpOf > 0 {
 		// The rework-after-merge shape: the brief's PR is already MERGED, so this is a FOLLOW-UP on
 		// a new branch — never a resume, and never a push to (or a re-cut of) the merged branch.

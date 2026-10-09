@@ -155,10 +155,15 @@ func checkReviewKitLanes(kit string) error {
 }
 
 // classKitText is the class kit as THIS dispatch emits it: the review kit cut for the lane
-// the claim key names, every other kit whole.
+// the claim key names, the worker kit cut for the kind of run (workerkind.go), every other
+// kit whole. Only a review kit has a lane.
 func classKitText(o dispatchOpts, plan dispatchPlan) (text, lane string, err error) {
+	if !reviewKit(o.kit) {
+		text, err = workerKitText(o)
+		return text, "", err
+	}
 	kit, err := kitText(o.kit)
-	if err != nil || !reviewKit(o.kit) {
+	if err != nil {
 		return kit, "", err
 	}
 	lane = reviewLaneForClaim(plan.claimKey, plan.repo, o.pr)
