@@ -15,7 +15,7 @@ why: >-
   re-derive a stored gate is open and tracked in #2405.
 wave: 1
 depends: []
-unblocks: []
+unblocks: ["statusgen/18"]
 effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
