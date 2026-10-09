@@ -1,2 +1,0 @@
-### Fixed
-- `deskpr update --pr N` no longer refuses every push to a PR whose published head already carries another App's commit: like the default and `--branch` forms, it now judges only the commits the push adds beyond the PR's verified live head. A foreign commit among the added commits is still refused, an unreadable or diverged head still judges the whole range, and `--pr N --check` still judges the whole range and names `--branch <head-branch> --check` as the offline way to narrow it (#2432).
