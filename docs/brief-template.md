@@ -45,8 +45,9 @@ schema: brief-v2                    # required on every brief in a v2 tree — a
                                     # REFUSES a v2 tree instead of silently ignoring it (fail-closed).
 blocked-by: env                     # OPTIONAL, and `env` is the ONLY accepted value (anything else fails --lint).
                                     # Says the blocker is infrastructure/environment — not an agent, not a human
-                                    # decision. The Awaiting board files the brief under `Env-blocked` and the
-                                    # desk-actionable headline stops counting it. Omit it unless that is literally true:
+                                    # decision. The Awaiting board files the brief under `Environment-blocked`
+                                    # (owner: operator) and the desk's count stops including it (docs/board.md).
+                                    # Omit it unless that is literally true:
                                     # the field's whole job is to keep the desk from re-triaging what it cannot move.
 gates: []                           # RESERVED, OPTIONAL-but-KNOWN (brief-v2): behavioural/ordering edges —
                                     # parsed, type-checked, lint-validated, NOT yet gating (gating behaviour

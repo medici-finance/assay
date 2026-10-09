@@ -128,12 +128,12 @@ func TestVerifyWakeUnchangedIsVisibleWait(t *testing.T) {
 	writeReceipts(t, root, deskkit.NewWakeReceipt(
 		"r-01", "medici-finance/assay", "example-stream/01", "assay-verifier-app[bot]",
 		"verify-fail", "0000abc", nil, map[string]string{"file:pkg/x.go": "rev1"},
-		"desk-tools/v1.0.16", deskkit.BlockerImplementation, "tracker#100",
+		"desk-tools/v1.0.16", deskkit.BlockerImplementation, "#100",
 		deskkit.WakeRelevantInputChanged, "", "", "2026-09-20T00:00:00Z"))
 	reader := fakeWake{revs: map[string]string{"file:pkg/x.go": "rev1"}} // unchanged
 
 	for _, pass := range []string{"first pass", "after process restart (fresh loop, re-read sidecar)"} {
-		v := &VerifyLoop{Root: root, WakeReader: reader, Now: fixedClock("2026-09-20T12:00:00Z")}
+		v := &VerifyLoop{Root: root, WakeReader: reader, Issues: openIssues, Now: fixedClock("2026-09-20T12:00:00Z")}
 		disp, reason, dispatchN := dispositionsOf(t, v)
 		if disp["example-stream/01"] != dispWaitReceipt {
 			t.Fatalf("%s: brief classified %v (reason %q); want a WAIT", pass, disp["example-stream/01"], reason["example-stream/01"])
@@ -141,7 +141,7 @@ func TestVerifyWakeUnchangedIsVisibleWait(t *testing.T) {
 		if dispatchN != 0 {
 			t.Fatalf("%s: %d dispatch(es); want 0 — an unchanged blocked receipt must not consume a verifier run", pass, dispatchN)
 		}
-		if !strings.Contains(reason["example-stream/01"], "blocker: implementation") ||
+		if !strings.Contains(reason["example-stream/01"], "blocker #100 open (implementation)") ||
 			!strings.Contains(reason["example-stream/01"], "next: worker") {
 			t.Fatalf("%s: WAIT line does not name the blocker and next actor: %q", pass, reason["example-stream/01"])
 		}
@@ -164,11 +164,11 @@ func TestVerifyWakeRelevantChange(t *testing.T) {
 			"desk-tools/v1.0.16", deskkit.BlockerCheckDef, ref, pred, "", "", "2026-09-20T00:00:00Z")
 	}
 	writeReceipts(t, root,
-		rel("01", deskkit.WakeRelevantInputChanged, map[string]string{"file:pkg/a.go": "rev1"}, ""),
-		rel("02", deskkit.WakeRelevantInputChanged, map[string]string{"tool": "desk-tools/v1.0.15"}, ""),
-		rel("03", deskkit.WakeRelevantInputChanged, map[string]string{"verify-def:example-stream/03": "vdef1"}, ""),
+		rel("01", deskkit.WakeRelevantInputChanged, map[string]string{"file:pkg/a.go": "rev1"}, "#100"),
+		rel("02", deskkit.WakeRelevantInputChanged, map[string]string{"tool": "desk-tools/v1.0.15"}, "#100"),
+		rel("03", deskkit.WakeRelevantInputChanged, map[string]string{"verify-def:example-stream/03": "vdef1"}, "#100"),
 		rel("04", deskkit.WakeReferencedActionDone, nil, "tracker#200"),
-		rel("05", deskkit.WakeRelevantInputChanged, map[string]string{"file:pkg/b.go": "rev1"}, ""),
+		rel("05", deskkit.WakeRelevantInputChanged, map[string]string{"file:pkg/b.go": "rev1"}, "#100"),
 	)
 	reader := fakeWake{
 		revs: map[string]string{
@@ -179,7 +179,7 @@ func TestVerifyWakeRelevantChange(t *testing.T) {
 		},
 		actionDone: map[string]bool{"tracker#200": true}, // COMPLETED → wake 04
 	}
-	v := &VerifyLoop{Root: root, WakeReader: reader, Now: fixedClock("2026-09-20T12:00:00Z")}
+	v := &VerifyLoop{Root: root, WakeReader: reader, Issues: openIssues, Now: fixedClock("2026-09-20T12:00:00Z")}
 	disp, reason, dispatchN := dispositionsOf(t, v)
 
 	for _, id := range []string{"example-stream/01", "example-stream/02", "example-stream/03", "example-stream/04"} {
@@ -206,7 +206,7 @@ func TestVerifyWakeUnknownAndLegacy(t *testing.T) {
 	})
 	complete := deskkit.NewWakeReceipt("r-01", "medici-finance/assay", "example-stream/01",
 		"assay-verifier-app[bot]", "verify-fail", "0000abc", nil, map[string]string{"file:pkg/c.go": "rev1"},
-		"desk-tools/v1.0.16", deskkit.BlockerImplementation, "", deskkit.WakeRelevantInputChanged, "", "", "2026-09-20T00:00:00Z")
+		"desk-tools/v1.0.16", deskkit.BlockerImplementation, "#100", deskkit.WakeRelevantInputChanged, "", "", "2026-09-20T00:00:00Z")
 	// A LEGACY row: only the four original verify-outcomes fields, no schema, no wake fields.
 	legacy := deskkit.WakeReceipt{TS: "2026-09-20T00:00:00Z", Brief: "example-stream/02", Outcome: "verify-fail", SHA: "0000def"}
 	// An INCOMPLETE receipt: schema + ids present, but relevant-input-changed with an EMPTY input
@@ -219,7 +219,7 @@ func TestVerifyWakeUnknownAndLegacy(t *testing.T) {
 	writeReceipts(t, root, complete, legacy, incomplete)
 	reader := fakeWake{unreadable: map[string]bool{"file:pkg/c.go": true}} // the declared input cannot be read
 
-	v := &VerifyLoop{Root: root, WakeReader: reader, Now: fixedClock("2026-09-20T12:00:00Z")}
+	v := &VerifyLoop{Root: root, WakeReader: reader, Issues: openIssues, Now: fixedClock("2026-09-20T12:00:00Z")}
 	disp, reason, _ := dispositionsOf(t, v)
 
 	if disp["example-stream/01"] != dispCouldNotCheck {
@@ -249,11 +249,11 @@ func TestVerifyWakePartialRows(t *testing.T) {
 	writeReceipts(t, root, deskkit.NewWakeReceipt(
 		"r-01", "medici-finance/assay", "example-stream/01", "assay-verifier-app[bot]",
 		"verify-fail", "0000abc", []int{2, 3}, map[string]string{"file:pkg/x.go": "rev1"},
-		"desk-tools/v1.0.16", deskkit.BlockerImplementation, "tracker#100",
+		"desk-tools/v1.0.16", deskkit.BlockerImplementation, "#100",
 		deskkit.WakeRelevantInputChanged, "", "", "2026-09-20T00:00:00Z"))
 	reader := fakeWake{revs: map[string]string{"file:pkg/x.go": "rev1"}} // unchanged → rows 2,3 stay held
 
-	v := &VerifyLoop{Root: root, WakeReader: reader, Now: fixedClock("2026-09-20T12:00:00Z")}
+	v := &VerifyLoop{Root: root, WakeReader: reader, Issues: openIssues, Now: fixedClock("2026-09-20T12:00:00Z")}
 	items, err := v.SelectQueue()
 	if err != nil {
 		t.Fatalf("SelectQueue: %v", err)

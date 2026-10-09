@@ -18,6 +18,7 @@ unblocks: ["forge-neutral/18"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-34
 gate-why: >-
   This brief relaxes a security posture on purpose. Today `deskread` refuses to read under any
   credential it did not mint for a named desk App, and that refusal is what keeps a read verb
