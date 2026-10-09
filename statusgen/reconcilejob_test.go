@@ -717,24 +717,27 @@ func TestReconcileJobRefusesBuriedForeign(t *testing.T) {
 
 // stubGitFail passes every git call to the real git except the one read named
 // by STUB_GIT_FAIL, which fails as a damaged object store would: the branch
-// walk's range listing (rev-list) or its per-parent change listing (diff).
+// walk's range listing (rev-list), its per-parent change listing (diff), or
+// the stray-path check's status read (status).
 const stubGitFail = `#!/usr/bin/env bash
 case "${STUB_GIT_FAIL:-}" in
   rev-list) if [ "$1" = rev-list ] && [ "${2:-}" != --parents ]; then echo "fatal: stub: bad object" >&2; exit 128; fi ;;
   diff) if [ "$1" = diff ]; then echo "fatal: stub: bad object" >&2; exit 128; fi ;;
+  status) if [ "$1" = status ]; then echo "fatal: stub: bad object" >&2; exit 128; fi ;;
 esac
 exec REALGIT "$@"
 `
 
 // TestReconcileJobBrokenReadFails: a git read that fails while the branch is
-// walked fails the tick. It never reads as "no commits" or "README only", which
-// would let the tick carry on past commits it never checked.
+// walked, or while the result is checked for stray paths, fails the tick. It
+// never reads as "no commits", "README only" or "nothing stray", which would
+// let the tick carry on past what it never checked.
 func TestReconcileJobBrokenReadFails(t *testing.T) {
 	realGit, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git not on PATH")
 	}
-	for _, read := range []string{"rev-list", "diff"} {
+	for _, read := range []string{"rev-list", "diff", "status"} {
 		t.Run(read, func(t *testing.T) {
 			r := newJobRig(t)
 			if code, out := r.tick("STUB_FLIP=01"); code != 0 {
@@ -747,7 +750,7 @@ func TestReconcileJobBrokenReadFails(t *testing.T) {
 			}
 			code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR, "STUB_GIT_FAIL="+read)
 			if code == 0 {
-				t.Fatalf("a failed git %s while walking the branch must fail the tick:\n%s", read, out)
+				t.Fatalf("a failed git %s read must fail the tick:\n%s", read, out)
 			}
 			if !strings.Contains(out, "stub: bad object") {
 				t.Fatalf("the tick failed, but not on the git %s read:\n%s", read, out)
@@ -1766,6 +1769,8 @@ var reconcileMutants = []struct {
 		"changed=\"$(git diff --no-renames --name-only \"$p\" \"$c\" || true)\"\n                if [ -z \"$(printf '%s\\n' \"$changed\" | grep", "TestReconcileJobBrokenReadFails"},
 	{"failed range listing reads as no commits",
 		`commits="$(git rev-list "${base}..${tip}")"`, `commits="$(git rev-list "${base}..${tip}" || true)"`, "TestReconcileJobBrokenReadFails"},
+	{"failed status read reads as nothing stray",
+		`porcelain="$(git status --porcelain --untracked-files=all)"`, `porcelain="$(git status --porcelain --untracked-files=all || true)"`, "TestReconcileJobBrokenReadFails"},
 	{"GOWORK not off (guard)",
 		"      GOTOOLCHAIN: local\n      GOWORK: \"off\"\n    steps:", "      GOTOOLCHAIN: local\n    steps:", "TestIsolationGuardFlagsPlant"},
 	{"GOWORK not off (effect)",

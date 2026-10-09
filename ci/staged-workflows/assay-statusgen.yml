@@ -730,8 +730,11 @@ jobs:
           "$statusgen" regen --readmes --root .
           "$statusgen" --root . --lint
           # This job may change stream READMEs and nothing else.
-          # The same README pattern as the foreign-commit check above.
-          stray="$(git status --porcelain --untracked-files=all | grep -v -E "^ M ${readme_re#^}" || true)"
+          # The same README pattern as the foreign-commit check above. The
+          # status read is a plain assignment, so errexit sees its failure: a
+          # failed read never reads as "nothing stray".
+          porcelain="$(git status --porcelain --untracked-files=all)"
+          stray="$(printf '%s\n' "$porcelain" | grep -v -E "^ M ${readme_re#^}" || true)"
           if [ -n "$stray" ]; then
             echo "::error::reconcile changed paths other than stream READMEs — refusing to commit:"
             echo "$stray"
