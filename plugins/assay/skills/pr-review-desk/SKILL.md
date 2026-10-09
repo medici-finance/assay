@@ -338,7 +338,7 @@ as the planner and acts on its rows.
 
   `<alias>` is the repo's short label/basename. It takes the durable claim, cuts the reviewer a
   worktree in the PR's OWN repo, stamps the dispatcher's model attestation, and emits the prompt —
-  `common-clauses` + the `review` kit, verbatim and byte-identical across sessions. A claim held by
+  `common-clauses` + the `review` kit cut for the key's lane, byte-identical across sessions. A claim held by
   someone else exits 5 with the holder named: never steal. The board's SECURITY-REVIEW-REQUIRED row
   is a MISSED-DISPATCH alarm, not the trigger — it only appears AFTER a correctness approval, so
   waiting for it serialises the two lanes; dispatch the security lane off the actions row's
@@ -598,8 +598,8 @@ provisioning gap to file (`create-labels`, `the adoption guide`), never a reason
 
 ## The reviewer's bar
 
-`deskdispatch --kit review` hands the agent the `common-clauses` and `review-prompt` kits verbatim,
-embedded in the binary, so a fleet on one pinned release is a fleet on one set of clauses. **This
+`deskdispatch --kit review` hands the agent the `common-clauses` kit and its lane's cut of the `review-prompt`
+kit, embedded in the binary, so a fleet on one pinned release is a fleet on one set of clauses. **This
 section is the DESK's bar — what a review must show before the desk acts on it, plus the
 house-specific detail a public, generic kit cannot carry.** Edit a clause here, check the kit.
 

@@ -5251,7 +5251,9 @@ isolation floor, the no-evasion rule, the offline envelope and the three-state i
 rule in the common kit; the security-gate refusal, the per-invocation body-file rule, the
 fail-first review discipline and the Evidence format in the class kits. Splitting the shared
 half out is the point — three copies of one clause in three kits is three clauses that
-drift. They are **embedded**
+drift. The review kit is emitted per lane: a claim key ending `--security` gets the security
+cut (a correctness-only procedure is replaced by a note naming its owner), the bare PR key
+the correctness cut, any other key the whole kit. They are **embedded**
 in the binary, so `deskdispatch --version` and the clause text move together and a fleet on
 one pinned release is a fleet on one set of clauses. Every clause is written GENERIC — no
 private repository name, issue reference, internal document path, item identifier, or named
