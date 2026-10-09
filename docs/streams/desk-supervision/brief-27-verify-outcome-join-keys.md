@@ -58,7 +58,8 @@ consumers:
 files:
 - **edit** `docs/streams/desk-supervision/verify-wake-v1.md` — the new fields, labelling `prs` and
   `dispatch_ref` verifier-asserted, the failure-record requirement, what "complete" means for a
-  verify-wake-v1 `verified` record (Task 2), the redaction rules for private and non-private
+  verify-wake-v1 `verified` record (Task 2), the key-uniqueness input rule (Task 2), the redaction
+  rules for private and non-private
   registers including the history caveat (Task 4), the GitLab ancestry fallback; Migration notes
   older records are not backfilled.
 - **edit** `tools/desk/internal/deskkit/verifywake.go` — `WakeReceipt` gains `PRs []DeliveredPR`
@@ -69,8 +70,10 @@ files:
   field `Complete()` would fail on, in `Complete()`'s own check order (Task 2's refusal names it;
   `Complete()` itself returns only a bool and stays unchanged).
 - **edit** `tools/desk/cmd/deskevidence/outcomerecord.go`, `receiptvalidate.go` + tests — the
-  input-shape refusals, the reordered admission and forge handle, the forge dereference, the
-  redaction (Tasks 2–5).
+  input-shape refusals (key uniqueness first), the reordered admission and forge handle, the forge
+  dereference, the redaction behind a package-level function variable (as `forgeForFn` and
+  `publicRepoGateFn` already are) so a test can substitute the rewrite, and step 5's TARGET-TIE
+  check (Tasks 2–5).
 - **edit** `plugins/assay/skills/verify-desk/SKILL.md` — the outcome-record paragraphs (around the
   "Since #882, `deskevidence --outcome-record` REFUSES" paragraph and the FAIL-path paragraph).
 - **edit** `tools/desk/README.md` — the deskevidence section.
@@ -134,22 +137,35 @@ facts:
   `publishIdentityGate`, the token mint and the forge handle (`forgeForFn`), the immutability
   compare, the withheld-identifier outbound scan, the visibility read (`publicRepoGateFn`), and only
   then `bodyDig`. Admission takes the target path but reads only its `<stream>/<NN>` part
-  (`VerifierReceipt.CheckEvidenceTarget`), which redaction never changes, so it does not need the
-  final (redacted) file name. Task 4's forge reads are driven by the record, so they need the token
-  and the forge handle that today come after `RecordName`. The order this brief requires, stated once
-  here and referenced by Tasks 2–4:
-  1. parse and the future-`ts` check (as today), then every input-shape refusal of Task 2 — pure
-     checks, exit 5, before ANY forge read (admission's own reads included);
+  (`VerifierReceipt.CheckEvidenceTarget`). Today the record admitted, the record named and the
+  bytes committed are one record. In the order below they are not: the future-`ts` check and
+  admission run on the SUBMITTED record, while the file is named and written from the REWRITTEN
+  one. Nothing about the rewrite is assumed to keep `brief` or `ts`: the record readers decode by
+  struct (`ParseRecord`, `verifyoutcomes.go`), which matches a key in any letter case and keeps the
+  last match, so a record carrying one key twice, or in two letter cases, can resolve to one value
+  as submitted and another after a rewrite that round-trips through a key map. The TARGET-TIE
+  rule below (steps 1 and 5) closes that. Task 4's forge reads are driven by the record, so they
+  need the token and the forge handle that today come after `RecordName`. The order this brief
+  requires, stated once here and referenced by Tasks 2–4:
+  1. parse; then key uniqueness, the first half of the TARGET-TIE rule: a JSON object anywhere in
+     the input (the top level, a `prs` entry, a `row_results` entry or any other nested object)
+     whose keys repeat, or differ only in letter case, is refused naming the key, before the
+     future-`ts` check reads `ts`; then the future-`ts` check (as today), then every other
+     input-shape refusal of Task 2 — all pure checks, exit 5, before ANY forge read (admission's
+     own reads included);
   2. admission (`admitVerifierEvidence`), on the input record's `<stream>/<NN>` target, BEFORE any
      record-driven forge read: a caller that is not admitted triggers no forge read the record
      names (no PR, ancestry, default-branch, `blocker_ref` or visibility read);
   3. the identity gate, the token mint and the forge handle (moved ahead of `RecordName`);
   4. the record-driven forge reads — Task 3's dereference and Task 4's visibility reads — then
      Task 4's redaction;
-  5. `RecordName` on the REDACTED record and its path-prefix guard, then everything that follows
-     today (size cap, immutability compare, outbound scan, the public-repo gate, `bodyDig`, the
-     closure gates, `validateReceipt`, the write or `landOutcomeRecordAsChange`), all of which see
-     the redacted record.
+  5. `RecordName` on the REDACTED record and its path-prefix guard, then the TARGET-TIE check: the
+     rewritten record's `brief` and `ts` values must equal, byte for byte, the ones steps 1–2
+     checked, and `CheckEvidenceTarget` is run again, on the FINAL path, against the receipt step 2
+     admitted. Any mismatch or refusal is exit 5 with nothing written and no change landed. Then
+     everything that follows today (size cap, immutability compare, outbound scan, the public-repo
+     gate, `bodyDig`, the closure gates, `validateReceipt`, the write or
+     `landOutcomeRecordAsChange`), all of which see the redacted record.
 - Refusal convention: `deskkit.Refused(...)` → exit 5 naming the field; a forge read failure is
   `deskkit.Unverifiable` → exit 6, never a pass.
 - single-point-of-failure: the writer's validation (Tasks 2–5) — backed by the withheld-identifier
@@ -187,10 +203,16 @@ facts:
    key is not compared with the admitted run), so a consumer must not treat either join as
    authenticated.
 2. **Which records must carry what.**
-   - **Input shape, checked first.** These are pure checks on the parsed input, run right after the
-     parse and the future-`ts` check (step 1 of the facts' step order): before admission, before any
-     forge read and before any hashing. Each failure is exit 5 naming the field, on every register
-     kind (private or not) and every record shape (verify-wake-v1 or legacy-shape):
+   - **Input shape, checked first.** These are pure checks on the parsed input, run in step 1 of the
+     facts' step order (key uniqueness right after the parse, the rest after the future-`ts` check):
+     before admission, before any forge read and before any hashing. Each failure is exit 5 naming
+     the field, on every register kind (private or not) and every record shape (verify-wake-v1 or
+     legacy-shape):
+     - no JSON object anywhere in the input repeats a key or carries two keys that differ only in
+       letter case (the facts' step 1, the first half of the TARGET-TIE rule; it runs right after
+       the parse, ahead of the future-`ts` check); the refusal names the key. This also stops a
+       `prs` or `dispatch_ref` key in another letter case from being read by the struct decode and
+       then missed by Task 4's redaction;
      - each `prs` entry's `repo` is `<owner>/<name>`: exactly one `/`, each part 1–100 bytes from
        `[A-Za-z0-9._-]` and neither part `.` or `..`;
      - its `number` is a JSON integer >= 1 (zero, negative, fractional or a string is refused);
@@ -249,7 +271,9 @@ facts:
    applies to EVERY record, whatever its `wake_schema` or `outcome` — a legacy-shape `verified`
    record included. It is not part of the verify-wake-v1 validation branch: it must run for a record
    that never reaches `validateReceipt`. It runs at step 4 of the facts' step order, so `RecordName`
-   and every later step see only its output. Redaction is an ALLOW-LIST on live visibility, never a
+   and every later step see only its output, and that output is held to step 5's TARGET-TIE check
+   (`brief` and `ts` unchanged from what steps 1–2 checked). Redaction is an ALLOW-LIST on live
+   visibility, never a
    `== "public"` test. Each read is `Forge.RepoVisibility`
    on the repo in question, normalised by lowercasing and trimming; ANY read error is exit 6.
    - The register is `private` only when its normalised live visibility is exactly `private`. On
@@ -295,7 +319,7 @@ facts:
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go test ./cmd/deskevidence/... ./internal/deskkit/...` | exit 0 | check:ci |
 | 2 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecord_FailWithoutReceipt$' -v > "${TMPDIR:-/tmp}/b27-r2.out" 2>&1 && grep -F -e '--- PASS: TestOutcomeRecord_FailWithoutReceipt/legacy_verify_fail_names_wake_schema' -e '--- PASS: TestOutcomeRecord_FailWithoutReceipt/missing_blocker_kind_names_blocker_kind' -e '--- PASS: TestOutcomeRecord_FailWithoutReceipt/missing_receipt_id_names_receipt_id' "${TMPDIR:-/tmp}/b27-r2.out" > "${TMPDIR:-/tmp}/b27-r2.hits" && test "$(wc -l < "${TMPDIR:-/tmp}/b27-r2.hits")" -eq 3` | exit 0 (each subtest asserts the refusal message names that first failing field) | check:ci +mutation |
-| 3 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecord_PRsDereference$' -v > "${TMPDIR:-/tmp}/b27-r3.out" 2>&1 && test "$(grep -c -F -e '--- PASS: TestOutcomeRecord_PRsDereference/not_found_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/unmerged_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/merge_sha_mismatch_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/same_repo_not_ancestor_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/cross_repo_checked_against_default_tip' -e '--- PASS: TestOutcomeRecord_PRsDereference/forge_error_exit_6' -e '--- PASS: TestOutcomeRecord_PRsDereference/empty_merge_commit_exit_6' -e '--- PASS: TestOutcomeRecord_PRsDereference/gitlab_uses_base_ref_and_merged_at' -e '--- PASS: TestOutcomeRecord_PRsDereference/gitlab_wrong_base_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/gitlab_compare_error_not_downgraded' -e '--- PASS: TestOutcomeRecord_PRsDereference/legacy_verified_with_prs_dereferenced' -e '--- PASS: TestOutcomeRecord_PRsDereference/input_withheld_entry_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/malformed_entry_no_read' -e '--- PASS: TestOutcomeRecord_PRsDereference/not_admitted_no_read' -e '--- PASS: TestOutcomeRecord_PRsDereference/valid_accepted' "${TMPDIR:-/tmp}/b27-r3.out")" -eq 15` | exit 0 (the command asserts the count 15) (`malformed_entry_no_read` feeds a `repo` that is not `<owner>/<name>`, a `number` of 0 and of -1, and a short and an uppercase `merge_sha`, on a private and a public register, and expects exit 5 naming the field with the fake forge recording ZERO reads; `not_admitted_no_read` feeds a well-formed record whose admission fails and expects the admission refusal with no `GetPullRequest`, `CompareRefs`, `RepoDefaultBranch`, `blocker_ref` or `RepoVisibility` read; `gitlab_*` run against a GitLab-backed fake whose `CompareRefs` returns could-not-check; `gitlab_compare_error_not_downgraded` shows a GitHub-kind forge's `CompareRefs` error stays exit 6 rather than falling to the GitLab rule; `input_withheld_entry_refused` feeds `prs:[{"withheld":"<64 hex>"}]` with no forge read, once on a verify-wake-v1 record and once on a legacy-shape `verified` record, and expects exit 5 both times) | check:ci +mutation |
+| 3 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecord_PRsDereference$' -v > "${TMPDIR:-/tmp}/b27-r3.out" 2>&1 && test "$(grep -c -F -e '--- PASS: TestOutcomeRecord_PRsDereference/not_found_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/unmerged_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/merge_sha_mismatch_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/same_repo_not_ancestor_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/cross_repo_checked_against_default_tip' -e '--- PASS: TestOutcomeRecord_PRsDereference/forge_error_exit_6' -e '--- PASS: TestOutcomeRecord_PRsDereference/empty_merge_commit_exit_6' -e '--- PASS: TestOutcomeRecord_PRsDereference/gitlab_uses_base_ref_and_merged_at' -e '--- PASS: TestOutcomeRecord_PRsDereference/gitlab_wrong_base_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/gitlab_compare_error_not_downgraded' -e '--- PASS: TestOutcomeRecord_PRsDereference/legacy_verified_with_prs_dereferenced' -e '--- PASS: TestOutcomeRecord_PRsDereference/input_withheld_entry_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/malformed_entry_no_read' -e '--- PASS: TestOutcomeRecord_PRsDereference/not_admitted_no_read' -e '--- PASS: TestOutcomeRecord_PRsDereference/case_variant_key_no_read' -e '--- PASS: TestOutcomeRecord_PRsDereference/rewritten_target_refused' -e '--- PASS: TestOutcomeRecord_PRsDereference/valid_accepted' "${TMPDIR:-/tmp}/b27-r3.out")" -eq 17` | exit 0 (the command asserts the count 17) (`malformed_entry_no_read` feeds a `repo` that is not `<owner>/<name>`, a `number` of 0 and of -1, and a short and an uppercase `merge_sha`, on a private and a public register, and expects exit 5 naming the field with the fake forge recording ZERO reads; `not_admitted_no_read` feeds a well-formed record whose admission fails and expects the admission refusal with no `GetPullRequest`, `CompareRefs`, `RepoDefaultBranch`, `blocker_ref` or `RepoVisibility` read; `case_variant_key_no_read` feeds records whose two `brief` keys differ only in letter case and name two different briefs (one of them the brief the run is admitted for), a record whose `ts` key repeats with a second, future value, and records carrying `prs` beside `PRS` and `dispatch_ref` beside `Dispatch_Ref`, on a private and a public register and on a verify-wake-v1 and a legacy-shape record, and expects exit 5 naming the key, with ZERO forge reads (admission's included) and no record written; `rewritten_target_refused` bypasses step 1 by substituting the step-4 rewrite (the test sets the redaction's function variable) with one that changes the admitted record's `brief` to another brief's key, and, as a second case, one that changes only its `ts`, and expects exit 5 from step 5's TARGET-TIE check with no record written and no change landed (both subtests run their cases inside the one subtest body, with no nested `t.Run`, so the count stays exact); `gitlab_*` run against a GitLab-backed fake whose `CompareRefs` returns could-not-check; `gitlab_compare_error_not_downgraded` shows a GitHub-kind forge's `CompareRefs` error stays exit 6 rather than falling to the GitLab rule; `input_withheld_entry_refused` feeds `prs:[{"withheld":"<64 hex>"}]` with no forge read, once on a verify-wake-v1 record and once on a legacy-shape `verified` record, and expects exit 5 both times) | check:ci +mutation |
 | 4 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecord_VerifiedRules$' -v > "${TMPDIR:-/tmp}/b27-r4.out" 2>&1 && test "$(grep -c -F -e '--- PASS: TestOutcomeRecord_VerifiedRules/legacy_verified_no_new_requirement' -e '--- PASS: TestOutcomeRecord_VerifiedRules/wake_v1_verified_without_prs_refused' -e '--- PASS: TestOutcomeRecord_VerifiedRules/wake_v1_verified_complete_accepted' "${TMPDIR:-/tmp}/b27-r4.out")" -eq 3` | exit 0 (the command asserts the count 3; `legacy_verified_no_new_requirement` asserts that a legacy-shape `verified` record with no `prs` and no `dispatch_ref` still lands without a receipt, and says nothing about its bytes passing through unchanged) | check:ci +neighbour |
 | 5 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecord_NonPrivateRedaction$' -v > "${TMPDIR:-/tmp}/b27-r5.out" 2>&1 && test "$(grep -c -F -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/private_pr_on_public_register_withheld' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/internal_register_redacts' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/unrecognised_visibility_spelling_redacts' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/padded_uppercase_private_register_keeps_clear' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/entry_repo_internal_withheld' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/register_visibility_read_error_exit_6' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/entry_visibility_read_error_exit_6' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/dispatch_ref_dropped_and_not_hashed' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/private_keeps_clear_prs' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/private_dispatch_digest_only' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/withheld_uses_canonical_repo' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/written_bytes_contain_no_clear_private_repo' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/land_as_change_bytes_redacted' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/redacted_before_outbound_scan' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/legacy_verified_non_public_pr_withheld' -e '--- PASS: TestOutcomeRecord_NonPrivateRedaction/legacy_verified_dispatch_ref_dropped' "${TMPDIR:-/tmp}/b27-r5.out")" -eq 16` | exit 0 (the command asserts the count 16). `internal_register_redacts` is the allow-list case (an `internal` register must redact exactly as a `public` one); `dispatch_ref_dropped_and_not_hashed` computes the unkeyed `sha256` of the fixture's clear `dispatch_ref` (a ref in the nonce form, e.g. `assay--x--1@20261006T141502Z.3fa9c01b7d2e`) and asserts neither it nor the clear value appears in the written bytes, and that no `dispatch_ref_sha256` key is written; `private_dispatch_digest_only` runs on a private register once with a verify-wake-v1 record and once with a legacy-shape `verified` record, and asserts the committed bytes hold `dispatch_ref_sha256` equal to the sha256 the test computes from the fixture's clear ref, and do NOT hold the clear value; `private_keeps_clear_prs` asserts a private register keeps `prs` entries in clear; `withheld_uses_canonical_repo` feeds an entry whose `repo` differs only in case from the name in the fake forge's `PullRequest.URL` and asserts the `withheld` digest is the one computed from the forge's spelling; `written_bytes_contain_no_clear_private_repo` greps the committed bytes; `land_as_change_bytes_redacted` does the same on the GitLab land-as-change path; `redacted_before_outbound_scan` uses an operator token map naming the private repo and expects the record rewritten and landed, not refused; the two `legacy_verified_*` subtests use a legacy-shape `verified` fixture (no `wake_schema`) on a non-private register — one carries a non-public `prs` entry, the other carries `dispatch_ref` and no `prs` — and each asserts the committed bytes hold neither the clear value nor, for `dispatch_ref`, its unkeyed `sha256` | check:ci +mutation |
 | 6 | `cd statusgen && go test . -run '^TestVerifyOutcomes_AdditiveKeys$' -v > "${TMPDIR:-/tmp}/b27-sg.out" 2>&1 && grep -F -e '--- PASS: TestVerifyOutcomes_AdditiveKeys' "${TMPDIR:-/tmp}/b27-sg.out"` | exit 0; the test reads a record carrying every new key and derives the same latest outcome as without them | check:ci +flow |
@@ -315,6 +339,8 @@ Pre-mortem → detection map:
 | A malformed `dispatch_ref` (no nonce, whitespace, an embedded `@`, an oversize prefix) is hashed or dropped instead of refused, or is checked on one register kind or record shape only | row 7 `dispatch_ref_bad_shape_refused` |
 | A malformed `repo`, a non-positive `number` or a short `merge_sha` reaches an authenticated forge read path | row 3 `malformed_entry_no_read` |
 | A record from a caller that is not admitted still drives forge reads, because the reorder put record-driven reads ahead of admission | row 3 `not_admitted_no_read` |
+| The record named and written is not the record admitted: a key repeated or in two letter cases resolves to one `brief` or `ts` as submitted and another after the rewrite, so an admitted run lands under another brief, or with a `ts` the future-`ts` check would have refused | row 3 `case_variant_key_no_read` (refused at step 1, before admission) and `rewritten_target_refused` (step 5's TARGET-TIE check with step 1 bypassed) |
+| A `prs` or `dispatch_ref` key in another letter case is read by the struct decode but missed by the exact-key redaction, so its clear value is committed | row 3 `case_variant_key_no_read` |
 | A case variant of a repository name gives a different `withheld` digest and breaks the operator's join | row 5 `withheld_uses_canonical_repo` |
 | Writer accepts any `prs` value without checking the forge (presence-only), including a writer-only `{withheld}` form supplied as input | row 3 (one subtest per refusal) and `input_withheld_entry_refused` |
 | Cross-repo entries are always refused by a same-repo ancestry rule | row 3 `cross_repo_checked_against_default_tip` |
