@@ -5,4 +5,6 @@
   the notice that answer asks for: `--scan-issues` prints one `NOTICE` for each open issue
   whose labels and title derive `gate: human` while its placeholder reads `gate: model`,
   writes nothing and leaves the exit code alone. Raising the gate stays a hand edit, and the
-  first run of the notice lists the existing placeholders to look at.
+  first run of the notice lists the existing placeholders to look at. The desk's scan drain
+  discards the scan's output, so the notice is read by running the scan directly (a
+  `--dry-run` scan prints it and writes nothing); relaying it is not part of the brief.

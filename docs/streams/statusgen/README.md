@@ -53,8 +53,9 @@ landed `--roadmap` renderer over a computed window — independent, no new criti
 statusgen/14 (the vacuous `go test -run` Verify-row rule, issue #1581 part 5) adds one
 advisory rule to the existing Verify-row lint — independent, no new critical-path edge.
 statusgen/17 (`risk:high` gates a placeholder at first write) → statusgen/18 (the scan's notice
-for a placeholder whose gate the issue has outgrown): 18 reports on the label 17 adds and
-extends the skill sentence 17 writes, so 17 leads 18.
+for a placeholder whose gate the issue has outgrown): 18 reports on every label and title word
+that derives `human`, the label 17 adds among them, and extends the skill sentence 17 writes,
+so 17 leads 18.
 Every other brief is independent and self-contained.
 
 ## Dependency waves

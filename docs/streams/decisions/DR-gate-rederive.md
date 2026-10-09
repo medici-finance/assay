@@ -23,8 +23,16 @@ the ruling gave none.
 
 **The issue.** #2405, "scan-issues: is a placeholder gate ever re-derived after first write,
 and are existing `risk:high` placeholders back-filled?", was opened by the desk App on
-2026-10-08T17:40:39Z and its body has not been edited. It was still open when this record was
-written. Its body carries no `decision-gate` marker; see "What could not be checked" below.
+2026-10-08T17:40:39Z. It was still open when this record was written and when it was last read
+for it, on 2026-10-09.
+
+Its body has been edited once, at 2026-10-09T03:02:32Z, about four hours after the answer
+below, under the maintainer's own login (account type User). The forge's edit history holds
+two revisions. The second differs from the first by three appended lines: a blank line, the
+marker `<!-- decision-gate: DR-gate-rederive -->` and a blank line. The two questions, the
+three `option:` lines, the `default:` line and the constraint from review are byte-identical
+in both revisions, so every quotation below reads the same in either. The marker makes #2405
+this record's decision issue; see "The ruling link and the register's check" below.
 
 **What was asked.** The body puts two questions:
 
@@ -98,8 +106,8 @@ as follows.
    writes no gate at all.
 
 What remains a reading is small: that a one-letter reply names the option carrying that letter
-in the issue body, in full and as written. The body had not been edited when this record was
-written.
+in the issue body, in full and as written. The body had not been edited when the answer was
+given. Its one later edit, described above, appended the marker and changed no option text.
 
 If any part of this reading is wrong, the remedy is to decline the pull request that adds this
 record. Nothing here lands until the maintainer merges it.
@@ -116,7 +124,9 @@ words, so they can be seen and declined with the rest. None of them is part of t
 - "Stores `gate: model`" is read as the gate the placeholder parses to. A file with no
   `gate:` line whose stored labels read as `model` is reported.
 - A placeholder that is retired when the scan reads it is not reported in that scan, even
-  when the same scan reactivates it. The next scan reports it.
+  when the same scan reactivates it. The next scan reports it. A `--dry-run` scan writes
+  nothing and so reactivates nothing: it reports such an item only once a writing scan's
+  reactivation is in the tree it reads.
 - The notice names the repository, the issue number and the placeholder file. It prints
   nothing an issue author wrote.
 
@@ -129,16 +139,26 @@ before it, an item that keeps `gate: model` with no report. A reader who ranks b
 a missed human gate, not by what the change itself can break, would say `major`. The
 maintainer can change the level by declining this record or asking for the edit.
 
-## What could not be checked
+## The ruling link and the register's check
 
 The register's online check (`README.md`, "How the approval is checked") passes a `ruling:`
-link only when the linked issue is the record's decision issue: its body carries a
-`decision-gate` marker for the record, or for a brief whose `design:` cites it. #2405's body
-carries neither. As the issue stands, that check would be expected to refuse this link as
-`unrelated-issue`. It was not run for this record. Every other condition the check names was
-read by hand and holds: the comment exists, is on #2405 in this repository, was never edited,
-was written by a User account and names this record's id. Whether to add the marker to the
-issue body is not this record's call.
+link only when every one of its conditions holds. Each was read by hand against the forge on
+2026-10-09 and holds:
+
+- the link is in the required form and points into this repository;
+- the comment exists and sits on #2405;
+- the comment was never edited (its last-updated time equals its creation time);
+- its author is a User account, not a bot;
+- its author's login maps, through the repository's human-login map, to a human. This
+  record's `decided-by:` is the placeholder, so no particular name has to match;
+- the comment's own text names this record's id, `DR-gate-rederive`, as a whole token;
+- #2405 is this record's decision issue: its body carries
+  `<!-- decision-gate: DR-gate-rederive -->`. The maintainer added that marker in the one
+  edit described under "The recorded ruling". Before that edit the body carried no marker,
+  and the check would have refused this link as `unrelated-issue`.
+
+The check is therefore expected to pass. The online check itself (`statusgen --corroborate`)
+was not run for this record: a pass is expected, not observed.
 
 ## What this record does NOT decide
 
