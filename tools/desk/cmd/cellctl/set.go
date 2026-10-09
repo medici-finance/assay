@@ -19,7 +19,7 @@ import (
 var cellEnvKnownKeys = strings.Fields(`CELL CELL_KIND CELL_CONTAINER_CONFIG CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG
 FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP
 GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default CURSOR_MODEL_default
-CELL_CADENCE CELL_TICK_BUDGET CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION CELL_COMMS_CONFIG
+CELL_MODEL_TTL_DAYS CELL_CADENCE CELL_TICK_BUDGET CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION CELL_COMMS_CONFIG
 TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE
 TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX
 TIER_MODEL_TOP_CURSOR TIER_MODEL_MID_CURSOR TIER_MODEL_FAST_CURSOR`)
@@ -197,6 +197,13 @@ func splitKV(kv string) (string, string, bool) {
 // `desk`/`up --set` alike. Pass 1 validates every pair and touches nothing on a refusal; pass 2
 // writes exactly one backup, then applies each pair in order.
 func applyEnvKVs(e *Env, envfile string, force bool, kvs []string) {
+	applyEnvKVsKind(e, envfile, force, kvs, pinKindDefault)
+}
+
+// applyEnvKVsKind is applyEnvKVs with the provenance a model pin in kvs is recorded under: a
+// pin set through `set` is a DEFAULT (the cheap-default reset may repin it once it ages past the
+// TTL) unless the caller declares it EXPLICIT (`set --explicit`, for a pin a brief or ruling set).
+func applyEnvKVsKind(e *Env, envfile string, force bool, kvs []string, pinKind string) {
 	if len(kvs) == 0 {
 		die("set: at least one KEY=VALUE is required (cellctl set <cell> KEY=VALUE [...])")
 	}
@@ -228,6 +235,7 @@ func applyEnvKVs(e *Env, envfile string, force bool, kvs []string) {
 		key, value, _ := splitKV(kv)
 		setEnvKey(envfile, key, value, force)
 	}
+	recordPins(filepath.Dir(envfile), kvs, pinKind, time.Now())
 }
 
 func envWithFileForCursor(envfile string, kvs []string) *Env {
@@ -238,6 +246,18 @@ func envWithFileForCursor(envfile string, kvs []string) *Env {
 // rewrite is line-for-line: an existing `KEY=...` line (not a `#`-commented one) is replaced in
 // place so comments and ordering are untouched; a key with no active line is appended.
 func setEnvKey(envfile, key, value string, force bool) {
+	before := writeEnvKey(envfile, key, value, force)
+	shown := before
+	if shown == "" {
+		shown = "<unset>"
+	}
+	fmt.Printf("[set] %s: %s -> %s\n", key, shown, value)
+}
+
+// writeEnvKey is setEnvKey's write, silent, returning the value the key held before ("" when it
+// had no active line). The boot-time model reset writes through it so that its one notice line
+// is the only thing a launch prints.
+func writeEnvKey(envfile, key, value string, force bool) string {
 	validateEnvKey(key, value, force)
 	raw, err := os.ReadFile(envfile)
 	if err != nil {
@@ -283,11 +303,7 @@ func setEnvKey(envfile, key, value string, force bool) {
 	if err := os.WriteFile(envfile, []byte(out), mode); err != nil {
 		die("set: cannot write %s: %v", envfile, err)
 	}
-	shown := before
-	if shown == "" {
-		shown = "<unset>"
-	}
-	fmt.Printf("[set] %s: %s -> %s\n", key, shown, value)
+	return before
 }
 
 // activeHarnessOf is the LAST `CELL_HARNESS=` line in a cell.env, or `claude` when the file
@@ -298,7 +314,7 @@ func activeHarnessOf(envfile string) string {
 	return envWithFileForCursor(envfile, nil).GetOr("CELL_HARNESS", "claude")
 }
 
-const setUsage = "cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]  |  cellctl set <cell> <role> [--harness claude|codex|cursor] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
+const setUsage = "cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force] [--explicit]  |  cellctl set <cell> <role> [--harness claude|codex|cursor] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
 
 func cmdSet(cell string, args []string) {
 	e := newEnvFromProcess()
@@ -309,13 +325,15 @@ func cmdSet(cell string, args []string) {
 	}
 	envfile := filepath.Join(abs, "cell.env")
 
-	force := false
+	force, explicit := false, false
 	role, harness, model, kind, cockpit, provider := "", "", "", "", "", ""
 	var kvs, sugar []string
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; a {
 		case "--force":
 			force = true
+		case "--explicit":
+			explicit = true
 		case "--harness":
 			harness = needFlagValue(args, &i, "--harness needs a value ("+joinPipe(harnessValues)+")")
 		case "--model":
@@ -389,5 +407,9 @@ func cmdSet(cell string, args []string) {
 		}
 	}
 	kvs = append(kvs, sugar...)
-	applyEnvKVs(e, envfile, force, kvs)
+	pinKind := pinKindDefault
+	if explicit {
+		pinKind = pinKindExplicit
+	}
+	applyEnvKVsKind(e, envfile, force, kvs, pinKind)
 }

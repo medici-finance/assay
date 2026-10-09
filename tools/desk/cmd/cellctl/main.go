@@ -148,6 +148,8 @@ func run() (code int) {
 		cmdDown(needCell(rest), rest[1:])
 	case "new":
 		cmdNew(rest)
+	case "models":
+		cmdModels(rest)
 	case "set":
 		cmdSet(needCell(rest), rest[1:])
 	case "show":

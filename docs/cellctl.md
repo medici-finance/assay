@@ -993,6 +993,29 @@ cellctl show <cell>        [--kind <k>] [--cockpit <c>] [--harness <h>] [--provi
   `--kind` the cell is not provisioned for refuses just as `desk` would. Nothing is launched or
   written.
 
+### Cheap-default reset
+
+A pin that nobody revisits drifts to the most expensive setting and stays there. The reset is the
+periodic pull-back: a **DEFAULT** model pin older than the TTL is repinned to the harness's mid-tier
+model (`TIER_MODEL_MID_<HARNESS>`), and people move back up only when they need to.
+
+- **Pin record.** Every model pin written through `cellctl set` (or `--set`) is recorded in
+  `<cell>/model-pins.json` with its value, when it was set and who owns it. A plain `set` records a
+  **DEFAULT**; `cellctl set <cell> <role> --model <m> --explicit` records an **EXPLICIT** pin, for a
+  choice a brief or ruling made. An explicit record is sticky: a later plain `set` updates its value
+  but never downgrades it.
+- **What moves.** Only a DEFAULT pin whose age is past the TTL. EXPLICIT pins, pins with no record
+  (provenance unknown, so they read as explicit), and the `the-desk` pin (the coordinator stays at the
+  top tier) are never touched. A DEFAULT pin whose `cell.env` value no longer matches its record was
+  hand-edited; its clock restarts rather than repinning on the stale age.
+- **When.** At every `cellctl desk` boot, and on demand with `cellctl models reset <cell>
+  [--model-ttl <Nd>]`. Each repin prints one line, `[model-reset] <role>: <old> -> <new> (...)`; a
+  boot with nothing to repin prints nothing. Under `DRY_RUN=1` the plan shows the repin and writes
+  nothing.
+- **TTL.** `CELL_MODEL_TTL_DAYS` in `cell.env`, default `7` (weekly); `0` turns the reset off for the
+  cell. `--model-ttl` overrides it for one `models reset` call and takes `7d`, a bare number of days,
+  or a Go duration.
+
 ---
 
 ## Harnesses
