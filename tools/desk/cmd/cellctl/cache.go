@@ -61,7 +61,7 @@ func cmdCache(cell string, args []string) {
 		die("Go cache policy: %v", err)
 	}
 	if p == nil {
-		die("cache requires CELL_GO_CACHE=on in cell.env")
+		die("cache requires CELL_GO_CACHE=on in cell.env, or in the cells root's %s (%s)", cellDefaultsFile, c.goCacheSupply())
 	}
 	if len(args) == 2 && args[0] == "recover" && args[1] == "--confirm-stopped" {
 		if err = cellcache.Recover(*p, true); err != nil {

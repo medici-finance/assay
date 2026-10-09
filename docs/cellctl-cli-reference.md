@@ -42,6 +42,14 @@ check, run or recover a cell's interim comms service
   --confirm-stopped                   recover only: confirm the prior gateway, drain and every owned child have stopped
 ```
 
+## `cellctl defaults init|print`
+
+print or create the machine-wide cell defaults file
+
+```
+  (no flags)
+```
+
 ## `cellctl desk <cell> <role> [CLAUDE_CONFIG_DIR]`
 
 boot one role window

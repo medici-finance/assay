@@ -110,7 +110,7 @@ func rawVerb(args []string) bool {
 		return false
 	}
 	switch a[0] {
-	case "model-policy", "cache-run", "container-run":
+	case "model-policy", "cache-run", "container-run", "defaults":
 		return true
 	}
 	return false
@@ -119,7 +119,7 @@ func rawVerb(args []string) bool {
 // runTree executes one invocation against a fresh tree and returns its exit code. It is the
 // only place that turns the exit panic into a code.
 func runTree(args []string) (code int) {
-	rawSelector, rawSelected, verbWords = "", false, nil
+	rawSelector, rawSelected, verbWords, cellsRootSelected = "", false, nil, ""
 	hook := hookVerb(args)
 	defer func() {
 		if r := recover(); r != nil {
@@ -198,6 +198,7 @@ func selectCellsRoot(path string) {
 	if err := os.Setenv("CELLS_ROOT", path); err != nil {
 		die("cannot select cell registry: %v", err)
 	}
+	cellsRootSelected = path
 }
 
 // selectorSpan is how many leading tokens of args spell the --cells-root selector: 2 for the
@@ -366,7 +367,7 @@ func buildRoot() *cobra.Command {
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
 		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(),
-		providersCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(),
+		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(),
 	)
 	return root
 }
@@ -758,7 +759,7 @@ func cacheCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cache <cell> status|clean|recover",
 		Short: "report or clean a cell's managed Go caches",
-		Long: "Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env; macOS/Linux).\n\n" +
+		Long: "Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env or defaults.env; macOS/Linux).\n\n" +
 			"  cellctl cache <cell> status    dry-run JSON; no cleanup\n" +
 			"  cellctl cache <cell> clean     inactive caches, only under pressure\n" +
 			"  cellctl cache <cell> recover --confirm-stopped\n\n" +
@@ -866,6 +867,34 @@ func scratchHelp(c *cobra.Command, a []string) {
 	c.SetOut(c.ErrOrStderr())
 	c.Parent().HelpFunc()(c, a)
 	exitWith(2)
+}
+
+// defaultsCmd is the machine-wide defaults file's verb. Its words are read as the pre-migration
+// parser read them, by exact comparison (cmdDefaults): `init` or `print` as the one word, a sole
+// -h/--help for its help, anything else the usage refusal. So the tree parses no flags for it, and
+// a leading --cells-root is applied by rawArgs, as for the internal entrypoints.
+func defaultsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "defaults init|print",
+		Short: "print or create the machine-wide cell defaults file",
+		Long: "Machine-wide cell defaults (optional): $CELLS_ROOT/" + cellDefaultsFile + ", in cell.env's grammar.\n" +
+			"Order: compiled default < process environment < " + cellDefaultsFile + " < the cell's cell.env. It may not set a\n" +
+			"key that names or scopes one cell; `check` says what it read. `new` writes it once, every key commented\n" +
+			"out, when there is none; nothing rewrites it. See docs/cellctl.md.\n\n" +
+			"  print   the defaults template on stdout, every configurable key with its compiled default\n" +
+			"  init    create $CELLS_ROOT/" + cellDefaultsFile + " from it; refuses when the file is already there",
+		Args:               cobra.ArbitraryArgs,
+		DisableFlagParsing: true,
+	}
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		words := rawArgs(args)
+		if len(words) == 1 && (words[0] == "-h" || words[0] == "--help") {
+			return c.Help()
+		}
+		cmdDefaults(words)
+		return nil
+	}
+	return cmd
 }
 
 // The four internal entrypoints below take an opaque argv (a hook's positional arguments, a

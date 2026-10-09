@@ -72,6 +72,12 @@ func echoEffectiveConfig() { deskkit.EchoEffectiveConfig(os.Stderr) }
 // run parses and executes os.Args[1:] through the Cobra tree and returns the exit code.
 func run() int { return runTree(os.Args[1:]) }
 
+// cellsRootSelected is the cells root this invocation was given with --cells-root, or empty. It
+// is kept apart from CELLS_ROOT, which the same flag sets, for the one caller that must tell a
+// root named on its own command line from one inherited through the environment (cmdModelPolicy).
+// selectCellsRoot sets it; runTree clears it for every invocation.
+var cellsRootSelected string
+
 // needCell mirrors the oracle's `"${2:?cell}"` — bash's own message on an unset parameter is
 // `<script>: line N: 2: cell`, which is not a contract anything reads; what IS the contract is
 // that a missing cell name refuses with a non-zero exit and says the word `cell`.

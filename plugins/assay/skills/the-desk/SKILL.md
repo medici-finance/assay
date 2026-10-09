@@ -280,7 +280,8 @@ not own.
   `capability:dispatch-worker`), including any answer needing more than ~2 minutes of tool work, so
   you stay responsive. human:<name> should never have to ask you to fan out.
 - Dispatch through `deskdispatch`: it emits the common clauses plus the class kit verbatim
-  (`tools/desk/cmd/deskdispatch/references/`). Each clause is the wording of a rule that already
+  (`tools/desk/cmd/deskdispatch/references/`); the review kit is cut for the lane the claim key
+  names, each clause it carries still verbatim. Each clause is the wording of a rule that already
   failed in the field — quote it, never paraphrase.
 - **Neutral-wording rule (critical, R3):** never name the security frame when dispatching, not even
   to exclude it — "NOT a security review, no attacker/exploit framing" *injects* the trigger tokens

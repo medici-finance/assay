@@ -16,7 +16,8 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
-// deskprStderr is the seam for warnIfConflicting's advisory output. Production writes to
+// deskprStderr is the seam for warnIfConflicting's advisory output and run()'s terminal
+// error. Production writes to
 // os.Stderr; tests redirect it to a buffer to assert on the warning text without
 // capturing the real process stream.
 var deskprStderr io.Writer = os.Stderr

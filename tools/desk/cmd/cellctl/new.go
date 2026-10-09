@@ -16,6 +16,13 @@ import (
 // parity harness diffs the whole tree each implementation writes — paths, mode bits and file
 // contents — so a stray space in a comment line here is a divergence, not a nit.
 func cmdNew(cell string, v *cli.Values) {
+	scaffoldCell(cell, v)
+	// Only after a scaffold that succeeded: a refused `new` returns through die and writes
+	// nothing, the machine-wide defaults file included.
+	seedCellDefaults()
+}
+
+func scaffoldCell(cell string, v *cli.Values) {
 	e := newEnvFromProcess()
 
 	// DESK_APP_ID is the default because `cellctl deskd` reads the CELL home's apps.env, and
@@ -37,6 +44,18 @@ func cmdNew(cell string, v *cli.Values) {
 	tokenStore = cellEnvPathFor(runtime.GOOS, tokenStore)
 
 	root := cellsRoot(e)
+	// A cell lives under the cells root: a name that is anything else is refused here, before
+	// anything is created, exactly as the loader would refuse to load it (cellNameLocal). A
+	// missing name is left to the usage refusal below.
+	if cell != "" && !cellNameLocal(cell) {
+		die("new: "+cellNameNotLocal, cell, root)
+	}
+	// A cell directory at the defaults file's own path — or a nested cell below it — would make
+	// every cell on the machine refuse to load (the file would be a directory), so the name is
+	// not available to a cell.
+	if first, _, _ := strings.Cut(filepath.ToSlash(cell), "/"); strings.EqualFold(first, cellDefaultsFile) {
+		die("new: '%s' is not available as a cell name — %s is the machine-wide cell defaults file", cell, filepath.Join(root, cellDefaultsFile))
+	}
 	if containerConfig != "" && kind != "container" {
 		die("--container-config is only valid for --kind container")
 	}
