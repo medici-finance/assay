@@ -137,6 +137,9 @@ func rawArgs(args []string) []string {
 
 const noEcho = "cellctl/no-roster-echo"
 
+// leadingArgsKey annotates a verb with the number of fixed positionals it reads before any flag.
+const leadingArgsKey = "cellctl/leading-args"
+
 // bStr, bBool and friends keep the declarations below to one line each.
 func bStr(key, usage string, env ...string) cli.Binding {
 	return cli.Binding{Key: key, Kind: cli.String, Flag: key, Usage: usage, Env: env}

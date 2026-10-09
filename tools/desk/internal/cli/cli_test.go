@@ -556,6 +556,40 @@ func TestCLIOpaqueArgv(t *testing.T) {
 	}
 }
 
+// TestCLIOpaqueArgvVerbResolvedLikeTheParser: a flag the walk does not know at the level it sits
+// (here a flag of the opaque command, written before that command's name) makes the parser skip
+// the next word as its value, while the walk would count that word as a positional and never
+// reach the opaque command, so no "--" would be inserted and the command's own words would be
+// parsed as the tool's flags. Wherever the walk and the parser disagree on the command, Run
+// refuses with the usage exit and no handler runs.
+func TestCLIOpaqueArgvVerbResolvedLikeTheParser(t *testing.T) {
+	ran := false
+	build := func() *cobra.Command {
+		root := NewRoot("tool", "fixture")
+		root.PersistentFlags().String("root", "", "a persistent selector")
+		grp := &cobra.Command{Use: "grp", Short: "a group"}
+		run := &cobra.Command{Use: "run <a> [-- command [args]]", Args: cobra.ArbitraryArgs,
+			RunE: func(*cobra.Command, []string) error { ran = true; return nil }}
+		run.Flags().String("source", "", "a value flag")
+		OpaqueArgv(run, 1)
+		grp.AddCommand(run)
+		root.AddCommand(grp)
+		return root
+	}
+	for _, args := range [][]string{
+		{"--source", "s", "grp", "run", "x", "child", "--source", "t"},
+		{"grp", "--source", "s", "run", "x", "child", "--help"},
+		{"--root", "/r", "grp", "--source", "s", "run", "x", "child", "--root", "/q"},
+	} {
+		ran = false
+		var errb strings.Builder
+		code := Run(build, args, Options{IO: IO{Err: &errb}, GoFlagCompat: true, UsageExit: 3})
+		if code != 3 || ran {
+			t.Errorf("%v: exit %d, handler ran %v; want the usage exit 3 and no handler\n%s", args, code, ran, errb.String())
+		}
+	}
+}
+
 // TestCLIRefusesCompletionRequests pins that the hidden completion entrypoints Cobra adds on its
 // own are refused like any unknown word: no handler of the tool runs (the shell-completion
 // request would otherwise execute a handler's validation code, which may print or read state),
