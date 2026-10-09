@@ -111,6 +111,11 @@ func prepareReviewRound(o dispatchOpts, plan dispatchPlan, repo string) (reviewR
 		unknown = "could not read the change's reviews"
 	default:
 		verdicts = laneVerdictsOf(reviews, reviewer, rr.lane)
+		// A verdict whose own record names another head than the forge records for it: none
+		// of the lane's heads is relied on, here or in the gate's lane condition below.
+		if why := disputedVerdictHead(verdicts); why != "" {
+			verdicts, unknown = nil, why
+		}
 	}
 
 	holds, notes := reviewGate(fg, fr, o.pr, pr, verdicts)
@@ -196,8 +201,21 @@ func readScopeFacts(fg reviewRoundForge, fr deskkit.ForgeRepo, number int, pr *d
 		}
 		names := fileNames(detail.Files)
 		f.delta = append(f.delta, names...)
-		if len(c.Parents) > 1 {
-			f.merged = append(f.merged, names...)
+		if len(c.Parents) < 2 {
+			continue
+		}
+		// A merge. Its own file list is what it changed against its FIRST parent, so a
+		// conflict resolved to the branch's side is not in it. What each merged-in side
+		// changed is read as the comparison of the first parent with that parent: a conflict
+		// needs both sides to have changed the file, so this names it however it was resolved.
+		f.merged = append(f.merged, names...)
+		for _, side := range c.Parents[1:] {
+			in, err := fg.CompareRefs(fr, c.Parents[0], side)
+			if err != nil || in == nil || len(in.Files) >= forgeComparePageFiles {
+				f.unknown = "what a merge in the interval brought in is not provably complete"
+				return f
+			}
+			f.merged = append(f.merged, fileNames(in.Files)...)
 		}
 	}
 	return f

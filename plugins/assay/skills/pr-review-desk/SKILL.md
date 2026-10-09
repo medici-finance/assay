@@ -358,14 +358,21 @@ as the planner and acts on its rows.
   assignment: the lane's round number, the head of that lane's first review, and
   `Scope: DELTA` or `Scope: FULL PASS` with its reason. A delta round (kit clause 19) covers
   every finding of that lane's previous verdict, each answered resolved or not resolved with
-  evidence; the diff between the previously reviewed head and the new head; and the body
-  check. The scope is a FULL PASS when the lane has no verdict of its own on the PR, its
-  latest verdict is already at this head, the inter-head diff cannot be computed, the delta is
-  large (more than 20 commits, or more than 10 of the PR's own paths), a merge commit in the
-  delta changed a file the PR touches, the PR touches a path it did not touch at the
-  previously reviewed head, or any of that could not be determined. Hand the reviewer the
-  emitted assignment unchanged and never ask for a delta it does not state; a reviewer that
-  finds the stated scope wrong does the full pass and says so.
+  evidence; everything that verdict recorded as could-not-check, not run or incomplete; the
+  diff between the previously reviewed head and the new head; the body check; and the
+  head-level duties, which stand in every round (CI at the head, the merge-time re-check, the
+  undeclared-decision check). The scope is a FULL PASS when the lane has no verdict of its own
+  on the PR, its latest verdict is already at this head, the inter-head diff cannot be
+  computed, the delta is large (more than 20 commits, or more than 10 of the PR's own paths),
+  a merge in the delta changed a file the PR touches or its merged-in side did, whichever way
+  a conflict was resolved, the PR touches a path it did not touch at the previously reviewed
+  head, one of the lane's verdicts names, on a head line of its text or in its typed block, a
+  different head than the forge records for it or carries a typed block that cannot be read,
+  or any of that could not be determined. Hand
+  the reviewer the emitted assignment unchanged and never ask for a delta it does not state; a
+  reviewer that finds the stated scope wrong, or finds that its lane's previous verdict names
+  another head than the assignment gives for it, or calls itself incomplete, does the full
+  pass and says so.
 
   **Pre-dispatch gate — a HELD dispatch is a delay, never a verdict.** The same read refuses
   the dispatch before the claim — exit 5, first line
@@ -583,7 +590,13 @@ and the desk files the arbiter packet above for it. **Safety-relevant exception:
 blocks, with no hand-off, when it is any security-lane fail class, a weakening of a control or
 its assertion, data loss, or exposure of withheld content. A finding on code changed since the
 first review blocks as before. The reviewer states which class each late finding is in and
-why. A round the dispatcher could not determine applies no cap.
+why. "Any security-lane fail class" is any finding the security lane would fail the change on;
+a late finding the reviewer cannot place with confidence blocks; and the cap never changes a
+security verdict: on the security lane a finding that would be a fail is a fail at any round.
+A finding whose evidence did not exist at the first-review head is not a late finding (`main`
+moved under unchanged code, an edited description, a check result at the head, a
+could-not-check gap, an undeclared decision): kit clauses 2, 5, 7, 8 and 15 bind in every
+round. A round the dispatcher could not determine applies no cap.
 
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
 separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard to add:

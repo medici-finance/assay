@@ -300,6 +300,18 @@
       "file": "cmd/deskdispatch/reviewgate.go",
       "old": "return deskkit.Refused(fmt.Sprintf(\"%s — %s#%d at head %s: %s. No reviewer",
       "new": "return deskkit.Disabled(fmt.Sprintf(\"%s — %s#%d at head %s: %s. No reviewer"
+    },
+    {
+      "name": "lane: a verdict whose own record names another head still holds on its ruling state",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "\t\t\tverdicts, unknown = nil, why\n",
+      "new": "\t\t\tunknown = why\n"
+    },
+    {
+      "name": "lane: a verdict's own record of its head is not compared before the gate",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if why := disputedVerdictHead(verdicts); why != \"\" {",
+      "new": "if why := disputedVerdictHead(verdicts); why != \"\" && false {"
     }
   ]
 }

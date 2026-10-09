@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskdispatch -run '^(TestScopeDecision|TestLaneRound|TestLaneVerdicts|TestRoundRead|TestRoundIsPerLane|TestAssignment|TestDispatchedReviewPromptCarriesTheRound|TestNonReviewDispatchHasNoRound|TestSafetyException|TestReviewRoundForgeIsReadOnly|TestMainWiresTheReviewRoundRead|TestFailedGateRead|TestReviewKitObligations)' -count=1 -timeout 120s",
+  "test": "go test ./cmd/deskdispatch -run '^(TestScopeDecision|TestLaneRound|TestLaneVerdicts|TestRoundRead|TestRoundIsPerLane|TestAssignment|TestDispatchedReviewPromptCarriesTheRound|TestNonReviewDispatchHasNoRound|TestSafetyException|TestReviewRoundForgeIsReadOnly|TestMainWiresTheReviewRoundRead|TestFailedGateRead|TestReviewKitObligations|TestReviewRoundReadsNoEnvironment)' -count=1 -timeout 120s",
   "control": {
     "name": "never run the round read",
     "file": "cmd/deskdispatch/dispatch.go",
@@ -176,12 +176,6 @@
       "new": "if err != nil || detail == nil {"
     },
     {
-      "name": "read: a merge commit's files are not collected",
-      "file": "cmd/deskdispatch/reviewroundread.go",
-      "old": "if len(c.Parents) > 1 {",
-      "new": "if len(c.Parents) > 2 {"
-    },
-    {
       "name": "read: a rewritten head's chain is accepted",
       "file": "cmd/deskdispatch/reviewroundread.go",
       "old": "return nil, \"the dispatched head's first-parent chain does not reach the previously reviewed head\"",
@@ -294,6 +288,294 @@
       "file": "cmd/deskdispatch/references/review-prompt.md",
       "old": "A finding on code changed since the first review blocks as before. ",
       "new": ""
+    },
+    {
+      "name": "read: a verdict's own record of its head is not compared with the forge's",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if why := disputedVerdictHead(verdicts); why != \"\" {",
+      "new": "if why := disputedVerdictHead(verdicts); why != \"\" && false {"
+    },
+    {
+      "name": "head: only the lane's latest verdict is compared",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "\t\tif disputed {\n",
+      "new": "\t\tif disputed && v.id == verdicts[len(verdicts)-1].id {\n"
+    },
+    {
+      "name": "head: a head named as reviewed is not compared",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "disputed = disputed || !strings.EqualFold(h, v.head)",
+      "new": "disputed = disputed || !strings.EqualFold(h, h)"
+    },
+    {
+      "name": "head: an agreeing line excuses an earlier one that does not agree",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "disputed = disputed || !strings.EqualFold(h, v.head)",
+      "new": "disputed = !strings.EqualFold(h, v.head)"
+    },
+    {
+      "name": "head: a named head is compared letter case and all",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "disputed = disputed || !strings.EqualFold(h, v.head)",
+      "new": "disputed = disputed || h != v.head"
+    },
+    {
+      "name": "head: a finding's origin head is not compared",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "disputed = disputed || !held[strings.ToLower(h)]",
+      "new": "disputed = disputed || (!held[strings.ToLower(h)] && false)"
+    },
+    {
+      "name": "head: an origin head may be a head the lane reviewed only later",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "\theld := map[string]bool{}\n\tfor _, v := range verdicts {\n",
+      "new": "\theld := map[string]bool{}\n\tfor _, w := range verdicts {\n\t\theld[strings.ToLower(w.head)] = true\n\t}\n\tfor _, v := range verdicts {\n"
+    },
+    {
+      "name": "head: a typed block that cannot be read names nothing",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "\t\tif !readable {\n",
+      "new": "\t\tif !readable && false {\n"
+    },
+    {
+      "name": "head: the head lines of a verdict's text are not read",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "headLabelRe.FindAllStringSubmatch(body, -1)",
+      "new": "headLabelRe.FindAllStringSubmatch(\"\", -1)"
+    },
+    {
+      "name": "head: the opening line's 'at head' is not read",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "headOpeningRe.FindAllStringSubmatch(line, -1)",
+      "new": "headOpeningRe.FindAllStringSubmatch(\"\", -1)"
+    },
+    {
+      "name": "head: 'at head' is read on every line",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "\t\tbreak // the opening line only\n",
+      "new": "\t\tcontinue // the opening line only\n"
+    },
+    {
+      "name": "head: the typed block's evidence head is not read",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "if h := strings.TrimSpace(f.EvidenceHead); isCommitID(h) {",
+      "new": "if h := strings.TrimSpace(f.EvidenceHead); isCommitID(h) && false {"
+    },
+    {
+      "name": "head: the typed block's origin head is not read",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "if h := strings.TrimSpace(f.OriginHead); isCommitID(h) {",
+      "new": "if h := strings.TrimSpace(f.OriginHead); isCommitID(h) && false {"
+    },
+    {
+      "name": "head: 'Head:' is read anywhere in a line",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "|^[ \\\\t>*_-]*head\\\\*{0,2}:)",
+      "new": "|[ \\\\t>*_-]*head\\\\*{0,2}:)"
+    },
+    {
+      "name": "head: an abbreviated id after a head label counts",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "[ \\\\t]*`?((?:[0-9a-f]{64}|[0-9a-f]{40}))\\\\b\")\n\theadOpeningRe",
+      "new": "[ \\\\t]*`?((?:[0-9a-f]{64}|[0-9a-f]{7,40}))\\\\b\")\n\theadOpeningRe"
+    },
+    {
+      "name": "head: the end of a named id is not checked",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "[ \\\\t]*`?((?:[0-9a-f]{64}|[0-9a-f]{40}))\\\\b\")\n\theadOpeningRe",
+      "new": "[ \\\\t]*`?((?:[0-9a-f]{64}|[0-9a-f]{40}))\")\n\theadOpeningRe"
+    },
+    {
+      "name": "lane: a dismissed verdict is not counted",
+      "file": "cmd/deskdispatch/reviewround.go",
+      "old": "strings.EqualFold(strings.TrimSpace(r.State), \"PENDING\") {",
+      "new": "strings.EqualFold(strings.TrimSpace(r.State), \"PENDING\") || strings.EqualFold(strings.TrimSpace(r.State), \"DISMISSED\") {"
+    },
+    {
+      "name": "read: a merge's own file list is not collected",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "\t\tf.merged = append(f.merged, names...)\n",
+      "new": "\t\t_ = names\n"
+    },
+    {
+      "name": "read: what a merge brought in is not read",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "for _, side := range c.Parents[1:] {",
+      "new": "for _, side := range c.Parents[:0] {"
+    },
+    {
+      "name": "read: only a merge's second parent is compared",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "for _, side := range c.Parents[1:] {",
+      "new": "for _, side := range c.Parents[1:2] {"
+    },
+    {
+      "name": "read: what a merge brought in is read but not kept",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "\t\t\tf.merged = append(f.merged, fileNames(in.Files)...)\n",
+      "new": "\t\t\t_ = in.Files\n"
+    },
+    {
+      "name": "read: a merge comparison that fails is skipped",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if err != nil || in == nil || len(in.Files) >= forgeComparePageFiles {",
+      "new": "if err != nil {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif in == nil || len(in.Files) >= forgeComparePageFiles {"
+    },
+    {
+      "name": "read: a merge comparison answered with nothing is skipped",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if err != nil || in == nil || len(in.Files) >= forgeComparePageFiles {",
+      "new": "if in == nil {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif err != nil || len(in.Files) >= forgeComparePageFiles {"
+    },
+    {
+      "name": "read: a merge comparison that may be cut short is accepted",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if err != nil || in == nil || len(in.Files) >= forgeComparePageFiles {",
+      "new": "if err != nil || in == nil || len(in.Files) > forgeComparePageFiles {"
+    },
+    {
+      "name": "read: a head file list longer than the forge's count is accepted",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if err != nil || len(files) != pr.ChangedFiles {",
+      "new": "if err != nil || len(files) < pr.ChangedFiles {"
+    },
+    {
+      "name": "read: exactly the commit limit skips the per-commit reads",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if f.commits > reviewDeltaMaxCommits {",
+      "new": "if f.commits >= reviewDeltaMaxCommits {"
+    },
+    {
+      "name": "read: a rename's previous name is dropped",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if cf.PreviousFilename != \"\" {",
+      "new": "if cf.PreviousFilename != \"\" && false {"
+    },
+    {
+      "name": "read: a change answered with nothing is used",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if err != nil || pr == nil {",
+      "new": "if err != nil {"
+    },
+    {
+      "name": "read: a previous-head comparison answered with nothing is used",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if err != nil || was == nil || len(was.Files) >= forgeComparePageFiles {",
+      "new": "if err != nil || (was != nil && len(was.Files) >= forgeComparePageFiles) {"
+    },
+    {
+      "name": "read: a two-head comparison answered with nothing is used",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if err != nil || cmp == nil {",
+      "new": "if err != nil {"
+    },
+    {
+      "name": "read: an interval commit answered with nothing is used",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if err != nil || detail == nil || !detail.FilesComplete {",
+      "new": "if err != nil || (detail != nil && !detail.FilesComplete) {"
+    },
+    {
+      "name": "read: an environment variable skips the round read and the gate",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "\tif reviewRoundForgeFn == nil {\n\t\treturn reviewRound{}, nil",
+      "new": "\tif reviewRoundForgeFn == nil || os.Getenv(\"DESK_REVIEW_ROUND\") == \"off\" {\n\t\treturn reviewRound{}, nil"
+    },
+    {
+      "name": "kit: drop 'nothing else you read sets it'",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "and both heads; nothing else you read sets it. On",
+      "new": "and both heads. On"
+    },
+    {
+      "name": "kit: a delta round does not cover what the previous verdict left unchecked",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "- **everything that verdict recorded as could-not-check, not run or incomplete**, checked now\n  or recorded again as could-not-check (clause 5);\n",
+      "new": ""
+    },
+    {
+      "name": "kit: the head-level duties do not stand in a delta round",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "- **the head-level duties, which stand in every round**: the checks",
+      "new": "- the checks"
+    },
+    {
+      "name": "kit: the undeclared-decision check is not a head-level duty",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "(clause 2), the merge-time re-check (clause 7) and the undeclared-decision check (clause 15).",
+      "new": "(clause 2) and the merge-time re-check (clause 7)."
+    },
+    {
+      "name": "kit: a merge's merged-in side is not a reason for the full pass",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "the change touches, or whose merged-in side changed one,\nwhichever way a conflict was resolved; it touches",
+      "new": "the change touches; it touches"
+    },
+    {
+      "name": "kit: a previous verdict naming another head is not a reason for the full pass",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "this lane's previous verdict names, in its own text, a different head than the assignment\ngives for it; or that verdict",
+      "new": "or that verdict"
+    },
+    {
+      "name": "kit: a previous verdict that calls itself incomplete is not a reason for the full pass",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "gives for it; or that verdict calls itself incomplete —",
+      "new": "gives for it —"
+    },
+    {
+      "name": "kit: the cap binds from round five",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "this clause is inert. From round 4, a finding FIRST",
+      "new": "this clause is inert. From round 5, a finding FIRST"
+    },
+    {
+      "name": "kit: the cap covers code changed since the first review",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "raised now, in code unchanged since that first-review head, is advisory",
+      "new": "raised now is advisory"
+    },
+    {
+      "name": "kit: drop what 'any security-lane fail class' means",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "\"Any security-lane fail class\" is any finding the security lane would fail the change on.\n",
+      "new": ""
+    },
+    {
+      "name": "kit: a late finding that cannot be placed is advisory",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "**A late finding you cannot place with confidence blocks**",
+      "new": "**A late finding you cannot place with confidence is advisory**"
+    },
+    {
+      "name": "kit: drop 'the cap never changes a security verdict'",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "**The cap never changes a security verdict:** on the security lane",
+      "new": "On the security lane"
+    },
+    {
+      "name": "kit: a finding on evidence that did not exist at the first review is a late finding",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "did not exist at the first-review head is not a late finding**",
+      "new": "did not exist at the first-review head is a late finding**"
+    },
+    {
+      "name": "kit: an undeclared decision found late is a late finding",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "a check result at the current head, a could-not-check gap, an undeclared decision.",
+      "new": "a check result at the current head, a could-not-check gap."
+    },
+    {
+      "name": "kit: clause 15 does not bind in every round",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "**Clauses 2, 5, 7, 8 and 15 bind in every round.**",
+      "new": "**Clauses 2, 5, 7 and 8 bind in every round.**"
+    },
+    {
+      "name": "read: a merge commit's files are not collected",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if len(c.Parents) < 2 {",
+      "new": "if len(c.Parents) < 3 {"
     }
   ]
 }

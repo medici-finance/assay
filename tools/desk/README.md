@@ -5773,13 +5773,35 @@ dispatch reads the forge after every caller precondition and before the claim
   | `verdict-already-at-this-head` | the lane's latest verdict is at the dispatched head |
   | `inter-head-diff-not-computable` | the forge cannot compare the two heads, the interval's commit list is incomplete or empty, the dispatched head's first-parent chain does not reach the previously reviewed head, a commit carries no parent list, or a commit on the chain has no complete file list |
   | `large-delta` | the first-parent chain between the heads holds more than 20 commits, or touches more than 10 of the change's own paths (its file list at either head) |
-  | `merge-in-files-the-change-touches` | the forge's file list for a commit on that chain with two or more parents names a file the change touches |
+  | `merge-in-files-the-change-touches` | a commit on that chain with two or more parents changed a file the change touches, or whose merged-in side changed one, whichever way a conflict was resolved: the forge's file list for the commit, and its comparison of the commit's first parent with each other parent, are both read |
   | `path-not-reviewed-before` | the change's file list at the dispatched head holds a path its file list at the previously reviewed head did not |
-  | `could-not-determine` | the change, its reviews, the reviewer identity, the lane, a head, the base branch or either file list could not be read in full |
+  | `could-not-determine` | the change, its reviews, the reviewer identity, the lane, a head, the base branch, either file list or what a merge brought in could not be read in full; or one of the lane's verdicts names, in its own text or typed block, a different head than the forge records for it |
 
-  The merge test does not tell a merge that resolved conflicts from one that did not: both
-  are a full pass. A reviewer that finds the stated scope wrong does the full pass (kit
-  clause 19).
+  The merge test does not tell a merge that resolved conflicts from one that did not: a
+  merge whose own file list, or whose merged-in side, names a file the change touches is a
+  full pass either way. A conflict needs both sides to have changed the file, so the
+  merged-in side names it even when the conflict was resolved to the branch's side and the
+  merge commit's own list, which is relative to its first parent, does not. A merged-in side
+  that cannot be compared, or whose file list may be cut short (300 files or more), is
+  `could-not-determine`. A reviewer that finds the stated scope wrong does the full pass
+  (kit clause 19).
+
+  **A verdict's head is checked against the verdict's own record.** The round count, the
+  first-review head and the delta base are read from the commit the forge records each
+  review against, and that field has been seen to disagree with the head a review's own
+  text names. So for every one of the lane's verdicts the dispatcher also reads the head the
+  verdict itself names. In its text that is a full commit id (40 or 64 hex digits, with or
+  without one opening backtick) directly after `Head reviewed:` anywhere, after `Head:`
+  opening a line, or after `at head` on the body's opening line (its first non-empty line
+  that is not a verdict line). In its typed finding block it is each finding's
+  `evidenceHead` and `originHead`. A head named in the text, and an `evidenceHead`, must be
+  the commit the forge records for that verdict; an `originHead` must be the commit the
+  forge records for that verdict or for an earlier one of the lane's. When any of the
+  lane's verdicts names a different head than the forge records for it, or carries a typed
+  finding block that cannot be read, the scope is `could-not-determine`, the round is not
+  determined, and the gate's `lane-awaits-ruling` condition is not evaluated. A verdict that
+  names no full commit id in those places changes nothing: an abbreviated id, and an id
+  anywhere else in the body, are not read.
 - **The lane's round** — the number of distinct heads among the lane's own verdicts and the
   dispatched head — and the head of the lane's first review. Kit clause 20 reads both: from a
   lane's fourth round, a finding first raised then in code unchanged since that head is
@@ -5795,8 +5817,11 @@ dispatch reads the forge after every caller precondition and before the claim
   | `decision-not-ruled` | the change carries `needs-decision`, its comment and review history was read in full, and it holds nothing by the roster's blessing authority created after that label's latest application |
   | `lane-awaits-ruling` | the lane's latest own verdict is at the dispatched head, blocks, and declares only external prerequisites; each is an open item of the same repository carrying `needs-decision`; and at least one of them has no ruling recorded, by the same test |
 
-  A hold claims nothing, cuts no worktree, mints no credential and writes nothing to the
-  forge; its first line is the `Detail` of the dispatch audit row. The gate's forge surface
+  A hold claims nothing, cuts no worktree and writes nothing to the forge; its first line is
+  the `Detail` of the dispatch audit row. The round and gate reads are read-only requests
+  (GETs, and the GraphQL queries of the two trust-event reads) made under the dispatcher
+  role's existing credential, the one the review packet already resolves, which the first
+  read in a process may mint; there is no new credential path. The gate's forge surface
   has no write method, so a hold cannot post a verdict, mark a head reviewed or flip a change
   ready. A gate read that fails is a note on stderr and the reviewer is dispatched.
 

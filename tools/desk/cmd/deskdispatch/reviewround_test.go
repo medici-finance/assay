@@ -357,7 +357,8 @@ func TestLaneRoundCountsHeadsNotVerdicts(t *testing.T) {
 }
 
 // A lane's verdicts are its own: the other lane's, another author's, a body carrying both
-// lanes' lines, an unsubmitted review and a review with no verdict line are not counted.
+// lanes' lines, an unsubmitted review and a review with no verdict line are not counted. A
+// DISMISSED verdict is counted: dismissing a review does not undo the round it was.
 func TestLaneVerdictsAreTheLanesOwn(t *testing.T) {
 	other := verdict(7, laneCorrectness, "approve", rrHead1)
 	other.Author.Login = "someone-else"
@@ -365,12 +366,15 @@ func TestLaneVerdictsAreTheLanesOwn(t *testing.T) {
 	pending := verdict(9, laneCorrectness, "approve", rrHead1)
 	pending.State = "PENDING"
 	prose := deskkit.Review{ID: 10, Author: deskkit.Account{Login: rpReviewer}, State: "COMMENTED", CommitID: rrHead1, Body: "a note"}
+	dismissed := verdict(5, laneCorrectness, "request-changes", rrHead3)
+	dismissed.State = "DISMISSED"
 	reviews := []deskkit.Review{
 		verdict(1, laneCorrectness, "request-changes", rrHead1),
 		verdict(2, laneSecurity, "fail", rrHead1),
 		other, both, pending, prose,
 		verdict(3, laneCorrectness, "approve", rrHead2),
 		verdict(4, laneSecurity, "pass", rrHead3),
+		dismissed,
 	}
 	ids := func(vs []laneVerdict) string {
 		var out []string
@@ -379,7 +383,7 @@ func TestLaneVerdictsAreTheLanesOwn(t *testing.T) {
 		}
 		return strings.Join(out, " ")
 	}
-	if got, want := ids(laneVerdictsOf(reviews, rpReviewer, laneCorrectness)), "1@1/true 3@2/false"; got != want {
+	if got, want := ids(laneVerdictsOf(reviews, rpReviewer, laneCorrectness)), "1@1/true 3@2/false 5@3/true"; got != want {
 		t.Errorf("correctness lane's verdicts = %q, want %q", got, want)
 	}
 	if got, want := ids(laneVerdictsOf(reviews, rpReviewer, laneSecurity)), "2@1/true 4@3/false"; got != want {
@@ -391,6 +395,16 @@ func TestLaneVerdictsAreTheLanesOwn(t *testing.T) {
 	if got := laneVerdictsOf(reviews, "", laneCorrectness); len(got) != 0 {
 		t.Errorf("an unbound reviewer was given %d verdict(s)", len(got))
 	}
+}
+
+// mergeAtHead makes the fixture's head a merge of rrMain into the branch at rrHead1. own is
+// the merge commit's file list, which a forge reports against the FIRST parent; incoming is
+// what the merged-in side changed, read as the comparison of the first parent with the second.
+func mergeAtHead(f *fakeRoundForge, own, incoming []deskkit.ChangedFile) {
+	f.compares[rrHead1+"..."+rrHead2].Commits = []deskkit.RepoCommit{
+		{SHA: rrHead2, Parents: []string{rrHead1, rrMain}}, {SHA: rrMain, Parents: []string{rrBase}}}
+	f.commits[rrHead2] = &deskkit.RepoCommit{SHA: rrHead2, Parents: []string{rrHead1, rrMain}, Files: own, FilesComplete: true}
+	f.compares[rrHead1+"..."+rrMain] = &deskkit.RefComparison{Files: incoming, CommitsComplete: true}
 }
 
 // The read behind the decision: the fixture is a delta, and each way the forge can fall short
@@ -410,6 +424,15 @@ func TestRoundReadDecidesScopeFromTheForge(t *testing.T) {
 		{"the reviews cannot be read", func(f *fakeRoundForge) { f.reviewsErr = errors.New("503") }, "could-not-determine"},
 		{"the head file list cannot be read", func(f *fakeRoundForge) { f.filesErr = errors.New("503") }, "could-not-determine"},
 		{"the head file list is shorter than the forge's count", func(f *fakeRoundForge) { f.pr.ChangedFiles = 3 }, "could-not-determine"},
+		{"the head file list is longer than the forge's count", func(f *fakeRoundForge) { f.pr.ChangedFiles = 1 }, "could-not-determine"},
+		{"the change is answered with nothing", func(f *fakeRoundForge) { f.pr = nil }, "could-not-determine"},
+		{"the previous head's comparison is answered with nothing", func(f *fakeRoundForge) {
+			delete(f.compares, "main..."+rrHead1)
+		}, "could-not-determine"},
+		{"the two heads' comparison is answered with nothing", func(f *fakeRoundForge) {
+			delete(f.compares, rrHead1+"..."+rrHead2)
+		}, "inter-head-diff-not-computable"},
+		{"an interval commit is answered with nothing", func(f *fakeRoundForge) { delete(f.commits, rrHead2) }, "inter-head-diff-not-computable"},
 		{"the base branch is not known", func(f *fakeRoundForge) { f.pr.BaseRef = "" }, "could-not-determine"},
 		{"the previous head's file list cannot be read", func(f *fakeRoundForge) {
 			f.compareErr["main..."+rrHead1] = errors.New("404")
@@ -443,6 +466,18 @@ func TestRoundReadDecidesScopeFromTheForge(t *testing.T) {
 		{"an interval commit's file list is incomplete", func(f *fakeRoundForge) {
 			f.commits[rrHead2].FilesComplete = false
 		}, "inter-head-diff-not-computable"},
+		// Exactly at the commit limit the delta is not yet large, so every commit is still read:
+		// one that cannot be is a full pass, never a delta with no merge or path fact behind it.
+		{"the delta is exactly 20 commits and one cannot be read", func(f *fakeRoundForge) {
+			var cs []deskkit.RepoCommit
+			parent := rrHead1
+			for i := 0; i < reviewDeltaMaxCommits-1; i++ {
+				sha := fmt.Sprintf("%040x", 0xc000+i)
+				cs = append(cs, deskkit.RepoCommit{SHA: sha, Parents: []string{parent}})
+				parent = sha
+			}
+			f.compares[rrHead1+"..."+rrHead2].Commits = append(cs, deskkit.RepoCommit{SHA: rrHead2, Parents: []string{parent}})
+		}, "inter-head-diff-not-computable"},
 		{"the delta is 21 commits", func(f *fakeRoundForge) {
 			var cs []deskkit.RepoCommit
 			parent := rrHead1
@@ -464,17 +499,45 @@ func TestRoundReadDecidesScopeFromTheForge(t *testing.T) {
 			f.commits[rrHead2].Files = changed(names...)
 		}, "large-delta"},
 		{"the head is a merge that changed a file the change touches", func(f *fakeRoundForge) {
-			f.compares[rrHead1+"..."+rrHead2].Commits = []deskkit.RepoCommit{
-				{SHA: rrHead2, Parents: []string{rrHead1, rrMain}}, {SHA: rrMain, Parents: []string{rrBase}}}
-			f.commits[rrHead2] = &deskkit.RepoCommit{SHA: rrHead2, Parents: []string{rrHead1, rrMain},
-				Files: changed("b.go", "elsewhere.go"), FilesComplete: true}
+			mergeAtHead(f, changed("b.go", "elsewhere.go"), changed("elsewhere.go"))
 		}, "merge-in-files-the-change-touches"},
-		{"the head is a merge that changed only other files", func(f *fakeRoundForge) {
-			f.compares[rrHead1+"..."+rrHead2].Commits = []deskkit.RepoCommit{
-				{SHA: rrHead2, Parents: []string{rrHead1, rrMain}}, {SHA: rrMain, Parents: []string{rrBase}}}
-			f.commits[rrHead2] = &deskkit.RepoCommit{SHA: rrHead2, Parents: []string{rrHead1, rrMain},
-				Files: changed("elsewhere.go"), FilesComplete: true}
+		{"the head is a merge that changed, and brought in, only other files", func(f *fakeRoundForge) {
+			mergeAtHead(f, changed("elsewhere.go"), changed("elsewhere.go"))
 		}, ""},
+		// A conflict in one of the change's files resolved to the branch's side: the file is
+		// byte-identical to the first parent, so the merge commit's own list does not name it.
+		{"the merged-in side changed a file the change touches, and the branch's side was kept", func(f *fakeRoundForge) {
+			mergeAtHead(f, changed("elsewhere.go"), changed("b.go", "elsewhere.go"))
+		}, "merge-in-files-the-change-touches"},
+		{"the merged-in side changed a file under the name the change renamed it from", func(f *fakeRoundForge) {
+			renamed := []deskkit.ChangedFile{{Filename: "a.go"}, {Filename: "b2.go", PreviousFilename: "b.go", Status: "renamed"}}
+			f.files, f.compares["main..."+rrHead1].Files = renamed, renamed
+			mergeAtHead(f, changed("elsewhere.go"), changed("b.go"))
+		}, "merge-in-files-the-change-touches"},
+		{"the merged-in side renamed a file the change touches", func(f *fakeRoundForge) {
+			mergeAtHead(f, changed("elsewhere.go"), []deskkit.ChangedFile{{Filename: "moved.go", PreviousFilename: "b.go", Status: "renamed"}})
+		}, "merge-in-files-the-change-touches"},
+		{"the merged-in side cannot be compared", func(f *fakeRoundForge) {
+			mergeAtHead(f, changed("elsewhere.go"), changed("elsewhere.go"))
+			f.compareErr[rrHead1+"..."+rrMain] = errors.New("503")
+		}, "could-not-determine"},
+		{"the merged-in side's comparison is answered with nothing", func(f *fakeRoundForge) {
+			mergeAtHead(f, changed("elsewhere.go"), nil)
+			delete(f.compares, rrHead1+"..."+rrMain)
+		}, "could-not-determine"},
+		{"the merged-in side's file list may be cut short", func(f *fakeRoundForge) {
+			var names []string
+			for i := 0; i < forgeComparePageFiles; i++ {
+				names = append(names, fmt.Sprintf("m%03d.go", i))
+			}
+			mergeAtHead(f, changed("elsewhere.go"), changed(names...))
+		}, "could-not-determine"},
+		{"an octopus merge whose third parent changed a file the change touches", func(f *fakeRoundForge) {
+			mergeAtHead(f, changed("elsewhere.go"), changed("elsewhere.go"))
+			f.compares[rrHead1+"..."+rrHead2].Commits[0].Parents = []string{rrHead1, rrMain, rrHead3}
+			f.compares[rrHead1+"..."+rrHead2].Commits = append(f.compares[rrHead1+"..."+rrHead2].Commits, deskkit.RepoCommit{SHA: rrHead3, Parents: []string{rrBase}})
+			f.compares[rrHead1+"..."+rrHead3] = &deskkit.RefComparison{Files: changed("a.go"), CommitsComplete: true}
+		}, "merge-in-files-the-change-touches"},
 		{"the change now touches a path it did not touch before", func(f *fakeRoundForge) {
 			f.files, f.pr.ChangedFiles = changed("a.go", "b.go", "new.go"), 3
 			f.commits[rrHead2].Files = changed("new.go")
@@ -875,6 +938,24 @@ func TestMainWiresTheReviewRoundRead(t *testing.T) {
 	}
 }
 
+// The round and the gate take no input but the dispatch's own and the forge's: the three
+// files read no environment variable and define no flag, so nothing set outside the command
+// line can skip the gate or narrow a scope. A source scan — it sees a direct read only, not
+// one made through another package.
+func TestReviewRoundReadsNoEnvironmentAndDefinesNoFlag(t *testing.T) {
+	for _, name := range []string{"reviewround.go", "reviewroundread.go", "reviewgate.go"} {
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, banned := range []string{"Getenv", "LookupEnv", "Environ", "ExpandEnv", "\"flag\"", "flag.", "pflag", "os.Args"} {
+			if strings.Contains(string(src), banned) {
+				t.Errorf("%s contains %q: the round and the gate must not read the environment or define a flag", name, banned)
+			}
+		}
+	}
+}
+
 // The skill and the README name the code's own reasons, limits and marker, and the skill
 // states the safety-relevant exception once. A document that drifts from a constant fails here.
 func TestReviewRoundDocsNameTheCodesOwnWords(t *testing.T) {
@@ -897,6 +978,38 @@ func TestReviewRoundDocsNameTheCodesOwnWords(t *testing.T) {
 	}
 	if n := strings.Count(skill, "Safety-relevant exception"); n != 1 {
 		t.Errorf("the skill names the exception %d time(s), want exactly 1", n)
+	}
+
+	// The skill restates kit clauses 19 and 20 for the desk. Each restated rule is held here,
+	// so the copy cannot drift from the clause: the round the cap binds from, what a delta
+	// round covers, what makes a stated scope wrong, and what the cap never touches.
+	for _, want := range []string{
+		"From round four, a finding first raised in that round, in code unchanged since that first-review head, is advisory",
+		"\"Any security-lane fail class\" is any finding the security lane would fail the change on",
+		"a late finding the reviewer cannot place with confidence blocks",
+		"the cap never changes a security verdict",
+		"A finding whose evidence did not exist at the first-review head is not a late finding",
+		"kit clauses 2, 5, 7, 8 and 15 bind in every round",
+		"everything that verdict recorded as could-not-check, not run or incomplete",
+		"the head-level duties, which stand in every round",
+		"or its merged-in side did, whichever way a conflict was resolved",
+		"a different head than the forge records for it or carries a typed block that cannot be read",
+		"names another head than the assignment gives for it, or calls itself incomplete",
+	} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("the skill does not state %q", want)
+		}
+	}
+	for _, want := range []string{
+		"or whose merged-in side changed one, whichever way a conflict was resolved",
+		"a different head than the forge records for it",
+		"or carries a typed finding block that cannot be read, the scope is `could-not-determine`",
+		"A verdict that names no full commit id in those places changes nothing",
+		"under the dispatcher role's existing credential",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Errorf("the README does not state %q", want)
+		}
 	}
 
 	limits := fmt.Sprintf("more than %d commits, or more than %d of the", reviewDeltaMaxCommits, reviewDeltaMaxPaths)
@@ -948,5 +1061,192 @@ func TestAssignmentNeverStatesADeltaWithoutAPreviousVerdict(t *testing.T) {
 	}
 	if strings.Contains(got, "DELTA") {
 		t.Errorf("a round with no previous verdict is stated as a delta:\n%s", got)
+	}
+}
+
+// fourRoundFixture is roundFixture moved on to rrHead4, with one correctness verdict at each
+// of the three earlier heads: round 4, a delta from review 503.
+func fourRoundFixture() *fakeRoundForge {
+	f := roundFixture()
+	f.pr.HeadSHA = rrHead4
+	f.reviews = []deskkit.Review{
+		verdict(501, laneCorrectness, "request-changes", rrHead1),
+		verdict(502, laneCorrectness, "request-changes", rrHead2),
+		verdict(503, laneCorrectness, "request-changes", rrHead3),
+	}
+	f.compares["main..."+rrHead3] = &deskkit.RefComparison{Files: changed("a.go", "b.go"), CommitsComplete: true}
+	f.compares[rrHead3+"..."+rrHead4] = &deskkit.RefComparison{CommitsComplete: true,
+		Commits: []deskkit.RepoCommit{{SHA: rrHead4, Parents: []string{rrHead3}}}}
+	f.commits[rrHead4] = &deskkit.RepoCommit{SHA: rrHead4, Parents: []string{rrHead3}, Files: changed("a.go"), FilesComplete: true}
+	return f
+}
+
+// What a verdict's own record names as a head: the three text shapes followed by a full commit
+// id, and the typed block's two fields. Nothing else in the body is read, and an id is
+// compared without regard to letter case.
+func TestLaneVerdictsNameTheirHeads(t *testing.T) {
+	const (
+		a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		c = "cccccccccccccccccccccccccccccccccccccccc"
+		l = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdef0123" // 64 hex digits
+	)
+	for _, tc := range []struct {
+		name, body        string
+		reviewed, origins string
+		unreadable        bool
+	}{
+		{"nothing named", "Verdict: approve\n\nNo finding.", "", "", false},
+		{"Head reviewed, in a sentence", "Verdict: approve\n\nLane: correctness, first review. Head reviewed: `" + a + "` (two commits).", a, "", false},
+		{"Head reviewed, emphasised, no backtick", "**Head reviewed:** " + a, a, "", false},
+		{"Head opening a line", "Verdict: approve\nHead: " + a + "\n", a, "", false},
+		{"Head opening a list, quote or emphasised line", "- Head: `" + a + "`\n> **Head:** `" + b + "`\n* head: " + c, a + " " + b + " " + c, "", false},
+		{"Head not opening its line", "The base's Head: " + a + " and overhead: " + b, "", "", false},
+		{"at head on the opening line", "Security lane, first review, full pass at head `" + a + "`.\n\nSecurity-Review: fail", a, "", false},
+		{"at head on the opening line, after the verdict line", "\nVerdict: approve\n\nFull pass at head " + a + ".", a, "", false},
+		{"at head below the opening line", "Verdict: approve\n\nA re-review.\n\nFirst raised at head `" + a + "`.", "", "", false},
+		{"a sha-256 id", "Head: " + l, l, "", false},
+		{"too short, too long, not hex", "Head: aaaaaaa\nHead: " + a + "a\nHead reviewed: `" + a[:39] + "g`", "", "", false},
+		{"upper case", "HEAD REVIEWED: `" + strings.ToUpper(a) + "`", strings.ToUpper(a), "", false},
+		{"other ids", "Verdict: approve\n\nmain is `" + a + "`, merge-base " + b + ". Input revision: `" + c + "`.", "", "", false},
+		{"the typed block", "Verdict: request-changes\n\n" + headedBlock(a, b), b, a, false},
+		{"the typed block, origin only", "Verdict: approve\n\n" + headedBlock(a, ""), "", a, false},
+		{"the typed block, abbreviated", "Verdict: approve\n\n" + headedBlock("aaaaaaa", "bbbbbbb"), "", "", false},
+		{"text and typed block", "Head: " + a + "\n\nVerdict: request-changes\n\n" + headedBlock(c, b), a + " " + b, c, false},
+		{"a typed block that cannot be read", "Verdict: approve\n\n<!-- assay:review-finding:v1\n{\"findings\":[{\"evidenceHead\":\"" + a + "\"\n-->", "", "", true},
+		{"a typed block that is not closed", "Head: " + a + "\n<!-- assay:review-finding:v1\n{}", a, "", true},
+	} {
+		reviewed, origins, readable := verdictNamedHeads(tc.body)
+		if readable == tc.unreadable {
+			t.Errorf("%s: readable = %v, want %v", tc.name, readable, !tc.unreadable)
+		}
+		if got := strings.Join(reviewed, " "); got != tc.reviewed {
+			t.Errorf("%s: heads named as reviewed = %q, want %q", tc.name, got, tc.reviewed)
+		}
+		if got := strings.Join(origins, " "); got != tc.origins {
+			t.Errorf("%s: origin heads = %q, want %q", tc.name, got, tc.origins)
+		}
+	}
+	at := func(id int64, head, body string) laneVerdict { return laneVerdict{id: id, head: head, body: body} }
+	for _, tc := range []struct {
+		name     string
+		verdicts []laneVerdict
+		want     string // the review id the answer names; "" = not disputed
+	}{
+		{"no verdict", nil, ""},
+		{"nothing named", []laneVerdict{at(1, a, "Verdict: approve")}, ""},
+		{"agrees, in another letter case", []laneVerdict{at(1, a, "Head: "+strings.ToUpper(a)), at(2, strings.ToUpper(b), headedBlock(a, b))}, ""},
+		{"the second of three is disputed", []laneVerdict{at(1, a, "Head: "+a), at(2, b, "Head: "+c), at(3, c, "Head: "+a)}, "review 2 "},
+		{"an origin head of a later verdict", []laneVerdict{at(1, a, headedBlock(b, a)), at(2, b, "")}, "review 1 "},
+		{"a typed block that cannot be read", []laneVerdict{at(1, a, "Head: "+a), at(2, b, "Head: "+b+"\n<!-- assay:review-finding:v1\n{}")}, "review 2 carries a typed finding block that cannot be read"},
+	} {
+		got := disputedVerdictHead(tc.verdicts)
+		if (tc.want == "") != (got == "") || !strings.Contains(got, tc.want) {
+			t.Errorf("%s: disputed = %q, want it to name %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// headedBlock is a typed finding block of one finding that records the two heads a finding
+// carries: where it was first raised, and where this record's evidence was gathered.
+func headedBlock(origin, evidence string) string {
+	return deskkit.RenderFindingBlock(deskkit.FindingBlockV1{Findings: []deskkit.Finding{{ID: "H-1", Class: "c", Severity: deskkit.SeverityBlocking,
+		Blocker: deskkit.BlockerCodeContent, State: deskkit.StateOpen, Failure: "it fails", OriginHead: origin, EvidenceHead: evidence}}})
+}
+
+// The forge's record of the commit a verdict was submitted at is what the delta base, the
+// round count and the first-review head are read from. Where a counted verdict's own record
+// names a full commit id as the head it reviewed — on a recognised head line of its text, or
+// in its typed block — the two must agree: a disagreement on ANY of the lane's verdicts is
+// could-not-determine — a full pass, the round not determined. A record that names no full
+// id in a recognised place changes nothing.
+func TestRoundReadComparesTheHeadAVerdictNamesWithTheForges(t *testing.T) {
+	say := func(f *fakeRoundForge, i int, lines ...string) *fakeRoundForge {
+		f.reviews[i].Body += "\n" + strings.Join(lines, "\n")
+		return f
+	}
+	body := func(f *fakeRoundForge, i int, text string) *fakeRoundForge {
+		f.reviews[i].Body = text
+		return f
+	}
+	for _, tc := range []struct {
+		name  string
+		f     *fakeRoundForge
+		want  string // scope reasons; "" = DELTA
+		round int    // 0 = not determined
+		first string
+	}{
+		// --- the text ---
+		{"the body names the head the forge records", say(roundFixture(), 0, "Head reviewed: `"+rrHead1+"` (one commit)."), "", 2, rrHead1},
+		{"every body of four rounds names the forge's head",
+			say(say(say(fourRoundFixture(), 0, "Head: "+rrHead1), 1, "Correctness lane, round 2. Head reviewed: `"+rrHead2+"`"), 2, "- **Head:** `"+rrHead3+"`"), "", 4, rrHead1},
+		{"the opening line names the forge's head", body(roundFixture(), 0,
+			"Correctness lane, first review, full pass at head `"+rrHead1+"`.\n\nVerdict: request-changes\n"), "", 2, rrHead1},
+		{"the body names no full commit id", say(roundFixture(), 0, "Head reviewed: `1111111` (abbreviated)."), "", 2, rrHead1},
+		{"a full id is named, in no recognised place", say(roundFixture(), 0,
+			"The finding first raised at head `"+rrBase+"` stands; main is `"+rrMain+"`, merge-base `"+rrBase+"`.",
+			"Input revision: `"+rrBase+"`. Overhead: "+rrBase+"; ahead: `"+rrBase+"`",
+			"Head: "+rrBase+"0 is one digit too long to be a commit id"), "", 2, rrHead1},
+		{"the LATEST verdict's body names another head", say(roundFixture(), 0, "Head reviewed: `"+rrBase+"`"), "could-not-determine", 0, ""},
+		{"the latest of four names another head", say(fourRoundFixture(), 2, "Head: "+rrHead2), "could-not-determine", 0, ""},
+		{"the FIRST verdict's body names another head", say(fourRoundFixture(), 0, "Head reviewed: `"+rrBase+"`"), "could-not-determine", 0, ""},
+		{"a middle verdict's body names another head", say(fourRoundFixture(), 1, "> head: `"+rrHead1+"`"), "could-not-determine", 0, ""},
+		{"the opening line names another head", body(roundFixture(), 0,
+			"Verdict: request-changes\n\nCorrectness lane, first review, full pass at head `"+rrBase+"`.\n"), "could-not-determine", 0, ""},
+		{"one recognised line agrees and a second does not", say(roundFixture(), 0, "Head: "+rrHead1, "Head reviewed: `"+rrBase+"`"), "could-not-determine", 0, ""},
+		{"one recognised line does not agree and a later one does", say(roundFixture(), 0, "Head reviewed: `"+rrBase+"`", "Head: "+rrHead1), "could-not-determine", 0, ""},
+		// --- the typed block ---
+		{"the typed block records the forge's head", body(roundFixture(), 0,
+			"Verdict: request-changes\n\n"+headedBlock(rrHead1, rrHead1)), "", 2, rrHead1},
+		{"a carried finding names the earlier head it was first raised at", body(fourRoundFixture(), 2,
+			"Verdict: request-changes\n\n"+headedBlock(rrHead1, rrHead3)), "", 4, rrHead1},
+		{"the typed block's heads are abbreviated", body(roundFixture(), 0,
+			"Verdict: request-changes\n\n"+headedBlock("0000000", "0000000")), "", 2, rrHead1},
+		{"the latest verdict's evidence was gathered at another head", body(roundFixture(), 0,
+			"Verdict: request-changes\n\n"+headedBlock(rrHead1, rrBase)), "could-not-determine", 0, ""},
+		{"the first verdict's finding was first raised at a head the lane holds no verdict at", body(fourRoundFixture(), 0,
+			"Verdict: request-changes\n\n"+headedBlock(rrBase, "")), "could-not-determine", 0, ""},
+		{"a later verdict's finding was first raised at a head the lane holds no verdict at", body(fourRoundFixture(), 2,
+			"Verdict: request-changes\n\n"+headedBlock(rrBase, rrHead3)), "could-not-determine", 0, ""},
+		{"a finding was first raised at a head the lane reviewed only LATER", body(fourRoundFixture(), 0,
+			"Verdict: request-changes\n\n"+headedBlock(rrHead2, rrHead1)), "could-not-determine", 0, ""},
+		{"a verdict's typed block cannot be read", body(fourRoundFixture(), 1,
+			"Verdict: request-changes\n\nHead: "+rrHead2+"\n\n<!-- assay:review-finding:v1\n{\"schema\":\"other\"}\n-->"), "could-not-determine", 0, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var rr reviewRound
+			var err error
+			stderr := captureStderr(t, func() { rr, err = roundOf(t, tc.f, rrKeyC) })
+			if err != nil {
+				t.Fatalf("held: %v", err)
+			}
+			if got := reasonsOf(rr.scope); got != tc.want || rr.scope.full != (tc.want != "") {
+				t.Errorf("scope: full=%v reasons=%q, want reasons %q", rr.scope.full, got, tc.want)
+			}
+			if rr.round.known != (tc.round != 0) || rr.round.number != tc.round || rr.round.firstHead != tc.first {
+				t.Errorf("round = %+v, want known=%v number=%d first=%q", rr.round, tc.round != 0, tc.round, tc.first)
+			}
+			text := roundText(rr)
+			if tc.want == "" {
+				if stderr != "" {
+					t.Errorf("an agreeing or silent record was reported on stderr: %q", stderr)
+				}
+				return
+			}
+			why := "names, in its own text or typed block, a different head than the forge records for it"
+			if strings.Contains(tc.name, "cannot be read") {
+				why = "carries a typed finding block that cannot be read, so the head it records cannot be checked"
+			}
+			if !strings.Contains(text, "Round: NOT DETERMINED (this lane's review 50") || strings.Count(text, why) != 2 ||
+				!strings.Contains(text, "Clause 20's lane round cap does not apply.") {
+				t.Errorf("the assignment does not say which review disagreed, twice (round and scope), with the cap inert:\n%s", text)
+			}
+			if strings.Contains(text, "DELTA") || strings.Contains(text, rrBase) {
+				t.Errorf("the assignment states a delta, or prints the id the record named:\n%s", text)
+			}
+			if !strings.Contains(stderr, why) || !strings.Contains(stderr, "dispatching") {
+				t.Errorf("the disagreement was not reported on stderr: %q", stderr)
+			}
+		})
 	}
 }

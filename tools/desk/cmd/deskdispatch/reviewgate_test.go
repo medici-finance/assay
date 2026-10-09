@@ -673,3 +673,34 @@ func TestRoundReadErrorsAreHoldsAndNothingElse(t *testing.T) {
 		}
 	}
 }
+
+// The lane condition reads "this lane's latest verdict is at this head" off the forge's
+// record of that verdict's commit. Where the verdict's own text names a different head, that
+// record is disputed, so the condition is not evaluated: the head is dispatched as a full
+// pass and never held on a verdict that may not be at it.
+func TestLaneAwaitsRulingIsNotReadOffADisputedHead(t *testing.T) {
+	useRatifier(t, true)
+	build := func(named string) *fakeRoundForge {
+		f := roundFixture()
+		gateHoldFixtures[3].edit(f)
+		f.reviews[1].Body += "\nHead reviewed: `" + named + "`\n"
+		return f
+	}
+	if gateHoldFixtures[3].reason != holdLaneAwaitsRuling {
+		t.Fatalf("fixture 3 is %q, want the lane condition", gateHoldFixtures[3].reason)
+	}
+	if _, err := roundOf(t, build(rrHead2), rrKeyC); err == nil || !strings.Contains(err.Error(), string(holdLaneAwaitsRuling)) {
+		t.Fatalf("a verdict whose body names this head is not held on the lane condition: %v", err)
+	}
+	f := build(rrHead1)
+	rr, err := roundOf(t, f, rrKeyC)
+	if err != nil {
+		t.Fatalf("held on a verdict whose own text names another head: %v", err)
+	}
+	if reasonsOf(rr.scope) != "could-not-determine" || rr.round.known {
+		t.Errorf("scope %q, round %+v — want could-not-determine and not determined", reasonsOf(rr.scope), rr.round)
+	}
+	if n := f.called("GetIssue"); n != 0 {
+		t.Errorf("the lane condition was evaluated (%d prerequisite read(s)) on a disputed head", n)
+	}
+}

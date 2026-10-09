@@ -52,7 +52,8 @@ const (
 	reasonNoDiff scopeReason = "inter-head-diff-not-computable"
 	// reasonLargeDelta — the delta exceeds reviewDeltaMaxCommits or reviewDeltaMaxPaths.
 	reasonLargeDelta scopeReason = "large-delta"
-	// reasonMergeInOwnFiles — a merge commit in the delta changed a file the change touches.
+	// reasonMergeInOwnFiles — a merge in the delta changed a file the change touches, or its
+	// merged-in side did, whichever way a conflict in that file was resolved.
 	reasonMergeInOwnFiles scopeReason = "merge-in-files-the-change-touches"
 	// reasonNewPath — the change touches a path it did not touch at the previous head.
 	reasonNewPath scopeReason = "path-not-reviewed-before"
@@ -72,7 +73,9 @@ type scopeFacts struct {
 	commits int
 	// delta is every path the forge's per-commit read lists for those commits.
 	delta []string
-	// merged is every path that read lists for the chain's commits with two or more parents.
+	// merged is every path that read lists for the chain's commits with two or more parents,
+	// and every path each such commit's merged-in sides changed (the comparison of its first
+	// parent with each other parent).
 	merged []string
 	// prevFiles and headFiles are the change's own file lists at prevHead and at head.
 	prevFiles, headFiles []string
@@ -130,7 +133,7 @@ func decideReviewScope(f scopeFacts) scopeDecision {
 			"the limits are %d commits and %d paths", d.commits, d.ownPaths, reviewDeltaMaxCommits, reviewDeltaMaxPaths))
 	}
 	if n := countIn(f.merged, own); n > 0 {
-		add(reasonMergeInOwnFiles, fmt.Sprintf("a merge commit in the delta changed %d file(s) the change touches", n))
+		add(reasonMergeInOwnFiles, fmt.Sprintf("a merge in the delta changed, or brought in a change to, %d file(s) the change touches", n))
 	}
 	fresh := 0
 	for p := range pathSet(f.headFiles) {
@@ -230,6 +233,93 @@ func laneVerdictsOf(reviews []deskkit.Review, reviewer, lane string) []laneVerdi
 		out = append(out, laneVerdict{id: r.ID, head: strings.TrimSpace(r.CommitID), body: r.Body, blocking: verdictBlocks(r.Body)})
 	}
 	return out
+}
+
+// A verdict's head is the commit the forge records the review against (its commit id field),
+// and that field has been seen to disagree with the head the review's own record names. So
+// where a verdict's own record names a head, the two are compared (disputedVerdictHead), and
+// a disagreement is could-not-determine. A record names a head in these places and no other:
+//
+//   - its text, where one of three shapes is followed by a FULL commit id (40 or 64 hex
+//     digits, optionally opened by one backtick, not followed by a further letter or digit):
+//     "Head reviewed:" anywhere; "Head:" opening a line, after list, quote or emphasis
+//     markup; "at head" on the body's opening line only — its first non-empty line that is
+//     not a verdict line;
+//   - its typed finding block: each finding's evidence head, and each finding's origin head.
+//
+// Any other commit id in the body — a merge base, the base branch's tip, an input revision,
+// "at head" further down — is not read, and an abbreviated id is not read anywhere. A typed
+// block that is present and cannot be read is not "names nothing": what it records cannot be
+// checked, and that too is could-not-determine.
+var (
+	headLabelRe   = regexp.MustCompile("(?mi)(?:\\bhead reviewed\\*{0,2}:|^[ \\t>*_-]*head\\*{0,2}:)\\*{0,2}[ \\t]*`?((?:[0-9a-f]{64}|[0-9a-f]{40}))\\b")
+	headOpeningRe = regexp.MustCompile("(?i)\\bat head[ \\t]+`?((?:[0-9a-f]{64}|[0-9a-f]{40}))\\b")
+)
+
+// verdictNamedHeads reads what one verdict's own record says about heads. reviewed is every
+// full commit id it names as the head it reviewed: the recognised head lines of its text and
+// each typed finding's evidence head. origins is each typed finding's origin head that is a
+// full commit id: the head the finding was first raised at, which on a carried finding is an
+// earlier head of the lane's. readable is false when the body carries a typed block that
+// cannot be read.
+func verdictNamedHeads(body string) (reviewed, origins []string, readable bool) {
+	for _, m := range headLabelRe.FindAllStringSubmatch(body, -1) {
+		reviewed = append(reviewed, m[1])
+	}
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" || reviewVerdictLine.MatchString(line) {
+			continue
+		}
+		for _, m := range headOpeningRe.FindAllStringSubmatch(line, -1) {
+			reviewed = append(reviewed, m[1])
+		}
+		break // the opening line only
+	}
+	block, present, err := deskkit.ParseFindingBlock(body)
+	if present && (err != nil || block == nil) {
+		return reviewed, nil, false
+	}
+	if present {
+		for _, f := range block.Findings {
+			if h := strings.TrimSpace(f.EvidenceHead); isCommitID(h) {
+				reviewed = append(reviewed, h)
+			}
+			if h := strings.TrimSpace(f.OriginHead); isCommitID(h) {
+				origins = append(origins, h)
+			}
+		}
+	}
+	return reviewed, origins, true
+}
+
+// disputedVerdictHead says which of a lane's verdicts, oldest first, names in its own record
+// a head the forge's record of it does not bear out; "" when none does. A head the record
+// names as reviewed must be the commit the forge records for that verdict. A finding's origin
+// head must be the commit the forge records for that verdict or for an earlier one of the
+// lane's. Every head a record names is checked: one that agrees does not excuse one that
+// does not. A record that names no head is not disputed; one whose typed block cannot be
+// read is, because what it records cannot be checked.
+func disputedVerdictHead(verdicts []laneVerdict) string {
+	held := map[string]bool{}
+	for _, v := range verdicts {
+		held[strings.ToLower(v.head)] = true
+		reviewed, origins, readable := verdictNamedHeads(v.body)
+		if !readable {
+			return fmt.Sprintf("this lane's review %d carries a typed finding block that cannot be read, so the head it records cannot be checked", v.id)
+		}
+		disputed := false
+		for _, h := range reviewed {
+			disputed = disputed || !strings.EqualFold(h, v.head)
+		}
+		for _, h := range origins {
+			disputed = disputed || !held[strings.ToLower(h)]
+		}
+		if disputed {
+			return fmt.Sprintf("this lane's review %d names, in its own text or typed block, a different head than the forge records for it", v.id)
+		}
+	}
+	return ""
 }
 
 // verdictBlocks reports whether every verdict line in body is a blocking one.
