@@ -63,6 +63,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // The configured control surfaces. These names are FIXED: external checks set
@@ -198,6 +199,23 @@ const (
 	// directory the hook happened to be spawned in, which is caller-influenced — the
 	// one input a guard's own policy source must not depend on.
 	EnvWriteguardCallout = "ASSAY_WRITEGUARD_CALLOUT"
+	// EnvOutboundCallout is the DEPLOYMENT-SUPPLIED house callout of the outbound-write check
+	// (outboundcallout.go, desktools-v2/11): an ABSOLUTE path to an executable that
+	// OutboundCheck asks, after its compiled layers have passed a write, whether the write may
+	// leave. The deployment's vocabulary lives in that executable and never in these tools.
+	//
+	// Unlike ASSAY_WRITEGUARD_CALLOUT, a SET key that is wrong in ANY way is not "unconfigured":
+	// a malformed shape here (a relative path, a list) is carried on Config.OutboundCalloutProblem
+	// and every outward write refuses, naming it. Only an UNSET key means compiled checks alone.
+	EnvOutboundCallout = "ASSAY_OUTBOUND_CALLOUT"
+	// EnvOutboundCalloutRequired is `public` or unset. With `public`, a write to a public or
+	// unknown-visibility target REFUSES when no callout is configured. It is ALSO read straight
+	// from the process environment (tightening only), because a roster that fails validation
+	// collapses to unconfigured and would take this key with it.
+	EnvOutboundCalloutRequired = "ASSAY_OUTBOUND_CALLOUT_REQUIRED"
+	// EnvOutboundCalloutTimeout bounds one outbound-callout invocation: a Go duration from 1s to
+	// 60s. Unset means DefaultCalloutTimeout (5s).
+	EnvOutboundCalloutTimeout = "ASSAY_OUTBOUND_CALLOUT_TIMEOUT"
 	// EnvContributorLedger names the path of the contributor-trust LEDGER: the
 	// operator-side record of which external identity holds which trust tier
 	// against which repository. It is read exactly like every other roster key —
@@ -540,6 +558,10 @@ func knownRosterKeys() []string {
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
 		EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema,
 		EnvStampTrustedLogins,
+		// The outbound-write check's house callout (desktools-v2/11). Consumed by
+		// outboundcallout.go; recognised here in the SAME change so a roster carrying them
+		// is not refused whole. KEEP IN SYNC with statusgen's scanKnownRosterKeys.
+		EnvOutboundCallout, EnvOutboundCalloutRequired, EnvOutboundCalloutTimeout,
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
 		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
@@ -750,6 +772,24 @@ type Config struct {
 	// (EnvWriteguardCallout), empty when unset. Empty means the compiled generic
 	// indicators alone — see the const's ONLY-WIDENS note.
 	WriteguardCallout string
+
+	// OutboundCallout is the absolute path of the deployment's outbound-write callout
+	// (EnvOutboundCallout), empty when unset OR when the value's shape was wrong (then
+	// OutboundCalloutProblem says so and writes REFUSE rather than skip).
+	OutboundCallout string
+	// OutboundCalloutRequired is true when the roster states REQUIRED=public
+	// (EnvOutboundCalloutRequired). The process environment can additionally require it.
+	OutboundCalloutRequired bool
+	// OutboundCalloutRequiredInvalid is true when the roster's REQUIRED value was set to
+	// something other than `public`: it still requires (the strictest reading), and the echo
+	// says it is invalid rather than presenting it as `public`.
+	OutboundCalloutRequiredInvalid bool
+	// OutboundCalloutTimeout is the configured bound, zero when unset (the default applies).
+	OutboundCalloutTimeout time.Duration
+	// OutboundCalloutProblem is non-empty when one of the three keys was SET and malformed.
+	// It never refuses the roster; it makes the outbound check refuse, because a configured
+	// callout is never skipped (outboundcallout.go).
+	OutboundCalloutProblem string
 
 	// ContributorLedgerPath is the absolute path of the operator-configured
 	// contributor-trust ledger (EnvContributorLedger), empty when unset. Empty is
@@ -1064,6 +1104,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
+		EnvOutboundCallout, EnvOutboundCalloutRequired, EnvOutboundCalloutTimeout,
 		EnvContributorLedger, EnvRosterSchema, EnvStampTrustedLogins,
 		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost,
 	}
@@ -1753,6 +1794,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	}
 	recordExt(&cfg, EnvWriteguardCallout, vals[EnvWriteguardCallout], writeguardCalloutIssue)
 
+	// --- outbound-write house callout (ASSAY_OUTBOUND_CALLOUT[_REQUIRED|_TIMEOUT]) ---
+	// (desktools-v2/11). Unlike the writeguard callout above, a malformed SET value is NOT
+	// reduced to "unconfigured": the outbound check's rule is that a configured callout is
+	// never skipped, so the first problem is carried on cfg.OutboundCalloutProblem and the
+	// outbound check refuses on it. The roster itself still loads.
+	parseOutboundCalloutKeys(&cfg, vals)
+
 	// --- contributor-trust ledger path (ASSAY_CONTRIBUTOR_LEDGER) ---
 	// An ABSOLUTE path to ONE file, validated exactly like ASSAY_WRITEGUARD_CALLOUT
 	// above. Everything about the ledger that can change between load and use —
@@ -2062,6 +2110,9 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", EnvRepoForges, strings.Join(forges, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvReleaseRepo, releaseStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvWriteguardCallout, calloutStr),
+		fmt.Sprintf("assay-config: %s=%s", EnvOutboundCallout, outboundCalloutEcho(c)),
+		fmt.Sprintf("assay-config: %s=%s", EnvOutboundCalloutRequired, outboundRequiredEcho(c)),
+		fmt.Sprintf("assay-config: %s=%s", EnvOutboundCalloutTimeout, outboundTimeoutEcho(c)),
 		fmt.Sprintf("assay-config: %s=%s", EnvContributorLedger, ledgerStr),
 		// The GitLab session / implementer commit-author allowlist WIDENS the
 		// commit-identity check, so it renders its full sorted set here (never a

@@ -966,6 +966,159 @@ grep scan_override ~/.config/assay/audit.jsonl
 The scan's accuracy in both directions, the acceptance run behind these verbs, and the
 proof each refusal can fail, are the ship bar in `docs/desk-tools-gate-bar.md`.
 
+### The house callout — a deployment's own outbound rule (desktools-v2/11)
+
+The outbound-write check (desktools-v2/10) is a compiled table. A deployment that has a rule
+the table cannot know (a list of words, a naming scheme, an internal classifier) names ONE
+executable of its own, and the check consults it on every outward write the compiled layer
+passed — including one with no text, which it receives with an empty `fields` list. A push is
+put to it once for the branch name, once per commit message and once for the added lines, so
+a push of N commits is N+2 consults. The callout can only **narrow**: the compiled layer runs first, and only a write it passed is
+put to the callout. A callout cannot clear a compiled refusal, and for a write the compiled
+layer refused it is never executed.
+
+Three roster keys, all optional (`~/.config/assay/roster.env`):
+
+| Key | Meaning |
+|---|---|
+| `ASSAY_OUTBOUND_CALLOUT` | Absolute path of the executable. Unset means compiled checks alone. |
+| `ASSAY_OUTBOUND_CALLOUT_REQUIRED` | `public`: a write to a public or unknown target with no callout configured is refused. Private targets are unaffected. Also read from the environment: set it there as well, because a roster that fails validation loses its own copy and the environment copy is what keeps the requirement. |
+| `ASSAY_OUTBOUND_CALLOUT_TIMEOUT` | Go duration, 1s to 60s, default 5s. |
+
+A key that is SET but malformed (relative path, a list, a timeout outside the range, a
+`REQUIRED` value other than `public`) is not "unconfigured": the roster still loads and every
+outward write is refused, naming the key. The startup configuration echo prints the path, the
+required mode and the timeout, and marks the path `INVALID` whenever any of the three keys is
+malformed — a valid path beside a bad timeout still refuses every write.
+
+**The contract.** The executable is run directly, with no shell. It must be an absolute
+path to a regular, executable file that is not group- or world-writable, in a directory that
+is not either. Its environment is exactly `PATH`, `HOME`, `TMPDIR` and `LANG`: it never
+holds the caller's token or any `ASSAY_*` variable. Those four carry the **calling process's
+own values** (one that is unset there is left out), so whoever runs the desk verb chooses
+them. A callout must not let them decide anything. It sets its own `PATH` or names its tools
+by absolute path, or a missing or substituted tool decides for it; and it sets its own locale
+(`LC_ALL=C`, exported), or a caller's `LANG` naming a multibyte locale in which the write's
+UTF-8 bytes are not all characters makes a text tool skip that field without an error. The
+example below does both.
+It receives ONE JSON object on stdin:
+
+```json
+{"version":1,"verb":"deskfile new","role":"worker","repo":"example-org/example-k8s",
+ "visibility":"public","kind":"issue",
+ "fields":[{"name":"title","text":"..."},{"name":"body","text":"..."}]}
+```
+
+`visibility` is `public`, `private` or `unknown` (a target the roster does not list is
+`unknown`, never `private`). `kind` is `issue`, `change`, `comment`, `review`, `label`, `file`,
+`commit` or `ref`. A field with no text is not sent. The object is one line.
+
+Each `text` is a JSON string, and the callout must **decode** it before matching anything
+against it. `&`, `<` and `>` arrive as themselves (no HTML escaping), but a line break arrives
+as `\n`, a tab as `\t`, a quote as `\"`, a backslash as `\\`, and other control characters
+and U+2028/U+2029 as `\uXXXX`. A callout that greps the raw JSON misses a listed word that
+contains `"` or `\`, and a listed phrase that a line break splits in the write.
+
+On stdout it prints, as its first word, exactly `allow` or `block` (lower case; the first word
+ends at any whitespace, a line break included); anything after `block` is the reason, and
+anything after `allow` is ignored, so a wrapper that prints a child's answer and then its own
+text is read by the child's first word. Exit status must be 0.
+
+Everything else is a refusal, and the message says which failure it was: the file is missing
+or unreadable, or group/world-writable; a non-zero exit; no answer within the timeout; empty
+output; more than 64 KiB of output; a first word that is neither `allow` nor `block`. For those,
+the refusal says WHICH failure in generic words; what the callout printed is shown on stderr
+only, as below.
+
+The refusal is `house.callout`, exit 5, and `--force-scan-override` does not apply to it.
+Everything the callout printed — its reason, an off-vocabulary answer, its own stderr — is
+printed to **stderr only**, on one line each, control characters removed. It is deliberately not
+in the returned error, the audit log or anything sent to the forge, because verbs log their
+errors and the reason can quote the text it matched. The audit log gets one
+`outbound_callout` row: the rule id, the outcome, the kind and a digest, never the text.
+When the callout answers `allow`, anything it wrote to its own stderr is still printed to
+stderr, the same one line, so a diagnostic beside an `allow` is never silent.
+
+An example executable (invented word list; the shipped test fixture is
+`tools/desk/internal/deskkit/testdata/outbound-callout/example-sweep.sh`):
+
+```sh
+#!/bin/sh
+# EXAMPLE house callout (invented values): block any write whose "text" fields contain a word
+# or phrase listed in a file the deployment owns. Reads the request on stdin; prints `allow`
+# or `block <reason>`. List: one word or phrase per line, one space between a phrase's
+# words, no blank lines, LF line endings; matched case-insensitively as fixed strings.
+# It answers `allow` ONLY when every step below ran and the match reported "no match": a tool
+# that is missing, fails or is killed is a block, as an unreadable list is.
+# Its own tools and its own locale, never the caller's: the PATH and LANG values it is handed
+# are the calling process's. In a locale where the write's bytes are not all characters, the
+# extraction below would leave a field out with no error; in C every byte matches as itself.
+PATH=/usr/bin:/bin
+LC_ALL=C
+export PATH LC_ALL
+words=/etc/example-house/withheld-words.txt
+# A blank line would match every write and a CRLF ending would match none: refuse either.
+grep -q -e "$(printf '\r')" -e '^$' "$words"
+case $? in
+  1) ;;
+  0) echo "block the word list has a blank line or a CRLF line ending"; exit 0 ;;
+  *) echo "block the word list is unreadable"; exit 0 ;;   # fail closed: no list, no verdict
+esac
+# Each "text" value is a JSON string: decode it before matching. `\\` is held aside first so
+# an escaped backslash followed by n is not read as a line break; every whitespace escape and
+# \uXXXX (control and line-separator characters) becomes a space; any other escape (`\"`,
+# `\/`) is the character itself; runs of spaces fold to one, so a listed phrase matches
+# across a line break, a tab or a run of spaces in the write. Each step's own exit status is
+# checked: a pipeline reports only its last command's.
+texts=$(grep -oE '"text":"([^"\\]|\\.)*"')
+case $? in 0 | 1) ;; *) echo "block the text could not be extracted"; exit 0 ;; esac
+hold=$(printf '\001')
+decoded=$(printf '%s\n' "$texts" |
+  sed -e 's/^"text":"//' -e 's/"$//' \
+      -e 's/\\\\/'"$hold"'/g' \
+      -e 's/\\u[0-9A-Fa-f]\{4\}/ /g' -e 's/\\[bfnrt]/ /g' -e 's/\\\(.\)/\1/g' \
+      -e 's/'"$hold"'/\\/g' -e 's/  */ /g') || { echo "block the text could not be decoded"; exit 0; }
+printf '%s\n' "$decoded" | grep -qiF -f "$words"
+case $? in
+  0) echo "block the write names a word on the house list" ;;
+  1) echo allow ;;
+  *) echo "block the word match did not run" ;;
+esac
+```
+
+Install it, then set it:
+
+```bash
+install -m 0755 example-sweep.sh /opt/example-house/outbound-callout
+echo 'ASSAY_OUTBOUND_CALLOUT=/opt/example-house/outbound-callout' >> ~/.config/assay/roster.env
+echo 'ASSAY_OUTBOUND_CALLOUT_REQUIRED=public' >> ~/.config/assay/roster.env
+echo 'export ASSAY_OUTBOUND_CALLOUT_REQUIRED=public' >> ~/.profile
+```
+
+The roster copy of `REQUIRED` is lost with the rest of a roster that fails validation; the
+environment copy is not. Set it in the environment every desk verb runs in (a login profile
+here, the container spec in a pod), not in the roster alone.
+
+The example is an example. It reads its tools from `/usr/bin` and `/bin` only: where yours
+live elsewhere, change its `PATH` line, or every write is refused because the match cannot
+run. It folds ASCII whitespace only, so a listed phrase whose words a no-break space separates
+in the write is not matched. And it refuses every write while its list has a blank line or
+CRLF line endings, rather than matching everything or nothing. It matches in the `C` locale,
+so case is folded for ASCII letters only: a non-ASCII letter in a listed word matches only
+in the case the list spells it. An empty list (a file of zero bytes) names
+nothing, so every write is allowed.
+
+The shipped fixture is this script with its list beside it, and a test holds the two
+identical and drives the fixture through the real request encoding with listed words that
+contain `&`, `<`, `>`, `"` and `\`, and a phrase split by a line break, a CRLF and a tab.
+Further tests drive it with the caller's `PATH` emptied or led by a substitute `grep` (the
+listed word is still refused), and with each of its tools missing or failing (every write is
+refused, never let through).
+
+One callout round trip is a process start (a few milliseconds for a shell script) on top of
+whatever the executable does, per consult — a push pays it N+2 times; the timeout bounds the
+worst case of each.
+
 ### Desk-decided: the merge is the gate (attention-budget/19)
 
 The driver holds merge on every pull request, so a desk that takes a REVERSIBLE default
