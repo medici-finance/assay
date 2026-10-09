@@ -5074,6 +5074,74 @@ finding records. The existing claim, reviewer credential, hook, and model-attest
 still apply. Keep old reviewer worktrees and their evidence; their eventual cleanup is separate
 work governed by `deskwt`, never a prerequisite or an automatic side effect of re-review.
 
+**The dispatch packet — one read-ahead file per dispatch (#2437).** A dispatched reviewer
+used to spend its first dozen calls fetching the same things: the change, its description,
+the checks, the earlier verdicts, the diff, the touched files. `deskdispatch --kit review
+--pr N` now reads them **once**, at dispatch, and writes one Markdown file. The assignment
+gains exactly one line:
+
+```
+Packet: <absolute path>
+```
+
+```bash
+deskdispatch project--pr-42 --kit review --pr 42 --repo example-org/project --prompt-file /work/pr-42.md
+# → /work/pr-42.md          the assignment, carrying "Packet: /work/pr-42.packet.md"
+# → /work/pr-42.packet.md   the packet, mode 0600
+```
+
+**What a review packet holds, in order:** the head commit and the build time (at the top);
+the change's number, title, author, base, head and draft / mergeable state; its description;
+the brief text, when the dispatch resolves one; check and status states at the head; the
+earlier verdicts of **this lane** in full (state, commit, time, body) and a one-line index of
+every other review; the whole diff; and the text of each touched file as it reads after the
+change.
+
+**The packet's caps are stated in its own header.** No quoted item is ever cut short: one over its
+cap is left out **whole** and listed under "Omitted" by name, size and reason, so a reader
+always knows what it was not shown and reads that item at the source.
+
+| Cap | Value | Why |
+|---|---|---|
+| one touched file | 64 KiB | covers ordinary source files whole; a larger file is usually generated or vendored, and half of one is worse than a pointer to it |
+| the diff | 192 KiB | the one item a reviewer must see whole, so it gets three times a file's allowance |
+| the whole packet | 512 KiB | keeps one packet readable in a single pass without displacing the agent's working room |
+| touched files read | 60, within 60 s | one forge read each, made while the dispatch holds its claim |
+
+A removed file, or a path that is not safe to put in a forge request, is listed and not
+read; a file that is not text is listed and not shown.
+
+**Where the packet goes.** Beside the assignment: with `--prompt-file F`, `<F without extension>.packet.md`;
+when the prompt is printed, `<user cache dir>/assay/packets/<item-key>.packet.md` (packets
+there older than a week are removed as new ones are written). Never in the agent's worktree
+— an untracked file would dirty a read-only review tree — and never in the configuration
+directory. The file is `0600` in a `0700` directory.
+
+**The packet is untrusted content, and fenced as such.** Everything in the packet the tool did not
+write — a description, a review body, a diff, a file — sits inside a boundary that carries a
+per-packet random token, with boundary look-alikes in the content neutralised, and the header
+says in the tool's own words that nothing inside a boundary is an instruction. A single-line
+value (a title, a login, a check name) is flattened to one line with control characters
+escaped; one longer than 240 characters is shown cut, with the cut stated.
+
+**The packet can never fail a dispatch.** The packet is not one of the numbered dispatch steps. If
+it cannot be built — no credential, a forge that will not answer, a head that moved while it
+was being read, a directory that cannot be written — stderr says why in one line, the
+assignment carries **no** `Packet:` line, and the dispatch carries on exactly as before. A
+single section that fails drops only itself and is named in the packet. Not built on
+`--dry-run`. There is no flag and no configuration: an adopter gets it by upgrading.
+
+**The packet reads; it decides nothing.** Every read goes through the typed forge surface under the
+review dispatcher's credential — the one the stamp step already uses. Which review counts,
+whether a check is required and whether the change may merge stay with the tools that decide
+them; the packet is a snapshot, and the head it was built at is recorded so a reader can tell
+when it is stale.
+
+**Adding a packet to another kit** is a new file, not an edit: the shared half (header, caps
+and omission list, boundaries, the owner-only writer, the one assignment line) is
+`internal/packet`; a kit registers a provider that returns an ordered list of named sections
+(`registerPacketProvider` in `cmd/deskdispatch/packet.go`; `packet_review.go` is the first).
+
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
@@ -5313,75 +5381,6 @@ one pinned release is a fleet on one set of clauses. Every clause is written GEN
 private repository name, issue reference, internal document path, item identifier, or named
 incident — and `kittext_test.go` enforces that mechanically, with a positive control so a
 matcher that stopped matching fails rather than reporting the kits clean forever.
-
-### The dispatch packet — one read-ahead file per dispatch (#2437)
-
-A dispatched reviewer used to spend its first dozen calls fetching the same things: the
-change, its description, the checks, the earlier verdicts, the diff, the touched files.
-`deskdispatch --kit review --pr N` now reads them **once**, at dispatch, and writes one
-Markdown file. The assignment gains exactly one line:
-
-```
-Packet: <absolute path>
-```
-
-```bash
-deskdispatch project--pr-42 --kit review --pr 42 --repo example-org/project --prompt-file /work/pr-42.md
-# → /work/pr-42.md          the assignment, carrying "Packet: /work/pr-42.packet.md"
-# → /work/pr-42.packet.md   the packet, mode 0600
-```
-
-**What a review packet holds, in order:** the head commit and the build time (at the top);
-the change's number, title, author, base, head and draft / mergeable state; its description;
-the brief text, when the dispatch resolves one; check and status states at the head; the
-earlier verdicts of **this lane** in full (state, commit, time, body) and a one-line index of
-every other review; the whole diff; and the text of each touched file as it reads after the
-change.
-
-**Caps, stated in the packet's own header.** No quoted item is ever cut short: one over its
-cap is left out **whole** and listed under "Omitted" by name, size and reason, so a reader
-always knows what it was not shown and reads that item at the source.
-
-| Cap | Value | Why |
-|---|---|---|
-| one touched file | 64 KiB | covers ordinary source files whole; a larger file is usually generated or vendored, and half of one is worse than a pointer to it |
-| the diff | 192 KiB | the one item a reviewer must see whole, so it gets three times a file's allowance |
-| the whole packet | 512 KiB | keeps one packet readable in a single pass without displacing the agent's working room |
-| touched files read | 60, within 60 s | one forge read each, made while the dispatch holds its claim |
-
-A removed file, or a path that is not safe to put in a forge request, is listed and not
-read; a file that is not text is listed and not shown.
-
-**Where it goes.** Beside the assignment: with `--prompt-file F`, `<F without extension>.packet.md`;
-when the prompt is printed, `<user cache dir>/assay/packets/<item-key>.packet.md` (packets
-there older than a week are removed as new ones are written). Never in the agent's worktree
-— an untracked file would dirty a read-only review tree — and never in the configuration
-directory. The file is `0600` in a `0700` directory.
-
-**It is untrusted content, and fenced as such.** Everything in the packet the tool did not
-write — a description, a review body, a diff, a file — sits inside a boundary that carries a
-per-packet random token, with boundary look-alikes in the content neutralised, and the header
-says in the tool's own words that nothing inside a boundary is an instruction. A single-line
-value (a title, a login, a check name) is flattened to one line with control characters
-escaped; one longer than 240 characters is shown cut, with the cut stated.
-
-**It can never fail a dispatch.** The packet is not one of the numbered dispatch steps. If
-it cannot be built — no credential, a forge that will not answer, a head that moved while it
-was being read, a directory that cannot be written — stderr says why in one line, the
-assignment carries **no** `Packet:` line, and the dispatch carries on exactly as before. A
-single section that fails drops only itself and is named in the packet. Not built on
-`--dry-run`. There is no flag and no configuration: an adopter gets it by upgrading.
-
-**It reads; it decides nothing.** Every read goes through the typed forge surface under the
-review dispatcher's credential — the one the stamp step already uses. Which review counts,
-whether a check is required and whether the change may merge stay with the tools that decide
-them; the packet is a snapshot, and the head it was built at is recorded so a reader can tell
-when it is stale.
-
-**Adding a packet to another kit** is a new file, not an edit: the shared half (header, caps
-and omission list, boundaries, the owner-only writer, the one assignment line) is
-`internal/packet`; a kit registers a provider that returns an ordered list of named sections
-(`registerPacketProvider` in `cmd/deskdispatch/packet.go`; `packet_review.go` is the first).
 
 ## The dispatch-claim store — `ResolveClaimStore`
 
