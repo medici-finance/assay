@@ -47,6 +47,7 @@ func quotedNotationDiff() string {
 // TestQuotedNotationIsNotAClaim is the behavioural fail-first for #1395: on the
 // unfixed walker every line of quotedNotationDiff reads as a claim (five stamps and
 // an unlinked citation, each MISSING-CORROBORATION); fixed, none does.
+// regression: #1395
 func TestQuotedNotationIsNotAClaim(t *testing.T) {
 	d := quotedNotationDiff()
 	if stamps := stampsInDiff("", d); len(stamps) != 0 {
