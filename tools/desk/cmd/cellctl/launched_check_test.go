@@ -202,6 +202,10 @@ func TestLaunchedHouseCheck(t *testing.T) {
 				composer.Env = envWith(parent)
 				composed, err := composer.codexCommandEnvironment(nil)
 				must(t, err)
+				// Capture itself refuses, not only the check behind it.
+				if v, ok := composed[operatorConfigKey]; ok {
+					t.Fatalf("cell-owned candidate recorded as operator context: %q", v)
+				}
 				if tc.late {
 					misdirectTo(t, tc.target)
 				}
