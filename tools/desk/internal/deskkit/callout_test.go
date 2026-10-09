@@ -245,6 +245,25 @@ func TestCalloutResolvedLayouts(t *testing.T) {
 				wantErr: "group- or world-writable",
 			}
 		},
+		"dot-dot after a linked dir, lexical dir writable": func(t *testing.T) layout {
+			// The configured path spells ".." after a linked directory, so the
+			// directory its text names (lexical) and the one that holds the file
+			// (physical) differ. The lexical one was always checked and still is.
+			real := calloutLayoutDir(t, 0o755)
+			if err := os.Mkdir(filepath.Join(real, "sub"), 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			calloutLayoutFile(t, real, "callout", 0o755)
+			lexical := calloutLayoutDir(t, 0o755)
+			calloutLayoutLink(t, filepath.Join(real, "sub"), filepath.Join(lexical, "via"))
+			if err := os.Chmod(lexical, 0o777); err != nil {
+				t.Fatalf("chmod: %v", err)
+			}
+			return layout{
+				path:    lexical + "/via/../callout",
+				wantErr: "group- or world-writable",
+			}
+		},
 		"link to a missing file": func(t *testing.T) layout {
 			missing := filepath.Join(calloutLayoutDir(t, 0o755), "nope")
 			return layout{

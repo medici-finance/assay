@@ -204,7 +204,10 @@ func calloutExecutable(path string) error {
 	if err != nil {
 		return fmt.Errorf("callout %q cannot be read: %w", path, err)
 	}
-	dirs = append(dirs, filepath.Dir(resolved))
+	// filepath.Dir(path) is the directory this function has always checked; it is
+	// kept verbatim (it differs from the raw prefix only for a path spelled with
+	// ".." after a linked directory) so no check the configured path got is dropped.
+	dirs = append(dirs, filepath.Dir(path), filepath.Dir(resolved))
 	seen := make(map[string]bool, len(dirs))
 	for _, dir := range dirs {
 		if seen[dir] {
