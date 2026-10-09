@@ -135,6 +135,15 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 24 | [One file per verify outcome — retire the shared appended outcomes log](brief-24-per-file-verify-outcomes.md) | 0 | L | implemented | — | — |
 | 25 | [Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical](brief-25-approval-carry-across-no-diff-merge.md) | 1 | L | todo | — | — |
 | 26 | [Land one verify tick's Evidence-only outcomes in one Evidence PR](brief-26-batched-evidence-landing-per-tick.md) | 1 | L | todo | — | — |
+| 27 | [Verify-outcome records carry join keys — delivering PRs, verifier tier and timing, per-row results — and every failure a blocker kind](brief-27-verify-outcome-join-keys.md) | 0 | L | todo | — | — |
+| 28 | [Dispatch record — one line per dispatch joining brief, PR, session and model tier](brief-28-dispatch-record.md) | 0 | M | todo | — | — |
+| 29 | [Decide journal as structured records, with observed outcomes joined later](brief-29-structured-decide-journal.md) | 1 | M | todo | — | — |
+| 30 | [Review round record — per-round timing, reviewer tier and finding transitions](brief-30-review-round-record.md) | 1 | M | todo | — | — |
+| 31 | [Persist CI check results the desk tools already read](brief-31-ci-check-history.md) | 0 | M | todo | — | — |
+| 32 | [Human decision record — options, recommended default, the pick and the latency](brief-32-human-decision-record.md) | 0 | M | todo | — | — |
+| 33 | [Intake exit record — every triaged item lands one structured disposition](brief-33-intake-exit-record.md) | 0 | L | todo | — | — |
+| 34 | [Worker usage counts at claim release — counts only, never transcripts](brief-34-worker-usage-counts.md) | 1 | M | todo | — | — |
+| 35 | [Records and retention page lists every analysis record and what is never recorded](brief-35-records-and-retention-page.md) | 2 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
