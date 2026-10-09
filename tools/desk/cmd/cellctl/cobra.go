@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
@@ -31,12 +33,75 @@ var helpConcepts string
 // versionLine is what --version and `version` print.
 func versionLine() string { return versionString(cellctlVersion, readBuildInfo) }
 
-// hookVerb reports whether args (after a leading --cells-root selector) name the runtime
-// model-policy hook, whose every non-zero exit must be the BLOCKING status.
+// hookVerb reports whether args (after a leading --cells-root selector) are a runtime
+// model-policy hook line, whose every non-zero exit must be the BLOCKING status. Every line a
+// launch installs is `model-policy hook ...` (policy_enforce.go); a `model-policy` line without
+// `hook` is no hook a harness runs, and its handler still exits 2 on its own (decision entry 7
+// names the hook line).
 func hookVerb(args []string) bool {
 	a := commandArgs(args)
-	return len(a) > 0 && a[0] == "model-policy"
+	return len(a) > 1 && a[0] == "model-policy" && a[1] == "hook"
 }
+
+// flaglessVerb reports the verbs whose words the legacy parser read by position only (a cell,
+// then for check a CLAUDE_CONFIG_DIR, every further word ignored), so a flag-shaped word after
+// the cell is one of their words, as it was, never a flag refused by the parser.
+func flaglessVerb(w string) bool { return w == "check" || w == "deskd" }
+
+// helpAmong reports a help flag among words before the first `--`.
+func helpAmong(words []string) bool {
+	for _, w := range words {
+		if w == "--" {
+			return false
+		}
+		if w == "-h" || w == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
+// dropTerminator removes the first bare `--` (decision entry 4: accepted by every non-raw verb).
+func dropTerminator(words []string) []string {
+	for i, w := range words {
+		if w == "--" {
+			return append(append([]string{}, words[:i]...), words[i+1:]...)
+		}
+	}
+	return words
+}
+
+// legacyWords rebuilds the words a verb that compared exact words read (cadence, cache, comms:
+// `--confirm-stopped` only as the one word after the action or role), from the line as given:
+// the parser accepts a repeated boolean and intersperses it, which those comparisons never
+// did. `--flag=V` with a true V as the last word is the flag's word (decision entry 4); in any
+// other place, or with any other V, it stays a word the comparison refuses in its own words.
+// The first bare `--` is dropped (entry 4) unless a literal flag word follows it, which then
+// stays an argument, as it was, and never confirms anything.
+func legacyWords(words []string, flag string) []string {
+	out, rest := append([]string{}, words...), []string(nil)
+	for i, w := range out {
+		if w == "--" {
+			out, rest = out[:i:i], append([]string{}, out[i+1:]...)
+			break
+		}
+	}
+	if n := len(out); n > 0 {
+		if v, ok := strings.CutPrefix(out[n-1], flag+"="); ok {
+			if b, err := strconv.ParseBool(v); err == nil && b {
+				out[n-1] = flag
+			}
+		}
+	}
+	if rest != nil && valueIn(flag, rest) {
+		out = append(out, "--")
+	}
+	return append(out, rest...)
+}
+
+// verbWords are the words after the verb as given (the selector already off): what the verbs
+// that compare exact words read, in place of the parser's positionals.
+var verbWords []string
 
 // rawVerb reports the internal entrypoints whose arguments are an opaque argv, never flags.
 func rawVerb(args []string) bool {
@@ -54,7 +119,7 @@ func rawVerb(args []string) bool {
 // runTree executes one invocation against a fresh tree and returns its exit code. It is the
 // only place that turns the exit panic into a code.
 func runTree(args []string) (code int) {
-	rawSelector, rawSelected = "", false
+	rawSelector, rawSelected, verbWords = "", false, nil
 	hook := hookVerb(args)
 	defer func() {
 		if r := recover(); r != nil {
@@ -71,17 +136,36 @@ func runTree(args []string) (code int) {
 			code = hookBlockExit
 		}
 	}()
+	// The legacy parser refused a relative selector first, on every line (help and version
+	// included), after the roster echo; it still does, in the same order and words.
+	if len(args) >= 2 && args[0] == "--cells-root" && !filepath.IsAbs(args[1]) {
+		echoRoster()
+		die("--cells-root requires an absolute registry path and a command")
+	}
 	// The pre-migration command-line shape, checked before anything parses or echoes.
 	if err := legacyShape(buildRoot(), args); err != nil {
 		fmt.Fprintf(os.Stderr, "cellctl: %v\nRun 'cellctl --help' for usage.\n", err)
 		return 3
 	}
-	// An empty word where the verb goes printed the usage, exit 0, before the migration; Cobra
-	// would skip it and run the next word as the verb.
-	if i := verbIndex(args); i < len(args) && args[i] == "" {
-		args = append(append([]string{}, args[:i]...), "--help")
+	i := verbIndex(args)
+	if i < len(args) {
+		switch args[i] {
+		case "", "-h", "--help":
+			// An empty word, -h or --help where the verb goes printed the usage, exit 0, whatever
+			// followed, before the migration; Cobra would skip an empty word and run the next one
+			// as the verb, and would parse the words after a help flag.
+			args = append(append([]string{}, args[:i]...), "--help")
+		}
 	}
-	raw := rawVerb(args)
+	flagless := i < len(args) && flaglessVerb(args[i])
+	if flagless && helpAmong(args[i+1:]) {
+		// A flag-less verb parses no flags; its help (decision entry 5) is the help verb's.
+		args, flagless = append(append([]string{}, args[:i]...), "help", args[i]), false
+	}
+	if i < len(args) {
+		verbWords = append([]string{}, args[i+1:]...)
+	}
+	raw := rawVerb(args) || flagless
 	if raw && args[0] == "--cells-root" {
 		// The selector is taken off here, where only its leading position counts: past the verb,
 		// Cobra hands a flag-less command its words with the verb name removed, so a selector
@@ -199,8 +283,31 @@ func needValue(v *cli.Values, key, msg string) {
 	}
 }
 
+// firstWins keeps the first value a repeated flag is given and ignores the rest: the legacy
+// --kind pre-scan took the first `--kind` and skipped every later one, and the kind selects the
+// launched window's confinement class, so a word appended after a pinned --kind never re-kinds it.
+type firstWins struct {
+	pflag.Value
+	given bool
+}
+
+func (f *firstWins) Set(s string) error {
+	if f.given {
+		return nil
+	}
+	f.given = true
+	return f.Value.Set(s)
+}
+
+// kindFirstWins makes cmd's --kind keep its first value.
+func kindFirstWins(cmd *cobra.Command) {
+	f := cmd.Flags().Lookup("kind")
+	f.Value = &firstWins{Value: f.Value}
+}
+
 // kindFlag is the --kind override of a verb, validated before anything loads: loadCell is where
-// the kind's own preconditions are asserted, so the override has to be in force by then.
+// the kind's own preconditions are asserted, so the override has to be in force by then. Only
+// the first value is read and validated (kindFirstWins), as the legacy pre-scan did.
 func kindFlag(cmd *cobra.Command) string {
 	f := cmd.Flags().Lookup("kind")
 	if f == nil || !f.Changed {
@@ -298,13 +405,15 @@ func checkCmd() *cobra.Command {
 			"CELL_HARNESS=codex it also checks the codex harness block (binary, auth, multi_agent, resident rules,\n" +
 			"skills discovery). It prints one \"model pin\" row per role naming that role's harness and its RESOLVED\n" +
 			"model; a role with no per-harness pin and no tier match is a MISS here, before boot, not a startup failure.",
-		Annotations: map[string]string{leadingArgsKey: "1"},
-		Args:        cobra.ArbitraryArgs,
+		Annotations:        map[string]string{leadingArgsKey: "1"},
+		Args:               cobra.ArbitraryArgs,
+		DisableFlagParsing: true, // flaglessVerb: words by position, as the legacy parser read them
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cell := cellArg(args)
+			words := dropTerminator(rawArgs(args))
+			cell := cellArg(words)
 			cfg := ""
-			if len(args) > 1 {
-				cfg = args[1]
+			if len(words) > 1 {
+				cfg = words[1]
 			}
 			cmdCheck(cell, cfg)
 			return nil
@@ -314,12 +423,16 @@ func checkCmd() *cobra.Command {
 
 func deskdCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:         "deskd <cell>",
-		Short:       "stand the cell's persistent deskd",
-		Long:        "Stand the cell's persistent deskd (attended: mints per-org read tokens).",
-		Annotations: map[string]string{leadingArgsKey: "1"},
-		Args:        cobra.ArbitraryArgs,
-		RunE:        func(cmd *cobra.Command, args []string) error { cmdDeskd(cellArg(args)); return nil },
+		Use:                "deskd <cell>",
+		Short:              "stand the cell's persistent deskd",
+		Long:               "Stand the cell's persistent deskd (attended: mints per-org read tokens).",
+		Annotations:        map[string]string{leadingArgsKey: "1"},
+		Args:               cobra.ArbitraryArgs,
+		DisableFlagParsing: true, // flaglessVerb: the cell, every further word ignored, as before
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmdDeskd(cellArg(dropTerminator(rawArgs(args))))
+			return nil
+		},
 	}
 }
 
@@ -401,6 +514,7 @@ func deskCmd() *cobra.Command {
 		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd, launchBindings()...)
+	kindFirstWins(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cellArg(args)
 		if len(args) < 2 || args[1] == "" {
@@ -444,6 +558,7 @@ func upCmd() *cobra.Command {
 		bStr("automate", "orca only: schedule one automation per role (a 5-field cron string or a preset)"),
 	)
 	set := declare(cmd, bs...)
+	kindFirstWins(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		c := loadCellWithKind(cell, kindFlag(cmd))
@@ -519,6 +634,7 @@ func showCmd() *cobra.Command {
 		bStr("provider", "provider"),
 		bStr("model", "model"),
 	)
+	kindFirstWins(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		c := loadCellWithKind(cell, kindFlag(cmd))
@@ -629,10 +745,10 @@ func cadenceCmd() *cobra.Command {
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,
 	}
-	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior harness and all its children have stopped"))
+	declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior harness and all its children have stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		cell := cellArg(args)
-		cmdCadence(cell, args[1:], resolve(set, nil).Bool("confirm-stopped"))
+		words := legacyWords(verbWords, "--confirm-stopped")
+		cmdCadence(cellArg(words), words[1:])
 		return nil
 	}
 	return cmd
@@ -652,10 +768,10 @@ func cacheCmd() *cobra.Command {
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,
 	}
-	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm every cache consumer has stopped"))
+	declare(cmd, bBool("confirm-stopped", "recover only: confirm every cache consumer has stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		cell := cellArg(args)
-		cmdCache(cell, args[1:], resolve(set, nil).Bool("confirm-stopped"))
+		words := legacyWords(verbWords, "--confirm-stopped")
+		cmdCache(cellArg(words), words[1:])
 		return nil
 	}
 	return cmd
@@ -670,10 +786,10 @@ func commsCmd() *cobra.Command {
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,
 	}
-	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior gateway, drain and every owned child have stopped"))
+	declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior gateway, drain and every owned child have stopped"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		cell := cellArg(args)
-		cmdComms(cell, args[1:], resolve(set, nil).Bool("confirm-stopped"))
+		words := legacyWords(verbWords, "--confirm-stopped")
+		cmdComms(cellArg(words), words[1:])
 		return nil
 	}
 	return cmd
@@ -709,6 +825,7 @@ func scratchCmd() *cobra.Command {
 	// adapter puts the `--` there when the caller did not (the legacy parser stopped at the same
 	// word), so a word of the command that spells --source, --task or --help reaches the child.
 	cli.OpaqueArgv(cmd, 2)
+	cmd.SetHelpFunc(scratchHelp)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		d := cmd.ArgsLenAtDash()
 		if d == 0 {
@@ -728,6 +845,27 @@ func scratchCmd() *cobra.Command {
 		return nil
 	}
 	return cmd
+}
+
+// scratchHelp answers a help flag on a scratch line. Given before the cell and the action it is
+// the verb's help (decision entry 5). Given after them it was a flag of the action, read by the
+// Go flag package after the cell and its scratch policy loaded: the action's usage on stderr,
+// exit 2. That reading is kept, with the verb's help as the usage text.
+func scratchHelp(c *cobra.Command, a []string) {
+	pos := c.Flags().Args()
+	if d := c.Flags().ArgsLenAtDash(); d >= 0 {
+		pos = pos[:d]
+	}
+	if !c.Flags().Changed("help") || len(pos) < 2 {
+		c.Parent().HelpFunc()(c, a)
+		return
+	}
+	if _, err := loadCell(pos[0]).scratchPolicy(); err != nil {
+		die("scratch: %v", err)
+	}
+	c.SetOut(c.ErrOrStderr())
+	c.Parent().HelpFunc()(c, a)
+	exitWith(2)
 }
 
 // The four internal entrypoints below take an opaque argv (a hook's positional arguments, a

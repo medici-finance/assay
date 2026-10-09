@@ -21,9 +21,12 @@ import (
 // positionals (its leadingArgsKey count: the cell, a role, an action) come before any flag. A
 // single-dash long flag is the Go flag package's spelling, which only `scratch` accepted. The
 // verb word itself is a verb, `-h`/`--help`, or a sole `--version`/`version`; anything else in
-// that place was an unknown verb, and is refused in the parser's words (decision entry 2).
+// that place, a lone `-` included, was an unknown verb, and is refused in the parser's words
+// (decision entry 2).
 //
 // The internal raw entrypoints take their argv verbatim and are not checked past the selector.
+// The flag-less verbs (check, deskd) read their words by position as the legacy parser did, so
+// only the cell's place is checked: past it every word is theirs.
 // A refusal is a usage error: exit 3, nothing on stdout, no roster echo, nothing run.
 func legacyShape(root *cobra.Command, args []string) error {
 	i := verbIndex(args)
@@ -32,7 +35,7 @@ func legacyShape(root *cobra.Command, args []string) error {
 	}
 	rest := args[i:]
 	verb := rest[0]
-	if strings.HasPrefix(verb, "-") && verb != "-" {
+	if strings.HasPrefix(verb, "-") {
 		switch {
 		case verb == "-h" || verb == "--help":
 			return nil
@@ -53,9 +56,10 @@ func legacyShape(root *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown help topic %q", strings.Join(rest[1:], " "))
 	}
 	cmd := verbNamed(root, verb)
-	if cmd == nil || cmd.DisableFlagParsing {
+	if cmd == nil || rawCommand(cmd) {
 		return nil // an unknown verb is the parser's refusal; a raw verb's argv is its own
 	}
+	flagless := cmd.DisableFlagParsing
 	if verb == "version" && len(rest) > 1 && !(len(rest) == 2 && (rest[1] == "-h" || rest[1] == "--help")) {
 		return fmt.Errorf("unknown command %q for %q", rest[1], root.Name()+" version")
 	}
@@ -69,6 +73,9 @@ func legacyShape(root *cobra.Command, args []string) error {
 		w := rest[i]
 		if w == "--" {
 			return nil
+		}
+		if flagless && pos >= n {
+			return nil // a flag-less verb's words past its cell are read by position
 		}
 		if !flagShaped(w) {
 			if opaque && pos >= n {
@@ -98,6 +105,11 @@ func legacyShape(root *cobra.Command, args []string) error {
 }
 
 func flagShaped(w string) bool { return len(w) > 1 && w[0] == '-' }
+
+// rawCommand reports an internal entrypoint: no flags parsed and no declared positionals.
+func rawCommand(cmd *cobra.Command) bool {
+	return cmd.DisableFlagParsing && cmd.Annotations[leadingArgsKey] == ""
+}
 
 func verbNamed(root *cobra.Command, name string) *cobra.Command {
 	for _, c := range root.Commands() {

@@ -2,11 +2,13 @@
 
 <!-- GENERATED from the command tree by TestCLIReferenceDoc; do not edit by hand. -->
 
-Every command takes the cell as its first argument; `--cells-root` is accepted anywhere.
-Help (`-h`, `--help`, `help <command>`) and version (`--version`, `version`) read nothing:
-no cell, no credential file, no roster. Single-dash spellings of long flags (`-model x`) are
-still accepted. How this differs from the pre-Cobra surface is in
-[cellctl-cli-compat.md](cellctl-cli-compat.md).
+Every command takes the cell as its first argument. The shape is
+`cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the registry selector is the
+separated `--cells-root <abs>`, and only as the first word. Single-dash spellings of long flags
+(`-apply`) are accepted by `scratch` only. Help (`-h`, `--help`, `help <command>`) and version
+(`--version`, `version`) read no cell and no credential file, and read the roster only when the
+line carries a relative `--cells-root`, which every line refuses after the roster echo. How
+this differs from the pre-Cobra surface is in [cellctl-cli-compat.md](cellctl-cli-compat.md).
 
 ## `cellctl cache <cell> status|clean|recover`
 

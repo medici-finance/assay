@@ -16,7 +16,8 @@ it also fails when a listed row stops differing, so this table cannot go stale i
 - **Verbs, arguments and flags.** Every verb and flag keeps its name, its meaning and its exit
   code. A line that worked before still does what it did. A line the old parser refused is still
   refused, by the shape check below when the new parser would otherwise have accepted it. The
-  exceptions are decision entries 5 to 11, listed under "Other deliberate differences".
+  exceptions are the recorded decision entries, under "What differs" and "Other deliberate
+  differences".
 - **Command-line shape.** `cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the
   selector is the separated `--cells-root <abs>`, and only as the first word; a verb's fixed
   positionals (its cell, role or action) come before its flags; the single-dash spelling of a long
@@ -25,12 +26,27 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   wording, nothing on stdout and no roster echo (rows under "Refused shapes"). Every verb declares
   how many fixed positionals it takes, and a test plants a verb without that declaration and
   requires the guard to name it.
-- **An empty verb word** prints the usage, exit 0, and runs nothing, as before.
+- **A relative selector** (`--cells-root <relative>`) is refused before anything else, on every
+  line, help and version included: the roster echo, then
+  `cellctl: --cells-root requires an absolute registry path and a command`, exit 3, as before. It
+  is the one help-shaped line that reads the roster, and the selector is never applied.
+- **An empty verb word, `-h` or `--help` in the verb's place** prints the usage, exit 0, and runs
+  nothing, whatever follows (`-h --bogus`, `--help up <cell>`), as before.
 - **Raw entrypoints.** `model-policy`, `cache-run` and `container-run` receive the tokens after
   the verb verbatim; a flag-shaped token after one of these verbs belongs to the verb, including a
   `--cells-root` (it reaches the child and is never applied as the selector). Only the separated
   selector in front of the verb is stripped. The hook verb keeps its own exit codes (a parse
-  failure is 2, never the usage code 3).
+  failure is 2, never the usage code 3). A line that is `model-policy hook ...` after the
+  selector, the only form a launch installs, exits 2 whatever refuses it (decision entry 7); any
+  other `model-policy` line keeps the exit it had.
+- **Words read as words.** `cadence`, `cache` and `comms` compare the words after the verb
+  exactly, as before: `--confirm-stopped` confirms only as the one word after the action (or
+  `cadence`'s role), so a repeated, misplaced or `--`-escaped confirmation is refused with the
+  verb's own message and nothing recorded. `check` and `deskd` parse no flags: `check` takes the
+  cell, then a `CLAUDE_CONFIG_DIR`, and ignores the rest; `deskd` takes the cell and ignores the
+  rest, a flag-shaped word included. A flag ahead of their cell is still refused.
+- **A repeated `--kind`** on `desk`, `up` or `show` keeps its first value; a later one is skipped
+  unread, as the old pre-scan did, so a word appended after a pinned kind never re-kinds a launch.
 - **`scratch ... run` command boundary.** Everything after `scratch <cell> <action>` and the
   verb's own flags is the command, with or without `--`: the first word that is not a flag or a
   flag's value starts it, and nothing after that word is parsed as a `scratch` flag, `--help`,
@@ -68,8 +84,9 @@ it also fails when a listed row stops differing, so this table cannot go stale i
 
 The old parser refused each of these lines (exit 3) and the new parser on its own would have run
 them. They are refused again, exit 3 and nothing run, by the shape check; what changed is the
-wording and the missing roster echo, the same change decision entries 1 and 2 make for an unknown
-verb. The parity test replays each against the recorded transcript of the pre-migration binary.
+wording and the missing roster echo, which decision entry 10 accepts for refusals of this kind and
+entry 1 for the echo. The parity test replays each against the recorded transcript of the
+pre-migration binary.
 
 | Case key | Line | Before (exit 3, after the echo) | Now (exit 3, no echo) |
 |---|---|---|---|
@@ -86,9 +103,11 @@ verb. The parity test replays each against the recorded transcript of the pre-mi
 | `completion-entrypoints/0`, `completion-entrypoints/1`, `completion-entrypoints/2` | `__complete ...`, `__completeNoDesc ...` | `unknown verb '__complete'` | `unknown command "__complete" for "cellctl"`; the parser's hidden completion entrypoint is replaced so it never answers |
 
 Also refused, with no recorded case of its own: a `--cells-root` anywhere after the verb (`ls
---cells-root <abs>`), a flag in the verb's place (`-- ls`, `--bogus`), `help` with more than one
+--cells-root <abs>`), a flag or a lone `-` in the verb's place (`-- ls`, `--bogus`, `- ls`), a
+flag ahead of the cell of `check` or `deskd` (`check --bogus <cell>`), `help` with more than one
 word or with a hidden or unknown verb (`help __complete`, `help completion`), and `version` with
-any word but `-h`/`--help`.
+any word but `-h`/`--help`. `TestCLILegacyShapeRefusals` and `TestCLILegacyWordsRestored` pin
+these and the lines under "What did not change" that read as they did.
 
 One ordering is also held: the `desk` role is validated before any flag, as the old parser did, so
 a bad role is refused first whatever flags follow (`refusal-order/0` replays it unchanged).
@@ -96,10 +115,13 @@ a bad role is refused first whatever flags follow (`refusal-order/0` replays it 
 ## Other deliberate differences
 
 - `--flag=value` and a bare `--` terminator are now accepted by every non-raw verb (decision
-  entry 4).
-- `-h` means help. A single-dash token that is not a known long flag is an error rather than a
-  config-directory positional (decision entry 4); a single-dash long flag outside `scratch` is
-  refused (above).
+  entry 4): `cadence <cell> recover <role> --confirm-stopped=true` confirms, and
+  `cadence <cell> status <role> --` and `check <cell> --` run. A `--confirm-stopped=<value>` in any
+  other place, or with a false value, is refused as before.
+- `-h` and `--help` after the verb mean help (decision entry 9), `check <cell> --help` and
+  `deskd <cell> -h` included. On a verb that parses flags, a single-dash token that is not a known
+  long flag is an error (decision entry 4); a single-dash long flag outside `scratch` is refused
+  (above). `check` and `deskd` parse no flags, so such a word after their cell is still theirs.
 - No roster echo is printed for `help`, `-h`, `--help`, `--version`, `version` or a parse failure
   (decision entry 1).
 - `cadence recover` without a role is refused (decision entry 4).
@@ -109,17 +131,26 @@ a bad role is refused first whatever flags follow (`refusal-order/0` replays it 
 
 These seven cannot be restored by a refusal. Each is one of decision entries 5 to 11, which the
 driver's second answer on #2240 accepted (`1 — DR-cellctl-cobra`, accepting all seven items of
-the question put to it).
+the question put to it). Entry 10's "Before" was misstated when it was put to the driver; the
+corrected before for `desk` (exit 1, not 3) was put again and the driver's third answer on #2240
+accepted exit 3 (`1 — DR-cellctl-cobra`).
 
 | Decision entry | Line | Before | Now |
 |---|---|---|---|
-| 5 | `ls --bogus`, `status <cell> --bogus` (an unknown flag on a verb that ignored extra words) | exit 0, the word ignored | exit 3, `unknown flag` |
+| 5 | `ls --bogus`, `status <cell> --bogus` | exit 0, the word ignored | exit 3, `unknown flag` |
 | 6 | `ls --cells-root <abs>`, `ls --cells-root=<abs>` | exit 0, lists the default registry and ignores the words | exit 3, refused |
 | 7 | a refused or relative selector in front of `model-policy hook ...` (`--cells-root relative`, `--cells-root=<abs>`, `-cells-root <abs>`, a repeated selector) | exit 3, which the hook's caller reads as non-blocking | exit 2, the hook's blocking code (fail-closed) |
 | 8 | `help`, `help <verb>` | `unknown verb 'help'`, exit 3 | the usage or the verb's help, exit 0 |
 | 9 | `<verb> --help`, `<verb> -h` (for example `desk --help`, `ls -h`) | the word taken as a cell or role, or ignored | the verb's help, exit 0 |
-| 10 | `-help`, `desk -help` and other refusals the shape check does not reach | exit 3 with the domain wording after the echo | exit 3 with the parser's wording and no echo |
+| 10 | `-help`, `cadence <cell> status --bogus` and similar refusals | exit 3 with the tool's own wording after the echo | exit 3 with the parser's wording and no echo |
+| 10 | `desk -help`, `desk --bogus`, `desk -x` (a flag-shaped word where `desk` takes its cell) | exit **1**, the `desk` usage line after the echo | exit **3**, the parser's wording, no echo |
 | 11 | `scratch <cell> <action> --nosuch` and other `scratch` flag-parse failures except `--max-age bogus` | exit 2 (Go flag package) | exit 3 |
+
+One residual difference has no entry of its own. `scratch <cell> <action> -h` (or `--help`,
+`-help`) still loads the cell and its scratch policy first and exits 2 with nothing on stdout, as
+before, but the usage it prints on stderr is the verb's help, not the Go flag package's flag list,
+and the roster echo is not printed before it (decision entry 1). A help flag before the action
+(`scratch <cell> -h`) is the verb's help, exit 0 (decision entry 9).
 
 ## Co-execution notes for the human gate
 

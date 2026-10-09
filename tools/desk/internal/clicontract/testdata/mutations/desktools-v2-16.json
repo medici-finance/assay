@@ -1,5 +1,5 @@
 {
-  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv|TestScratchRunFlagsBeforeVerb|TestCLILegacyShapeRefusals|TestCLILegacyShapeAccepted|TestCLIEveryVerbDeclaresItsPositionals|TestCLIOpaqueArgvVerbResolvedLikeTheParser)$' ./cmd/cellctl/ ./internal/cli/",
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv|TestScratchRunFlagsBeforeVerb|TestCLILegacyShapeRefusals|TestCLILegacyShapeAccepted|TestCLILegacyWordsRestored|TestCLIEveryVerbDeclaresItsPositionals|TestCLIOpaqueArgvVerbResolvedLikeTheParser)$' ./cmd/cellctl/ ./internal/cli/",
   "control": {
     "name": "CONTROL — a parse failure exits with the wrong code (usage exit 3 becomes 4)",
     "file": "cmd/cellctl/cobra.go",
@@ -102,6 +102,66 @@
       "file": "cmd/cellctl/cobra.go",
       "old": "\"Launches and writes nothing.\",\n\t\tAnnotations: map[string]string{leadingArgsKey: \"1\"},",
       "new": "\"Launches and writes nothing.\",\n\t\tAnnotations: map[string]string{leadingArgsKey: \"0\"},"
+    },
+    {
+      "name": "a lone `-` in the verb's place is exempt from the shape check again (it runs the next word as the verb)",
+      "file": "cmd/cellctl/shape.go",
+      "old": "\tif strings.HasPrefix(verb, \"-\") {",
+      "new": "\tif strings.HasPrefix(verb, \"-\") && verb != \"-\" {"
+    },
+    {
+      "name": "a relative selector is no longer refused first (help and version answer behind it)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if len(args) >= 2 && args[0] == \"--cells-root\" && !filepath.IsAbs(args[1]) {",
+      "new": "if false && len(args) >= 2 && args[0] == \"--cells-root\" && !filepath.IsAbs(args[1]) {"
+    },
+    {
+      "name": "every model-policy line, not only the hook line, has its exit rewritten to the blocking 2",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "return len(a) > 1 && a[0] == \"model-policy\" && a[1] == \"hook\"",
+      "new": "return len(a) > 0 && a[0] == \"model-policy\""
+    },
+    {
+      "name": "a help flag in the verb's place no longer ends the line (the words after it are parsed)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "case \"\", \"-h\", \"--help\":",
+      "new": "case \"\":"
+    },
+    {
+      "name": "a repeated --kind takes its last value (the first-wins wrapper sets every value)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tif f.given {\n\t\treturn nil\n\t}",
+      "new": "\tif false && f.given {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "a confirmation word escaped by `--` confirms a recovery (the terminator is always dropped)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if rest != nil && valueIn(flag, rest) {",
+      "new": "if false && rest != nil && valueIn(flag, rest) {"
+    },
+    {
+      "name": "cadence reads the parser's positionals and boolean again, not the words as given",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\twords := legacyWords(verbWords, \"--confirm-stopped\")\n\t\tcmdCadence(cellArg(words), words[1:])",
+      "new": "\t\twords := append([]string{}, args...)\n\t\tif cmd.Flags().Changed(\"confirm-stopped\") {\n\t\t\twords = append(words, \"--confirm-stopped\")\n\t\t}\n\t\tcmdCadence(cellArg(words), words[1:])"
+    },
+    {
+      "name": "the flag-less verbs lose their exemption (a flag-shaped word after the cell of check or deskd is refused)",
+      "file": "cmd/cellctl/shape.go",
+      "old": "\t\tif flagless && pos >= n {",
+      "new": "\t\tif false && flagless && pos >= n {"
+    },
+    {
+      "name": "the flag-less verbs are exempt from the shape check entirely (a flag ahead of their cell is taken as the cell)",
+      "file": "cmd/cellctl/shape.go",
+      "old": "return cmd.DisableFlagParsing && cmd.Annotations[leadingArgsKey] == \"\"",
+      "new": "return cmd.DisableFlagParsing"
+    },
+    {
+      "name": "a help flag after a scratch action is the verb's help, exit 0, not the action's usage error",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if !c.Flags().Changed(\"help\") || len(pos) < 2 {",
+      "new": "if true {"
     }
   ]
 }

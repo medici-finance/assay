@@ -194,9 +194,9 @@ func (c *Cell) commsServiceEnv(cfg *deskCommsConfig) []string {
 	return env
 }
 
-func cmdComms(cell string, args []string, confirm bool) {
-	recovering := len(args) == 1 && args[0] == "recover" && confirm
-	if !recovering && (confirm || len(args) != 1 || (args[0] != "check" && args[0] != "run")) {
+func cmdComms(cell string, args []string) {
+	recovering := len(args) == 2 && args[0] == "recover" && args[1] == "--confirm-stopped"
+	if !recovering && (len(args) != 1 || (args[0] != "check" && args[0] != "run")) {
 		die("comms <cell> check|run|recover --confirm-stopped")
 	}
 	c := loadCell(cell)

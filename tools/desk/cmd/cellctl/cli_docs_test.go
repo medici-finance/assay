@@ -21,11 +21,13 @@ func referenceMarkdown() string {
 	var b strings.Builder
 	b.WriteString("# `cellctl` command reference\n\n")
 	b.WriteString("<!-- GENERATED from the command tree by TestCLIReferenceDoc; do not edit by hand. -->\n\n")
-	b.WriteString("Every command takes the cell as its first argument; `--cells-root` is accepted anywhere.\n")
-	b.WriteString("Help (`-h`, `--help`, `help <command>`) and version (`--version`, `version`) read nothing:\n")
-	b.WriteString("no cell, no credential file, no roster. Single-dash spellings of long flags (`-model x`) are\n")
-	b.WriteString("still accepted. How this differs from the pre-Cobra surface is in\n")
-	b.WriteString("[cellctl-cli-compat.md](cellctl-cli-compat.md).\n\n")
+	b.WriteString("Every command takes the cell as its first argument. The shape is\n")
+	b.WriteString("`cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the registry selector is the\n")
+	b.WriteString("separated `--cells-root <abs>`, and only as the first word. Single-dash spellings of long flags\n")
+	b.WriteString("(`-apply`) are accepted by `scratch` only. Help (`-h`, `--help`, `help <command>`) and version\n")
+	b.WriteString("(`--version`, `version`) read no cell and no credential file, and read the roster only when the\n")
+	b.WriteString("line carries a relative `--cells-root`, which every line refuses after the roster echo. How\n")
+	b.WriteString("this differs from the pre-Cobra surface is in [cellctl-cli-compat.md](cellctl-cli-compat.md).\n\n")
 	root := buildRoot()
 	var hidden []string
 	var walk func(c *cobra.Command)

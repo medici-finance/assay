@@ -121,14 +121,24 @@ func TestCLIHelpOffline(t *testing.T) {
 	forms = append(forms, clicontract.HelpForms("desk")...)
 	forms = append(forms, clicontract.VersionForms...)
 	forms = append(forms, []string{"version"})
-	// The Go-flag spellings of help and version (-help, desk -help, -version) were unknown verbs
-	// to the legacy parser, which read single-dash flags for scratch only; they stay refused, and
-	// a refusal is as offline as help: usage exit 3, nothing on stdout, nothing echoed or read.
+	// The Go-flag spellings of help and version (-help, -version) were unknown verbs to the
+	// legacy parser, which read single-dash flags for scratch only; they stay refused, and a
+	// refusal is as offline as help: usage exit 3, nothing on stdout, nothing echoed or read.
+	// `desk -help` was the `desk` usage line, exit 1; it is exit 3 by the driver's answer on
+	// #2240 (decision entry 10).
 	refused := append(append([][]string{}, clicontract.GoFlagHelpForms("desk")...), clicontract.GoFlagVersionForms...)
 	for _, v := range visibleVerbs {
 		forms = append(forms, []string{v, "--help"}, []string{"help", v})
 	}
-	forms = append(forms, []string{"--cells-root", "relative-is-never-applied", "--help"})
+	// A relative registry selector was refused ahead of everything, help and version included,
+	// after the roster echo; it still is. It is the one help-shaped line that reads the roster
+	// (the echo), and it is still never applied: exit 3, nothing on stdout, nothing changed.
+	selector := [][]string{
+		{"--cells-root", "relative-is-never-applied", "--help"},
+		{"--cells-root", "relative-is-never-applied", "version"},
+		{"--cells-root", "relative-is-never-applied", "help", "ls"},
+		{"--cells-root", "relative-is-never-applied", "ls", "--help"},
+	}
 
 	for _, st := range states {
 		st := st
@@ -166,6 +176,12 @@ func TestCLIHelpOffline(t *testing.T) {
 					t.Errorf("%v: exit %d, want the usage refusal 3 with nothing on stdout and no echo\nstdout:\n%s\nstderr:\n%s", args, r.Code, r.Stdout, r.Stderr)
 				}
 			}
+			for _, args := range selector {
+				r := execIn(t, bin, env, args...)
+				if r.Code != 3 || r.Stdout != "" || !strings.Contains(r.Stderr, selectorRefusal) {
+					t.Errorf("%v: exit %d, want the selector refusal 3 with nothing on stdout\nstdout:\n%s\nstderr:\n%s", args, r.Code, r.Stdout, r.Stderr)
+				}
+			}
 			if _, err := os.Stat(logPath); err == nil {
 				t.Errorf("a harness was started by help or version")
 			}
@@ -198,6 +214,9 @@ func TestCLIHelpOffline(t *testing.T) {
 		})
 	})
 }
+
+// selectorRefusal is the legacy parser's refusal of a relative or missing registry selector.
+const selectorRefusal = "cellctl: --cells-root requires an absolute registry path and a command"
 
 // deskPlan runs `desk example worker-desk <extra>` as a dry run and returns the plan header.
 var planModelRE = regexp.MustCompile(`(?m)^\[dry-run\] cell=\S+ kind=\S+ role=worker-desk model=(.*?)( \(override\))? effort=`)

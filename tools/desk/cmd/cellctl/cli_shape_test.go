@@ -117,6 +117,19 @@ func TestCLILegacyShapeRefusals(t *testing.T) {
 		{"help", "__complete"},
 		{"help", "completion"},
 		{"help", "desk", "extra"},
+		// a lone `-` where the verb goes was an unknown verb, whatever follows it
+		{"-"},
+		{"-", "ls"},
+		{"-", "-", "ls"},
+		{"--cells-root", w.cellsRoot, "-", "ls"},
+		{"-", "help", "ls"},
+		{"-", "version"},
+		{"-", "--help"},
+		{"-", "cache-run", "child", "x"},
+		{"-", "model-policy", "hook", "a", "b", "c", "d", "e", "f"},
+		// a flag ahead of a flag-less verb's cell
+		{"check", "--bogus", "example"},
+		{"deskd", "-x", "example"},
 	} {
 		r := w.run(t, []string{"DRY_RUN=1"}, args...)
 		if r.Code != 3 || r.Stdout != "" || strings.Contains(r.Stderr, echoFragment) {
@@ -136,6 +149,97 @@ func TestCLILegacyShapeRefusals(t *testing.T) {
 		args := append(append([]string{}, pre...), "model-policy", "hook", "a", "b", "c", "d", "e", "f")
 		if r := w.run(t, nil, args...); r.Code != hookBlockExit {
 			t.Errorf("%v: exit %d, want the blocking %d", args, r.Code, hookBlockExit)
+		}
+	}
+}
+
+// TestCLILegacyWordsRestored: lines where the parser's reading differed from the legacy one
+// without a ruling (review C4 and security S3 on #2391) read as they did before: the verbs that
+// compared exact words (cadence, cache, comms) see those words again, the flag-less verbs
+// (check, deskd) read words by position, a help flag where the verb goes is the usage whatever
+// follows, a relative selector is refused first, the hook's blocking exit is the hook line's
+// alone, and a repeated --kind keeps its first value.
+func TestCLILegacyWordsRestored(t *testing.T) {
+	w := newCLIWorld(t, "")
+	w.writeHouseEnv(t, "CELL_GO_CACHE=on\nCELL_GO_CACHE_ROOT="+filepath.Join(w.root, "gocache")+"\n")
+	logPath := w.logStub(t)
+	type want struct {
+		code int
+		err  string
+	}
+	cadenceUnexpected := want{3, "cellctl: cadence: unexpected arguments"}
+	commsUsage := want{3, "cellctl: comms <cell> check|run|recover --confirm-stopped"}
+	cacheUsage := want{3, "cellctl: cache <cell> status|clean|recover --confirm-stopped (status is dry-run)"}
+	before := snapshotTree(t, w.root)
+	for _, tc := range []struct {
+		args []string
+		want want
+	}{
+		{[]string{"cadence", "example", "recover", "the-desk", "--confirm-stopped", "--confirm-stopped"}, cadenceUnexpected},
+		{[]string{"cadence", "example", "recover", "the-desk", "--confirm-stopped=true", "--confirm-stopped"}, cadenceUnexpected},
+		{[]string{"cadence", "example", "recover", "the-desk", "--confirm-stopped=false"}, cadenceUnexpected},
+		{[]string{"cadence", "example", "recover", "the-desk", "--", "--confirm-stopped"}, cadenceUnexpected},
+		{[]string{"cadence", "example", "recover", "the-desk", "--confirm-stopped=1", "--", "x"}, cadenceUnexpected},
+		{[]string{"cadence", "example", "recover", "--confirm-stopped", "the-desk"}, want{3, `cellctl: cadence: unknown role "--confirm-stopped"`}},
+		{[]string{"cadence", "example", "recover", "--confirm-stopped=true", "the-desk"}, want{3, `cellctl: cadence: unknown role "--confirm-stopped=true"`}},
+		{[]string{"comms", "example", "recover", "--confirm-stopped", "--confirm-stopped"}, commsUsage},
+		{[]string{"comms", "example", "recover", "--", "--confirm-stopped"}, commsUsage},
+		{[]string{"comms", "example", "check", "--confirm-stopped"}, commsUsage},
+		{[]string{"cache", "example", "recover", "--confirm-stopped", "--confirm-stopped"}, cacheUsage},
+		{[]string{"cache", "example", "status", "--confirm-stopped"}, cacheUsage},
+		{[]string{"cache", "example", "recover", "--", "--confirm-stopped"}, cacheUsage},
+		{[]string{"check", "example", "cfgdir", "--bogus"}, want{3, "cellctl: CLAUDE_CONFIG_DIR not a directory: cfgdir"}},
+		{[]string{"check", "example", "-x"}, want{3, "cellctl: CLAUDE_CONFIG_DIR not a directory: -x"}},
+		{[]string{"--cells-root", w.cellsRoot, "check", "example", "cfgdir", "--bogus"}, want{3, "cellctl: CLAUDE_CONFIG_DIR not a directory: cfgdir"}},
+		{[]string{"check", "example", "-bogus"}, want{3, "cellctl: CLAUDE_CONFIG_DIR not a directory: -bogus"}},
+		{[]string{"check", "example", "cfgdir", "--cells-root", w.cellsRoot}, want{3, "cellctl: CLAUDE_CONFIG_DIR not a directory: cfgdir"}},
+		{[]string{"deskd", "example", "--bogus"}, want{3, "CELL_ATTENDED=1"}},
+		{[]string{"deskd", "example", "-bogus"}, want{3, "CELL_ATTENDED=1"}},
+		{[]string{"deskd", "example", "--cells-root=" + w.cellsRoot}, want{3, "CELL_ATTENDED=1"}},
+		{[]string{"--cells-root", "relative", "version"}, want{3, selectorRefusal}},
+		{[]string{"--cells-root", "relative", "--help"}, want{3, selectorRefusal}},
+		{[]string{"--cells-root", "relative", "help", "ls"}, want{3, selectorRefusal}},
+		{[]string{"--cells-root", "relative", "model-policy", "bogus"}, want{3, selectorRefusal}},
+		{[]string{"--cells-root", "relative", "model-policy"}, want{3, selectorRefusal}},
+		{[]string{"--cells-root", "relative", "-", "model-policy", "hook", "a", "b", "c", "d", "e", "f"}, want{3, selectorRefusal}},
+		{[]string{"--cells-root", "relative", "model-policy", "hook", "a", "b", "c", "d", "e", "f"}, want{hookBlockExit, ""}},
+		{[]string{"show", "scrub", "--kind", "bogus", "--kind", "scrubbed"}, want{3, "--kind must be one of"}},
+		{[]string{"desk", "example", "worker-desk", "--kind", "container", "--kind", "house"}, want{3, "container launcher"}},
+		{[]string{"up", "example", "--kind", "container", "--kind", "house"}, want{3, "container launcher"}},
+		{[]string{"scratch", "nosuch", "sweep", "-h"}, want{3, "no cell 'nosuch'"}},
+	} {
+		r := w.run(t, []string{"DRY_RUN=1"}, tc.args...)
+		if r.Code != tc.want.code || !strings.Contains(r.Stderr, tc.want.err) {
+			t.Errorf("%q: exit %d, want %d with %q\nstdout:\n%s\nstderr:\n%s", tc.args, r.Code, tc.want.code, tc.want.err, r.Stdout, r.Stderr)
+		}
+	}
+	if _, err := os.Stat(logPath); err == nil {
+		t.Error("a refused line started a harness")
+	}
+	if after := snapshotTree(t, w.root); after != before {
+		t.Errorf("a refused line changed the filesystem:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+
+	// A help flag where the verb goes was the usage, exit 0, whatever followed it.
+	for _, args := range [][]string{{"-h", "--bogus"}, {"--help", "--nosuch"}, {"--help", "up", "example"}, {"-h", "cache-run", "child", "x"}} {
+		if r := w.run(t, nil, args...); r.Code != 0 || !strings.Contains(r.Stdout, "Usage:") || strings.Contains(r.Stderr, echoFragment) {
+			t.Errorf("%q: exit %d, want the usage and exit 0\n%s%s", args, r.Code, r.Stdout, r.Stderr)
+		}
+	}
+	// A help flag after a scratch action was that action's flag: its usage on stderr, exit 2.
+	for _, args := range [][]string{{"scratch", "example", "sweep", "-h"}, {"scratch", "example", "sweep", "--apply", "--help"}} {
+		if r := w.run(t, nil, args...); r.Code != 2 || r.Stdout != "" || !strings.Contains(r.Stderr, "Usage:") {
+			t.Errorf("%q: exit %d, want the action usage on stderr and exit 2\nstdout:\n%s\nstderr:\n%s", args, r.Code, r.Stdout, r.Stderr)
+		}
+	}
+	// The first --kind is the one read; a later one is skipped unread, as the legacy pre-scan did.
+	if r := w.run(t, nil, "show", "scrub", "--kind", "scrubbed", "--kind", "bogus"); r.Code != 0 || !strings.Contains(r.Stdout, "CELL_KIND=scrubbed (flag)") {
+		t.Errorf("show --kind scrubbed --kind bogus: exit %d\n%s%s", r.Code, r.Stdout, r.Stderr)
+	}
+	// The exact confirmation still records, in both spellings (decision entry 4).
+	for _, last := range []string{"--confirm-stopped", "--confirm-stopped=true"} {
+		if r := w.run(t, nil, "cadence", "example", "recover", "the-desk", last); r.Code != 0 || !strings.Contains(r.Stdout, "the-desk recover recorded") {
+			t.Errorf("cadence recover the-desk %s: exit %d\n%s%s", last, r.Code, r.Stdout, r.Stderr)
 		}
 	}
 }

@@ -54,7 +54,7 @@ func (c *Cell) cacheAdmission() error {
 	fmt.Fprintf(os.Stderr, "storage-admission %s\n", b)
 	return err
 }
-func cmdCache(cell string, args []string, confirm bool) {
+func cmdCache(cell string, args []string) {
 	c := loadCell(cell)
 	p, err := c.cachePolicy()
 	if err != nil {
@@ -63,13 +63,13 @@ func cmdCache(cell string, args []string, confirm bool) {
 	if p == nil {
 		die("cache requires CELL_GO_CACHE=on in cell.env")
 	}
-	if len(args) == 1 && args[0] == "recover" && confirm {
+	if len(args) == 2 && args[0] == "recover" && args[1] == "--confirm-stopped" {
 		if err = cellcache.Recover(*p, true); err != nil {
 			die("cache recover: %v", err)
 		}
 		return
 	}
-	if confirm || len(args) != 1 || (args[0] != "status" && args[0] != "clean") {
+	if len(args) != 1 || (args[0] != "status" && args[0] != "clean") {
 		die("cache <cell> status|clean|recover --confirm-stopped (status is dry-run)")
 	}
 	report, err := cellcache.Check(*p, args[0] == "status")
