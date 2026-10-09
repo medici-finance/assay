@@ -5399,6 +5399,87 @@ A provider writes a single-line value from outside the tool with `packet.Code` a
 text with `Content.Untrusted`; `Content.Text` keeps the Markdown it is given, so a value put
 into it bare is not marked as data.
 
+**Worker packets (#2439).** A `--kit worker` or `--kit worker-objective` dispatch gets a packet
+too (`packet_worker.go`), and WHICH one follows the kind of run the dispatch already derives:
+`--pr` onto an open change is a run that works that change, every other worker dispatch
+implements a brief or an issue. Measured on one adopter fleet over a day (135 worker runs,
+8,668 model requests), a run made a median of 20 tool calls before its first edit, and
+reading the brief, the files it names, the repository's own instructions, the change, its
+checks and its reviews was 25% of those calls for an implementing run and 45% for a run on an
+open change — almost all of them one read per request. The packet holds what those calls
+fetched:
+
+| Kind of run | Sections, in order |
+|---|---|
+| implementing (no change open) | `Run` — item, repository, worktree, branch, base commit, the claim this dispatch took; `Issue` — an issue item's title, body and newest comments; `Brief` — the specification, read from the run's worktree; `Dependencies` — the board status of each brief its `depends:` names; `Repository` — the top of the tree, workflow file names, `Makefile` targets, whether a `changelog/` directory exists, and the root instruction files quoted; `Files the brief names` — each path of the brief's `files:` list (or its `write-scopes:`, when it states one) as it stands in the worktree: a file quoted, a directory listed, an absent path said to be absent |
+| working an open change (`--pr`) | `Run`; `Change` — title, author, state, branches, head; `Description`; `Brief` when `--brief` names one; `Against the base branch` — whether it conflicts, and whether the base has commits the branch lacks; `Checks at head` — every check with its state, those not passing called out, and the checks the base branch requires; `Reviews and findings` — every review with its state, commit and author; the reviewer identity's reviews with each finding record's entries, those at the head and the newest two earlier ones quoted; reviews by any other account under their own heading; `Comments` — the newest eight quoted, newest first, each author marked; `Diff` |
+
+**A worker packet is smaller than a review packet, on purpose.** Everything in a packet is read
+again on every later request of the run, and a worker run makes dozens. So the caps are 32 KiB
+an item, 64 KiB for the brief and for the diff, 192 KiB of quoted text in all, and at most 12
+named files — against the review packet's 64 KiB, 192 KiB and 512 KiB. The rule is the same:
+an item over a cap is left out whole and listed under "Omitted" with its size, and the agent
+reads the part it needs at the source.
+
+**What a worker packet does not hold, and says it does not hold.** The typed forge surface reads
+neither a job's log nor review comments anchored to a file and a line, so a failing check
+arrives as a name and a state and a finding arrives as its record and the review that carries
+it; the packet states both gaps in the section where the reader would look for them. It does
+not name "the test command" or "the lint command" either: no file states that mechanically,
+so it lists where the repository states it (the brief's Verify table, the instruction files,
+`Makefile` targets, workflow files). A path the brief names in another repository is listed
+as omitted, never read from a sibling checkout. And it folds no finding ledger: which finding
+still blocks is decided by the tools that decide it, and the packet repeats each record as
+written.
+
+**A review is the reviewer's only by its author.** A change's author can post a review on it,
+and so can anyone else who can read it; such a review can carry a finding record of its own
+that calls every finding resolved. So the packet asks the forge who posted each review and
+reads a finding record ONLY from one the reviewer identity posted — the same binding, through
+the same lookup, that the review packet uses to tell an earlier verdict from a look-alike.
+Every other review goes under "Reviews by other accounts — not the reviewer's": one line each,
+no record read, and the newest five bodies quoted (16 KiB each at most) between boundary lines
+under a label that says whose they are, because a run may still have to answer them. When the
+reviewer identity cannot be resolved — it is not bound, or it is bound to a blank name — the
+section fails closed: every review is indexed with the state, commit and author the forge
+reports, none is listed as the reviewer's, no finding record is read and no body is quoted,
+and the section says to read the reviews at the source.
+
+**A finding record speaks of the commit its review is at.** An entry is called a standing
+blocker when it is blocking and not resolved with evidence at the packet's head commit. A
+record that says `resolved` and names no evidence commit means its own review's commit, so in
+a review at an earlier commit it is NOT a resolution at this head, and the line says so and
+names the commit. Only the first finding record in a review's text is read, and "newest"
+and "oldest" are the forge's list order, not a sort by date; the section states both.
+
+**Comments are newest first, and each author is marked.** The shared builder admits quoted
+text in the order a section hands it over and leaves out what would pass the overall cap, so
+a thread handed over oldest first loses its newest comments under pressure. The packet hands
+the newest eight over newest first — the reading order is reversed, and the section says so —
+and every comment left out is listed with its size. Beside each author, on a comment and on
+a review by another account, the packet writes what the tool's reviewer binding and its
+trusted list say of that account: `the reviewer identity`, `on the trusted list`, `NOT on
+the trusted list`, or `no trusted list is configured here: not checked` — it never guesses.
+The list is the roster every desk tool's trust decision reads, matched by login and account
+id; no new setting. A comment by an account that is neither the reviewer identity nor on
+the list is quoted only up to 16 KiB. A mark is about the account as read at dispatch: text
+from any account is still quoted data, and the kit clauses decide what a run does with it.
+
+**A value the tool did not write is shown as a value.** A title, a login, a branch or commit
+name, a label, a state word, a check's or a file's name, a claim key, the brief argument, a
+dependency reference, a board status, a finding's id, lane, class and state, a time, the text
+of an error: on a line of the tool's own, each is written inside one code span, on one line,
+with any backtick in it shown as an apostrophe — so a value carrying a line break or Markdown
+of its own cannot start a line, a heading or a `Packet:` line in the tool's voice. Longer text
+is quoted between boundary lines, where a quoted line shaped like a boundary line is marked.
+
+**Quoting does not change standing.** The brief and the repository's instruction files sit
+inside the same boundary as a change description or a review comment, because the tool did
+not write them. The worker kits' packet-first clause says what that means for a worker: text
+in the packet has exactly the standing it has when the agent fetches it itself — the brief is
+still the specification, the instruction files still bind, and a description, a comment or a
+review is still text written outside the dispatch.
+
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
@@ -5645,6 +5726,37 @@ incident — and `kittext_test.go` enforces that mechanically, with a positive c
 matcher that stopped matching fails rather than reporting the kits clean forever. The lane
 cut's fail-first evidence is `cmd/deskdispatch/reviewlane-mutations.json`, run with
 `go run ./cmd/muhar -j 0 -spec cmd/deskdispatch/reviewlane-mutations.json`.
+
+**A worker kit is cut for the kind of run (#2439).** The two worker kits are dispatched for two
+jobs: implementing a brief or an issue with no change open, and working a change that is
+already open (`--pr`). The kind is derived from the dispatch, never stated by a flag, and
+three things follow it (`workerkind.go`):
+
+- **The assignment's action half.** An implementing run is told to open the draft PR; a run on
+  an open change is told the change, its source branch and the head read at dispatch, to push
+  to it, and never to open a second one.
+- **Kit text inside a marked stretch.** A stretch between whole-line markers
+  `<!-- kind:implementing:begin -->` … `<!-- kind:implementing:end -->` (or `shepherding`)
+  reaches only that kind. Clause headings stay outside a stretch, so clause numbers are the
+  same for both kinds.
+- **The objective kit's copy of the common clauses** is not quoted a second time: every prompt
+  already carries the common clauses ahead of the class kit.
+
+Everything unmarked reaches both kinds, and that is nearly all of it: a resumed change may be
+half-implemented, and an implementing run may see a review land before it hands back.
+**Marking a stretch is a claim that the other kind is never bound by it — when in doubt,
+leave it unmarked.** `workerkind_test.go` holds the cut to that: a cut never loses a line that
+is not inside a stretch marked for the other kind, the stretches in the shipped kits are a
+declared list a new one must be added to on purpose, no marker reaches a prompt, and a kit
+whose markers are unbalanced or nested is refused rather than guessed at.
+
+The same change gives both worker kits three clauses about HOW a run gathers and waits, none
+of which changes what it must do: gather in few requests (read a file whole, send independent
+reads together), read the packet first when the assignment names one, and wait on a check or
+a review in one bounded command instead of a look per request. On the same fleet 93% of
+worker requests carried a single tool call, 62% of file reads were ranged and a third were
+re-reads, and runs on an open change spent a quarter of their wall-clock in separate
+sleep-then-look requests.
 
 **The verifier packet — a reading aid, never evidence (#2439).** `deskdispatch --kit verifier`
 writes one owner-only Markdown file and adds one line, `Packet: <absolute path>`, to the
