@@ -5496,7 +5496,12 @@ evidence.**
 The dispatcher does **not** know which commit delivered an item's work, and the packet says
 so: it lists candidates and leaves the choice, and the diff, to the verifier. The history
 search goes no further back than the commit that added the brief file, and never more than
-2,000 commits; when it stops short of the brief's first commit the packet says so.
+2,000 commits; when it stops short of the brief's first commit the packet says so. **The
+list is the newest six, and the packet says how many it left out:** on a brief verified
+more than once the newest are the Evidence landings and the delivering change is older, so
+the search carries on past the sixth to count the rest, and an omission line gives the
+count (`at least` that many when the search itself stopped early). When the item key gives
+no brief id, no commit message is searched, and the packet says that too.
 
 It **declines** rather than guess. A table with a result-like column (`observed`, `exit`,
 `status`, …) anywhere in the text the packet would carry — in the Verify section or outside

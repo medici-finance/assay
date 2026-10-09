@@ -1,7 +1,9 @@
 package gitcore
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,5 +138,93 @@ func TestPathHistoryDoesNotCallAGapAnAbsence(t *testing.T) {
 	}
 	if err := repo.PathHistory("no-such-ref", "sub/note.txt", func(PathCommit) bool { return true }); err == nil {
 		t.Fatal("an unknown revision walked")
+	}
+}
+
+// TestPathHistoryAtAMerge: a history with two lines whose commit times interleave, joined by
+// a merge. The walk visits them in `git rev-list` order (committer time, not one line and
+// then the other), and at the merge it reports the path's id at EACH parent — the merge took
+// the path from its second parent, so it did not change it, and a walk that looked at the
+// first parent only would say it did.
+func TestPathHistoryAtAMerge(t *testing.T) {
+	f := gittest.NewFixture(t)
+	clock := 0
+	git := func(args ...string) string {
+		t.Helper()
+		clock++
+		when := fmt.Sprintf("%d +0000", 1000000000+clock)
+		cmd := exec.Command("git", args...)
+		cmd.Dir = f.Dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.invalid",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.invalid",
+			"GIT_AUTHOR_DATE="+when, "GIT_COMMITTER_DATE="+when)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	commit := func(path, content, msg string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(f.Dir, path), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		git("add", path)
+		git("commit", "-q", "-m", msg)
+	}
+	commit("note.txt", "one\n", "add the note")
+	git("checkout", "-q", "-b", "side")
+	commit("note.txt", "two\n", "side: change the note")
+	git("checkout", "-q", "main")
+	commit("other.txt", "other\n", "main: an unrelated change")
+	git("checkout", "-q", "side")
+	commit("side.txt", "side\n", "side: an unrelated change")
+	git("checkout", "-q", "main")
+	git("merge", "-q", "--no-ff", "-m", "merge side", "side")
+	merge := git("rev-parse", "HEAD")
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visited []string
+	sawMerge := false
+	err = repo.PathHistory("HEAD", "note.txt", func(c PathCommit) bool {
+		visited = append(visited, c.Hash)
+		for i, p := range c.Parents {
+			// Absent at the seed commit: rev-parse fails there and the walk reports "".
+			want, err := f.Git("rev-parse", "--verify", "--quiet", p+":note.txt")
+			if err != nil {
+				want = ""
+			}
+			if c.ParentPathIDs[i] != want {
+				t.Errorf("%s: path id at parent %d (%s) = %q, want %q", c.Hash, i, p, c.ParentPathIDs[i], want)
+			}
+		}
+		if c.Hash == merge {
+			sawMerge = true
+			if len(c.Parents) != 2 {
+				t.Fatalf("the merge has %d parents, want 2", len(c.Parents))
+			}
+			if c.PathID == c.ParentPathIDs[0] || c.PathID != c.ParentPathIDs[1] {
+				t.Errorf("the merge holds the note as its second parent does and not as its first; got %q against %q",
+					c.PathID, c.ParentPathIDs)
+			}
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sawMerge {
+		t.Fatal("the walk did not visit the merge")
+	}
+	if got, want := strings.Join(visited, "\n"), git("rev-list", "HEAD"); got != want {
+		t.Errorf("visited:\n%s\nwant (git rev-list HEAD):\n%s", got, want)
+	}
+	// Control: the two lines interleave, so the order asked for is not one line then the other.
+	if firstParentFirst := git("rev-list", "--topo-order", "HEAD"); firstParentFirst == strings.Join(visited, "\n") {
+		t.Fatalf("control: this fixture cannot tell commit-time order from a line-by-line one")
 	}
 }

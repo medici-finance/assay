@@ -93,9 +93,11 @@ const (
 	// makes it roughly a second at the bound. verifierPacketBudget is the backstop behind it:
 	// how long the search and the changed-path lists may take in all. A packet is a
 	// convenience; neither may hold up a dispatch.
-	verifierPacketScan   = 2000
-	verifierPacketBudget = 10 * time.Second
+	verifierPacketScan = 2000
 )
+
+// verifierPacketBudget is a variable only so a test can run the section with no time left.
+var verifierPacketBudget = 10 * time.Second
 
 var (
 	vpCommitRe  = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
@@ -627,6 +629,9 @@ func verifierPacketCommitsSection(repo vpReader, head, brief, id string, scan in
 	var commits []vpCommit
 	started := time.Now()
 	searched, stopped := 0, ""
+	// older counts the commits that qualify for the list and are past its limit; reached is
+	// set once the walk arrives at the commit that added the brief, where the search ends.
+	older, reached := 0, false
 	err := repo.PathHistory(head, brief, func(pc gitcore.PathCommit) bool {
 		if searched == scan {
 			stopped = fmt.Sprintf("the history search stops after %d commits", searched)
@@ -645,32 +650,60 @@ func verifierPacketCommitsSection(repo vpReader, head, brief, id string, scan in
 		if id != "" && vpNamesBrief(pc.Message, id) {
 			k.why = append(k.why, "its message has a "+packet.Code("Brief: "+id)+" line")
 		}
-		if len(k.why) > 0 {
+		switch {
+		case len(k.why) == 0:
+		case len(commits) < verifierPacketCommits:
 			commits = append(commits, k)
+		default:
+			// Past the limit nothing is listed, but the walk goes on so the packet can say how
+			// many it left out: a list that ends at its limit must not read as the whole of it.
+			older++
 		}
-		// Nothing older than the commit that added the brief file is searched, and nothing
-		// past the limit is listed.
-		return !added && len(commits) < verifierPacketCommits
+		// Nothing older than the commit that added the brief file is searched.
+		reached = added
+		return !added
 	})
 	if err != nil {
 		// A clone whose history stops short (a shallow one) still yields what was read
 		// before the gap; the packet says the search ended there, in the tool's words.
 		stopped = vpHistoryStopsShort
 	}
+	// What qualifies a commit, in the words the list is described with. Without a brief id no
+	// message can be matched, and the packet says so rather than describe a search it did
+	// not make.
+	what, messages := "changed or name the brief", "that changed the brief file, or whose message names the brief"
+	if id == "" {
+		what, messages = "changed the brief", "that changed the brief file"
+		c.Text("No commit message was searched: the item key gives no brief id of the form `stream/number`, so a " +
+			"commit that names the brief in its message without changing the brief file is not listed below.")
+	}
+	if older > 0 {
+		count := fmt.Sprintf("%d older commits that %s", older, what)
+		if older == 1 {
+			count = "1 older commit that " + what
+		}
+		if !reached {
+			// The search stopped before the brief's first commit: the count is a floor.
+			count = "at least " + count
+		}
+		c.Omit(count, packet.SizeUnknown, fmt.Sprintf("the list holds only the newest %d", verifierPacketCommits))
+	}
 	if stopped != "" {
 		c.Omit("commits older than the "+fmt.Sprint(searched)+" searched", packet.SizeUnknown, stopped)
 	}
 	if len(commits) == 0 {
-		c.Text("No commit searched changed the brief file or names it. Find the change that delivered this " +
-			"item yourself.")
+		c.Textf("No commit searched %s. Find the change that delivered this item yourself.",
+			map[bool]string{true: "changed the brief file", false: "changed the brief file or names it"}[id == ""])
 		return c, nil
 	}
 	c.Textf("The dispatcher does not know which commit delivered this item's work. These are the newest commits "+
-		"reachable from the head commit that changed the brief file, or whose message names the brief: at most "+
-		"%d, newest first, each with the paths it changed against its first parent. The search goes no further "+
+		"reachable from the head commit %s: at most "+
+		"%d, newest first, each with the paths it changed against its first parent. On a brief verified more than "+
+		"once the newest are the Evidence landings, and the change that delivered the work is older: an omission "+
+		"above says how many such commits are not listed. The search goes no further "+
 		"back than the commit that added the brief file. No commit subject, message or date is copied, because "+
 		"a message may state an earlier verdict and that is not evidence. Decide for yourself which change "+
-		"delivered the work, and read its diff at the source.", verifierPacketCommits)
+		"delivered the work, and read its diff at the source.", messages, verifierPacketCommits)
 	for _, k := range commits {
 		kind := ""
 		if len(k.parents) > 1 {
