@@ -14,8 +14,8 @@ const verifierWorktreeEmail = "300000005+assay-verifier-app[bot]@users.noreply.g
 
 // (ddGit — real-git test helper — is shared from worktreedryrun_test.go.)
 
-// TestVerifierDispatchStampsWorktreeIdentityNotTheSharedCheckouts is the headline #1490
-// regression: a verifier dispatched from a shared checkout whose config carries an UNRELATED
+// TestVerifierDispatchStampsWorktreeIdentityNotTheSharedCheckouts is the headline #1490 regression:
+// a verifier dispatched from a shared checkout whose config carries an UNRELATED
 // (desk) commit identity must land in a worktree whose OWN commit identity is the verifier's,
 // not the desk identity it would otherwise inherit — the identity statusgen verifyrun would
 // otherwise stamp into every Evidence witness Runner cell.
@@ -27,6 +27,7 @@ const verifierWorktreeEmail = "300000005+assay-verifier-app[bot]@users.noreply.g
 // FAIL-FIRST: before the fix the worktree-create step stamped nothing, so the worktree
 // inherited the shared checkout's `assay-desk-app[bot]` identity and this assertion read that
 // desk email back instead of the verifier's — a red run demonstrable by stashing the fix.
+// regression: #1490
 func TestVerifierDispatchStampsWorktreeIdentityNotTheSharedCheckouts(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)

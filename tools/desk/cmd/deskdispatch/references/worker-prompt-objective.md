@@ -272,28 +272,27 @@ reliably caught an inverted or false desk claim.
 > must show it failing on the unfixed code — a red run quoted in the PR body or commit trail,
 > or a committed mutation script the reviewer can re-run.
 
-That sentence is the reviewer's rule (`references/review-prompt.md` §4), quoted here
-verbatim so both kits bind the same obligation. At review, a test whose red state was never
-observed is a finding, not evidence: the PR comes back with a request for the red run, and a
-correct fix spends a full review round-trip on evidence the worker had at hand before the
-PR was opened. Three PRs bounced on exactly this in one review window with the fix and the
-test both sound.
+That sentence is the reviewer's rule (`references/review-prompt.md` §4), quoted verbatim so
+both kits bind the same obligation. A test whose red was never observed is a finding, not
+evidence: the PR comes back for the red run, a full review round-trip on evidence the worker
+had before opening it (three sound PRs bounced on exactly this in one review window).
 
 Produce it BEFORE `deskpr create`, in one of two forms:
 
-1. **A red run.** Run the new or changed test against the code as it was before the fix —
-   check out the pre-fix commit, or stash the fix — and capture the failing assertion:
-
-   ```
-   git stash && go test ./<pkg>/... -run '<TestName>' -count=1; git stash pop
-   ```
-
-   (or the repository's equivalent for its language). Paste the failing line and the commit
+1. **A red run.** Run the new or changed test against the pre-fix code (check out the pre-fix
+   commit, or stash the fix: `git stash && go test ./<pkg>/... -run '<TestName>' -count=1;
+   git stash pop`, or the repository's equivalent) and paste the failing line and the commit
    it ran against into the PR body under a `## Fail-first` heading.
 2. **A committed mutation entry.** Where the repository keeps a mutation map
    (`internal/deskkit/mutations.json`, `testdata/mutate.sh`, or its named equivalent), add
-   the entry that breaks the guarded behaviour and name it in the PR body; the reviewer
-   re-runs it.
+   the entry that breaks the guarded behaviour and name it in the PR body for a re-run.
+
+**Tag it; retire it by trailer.** Put `// regression: #<N>` (or `F-<slug>`, `class #<N>`) on
+the line directly above every fail-first test's `func`. A commit that deletes or renames a test
+function carries one trailer per function: `Retires-test: <TestName> — <why>`, or for a rename
+`Retires-test: <Old> — renamed <New>; <why>`. Run `cd tools/desk && go test ./internal/testledger/
+-run TestReportTestLedger -v -args -base=<merge-base> -head=HEAD`, re-point every Verify row it
+names in the same PR, and paste a non-empty report under `## Tests retired` in the PR body.
 
 Fail-first is part of the DELIVERABLE the same way the board row is: a PR whose body makes
 a test-based claim ("this test passes", "the guard is pinned") with no red run and no
