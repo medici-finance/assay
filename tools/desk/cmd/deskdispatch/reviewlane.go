@@ -19,10 +19,16 @@ package main
 // Everything outside a marked stretch reaches every lane. Clause headings stay outside, so
 // clause numbers — which other documents cite — are the same on every lane.
 //
-// FAIL-SAFE DIRECTION. A dispatch whose lane cannot be told gets EVERY stretch: the cost of
-// not knowing is a longer kit, never a missing rule. The security output is the only one
+// FAIL-SAFE DIRECTION. A dispatch whose lane cannot be told gets every PROCEDURE: the cost
+// of not knowing is a longer kit, never a missing rule. The security output is the only one
 // that leaves a procedure out, and it is selected only by a claim key that says "security"
 // in so many words.
+//
+// A SECURITY STRETCH IS A STAND-IN. It is the note the security lane reads in place of the
+// correctness stretch directly above it ("not run in this lane, owned by ..."). A reader who
+// has the procedure must not also be told not to run it, so the whole kit carries the
+// procedure and never the note. A test holds every security stretch to that position; a
+// security-only RULE would need the cut taught about it first.
 
 import (
 	"regexp"
@@ -71,14 +77,19 @@ func reviewLaneForClaim(claimKey, repo string, pr int) string {
 	return ""
 }
 
-// reviewKitForLane cuts the review kit for one lane. lane "" keeps every stretch. The
-// marker lines are never emitted. A malformed, unknown, nested, stray or unclosed marker is
+// reviewKitForLane cuts the review kit for one lane. lane "" is the whole kit: every
+// procedure and no stand-in note, which is the correctness lane's stretches. The marker
+// lines are never emitted. A malformed, unknown, nested, stray or unclosed marker is
 // UNVERIFIABLE: a kit whose lane boundaries cannot be read must not be dispatched on,
 // because the cut could silently drop a clause from the lane it binds.
 func reviewKitForLane(kit, lane string) (string, error) {
 	if lane != "" && !isReviewKitLane(lane) {
 		return "", deskkit.Unverifiable("review kit has no lane "+lane+" — want one of: "+
 			strings.Join(reviewKitLanes(), ", "), nil)
+	}
+	keep := lane
+	if keep == "" {
+		keep = deskkit.LaneCorrectness.Name
 	}
 	var out []string
 	open := ""
@@ -104,7 +115,7 @@ func reviewKitForLane(kit, lane string) (string, error) {
 			}
 			continue
 		}
-		if open != "" && lane != "" && open != lane {
+		if open != "" && open != keep {
 			continue
 		}
 		// A stretch cut out between two blank lines leaves them adjacent; the kit itself

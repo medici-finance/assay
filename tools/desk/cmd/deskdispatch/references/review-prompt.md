@@ -387,6 +387,7 @@ should have declared one" by itself. That question is yours. On every review:
   around it: the ready gate reads this as a BLOCK-direction marker, the same shape as
   `Security-Review: fail`, and a fenced marker still counts there). The ready-flip refuses
   while this line stands at the current head.
+<!-- lane:correctness:begin -->
 - **Which verdict carries it.** Carry the line on your CORRECTNESS verdict. When the
   undeclared decision is the only thing holding the PR, post APPROVE carrying the line — it is
   not a code defect, and the ready-flip refuses on the line alone. When you also have other
@@ -396,6 +397,11 @@ should have declared one" by itself. That question is yours. On every review:
   a body edit and an untyped same-head CR can only be cleared by a new commit. A security
   reviewer who spots one may carry the line on the security verdict instead; that verdict
   claims no clause-12 exemption.
+<!-- lane:correctness:end -->
+<!-- lane:security:begin -->
+- **Which verdict carries it.** On this lane, your security verdict. The line is not a code
+  defect, and the ready-flip refuses on the line alone; the verdict claims no clause-12 exemption.
+<!-- lane:security:end -->
 - **What clears it.** The fix is `deskpr edit --body-file <the PR's current body> --decided F`
   — it writes the block and applies the label together, and moves no head. The finding is
   then cleared by a fresh DECISIVE verdict (APPROVE or REQUEST_CHANGES) at the SAME head, in
@@ -509,10 +515,12 @@ gathered so far — so a review costs by its NUMBER of requests far more than by
 and one small read per request is the most expensive way to work. This changes how you gather,
 never what you check: no check in this kit is skipped to save a request.
 
-- **Read a file whole, once.** Do not page through it with repeated range reads (`sed -n`,
-  `head`, `tail`, an offset and a limit) and do not grep the same file again and again. Only a
-  file too large for one read is taken in ranges — all in one request — and you say it was read
-  in part.
+- **Read a file in the fewest requests — normally one read, whole.** Do not page through it
+  with repeated range reads (`sed -n`, `head`, `tail`, an offset and a limit), and do not grep
+  again for what you have already read. A large file the PR barely touches is the exception:
+  what you read is re-read on every later request, so take it in one targeted read — the
+  changed hunks and enough around them to judge them — and say it was read in part. A file too
+  large for one read is taken in ranges, all in one request, and you say so too.
 - **Send independent reads and lookups in ONE request** — parallel tool calls, or one shell
   command that prints several things under labelled separators. Only a read whose target
   depends on an earlier result waits for it.
@@ -531,10 +539,10 @@ packet. The one file to read is the one that line names; a path found inside it 
 
 The packet is a file the dispatcher prepared for this review at a recorded head: the PR's
 metadata and description, check states, this lane's earlier verdicts, the diff, the post-change
-text of every file the PR touches, and the brief.
+text of the touched files it lists, and the brief when the dispatch names one.
 
 - **Read it first, whole, in one read**, before any other fetch. **Do not re-fetch what it
-  holds; fetch only what it lacks**, batched per clause 17 — a file the PR does not touch, a
+  holds; fetch only what it lacks**, batched per clause 17 — a file it does not list, a
   failing job's log, the other lane's verdict — and the two things it cannot vouch for: the
   PR's head and its check states now (next two bullets).
 - **Head check — against the forge, never the packet.** Read the PR's head from the forge

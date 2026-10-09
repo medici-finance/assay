@@ -5251,14 +5251,19 @@ isolation floor, the no-evasion rule, the offline envelope and the three-state i
 rule in the common kit; the security-gate refusal, the per-invocation body-file rule, the
 fail-first review discipline and the Evidence format in the class kits. Splitting the shared
 half out is the point — three copies of one clause in three kits is three clauses that
-drift. The review kit is emitted per lane: a claim key ending `--security` gets the security
-cut (a correctness-only procedure is replaced by a note naming its owner), the bare PR key
-the correctness cut, any other key the whole kit. They are **embedded**
+drift. The review kit is emitted per lane, read off the claim key: the security key of the
+PR under review (`<label>--pr-<N>--security`) gets the security cut, in which a
+correctness-only procedure is replaced by a note naming its owner; the bare PR key and its
+`--correctness` form get the correctness cut; any other key — another lane's suffix, a
+`--security` key whose PR is not the one dispatched — gets the whole kit, which carries every
+procedure and none of those notes. The kits are **embedded**
 in the binary, so `deskdispatch --version` and the clause text move together and a fleet on
 one pinned release is a fleet on one set of clauses. Every clause is written GENERIC — no
 private repository name, issue reference, internal document path, item identifier, or named
 incident — and `kittext_test.go` enforces that mechanically, with a positive control so a
-matcher that stopped matching fails rather than reporting the kits clean forever.
+matcher that stopped matching fails rather than reporting the kits clean forever. The lane
+cut's fail-first evidence is `cmd/deskdispatch/reviewlane-mutations.json`, run with
+`go run ./cmd/muhar -j 0 -spec cmd/deskdispatch/reviewlane-mutations.json`.
 
 ## The dispatch-claim store — `ResolveClaimStore`
 

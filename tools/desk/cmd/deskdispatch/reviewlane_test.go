@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -42,7 +43,8 @@ var bothLanes = []string{laneC, laneS}
 
 // reviewObligations is the per-lane table. Sections a lane RUNS are listed under that lane;
 // the security lane's short notes naming the owner of a correctness-only pass are listed
-// under security alone.
+// under security alone. Those notes stand in for a procedure, so the whole kit — which
+// carries the procedure — carries a correctness row and never a security-alone row.
 //
 // A BOUND TRAVELS WITH THE POWER IT BOUNDS. A lane that keeps the licence to post a finding
 // keeps every sentence limiting that finding, so those sentences are both-lanes rows even
@@ -72,6 +74,8 @@ var reviewObligations = []obligation{
 	{4, "the author must show it failing on the unfixed code", bothLanes},
 	{4, "**A test whose red state was never observed is a finding, not evidence.**", bothLanes},
 	{4, "**Scope — do not over-apply.**", bothLanes},
+	{4, "**Departures.** From a current-main checkout, never the PR's, run", bothLanes},
+	{4, "An unjustified departure, trailed or not, is a `test-evidence` finding.", bothLanes},
 
 	{5, "an approval RESTING on a could-not-check is unfounded", bothLanes},
 
@@ -134,8 +138,11 @@ var reviewObligations = []obligation{
 	{14, "**A record missing its authenticated actor or head is could-not-check**", bothLanes},
 
 	{15, "`Undeclared-desk-decision: <one line>`", bothLanes},
-	{15, "**Which verdict carries it.**", bothLanes},
-	{15, "the `Blocked-On-Body:` form, which clause 12 carries on the correctness lane", bothLanes},
+	{15, "Carry the line on your CORRECTNESS verdict.", []string{laneC}},
+	{15, "Do not post REQUEST_CHANGES for this finding alone", []string{laneC}},
+	{15, "the `Blocked-On-Body:` form, which clause 12 carries on the correctness lane", []string{laneC}},
+	{15, "On this lane, your security verdict.", []string{laneS}},
+	{15, "The line is not a code defect, and the ready-flip refuses on the line alone; the verdict claims no clause-12 exemption.", []string{laneS}},
 	{15, "**What clears it.**", bothLanes},
 	{15, "absence alone is never the finding", bothLanes},
 	{15, "**Check what IS declared, too.**", bothLanes},
@@ -146,6 +153,7 @@ var reviewObligations = []obligation{
 	{16, "**Guard lines are exempt from softening findings.**", bothLanes},
 	{16, "**Action.** Before recording your verdict", []string{laneC}},
 	{16, "scratch copy): you are read-only and never execute PR content.", []string{laneC}},
+	{16, "Scope the read to the CHANGED LINES of the triggering files only", []string{laneC}},
 	{16, "Never post a finding under this heading for a pre-existing line the diff did not touch.", []string{laneC}},
 	{16, "Apply the procedure's own keep list in full", []string{laneC}},
 	{16, "Clause 13's blocking boundary governs a prompt-audit finding", []string{laneC}},
@@ -153,7 +161,8 @@ var reviewObligations = []obligation{
 	{16, "**Cross-lane duplication.**", bothLanes},
 
 	{17, "no check in this kit is skipped to save a request", bothLanes},
-	{17, "**Read a file whole, once.**", bothLanes},
+	{17, "**Read a file in the fewest requests — normally one read, whole.**", bothLanes},
+	{17, "A large file the PR barely touches is the exception", bothLanes},
 	{17, "**Send independent reads and lookups in ONE request**", bothLanes},
 	{17, "**One command for the PR's state.**", bothLanes},
 
@@ -231,11 +240,14 @@ func stretchLines(t *testing.T, kit string) (lines []kitStretch, stretches map[i
 	return lines, stretches
 }
 
-// Every row's anchor is in exactly the cuts of the lanes the row names — and in the
-// lane-unknown cut whatever it names, because not knowing the lane must never cost a rule.
+// Every row's anchor is in exactly the cuts of the lanes the row names. The lane-unknown cut
+// is the whole kit: it carries every row the correctness lane has, because not knowing the
+// lane must never cost a rule, and no security-alone row, because that row is a note saying
+// "not run in this lane" and its reader would have the procedure right above it.
 //
 // FAIL-FIRST: wrapping clause 10 in a correctness stretch fails both of its rows here for
-// the security cut.
+// the security cut. Emitting the security stretches on the whole kit fails every
+// security-alone row for the lane-unknown cut.
 func TestReviewKitObligationsReachEveryLaneTheyBind(t *testing.T) {
 	cuts := map[string]string{
 		laneC: foldSpace(reviewCut(t, laneC)),
@@ -244,13 +256,14 @@ func TestReviewKitObligationsReachEveryLaneTheyBind(t *testing.T) {
 	}
 	for _, o := range reviewObligations {
 		anchor := foldSpace(o.anchor)
-		if !strings.Contains(cuts[""], anchor) {
-			t.Errorf("clause %d: %q is missing from the lane-unknown cut, which must carry everything", o.clause, o.anchor)
-		}
-		for _, lane := range []string{laneC, laneS} {
+		for _, lane := range []string{laneC, laneS, ""} {
+			runs := lane
+			if runs == "" {
+				runs = laneC
+			}
 			got := strings.Contains(cuts[lane], anchor)
-			if want := hasLane(o.lanes, lane); got != want {
-				t.Errorf("clause %d: %q in the %s cut = %v, want %v", o.clause, o.anchor, lane, got, want)
+			if want := hasLane(o.lanes, runs); got != want {
+				t.Errorf("clause %d: %q in the %q cut = %v, want %v", o.clause, o.anchor, lane, got, want)
 			}
 		}
 	}
@@ -286,8 +299,9 @@ func TestReviewKitClauseHeadingsAreOnEveryCutAndInTheTable(t *testing.T) {
 }
 
 // The complement: a line outside every marked stretch is in EVERY cut; a line inside a
-// stretch is in its own lane's cut and the lane-unknown cut. So the cut removes only what a
-// marker names — the mechanical form of "no obligation was dropped".
+// stretch is in its own lane's cut, and a correctness stretch is in the lane-unknown cut
+// too. So the cut removes only what a marker names — the mechanical form of "no obligation
+// was dropped".
 //
 // FAIL-FIRST: making the cut skip a line of unmarked text fails here for that line.
 func TestReviewKitCutRemovesOnlyMarkedStretches(t *testing.T) {
@@ -303,7 +317,7 @@ func TestReviewKitCutRemovesOnlyMarkedStretches(t *testing.T) {
 			continue
 		}
 		for lane, cut := range cuts {
-			want := l.lane == "" || lane == "" || l.lane == lane
+			want := l.lane == "" || l.lane == lane || (lane == "" && l.lane == laneC)
 			if want && !has(cut, l.line) {
 				t.Errorf("the %q cut is missing a line it is bound by (stretch lane %q):\n  %s", lane, l.lane, l.line)
 			}
@@ -365,6 +379,40 @@ func TestReviewKitMarkersAgreeWithTheObligationTable(t *testing.T) {
 	}
 }
 
+// A security stretch is a stand-in: the note the security lane reads in place of the
+// correctness stretch directly above it. That position is what lets the whole kit leave the
+// security stretches out without losing a rule, so it is held here — a security stretch
+// anywhere else would be a security-only rule the lane-unknown cut silently lacks.
+//
+// FAIL-FIRST: a blank line between a correctness end marker and the security begin marker
+// below it fails here.
+func TestSecurityStretchesStandInForTheCorrectnessStretchAbove(t *testing.T) {
+	lines := strings.Split(rawReviewKit(t), "\n")
+	seen := 0
+	for i, l := range lines {
+		if l != "<!-- lane:"+laneS+":begin -->" {
+			continue
+		}
+		seen++
+		if i == 0 || lines[i-1] != "<!-- lane:"+laneC+":end -->" {
+			t.Errorf("review kit line %d opens a security stretch that does not directly follow a correctness "+
+				"stretch — the whole kit leaves security stretches out, so this one would reach no lane-unknown reader", i+1)
+		}
+	}
+	if seen == 0 {
+		t.Fatal("the review kit has no security stretch — the stand-in check went blind")
+	}
+	whole := reviewCut(t, "")
+	if whole != reviewCut(t, laneC) {
+		t.Error("the whole kit is no longer the correctness lane's text — say here what else it carries, and why no reader of it is told not to run a procedure it was just given")
+	}
+	for _, note := range []string{"Not run in the security lane", "On the security lane", "On this lane"} {
+		if strings.Contains(whole, note) {
+			t.Errorf("the whole kit carries a security-lane note (%q) beside the procedure it stands in for", note)
+		}
+	}
+}
+
 // A correctness-only procedure the security lane does not run is NAMED there, with its
 // owner — never silently absent. The note must not read as a clearance.
 func TestSecurityLaneNamesTheOwnerOfEachCorrectnessOnlyPass(t *testing.T) {
@@ -406,6 +454,8 @@ func TestReviewLaneForClaim(t *testing.T) {
 		{"assay--pr-547--security-2", 547, ""},
 		{"assay--pr-547--Security", 547, ""},
 		{"ASSAY--pr-547--security", 547, ""},
+		{"assay--pr-547--Correctness", 547, ""},
+		{"Assay--PR-547", 547, ""},
 		{"assay--pr-547--rr3-security", 547, ""},
 		{"assay--pr-5470--security", 547, ""},
 		{"other--pr-547--security", 547, ""},
@@ -422,7 +472,9 @@ func TestReviewLaneForClaim(t *testing.T) {
 	}
 }
 
-// The cut on a small kit, as exact text: the positive control for the filter itself.
+// The cut on a small kit, as exact text: the positive control for the filter itself. The
+// fixture ends in a security stretch, so the other cuts end at a seam: the blank line left
+// there is trimmed, because the prompt joins the kit to the next section itself.
 func TestReviewKitForLaneOnAFixture(t *testing.T) {
 	kit := strings.Join([]string{
 		"shared top",
@@ -441,11 +493,15 @@ func TestReviewKitForLaneOnAFixture(t *testing.T) {
 		"<!-- lane:correctness:end -->",
 		"",
 		"shared end",
+		"",
+		"<!-- lane:security:begin -->",
+		"security tail",
+		"<!-- lane:security:end -->",
 	}, "\n")
 	for lane, want := range map[string]string{
 		laneC: "shared top\n\ncorrectness only\n\nshared middle\n\nsecond correctness\n\nshared end",
-		laneS: "shared top\n\nsecurity only\n\nshared middle\n\nshared end",
-		"":    "shared top\n\ncorrectness only\nsecurity only\n\nshared middle\n\nsecond correctness\n\nshared end",
+		laneS: "shared top\n\nsecurity only\n\nshared middle\n\nshared end\n\nsecurity tail",
+		"":    "shared top\n\ncorrectness only\n\nshared middle\n\nsecond correctness\n\nshared end",
 	} {
 		got, err := reviewKitForLane(kit, lane)
 		if err != nil {
@@ -474,7 +530,7 @@ func TestReviewKitForLaneFailsClosedOnMalformedMarkers(t *testing.T) {
 	} {
 		lanes := []string{"", laneC, laneS}
 		if name == "nothing left after cut" {
-			lanes = []string{laneC}
+			lanes = []string{laneC, ""}
 		}
 		for _, lane := range lanes {
 			_, err := reviewKitForLane(kit, lane)
@@ -492,6 +548,51 @@ func TestReviewKitForLaneFailsClosedOnMalformedMarkers(t *testing.T) {
 	}
 	if err := checkReviewKitLanes(rawReviewKit(t)); err != nil {
 		t.Errorf("the shipped review kit fails its own pre-claim lane check: %v", err)
+	}
+}
+
+// The lane-marker check is a CALLER PRECONDITION: a kit whose lane boundaries cannot be read
+// is refused by validateCallerPreconditions, which returns before the claim exists. Without
+// it the dispatch would take the claim and only then fail to produce a prompt.
+//
+// FAIL-FIRST: with the checkReviewKitLanes call removed from validateCallerPreconditions the
+// malformed kit is accepted here.
+func TestMalformedReviewKitIsRefusedBeforeTheClaim(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	s.replies = append(s.replies, reply{match: "remote get-url origin", stdout: "git@github.com:medici-finance/assay.git"})
+	common, err := commonKitText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := rawReviewKit(t)
+	real := kitFS
+	t.Cleanup(func() { kitFS = real })
+	kits := func(review string) fstest.MapFS {
+		return fstest.MapFS{
+			kitFile["review"]: {Data: []byte(review)},
+			commonKitPath:     {Data: []byte(common)},
+		}
+	}
+	o := dispatchOpts{item: "assay--pr-547", root: root, repo: allowedRepo, kit: "review", pr: 547, tier: "any", dryRun: true}
+
+	kitFS = kits(good)
+	if _, err := validateCallerPreconditions(o); err != nil {
+		t.Fatalf("positive control: the shipped review kit must pass the caller preconditions: %v", err)
+	}
+	kitFS = kits(good + "\n<!-- lane:security:begin -->\nnever closed")
+	_, err = validateCallerPreconditions(o)
+	if err == nil {
+		t.Fatal("a review kit with an unclosed lane marker passed the caller preconditions — the dispatch would take the claim before finding it cannot cut the kit")
+	}
+	if code := deskkit.ExitCodeOf(err); code != deskkit.ExitUnverifiable || !strings.Contains(err.Error(), "lane marker") {
+		t.Errorf("refusal = exit %d %v, want unverifiable (%d) naming the lane marker", code, err, deskkit.ExitUnverifiable)
+	}
+	for _, call := range s.calls {
+		if joined := strings.Join(call, " "); strings.Contains(joined, "acquire") {
+			t.Errorf("a claim was attempted on a kit that cannot be cut: %s", joined)
+		}
 	}
 }
 
@@ -578,8 +679,11 @@ func TestBatchingClauseStatesTheReasonAndTheThreeRules(t *testing.T) {
 		for _, want := range []string{
 			"Every request you make re-reads the whole conversation",
 			"no check in this kit is skipped to save a request",
+			"Read a file in the fewest requests",
 			"Do not page through it with repeated range reads",
-			"do not grep the same file again and again",
+			"do not grep again for what you have already read",
+			"take it in one targeted read",
+			"say it was read in part",
 			"parallel tool calls, or one shell command",
 			"Metadata, description, check states and earlier verdicts come from one call",
 		} {
@@ -591,7 +695,9 @@ func TestBatchingClauseStatesTheReasonAndTheThreeRules(t *testing.T) {
 }
 
 // The point of the cut, pinned relationally so it holds as the kit is edited: the security
-// lane is materially shorter than the whole kit, and no lane is longer than it.
+// lane is materially shorter than the whole kit, and no lane is longer than it. The whole kit
+// is the correctness lane's text (the stand-in test above), so that lane is measured as
+// "not longer", where it was "shorter" while the whole kit also carried the security notes.
 func TestReviewKitCutSizes(t *testing.T) {
 	size := func(s string) (lines, bytes int) { return strings.Count(s, "\n") + 1, len(s) }
 	fl, fb := size(reviewCut(t, ""))
@@ -599,8 +705,8 @@ func TestReviewKitCutSizes(t *testing.T) {
 	sl, sb := size(reviewCut(t, laneS))
 	t.Logf("review kit cuts — whole: %d lines %d bytes; correctness: %d lines %d bytes; security: %d lines %d bytes",
 		fl, fb, cl, cb, sl, sb)
-	if cl >= fl || cb >= fb {
-		t.Errorf("correctness cut (%d lines, %d bytes) is not shorter than the whole kit (%d, %d)", cl, cb, fl, fb)
+	if cl > fl || cb > fb {
+		t.Errorf("correctness cut (%d lines, %d bytes) is longer than the whole kit (%d, %d)", cl, cb, fl, fb)
 	}
 	if sl > fl-100 {
 		t.Errorf("security cut is %d lines against a whole kit of %d — want at least 100 fewer, or the cut has stopped cutting", sl, fl)
