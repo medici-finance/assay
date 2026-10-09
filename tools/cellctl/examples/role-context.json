@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "roles": {
+    "pr-review-desk": {
+      "memory_dir": "memory/pr-review-desk",
+      "agents": ["builtin:lean-reviewer"],
+      "dispatch_agent": "lean-reviewer",
+      "agents_off": ["general-purpose"],
+      "connectors_off": true
+    }
+  }
+}

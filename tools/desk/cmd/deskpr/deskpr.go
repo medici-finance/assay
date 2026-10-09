@@ -16,7 +16,8 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
-// deskprStderr is the seam for warnIfConflicting's advisory output. Production writes to
+// deskprStderr is the seam for warnIfConflicting's advisory output and run()'s terminal
+// error. Production writes to
 // os.Stderr; tests redirect it to a buffer to assert on the warning text without
 // capturing the real process stream.
 var deskprStderr io.Writer = os.Stderr
@@ -580,12 +581,25 @@ func cmdUpdate(args []string) (err error) {
 	// the local remote-tracking ref for the branch — absent, unresolvable, or not an ancestor
 	// of HEAD, it falls back to the whole range. It is an estimate of the remote, so the live
 	// stage below re-judges against the forge's own PR head before anything is pushed.
+	//
+	// #2432: with --pr N the PR's head branch is unknown offline, so this stage has no tip and
+	// would judge the whole range from the default branch — and refuse, before the live stage
+	// ran, every update to a PR whose published head already carries another App's commit. A
+	// real `update --pr N` therefore skips this stage: the live stage below always runs before
+	// the push, against the head the forge reports, which HEAD must descend from and the push
+	// destination must hold. Under --check there is no live stage, so the whole range is
+	// judged here (fail closed) and a refusal names the offline way to the narrow judgement.
 	offlineTip := remoteTrackingTip(facts.branch)
 	if *prNum > 0 {
 		offlineTip = "" // head ref unknown offline: judge the whole range, fail closed
 	}
-	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip); ierr != nil {
-		return ierr
+	if *prNum == 0 || *check {
+		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip); ierr != nil {
+			if *prNum > 0 {
+				return prCheckWideNote(ierr)
+			}
+			return ierr
+		}
 	}
 
 	if scanErr := scanWrite(facts, "", "update", *scanOverride); scanErr != nil {
@@ -606,7 +620,8 @@ func cmdUpdate(args []string) (err error) {
 			"Not checked (needs the forge, not run here): the Brief:/Authors:/Issue: trailer on the existing " +
 			"PR's current body, whether an open PR exists for this branch, the outward-write rate " +
 			"limit, the public-repo authorization gate, and the publish-identity range against the " +
-			"PR's LIVE head (judged here against the local remote-tracking ref; the real run re-judges it).")
+			"PR's LIVE head (judged here against the local remote-tracking ref — with --pr N, the whole range " +
+			"from the default branch; the real run re-judges it against the live head).")
 		return nil
 	}
 
@@ -797,6 +812,21 @@ func requireDescendsFromPRHead(dir, headSHA string, prNum int, headRef, defaultR
 			prNum, shortSHA(headSHA), defaultRef))
 	}
 	return nil
+}
+
+// prCheckWideNote adds, to a publish-identity refusal from `update --pr N --check`, why the
+// whole range was judged and how to get the narrow judgement offline. The exit code and the
+// gate's own message are kept; only a refusal gains the note.
+func prCheckWideNote(err error) error {
+	var de *deskkit.DeskError
+	if !errors.As(err, &de) || de.Code != deskkit.ExitRefused {
+		return err
+	}
+	out := *de
+	out.Msg += " With --pr N the PR's head branch is unknown offline, so --check judged " +
+		"the whole range; a real `update --pr N` judges only the commits the push adds beyond the PR's head. " +
+		"To check that offline, name the head branch: `deskpr update --branch <head-branch> --check`."
+	return &out
 }
 
 // requireSameRepoHead refuses a named-PR push unless the forge established that the PR's head

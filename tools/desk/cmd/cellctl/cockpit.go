@@ -93,7 +93,7 @@ func (c *Cell) orcaReachable() bool {
 	if !onPath("orca") {
 		return false
 	}
-	secs := 5
+	secs := orcaProbeSeconds
 	if v := c.Env.Get("CELLCTL_ORCA_TIMEOUT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			secs = n

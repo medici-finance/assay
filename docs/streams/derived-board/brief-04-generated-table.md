@@ -24,7 +24,7 @@ consumers:
   - ".github/workflows/assay-statusgen.yml: fixed-here (this repo's own workflow; the human pushes workflow files)"
   - "examples/adopter-scaffold/.github/workflows/*: fixed-here"
   - "statusgen init scaffold (the workflow it writes for adopters): fixed-here"
-version: 1
+version: 2
 id: f48aa289-b2e2-4de0-83a7-f530c67f33f1
 ---
 
@@ -82,7 +82,7 @@ facts:
 | 3 | `cd statusgen && go run . regen --readmes --root . --offline && go run . regen --readmes --root . --offline && git status --porcelain docs/streams \| wc -l` | second run changes nothing beyond the first |
 | 4 | `sed -i '' 's/^| 01 | \[brief-v2 spec/| 01 | [EDITED/' docs/streams/derived-board/README.md && cd statusgen && go run . --lint --root ..; echo rc=$?; git checkout -- ../docs/streams/derived-board/README.md` | `rc=1`; output contains `hand edit to a generated table` and `derived-board` |
 | 5 | `python3 -c "import yaml;w=yaml.safe_load(open('.github/workflows/assay-statusgen.yml'));assert 'schedule' in w[True] or 'schedule' in w['on'];print('ok')"` | `ok` (YAML parses; schedule trigger present) |
-| 6 | `grep -c -E -e 'pull-requests: read' -e 'issues: read' .github/workflows/assay-statusgen.yml` | `2` |
+| 6 | `python3 -c "import yaml;w=yaml.safe_load(open('.github/workflows/assay-statusgen.yml'));p=w['jobs']['reconcile']['permissions'];assert p=={'contents':'read','pull-requests':'read','issues':'read'},p;print('ok')"` | `ok` (the reconcile job's token is exactly read-only contents, pull-requests and issues — scoped to that job, so other jobs' grants in the file do not move the count) |
 | 7 | `grep -c 'statusgen:briefs:begin' docs/streams/derived-board/README.md` | `1` |
 | 8 | `cd statusgen && go run . init --dry-run /tmp/adopter-x \| grep -c 'reconcile'` | ≥ 1 (scaffold parity) |
 

@@ -23,6 +23,26 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.34 — 2026-10-09
+
+### Added
+- Design-decision record `DR-forge-neutral-34` (`docs/streams/decisions/`): a transcription of the
+  driver's ruling on decision issue #2315, which answered option 1 — approve as briefed the
+  `deskread` CI workflow-token transport, an explicit, CI-only, read-only opt-in beside the App
+  custody default. Brief forge-neutral/34 now cites it through `design:`, which is what the
+  design-approval gate reads. The record does not decide the implementing pull request (#2377)
+  or the brief's later sign-offs.
+- `deskevidence --outcome-record` now writes the verify-wake receipt on every `verify-fail` or `blocked` record. The receipt's inputs are one `file:` hash per path in the brief's `files:` list that exists at the record's sha (every file under a listed directory), the brief as it lands, and the tool version. `blocker_kind` and `blocker_ref` are required. A `blocker_ref` that is not an issue or change reference, such as `to file`, is refused with exit 5. A `verified` record carries no receipt.
+- `deskevidence --outcome-record` stamps the landing repository as the record's `repo` when the caller gave none. A record that already carries a verify-wake-v1 receipt lands only if that receipt is complete; otherwise it is refused with exit 5, naming the missing field.
+- `docs/verify-wake.md` documents the hold rule.
+- `verifyloop plan --no-forge` reads no blocker issue, so every held brief's blocker is could-not-check.
+- `verifyloop plan` holds a non-pass brief until something it depends on moves, following the hold table in `docs/verify-wake.md`. It hashes the declared inputs again, and it reads the blocker issue through the forge as the verifier App. A brief whose inputs are unchanged and whose blocker is open prints a `WAIT` line naming the blocker, the wake condition and the next actor. A new summary line reads `verify-desk plan: wait=<n> dispatchable=<n> could-not-check=<n>`. A missing or rejected token, or any other failed read, is could-not-check, never a closed blocker. A newer explicit-recheck receipt still overrides a hold.
+- `verifyloop plan` reads a blocker only in a repository inside the configured repository set. A reference outside the set is could-not-check, and no credential is requested for it. Each repository is named on stderr before its first read. A bare `#N` in a record with no `repo` resolves in the plan root's `origin` repository.
+
+### Changed
+- The `STATUS.md` Awaiting board now sorts each brief into one of four owned queues (Awaiting human gate, Awaiting implementer rework, Environment-blocked, Runner-pending) or into Desk-actionable, which keeps only rows that need judgement. Every row names its owner and next act, and the headline shows a count for each owner. A row whose Evidence or verify-outcome records cannot be read renders as could-not-check instead of being placed in a bucket. The rules are in `docs/board.md`. The `Env-blocked` heading is renamed `Environment-blocked`. A recorded blocker (`verify-fail`, `fail`, `blocked`, `needs-context`) routes by its kind: `implementation` and `check-definition` to workers, `human-action` to the driver, `environment` to the operator. A recorded hold stays a blocker whatever the Evidence says. A recorded fail is dropped only when the Evidence's live PASS was written on a later day than the record; when the two cannot be ordered, the row is could-not-check. A human-gated brief with a recorded blocker stays with the driver, and its next act names the blocker instead of the sign-off. A runner-pending row needs at least one row left to run, and an unrecognised or future-dated outcome record is could-not-check. Could-not-check rows count toward the verification-debt measure, so an unreadable input cannot switch the alarm off.
+- The pr-review-desk skill's generated-table bounce gains carve-out C. A one-row hand flip to `implemented` is admitted for a brief delivered into another repo when the delivering PR could not carry the brief's trailer. The flip PR carries that row and nothing else; it names one merged delivering PR, which must have merged after the brief was authored and added at least one file the brief's `files:` list names; and every concrete file in that list exists on the delivery repo's main. Carve-outs A and B are unchanged.
+
 ## v1.0.33 — 2026-10-08
 
 ### Added

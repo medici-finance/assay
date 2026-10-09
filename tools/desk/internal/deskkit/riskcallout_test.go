@@ -393,3 +393,55 @@ func TestRiskCalloutMaxOutputPositive(t *testing.T) {
 		t.Fatalf("maxRiskCalloutOutput = %s, want > 0", strconv.Itoa(maxRiskCalloutOutput))
 	}
 }
+
+// TestRiskCalloutResolvedDir pins that the risk callout makes the shared check against
+// the RESOLVED path: a configured link in a safe directory whose target sits in a
+// world-writable directory is refused, while a link to a target in a safe directory
+// still runs.
+func TestRiskCalloutResolvedDir(t *testing.T) {
+	good := writeRiskCalloutFixture(t, "echo '{\"riskClassed\":false,\"reason\":\"ok\"}'\n")
+	linkDir := t.TempDir()
+	if err := os.Chmod(linkDir, 0o755); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	okLink := filepath.Join(linkDir, "ok")
+	if err := os.Symlink(good, okLink); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if _, err := runRiskCallout(okLink, "{}"); err != nil {
+		t.Fatalf("a link to a target in a safe directory was refused: %v", err)
+	}
+
+	openDir := t.TempDir()
+	if err := os.Chmod(openDir, 0o777); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	target := filepath.Join(openDir, "callout")
+	if err := os.WriteFile(target, []byte("#!/bin/sh\necho '{\"riskClassed\":false,\"reason\":\"ok\"}'\n"), 0o755); err != nil {
+		t.Fatalf("writing the fixture: %v", err)
+	}
+	badLink := filepath.Join(linkDir, "bad")
+	if err := os.Symlink(target, badLink); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	_, err := runRiskCallout(badLink, "{}")
+	if err == nil || !strings.Contains(err.Error(), "group- or world-writable") {
+		t.Fatalf("a link to a target in a world-writable directory was not refused: %v", err)
+	}
+
+	// A linked directory in the MIDDLE of the path, held in a world-writable
+	// directory: <open>/via/<callout> with via a link to the fixture's safe
+	// directory. The file and its real directory pass; the directory holding
+	// via does not.
+	viaDir := t.TempDir()
+	if err := os.Symlink(filepath.Dir(good), filepath.Join(viaDir, "via")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if err := os.Chmod(viaDir, 0o777); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	_, err = runRiskCallout(filepath.Join(viaDir, "via", filepath.Base(good)), "{}")
+	if err == nil || !strings.Contains(err.Error(), "group- or world-writable") {
+		t.Fatalf("a linked directory held in a world-writable directory was not refused: %v", err)
+	}
+}

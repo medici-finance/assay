@@ -126,6 +126,12 @@ func isolateClaimTool(t *testing.T, home string) {
 	}
 	t.Cleanup(func() { mintTokenFn = oldMint })
 
+	// No packet unless a test asks for one (usePacketBuilder): the fake forges these tests
+	// stand up answer only the routes each test exercises.
+	oldPacket := buildPacketFn
+	buildPacketFn = func(dispatchOpts, dispatchPlan, string, string) string { return "" }
+	t.Cleanup(func() { buildPacketFn = oldPacket })
+
 	oldProbe := tokenIdentityFn
 	tokenIdentityFn = func(deskkit.ForgeRepo, string, string) (deskkit.TokenIdentity, error) {
 		return deskkit.TokenIdentity{}, errors.New("example: no forge in tests — bind stubTokenIdentity")

@@ -12,41 +12,13 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// cellEnvKnownKeys is the fixed part of the cell.env key allowlist `cellctl set` recognises
-// without --force. The DESK_MODEL_<role>, CODEX_MODEL_<role>, TIER_MODEL_<TIER>_<HARNESS> and
-// CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} families are matched by shape below — a typo'd
-// role/tier/provider name is refused rather than silently scaffolding a variable nothing reads.
-var cellEnvKnownKeys = strings.Fields(`CELL CELL_KIND CELL_CONTAINER_CONFIG CELL_CONTAINER_LAUNCHER CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG
-FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP
-GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT CODEX_MODEL_default CURSOR_MODEL_default
-CELL_MODEL_TTL_DAYS CELL_CADENCE CELL_TICK_BUDGET CELL_HARNESS TMUX_SESSION CELL_PROVIDER CELL_REPO_SLUG CELL_PATH CELL_MODEL_POLICY CELL_PROVIDER_DEFAULTS CELL_PROVIDER_OVERRIDES ASSAY_REPAIR_ADMISSION CELL_COMMS_CONFIG
-TIER_MODEL_TOP_CLAUDE TIER_MODEL_MID_CLAUDE TIER_MODEL_FAST_CLAUDE
-TIER_MODEL_TOP_CODEX TIER_MODEL_MID_CODEX TIER_MODEL_FAST_CODEX
-TIER_MODEL_TOP_CURSOR TIER_MODEL_MID_CURSOR TIER_MODEL_FAST_CURSOR`)
-
-func knownCellEnvKey(k string) bool {
-	if valueIn(k, cellEnvKnownKeys) {
-		return true
-	}
-	for _, prefix := range []string{"DESK_MODEL_", "CODEX_MODEL_", "CURSOR_MODEL_"} {
-		if strings.HasPrefix(k, prefix) {
-			r := strings.TrimPrefix(k, prefix)
-			for _, w := range strings.Fields(rolesDefault) {
-				if r == underscore(w) {
-					return true
-				}
-			}
-		}
-	}
-	if strings.HasPrefix(k, "CELL_PROVIDER_") {
-		for _, suf := range []string{"_BASE_URL", "_TOKEN_ENV", "_MODEL"} {
-			if strings.HasSuffix(k, suf) && len(k) > len("CELL_PROVIDER_")+len(suf) {
-				return true
-			}
-		}
-	}
-	return false
-}
+// knownCellEnvKey reports a key `cellctl set` writes without --force: a lever in the key
+// registry (envkeys.go), machine-wide or per-cell. The per-role model pins are listed there for
+// the roles cellctl knows and a provider's three variables are matched by shape, so a typo'd
+// role, tier or provider variable is refused rather than silently scaffolding a variable
+// nothing reads. A key cellctl reads that is not a lever (a per-run switch, an ambient host
+// variable) still needs --force: it does not belong in a file.
+func knownCellEnvKey(k string) bool { return envKeyIsLever(k) }
 
 // validateEnvKey is everything that can be checked WITHOUT touching the file: the key is a
 // shell-identifier shape, is a known cell.env key unless force, and (for DESK_MODEL_the_desk
@@ -165,21 +137,43 @@ func validateKindChange(envfile, kind string, kvs []string) {
 	}
 }
 
-// effectiveCellEnv is what loadCell will see once this call's KEY=VALUE pairs are written: the
-// file read through the loader, then each pair overlaid exactly as the loader will read the raw
-// `KEY=VALUE` line setEnvKey writes for it.
+// effectiveCellEnv is what the two files will say to loadCell once this call's KEY=VALUE pairs
+// are written: the machine-wide defaults file, then the cell's file read through the loader,
+// then each pair overlaid exactly as the loader will read the raw `KEY=VALUE` line setEnvKey
+// writes for it.
+//
+// The defaults file is a layer this function READS and never a file `set` writes: every write
+// goes through setEnvKey on the cell's own cell.env. Reading it here is what keeps a pair `set`
+// validates from being judged against a different cell than the one loadCell will then build.
+//
+// Every line is read over the process environment, as loadCell reads it, so a `$VAR` in either
+// file or in a pair expands to what a launch from this shell expands it to. Read over nothing,
+// `$HOME/launcher` became `/launcher` and `set` judged a path no cell boots with.
+//
+// The result still holds only the keys the two files and the pairs assign. That part is
+// deliberate: `set` judges what the files say, so a variable exported in the one shell that
+// happens to run `set` neither satisfies a precondition (a launcher, a stream-root map) nor
+// hides a missing line the next launch, from another shell, would trip on.
 func effectiveCellEnv(envfile string, kvs []string) *Env {
-	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
-	if err := parseCellEnv(e, envfile); err != nil {
+	boot := newEnvFromProcess()
+	if _, _, err := overlayCellDefaults(boot, cellDefaultsFor(envfile)); err != nil {
+		die("set: %v; nothing written", err)
+	}
+	if err := parseCellEnv(boot, envfile); err != nil {
 		die("set: %v", err)
 	}
 	for _, kv := range kvs {
 		if k, v, ok := splitKV(kv); ok {
-			if k == "CELL_COMMS_CONFIG" {
-				e.Put(k, v)
-			} else {
-				e.Put(k, unquoteShellValue(v, e))
+			if k != "CELL_COMMS_CONFIG" {
+				v = unquoteShellValue(v, boot)
 			}
+			boot.putFrom(k, v, layerCellEnv)
+		}
+	}
+	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
+	for k, layer := range boot.src {
+		if layer == layerDefaults || layer == layerCellEnv {
+			e.putFrom(k, boot.vals[k], layer)
 		}
 	}
 	return e
