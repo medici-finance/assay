@@ -11,26 +11,26 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-10-08 |  |
-| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-08 |  |
-| [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-08 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-08 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-08 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-08 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-08 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/34 | 2026-10-08 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/30 | 2026-10-08 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-08 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/53 | 2026-10-08 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-08 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/33 | 2026-10-08 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/27 | 2026-10-08 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-08 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-08 |  |
-| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-08 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-08 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/16 | 2026-10-08 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-10-08 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-10-09 |  |
+| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-09 |  |
+| [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-09 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-09 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-09 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-09 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-09 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/34 | 2026-10-09 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/30 | 2026-10-09 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-09 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/53 | 2026-10-09 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-09 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/33 | 2026-10-09 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/27 | 2026-10-09 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-09 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-09 |  |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-09 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-09 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/16 | 2026-10-09 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-10-09 |  |
 
 ## Parked
 
@@ -38,12 +38,12 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-10-08 |
-| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-08 |
-| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-08 |
-| [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-08 |
-| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-08 |
-| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-08 |
+| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-10-09 |
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-09 |
+| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-09 |
+| [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-09 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-09 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-09 |
 
 ## Next up
 
@@ -56,7 +56,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| desk-supervision | 28 — Dispatch record — one line per dispatch joining brief, PR, session and model tier [exec:strong] | 0 | 3000 |
 | build-less-brittle | 11 — Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge [exec:strong] | 4 | 4000 + 1500 (drive:build-less-brittle) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
@@ -65,9 +64,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | measured-status | 01 — Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test | 0 | 2000 |
-| desk-supervision | 31 — Persist CI check results the desk tools already read [exec:strong] | 0 | 1500 |
-| desk-supervision | 32 — Human decision record — options, recommended default, the pick and the latency [exec:strong] | 0 | 1500 |
-| desk-supervision | 33 — Intake exit record — every triaged item lands one structured disposition [exec:strong] | 0 | 1500 |
 | desk-tools | 27 — `deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check [exec:strong] | 2 | 1000 |
 | desk-tools | 30 — verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass [exec:strong] | 1 | 1000 |
 | statusgen | 16 — Hold an issue out of dispatch when a non-human removed its excluded label: both scanners hold the placeholder, the issue board holds the un-briefed row [exec:strong] | 1 | 1000 |
@@ -77,7 +73,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 4d07a94 2026-10-08T18:30:27-05:00_
+_last regen: 2699a01 2026-10-08T20:43:33-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -98,7 +94,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 4d07a94 2026-10-08T18:30:27-05:00_
+_last regen: 2699a01 2026-10-08T20:43:33-05:00_
 
 **Progress:** 16/71 brief items done.
 
