@@ -329,6 +329,7 @@ func TestScanIssuesEmittedFilesRoundTrip(t *testing.T) {
 // `superseded?` was emitted BARE and every fresh scan re-planted the parse break.
 // (Note the original report's "unquoted title" theory was a misdiagnosis — the
 // scanner emits no `title:` field at all; the defect is entirely the label list.)
+// regression: #1428
 func TestRenderPlaceholderLabelsQuotedForFlowIndicators(t *testing.T) {
 	labels := []string{"bug", "raised-by:desk", "superseded?"}
 	body := renderPlaceholder(scanHomeRepo(), 1088, "model", labels)
