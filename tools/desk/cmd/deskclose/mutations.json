@@ -196,8 +196,26 @@
     {
       "name": "drop the repair-issue filing (a close that did not take fails only in this run's output, visible to nobody else)",
       "file": "cmd/deskclose/postcondition.go",
-      "old": "\tnote := fileRepairIssue(repo, n, kind, state)",
-      "new": "\tnote := \"repair issue skipped\""
+      "old": "\t\tmsg += \" (\" + fileRepairIssue(a, nt) + \")\"",
+      "new": "\t\t_ = nt"
+    },
+    {
+      "name": "drop the meter gate in front of the repair-issue filing (an issue create the outward-write budget never refuses)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "\tif err := allowWrite(nt.repo, nt.n); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "stop recording the repair-issue filing's audit line (an issue create the meter, which counts audit lines, never charges)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "\t\ta.log(result, s)\n",
+      "new": "\t\t_ = result\n"
+    },
+    {
+      "name": "send the repair title verbatim as the dedupe query (search syntax a verbatim-forwarding backend reads as literal words, so the dedupe never hits)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "Query: searchTokens(title)",
+      "new": "Query: title"
     }
   ]
 }

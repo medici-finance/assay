@@ -399,7 +399,9 @@ func gateFor(c *common) (grant, error) {
 //
 // Steps 5 and 6 are two charged writes per item. That is the budget arithmetic the
 // manifest loop is bounded by, and it is deliberate: the comment is what makes a wrong
-// batch auditable and reversible.
+// batch auditable and reversible. Only when step 7 fails does a third charged write follow —
+// the repair issue, gated and audited like the other two (closeRefused) — and that row then
+// stops the batch, since a failed close is a hard error.
 func applyClose(r closeReq, out io.Writer) error {
 	a := &auditCtx{verb: r.mode, repo: r.repo, number: r.number}
 
@@ -477,9 +479,7 @@ func applyClose(r closeReq, out io.Writer) error {
 		// silent-success bug's exact scenario, and it must NEVER report success: a comment-only
 		// outcome is a PARTIAL, exit 6, with the forge's own words carried through the error
 		// chain (Error() appends the cause, so it is stated once).
-		a.log(deskkit.ResultUnverifiable, "partial: comment posted, close refused: "+err.Error())
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"could-not-check: %s#%d — partial: comment posted, close refused", r.repo, r.number), err)
+		return closeRefused(a, r.repo, r.number, err)
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("closed as %s via lane %s (target %s)", r.stateReason(), r.mode, r.target))
 	fmt.Fprintf(out, "closed\t%s#%d\t%s\ttarget=%s\treason=%s\n", r.repo, r.number, r.mode, r.target, r.stateReason())

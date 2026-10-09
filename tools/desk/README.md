@@ -3511,7 +3511,10 @@ check never observed to both pass and fail is a comment that happens to compile.
 A manifest applies **one row at a time**, each with its own audit line, and each row is a
 comment **then** a close — two charged writes, in that order, so the trail naming the lane,
 the canonical target and the authorizing artifact survives even a batch that turns out to be
-wrong. Reopen is cheap; an unexplained close is not.
+wrong. Reopen is cheap; an unexplained close is not. A close whose post-close re-read still
+shows the item open adds one more charged write — a repair issue on the item's repo, deduped
+by exact title and recorded as its own audit line — and fails the row (exit 6), which stops
+the batch.
 
 - **A hard error stops the run**, leaving every later row untouched, and prints the exact
   `--resume-from <N>` to continue with.

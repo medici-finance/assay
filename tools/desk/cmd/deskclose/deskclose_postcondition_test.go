@@ -10,6 +10,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -169,4 +170,106 @@ func TestNoopCloseTriageLane(t *testing.T) {
 	if len(s.filed) != 1 || s.filed[0] != repairTitle(triageIssue, deskkit.TargetIssue) {
 		t.Fatalf("want one repair issue for the triage subject, got %v", s.filed)
 	}
+}
+
+// TestRepairQueryFreeText: the dedupe search sends the plain [a-z0-9] tokens of the repair
+// title — never a quoted phrase or a search qualifier, which the SearchIssues contract
+// forbids and a verbatim-forwarding backend reads as literal words no issue contains.
+func TestRepairQueryFreeText(t *testing.T) {
+	s, rul := baseWorld(t)
+	if code, out := noopCloseRun(t, s, rul); code != deskkit.ExitUnverifiable {
+		t.Fatalf("want exit %d, got %d\n%s", deskkit.ExitUnverifiable, code, out)
+	}
+	var queries []string
+	for _, c := range s.calls {
+		if len(c) == 5 && c[0] == "search" && c[1] == "issues" {
+			queries = append(queries, c[4])
+		}
+	}
+	want := "deskclose postcondition failed issue " + fmt.Sprint(subjectIssue) + " still open after close"
+	if len(queries) != 1 || queries[0] != want {
+		t.Fatalf("want one dedupe search with query %q, got %q", want, queries)
+	}
+	if !regexp.MustCompile(`^[a-z0-9]+( [a-z0-9]+)*$`).MatchString(queries[0]) {
+		t.Fatalf("the dedupe query carries search syntax: %q", queries[0])
+	}
+}
+
+// TestRepairFilingCharged: the repair-issue write is charged like every other write — the
+// meter gate runs after the failed close's own audit line is recorded (so the gate counts it),
+// and the filing records its own charging line keyed to the item.
+func TestRepairFilingCharged(t *testing.T) {
+	s, rul := baseWorld(t)
+	before := len(loadAudit(t))
+	var lastAtGate []deskkit.Entry
+	allowWrite = func(string, int) error {
+		if e := loadAudit(t); len(e) > before {
+			lastAtGate = append(lastAtGate, e[len(e)-1])
+		} else {
+			lastAtGate = append(lastAtGate, deskkit.Entry{})
+		}
+		return nil
+	}
+	if code, out := noopCloseRun(t, s, rul); code != deskkit.ExitUnverifiable {
+		t.Fatalf("want exit %d, got %d\n%s", deskkit.ExitUnverifiable, code, out)
+	}
+	if len(s.filed) != 1 {
+		t.Fatalf("want one repair issue filed, got %v", s.filed)
+	}
+	var got []string
+	for _, e := range loadAudit(t)[before:] {
+		if e.PR != nil && *e.PR == subjectIssue {
+			got = append(got, e.Result+": "+e.Detail)
+		}
+	}
+	if len(got) != 3 ||
+		!strings.HasPrefix(got[0], deskkit.ResultOK+": posted the pre-close comment") ||
+		!strings.HasPrefix(got[1], deskkit.ResultUnverifiable+": partial: comment posted, close refused") ||
+		got[2] != deskkit.ResultOK+": filed repair issue #901" {
+		t.Fatalf("want three audit lines (comment, failed close, charged filing) in that order, got:\n%s",
+			strings.Join(got, "\n"))
+	}
+	if len(lastAtGate) != 3 {
+		t.Fatalf("want three meter checks (comment, close, filing), got %d", len(lastAtGate))
+	}
+	if g := lastAtGate[2]; g.Result != deskkit.ResultUnverifiable || !strings.Contains(g.Detail, "close refused") {
+		t.Fatalf("the filing's meter check ran before the failed close was recorded (last line then: %q %q)",
+			g.Result, g.Detail)
+	}
+}
+
+// TestRepairFilingMeterRefused: when the meter refuses the repair filing, nothing is filed,
+// the exit stays 6, the note says why, and the refusal is recorded as a rate-limited line.
+func TestRepairFilingMeterRefused(t *testing.T) {
+	s, rul := baseWorld(t)
+	allowWrite = func(string, int) error {
+		if len(s.typedCloses) > 0 {
+			return deskkit.RateLimited("write budget spent")
+		}
+		return nil
+	}
+	code, out := noopCloseRun(t, s, rul)
+	if code != deskkit.ExitUnverifiable {
+		t.Fatalf("a refused repair filing must leave the failed close at exit %d, got %d\n%s",
+			deskkit.ExitUnverifiable, code, out)
+	}
+	if len(s.filed) != 0 {
+		t.Fatalf("the meter refused the filing, yet an issue was created: %v", s.filed)
+	}
+	if !strings.Contains(out, "repair issue NOT filed") {
+		t.Fatalf("the failure should say the repair issue was not filed:\n%s", out)
+	}
+	e := loadAudit(t)
+	if last := e[len(e)-1]; last.Result != deskkit.ResultRateLimited || !strings.Contains(last.Detail, "repair issue NOT filed") {
+		t.Fatalf("want the refused filing recorded as %s, got %q %q", deskkit.ResultRateLimited, last.Result, last.Detail)
+	}
+}
+
+func loadAudit(t *testing.T) []deskkit.Entry {
+	t.Helper()
+	e, err := deskkit.LoadEntries()
+	if err != nil {
+		t.Fatalf("load audit: %v", err)
+	}
+	return e
 }
