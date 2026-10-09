@@ -189,9 +189,10 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		}
 		// On-behalf-of trailer (multi-principal/01): resolved before any network call,
 		// refuses (exit 5) rather than post without one. Appended to the POSTED body only
-		// — `dig` (and every idempotency key derived from it, including the kind/dedup
-		// reads below that parse `body`) stays keyed on the CALLER-supplied body, so the
-		// same verdict retried from a different session still dedupes.
+		// — `dig` (and the local-log idempotency key derived from it) stays keyed on the
+		// CALLER-supplied body. The forge-state check below compares against POSTED bodies,
+		// which carry the trailer, so it reduces both sides with reviewComparableBody; that
+		// is what lets the same verdict retried from a different session still dedupe.
 		postBody, oerr := deskkit.AppendOnBehalfOf(body, "", repo)
 		if oerr != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", oerr), dig)
@@ -651,15 +652,32 @@ func appReviewExistsAt(reviews []reviewInfo, head, wantState, wantKind, wantBody
 }
 
 // reviewBodyDigest is the content identity the cross-session guard compares (#518): the
-// sha256 of the body with CRLF normalized to LF and trailing newlines dropped — the only
-// transforms a body plausibly picks up on the GitHub round trip. A true retry therefore
-// still matches the review it posted, while any substantive difference does not. The
-// normalization is deliberately minimal and biased toward POSTING: a miss here costs a
-// visible duplicate, a false match costs an invisible drop.
+// sha256 of reviewComparableBody(body). It is applied to BOTH sides — the incoming body and
+// each recorded one — so a true retry matches the review it posted, while any difference in
+// what the caller wrote does not. The reduction is deliberately small and biased toward
+// POSTING: a miss here costs a visible duplicate, a false match costs an invisible drop.
 func reviewBodyDigest(body []byte) string {
-	s := strings.ReplaceAll(string(body), "\r\n", "\n")
-	s = strings.TrimRight(s, "\n")
-	return deskkit.Sha256Hex([]byte(s))
+	return deskkit.Sha256Hex([]byte(reviewComparableBody(string(body))))
+}
+
+// reviewComparableBody is the part of a review body the caller wrote, in the form both sides
+// of the duplicate check are reduced to:
+//
+//   - CRLF becomes LF;
+//   - on-behalf-of lines are removed (deskkit.WithoutOnBehalfOf). The writer appends one to
+//     every body it posts and first removes any the caller's body held
+//     (deskkit.AppendOnBehalfOf), so NO posted review carries the caller's bytes verbatim.
+//     Comparing the caller's bytes with a posted body therefore never matched a review this
+//     tool posted, and a retry whose audit row was not in this HOME posted a second one;
+//   - surrounding whitespace is trimmed.
+//
+// Two bodies that differ only in those three ways are the same verdict to this check. It
+// compares text as the forge returns it: a forge that rewrote review text in some other way
+// would make a retry look distinct, and the retry would be posted with the warning
+// appReviewExistsAt writes for that case.
+func reviewComparableBody(body string) string {
+	s := strings.ReplaceAll(body, "\r\n", "\n")
+	return strings.TrimSpace(deskkit.WithoutOnBehalfOf(s))
 }
 
 // reviewAlreadyPostedIn is the LOCAL-audit idempotency guard for verdict reviews. It is

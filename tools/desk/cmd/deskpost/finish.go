@@ -17,9 +17,10 @@ package main
 //     refuses exactly where they refuse because it IS them for this step.
 //  2. CONFIRM. It reads the change's reviews back and requires one by the reviewer identity,
 //     at the reviewed head, in the state this verdict produces, of this verdict kind, with
-//     this body. The match is appReviewExistsAt — the predicate the post path's own duplicate
-//     guard uses — applied to one review at a time.
-//  3. RELEASE. It releases the dispatch claim named by --claim.
+//     this body. The match is appReviewExistsAt — the predicate the post path's forge-state
+//     check uses before it posts — applied to one review at a time.
+//  3. RELEASE. It releases the dispatch claim named by --claim, and writes an audit row
+//     saying how that went.
 //  4. One result line on stdout.
 //
 // THE ORDER IS LOAD-BEARING. The post path validates the reviewer's dispatch stamp, and that
@@ -30,18 +31,41 @@ package main
 // WHAT A STOP MEANS. Each stop names the step, says what did and did not happen, and leaves
 // everything after it untouched: a refused post confirms and releases nothing; an unconfirmed
 // post releases nothing; a failed release leaves a posted, confirmed verdict and a held claim.
-// Re-running the same command is safe at every stop — a verdict this session already posted
-// is not posted twice (the post path's own duplicate guard), and releasing a claim that is
-// already gone is reported as such, not as a failure.
 //
-// THE CLAIM KEY IS CHECKED BEFORE ANYTHING IS WRITTEN. --claim must be a review-dispatch claim
-// key of THIS change (deskkit.ValidateReviewClaimKey, the check review dispatch itself
-// applies), so this verb cannot be pointed at another change's claim or at any other ref. A
-// key that fails it is an argument error (exit 2), like an abbreviated --head.
+// RUNNING THE SAME COMMAND AGAIN DOES NOT POST THE VERDICT A SECOND TIME, from this session
+// or another one. Two checks stand in front of the post, both in the post path (review.go):
+// this HOME's audit log (a row for this verdict, this body, this head), and the change's own
+// reviews — one by the reviewer identity, at this head, in this state, of this kind, whose
+// body equals this one once both are reduced by reviewComparableBody (line ends, the
+// on-behalf-of lines the writer adds, surrounding whitespace). The second check is what
+// covers a run whose log does not hold the row: another session, or a post the forge accepted
+// and answered with an error. If the reviews cannot be read, the post path refuses; it does
+// not post blind. A claim that is already gone is reported as such, not as a failure.
 //
-// ONE AUDIT ROW. The row is the post step's, as for the plain verdict verbs; its argument
-// digest is this invocation's. Confirm is a read. The release writes no row — the claim tool,
-// which it stands in for, writes none either — and it spends nothing from the write budget.
+// What a re-run does NOT repeat: on a forge with a merge-hold step, a first run can post the
+// verdict and then fail to set the hold. Its message says which half landed. A second run
+// finds the verdict on the change, posts nothing and does not run the hold step again.
+//
+// THE CLAIM KEY IS CHECKED BEFORE ANYTHING IS WRITTEN, TWICE. --claim must be a
+// review-dispatch claim key of THIS change (deskkit.ValidateReviewClaimKey, the check review
+// dispatch itself applies), so this verb cannot be pointed at another change's claim or at
+// any other ref. And it must be THIS LANE'S key: `finish security-review` takes only a key
+// with a `security` segment after `--pr-<N>`, `finish review` only a key without one — the
+// rule review dispatch reads the lane from (finishClaimKeyIsSecurity). A key that fails
+// either check is an argument error (exit 2), like an abbreviated --head.
+//
+// WHAT THE RELEASE DOES NOT CHECK: who holds the claim. The claim record names the
+// dispatcher that placed it, and a reviewer is handed the key and nothing that identifies
+// that dispatcher, so there is nothing sound to compare. A run holding this lane's key for
+// this change can release that claim whoever placed it.
+//
+// TWO AUDIT ROWS ON A FULL RUN. The first is the post step's, as for the plain verdict verbs;
+// its argument digest is this invocation's. Confirm is a read and writes none. The second is
+// the release step's (verb finishReleaseVerb): `ok` for a claim released, `noop` for one that
+// was already gone, and the failure's own result otherwise, with the claim key in the detail.
+// The release is not held back by the write budget — the verdict is already posted and the
+// claim has to go — but a release that was sent is an outward write, and its row counts
+// toward that budget afterwards like any other.
 
 import (
 	"errors"
@@ -56,6 +80,14 @@ import (
 const (
 	finishClaimReleased        = "released"
 	finishClaimAlreadyReleased = "already-released"
+
+	// finishReleaseVerb is the audit verb of the release step's own row. No verdict verb
+	// starts with it and the row carries no body digest, so no duplicate check that reads the
+	// log for a posted verdict can take a release row for one.
+	finishReleaseVerb = "finish:release"
+
+	finishSecurityVerb    = "security-review"
+	finishSecuritySegment = "security"
 )
 
 // finishLane is one of the two verdict verbs `finish` can end with.
@@ -74,7 +106,7 @@ func finishLaneFor(verb string) (finishLane, bool) {
 	case "review":
 		return finishLane{verb: verb, verdictValues: "approve|request-changes",
 			shapeFor: correctnessShapeFor, post: runReview, recipeOnRateLimit: true}, true
-	case "security-review":
+	case finishSecurityVerb:
 		return finishLane{verb: verb, verdictValues: "pass|fail",
 			shapeFor: securityShapeFor, post: runSecurityReview}, true
 	}
@@ -120,6 +152,21 @@ func cmdFinish(argv []string) int {
 		fmt.Fprintf(stderr, "deskpost finish: --claim: %s. Nothing was posted\n", err.Error())
 		return 2
 	}
+	// The key must also be THIS LANE'S. Without this a security-lane finish could release the
+	// correctness lane's claim on the same change (or the reverse) while that review is still
+	// running. Same place, same exit, same reason as the check above.
+	if keyIsSecurity, laneIsSecurity := finishClaimKeyIsSecurity(key, a.pr), lane.verb == finishSecurityVerb; keyIsSecurity != laneIsSecurity {
+		if laneIsSecurity {
+			fmt.Fprintf(stderr, "deskpost finish: --claim: %q is not the security lane's claim key for %s#%d — it has no `--%s` segment after `--pr-%d`, so it is the correctness lane's. "+
+				"`finish security-review` releases only the security lane's claim. Nothing was posted and no claim was released\n",
+				key, repo, a.pr, finishSecuritySegment, a.pr)
+		} else {
+			fmt.Fprintf(stderr, "deskpost finish: --claim: %q is the security lane's claim key for %s#%d (a `--%s` segment after `--pr-%d`). "+
+				"`finish review` releases only the correctness lane's claim. Nothing was posted and no claim was released\n",
+				key, repo, a.pr, finishSecuritySegment, a.pr)
+		}
+		return 2
+	}
 	shape, ok := lane.shapeFor(a.verdict)
 	if !ok {
 		// Hand the bad value to the verb's own writer so the message and exit code are its.
@@ -134,7 +181,8 @@ func cmdFinish(argv []string) int {
 	}
 	if code != deskkit.ExitOK {
 		fmt.Fprintf(stderr, "deskpost finish: STOPPED at step 1 of 3 (post) — `deskpost %s` exited %d; its message is above. "+
-			"Nothing was confirmed and the claim %s is still held. Fix what the message names and run this command again\n",
+			"Nothing was confirmed and the claim %s is still held. A refusal posted nothing: fix what the message names and run this command again. "+
+			"A failure after the write was sent may have left the verdict on the change: running this command again does not post it a second time\n",
 			lane.verb, code, key)
 		return code
 	}
@@ -147,13 +195,13 @@ func cmdFinish(argv []string) int {
 	posted, err := finishConfirm(a, repo, shape)
 	if err != nil {
 		fmt.Fprintf(stderr, "deskpost finish: STOPPED at step 2 of 3 (confirm) — %s. The claim %s was NOT released. "+
-			"Look at the change: if the verdict is there, release the claim with the release command in your assignment; "+
-			"if it is not, run this command again\n", err.Error(), key)
+			"Run this command again: a verdict already on the change is found there and is not posted a second time\n", err.Error(), key)
 		return deskkit.ExitUnverifiable
 	}
 
 	// Step 3 — release the dispatch claim.
 	state, err := releaseReviewClaimFn(a.owner, a.name, key)
+	finishReleaseAudit(argv, repo, a.pr, a.head, key, state, err)
 	if err != nil {
 		fmt.Fprintf(stderr, "deskpost finish: STOPPED at step 3 of 3 (release) — the verdict IS posted and confirmed (%s, %s at %s), "+
 			"but the claim %s is STILL HELD: %s. Run this command again, or release the claim with the release command in your assignment\n",
@@ -182,14 +230,12 @@ func finishPost(lane finishLane, a verdictArgs, args []string) int {
 // finishConfirm reads the change's reviews and returns the one that IS this verdict: by the
 // reviewer identity, at head, in shape's state, of shape's kind, with this body.
 //
-// The predicate is appReviewExistsAt, asked about one review at a time so the caller learns
-// WHICH review matched. The one thing added is that on-behalf-of lines are taken off both
-// sides before the comparison: the writer appends one to every body it posts and removes any
-// the caller's body held (deskkit.AppendOnBehalfOf), so no posted review carries the caller's
-// bytes verbatim. deskkit.WithoutOnBehalfOf is that same removal, so what is compared is what
-// the caller wrote. Nothing is rendered here and no principal is resolved.
+// The predicate is appReviewExistsAt — the same one, with the same body comparison
+// (reviewBodyDigest), that the post path asks before it posts — asked about one review at a
+// time so the caller learns WHICH review matched. Nothing is rendered here and no principal
+// is resolved.
 func finishConfirm(a verdictArgs, repo string, shape reviewShape) (reviewInfo, error) {
-	want := reviewBodyDigest([]byte(finishComparableBody(string(a.body))))
+	want := reviewBodyDigest(a.body)
 
 	client, err := newPostBackend(a.owner, a.name)
 	if err != nil {
@@ -201,9 +247,7 @@ func finishConfirm(a verdictArgs, repo string, shape reviewShape) (reviewInfo, e
 	}
 	// Newest first: a forge lists reviews oldest first, and the one just posted is the last.
 	for i := len(reviews) - 1; i >= 0; i-- {
-		probe := reviews[i]
-		probe.Body = finishComparableBody(probe.Body)
-		if dup, _ := appReviewExistsAt([]reviewInfo{probe}, a.head, shape.state, shape.wantKind, want); dup {
+		if dup, _ := appReviewExistsAt(reviews[i:i+1], a.head, shape.state, shape.wantKind, want); dup {
 			return reviews[i], nil
 		}
 	}
@@ -211,11 +255,56 @@ func finishConfirm(a verdictArgs, repo string, shape reviewShape) (reviewInfo, e
 		shape.state, reviewerBotDisplay(), repo, a.pr, a.head, len(reviews))
 }
 
-// finishComparableBody is a review body with its on-behalf-of lines and the surrounding
-// whitespace removed — the part of a posted body the caller wrote.
-func finishComparableBody(body string) string {
-	s := strings.ReplaceAll(body, "\r\n", "\n")
-	return strings.TrimSpace(deskkit.WithoutOnBehalfOf(s))
+// finishClaimKeyIsSecurity reports whether a review-dispatch claim key is the security
+// lane's: one of the `--`-separated segments after the last `--pr-<N>` is `security`, in any
+// letter case. Any other key is the correctness lane's. This is the rule review dispatch
+// reads the lane from when it builds the assignment, repeated here because the two commands
+// share no package for it; TestFinishClaimLaneRule holds the cases.
+func finishClaimKeyIsSecurity(key string, pr int) bool {
+	marker := fmt.Sprintf("--pr-%d", pr)
+	i := strings.LastIndex(key, marker)
+	if i < 0 {
+		return false
+	}
+	suffix := key[i+len(marker):]
+	if suffix != "" && !strings.HasPrefix(suffix, "--") {
+		return false
+	}
+	for _, seg := range strings.Split(suffix, "--") {
+		if strings.EqualFold(seg, finishSecuritySegment) {
+			return true
+		}
+	}
+	return false
+}
+
+// finishReleaseAudit writes the release step's audit row: what was asked (the claim key),
+// and how it went — `ok` released, `noop` already gone, otherwise the failure's own result
+// and first line. The row is written here rather than through finishAudit because that
+// function also prints the invocation's result line, and `finish` prints its own.
+func finishReleaseAudit(args []string, repo string, pr int, head, key, state string, err error) {
+	e := deskkit.Entry{
+		Tool:       toolName,
+		Verb:       finishReleaseVerb,
+		ArgsDigest: deskkit.ArgsDigest(args),
+		Repo:       repo,
+		PR:         &pr,
+		HeadSHA:    &head,
+	}
+	switch {
+	case err != nil:
+		e.Result = resultForErr(err)
+		e.Detail = "claim " + key + " NOT released (it may still be held): " + firstLineOf(err.Error())
+	case state == finishClaimAlreadyReleased:
+		e.Result = deskkit.ResultNoop
+		e.Detail = "claim " + key + " was already released; nothing was deleted"
+	default:
+		e.Result = deskkit.ResultOK
+		e.Detail = "claim " + key + " released as " + reviewerBotDisplay()
+	}
+	if lerr := deskkit.Log(e); lerr != nil {
+		fmt.Fprintf(stderr, "deskpost: WARNING: could not write the release step's audit line: %v\n", lerr)
+	}
 }
 
 // finishReviewRef names the confirmed review for a human: the forge's own link when the
