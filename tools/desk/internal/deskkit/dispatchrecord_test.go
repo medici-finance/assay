@@ -61,7 +61,7 @@ func TestDispatchRecord_Refusals(t *testing.T) {
 		{"kit review", func(r *DispatchRecord) { r.Kit = strp("review") }},
 		{"kit verifier", func(r *DispatchRecord) { r.Kit = strp("verifier") }},
 		{"kit worker-objective", func(r *DispatchRecord) { r.Kit = strp("worker-objective") }},
-		{"uuid session", func(r *DispatchRecord) { r.SessionTag = "0b5e6a1c-3f2d-4e8a-9c71-2d4f6a8b0e13" }},
+		{"dotted session", func(r *DispatchRecord) { r.SessionTag = "worker-desk.2:night_1" }},
 		{"unknown session", func(r *DispatchRecord) { r.SessionTag = "unknown" }},
 		{"dotted repo", func(r *DispatchRecord) { r.Repo = "example.org/my_project-2" }},
 	} {
