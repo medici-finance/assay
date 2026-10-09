@@ -1,0 +1,245 @@
+{
+  "test": "go test . -run 'DecisionGate|TestDG' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the decision-gate hold judges nothing (every fault dropped)",
+    "file": "decisiongatehold.go",
+    "old": "if f.Move || f.Relabel {\n\t\t\tfaults = append(faults, f)",
+    "new": "if false && (f.Move || f.Relabel) {\n\t\t\tfaults = append(faults, f)"
+  },
+  "mutations": [
+    {
+      "name": "Verify 1/3/9: the status move is never detected",
+      "file": "decisiongatehold.go",
+      "old": "if hr := gateStatusRank(h.Status); hr >= 1 {",
+      "new": "if hr := gateStatusRank(h.Status); false && hr >= 1 {"
+    },
+    {
+      "name": "done dropped from scope (a move straight to done passes)",
+      "file": "decisiongatehold.go",
+      "old": "case \"done\":\n\t\treturn 3",
+      "new": "case \"done\":\n\t\treturn 0"
+    },
+    {
+      "name": "a row already advanced at the base is judged again (pin bump reddens landed rows)",
+      "file": "decisiongatehold.go",
+      "old": "if gateStatusRank(low.Status) < hr {",
+      "new": "if gateStatusRank(low.Status) <= hr {"
+    },
+    {
+      "name": "gate read after the change only (relabel in the same change as the move sheds the hold)",
+      "file": "decisiongatehold.go",
+      "old": "if h.Gate != gateHumanValue && !baseHuman {",
+      "new": "if h.Gate != gateHumanValue {"
+    },
+    {
+      "name": "relabel hold disabled (relabel alone, then move later, passes)",
+      "file": "decisiongatehold.go",
+      "old": "if baseHuman && h.Gate != gateHumanValue {",
+      "new": "if false && baseHuman && h.Gate != gateHumanValue {"
+    },
+    {
+      "name": "drop hold disabled (deletion / double re-key sheds the hold)",
+      "file": "decisiongatehold.go",
+      "old": "if b.Gate == gateHumanValue && !matched[b] {",
+      "new": "if false && b.Gate == gateHumanValue && !matched[b] {"
+    },
+    {
+      "name": "permanent-id matching disabled (a renumber keeping id: reads as a drop)",
+      "file": "decisiongatehold.go",
+      "old": "for _, id := range gatePermIDs(h) {\n\t\t\tfor _, b := range byPerm[id] {\n\t\t\t\tadd(b)",
+      "new": "for _, id := range gatePermIDs(h) {\n\t\t\tfor _, b := range byPerm[id] {\n\t\t\t\t_ = b"
+    },
+    {
+      "name": "unparseable frontmatter read as still human",
+      "file": "decisiongatehold.go",
+      "old": "\t\tgb.FMErr = true\n\t\treturn\n",
+      "new": "\t\tgb.FMErr = true\n\t\tgb.Gate = gateHumanValue\n\t\treturn\n"
+    },
+    {
+      "name": "Verify 3: no decision issue read as permission by layer one",
+      "file": "decisiongatehold.go",
+      "old": "if _, ok, missing := offlineRuling(f); !ok {\n\t\t\tproblems",
+      "new": "if _, ok, missing := offlineRuling(f); !ok && f.primary().DecisionIssue != 0 {\n\t\t\tproblems"
+    },
+    {
+      "name": "layer one accepts a ruling link to another issue",
+      "file": "decisiongatehold.go",
+      "old": "if lok && link.Issue == c.DecisionIssue {",
+      "new": "if lok {"
+    },
+    {
+      "name": "Verify 4: layer two skipped — a layer-one-shaped link counts as ruled (bot relay passes)",
+      "file": "decisiongatehold.go",
+      "old": "if o.Present && o.Reason == rulingOK {",
+      "new": "if true {"
+    },
+    {
+      "name": "only the first board-id spelling is tried (a ruling naming the pre-renumber id is lost)",
+      "file": "decisiongatehold.go",
+      "old": "if o.Reason != rulingRecordNotNamed {\n\t\t\t\tbreak",
+      "new": "if true {\n\t\t\t\tbreak"
+    },
+    {
+      "name": "the brief's own verbatim brief: id no longer matches the marker (house alias refused)",
+      "file": "decisiongatehold.go",
+      "old": "if b != \"\" && id == b {",
+      "new": "if false && b != \"\" && id == b {"
+    },
+    {
+      "name": "colon-form marker naming another repository accepted",
+      "file": "decisiongatehold.go",
+      "old": "len(parts) >= 3 && !strings.EqualFold(parts[len(parts)-3], repoName) {",
+      "new": "false && len(parts) >= 3 && !strings.EqualFold(parts[len(parts)-3], repoName) {"
+    },
+    {
+      "name": "PR lane with no merge-base passes a PR touching the board",
+      "file": "decisiongatehold.go",
+      "old": "if decisionGateTouchesBoard(files) {\n\t\t\treturn refuse(",
+      "new": "if false && decisionGateTouchesBoard(files) {\n\t\t\treturn refuse("
+    },
+    {
+      "name": "PR lane with no merge-base trusts a truncated listing",
+      "file": "decisiongatehold.go",
+      "old": "if n != len(files) {",
+      "new": "if false && n != len(files) {"
+    },
+    {
+      "name": "an unresolvable --decision-gate-base passes",
+      "file": "decisiongatehold.go",
+      "old": "rs = []decisionGateResult{{Board: \"(board)\", Refused: true,\n\t\t\t\tDetail: fmt.Sprintf(\"the base %q",
+      "new": "rs = []decisionGateResult{{Board: \"(board)\", Refused: false,\n\t\t\t\tDetail: fmt.Sprintf(\"the base %q"
+    },
+    {
+      "name": "layer one not wired into --lint",
+      "file": "main.go",
+      "old": "dgp, dgn := decisionGateHoldProblems(root)",
+      "new": "dgp, dgn := []string(nil), []string(nil)"
+    },
+    {
+      "name": "hold not wired into --close-verify",
+      "file": "verifyissues.go",
+      "old": "if gerr := closeVerifyDecisionGateFn(root, readme, updated); gerr != nil {",
+      "new": "if gerr := closeVerifyDecisionGateFn(root, readme, updated); false && gerr != nil {"
+    },
+    {
+      "name": "hold refusals do not fail --corroborate",
+      "file": "corroborate.go",
+      "old": "if decisionGateRefused(gs) {\n\t\t\t\tanyMissing = true",
+      "new": "if false && decisionGateRefused(gs) {\n\t\t\t\tanyMissing = true"
+    },
+    {
+      "name": "a permanent-id match is honoured between two board ids that both exist (one brief borrows another's ruling)",
+      "file": "decisiongatehold.go",
+      "old": "return head[b.Key] == nil && base[h.Key] == nil",
+      "new": "return true"
+    },
+    {
+      "name": "a renumber onto a board id that already existed is honoured (the dropped brief's ruling is borrowed)",
+      "file": "decisiongatehold.go",
+      "old": "return head[b.Key] == nil && base[h.Key] == nil",
+      "new": "return head[b.Key] == nil"
+    },
+    {
+      "name": "layer one fails open on an unresolved base (a committed unruled move passes)",
+      "file": "decisiongatehold.go",
+      "old": "if b := s[k]; b.Gate == gateHumanValue && gateStatusRank(b.Status) >= 1 {",
+      "new": "if b := s[k]; false && b.Gate == gateHumanValue && gateStatusRank(b.Status) >= 1 {"
+    },
+    {
+      "name": "archived boards dropped from the PR lane's board paths (an archive-only change is not judged)",
+      "file": "decisiongatehold.go",
+      "old": "gateBoardPathRe = regexp.MustCompile(`^docs/(streams|archive)/",
+      "new": "gateBoardPathRe = regexp.MustCompile(`^docs/(streams)/"
+    },
+    {
+      "name": "a permanent-id donor still on the board supplies the prior status (a new row taking its id: reads as already advanced)",
+      "file": "decisiongatehold.go",
+      "old": "if len(f.RulingBase) == 0 {\n\t\t\t\tf.Move = true\n\t\t\t} else {\n\t\t\t\tlow := f.RulingBase[0]\n\t\t\t\tfor _, b := range f.RulingBase[1:] {",
+      "new": "if len(ms) == 0 {\n\t\t\t\tf.Move = true\n\t\t\t} else {\n\t\t\t\tlow := ms[0]\n\t\t\t\tfor _, b := range ms[1:] {"
+    },
+    {
+      "name": "a true renumber of a landed row is judged as a new row (the renumbered brief loses its landed status)",
+      "file": "decisiongatehold.go",
+      "old": "if len(f.RulingBase) == 0 {\n\t\t\t\tf.Move = true",
+      "new": "if true {\n\t\t\t\tf.Move = true"
+    },
+    {
+      "name": "a board id that resolves to more than one record after the change is judged as one brief (a number-spelling decoy hides a move)",
+      "file": "decisiongatehold.go",
+      "old": "if h.Ambiguous != \"\" {",
+      "new": "if false && h.Ambiguous != \"\" {"
+    },
+    {
+      "name": "a board id with two README rows is judged from its first row (a landed decoy row on the base hides a move)",
+      "file": "decisiongatehold.go",
+      "old": "case gateStatusRank(r.Status) < gateStatusRank(gb.Status):",
+      "new": "case false && gateStatusRank(r.Status) < gateStatusRank(gb.Status):"
+    },
+    {
+      "name": "records from docs/streams and docs/archive under one board id are not ambiguous (an archived row lends a new brief its status)",
+      "file": "decisiongatehold.go",
+      "old": "if len(t.trees) > 1 {",
+      "new": "if false && len(t.trees) > 1 {"
+    },
+    {
+      "name": "an ambiguity fault can be lifted by a ruling (a landed row's ruling covers a decoy riding its number)",
+      "file": "decisiongatehold.go",
+      "old": "if f.Ambiguous {\n\t\treturn r, false,",
+      "new": "if false {\n\t\treturn r, false,"
+    },
+    {
+      "name": "renumber exclusivity removed (one base brief's ruling serves two renumbers; one renumber absorbs two base briefs)",
+      "file": "decisiongatehold.go",
+      "old": "if len(bs) == 1 && len(claimants[bs[0]]) == 1 {\n\t\t\tsame[gatePair{bs[0], h}] = true",
+      "new": "for _, b := range bs {\n\t\t\tsame[gatePair{b, h}] = true"
+    },
+    {
+      "name": "any permanent-id match keeps a base brief on the board (an id parked on an existing brief hides a drop)",
+      "file": "decisiongatehold.go",
+      "old": "if gateKeeps(same, b, h) {\n\t\t\t\tmatched[b] = true",
+      "new": "if true {\n\t\t\t\tmatched[b] = true"
+    },
+    {
+      "name": "a second brief file for a board id is skipped as a duplicate (its gate: human is never read)",
+      "file": "decisiongatehold.go",
+      "old": "if rec.Gate == gateHumanValue {\n\t\tgb.Gate = gateHumanValue",
+      "new": "if false {\n\t\tgb.Gate = gateHumanValue"
+    },
+    {
+      "name": "a board record the change leaves that the hold cannot read is judged like any other (a linked brief file lands unrefused)",
+      "file": "decisiongatehold.go",
+      "old": "if h.Unreadable != \"\" {\n\t\t\tif b := base[h.Key]; b != nil {",
+      "new": "if false {\n\t\t\tif b := base[h.Key]; b != nil {"
+    },
+    {
+      "name": "an unreadable base record is taken as carrying no gate (a landed linked brief is dropped, or relabelled and moved, unruled)",
+      "file": "decisiongatehold.go",
+      "old": "gb.Gate, gb.DecisionIssue, gb.Ruling = gateHumanValue, 0, \"\"",
+      "new": "gb.DecisionIssue, gb.Ruling = 0, \"\""
+    },
+    {
+      "name": "the working tree is read by following links (the two readers disagree on a linked board record)",
+      "file": "decisiongatehold.go",
+      "old": "fi, err := os.Lstat(p)\n\tif err != nil {\n\t\treturn gateEntryOther",
+      "new": "fi, err := os.Stat(p)\n\tif err != nil {\n\t\treturn gateEntryOther"
+    },
+    {
+      "name": "the base's git tree is read without entry modes (a linked board record reads as a plain file)",
+      "file": "decisiongatehold.go",
+      "old": "entries = append(entries, gateEntry{Path: p, Kind: gitTreeEntryKind(mode)})",
+      "new": "entries = append(entries, gateEntry{Path: p, Kind: map[bool]gateEntryKind{true: gateEntryDir, false: gateEntryFile}[mode == \"040000\"]})"
+    },
+    {
+      "name": "an unreadable base scope record that nothing after the change stands for is not refused (a landed linked done/ folder is removed with its gate: human brief, unruled)",
+      "file": "decisiongatehold.go",
+      "old": "faults = append(faults, gateFault{Unreadable: true, Base: []*gateBrief{b}})\n\t\t\t\tcontinue",
+      "new": "continue"
+    },
+    {
+      "name": "a base gate: human brief whose README row is gone stays on the board while a brief file keys to its board id (the row is removed and the file moved under done/, unruled)",
+      "file": "decisiongatehold.go",
+      "old": "return same[gatePair{b, h}] && !(b.hasRow() && !h.hasRow())",
+      "new": "return same[gatePair{b, h}]"
+    }
+  ]
+}

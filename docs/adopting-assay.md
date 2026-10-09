@@ -587,6 +587,35 @@ identity* — plan for it before you turn protection on, not after the board sil
 > `STATUSGEN_ROSTER_ENV`, materialised into the config-home file — see
 > [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md), section "Trust roster for CI".
 
+> **DECISION-GATE HOLD — the PR check, and the admin act that makes it bind
+> ([`lifecycle-v1.md`](../spec/lifecycle-v1.md) §4.5).** A `gate: human` brief may move to
+> `implemented`, `verified` or `done` only once a human has ruled on its decision issue. The hold
+> has two layers. **Layer one** is part of `statusgen --lint` and needs no network: a status
+> move on a `gate: human` brief whose frontmatter lacks a `decision-issue:` number and a
+> well-formed `ruling:` comment link is a PROBLEM. It checks only that a well-formed link is
+> there, never who wrote the comment. **Layer two** is `statusgen --decision-gate --pr <N>`. It
+> fetches the linked comment and refuses the change unless the comment sits on the brief's own
+> decision issue, was written by a human login in `ASSAY_HUMAN_LOGIN_MAP`, and names the brief by
+> its board id. `statusgen init` scaffolds layer two as the **`decision-gate`** job of the
+> workflow, with `issues: read`. Three things are yours:
+>
+> - **Make `decision-gate` a required status check** on the default branch (Settings > Rules or
+>   branch protection). Merging the workflow does not do that. Until a repository admin does it,
+>   the job reports but does not block a merge.
+> - **Set `ASSAY_HUMAN_LOGIN_MAP`** as an Actions variable (it is one of the five roster
+>   variables above). Unset, layer two cannot tell a human from a bot and refuses every
+>   `gate: human` status move. It fails closed, never open.
+> - **Pin a statusgen that has `--decision-gate`.** The scaffolded job errors on an older pin
+>   rather than passing silently.
+>
+> The check runs on the pull request that carries the status transition. It never runs at a
+> PR's ready-flip: a draft PR that delivers a `gate: human` brief is reviewed and readied as
+> usual, and only the board row's move waits on the ruling. `deskevidence` runs the same
+> `--decision-gate` check before a landing that bypasses pull requests, and `deskpr create`
+> prepends a banner naming the decision issue to such a PR's body. The banner informs; it blocks
+> nothing. On **GitLab**, layer two is not scaffolded, so the hold there is the well-formed-link
+> check of layer one alone.
+
 **Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint. Roster: `grep -c 'vars.ASSAY_' …/statusgen.yml` is 5, and the regen job's log shows `role-bindings=` naming your `verifier=` binding rather than `(none bound)` — a `::notice::ASSAY_TRUSTED_BOT_SLUGS is not set` line in that log means the variables are not set yet.
 
 ### PRIMITIVE: install-desk-plugin

@@ -1420,6 +1420,7 @@ func runCorroborate(prsArg string) int {
 	var allCitationResults []citationResult
 	var allQuotedNotices []string
 	var allRegisterResults []registerTransitionResult
+	var allGateResults []decisionGateResult
 	anyMissing := false
 
 	for _, prStr := range prStrs {
@@ -1547,6 +1548,24 @@ func runCorroborate(prsArg string) int {
 			}
 		}
 
+		// --- decision-gate hold lane (lifecycle-v1 §4.5) ---
+		// Every PR: a gate: human brief this PR moves to implemented/verified/done,
+		// relabels, or drops needs its recorded ruling: link to resolve to a mapped
+		// human's unedited comment on its decision issue, naming the brief. Judged
+		// against the PR merge-base; an unresolvable base fails closed when the PR
+		// touches the board (decisionGatePRLane).
+		{
+			countFn := func() (int, error) { return corroborateChangedFilesFn(repo, pr) }
+			gs := decisionGatePRLane(".", repo, files, getMergeBase(), countFn)
+			for i := range gs {
+				gs[i].Board = fmt.Sprintf("PR #%d: %s", pr, gs[i].Board)
+			}
+			allGateResults = append(allGateResults, gs...)
+			if decisionGateRefused(gs) {
+				anyMissing = true
+			}
+		}
+
 		// --- quoted notation set aside as NOT-A-CLAIM (#1395) — announced, never silent ---
 		allQuotedNotices = append(allQuotedNotices, quotedClaimNotices(".", diff)...)
 
@@ -1620,6 +1639,12 @@ func runCorroborate(prsArg string) int {
 		}
 	}
 
+	// --- decision-gate hold section (lifecycle-v1 §4.5) ---
+	if len(allGateResults) > 0 {
+		fmt.Println()
+		printDecisionGateReport(allGateResults)
+	}
+
 	// --- acceptance/ruling CITATION section ---
 	// A separate lane from the stamp report above: it reads FREE-PROSE and
 	// commit-message claims that a named human accepted/ruled on something, and
@@ -1670,7 +1695,17 @@ func runCorroborate(prsArg string) int {
 
 // repoFromOrigin returns the "owner/repo" portion of the git remote origin URL.
 func repoFromOrigin() string {
-	out, err := exec.Command("git", "remote", "get-url", "origin").Output()
+	return repoFromOriginAt("")
+}
+
+// repoFromOriginAt is repoFromOrigin for the checkout at root ("" = the current
+// directory).
+func repoFromOriginAt(root string) string {
+	args := []string{"remote", "get-url", "origin"}
+	if root != "" {
+		args = append([]string{"-C", root}, args...)
+	}
+	out, err := exec.Command("git", args...).Output()
 	if err != nil {
 		return ""
 	}

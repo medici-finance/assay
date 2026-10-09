@@ -557,6 +557,19 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
 	}
+	// Decision-gate hold, network layer (lifecycle-v1 §4.5). The lint above carries the
+	// hold's offline layer (a well-formed ruling: link); this landing rides the Contents
+	// API with no pull request, so the check that reads WHO wrote the linked comment runs
+	// here, on the same staged write (decisiongate.go).
+	gateRefused, gerr := decisionGateDiffFn(lintRoot, targetRepoPath, commitContent)
+	if gerr != nil {
+		return gerr
+	}
+	if len(gateRefused) > 0 {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: landing %s would move, relabel or drop a gate: human brief with no human ruling on its decision issue (decision-gate hold, lifecycle-v1 §4.5):\n%s",
+			targetRepoPath, strings.Join(gateRefused, "\n")))
+	}
 
 	// verified-sidecar acceptance gate (#1309 stuck-flip). When THIS landing appends one or
 	// more `"outcome":"verified"` rows to the verify-outcomes sidecar, refuse unless the landing
