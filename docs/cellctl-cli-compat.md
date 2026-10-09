@@ -17,7 +17,10 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   code. A line that worked before still does what it did. A line the old parser refused is still
   refused, by the shape check below when the new parser would otherwise have accepted it. The
   exceptions are the recorded decision entries, under "What differs" and "Other deliberate
-  differences".
+  differences", where two forms read as falling under an entry are also named (a false help flag,
+  `--help=false`; the `scratch <cell> <action> -h` usage text). This is measured, not proven: the
+  parity transcripts and the shape tests replay the lines listed on this page and the reviewers'
+  differential sweeps against the pre-migration binary; a line outside them is not covered.
 - **Command-line shape.** `cellctl [--cells-root <abs>] <verb> <positionals...> [flags]`: the
   selector is the separated `--cells-root <abs>`, and only as the first word; a verb's fixed
   positionals (its cell, role or action) come before its flags; the single-dash spelling of a long
@@ -45,8 +48,22 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   verb's own message and nothing recorded. `check` and `deskd` parse no flags: `check` takes the
   cell, then a `CLAUDE_CONFIG_DIR`, and ignores the rest; `deskd` takes the cell and ignores the
   rest, a flag-shaped word included. A flag ahead of their cell is still refused.
-- **A repeated `--kind`** on `desk`, `up` or `show` keeps its first value; a later one is skipped
-  unread, as the old pre-scan did, so a word appended after a pinned kind never re-kinds a launch.
+- **`--kind` on `desk`, `up` and `show`** is read as the old pre-scan read it: the first `--kind`
+  anywhere among the verb's words, before the cell loads, whatever word comes before it. A `--kind`
+  in another flag's value position is still the kind (`--model --kind house <dir>` runs
+  house-kinded, as before) and is still validated (`--model --kind` is refused with
+  `--kind needs a value`, exit 3, nothing run). A later `--kind` is skipped unread, with or
+  without a value after it, so a word appended after a pinned kind never re-kinds a launch. The
+  parity cases `kind-whole-line/*` replay these against the pre-migration binary.
+- **`new` reads its whole line for help, and a missing last value as empty.** `-h` or `--help`
+  anywhere on a `new` line prints the usage, exit 0, and writes nothing, also as another flag's
+  value (`--orgs --help`) or after a bare `--`. A value flag left last with no value is taken as
+  empty, as before: a trailing `--forge` scaffolds a house cell and is refused for a k8s cell
+  (`--forge must be github or gitlab, got ''`); `--launcher`, `--container-config` and
+  `--repo-slug` are refused in their own words (cases `new-trailing-value/*`).
+- **`scratch -- <cell> ...`** takes the `--` as the cell word and is refused
+  `no cell '--' under <registry> (cell.env missing)`, exit 3, as before (cases
+  `scratch-terminator/*`).
 - **`scratch ... run` command boundary.** Everything after `scratch <cell> <action>` and the
   verb's own flags is the command, with or without `--`: the first word that is not a flag or a
   flag's value starts it, and nothing after that word is parsed as a `scratch` flag, `--help`,
@@ -117,9 +134,15 @@ a bad role is refused first whatever flags follow (`refusal-order/0` replays it 
 - `--flag=value` and a bare `--` terminator are now accepted by every non-raw verb (decision
   entry 4): `cadence <cell> recover <role> --confirm-stopped=true` confirms, and
   `cadence <cell> status <role> --` and `check <cell> --` run. A `--confirm-stopped=<value>` in any
-  other place, or with a false value, is refused as before.
+  other place, or with a false value, is refused as before. The `=` form includes a false help
+  flag: `--help=false` (and, on `scratch`, `-h=false`) is read as "no help" and the line runs,
+  where the old parser refused it (exit 3; on a `scratch` action, that action's usage and exit 2).
+  `-h=false` outside `scratch` is still refused as a single-dash long flag, and `check` and
+  `deskd` still read the word by position, as before. This is read as part of
+  entries 4 and 9, which accept the `=` spelling and the help flag after the verb; no driver
+  answer names this form on its own.
 - `-h` and `--help` after the verb mean help (decision entry 9), `check <cell> --help` and
-  `deskd <cell> -h` included. On a verb that parses flags, a single-dash token that is not a known
+  `deskd <cell> -h` included; on `new`, anywhere on the line (above). On a verb that parses flags, a single-dash token that is not a known
   long flag is an error (decision entry 4); a single-dash long flag outside `scratch` is refused
   (above). `check` and `deskd` parse no flags, so such a word after their cell is still theirs.
 - No roster echo is printed for `help`, `-h`, `--help`, `--version`, `version` or a parse failure
@@ -151,6 +174,11 @@ One residual difference has no entry of its own. `scratch <cell> <action> -h` (o
 before, but the usage it prints on stderr is the verb's help, not the Go flag package's flag list,
 and the roster echo is not printed before it (decision entry 1). A help flag before the action
 (`scratch <cell> -h`) is the verb's help, exit 0 (decision entry 9).
+
+One effect of a refusal is smaller. A `scratch` line refused before the action is read (a flag
+or a bare `--` ahead of the action) used to create the cell's scratch state (`run/scratch` with its
+`owner` and `sweep.lock`) before it refused; it now refuses before creating it. Exit code and streams are as listed above;
+nothing that ran before runs less.
 
 ## Co-execution notes for the human gate
 

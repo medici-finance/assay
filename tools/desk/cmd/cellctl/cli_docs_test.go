@@ -26,8 +26,10 @@ func referenceMarkdown() string {
 	b.WriteString("separated `--cells-root <abs>`, and only as the first word. Single-dash spellings of long flags\n")
 	b.WriteString("(`-apply`) are accepted by `scratch` only. Help (`-h`, `--help`, `help <command>`) and version\n")
 	b.WriteString("(`--version`, `version`) read no cell and no credential file, and read the roster only when the\n")
-	b.WriteString("line carries a relative `--cells-root`, which every line refuses after the roster echo. How\n")
-	b.WriteString("this differs from the pre-Cobra surface is in [cellctl-cli-compat.md](cellctl-cli-compat.md).\n\n")
+	b.WriteString("line carries a relative `--cells-root`, which every line refuses after the roster echo. The\n")
+	b.WriteString("one exception is a help flag after a `scratch` action (`scratch <cell> sweep -h`), which loads\n")
+	b.WriteString("the cell and its scratch policy first, as it did. How this differs from the pre-Cobra surface\n")
+	b.WriteString("is in [cellctl-cli-compat.md](cellctl-cli-compat.md).\n\n")
 	root := buildRoot()
 	var hidden []string
 	var walk func(c *cobra.Command)

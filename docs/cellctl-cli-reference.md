@@ -7,8 +7,10 @@ Every command takes the cell as its first argument. The shape is
 separated `--cells-root <abs>`, and only as the first word. Single-dash spellings of long flags
 (`-apply`) are accepted by `scratch` only. Help (`-h`, `--help`, `help <command>`) and version
 (`--version`, `version`) read no cell and no credential file, and read the roster only when the
-line carries a relative `--cells-root`, which every line refuses after the roster echo. How
-this differs from the pre-Cobra surface is in [cellctl-cli-compat.md](cellctl-cli-compat.md).
+line carries a relative `--cells-root`, which every line refuses after the roster echo. The
+one exception is a help flag after a `scratch` action (`scratch <cell> sweep -h`), which loads
+the cell and its scratch policy first, as it did. How this differs from the pre-Cobra surface
+is in [cellctl-cli-compat.md](cellctl-cli-compat.md).
 
 ## `cellctl cache <cell> status|clean|recover`
 

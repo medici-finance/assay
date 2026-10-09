@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
@@ -164,6 +163,7 @@ func runTree(args []string) (code int) {
 	}
 	if i < len(args) {
 		verbWords = append([]string{}, args[i+1:]...)
+		args = wholeLineScans(args, i)
 	}
 	raw := rawVerb(args) || flagless
 	if raw && args[0] == "--cells-root" {
@@ -284,44 +284,92 @@ func needValue(v *cli.Values, key, msg string) {
 	}
 }
 
-// firstWins keeps the first value a repeated flag is given and ignores the rest: the legacy
-// --kind pre-scan took the first `--kind` and skipped every later one, and the kind selects the
-// launched window's confinement class, so a word appended after a pinned --kind never re-kinds it.
-type firstWins struct {
-	pflag.Value
-	given bool
+// wholeLineScans keeps two readings the legacy parser made by scanning a verb's whole line ahead
+// of its flag loop, which a flag parser cannot make on its own:
+//   - new: -h or --help anywhere on the line printed new's usage, exit 0, nothing written, also
+//     as another flag's value or after a bare `--`;
+//   - a value flag standing last with no value: new took it as empty, and desk, up and show
+//     skipped a later --kind unread or refused the only one in kindScan's words. The parser
+//     would refuse it as a missing argument, so it is given `=` and an empty value, which the
+//     verb then reads as the old loop did.
+func wholeLineScans(args []string, i int) []string {
+	verb, words := args[i], args[i+1:]
+	switch verb {
+	case "new":
+		for _, w := range words {
+			if w == "-h" || w == "--help" {
+				return append(append([]string{}, args[:i+1]...), "--help")
+			}
+		}
+	case "desk", "up", "show":
+	default:
+		return args
+	}
+	cmd, _, err := buildRoot().Find([]string{verb})
+	if err != nil {
+		return args
+	}
+	j := trailingValueFlag(cmd, words)
+	if j < 0 || (verb != "new" && words[j] != "--kind") {
+		return args
+	}
+	out := append([]string{}, args...)
+	out[i+1+j] += "="
+	return out
 }
 
-func (f *firstWins) Set(s string) error {
-	if f.given {
-		return nil
+// trailingValueFlag is the index of a value flag of cmd that stands last among words with no
+// value after it, or -1. The words are walked as the parser walks them: a value flag takes the
+// next word, whatever it is, and a bare `--` ends the flags.
+func trailingValueFlag(cmd *cobra.Command, words []string) int {
+	for i := 0; i < len(words); i++ {
+		w := words[i]
+		if w == "--" {
+			return -1
+		}
+		if !strings.HasPrefix(w, "--") || strings.Contains(w, "=") {
+			continue
+		}
+		f := cmd.Flags().Lookup(w[2:])
+		if f == nil || f.NoOptDefVal != "" {
+			continue
+		}
+		if i == len(words)-1 {
+			return i
+		}
+		i++
 	}
-	f.given = true
-	return f.Value.Set(s)
+	return -1
 }
 
-// kindFirstWins makes cmd's --kind keep its first value.
-func kindFirstWins(cmd *cobra.Command) {
-	f := cmd.Flags().Lookup("kind")
-	f.Value = &firstWins{Value: f.Value}
-}
-
-// kindFlag is the --kind override of a verb, validated before anything loads: loadCell is where
-// the kind's own preconditions are asserted, so the override has to be in force by then. Only
-// the first value is read and validated (kindFirstWins), as the legacy pre-scan did.
-func kindFlag(cmd *cobra.Command) string {
-	f := cmd.Flags().Lookup("kind")
-	if f == nil || !f.Changed {
-		return ""
+// kindScan is the --kind override of desk, up and show, read as the legacy pre-scan read it:
+// the first --kind among the verb's words, whatever word comes before it, so a --kind in
+// another flag's value position is still the kind; refused with no value or an unknown one
+// before anything loads (loadCell asserts the kind's own preconditions, so the override has to
+// be in force by then). A later --kind is skipped unread. The parsed --kind is never read: the
+// kind selects the launched window's confinement class, so no word on the line that names one
+// goes unapplied or unvalidated. --kind=<k> (decision entry 4) is the same occurrence.
+func kindScan(words []string) string {
+	for i, w := range words {
+		k, eq := strings.CutPrefix(w, "--kind=")
+		switch {
+		case eq:
+		case w == "--kind" && i+1 < len(words):
+			k = words[i+1]
+		case w == "--kind":
+			k = ""
+		default:
+			continue
+		}
+		if k == "" {
+			die("--kind needs a value (%s)", joinPipe(kindValues))
+		}
+		if !valueIn(k, kindValues) {
+			die("--kind must be one of %s, got '%s'", joinPipe(kindValues), k)
+		}
+		return k
 	}
-	k := f.Value.String()
-	if k == "" {
-		die("--kind needs a value (%s)", joinPipe(kindValues))
-	}
-	if !valueIn(k, kindValues) {
-		die("--kind must be one of %s, got '%s'", joinPipe(kindValues), k)
-	}
-	return k
+	return ""
 }
 
 func cellArg(pos []string) string { return needCell(pos) }
@@ -515,14 +563,13 @@ func deskCmd() *cobra.Command {
 		Args:        cobra.ArbitraryArgs,
 	}
 	set := declare(cmd, launchBindings()...)
-	kindFirstWins(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cellArg(args)
 		if len(args) < 2 || args[1] == "" {
 			fmt.Fprintln(os.Stderr, "cellctl: "+deskUsage)
 			exitWith(1)
 		}
-		c := loadCellWithKind(args[0], kindFlag(cmd))
+		c := loadCellWithKind(args[0], kindScan(verbWords))
 		// The role is validated before any flag, as the legacy parser ordered it.
 		if !valueIn(args[1], knownRoles) {
 			die("unknown role '%s'", args[1])
@@ -559,10 +606,9 @@ func upCmd() *cobra.Command {
 		bStr("automate", "orca only: schedule one automation per role (a 5-field cron string or a preset)"),
 	)
 	set := declare(cmd, bs...)
-	kindFirstWins(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
-		c := loadCellWithKind(cell, kindFlag(cmd))
+		c := loadCellWithKind(cell, kindScan(verbWords))
 		v := resolve(set, c)
 		launchNeeds(v)
 		needValue(v, "automate", "--automate needs a trigger (a 5-field cron string or a preset)")
@@ -635,10 +681,9 @@ func showCmd() *cobra.Command {
 		bStr("provider", "provider"),
 		bStr("model", "model"),
 	)
-	kindFirstWins(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
-		c := loadCellWithKind(cell, kindFlag(cmd))
+		c := loadCellWithKind(cell, kindScan(verbWords))
 		cmdShow(c, resolve(set, nil), args[1:])
 		return nil
 	}
@@ -830,7 +875,10 @@ func scratchCmd() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		d := cmd.ArgsLenAtDash()
 		if d == 0 {
-			cellArg(nil)
+			// A bare `--` where the cell goes was the cell word for the legacy parser, so the line
+			// is refused as that cell's, in loadCell's words, as it was.
+			loadCell("--")
+			die("scratch requires run, ack, sweep, or inventory")
 		}
 		cell := cellArg(args)
 		if len(args) < 2 || d == 1 {

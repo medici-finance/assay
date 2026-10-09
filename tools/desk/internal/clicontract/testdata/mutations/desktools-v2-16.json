@@ -1,5 +1,5 @@
 {
-  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv|TestScratchRunFlagsBeforeVerb|TestCLILegacyShapeRefusals|TestCLILegacyShapeAccepted|TestCLILegacyWordsRestored|TestCLIEveryVerbDeclaresItsPositionals|TestCLIOpaqueArgvVerbResolvedLikeTheParser)$' ./cmd/cellctl/ ./internal/cli/",
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv|TestScratchRunFlagsBeforeVerb|TestCLILegacyShapeRefusals|TestCLILegacyShapeAccepted|TestCLILegacyWordsRestored|TestCLIEveryVerbDeclaresItsPositionals|TestCLIOpaqueArgvVerbResolvedLikeTheParser|TestCLIWholeLineScans|TestKindScanRefusesUnknown)$' ./cmd/cellctl/ ./internal/cli/",
   "control": {
     "name": "CONTROL — a parse failure exits with the wrong code (usage exit 3 becomes 4)",
     "file": "cmd/cellctl/cobra.go",
@@ -162,6 +162,36 @@
       "file": "cmd/cellctl/cobra.go",
       "old": "if !c.Flags().Changed(\"help\") || len(pos) < 2 {",
       "new": "if true {"
+    },
+    {
+      "name": "a trailing valueless --kind on desk, up and show is left to the parser, which refuses a line the old pre-scan ran",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if j < 0 || (verb != \"new\" && words[j] != \"--kind\") {",
+      "new": "if j < 0 || verb != \"new\" {"
+    },
+    {
+      "name": "a trailing valueless value flag on new is left to the parser, which refuses a line that scaffolded a cell",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if j < 0 || (verb != \"new\" && words[j] != \"--kind\") {",
+      "new": "if j < 0 || verb == \"new\" || words[j] != \"--kind\" {"
+    },
+    {
+      "name": "a help word on new is help only where the parser sees a flag, so a help word in a value position scaffolds the cell",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\t\tif w == \"-h\" || w == \"--help\" {\n\t\t\t\treturn append(append([]string{}, args[:i+1]...), \"--help\")",
+      "new": "\t\t\tif false && (w == \"-h\" || w == \"--help\") {\n\t\t\t\treturn append(append([]string{}, args[:i+1]...), \"--help\")"
+    },
+    {
+      "name": "the --kind override is read only where the parser sees a flag, so a --kind in another flag's value position goes unapplied and unvalidated",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tfor i, w := range words {\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")",
+      "new": "\tfor i, w := range words {\n\t\tif i > 0 && strings.HasPrefix(words[i-1], \"--\") && words[i-1] != \"--kind\" {\n\t\t\tcontinue\n\t\t}\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")"
+    },
+    {
+      "name": "a bare -- where the scratch cell goes is a missing cell (exit 1), not the cell word the old parser refused (exit 3)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\t\tloadCell(\"--\")\n",
+      "new": "\t\t\tcellArg(nil)\n"
     }
   ]
 }

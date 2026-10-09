@@ -244,6 +244,61 @@ func TestCLILegacyWordsRestored(t *testing.T) {
 	}
 }
 
+// TestCLIWholeLineScans: the old parser read two words by scanning the verb's whole line before
+// its flag loop, so a word in another flag's value position was read twice: the first --kind on
+// desk, up and show (applied and validated before the cell loads), and -h/--help on new (usage,
+// exit 0, nothing written). The parity transcripts (cases kind-whole-line, new-trailing-value)
+// pin the non-help lines against the old binary; help text is not transcribed, so new's help
+// lines are pinned here, with the kind lines again for the mutation harness.
+func TestCLIWholeLineScans(t *testing.T) {
+	w := newCLIWorld(t, "")
+	n := []string{"new", "fresh", "--kind", "house", "--repo", w.repoDir, "--roots", "o/r=" + w.repoDir}
+	before := snapshotTree(t, w.root)
+	for _, args := range [][]string{
+		append(append([]string{}, n...), "--orgs", "--help"),
+		append(append([]string{}, n...), "--forge", "-h"),
+		append(append([]string{}, n...), "--port", "--help"),
+		append(append([]string{}, n...), "--roles", "-h"),
+		append(append([]string{}, n...), "--", "-h"),
+		{"new", "--orgs", "--help"},
+		{"new", "--forge", "-h"},
+	} {
+		if r := w.run(t, nil, args...); r.Code != 0 || !strings.Contains(r.Stdout, "Usage:") {
+			t.Errorf("%q: exit %d, want new's usage and exit 0\nstdout:\n%s\nstderr:\n%s", args, r.Code, r.Stdout, r.Stderr)
+		}
+	}
+	if after := snapshotTree(t, w.root); after != before {
+		t.Errorf("a help line on new wrote files:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	dry := []string{"DRY_RUN=1"}
+	type want struct {
+		code int
+		out  string
+		err  string
+	}
+	for _, tc := range []struct {
+		args []string
+		want want
+	}{
+		{[]string{"desk", "example", "worker-desk", "--kind", "house", "--kind"}, want{0, "kind=house (override)", ""}},
+		{[]string{"up", "example", "--kind", "house", "--kind"}, want{0, "kind=house (override)", ""}},
+		{[]string{"show", "example", "--kind", "house", "--kind"}, want{0, "CELL_KIND=house (flag)", ""}},
+		{[]string{"desk", "example", "worker-desk", "--model", "--kind"}, want{3, "", "--kind needs a value"}},
+		{[]string{"up", "example", "--provider", "--kind"}, want{3, "", "--kind needs a value"}},
+		{[]string{"show", "example", "--model", "--kind"}, want{3, "", "--kind needs a value"}},
+		{[]string{"desk", "example", "worker-desk", "--model", "--kind", "bogus"}, want{3, "", "--kind must be one of"}},
+		{[]string{"desk", "scrub", "worker-desk", "--model", "--kind", "house", w.cfgDir}, want{0, "kind=house (override)", ""}},
+		{[]string{"new", "f1", "--kind", "house", "--repo", w.repoDir, "--roots", "o/r=" + w.repoDir, "--forge"}, want{0, "scaffolded", ""}},
+		{[]string{"new", "f2", "--forge"}, want{3, "", "--forge must be github or gitlab, got ''"}},
+		{[]string{"scratch", "--", "example", "sweep"}, want{3, "", "no cell '--'"}},
+	} {
+		r := w.run(t, dry, tc.args...)
+		if r.Code != tc.want.code || !strings.Contains(r.Stdout, tc.want.out) || !strings.Contains(r.Stderr, tc.want.err) {
+			t.Errorf("%q: exit %d, want %d with stdout %q and stderr %q\nstdout:\n%s\nstderr:\n%s", tc.args, r.Code, tc.want.code, tc.want.out, tc.want.err, r.Stdout, r.Stderr)
+		}
+	}
+}
+
 // TestCLILegacyShapeAccepted: the shapes the old parser accepted still run, the four ruled
 // entries included, so the refusals above are not a blanket.
 func TestCLILegacyShapeAccepted(t *testing.T) {

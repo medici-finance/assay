@@ -1178,6 +1178,189 @@
         "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\nexit status 7\n"
       }
     ],
+    "kind-whole-line": [
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "desk",
+          "example",
+          "worker-desk",
+          "--kind",
+          "house",
+          "--kind"
+        ],
+        "code": 0,
+        "stdout": "[dry-run] cell=example kind=house (override) role=worker-desk model=sonnet effort=harness-default provider=anthropic harness=claude cfg=\u003cROOT\u003e/claude-config wt=\u003cROOT\u003e/cells/example/worktrees/worker-desk session=example-worker-desk-\u003cSTAMP\u003e desk_roots=example-org/example-repo=\u003cROOT\u003e/repo shims→HOME=\u003cROOT\u003e/cells/example/home\n[dry-run] env ASSAY_COCKPIT=herdr (auto: on PATH)\n[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "up",
+          "example",
+          "--kind",
+          "house",
+          "--kind"
+        ],
+        "code": 0,
+        "stdout": "[cockpit] herdr (auto: on PATH)\n[dry-run] cell=example kind=house (override) cockpit=herdr session=example-cell config=\u003cROOT\u003e/claude-config\n[dry-run] cell: echo '[cell] example is a house cell with no deskd (DESKD=1 in cell.env to stand one)'\n[dry-run] the-desk: '\u003cBIN\u003e' desk 'example' 'the-desk' --kind 'house' --cockpit 'herdr' '\u003cROOT\u003e/claude-config'\n[dry-run] pr-review-desk: '\u003cBIN\u003e' desk 'example' 'pr-review-desk' --kind 'house' --cockpit 'herdr' '\u003cROOT\u003e/claude-config'\n[dry-run] verify-desk: '\u003cBIN\u003e' desk 'example' 'verify-desk' --kind 'house' --cockpit 'herdr' '\u003cROOT\u003e/claude-config'\n[dry-run] intake-desk: '\u003cBIN\u003e' desk 'example' 'intake-desk' --kind 'house' --cockpit 'herdr' '\u003cROOT\u003e/claude-config'\n[dry-run] worker-desk: '\u003cBIN\u003e' desk 'example' 'worker-desk' --kind 'house' --cockpit 'herdr' '\u003cROOT\u003e/claude-config'\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "show",
+          "example",
+          "--kind",
+          "house",
+          "--kind"
+        ],
+        "code": 0,
+        "stdout": "[show] cell=example dir=\u003cROOT\u003e/cells/example\n[show] CELL_KIND=house (flag)\n[show] CELL_COCKPIT=auto (default)\n[show] CELL_HARNESS=claude (default)\n[show] CELL_PROVIDER=unset (default: anthropic)\n[show] model the-desk=sonnet (default: DESK_MODEL_DEFAULT)\n[show] model pr-review-desk=sonnet (default: DESK_MODEL_DEFAULT)\n[show] model verify-desk=sonnet (default: DESK_MODEL_DEFAULT)\n[show] model intake-desk=sonnet (default: DESK_MODEL_DEFAULT)\n[show] model worker-desk=sonnet (default: DESK_MODEL_DEFAULT)\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "desk",
+          "example",
+          "worker-desk",
+          "--model",
+          "--kind"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: --kind needs a value (k8s|house|container|scrubbed)\n"
+      },
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "desk",
+          "example",
+          "worker-desk",
+          "--model",
+          "--kind",
+          "bogus"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: --kind must be one of k8s|house|container|scrubbed, got 'bogus'\n"
+      },
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "desk",
+          "example",
+          "worker-desk",
+          "--model",
+          "--kind",
+          "scrubbed",
+          "\u003cROOT\u003e/claude-config"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: cell.env: CELL_REPO_SLUG (\u003cowner\u003e/\u003crepo\u003e) is not set — a scrubbed cell is scoped to one repo\n"
+      },
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "desk",
+          "scrub",
+          "worker-desk",
+          "--model",
+          "--kind",
+          "house",
+          "\u003cROOT\u003e/claude-config"
+        ],
+        "code": 0,
+        "stdout": "[dry-run] cell=scrub kind=house (override) role=worker-desk model=--kind (override) effort=harness-default provider=anthropic harness=claude cfg=\u003cROOT\u003e/claude-config wt=\u003cROOT\u003e/cells/scrub/worktrees/worker-desk session=scrub-worker-desk-\u003cSTAMP\u003e desk_roots=example-org/example-repo=\u003cROOT\u003e/repo shims→HOME=\u003cROOT\u003e/cells/scrub/home\n[dry-run] env ASSAY_COCKPIT=herdr (auto: on PATH)\n[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "up",
+          "example",
+          "--model",
+          "--kind"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: --kind needs a value (k8s|house|container|scrubbed)\n"
+      },
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "up",
+          "example",
+          "--provider",
+          "--kind"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: --kind needs a value (k8s|house|container|scrubbed)\n"
+      },
+      {
+        "args": [
+          "env:DRY_RUN=1",
+          "up",
+          "scrub",
+          "--provider",
+          "--kind",
+          "house",
+          "\u003cROOT\u003e/claude-config"
+        ],
+        "code": 0,
+        "stdout": "[cockpit] herdr (auto: on PATH)\n[dry-run] cell=scrub kind=house (override) cockpit=herdr session=scrub-cell config=\u003cROOT\u003e/claude-config\n[dry-run] provider=--kind (override) — applied to every role window below\n[dry-run] cell: echo '[cell] scrub is a house cell with no deskd (DESKD=1 in cell.env to stand one)'\n[dry-run] the-desk: '\u003cBIN\u003e' desk 'scrub' 'the-desk' --kind 'house' --provider '--kind' --cockpit 'herdr' '\u003cROOT\u003e/claude-config'\n[dry-run] worker-desk: '\u003cBIN\u003e' desk 'scrub' 'worker-desk' --kind 'house' --provider '--kind' --cockpit 'herdr' '\u003cROOT\u003e/claude-config'\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "show",
+          "example",
+          "--model",
+          "--kind"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: --kind needs a value (k8s|house|container|scrubbed)\n"
+      },
+      {
+        "args": [
+          "show",
+          "example",
+          "--provider",
+          "--kind"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: --kind needs a value (k8s|house|container|scrubbed)\n"
+      },
+      {
+        "args": [
+          "show",
+          "example",
+          "--provider",
+          "--kind",
+          "house"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: show: unexpected argument 'house'\n"
+      },
+      {
+        "args": [
+          "show",
+          "scrub",
+          "--kind",
+          "house",
+          "--kind",
+          "--kind"
+        ],
+        "code": 0,
+        "stdout": "[show] cell=scrub dir=\u003cROOT\u003e/cells/scrub\n[show] CELL_KIND=house (flag)\n[show] CELL_COCKPIT=auto (default)\n[show] CELL_HARNESS=claude (cell.env)\n[show] CELL_PROVIDER=unset (default: anthropic)\n[show] model the-desk=fable (cell.env DESK_MODEL_the_desk)\n[show] model worker-desk=sonnet (cell.env DESK_MODEL_DEFAULT)\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      }
+    ],
     "ls": [
       {
         "args": [
@@ -1396,6 +1579,188 @@
         "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: new: --forge must be github or gitlab, got 'bogus'\n"
       }
     ],
+    "new-trailing-value": [
+      {
+        "args": [
+          "new",
+          "f1",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots",
+          "o/r=\u003cROOT\u003e/repo",
+          "--forge"
+        ],
+        "code": 0,
+        "stdout": "[new] scaffolded \u003cROOT\u003e/cells/f1 (house cell) — cellctl check f1, then cellctl desk f1 \u003crole\u003e\n[defaults] created \u003cROOT\u003e/cells/defaults.env; every key in it is commented out, so it sets nothing until you uncomment a line\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "new",
+          "f2",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots",
+          "o/r=\u003cROOT\u003e/repo",
+          "--port"
+        ],
+        "code": 0,
+        "stdout": "[new] scaffolded \u003cROOT\u003e/cells/f2 (house cell) — cellctl check f2, then cellctl desk f2 \u003crole\u003e\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "show",
+          "f2"
+        ],
+        "code": 0,
+        "stdout": "[show] cell=f2 dir=\u003cROOT\u003e/cells/f2\n[show] CELL_KIND=house (cell.env)\n[show] CELL_COCKPIT=auto (cell.env)\n[show] CELL_HARNESS=claude (cell.env)\n[show] CELL_PROVIDER=unset (default: anthropic)\n[show] model the-desk=fable (cell.env DESK_MODEL_the_desk)\n[show] model pr-review-desk=sonnet (cell.env DESK_MODEL_DEFAULT)\n[show] model verify-desk=sonnet (cell.env DESK_MODEL_DEFAULT)\n[show] model intake-desk=sonnet (cell.env DESK_MODEL_DEFAULT)\n[show] model worker-desk=sonnet (cell.env DESK_MODEL_DEFAULT)\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "new",
+          "f3",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots",
+          "o/r=\u003cROOT\u003e/repo",
+          "--roles"
+        ],
+        "code": 0,
+        "stdout": "[new] scaffolded \u003cROOT\u003e/cells/f3 (house cell) — cellctl check f3, then cellctl desk f3 \u003crole\u003e\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "new",
+          "f4",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots",
+          "o/r=\u003cROOT\u003e/repo",
+          "--orgs"
+        ],
+        "code": 0,
+        "stdout": "[new] scaffolded \u003cROOT\u003e/cells/f4 (house cell) — cellctl check f4, then cellctl desk f4 \u003crole\u003e\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "new",
+          "f5",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots",
+          "o/r=\u003cROOT\u003e/repo",
+          "--cells-yaml"
+        ],
+        "code": 0,
+        "stdout": "[new] scaffolded \u003cROOT\u003e/cells/f5 (house cell) — cellctl check f5, then cellctl desk f5 \u003crole\u003e\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      },
+      {
+        "args": [
+          "new",
+          "f6",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots",
+          "o/r=\u003cROOT\u003e/repo",
+          "--launcher"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: --launcher needs an absolute executable\n"
+      },
+      {
+        "args": [
+          "new",
+          "f7",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots",
+          "o/r=\u003cROOT\u003e/repo",
+          "--repo-slug"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: --repo-slug needs a value (\u003cowner\u003e/\u003crepo\u003e)\n"
+      },
+      {
+        "args": [
+          "new",
+          "f8",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: new: --kind house needs --repo \u003ccheckout\u003e and --roots '\u003cowner\u003e/\u003crepo\u003e=\u003cabs path\u003e,...'\n"
+      },
+      {
+        "args": [
+          "new",
+          "f9",
+          "--forge"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: new: --forge must be github or gitlab, got ''\n"
+      },
+      {
+        "args": [
+          "new",
+          "f10",
+          "--kind"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: new: --kind must be k8s, house, container or scrubbed, got ''\n"
+      },
+      {
+        "args": [
+          "new",
+          "f11",
+          "--kind",
+          "house",
+          "--repo",
+          "\u003cROOT\u003e/repo",
+          "--roots",
+          "o/r=\u003cROOT\u003e/repo",
+          "--repo",
+          "--forge"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: new: --repo is not a git checkout: --forge\n"
+      },
+      {
+        "args": [
+          "ls"
+        ],
+        "code": 0,
+        "stdout": "example\nf1\nf2\nf3\nf4\nf5\nscrub\n",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\n"
+      }
+    ],
     "providers": [
       {
         "args": [
@@ -1580,6 +1945,29 @@
         "code": 1,
         "stdout": "{\"apply\":false,\"entries\":[],\"bytes\":0,\"reclaimed\":0,\"partial\":false,\"over_budget\":false}\n",
         "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\nnegative scratch budget\n"
+      }
+    ],
+    "scratch-terminator": [
+      {
+        "args": [
+          "scratch",
+          "--",
+          "example",
+          "sweep"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: no cell '--' under \u003cROOT\u003e/cells (cell.env missing)\n"
+      },
+      {
+        "args": [
+          "scratch",
+          "--",
+          "example"
+        ],
+        "code": 3,
+        "stdout": "",
+        "stderr": "assay-config: class=write source=config file \u003cROOT\u003e/cells/example/.config/assay/roster.env (absent) configured=false\nassay-config: ASSAY_BLESS_LOGIN=(unset)\nassay-config: ASSAY_TRUSTED_LOGINS=\nassay-config: ASSAY_STAMP_TRUSTED_LOGINS=\nassay-config: ASSAY_TRUSTED_BOT_SLUGS=\nassay-config: role-bindings=(none bound — every role-gated identity check REFUSES)\nassay-config: ASSAY_ALLOWED_REPOS=(EMPTY — no repo is in scope: reads are COULD-NOT-CHECK, writes REFUSE)\nassay-config: ASSAY_SCAN_REPOS=\nassay-config: ASSAY_HUMAN_LOGIN_MAP=\nassay-config: ASSAY_RISK_PATH_TRIGGERS_EXTRA=\nassay-config: ASSAY_RISK_CALLOUT=(unset — pattern classification only)\nassay-config: ASSAY_REPO_ALIASES=\nassay-config: ASSAY_REPO_FORGES=\nassay-config: ASSAY_RELEASE_REPO=(unset — the consumer's shipped default)\nassay-config: ASSAY_WRITEGUARD_CALLOUT=(unset — compiled generic indicators only)\nassay-config: ASSAY_OUTBOUND_CALLOUT=(unset — compiled outbound checks only)\nassay-config: ASSAY_OUTBOUND_CALLOUT_REQUIRED=(unset — a missing callout does not refuse)\nassay-config: ASSAY_OUTBOUND_CALLOUT_TIMEOUT=(unset — 5s)\nassay-config: ASSAY_CONTRIBUTOR_LEDGER=(unset — every identity not in the roster resolves unknown)\nassay-config: ASSAY_GITLAB_SESSION_EMAILS=\nassay-config: REFUSED — no roster configured: \u003cROOT\u003e/cells/example/.config/assay/roster.env does not exist. Write-class tools read the roster ONLY from this file — the environment is deliberately not consulted, so exporting ASSAY_TRUSTED_LOGINS has no effect. Create it with 0600 permissions.\ncellctl: no cell '--' under \u003cROOT\u003e/cells (cell.env missing)\n"
       }
     ],
     "set": [

@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
 
 func TestParseCellEnvShellForms(t *testing.T) {
@@ -74,30 +72,26 @@ func TestRootsValid(t *testing.T) {
 	}
 }
 
-func TestKindFlagRefusesUnknown(t *testing.T) {
-	kindOf := func(args ...string) (string, int) {
-		var got string
-		code := runTreeWith(t, args, func(root *cobra.Command) {
-			for _, c := range root.Commands() {
-				if c.Name() == "show" {
-					c.RunE = func(cmd *cobra.Command, _ []string) error { got = kindFlag(cmd); return nil }
-				}
-			}
-		})
-		return got, code
+func TestKindScanRefusesUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		words []string
+		want  string
+	}{
+		{[]string{"x", "--model", "y", "--kind", "house"}, "house"},
+		{[]string{"x", "--model", "--kind", "house"}, "house"},
+		{[]string{"x", "--kind=scrubbed", "--kind", "house"}, "scrubbed"},
+		{[]string{"x", "--kind", "house", "--kind"}, "house"},
+		{[]string{"x", "--kind", "house", "--kind", "bogus"}, "house"},
+		{[]string{"x", "--model", "y"}, ""},
+	} {
+		if got := kindScan(tc.words); got != tc.want {
+			t.Errorf("kindScan(%q) = %q, want %q", tc.words, got, tc.want)
+		}
 	}
-	if got, code := kindOf("show", "x", "--model", "y", "--kind", "house"); got != "house" || code != 0 {
-		t.Errorf("kindFlag = %q (exit %d), want house (0)", got, code)
-	}
-	if got, code := kindOf("show", "x", "--model", "y"); got != "" || code != 0 {
-		t.Errorf("kindFlag with no --kind = %q (exit %d), want empty (0)", got, code)
-	}
-	if _, code := kindOf("show", "x", "--kind", "nope"); code == 0 {
-		t.Error("unknown kind accepted")
-	}
-	if _, code := kindOf("show", "x", "--kind", ""); code == 0 {
-		t.Error("empty kind accepted")
-	}
+	assertDies(t, "unknown kind", func() { kindScan([]string{"x", "--kind", "nope"}) })
+	assertDies(t, "empty kind", func() { kindScan([]string{"x", "--kind", ""}) })
+	assertDies(t, "empty = kind", func() { kindScan([]string{"x", "--kind="}) })
+	assertDies(t, "missing value", func() { kindScan([]string{"x", "--model", "--kind"}) })
 }
 
 // assertDies runs fn and fails unless it raised the package's exit panic. die() writes to

@@ -277,6 +277,45 @@ func goldenCases() []goldenCase {
 		{name: "refusal-order", steps: []goldenStep{
 			stEnv(dry, "desk", "example", "badrole", "--model", ""),
 		}},
+		// The old parser read the first --kind of desk, up and show by scanning the whole line
+		// before its flag loop, so a --kind in another flag's value position was still the kind,
+		// and a later --kind was skipped unread even with no value after it.
+		{name: "kind-whole-line", steps: []goldenStep{
+			stEnv(dry, "desk", "example", "worker-desk", "--kind", "house", "--kind"),
+			stEnv(dry, "up", "example", "--kind", "house", "--kind"),
+			st("show", "example", "--kind", "house", "--kind"),
+			stEnv(dry, "desk", "example", "worker-desk", "--model", "--kind"),
+			stEnv(dry, "desk", "example", "worker-desk", "--model", "--kind", "bogus"),
+			stEnv(dry, "desk", "example", "worker-desk", "--model", "--kind", "scrubbed", "<ROOT>/claude-config"),
+			stEnv(dry, "desk", "scrub", "worker-desk", "--model", "--kind", "house", "<ROOT>/claude-config"),
+			stEnv(dry, "up", "example", "--model", "--kind"),
+			stEnv(dry, "up", "example", "--provider", "--kind"),
+			stEnv(dry, "up", "scrub", "--provider", "--kind", "house", "<ROOT>/claude-config"),
+			st("show", "example", "--model", "--kind"),
+			st("show", "example", "--provider", "--kind"),
+			st("show", "example", "--provider", "--kind", "house"),
+			st("show", "scrub", "--kind", "house", "--kind", "--kind"),
+		}},
+		// new read most values with a helper that took a missing trailing value as empty.
+		{name: "new-trailing-value", steps: []goldenStep{
+			st("new", "f1", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--forge"),
+			st("new", "f2", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--port"),
+			st("show", "f2"),
+			st("new", "f3", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--roles"),
+			st("new", "f4", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--orgs"),
+			st("new", "f5", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--cells-yaml"),
+			st("new", "f6", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--launcher"),
+			st("new", "f7", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--repo-slug"),
+			st("new", "f8", "--kind", "house", "--repo", "<ROOT>/repo", "--roots"),
+			st("new", "f9", "--forge"),
+			st("new", "f10", "--kind"),
+			st("new", "f11", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--repo", "--forge"),
+			st("ls"),
+		}},
+		{name: "scratch-terminator", steps: []goldenStep{
+			st("scratch", "--", "example", "sweep"),
+			st("scratch", "--", "example"),
+		}},
 		{name: "cells-root", steps: []goldenStep{
 			st("--cells-root", "<ROOT>/cells", "ls"),
 			st("--cells-root", "relative", "ls"),
