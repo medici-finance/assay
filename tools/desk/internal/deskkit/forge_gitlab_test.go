@@ -71,6 +71,9 @@ type glServer struct {
 	// traces maps a job id (decimal string) to the plain-text trace its trace route serves;
 	// an id absent from it answers 404 (forge-neutral brief 17's RunLog).
 	traces map[string]string
+	// retryForbid names job ids (decimal string) whose retry route answers 403 — a retry that
+	// fails part-way through a pipeline's failed jobs.
+	retryForbid map[string]bool
 	// pipelines is the project-pipelines LIST payload, served by SHA: an entry is returned only
 	// when its "sha" equals the request's ?sha=, so a fixture cannot answer for a head it does
 	// not belong to. Empty/absent → the instance ran no pipeline at that head.
@@ -536,6 +539,11 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte(tr))
 	case r.Method == http.MethodPost && lJobRetry.MatchString(path):
+		if s.retryForbid[strings.TrimSuffix(path[strings.LastIndex(path, "/jobs/")+len("/jobs/"):], "/retry")] {
+			w.WriteHeader(http.StatusForbidden)
+			enc(map[string]any{"message": "403 Forbidden"})
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		enc(map[string]any{"id": 99, "status": "pending"})
 	case r.Method == http.MethodPost && lJobPlay.MatchString(path):
@@ -2676,6 +2684,20 @@ func glCases() []glCase {
 					{"id": 72, "name": "lint", "status": "failed"},
 					{"id": 73, "name": "deploy", "status": "manual"},
 				}
+			},
+			run: func(f *GitLabForge) (any, error) { return nil, f.RetryRun(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			// A retry that fails part-way names the job it failed at AND the jobs it had already
+			// retried (live on the forge), and keeps the failure's class; no later job is tried.
+			name: "retry_run_partial", method: "RetryRun",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{
+					{"id": 71, "name": "test", "status": "failed"},
+					{"id": 72, "name": "lint", "status": "failed"},
+					{"id": 74, "name": "e2e", "status": "failed"},
+				}
+				s.retryForbid = map[string]bool{"72": true}
 			},
 			run: func(f *GitLabForge) (any, error) { return nil, f.RetryRun(glRepo, RunRef{ID: "9001"}) },
 		},

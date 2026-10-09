@@ -36,6 +36,8 @@ type fakeForge struct {
 	logs      []deskkit.RunRef
 	fail      error                // when set, the read ops (RunStatus, RunLog) answer it
 	logParts  []deskkit.RunLogPart // when set, RunLog answers these parts instead of the default two
+	panics    bool                 // when set, the read ops (RunStatus, RunLog) panic
+	retryFail error                // when set, RetryRun answers it
 }
 
 type approval struct {
@@ -55,6 +57,9 @@ func (f *fakeForge) ApproveGate(fr deskkit.ForgeRepo, run deskkit.RunRef, in des
 
 func (f *fakeForge) RunStatus(fr deskkit.ForgeRepo, run deskkit.RunRef) (*deskkit.RunState, error) {
 	f.statuses = append(f.statuses, run)
+	if f.panics {
+		panic("fake forge: RunStatus panics")
+	}
 	if f.fail != nil {
 		return nil, f.fail
 	}
@@ -63,11 +68,14 @@ func (f *fakeForge) RunStatus(fr deskkit.ForgeRepo, run deskkit.RunRef) (*deskki
 
 func (f *fakeForge) RetryRun(fr deskkit.ForgeRepo, run deskkit.RunRef) error {
 	f.retries = append(f.retries, run)
-	return nil
+	return f.retryFail
 }
 
 func (f *fakeForge) RunLog(fr deskkit.ForgeRepo, run deskkit.RunRef) ([]deskkit.RunLogPart, error) {
 	f.logs = append(f.logs, run)
+	if f.panics {
+		panic("fake forge: RunLog panics")
+	}
 	if f.fail != nil {
 		return nil, f.fail
 	}

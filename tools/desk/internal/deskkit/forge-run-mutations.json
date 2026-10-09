@@ -118,8 +118,8 @@
     {
       "name": "review B4 — GitHub returns a part per step file even when whole-job files exist",
       "file": "internal/deskkit/forge_github.go",
-      "old": "\tif len(whole) > 0 {\n\t\treturn whole\n\t}",
-      "new": "\tif false && len(whole) > 0 {\n\t\treturn whole\n\t}"
+      "old": "\t\tif !covered[j.name] {",
+      "new": "\t\tif true {"
     },
     {
       "name": "review B4 — an empty GitHub archive is an empty success",
@@ -210,6 +210,24 @@
       "file": "internal/deskkit/gitlabcredsites_test.go",
       "old": "\t\"internal/deskkit/forge_gitlab.go|triggerClient|client\": \"TestGitLabClientRedirectKeepsToken\",\n",
       "new": ""
+    },
+    {
+      "name": "review advisory — a GitLab retry that fails part-way no longer names the jobs it already retried",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\treturn partialRetryErr(g.mapErr(http.MethodPost, path, rerr), j.Name, retried)",
+      "new": "\t\t\treturn g.mapErr(http.MethodPost, path, rerr)"
+    },
+    {
+      "name": "review advisory — a GitLab partial-retry failure loses its class (a refusal reads as could-not-check)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif errors.As(err, &de) {\n\t\tcp := *de",
+      "new": "\tif false && errors.As(err, &de) {\n\t\tcp := *de"
+    },
+    {
+      "name": "review advisory — a job the archive carries only as steps is dropped when other jobs have whole files",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tout := whole\n\tfor _, j := range steps {",
+      "new": "\tout := whole\n\tif len(whole) > 0 {\n\t\treturn out\n\t}\n\tfor _, j := range steps {"
     }
   ]
 }

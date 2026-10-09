@@ -4469,13 +4469,31 @@ func (g *GitLabForge) RetryRun(repo ForgeRepo, run RunRef) error {
 		return Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has no failed job to retry — "+
 			"nothing was written", pid, repo.Slug()), nil)
 	}
+	var retried []string
 	for _, j := range failed {
 		path := fmt.Sprintf("/projects/%s/jobs/%d/retry", g.projectPath(repo), j.ID)
 		if _, _, rerr := cl.Jobs.RetryJob(repo.Slug(), j.ID); rerr != nil {
-			return g.mapErr(http.MethodPost, path, rerr)
+			return partialRetryErr(g.mapErr(http.MethodPost, path, rerr), j.Name, retried)
 		}
+		retried = append(retried, j.Name)
 	}
 	return nil
+}
+
+// partialRetryErr names, on a retry that failed part-way, the job it failed at and the jobs it
+// had ALREADY retried — those retries are live on the forge, and a caller told only "retry
+// failed" would retry them a second time. The error keeps its class (refused or
+// could-not-check) and its cause.
+func partialRetryErr(err error, at string, retried []string) error {
+	prefix := fmt.Sprintf("retrying job %s failed after retrying %d job(s) (%s): ",
+		strconv.Quote(StripControl(at)), len(retried), quotedList(retried))
+	var de *DeskError
+	if errors.As(err, &de) {
+		cp := *de
+		cp.Msg = prefix + de.Msg
+		return &cp
+	}
+	return Unverifiable(prefix+"could-not-check", err)
 }
 
 // GitLab issues do not expose lastEditedAt. The existing activity-note query is

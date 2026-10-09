@@ -1141,6 +1141,22 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) { return f.RunLog(forgeTestRepo, RunRef{ID: "501"}) },
 		},
 		{
+			// A MIXED archive: build and test have whole-job files, lint only its step directory.
+			// lint is still a part (after the whole-file jobs); build's and test's step files are not.
+			name: "run_log_mixed_whole_and_steps",
+			setup: func(s *goldenServer) {
+				s.runLogZip = zipOf(t, [][2]string{
+					{"0_build.txt", "ready\ncompiled\n"},
+					{"build/1_Set up job.txt", "ready\n"},
+					{"lint/1_Set up job.txt", "ready\n"},
+					{"lint/2_Lint.txt", "lint: 3 findings\n"},
+					{"2_test.txt", "ready\nFAIL: TestThing\n"},
+					{"test/1_Set up job.txt", "ready\n"},
+				})
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RunLog(forgeTestRepo, RunRef{ID: "501"}) },
+		},
+		{
 			// An archive carrying only per-step files: each job directory is one part, its steps
 			// joined in archive order.
 			name: "run_log_steps_only",

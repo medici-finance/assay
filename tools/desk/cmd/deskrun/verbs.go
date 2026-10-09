@@ -344,7 +344,9 @@ func cmdLog(args []string, out io.Writer) (err error) {
 		auditLine(fr.Slug(), verb, resultOf(err), "log: "+err.Error())
 		return err
 	}
-	trail.ok = fmt.Sprintf("run %s as %s: %d part(s)", run.ID, role, len(parts))
+	// The read is recorded BEFORE any of its output is released: a reader that closes the pipe
+	// early (`| head`) kills the process on the broken pipe, and deferred calls do not run then.
+	trail.succeed(fmt.Sprintf("run %s as %s: %d part(s)", run.ID, role, len(parts)))
 	for _, p := range parts {
 		note := ""
 		if p.Truncated {
@@ -400,7 +402,7 @@ func cmdStatus(args []string, out io.Writer) (err error) {
 	if err != nil {
 		return err
 	}
-	trail.ok = fmt.Sprintf("run %s: %s", run.ID, st.Status)
+	trail.succeed(fmt.Sprintf("run %s: %s", run.ID, st.Status)) // recorded before output, as in cmdLog
 	line := fmt.Sprintf("run %s on %s: %s", run.ID, fr.Slug(), st.Status)
 	if st.Conclusion != "" {
 		line += " (" + st.Conclusion + ")"
@@ -491,22 +493,37 @@ var auditSeq int
 // readTrail makes a read verb's audit coverage a property of its SHAPE rather than of each
 // return path. Once <owner/repo> has parsed into the desk-tools repo set, the verb starts a
 // trail and defers finish: every way the verb ends from there — success, a refusal, a
-// could-not-check, at any step — writes exactly one line under the read key. A path that
-// already wrote its own line (the binding and custody steps it shares with the write verbs,
-// the role refusal, a forge failure on log) is left as written; any other path gets its line
-// here, so a new return added later cannot end unrecorded. The argument errors before the
-// trail starts (bad flags, a wrong positional count, a repo outside the set) name no repo
-// to attribute a line to and write none, exactly as the write verbs' argument errors write
-// none. readledger_test.go drives every outcome and asserts the one line.
+// could-not-check, at any step, or the process killed by a closed output pipe — writes
+// exactly one line under the read key. A success is recorded by succeed, called once the
+// forge read has answered and BEFORE the verb writes any of its output, so a reader that
+// stops early (`| head`, which kills the process on the broken pipe before any deferred call
+// runs) cannot leave the read unrecorded. A path that already wrote its own line (the binding
+// and custody steps it shares with the write verbs, the role refusal, a forge failure on log)
+// is left as written; any other path gets its line here, so a new return added later cannot
+// end unrecorded. A trail that ends with no error and no recorded success (a panic unwinding
+// through the deferred finish, or a return path that skipped succeed) is recorded as
+// could-not-check, never as ok. The argument errors before the trail starts (bad flags, a
+// wrong positional count, a repo outside the set) name no repo to attribute a line to and
+// write none, exactly as the write verbs' argument errors write none. readledger_test.go
+// drives every outcome and asserts the one line; readpipe_test.go drives log and status
+// through a real pipe its reader closes early.
 type readTrail struct {
 	repo, verb string
 	mark       int    // auditSeq when the trail started
 	stage      string // what the verb was doing; prefixes the detail of an unrecorded failure
-	ok         string // the success detail, set just before the verb's successful return
 }
 
 func startReadTrail(repo, verb string) *readTrail {
 	return &readTrail{repo: repo, verb: verb, mark: auditSeq, stage: "args"}
+}
+
+// succeed records the read's ok line now, before the verb releases any output. It writes
+// only when the trail has recorded nothing yet, so a trail still ends with exactly one line.
+func (r *readTrail) succeed(detail string) {
+	if auditSeq != r.mark {
+		return
+	}
+	auditLine(r.repo, r.verb, deskkit.ResultOK, detail)
 }
 
 func (r *readTrail) finish(err error) {
@@ -514,7 +531,8 @@ func (r *readTrail) finish(err error) {
 		return
 	}
 	if err == nil {
-		auditLine(r.repo, r.verb, deskkit.ResultOK, r.ok)
+		auditLine(r.repo, r.verb, deskkit.ResultUnverifiable,
+			r.stage+": the verb ended with no recorded outcome (a panic, or a return that skipped succeed)")
 		return
 	}
 	auditLine(r.repo, r.verb, resultOf(err), r.stage+": "+err.Error())

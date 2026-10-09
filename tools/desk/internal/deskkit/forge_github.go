@@ -3146,9 +3146,12 @@ type githubLogJob struct {
 	files []*zip.File
 }
 
-// githubLogJobs groups a run-log archive's entries into jobs, in archive order: each
-// top-level file is one job's whole log; when there is none, each top-level directory is one
-// job whose step files are joined. Directory entries carry no text and are skipped.
+// githubLogJobs groups a run-log archive's entries into jobs: each top-level file
+// (`<n>_<job>.txt`) is one job's whole log, and each top-level directory is one job whose step
+// files are joined. A directory is dropped only when a whole file names the SAME job, so a job
+// the archive carries only as steps is still a part when other jobs have whole files. Whole-file
+// jobs come first, in archive order, then the step-only jobs, in archive order. Directory entries
+// carry no text and are skipped.
 func githubLogJobs(files []*zip.File) []*githubLogJob {
 	var whole, steps []*githubLogJob
 	byDir := map[string]*githubLogJob{}
@@ -3169,10 +3172,30 @@ func githubLogJobs(files []*zip.File) []*githubLogJob {
 		}
 		j.files = append(j.files, f)
 	}
-	if len(whole) > 0 {
-		return whole
+	covered := map[string]bool{}
+	for _, w := range whole {
+		covered[githubWholeLogJob(w.name)] = true
 	}
-	return steps
+	out := whole
+	for _, j := range steps {
+		if !covered[j.name] {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// githubWholeLogJob is the job a whole-log file names: `3_build.txt` and `build.txt` both name
+// `build`. A name without the `.txt` suffix names itself, so it covers no step directory.
+func githubWholeLogJob(file string) string {
+	job, ok := strings.CutSuffix(file, ".txt")
+	if !ok {
+		return file
+	}
+	if n, rest, cut := strings.Cut(job, "_"); cut && n != "" && rest != "" && strings.Trim(n, "0123456789") == "" {
+		return rest
+	}
+	return job
 }
 
 // RetryRun re-runs the failed jobs of one run (`POST …/actions/runs/{id}/rerun-failed-jobs`).

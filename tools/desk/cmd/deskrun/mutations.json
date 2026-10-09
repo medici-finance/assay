@@ -106,8 +106,8 @@
     {
       "name": "review SEC-6/B9 — a successful read records nothing (the trail writes only failures)",
       "file": "cmd/deskrun/verbs.go",
-      "old": "\tif err == nil {\n\t\tauditLine(r.repo, r.verb, deskkit.ResultOK, r.ok)\n\t\treturn\n\t}",
-      "new": "\tif err == nil {\n\t\treturn\n\t}"
+      "old": "\tauditLine(r.repo, r.verb, deskkit.ResultOK, detail)\n}",
+      "new": "\t_ = detail\n}"
     },
     {
       "name": "review SEC-7/B9 — the audit sequence never advances, so a read that already wrote its line writes a second",
@@ -138,6 +138,48 @@
       "file": "cmd/deskrun/verbs.go",
       "old": "\t\tname := strings.Join(strings.Fields(deskkit.StripControl(p.Name)), \" \")",
       "new": "\t\tname := deskkit.StripControl(p.Name)"
+    },
+    {
+      "name": "review SEC-7 — log records its ok line after its output (a reader closing the pipe early leaves no line)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.succeed(fmt.Sprintf(\"run %s as %s: %d part(s)\", run.ID, role, len(parts)))",
+      "new": "\tdefer trail.succeed(fmt.Sprintf(\"run %s as %s: %d part(s)\", run.ID, role, len(parts)))"
+    },
+    {
+      "name": "review SEC-7 — status records its ok line after its output (a reader already gone leaves no line)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.succeed(fmt.Sprintf(\"run %s: %s\", run.ID, st.Status))",
+      "new": "\tdefer trail.succeed(fmt.Sprintf(\"run %s: %s\", run.ID, st.Status))"
+    },
+    {
+      "name": "review advisory — a read that ends with no recorded outcome (a panic) is recorded as ok",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tauditLine(r.repo, r.verb, deskkit.ResultUnverifiable,\n\t\t\tr.stage+\": the verb ended",
+      "new": "\t\tauditLine(r.repo, r.verb, deskkit.ResultOK,\n\t\t\tr.stage+\": the verb ended"
+    },
+    {
+      "name": "review advisory — retry's ok audit line is dropped",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tauditLine(fr.Slug(), verb, deskkit.ResultOK, \"run \"+run.ID)\n\tfmt.Fprintf(out, \"retried:",
+      "new": "\tfmt.Fprintf(out, \"retried:"
+    },
+    {
+      "name": "review advisory — retry's failure audit line is dropped",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tauditLine(fr.Slug(), verb, resultOf(err), \"retry: \"+err.Error())\n",
+      "new": ""
+    },
+    {
+      "name": "review advisory — retry --dry-run is recorded as ok",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tauditLine(fr.Slug(), verb, deskkit.ResultDryRun, \"run \"+run.ID)",
+      "new": "\t\tauditLine(fr.Slug(), verb, deskkit.ResultOK, \"run \"+run.ID)"
+    },
+    {
+      "name": "review advisory — status drops its stage label (a forge failure reads as an argument failure)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.stage = \"status\"\n\tst, err := fg.RunStatus(fr, run)",
+      "new": "\tst, err := fg.RunStatus(fr, run)"
     }
   ]
 }
