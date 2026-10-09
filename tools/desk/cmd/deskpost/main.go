@@ -537,7 +537,10 @@ finishing a review (one command instead of three):
                  A stop names the step and what was and was not done; nothing after the
                  failed step runs. Running the same command again does not post the verdict
                  a second time: a review by the reviewer identity with this body at --head is
-                 found on the change and not re-posted, from this session or another. The
+                 found on the change and not re-posted, from this session or another. On a
+                 forge with a merge-hold that run still checks the hold against the recorded
+                 verdict before it exits 0: it re-arms the hold where the verdict requires
+                 one and never releases one (README, "deskpost finish"). The
                  claim is released LAST because the post step needs it held. --claim must be
                  a review claim of this change AND of this lane — a key with a "security"
                  segment for "finish security-review", one without for "finish review" (exit

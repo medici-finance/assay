@@ -955,6 +955,32 @@ func TestReviewPacketCountsOnlyTheReviewerIdentitysVerdicts(t *testing.T) {
 	}
 }
 
+// TestByReviewerEmptyLoginsMatchNothing holds the two empty-login guards in byReviewer. A
+// review whose author the forge no longer reports has an empty login, and an unresolved
+// reviewer identity is an empty one too; without the guards the two would compare equal and
+// such a review would be filed as a verdict.
+func TestByReviewerEmptyLoginsMatchNothing(t *testing.T) {
+	const reviewer = "reviewer-app[bot]"
+	by := func(login string) deskkit.Review {
+		return deskkit.Review{Author: deskkit.Account{Login: login}}
+	}
+	for _, tc := range []struct {
+		name            string
+		login, reviewer string
+		want            bool
+	}{
+		{"the reviewer identity", reviewer, reviewer, true},
+		{"another account", "someone-else", reviewer, false},
+		{"no author reported, reviewer resolved", "", reviewer, false},
+		{"author reported, reviewer unresolved", reviewer, "", false},
+		{"no author reported, reviewer unresolved", "", "", false},
+	} {
+		if got := byReviewer(by(tc.login), tc.reviewer); got != tc.want {
+			t.Errorf("%s: byReviewer(login %q, reviewer %q) = %v, want %v", tc.name, tc.login, tc.reviewer, got, tc.want)
+		}
+	}
+}
+
 // TestReviewPacketListsNoVerdictWithoutAReviewerIdentity: when the reviewer role is not
 // bound, the section fails closed — no review is called a verdict, none is counted, no body
 // is quoted, and the packet says why.

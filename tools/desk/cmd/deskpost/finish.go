@@ -42,17 +42,41 @@ package main
 // and answered with an error. If the reviews cannot be read, the post path refuses; it does
 // not post blind. A claim that is already gone is reported as such, not as a failure.
 //
-// What a re-run does NOT repeat: on a forge with a merge-hold step, a first run can post the
-// verdict and then fail to set the hold. Its message says which half landed. A second run
-// finds the verdict on the change, posts nothing and does not run the hold step again.
+// A RE-RUN STILL DOES THE MERGE-HOLD STEP. On a forge with a merge-hold, a correctness
+// verdict has a second half after the post: an approve releases the change's hold at the
+// head, a request-changes re-arms it. A run can land the verdict and not complete that half
+// — the hold write fails, or the forge accepts the post and its answer is lost, so the step
+// is never reached. Either way that run exits non-zero. The run that then finds the verdict
+// on the change posts nothing and checks the hold against it before it may exit 0
+// (holdForRecordedVerdict, review.go). On that path it arms or confirms, and never releases:
+//
+//   - a request-changes that no later verdict by the reviewer identity follows: the hold
+//     step runs again, a re-arm, as it does after a post;
+//   - a hold resolved at a head other than this one: re-armed, whatever the verdict;
+//   - an approve: exit 0 only if the hold reads released at this head by the reviewer
+//     identity. A hold still up under a recorded approve is reported, non-zero, with what to
+//     do; the release is sent only by a run that posts an approve;
+//   - a request-changes that a later verdict follows, with the hold released: reported,
+//     non-zero, naming the later review; no write;
+//   - a hold that cannot be read, or a change with no hold thread: non-zero.
+//
+// A non-zero exit there is a stop at step 1: nothing is confirmed and the claim stays held.
+// On a forge with no merge-hold the step does not apply and none of this runs.
 //
 // THE CLAIM KEY IS CHECKED BEFORE ANYTHING IS WRITTEN, TWICE. --claim must be a
 // review-dispatch claim key of THIS change (deskkit.ValidateReviewClaimKey, the check review
 // dispatch itself applies), so this verb cannot be pointed at another change's claim or at
 // any other ref. And it must be THIS LANE'S key: `finish security-review` takes only a key
-// with a `security` segment after `--pr-<N>`, `finish review` only a key without one — the
-// rule review dispatch reads the lane from (finishClaimKeyIsSecurity). A key that fails
-// either check is an argument error (exit 2), like an abbreviated --head.
+// with a `security` segment after `--pr-<N>`, `finish review` only a key without one
+// (deskkit.ReviewClaimKeyIsSecurity, the one statement of the rule; the review dispatch
+// packet reads the lane it lays out from the same function). A key that fails either check
+// is an argument error (exit 2), like an abbreviated --head.
+//
+// THE LANE TIE IS BY CLAIM-KEY NAMING, and only that. Whoever dispatches a review chooses its
+// key, and no record behind the key states a lane. A security review dispatched under a key
+// with no `security` segment would be accepted by `finish review` and refused by
+// `finish security-review`. The check stops a run from releasing the OTHER lane's
+// conventionally named claim; it does not prove which lane a key was dispatched for.
 //
 // WHAT THE RELEASE DOES NOT CHECK: who holds the claim. The claim record names the
 // dispatcher that placed it, and a reviewer is handed the key and nothing that identifies
@@ -86,8 +110,7 @@ const (
 	// log for a posted verdict can take a release row for one.
 	finishReleaseVerb = "finish:release"
 
-	finishSecurityVerb    = "security-review"
-	finishSecuritySegment = "security"
+	finishSecurityVerb = "security-review"
 )
 
 // finishLane is one of the two verdict verbs `finish` can end with.
@@ -154,16 +177,17 @@ func cmdFinish(argv []string) int {
 	}
 	// The key must also be THIS LANE'S. Without this a security-lane finish could release the
 	// correctness lane's claim on the same change (or the reverse) while that review is still
-	// running. Same place, same exit, same reason as the check above.
-	if keyIsSecurity, laneIsSecurity := finishClaimKeyIsSecurity(key, a.pr), lane.verb == finishSecurityVerb; keyIsSecurity != laneIsSecurity {
+	// running. Same place, same exit, same reason as the check above. The lane is read from
+	// the key's NAME (deskkit.ReviewClaimKeyIsSecurity) — there is nothing else to read it from.
+	if keyIsSecurity, laneIsSecurity := deskkit.ReviewClaimKeyIsSecurity(key, a.pr), lane.verb == finishSecurityVerb; keyIsSecurity != laneIsSecurity {
 		if laneIsSecurity {
 			fmt.Fprintf(stderr, "deskpost finish: --claim: %q is not the security lane's claim key for %s#%d — it has no `--%s` segment after `--pr-%d`, so it is the correctness lane's. "+
 				"`finish security-review` releases only the security lane's claim. Nothing was posted and no claim was released\n",
-				key, repo, a.pr, finishSecuritySegment, a.pr)
+				key, repo, a.pr, deskkit.ReviewClaimSecuritySegment, a.pr)
 		} else {
 			fmt.Fprintf(stderr, "deskpost finish: --claim: %q is the security lane's claim key for %s#%d (a `--%s` segment after `--pr-%d`). "+
 				"`finish review` releases only the correctness lane's claim. Nothing was posted and no claim was released\n",
-				key, repo, a.pr, finishSecuritySegment, a.pr)
+				key, repo, a.pr, deskkit.ReviewClaimSecuritySegment, a.pr)
 		}
 		return 2
 	}
@@ -182,7 +206,8 @@ func cmdFinish(argv []string) int {
 	if code != deskkit.ExitOK {
 		fmt.Fprintf(stderr, "deskpost finish: STOPPED at step 1 of 3 (post) — `deskpost %s` exited %d; its message is above. "+
 			"Nothing was confirmed and the claim %s is still held. A refusal posted nothing: fix what the message names and run this command again. "+
-			"A failure after the write was sent may have left the verdict on the change: running this command again does not post it a second time\n",
+			"A failure after the write was sent may have left the verdict on the change: running this command again does not post it a second time, "+
+			"and where the forge has a merge-hold it checks the hold against the recorded verdict before it exits 0\n",
 			lane.verb, code, key)
 		return code
 	}
@@ -253,29 +278,6 @@ func finishConfirm(a verdictArgs, repo string, shape reviewShape) (reviewInfo, e
 	}
 	return reviewInfo{}, fmt.Errorf("no %s review by %s with this body is recorded on %s#%d at head %s (%d review(s) read)",
 		shape.state, reviewerBotDisplay(), repo, a.pr, a.head, len(reviews))
-}
-
-// finishClaimKeyIsSecurity reports whether a review-dispatch claim key is the security
-// lane's: one of the `--`-separated segments after the last `--pr-<N>` is `security`, in any
-// letter case. Any other key is the correctness lane's. This is the rule review dispatch
-// reads the lane from when it builds the assignment, repeated here because the two commands
-// share no package for it; TestFinishClaimLaneRule holds the cases.
-func finishClaimKeyIsSecurity(key string, pr int) bool {
-	marker := fmt.Sprintf("--pr-%d", pr)
-	i := strings.LastIndex(key, marker)
-	if i < 0 {
-		return false
-	}
-	suffix := key[i+len(marker):]
-	if suffix != "" && !strings.HasPrefix(suffix, "--") {
-		return false
-	}
-	for _, seg := range strings.Split(suffix, "--") {
-		if strings.EqualFold(seg, finishSecuritySegment) {
-			return true
-		}
-	}
-	return false
 }
 
 // finishReleaseAudit writes the release step's audit row: what was asked (the claim key),
