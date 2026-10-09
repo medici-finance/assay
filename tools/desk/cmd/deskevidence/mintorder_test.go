@@ -259,8 +259,8 @@ func TestLandingMintsBeforeAdmission(t *testing.T) {
 
 // TestAdmissionStillPrecedesEveryLandingRead pins what moving the mint must NOT change:
 // admission is still the first thing that touches the forge, and a landing it refuses reads
-// nothing from the branch and writes nothing — whether admission refuses on what it read from
-// the forge or on the home alone.
+// nothing from the branch, does not read its local evidence file, and writes nothing — whether
+// admission refuses on what it read from the forge or on the home alone.
 func TestAdmissionStillPrecedesEveryLandingRead(t *testing.T) {
 	lf := newLandingFixture(t)
 	fragment := filepath.Join(t.TempDir(), "evidence.md")
@@ -300,6 +300,11 @@ func TestAdmissionStillPrecedesEveryLandingRead(t *testing.T) {
 			if len(calls) != 0 {
 				t.Fatalf("a landing with no attestation at --root reached the forge: %+v", calls)
 			}
+			// Admission runs as a whole after the mint (the declared desk-decided cost), so a
+			// landing it refuses on the home alone has already minted, exactly once.
+			if lf.mints != 1 {
+				t.Fatalf("a landing refused on the home alone minted %d time(s), want 1", lf.mints)
+			}
 		})
 		t.Run(name+"/mint-fails", func(t *testing.T) {
 			lf.mintErr = deskkit.Unverifiable("desktoken verifier --repo "+fixtureRepo+": mint refused", errors.New("mint refused"))
@@ -313,6 +318,25 @@ func TestAdmissionStillPrecedesEveryLandingRead(t *testing.T) {
 			}
 		})
 	}
+
+	// Admission also precedes the landing's LOCAL read of the evidence file: a fragment that
+	// does not exist is never opened when admission refuses. Run the local read first and this
+	// landing exits on the unreadable file instead of on admission's refusal.
+	t.Run("evidence/admission-before-local-read", func(t *testing.T) {
+		lf.api.body += "\naltered after dispatch"
+		defer func() { lf.api.body = strings.TrimSuffix(lf.api.body, "\naltered after dispatch") }()
+		missing := filepath.Join(t.TempDir(), "never-written.md")
+		code, calls := lf.land(t, "--root", lf.home, "--brief-path", fixtureBrief, "--evidence-file", missing)
+		if code != deskkit.ExitRefused {
+			t.Fatalf("exit = %d, want %d: %s", code, deskkit.ExitRefused, lf.errBuf)
+		}
+		if !strings.Contains(lf.errBuf.String(), "not the exact dispatcher-authored run record") {
+			t.Fatalf("refused for another reason — the local read ran before admission: %s", lf.errBuf)
+		}
+		if n := contentsCalls(calls); n != 0 {
+			t.Fatalf("a landing admission refused still made %d branch request(s): %+v", n, calls)
+		}
+	})
 
 	if len(lf.api.puts) != 0 {
 		t.Fatalf("a refused landing wrote: %+v", lf.api.puts)
@@ -373,6 +397,70 @@ func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
 			}
 			if f.putCalls != 1 {
 				t.Fatalf("landing made %d write(s), want 1", f.putCalls)
+			}
+		})
+	}
+}
+
+// TestPreMintRefusalsNeverMint pins the other side of the line admitLanding draws: every
+// refusal that needs only the command line — or, for an outcome record, the record's own
+// bytes — fires before the mint, so a call those refuse never mints a token, never resolves
+// a forge and never reaches admission. Moving the mint above any one of them turns its
+// subtest red.
+func TestPreMintRefusalsNeverMint(t *testing.T) {
+	dir := t.TempDir()
+	badJSON := filepath.Join(dir, "bad.json")
+	writeFixtureFile(t, badJSON, "{not json")
+	future := filepath.Join(dir, "future.json")
+	writeFixtureFile(t, future, `{"brief":"x/01","ts":"2999-01-01T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
+	unnamed := filepath.Join(dir, "unnamed.json")
+	writeFixtureFile(t, unnamed, `{"brief":"../01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
+
+	cases := map[string]struct {
+		args   []string
+		mainOK string
+		want   string // the refusal this case must hit, so it cannot pass by refusing early
+	}{
+		"repo-not-owner-name": {args: []string{"not-a-repo", "work", "--evidence-file", "docs/streams/x/a.md"}, want: "repo must be owner/name"},
+		"repo-not-in-set":     {args: []string{"random-org/random-repo", "work", "--evidence-file", "docs/streams/x/a.md"}, want: "not in the desk-tools repo set"},
+		"main-unsanctioned":   {args: []string{fixtureRepo, "main", "--evidence-file", "docs/streams/x/a.md"}, mainOK: "0", want: "is human-gated"},
+		"bad-flag":            {args: []string{fixtureRepo, "work", "--no-such-flag"}, want: "bad flags"},
+		"record-and-evidence": {args: []string{fixtureRepo, "work", "--outcome-record", badJSON, "--evidence-file", "docs/streams/x/a.md"}, want: "mutually exclusive"},
+		"no-evidence-file":    {args: []string{fixtureRepo, "work"}, want: "--evidence-file is required"},
+		"generated-status":    {args: []string{fixtureRepo, "work", "--evidence-file", "STATUS.md"}, want: "is generated"},
+		"appended-log":        {args: []string{fixtureRepo, "work", "--evidence-file", "docs/streams/verify-outcomes.jsonl"}, want: "shared appended"},
+		"record-not-json":     {args: []string{fixtureRepo, "work", "--outcome-record", badJSON}, want: "invalid --outcome-record JSON"},
+		"record-future-ts":    {args: []string{fixtureRepo, "work", "--outcome-record", future}, want: "ahead of now"},
+		"record-unnameable":   {args: []string{fixtureRepo, "work", "--outcome-record", unnamed}, want: "cannot name --outcome-record"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, errBuf := setupFake(t)
+			if tc.mainOK != "" {
+				t.Setenv("VERIFIER_MAIN_OK", tc.mainOK)
+			}
+			var steps []string
+			mintTokenFn = func(string) error {
+				steps = append(steps, "mint")
+				ghToken = fakeVerifierToken
+				return nil
+			}
+			forgeForFn = func(string, string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+				steps = append(steps, "forge")
+				return nil, deskkit.ForgeRepo{}, errors.New("no forge in this test")
+			}
+			verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
+				steps = append(steps, "admission")
+				return deskkit.VerifierReceipt{}, nil
+			}
+			if code := run(tc.args); code != deskkit.ExitRefused {
+				t.Fatalf("exit = %d, want %d: %s", code, deskkit.ExitRefused, errBuf)
+			}
+			if len(steps) != 0 {
+				t.Fatalf("a call refused on its command line alone still ran %v: %s", steps, errBuf)
+			}
+			if !strings.Contains(errBuf.String(), tc.want) {
+				t.Fatalf("refused for another reason, want %q: %s", tc.want, errBuf)
 			}
 		})
 	}

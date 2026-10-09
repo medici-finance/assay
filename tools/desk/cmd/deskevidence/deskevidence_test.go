@@ -507,7 +507,9 @@ func TestSecretScanRefusedNoRemote(t *testing.T) {
 	}
 }
 
-// TestOversizeRefused: a local file over the byte cap is refused before any forge call.
+// TestOversizeRefused: a local file over the byte cap is refused before the landing reads the
+// branch. It runs after the mint and admission (admitLanding), which this suite stubs, so
+// "reached the forge" below means the landing's own forge, not admission's record read.
 func TestOversizeRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	big := strings.Repeat("x", maxBytes+1)
@@ -1230,7 +1232,8 @@ func TestAppendOnlyFlagBlocksNonJSONLShrink(t *testing.T) {
 // statusgen PROBLEM or lands outside docs/streams/) ---
 
 // TestTargetOutsideDocsStreamsRefused: a target path at the repo root (the "stray root
-// file" main-red shape the issue names) is refused before any network call.
+// file" main-red shape the issue names) is refused before the landing reads the branch —
+// after the mint and admission (admitLanding), which this suite stubs.
 func TestTargetOutsideDocsStreamsRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	target := "STRAY-ROOT-FILE.md"
