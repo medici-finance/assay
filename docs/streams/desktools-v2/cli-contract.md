@@ -143,3 +143,10 @@ reviewer never mistakes them for regressions:
 Everything else a caller can observe (flag spellings, exit codes, output text and files,
 refusals) stays as it was, unless the owning brief's compatibility report lists the change
 and, for a human-gated brief, the sign-off approves it.
+
+## Library-first composition
+
+Follow [the component contract](../../library-first.md). Command handlers parse and call
+application APIs; use typed clients at independent authority boundaries. Configuration
+resolution does not grant admission. SDK/package extraction is owned by its named brief,
+not silently included in a parser migration. Preserve direct-domain admission tests.
