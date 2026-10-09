@@ -438,7 +438,10 @@ func TestAutoFlipParseLastEdited(t *testing.T) {
 // TestAutoFlipParseFileListing: a rename's old path is kept; a malformed line
 // is an error, never skipped.
 func TestAutoFlipParseFileListing(t *testing.T) {
-	files, from, patches, err := parseFileListing(1, []byte("[\"docs/streams/af/x.md\",\"statusgen/x.go\"]\n[\"docs/streams/af/y.md\",\"\",\"@@ -1 +1 @@\\n-a\\n+b\"]\n[\"z.bin\",\"\",null]\n"))
+	files, from, patches, err := parseFileListing(1, []byte(`["docs/streams/af/x.md","statusgen/x.go"]
+["docs/streams/af/y.md","","@@ -1 +1 @@\n-a\n+b"]
+["z.bin","",null]
+`))
 	if err != nil || strings.Join(files, ",") != "docs/streams/af/x.md,docs/streams/af/y.md,z.bin" || strings.Join(from, ",") != "statusgen/x.go" {
 		t.Errorf("got files=%v from=%v err=%v", files, from, err)
 	}
