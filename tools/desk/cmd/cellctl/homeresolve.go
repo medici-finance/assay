@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -77,6 +78,45 @@ func configHomeFor(goos string, e *Env) (string, error) {
 		return v, nil
 	}
 	return underHome(goos, e, ".config", "assay")
+}
+
+// operatorConfigKey is launch context, not the active roster override. Only
+// cellctl reads it; desk tools continue to use ASSAY_CONFIG_HOME. A nested launch
+// must retain this independently captured target instead of capturing its alias.
+const operatorConfigKey = "CELLCTL_OPERATOR_CONFIG_HOME"
+
+func operatorConfigHomeFor(goos string, e *Env) (string, error) {
+	if e.IsSet(operatorConfigKey) {
+		v := e.Get(operatorConfigKey)
+		if err := homePathCheck(goos, v); err != nil {
+			return "", fmt.Errorf("%s %v", operatorConfigKey, err)
+		}
+		return v, nil
+	}
+	return configHomeFor(goos, e)
+}
+
+// Capture before HOME/ASSAY_CONFIG_HOME change. Resolve existing aliases so the
+// stored expectation is a resource path independent of the cell's config link.
+// A missing config stays a missing path: launch composition does not provision
+// it, and check reports it unavailable. Nested context is never recaptured.
+func captureOperatorConfig(e *Env) (string, error) {
+	p, err := operatorConfigHomeFor(runtime.GOOS, e)
+	if err != nil || e.IsSet(operatorConfigKey) {
+		return p, err
+	}
+	p, err = filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(p)
+	if err == nil {
+		return resolved, nil
+	}
+	if !os.IsNotExist(err) {
+		return "", fmt.Errorf("cannot resolve operator config: %w", err)
+	}
+	return p, nil
 }
 
 // ghConfigDirFor matches the GitHub CLI's own documented precedence: $GH_CONFIG_DIR, then

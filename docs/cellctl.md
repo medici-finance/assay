@@ -94,6 +94,23 @@ and `CLAUDE_CONFIG_DIR`; every desk verb it invokes resolves the cell's roster a
 The split is exact: identity for the tools that write, the operator's own environment for the harness
 that hosts them.
 
+For Codex command subprocesses, `cellctl` composes the cell `HOME`, `USERPROFILE`
+and `ASSAY_CONFIG_HOME` directly. It first records the independently resolved
+operator config path in `CELLCTL_OPERATOR_CONFIG_HOME`; nested launches preserve
+that context. This is automatic launch metadata, not a replacement for the
+active roster override. Existing config aliases are resolved before composition;
+missing inputs remain missing and fail preflight. Operator Claude configuration,
+including an explicit positional override, is preserved for policy rechecks.
+
+Only `cellctl` consumes this context: the operator-config resolver serves the
+common operator-directory check, the house config-link check, and configuration
+paths used by `new`/`new --kind house`; Codex composition carries it onward.
+Desk tools still read the cell's `ASSAY_CONFIG_HOME`. The house check requires the
+link, the active config and the independent operator target to agree; comparing
+the same named symlink to itself cannot establish that identity. Relative config
+links and distinct aliases of the same resource remain valid. Scrubbed and
+container launch paths keep their separate config contracts.
+
 The shims are regenerated on every `cellctl desk`, so installing a new desk-tools release picks up
 automatically.
 

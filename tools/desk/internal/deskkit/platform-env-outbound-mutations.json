@@ -28,7 +28,7 @@
     {
       "name": "Config home derived from raw HOME outside the resolver",
       "file": "cmd/cellctl/cell.go",
-      "old": "\treturn mustResolve(configHomeFor(runtime.GOOS, e))",
+      "old": "\treturn mustResolve(operatorConfigHomeFor(runtime.GOOS, e))",
       "new": "\treturn filepath.Join(e.Get(\"HOME\"), \".config\", \"assay\")"
     },
     {
