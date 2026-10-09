@@ -536,9 +536,14 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   `refs/remotes/origin/main`; dispatch the agent with `capability:isolate-workspace` too, so its
   payload cwd is never the shared checkout — a /tmp clone does NOT isolate that cwd, and a
   falsely-blocked worker is the input that produces evasion.
-- **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
-  session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
-  to a cheap tier behind the review/verify gates.
+- **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to a
+  strong-tier worker and the kit carries the pickup-STOP text. A session that itself runs at strong
+  tier or above launches it at session tier; a session that runs BELOW strong names the strong tier
+  explicitly in the launch (`../../references/<harness>.md`, the `capability:dispatch-worker` row) —
+  a default launch there lands below strong and the worker stops at pickup, correctly. `--model`
+  states the model the worker was LAUNCHED on, never the session's own. A session with no way to
+  launch a strong-tier worker holds the item and files it; it never edits the pickup text. Effort S
+  may run at your session tier, M/L go to a cheap tier behind the review/verify gates.
   A re-dispatch or shepherd pass on a PR whose open finding class is at round ≥ 2 runs at **strong**
   tier. A worker's `NEEDS_CONTEXT: strike two` (kit clause 8) returns the item to intake as
   `design-owed` — not a failure to retry.
