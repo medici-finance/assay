@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes|NewRefusesBeforeMkdir)$'",
+  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes|NewRefusesBeforeMkdir|LaunchedHouseCheck|ConfigReplayClass|OperatorContextChoke)$'",
   "control": {
     "name": "Unset-home refusal removed (empty home resolves)",
     "file": "cmd/cellctl/homeresolve.go",
@@ -96,6 +96,54 @@
       "file": "internal/deskkit/selfcontain.go",
       "old": "\t\t\tif re == reWinUNCPath && loc[0] > 0 && notUNCLead(s[loc[0]-1]) {",
       "new": "\t\t\tif re == reWinUNCPath && loc[0] > 0 && false && notUNCLead(s[loc[0]-1]) {"
+    },
+    {
+      "name": "Cell-owned capture candidate recorded as the operator target",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\tif cellOwnedConfig(p, cellHome, cellConfig) {",
+      "new": "\tif false && cellOwnedConfig(p, cellHome, cellConfig) {"
+    },
+    {
+      "name": "Cell config link reached by another spelling not recognised",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\t\tif os.SameFile(node, cellLink) {",
+      "new": "\t\t\tif false && os.SameFile(node, cellLink) {"
+    },
+    {
+      "name": "Relative alias hop resolved against the working directory",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\t\t\ttarget = filepath.Join(dir, target)",
+      "new": "\t\t\t\ttarget = filepath.Join(\".\", target)"
+    },
+    {
+      "name": "Candidate resolving inside the cell home not refused",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\treturn err == nil && rel != \"..\" && !strings.HasPrefix(rel, \"..\"+string(filepath.Separator))",
+      "new": "\treturn false && err == nil && rel != \"..\" && !strings.HasPrefix(rel, \"..\"+string(filepath.Separator))"
+    },
+    {
+      "name": "Operator context shape check skipped",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tif err := homePathCheck(goos, v); err != nil {",
+      "new": "\t\tif err := homePathCheck(goos, v); false && err != nil {"
+    },
+    {
+      "name": "House check self-comparison refusal dropped",
+      "file": "cmd/cellctl/check.go",
+      "old": "\t\t!os.SameFile(linkNode, targetNode) && linkErr == nil",
+      "new": "\t\ttargetNode != nil && linkErr == nil"
+    },
+    {
+      "name": "House check link-to-operator-target identity dropped",
+      "file": "cmd/cellctl/check.go",
+      "old": "target.IsDir() && os.SameFile(linked, target) && os.SameFile(used, target),",
+      "new": "target.IsDir() && os.SameFile(used, target),"
+    },
+    {
+      "name": "House check active-config agreement dropped",
+      "file": "cmd/cellctl/check.go",
+      "old": "os.SameFile(linked, target) && os.SameFile(used, target),",
+      "new": "os.SameFile(linked, target) && used != nil,"
     }
   ]
 }

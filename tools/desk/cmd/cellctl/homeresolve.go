@@ -100,7 +100,14 @@ func operatorConfigHomeFor(goos string, e *Env) (string, error) {
 // stored expectation is a resource path independent of the cell's config link.
 // A missing config stays a missing path: launch composition does not provision
 // it, and check reports it unavailable. Nested context is never recaptured.
-func captureOperatorConfig(e *Env) (string, error) {
+//
+// With no recorded context, a candidate that reaches the cell's own config link
+// (cellConfig) or lies inside the cell home is NOT an operator resource: the
+// composing environment is already cell-scoped, and resolving through the link
+// would record wherever the link points as the expectation. Capture then returns
+// "" and the context stays unset, so the house check falls back to the cell link
+// and refuses the self-comparison.
+func captureOperatorConfig(e *Env, cellHome, cellConfig string) (string, error) {
 	p, err := operatorConfigHomeFor(runtime.GOOS, e)
 	if err != nil || e.IsSet(operatorConfigKey) {
 		return p, err
@@ -108,6 +115,9 @@ func captureOperatorConfig(e *Env) (string, error) {
 	p, err = filepath.Abs(p)
 	if err != nil {
 		return "", err
+	}
+	if cellOwnedConfig(p, cellHome, cellConfig) {
+		return "", nil
 	}
 	resolved, err := filepath.EvalSymlinks(p)
 	if err == nil {
@@ -117,6 +127,48 @@ func captureOperatorConfig(e *Env) (string, error) {
 		return "", fmt.Errorf("cannot resolve operator config: %w", err)
 	}
 	return p, nil
+}
+
+// cellOwnedConfig reports whether the absolute candidate p is the cell's config
+// link under any spelling, or resolves to a resource inside the cell home. It
+// follows one link at a time, so an alias that points at the cell link is caught
+// on the link node itself (os.SameFile on Lstat) before the link's own target is
+// reached. A candidate that does not exist is not cell-owned here; the house
+// check reports a missing target on its own.
+func cellOwnedConfig(p, cellHome, cellConfig string) bool {
+	if cellLink, err := os.Lstat(cellConfig); cellConfig != "" && err == nil {
+		for hop, q := 0, p; hop < 40; hop++ {
+			node, err := os.Lstat(q)
+			if err != nil {
+				break
+			}
+			if os.SameFile(node, cellLink) {
+				return true
+			}
+			target, err := os.Readlink(q)
+			if err != nil {
+				break
+			}
+			if !filepath.IsAbs(target) {
+				dir := filepath.Dir(q)
+				if r, err := filepath.EvalSymlinks(dir); err == nil {
+					dir = r
+				}
+				target = filepath.Join(dir, target)
+			}
+			q = target
+		}
+	}
+	home, err := filepath.EvalSymlinks(cellHome)
+	if cellHome == "" || err != nil {
+		return false
+	}
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(home, resolved)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // ghConfigDirFor matches the GitHub CLI's own documented precedence: $GH_CONFIG_DIR, then

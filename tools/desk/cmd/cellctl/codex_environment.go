@@ -35,7 +35,7 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	operatorConfig, err := captureOperatorConfig(c.Env)
+	operatorConfig, err := captureOperatorConfig(c.Env, c.Home, c.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,6 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 		"USERPROFILE":       c.Home,
 		"ZDOTDIR":           c.Home,
 		"ASSAY_CONFIG_HOME": c.Config,
-		operatorConfigKey:   operatorConfig,
 		"CODEX_HOME":        codexHome,
 		"GH_CONFIG_DIR":     ghConfig,
 		// Rechecks may include Claude routes even from a Codex desk. Resolve
@@ -54,6 +53,12 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 		// Noninteractive Bash reads BASH_ENV even without login semantics.
 		"BASH_ENV": "",
 		"ENV":      "",
+	}
+	// Record the operator context only when capture found an operator-side
+	// resource. From an already cell-scoped parent it stays unset, and the house
+	// check then refuses the cell link compared with itself.
+	if operatorConfig != "" {
+		values[operatorConfigKey] = operatorConfig
 	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.

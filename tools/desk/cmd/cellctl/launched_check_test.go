@@ -47,18 +47,44 @@ func TestLaunchedHouseCheck(t *testing.T) {
 	c := &Cell{Env: e, Dir: f.cellDir, Home: cellHome, Config: cellConfig}
 	values, err := c.codexCommandEnvironment(nil)
 	must(t, err)
-	run := func(env map[string]string, arg string) (string, error) {
+	runIn := func(dir string, env map[string]string, arg string) (string, error) {
 		args := []string{"check", "example"}
 		if arg != "" {
 			args = append(args, arg)
 		}
 		cmd := exec.Command(cellctlBinary(t), args...)
+		cmd.Dir = dir
 		cmd.Env = []string{"CELLS_ROOT=" + f.cellsRoot, "DESK_TOOLS_BIN=" + f.binDir, "KUBECONFIG=/dev/null", "ZAI_API_KEY=fixture-zai", "KIMI_API_KEY=fixture-kimi"}
 		for k, v := range env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
 		out, err := cmd.CombinedOutput()
 		return string(out), err
+	}
+	run := func(env map[string]string, arg string) (string, error) { return runIn("", env, arg) }
+	// misdirect repoints the cell config link at a foreign directory holding a
+	// valid roster copy, restoring the operator link when the subtest ends.
+	misdirectTo := func(t *testing.T, foreign string) {
+		must(t, os.MkdirAll(foreign, 0700))
+		raw, err := os.ReadFile(filepath.Join(cfg, "roster.env"))
+		must(t, err)
+		must(t, os.WriteFile(filepath.Join(foreign, "roster.env"), raw, 0600))
+		must(t, os.Remove(cellConfig))
+		must(t, os.Symlink(foreign, cellConfig))
+		t.Cleanup(func() {
+			must(t, os.Remove(cellConfig))
+			must(t, os.Symlink(cfg, cellConfig))
+		})
+	}
+	misdirect := func(t *testing.T) { misdirectTo(t, t.TempDir()) }
+	without := func(env map[string]string, drop string) map[string]string {
+		out := map[string]string{}
+		for k, v := range env {
+			if k != drop {
+				out[k] = v
+			}
+		}
+		return out
 	}
 	t.Run("host", func(t *testing.T) {
 		out, err := run(e.vals, "")
@@ -73,28 +99,13 @@ func TestLaunchedHouseCheck(t *testing.T) {
 		}
 	})
 	t.Run("missing-operator-context", func(t *testing.T) {
-		env := map[string]string{}
-		for k, v := range values {
-			if k != "CELLCTL_OPERATOR_CONFIG_HOME" {
-				env[k] = v
-			}
-		}
-		out, err := run(env, claude)
+		out, err := run(without(values, operatorConfigKey), claude)
 		if err == nil || !strings.Contains(out, "MISS  config home linked") {
 			t.Fatalf("self-referential target accepted: %v\n%s", err, out)
 		}
 	})
 	t.Run("misdirected-link-launched", func(t *testing.T) {
-		foreign := t.TempDir()
-		raw, err := os.ReadFile(filepath.Join(cfg, "roster.env"))
-		must(t, err)
-		must(t, os.WriteFile(filepath.Join(foreign, "roster.env"), raw, 0600))
-		must(t, os.Remove(cellConfig))
-		must(t, os.Symlink(foreign, cellConfig))
-		t.Cleanup(func() {
-			must(t, os.Remove(cellConfig))
-			must(t, os.Symlink(cfg, cellConfig))
-		})
+		misdirect(t)
 		// Recomposition must preserve the original expectation too, including
 		// after a resource stops matching it. Keep the first environment intact.
 		nested := *c
@@ -108,6 +119,70 @@ func TestLaunchedHouseCheck(t *testing.T) {
 					t.Fatalf("misdirected config link accepted: %v\n%s", err, out)
 				}
 			})
+		}
+	})
+	// A launch composed from an environment that is already cell-scoped and
+	// carries no operator context must not take the cell's own config link as
+	// the operator expectation: with the link misdirected, the check reports MISS.
+	t.Run("cell-scoped-compose", func(t *testing.T) {
+		// A relative alias that names the cell link must be caught on the link
+		// node, before resolution reaches the link's (foreign) target.
+		aliasDir := t.TempDir()
+		rel, err := filepath.Rel(aliasDir, cellConfig)
+		must(t, err)
+		alias := filepath.Join(aliasDir, "config-alias")
+		must(t, os.Symlink(rel, alias))
+		inHome := filepath.Join(cellHome, "foreign-config")
+		operatorWith := func(override string) map[string]string {
+			return map[string]string{"HOME": operator, "USERPROFILE": operator, "PATH": e.vals["PATH"], "DESK_TOOLS_BIN": f.binDir, "ASSAY_CONFIG_HOME": override}
+		}
+		cases := []struct {
+			name   string
+			target string
+			parent map[string]string
+		}{
+			{"cell-home", "", map[string]string{"HOME": cellHome, "USERPROFILE": cellHome, "PATH": e.vals["PATH"], "DESK_TOOLS_BIN": f.binDir}},
+			{"cell-override", "", operatorWith(cellConfig)},
+			{"alias-override", "", operatorWith(alias)},
+			{"stripped", "", without(values, operatorConfigKey)},
+			// The link and the candidate both name a directory inside the cell
+			// home; only the resolved-location rule tells it from the operator's.
+			{"in-home-target", inHome, operatorWith(inHome)},
+		}
+		for _, tc := range cases {
+			parent := tc.parent
+			t.Run(tc.name, func(t *testing.T) {
+				if tc.target != "" {
+					misdirectTo(t, tc.target)
+				} else {
+					misdirect(t)
+				}
+				composer := *c
+				composer.Env = envWith(parent)
+				composed, err := composer.codexCommandEnvironment(nil)
+				must(t, err)
+				out, err := run(composed, claude)
+				if err == nil || !strings.Contains(out, "MISS  config home linked") {
+					t.Fatalf("cell-scoped composition accepted a misdirected link: %v\n%s", err, out)
+				}
+			})
+		}
+	})
+	t.Run("host-misdirected-link", func(t *testing.T) {
+		misdirect(t)
+		out, err := run(e.vals, "")
+		if err == nil || !strings.Contains(out, "MISS  config home linked") {
+			t.Fatalf("host check accepted a misdirected link: %v\n%s", err, out)
+		}
+	})
+	// The recorded context must be an absolute local path: a relative one would
+	// resolve against whatever directory the check happens to run in.
+	t.Run("malformed-context", func(t *testing.T) {
+		env := without(values, operatorConfigKey)
+		env[operatorConfigKey] = filepath.Join(".config", "assay")
+		out, err := runIn(operator, env, claude)
+		if err == nil || !strings.Contains(out, operatorConfigKey) {
+			t.Fatalf("relative operator context accepted: %v\n%s", err, out)
 		}
 	})
 	t.Run("explicit-claude", func(t *testing.T) {
