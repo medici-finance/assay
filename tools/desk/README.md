@@ -5258,6 +5258,96 @@ private repository name, issue reference, internal document path, item identifie
 incident — and `kittext_test.go` enforces that mechanically, with a positive control so a
 matcher that stopped matching fails rather than reporting the kits clean forever.
 
+## The dispatch record — `dispatch-records.jsonl`
+
+Every real dispatch writes one structured line saying which brief, pull request, session and
+tier it was. `deskdispatch` writes a `dispatched` line after the model-stamp step (step 5).
+`deskclaim-ref release` writes a `released` line after a release that removed an existing
+claim. Both go to `<StateDir>/dispatch-records.jsonl` (`~/.config/assay/`, beside
+`audit.jsonl`). The file is mode 0600, append-only and never committed to git. It is not
+rotated, since it gets one line per dispatch. The type, validator and writer live in
+`internal/deskkit/dispatchrecord.go` (`DispatchRecord`, `ValidateDispatchRecord`,
+`AppendDispatchRecord`, `MintDispatchRef`).
+
+The keys are `schema` (`dispatch-record-v1`), `event` (`dispatched` | `released`), `ts`
+(RFC3339), `dispatch_ref` (string or null), `claim_key`, `repo`, `item`, `brief` (the
+brief's frontmatter `brief:` id), `kit`, `branch` (null for a detached review or verifier
+dispatch), `pr`, `session_tag`, `tier` (`--tier`: `any` | `strong`), `brief_exec_tier` and
+`brief_effort` (the brief's frontmatter values), `model_stamp` (`applied` | `pending` |
+`skipped`) and `attempt_local`.
+
+- A frontmatter value that is absent, unreadable or outside the vocabulary is null, never
+  guessed.
+- A `released` line carries null in every dispatch-only field.
+- `attempt_local` is 1 plus the number of earlier `dispatched` lines with the same
+  `claim_key` in THIS file. It is a local ordinal: another machine dispatching the same item
+  keeps its own count. It is never a global attempt number.
+
+**`dispatch_ref` is the join key** every other pipeline record uses to point at one dispatch:
+
+```
+dispatch_ref = <claim_key> "@" <acquired_at> "." <nonce>
+```
+
+- `claim_key` is exactly `claimKeyFor(item, repo)`, the `<id>` of `refs/dispatch/<id>`.
+- `acquired_at` is the UTC time `deskdispatch` read right after claim-acquire returned 0, in
+  ISO-8601 basic form `YYYYMMDDTHHMMSSZ`.
+- `nonce` is 12 lowercase hex characters (48 bits) from `crypto/rand`.
+
+Example: `assay--example-stream--28@20261006T141502Z.3fa9c01b7d2e`.
+
+The full grammar is `^<claim_key>@[0-9]{8}T[0-9]{6}Z\.[0-9a-f]{12}$` for the record's OWN
+`claim_key`. The validator also bounds the claim key to 1–226 printable ASCII bytes with no
+`@`, space or control byte, so a whole ref never exceeds 256 bytes. As a single pattern:
+`^[\x21-\x3F\x41-\x7E]{1,226}@[0-9]{8}T[0-9]{6}Z\.[0-9a-f]{12}$`.
+
+Neither the claim id nor the timestamp is enough on its own:
+
+- The claim id names the ITEM. Every re-dispatch, re-review and stale reclaim reuses it.
+- The timestamp has one-second resolution, so two runs of one item can share it.
+
+The nonce is what makes the ref per-run. If the secure source fails, the dispatch goes ahead
+with `dispatch_ref` null and prints a WARNING. It never falls back to a weaker source.
+`deskdispatch` also records the ref in the agent worktree as
+`git config --worktree assay.dispatchRef <ref>`, next to `assay.runKey`, which is unchanged.
+The prepared-dispatch audit line carries it too, as `dispatch_ref=<ref>`. `--dry-run` mints
+nothing and writes nothing.
+
+**Visibility rule.** `dispatch_ref` embeds the claim key, which contains a repo label and an
+item key. It is local state, so it appears in clear only in:
+
+- the desk's state directory (this file and the audit log);
+- the agent worktree's config.
+
+It NEVER appears in clear on a non-private surface: a forge comment, label or review body, a
+public register, or a file committed to git. A consumer that must express the join there
+writes at most a sha256 of the FULL ref. That digest is a stable identifier, not a secret.
+
+**Pairing.** A `released` line carries the `assay.dispatchRef` of the worktree it ran in, but
+only when that ref was minted for the same claim key. Otherwise its `dispatch_ref` is null, for
+example when the release ran from another checkout. A `released` line with a null
+`dispatch_ref` pairs with the latest earlier `dispatched` line for the same `claim_key`, as
+long as no other `released` line for that key lies between them; exclusivity makes that pairing
+unique. A `released` line with no such `dispatched` line is the release of a dispatch that wrote
+none, for example one that aborted before model-stamp, or one claimed by hand. A record that
+must point at every dispatch of one item uses `claim_key`. A record that cannot know
+`dispatch_ref` joins by PR (`repo` + `pr` + head SHA). For a fresh worker dispatch whose PR does
+not exist yet, it joins by `repo` + `branch`.
+
+**Failure is never fatal.** If a record cannot be written, the tool prints
+`deskdispatch: WARNING: could not write dispatch record: …`, or `deskclaim-ref` prints its
+own WARNING. It never fails or aborts a dispatch whose claim and worktree stand, and it never
+changes a release's exit code.
+
+**Known gap.** The legacy `tools/dispatch-claim.sh` writes no `released` line. It remains a
+fallback for trees without the Go binary, and record writing is not ported into shell.
+
+**Never recorded:** prompt text, the brief body, PR or issue text, tool output, transcripts,
+vendor model names, or any per-person metric. No field is free text. The tier fields accept
+only `any` and `strong`, so a model slug cannot land in one; the slug stays on the PR's
+`dispatched-model:` label, which joins via `pr`. These records support aggregate analysis per
+brief, tier and kit. They are never used to rank people or agents.
+
 ## The dispatch-claim store — `ResolveClaimStore`
 
 WHERE a dispatch claim is kept is decided in ONE place, `deskkit.ResolveClaimStore(repo)`

@@ -258,12 +258,13 @@ func cmdProgress(id, owner, branch string) int {
 	}
 }
 
-func cmdRelease(id string) int {
+func cmdRelease(id, repo string) int {
 	outcome, existed := store.Remove(id)
 	switch outcome {
 	case deskkit.ClaimWriteApplied:
 		if existed {
 			logf("released %s", id)
+			writeReleasedRecord(id, repo)
 		} else {
 			logf("released %s (no claim — no-op)", id)
 		}
@@ -271,6 +272,28 @@ func cmdRelease(id string) int {
 	default:
 		errf("unverifiable: could not delete %s/%s%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
+	}
+}
+
+// writeReleasedRecord appends the `released` dispatch record after a
+// release that removed an EXISTING claim. dispatch_ref is the cwd worktree's assay.dispatchRef
+// only when it was minted for THIS claim key (its part before "@" equals id) — a release run from
+// another checkout, or from a worktree of another item, gets null and pairs by claim key. Every
+// dispatch-only field is null. Best-effort: a write failure warns on stderr and never changes the
+// release's exit code — the claim is already gone, and that is what the caller asked for.
+func writeReleasedRecord(id, repo string) {
+	rec := deskkit.DispatchRecord{
+		Event:    deskkit.DispatchEventReleased,
+		ClaimKey: id,
+		Repo:     repo,
+	}
+	if ref := deskkit.WorktreeDispatchRef(); ref != "" {
+		if key, ok := deskkit.DispatchRefClaimKey(ref); ok && key == id {
+			rec.DispatchRef = &ref
+		}
+	}
+	if err := deskkit.AppendDispatchRecord(&rec); err != nil {
+		errf("WARNING: could not write dispatch record: %v", err)
 	}
 }
 
