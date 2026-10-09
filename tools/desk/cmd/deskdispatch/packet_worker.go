@@ -898,8 +898,10 @@ func workerPacketReviewsSection(fg workerPacketForge, fr deskkit.ForgeRepo, pr i
 	}
 	out.Textf("Every review on the change, oldest first, under the author the forge reports: %d. This packet does not "+
 		"decide which review counts or which finding is open. Where a review body carries a typed finding record, "+
-		"each entry is shown as THAT record states it, with whether the entry still stands by its own words at the "+
-		"head commit above; what a later record says of the same finding is in that later review.\n\n"+
+		"each entry is shown as THAT record states it, with whether it is a standing blocker by that record's own "+
+		"words at the head commit above — blocking, and not resolved with evidence at that head. An entry that is "+
+		"not one may still ask for something: the review's text says. What a later record says of the same finding "+
+		"is in that later review.\n\n"+
 		"**Review comments anchored to a file and line are NOT in this packet.** The forge client this tool reads "+
 		"through has no read for them; a file and a line appear here only where a review's own text names them.",
 		len(reviews))
@@ -929,16 +931,16 @@ func workerPacketReviewsSection(fg workerPacketForge, fr deskkit.ForgeRepo, pr i
 					fmt.Fprintf(&b, "  - … %d more finding(s) not shown\n", len(blk.Findings)-j)
 					break
 				}
-				stands := "does not stand at this head by this record"
+				stands := "not a standing blocker at this head by this record"
 				if f.StandingBlockerAt(head) {
-					stands = "STANDS at this head by this record"
+					stands = "a STANDING BLOCKER at this head by this record"
 				}
 				lane := ""
 				if l := f.StatedLane(); l != "" {
 					lane = " (" + packet.Inline(l) + ")"
 				}
-				fmt.Fprintf(&b, "  - finding `%s`%s — class `%s` — %s — state `%s` — %s\n",
-					packet.Inline(f.ID), lane, packet.Inline(f.Class), orNone(string(f.Severity)), orNone(string(f.State)), stands)
+				fmt.Fprintf(&b, "  - finding `%s`%s — class `%s` — state `%s` — %s\n",
+					packet.Inline(f.ID), lane, packet.Inline(f.Class), orNone(string(f.State)), stands)
 			}
 		}
 		out.Text(b.String())

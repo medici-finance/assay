@@ -689,8 +689,8 @@ func TestWorkerShepherdPacketContents(t *testing.T) {
 	reviews := packetSection(t, p.Text, "Reviews and findings")
 	wpWantAll(t, "Reviews and findings", reviews, "Every review on the change, oldest first, under the author the forge reports: 4.",
 		"**Review comments anchored to a file and line are NOT in this packet.**",
-		"  - finding `F-1` (correctness) — class `off-by-one` — blocking — state `open` — STANDS at this head by this record",
-		"  - finding `F-2` — class `naming` — blocking — state `resolved` — does not stand at this head by this record",
+		"  - finding `F-1` (correctness) — class `off-by-one` — state `open` — a STANDING BLOCKER at this head by this record",
+		"  - finding `F-2` — class `naming` — state `resolved` — not a standing blocker at this head by this record",
 		"`widget.go:12` still drops the last row", "second round: `widget.go:12` drops the last row", "third round, nothing new")
 	// The oldest review not at the head is past the limit: listed, not quoted.
 	wpWantNone(t, "Reviews and findings", reviews, "first round: rename the helper")
