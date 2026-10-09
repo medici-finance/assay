@@ -4,8 +4,9 @@ package main
 //
 // A dispatch may hand its agent ONE read-ahead file: the material the agent would otherwise
 // fetch call by call. What goes in it differs by kit; everything else — the header, the caps
-// and omission list, the boundary around text the tool did not write, the owner-only writer
-// and the single assignment line — is internal/packet's and is the same for every kit.
+// and omission list, the boundary lines around quoted text and the escaping inside them, the
+// code span for a single-line value, the owner-only writer and the single assignment line —
+// is internal/packet's and is the same for every kit.
 //
 // HOW A KIT GETS A PACKET. A provider is registered for the kit (registerPacketProvider, from
 // an init in the provider's own file). dispatch() calls buildPacketFn ONCE, just before the
