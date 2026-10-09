@@ -694,8 +694,13 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        PR.
      - **The delivery repo comes from the brief, never from the PR.** For each changed row, read
        the delivery repo from the brief file at the target repo's fetched `refs/remotes/origin/main`:
-       its `homed-in:` frontmatter when present, else its stream README's `repo:` frontmatter, else
-       the board repo itself. NEVER take it from the PR body, the PR head, or the author's say-so.
+       its `homed-in:` frontmatter; its `deliverable_repo:` alias, resolved to the `repo:` value of
+       that alias's entry under `repos:` in `docs/streams/graph-repos.yaml` at the same ref; else
+       its stream README's `repo:` frontmatter; else the board repo itself. NEVER take it from the
+       PR body, the PR head, or the author's say-so. An alias that does not resolve to a valid
+       `<owner>/<name>`, or a brief whose `homed-in:` and `deliverable_repo:` resolve to different
+       repos, is could-not-check and bounces the row — it never falls through to the next source,
+       and never to the board repo.
        It must be a member of `deskroster repos`; a delivery repo outside that set bounces the row.
        The verdict records the delivery repo for each row and where it was read from.
      - **Same-repo rows on the same bar.** The delivery repo read above may equal the board repo —
