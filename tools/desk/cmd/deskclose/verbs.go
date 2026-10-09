@@ -390,6 +390,12 @@ func gateFor(c *common) (grant, error) {
 //     5b. cross-reference           — two-role superseded lane only: the back-reference on
 //     the target, also BEFORE the close
 //  6. close   (charged write)
+//  7. postcondition             — the item is RE-READ and must read closed; a close the
+//     re-read contradicts is exit 6 plus a filed repair issue (postcondition.go)
+//
+// Step 2 is the BENIGN replay: the effect is already present, proven by step 1's read, so
+// nothing is written. It is not the no-op shape step 7 catches — a close THIS run claimed
+// whose effect the re-read shows ABSENT — which is a failure, never success.
 //
 // Steps 5 and 6 are two charged writes per item. That is the budget arithmetic the
 // manifest loop is bounded by, and it is deliberate: the comment is what makes a wrong
@@ -407,6 +413,8 @@ func applyClose(r closeReq, out io.Writer) error {
 	// rather than from what the caller said it would be.
 	itemKind := labelTargetOf(it)
 
+	// Benign replay: the effect is already present (proven by the read above). Distinct from
+	// the no-op shape the postcondition fails on — see step 7 and postcondition.go.
 	if it.closed() {
 		a.log(deskkit.ResultNoop, "already closed — idempotent no-op")
 		fmt.Fprintf(out, "noop\t%s#%d\talready closed\n", r.repo, r.number)

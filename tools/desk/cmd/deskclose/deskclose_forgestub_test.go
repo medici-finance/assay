@@ -445,3 +445,22 @@ func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.Lab
 	}
 	return &deskkit.LabelOutcome{Added: added}, nil
 }
+
+// SearchIssues serves the repair-issue dedupe (postcondition.go) from s.openIssues.
+func (s *stubRemote) SearchIssues(fr deskkit.ForgeRepo, in deskkit.SearchIssuesInput) ([]deskkit.IssueSearchResult, error) {
+	s.calls = append(s.calls, []string{"search", "issues", "-R", fr.Slug(), in.Query})
+	if s.failSearch {
+		return nil, errors.New("HTTP 503: search unavailable")
+	}
+	return s.openIssues, nil
+}
+
+// FileIssue records the repair issue a close that did not take files (postcondition.go).
+func (s *stubRemote) FileIssue(fr deskkit.ForgeRepo, in deskkit.IssueInput) (*deskkit.IssueRef, error) {
+	if s.failFile {
+		return nil, errors.New("HTTP 403: resource not accessible by integration")
+	}
+	s.calls = append(s.calls, []string{"issue", "create", "-R", fr.Slug(), "--title", in.Title})
+	s.filed = append(s.filed, in.Title)
+	return &deskkit.IssueRef{Number: 900 + len(s.filed)}, nil
+}

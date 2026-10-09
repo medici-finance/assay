@@ -186,6 +186,18 @@
       "file": "cmd/deskclose/verbs.go",
       "old": "func rowModes() []string { return []string{modeDuplicate, modeSuperseded, modeReviewRequest} }",
       "new": "func rowModes() []string {\n\treturn []string{modeDuplicate, modeSuperseded, modeReviewRequest, modeSelfWithdraw}\n}"
+    },
+    {
+      "name": "disarm the close postcondition (a close the re-read shows still OPEN is reported as success — the silent no-op)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "\tif after.closed() {",
+      "new": "\tif true || after.closed() {"
+    },
+    {
+      "name": "drop the repair-issue filing (a close that did not take fails only in this run's output, visible to nobody else)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "\tnote := fileRepairIssue(repo, n, kind, state)",
+      "new": "\tnote := \"repair issue skipped\""
     }
   ]
 }

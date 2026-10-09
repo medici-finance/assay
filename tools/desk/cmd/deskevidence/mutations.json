@@ -132,6 +132,12 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: rowScopeSHA,\n\t})",
       "new": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: \"\",\n\t})"
+    },
+    {
+      "name": "disarm the statusgen PROBLEM-diff pre-flight (a landing that introduces a PROBLEM is written anyway)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif len(introduced) > 0 {",
+      "new": "\tif false && len(introduced) > 0 {"
     }
   ]
 }
