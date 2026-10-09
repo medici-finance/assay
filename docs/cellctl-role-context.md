@@ -22,17 +22,27 @@ DRY_RUN=1 cellctl desk <cell> pr-review-desk
 The path is absolute or relative to the cell directory. The file is read at every launch; a
 window already running is not affected by an edit.
 
-The key is read the way every cell key is read. `cell.env` is where it belongs and wins when it
-sets the key. A `CELL_ROLE_CONTEXT` exported in the environment `cellctl` runs in applies to any
-cell whose `cell.env` does not set it. An empty value is the same as unset, and there is no
-command-line flag. A launch that applies a context says so on its first lines, with the file and
-its digest (see [How it is applied](#how-it-is-applied)), so an exported value cannot apply
-unnoticed.
+The key is read the way every cell key is read. `cell.env` is where it belongs and wins whenever
+it has a line for the key — an empty one included: `CELL_ROLE_CONTEXT=` with no value leaves the
+cell without a declaration, whatever is exported. A `CELL_ROLE_CONTEXT` exported in the
+environment `cellctl` runs in applies to any cell whose `cell.env` has no line for the key; an
+exported empty value is the same as unset. There is no command-line flag. A launch that applies
+a context says so on its first lines, with the file and its digest (see
+[How it is applied](#how-it-is-applied)), so an exported value cannot apply unnoticed.
 
 Keep the declaration, and every file it names, where a role session does not write: beside
-`cell.env` is the usual place. A declaration, instruction file or agent definition that resolves
-into a role worktree (`<cell-dir>/worktrees/`) or a memory directory (`<cell-dir>/memory/`),
-directly or through a symlink, is refused.
+`cell.env` is the usual place. A declaration, instruction file or agent definition is refused
+when it lies in a place a role session writes:
+
+- `<cell-dir>/worktrees/` or `<cell-dir>/memory/`, at any depth;
+- the tree any entry of `<cell-dir>/worktrees/` leads to. When the worktree tool makes a role's
+  tree, `worktrees/<role>` is a link to a tree outside the cell; that tree counts wherever it is.
+
+The rule goes by which directory a path leads to, never by how the path is spelled. The file is
+resolved through every symlink, and it and each directory above it are compared, as files, with
+those places. Naming the file through a link, by the linked tree's own path, or in another
+letter case on a volume that ignores case changes nothing. When one of those places, or a
+directory above the file, cannot be examined, the file is refused.
 
 ## Declaration
 
@@ -208,7 +218,9 @@ do more, and need a second look before they are declared:
 - **`memory_dir` is a write location.** The window writes its memory there, so the key is
   confined: after symlinks are resolved it must be a directory below `<cell-dir>/memory/`. The
   cell directory (where `cell.env` and the declaration live), its parents, the cell home, a
-  worktree, the `memory` directory itself and any place outside the cell are refused.
+  worktree, the `memory` directory itself and any place outside the cell are refused. So is a
+  value this test cannot place there by its resolved spelling: `<cell-dir>/memory` must be a
+  real directory, not a link, and is named in lower case.
 
 What holds beside those two:
 
@@ -233,9 +245,17 @@ What holds beside those two:
 What this does not change, in either direction: a session with a shell can still start another
 harness process with different flags, as it can today; and the declaration file has the same
 custody as `cell.env` — whoever can edit it decides the context of the *next* launch. cellctl
-enforces the part of that rule it can see: the declaration and the files it names may not
-resolve into a role worktree or a memory directory. A file kept elsewhere is the operator's to
-protect.
+enforces the part of that rule it can see: the declaration and the files it names may not lie
+in `<cell-dir>/worktrees/`, in `<cell-dir>/memory/`, or in a tree an entry of `worktrees/` leads
+to. What that rule does not see is the operator's to protect:
+
+- A file kept anywhere else, `<cell-dir>/home/` included.
+- A hard link. A second name for a worktree file, kept outside the worktree, is the same file
+  under a directory the rule does not refuse.
+- A role tree the cell does not link from `worktrees/`: one made by hand, or one the worktree
+  tool will make at a first launch that has not happened yet. `check` cannot know that tree
+  before the link exists. The launch looks again once it has made the link, and refuses before
+  the harness starts.
 
 `instructions`, `dispatch_agent`, `instructions_off` and `inherit_instructions: false` add or
 remove instruction text. Nothing in the harness enforces that text, but for a desk window it is
@@ -277,7 +297,9 @@ directory, or put it in the project's instruction files.
 ## Refusals
 
 `cellctl desk` and `cellctl up` refuse each of these before a worktree is created or a window
-opened. `cellctl check` reports every one that can be read from the cell and its declaration as
+opened. One case comes later: when a launch itself links the role worktree to the tree that
+holds a named file, the refusal follows the link and comes before the harness starts.
+`cellctl check` reports every one that can be read from the cell and its declaration as
 a `MISS` and exits non-zero; the last item depends on a flag given to `up`, which `check` never
 sees. One bad entry refuses every role of the cell, so a typo cannot quietly leave one window on
 the shared context.
@@ -291,9 +313,10 @@ the shared context.
   `<cell-dir>/memory/`; `instructions` or an `agents` file cannot be read; `builtin:<name>` is
   not a shipped definition.
 - `plugins_off` names the plugin the role's own skill and session hooks come from (`assay`, with
-  or without a marketplace suffix).
-- The declaration, an `instructions` file or an `agents` file resolves into
-  `<cell-dir>/worktrees/` or `<cell-dir>/memory/`.
+  or without a marketplace suffix, in any letter case).
+- The declaration, an `instructions` file or an `agents` file lies in `<cell-dir>/worktrees/`,
+  in `<cell-dir>/memory/` or in a tree an entry of `worktrees/` leads to — whichever link, path
+  or letter case names it — or one of those places cannot be examined.
 - `memory_dir` together with `memory_off`; a `dispatch_agent` that is not one of the role's
   `agents`, or that is also in `agents_off`; two agents with one name; a plugin's skill in
   `skills_off`; an `instructions_off` entry that is not an absolute glob.
