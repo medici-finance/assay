@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -22,12 +25,74 @@ var productionAdmission = verifierEvidenceAdmissionFn
 // attestationAPI is an offline GitHub API for the dispatcher-owned attestation
 // record. Only forge transport and custody are replaced; deskevidence runs the
 // real shared admission reader against it.
+//
+// It also serves the Contents API for the fixture repository, so a landing can
+// run its own remote read and its write through the same resolved backend that
+// admission reads through. Every request is logged with the credential it
+// carried, which is what lets a test say WHICH token reached the forge and in
+// what order admission and the landing read it.
 type attestationAPI struct {
 	mu                 sync.Mutex
 	title, body, state string
 	labels             []string
 	timeline           []map[string]any
 	unexpected         []string
+
+	files map[string]string // branch content, by repo path
+	puts  []contentsPut     // every Contents-API write, in order
+	calls []apiCall         // every request, in order
+}
+
+// contentsPut is one Contents-API write the offline API accepted.
+type contentsPut struct{ File, Message, Content string }
+
+// apiCall is one request the offline API received and the credential it carried.
+type apiCall struct{ Method, Path, Authorization string }
+
+// contentsPrefix is the Contents-API path of the fixture repository.
+const contentsPrefix = "/repos/example-org/tracker/contents/"
+
+// blobID is a stand-in blob id: stable for equal content, different otherwise.
+func blobID(content string) string {
+	sum := sha1.Sum([]byte(content))
+	return hex.EncodeToString(sum[:])
+}
+
+// serveContents answers a Contents-API read or write for file.
+func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, file string) {
+	enc := func(v any) { _ = json.NewEncoder(w).Encode(v) }
+	switch r.Method {
+	case http.MethodGet:
+		content, ok := a.files[file]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			enc(map[string]any{"message": "Not Found"})
+			return
+		}
+		enc(map[string]any{"sha": blobID(content), "encoding": "base64",
+			"content": base64.StdEncoding.EncodeToString([]byte(content))})
+	case http.MethodPut:
+		var in struct{ Message, Content, Branch, SHA string }
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		decoded, err := base64.StdEncoding.DecodeString(in.Content)
+		if err != nil {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			return
+		}
+		if a.files == nil {
+			a.files = map[string]string{}
+		}
+		a.files[file] = string(decoded)
+		a.puts = append(a.puts, contentsPut{File: file, Message: in.Message, Content: string(decoded)})
+		enc(map[string]any{
+			"content": map[string]any{"sha": blobID(string(decoded))},
+			"commit": map[string]any{"sha": blobID(in.Message + string(decoded)),
+				"author": map[string]any{"name": "assay-verifier-app[bot]"}},
+		})
+	default:
+		a.unexpected = append(a.unexpected, r.Method+" "+r.URL.Path)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
 func (a *attestationAPI) issue() map[string]any {
@@ -44,7 +109,10 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer a.mu.Unlock()
 	enc := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 	p := r.URL.Path
+	a.calls = append(a.calls, apiCall{Method: r.Method, Path: p, Authorization: r.Header.Get("Authorization")})
 	switch {
+	case strings.Contains(p, contentsPrefix):
+		a.serveContents(w, r, p[strings.Index(p, contentsPrefix)+len(contentsPrefix):])
 	case r.Method == http.MethodPost && strings.HasSuffix(p, "/repos/example-org/tracker/issues"):
 		var in struct{ Title, Body string }
 		_ = json.NewDecoder(r.Body).Decode(&in)
