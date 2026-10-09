@@ -445,3 +445,36 @@ func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.Lab
 	}
 	return &deskkit.LabelOutcome{Added: added}, nil
 }
+
+// SearchIssues serves the repair-issue dedupe (postcondition.go) from s.openIssues the way a
+// backend that forwards the query VERBATIM as search text does (GitLab's `search=`): an issue
+// matches only when every whitespace-separated query word appears literally in its title. A
+// qualifier or a quoted phrase is then literal text no title contains, so a query carrying
+// search syntax finds nothing here — the shape that would refile on every re-run.
+func (s *stubRemote) SearchIssues(fr deskkit.ForgeRepo, in deskkit.SearchIssuesInput) ([]deskkit.IssueSearchResult, error) {
+	s.calls = append(s.calls, []string{"search", "issues", "-R", fr.Slug(), in.Query})
+	if s.failSearch {
+		return nil, errors.New("HTTP 503: search unavailable")
+	}
+	var out []deskkit.IssueSearchResult
+	for _, iss := range s.openIssues {
+		title, all := strings.ToLower(iss.Title), true
+		for _, w := range strings.Fields(in.Query) {
+			all = all && strings.Contains(title, w)
+		}
+		if all {
+			out = append(out, iss)
+		}
+	}
+	return out, nil
+}
+
+// FileIssue records the repair issue a close that did not take files (postcondition.go).
+func (s *stubRemote) FileIssue(fr deskkit.ForgeRepo, in deskkit.IssueInput) (*deskkit.IssueRef, error) {
+	if s.failFile {
+		return nil, errors.New("HTTP 403: resource not accessible by integration")
+	}
+	s.calls = append(s.calls, []string{"issue", "create", "-R", fr.Slug(), "--title", in.Title})
+	s.filed = append(s.filed, in.Title)
+	return &deskkit.IssueRef{Number: 900 + len(s.filed)}, nil
+}

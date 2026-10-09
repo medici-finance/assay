@@ -132,6 +132,18 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: rowScopeSHA,\n\t})",
       "new": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: \"\",\n\t})"
+    },
+    {
+      "name": "disarm the statusgen PROBLEM-diff pre-flight (a landing that introduces a PROBLEM is written anyway)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif len(introduced) > 0 {",
+      "new": "\tif false && len(introduced) > 0 {"
+    },
+    {
+      "name": "the pre-flight stages the worktree's own bytes instead of the bytes to commit (the after-run lints an unchanged tree, so no landing is ever refused)",
+      "file": "cmd/deskevidence/lintdiff.go",
+      "old": "\tif werr := os.WriteFile(abs, newContent, 0o644); werr != nil {",
+      "new": "\tif werr := os.WriteFile(abs, origContent, 0o644); werr != nil {"
     }
   ]
 }
