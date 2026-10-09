@@ -346,18 +346,18 @@ func (c *Cell) checkK8s(k *checker) {
 // installed, and the assay plugin is enabled for the checkout the windows will open in.
 func (c *Cell) checkHouse(k *checker, cfgArg string) {
 	k.chk(isGitCheckout(c.Repo), "cell.env CELL_REPO is a git checkout: %s", c.Repo)
-	// Require an independent expected resource, not the same named symlink
-	// reached twice. Active desk-tool config must agree with that expectation.
+	// Require an independent expected resource: one that is not cell-owned (the
+	// cell link under any spelling, or anything inside a cell home), the same
+	// test capture applies. Active desk-tool config must agree with it.
 	// Directory identity still permits relative links and alternate spellings.
 	real := realConfigHome(c.Env)
 	active := mustResolve(configHomeFor(runtime.GOOS, c.Env))
 	linkNode, nodeErr := os.Lstat(filepath.Clean(c.Config))
-	targetNode, targetNodeErr := os.Lstat(filepath.Clean(real))
 	linked, linkErr := os.Stat(c.Config)
 	target, targetErr := os.Stat(real)
 	used, usedErr := os.Stat(active)
-	k.chk(nodeErr == nil && targetNodeErr == nil && linkNode.Mode()&os.ModeSymlink != 0 &&
-		!os.SameFile(linkNode, targetNode) && linkErr == nil && targetErr == nil && usedErr == nil &&
+	k.chk(nodeErr == nil && linkNode.Mode()&os.ModeSymlink != 0 &&
+		!cellOwnedConfig(real, c.Home, c.Config) && linkErr == nil && targetErr == nil && usedErr == nil &&
 		linked.IsDir() && target.IsDir() && os.SameFile(linked, target) && os.SameFile(used, target),
 		"config home linked to the operator's: %s -> %s", c.Config, real)
 	k.chk(exists(filepath.Join(c.Home, ".gitconfig")), "gitconfig linked: %s/.gitconfig", c.Home)

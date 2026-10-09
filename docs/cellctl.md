@@ -101,11 +101,18 @@ that context. This is automatic launch metadata, not a replacement for the
 active roster override. Existing config aliases are resolved before composition;
 missing inputs remain missing and fail preflight. Operator Claude configuration,
 including an explicit positional override, is preserved for policy rechecks.
-When the composing environment is already cell-scoped (its config candidate is
-the cell's config link under any spelling, or resolves inside the cell home),
-nothing is recorded: the context stays unset and the house check compares the
-cell link with itself and refuses it, rather than accepting whatever the link
-points at.
+When the composing environment is already cell-scoped, nothing is recorded:
+the context stays unset and the house check refuses, rather than accepting
+whatever the cell link points at. A config candidate is cell-scoped when the
+path, resolved one element at a time as the OS resolves it, passes through a
+cell's config link (whatever the stored spelling of each link: absolute,
+relative, a trailing separator or dot element) or lies inside a cell home,
+including one that does not exist yet. "A cell" is this cell or any sibling
+under the same cells root. A path that cannot be resolved to the end (too many
+links, an unreadable element) counts as cell-scoped. The house check applies the
+same test to its expected target, so a config override that is an alias of the
+cell link is refused even when the link points at the right place: the link
+compared with itself establishes nothing.
 
 Only `cellctl` consumes this context: the operator-config resolver serves the
 common operator-directory check, the house config-link check, and configuration
@@ -1048,10 +1055,12 @@ codex --sandbox danger-full-access -C <worktree> -m <model> "Invoke the \"assay:
 ```
 
 The same exported env the claude arm gets — `DESK_LOOP`, `DESK_SESSION`, `DESK_ROOTS` (when
-`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. The Codex process itself gets no
-`CLAUDE_CONFIG_DIR`; the command environment `cellctl` composes for its subprocesses carries the
-operator's Claude config directory, resolved before `HOME` changes, so a policy recheck that routes
-through Claude reads the operator's configuration. The model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
+`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. `cellctl` sets no
+`CLAUDE_CONFIG_DIR` on the Codex process itself (one the launching shell exports is inherited
+unchanged); the command environment `cellctl` composes for its subprocesses carries the
+resolved Claude config directory (a positional override when one is given, otherwise the operator's,
+resolved before `HOME` changes), so a policy recheck that routes through Claude reads that
+configuration. The model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
 `CODEX_MODEL_default`, falling back to the tier map — never the claude arm's `DESK_MODEL_<role>` /
 `DESK_MODEL_DEFAULT` (`#986`: the two were conflated before this, which is why a Claude-only pin
 used to reach `codex -m` unchanged and fail there). See *Per-harness namespaces and the tier-map

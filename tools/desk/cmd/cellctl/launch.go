@@ -149,17 +149,17 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	}
 	var argv []string
 	if harness == "codex" {
-		// Preserve the resolved config (including a positional override) for
-		// command-side preflight of other policy routes. A provider endpoint
-		// has no Codex equivalent. Under a policy, its -c overrides
+		// The resolved config (including a positional override) goes to the
+		// command environment only, for command-side preflight of other policy
+		// routes; the Codex process env itself is left as inherited. A provider
+		// endpoint has no Codex equivalent. Under a policy, its -c overrides
 		// (model_provider/model_reasoning_effort/agents.default_subagent_*) are propagated —
 		// effort propagation into the actual launch argv, not just the model name.
 		argv = []string{"codex"}
 		if policyRes != nil {
 			argv = append(argv, policyRes.CodexArgs...)
 		}
-		env = envSet(env, "CLAUDE_CONFIG_DIR", cfg)
-		commandArgs, err := c.codexEnvironmentArgs(env)
+		commandArgs, err := c.codexEnvironmentArgs(envSet(env, "CLAUDE_CONFIG_DIR", cfg))
 		if err != nil {
 			die("desk: %v", err)
 		}

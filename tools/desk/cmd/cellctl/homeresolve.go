@@ -129,46 +129,122 @@ func captureOperatorConfig(e *Env, cellHome, cellConfig string) (string, error) 
 	return p, nil
 }
 
-// cellOwnedConfig reports whether the absolute candidate p is the cell's config
-// link under any spelling, or resolves to a resource inside the cell home. It
-// follows one link at a time, so an alias that points at the cell link is caught
-// on the link node itself (os.SameFile on Lstat) before the link's own target is
-// reached. A candidate that does not exist is not cell-owned here; the house
-// check reports a missing target on its own.
+// cellOwnedConfig reports whether the path p is cell-owned: it reaches
+// a cell's config link, or it lies inside a cell home. The cells are this one
+// and every sibling under the same cells root (<root>/<name>/home). p is walked
+// one path element at a time, the way the OS resolves it (resolvedPrefix), and
+// every node on the way is compared with each config link by identity. A
+// spelling therefore cannot hide the link: an alias, a relative alias, a target
+// ending in a separator or a dot element, or a ".." after a link. Containment is
+// node identity of an ancestor, not a string prefix, so letter case on a
+// case-insensitive filesystem is irrelevant. A candidate that does not exist yet
+// is judged by its existing prefix. A walk that cannot finish (the link budget
+// is spent, or an element cannot be read) counts as cell-owned: no independent
+// expectation is recorded, and the house check refuses.
 func cellOwnedConfig(p, cellHome, cellConfig string) bool {
-	if cellLink, err := os.Lstat(cellConfig); cellConfig != "" && err == nil {
-		for hop, q := 0, p; hop < 40; hop++ {
-			node, err := os.Lstat(q)
-			if err != nil {
-				break
-			}
-			if os.SameFile(node, cellLink) {
-				return true
-			}
-			target, err := os.Readlink(q)
-			if err != nil {
-				break
-			}
-			if !filepath.IsAbs(target) {
-				dir := filepath.Dir(q)
-				if r, err := filepath.EvalSymlinks(dir); err == nil {
-					dir = r
-				}
-				target = filepath.Join(dir, target)
-			}
-			q = target
+	p, err := filepath.Abs(p)
+	if err != nil {
+		return true
+	}
+	homes := []string{cellHome}
+	if cellHome != "" {
+		siblings, _ := filepath.Glob(filepath.Join(filepath.Dir(filepath.Dir(cellHome)), "*", "home"))
+		homes = append(homes, siblings...)
+	}
+	var links, roots []os.FileInfo
+	for _, h := range homes {
+		if fi, err := os.Stat(h); h != "" && err == nil {
+			roots = append(roots, fi)
+		}
+		link := filepath.Join(h, ".config", "assay")
+		if h == cellHome {
+			link = cellConfig
+		}
+		if fi, err := os.Lstat(link); link != "" && err == nil {
+			links = append(links, fi)
 		}
 	}
-	home, err := filepath.EvalSymlinks(cellHome)
-	if cellHome == "" || err != nil {
+	isAny := func(node os.FileInfo, set []os.FileInfo) bool {
+		for _, s := range set {
+			if os.SameFile(node, s) {
+				return true
+			}
+		}
 		return false
 	}
-	resolved, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return false
+	prefix, ok := resolvedPrefix(p, func(node os.FileInfo) bool { return isAny(node, links) })
+	if !ok {
+		return true
 	}
-	rel, err := filepath.Rel(home, resolved)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	for d := prefix; ; d = filepath.Dir(d) {
+		if fi, err := os.Stat(d); err == nil && isAny(fi, roots) {
+			return true
+		}
+		if filepath.Dir(d) == d {
+			return false
+		}
+	}
+}
+
+// maxConfigLinks bounds resolvedPrefix. It is at least the limit any supported
+// OS applies, so a chain the OS still resolves never outruns the walk.
+const maxConfigLinks = 64
+
+// resolvedPrefix resolves the absolute path p element by element, following
+// each link where it is met, as the OS does: a relative link target continues
+// from the link's resolved directory, and ".." applies to the resolved path so
+// far. stop sees every node that exists on the way. It returns the resolved
+// path of the longest existing prefix of p, and ok=false when stop matched, the
+// link budget was spent, or an element could not be read for a reason other
+// than not existing.
+func resolvedPrefix(p string, stop func(os.FileInfo) bool) (string, bool) {
+	vol := filepath.VolumeName(p)
+	dest := vol + string(filepath.Separator)
+	pending := p[len(vol):]
+	for followed := 0; ; {
+		pending = strings.TrimLeftFunc(pending, func(r rune) bool { return r < 0x80 && os.IsPathSeparator(uint8(r)) })
+		if pending == "" {
+			return dest, true
+		}
+		elem := pending
+		if i := strings.IndexFunc(pending, func(r rune) bool { return r < 0x80 && os.IsPathSeparator(uint8(r)) }); i >= 0 {
+			elem, pending = pending[:i], pending[i:]
+		} else {
+			pending = ""
+		}
+		switch elem {
+		case ".":
+			continue
+		case "..":
+			dest = filepath.Dir(dest)
+			continue
+		}
+		next := filepath.Join(dest, elem)
+		node, err := os.Lstat(next)
+		if os.IsNotExist(err) {
+			return dest, true
+		}
+		if err != nil || stop(node) {
+			return "", false
+		}
+		if node.Mode()&os.ModeSymlink == 0 {
+			dest = next
+			continue
+		}
+		if followed++; followed > maxConfigLinks {
+			return "", false
+		}
+		target, err := os.Readlink(next)
+		if err != nil {
+			return "", false
+		}
+		if filepath.IsAbs(target) {
+			vol = filepath.VolumeName(target)
+			dest = vol + string(filepath.Separator)
+			target = target[len(vol):]
+		}
+		pending = target + string(filepath.Separator) + pending
+	}
 }
 
 // ghConfigDirFor matches the GitHub CLI's own documented precedence: $GH_CONFIG_DIR, then
