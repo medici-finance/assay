@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -54,9 +55,9 @@ func TestDispatchRecord_Refusals(t *testing.T) {
 		name string
 		mut  func(*DispatchRecord)
 	}{
-		{"brief v1 id", func(r *DispatchRecord) { r.Brief = strp("windows-port/02") }},
-		{"brief v2 id", func(r *DispatchRecord) { r.Brief = strp("assay:assay:desk-supervision:28") }},
-		{"aliased item", func(r *DispatchRecord) { r.Item = strp("assay:desk-supervision/28") }},
+		{"brief v1 id", func(r *DispatchRecord) { r.Brief = strp("example-stream/02") }},
+		{"brief v2 id", func(r *DispatchRecord) { r.Brief = strp("cell-a:proj:example-stream:28") }},
+		{"aliased item", func(r *DispatchRecord) { r.Item = strp("proj:example-stream/28") }},
 		{"pr item key", func(r *DispatchRecord) { r.Item = strp("assay--pr-2427") }},
 		{"kit review", func(r *DispatchRecord) { r.Kit = strp("review") }},
 		{"kit verifier", func(r *DispatchRecord) { r.Kit = strp("verifier") }},
@@ -217,5 +218,43 @@ func TestAppendDispatchRecordStore(t *testing.T) {
 	}
 	if v, ok := m["pr"]; !ok || v != nil {
 		t.Errorf("a null pr must serialize as JSON null, got %v (present=%v)", v, ok)
+	}
+}
+
+// TestDispatchRecordEveryStringFieldHasAGrammar closes the free-text class for fields added
+// later: every string field of DispatchRecord, found by reflection rather than by a list a new
+// field could be left off, is set in turn to prose and must be refused. A new field missing from
+// the validator's field list, or from checkRecordField's grammar switch, fails here.
+func TestDispatchRecordEveryStringFieldHasAGrammar(t *testing.T) {
+	const prose = "free text, a name and a <b>tag</b>"
+	typ := reflect.TypeOf(DispatchRecord{})
+	n := 0
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		isStr := f.Type.Kind() == reflect.String
+		isPtrStr := f.Type.Kind() == reflect.Pointer && f.Type.Elem().Kind() == reflect.String
+		if !isStr && !isPtrStr {
+			continue
+		}
+		n++
+		t.Run(f.Name, func(t *testing.T) {
+			r := validDispatched()
+			fv := reflect.ValueOf(&r).Elem().Field(i)
+			if isStr {
+				fv.SetString(prose)
+			} else {
+				v := prose
+				fv.Set(reflect.ValueOf(&v))
+			}
+			if err := ValidateDispatchRecord(r); err == nil {
+				t.Fatalf("field %s accepted free text: no grammar holds it", f.Name)
+			}
+		})
+	}
+	if n == 0 {
+		t.Fatal("found no string field in DispatchRecord: the reflection walk is broken")
+	}
+	if !ValidDispatchRecordField("kit", "worker") || ValidDispatchRecordField("no_such_field", "x") {
+		t.Fatal("checkRecordField must accept a known field's value and refuse a field it has no grammar for")
 	}
 }

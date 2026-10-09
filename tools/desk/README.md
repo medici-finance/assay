@@ -6008,7 +6008,8 @@ enforces it: a line whose field is outside its grammar is never written.
 | `model_stamp` | `applied` \| `pending` \| `skipped` |
 
 No space, link, mention, markup, control character or invisible format character fits any of
-these. Two fields are not chosen by the dispatcher. `brief` is copied from the brief file's own
+these. The check fails closed: a string field with no grammar in the validator is refused, so a
+field added later cannot be recorded as free text by omission. Two fields are not chosen by the dispatcher. `brief` is copied from the brief file's own
 `brief:` line, and `session_tag` from `DESK_SESSION` (or the session id). A value outside its
 grammar is dropped: `brief` to null, `session_tag` to `unknown`. A grammar fixes a field's
 shape, not its meaning: a one-word `DESK_SESSION` is still whatever word the operator chose. The

@@ -279,8 +279,12 @@ func checkRecordField(name, v string) error {
 		ok = v == "S" || v == "M" || v == "L"
 	case "model_stamp":
 		ok = v == ModelStampApplied || v == ModelStampPending || v == ModelStampSkipped
+	case "schema", "event", "ts", "claim_key", "dispatch_ref":
+		ok = true // each is held to its own grammar by ValidateDispatchRecord itself
 	default:
-		return nil
+		// Fail closed: a field this switch does not name has no grammar, so it is refused
+		// rather than recorded as whatever text it holds.
+		return fmt.Errorf("%s has no grammar in %s", name, DispatchRecordSchema)
 	}
 	if !ok {
 		return fmt.Errorf("%s %q is outside its grammar or vocabulary", name, v)
