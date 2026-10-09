@@ -27,17 +27,29 @@ counts replace that split, and each row still shows its own status.
 ## The buckets
 
 The first matching row wins. A **recorded blocker** is the brief's latest
-verify-outcome record when its outcome is a fail (`verify-fail`, `fail`) or a
-hold (`blocked`, `needs-context`, `needs_context`) and the Evidence's live
-verdict has not since passed. A live PASS means the fix landed and the brief was
-re-verified, so an older record decides nothing.
+verify-outcome record when either:
+
+- its outcome is a hold (`blocked`, `needs-context`, `needs_context`). A hold
+  is a blocker whatever the Evidence says: a verifier writes a hold beside a
+  PASS on behaviour, and the two do not contradict; or
+- its outcome is a fail (`verify-fail`, `fail`), unless the Evidence's live
+  verdict is PASS and the record is dated before the run that wrote that PASS.
+  Only then did the fix land and the brief get re-verified after the record, so
+  the record decides nothing. A fail dated the same day as the PASS run or later
+  is still a blocker.
+
+The record's day is its `ts` in UTC. The PASS run's day is the newest
+`YYYY-MM-DD` date in the Evidence up to and including the live PASS line, read
+with the same quotation rules as the verdict. A fail beside a live PASS where
+either date is missing is could-not-check: the board cannot tell which came
+first.
 
 | Order | Condition | Bucket | Owner | Next act |
 |---|---|---|---|---|
-| 1 | `gate: human` or `irreversible: yes`, and the Evidence's live verdict is PASS (any emphasis); or `gate: human`, status `verified`, and no live FAIL | Awaiting human gate | driver | close the sign-off card; where no card is raised, `sign off the PASS verdict (no sign-off card is raised for this brief)` |
+| 1 | `gate: human` or `irreversible: yes`, and the Evidence's live verdict is PASS (any emphasis); or `gate: human`, status `verified`, and no live FAIL | Awaiting human gate | driver | close the sign-off card; where no card is raised, `sign off the PASS verdict (no sign-off card is raised for this brief)`; with a recorded blocker, `resolve the recorded blocker before sign-off: <hold or fail> (<kind>), cite <ref>` |
 | 2a | a recorded blocker of kind `implementation` or `check-definition` whose `blocker_ref` names an issue | Awaiting implementer rework | worker | `fix, cite <ref>` |
 | 2b | a recorded blocker of kind `human-action` | Awaiting human gate | driver | `human action, cite <ref>` |
-| 3 | status `verified`, `gate: model`, Reviewed cell empty | Runner-pending | CI auto-flip | none; stuck after one main run → file |
+| 3 | status `verified`, `gate: model`, Reviewed cell empty, no recorded blocker | Runner-pending | CI auto-flip | none; stuck after one main run → file |
 | 4 | an unrun Verify row is `check:cluster`, a billed or live probe, or recorded `could-not-check` with an exact command; or a recorded blocker of kind `environment`; or the brief carries `blocked-by: env` | Environment-blocked | operator | the row's command, verbatim; for a record alone `environment blocker, cite <ref>` |
 | 5 | `gate: model`, at least one unrun row, every unrun row runnable by the offline runner on Linux, no FAIL in the Evidence, no recorded blocker | Runner-pending | verify runner | none |
 | 6 | a judgement row (see below) | Desk-actionable | verify-desk | dispatch one judge |
@@ -46,8 +58,10 @@ re-verified, so an older record decides nothing.
 A blocker owner follows `tools/desk/internal/deskkit/verifywake.go`: an
 `implementation` blocker is the worker's, `check-definition` the brief author's
 (it renders in the worker queue, where the fix is cited), `human-action` the
-human's, and `environment` the operator's. A hold with no kind, an unknown kind,
-or an implementation kind with no issue to cite falls through to rows 6 and 7.
+human's, and `environment` the operator's. A blocker with no kind, an unknown
+kind, or an implementation kind with no issue to cite falls through to the later
+rows: row 4 still takes it when an unrun row needs an environment, rows 3 and 5
+never take a brief with a recorded blocker, and otherwise it lands in row 6 or 7.
 
 The sections render in a fixed order: Awaiting human gate, Awaiting implementer
 rework, Environment-blocked, Runner-pending, Desk-actionable. All five headings
@@ -58,14 +72,16 @@ differently from a missing one.
 
 - **Awaiting human gate: the driver.** Either the model verification passed and
   the driver reads the sign-off card and closes it, or a verifier recorded that
-  the blocker is a human action and cites it. The desk does not dispatch
-  anything. A sign-off card is raised for a verified `gate: human` brief, or for
+  the blocker is a human action and cites it. A human-gated brief with a
+  recorded blocker stays here, and its next act names the blocker to resolve
+  before any sign-off. The desk does not dispatch anything. A sign-off card is raised for a verified `gate: human` brief, or for
   an implemented one whose verdict line is the strict bold `**VERIFY: PASS**`
   with no held row; any other row here says so in its next act.
 - **Awaiting implementer rework: a worker.** A verifier recorded a fail whose
   blocker is the implementation or the check itself, and named the issue that
   carries the fix. The worker fixes it and cites that issue. A brief whose
-  Evidence was re-verified to PASS after the record is not here.
+  Evidence was re-verified to PASS on a later day than a recorded fail is not
+  here; a recorded hold keeps it here whatever the Evidence says.
 - **Environment-blocked: an operator.** A row needs something no offline
   verifier has: a cluster, live credentials, or a billed service, or a verifier
   recorded an environment blocker. The next act is the command to run, or the
@@ -96,7 +112,10 @@ This happens when:
 - the latest record's `outcome` is none of `verified`, `verify-fail`, `fail`,
   `blocked`, `needs-context` or `needs_context`; or
 - the Evidence's last verdict is FAIL but no outcome record names the brief, so
-  the blocker class is unrecorded.
+  the blocker class is unrecorded; or
+- the latest record is a fail and the Evidence's live verdict is PASS, but the
+  record's `ts` or the PASS run's date cannot be read, so the two cannot be
+  ordered.
 
 Could-not-check rows count toward the verification-debt measure with the
 desk-actionable rows, so an unreadable input cannot lower the count and switch
@@ -124,8 +143,15 @@ Each of these is a reversible choice, stated in `statusgen/awaiting_bucket.go`:
   leaves the runner nothing to run) and no recorded blocker or Evidence FAIL. A
   recorded fail or hold means the runner already ran, so running it again is not
   the next act.
-- A recorded hold (`blocked`, `needs-context`) is routed exactly like a recorded
-  fail, by its kind.
+- A recorded hold (`blocked`, `needs-context`) is a blocker whatever the
+  Evidence verdict, routed by its kind. A recorded fail is ordered against a
+  live PASS by day, and a fail on the same day as the PASS run is kept: a day
+  cannot order two events within it, so the record is not dropped.
+- A human-gated brief with a recorded blocker stays in Awaiting human gate, and
+  its next act names the blocker. The alternative is routing it by the
+  blocker's kind, as for a `gate: model` brief.
+- A brief that no outcome record names is could-not-check only when its
+  Evidence's last verdict is FAIL; otherwise it buckets on its other inputs.
 - Row 1 reads the Evidence's live verdict whatever its emphasis. The card is a
   separate, stricter test (see "Who moves each queue"), and the next act says
   which applies.

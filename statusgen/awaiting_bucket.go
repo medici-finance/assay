@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Awaiting-board bucketing: every awaiting (implemented/verified) brief in an
@@ -21,11 +22,12 @@ import (
 //	| Order | Condition                                                  | Bucket              | Owner         | Next act                              |
 //	|-------|------------------------------------------------------------|---------------------|---------------|---------------------------------------|
 //	| 1     | gate human or irreversible yes, live verdict PASS; or a    | human gate          | driver        | close the sign-off card               |
-//	|       | verified gate:human brief with no live FAIL                |                     |               |                                       |
+//	|       | verified gate:human brief with no live FAIL                |                     |               | (a recorded blocker: the blocker)     |
 //	| 2a    | recorded blocker, kind implementation / check-definition,  | implementer rework  | worker        | fix, cite the issue                   |
 //	|       | blocker names an issue                                     |                     |               |                                       |
 //	| 2b    | recorded blocker, kind human-action                        | human gate          | driver        | the human action, cite the ref        |
-//	| 3     | status verified, gate model, Reviewed empty                | runner-pending      | CI auto-flip  | none; stuck after one main run → file |
+//	| 3     | status verified, gate model, Reviewed empty, no recorded   | runner-pending      | CI auto-flip  | none; stuck after one main run → file |
+//	|       | blocker                                                    |                     |               |                                       |
 //	| 4     | an unrun row is check:cluster, a billed probe, or          | environment-blocked | operator      | the exact command, verbatim           |
 //	|       | could-not-check with an exact command; or a recorded       |                     |               | (a record alone: the blocker)         |
 //	|       | blocker of kind environment                                |                     |               |                                       |
@@ -35,9 +37,12 @@ import (
 //	| 7     | otherwise                                                  | desk-actionable     | verify-desk   | triage, then re-bucket                |
 //
 // A "recorded blocker" is the brief's latest verify-outcome record when its
-// outcome is a fail (verify-fail, fail) or a hold (blocked, needs-context),
-// unless the Evidence's live verdict is PASS (the fix landed and the brief was
-// re-verified, so the older record decides nothing).
+// outcome is a hold (blocked, needs-context), whatever the Evidence says, or a
+// fail (verify-fail, fail) unless the Evidence's live verdict is PASS and the
+// record is dated before the PASS run (recordedBlocker). A fail and a live PASS
+// whose dates cannot be read are could-not-check. On row 1 a recorded blocker
+// keeps the brief with the driver and replaces the sign-off act with the
+// blocker; on rows 3 and 5 it stops the runner-pending placement.
 //
 // THREE-STATE. A condition the function cannot read yields bucketCouldNotCheck
 // with the reason in nextAct, never a bucket: an unreadable Evidence section
@@ -57,11 +62,17 @@ import (
 //     blocker_ref names an issue (`#N`, `owner/repo#N`, `alias#N`, or an
 //     `/issues/N` URL), presumed open until a newer outcome record supersedes
 //     it. A ref of "none …" fails the condition.
-//   - A recorded hold (blocked, needs-context) is routed exactly like a recorded
-//     fail: the runner already ran and the record names who owns the next act.
-//     A blocker whose kind is absent, unknown, or implementation/check-definition
-//     without an issue ref falls through to the judgement arm (kind absent or
-//     unknown) or triage.
+//   - A recorded hold (blocked, needs-context) is routed by its kind whatever
+//     the Evidence verdict: a verifier writes a hold beside a PASS and the two
+//     do not contradict. A recorded fail is ordered against a live PASS by day
+//     (record ts in UTC against livePassDate); a fail dated the same day as the
+//     PASS run is kept. A blocker whose kind is absent, unknown, or
+//     implementation/check-definition without an issue ref falls through to the
+//     judgement arm (kind absent or unknown) or triage.
+//   - A gate:human (or irreversible) brief the driver would sign off stays with
+//     the driver when a recorded blocker holds it; the next act names the
+//     blocker instead of the sign-off (heldSignOffAct). Routing it by kind like a
+//     gate:model brief is the alternative.
 //   - Row 5 requires an unrun row (the runner has nothing to run on an
 //     all-settled brief) and no recorded FAIL in the Evidence or the records: a
 //     recorded FAIL or hold means the runner already ran, so re-running is not
@@ -159,6 +170,9 @@ const (
 	// for (irreversible without gate: human, or an unbolded PASS).
 	nextActSignOffNoCard = "sign off the PASS verdict (no sign-off card is raised for this brief)"
 	nextActHumanAction   = "human action, cite "
+	// nextActHeldPrefix leads row 1's act when a recorded blocker holds the
+	// brief: the driver clears the blocker before any sign-off.
+	nextActHeldPrefix = "resolve the recorded blocker before sign-off: "
 	// nextActEnvBlocker leads a prose environment act; nextActCell keeps it out
 	// of a code span (a command renders as one).
 	nextActEnvBlocker  = "environment blocker, cite "
@@ -193,6 +207,9 @@ type awaitOutcome struct {
 	Outcome     string
 	BlockerKind string
 	BlockerRef  string
+	// TS is the record's RFC 3339 timestamp; recordedBlocker orders a fail
+	// record against the Evidence's live PASS by its day.
+	TS string
 }
 
 // awaitOutcomes is the outcome-record input. Unreadable, when non-empty, is the
@@ -248,19 +265,8 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 	}
 	verdict := lastVerifyVerdict(ev.Text)
 
-	// 1. Human gate: the gate is human (or the change is irreversible) AND the
-	// Evidence's live verdict is PASS, whatever the emphasis of the line.
-	if (b.Gate == "human" || b.Irreversible) && verdict == verdictPass {
-		return bucketHumanGate, ownerDriver, signOffAct(b, ev.Text)
-	}
-	// A verified gate:human brief always has its sign-off card raised
-	// (verifyIssues, Path A), so it is the driver's whatever its Evidence says
-	// — unless the Evidence's live verdict is a FAIL.
-	if b.Gate == "human" && b.Status == "verified" && verdict != verdictFail {
-		return bucketHumanGate, ownerDriver, signOffAct(b, ev.Text)
-	}
-
-	// Readability of the outcome records, before any arm reads them.
+	// Readability of the outcome records, before any arm reads them — row 1
+	// included, since a recorded blocker changes row 1's next act.
 	if oc.Unreadable != "" {
 		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel + "verify-outcome records unreadable: " + oc.Unreadable
 	}
@@ -277,16 +283,29 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 			"Evidence's last verdict is FAIL but no verify-outcome record names this brief — the blocker class is unrecorded"
 	}
 
-	// The recorded blocker: the latest record when it is a fail or a hold, and
-	// the Evidence's live verdict has not since passed. A live PASS contradicts
-	// an older record (the fix landed and the brief was re-verified), so the
-	// record decides nothing then.
-	var blocker *awaitOutcome
-	if oc.Latest != nil && verdict != verdictPass {
-		if c := classifyOutcome(oc.Latest.Outcome); c == outcomeFail || c == outcomeHold {
-			blocker = oc.Latest
-		}
+	// The recorded blocker (recordedBlocker): a hold always; a fail unless it is
+	// dated before the live PASS run. A fail beside a live PASS that the two
+	// dates cannot order is could-not-check, never a silent drop.
+	blocker, unordered := recordedBlocker(oc.Latest, verdict, ev.Text)
+	if unordered != "" {
+		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel + unordered
 	}
+
+	// 1. Human gate: the gate is human (or the change is irreversible) AND the
+	// Evidence's live verdict is PASS, whatever the emphasis of the line. A
+	// verified gate:human brief always has its sign-off card raised
+	// (verifyIssues, Path A), so it is the driver's whatever its Evidence says
+	// — unless the Evidence's live verdict is a FAIL. Either way a recorded
+	// blocker keeps the row with the driver but replaces the sign-off act with
+	// the blocker: signing off over a recorded hold is not the next act.
+	if ((b.Gate == "human" || b.Irreversible) && verdict == verdictPass) ||
+		(b.Gate == "human" && b.Status == "verified" && verdict != verdictFail) {
+		if blocker != nil {
+			return bucketHumanGate, ownerDriver, heldSignOffAct(blocker)
+		}
+		return bucketHumanGate, ownerDriver, signOffAct(b, ev.Text)
+	}
+
 	kind := ""
 	ref := ""
 	if blocker != nil {
@@ -303,8 +322,9 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 		return bucketHumanGate, ownerDriver, humanActionAct(blocker.BlockerRef)
 	}
 
-	// 3. A verified gate:model row with an empty Reviewed cell is CI's flip.
-	if b.Status == "verified" && b.Gate == "model" && reviewedEmpty(b.Reviewed) {
+	// 3. A verified gate:model row with an empty Reviewed cell is CI's flip —
+	// unless a recorded blocker holds it, which the later arms route.
+	if b.Status == "verified" && b.Gate == "model" && reviewedEmpty(b.Reviewed) && blocker == nil {
 		return bucketRunnerPending, ownerCIAutoFlip, nextActAutoFlip
 	}
 
@@ -371,6 +391,111 @@ func signOffAct(b awaitBrief, evidence string) string {
 	return nextActSignOffNoCard
 }
 
+// isoDateRe matches a calendar date as Evidence writes it (YYYY-MM-DD).
+var isoDateRe = regexp.MustCompile(`\b(20[0-9]{2}-[01][0-9]-[0-3][0-9])\b`)
+
+// recordedBlocker returns the latest outcome record when it holds the brief:
+//
+//   - a hold (blocked, needs-context) always does. A verifier writes a hold
+//     beside a PASS on behaviour (a row it could not settle, an act only a
+//     human can take); the two do not contradict, so a PASS clears nothing.
+//   - a fail (verify-fail, fail) does unless the Evidence's live verdict is
+//     PASS and the record is dated BEFORE the PASS run (livePassDate): then the
+//     fix landed and the brief was re-verified after the record, and the record
+//     decides nothing. A fail dated the same day as the PASS run or later holds.
+//     When the record's ts or the PASS run's date cannot be read, the two cannot
+//     be ordered, and unordered names that disagreement (could-not-check).
+//
+// Any other outcome holds nothing.
+func recordedBlocker(latest *awaitOutcome, verdict, evidence string) (blocker *awaitOutcome, unordered string) {
+	if latest == nil {
+		return nil, ""
+	}
+	switch classifyOutcome(latest.Outcome) {
+	case outcomeHold:
+		return latest, ""
+	case outcomeFail:
+		if verdict != verdictPass {
+			return latest, ""
+		}
+		passDay := livePassDate(evidence)
+		recDay := recordDate(latest.TS)
+		if passDay == "" || recDay == "" {
+			return nil, fmt.Sprintf("the latest verify-outcome record is a fail (%s) and the Evidence's live verdict is PASS, but the two cannot be ordered (record date %q, PASS run date %q)",
+				strings.ToLower(strings.TrimSpace(latest.Outcome)), recDay, passDay)
+		}
+		if recDay < passDay {
+			return nil, ""
+		}
+		return latest, ""
+	}
+	return nil, ""
+}
+
+// livePassDate is the date of the run that wrote the Evidence's live PASS: the
+// newest YYYY-MM-DD on the lines walkVerdictLines reads, up to and including
+// the line holding the last verdict token, when that token is PASS. "" when the
+// live verdict is not PASS or no date precedes it. Dates written after the PASS
+// line are not read: they may belong to a later note, and a later date would
+// make the PASS look newer than a record it does not supersede. Reading only
+// what precedes the line can make the PASS look older, never newer, so the
+// error keeps a record rather than dropping one.
+func livePassDate(evidence string) string {
+	newest, atVerdict, last := "", "", verdictNone
+	walkVerdictLines(evidence, func(line, v string) {
+		for _, m := range isoDateRe.FindAllStringSubmatch(line, -1) {
+			if validISODate(m[1]) && m[1] > newest {
+				newest = m[1]
+			}
+		}
+		if v != verdictNone {
+			last, atVerdict = v, newest
+		}
+	})
+	if last != verdictPass {
+		return ""
+	}
+	return atVerdict
+}
+
+// validISODate reports whether s is a real calendar date (YYYY-MM-DD).
+func validISODate(s string) bool {
+	_, err := time.Parse("2006-01-02", s)
+	return err == nil
+}
+
+// recordDate is the UTC calendar day of a verify-outcome record's ts, or ""
+// when the ts is not RFC 3339.
+func recordDate(ts string) string {
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(ts))
+	if err != nil {
+		return ""
+	}
+	return t.UTC().Format("2006-01-02")
+}
+
+// heldSignOffAct is row 1's act when a recorded blocker holds a brief the
+// driver would otherwise sign off: the blocker, with its kind and ref, in
+// place of the sign-off. The kind is echoed only from the recognised set, so
+// record text reaches the cell through the ref alone (as the other acts).
+func heldSignOffAct(blocker *awaitOutcome) string {
+	kind := strings.ToLower(strings.TrimSpace(blocker.BlockerKind))
+	switch kind {
+	case "implementation", "check-definition", "human-action", "environment":
+	default:
+		kind = "no recognised kind"
+	}
+	outcome := "fail"
+	if classifyOutcome(blocker.Outcome) == outcomeHold {
+		outcome = "hold"
+	}
+	ref := blockerRefText(blocker.BlockerRef)
+	if ref == noBlockerRef {
+		return fmt.Sprintf("%s%s (%s), %s", nextActHeldPrefix, outcome, kind, ref)
+	}
+	return fmt.Sprintf("%s%s (%s), cite %s", nextActHeldPrefix, outcome, kind, ref)
+}
+
 // humanActionAct is the next act of a recorded human-action blocker.
 func humanActionAct(ref string) string {
 	return nextActHumanAction + blockerRefText(ref)
@@ -388,8 +513,11 @@ func blockerRefText(ref string) string {
 	if r := strings.TrimSpace(ref); r != "" && !strings.EqualFold(r, "none") {
 		return r
 	}
-	return "no blocker ref recorded"
+	return noBlockerRef
 }
+
+// noBlockerRef is blockerRefText's text for a record with no blocker ref.
+const noBlockerRef = "no blocker ref recorded"
 
 // outcomeClass is the meaning of a verify-outcome record's `outcome` value.
 type outcomeClass int
@@ -632,7 +760,7 @@ func loadAwaitOutcomeIndex(root string) awaitOutcomeIndex {
 		if jerr := json.Unmarshal(rec.Raw, &o); jerr != nil {
 			return awaitOutcomeIndex{unreadable: fmt.Sprintf("verify-outcome record %s: %v", rec.Source, jerr)}
 		}
-		idx.latest[key] = awaitOutcome{Outcome: o.Outcome, BlockerKind: o.BlockerKind, BlockerRef: o.BlockerRef}
+		idx.latest[key] = awaitOutcome{Outcome: o.Outcome, BlockerKind: o.BlockerKind, BlockerRef: o.BlockerRef, TS: rec.TS}
 	}
 	return idx
 }

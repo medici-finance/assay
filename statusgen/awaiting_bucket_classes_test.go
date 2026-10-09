@@ -45,39 +45,130 @@ func TestBucketAwaitingBlockerKindRouting(t *testing.T) {
 	}
 }
 
-// TestBucketAwaitingLivePassSupersedesRecord: a fail or hold record is older
-// than a live PASS verdict (the fix landed and the brief was re-verified); the
-// record decides nothing then.
-func TestBucketAwaitingLivePassSupersedesRecord(t *testing.T) {
+// TestAwaitRecordOrdering: a fail record decides nothing only when it is dated
+// BEFORE the run that wrote the live PASS; a fail dated the same day or later
+// holds the brief, a hold record always does, and a fail beside a live PASS
+// whose dates cannot be read is could-not-check.
+func TestAwaitRecordOrdering(t *testing.T) {
 	rows := awaitRowsOf(bucketVerifySection("check:ci|`go test ./...`|exit 0"))
-	pass := awaitEvidence{Text: settledCI + "\n**VERIFY: PASS** — 2026-10-02\n"}
-	for _, outcome := range []string{"verify-fail", "blocked"} {
-		oc := awaitOutcomes{Latest: &awaitOutcome{Outcome: outcome, BlockerKind: "implementation", BlockerRef: "#41"}}
-		t.Run("gate human "+outcome, func(t *testing.T) {
-			got, owner, _ := bucketAwaiting(awaitBrief{Status: "implemented", Gate: "human"}, rows, pass, oc)
-			if got != bucketHumanGate || owner != ownerDriver {
-				t.Errorf("bucket %v owner %q, want the driver's human gate (stale %s record must not route to rework)", got, owner, outcome)
+	// The PASS run is dated on the heading above the verdict line, as Evidence
+	// usually writes it. settledCI's row is dated 2026-10-01; the run, 10-02.
+	settledPass := awaitEvidence{Text: settledCI + "\n### Re-verify 2026-10-02\n\n**VERIFY: PASS**\n"}
+	// The same PASS with Verify row 1 left unrun (no Evidence row).
+	unrunPass := awaitEvidence{Text: "### Re-verify 2026-10-02\n\n**VERIFY: PASS**\n"}
+	rec := func(outcome, kind, ts string) awaitOutcomes {
+		return awaitOutcomes{Latest: &awaitOutcome{Outcome: outcome, BlockerKind: kind, BlockerRef: "#41", TS: ts}}
+	}
+	const before, sameDay, after = "2026-09-27T10:00:00Z", "2026-10-02T23:00:00Z", "2026-10-05T08:00:00Z"
+	humanImpl := awaitBrief{Status: "implemented", Gate: "human"}
+	modelImpl := awaitBrief{Status: "implemented", Gate: "model"}
+	modelVer := awaitBrief{Status: "verified", Gate: "model", Reviewed: "—"}
+	irrev := awaitBrief{Status: "implemented", Gate: "model", Irreversible: true}
+
+	t.Run("fail dated before the PASS run is superseded", func(t *testing.T) {
+		for _, outcome := range []string{"verify-fail", "fail"} {
+			oc := rec(outcome, "implementation", before)
+			if got, owner, next := bucketAwaiting(humanImpl, rows, settledPass, oc); got != bucketHumanGate || owner != ownerDriver || next != nextActCloseCard {
+				t.Errorf("%s gate human: %v %q (%s), want the driver's sign-off", outcome, got, owner, next)
 			}
-		})
-		t.Run("gate model verified "+outcome, func(t *testing.T) {
-			got, _, _ := bucketAwaiting(awaitBrief{Status: "verified", Gate: "model", Reviewed: "—"}, rows, pass, oc)
-			if got != bucketRunnerPending {
-				t.Errorf("bucket %v, want runner-pending (CI's flip)", got)
+			if got, _, _ := bucketAwaiting(modelVer, rows, settledPass, oc); got != bucketRunnerPending {
+				t.Errorf("%s gate model verified: %v, want runner-pending (CI's flip)", outcome, got)
 			}
-		})
-		t.Run("irreversible "+outcome, func(t *testing.T) {
-			got, _, _ := bucketAwaiting(awaitBrief{Status: "implemented", Gate: "model", Irreversible: true}, rows, pass, oc)
-			if got != bucketHumanGate {
-				t.Errorf("bucket %v, want human gate", got)
+			if got, _, _ := bucketAwaiting(irrev, rows, settledPass, oc); got != bucketHumanGate {
+				t.Errorf("%s irreversible: %v, want human gate", outcome, got)
+			}
+			if got, _, _ := bucketAwaiting(modelImpl, rows, unrunPass, oc); got != bucketRunnerPending {
+				t.Errorf("%s gate model, a row unrun: %v, want runner-pending", outcome, got)
+			}
+		}
+	})
+
+	// Not older than the PASS run (same day or after), or a hold of any date:
+	// the record decides.
+	type held struct{ name, outcome, ts string }
+	var holding []held
+	for _, ts := range []string{sameDay, after} {
+		holding = append(holding, held{"verify-fail " + ts, "verify-fail", ts}, held{"fail " + ts, "fail", ts})
+	}
+	for _, ts := range []string{before, sameDay, after, ""} {
+		holding = append(holding, held{"blocked " + ts, "blocked", ts}, held{"needs-context " + ts, "needs-context", ts})
+	}
+	for _, h := range holding {
+		t.Run(h.name, func(t *testing.T) {
+			kinds := map[string]awaitingBucket{
+				"implementation":   bucketRework,
+				"check-definition": bucketRework,
+				"human-action":     bucketHumanGate,
+				"environment":      bucketEnvBlocked,
+				"unknown":          bucketDeskActionable,
+			}
+			for kind, want := range kinds {
+				oc := rec(h.outcome, kind, h.ts)
+				// C1's fixture: gate model, one row unrun.
+				if got, _, next := bucketAwaiting(modelImpl, rows, unrunPass, oc); got != want {
+					t.Errorf("gate model, a row unrun, %s: %v (%s), want %v", kind, got, next, want)
+				}
+				// All rows settled.
+				if got, _, next := bucketAwaiting(modelImpl, rows, settledPass, oc); got != want {
+					t.Errorf("gate model, settled, %s: %v (%s), want %v", kind, got, next, want)
+				}
+				// Verified, Reviewed empty: not CI's flip while a record holds it.
+				if got, _, next := bucketAwaiting(modelVer, rows, settledPass, oc); got == bucketRunnerPending {
+					t.Errorf("gate model verified, %s: runner-pending (%s) over a recorded blocker", kind, next)
+				}
+				// Gate human: the driver's, and the act names the blocker.
+				got, owner, next := bucketAwaiting(humanImpl, rows, settledPass, oc)
+				if got != bucketHumanGate || owner != ownerDriver || !strings.HasPrefix(next, nextActHeldPrefix) || !strings.Contains(next, "#41") {
+					t.Errorf("gate human, %s: %v %q (%s), want the driver naming the recorded blocker", kind, got, owner, next)
+				}
 			}
 		})
 	}
+
+	t.Run("a fail beside a live PASS that cannot be ordered is could-not-check", func(t *testing.T) {
+		undated := awaitEvidence{Text: "**VERIFY: PASS**\n"}
+		for name, c := range map[string]struct {
+			ev awaitEvidence
+			ts string
+		}{
+			"PASS run undated": {undated, sameDay},
+			"record ts absent": {settledPass, ""},
+			"record ts bad":    {settledPass, "2026-10-02"},
+		} {
+			for _, b := range []awaitBrief{humanImpl, modelImpl, modelVer} {
+				got, _, next := bucketAwaiting(b, rows, c.ev, rec("verify-fail", "implementation", c.ts))
+				if got != bucketCouldNotCheck || !strings.Contains(next, "cannot be ordered") {
+					t.Errorf("%s / %+v: %v (%s), want could-not-check naming the ordering", name, b, got, next)
+				}
+			}
+		}
+	})
+
 	// A FAIL written AFTER the PASS wins: the record routes again.
 	failAfter := awaitEvidence{Text: "**VERIFY: PASS** — 2026-10-01\n\n**VERIFY: FAIL** — 2026-10-03\n"}
-	got, _, _ := bucketAwaiting(awaitBrief{Status: "implemented", Gate: "model"}, rows, failAfter,
-		awaitOutcomes{Latest: &awaitOutcome{Outcome: "verify-fail", BlockerKind: "implementation", BlockerRef: "#41"}})
-	if got != bucketRework {
+	if got, _, _ := bucketAwaiting(modelImpl, rows, failAfter, rec("verify-fail", "implementation", "")); got != bucketRework {
 		t.Errorf("PASS then FAIL = %v, want implementer rework", got)
+	}
+}
+
+// TestLivePassDate: the PASS run's date is the newest date read up to the
+// live PASS line, under lastVerifyVerdict's quotation rules.
+func TestLivePassDate(t *testing.T) {
+	for name, c := range map[string]struct{ ev, want string }{
+		"date on the line":        {"**VERIFY: PASS** — 2026-10-02\n", "2026-10-02"},
+		"date on a heading above": {"### Re-verify 2026-10-01\n| 1 | x | 0 | ok | 2026-09-30 | v |\nVERIFY: PASS\n", "2026-10-01"},
+		"newest wins":             {"FAIL run 2026-09-27\nVERIFY: FAIL\n### 2026-10-07 re-verify\nVERIFY: PASS\n", "2026-10-07"},
+		"later note not read":     {"### 2026-10-02\nVERIFY: PASS\nhold noted 2026-10-09\n", "2026-10-02"},
+		"no date":                 {"VERIFY: PASS\n", ""},
+		"live verdict FAIL":       {"2026-10-02 VERIFY: PASS\n2026-10-03 VERIFY: FAIL\n", ""},
+		"fenced date ignored":     {"```\n2026-12-01\n```\n2026-10-02\nVERIFY: PASS\n", "2026-10-02"},
+		"quoted date ignored":     {"> 2026-12-01\n2026-10-02 VERIFY: PASS\n", "2026-10-02"},
+		"struck date ignored":     {"~~2026-12-01~~ 2026-10-02 VERIFY: PASS\n", "2026-10-02"},
+		"not a calendar date":     {"2026-19-40 VERIFY: PASS\n", ""},
+	} {
+		if got := livePassDate(c.ev); got != c.want {
+			t.Errorf("%s: livePassDate = %q, want %q", name, got, c.want)
+		}
 	}
 }
 
