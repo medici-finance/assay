@@ -16,6 +16,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -812,6 +813,153 @@ func TestExampleSweepMatchesReadme(t *testing.T) {
 	}
 	if strip(block) != strip(string(fixture)) {
 		t.Fatalf("the README example and the tested fixture differ:\n--- README\n%s\n--- fixture\n%s", block, fixture)
+	}
+}
+
+// ocListedBody names a word on ocExampleWords; ocCleanBody names none.
+const ocListedBody = "the rollout notes mention example-other-word twice"
+
+// TestExampleCallerPathCannotDecide — the callout is handed the CALLING process's PATH value,
+// so the example must not use it to find its tools. With that PATH emptied, or led by a
+// substitute `grep` that reports "no match", a write naming a listed word is still refused
+// with zero forge calls.
+func TestExampleCallerPathCannotDecide(t *testing.T) {
+	path, _ := ocExampleSweep(t)
+	ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+	fake := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fake, "grep"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, callerPath := range map[string]string{
+		"no tools on the caller's PATH":       t.TempDir(),
+		"a substitute grep first on the PATH": fake + string(os.PathListSeparator) + os.Getenv("PATH"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("PATH", callerPath)
+			ocStderr(t)
+			calls, err := ocFileIssue(obPublic, ocListedBody)
+			if err == nil || !strings.Contains(err.Error(), RuleHouseCallout) || calls != 0 {
+				t.Fatalf("the caller's PATH decided the example's answer: a listed word reached the forge: calls=%d err=%v", calls, err)
+			}
+		})
+	}
+}
+
+// ocExampleTools installs the example with its own PATH line pointed at a directory holding
+// exactly the given tools (name → script body), so a test can take each tool away or make
+// it fail. The fixture must fix its own PATH: a fixture without that line fails here.
+func ocExampleTools(t *testing.T, tools map[string]string) string {
+	t.Helper()
+	path, dir := ocExampleSweep(t)
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const own = "\nPATH=/usr/bin:/bin\n"
+	if strings.Count(string(src), own) != 1 {
+		t.Fatalf("the example does not set its own PATH (want one line %q)", strings.TrimSpace(own))
+	}
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range tools {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := strings.Replace(string(src), own, "\nPATH="+bin+"\n", 1)
+	if err := os.WriteFile(path, []byte(out), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestExampleToolFailureBlocks — the example answers `allow` only when its match ran and found
+// nothing. With any of its tools missing, failing or killed at any step, a CLEAN write (one a
+// working example allows) is refused with zero forge calls. The control row, every tool
+// present and working, allows the same write, so a refusal below is the failure's doing.
+func TestExampleToolFailureBlocks(t *testing.T) {
+	grep, err1 := exec.LookPath("grep")
+	sed, err2 := exec.LookPath("sed")
+	if err1 != nil || err2 != nil {
+		t.Skip("no grep or sed on this test machine's PATH")
+	}
+	realGrep, realSed := `exec "`+grep+`" "$@"`, `exec "`+sed+`" "$@"`
+	// failOn makes grep fail (status 2), or be killed, only for the call carrying flag.
+	failOn := func(flag, how string) string {
+		return `case " $* " in *" ` + flag + ` "*) ` + how + ` ;; esac; ` + realGrep
+	}
+	for _, c := range []struct {
+		name  string
+		tools map[string]string
+		allow bool
+	}{
+		{"control: every tool works", map[string]string{"grep": realGrep, "sed": realSed}, true},
+		{"no tools at all", map[string]string{}, false},
+		{"sed missing", map[string]string{"grep": realGrep}, false},
+		{"sed fails", map[string]string{"grep": realGrep, "sed": "exit 2"}, false},
+		{"the list check fails", map[string]string{"grep": failOn("-q", "exit 2"), "sed": realSed}, false},
+		{"the extract fails", map[string]string{"grep": failOn("-oE", "exit 2"), "sed": realSed}, false},
+		{"the match fails", map[string]string{"grep": failOn("-qiF", "exit 2"), "sed": realSed}, false},
+		{"the match is killed", map[string]string{"grep": failOn("-qiF", "kill -9 $$"), "sed": realSed}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path := ocExampleTools(t, c.tools)
+			ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+			ocStderr(t)
+			calls, err := ocFileIssue(obPublic, ocCleanBody)
+			if c.allow {
+				if err != nil || calls != 1 {
+					t.Fatalf("with every tool working the example refused a clean write: calls=%d err=%v", calls, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), RuleHouseCallout) || calls != 0 {
+				t.Fatalf("the example's match could not run, yet the write reached the forge: calls=%d err=%v", calls, err)
+			}
+		})
+	}
+}
+
+// TestCalloutAllowShowsStderr — an `allow` that comes with a diagnostic on the callout's
+// stderr prints that diagnostic to stderr (one line), so a callout whose own tools failed is
+// not silent; the write goes through and the diagnostic reaches no audit row.
+func TestCalloutAllowShowsStderr(t *testing.T) {
+	path, _ := ocSay(t, "allow\n", ocDiagnostic+"\nsecond line\n", 0)
+	audit := ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+	stderr := ocStderr(t)
+	calls, err := ocFileIssue(obPublic, ocCleanBody)
+	if err != nil || calls != 1 {
+		t.Fatalf("an allow did not let the write through: calls=%d err=%v", calls, err)
+	}
+	if want := "house callout stderr: " + ocDiagnostic + " second line\n"; !strings.Contains(stderr.String(), want) {
+		t.Fatalf("the diagnostic beside an allow is not on stderr as one line %q:\n%s", want, stderr)
+	}
+	if a := ocAuditText(t, audit); strings.Contains(a, ocDiagnostic) {
+		t.Fatalf("the diagnostic reached the audit log:\n%s", a)
+	}
+}
+
+// TestCalloutReasonClipped — what the callout prints reaches the terminal as ONE line (a
+// second line could pose as another tool's output) and bounded in length.
+func TestCalloutReasonClipped(t *testing.T) {
+	long := strings.Repeat("x", maxCalloutReasonRunes+50)
+	for _, c := range []struct{ name, answer, want string }{
+		{"two lines", "block first-part\nsecond-part\n", "refused: " + RuleHouseCallout + " at (write) — first-part second-part\n"},
+		{"over-long", "block " + long + "\n", "refused: " + RuleHouseCallout + " at (write) — " + long[:maxCalloutReasonRunes] + "…\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			path, _ := ocSay(t, c.answer, "", 0)
+			ocConfigure(t, map[string]string{EnvOutboundCallout: path})
+			stderr := ocStderr(t)
+			if calls, err := ocFileIssue(obPublic, ocCleanBody); err == nil || calls != 0 {
+				t.Fatalf("a block let the write through: calls=%d err=%v", calls, err)
+			}
+			if got := stderr.String(); got != c.want {
+				t.Fatalf("stderr = %q, want exactly %q", got, c.want)
+			}
+		})
 	}
 }
 

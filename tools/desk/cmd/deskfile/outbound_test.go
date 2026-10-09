@@ -128,6 +128,13 @@ func TestHouseCalloutBlocksIssueFiling(t *testing.T) {
 	if strings.Contains(out, "example-house-rule") {
 		t.Fatalf("the reason reached the verb's own output (which verbs also log):\n%s", out)
 	}
+	audit, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".config", "assay", "audit.jsonl"))
+	if !strings.Contains(string(audit), `"result":"refused"`) {
+		t.Fatalf("the verb wrote no refused audit row:\n%s", audit)
+	}
+	if strings.Contains(string(audit), "example-house-rule") {
+		t.Fatalf("the reason reached the audit log:\n%s", audit)
+	}
 
 	rc, out = runCapture(append(args, "--"+deskkit.ScanOverrideFlag, "the operator believes this is fine"))
 	if curForge.filed != nil || rc != deskkit.ExitRefused {

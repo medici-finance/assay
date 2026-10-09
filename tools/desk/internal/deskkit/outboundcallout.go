@@ -299,6 +299,11 @@ func outboundHouseCheck(w OutboundWrite) error {
 		return houseRefuse(w, field, digest, "broken", "the house callout printed nothing — it must print "+
 			"`allow` or `block <reason>`", said)
 	case "allow":
+		// An allow can still come with a diagnostic — a tool its matcher could not find, say.
+		// Its owner sees it on stderr (the same one line a refusal prints); nothing is logged.
+		if diag := clipForTerminal(res.Stderr, maxCalloutReasonRunes); diag != "" {
+			fmt.Fprintf(outboundWriter(), "house callout stderr: %s\n", diag)
+		}
 		return nil
 	case "block":
 		said.Reason = rest
