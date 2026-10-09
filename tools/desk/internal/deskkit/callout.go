@@ -79,10 +79,11 @@ type CalloutResult struct {
 //
 // It returns an ERROR — never a partial answer — for every way the question can go
 // unanswered: the path is not absolute, the file is missing, it is not a regular
-// file, it is not executable, it is writable by group or world, it cannot be
-// spawned, it exits non-zero, or it exceeds the timeout. A caller's fail-closed
-// rule keys on `err != nil` alone, so there is no failure mode a caller can forget
-// to enumerate.
+// file, it is not executable, it or a directory holding it (or holding any link
+// on the way to it) is writable by group or world, it cannot be spawned, it exits
+// non-zero, or it exceeds the timeout. A caller's fail-closed rule keys on
+// `err != nil` alone, so there is no failure mode a caller can forget to
+// enumerate.
 //
 // THE WRITABILITY CHECK is the sshd rule applied to an executable, and it is here
 // rather than at load time on purpose: a file's mode can change between the run
@@ -152,29 +153,117 @@ func (c Callout) Run(stdin string, args ...string) (CalloutResult, error) {
 	return res, nil
 }
 
+// maxCalloutLinkHops bounds how many symbolic links calloutLinkDirs follows before
+// refusing — the same order of limit the kernel applies before it reports a loop.
+const maxCalloutLinkHops = 40
+
 // calloutExecutable enforces what must be true of the file at INVOCATION time.
+//
+// It is the ONE place a callout's file and directory checks are made; every
+// callout runner in this package calls it rather than stat-ing the path itself.
+//
+// THE CHECKS ARE MADE AGAINST THE RESOLVED PATH. The configured path may be a
+// symbolic link (a package manager's bin directory is the common case), and what
+// actually runs is the file the link resolves to. So the path is resolved ONCE,
+// and the file checks (type, executable, not group/world-writable) and the
+// directory check are all made against that resolved file and the directory that
+// really holds it. The directory check is ALSO still made against the directory
+// holding the configured name, and against the directory holding every
+// intermediate link: each of those names, if replaceable, chooses what runs just as
+// surely as the target itself. Resolving only ever ADDS directories to check; no
+// check the configured path used to get is dropped.
 func calloutExecutable(path string) error {
-	fi, err := os.Stat(path)
+	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return fmt.Errorf("callout %q cannot be read: %w", path, err)
 	}
+	// Lstat, not Stat: resolved has no links left in it, so a link found here was
+	// swapped in after resolution and is refused as not a regular file.
+	fi, err := os.Lstat(resolved)
+	if err != nil {
+		return fmt.Errorf("callout %q cannot be read: %w", path, err)
+	}
+	name := fmt.Sprintf("%q", path)
+	if resolved != path {
+		name = fmt.Sprintf("%q (resolved to %q)", path, resolved)
+	}
 	if fi.IsDir() {
-		return fmt.Errorf("callout %q is a directory", path)
+		return fmt.Errorf("callout %s is a directory", name)
 	}
 	if !fi.Mode().IsRegular() {
-		return fmt.Errorf("callout %q is not a regular file", path)
+		return fmt.Errorf("callout %s is not a regular file", name)
 	}
 	if fi.Mode().Perm()&0o111 == 0 {
-		return fmt.Errorf("callout %q is not executable (mode %04o)", path, fi.Mode().Perm())
+		return fmt.Errorf("callout %s is not executable (mode %04o)", name, fi.Mode().Perm())
 	}
 	if m := fi.Mode().Perm(); m&0o022 != 0 {
-		return fmt.Errorf("callout %q is group- or world-writable (mode %04o): anything that can "+
-			"write it chooses what this gate decides. Fix with `chmod 0755 %s`", path, m, path)
+		return fmt.Errorf("callout %s is group- or world-writable (mode %04o): anything that can "+
+			"write it chooses what this gate decides. Fix with `chmod 0755 %s`", name, m, resolved)
 	}
-	if err := calloutDirNotWritable(filepath.Dir(path)); err != nil {
-		return err
+	dirs, err := calloutLinkDirs(path)
+	if err != nil {
+		return fmt.Errorf("callout %q cannot be read: %w", path, err)
+	}
+	dirs = append(dirs, filepath.Dir(resolved))
+	seen := make(map[string]bool, len(dirs))
+	for _, dir := range dirs {
+		if seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		if err := calloutDirNotWritable(dir); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// calloutLinkDirs follows path one symbolic link at a time and returns the
+// directory holding each name along the way: the configured name first, then each
+// link target in turn, ending with the final non-link file.
+//
+// Each directory is returned as the raw prefix of the name it holds, not as a
+// lexically cleaned path: os.Stat on that prefix then resolves it exactly as the
+// kernel resolved the link (a ".." after a linked directory component is taken
+// physically, not textually), so the directory checked is the one that really
+// holds the name.
+func calloutLinkDirs(path string) ([]string, error) {
+	var dirs []string
+	cur := path
+	for hops := 0; ; hops++ {
+		dirs = append(dirs, calloutParent(cur))
+		fi, err := os.Lstat(cur)
+		if err != nil {
+			return nil, err
+		}
+		if fi.Mode()&fs.ModeSymlink == 0 {
+			return dirs, nil
+		}
+		if hops >= maxCalloutLinkHops {
+			return nil, fmt.Errorf("more than %d symbolic links", maxCalloutLinkHops)
+		}
+		target, err := os.Readlink(cur)
+		if err != nil {
+			return nil, err
+		}
+		if !filepath.IsAbs(target) {
+			target = calloutParent(cur) + string(filepath.Separator) + target
+		}
+		cur = target
+	}
+}
+
+// calloutParent returns everything before the last path separator of p, without
+// cleaning it — see calloutLinkDirs for why the raw prefix is the right one.
+func calloutParent(p string) string {
+	i := strings.LastIndexAny(p, `/`+string(filepath.Separator))
+	if i < 0 {
+		return "."
+	}
+	if i <= len(filepath.VolumeName(p)) {
+		return p[:i+1] // the root itself: "/" or a volume's root
+	}
+	return p[:i]
 }
 
 // calloutDirNotWritable refuses a callout whose own DIRECTORY is group- or
