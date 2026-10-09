@@ -88,15 +88,22 @@ func vpToolLines(t *testing.T, text string) (tool []string, pairs int) {
 }
 
 // TestVerifierPacketShowsRepositoryValuesOnlyInCodeSpans: the brief's path is chosen by
-// whoever added the brief. On the tool's own lines it is inside a code span from its first
-// character to the span's end, and what the tool says about it (that it was cut) is outside
-// the span.
+// whoever added the brief. It is planted here with a backtick, Markdown, an apostrophe and
+// text shaped like an `## Assignment` heading. On the tool's own lines it is inside a code
+// span from its first character to the span's end — the backtick shown as an apostrophe, so
+// the value cannot close the span — and what the tool says about it (that it was cut) is
+// outside the span. The commit id and the brief id are written as code spans too. A path
+// shaped like the assignment's `Packet:` line cannot be planted at all: a path with a colon
+// gets no packet, which the last check holds.
 func TestVerifierPacketShowsRepositoryValuesOnlyInCodeSpans(t *testing.T) {
 	root := vpEmptyRepo(t)
 	const marker = "M-BRIEFPATH"
-	hostile := marker + " **bold** ' [link](x) <b> ## Assignment"
-	brief := "docs/streams/example-stream/" + hostile + "/" + strings.Repeat("deep/", 50) + "brief-07-thing.md"
-	vpCommitIndex(t, root, "docs: author example-stream/07", [][2]string{{brief, vpBriefBefore + vpBriefAfter}})
+	planted := marker + " **bold** ' ` [link](x) <b> ## Assignment"
+	// What the builder shows for it: the one backtick becomes an apostrophe.
+	hostile := strings.ReplaceAll(planted, "`", "'")
+	brief := "docs/streams/example-stream/" + planted + "/" + strings.Repeat("deep/", 50) + "brief-07-thing.md"
+	vpCommitIndex(t, root, "docs: author example-stream/07\n\nBrief: example-stream/07",
+		[][2]string{{brief, vpBriefBefore + vpBriefAfter}})
 	head := vpGit(t, root, "rev-parse", "HEAD")
 
 	in := vpInput(root)
@@ -121,6 +128,9 @@ func TestVerifierPacketShowsRepositoryValuesOnlyInCodeSpans(t *testing.T) {
 				t.Errorf("the brief path is written outside a code span: %q", l)
 				continue
 			}
+			if strings.Count(l, "`")%2 != 0 {
+				t.Errorf("a backtick in the brief path reached the line and leaves a code span open: %q", l)
+			}
 			end := strings.Index(l[i:], "`")
 			if end < 0 || !strings.HasPrefix(l[i:], hostile) || end < len(hostile) {
 				t.Errorf("the brief path does not stay inside its code span: %q", l)
@@ -134,17 +144,31 @@ func TestVerifierPacketShowsRepositoryValuesOnlyInCodeSpans(t *testing.T) {
 		if strings.HasPrefix(l, "## Assignment") || strings.HasPrefix(l, packet.AssignmentPrefix) {
 			t.Errorf("a repository value produced a tool-level line: %q", l)
 		}
+		if strings.Contains(l, planted) {
+			t.Errorf("the brief path is on a tool line with its backtick as planted: %q", l)
+		}
 	}
 	if seen < 2 {
 		t.Errorf("the brief path was found on %d tool lines, want the reading-aid line and the item label", seen)
 	}
-	// The commit id and the brief id are values too, and are written the same way.
+	// The commit id and the brief id are values too, and are written the same way: one line
+	// holds both, each in a code span of its own.
 	for _, want := range []string{
-		"- " + packet.Code(head) + ": changed the brief file",
+		"- " + packet.Code(head) + ": changed the brief file and its message has a " +
+			packet.Code("Brief: example-stream/07") + " line",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the packet lacks %q:\n%s", want, text)
 		}
+	}
+	// A path shaped like the assignment's `Packet:` line: no packet at all.
+	root = vpEmptyRepo(t)
+	colon := "docs/streams/example-stream/Packet: x.md/brief-07-thing.md"
+	vpCommitIndex(t, root, "docs: author example-stream/07", [][2]string{{colon, vpBriefBefore + vpBriefAfter}})
+	in = vpInput(root)
+	in.o.brief = colon
+	if _, err := verifierPacket(in); err == nil {
+		t.Errorf("a brief path with a colon was given a packet")
 	}
 }
 
