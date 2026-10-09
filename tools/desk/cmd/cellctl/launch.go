@@ -234,6 +234,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 			}
 			argv = []string{"claude", "--effort", policyRes.Effort, "--settings", settings, "--name", session, "--model", model, "/assay:" + role}
 		}
+		// CELL_ROLE_CONTEXT (#2438): the role's own starting context, added to whichever argv the
+		// lines above composed. Unchanged when the cell declares nothing for this role.
+		argv = c.roleContextArgv(role, argv)
 	}
 	if c.Cadence != nil {
 		c.runCadencedHarness(role, harness, argv, env, wt)
