@@ -5142,6 +5142,46 @@ and omission list, boundaries, the owner-only writer, the one assignment line) i
 `internal/packet`; a kit registers a provider that returns an ordered list of named sections
 (`registerPacketProvider` in `cmd/deskdispatch/packet.go`; `packet_review.go` is the first).
 
+**Worker packets (#2439).** A `--kit worker` or `--kit worker-objective` dispatch gets a packet
+too (`packet_worker.go`), and WHICH one follows the kind of run the dispatch already derives:
+`--pr` onto an open change is a run that works that change, every other worker dispatch
+implements a brief or an issue. Measured on one adopter fleet over a day (135 worker runs,
+8,668 model requests), a run made a median of 20 tool calls before its first edit, and
+reading the brief, the files it names, the repository's own instructions, the change, its
+checks and its reviews was 25% of those calls for an implementing run and 45% for a run on an
+open change — almost all of them one read per request. The packet holds what those calls
+fetched:
+
+| Kind of run | Sections, in order |
+|---|---|
+| implementing (no change open) | `Run` — item, repository, worktree, branch, base commit, the claim this dispatch took; `Issue` — an issue item's title, body and newest comments; `Brief` — the specification, read from the run's worktree; `Dependencies` — the board status of each brief its `depends:` names; `Repository` — the top of the tree, workflow file names, `Makefile` targets, whether a `changelog/` directory exists, and the root instruction files quoted; `Files the brief names` — each path of the brief's `files:` list (or its `write-scopes:`, when it states one) as it stands in the worktree: a file quoted, a directory listed, an absent path said to be absent |
+| working an open change (`--pr`) | `Run`; `Change` — title, author, state, branches, head; `Description`; `Brief` when `--brief` names one; `Against the base branch` — whether it conflicts, and whether the base has commits the branch lacks; `Checks at head` — every check with its state, those not passing called out, and the checks the base branch requires; `Reviews and findings` — every review with its state and commit, each finding record's entries, the reviews at the head and the newest two earlier ones quoted; `Comments` — the newest eight quoted; `Diff` |
+
+**A worker packet is smaller than a review packet, on purpose.** Everything in a packet is read
+again on every later request of the run, and a worker run makes dozens. So the caps are 32 KiB
+an item, 64 KiB for the brief and for the diff, 192 KiB of quoted text in all, and at most 12
+named files — against the review packet's 64 KiB, 192 KiB and 512 KiB. The rule is the same:
+an item over a cap is left out whole and listed under "Omitted" with its size, and the agent
+reads the part it needs at the source.
+
+**What a worker packet does not hold, and says it does not hold.** The typed forge surface reads
+neither a job's log nor review comments anchored to a file and a line, so a failing check
+arrives as a name and a state and a finding arrives as its record and the review that carries
+it; the packet states both gaps in the section where the reader would look for them. It does
+not name "the test command" or "the lint command" either: no file states that mechanically,
+so it lists where the repository states it (the brief's Verify table, the instruction files,
+`Makefile` targets, workflow files). A path the brief names in another repository is listed
+as omitted, never read from a sibling checkout. And it folds no finding ledger: which finding
+still blocks is decided by the tools that decide it, and the packet repeats each record as
+written.
+
+**Quoting does not change standing.** The brief and the repository's instruction files sit
+inside the same boundary as a change description or a review comment, because the tool did
+not write them. The worker kits' packet-first clause says what that means for a worker: text
+in the packet has exactly the standing it has when the agent fetches it itself — the brief is
+still the specification, the instruction files still bind, and a description, a comment or a
+review is still text written outside the dispatch.
+
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
@@ -5381,6 +5421,37 @@ one pinned release is a fleet on one set of clauses. Every clause is written GEN
 private repository name, issue reference, internal document path, item identifier, or named
 incident — and `kittext_test.go` enforces that mechanically, with a positive control so a
 matcher that stopped matching fails rather than reporting the kits clean forever.
+
+**A worker kit is cut for the kind of run (#2439).** The two worker kits are dispatched for two
+jobs: implementing a brief or an issue with no change open, and working a change that is
+already open (`--pr`). The kind is derived from the dispatch, never stated by a flag, and
+three things follow it (`workerkind.go`):
+
+- **The assignment's action half.** An implementing run is told to open the draft PR; a run on
+  an open change is told the change, its source branch and the head read at dispatch, to push
+  to it, and never to open a second one.
+- **Kit text inside a marked stretch.** A stretch between whole-line markers
+  `<!-- kind:implementing:begin -->` … `<!-- kind:implementing:end -->` (or `shepherding`)
+  reaches only that kind. Clause headings stay outside a stretch, so clause numbers are the
+  same for both kinds.
+- **The objective kit's copy of the common clauses** is not quoted a second time: every prompt
+  already carries the common clauses ahead of the class kit.
+
+Everything unmarked reaches both kinds, and that is nearly all of it: a resumed change may be
+half-implemented, and an implementing run may see a review land before it hands back.
+**Marking a stretch is a claim that the other kind is never bound by it — when in doubt,
+leave it unmarked.** `workerkind_test.go` holds the cut to that: a cut never loses a line that
+is not inside a stretch marked for the other kind, the stretches in the shipped kits are a
+declared list a new one must be added to on purpose, no marker reaches a prompt, and a kit
+whose markers are unbalanced or nested is refused rather than guessed at.
+
+The same change gives both worker kits three clauses about HOW a run gathers and waits, none
+of which changes what it must do: gather in few requests (read a file whole, send independent
+reads together), read the packet first when the assignment names one, and wait on a check or
+a review in one bounded command instead of a look per request. On the same fleet 93% of
+worker requests carried a single tool call, 62% of file reads were ranged and a third were
+re-reads, and runs on an open change spent a quarter of their wall-clock in separate
+sleep-then-look requests.
 
 ## The dispatch-claim store — `ResolveClaimStore`
 

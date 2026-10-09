@@ -509,6 +509,23 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   lists what the installed binary carries; `--dry-run` prints the prompt it WOULD emit. **Never
   paraphrase, summarise or "improve" a kit clause at dispatch time**: each is a rule that has already
   failed in the field, and the wording is the fix.
+- **The prompt fits the KIND of run, and the verb decides the kind.** A dispatch with `--pr` onto an
+  open change is a SHEPHERDING run: its assignment names the change, its source branch and the head
+  read at dispatch, tells the agent to push with `deskpr update`, and never tells it to open a PR.
+  Every other worker dispatch is an IMPLEMENTING run and gets the open-a-draft-PR assignment. The
+  kit's clauses reach both kinds; only text that plainly binds one kind is cut for it, and the
+  objective kit's own copy of the common clauses is not quoted a second time. There is no flag for
+  the kind: `--pr` is what makes a run a shepherding one.
+- **Packet, gathering and waiting.** When the dispatch could prepare one, the assignment carries a
+  `Packet: <absolute path>` line: a file holding what the run would otherwise fetch first (for an
+  implementing run the brief, its dependencies' board status, the files it names and the
+  repository's own instruction files; for a shepherding run the change, how it stands against its
+  base, its checks, its reviews and its diff), taken at a recorded head. It holds no job log and no
+  review comment anchored to a file and line — the agent still fetches those. The
+  kit tells the agent to read it first in one read, to batch independent reads into one request,
+  and to wait on checks or a review in one bounded command instead of a look per request. A
+  packet that could not be built costs one stderr line and never fails the dispatch — the prompt
+  simply carries no `Packet:` line and the agent gathers for itself.
 - **A bug fix closes the defect CLASS, not the one instance** — the worker's fix obligation the kit
   carries: name the class under a `## Defect class` heading (plus the earlier fix when there was
   one), close it by removing the hazardous path or making it unrepresentable — a guard only when

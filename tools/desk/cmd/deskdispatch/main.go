@@ -204,6 +204,17 @@ line, "Packet: <absolute path>". It is not a step and cannot fail the dispatch: 
 cannot be built, stderr says why and the assignment carries no such line. Not built on
 --dry-run. No flag and no configuration.
 
+A WORKER dispatch (--kit worker, --kit worker-objective) gets a packet too, smaller because a
+worker run re-reads it on every later request: 32 KiB an item, 64 KiB for the brief and for
+the diff, 192 KiB in all, 12 named files. With no --pr it holds the run's facts (worktree,
+branch, base commit, the claim taken), the brief or the issue, the board status of each brief
+the brief depends on, the repository's top level, Makefile targets, workflow file names and
+root instruction files, and each file the brief names as it stands in the worktree. With --pr
+it holds the change and its description, whether it conflicts with its base and whether the
+base moved, the checks at its head and the ones the base requires, every review with the
+findings it records, the newest comments, and the diff. It holds no job log and no review
+comment anchored to a file and line — the forge surface reads neither — and says so.
+
 --claim-root separates "where the consumer scripts live" from "which repo the worker's
 worktree branches from". The scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
 were centralized out of the consumer repos, so a cross-repo dispatch points --claim-root
@@ -246,6 +257,12 @@ before claiming anything, then passes the verified commit as --base and the sour
 remote ref as --upstream to deskwt. The allocator checks the pair and sets tracking
 separately from the pinned checkout. Missing, stale or
 unreadable source/head never falls back to main. Review/verifier lanes remain detached.
+
+THE KIND OF A WORKER RUN is derived, never flagged: --pr on a worker kit is a run that works
+an open change; every other worker dispatch implements a brief or an issue. The assignment's
+action half follows the kind (push to the open change, never open a second one / open the
+draft PR), kit text marked for the other kind is not quoted, and the objective kit's own copy
+of the common clauses is not quoted twice. Unmarked kit text reaches both kinds.
 
 --kits lists the prompt kits this binary carries and exits 0.
 --dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt
