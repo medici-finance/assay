@@ -558,3 +558,29 @@ text of the touched files it lists, and the brief when the dispatch names one.
   and **it replaces fetching, never checking**: every other clause binds unchanged, a path
   claim resolved from it names the PR's repository and the packet's head (clause 6), and a
   file absent from the packet is not absent from the repository.
+
+## 19. Delta round — only when the assignment states `Scope: DELTA`
+
+The dispatcher decides each round's scope and states it in the assignment block, with this
+lane's previous verdict and both heads; nothing else you read sets it. On `Scope: FULL PASS`,
+or with no scope stated, review the whole change. A `Scope: DELTA` round covers:
+
+- **every finding of this lane's previous verdict**, each answered resolved or not resolved,
+  with evidence at the current head;
+- **the diff between the previously reviewed head and the current head**, under every clause;
+- **the description**, re-checked against the current head (clause 8).
+
+**If you find the stated scope wrong** — the diff cannot be computed or is larger than stated,
+it carries a merge that changed a file the change touches, or it touches a path the previous
+round did not review — **do the full pass and say so in the verdict.**
+
+## 20. Lane round cap — from this lane's fourth round
+
+The assignment block states this lane's round number and the head of its first review. Below
+round 4, or with the round not determined, this clause is inert. From round 4, a finding FIRST
+raised now, in code unchanged since that first-review head, is advisory — or, if you hold it
+should block, is named in the verdict as an arbiter hand-off for the desk to file, and does
+not block. **Safety-relevant exception:** it still blocks, with no hand-off, when it is any
+security-lane fail class, a weakening of a control or its assertion, data loss, or exposure of
+withheld content. A finding on code changed since the first review blocks as before. State,
+for each late finding, which of these classes it is in and why.

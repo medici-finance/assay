@@ -306,6 +306,9 @@ func main() {
 	// ...and the per-PR file read that keeps a briefs-AUTHORING PR from counting as the brief's
 	// delivery (authoring.go).
 	listPRFiles = livePRFiles
+	// ...and the review round's reads: the pre-dispatch gate and the lane's scope and round
+	// number (reviewroundread.go). Unwired, a review dispatch holds nothing and states a full pass.
+	reviewRoundForgeFn = liveReviewRoundForge
 	os.Exit(run(os.Args[1:]))
 }
 

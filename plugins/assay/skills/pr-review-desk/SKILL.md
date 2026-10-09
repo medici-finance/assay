@@ -347,11 +347,44 @@ as the planner and acts on its rows.
   dispatch through the normal stamp step, allocating a fresh DETACHED worktree without removing
   earlier reviewer evidence. A live claim still refuses; never change the key to get around it.
   Then resume EACH lane's *original* reviewer (`capability:message-agent`, so it keeps that lane's
-  prior findings), give it the NEW emitted kit and home worktree, and ask for a **delta** review
-  of `<lastReviewed>..<head>`; a gone session gets a fresh agent (`capability:dispatch-worker`)
+  prior findings), give it the NEW emitted kit and home worktree, and ask for the round the
+  emitted assignment states (below); a gone session gets a fresh agent (`capability:dispatch-worker`)
   carrying that lane's FULL open-findings set, never a subset (re-approving against a SUBSET fix-list
   is the 2026-08-15 laundering); for a first review, dispatch a fresh reviewer
   (`capability:dispatch-worker`) with the emitted prompt.
+
+  **The dispatcher states each round's scope — the desk never narrows it.** Before it claims, a
+  `--kit review --pr <N>` dispatch reads the forge and writes a "This round" block into the
+  assignment: the lane's round number, the head of that lane's first review, and
+  `Scope: DELTA` or `Scope: FULL PASS` with its reason. A delta round (kit clause 19) covers
+  every finding of that lane's previous verdict, each answered resolved or not resolved with
+  evidence; the diff between the previously reviewed head and the new head; and the body
+  check. The scope is a FULL PASS when the lane has no verdict of its own on the PR, its
+  latest verdict is already at this head, the inter-head diff cannot be computed, the delta is
+  large (more than 20 commits, or more than 10 of the PR's own paths), a merge commit in the
+  delta changed a file the PR touches, the PR touches a path it did not touch at the
+  previously reviewed head, or any of that could not be determined. Hand the reviewer the
+  emitted assignment unchanged and never ask for a delta it does not state; a reviewer that
+  finds the stated scope wrong does the full pass and says so.
+
+  **Pre-dispatch gate — a HELD dispatch is a delay, never a verdict.** The same read refuses
+  the dispatch before the claim — exit 5, first line
+  `review dispatch HELD — <owner/repo>#<N> at head <sha>: <reasons>`, which is what tells it
+  from a held claim — while one of these is true of the head:
+
+  | reason | what the dispatcher read |
+  |---|---|
+  | `required-check-red` | every latest report under a check the base branch requires is a failure — a pending, queued, re-running, cancelled or missing check does not hold |
+  | `description-stale` | the PR body's `## Weight` section declares a `head` commit that is not the head on the forge |
+  | `decision-not-ruled` | the PR carries `needs-decision` and the roster's blessing authority has written nothing on it since that label was applied |
+  | `lane-awaits-ruling` | this lane's latest verdict, at this head, blocked only on open `needs-decision` items of this repo, and one of them has no ruling recorded |
+
+  A held head has NOT been reviewed: record no verdict for it and never feed it to a
+  ready-flip. Name each held head and its reasons in the sweep (the refusal's first line is
+  also the dispatch audit row's detail), and run the same dispatch again on a later tick —
+  every condition is read fresh. A gate read that fails does not hold: the dispatcher says so
+  on stderr and dispatches. `--dry-run` runs no gate. The reviewer's own body check (kit
+  clause 8) still runs on every dispatched round.
 
   **Tiering is risk-keyed, not a blanket rule (methodology/19):** a risk-clear item (all four risk answers `no`,
   gate `model`) may be reviewed at any tier; a risk-flagged item (`gate: human` OR any risk answer
@@ -540,6 +573,17 @@ opening a fresh one. A worker cannot author your resolution of a blocking findin
 `deskreply` write gate and the derivation both refuse it), and a record missing its
 authenticated actor or head is could-not-check — it clears nothing. Blocking policy and the
 cap threshold are unchanged; the record only makes them survive replacement.
+
+**From a lane's fourth round the cap binds on late findings (kit clause 20).** The assignment
+states the lane's round — one per head the lane holds a verdict at, counting the head being
+dispatched — and the head of that lane's first review. From round four, a finding first
+raised in that round, in code unchanged since that first-review head, is advisory; if the
+reviewer holds it should block, the verdict names it as an arbiter hand-off, it does not block,
+and the desk files the arbiter packet above for it. **Safety-relevant exception:** it still
+blocks, with no hand-off, when it is any security-lane fail class, a weakening of a control or
+its assertion, data loss, or exposure of withheld content. A finding on code changed since the
+first review blocks as before. The reviewer states which class each late finding is in and
+why. A round the dispatcher could not determine applies no cap.
 
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
 separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard to add:

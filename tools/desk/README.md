@@ -5758,6 +5758,51 @@ worker requests carried a single tool call, 62% of file reads were ranged and a 
 re-reads, and runs on an open change spent a quarter of their wall-clock in separate
 sleep-then-look requests.
 
+**A review dispatch states its round and can be held (#2444).** A `--kit review --pr <N>`
+dispatch reads the forge after every caller precondition and before the claim
+(`reviewroundread.go`); `--dry-run` skips the read. Three things come of it.
+
+- **The round's scope, per lane** (`reviewround.go`). The assignment's "This round" block says
+  `Scope: DELTA` or `Scope: FULL PASS` and why. A lane's own verdicts are the submitted
+  reviews by the reviewer identity whose body carries that lane's verdict line and no other
+  lane's. The scope is a full pass on any of these, each named in the assignment:
+
+  | reason | when |
+  |---|---|
+  | `no-verdict-of-its-own` | the lane has no verdict of its own on the change |
+  | `verdict-already-at-this-head` | the lane's latest verdict is at the dispatched head |
+  | `inter-head-diff-not-computable` | the forge cannot compare the two heads, the interval's commit list is incomplete or empty, the dispatched head's first-parent chain does not reach the previously reviewed head, a commit carries no parent list, or a commit on the chain has no complete file list |
+  | `large-delta` | the first-parent chain between the heads holds more than 20 commits, or touches more than 10 of the change's own paths (its file list at either head) |
+  | `merge-in-files-the-change-touches` | the forge's file list for a commit on that chain with two or more parents names a file the change touches |
+  | `path-not-reviewed-before` | the change's file list at the dispatched head holds a path its file list at the previously reviewed head did not |
+  | `could-not-determine` | the change, its reviews, the reviewer identity, the lane, a head, the base branch or either file list could not be read in full |
+
+  The merge test does not tell a merge that resolved conflicts from one that did not: both
+  are a full pass. A reviewer that finds the stated scope wrong does the full pass (kit
+  clause 19).
+- **The lane's round** — the number of distinct heads among the lane's own verdicts and the
+  dispatched head — and the head of the lane's first review. Kit clause 20 reads both: from a
+  lane's fourth round, a finding first raised then in code unchanged since that head is
+  advisory or an arbiter hand-off, unless it is safety-relevant. A round that cannot be
+  counted is stated as not determined, and the clause is then inert.
+- **The pre-dispatch gate** (`reviewgate.go`). The dispatch is refused, exit 5, with a first
+  line `review dispatch HELD — <owner/repo>#<N> at head <sha>: <reasons>`, when:
+
+  | reason | when |
+  |---|---|
+  | `required-check-red` | the forge served every check at the head, a check the base branch requires has reports there, and every latest report under its name is a failure: a check run that completed with `failure`, `timed_out` or `startup_failure`, or a commit status of `failure` or `error` |
+  | `description-stale` | the description's `## Weight` section has a line whose first word, after list, quote and table markers, is `head`, followed by a commit id of 7 to 40 hex digits with at least one digit, and the head on the forge begins with none of the ids so declared |
+  | `decision-not-ruled` | the change carries `needs-decision`, its comment and review history was read in full, and it holds nothing by the roster's blessing authority created after that label's latest application |
+  | `lane-awaits-ruling` | the lane's latest own verdict is at the dispatched head, blocks, and declares only external prerequisites; each is an open item of the same repository carrying `needs-decision`; and at least one of them has no ruling recorded, by the same test |
+
+  A hold claims nothing, cuts no worktree, mints no credential and writes nothing to the
+  forge; its first line is the `Detail` of the dispatch audit row. The gate's forge surface
+  has no write method, so a hold cannot post a verdict, mark a head reviewed or flip a change
+  ready. A gate read that fails is a note on stderr and the reviewer is dispatched.
+
+The fail-first evidence is `cmd/deskdispatch/reviewround-mutations.json` and
+`cmd/deskdispatch/reviewgate-mutations.json`, run like the lane cut's spec above.
+
 **The verifier packet — a reading aid, never evidence (#2439).** `deskdispatch --kit verifier`
 writes one owner-only Markdown file and adds one line, `Packet: <absolute path>`, to the
 assignment. It hands the verifier the reads it would otherwise make before running its first
