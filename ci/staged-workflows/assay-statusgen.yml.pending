@@ -1,0 +1,1 @@
+Staged twin of the live assay-statusgen.yml adding the hourly board-reconcile job (derived-board/04): schedule trigger, read-only reconcile permissions, one draft PR on board/reconcile; and a PR lint step that runs that job's tests. Pending maintainer promotion; not active here.

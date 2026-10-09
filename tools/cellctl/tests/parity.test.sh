@@ -330,8 +330,15 @@ normalise(){
   # whether the two implementations agree on cellctl's own plans, refusals and verb output. It is
   # applied to BOTH sides, so it can only ever hide a line the oracle never prints; it cannot mask
   # a divergence in cellctl's own output, none of which is prefixed "assay-config: ".
+  #
+  # The `[defaults] created` line is the same case: the machine-wide defaults file exists only in
+  # the Go program, whose `new` writes it into a cells root that has none and says so in one
+  # line. The oracle has no such file and prints no such line, and the file itself sits beside
+  # the cells, outside the cell directory tree_manifest compares. What the file does is asserted
+  # by Go tests, not by this diff.
   sed \
     -e '/^assay-config: /d' \
+    -e '/^\[defaults\] created /d' \
     -e "s#$root#<root>#g" \
     -e "s#$implreal#<cellctl>#g" \
     -e "s#$impl#<cellctl>#g" \

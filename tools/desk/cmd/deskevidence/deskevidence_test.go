@@ -253,6 +253,14 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	mintTokenFn = func(string) error { ghToken = "test-verifier-token"; return nil }
 	t.Cleanup(func() { mintTokenFn = oldMint; ghToken = "" })
 
+	// verify-reset/03: the receipt derivation reads git history at the record's sha, which
+	// the plain-directory test roots do not have; outcomereceipt_test.go restores the real one.
+	oldReceipt := outcomeReceiptFn
+	outcomeReceiptFn = func(raw []byte, _ string, _ deskkit.Forge, _ deskkit.ForgeRepo, _ string) ([]byte, error) {
+		return raw, nil
+	}
+	t.Cleanup(func() { outcomeReceiptFn = oldReceipt })
+
 	oldGate := publicRepoGateFn
 	publicRepoGateFn = func(deskkit.RepoInfoFetcher, string, string) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })

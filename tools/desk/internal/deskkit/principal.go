@@ -448,6 +448,24 @@ func StripOnBehalfOfSuffix(body string) string {
 	return trimmed[:idx]
 }
 
+// WithoutOnBehalfOf returns body with EVERY on-behalf-of line removed and trailing newlines
+// trimmed — the text AppendOnBehalfOf keeps before it appends its own line. It renders
+// nothing and resolves no principal.
+//
+// WHY THIS EXISTS. A verb that reads a body BACK to confirm it is the one it just posted
+// cannot compare bytes: the posted body carries the appended line, and any such line the
+// caller's body held was removed on the way out. StripOnBehalfOfSuffix answers that for a
+// trailing line only. This is the same removal AppendOnBehalfOf performs
+// (stripPlantedOnBehalfOfLines), so applying it to both sides compares exactly what the
+// caller wrote and nothing else:
+//
+//	WithoutOnBehalfOf(posted) == WithoutOnBehalfOf(callerBody)
+//
+// holds for every body AppendOnBehalfOf produced from callerBody, whoever the principal was.
+func WithoutOnBehalfOf(body string) string {
+	return strings.TrimRight(stripPlantedOnBehalfOfLines(body), "\n")
+}
+
 // OnBehalfOfCommitSuffix renders the trailer as a commit-message suffix: a blank line
 // then the trailer, with no trailing newline — the shape `message + this` wants when the
 // caller already owns the final newline handling (deskevidence's WriteFileInput.Message).

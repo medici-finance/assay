@@ -2326,9 +2326,14 @@ func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 		return "", Unverifiable(fmt.Sprintf("GET %s (diff) failed", path), derr)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, berr := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", &ForgeAPIError{Status: resp.StatusCode, Method: http.MethodGet, Path: path}
+	}
+	// A body that ended early is not the change's diff: return the failure, never the part
+	// that arrived, which a caller would show as the whole diff.
+	if berr != nil {
+		return "", Unverifiable(fmt.Sprintf("GET %s (diff): the response body was not read whole", path), berr)
 	}
 	return string(raw), nil
 }

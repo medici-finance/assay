@@ -140,17 +140,34 @@ type decisionGateLinks map[string][]decisionGateIssue
 // yield ok == false, leaving the two PR anchors to decide. None of the three
 // conditions is sufficient alone.
 func decisionGateCorroboration(s stamp, gates decisionGateLinks) (evidence string, ok bool) {
-	recordID, okID := decisionGateAnchorID(s.File)
-	if !okID {
-		return "", false // stamp is not in a brief-<NN>.md or DR-<slug>.md file — this anchor is N/A
-	}
-	linked := gates[s.File] // (c) only issues THIS record links are present here
-	if len(linked) == 0 {
+	iss, blessLogin, ok := decisionGateCorroboratingIssue(s.File, gates)
+	if !ok {
 		return "", false
+	}
+	recordID, _ := decisionGateAnchorID(s.File) // ok above implies the id resolved
+	return fmt.Sprintf("needs-decision issue %s closed by the blessed human %s and carrying the "+
+		"per-brief marker %q (the house tracker's ruling)", iss.Ref, blessLogin,
+		decisionGateMarker(recordID)), true
+}
+
+// decisionGateCorroboratingIssue is the ONE place that decides WHICH linked issue
+// corroborates a record: the first issue the record links that was closed by the
+// blessed login (a) and carries the record's own marker (b). It returns that issue
+// and the blessed login. Every consumer that needs the corroborating issue itself
+// (not just a yes/no) — the project-obligations receipt builder — asks here, so no
+// second loop can apply a weaker predicate (TestAssuranceOneClosedByOwner pins it).
+func decisionGateCorroboratingIssue(recordFile string, gates decisionGateLinks) (decisionGateIssue, string, bool) {
+	recordID, okID := decisionGateAnchorID(recordFile)
+	if !okID {
+		return decisionGateIssue{}, "", false // not a brief-<NN>.md or DR-<slug>.md file — this anchor is N/A
+	}
+	linked := gates[recordFile] // (c) only issues THIS record links are present here
+	if len(linked) == 0 {
+		return decisionGateIssue{}, "", false
 	}
 	blessLogin := scanEffectiveConfig().Bless.Login
 	if blessLogin == "" {
-		return "", false // no blessed closer configured — the strict-but-inert direction
+		return decisionGateIssue{}, "", false // no blessed closer configured — the strict-but-inert direction
 	}
 	want := decisionGateMarker(recordID)
 	for _, iss := range linked {
@@ -160,10 +177,9 @@ func decisionGateCorroboration(s stamp, gates decisionGateLinks) (evidence strin
 		if !strings.Contains(iss.Body, want) { // (b) marker names THIS exact brief
 			continue
 		}
-		return fmt.Sprintf("needs-decision issue %s closed by the blessed human %s and carrying the "+
-			"per-brief marker %q (the house tracker's ruling)", iss.Ref, blessLogin, want), true
+		return iss, blessLogin, true
 	}
-	return "", false
+	return decisionGateIssue{}, "", false
 }
 
 // ---- live-fetch plumbing (untested, like fetchPRData / fetchCitedArtifact) --------

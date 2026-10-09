@@ -4,9 +4,7 @@ title: Durable instance store and production coverage binding
 why: A task must survive its parent process without losing intent, artifacts or the evidence obligations that make
   it acceptable.
 wave: 2
-depends:
-- graph-execution/09
-- graph-execution/03
+depends: ["graph-execution/09", "graph-execution/03", "statusgen/15"]
 unblocks:
 - graph-execution/23
 - graph-execution/21
@@ -30,7 +28,7 @@ consumers:
 - 'workflow/controller: follow-up graph-execution/21'
 - 'statusgen/coverage.go: follow-up graph-execution/19 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'workflow/workspace: follow-up graph-execution/23'
-version: 1
+version: 2
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
 ---
 
@@ -38,7 +36,7 @@ id: ead4e747-4d61-4ec6-abaf-332873c79b21
 
 ## Context
 
-files: `workflow/go.mod` (planned), `workflow/README.md` (planned), `docs/lifecycle.md`, `workflow/store/` (planned), `workflow/bindings/` (planned), `workflow/testdata/store/` (planned), `statusgen/graphcontract/` (planned), `statusgen/coverage.go`, `statusgen/instance.go` (planned), `changelog/graph-execution-19-durable-instance-store.md` (planned).
+files: `workflow/go.mod` (planned), `workflow/README.md` (planned), `docs/lifecycle.md`, `workflow/store/` (planned), `workflow/bindings/` (planned), `workflow/testdata/store/` (planned), `statusgen/coverage.go`, `statusgen/instance.go` (planned), `changelog/graph-execution-19-durable-instance-store.md` (planned).
 
 facts: The graph instance, admission and recovery contracts are the canonical source. The workflow module is new at the inspected revision. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
@@ -57,11 +55,19 @@ single-point-of-failure: the store's expected-version/generation predicate on ev
 - Stop at implemented; independent verification owns verified/done.
 - Preserve one canonical work identity and one claim authority; no credentials in packets or results.
 
+## Library-first amendment — 2026-10-08
+
+Read `docs/library-first.md`. statusgen/15 owns the canonical eligibility/coverage API;
+this brief owns durable bindings and their observations. Pin that package, preserve its
+unknown/held outcomes and test the real binding-to-evaluator flow. Do not create a second
+`graphcontract` package or move the evaluator into workflow. Store acceptance, admission,
+process lifecycle and effect authority remain distinct.
+
 ## Task
 
 1. Create the workflow Go module and a single-controller SQLite store with transactions, versioned migrations and content-addressed artifact references. Select and pin a maintained driver; document supported filesystem/durability assumptions. Persist canonical instance/node/attempt IDs, revisions, wait/stop state and artifact manifests. No second work identity or claim authority.
 2. Implement expected-version/generation transitions, complete export/import and restore validation. Reject missing artifacts, unsupported mandatory schema and stale ownership; never acknowledge a transition before durability. Restore is passive until the existing ownership authority fences the previous owner.
-3. Connect real instance-to-pattern-node bindings to coverage. Extract/export the existing pure validator/evaluator contract only where needed under statusgen/graphcontract; update existing callers without changing their semantics. Do not copy coverage logic into workflow. No binding found for a declared instance means held, not an unpatterned success.
+3. Connect real instance-to-pattern-node bindings to coverage. Consume `statusgen/evaluation` from statusgen/15; that brief alone owns extraction. Update binding adapters without changing evaluator semantics. Do not copy coverage logic into workflow. No binding found for a declared instance means held, not an unpatterned success.
 4. Add restart, version-conflict, missing-artifact and stale-acceptance flow fixtures, and one fixture that bypasses the store's expected-version predicate to show the ownership fence still refuses a stale writer. Wire cross-module CI paths for statusgen and workflow so consumer tests run on changes in either. Update lifecycle/storage documentation and the changelog.
 
 ## Interface contract

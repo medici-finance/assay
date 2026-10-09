@@ -509,6 +509,23 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   lists what the installed binary carries; `--dry-run` prints the prompt it WOULD emit. **Never
   paraphrase, summarise or "improve" a kit clause at dispatch time**: each is a rule that has already
   failed in the field, and the wording is the fix.
+- **The prompt fits the KIND of run, and the verb decides the kind.** A dispatch with `--pr` onto an
+  open change is a SHEPHERDING run: its assignment names the change, its source branch and the head
+  read at dispatch, tells the agent to push with `deskpr update`, and never tells it to open a PR.
+  Every other worker dispatch is an IMPLEMENTING run and gets the open-a-draft-PR assignment. The
+  kit's clauses reach both kinds; only text that plainly binds one kind is cut for it, and the
+  objective kit's own copy of the common clauses is not quoted a second time. There is no flag for
+  the kind: `--pr` is what makes a run a shepherding one.
+- **Packet, gathering and waiting.** When the dispatch could prepare one, the assignment carries a
+  `Packet: <absolute path>` line: a file holding what the run would otherwise fetch first (for an
+  implementing run the brief, its dependencies' board status, the files it names and the
+  repository's own instruction files; for a shepherding run the change, how it stands against its
+  base, its checks, its reviews and its diff), taken at a recorded head. It holds no job log and no
+  review comment anchored to a file and line — the agent still fetches those. The
+  kit tells the agent to read it first in one read, to batch independent reads into one request,
+  and to wait on checks or a review in one bounded command instead of a look per request. A
+  packet that could not be built costs one stderr line and never fails the dispatch — the prompt
+  simply carries no `Packet:` line and the agent gathers for itself.
 - **A bug fix closes the defect CLASS, not the one instance** — the worker's fix obligation the kit
   carries: name the class under a `## Defect class` heading (plus the earlier fix when there was
   one), close it by removing the hazardous path or making it unrepresentable — a guard only when
@@ -519,9 +536,22 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   `refs/remotes/origin/main`; dispatch the agent with `capability:isolate-workspace` too, so its
   payload cwd is never the shared checkout — a /tmp clone does NOT isolate that cwd, and a
   falsely-blocked worker is the input that produces evasion.
-- **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
-  session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
-  to a cheap tier behind the review/verify gates.
+- **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to a
+  strong-tier worker and the kit carries the pickup-STOP text. A session that itself runs at strong
+  tier or above launches it at session tier; a session that runs BELOW strong names the strong tier
+  explicitly in the launch (`../../references/<harness>.md`, the `capability:dispatch-worker` row) —
+  a default launch there lands below strong and the worker stops at pickup, correctly. Naming a
+  tier is a request, not a result: BEFORE the dispatch, a session below strong reads the launch's
+  own resolution (the same row says where) and CONFIRMS the slot it will name is pinned to a
+  strong-tier model; `--model` states that pinned id in the stamp's form (the row gives it) —
+  never the tier name, the alias, that session's own model or a guessed mapping. The read comes
+  first because a dispatch that names a PR writes the stamp before the worker starts, and the
+  dispatching session has no verb that corrects it. A pin is what the launch asked for, not proof
+  of the model served: the kit's pickup stop stays the worker-side check, and a strong-stamped
+  worker that stops there is a wrong stamp — hold the item and file it. A session with no way to
+  launch a strong-tier worker, or that cannot confirm the pin, holds the item and files it; it
+  never edits the pickup text. Effort S
+  may run at your session tier, M/L go to a cheap tier behind the review/verify gates.
   A re-dispatch or shepherd pass on a PR whose open finding class is at round ≥ 2 runs at **strong**
   tier. A worker's `NEEDS_CONTEXT: strike two` (kit clause 8) returns the item to intake as
   `design-owed` — not a failure to retry.
@@ -762,6 +792,13 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
 - **The out-of-repo surface (files outside any repo) is serialized, never parallel** — max one
   in-flight item, staged as diffs in the PR and applied to the live files only as the last step
   before `implemented`.
+- **New dependency, plugin or MCP server — risk summary first, install second.** Before adding
+  one (to a manifest, a lockfile, the harness or the agent environment), file an issue carrying an
+  agent-generated **risk summary**: *source* (publisher, repo, exact version, release date),
+  *permissions* (network, filesystem, credentials or scopes it reads), and *persistence* (hooks,
+  background processes, auto-update, files written outside its own directory). The PR cites the
+  issue; no issue, no install. Minimum release age is **7 days** — a younger release needs the
+  risk-summary issue PLUS a driver `bless` on it before install, never the worker's own judgment.
 - **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
   note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering

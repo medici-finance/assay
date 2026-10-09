@@ -338,7 +338,7 @@ as the planner and acts on its rows.
 
   `<alias>` is the repo's short label/basename. It takes the durable claim, cuts the reviewer a
   worktree in the PR's OWN repo, stamps the dispatcher's model attestation, and emits the prompt —
-  `common-clauses` + the `review` kit, verbatim and byte-identical across sessions. A claim held by
+  `common-clauses` + the `review` kit cut for the key's lane, byte-identical across sessions. A claim held by
   someone else exits 5 with the holder named: never steal. The board's SECURITY-REVIEW-REQUIRED row
   is a MISSED-DISPATCH alarm, not the trigger — it only appears AFTER a correctness approval, so
   waiting for it serialises the two lanes; dispatch the security lane off the actions row's
@@ -347,11 +347,51 @@ as the planner and acts on its rows.
   dispatch through the normal stamp step, allocating a fresh DETACHED worktree without removing
   earlier reviewer evidence. A live claim still refuses; never change the key to get around it.
   Then resume EACH lane's *original* reviewer (`capability:message-agent`, so it keeps that lane's
-  prior findings), give it the NEW emitted kit and home worktree, and ask for a **delta** review
-  of `<lastReviewed>..<head>`; a gone session gets a fresh agent (`capability:dispatch-worker`)
+  prior findings), give it the NEW emitted kit and home worktree, and ask for the round the
+  emitted assignment states (below); a gone session gets a fresh agent (`capability:dispatch-worker`)
   carrying that lane's FULL open-findings set, never a subset (re-approving against a SUBSET fix-list
   is the 2026-08-15 laundering); for a first review, dispatch a fresh reviewer
   (`capability:dispatch-worker`) with the emitted prompt.
+
+  **The dispatcher states each round's scope — the desk never narrows it.** Before it claims, a
+  `--kit review --pr <N>` dispatch reads the forge and writes a "This round" block into the
+  assignment: the lane's round number, the head of that lane's first review, and
+  `Scope: DELTA` or `Scope: FULL PASS` with its reason. A delta round (kit clause 19) covers
+  every finding of that lane's previous verdict, each answered resolved or not resolved with
+  evidence; everything that verdict recorded as could-not-check, not run or incomplete; the
+  diff between the previously reviewed head and the new head; the body check; and the
+  head-level duties, which stand in every round (CI at the head, the merge-time re-check, the
+  undeclared-decision check). The scope is a FULL PASS when the lane has no verdict of its own
+  on the PR, its latest verdict is already at this head, the inter-head diff cannot be
+  computed, the delta is large (more than 20 commits, or more than 10 of the PR's own paths),
+  a merge in the delta changed a file the PR touches or its merged-in side did, whichever way
+  a conflict was resolved, the PR touches a path it did not touch at the previously reviewed
+  head, one of the lane's verdicts names, on a head line of its text or in its typed block, a
+  different head than the forge records for it or carries a typed block that cannot be read,
+  or any of that could not be determined. Hand
+  the reviewer the emitted assignment unchanged and never ask for a delta it does not state; a
+  reviewer that finds the stated scope wrong, or finds that its lane's previous verdict names
+  another head than the assignment gives for it, or calls itself incomplete, does the full
+  pass and says so.
+
+  **Pre-dispatch gate — a HELD dispatch is a delay, never a verdict.** The same read refuses
+  the dispatch before the claim — exit 5, first line
+  `review dispatch HELD — <owner/repo>#<N> at head <sha>: <reasons>`, which is what tells it
+  from a held claim — while one of these is true of the head:
+
+  | reason | what the dispatcher read |
+  |---|---|
+  | `required-check-red` | every latest report under a check the base branch requires is a failure — a pending, queued, re-running, cancelled or missing check does not hold |
+  | `description-stale` | the PR body's `## Weight` section declares a `head` commit that is not the head on the forge |
+  | `decision-not-ruled` | the PR carries `needs-decision` and the roster's blessing authority has written nothing on it since that label was applied |
+  | `lane-awaits-ruling` | this lane's latest verdict, at this head, blocked only on open `needs-decision` items of this repo, and one of them has no ruling recorded |
+
+  A held head has NOT been reviewed: record no verdict for it and never feed it to a
+  ready-flip. Name each held head and its reasons in the sweep (the refusal's first line is
+  also the dispatch audit row's detail), and run the same dispatch again on a later tick —
+  every condition is read fresh. A gate read that fails does not hold: the dispatcher says so
+  on stderr and dispatches. `--dry-run` runs no gate. The reviewer's own body check (kit
+  clause 8) still runs on every dispatched round.
 
   **Tiering is risk-keyed, not a blanket rule (methodology/19):** a risk-clear item (all four risk answers `no`,
   gate `model`) may be reviewed at any tier; a risk-flagged item (`gate: human` OR any risk answer
@@ -541,6 +581,23 @@ opening a fresh one. A worker cannot author your resolution of a blocking findin
 authenticated actor or head is could-not-check — it clears nothing. Blocking policy and the
 cap threshold are unchanged; the record only makes them survive replacement.
 
+**From a lane's fourth round the cap binds on late findings (kit clause 20).** The assignment
+states the lane's round — one per head the lane holds a verdict at, counting the head being
+dispatched — and the head of that lane's first review. From round four, a finding first
+raised in that round, in code unchanged since that first-review head, is advisory; if the
+reviewer holds it should block, the verdict names it as an arbiter hand-off, it does not block,
+and the desk files the arbiter packet above for it. **Safety-relevant exception:** it still
+blocks, with no hand-off, when it is any security-lane fail class, a weakening of a control or
+its assertion, data loss, or exposure of withheld content. A finding on code changed since the
+first review blocks as before. The reviewer states which class each late finding is in and
+why. "Any security-lane fail class" is any finding the security lane would fail the change on;
+a late finding the reviewer cannot place with confidence blocks; and the cap never changes a
+security verdict: on the security lane a finding that would be a fail is a fail at any round.
+A finding whose evidence did not exist at the first-review head is not a late finding (`main`
+moved under unchanged code, an edited description, a check result at the head, a
+could-not-check gap, an undeclared decision): kit clauses 2, 5, 7, 8 and 15 bind in every
+round. A round the dispatcher could not determine applies no cap.
+
 **Recurrence-promotion:** a finding the reviewer has raised **three or more times across
 separate PRs** (repetition, not rounds on one PR) names a mechanism, not a guard to add:
 `deskfile attach` it as an instance to the open `error-class` issue for that mechanism, or
@@ -598,8 +655,8 @@ provisioning gap to file (`create-labels`, `the adoption guide`), never a reason
 
 ## The reviewer's bar
 
-`deskdispatch --kit review` hands the agent the `common-clauses` and `review-prompt` kits verbatim,
-embedded in the binary, so a fleet on one pinned release is a fleet on one set of clauses. **This
+`deskdispatch --kit review` hands the agent the `common-clauses` kit and its lane's cut of the `review-prompt`
+kit, embedded in the binary, so a fleet on one pinned release is a fleet on one set of clauses. **This
 section is the DESK's bar — what a review must show before the desk acts on it, plus the
 house-specific detail a public, generic kit cannot carry.** Edit a clause here, check the kit.
 
@@ -638,13 +695,15 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   1. **The diff touches a generated-table region** — the default for any hunk inside a stream
      README's `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers is
      `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
-     row from the PR's own trailer + state; drop the hunk." TWO narrow carve-outs admit a hunk —
-     (A) newly added rows, below, and (B) a witnessed `implemented` promotion of an existing
-     brief's row — cross-repo or same-repo — after it. Each is mechanical, not a judgment call; a hunk that fits neither bounces. Carve-out
+     row from the PR's own trailer + state; drop the hunk." THREE narrow carve-outs admit a hunk —
+     (A) newly added rows, below; (B) a witnessed `implemented` promotion of an existing
+     brief's row — cross-repo or same-repo — after it; and (C) a hand-back `implemented` promotion
+     of ONE cross-repo brief's row whose delivering PR carries no trailer for the brief, last. Each
+     is mechanical, not a judgment call; a hunk that fits none of the three bounces. Carve-out
      A admits a hunk only when ALL of the following hold:
      - **Added rows only.** The hunk ADDS one or more brand-new brief rows and modifies no existing
        row; ANY change to an existing row — down to a single cell — bounces unconditionally unless
-       carve-out B admits it.
+       carve-out B or carve-out C admits it.
      - **Every added row is honest-base — `todo` with empty stamps.** Each added row's `Status` must
        be the bare token `todo` and its `Verified` and `Reviewed` cells must be empty (`—` or blank).
        ANY row in an added-rows hunk carrying a non-`todo` `Status`, or a non-empty `Verified` or
@@ -692,8 +751,13 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        PR.
      - **The delivery repo comes from the brief, never from the PR.** For each changed row, read
        the delivery repo from the brief file at the target repo's fetched `refs/remotes/origin/main`:
-       its `homed-in:` frontmatter when present, else its stream README's `repo:` frontmatter, else
-       the board repo itself. NEVER take it from the PR body, the PR head, or the author's say-so.
+       its `homed-in:` frontmatter; its `deliverable_repo:` alias, resolved to the `repo:` value of
+       that alias's entry under `repos:` in `docs/streams/graph-repos.yaml` at the same ref; else
+       its stream README's `repo:` frontmatter; else the board repo itself. NEVER take it from the
+       PR body, the PR head, or the author's say-so. An alias that does not resolve to a valid
+       `<owner>/<name>`, or a brief whose `homed-in:` and `deliverable_repo:` resolve to different
+       repos, is could-not-check and bounces the row — it never falls through to the next source,
+       and never to the board repo.
        It must be a member of `deskroster repos`; a delivery repo outside that set bounces the row.
        The verdict records the delivery repo for each row and where it was read from.
      - **Same-repo rows on the same bar.** The delivery repo read above may equal the board repo —
@@ -703,24 +767,35 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        the code-existence check reads the board repo's own main at a ref fetched this cycle. Being
        same-repo relaxes nothing.
      - **Reproduces under reconcile on main.** In a throwaway worktree checked out at the target
-       repo's `refs/remotes/origin/main`, fetched this cycle, run
-       `statusgen reconcile --backfill --apply --repo <delivery owner/name> --root <that worktree> --json`
-       with the delivery repo read above. Rows with different delivery repos need one run per
-       delivery repo, each in its OWN fresh throwaway worktree (`--apply` writes into the worktree it
-       runs on), and each row is compared only against the run for its own delivery repo. Admit only
-       when every row the hunk changes is reproduced byte-identically by the rows that run wrote (its
-       `applied` list and the resulting README diff); a hunk row the run did not write, or wrote
-       differently, bounces. A row current main already shows as `implemented` is never written by
-       the run, so it bounces with the one line "already `implemented` on main — merge main and drop
-       the hunk." Rows the run writes that the PR does not carry do not affect admission. A run
-       that could not look — a non-zero exit, missing or unparseable JSON on stdout,
-       `lookedAt: false` in its JSON, or a `could-not-check` on stderr (no token, a failed or
-       rate-limited PR fetch) — is not a reproduction: hold the verdict and say so, never admit on
-       it. The binary is the pinned release binary the target repo's CI uses; where the target
-       repo vendors `statusgen/`, build it from the throwaway `origin/main` worktree's own
-       `statusgen/` — NEVER one built or resolved from the PR head or the PR tree (carve-out A's
-       PR-head build allowance does not carry over) — and never run it against a desk's own
-       checkout.
+       repo's `refs/remotes/origin/main`, fetched this cycle, run the READ-ONLY form by default:
+       `statusgen reconcile --backfill --repo <delivery owner/name> --root <that worktree> --token-file <file> --json`
+       with the delivery repo read above, and with neither `--apply` nor `--report`. It writes
+       nothing; its `wouldApply` list is the rows `--apply` would write on that tree, computed by
+       the same code that writes, each with its `readme`, `from`/`to` and the whole table line
+       before and after (`rowBefore`/`rowAfter`). The token comes ONLY from `--token-file`, a
+       file holding the reviewer role's own read credential (the path `desktoken reviewer --repo
+       <delivery owner/name>` prints) — never a token placed in the environment
+       (`GITHUB_TOKEN`), never a human account's. The `--apply` form stays valid: the same
+       command with `--apply`, whose `applied` list carries the same fields; because it writes
+       into the worktree it runs on, each `--apply` run needs its OWN fresh throwaway worktree.
+       Rows with different delivery repos need one run per delivery repo, and each row is
+       compared only against the run for its own delivery repo. Admit only when every row the
+       hunk changes is reproduced byte-identically by that run's rows — the hunk's removed and
+       added line equal an entry's `rowBefore` and `rowAfter` in `wouldApply` (read-only form),
+       or in `applied` and the resulting README diff (`--apply` form); a hunk row the run does
+       not report, or reports differently, bounces. A row current main already shows as
+       `implemented` is never reported by the run, so it bounces with the one line "already
+       `implemented` on main — merge main and drop the hunk." Rows the run reports that the PR
+       does not carry do not affect admission. A run that could not look — a non-zero exit,
+       missing or unparseable JSON on stdout, `lookedAt: false` in its JSON, a `could-not-check`
+       on stderr (no token, a failed or rate-limited PR fetch), or a read-only run whose JSON
+       carries no `wouldApply` key at all (a binary that predates the read-only form: use the
+       `--apply` form, never read the absent key as zero rows) — is not a reproduction: hold the
+       verdict and say so, never admit on it. The binary is the pinned release binary the target
+       repo's CI uses; where the target repo vendors `statusgen/`, build it from the throwaway
+       `origin/main` worktree's own `statusgen/` — NEVER one built or resolved from the PR head
+       or the PR tree (carve-out A's PR-head build allowance does not carry over) — and never
+       run it against a desk's own checkout.
      - **The reviewer checks the code exists, on every row.** For each admitted row, read the same
        run's `--json` entry for that brief. `source: "pr"` means the witness is a merged PR in the
        delivery repo carrying a `Brief: <stream>/<NN>` trailer (a source PR): confirm on the forge
@@ -744,8 +819,9 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        whole, one line: "hunk touches a row carve-out B does not admit; drop it."
      - **Not a statusgen-source PR.** As in carve-out A.
 
-     The PR body must state that the hunk is `reconcile --backfill --apply` output and name the
-     witness PR for each row; that statement is a CLAIM, and the run above is the only evidence.
+     The PR body must state that the hunk is `reconcile --backfill --apply` output (the rows the
+     read-only form reports as `wouldApply`) and name the witness PR for each row; that statement
+     is a CLAIM, and the run above is the only evidence.
      The carve-out exists because `--apply` only ever writes this one Status-only transition, and
      only from a real merged-PR witness, so a PR carrying its output byte-for-byte adds nothing the
      tool would not write itself. The code-existence check is the second layer on every admitted
@@ -757,6 +833,69 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      run can witness — including backfill-only matches whose work has not landed. B lets a PR carry
      just the rows the reviewer has checked. Widening B further — to any other transition, cell or
      row shape — needs a new ruling, never a reviewer's reading.
+
+     Carve-out C (the driver's ruling of 2026-10-09, tracked as #2428) admits a hunk that promotes
+     ONE existing row of a brief delivered into ANOTHER repo to `implemented` when the delivering
+     PR carries no `Brief:` trailer for the brief, so carve-out B's run has no trailer to fold —
+     only when ALL of the following hold:
+     - **One row, Status-only, one transition.** The hunk changes exactly one row, and on it the
+       ONLY changed cell is `Status`, from the bare token `todo` or `in-progress` to the bare
+       token `implemented`; every other cell and every other row is byte-identical to the base.
+       A second changed row, or ANY other change, bounces the hunk whole.
+     - **The flip PR is that row and nothing else.** The PR's whole diff is the one hunk, in one
+       stream README under `docs/streams/`, and its link trailer is `Issue: #<N>` — never
+       `Brief:` or `Authors:`. Any other file, or a `Brief:` trailer naming the brief, bounces
+       the PR: the model auto-flip credits a merged `Brief:`-trailer PR that carries a file
+       outside the stream docs as the brief's delivering PR, and the approval of a one-cell
+       board edit must never be read as the review of the delivery.
+     - **The delivery repo comes from the brief, and is not the board repo.** Read it from the
+       brief file at the target repo's fetched `refs/remotes/origin/main`: its `homed-in:`
+       frontmatter; its `deliverable_repo:` alias, resolved to the `repo:` value of that alias's
+       entry under `repos:` in `docs/streams/graph-repos.yaml` at the same ref; else its stream
+       README's `repo:` frontmatter. NEVER take it from the PR body, the PR head, or the author's
+       say-so. An alias that does not resolve to a valid `<owner>/<name>`, or a brief whose
+       `homed-in:` and `deliverable_repo:` resolve to different repos, is could-not-check and
+       bounces the row — it never falls through to the next source. The delivery repo must be
+       in `deskroster repos --scope write` and must differ from the board repo: a same-repo row
+       is carve-out B's, never C's. The verdict records the delivery repo and where it was read
+       from, and the brief's `gate:` and risk terms — a trailer-less delivery drew no
+       brief-declared risk review.
+     - **The counted files come from the brief's `files:` list.** Read the `files:` list in the
+       brief's `## Context` at the same ref — never from the PR body or the PR head. An entry
+       COUNTS only when, with any trailing ` — ` note or parenthesised mark dropped, it names
+       exactly one concrete file path. A directory, a glob, a placeholder (`<…>`), an entry
+       naming several paths, and any path under the delivery repo's `changelog/` (each release
+       clears it) count for nothing: they pass no check below and fail none. A brief with no
+       `files:` list, or none of whose entries counts, bounces the row. Files only; symbols are
+       not checked.
+     - **The PR body names one delivering PR; the forge binds it to the brief.** The body names
+       exactly one PR as the delivery — none, or more than one, bounces the row. That is a
+       CLAIM. Read the named PR on the forge and admit the row only when ALL hold: it is a PR of
+       the delivery repo read above; it is merged, and its merge commit is on the delivery
+       repo's main at a ref fetched this cycle; it merged AFTER the commit that added the brief
+       file to the target repo's main; and its changed-files list shows at least one counted
+       file with status `added`. A named PR that only modifies files that already existed binds
+       nothing and bounces the row: a delivery that adds no counted file has no path through C.
+       A named PR whose body carries `Brief: <stream>/<NN>` for this brief also bounces the row,
+       one line: "the delivering PR carries the brief's trailer — carve-out B's run can witness
+       it; carry that run's output."
+     - **Every counted file exists on the delivery repo's main**, read at a ref fetched this
+       cycle (not a sibling checkout). The verdict records the counted paths, which of them the
+       named PR added, and the commit read. A counted file that is missing bounces the row.
+     - **Could-not-check is never a pass.** A brief, registry, forge or tree read that could not
+       be made bounces the row.
+     - **Not a statusgen-source PR.** As in carve-out A.
+
+     Carve-out C has no tool reproduction: the brief, the registry, the named PR with its
+     changed-files list, and the delivery repo's tree are the only evidence, and the PR body is a
+     claim throughout. It exists because a delivering PR can be barred from naming the brief at
+     all — a delivery repo whose PRs carry an `Issue:` trailer and no stream slug — so the
+     trailer fold has nothing to join, the row stays `todo` after the work has merged, and the
+     planner re-offers a delivered brief. C admits `implemented` and nothing else: it never
+     touches the row's `Verified` or `Reviewed` cell, and the brief's Verify run is still owed —
+     that run is the layer behind a wrong flip. Widening C — to a same-repo row, a second row,
+     any other transition, an unmerged delivery, a delivery that adds no counted file, or a
+     counted file that is missing — needs a new ruling, never a reviewer's reading.
   2. **The PR body lacks a link trailer** — the body must carry exactly ONE link trailer:
      `Brief: <stream>/<NN>` (the brief this PR delivers), `Authors: <stream>/<NN>[, …]` (a
      briefs-authoring PR — it writes those briefs and delivers none of them), **or** `Issue: #<N>`
@@ -822,9 +961,8 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   red state was never observed is a finding, not evidence**: treat its pass as unproven and
   `--request-changes` asking for the red run. The single failure mode this catches is *a control
   that reads as present and cannot fail*: an assertion comparing an emitted value against the
-  constant it came from; a counter documented as a cross-check but incremented unconditionally
-  alongside its comparand; a fail-open delete guard disarmed by a stray character in a comment; a
-  build step comparing an artifact against itself; a large subtest suite that had never run in CI.
+  constant it came from; a counter incremented unconditionally alongside its comparand; a guard
+  disarmed by a stray character; a self-compared build artifact; a subtest suite never run in CI.
   **Scope — do not over-apply:** the rule binds tests asserting behaviour or pinning a guard; it
   does NOT bind docs, formatting, register/status-row flips, comment-only diffs, or changes
   carrying no test-based claim. The line: if the PR's evidence includes "this test passes", ask
@@ -834,10 +972,11 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   unresolved evidence-pattern NOTICEs as findings before inspecting anything by hand — it decides
   the mechanical subset for free (a literal `\|` inside a `grep -E`/`go test -run` pattern, `grep -c`
   gated on an expected `0` that fails on its own success path, an exit status swallowed by an
-  always-zero pipeline sink). **Preferred proof shape where a real mutation suite exists:** a
-  committed, re-runnable script (`testdata/mutate.sh`) so a verifier re-runs the claim instead of
-  taking a transcript on trust — worth asking for on guard-heavy PRs, but the hard requirement is
-  an observed red run *or* a re-runnable check.
+  always-zero pipeline sink). **Preferred proof shape:** a committed, re-runnable mutation script
+  (`testdata/mutate.sh`), worth asking for on guard-heavy PRs; the hard requirement is an observed
+  red run *or* a re-runnable check. **Departures** (review kit §4): from a current-main checkout run `cd
+  tools/desk && go test ./internal/testledger/ -run TestReportTestLedger -v -args -base=<merge-base sha>
+  -head=<PR head sha>`; an unjustified departure in its report, trailed or not, is a `test-evidence` finding.
   **Honest-failure corollary:** a row the author legitimately cannot make pass is a finding to
   report, not a row to soften or delete. Quietly weakening a correctly-red check to reach green is
   worse than leaving it red with a note explaining why; a correctly-red row is doing exactly its

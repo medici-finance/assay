@@ -311,6 +311,18 @@ func dispatch(o dispatchOpts) error {
 	// rather than at merge, and proceeding over it is correct when the overlap is intended.
 	echoWriteOverlap(os.Stderr, o)
 
+	// The review round (#2444), BEFORE the claim: the pre-dispatch gate may HOLD the head
+	// (a refusal — nothing has been claimed or written), and otherwise the lane's scope and
+	// round number are read for the assignment. A read that fails never holds: it yields a
+	// full pass with the round not determined (reviewroundread.go).
+	if reviewKit(o.kit) && o.pr > 0 {
+		round, herr := prepareReviewRound(o, plan, repo)
+		if herr != nil {
+			return herr
+		}
+		plan.round = round
+	}
+
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
 	// must not also be doing. The claim child is handed the DISPATCHING role's credential
 	// before it runs (resolveClaimAuth): the claim is a forge write, and the stamp step's mint
@@ -508,6 +520,9 @@ func dispatch(o dispatchOpts) error {
 			released, herr), herr))
 	}
 
+	// The read-ahead packet (packet.go). Never an error: no packet means no `Packet:` line.
+	plan.packetPath = buildPacketFn(o, plan, repo, home)
+
 	prompt, perr := assemblePrompt(o, plan, home)
 	if perr != nil {
 		return held.settle(perr)
@@ -629,6 +644,14 @@ type dispatchPlan struct {
 	// from the roster — never a flag. Resolved pre-claim, so a store that
 	// cannot be used refuses before any worktree is cut and before any credential is minted.
 	claimStore deskkit.ClaimStoreResolution
+	// packetPath is the absolute path of the read-ahead packet written for this dispatch, or
+	// "" when none was (no provider for the kit, --dry-run, or the build did not succeed).
+	// Set once, after the worktree exists; the prompt carries a `Packet:` line iff it is set.
+	packetPath string
+	// round is the review round this dispatch opens: the lane's scope (full pass or delta)
+	// and its round number, read before the claim. The zero value — every non-review
+	// dispatch, --dry-run, and a run with no forge read wired — states a full pass.
+	round reviewRound
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -703,8 +726,14 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// BOTH kits must be readable now. The common kit is checked here and not only at
 	// assembly time because a binary built without it would otherwise take the claim and
 	// then discover it cannot produce a prompt.
-	if _, err := kitText(o.kit); err != nil {
+	kit, err := kitText(o.kit)
+	if err != nil {
 		return plan, err
+	}
+	if reviewKit(o.kit) {
+		if err := checkReviewKitLanes(kit); err != nil {
+			return plan, err
+		}
 	}
 	if _, err := commonKitText(); err != nil {
 		return plan, err

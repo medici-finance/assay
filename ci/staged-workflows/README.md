@@ -122,6 +122,51 @@ reviewable artifact, not a run.
   `docs/streams/decisions/DR-workflow-app-landing.md` and desk-supervision/11-12): if the
   workflow-App PR path has landed, prefer it over a verbatim hand-copy. Re-base this twin on the
   live file at promotion time (three-way) so promoting only ADDS.
+- `assay-statusgen.yml` — the live board workflow plus the hourly `reconcile` job
+  (derived-board/04): a `schedule:` trigger guarded to this repository (a fork's schedule
+  never runs it), a read-only token (`contents`, `pull-requests`, `issues`: read) for the
+  PR-witness reads, and one draft pull request on `board/reconcile` carrying any generated
+  stream-README change. The job runs in two steps. The compute step runs `statusgen`
+  holding only the read token and emits the commit it made. The publish step runs no
+  `statusgen`; it pushes that commit and opens or refreshes the PR. The board-writer App
+  token is minted only when there is a commit, narrowed to `contents` and
+  `pull-requests` write, and only the publish step's environment holds it. The job uses
+  the corroborate job's isolation: a job-local, checksum-verified Go toolchain and
+  caches, `GOENV=off`, and a pinned gh (never one already on PATH), plus `GOWORK=off`,
+  so no `go.work` left above `RUNNER_TEMP` chooses the source it builds. It also keeps no
+  state an earlier job on the runner could leave: no checkout into the workspace, but a
+  fresh clone of the default branch under `RUNNER_TEMP`, a git configuration of its own
+  with hooks off (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`, a discovery ceiling at
+  `RUNNER_TEMP`), a job-local `GH_CONFIG_DIR`, a push to the forge URL by name, and a
+  credential helper bound to that host. Its PR is the open one from this repository's
+  own `board/reconcile` into the default branch, whoever opened it; one from that head
+  into another base is skipped, and two into the default branch fail the tick. Its
+  clone, compute and publish `run:` texts are tested end to end by
+  `statusgen/reconcilejob_test.go`, which extracts them from the staged YAML, runs them
+  in a rig that plants hooks, a push address and URL rewrites, and checks that a list of
+  edits to the job each turns a named test red, and the workflow-level wiring the job
+  depends on (the hourly cron, the scheduled runs' concurrency group, the lint step's test
+  selection and its `paths:` entries) is pinned the same way; once promoted, the board
+  workflow's PR lint job runs those tests (before promotion no pull-request check runs
+  them). Two outcomes to expect: a reconcile PR a maintainer closed is not reopened, and
+  the next tick that makes a new commit (main moved, or another row changed) opens a
+  fresh draft PR from the same branch; and a tick whose push lands but whose PR call
+  fails exits red with the branch pushed and no PR, and a tick that finds the branch
+  already carrying its result publishes nothing, so the missing PR is opened only by
+  the next tick that makes a new commit. The same file holds every job that mints the App token to that
+  isolation, except `regen` and `model-autoflip`, which are live today without it and
+  are listed as exempt (the list may only shrink). The job never pushes the default branch, and scheduled runs sit in their own concurrency
+  group so they cannot displace a pending push regen. **Staged, not live** — classified
+  by its `assay-statusgen.yml.pending` companion, not the manifest, so the drift guard
+  excludes it from the parity check until promotion. Promote with
+  `cp ci/staged-workflows/assay-statusgen.yml .github/workflows/assay-statusgen.yml`
+  (a copy, because the live file stays in place; re-base the staged copy on the live
+  file first if either changed since). In the same change, delete
+  `assay-statusgen.yml.pending` and declare the file `identical` in
+  `declared-changes.json`: the job tests read the staged copy, so without the parity
+  check an edit made straight to the live file would leave them green. The
+  board-writer App also needs
+  `Pull requests: write` for the PR step.
 
 ### `windows-ci-leg.yml` status
 
