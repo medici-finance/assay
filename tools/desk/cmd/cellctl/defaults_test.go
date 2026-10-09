@@ -217,7 +217,10 @@ func TestCellDefaultsMissingFileChangesNothing(t *testing.T) {
 }
 
 // TestCellDefaultsRefusesPerCellKeys: every key that names or scopes one cell is refused in the
-// defaults file, by the loader and by `set`, and the refusal names the key and the file.
+// defaults file, by the loader and by `set`, and the refusal names the key and the file. So is
+// every key cellctl takes from the command that runs it: a switch for one run, a location it
+// follows from the launching shell (the cells root and what locates it among them), a variable
+// of the host, a carrier of its own.
 func TestCellDefaultsRefusesPerCellKeys(t *testing.T) {
 	// The keys the design names outright. Removing one from the refused list must fail here,
 	// not just shrink the loop below.
@@ -231,17 +234,33 @@ func TestCellDefaultsRefusesPerCellKeys(t *testing.T) {
 		}
 		listed[r.key] = true
 	}
-	for _, k := range []string{
+	named := []string{
+		// One cell's identity, scope or bound resource.
 		"CELL", "CELL_KIND", "CELL_REPO", "CELL_REPO_SLUG", "CELL_ROOTS", "ROLES",
-		"CELL_KIND_OVERRIDE_INTERNAL", "CELLS_ROOT", "CELLS_CONFIG", "CELL_COMMS_CONFIG",
+		"CELLS_CONFIG", "CELL_COMMS_CONFIG",
 		"DESKD", "DESKD_ADDR", "DESKD_INDEX", "TMUX_SESSION", "CELL_GO_CACHE_ROOT",
 		"CELL_CONTAINER_CONFIG", "CELL_CONTAINER_LAUNCHER",
 		"CELL_FORGE", "GITHUB_HOST", "FORGE_API_BASE", "GITLAB_API_BASE", "GITLAB_GROUP",
 		"GITLAB_TOKEN_STORE", "DESKD_GITLAB_TOKEN_FILE", "DESKD_APP_PEM", "DESKD_APP_ID_VAR", "ORGS",
-	} {
+		// A switch for one run of one command.
+		"CELLS_ROOT", "DRY_RUN", "CELL_ATTENDED", "DESK_MODEL_OVERRIDE",
+		// What locates the cells root when CELLS_ROOT is unset, and the config homes.
+		"HOME", "USERPROFILE", "XDG_DATA_HOME",
+		"ASSAY_CONFIG_HOME", "XDG_CONFIG_HOME", "GH_CONFIG_DIR", "CLAUDE_CONFIG_DIR", "CODEX_HOME",
+		"APPDATA", "LOCALAPPDATA",
+		// The launching shell's own.
+		"PATH", "TERM", "LANG",
+		// Carriers cellctl sets for itself or a child.
+		"CELL_KIND_OVERRIDE_INTERNAL", "ASSAY_SCRATCH_ID", "DESK_SESSION", "CELLCTL_PARITY_MUTATE",
+	}
+	for _, k := range named {
 		if !listed[k] {
 			t.Errorf("%s must be refused in the defaults file and is not listed", k)
 		}
+	}
+	// Both ways: a key refused without being named here is a refusal nobody decided on.
+	if len(listed) != len(named) {
+		t.Errorf("the defaults file refuses %d key(s) and this test names %d: name the new one here, with the others of its kind", len(listed), len(named))
 	}
 
 	for _, r := range cellDefaultsRefused {
@@ -602,7 +621,12 @@ func TestCellDefaultsDoNotWidenAScrubbedLaunch(t *testing.T) {
 	}
 	cacheSupported := runtime.GOOS == "darwin" || runtime.GOOS == "linux"
 	body := "LEAK_PROBE=host-default-value\nGH_TOKEN=host-default-value\nSSH_AUTH_SOCK=/host-default-value/agent\n" +
-		"ANTHROPIC_API_KEY=host-default-value\nKUBECONFIG=/host-default-value/kube\nCELL_PATH=/opt/example/bin\n"
+		"ANTHROPIC_API_KEY=host-default-value\nKUBECONFIG=/host-default-value/kube\nCELL_PATH=/opt/example/bin\n" +
+		"DESK_TOOLS_BIN=/opt/example/tools\n"
+	// TERM and LANG reach the child from the launching shell and from nowhere else: the file
+	// refuses both (TestCellDefaultsRefusesPerCellKeys), so these are the values it must carry.
+	t.Setenv("TERM", "example-term")
+	t.Setenv("LANG", "example.UTF-8")
 	if cacheSupported {
 		body += "CELL_GO_CACHE=on\n"
 	}
@@ -650,6 +674,19 @@ func TestCellDefaultsDoNotWidenAScrubbedLaunch(t *testing.T) {
 	if got := envValue(composed.Pairs, "PATH"); !strings.HasSuffix(got, ":/opt/example/bin") {
 		t.Errorf("PATH = %q, want the CELL_PATH tail", got)
 	}
+	// DESK_TOOLS_BIN is the other: the tool directory, second in the composed PATH, directly
+	// after the cell's own shim directory — which no layer can displace.
+	if got, want := envValue(composed.Pairs, "PATH"), filepath.Join(c.Dir, "shim")+":/opt/example/tools:"; !strings.HasPrefix(got, want) {
+		t.Errorf("PATH = %q, want it to start %q", got, want)
+	}
+	if got := envValue(composed.Pairs, "PATH"); strings.Count(got, "/opt/example/tools") != 1 || strings.Count(got, "/opt/example/bin") != 1 {
+		t.Errorf("PATH = %q: each file-supplied directory belongs in it exactly once", got)
+	}
+	for k, want := range map[string]string{"TERM": "example-term", "LANG": "example.UTF-8"} {
+		if got := envValue(composed.Pairs, k); got != want {
+			t.Errorf("%s = %q in the scrubbed child, want the launching shell's %q", k, got, want)
+		}
+	}
 
 	// Host model policy stays refused on an isolated kind whichever layer names it.
 	for _, tc := range []struct{ line, want string }{
@@ -687,7 +724,7 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := filepath.Join(f.cellsRoot, cellDefaultsFile)
-	if err := os.WriteFile(file, []byte("LEAK_PROBE=host-default-value\nGH_TOKEN=host-default-value\nCELL_GO_CACHE=on\nGOFLAGS=-host-default-value\n"), 0o600); err != nil {
+	if err := os.WriteFile(file, []byte("LEAK_PROBE=host-default-value\nGH_TOKEN=host-default-value\nCELL_GO_CACHE=on\nGOFLAGS=-host-default-value\nCELL_HARNESS=codex\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -696,7 +733,7 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 		t.Fatalf("container check: %+v", r)
 	}
 	for _, want := range []string{
-		"  ok    cell defaults: read " + file + " (4 key(s): LEAK_PROBE GH_TOKEN CELL_GO_CACHE GOFLAGS; this cell's cell.env overrides each)\n",
+		"  ok    cell defaults: read " + file + " (5 key(s): LEAK_PROBE GH_TOKEN CELL_GO_CACHE GOFLAGS CELL_HARNESS; this cell's cell.env overrides each)\n",
 		"  n/a   managed Go cache: not applied to a container cell — its own runtime configures its caches (CELL_GO_CACHE=on from defaults file)\n",
 	} {
 		if !strings.Contains(r.stdout, want) {
@@ -711,13 +748,80 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 		"CELL_REPO": true, "CELL_ROOTS": true, "CELL_HARNESS": true, "ROLES": true,
 		// what a POSIX shell adds to its own environment
 		"PWD": true, "OLDPWD": true, "SHLVL": true, "_": true}
+	handed := map[string]string{}
 	for _, kv := range strings.Split(strings.TrimSpace(string(got)), "\n") {
 		k, v, _ := strings.Cut(kv, "=")
+		handed[k] = v
 		if !fixed[k] {
 			t.Errorf("the container launcher was handed %s, which is not one of its fixed variables", k)
 		}
 		if strings.Contains(v, "host-default-value") {
 			t.Errorf("a defaults-file value reached the container launcher through %s", k)
 		}
+	}
+	// One of the fixed variables is a lever the file may set, and it arrives as the same key in
+	// the shell would. The three that are the host's own (HOME, PATH, TERM) the file refuses, so
+	// they are the launching process's: PATH is the one this run controls.
+	if handed["CELL_HARNESS"] != "codex" {
+		t.Errorf("the launcher was handed CELL_HARNESS=%q, want the defaults file's codex", handed["CELL_HARNESS"])
+	}
+	if want := strings.TrimPrefix(f.hermeticPath(), "PATH="); handed["PATH"] != want {
+		t.Errorf("the launcher was handed PATH=%q, want the launching process's %q", handed["PATH"], want)
+	}
+}
+
+// TestShowNamesTheDefaultsFileAsASource: `show` says where each effective choice came from, and
+// a value the machine-wide file supplied is labelled with that file — never `cell.env`, which it
+// is not in, and never `default`, which would hide that a file decided it. The same value moved
+// into the cell's own file is labelled `cell.env`.
+func TestShowNamesTheDefaultsFileAsASource(t *testing.T) {
+	root := defaultsRoot(t)
+	for _, k := range []string{"ASSAY_REPAIR_ADMISSION", "CELL_COCKPIT", "CELL_PROVIDER_GLM_BASE_URL", "CELL_PROVIDER_GLM_TOKEN_ENV", "CELL_PROVIDER_GLM_MODEL"} {
+		t.Setenv(k, "")
+		os.Unsetenv(k)
+	}
+	lines := "CELL_HARNESS=claude\nCELL_COCKPIT=tmux\nDESK_MODEL_DEFAULT=example-model\nASSAY_REPAIR_ADMISSION=on\n" +
+		"CELL_PROVIDER=glm\nCELL_PROVIDER_GLM_BASE_URL=https://example.invalid/api\n"
+	show := func() string { return captureStdout(t, func() { cmdShow("demo", nil) }) }
+
+	writeDefaults(t, root, lines)
+	writeCell(t, root, "demo", demoCell)
+	fromFile := show()
+	for _, want := range []string{
+		"[show] ASSAY_REPAIR_ADMISSION=on (defaults.env; composed into every desk launch)\n",
+		"[show] CELL_COCKPIT=tmux (defaults.env)\n",
+		"[show] CELL_HARNESS=claude (defaults.env)\n",
+		"(defaults.env DESK_MODEL_DEFAULT)\n",
+		"https://example.invalid/api (defaults.env)",
+	} {
+		if !strings.Contains(fromFile, want) {
+			t.Errorf("show, with the value in the defaults file, does not print %q:\n%s", want, fromFile)
+		}
+	}
+	for _, l := range strings.Split(fromFile, "\n") {
+		// CELL_KIND is the one of these lines the cell's own file does set.
+		if strings.Contains(l, "(cell.env") && !strings.HasPrefix(l, "[show] CELL_KIND=") {
+			t.Errorf("show labels a value cell.env that the cell's file does not set: %s", l)
+		}
+	}
+
+	if err := os.Remove(filepath.Join(root, cellDefaultsFile)); err != nil {
+		t.Fatal(err)
+	}
+	writeCell(t, root, "demo", demoCell+lines)
+	fromCell := show()
+	for _, want := range []string{
+		"[show] ASSAY_REPAIR_ADMISSION=on (cell.env; composed into every desk launch)\n",
+		"[show] CELL_COCKPIT=tmux (cell.env)\n",
+		"[show] CELL_HARNESS=claude (cell.env)\n",
+		"(cell.env DESK_MODEL_DEFAULT)\n",
+		"https://example.invalid/api (cell.env)",
+	} {
+		if !strings.Contains(fromCell, want) {
+			t.Errorf("show, with the value in cell.env, does not print %q:\n%s", want, fromCell)
+		}
+	}
+	if strings.Contains(fromCell, cellDefaultsFile) {
+		t.Errorf("show names the defaults file when there is none:\n%s", fromCell)
 	}
 }

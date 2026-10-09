@@ -16,7 +16,10 @@ launch. No host-wide scheduled job is installed.
 
 To enable it for every cell on a machine, put the same lines in the machine-wide
 defaults file, `$CELLS_ROOT/defaults.env`, instead of in each `cell.env`, and opt
-one cell back out in its own file:
+one cell back out in its own file. `cellctl new` writes that file with these keys
+already in it, commented out at their compiled defaults (`cellctl defaults init`
+writes it for a cells root that has none), so enabling the cache is uncommenting
+one line and changing `off` to `on`:
 
 ```dotenv
 # $CELLS_ROOT/defaults.env — every cell under this cells root

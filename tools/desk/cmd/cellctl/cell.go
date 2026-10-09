@@ -314,8 +314,16 @@ type Cell struct {
 	cadenceLease *cellcadence.Lease
 	Env          *Env
 
-	Name       string
-	Dir        string
+	Name string
+	Dir  string
+	// Root is the cells root this load resolved, absolute, and Ref the cell's path under it — the
+	// name it was loaded by (`demo`, or `team/demo` for a nested cell). Anything that makes a
+	// child cellctl load THIS cell again hands it exactly this pair, through reenter: the cell
+	// directory's parent is the cells root only for a cell one level down, and the root is also
+	// where the machine-wide defaults file and the shared provider catalog are read from.
+	Root string
+	Ref  string
+
 	Home       string
 	Config     string
 	CellsCfg   string
@@ -353,6 +361,29 @@ func cellsRoot(e *Env) string {
 	return filepath.Join(xdg, "assay", "cells")
 }
 
+// cellAddress is the (cells root, name) pair that loads the cell at dir again: the root the load
+// resolved, made absolute, and dir's path under it. A directory that is not under the root —
+// reached by a name that climbs out of it — is addressed the only way left, by its own parent.
+func cellAddress(root, dir string) (string, string) {
+	if abs, err := filepath.Abs(root); err == nil {
+		if rel, err := filepath.Rel(abs, dir); err == nil && rel != "." && filepath.IsLocal(rel) {
+			return abs, rel
+		}
+	}
+	return filepath.Dir(dir), filepath.Base(dir)
+}
+
+// reenter is the (cells root, name) pair a child cellctl is given to load this cell again. A
+// Cell that loadCell did not build carries no root and is addressed the way every cell was
+// before the root was carried: by its directory's parent and its name — the same pair, for a
+// cell one level under its root.
+func (c *Cell) reenter() (root, name string) {
+	if c.Root == "" {
+		return filepath.Dir(c.Dir), c.Name
+	}
+	return c.Root, c.Ref
+}
+
 func deskToolsBin(e *Env) string {
 	if runtime.GOOS == "windows" {
 		return e.GetOr("DESK_TOOLS_BIN", filepath.Join(e.Get("LOCALAPPDATA"), "Assay", "bin"))
@@ -386,9 +417,10 @@ func loadCell(name string) *Cell {
 		die("cannot resolve cell directory: %v", err)
 	}
 	c.Dir = abs
+	c.Root, c.Ref = cellAddress(cellsRoot(e), c.Dir)
 	// The machine-wide defaults go on BEFORE the cell's own file, so cell.env overrides them key
 	// by key; they go on AFTER the process environment, as cell.env does. A file that is not
-	// there changes nothing; one that is there and unusable stops here, before any verb acts.
+	// there sets nothing; one that is there and unusable stops here, before any verb acts.
 	c.DefaultsPath = cellDefaultsPath(e)
 	if c.DefaultsKeys, c.DefaultsRead, err = overlayCellDefaults(e, c.DefaultsPath); err != nil {
 		die("%v", err)
@@ -499,14 +531,7 @@ func loadCell(name string) *Cell {
 	// Model TIER map compiled defaults (#986). `-` (not `:-`) on purpose: cell.env can set one
 	// of these to the EMPTY string to deliberately REMOVE an entry, which is the shape a
 	// fixture uses to reproduce the no-pin-no-tier-match case `check` must surface as a MISS.
-	for k, def := range map[string]string{
-		"TIER_MODEL_TOP_CLAUDE":  "fable",
-		"TIER_MODEL_MID_CLAUDE":  "sonnet",
-		"TIER_MODEL_FAST_CLAUDE": "haiku",
-		"TIER_MODEL_TOP_CODEX":   "gpt-5.6-terra",
-		"TIER_MODEL_MID_CODEX":   "gpt-5.6-terra",
-		"TIER_MODEL_FAST_CODEX":  "gpt-5.6-terra",
-	} {
+	for k, def := range tierModelDefaults {
 		e.Put(k, e.GetOrSet(k, def))
 	}
 

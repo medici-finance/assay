@@ -214,7 +214,7 @@ var deskwtLookPath = exec.LookPath
 var deskwtCommand = exec.Command
 
 func (c *Cell) worktreeViaDeskwt(role string) (string, bool) {
-	if c.Env.GetOr("CELLCTL_DESKWT", "1") != "1" {
+	if c.Env.GetOr("CELLCTL_DESKWT", deskwtDefault) != "1" {
 		return "", false
 	}
 	if _, err := deskwtLookPath("deskwt"); err != nil {

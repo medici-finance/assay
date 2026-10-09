@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,10 +20,15 @@ import (
 //
 // Three rules keep the file from becoming a second, quieter place to configure a cell:
 //
-//   - Absent means absent. No file changes nothing, prints nothing and is never an error.
+//   - Absent means absent. No file is never an error and sets no key: every value is what the
+//     three other layers make it. (`check` gained one pair of rows with this file, and prints
+//     them for a cell with no file only when CELL_GO_CACHE is set — see checkCellDefaults.)
 //   - A file that is there is read strictly. One that cannot be read, a line that is not an
 //     assignment, or a key in cellDefaultsRefused stops the verb and names the file.
-//   - It is never written by cellctl. `cellctl set` writes the cell's own cell.env only.
+//   - cellctl writes it once and never again. `cellctl new` and `cellctl defaults init` create
+//     it from the template when there is none — every settable key commented out, so the new
+//     file sets nothing — and nothing ever rewrites, appends to or replaces a file that is
+//     there. `cellctl set` writes the cell's own cell.env only.
 //
 // The file applies to every cell kind. It adds no path into a scrubbed or container launch that
 // the process environment did not already have: both kinds compose their child environment from
@@ -40,49 +47,34 @@ const (
 )
 
 // cellDefaultsRefused is every key the defaults file may not set, with the reason the refusal
-// prints. Each one names or scopes ONE cell, or binds a resource one cell holds; a machine-wide
-// value would be wrong for every cell but one, or would move every cell at once.
-var cellDefaultsRefused = []struct{ key, why string }{
-	// What a cell is.
-	{"CELL", "names one cell"},
-	{"CELL_KIND", "is one cell's kind, with that kind's own preconditions"},
-	{"CELL_KIND_OVERRIDE_INTERNAL", "carries one invocation's --kind and would re-kind every cell on every run"},
-	{"ROLES", "is one cell's set of role windows"},
-	// What a cell is scoped to.
-	{"CELL_REPO", "is the one checkout a cell's role worktrees are created from"},
-	{"CELL_REPO_SLUG", "is the one repository a scrubbed cell is scoped to"},
-	{"CELL_ROOTS", "is one cell's stream-root map, the scope its desks read"},
-	{"CELLS_CONFIG", "is one cell's own cells.yaml slice"},
-	{"CELL_COMMS_CONFIG", "is a comms manifest that names the single cell it belongs to"},
-	// Where a cell lives, and what it holds while running.
-	{"CELLS_ROOT", "locates this file and every cell, and is resolved before the file is read"},
-	{"DESKD", "decides whether one cell runs its own deskd, which a container or scrubbed cell refuses outright"},
-	{"DESKD_ADDR", "is the address one cell's deskd listens on"},
-	{"DESKD_INDEX", "is one cell's deskd index"},
-	{"TMUX_SESSION", "is one cell's session name, which `down` stops"},
-	{"CELL_GO_CACHE_ROOT", "is a cache root marked for exactly one cell; a second cell is refused it"},
-	{"CELL_CONTAINER_CONFIG", "binds one cell to its container definition"},
-	{"CELL_CONTAINER_LAUNCHER", "binds one cell to its container launcher"},
-	// A cell's forge binding: which forge its credentials are minted for and sent to.
-	{"CELL_FORGE", "is one cell's forge"},
-	{"GITHUB_HOST", "is the forge host one cell's credentials are sent to"},
-	{"FORGE_API_BASE", "is the forge endpoint one cell's credentials are sent to"},
-	{"GITLAB_API_BASE", "is the forge endpoint one cell's credentials are sent to"},
-	{"GITLAB_GROUP", "is the group one cell reads"},
-	{"GITLAB_TOKEN_STORE", "is one cell's token store"},
-	{"DESKD_GITLAB_TOKEN_FILE", "is one cell's deskd read token"},
-	{"DESKD_APP_PEM", "is one cell's deskd read key"},
-	{"DESKD_APP_ID_VAR", "names the App id one cell's deskd mints with"},
-	{"ORGS", "is the set of organisations one cell mints tokens for"},
-}
+// prints. It is drawn from the key registry (envkeys.go), and it is every key cellctl reads that
+// is not a machine-wide lever: the per-cell keys, each of which names or scopes ONE cell or binds
+// a resource one cell holds, so a machine-wide value would be wrong for every cell but one; the
+// switches that belong to one run of one command; and the locations and host variables cellctl
+// follows from the launching shell — the cells root this very file is found in among them — which
+// a file that outranks the shell must not be able to move.
+var cellDefaultsRefused = envKeyRefusals()
 
-func cellDefaultsRefusal(key string) (string, bool) {
+// cellDefaultsRefusal is why the defaults file refuses key, and where the key goes instead.
+func cellDefaultsRefusal(key string) (why, instead string, refused bool) {
 	for _, r := range cellDefaultsRefused {
-		if r.key == key {
-			return r.why, true
+		if r.key != key {
+			continue
 		}
+		k, _ := envKeyLookup(key)
+		switch {
+		case k.class == envCell:
+			instead = "set it in the cell's own cell.env"
+		case k.from == envFromRun:
+			instead = "give it in the environment of the command it is for"
+		case k.from == envInternal:
+			instead = "it is not configuration"
+		default:
+			instead = "cellctl takes it from the environment of the command that runs it"
+		}
+		return r.why, instead, true
 	}
-	return "", false
+	return "", "", false
 }
 
 // cellDefaultsPath is the defaults file loadCell reads: defaults.env in the cells root.
@@ -111,7 +103,7 @@ func cellDefaultsFor(envfile string) string {
 }
 
 // overlayCellDefaults overlays the defaults file at path onto e and returns the keys it set.
-// read is false, with no error, when there is no file — the one case that changes nothing.
+// read is false, with no error, when there is no file — and then e is as it was.
 //
 // The file is opened the way the other shared file in the cells root is (readPolicySource):
 // without blocking, and only when it is a regular file, so a FIFO or a directory left at the
@@ -128,19 +120,98 @@ func overlayCellDefaults(e *Env, path string) (keys []string, read bool, err err
 		}
 		return nil, false, fmt.Errorf("cannot read cell defaults file %s: %v", path, err)
 	}
-	keys, err = overlayEnvLines(runtime.GOOS, e, raw, layerDefaults, func(line int, key string) error {
-		if key == "" {
-			return fmt.Errorf("cell defaults file %s: line %d is not a KEY=VALUE assignment (a comment starts with #)", path, line)
-		}
-		if why, refused := cellDefaultsRefusal(key); refused {
-			return fmt.Errorf("cell defaults file %s: line %d sets %s, which %s — it cannot be a machine-wide default; set it in the cell's own cell.env", path, line, key, why)
-		}
-		return nil
-	})
+	keys, err = overlayCellDefaultsText(runtime.GOOS, e, raw, path)
 	if err != nil {
 		return nil, false, err
 	}
 	return keys, true, nil
+}
+
+// overlayCellDefaultsText is the strict reading of a defaults file's text: every line is blank,
+// a comment or an assignment, and no assignment sets a key the file refuses. path only names the
+// file in a refusal.
+func overlayCellDefaultsText(goos string, e *Env, raw []byte, path string) ([]string, error) {
+	return overlayEnvLines(goos, e, raw, layerDefaults, func(line int, key string) error {
+		if key == "" {
+			return fmt.Errorf("cell defaults file %s: line %d is not a KEY=VALUE assignment (a comment starts with #)", path, line)
+		}
+		if why, instead, refused := cellDefaultsRefusal(key); refused {
+			return fmt.Errorf("cell defaults file %s: line %d sets %s, which %s — it cannot be a machine-wide default; %s", path, line, key, why, instead)
+		}
+		return nil
+	})
+}
+
+// createCellDefaults writes the template to path when nothing is there, and reports whether it
+// did. A file, a directory or a symlink already at the path — whatever it holds, readable or
+// not — is left exactly as it is: the create is exclusive, so there is no window in which an
+// existing file could be opened for writing.
+//
+// It creates the file and nothing else. The cells root is `cellctl new`'s to create, with the
+// mode `new` gives it; a root that is not there is an error here, not a directory to make.
+func createCellDefaults(path string) (created bool, err error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	_, werr := f.WriteString(cellDefaultsTemplate())
+	cerr := f.Close()
+	if werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		// Only ever the file this call created a moment ago.
+		os.Remove(path)
+		return false, werr
+	}
+	return true, nil
+}
+
+const cellDefaultsCreated = "[defaults] created %s; every key in it is commented out, so it sets nothing until you uncomment a line\n"
+
+// seedCellDefaults is `cellctl new`'s last step: a cells root that has no defaults file gets the
+// template, once. It says one line when it writes the file and nothing when one is already
+// there. A root it cannot write to is a notice, never a failed `new` — the cell is already
+// scaffolded, and the file is optional.
+func seedCellDefaults() {
+	path := cellDefaultsPath(newEnvFromProcess())
+	created, err := createCellDefaults(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "NOTICE: no machine-wide defaults file written at %s: %v (`cellctl defaults init` writes it later)\n", path, err)
+		return
+	}
+	if created {
+		fmt.Printf(cellDefaultsCreated, path)
+	}
+}
+
+// cmdDefaults is `cellctl defaults init|print`: the two acts on the template that do not belong
+// to a cell. `print` writes the template to stdout — the list of every key and its compiled
+// default, and what to diff an existing file against. `init` creates the file for a cells root
+// that predates it, on the same never-overwrite rule `cellctl new` follows.
+func cmdDefaults(args []string) {
+	if len(args) != 1 || (args[0] != "init" && args[0] != "print") {
+		die("usage: cellctl defaults init|print (init creates CELLS_ROOT/%s without overwriting; print writes the template to stdout)", cellDefaultsFile)
+	}
+	if args[0] == "print" {
+		fmt.Print(cellDefaultsTemplate())
+		return
+	}
+	path := cellDefaultsPath(newEnvFromProcess())
+	created, err := createCellDefaults(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		die("cannot create %s: there is no cells root at %s (`cellctl new` creates the root with its first cell, and writes this file with it)", path, filepath.Dir(path))
+	}
+	if err != nil {
+		die("cannot create %s: %v", path, err)
+	}
+	if !created {
+		die("cannot create %s: it is already there, and an existing defaults file is never overwritten (`cellctl defaults print` prints the template to compare it with)", path)
+	}
+	fmt.Printf(cellDefaultsCreated, path)
 }
 
 // goCacheSupply says which layer supplied CELL_GO_CACHE, for `check`'s managed-cache row. An

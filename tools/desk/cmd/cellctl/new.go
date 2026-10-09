@@ -14,6 +14,13 @@ import (
 // parity harness diffs the whole tree each implementation writes — paths, mode bits and file
 // contents — so a stray space in a comment line here is a divergence, not a nit.
 func cmdNew(args []string) {
+	scaffoldCell(args)
+	// Only after a scaffold that succeeded: a refused `new` returns through die and writes
+	// nothing, the machine-wide defaults file included.
+	seedCellDefaults()
+}
+
+func scaffoldCell(args []string) {
 	// --help before anything else, so `cellctl new --help` prints the kind- and forge-aware
 	// usage rather than dying on a missing cell name or flag.
 	for _, a := range args {

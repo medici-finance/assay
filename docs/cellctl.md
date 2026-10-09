@@ -193,6 +193,11 @@ That writes `cell.env`, creates `home/`, `bin/`, `index/`, `worktrees/`, copies 
 and symlinks `.config/gh` + `.gitconfig` to the operator's real ones. It then prints a per-cell
 `README.md` naming what is left.
 
+The first `new` under a cells root also writes `defaults.env` beside the cells — the machine-wide
+defaults template, every line a comment — and says so in one `[defaults] created …` line. It
+sets nothing until a line is uncommented, and no later `new` touches it (see *Machine-wide
+defaults*).
+
 **Four steps remain, and `cellctl new` deliberately does not do them.** Each moves key material or
 states who the cell trusts — custody acts, which are the ones a human should perform knowingly:
 
@@ -452,9 +457,10 @@ cell instead checks the `GITLAB_GROUP`, the role token store directory, and the 
 on a gitlab cell) — never silently skipped, so a half-provisioned or mis-forged cell reads as such
 rather than clean.
 
-On a machine with a `$CELLS_ROOT/defaults.env`, two rows directly under the header say that the
-file was read and where the managed Go cache's setting came from (see *Machine-wide defaults*).
-They are never a `MISS`.
+On a machine with a `$CELLS_ROOT/defaults.env`, two rows say that the file was read and where the
+managed Go cache's setting came from (see *Machine-wide defaults*). They print directly under the
+`[check]` header — for a container cell, which prints no such header, after its `[model]` lines
+and before the container's own check. They are never a `MISS`.
 
 Run it after `new`, and again after any key or token rotation.
 
@@ -1261,49 +1267,97 @@ So a cell overrides the machine, and the machine overrides the shell — the sam
 `cell.env` has always had to the shell. A flag given on one invocation (`--harness`, `--model`, …)
 still overrides all four for that run, as before.
 
-- **No file changes nothing.** It is optional; `cellctl new` does not create it, and a machine
-  without one loads, checks and launches every cell exactly as before.
+- **A file that sets no key changes no value.** The file is optional. With no file, or with the
+  file `cellctl new` writes (every line a comment), each cell resolves every key exactly as it did
+  before the file existed, and launches the same. What does differ is `cellctl check`'s output,
+  by the two rows described under *What `check` and `show` say*: a cells root that has a
+  defaults file prints them for every cell, and a root without one prints them only for a cell
+  that sets `CELL_GO_CACHE` somewhere.
 - **A file that is there is read strictly.** If it cannot be read, is not a regular file, or
   carries a line that is neither blank, a `#` comment nor an assignment, every verb that loads a
   cell refuses and names the file and the line. (A stray line in a `cell.env` is skipped, as it
   always was; the shared file is held to more because one typo there is every cell's typo.)
-- **cellctl never writes it.** `cellctl set` and `--set` resolve a cell through all four layers
-  and write the cell's own `cell.env` only, so `cellctl set <cell> KEY=VALUE` is how one cell
-  departs from a machine default (a key `set` does not know still needs `--force`, or a hand
-  edit of that `cell.env`). Edit `defaults.env` by hand.
+- **cellctl writes it once, when there is none, and never changes it afterwards.** `cellctl new`
+  writes the template (below) into a cells root that has no `defaults.env` and says so in one
+  line; `cellctl defaults init` does the same for a cells root that already has cells, and
+  refuses when a file is there. Neither overwrites, appends to or replaces an existing file —
+  whatever it holds — and a `new` that cannot write it still scaffolds its cell and prints a
+  notice. From then on the file is edited by hand. `cellctl set` and `--set` resolve a cell
+  through all four layers and write the cell's own `cell.env` only, so
+  `cellctl set <cell> KEY=VALUE` is how one cell departs from a machine default (a key `set`
+  does not know still needs `--force`, or a hand edit of that `cell.env`).
 - **It applies to every cell kind.** A scrubbed or container launch still composes its child
   environment from its own fixed list of variables, so a key in this file reaches such a child
   only where the same key in the shell already did; and host model policy
   (`CELL_PROVIDER_DEFAULTS`, `CELL_MODEL_POLICY`, `CELL_ROLE_CONTEXT`) stays refused on those
   kinds whichever layer names it.
-- **The file is as trusted as a `cell.env`.** Anyone who can write the cells root can already
-  write each cell's `cell.env`; the file has the same owner, the same reach and no secrets of its
-  own. It is opened as `providers.json` is — a regular file only, never a FIFO or a directory.
+- **The file is as trusted as the cells root is.** It configures every cell under the root, so
+  whoever can write the root directory or the file configures them all. cellctl assumes the
+  cells root is writable by its owner only, and does not check: `cellctl new` creates a missing
+  cells root with mode `0755` (each cell directory inside it `0700`), the file cellctl writes is
+  `0600`, and a file made by hand takes whatever mode its author's umask gives it. On a machine
+  where another account can write the cells root, that account can already replace a cell's
+  directory, and can now also set a default for every cell at once — keep the root yours. The
+  file holds no secrets of its own. It is opened as `providers.json` is — a regular file only,
+  never a FIFO or a directory.
 - **`defaults.env` is not available as a cell name**, and a cell with a nested name
   (`team/demo`) takes the cells root's file like any other — there is one file per cells root.
+  That holds for every later cellctl process a launch starts as well as for the launch: the
+  model-policy hook, a container cell's console and the cadence and comms panes are each handed
+  the cells root the launch resolved, not the cell directory's parent.
 
-**Keys the file refuses.** A key that names or scopes one cell, or binds a resource one cell
-holds, cannot be a machine-wide default: the value would be wrong for every cell but one. Setting
-one in `defaults.env` refuses, naming the key, the file and the line; set it in the cell's own
-`cell.env`.
+**The template, and the list of every key.** `cellctl defaults print` writes the template to
+standard output; it is the complete list of what cellctl reads, generated from the one registry
+the program itself checks its reads against, so it cannot fall behind:
+
+```sh
+cellctl defaults print                                    # every key, its meaning, its compiled default
+cellctl defaults init                                     # write it as $CELLS_ROOT/defaults.env, if none
+cellctl defaults print | diff - "$CELLS_ROOT/defaults.env"   # what an existing file changed, or lacks
+```
+
+Every key that can be a machine-wide default appears as a commented-out `# KEY=<compiled default>`
+line under a one-line description, grouped (managed Go cache and task scratch; harness, cockpit
+and launch; cadence and boot; models and tiers; providers and model policy; policy). An empty
+value means the key is unset by default or its default is derived, and the description says
+which. After them, still as comments, come the keys the file refuses, each with its reason. The
+template, unedited, sets nothing; uncommenting a line with its value unchanged resolves every cell
+as before. The `cell.env` table above describes the keys a cell most often sets; where the two
+differ, the printed template is the complete one.
+
+**Keys the file refuses.** The file may set a key that is a machine-wide lever, and any key
+cellctl does not read at all (it is carried in the environment as a `cell.env` line would be).
+Every other key cellctl reads is refused, naming the key, the file and the line. There are three
+kinds. A key that names or scopes one cell, or binds a resource one cell holds, cannot be a
+machine-wide default — the value would be wrong for every cell but one — and goes in the cell's
+own `cell.env`. A switch for one run of one command, and a location or host variable cellctl
+follows from the shell that started it, are refused because this file outranks the process
+environment: set here, no shell could take the value back, and several of them decide where this
+file and the operator's credentials are found. And the variables cellctl sets for its own child
+processes are not configuration.
 
 | Refused in `defaults.env` | Why |
 |---|---|
 | `CELL`, `CELL_KIND`, `ROLES` | what one cell is: its name, its kind (each kind has its own preconditions) and its role windows |
 | `CELL_REPO`, `CELL_REPO_SLUG`, `CELL_ROOTS`, `CELLS_CONFIG`, `CELL_COMMS_CONFIG` | what one cell is scoped to: its checkout, its one repository, its stream-root map, its `cells.yaml` slice, a comms manifest that names its single cell |
-| `CELLS_ROOT` | locates this file, and is resolved before the file is read |
 | `DESKD`, `DESKD_ADDR`, `DESKD_INDEX`, `TMUX_SESSION` | what one running cell holds: whether it stands a `deskd`, the address that `deskd` binds, its index, the session `down` stops |
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
+| `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |
+| `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
+| `ASSAY_CONFIG_HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | locate the operator's own config homes — where the desk tools, the GitHub CLI and the harnesses find their credentials |
+| `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
+| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
 
-Everything else is allowed, including a key cellctl does not know — as in `cell.env`. Typical
-uses are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget, `CELL_COCKPIT`, `CELL_HARNESS`,
-and the model keys (`DESK_MODEL_DEFAULT`, the `TIER_MODEL_*` map).
+Typical uses of the file are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget,
+`CELL_COCKPIT`, `CELL_HARNESS`, and the model keys (`DESK_MODEL_DEFAULT`, the `TIER_MODEL_*`
+map).
 
-**What `check` and `show` say.** When a defaults file was read, `cellctl check <cell>` prints,
-directly under its header, the file and the keys it sets, and the managed Go cache's effective
-state with the layer that supplied `CELL_GO_CACHE`:
+**What `check` and `show` say.** When a defaults file was read, `cellctl check <cell>` prints
+the file and the keys it sets, and the managed Go cache's effective state with the layer that
+supplied `CELL_GO_CACHE` — directly under its `[check]` header, or for a container cell after
+its `[model]` lines:
 
 ```text
   ok    cell defaults: read <cells-root>/defaults.env (1 key(s): CELL_GO_CACHE; this cell's cell.env overrides each)
@@ -1311,11 +1365,24 @@ state with the layer that supplied `CELL_GO_CACHE`:
 ```
 
 The layer reads `process environment`, `defaults file` or `cell.env`, or the row says
-`CELL_GO_CACHE unset`. With no defaults file the same two rows print only when `CELL_GO_CACHE`
-is set somewhere (`n/a   cell defaults: none read — no <path>`), and a cell that uses neither
-prints neither. Neither row is ever a `MISS`, so `check`'s exit code does not depend on them: a
+`CELL_GO_CACHE unset`. A file with every line commented out — the one `cellctl new` writes —
+reads `(it sets no keys; …)`. With no defaults file the same two rows print only when
+`CELL_GO_CACHE` is set somewhere (`n/a   cell defaults: none read — no <path>`), and a cell that
+uses neither prints neither. Neither row is ever a `MISS`, so `check`'s exit code does not depend on them: a
 `CELL_GO_CACHE` value the cache refuses is a `warn` here and a refusal at launch. `cellctl show`
 labels a value the file supplied `defaults.env`.
+
+**Checking it.** From `tools/desk`:
+
+```sh
+go test ./cmd/cellctl/ -run 'TestCellDefaults|TestEnvKey|TestDefaultsVerb|TestNestedCellReentry' -count=1
+go run ./cmd/muhar -spec cmd/cellctl/defaults-mutations.json
+```
+
+The second command breaks the layer one way at a time — the overlay skipped, the order swapped, a
+refused key let through, a template line left uncommented, a re-entry handed the wrong cells
+root — and reports whether the tests named in the spec notice each one. It is run by hand; no CI
+job runs it yet.
 
 ## Container cells
 
@@ -1587,10 +1654,12 @@ whole tree each implementation scaffolds — paths, mode bits and file contents.
 narrows a run to one cell or one verb.
 
 **The machine-wide defaults file is outside the matrix too.** `$CELLS_ROOT/defaults.env` exists
-only in the Go program — the oracle does not read it. It follows the rule the other Go-only
-settings follow (`CELL_GO_CACHE`, `CELL_ROLE_CONTEXT`, shared provider defaults): a cells root
-without the file produces byte-identical output, so every cell in the matrix still diffs clean,
-and the layer's own behaviour is asserted by Go tests rather than by diff.
+only in the Go program — the oracle neither reads nor writes it. A cells root without the file
+resolves every key as the oracle does, so the dry-run cells of the matrix still diff clean. The
+`new` cells differ by exactly the file: the Go `new` writes `defaults.env` into the cells root
+and prints one `[defaults] created …` line. The harness drops that line from both sides before
+comparing output, and the tree it compares is the scaffolded cell's own directory, which the
+file is not in. The layer's own behaviour is asserted by Go tests rather than by diff.
 
 **`deskd` is deliberately outside the matrix.** It has no `DRY_RUN` plan path in the oracle, so
 there is nothing to diff, and giving it one would mean editing the oracle. It is also the single

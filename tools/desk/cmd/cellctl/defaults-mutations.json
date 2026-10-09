@@ -1,0 +1,299 @@
+{
+  "test": "go test ./cmd/cellctl/ -count=1 -timeout 30m -run '^(TestCellDefaults|TestBinaryCheckReportsCellDefaults|TestBinaryCellDefaults|TestShowNamesTheDefaultsFile|TestEnvKey|TestSetKnowsEveryLever|TestSetExpandsVariablesAsBootDoes|TestNewSeedsCellDefaults|TestSeedCellDefaults|TestDefaultsVerb|TestNestedCellReentry|TestBinaryNestedCellHook|TestCellEnvValueReaders|TestKnownCellEnvKeyFamilies)'",
+  "control": {
+    "name": "CONTROL — invert the file-order assertion (the keys a defaults file sets must NOT be the ones it sets)",
+    "file": "cmd/cellctl/defaults_test.go",
+    "old": "\tif want := []string{\"CELL_GO_CACHE\", \"DESK_MODEL_DEFAULT\"}; !reflect.DeepEqual(c.DefaultsKeys, want) {",
+    "new": "\tif want := []string{\"CELL_GO_CACHE\", \"DESK_MODEL_DEFAULT\"}; reflect.DeepEqual(c.DefaultsKeys, want) {"
+  },
+  "mutations": [
+    {
+      "name": "loadCell never overlays the defaults file (TestCellDefaultsLayering and every test that reads a value from the file)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\tif c.DefaultsKeys, c.DefaultsRead, err = overlayCellDefaults(e, c.DefaultsPath); err != nil {\n\t\tdie(\"%v\", err)\n\t}\n",
+      "new": "\t_ = overlayCellDefaults\n"
+    },
+    {
+      "name": "cell.env is overlaid BEFORE the defaults file, so the machine outranks the cell (TestCellDefaultsLayering)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\tif c.DefaultsKeys, c.DefaultsRead, err = overlayCellDefaults(e, c.DefaultsPath); err != nil {\n\t\tdie(\"%v\", err)\n\t}\n\tif err := parseCellEnv(e, filepath.Join(c.Dir, \"cell.env\")); err != nil {\n\t\tdie(\"cannot read %s/cell.env: %v\", c.Dir, err)\n\t}\n",
+      "new": "\tif err := parseCellEnv(e, filepath.Join(c.Dir, \"cell.env\")); err != nil {\n\t\tdie(\"cannot read %s/cell.env: %v\", c.Dir, err)\n\t}\n\tif c.DefaultsKeys, c.DefaultsRead, err = overlayCellDefaults(e, c.DefaultsPath); err != nil {\n\t\tdie(\"%v\", err)\n\t}\n"
+    },
+    {
+      "name": "a defaults line does not replace a value the process environment already holds (TestCellDefaultsLayering: the defaults file wins over the process environment)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\t\te.putFrom(key, unquoteShellValueFor(goos, s[i+1:], e), layer)",
+      "new": "\t\tif layer != layerDefaults || e.vals[key] == \"\" {\n\t\t\te.putFrom(key, unquoteShellValueFor(goos, s[i+1:], e), layer)\n\t\t}"
+    },
+    {
+      "name": "the keys a defaults file sets are reported newest first, not in file order (TestCellDefaultsKeysAreReportedInFileOrder)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\t\t\tkeys = append(keys, key)",
+      "new": "\t\t\tkeys = append([]string{key}, keys...)"
+    },
+    {
+      "name": "a defaults file that is not there reads as one that was read (TestCellDefaultsMissingFileChangesNothing)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\t\tif _, lerr := os.Lstat(path); lerr != nil {\n\t\t\t\treturn nil, false, nil\n\t\t\t}",
+      "new": "\t\t\tif _, lerr := os.Lstat(path); lerr != nil {\n\t\t\t\treturn []string{}, true, nil\n\t\t\t}"
+    },
+    {
+      "name": "a line with no key is accepted in the defaults file (TestCellDefaultsRefusesMalformedFile)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\tif key == \"\" {\n\t\t\treturn fmt.Errorf(\"cell defaults file %s: line %d is not a KEY=VALUE assignment (a comment starts with #)\", path, line)\n\t\t}",
+      "new": "\t\tif key == \"\" {\n\t\t\treturn nil\n\t\t}"
+    },
+    {
+      "name": "`set` resolves a cell without the defaults file (TestCellDefaultsSetWritesOnlyCellEnv)",
+      "file": "cmd/cellctl/set.go",
+      "old": "\tif _, _, err := overlayCellDefaults(boot, cellDefaultsFor(envfile)); err != nil {\n\t\tdie(\"set: %v; nothing written\", err)\n\t}\n",
+      "new": "\t_ = cellDefaultsFor\n"
+    },
+    {
+      "name": "`set` takes the file beside the cell directory's parent for a nested cell (TestCellDefaultsNestedCell)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\tif rel, err := filepath.Rel(filepath.Dir(inRoot), envfile); err == nil && filepath.IsLocal(rel) {\n\t\treturn inRoot\n\t}\n",
+      "new": "\t_ = inRoot\n"
+    },
+    {
+      "name": "`new` accepts defaults.env as a cell name (TestCellDefaultsReservedCellName)",
+      "file": "cmd/cellctl/new.go",
+      "old": "strings.EqualFold(first, cellDefaultsFile) {",
+      "new": "false && strings.EqualFold(first, cellDefaultsFile) {"
+    },
+    {
+      "name": "the cell.env reader allow-list names a function that does not read (TestCellEnvValueReaders)",
+      "file": "cmd/cellctl/cellenvpath_test.go",
+      "old": "\"unquoteShellValue@set.go:effectiveCellEnv\":",
+      "new": "\"unquoteShellValue@set.go:applyKVs\":"
+    },
+    {
+      "name": "a per-cell key (DESKD_ADDR) is not refused in the defaults file (TestCellDefaultsRefusesPerCellKeys)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\tif r.key != key {\n\t\t\tcontinue\n\t\t}\n\t\tk, _ := envKeyLookup(key)",
+      "new": "\t\tif r.key != key || key == \"DESKD_ADDR\" {\n\t\t\tcontinue\n\t\t}\n\t\tk, _ := envKeyLookup(key)"
+    },
+    {
+      "name": "a switch for one run (DRY_RUN) is not refused in the defaults file (TestCellDefaultsRefusesPerCellKeys)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\tif r.key != key {\n\t\t\tcontinue\n\t\t}\n\t\tk, _ := envKeyLookup(key)",
+      "new": "\t\tif r.key != key || key == \"DRY_RUN\" {\n\t\t\tcontinue\n\t\t}\n\t\tk, _ := envKeyLookup(key)"
+    },
+    {
+      "name": "the variable that locates the default cells root (XDG_DATA_HOME) is not refused in the defaults file (TestCellDefaultsRefusesPerCellKeys)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\tif r.key != key {\n\t\t\tcontinue\n\t\t}\n\t\tk, _ := envKeyLookup(key)",
+      "new": "\t\tif r.key != key || key == \"XDG_DATA_HOME\" {\n\t\t\tcontinue\n\t\t}\n\t\tk, _ := envKeyLookup(key)"
+    },
+    {
+      "name": "a host variable (HOME) is not refused in the defaults file (TestCellDefaultsRefusesPerCellKeys)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\tif r.key != key {\n\t\t\tcontinue\n\t\t}\n\t\tk, _ := envKeyLookup(key)",
+      "new": "\t\tif r.key != key || key == \"HOME\" {\n\t\t\tcontinue\n\t\t}\n\t\tk, _ := envKeyLookup(key)"
+    },
+    {
+      "name": "only per-cell keys are refused: every key cellctl takes from the command's environment may be set machine-wide (TestCellDefaultsRefusesPerCellKeys, TestCellDefaultsTemplateNamesWhatItRefuses)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "\t\tif k.class != envMachine {\n\t\t\tout = append(out, struct{ key, why string }{k.key, k.why})",
+      "new": "\t\tif k.class == envCell {\n\t\t\tout = append(out, struct{ key, why string }{k.key, k.why})"
+    },
+    {
+      "name": "a key only the defaults file sets is passed into a scrubbed child (TestCellDefaultsDoNotWidenAScrubbedLaunch)",
+      "file": "cmd/cellctl/env.go",
+      "old": "\tce.Pairs = c.cacheEnv(ce.Pairs)\n\tce.Sorted",
+      "new": "\tce.Pairs = c.cacheEnv(append(ce.Pairs, \"LEAK_PROBE=\"+c.Env.Get(\"LEAK_PROBE\")))\n\tce.Sorted"
+    },
+    {
+      "name": "a scrubbed child's PATH ignores the tool directory the defaults file names (TestCellDefaultsDoNotWidenAScrubbedLaunch)",
+      "file": "cmd/cellctl/env.go",
+      "old": "filepath.Join(c.Dir, \"shim\"), deskToolsBin(c.Env), harnessDir, tail,",
+      "new": "filepath.Join(c.Dir, \"shim\"), \"/opt/desk-tools/bin\", harnessDir, tail,"
+    },
+    {
+      "name": "a scrubbed child's TERM is a constant, not the launching shell's (TestCellDefaultsDoNotWidenAScrubbedLaunch)",
+      "file": "cmd/cellctl/env.go",
+      "old": "\t\treturn c.Env.Get(\"TERM\")",
+      "new": "\t\treturn \"xterm-256color\""
+    },
+    {
+      "name": "a key only the defaults file sets is handed to a container launcher (TestBinaryCellDefaultsDoNotReachAContainerLauncher)",
+      "file": "cmd/cellctl/container.go",
+      "old": "\t\t\"CELL=\" + c.Name,\n\t\t\"CELL_KIND=container\",",
+      "new": "\t\t\"CELL=\" + c.Name,\n\t\t\"LEAK_PROBE=\" + c.Env.Get(\"LEAK_PROBE\"),\n\t\t\"CELL_KIND=container\","
+    },
+    {
+      "name": "a container launcher is handed a constant harness, not the one the defaults file chose (TestBinaryCellDefaultsDoNotReachAContainerLauncher)",
+      "file": "cmd/cellctl/container.go",
+      "old": "\t\t\"CELL_HARNESS=\" + c.Harness,",
+      "new": "\t\t\"CELL_HARNESS=claude\","
+    },
+    {
+      "name": "check attributes CELL_GO_CACHE to cell.env whichever layer set it (TestBinaryCheckReportsCellDefaults)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "c.Env.Source(\"CELL_GO_CACHE\"))",
+      "new": "layerCellEnv)"
+    },
+    {
+      "name": "check prints the defaults rows for a cell with no file and no cache setting (TestBinaryCheckReportsCellDefaults)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\tif !c.DefaultsRead && c.Env.Get(\"CELL_GO_CACHE\") == \"\" {\n\t\treturn\n\t}\n\tif c.DefaultsRead {",
+      "new": "\tif c.DefaultsRead {"
+    },
+    {
+      "name": "show labels a value the defaults file supplied `default` (TestShowNamesTheDefaultsFileAsASource)",
+      "file": "cmd/cellctl/show.go",
+      "old": "\t\t\t} else if c.Env.Source(key) == layerDefaults {",
+      "new": "\t\t\t} else if c.Env.Source(key) == layerUnset {"
+    },
+    {
+      "name": "show labels a model the defaults file pinned `default` (TestShowNamesTheDefaultsFileAsASource)",
+      "file": "cmd/cellctl/show.go",
+      "old": "} else if c.Env.Source(rm.Src) == layerDefaults {",
+      "new": "} else if c.Env.Source(rm.Src) == layerUnset {"
+    },
+    {
+      "name": "show labels repair admission from the defaults file `cell.env` (TestShowNamesTheDefaultsFileAsASource)",
+      "file": "cmd/cellctl/show.go",
+      "old": "if !inCellEnv && c.Env.Source(deskkit.EnvRepairAdmission) == layerDefaults {",
+      "new": "if !inCellEnv && c.Env.Source(deskkit.EnvRepairAdmission) == layerUnset {"
+    },
+    {
+      "name": "a provider value the defaults file supplied is labelled `cell.env` (TestShowNamesTheDefaultsFileAsASource)",
+      "file": "cmd/cellctl/provider.go",
+      "old": "if c.Env.Source(providerVar(name, suffix)) == layerDefaults {",
+      "new": "if c.Env.Source(providerVar(name, suffix)) == layerUnset {"
+    },
+    {
+      "name": "a key cellctl reads (CELL_SCRATCH_MAX_AGE) is missing from the registry (TestEnvKeyRegistryIsComplete)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "{key: \"CELL_SCRATCH_MAX_AGE\", class: envMachine,",
+      "new": "{key: \"CELL_SCRATCH_MAX_AGES\", class: envMachine,"
+    },
+    {
+      "name": "a refused key in the docs table (CELL_GO_CACHE_ROOT) is not in the registry (TestEnvKeyListsAgree)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "{key: \"CELL_GO_CACHE_ROOT\", class: envCell,",
+      "new": "{key: \"CELL_GO_CACHE_ROOTS\", class: envCell,"
+    },
+    {
+      "name": "a per-cell key carries no reason for its refusal (TestEnvKeyRegistryShape)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "envKey{key: \"ORGS\", class: envCell, desc: \"GitHub cells: the orgs the cell's deskd reads.\",\n\t\t\twhy: \"is the set of organisations one cell mints tokens for\"},",
+      "new": "envKey{key: \"ORGS\", class: envCell, desc: \"GitHub cells: the orgs the cell's deskd reads.\"},"
+    },
+    {
+      "name": "the template's key lines are not commented out (TestCellDefaultsTemplateSetsNothing)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "\t\t\tw(\"# \" + k.key + \"=\" + envTemplateValue(k.def))",
+      "new": "\t\t\tw(k.key + \"=\" + envTemplateValue(k.def))"
+    },
+    {
+      "name": "the template leaves out a machine-wide key (TestCellDefaultsTemplateListsEveryMachineKey)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "\t\t\tif k.class != envMachine || k.group != group {",
+      "new": "\t\t\tif k.class != envMachine || k.group != group || k.key == \"CELL_COCKPIT\" {"
+    },
+    {
+      "name": "the template shows a default that is not the compiled one (TestCellDefaultsTemplateUncommentedLines)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "{key: \"CELL_HARNESS\", class: envMachine, group: envGroupHarness, def: \"claude\",",
+      "new": "{key: \"CELL_HARNESS\", class: envMachine, group: envGroupHarness, def: \"codex\","
+    },
+    {
+      "name": "the template's refused section leaves out a per-cell key (TestCellDefaultsTemplateNamesWhatItRefuses)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "\t\tif k.class != envCell {\n\t\t\tcontinue\n\t\t}\n\t\tw(\"#\")",
+      "new": "\t\tif k.class != envCell || k.key == \"ORGS\" {\n\t\t\tcontinue\n\t\t}\n\t\tw(\"#\")"
+    },
+    {
+      "name": "`set` knows only the machine-wide keys, so a per-cell key needs --force (TestSetKnowsEveryLever)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "\treturn ok && k.class != envNotLever",
+      "new": "\treturn ok && k.class == envMachine"
+    },
+    {
+      "name": "`set` knows every registry key, a host variable included (TestSetKnowsEveryLever)",
+      "file": "cmd/cellctl/envkeys.go",
+      "old": "\treturn ok && k.class != envNotLever",
+      "new": "\treturn ok && k.key != \"\""
+    },
+    {
+      "name": "`new` does not write the defaults file (TestNewSeedsCellDefaults)",
+      "file": "cmd/cellctl/new.go",
+      "old": "\t// nothing, the machine-wide defaults file included.\n\tseedCellDefaults()\n",
+      "new": "\t// nothing, the machine-wide defaults file included.\n"
+    },
+    {
+      "name": "the defaults file is created by truncating whatever is at the path (TestNewSeedsCellDefaults, TestDefaultsVerb)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "os.O_WRONLY|os.O_CREATE|os.O_EXCL",
+      "new": "os.O_WRONLY|os.O_CREATE|os.O_TRUNC"
+    },
+    {
+      "name": "a defaults file `new` could not write is passed over in silence (TestSeedCellDefaultsFailureIsANotice)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\tfmt.Fprintf(os.Stderr, \"NOTICE: no machine-wide defaults file written at %s: %v (`cellctl defaults init` writes it later)\\n\", path, err)\n",
+      "new": "\t\t_ = err\n"
+    },
+    {
+      "name": "`defaults init` does not refuse when a file is already there (TestDefaultsVerb)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\tif !created {\n\t\tdie(\"cannot create %s: it is already there",
+      "new": "\tif !created && false {\n\t\tdie(\"cannot create %s: it is already there"
+    },
+    {
+      "name": "`defaults init` creates a missing cells root (TestDefaultsVerb)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\tf, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)",
+      "new": "\t_ = os.MkdirAll(filepath.Dir(path), 0o700)\n\tf, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)"
+    },
+    {
+      "name": "`defaults print` writes the file as well as printing it (TestDefaultsVerb)",
+      "file": "cmd/cellctl/defaults.go",
+      "old": "\t\tfmt.Print(cellDefaultsTemplate())\n\t\treturn",
+      "new": "\t\tfmt.Print(cellDefaultsTemplate())\n\t\tcreateCellDefaults(cellDefaultsPath(newEnvFromProcess()))\n\t\treturn"
+    },
+    {
+      "name": "`set` expands $VAR against an empty environment, not the one a launch expands against (TestSetExpandsVariablesAsBootDoes)",
+      "file": "cmd/cellctl/set.go",
+      "old": "\tboot := newEnvFromProcess()\n\tif _, _, err := overlayCellDefaults(boot,",
+      "new": "\tboot := &Env{vals: map[string]string{}, set: map[string]bool{}, src: map[string]string{}}\n\tif _, _, err := overlayCellDefaults(boot,"
+    },
+    {
+      "name": "every re-entry takes the cell directory's parent as the cells root (TestNestedCellReentryNamesTheLaunchRoot, TestBinaryNestedCellHookReadsTheLaunchDefaults)",
+      "file": "cmd/cellctl/cell.go",
+      "old": "\tif c.Root == \"\" {\n\t\treturn filepath.Dir(c.Dir), c.Name\n\t}\n\treturn c.Root, c.Ref",
+      "new": "\treturn filepath.Dir(c.Dir), c.Name"
+    },
+    {
+      "name": "the container console re-enters under the cell directory's parent (TestNestedCellReentryNamesTheLaunchRoot)",
+      "file": "cmd/cellctl/container_native.go",
+      "old": "\troot, name := c.reenter()\n\treturn []string{\"env\", \"CELLS_ROOT=\" + root,",
+      "new": "\troot, name := filepath.Dir(c.Dir), c.Name\n\treturn []string{\"env\", \"CELLS_ROOT=\" + root,"
+    },
+    {
+      "name": "the comms pane re-enters under the cell directory's parent (TestNestedCellReentryNamesTheLaunchRoot)",
+      "file": "cmd/cellctl/comms_startup.go",
+      "old": "\troot, name := c.reenter()\n\treturn sh.invoke",
+      "new": "\troot, name := filepath.Dir(c.Dir), c.Name\n\treturn sh.invoke"
+    },
+    {
+      "name": "the launch names the cell directory's parent in the model-policy hook command (TestBinaryNestedCellHookReadsTheLaunchDefaults)",
+      "file": "cmd/cellctl/launch.go",
+      "old": "\t\t\tcellsRoot, _ := c.reenter()\n",
+      "new": "\t\t\tcellsRoot := filepath.Dir(c.Dir)\n"
+    },
+    {
+      "name": "the model-policy hook ignores the cells root on its command line (TestBinaryNestedCellHookReadsTheLaunchDefaults)",
+      "file": "cmd/cellctl/policy_enforce.go",
+      "old": "\t\troot, ref = cellsRootSelected, rel",
+      "new": "\t\t_ = rel"
+    },
+    {
+      "name": "the model-policy hook accepts a cell directory outside the cells root it was given (TestBinaryNestedCellHookReadsTheLaunchDefaults)",
+      "file": "cmd/cellctl/policy_enforce.go",
+      "old": "\t\tif err != nil || rel == \".\" || !filepath.IsLocal(rel) {\n\t\t\thookFail(\"cell directory %s is not under",
+      "new": "\t\tif err != nil && false {\n\t\t\thookFail(\"cell directory %s is not under"
+    }
+  ]
+}
