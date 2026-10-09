@@ -38,9 +38,9 @@ consumers:
   - "tools/desk/cmd/deskevidence: fixed-here"
   - "tools/desk/internal/deskkit/forge.go: fixed-here (WriteFile + ReadFile added to the frozen seam, both backends)"
   - "docs/streams/forge-gitlab/inventory.md: fixed-here (both ops inventoried, rows 21–22)"
-  - "tools/desk/cmd/deskpr: follow-on forge-neutral/04b (the gh-migration for deskpr/deskfile/deskclose; #509 ruled it a code-aware rescope that first adds the enumerated ops each still lacks, not a ratchet-number correction)"
-  - "tools/desk/cmd/deskfile: follow-on forge-neutral/04b"
-  - "tools/desk/cmd/deskclose: follow-on forge-neutral/04b"
+  - "tools/desk/cmd/deskpr: follow-up forge-neutral/13 (the gh-migration for deskpr/deskfile/deskclose; #509 ruled it a code-aware rescope that first adds the enumerated ops each still lacks, not a ratchet-number correction — the follow-on the amendment calls `04b` was authored as brief 13)"
+  - "tools/desk/cmd/deskfile: follow-up forge-neutral/13 (the same rescope follow-on as deskpr — the amendment's `04b`, authored as brief 13)"
+  - "tools/desk/cmd/deskclose: follow-up forge-neutral/13 (the same rescope follow-on as deskpr — the amendment's `04b`, authored as brief 13)"
   - "plugins/assay/skills/verify-desk/SKILL.md: follow-up forge-neutral/10 (the Evidence-landing lane gains a hop on a forge with no direct-default-branch push; the conformance round trip is where the loop shape is proved before the skill text is changed)"
 version: 2
 id: 929d765d-2ce6-4907-90c6-52e613f197cb
@@ -73,6 +73,18 @@ inline; GitHub's default branch is directly writable by the verifier App — no 
 
 The Task and Verify sections below are rewritten to this slice; the original four-verb text is
 preserved in the git history and in `docs/streams/forge-gitlab/inventory.md` rows 21–22.
+
+## Amendment (#1281 — row 11 decidable after merge)
+
+Verify row 11 as first authored (`statusgen --consumers --brief forge-neutral/04` with no
+`--base`) is undecidable on merged main: this brief's file and its deliverables never share a
+diff again after the implementing PR lands, so the check exits 2 COULD-NOT-CHECK on every
+post-merge run. Row 11 is re-authored with `--base` pinned to the parent of the commit that
+authored this brief, the form #2257 established for the same defect. The same pass fixed three
+`consumers:` entries that no diff could ever corroborate: `deskpr`/`deskfile`/`deskclose` were
+routed `follow-on forge-neutral/04b`, but `follow-on` is not a routing token the gate
+recognizes and no `04b` brief exists — the follow-on shipped as `forge-neutral/13`, and the
+entries now say `follow-up forge-neutral/13`.
 
 ## Context
 files:
@@ -168,7 +180,7 @@ facts:
 | 8 | `test -d tools/desk/cmd/deskevidence && { grep -rn -e 'apiBaseURL' -e 'access_tokens' tools/desk/cmd/deskevidence --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — the hardcoded host and the hand-rolled installation exchange are gone, not merely unused. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
 | 9 | `cd tools/desk && go test ./internal/deskkit/ -run TestWriteFileOpBothBackends -count=1 -v` | exit 0 — the new file ops run the same scenario names (including a `ReadFile` case) against both backends' recorded fixtures |
 | 10 | `cd tools/desk && go test ./cmd/deskevidence/... -run TestEvidenceLandsAsChangeWhenDefaultBranchClosed -count=1 -v` | **negative path**: with the resolved forge reporting the default branch not directly writable, the run opens a draft change and performs NO direct write to that branch — asserted by the recording fake forge showing zero writes to the default branch — and exits 0 with the change named on stdout |
-| 11 | `statusgen --root . --consumers --brief forge-neutral/04` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/04 --base deae2479679242b1404e2edb4474b091eb38177e` | exit 0; output is `summary: 7 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing`. `--consumers` judges only briefs that sit inside the diff it reads, and `210f3ce4ff` is the commit that authored this brief and its `consumers:` list, so pinning the base to that commit's parent (`deae247`) keeps the brief in scope on merged main — run without `--base` on merged main, the check reports COULD-NOT-CHECK because the brief is not in the diff (#1281). The three `fixed-here` entries are judged against that pinned diff: `deskevidence`, `forge.go` and the inventory all changed after the base (PR #532 and its fix-ups), so the claims stay corroborated on any later main. The four `follow-up` entries are judged against the CURRENT tree: each target must be a brief listed in its stream README and reference this brief back, so an entry retargeted to a brief that does not exist, or a target that stops referencing this brief, flips the row to DISPROVED (exit 1) and the summary line above no longer matches. The diff runs from the pinned parent to the working tree, uncommitted edits included, so run the row on a clean checkout of merged main. Needs full history: a clone that cannot resolve `deae247` is COULD-NOT-CHECK. Re-authored per #1281 |
 
 ## Pre-mortem → detection map
 
