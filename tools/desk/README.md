@@ -5646,6 +5646,75 @@ matcher that stopped matching fails rather than reporting the kits clean forever
 cut's fail-first evidence is `cmd/deskdispatch/reviewlane-mutations.json`, run with
 `go run ./cmd/muhar -j 0 -spec cmd/deskdispatch/reviewlane-mutations.json`.
 
+**The verifier packet — a reading aid, never evidence (#2439).** `deskdispatch --kit verifier`
+writes one owner-only Markdown file and adds one line, `Packet: <absolute path>`, to the
+assignment. It hands the verifier the reads it would otherwise make before running its first
+row — measured on one adopter fleet at about four tool calls a run, 7 to 16 percent of a
+run's requests. It does not shorten the rest, and is built so that it cannot: **a row's result
+comes only from running the row at the verified commit, and nothing in a packet is
+evidence.**
+
+| Section | What it holds | What it never holds |
+|---|---|---|
+| Gate and risk | the brief's `gate:`, `gate-why:` and `risk:` frontmatter lines, as written | a reading of them — an absent field is shown as absent |
+| Brief text | the brief from its first line up to its first Evidence heading, Verify table included; the whole brief when the tool finds no such heading, and the packet says so | the Evidence section, or any section after it |
+| Verify rows | each row's `#` and Command cells, character for character | an Expect cell, a result, a prediction, output from any run |
+| Earlier Evidence | the section's line count and how many sections follow it | its rows, its dates, its verdicts |
+| Commits | at most 6 commits, newest first, that changed the brief file or whose message has a `Brief: <id>` line, by full id, each with the paths it changed against its first parent (at most 60) | a subject, message or date — an evidence-landing commit's subject states an earlier verdict |
+
+The dispatcher does **not** know which commit delivered an item's work, and the packet says
+so: it lists candidates and leaves the choice, and the diff, to the verifier. The history
+search goes no further back than the commit that added the brief file, and never more than
+2,000 commits; when it stops short of the brief's first commit the packet says so. **The
+list is the newest six, and the packet says how many it left out:** on a brief verified
+more than once the newest are the Evidence landings and the delivering change is older, so
+the search carries on past the sixth to count the rest, and an omission line gives the
+count (`at least` that many when the search itself stopped early). When the item key gives
+no brief id, no commit message is searched, and the packet says that too.
+
+It **declines** rather than guess. A table with a result-like column (`observed`, `exit`,
+`status`, …) anywhere in the text the packet would carry — in the Verify section or outside
+it — is not a table this tool quotes: no packet is written. A Verify section
+with no table carrying both a `#` and a Command column, or with a row whose cell count
+differs from its header's (an unescaped pipe in a command), gets no command list — the brief
+text still carries the table as written.
+
+**What the packet claims is what was cut, never what the rest holds.** The tool finds
+headings and table headers; it does not read prose for meaning. A heading is found the way
+this repository's own readers of a brief find one — the white space around the line comes
+off first — so an indented `## Evidence` or `## Verify` is that heading here as it is to
+them, and the one recogniser serves the Evidence cut, the Verify heading and the heading
+that ends the Verify section. The cut is the first Evidence heading at any level (a numbered
+or emphasised title included) and ignores code fences, which errs toward carrying less. A
+brief can still record a result under a heading the tool does not take for Evidence, so the
+packet never says it holds no result: it says the dispatcher ran no row, lists what it left
+out, and, where it found no Evidence heading, says it **could not determine** whether the
+text it carries records an earlier result.
+
+Nothing read from the repository is written at the tool's own level except as a value in a
+code span: the brief's path, a commit id, the brief id in the `Brief:` line searched for.
+Each is written with the shared builder's `packet.Code`, so a path chosen by a brief's author
+cannot close the span or start a line of its own, and a note that a long value was cut
+stands outside the span. Everything copied whole — the gate and risk lines, the brief text,
+the row commands, a commit's changed paths — is between a boundary pair, where the builder
+puts `[quoted] ` in front of any line that would begin like a boundary line. The packet
+lists no review and counts no earlier verdict, so no author identity is involved.
+
+Caps are the shared builder's — 64 KiB for one item, 512 KiB overall — plus the limits
+above, all stated in the file; an item over a cap is listed by name and size, never cut short. The file is written
+beside `--prompt-file`, else under the user cache directory, and **never inside the verifier
+home**: an additional file there refuses `--check-verifier`, so a prompt file that sits in
+the home gets no packet. The packet records the home's commit, reads the brief from that
+commit's tree rather than the working tree, and is discarded if the home moved while it was
+being built. It starts no process — every read is in-process through `internal/gitcore` —
+and stops reading history after ten seconds. A read that fails inside a section is stated
+as an omission in one of two fixed sentences; the reader's own error text is never written
+into the file, and a test fails each read in turn to hold that. **Building it can never fail a dispatch:** on
+any failure the dispatch prints one `packet: NOT built` line to stderr, the assignment
+carries no `Packet:` line, and the verifier gathers for itself exactly as before. `--dry-run`
+writes no packet. Nothing about `verifyrun`, the witness, the Evidence format, a gate, a
+budget or a claim changes.
+
 ## The dispatch-claim store — `ResolveClaimStore`
 
 WHERE a dispatch claim is kept is decided in ONE place, `deskkit.ResolveClaimStore(repo)`
