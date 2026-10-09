@@ -239,6 +239,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 33 | [Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind](brief-33-forge-reads-for-statusgen-s-remaining-sites.md) | 1 | L | implemented | — | — |
 | 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | implemented | — | — |
 | 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
+| 36 | [Importable fact reader SDK and first shared read](brief-36-importable-fact-reader-sdk-and-first-shared-read.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -476,6 +477,10 @@ findings and do not exist yet.
 - **Wave 1 (beside 01)** — `forge-neutral/34` (the CI workflow-token transport in `deskread`;
   depends on nothing, since the read verb and the seam it builds on already exist on `main`).
   18 depends on 08, 33 and 34 and stays in wave 5.
+- **Wave 1 (beside 01)** — `forge-neutral/36` (the importable fact-reader module and its first
+  shared read, human-gated; depends on nothing and unblocks nothing — its library-first
+  premise is ruled on #2395 for offline and frozen inputs only, `DR-forge-neutral-36`, and it
+  keeps its own human gate; no other brief waits on it).
 - **Wave 2** — `forge-neutral/02`, `03`, `04`, `05` (all depend only on 01, all
   parallelizable): identity, the two write-verb wiring briefs, and the claim layer.
 - **Wave 3** — `forge-neutral/06` (reads; depends on 01 + 03 for the established wiring
@@ -492,7 +497,8 @@ findings and do not exist yet.
 - **Wave 6** — `forge-neutral/35` (both human-ruling resolvers and the verdict-issue read onto the read verb, human-gated; its
   `depends:` names `forge-neutral/18` and `forge-neutral/33`).
 
-One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `{33, 34} → 18` and `{18, 33} → 35`.
+One-line path: `01 → 02 → 07 → 08 → {10, 11, 18}`, with `{33, 34} → 18` and `{18, 33} → 35`;
+`36` stands alone.
 
 **Reviewer write boundary (briefs 20–25, 28–32)** — waves are derived from `depends:` like
 every other brief here, so they interleave with the numbers above rather than restarting:
@@ -527,3 +533,12 @@ One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 32`, with 31 be
 - **No hand-built API call is evidence.** A pilot or Verify row satisfied by `curl` proves
   the forge works, not that the verbs do — which is precisely the gap
   [`pilot-report.md` §2](../forge-gitlab/pilot-report.md) records.
+
+## Library-first work — 2026-10-08
+
+Ruled on #2395 for offline and frozen inputs only (`DR-forge-neutral-36`): `forge-neutral/36`
+(human-gated) extracts the first SDK read slice. The ruling makes it eligible for pick-up and is
+not its sign-off. It blocks nothing. /18 keeps its dependencies and its `deskread` transport for
+every online read, and /35 retains its control-specific human gate. Final no-forge-CLI
+enforcement in desktools-v2/08 waits for both /18 and /35.
+See [the component contract](../../library-first.md). Existing completed history is unchanged.

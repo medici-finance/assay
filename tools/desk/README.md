@@ -773,9 +773,12 @@ branch name differs from the PR's head branch. Before the push: the PR must be O
 head branch must be in this repository (fork or unreported → refused); the head branch name
 is secret-scanned; HEAD must be the PR's head commit or descend from it; a PR head already
 contained in the default branch is refused; and the push destination must already hold the
-head branch at the head commit the forge reports (absent or different → refused). With
-`--pr N` the offline publish-identity stage judges the whole range from the default branch,
-so a PR whose head already carries another identity's commits is refused there.
+head branch at the head commit the forge reports (absent or different → refused). The
+publish-identity gate then judges only the commits the push adds beyond that verified head
+(#2432), so a PR whose head already carries another identity's commits can take more of this
+role's own. `--pr N --check` cannot read the head, so it judges the whole range from the
+default branch (a mixed-identity PR is refused there); `--branch <head-branch> --check` judges
+against the local tracking ref instead.
 
 **The link trailer is not editable.** `Brief: <stream>/<NN>` / `Authors: <stream>/<NN>[, …]` /
 `Issue: #<N>` is the
@@ -921,7 +924,10 @@ Boundaries mirror the push-transport gate's:
   and is an ancestor of HEAD; otherwise — first push, unfetched head, force-moved or diverged
   remote, no head reported — the **whole** range is judged and the refusal says why the tip
   was not used (usually: `git fetch origin` and retry). A tracking ref that LAGS the remote
-  only widens the range. `create` offers no tip (no PR head exists yet), and `deskevidence`
+  only widens the range. Under `update --pr N` the head branch is unknown offline, so a real
+  run skips the offline stage and is judged once, at the live stage — after the head is
+  shown to be an ancestor of HEAD and to be what the push destination holds (#2432); `--pr N
+  --check` judges the whole range and says how to narrow it. `create` offers no tip (no PR head exists yet), and `deskevidence`
   offers none (its base already is the branch it writes). Every caller's tip choice is pinned
   by `TestPubIdentityCallersTip`; the fail-first evidence is
   `internal/deskkit/publishidentity-mutations.json`.
