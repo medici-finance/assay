@@ -93,6 +93,12 @@ func cmdNew(args []string) {
 	tokenStore = cellEnvPathFor(runtime.GOOS, tokenStore)
 
 	root := cellsRoot(e)
+	// A cell directory at the defaults file's own path — or a nested cell below it — would make
+	// every cell on the machine refuse to load (the file would be a directory), so the name is
+	// not available to a cell.
+	if first, _, _ := strings.Cut(filepath.ToSlash(cell), "/"); strings.EqualFold(first, cellDefaultsFile) {
+		die("new: '%s' is not available as a cell name — %s is the machine-wide cell defaults file", cell, filepath.Join(root, cellDefaultsFile))
+	}
 	if containerConfig != "" && kind != "container" {
 		die("--container-config is only valid for --kind container")
 	}

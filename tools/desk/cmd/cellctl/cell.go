@@ -49,10 +49,14 @@ func joinPipe(set []string) string { return strings.Join(set, "|") }
 type Env struct {
 	vals map[string]string
 	set  map[string]bool
+	// src names the LAYER that last assigned each key (the layer* constants in defaults.go), so
+	// `check` and `show` can say where an effective value came from. It is bookkeeping only:
+	// no lookup reads it, so it can never change what a key resolves to.
+	src map[string]string
 }
 
 func newEnvFromProcess() *Env {
-	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
+	e := &Env{vals: map[string]string{}, set: map[string]bool{}, src: map[string]string{}}
 	for _, kv := range os.Environ() {
 		if i := strings.IndexByte(kv, '='); i > 0 {
 			key := kv[:i]
@@ -61,6 +65,7 @@ func newEnvFromProcess() *Env {
 			}
 			e.vals[key] = kv[i+1:]
 			e.set[key] = true
+			e.src[key] = layerProcess
 		}
 	}
 	if runtime.GOOS == "windows" && e.Get("HOME") == "" {
@@ -91,9 +96,36 @@ func (e *Env) GetOrSet(k, def string) string {
 	return def
 }
 
+// Put is an assignment cellctl itself makes — a compiled default, a derived value. Re-putting
+// the value a key already holds (the `e.Put(k, e.GetOr(k, def))` shape loadCell uses to fill
+// defaults) keeps the layer that supplied it; anything else is cellctl's own.
 func (e *Env) Put(k, v string) {
+	layer := layerCompiled
+	if e.set[k] && e.vals[k] == v && e.src[k] != "" {
+		layer = e.src[k]
+	}
+	e.putFrom(k, v, layer)
+}
+
+// putFrom assigns k and records the layer the assignment came from.
+func (e *Env) putFrom(k, v, layer string) {
 	e.vals[k] = v
 	e.set[k] = true
+	if e.src == nil {
+		e.src = map[string]string{}
+	}
+	e.src[k] = layer
+}
+
+// Source is the layer that supplied k's effective value, or layerUnset when nothing set it.
+func (e *Env) Source(k string) string {
+	if !e.set[k] {
+		return layerUnset
+	}
+	if l := e.src[k]; l != "" {
+		return l
+	}
+	return layerCompiled
 }
 
 // parseCellEnv overlays one cell.env file onto e. The oracle SOURCEs the file, so this has to
@@ -113,23 +145,50 @@ func parseCellEnvFor(goos string, e *Env, path string) error {
 	if err != nil {
 		return err
 	}
-	for _, line := range strings.Split(string(raw), "\n") {
+	_, err = overlayEnvLines(goos, e, raw, layerCellEnv, nil)
+	return err
+}
+
+// overlayEnvLines is the ONE reader of the cell.env grammar: it overlays every `KEY=VALUE`
+// assignment in raw onto e, in order, recording layer as each key's source, and returns the keys
+// it assigned in first-seen order. cell.env and the machine-wide defaults file (defaults.go) both
+// go through it, so a value means the same thing in either file.
+//
+// vet is the strictness switch. nil is cell.env's long-standing reading: a line that is not an
+// assignment is skipped, as it always was. A non-nil vet is called with the 1-based line number
+// and the key of every assignment ("" for a line that is neither blank, a comment, nor an
+// assignment) BEFORE anything on that line is assigned, and its error stops the read.
+func overlayEnvLines(goos string, e *Env, raw []byte, layer string, vet func(line int, key string) error) ([]string, error) {
+	var keys []string
+	seen := map[string]bool{}
+	for n, line := range strings.Split(string(raw), "\n") {
 		s := strings.TrimLeft(line, " \t")
-		if s == "" || strings.HasPrefix(s, "#") {
+		// A whitespace-only line (a CRLF file's blank line) carries no `=`, so it was always
+		// skipped; saying so here keeps the strict reading from calling it malformed.
+		if strings.TrimSpace(s) == "" || strings.HasPrefix(s, "#") {
 			continue
 		}
 		s = strings.TrimPrefix(s, "export ")
 		i := strings.IndexByte(s, '=')
-		if i <= 0 {
+		key := ""
+		if i > 0 && validEnvKeyShape(s[:i]) {
+			key = s[:i]
+		}
+		if vet != nil {
+			if err := vet(n+1, key); err != nil {
+				return keys, err
+			}
+		}
+		if key == "" {
 			continue
 		}
-		key := s[:i]
-		if !validEnvKeyShape(key) {
-			continue
+		e.putFrom(key, unquoteShellValueFor(goos, s[i+1:], e), layer)
+		if !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
 		}
-		e.Put(key, unquoteShellValueFor(goos, s[i+1:], e))
 	}
-	return nil
+	return keys, nil
 }
 
 func validEnvKeyShape(k string) bool {
@@ -274,6 +333,12 @@ type Cell struct {
 	Harness string
 	Session string
 	Repo    string
+
+	// The machine-wide defaults file (defaults.go): the path looked at, whether a file was there
+	// and read, and the keys it set, in file order.
+	DefaultsPath string
+	DefaultsRead bool
+	DefaultsKeys []string
 }
 
 // cellsRoot is $CELLS_ROOT with the oracle's own default.
@@ -321,6 +386,13 @@ func loadCell(name string) *Cell {
 		die("cannot resolve cell directory: %v", err)
 	}
 	c.Dir = abs
+	// The machine-wide defaults go on BEFORE the cell's own file, so cell.env overrides them key
+	// by key; they go on AFTER the process environment, as cell.env does. A file that is not
+	// there changes nothing; one that is there and unusable stops here, before any verb acts.
+	c.DefaultsPath = cellDefaultsPath(e)
+	if c.DefaultsKeys, c.DefaultsRead, err = overlayCellDefaults(e, c.DefaultsPath); err != nil {
+		die("%v", err)
+	}
 	if err := parseCellEnv(e, filepath.Join(c.Dir, "cell.env")); err != nil {
 		die("cannot read %s/cell.env: %v", c.Dir, err)
 	}

@@ -14,6 +14,30 @@ not a filesystem quota or a promise about peak build size. Budget bytes must be
 positive; a floor of `0` disables only the free-space floor. Invalid values refuse
 launch. No host-wide scheduled job is installed.
 
+To enable it for every cell on a machine, put the same lines in the machine-wide
+defaults file, `$CELLS_ROOT/defaults.env`, instead of in each `cell.env`, and opt
+one cell back out in its own file:
+
+```dotenv
+# $CELLS_ROOT/defaults.env — every cell under this cells root
+CELL_GO_CACHE=on
+```
+
+```dotenv
+# <cell-dir>/cell.env — this cell only
+CELL_GO_CACHE=off
+```
+
+A cell's `cell.env` overrides the defaults file key by key, and the defaults file
+overrides the shell `cellctl` was started from. Each cell still gets its own root
+and its own budget: `CELL_GO_CACHE_ROOT` names one cell's root and is refused in
+the defaults file, while `CELL_GO_CACHE_BYTES` and `CELL_GO_CACHE_MIN_FREE` may be
+shared there. `cellctl check <cell>` prints the effective state and the layer that
+supplied it, for example `managed Go cache: on (CELL_GO_CACHE=on from defaults
+file)`. Container cells ignore the setting, and on a platform the cache does not
+support a machine-wide `on` refuses every launch just as a per-cell `on` does. See
+[Machine-wide defaults](cellctl.md#machine-wide-defaults--defaultsenv).
+
 ## Scope and trust
 
 The default root is `<canonical-cell-directory>/go-cache`. Optional

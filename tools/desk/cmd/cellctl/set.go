@@ -167,10 +167,17 @@ func validateKindChange(envfile, kind string, kvs []string) {
 }
 
 // effectiveCellEnv is what loadCell will see once this call's KEY=VALUE pairs are written: the
-// file read through the loader, then each pair overlaid exactly as the loader will read the raw
-// `KEY=VALUE` line setEnvKey writes for it.
+// machine-wide defaults file, then the cell's file read through the loader, then each pair
+// overlaid exactly as the loader will read the raw `KEY=VALUE` line setEnvKey writes for it.
+//
+// The defaults file is a layer this function READS and never a file `set` writes: every write
+// goes through setEnvKey on the cell's own cell.env. Reading it here is what keeps a pair `set`
+// validates from being judged against a different cell than the one loadCell will then build.
 func effectiveCellEnv(envfile string, kvs []string) *Env {
 	e := &Env{vals: map[string]string{}, set: map[string]bool{}}
+	if _, _, err := overlayCellDefaults(e, cellDefaultsFor(envfile)); err != nil {
+		die("set: %v; nothing written", err)
+	}
 	if err := parseCellEnv(e, envfile); err != nil {
 		die("set: %v", err)
 	}
