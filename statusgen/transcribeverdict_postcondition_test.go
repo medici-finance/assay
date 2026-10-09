@@ -146,3 +146,103 @@ func TestEvidenceSectionHasLine(t *testing.T) {
 		t.Error("a brief with no `## Evidence` section must never satisfy the check")
 	}
 }
+
+// applyThen runs the real apply and then mutate, the shape of a write that lands
+// and is then undone or bent before the run can report it.
+func applyThen(mutate func(d verdictDelta) error) func(verdictDelta) (int, error) {
+	return func(d verdictDelta) (int, error) {
+		n, err := applyVerdictDelta(d)
+		if err != nil {
+			return n, err
+		}
+		return n, mutate(d)
+	}
+}
+
+// rewriteReadmes applies edit to every flipped row's README.
+func rewriteReadmes(d verdictDelta, edit func(raw string, f verdictFlip) string) error {
+	for _, f := range d.Flips {
+		b, err := os.ReadFile(f.ReadmePath)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(f.ReadmePath, []byte(edit(string(b), f)), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TestRefuseBriefUnreadable: the brief an Evidence line was appended to cannot be
+// read back after the apply. The run must fail, never treat the unread file as
+// carrying the line.
+func TestRefuseBriefUnreadable(t *testing.T) {
+	out, _ := armedVerdictRun(t, applyThen(func(d verdictDelta) error {
+		for _, a := range d.Appends {
+			if err := os.Remove(a.Path); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+	wantPostconditionFail(t, out, "brief removed after apply")
+	if !strings.Contains(out.err, "cannot re-read the brief") {
+		t.Fatalf("the failure should say the brief could not be re-read:\n%s", out.err)
+	}
+}
+
+// TestRefuseBoardUnloadable: after the apply the tree no longer loads as a board
+// (a stream directory with no README.md). The consumer cannot read the flip, so
+// the run must fail rather than skip the loader check.
+func TestRefuseBoardUnloadable(t *testing.T) {
+	out, _ := armedVerdictRun(t, applyThen(func(d verdictDelta) error {
+		for _, f := range d.Flips {
+			streams := filepath.Dir(filepath.Dir(f.ReadmePath))
+			if err := os.MkdirAll(filepath.Join(streams, "zz-broken"), 0o755); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+	wantPostconditionFail(t, out, "board unloadable after apply")
+	if !strings.Contains(out.err, "no longer loads") {
+		t.Fatalf("the failure should say the board no longer loads:\n%s", out.err)
+	}
+}
+
+// TestRefuseFlipRowMissing: the flipped row is gone from its README after the
+// apply. The board loader finds no row to read, so the run must fail.
+func TestRefuseFlipRowMissing(t *testing.T) {
+	out, _ := armedVerdictRun(t, applyThen(func(d verdictDelta) error {
+		return rewriteReadmes(d, func(raw string, f verdictFlip) string {
+			var kept []string
+			for _, l := range strings.Split(raw, "\n") {
+				if c := splitRow(l); strings.HasPrefix(strings.TrimSpace(l), "|") && len(c) > 0 &&
+					strings.TrimSpace(c[0]) == f.Num {
+					continue
+				}
+				kept = append(kept, l)
+			}
+			return strings.Join(kept, "\n")
+		})
+	}))
+	wantPostconditionFail(t, out, "flipped row removed after apply")
+	if !strings.Contains(out.err, "finds no row") {
+		t.Fatalf("the failure should say the board finds no row:\n%s", out.err)
+	}
+}
+
+// TestRefuseFlipStampChanged: the row reads verified after the apply, but with a
+// stamp other than the one the lane wrote. A verified row the lane did not stamp
+// is not this run's flip, so the run must fail.
+func TestRefuseFlipStampChanged(t *testing.T) {
+	out, _ := armedVerdictRun(t, applyThen(func(d verdictDelta) error {
+		return rewriteReadmes(d, func(raw string, f verdictFlip) string {
+			return strings.Replace(raw, f.Stamp, "2026-01-01 by someone-else", 1)
+		})
+	}))
+	wantPostconditionFail(t, out, "stamp replaced after apply")
+	if !strings.Contains(out.err, "not the stamp the lane wrote") {
+		t.Fatalf("the failure should say the stamp is not the lane's:\n%s", out.err)
+	}
+}
