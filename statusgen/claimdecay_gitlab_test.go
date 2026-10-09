@@ -44,6 +44,7 @@ func stubGitLabDoer(t *testing.T, d httpDoer) {
 // GitHub. Before the fix the forge gate returned the branch set untouched with a
 // "NOT APPLICABLE" notice, so this branch survived as a claim forever and the
 // briefs behind it were silently held.
+// regression: #1111
 func TestDecayDeadClaimsDecaysOnGitLabOrigin(t *testing.T) {
 	stubRemoteOriginURL(t, "https://gitlab.example.com/acme/board.git", nil)
 	t.Setenv("CI_API_V4_URL", "https://gitlab.example.com/api/v4")
