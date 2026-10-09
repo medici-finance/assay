@@ -49,6 +49,7 @@ USAGE:
   deskevidence <owner/repo> <branch> --evidence-file <repo-path> [--root <dir>]
                [--brief-path <repo-path>] [--append-only] [--allow-shrink]
                [--row <NN> [--row <NN> ...]]
+  deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run]
   deskevidence --version
 
 Commits the content of the local file at --evidence-file (a repo-relative path)
@@ -93,6 +94,11 @@ statusgen brief --check-verified (verified/done, dated stamp, passing witnesses)
 The brief and stream README must already match the target branch. Evidence-only
 implemented landings must not append verified outcomes; verify-fail is unchanged.
 
+flip (#2074) commits one gate: model brief's implemented → verified board flip, its
+stamp derived from the recorded strict **VERIFY: PASS**, as a LOCAL commit by the
+verifier App's bot identity on the worktree's branch — never main, never pushed
+(` + "`deskevidence flip --help`" + `).
+
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {
@@ -126,6 +132,10 @@ func run(args []string) int {
 		}
 		return deskkit.ExitOK
 	}
+	if len(args) > 0 && args[0] == "flip" && deskkit.HelpOnly(args) {
+		fmt.Fprintln(os.Stderr, flipUsage)
+		return deskkit.ExitOK
+	}
 
 	// kill-switch check is the FIRST action of the tool. Guard writes its
 	// own result=disabled audit line and maps to exit 3.
@@ -152,6 +162,16 @@ func run(args []string) int {
 
 	// Running from source (go run / unstamped) is a drift risk — say so loudly.
 	deskkit.WarnIfUnpinned(stderr)
+
+	// `flip` (#2074) is a LOCAL commit on a branch — no forge write, so it takes
+	// no audit lock and no write budget; the PR that carries it does.
+	if args[0] == "flip" {
+		err := runFlip(args[1:])
+		if err != nil && !deskkit.IsHelpRequest(err) {
+			fmt.Fprintln(stderr, "deskevidence: "+err.Error())
+		}
+		return deskkit.ExitCodeOf(err)
+	}
 
 	// runOutward holds the flock across the whole write window and writes the
 	// single audit line (#227).
