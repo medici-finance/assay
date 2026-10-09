@@ -18,7 +18,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-09 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-09 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-09 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/34 | 2026-10-09 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/35 | 2026-10-09 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/30 | 2026-10-09 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-09 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/53 | 2026-10-09 |  |
@@ -54,6 +54,8 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
+_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-supervision. By stream: desk-supervision (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | build-less-brittle | 11 — Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge [exec:strong] | 4 | 4000 + 1500 (drive:build-less-brittle) |
@@ -73,7 +75,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 2699a01 2026-10-08T20:43:33-05:00_
+_last regen: 550a849 2026-10-08T21:54:06-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -94,7 +96,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 2699a01 2026-10-08T20:43:33-05:00_
+_last regen: 550a849 2026-10-08T21:54:06-05:00_
 
 **Progress:** 16/71 brief items done.
 
@@ -374,7 +376,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 13 Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release — todo (wave 5)
 - 14 Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay — todo (wave 6)
 
-### desk-supervision (27 open)
+### desk-supervision (28 open)
 
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — implemented (wave 1)
@@ -395,6 +397,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 24 One file per verify outcome — retire the shared appended outcomes log — implemented (wave 0)
 - 25 Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical — todo (wave 1)
 - 26 Land one verify tick's Evidence-only outcomes in one Evidence PR — todo (wave 1)
+- 27 Verify-outcome records carry join keys — delivering PRs, verifier tier and timing, per-row results — and every failure a blocker kind — todo (wave 0)
 - 28 Dispatch record — one line per dispatch joining brief, PR, session and model tier — todo (wave 0)
 - 29 Decide journal as structured records, with observed outcomes joined later — todo (wave 1)
 - 30 Review round record — per-round timing, reviewer tier and finding transitions — todo (wave 1)
@@ -791,4 +794,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**20** active, **0** paused, **6** parked) · **106/379** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**20** active, **0** paused, **6** parked) · **106/380** briefs done · completed initiatives: see `docs/archive/`
