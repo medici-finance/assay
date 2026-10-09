@@ -896,7 +896,7 @@ func TestReadNextUp_DropsRowsWhoseOwnReadmeStatusHasMovedOn(t *testing.T) {
 
 // TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn is the fail-first regression proof
 // for the REWORK-lane half of medici-finance/assay#1028. The `### Awaiting implementer rework`
-// STATUS.md section is statusgen's RENDERED classifyAwaiting output; it keeps listing a row after a
+// STATUS.md section is statusgen's RENDERED bucketAwaiting output; it keeps listing a row after a
 // LATER commit flips that row's own stream README Status cell out of the awaiting-rework state (the
 // rework landed → `done`; the deliverable was reset → `todo`), before the next status-regen commit
 // re-renders the section. readNextUp got this cross-check in #1047; the rework lane never did, which
@@ -948,7 +948,7 @@ func TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn(t *testing.T) 
 	writeReadme("donestream", "05", "done")         // rework landed → no longer awaiting rework → DROP
 	writeReadme("resetstream", "02", "todo")        // deliverable reset → not implemented → DROP
 	writeReadme("genuine", "03", "implemented")     // still awaiting rework → KEEP
-	writeReadme("verifiedstream", "08", "verified") // verified is in classifyAwaiting's set → KEEP
+	writeReadme("verifiedstream", "08", "verified") // verified is in bucketAwaiting's set → KEEP
 	// orphanstream has NO README on purpose — could-not-check → KEEP.
 
 	git("init", "-q")
@@ -974,7 +974,7 @@ func TestReadAwaitingRework_DropsRowsWhoseLiveReadmeStatusMovedOn(t *testing.T) 
 		t.Errorf("genuine/03 (still `implemented`, genuinely awaiting rework) was wrongly dropped: %v", ids)
 	}
 	if !contains(ids, "verifiedstream/08") {
-		t.Errorf("verifiedstream/08 (`verified` — inside classifyAwaiting's set) was wrongly dropped: %v", ids)
+		t.Errorf("verifiedstream/08 (`verified` — inside bucketAwaiting's set) was wrongly dropped: %v", ids)
 	}
 	if !contains(ids, "orphanstream/07") {
 		t.Errorf("orphanstream/07 (no README to cross-check — could-not-check) was wrongly dropped: %v", ids)
@@ -1212,5 +1212,51 @@ func TestForeignDispatchTokenDiscriminatesOnLabel(t *testing.T) {
 	}
 	if isForeignDispatchToken(workWithLabels) {
 		t.Error("a work placeholder with ordinary labels was misclassified as a foreign dispatch token")
+	}
+}
+
+// TestParserReadsStatusgenEmitterOutput is the emitter-to-parser drift guard.
+// statusgen (a separate module, so no import) pins its rendered Awaiting section
+// in statusgen/testdata/awaiting_board_golden.md; this feeds that exact file to
+// the parser the dispatcher reads. A header or heading change on either side
+// turns one of the two tests red instead of silently emptying the rework lane.
+func TestParserReadsStatusgenEmitterOutput(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "statusgen", "testdata", "awaiting_board_golden.md"))
+	if err != nil {
+		t.Fatalf("read statusgen golden: %v", err)
+	}
+	golden := string(raw)
+
+	rework := sectionTableRows(golden, "Awaiting implementer rework")
+	var ids []string
+	for _, r := range rework {
+		ids = append(ids, strings.TrimSpace(r["stream"])+"/"+strings.Fields(r["brief"])[0])
+	}
+	if want := []string{"active-s/03", "kinds-s/03"}; strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Fatalf("rework rows parsed from the emitter's output = %v, want %v", ids, want)
+	}
+	for _, r := range rework {
+		if r["owner"] != "worker" || !strings.HasPrefix(r["next act"], "fix, cite #") {
+			t.Errorf("rework row lost its Owner / Next act columns: %v", r)
+		}
+	}
+	// Every other table of the section parses to its heading's count with the
+	// ten-column header; the retired heading parses to nothing.
+	for heading, want := range map[string]int{
+		"Awaiting human gate": 2, "Environment-blocked": 2, "Runner-pending": 1,
+		"Desk-actionable": 1, "Could-not-check": 1,
+	} {
+		rows := sectionTableRows(golden, heading)
+		if len(rows) != want {
+			t.Errorf("%s: parsed %d rows, want %d", heading, len(rows), want)
+		}
+		for _, r := range rows {
+			if len(r) != 10 {
+				t.Errorf("%s: row has %d cells, want the 10-column header: %v", heading, len(r), r)
+			}
+		}
+	}
+	if rows := sectionTableRows(golden, "Env-blocked"); len(rows) != 0 {
+		t.Errorf("the retired Env-blocked heading must parse to nothing, got %d rows", len(rows))
 	}
 }
