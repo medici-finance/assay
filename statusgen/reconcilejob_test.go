@@ -119,9 +119,20 @@ func requireJobTools(t *testing.T) {
 		t.Skip("the reconcile job runs on a Linux runner; its shell is not exercised on Windows")
 	}
 	for _, tool := range []string{"bash", "git", "sed"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("%s not on PATH", tool)
+		requireTool(t, tool)
+	}
+}
+
+// requireTool skips a test whose tool is missing on a developer machine, but
+// fails it under CI: on a runner a skip would read as a pass of a test that
+// never ran.
+func requireTool(t *testing.T, tool string) {
+	t.Helper()
+	if _, err := exec.LookPath(tool); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("%s not on PATH: under CI this test must run, not skip", tool)
 		}
+		t.Skipf("%s not on PATH", tool)
 	}
 }
 
@@ -260,8 +271,10 @@ type wfJob struct {
 }
 
 type workflow struct {
-	Env  map[string]string `yaml:"env"`
-	Jobs map[string]wfJob  `yaml:"jobs"`
+	On          map[string]any    `yaml:"on"`
+	Concurrency map[string]any    `yaml:"concurrency"`
+	Env         map[string]string `yaml:"env"`
+	Jobs        map[string]wfJob  `yaml:"jobs"`
 }
 
 func parseWorkflow(t *testing.T, raw []byte, name string) workflow {
@@ -582,35 +595,103 @@ func TestReconcileJobRefusesForeignCommit(t *testing.T) {
 
 // TestReconcileJobRefusesNonReadmeCommit is review B6's README-only half: a
 // commit with this job's own subject that touches more than stream READMEs is
-// refused — the subject alone never makes a commit this job's.
+// refused — the subject alone never makes a commit this job's. The boundary is
+// a stream's own README: a path outside docs/streams/, a brief file beside the
+// README, and a README one directory further down are each refused.
 func TestReconcileJobRefusesNonReadmeCommit(t *testing.T) {
+	for _, file := range []string{"NOTES.md", "docs/streams/s/brief-01.md", "docs/streams/s/sub/README.md"} {
+		t.Run(file, func(t *testing.T) {
+			r := newJobRig(t)
+			if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+				t.Fatalf("first tick exit %d:\n%s", code, out)
+			}
+			before := r.handCommit(file, "chore(board): reconcile 2026-10-08")
+			r.commitOnMain(jobReadmeMain+"\nmore\n", "docs: main moves")
+
+			code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR)
+			if code == 0 {
+				t.Fatalf("a same-subject commit touching %s must fail the tick:\n%s", file, out)
+			}
+			if !strings.Contains(out, "(touches more than stream READMEs)") {
+				t.Fatalf("the refusal must say the commit touches more than stream READMEs:\n%s", out)
+			}
+			if r.remoteRef("refs/heads/board/reconcile") != before {
+				t.Fatalf("the branch carrying a commit touching %s was overwritten", file)
+			}
+		})
+	}
+}
+
+// TestReconcileJobForeignSubject is review B6's subject half, one parent: a
+// commit whose change is the stream README only, but whose subject is not this
+// job's, is refused and named — the change alone never makes a commit this
+// job's, so a hand edit of the table is never silently replaced.
+func TestReconcileJobForeignSubject(t *testing.T) {
 	r := newJobRig(t)
 	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
 		t.Fatalf("first tick exit %d:\n%s", code, out)
 	}
-	before := r.handCommit("NOTES.md", "chore(board): reconcile 2026-10-08")
+	before := r.handCommit("docs/streams/s/README.md", "wip: hand edit of the table")
 	r.commitOnMain(jobReadmeMain+"\nmore\n", "docs: main moves")
 
 	code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR)
 	if code == 0 {
-		t.Fatalf("a same-subject commit touching NOTES.md must fail the tick:\n%s", out)
+		t.Fatalf("a README-only commit with another subject must fail the tick:\n%s", out)
 	}
-	if !strings.Contains(out, "(touches more than stream READMEs)") {
-		t.Fatalf("the refusal must say the commit touches more than stream READMEs:\n%s", out)
+	if !strings.Contains(out, "wip: hand edit of the table") {
+		t.Fatalf("the refusal must name the commit:\n%s", out)
 	}
 	if r.remoteRef("refs/heads/board/reconcile") != before {
-		t.Fatal("the branch carrying a non-README commit was overwritten")
+		t.Fatal("the branch carrying a hand edit of the table was overwritten")
 	}
 }
 
-// handCommit pushes a commit adding file onto the carried branch, as another
+// TestReconcileJobForeignMerge is review B6's subject half, two parents: a
+// merge of main whose change against main is the stream README only, but
+// whose subject is neither this job's nor git's default `Merge ...`, is
+// refused and named. TestReconcileJobAcceptsDeskSideMerge is its other side.
+func TestReconcileJobForeignMerge(t *testing.T) {
+	r := newJobRig(t)
+	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
+		t.Fatalf("first tick exit %d:\n%s", code, out)
+	}
+	r.git(r.seed, "pull", "-q", "--ff-only", "origin", "main")
+	if err := os.WriteFile(filepath.Join(r.seed, "CODE.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.git(r.seed, "add", "-A")
+	r.git(r.seed, "commit", "-q", "-m", "feat: unrelated code")
+	r.git(r.seed, "push", "-q", "origin", "main")
+	hand := filepath.Join(r.dir, "hand-merge")
+	r.git("", "clone", "-q", "-b", "board/reconcile", r.origin, hand)
+	r.git(hand, "merge", "-q", "-m", "wip: hand merge of main", "origin/main")
+	r.git(hand, "push", "-q", "origin", "board/reconcile")
+	before := r.remoteRef("refs/heads/board/reconcile")
+
+	code, out := r.tick("STUB_FLIP=01", "STUB_PULLS="+ownPR)
+	if code == 0 {
+		t.Fatalf("a merge with another subject must fail the tick:\n%s", out)
+	}
+	if !strings.Contains(out, "wip: hand merge of main") {
+		t.Fatalf("the refusal must name the merge:\n%s", out)
+	}
+	if r.remoteRef("refs/heads/board/reconcile") != before {
+		t.Fatal("the branch carrying a foreign merge was overwritten")
+	}
+}
+
+// handCommit pushes a commit writing file onto the carried branch, as another
 // writer would, and returns the new branch tip.
 func (r *jobRig) handCommit(file, subject string) string {
 	r.t.Helper()
 	hand := filepath.Join(r.dir, "hand")
 	_ = os.RemoveAll(hand)
 	r.git("", "clone", "-q", "-b", "board/reconcile", r.origin, hand)
-	if err := os.WriteFile(filepath.Join(hand, file), []byte("hand edit\n"), 0o644); err != nil {
+	p := filepath.Join(hand, filepath.FromSlash(file))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("hand edit\n"), 0o644); err != nil {
 		r.t.Fatal(err)
 	}
 	r.git(hand, "add", "-A")
@@ -848,11 +929,13 @@ const prProjection = `.[] | [.number, (.head.repo.full_name // "-"), .head.ref, 
 
 // TestReconcileJobPRProjection runs the projection with real jq over a forge-
 // shaped list: our PR, a fork's, a deleted fork's and one into another base
-// each come out as the four fields the selection reads. Skipped without jq.
+// each come out as the four fields the selection reads. Skipped without jq on
+// a developer machine; under CI a missing jq fails it.
 func TestReconcileJobPRProjection(t *testing.T) {
+	requireTool(t, "jq")
 	jq, err := exec.LookPath("jq")
 	if err != nil {
-		t.Skip("jq not on PATH")
+		t.Fatal(err)
 	}
 	const list = `[
  {"number":5,"head":{"repo":{"full_name":"o/r"},"ref":"board/reconcile"},"base":{"ref":"main"}},
@@ -994,11 +1077,103 @@ func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
 	}
 }
 
+// TestReconcileJobInstallVerifies runs the job's two download steps (Go and gh)
+// from the YAML with stub curl, sha256sum and tar: a tarball whose digest is
+// not the pin is refused and never extracted; the pinned digest is extracted.
+// The isolation guard reads the same gate as text; this pins what it does.
+func TestReconcileJobInstallVerifies(t *testing.T) {
+	requireJobTools(t)
+	wf := stagedWorkflow(t)
+	ghPin := regexp.MustCompile(`want="([0-9a-f]{64})"`)
+	for _, c := range []struct{ step, pin string }{
+		{"Install Go (job-local toolchain and caches, checksum-verified)", wf.Env["GO_LINUX_AMD64_SHA256"]},
+		{"Install gh CLI (pinned, checksum-verified)", ""},
+	} {
+		st := reconcileStep(t, c.step)
+		pin := c.pin
+		if pin == "" {
+			m := ghPin.FindStringSubmatch(st.Run)
+			if m == nil {
+				t.Fatalf("step %q pins no 64-hex digest", c.step)
+			}
+			pin = m[1]
+		}
+		for _, sum := range []string{strings.Repeat("0", 64), pin} {
+			dir := t.TempDir()
+			bin := filepath.Join(dir, "bin")
+			temp := filepath.Join(dir, "temp")
+			for _, d := range []string{bin, temp} {
+				if err := os.MkdirAll(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stubs := map[string]string{
+				"curl":      "#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do if [ \"$1\" = -o ]; then echo tarball > \"$2\"; fi; shift; done\n",
+				"sha256sum": "#!/usr/bin/env bash\necho \"$STUB_SUM  $1\"\n",
+				"tar":       "#!/usr/bin/env bash\necho \"$*\" >> \"$STUB_LOG/tar.log\"\n",
+			}
+			for name, body := range stubs {
+				if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cmd := exec.Command("bash", scriptFile(t, st.Run))
+			cmd.Dir = dir
+			cmd.Env = append(scrubbedEnv(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+				"RUNNER_TEMP="+temp, "GITHUB_PATH="+filepath.Join(dir, "path"), "GITHUB_ENV="+filepath.Join(dir, "env"),
+				"GO_VERSION="+wf.Env["GO_VERSION"], "GO_LINUX_AMD64_SHA256="+wf.Env["GO_LINUX_AMD64_SHA256"],
+				"STUB_SUM="+sum, "STUB_LOG="+dir)
+			out, err := cmd.CombinedOutput()
+			_, tarErr := os.Stat(filepath.Join(dir, "tar.log"))
+			extracted := tarErr == nil
+			if sum == pin {
+				if err != nil || !extracted {
+					t.Errorf("step %q with the pinned digest: err %v, extracted %v\n%s", c.step, err, extracted, out)
+				}
+				continue
+			}
+			if err == nil || extracted || !strings.Contains(string(out), "refusing to extract") {
+				t.Errorf("step %q with a digest that is not the pin: err %v, extracted %v — a mismatch must exit nonzero before tar\n%s", c.step, err, extracted, out)
+			}
+		}
+	}
+}
+
 // TestReconcileJobTriggerAndScope pins the job's guards, read from the YAML:
 // the schedule-and-repository `if:` (review A5), the read-only job token, and
-// the mint narrowed to the publish step's two grants.
+// the mint narrowed to the publish step's two grants. And the workflow-level
+// wiring the job depends on: the hourly schedule, the scheduled runs' own
+// concurrency group (one reconcile at a time, never queued with a push regen),
+// the PR lint step that runs these tests, and the pull_request path entries
+// that trigger it on a change to statusgen or to this staged file.
 func TestReconcileJobTriggerAndScope(t *testing.T) {
-	job := stagedWorkflow(t).Jobs["reconcile"]
+	wf := stagedWorkflow(t)
+	if got := fmt.Sprint(wf.On["schedule"]); got != "[map[cron:17 * * * *]]" {
+		t.Errorf("on.schedule: %s, want exactly one cron \"17 * * * *\"", got)
+	}
+	if g := fmt.Sprint(wf.Concurrency["group"]); !strings.Contains(g, "github.event_name == 'schedule' && 'reconcile' ||") {
+		t.Errorf("concurrency group %q gives scheduled runs no group of their own", g)
+	}
+	if c := fmt.Sprint(wf.Concurrency["cancel-in-progress"]); c != "false" {
+		t.Errorf("concurrency cancel-in-progress: %s, want false", c)
+	}
+	pr, _ := wf.On["pull_request"].(map[string]any)
+	paths := fmt.Sprint(pr["paths"])
+	for _, need := range []string{"statusgen/**", "ci/staged-workflows/assay-statusgen.yml"} {
+		if !strings.Contains(" "+strings.Trim(paths, "[]")+" ", " "+need+" ") {
+			t.Errorf("on.pull_request.paths %s lacks %q: a change there would not run the job tests", paths, need)
+		}
+	}
+	const lintRun = `go test -count=1 -timeout 600s -run '^(TestReconcileJob|TestCredentialedJobIsolation|TestIsolationGuardFlagsPlant|TestStatusKeyedLintRulesRegistered)' .`
+	ran := false
+	for _, st := range wf.Jobs["lint"].Steps {
+		ran = ran || strings.Contains(st.Run, lintRun)
+	}
+	if !ran {
+		t.Errorf("no lint job step runs\n  %s", lintRun)
+	}
+
+	job := wf.Jobs["reconcile"]
 	if want := "${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}"; job.If != want {
 		t.Errorf("reconcile if: %q, want %q", job.If, want)
 	}
@@ -1115,6 +1290,19 @@ func invokes(run, tool string) bool {
 	return false
 }
 
+// mismatchRefusal is a step's checksum gate: the digest taken with sha256sum,
+// compared with the pin, and a mismatch exiting nonzero before anything else
+// runs (only echo lines between the comparison and the exit).
+var mismatchRefusal = regexp.MustCompile(`(?s)sha256sum[^\n]*\n(?:[^\n]*\n)*?[ \t]*if \[ "[^"\n]+" != "\$\{?got\}?" \]; then\n(?:[ \t]*echo[^\n]*\n)*[ \t]*exit 1\n[ \t]*fi\n`)
+
+// refusesMismatchFirst reports whether a download step refuses a checksum
+// mismatch before its first tar extraction.
+func refusesMismatchFirst(run string) bool {
+	gate := mismatchRefusal.FindStringIndex(run)
+	tar := regexp.MustCompile(`(?m)^\s*tar\s`).FindStringIndex(run)
+	return gate != nil && (tar == nil || tar[0] >= gate[1])
+}
+
 // isolationProblems names every way a credentialed job departs from the
 // isolation the reconcile job is held to. A job that mints no App token
 // returns nil.
@@ -1145,6 +1333,9 @@ func isolationProblems(wf workflow, job wfJob) []string {
 				p = append(p, "checkout persists a credential")
 			}
 		}
+		if (strings.Contains(run, "go.dev/dl") || strings.Contains(run, "cli/cli/releases")) && !refusesMismatchFirst(run) {
+			p = append(p, fmt.Sprintf("step %q extracts a download without refusing a checksum mismatch first", st.Name))
+		}
 		if strings.Contains(run, "go.dev/dl") {
 			for _, need := range []string{"sha256sum", "$GO_LINUX_AMD64_SHA256", "${RUNNER_TEMP}/go-toolchain",
 				"GOCACHE=${RUNNER_TEMP}", "GOMODCACHE=${RUNNER_TEMP}", "GOPATH=${RUNNER_TEMP}", "GOFLAGS="} {
@@ -1157,7 +1348,7 @@ func isolationProblems(wf workflow, job wfJob) []string {
 			}
 		}
 		if strings.Contains(run, "cli/cli/releases") {
-			pinnedGh = strings.Contains(run, "sha256sum")
+			pinnedGh = refusesMismatchFirst(run) && regexp.MustCompile(`want="[0-9a-f]{64}"`).MatchString(run)
 			if strings.Contains(run, "command -v gh") {
 				p = append(p, fmt.Sprintf("step %q accepts a gh already on PATH", st.Name))
 			}
@@ -1187,6 +1378,11 @@ func isolationProblems(wf workflow, job wfJob) []string {
 		}
 		if strings.Contains(run, "credential.helper=!") || (strings.Contains(run, "credential.") && !strings.Contains(run, `credential.${GITHUB_SERVER_URL}.helper=`)) {
 			p = append(p, fmt.Sprintf("step %q gives a credential helper that is not bound to the forge host", st.Name))
+		}
+		// A host-bound helper is added to whatever helper list git already
+		// holds; the empty value just before it clears that list first.
+		if strings.Contains(run, "credential.") && !strings.Contains(run, `-c credential.helper= -c "credential.${GITHUB_SERVER_URL}.helper=`) {
+			p = append(p, fmt.Sprintf("step %q does not clear inherited credential helpers before its own", st.Name))
 		}
 	}
 	if !ownGitCfg {
@@ -1246,6 +1442,11 @@ jobs:
         run: |
           if command -v gh >/dev/null 2>&1; then exit 0; fi
           curl -fsSL https://github.com/cli/cli/releases/download/v2.63.2/gh.tar.gz -o gh.tar.gz
+          got="$(sha256sum gh.tar.gz | cut -d' ' -f1)"
+          tar -xzf gh.tar.gz
+          if [ "$want" != "$got" ]; then
+            exit 1
+          fi
       - name: use
         run: |
           gh pr list
@@ -1257,7 +1458,9 @@ jobs:
 		"without sha256sum", "under the runner home", "accepts a gh already on PATH", "no pinned, checksum-verified install",
 		"no step gives the job git and gh configuration of its own", "runs before the job's own git configuration",
 		`step "use" runs git, gh or go outside a directory under RUNNER_TEMP`, "pushes to a configured remote",
-		"not bound to the forge host"} {
+		"not bound to the forge host", `step "Install Go" extracts a download without refusing a checksum mismatch first`,
+		`step "gh" extracts a download without refusing a checksum mismatch first`,
+		`step "use" does not clear inherited credential helpers`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("planted job not flagged for %q; got:\n%s", want, got)
 		}
@@ -1267,6 +1470,39 @@ jobs:
 		t.Errorf("reconcile job: %v", p)
 	}
 }
+
+// The reconcile job's two checksum gates, anchored on the comments around them
+// (the same install text recurs in other jobs of the file), with the gate
+// removed or moved after the extraction.
+const (
+	ghGateLines = `          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+`
+	ghTarLines = `          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+      # Compute: read-only.`
+	ghGate     = ghGateLines + ghTarLines
+	ghTar      = ghTarLines
+	ghTarFirst = `          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"` + "\n" + ghGateLines + `          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+      # Compute: read-only.`
+	goHead = `never $HOME; the tarball checksum-pinned.
+      - name: Install Go (job-local toolchain and caches, checksum-verified)
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/go.tar.gz" | cut -d' ' -f1)"
+`
+	goGate = goHead + `          if [ "$GO_LINUX_AMD64_SHA256" != "$got" ]; then
+            echo "::error::Go tarball sha256 mismatch — want ${GO_LINUX_AMD64_SHA256}, got ${got}; refusing to extract"
+            exit 1
+          fi
+`
+	goNoGate = goHead
+)
 
 // reconcileMutants are edits to the staged job, each of which one named test
 // must catch. TestReconcileJobMutantsFail applies each to a copy of the file
@@ -1284,6 +1520,18 @@ var reconcileMutants = []struct {
 		`push "${GITHUB_SERVER_URL}/${repo}.git"`, `push --force "${GITHUB_SERVER_URL}/${repo}.git"`, "TestReconcileJobNeverForces"},
 	{"README-only refusal removed",
 		`"$readme_only" || foreign=`, `true || foreign=`, "TestReconcileJobRefusesNonReadmeCommit"},
+	{"README pattern admits all of docs/streams",
+		`readme_re='^docs/streams/[^/]+/README\.md$'`, `readme_re='^docs/streams/'`, "TestReconcileJobRefusesNonReadmeCommit"},
+	{"README pattern admits nested READMEs",
+		`readme_re='^docs/streams/[^/]+/README\.md$'`, `readme_re='^docs/streams/.+/README\.md$'`, "TestReconcileJobRefusesNonReadmeCommit"},
+	{"one-parent subject check removed",
+		`echo "$subj" | grep -q -E "$subject_re" || {`, `true || {`, "TestReconcileJobForeignSubject"},
+	{"subject pattern matches anything",
+		`subject_re='^chore\(board\): reconcile( |$)'`, `subject_re=''`, "TestReconcileJobForeignSubject"},
+	{"merge subject check removed",
+		`echo "$subj" | grep -q -E "${subject_re}|^Merge " || {`, `true || {`, "TestReconcileJobForeignMerge"},
+	{"merge subject admits any subject",
+		`"${subject_re}|^Merge "`, `"${subject_re}|^"`, "TestReconcileJobForeignMerge"},
 	{"stray-path guard removed",
 		`if [ -n "$stray" ]; then`, `if false; then`, "TestReconcileJobRefusesStrayPath"},
 	{"repository guard dropped",
@@ -1328,6 +1576,24 @@ var reconcileMutants = []struct {
 		`push "${GITHUB_SERVER_URL}/${repo}.git" "${COMMIT}`, `push origin "${COMMIT}`, "TestIsolationGuardFlagsPlant"},
 	{"credential helper for any host",
 		`-c "credential.${GITHUB_SERVER_URL}.helper=${helper}"`, `-c "credential.helper=${helper}"`, "TestIsolationGuardFlagsPlant"},
+	{"schedule moved off the hourly tick",
+		`- cron: "17 * * * *"`, `- cron: "17 3 * * *"`, "TestReconcileJobTriggerAndScope"},
+	{"scheduled runs share the ref's group",
+		`github.event_name == 'schedule' && 'reconcile' || `, ``, "TestReconcileJobTriggerAndScope"},
+	{"lint step no longer runs the job tests",
+		`-run '^(TestReconcileJob|TestCredentialedJobIsolation|TestIsolationGuardFlagsPlant|TestStatusKeyedLintRulesRegistered)'`,
+		`-run '^(TestStatusKeyedLintRulesRegistered)'`, "TestReconcileJobTriggerAndScope"},
+	{"staged copy not a PR trigger path",
+		`      - "ci/staged-workflows/assay-statusgen.yml"`, ``, "TestReconcileJobTriggerAndScope"},
+	{"statusgen not a PR trigger path",
+		"      - \"STATUS.md\"\n      - \"statusgen/**\"\n", "      - \"STATUS.md\"\n", "TestReconcileJobTriggerAndScope"},
+	{"inherited credential helpers kept",
+		`git -c credential.helper= -c "credential.`, `git -c "credential.`, "TestIsolationGuardFlagsPlant"},
+	{"gh checksum gate removed (guard)", ghGate, ghTar, "TestIsolationGuardFlagsPlant"},
+	{"gh checksum gate removed (effect)", ghGate, ghTar, "TestReconcileJobInstallVerifies"},
+	{"gh extracted before its checksum gate", ghGate, ghTarFirst, "TestIsolationGuardFlagsPlant"},
+	{"Go checksum gate removed (guard)", goGate, goNoGate, "TestIsolationGuardFlagsPlant"},
+	{"Go checksum gate removed (effect)", goGate, goNoGate, "TestReconcileJobInstallVerifies"},
 	{"workspace checkout re-added",
 		"      - name: Clone main into a fresh job-local directory\n", "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: false\n      - name: Clone main into a fresh job-local directory\n", "TestReconcileJobStepWiring"},
 }

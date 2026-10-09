@@ -470,8 +470,10 @@ jobs:
   # TestReconcileJobMutantsFail holds a list of edits to this job, each of which
   # must turn a named test red. What the tests pin, and the job
   # promises: the reconcile runs without --backfill; a push is a fast-forward,
-  # never forced; a branch carrying a commit not of this job's shape is refused;
-  # only stream READMEs may change. One tick, in order:
+  # never forced; a branch carrying a commit not of this job's shape is refused,
+  # whether its subject is another (one parent or two) or its change reaches
+  # past stream READMEs (another path under docs/streams/ included); only stream
+  # READMEs may change. One tick, in order:
   #   1. `statusgen reconcile --apply` (trailer-only: a row is written only for a
   #      merged PR carrying that brief's `Brief:` trailer; the --backfill branch-
   #      name / body-mention / hand-said rules are NOT on this path) — reads PR
@@ -710,7 +712,8 @@ jobs:
           "$statusgen" regen --readmes --root .
           "$statusgen" --root . --lint
           # This job may change stream READMEs and nothing else.
-          stray="$(git status --porcelain --untracked-files=all | grep -v -E '^ M docs/streams/[^ ]+/README\.md$' || true)"
+          # The same README pattern as the foreign-commit check above.
+          stray="$(git status --porcelain --untracked-files=all | grep -v -E "^ M ${readme_re#^}" || true)"
           if [ -n "$stray" ]; then
             echo "::error::reconcile changed paths other than stream READMEs — refusing to commit:"
             echo "$stray"
