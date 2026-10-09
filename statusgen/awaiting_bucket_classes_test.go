@@ -244,6 +244,21 @@ func TestBucketAwaitingUnrecognisedAndFutureAreCouldNotCheck(t *testing.T) {
 	if got != bucketCouldNotCheck || !strings.Contains(next, "clock-skew") {
 		t.Errorf("future-dated record: bucket %v (%s), want could-not-check naming the skew", got, next)
 	}
+	// Row 1 reads the records too, so their readability is checked before it:
+	// a human-gated PASS beside an unreadable store, a future-dated record or an
+	// unrecognised outcome is could-not-check, never the driver's sign-off.
+	pass := awaitEvidence{Text: "**VERIFY: PASS**\n"}
+	for name, oc := range map[string]awaitOutcomes{
+		"unreadable":   {Unreadable: "bad json"},
+		"future":       {Future: true, Latest: &awaitOutcome{Outcome: "verified"}},
+		"unrecognised": {Latest: &awaitOutcome{Outcome: "weird"}},
+	} {
+		for _, b := range []awaitBrief{{Status: "implemented", Gate: "human"}, {Status: "verified", Gate: "human"}, {Status: "implemented", Gate: "model", Irreversible: true}} {
+			if got, _, next := bucketAwaiting(b, ci, pass, oc); got != bucketCouldNotCheck {
+				t.Errorf("%s / %+v: bucket %v (%s), want could-not-check before row 1", name, b, got, next)
+			}
+		}
+	}
 	// Case and padding of a known value still classify.
 	for _, outcome := range []string{" Verify-Fail ", "BLOCKED"} {
 		if classifyOutcome(outcome) == outcomeUnrecognised {
