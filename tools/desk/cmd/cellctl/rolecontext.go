@@ -9,18 +9,22 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
+	"unicode"
 	"unicode/utf8"
 )
 
 // Per-role starting context (#2438). Every role window of a cell starts with the same context
 // today: every enabled plugin and skill, one shared memory index, every connector, the whole
 // built-in tool set — and whatever the window dispatches inherits most of it, re-read on every
-// request. CELL_ROLE_CONTEXT names a JSON declaration that NARROWS that per role; this file
+// request. CELL_ROLE_CONTEXT names a JSON declaration that sets that per role; this file
 // loads it, validates it and binds it to the harness. docs/cellctl-role-context.md is the
 // operator-facing page.
 //
@@ -29,12 +33,18 @@ import (
 //   - Silent when undeclared. A cell without CELL_ROLE_CONTEXT, and a role the declaration does
 //     not name, launch with byte-identical argv and print nothing new (the Go↔oracle parity
 //     harness diffs that output).
-//   - Narrow only. The schema has no key that can enable a plugin, add a permission allow rule,
-//     a hook, an environment variable, a connector or a model; agent definitions carry no model
-//     and no permission mode. It composes with the model policy's --settings by ADDING keys and
-//     refuses a key the launcher already set.
+//   - Nothing added that grants. The schema has no key that can enable a plugin, add a
+//     permission allow rule, a hook, an environment variable, a connector or a model; agent
+//     definitions carry no model and no permission mode. It composes with the model policy's
+//     --settings by ADDING keys and refuses a key the launcher already set. That is NOT the same
+//     as "only takes things away": plugins_off drops a whole plugin, its hooks included, and
+//     memory_dir names a directory the window writes. Both are bounded below (the role's own
+//     plugin is refused, the directory is contained) and both are stated by `check`, a dry run
+//     and the launch itself.
 //   - Nothing the session can edit. The whole binding travels inline in the launch argv, at the
-//     harness's command-line precedence — above every settings file a session can write.
+//     harness's command-line precedence — above every settings file a session can write — and
+//     neither the declaration nor a file it names may resolve into a role worktree or a memory
+//     directory.
 //
 // The declaration is harness-neutral; the binding below is Claude Code's. A role the cell runs
 // on another harness refuses a non-empty declaration rather than silently ignoring it.
@@ -47,11 +57,20 @@ const (
 	roleContextMaxFile = 64 << 10
 	roleContextMaxArg  = 96 << 10
 	builtinAgentPrefix = "builtin:"
+	// roleSkillPlugin is the plugin every role window's own skill prompt (/assay:<role>) and
+	// session hooks come from; the launcher enables it before each launch. plugins_off drops a
+	// plugin whole, so naming this one would start a role without its skill or its hooks.
+	roleSkillPlugin = "assay"
+	// roleMemoryRoot is the one cell subdirectory a memory_dir may live below, and with
+	// "worktrees" one of the two a role session writes as a matter of course.
+	roleMemoryRoot = "memory"
 )
 
 // roleContextVerified is the Claude Code version the binding's settings keys and flags were
 // verified on. An older harness ignores a settings key it does not know, so the role would start
-// WIDER than declared (never wider than undeclared) — `check` warns, launch does not refuse.
+// WIDER than declared (never wider than undeclared). `check` warns and a launch that applies a
+// context prints a NOTICE — for an older harness and for one whose version cannot be read; the
+// launch itself is not refused.
 var roleContextVerified = [3]int{2, 1, 295}
 
 //go:embed agents/*.json
@@ -140,9 +159,12 @@ func (rc *roleContext) empty() bool {
 		s.DispatchAgent == "" && len(s.AgentsOff) == 0 && len(s.ToolsOff) == 0 && !s.ConnectorsOff
 }
 
-// decodeStrict decodes exactly one JSON value and refuses an unknown field or trailing data —
-// a typo'd key must be a refusal, never a silently ignored narrowing.
+// decodeStrict decodes exactly one JSON value and refuses an unknown field, a repeated key or
+// trailing data — a typo'd or shadowed key must be a refusal, never a silently ignored entry.
 func decodeStrict(raw []byte, v any) error {
+	if err := duplicateKey(raw); err != nil {
+		return err
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
@@ -154,19 +176,237 @@ func decodeStrict(raw []byte, v any) error {
 	return nil
 }
 
+// duplicateKey walks the first JSON value in raw and reports an object key that repeats within
+// its object. encoding/json keeps the LAST of two equal keys and says nothing, so without this
+// a second "pr-review-desk" entry would replace the first and `check` would print ok. Keys are
+// compared the way the decoder matches struct fields — without regard to case — so a repeat
+// spelled in another case is refused too. Malformed JSON is left for the typed decode to report.
+func duplicateKey(raw []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var walk func(where string) (bool, error)
+	walk = func(where string) (bool, error) {
+		tok, err := dec.Token()
+		if err != nil {
+			return false, nil
+		}
+		switch tok {
+		case json.Delim('{'):
+			seen := map[string]string{}
+			for dec.More() {
+				kt, err := dec.Token()
+				if err != nil {
+					return false, nil
+				}
+				key, isString := kt.(string)
+				if !isString {
+					return false, nil
+				}
+				at := "at the top level"
+				if where != "" {
+					at = "in " + where
+				}
+				folded := foldKey(key)
+				if first, dup := seen[folded]; dup {
+					if first != key {
+						return false, fmt.Errorf("key %q is given twice %s (it is the same key as %q: key names are matched without regard to case)", key, at, first)
+					}
+					return false, fmt.Errorf("key %q is given twice %s", key, at)
+				}
+				seen[folded] = key
+				inner := key
+				if where != "" {
+					inner = where + "." + key
+				}
+				if ok, err := walk(inner); err != nil || !ok {
+					return false, err
+				}
+			}
+		case json.Delim('['):
+			for dec.More() {
+				if ok, err := walk(where + "[]"); err != nil || !ok {
+					return false, err
+				}
+			}
+		default:
+			return true, nil
+		}
+		if _, err := dec.Token(); err != nil { // the closing delimiter
+			return false, nil
+		}
+		return true, nil
+	}
+	_, err := walk("")
+	return err
+}
+
+// foldKey maps a key to the representative encoding/json compares field names by: every rune
+// replaced with the smallest member of its simple case-folding orbit.
+func foldKey(s string) string {
+	return strings.Map(func(r rune) rune {
+		for {
+			next := unicode.SimpleFold(r)
+			if next <= r {
+				return next
+			}
+			r = next
+		}
+	}, s)
+}
+
 // readBounded reads a regular file the declaration names, refusing an oversized or empty one.
+// The size is judged before any byte is read and the read itself is capped, so a file that
+// grows between the two cannot be pulled in whole. The open is non-blocking: a FIFO at a
+// declared path is refused as "not a regular file" instead of hanging the launch.
 func readBounded(path string) ([]byte, error) {
-	raw, err := readPolicySource(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s: not a regular file (%s)", path, info.Mode().Type())
+	}
+	if info.Size() > roleContextMaxFile {
+		return nil, fmt.Errorf("%s: %d bytes, over the %d-byte limit", path, info.Size(), roleContextMaxFile)
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, roleContextMaxFile+1))
 	if err != nil {
 		return nil, err
 	}
 	if len(raw) > roleContextMaxFile {
-		return nil, fmt.Errorf("%s: %d bytes, over the %d-byte limit", path, len(raw), roleContextMaxFile)
+		return nil, fmt.Errorf("%s: over the %d-byte limit", path, roleContextMaxFile)
 	}
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, fmt.Errorf("%s: empty", path)
 	}
 	return raw, nil
+}
+
+// strictlyBelow reports whether p is a path below dir — never dir itself. Both sides must
+// already be symlink-resolved; a lexical comparison of unresolved paths proves nothing.
+func strictlyBelow(dir, p string) bool {
+	rel, err := filepath.Rel(dir, p)
+	if err != nil || rel == "." || rel == ".." || filepath.IsAbs(rel) {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// sessionWritablePlace names the cell subdirectory a role session writes that path resolves
+// into, or "" when it resolves into neither. The two are the role worktrees (a session's
+// working tree) and the memory directories (which memory_dir hands to a role). A file there
+// could be rewritten by one session and decide the next launch, so the declaration and every
+// file it names are refused when they resolve into either — directly or through a symlink.
+func sessionWritablePlace(cellDir, path string) (string, error) {
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	base, err := filepath.EvalSymlinks(cellDir)
+	if err != nil {
+		return "", err
+	}
+	for _, name := range []string{"worktrees", roleMemoryRoot} {
+		place := filepath.Join(base, name)
+		places := []string{place}
+		// The subdirectory may itself be a link (worktrees kept on another volume); what lies
+		// behind the link is as writable as what lies behind the name.
+		if resolved, err := filepath.EvalSymlinks(place); err == nil && resolved != place {
+			places = append(places, resolved)
+		}
+		for _, pl := range places {
+			if real == pl || strictlyBelow(pl, real) {
+				return filepath.Join(cellDir, name), nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// refuseSessionWritable is sessionWritablePlace as a refusal; what names the file in the error.
+func refuseSessionWritable(cellDir, path string) error {
+	place, err := sessionWritablePlace(cellDir, path)
+	if err != nil {
+		return fmt.Errorf("%s: cannot resolve where it lives: %v", path, err)
+	}
+	if place != "" {
+		return fmt.Errorf("%s resolves into %s, which a role session can write; keep the declaration and every file it names outside the role worktrees and the memory directories", path, place)
+	}
+	return nil
+}
+
+// containedMemoryDir resolves a declared memory_dir and returns the real directory, refusing
+// one that is not below <cell-dir>/memory/. The window WRITES its memory there, so the key is
+// a write grant: it may not name the cell directory (cell.env and the declaration live there),
+// an ancestor, the cell home, a worktree, or anything outside the cell. Symlinks are resolved
+// before judging, and <cell-dir>/memory itself is not followed — a link in its place is refused
+// along with everything behind it.
+func containedMemoryDir(cellDir, dir string) (string, error) {
+	base, err := filepath.EvalSymlinks(cellDir)
+	if err != nil {
+		return "", err
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", err
+	}
+	if !strictlyBelow(filepath.Join(base, roleMemoryRoot), real) {
+		return "", fmt.Errorf("must be a directory below %s%c (it resolves to %s): the role writes its memory there, so the cell directory, the cell home, a worktree and any place outside the cell are refused",
+			filepath.Join(cellDir, roleMemoryRoot), filepath.Separator, real)
+	}
+	return real, nil
+}
+
+// instructionGlobMatches reports whether an instructions_off glob matches a file path: `**`
+// stands for any number of path components and every other component is a path.Match pattern.
+// It is `check`'s approximation of the harness's own matcher, used only to warn.
+func instructionGlobMatches(glob, file string) bool {
+	g := strings.Split(filepath.ToSlash(glob), "/")
+	p := strings.Split(filepath.ToSlash(file), "/")
+	ok := make([]bool, len(p)+1) // ok[j]: the rest of the glob matches p[j:]
+	ok[len(p)] = true
+	for i := len(g) - 1; i >= 0; i-- {
+		next := make([]bool, len(p)+1)
+		if g[i] == "**" {
+			tail := false
+			for j := len(p); j >= 0; j-- {
+				tail = tail || ok[j]
+				next[j] = tail
+			}
+		} else {
+			for j := 0; j < len(p); j++ {
+				if m, _ := path.Match(g[i], p[j]); m && ok[j+1] {
+					next[j] = true
+				}
+			}
+		}
+		ok = next
+	}
+	return ok[0]
+}
+
+// projectInstructionFiles is where the harness looks for the project's own instruction file in
+// each directory a role window may start in, in both the written and the resolved spelling.
+func projectInstructionFiles(dirs ...string) []string {
+	var out []string
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		spellings := []string{dir}
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil && resolved != dir {
+			spellings = append(spellings, resolved)
+		}
+		for _, d := range spellings {
+			out = append(out, filepath.Join(d, "CLAUDE.md"), filepath.Join(d, ".claude", "CLAUDE.md"), filepath.Join(d, "CLAUDE.local.md"))
+		}
+	}
+	return out
 }
 
 func cellRelative(cellDir, p string) string {
@@ -245,6 +485,9 @@ func loadAgentDefinition(ref, cellDir string) (agentDefinition, error) {
 	if err != nil {
 		return agentDefinition{}, roleContextFail("cannot read agent definition %s: %v", path, err)
 	}
+	if err := refuseSessionWritable(cellDir, path); err != nil {
+		return agentDefinition{}, roleContextFail("agent definition %v", err)
+	}
 	return parseAgentDefinition(raw, path)
 }
 
@@ -265,6 +508,9 @@ func loadRoleContext(path, cellDir string) (*roleContextDecl, error) {
 	raw, err := readBounded(path)
 	if err != nil {
 		return nil, roleContextFail("cannot read %s: %v", path, err)
+	}
+	if err := refuseSessionWritable(cellDir, path); err != nil {
+		return nil, roleContextFail("%v", err)
 	}
 	var top struct {
 		Version *int                       `json:"version"`
@@ -319,6 +565,11 @@ func (rc *roleContext) resolve(cellDir string) error {
 			return err
 		}
 	}
+	for _, id := range s.PluginsOff {
+		if name, _, _ := strings.Cut(id, "@"); name == roleSkillPlugin {
+			return roleContextFail("role %s: plugins_off: %q is the plugin the role's own skill and session hooks come from; plugins_off drops a plugin whole, so a role window cannot switch this one off", role, id)
+		}
+	}
 	for _, v := range s.SkillsOff {
 		if strings.Contains(v, ":") {
 			return roleContextFail("role %s: skills_off: %q is a plugin's skill; the harness hides those only with the whole plugin (plugins_off)", role, v)
@@ -350,13 +601,20 @@ func (rc *roleContext) resolve(cellDir string) error {
 		if !info.IsDir() {
 			return roleContextFail("role %s: memory_dir %s is not a directory", role, dir)
 		}
-		rc.MemoryDir = dir
+		real, err := containedMemoryDir(cellDir, dir)
+		if err != nil {
+			return roleContextFail("role %s: memory_dir %s %v", role, dir, err)
+		}
+		rc.MemoryDir = real // the resolved directory is what the window is given
 	}
 	if s.Instructions != "" {
 		p := cellRelative(cellDir, s.Instructions)
 		raw, err := readBounded(p)
 		if err != nil {
 			return roleContextFail("role %s: instructions: %v", role, err)
+		}
+		if err := refuseSessionWritable(cellDir, p); err != nil {
+			return roleContextFail("role %s: instructions %v", role, err)
 		}
 		if !cleanText(string(raw)) {
 			return roleContextFail("role %s: instructions %s must be valid UTF-8 without NUL", role, p)
@@ -415,6 +673,33 @@ func (rc *roleContext) summary() string {
 	return fmt.Sprintf("plugins_off=%s skills_off=%s memory=%s instructions=%s instructions_off=%s agents=%s dispatch_agent=%s agents_off=%s tools_off=%s connectors=%s",
 		list(s.PluginsOff), list(s.SkillsOff), memory, orDefault(rc.InstructionsPath, "none"), list(s.InstructionsOff),
 		list(agents), orDefault(s.DispatchAgent, "none"), list(s.AgentsOff), list(s.ToolsOff), connectors)
+}
+
+// pluginsOffNotes is one line per plugins_off entry saying what goes with it. The key reads like
+// "hide this plugin's skills"; what the harness does is not load the plugin at all, hooks
+// included. `check`, a dry run and the launch print these so the operator sees it each time.
+func (rc *roleContext) pluginsOffNotes() []string {
+	var out []string
+	for _, id := range rc.Spec.PluginsOff {
+		out = append(out, fmt.Sprintf("plugins_off switches off the whole plugin %s for this window: its skills, agents, connectors, commands and hooks", id))
+	}
+	return out
+}
+
+// roleContextVersionNotice is "" when the installed harness is the verified version or newer,
+// and otherwise the sentence `check` warns with and a launch prints: the declared context may
+// not be applied in full by this harness.
+func roleContextVersionNotice() string {
+	const tail = "an older harness ignores settings it does not know, so a role may start wider than declared"
+	want := roleContextVerified
+	v, ok := claudeVersionTriple()
+	switch {
+	case !ok:
+		return fmt.Sprintf("role context: verified on Claude Code >=%d.%d.%d, but the installed version could not be read — %s", want[0], want[1], want[2], tail)
+	case versionLess(v, want):
+		return fmt.Sprintf("role context: verified on Claude Code >=%d.%d.%d, found %d.%d.%d — %s", want[0], want[1], want[2], v[0], v[1], v[2], tail)
+	}
+	return ""
 }
 
 // ── Claude Code binding ─────────────────────────────────────────────────────────────────────
@@ -637,15 +922,28 @@ func (c *Cell) mustRoleContext(role, harness string) {
 	}
 }
 
-// roleContextArgv applies the role's context to the composed claude launch argv.
+// roleContextArgv applies the role's context to the composed claude launch argv. When it
+// applies one it says so — source, digest and what the role starts with — because the key is
+// read through the environment overlay and a window that starts with less than its neighbours
+// should never be a surprise. A role with no entry, and a cell with no declaration, print
+// nothing and get argv back untouched.
 func (c *Cell) roleContextArgv(role string, argv []string) []string {
-	_, rc, err := c.roleContextFor(role, "claude")
+	d, rc, err := c.roleContextFor(role, "claude")
 	if err != nil {
 		die("%s", err)
 	}
 	out, err := applyClaudeRoleContext(argv, rc)
 	if err != nil {
 		die("%s", err)
+	}
+	if rc != nil {
+		fmt.Printf("[context] role=%s source=%s sha256=%s %s\n", role, d.Path, d.SHA256, rc.summary())
+		for _, note := range rc.pluginsOffNotes() {
+			fmt.Printf("[context] role=%s %s\n", role, note)
+		}
+		if notice := roleContextVersionNotice(); notice != "" {
+			fmt.Fprintf(os.Stderr, "NOTICE: %s\n", notice)
+		}
 	}
 	return out
 }
@@ -665,6 +963,9 @@ func (c *Cell) printRoleContextPlan(role, harness string) {
 		return
 	}
 	fmt.Printf("[dry-run] context role=%s source=%s sha256=%s %s\n", role, d.Path, d.SHA256, rc.summary())
+	for _, note := range rc.pluginsOffNotes() {
+		fmt.Printf("[dry-run] context role=%s %s\n", role, note)
+	}
 	fmt.Printf("[dry-run] context flags: %s\n", strings.Join(rc.claudeFlagSummary(), " "))
 }
 
@@ -702,7 +1003,11 @@ func (rc *roleContext) claudeFlagSummary() []string {
 // with, a MISS for anything the declaration names that is missing or cannot be applied, and a
 // warn where the declaration is valid but probably not what was meant. No declaration, no rows.
 // harnessOf resolves a role's harness the way the caller already did (policy route or cell-wide).
-func (c *Cell) checkRoleContext(k *checker, config string, harnessOf func(role string) string) {
+// cfgArg is `check`'s optional config-directory argument, passed through UNRESOLVED: the
+// directory is looked up only for a role that declares plugins_off, and a lookup that fails is
+// a warn row. A cell that declares nothing must get the check it got before this section
+// existed, on any harness and with or without a resolvable home.
+func (c *Cell) checkRoleContext(k *checker, cfgArg string, harnessOf func(role string) string) {
 	if c.Env.Get(roleContextKey) == "" {
 		return
 	}
@@ -731,11 +1036,32 @@ func (c *Cell) checkRoleContext(k *checker, config string, harnessOf func(role s
 				k.warn("role context: %s memory_dir %s has no MEMORY.md — the role starts with an EMPTY memory index (seed it from the shared one first; docs/cellctl-role-context.md)", role, rc.MemoryDir)
 			}
 		}
+		worktree := filepath.Join(c.Dir, "worktrees", role)
+		for _, note := range rc.pluginsOffNotes() {
+			k.warn("role context: %s %s", role, note)
+		}
 		if len(rc.Spec.PluginsOff) > 0 {
-			enabled := enabledClaudePlugins(config, c.Repo, filepath.Join(c.Dir, "worktrees", role))
-			for _, id := range rc.Spec.PluginsOff {
-				if !enabled[id] {
-					k.warn("role context: %s plugins_off names %s, which no settings file enables — nothing to switch off (check the id)", role, id)
+			config := cfgArg
+			var err error
+			if config == "" {
+				config, err = claudeConfigDirFor(runtime.GOOS, c.Env)
+			}
+			if err != nil {
+				k.warn("role context: %s cannot tell which plugins are enabled (%v) — the plugins_off ids are not compared with the settings files", role, err)
+			} else {
+				enabled := enabledClaudePlugins(config, c.Repo, worktree)
+				for _, id := range rc.Spec.PluginsOff {
+					if !enabled[id] {
+						k.warn("role context: %s plugins_off names %s, which no settings file enables — nothing to switch off (check the id)", role, id)
+					}
+				}
+			}
+		}
+		for _, glob := range rc.Spec.InstructionsOff {
+			for _, file := range projectInstructionFiles(c.Repo, worktree) {
+				if instructionGlobMatches(glob, file) {
+					k.warn("role context: %s instructions_off %q matches the project's own instruction file (%s) — the window starts without the project's rules; exclude a narrower path unless that is intended", role, glob, file)
+					break
 				}
 			}
 		}
@@ -751,9 +1077,8 @@ func (c *Cell) checkRoleContext(k *checker, config string, harnessOf func(role s
 		}
 	}
 	if anyClaude {
-		if v, ok := claudeVersionTriple(); ok && versionLess(v, roleContextVerified) {
-			k.warn("role context: verified on Claude Code >=%d.%d.%d, found %d.%d.%d — an older harness ignores settings it does not know, so a role may start wider than declared",
-				roleContextVerified[0], roleContextVerified[1], roleContextVerified[2], v[0], v[1], v[2])
+		if notice := roleContextVersionNotice(); notice != "" {
+			k.warn("%s", notice)
 		}
 	}
 }
