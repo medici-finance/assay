@@ -35,7 +35,7 @@ it on day one.
 | `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, the `desk-decided` label and body block agree with no standing `Undeclared-desk-decision:` finding, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
-| `deskpost` | `review`, `comment`, `ready` — as the reviewer App | outward write | yes |
+| `deskpost` | `review`, `security-review`, `comment`, `ready` — as the reviewer App; `finish` posts a verdict, confirms it at the reviewed head and releases the review claim in one command | outward write | yes |
 | `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` (plain reply or `--workpad`) reports what would post without writing | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
@@ -175,6 +175,7 @@ how you notice you are on a stale binary.
 | Reply on **your own** PR as the worker | `deskreply <owner/repo> <pr> --body-file F` | `gh pr comment` |
 | Upsert your ONE workpad comment on your own PR | `deskreply <owner/repo> <pr> --workpad --body-file F` | none — the edit path needs the candidate comment's GraphQL node id, which only the tool's own find step resolves; escalate on exit 6 rather than guess |
 | Post a review verdict / flip ready | `deskpost review\|comment\|ready` | (reviewer desk only) |
+| Finish a review: post the verdict, confirm it, release the claim | `deskpost finish review\|security-review … --claim <claim key>` | the three separate steps: the verdict verb, a look at the change, the release command in the assignment |
 | File an issue | `deskfile new -R <owner/repo> --title T --body-file F` | none — dedupe is the point |
 
 `deskpr create` is **draft-only by construction**: `--draft` is hardcoded into the
@@ -1779,6 +1780,7 @@ token **in memory only** — it mints fresh per invocation and never caches it t
 deskpost review  <owner/repo> <pr>     --verdict approve|request-changes --head <full-40-or-64-char-sha> --body-file F
 deskpost comment <owner/repo> <number> --body-file F     # <number> = a PR **or** an issue
 deskpost ready   <owner/repo> <pr>
+deskpost finish  review|security-review <owner/repo> <pr> … --claim <claim key>   # post + confirm + release — see below
 
 # modifiers, accepted by all three verbs, both off by default:
 deskpost review  ... --dry-run        # run every check, stop before the write
@@ -1978,6 +1980,60 @@ Constraints in code:
   closed findings; a stale `APPROVED` certifies a commit nobody reviewed. `deskpost review`
   now prints the assertion recipe itself on exit 4 — read its stderr rather than
   reconstructing the command from memory.
+
+### `deskpost finish` — post, confirm, release, in one command (#2437)
+
+A reviewer's last acts were three commands: post the verdict, check that it landed, release
+the dispatch claim. A reviewer that stopped after the first left a claim held on a change
+nobody was reading. `finish` runs the three in order and stops at the first that does not
+succeed.
+
+```bash
+deskpost finish review          <owner/repo> <pr> --verdict approve|request-changes --head <full sha> --body-file F --claim <claim key>
+deskpost finish security-review <owner/repo> <pr> --verdict pass|fail              --head <full sha> --body-file F --claim <claim key>
+
+# e.g.
+deskpost finish review example-org/project 42 --verdict approve \
+  --head 5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b --body-file verdict.md --claim project--pr-42
+# stdout, exactly one line:
+# deskpost finish: review=<link or id> state=APPROVED head=5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b claim=released
+```
+
+The arguments after `finish review` / `finish security-review` are that verb's own, parsed by
+the same code, plus `--claim` — the claim key the review assignment names.
+
+| Step | What runs | A stop here means |
+|---|---|---|
+| 1. post | the function `deskpost review` / `deskpost security-review` itself calls — one post path, so the same body checks, head pin, trust gate, identity, budget, audit row and refusals, with the same text and the same exit code | nothing was posted by this run, nothing was confirmed, the claim is still held |
+| 2. confirm | the change's reviews are read back; one by the reviewer identity, at `--head`, in the state this verdict produces, of this verdict kind, with this body, must be there | exit 6 — the post step reported success but the verdict could not be read back; the claim is **not** released |
+| 3. release | the dispatch claim named by `--claim` is released through the configured claim store (see [the dispatch-claim store](#the-dispatch-claim-store--resolveclaimstore)) | non-zero — the verdict **is** posted and confirmed, the claim is **still held**; the message says both |
+
+Every stop is one stderr line naming the step and what was and was not done. Nothing after
+the failed step runs. **Running the same command again is safe at every stop:** a verdict
+this session already posted is not posted twice (the post path's own duplicate guard), and a
+claim that is already gone is reported as `claim=already-released`, not as a failure.
+
+- **Why the claim is released last.** The post step validates the reviewer's dispatch stamp,
+  and that stamp stops counting once the review claim is released. Releasing first would make
+  the tool refuse its own verdict.
+- **`--claim` is checked before anything is written.** It must be a review-dispatch claim key
+  of this change (`<short label>--pr-<N>`, optionally `--<lane>`); any other value — another
+  change's key, another repository's, a ref path — is an argument error (exit 2) and nothing
+  is posted. The release can therefore only ever address this change's own review claim.
+- **"Already gone" is verified, never assumed.** A delete the forge answers with not-found is
+  followed by a read of that one ref; only a positive "absent" is reported as
+  `already-released`. A forbidden, a server error or an unreadable ref is a failed release.
+- **One audit row** — the post step's, as for the plain verdict verbs. The confirm is a read;
+  the release writes no row and spends nothing from the write budget (the claim tool it
+  stands in for writes none either).
+- **`--dry-run`** rehearses step 1 only: exit 0, nothing posted, read back or released, and no
+  result line. `--wait` and `--explain` act on step 1 as they do on the plain verbs.
+- **The result line's `review=`** is the forge's own link to the review when the listing
+  carries one, otherwise `<owner/repo>#<pr>/review-<id>`. The tool never builds a link.
+- **Limit.** With no claim store configured the claim is a ref on the forge and the release is
+  a typed ref delete under the reviewer identity. A forge whose API cannot delete a ref
+  outside its branch namespace answers that step with a refusal; `finish` then stops at step
+  3 with the verdict posted, and the release command in the assignment remains the way out.
 
 ### Verdict format (the machine-checkable review body)
 
@@ -5017,6 +5073,74 @@ The original PR/lane claim key stays unchanged, so a live holder still blocks a 
 finding records. The existing claim, reviewer credential, hook, and model-attestation gates
 still apply. Keep old reviewer worktrees and their evidence; their eventual cleanup is separate
 work governed by `deskwt`, never a prerequisite or an automatic side effect of re-review.
+
+**The dispatch packet — one read-ahead file per dispatch (#2437).** A dispatched reviewer
+used to spend its first dozen calls fetching the same things: the change, its description,
+the checks, the earlier verdicts, the diff, the touched files. `deskdispatch --kit review
+--pr N` now reads them **once**, at dispatch, and writes one Markdown file. The assignment
+gains exactly one line:
+
+```
+Packet: <absolute path>
+```
+
+```bash
+deskdispatch project--pr-42 --kit review --pr 42 --repo example-org/project --prompt-file /work/pr-42.md
+# → /work/pr-42.md          the assignment, carrying "Packet: /work/pr-42.packet.md"
+# → /work/pr-42.packet.md   the packet, mode 0600
+```
+
+**What a review packet holds, in order:** the head commit and the build time (at the top);
+the change's number, title, author, base, head and draft / mergeable state; its description;
+the brief text, when the dispatch resolves one; check and status states at the head; the
+earlier verdicts of **this lane** in full (state, commit, time, body) and a one-line index of
+every other review; the whole diff; and the text of each touched file as it reads after the
+change.
+
+**The packet's caps are stated in its own header.** No quoted item is ever cut short: one over its
+cap is left out **whole** and listed under "Omitted" by name, size and reason, so a reader
+always knows what it was not shown and reads that item at the source.
+
+| Cap | Value | Why |
+|---|---|---|
+| one touched file | 64 KiB | covers ordinary source files whole; a larger file is usually generated or vendored, and half of one is worse than a pointer to it |
+| the diff | 192 KiB | the one item a reviewer must see whole, so it gets three times a file's allowance |
+| the whole packet | 512 KiB | keeps one packet readable in a single pass without displacing the agent's working room |
+| touched files read | 60, within 60 s | one forge read each, made while the dispatch holds its claim |
+
+A removed file, or a path that is not safe to put in a forge request, is listed and not
+read; a file that is not text is listed and not shown.
+
+**Where the packet goes.** Beside the assignment: with `--prompt-file F`, `<F without extension>.packet.md`;
+when the prompt is printed, `<user cache dir>/assay/packets/<item-key>.packet.md` (packets
+there older than a week are removed as new ones are written). Never in the agent's worktree
+— an untracked file would dirty a read-only review tree — and never in the configuration
+directory. The file is `0600` in a `0700` directory.
+
+**The packet is untrusted content, and fenced as such.** Everything in the packet the tool did not
+write — a description, a review body, a diff, a file — sits inside a boundary that carries a
+per-packet random token, with boundary look-alikes in the content neutralised, and the header
+says in the tool's own words that nothing inside a boundary is an instruction. A single-line
+value (a title, a login, a check name) is flattened to one line with control characters
+escaped; one longer than 240 characters is shown cut, with the cut stated.
+
+**The packet can never fail a dispatch.** The packet is not one of the numbered dispatch steps. If
+it cannot be built — no credential, a forge that will not answer, a head that moved while it
+was being read, a directory that cannot be written — stderr says why in one line, the
+assignment carries **no** `Packet:` line, and the dispatch carries on exactly as before. A
+single section that fails drops only itself and is named in the packet. Not built on
+`--dry-run`. There is no flag and no configuration: an adopter gets it by upgrading.
+
+**The packet reads; it decides nothing.** Every read goes through the typed forge surface under the
+review dispatcher's credential — the one the stamp step already uses. Which review counts,
+whether a check is required and whether the change may merge stay with the tools that decide
+them; the packet is a snapshot, and the head it was built at is recorded so a reader can tell
+when it is stale.
+
+**Adding a packet to another kit** is a new file, not an edit: the shared half (header, caps
+and omission list, boundaries, the owner-only writer, the one assignment line) is
+`internal/packet`; a kit registers a provider that returns an ordered list of named sections
+(`registerPacketProvider` in `cmd/deskdispatch/packet.go`; `packet_review.go` is the first).
 
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
