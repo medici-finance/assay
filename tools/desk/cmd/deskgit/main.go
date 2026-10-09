@@ -21,7 +21,13 @@
 // What is left, and what this tool still enforces:
 //   - the refspec is a Go value built from a validated mode (never a caller flag), and the
 //     explicit tracking refspec confines a bare fetch to refs/remotes/origin/*, so a
-//     malicious remote.origin.fetch cannot redirect writes to local branches;
+//     malicious remote.origin.fetch cannot redirect writes to local branches. No tag is
+//     followed, in any mode: the refspec is the whole write set, so no refs/tags/* ref is
+//     created or replaced (`git fetch` auto-followed tags but never replaced an existing one;
+//     go-git's default mode would replace one, so the fetch follows none);
+//   - a --branch/--pr fetch never writes a branch some worktree is using — its HEAD branch,
+//     a branch it is rebasing or bisecting, or one an in-progress `rebase --update-refs`
+//     will rewrite: git's own refusal set;
 //   - it gates on the origin URL — the repository's own configured remote.origin.url, exactly
 //     one value — and connects to THAT SAME STRING, so the decision and the connection cannot
 //     diverge; it rejects remote-helper (`<helper>::…`) transport forms, and requires an
@@ -65,7 +71,7 @@ import (
 const usage = `deskgit — the desk's narrow git verb: refresh refs from origin, and push the current branch.
 
 USAGE:
-  deskgit fetch [--prune]         # refs/remotes/origin/* (--prune drops stale ones)
+  deskgit fetch [--prune]         # refs/remotes/origin/* only (--prune drops stale ones; no tags fetched)
   deskgit fetch --pr <N>          # pull/<N>/head -> local branch pr<N> (N digits only)
   deskgit fetch --branch <B>      # origin's <B> -> local branch <B> (not main/master in any case)
   deskgit fetch --as <role>       # any fetch mode above, authenticated from <role>'s token file
@@ -73,7 +79,9 @@ USAGE:
   deskgit --version
 
 deskgit is safe by construction: each mode builds a FIXED refspec from a validated value —
-no caller flag and no arbitrary refspec reach the transport. fetch runs in-process (no git
+no caller flag and no arbitrary refspec reach the transport, and fetch writes only that
+refspec's refs (no tag is followed or replaced; a branch any worktree is using — checked out,
+being rebased or bisected — is never written). fetch runs in-process (no git
 child, so no program to name, no child environment, no credential helper); push runs git with a
 fixed argv that pins --receive-pack=git-receive-pack and refuses --force/--delete/--no-verify
 by name. Both gate on the origin URL. --as reads the role's 0600 token file and sends the token

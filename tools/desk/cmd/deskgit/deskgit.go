@@ -281,7 +281,8 @@ var (
 	branchRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 )
 
-// trackingRefspec confines writes to remote-tracking refs only.
+// trackingRefspec confines writes to remote-tracking refs only. That holds because the fetch
+// follows no tags (gitcore.Fetch sets go-git's NoTags): the refspec is the whole write set.
 const trackingRefspec = "+refs/heads/*:refs/remotes/origin/*"
 
 // auditCtx accumulates the fields for the ONE audit line every invocation emits.
@@ -483,9 +484,11 @@ func cmdFetch(args []string) (err error) {
 
 	// Refuse to write a branch that is checked out in ANY worktree of this repository — this
 	// one or a linked one: `git fetch` itself refused that ("refusing to fetch into branch ...
-	// checked out at ..."), and an in-process ref update would not. The set is read from the
-	// common directory (every worktree's HEAD); if it cannot be read the fetch does not guess
-	// "none" — it stops, unverifiable.
+	// checked out at ..."), and an in-process ref update would not. The set is git's own,
+	// read from the common directory: every worktree's HEAD branch, the branch a worktree is
+	// rebasing or bisecting (its HEAD is detached meanwhile), and the branches an in-progress
+	// `rebase --update-refs` will rewrite (gitcore.CheckedOutBranches). If it cannot be read
+	// the fetch does not guess "none" — it stops, unverifiable.
 	if flagName, target := localRefTarget(*branch, *prNum); target != "" {
 		held, cerr := checkedOutBranchesFn(dir)
 		if cerr != nil {

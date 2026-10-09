@@ -527,8 +527,8 @@ func TestFetch_RefusesToWriteCheckedOutBranch(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	mustGit(t, work, "checkout", "-b", "feature-here")
 	withEnv(t, work)
-	if code := run([]string{"fetch", "--branch", "feature-here"}); code == deskkit.ExitOK {
-		t.Fatal("fetch --branch <checked-out branch> succeeded; it must refuse")
+	if code := run([]string{"fetch", "--branch", "feature-here"}); code != deskkit.ExitUnverifiable {
+		t.Fatalf("fetch --branch <checked-out branch> exit = %d, want %d (unverifiable)", code, deskkit.ExitUnverifiable)
 	}
 	if len(fetchRecorded) != 0 {
 		t.Fatal("the transport was reached for the checked-out branch")
@@ -556,14 +556,118 @@ func TestFetch_RefusesBranchCheckedOutInLinkedWorktree(t *testing.T) {
 	mustGit(t, scratch, "push", "-q", "origin", "held-elsewhere")
 
 	withEnv(t, work)
-	if code := run([]string{"fetch", "--branch", "held-elsewhere"}); code == deskkit.ExitOK {
-		t.Fatal("fetch --branch <branch checked out in a linked worktree> succeeded; it must refuse")
+	if code := run([]string{"fetch", "--branch", "held-elsewhere"}); code != deskkit.ExitUnverifiable {
+		t.Fatalf("fetch --branch <branch checked out in a linked worktree> exit = %d, want %d (unverifiable)", code, deskkit.ExitUnverifiable)
 	}
 	if len(fetchRecorded) != 0 {
 		t.Fatal("the transport was reached for a branch checked out in a linked worktree")
 	}
 	if after := mustGit(t, work, "rev-parse", "refs/heads/held-elsewhere"); after != before {
 		t.Fatalf("held-elsewhere moved %s -> %s under the linked worktree", before, after)
+	}
+}
+
+// aheadUpstream moves the upstream's <branch> one commit ahead from a scratch clone, so a
+// fetch that went through would visibly move a local ref.
+func aheadUpstream(t *testing.T, work, branch string) string {
+	t.Helper()
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	scratch := filepath.Join(t.TempDir(), "scratch")
+	mustGit(t, "", "clone", "-q", "-b", branch, upstream, scratch)
+	mustGit(t, scratch, "-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false",
+		"commit", "-q", "--allow-empty", "-m", "ahead")
+	mustGit(t, scratch, "push", "-q", "origin", branch)
+	return mustGit(t, scratch, "rev-parse", "HEAD")
+}
+
+// A branch a linked worktree is in the middle of REBASING or BISECTING is not written either:
+// that worktree's HEAD is detached for the duration, but git still counts the branch as in use
+// (its rebase finishes onto it; `bisect reset` returns to it) and refused to fetch into it.
+func TestFetch_RefusesBusyBranch(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		start []string
+	}{
+		{"rebase", []string{"rebase", "-q", "--force-rebase", "-x", "false", "HEAD~1"}},
+		{"bisect", []string{"bisect", "start", "HEAD", "HEAD~2"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newRepo(t, allowedSlug)
+			linked := filepath.Join(t.TempDir(), "linked")
+			mustGit(t, work, "worktree", "add", "-q", "-b", "busy", linked)
+			for _, m := range []string{"one", "two"} {
+				mustGit(t, linked, "commit", "-q", "--allow-empty", "-m", m)
+			}
+			mustGit(t, linked, "push", "-q", "origin", "busy")
+			before := mustGit(t, work, "rev-parse", "refs/heads/busy")
+			cmd := exec.Command("git", tc.start...)
+			cmd.Dir = linked
+			_ = cmd.Run() // a stopped rebase exits non-zero by design
+			if err := exec.Command("git", "-C", linked, "symbolic-ref", "-q", "HEAD").Run(); err == nil {
+				t.Fatalf("the %s fixture left HEAD on a branch; the case needs it detached", tc.name)
+			}
+			aheadUpstream(t, work, "busy")
+
+			withEnv(t, work)
+			if code := run([]string{"fetch", "--branch", "busy"}); code != deskkit.ExitUnverifiable {
+				t.Fatalf("fetch --branch <branch mid-%s in a linked worktree> exit = %d, want %d (unverifiable)",
+					tc.name, code, deskkit.ExitUnverifiable)
+			}
+			if len(fetchRecorded) != 0 {
+				t.Fatalf("the transport was reached for a branch mid-%s", tc.name)
+			}
+			if after := mustGit(t, work, "rev-parse", "refs/heads/busy"); after != before {
+				t.Fatalf("busy moved %s -> %s under the linked worktree's %s", before, after, tc.name)
+			}
+		})
+	}
+}
+
+// A bare fetch writes refs/remotes/origin/* and nothing else: a local tag whose name the
+// upstream also uses (at a different commit) is left alone, and no upstream tag is created.
+// `git fetch` never replaced an existing local tag; the in-process fetch follows no tags.
+func TestFetch_KeepsLocalTags(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "tag", "v1")
+	local := mustGit(t, work, "rev-parse", "refs/tags/v1")
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	scratch := filepath.Join(t.TempDir(), "scratch")
+	mustGit(t, "", "clone", "-q", upstream, scratch)
+	mustGit(t, scratch, "-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false",
+		"commit", "-q", "--allow-empty", "-m", "ahead")
+	mustGit(t, scratch, "tag", "v1")
+	mustGit(t, scratch, "tag", "v2")
+	mustGit(t, scratch, "push", "-q", "origin", "main", "v1", "v2")
+	ahead := mustGit(t, scratch, "rev-parse", "HEAD")
+
+	withEnv(t, work)
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch exit = %d, want 0", code)
+	}
+	if got := mustGit(t, work, "rev-parse", "refs/remotes/origin/main"); got != ahead {
+		t.Fatalf("refs/remotes/origin/main = %s, want %s", got, ahead)
+	}
+	if got := mustGit(t, work, "rev-parse", "refs/tags/v1"); got != local {
+		t.Fatalf("local tag v1 moved %s -> %s; a fetch must never replace a local tag", local, got)
+	}
+	if tags := mustGit(t, work, "for-each-ref", "--format=%(refname)", "refs/tags/"); tags != "refs/tags/v1" {
+		t.Fatalf("tags after fetch = %q, want only the local refs/tags/v1", tags)
+	}
+}
+
+// A bare fetch from a checkout holding a commit the local-path origin has never seen — the
+// ordinary state of a working checkout — succeeds and lands the origin's new commit.
+func TestFetch_LocalOnlyCommitOK(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "commit", "-q", "--allow-empty", "-m", "unpushed")
+	ahead := aheadUpstream(t, work, "main")
+
+	withEnv(t, work)
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch with an unpushed local commit exit = %d, want 0", code)
+	}
+	if got := mustGit(t, work, "rev-parse", "refs/remotes/origin/main"); got != ahead {
+		t.Fatalf("refs/remotes/origin/main = %s, want %s", got, ahead)
 	}
 }
 

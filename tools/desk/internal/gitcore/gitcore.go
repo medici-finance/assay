@@ -517,6 +517,11 @@ type FetchOpts struct {
 // binary is spawned for any scheme (a local-path or file:// URL is served by localTransport,
 // not go-git's stock local client — see localtransport.go), no credential helper or askpass
 // is consulted, no hook runs.
+//
+// It writes the RefSpecs' destinations and nothing else. Tags are NOT followed (go-git's
+// default tag mode writes every advertised tag whose object is present, replacing a local tag
+// of the same name that differs): no refs/tags/* ref is created or moved by a fetch, so an
+// existing local tag is never replaced. A caller that wants a tag names it in a refspec.
 // Returns nil on success, including when the remote was already up to date.
 func (r *Repo) Fetch(opts FetchOpts) error {
 	specs, err := buildRefSpecs(opts.RefSpecs, opts.Force)
@@ -532,6 +537,7 @@ func (r *Repo) Fetch(opts FetchOpts) error {
 		Auth:     opts.Auth,
 		Force:    opts.Force,
 		Prune:    opts.Prune,
+		Tags:     git.NoTags,
 	})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return fmt.Errorf("gitcore: fetch: %w", err)

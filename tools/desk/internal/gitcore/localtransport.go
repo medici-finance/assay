@@ -25,6 +25,8 @@ package gitcore
 // design decision of its own, tracked separately, not a by-product of migrating fetch.
 
 import (
+	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,6 +36,8 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 	gitconfig "github.com/go-git/go-git/v5/plumbing/format/config"
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/client"
 	"github.com/go-git/go-git/v5/plumbing/transport/file"
@@ -54,7 +58,38 @@ func (localTransport) NewUploadPackSession(ep *transport.Endpoint, auth transpor
 		return nil, err
 	}
 	st, _ := storageAt(gitDir, NewObjectCache())
-	return server.NewClient(server.MapLoader{ep.String(): st}).NewUploadPackSession(ep, auth)
+	s, err := server.NewClient(server.MapLoader{ep.String(): st}).NewUploadPackSession(ep, auth)
+	if err != nil {
+		return nil, err
+	}
+	return knownHavesSession{UploadPackSession: s, objects: st}, nil
+}
+
+// knownHavesSession drops, before the embedded server sees them, the client's "have" lines
+// naming an object the served repository does not hold. The client offers every local tip —
+// an unpushed commit included, the ordinary state of a working checkout — and go-git's
+// embedded server walks the haves and fails the whole fetch ("object not found") on the first
+// one it lacks, where git's upload-pack ignores a have it cannot resolve. Dropping an unknown
+// have only means the pack may carry objects the client already holds; it never omits one the
+// client needs, because the server still subtracts only what it can prove the client has.
+type knownHavesSession struct {
+	transport.UploadPackSession
+	objects storer.EncodedObjectStorer
+}
+
+func (s knownHavesSession) UploadPack(ctx context.Context, req *packp.UploadPackRequest) (*packp.UploadPackResponse, error) {
+	if req != nil && len(req.Haves) > 0 {
+		kept := make([]plumbing.Hash, 0, len(req.Haves))
+		for _, h := range req.Haves {
+			if s.objects.HasEncodedObject(h) == nil {
+				kept = append(kept, h)
+			}
+		}
+		filtered := *req
+		filtered.Haves = kept
+		req = &filtered
+	}
+	return s.UploadPackSession.UploadPack(ctx, req)
 }
 
 // NewReceivePackSession is go-git's stock file client, unchanged (see the file header).
@@ -110,11 +145,19 @@ func adjustLocalPathForWindows(p string) string {
 	return p
 }
 
-// CheckedOutBranches returns the full ref names (refs/heads/...) of every branch checked out
-// in any worktree of the repository containing dir — the main checkout (unless the repository
-// is bare) and every linked worktree registered under the common directory — sorted. It is
-// the set git itself refuses to fetch or push into (`refusing to fetch into branch ...
-// checked out at ...`). A detached HEAD contributes nothing.
+// CheckedOutBranches returns the full ref names (refs/heads/...) of every branch in use by any
+// worktree of the repository containing dir — the main checkout (unless the repository is
+// bare) and every linked worktree registered under the common directory — sorted. It is the
+// set git itself refuses to fetch into (`refusing to fetch into branch ... checked out at
+// ...`; git's branch.c prepare_checked_out_branches), per worktree:
+//
+//   - the branch its HEAD names (a detached HEAD names none);
+//   - the branch it is in the middle of rebasing (rebase-merge/head-name, or
+//     rebase-apply/head-name when that directory is a rebase rather than `git am`) — HEAD is
+//     detached for the whole rebase, and moving the branch under it breaks the rebase's finish;
+//   - the branch it started bisecting from (BISECT_START, while BISECT_LOG exists) — HEAD is
+//     detached on a midpoint, and `git bisect reset` returns to that branch;
+//   - every branch an in-progress `rebase --update-refs` will rewrite (rebase-merge/update-refs).
 func CheckedOutBranches(dir string) ([]string, error) {
 	top, err := Toplevel(dir)
 	if err != nil {
@@ -136,10 +179,10 @@ func CheckedOutBranches(dir string) ([]string, error) {
 	return out, nil
 }
 
-// checkedOutBranches reads, from gitDir's common directory, the branch every worktree has
-// checked out: <common>/HEAD for the main worktree when core.bare is not true, and
-// <common>/worktrees/<name>/HEAD for each linked worktree. Any read error other than an
-// absent worktrees directory is returned — a caller that cannot tell must not guess "none".
+// checkedOutBranches reads, from gitDir's common directory, the branches every worktree has
+// in use (see CheckedOutBranches): from <common> for the main worktree when core.bare is not
+// true, and from <common>/worktrees/<name> for each linked worktree. Any read error other than
+// an absent file or directory is returned — a caller that cannot tell must not guess "none".
 func checkedOutBranches(gitDir string) (map[plumbing.ReferenceName]bool, error) {
 	common, err := commonDirOf(gitDir)
 	if err != nil {
@@ -149,23 +192,12 @@ func checkedOutBranches(gitDir string) (map[plumbing.ReferenceName]bool, error) 
 		common = gitDir
 	}
 	set := map[plumbing.ReferenceName]bool{}
-	add := func(headFile string) error {
-		raw, rerr := os.ReadFile(headFile)
-		if rerr != nil {
-			return fmt.Errorf("gitcore: read %s: %w", headFile, rerr)
-		}
-		line := strings.TrimSpace(string(raw))
-		if target, ok := strings.CutPrefix(line, "ref:"); ok {
-			set[plumbing.ReferenceName(strings.TrimSpace(target))] = true
-		}
-		return nil
-	}
 	bare, err := isBareConfig(filepath.Join(common, "config"))
 	if err != nil {
 		return nil, err
 	}
 	if !bare {
-		if err := add(filepath.Join(common, "HEAD")); err != nil {
+		if err := worktreeBranches(common, set); err != nil {
 			return nil, err
 		}
 	}
@@ -177,15 +209,109 @@ func checkedOutBranches(gitDir string) (map[plumbing.ReferenceName]bool, error) 
 		if !e.IsDir() {
 			continue
 		}
-		head := filepath.Join(common, "worktrees", e.Name(), "HEAD")
-		if _, serr := os.Stat(head); os.IsNotExist(serr) {
+		admin := filepath.Join(common, "worktrees", e.Name())
+		if _, serr := os.Stat(filepath.Join(admin, "HEAD")); os.IsNotExist(serr) {
 			continue // a half-removed registration has no HEAD; git lists no branch for it either
 		}
-		if err := add(head); err != nil {
+		if err := worktreeBranches(admin, set); err != nil {
 			return nil, err
 		}
 	}
 	return set, nil
+}
+
+// worktreeBranches adds to set the branches one worktree has in use, read from its admin
+// directory (the common directory for the main worktree, worktrees/<name> for a linked one):
+// HEAD's branch, the branch being rebased, the branch bisected from, and the branches an
+// in-progress `rebase --update-refs` will rewrite. The file names and their shapes are git's
+// (wt-status.c wt_status_check_rebase / wt_status_check_bisect, sequencer.c update-refs).
+func worktreeBranches(admin string, set map[plumbing.ReferenceName]bool) error {
+	head, err := readAdminFile(admin, "HEAD")
+	if err != nil {
+		return err
+	}
+	if target, ok := strings.CutPrefix(head, "ref:"); ok {
+		set[plumbing.ReferenceName(strings.TrimSpace(target))] = true
+	}
+
+	// A rebase in progress. rebase-apply is also `git am`'s directory; only a rebase holds a
+	// branch (git: rebase-apply/applying marks am).
+	headName := ""
+	switch {
+	case isDir(filepath.Join(admin, "rebase-apply")):
+		if !exists(filepath.Join(admin, "rebase-apply", "applying")) {
+			if headName, err = readAdminFile(admin, filepath.Join("rebase-apply", "head-name")); err != nil {
+				return err
+			}
+		}
+	case isDir(filepath.Join(admin, "rebase-merge")):
+		if headName, err = readAdminFile(admin, filepath.Join("rebase-merge", "head-name")); err != nil {
+			return err
+		}
+	}
+	if strings.HasPrefix(headName, "refs/heads/") { // "detached HEAD" for a detached rebase
+		set[plumbing.ReferenceName(headName)] = true
+	}
+
+	// A bisect in progress: BISECT_START names the branch it started from (short form), or
+	// the commit when it started detached.
+	if exists(filepath.Join(admin, "BISECT_LOG")) {
+		from, err := readAdminFile(admin, "BISECT_START")
+		if err != nil {
+			return err
+		}
+		switch {
+		case from == "" || isHexObjectID(from):
+		case strings.HasPrefix(from, "refs/heads/"):
+			set[plumbing.ReferenceName(from)] = true
+		case !strings.HasPrefix(from, "refs/"):
+			set[plumbing.NewBranchReferenceName(from)] = true
+		}
+	}
+
+	// rebase --update-refs: the file is (ref, old, new) line triples; every ref line counts.
+	updateRefs, err := readAdminFile(admin, filepath.Join("rebase-merge", "update-refs"))
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(updateRefs, "\n") {
+		if line = strings.TrimSpace(line); strings.HasPrefix(line, "refs/") {
+			set[plumbing.ReferenceName(line)] = true
+		}
+	}
+	return nil
+}
+
+// readAdminFile returns the trimmed content of rel under admin, or "" when it does not exist.
+// Any other read error is returned.
+func readAdminFile(admin, rel string) (string, error) {
+	raw, err := os.ReadFile(filepath.Join(admin, rel))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("gitcore: read %s: %w", filepath.Join(admin, rel), err)
+	}
+	return strings.TrimSpace(string(raw)), nil
+}
+
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
+func exists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// isHexObjectID reports whether s is a full SHA-1 or SHA-256 object id.
+func isHexObjectID(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
 }
 
 // isBareConfig reports whether the config file at path sets core.bare = true. A missing file

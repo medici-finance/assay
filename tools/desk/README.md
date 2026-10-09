@@ -4105,7 +4105,7 @@ end — unprompted arbitrary code execution, proven by execution. A glob has no 
 this tool does. Same structural argument as `deskrelease`.
 
 ```bash
-deskgit fetch                 # refs/remotes/origin/*
+deskgit fetch                 # refs/remotes/origin/* only (no tags)
 deskgit fetch --prune         # + drop stale remote-tracking refs
 deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only)
 deskgit fetch --branch <B>    # origin's <B> -> local branch <B>      (see --branch guards)
@@ -4165,10 +4165,27 @@ so there is nothing for a pin to pin. It calls `gitcore`'s go-git fetch directly
   forms and requires an exact `owner/repo` path for any **host-bearing** URL, so a padded URL
   cannot smuggle an allowed slug in trailing components. The repo must be in the fixed C-4
   set. (`push` still runs git and gates on `git remote get-url`; see below.)
-- **Checked-out branches are never rewritten.** `--branch`/`--pr` refuse a destination branch
-  that is checked out in **any** worktree of the repository — this one or a linked one —
-  as `git fetch` itself did. The set is read from every worktree's HEAD under the common
-  directory; if it cannot be read, the fetch stops (exit 6) rather than assume none.
+- **The refspec is the whole write set — no tags.** No mode follows tags: a fetch writes its
+  refspec's destinations and nothing else, so no `refs/tags/*` ref is created or replaced.
+  (`git fetch` auto-followed tags but never replaced an existing local one; go-git's default
+  tag mode writes every advertised tag whose object is present and *replaces* a differing
+  local tag, so the in-process fetch sets `NoTags`.) `TestFetch_KeepsLocalTags` (deskgit) and
+  `TestFetchKeepsLocalTags` (gitcore) pin it; `TestEveryFetchSetsNoTags` fails on any go-git
+  fetch option literal under `tools/desk` that leaves tag-following on, with a planted
+  positive control (`TestFetchTagsGuardFlagsPlant`). The same holds for `deskmerge`'s
+  in-process fetch, which shares `gitcore.Fetch`.
+- **A local origin tolerates local-only commits.** A checkout routinely holds commits its
+  origin has never seen; the client offers them as "haves", and the local in-process session
+  drops any have the origin cannot resolve before the server walks them — as `git
+  upload-pack` does — instead of failing the fetch (`TestFetch_LocalOnlyCommitOK`,
+  `TestLocalFetchWithUnpushedCommit`).
+- **Branches in use are never rewritten.** `--branch`/`--pr` refuse a destination branch that
+  **any** worktree of the repository — this one or a linked one — is using, as `git fetch`
+  itself did: the branch its HEAD names, the branch it is in the middle of **rebasing** or
+  **bisecting** (HEAD is detached meanwhile), and any branch an in-progress `rebase
+  --update-refs` will rewrite. The set is read from each worktree's admin directory under the
+  common directory; if it cannot be read, the fetch stops (exit 6) rather than assume none
+  (`TestFetch_RefusesBusyBranch`, `TestCheckedOutBranchesInFlight`).
 
 **Residuals on the gate — read before assuming it binds identity.** The exact-path rule
 only bites on URLs the parser ROUTES to the host-bearing branch, and that routing is where

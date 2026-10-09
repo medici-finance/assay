@@ -74,7 +74,7 @@ func FetchTree(opts TreeOpts, dest string) (TreeResult, error) {
 		Name: transientRemoteName,
 		URLs: []string{opts.URL},
 	})
-	if ferr := remote.Fetch(&git.FetchOptions{RefSpecs: specs, Auth: opts.Auth, Force: true}); ferr != nil && ferr != git.NoErrAlreadyUpToDate {
+	if ferr := remote.Fetch(&git.FetchOptions{RefSpecs: specs, Auth: opts.Auth, Force: true, Tags: git.NoTags}); ferr != nil && ferr != git.NoErrAlreadyUpToDate {
 		return res, fmt.Errorf("gitcore: fetch-tree: fetch: %w", ferr)
 	}
 	commit, err := repo.CommitObject(plumbing.NewHash(opts.Commit))
