@@ -15,7 +15,7 @@ design: DR-cellctl-cobra
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 2
 id: "962d7195-764d-47e8-b1d3-83d289fb061c"
 authored: "2026-10-03 by coordinator"
 sources:
@@ -86,6 +86,14 @@ ready flip or merge. Preserve the existing domain checks, custody decisions and 
 codes; a CLI library is not a new authority source. Independent verification owns Evidence
 and lifecycle advancement. Proposed tests and support files below are deliverables, not
 claims that they already exist.
+
+## Library-first amendment — 2026-10-08
+
+Read `docs/library-first.md`. Keep this a command/configuration adapter migration. Call
+existing application libraries or the typed client for an independent service; do not move
+policy, custody or admission into Cobra handlers. Preserve help/version offline behavior and
+underlying admission tests. No dependency on the SDK extraction or cell registry is added;
+coordinate overlapping files with the extraction owner when both changes are in flight.
 
 ## Task
 

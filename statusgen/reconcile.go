@@ -34,19 +34,30 @@ import (
 // reconcileResult is the machine-readable output shape (--json). Its per-brief
 // rows are BriefCell values (id/cell/source/witness/reason/version). Applied
 // is populated only with --apply, and only with rows this run actually wrote
-// (reconcileapply.go) — omitted (nil) otherwise.
+// (reconcileapply.go) — omitted (nil) otherwise. WouldApply is the read-only
+// form (#2440): set on every --backfill run WITHOUT --apply, to the rows --apply
+// would write on the same tree, computed by the same function that writes
+// (reconcileWrites) — an empty list `[]` when there are none, so "looked and
+// found nothing" is distinguishable from "not computed" (field absent).
 type reconcileResult struct {
-	Repo     string       `json:"repo"`
-	LookedAt bool         `json:"lookedAt"`
-	Reason   string       `json:"reason"`
-	Briefs   []BriefCell  `json:"briefs"`
-	Applied  []appliedRow `json:"applied,omitempty"`
+	Repo       string        `json:"repo"`
+	LookedAt   bool          `json:"lookedAt"`
+	Reason     string        `json:"reason"`
+	Briefs     []BriefCell   `json:"briefs"`
+	Applied    []appliedRow  `json:"applied,omitempty"`
+	WouldApply *[]appliedRow `json:"wouldApply,omitempty"`
 }
 
 const (
 	reconcileOK       = 0
 	reconcileUsageErr = 2
 )
+
+// reconcileGHClient builds the read-only REST client runReconcile reads PRs
+// through. It is a variable only so a test can point the whole verb at a local
+// recorded-response server (the offline envelope); production always uses
+// newGHClient.
+var reconcileGHClient = newGHClient
 
 func runReconcile(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet("reconcile", flag.ContinueOnError)
@@ -57,7 +68,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	offline := fs.Bool("offline", false, "do not touch the network; every PR-derived cell is unknown")
 	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN)")
-	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo")
+	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo. Without --apply it also reports, read-only, the rows --apply would write (JSON: wouldApply)")
 	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
 	apply := fs.Bool("apply", false, "with --backfill: WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion); requires --backfill")
 	if err := fs.Parse(args); err != nil {
@@ -102,7 +113,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintf(stderr, "could-not-check: %v\n", terr)
 			return reconcileUsageErr
 		}
-		client = newGHClient(token)
+		client = reconcileGHClient(token)
 		prs, lookedAt, reason := client.ListPRs(*repo)
 		in.PRs = prs
 		in.LookedAt = lookedAt
@@ -129,26 +140,42 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 
 	var applied []appliedRow
-	if *apply {
-		// boardRoot mirrors reconcileBriefIdents' own resolution (reconcile is
-		// commonly run from a subdirectory), so the write lands on the same
-		// docs/streams tree the briefs above were enumerated from.
+	var wouldApply *[]appliedRow
+	if *backfill {
+		// One decision path for both forms (reconcileWrites): --apply writes the
+		// rows; without it the same rows are reported as wouldApply and nothing
+		// is written. boardRoot mirrors reconcileBriefIdents' own resolution
+		// (reconcile is commonly run from a subdirectory), so the rows land on
+		// the same docs/streams tree the briefs above were enumerated from.
+		rows := []appliedRow{}
 		if boardRoot, found := findBoardRoot(*root); found {
-			var aerr error
-			applied, aerr = applyReconcileWrites(boardRoot, cells)
-			if aerr != nil {
-				fmt.Fprintf(stderr, "reconcile --apply: %v\n", aerr)
+			var werr error
+			if rows, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {
+				label := "reconcile --backfill (read-only)"
+				if *apply {
+					label = "reconcile --apply"
+				}
+				fmt.Fprintf(stderr, "%s: %v\n", label, werr)
 				return reconcileUsageErr
 			}
+			if rows == nil {
+				rows = []appliedRow{}
+			}
+		}
+		if *apply {
+			applied = rows
+		} else {
+			wouldApply = &rows
 		}
 	}
 
 	res := reconcileResult{
-		Repo:     *repo,
-		LookedAt: in.LookedAt,
-		Reason:   in.Reason,
-		Briefs:   cells,
-		Applied:  applied,
+		Repo:       *repo,
+		LookedAt:   in.LookedAt,
+		Reason:     in.Reason,
+		Briefs:     cells,
+		Applied:    applied,
+		WouldApply: wouldApply,
 	}
 
 	if *report {
@@ -255,6 +282,12 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 			detail = b.Reason
 		}
 		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, detail)
+	}
+	if res.WouldApply != nil && len(*res.WouldApply) > 0 {
+		fmt.Fprintf(w, "reconcile --backfill (read-only): --apply would write %d row(s)\n", len(*res.WouldApply))
+		for _, a := range *res.WouldApply {
+			fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
+		}
 	}
 	if len(res.Applied) == 0 {
 		return
