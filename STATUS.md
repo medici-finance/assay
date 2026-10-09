@@ -57,6 +57,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-supervisio
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | statusgen | 15 — Extract canonical eligibility and coverage evaluation API [exec:strong] | 1 | 7500 |
+| iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
@@ -74,7 +75,7 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-supervisio
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 30c93f5 2026-10-09T10:26:15Z_
+_last regen: 7d47f92 2026-10-09T17:16:57Z_
 
 **Progress:** 10/13 brief items done.
 
@@ -95,19 +96,19 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 30c93f5 2026-10-09T10:26:15Z_
+_last regen: 7d47f92 2026-10-09T17:16:57Z_
 
 **Progress:** 16/71 brief items done.
 
 **In-flight:**
 
-- desktools-v2/11
 - desktools-v2/16
 
 **Blocked on review:**
 
 - desktools-v2/03
 - desktools-v2/10
+- desktools-v2/11
 - desktools-v2/12
 - desktools-v2/13
 - windows-port/00
@@ -127,7 +128,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (12 for the desk · 25 for the driver · 34 for workers · 14 for an operator · 13 runner-pending — of 101 total; 3 could-not-check)
+## Awaiting verification / review (14 for the desk · 25 for the driver · 34 for workers · 14 for an operator · 13 runner-pending — of 103 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -239,11 +240,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 09 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | desktools-v2 | 14 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 
-### Desk-actionable (12)
+### Desk-actionable (14)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | verify-desk | triage, then re-bucket | — | — |
+| forge-neutral | 34 [exec:strong] | implemented | 3500 | 3 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | verify-desk | dispatch one judge | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | verify-desk | dispatch one judge | — | — |
@@ -254,6 +256,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 21 [exec:strong] | implemented | 1000 | 0 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 29 [exec:strong] | implemented | 1000 | 0 | — | verify-desk | triage, then re-bucket | — | — |
+| desktools-v2 | 11 [exec:strong] | implemented | 1000 | 0 | — | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | verify-desk | triage, then re-bucket | — | — |
 
 ### Could-not-check (3)
@@ -454,7 +457,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 08 hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present — todo (wave 7)
 - 09 purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls) — verified (wave 3)
 - 10 one outbound-write check at the forge write seam, keyed on the target's visibility — implemented (wave 2)
-- 11 a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools — todo (wave 3)
+- 11 a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools — implemented (wave 3)
 - 12 platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS — implemented (wave 2)
 - 13 platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage — implemented (wave 2)
 - 14 regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green — verified (wave 2)
@@ -535,7 +538,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 31 Remaining roles' write audit — what the desk, worker, verifier and loop roles actually write, measured after the reviewer change is live — todo (wave 8)
 - 32 Release-N+1 deletion — the forge claim store is removed and an unset store key is refused — todo (wave 8)
 - 33 Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind — implemented (wave 1)
-- 34 deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default — todo (wave 1)
+- 34 deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default — implemented (wave 1)
 - 35 Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own — todo (wave 6)
 - 36 Importable fact reader SDK and first shared read — todo (wave 1)
 

@@ -710,8 +710,14 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// BOTH kits must be readable now. The common kit is checked here and not only at
 	// assembly time because a binary built without it would otherwise take the claim and
 	// then discover it cannot produce a prompt.
-	if _, err := kitText(o.kit); err != nil {
+	kit, err := kitText(o.kit)
+	if err != nil {
 		return plan, err
+	}
+	if reviewKit(o.kit) {
+		if err := checkReviewKitLanes(kit); err != nil {
+			return plan, err
+		}
 	}
 	if _, err := commonKitText(); err != nil {
 		return plan, err

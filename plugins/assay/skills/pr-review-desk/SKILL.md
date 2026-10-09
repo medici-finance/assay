@@ -338,7 +338,7 @@ as the planner and acts on its rows.
 
   `<alias>` is the repo's short label/basename. It takes the durable claim, cuts the reviewer a
   worktree in the PR's OWN repo, stamps the dispatcher's model attestation, and emits the prompt —
-  `common-clauses` + the `review` kit, verbatim and byte-identical across sessions. A claim held by
+  `common-clauses` + the `review` kit cut for the key's lane, byte-identical across sessions. A claim held by
   someone else exits 5 with the holder named: never steal. The board's SECURITY-REVIEW-REQUIRED row
   is a MISSED-DISPATCH alarm, not the trigger — it only appears AFTER a correctness approval, so
   waiting for it serialises the two lanes; dispatch the security lane off the actions row's
@@ -598,8 +598,8 @@ provisioning gap to file (`create-labels`, `the adoption guide`), never a reason
 
 ## The reviewer's bar
 
-`deskdispatch --kit review` hands the agent the `common-clauses` and `review-prompt` kits verbatim,
-embedded in the binary, so a fleet on one pinned release is a fleet on one set of clauses. **This
+`deskdispatch --kit review` hands the agent the `common-clauses` kit and its lane's cut of the `review-prompt`
+kit, embedded in the binary, so a fleet on one pinned release is a fleet on one set of clauses. **This
 section is the DESK's bar — what a review must show before the desk acts on it, plus the
 house-specific detail a public, generic kit cannot carry.** Edit a clause here, check the kit.
 
@@ -694,8 +694,13 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        PR.
      - **The delivery repo comes from the brief, never from the PR.** For each changed row, read
        the delivery repo from the brief file at the target repo's fetched `refs/remotes/origin/main`:
-       its `homed-in:` frontmatter when present, else its stream README's `repo:` frontmatter, else
-       the board repo itself. NEVER take it from the PR body, the PR head, or the author's say-so.
+       its `homed-in:` frontmatter; its `deliverable_repo:` alias, resolved to the `repo:` value of
+       that alias's entry under `repos:` in `docs/streams/graph-repos.yaml` at the same ref; else
+       its stream README's `repo:` frontmatter; else the board repo itself. NEVER take it from the
+       PR body, the PR head, or the author's say-so. An alias that does not resolve to a valid
+       `<owner>/<name>`, or a brief whose `homed-in:` and `deliverable_repo:` resolve to different
+       repos, is could-not-check and bounces the row — it never falls through to the next source,
+       and never to the board repo.
        It must be a member of `deskroster repos`; a delivery repo outside that set bounces the row.
        The verdict records the delivery repo for each row and where it was read from.
      - **Same-repo rows on the same bar.** The delivery repo read above may equal the board repo —
