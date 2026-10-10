@@ -48,6 +48,31 @@ markdown frontmatter in stream docs, and CLI arguments supplied by an agent
 session (a prompt-injected agent is within the threat model — that is why
 the guard binaries exist).
 
+## Blast radius — the target is downstream, not this repo
+
+Assay is tooling *for developers who build their own tooling with it*. The
+binaries, hooks and skills from this repository are installed and run on
+adopters' development machines and in their CI loops, and whatever an
+adopter builds on top inherits what runs here. Three consequences for how
+findings should be weighted:
+
+- **A flaw here executes on every adopter's machine.** A compromised
+  released binary, a poisoned install/pin path, or a desk-tools defect that
+  turns forge content into execution does not stop at this repository — it
+  runs with the adopter's own credentials, on the adopter's machine, inside
+  the adopter's CI. Weight such findings by that downstream blast radius,
+  not by the effect visible in this repo alone.
+- **Malign forge content aims through us at adopters.** Anyone can open an
+  issue or PR on this public repository. Content crafted to exploit a
+  parsing, templating, or execution flaw in desk-tools is an attack on every
+  machine running the tools, and from there on the software those machines
+  build.
+- **Supply-chain findings outrank their local footprint.** Anything that
+  changes what an adopter downloads, installs, pins, or executes — release
+  artifacts, the installer's checksum verification, plugin hooks, the desk
+  binaries themselves — is high impact even when the immediate change looks
+  small in this tree.
+
 ## Components that matter most
 
 1. **The guard binaries** — `writeguard`, `deskpushguard`, `deskpathguard`,
@@ -126,12 +151,16 @@ the guard binaries exist).
 
 ## Severity rubric
 
-- **Critical:** remote (i.e. via forge content on a public repo, no local
-  foothold) bypass of a guard binary leading to unauthorized write/push;
-  exfiltration or disclosure of a GitHub App private key or installation
-  token; command injection from forge content executed with the operator's
-  credentials; container escape in `cellctl`; a supply-chain path that
-  substitutes the binary the installer or a pin delivers to adopters.
+- **Critical:** anything that lands code execution on an *adopter's* machine
+  or CI — through a shipped artifact, the install/pin path, a plugin hook,
+  or forge content processed by the tools — including flaws that then
+  propagate into software the adopter builds; remote (i.e. via forge content
+  on a public repo, no local foothold) bypass of a guard binary leading to
+  unauthorized write/push; exfiltration or disclosure of a GitHub App
+  private key or installation token; command injection from forge content
+  executed with the operator's credentials; container escape in `cellctl`;
+  a supply-chain path that substitutes the binary the installer or a pin
+  delivers to adopters.
 - **High:** guard bypass requiring a local foothold or a cooperative victim
   config; token scope widening; signature-verification bypass in comms;
   injection requiring a less-common code path.
