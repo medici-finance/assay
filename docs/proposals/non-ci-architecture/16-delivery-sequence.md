@@ -11,6 +11,8 @@ because the target introduces a new package name.
    revision, decision scope and unresolved details. Existing approval procedures
    remain authoritative. Approval does not activate the pilot.
 2. **Implement the shared context packet and authoring support in public Assay.**
+   The [public delivery scope](18-authoring-context-delivery.md) identifies canonical
+   skill homes and the schema, resolver, validation and release work.
    Keep these in one PR if the qualified slice is reviewable; otherwise split into
    schema/synthetic fixtures, offline resolver/receipt checks, then skill integration.
    Both skills consume the same target and discovery binding. They must not call an

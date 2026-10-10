@@ -19,6 +19,8 @@ Verification is the first end-to-end test.
 | [Storage, forge mirror and graph](14-storage-forge-graph.md) | PostgreSQL, reconstruction, authority after data loss, event/poll ingestion and queries |
 | [Regression plan](15-regression-from-day-one.md) | Existing public test sources and new runtime/authoring qualification cases |
 | [Delivery sequence](16-delivery-sequence.md) | Focused implementation packages, dependencies and retirement obligations |
+| [Shared context graph](17-context-substrate.md) | Cell classification, composition, source ownership, snapshot/query and visibility contracts |
+| [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Requested direction and proposed mechanisms
@@ -28,6 +30,11 @@ Command compatibility can break when that simplifies the result. Approved
 architecture changes can reconcile unfinished plans together while preserving
 completed evidence and historical source accounts. Public Assay owns the reusable
 service, cockpit, operator tools, schemas, libraries and skills.
+
+The canonical [author-spec](../../../plugins/assay/skills/author-spec/SKILL.md) and
+[author-brief](../../../plugins/assay/skills/author-brief/SKILL.md) are already public.
+The proposed context-graph/resolver and skill improvements also belong here; this
+PR specifies their delivery but changes no skill body or executable interface.
 
 PostgreSQL coordinates in-flight work and holds query projections; reviewed Git
 records retain canonical intent and published evidence for this phase. Recovery
