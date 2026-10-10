@@ -75,7 +75,7 @@ func inventoryMaintenance(ctx context.Context, dir string) (*maintenanceInventor
 			continue
 		}
 		p := strings.Split(ref, "/")
-		if len(p) < 3 || p[0] != "refs" {
+		if len(p) < 2 || p[0] != "refs" || p[1] == "" {
 			return nil, deskkit.Unverifiable("malformed ref inventory", nil)
 		}
 		inv.RefNamespaces[strings.Join(p[:2], "/")]++

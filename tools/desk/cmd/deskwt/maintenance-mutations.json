@@ -54,6 +54,12 @@
       "file": "cmd/deskwt/maintenance.go",
       "old": "{\"pack-refs\", \"--all\"},",
       "new": "{\"reflog\", \"expire\", \"--expire=now\", \"--all\"},\n\t\t{\"prune\", \"--expire=now\"},\n\t\t{\"pack-refs\", \"--all\"},"
+    },
+    {
+      "name": "valid two-component stash ref must remain maintainable",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "len(p) < 2 || p[0] != \"refs\"",
+      "new": "len(p) < 3 || p[0] != \"refs\""
     }
   ]
 }

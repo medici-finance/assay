@@ -2536,7 +2536,8 @@ deskwt maintain --repo . --apply  # bounded offline index maintenance
 ```
 
 The plan reports ref namespace counts, registered/locked worktree counts, native
-`count-objects -v` output (including alternate stores), and configured reflog retention
+`count-objects -v` output (local object/pack counts and any reported alternate
+paths, not object counts for those stores), and configured reflog retention
 overrides. An empty override string means Git's defaults apply. Apply emits before/after
 inventories and runs exactly two native builtins: `pack-refs --all`, then a reachable,
 split commit-graph write with no new Bloom filters. Ref values, working files and

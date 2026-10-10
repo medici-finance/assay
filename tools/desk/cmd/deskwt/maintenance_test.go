@@ -22,7 +22,7 @@ func maintenanceFixture(t *testing.T) (string, *[][]string) {
 	old := maintenanceCommand
 	calls := [][]string{}
 	maintenanceCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
-		calls = append(calls, append([]string(nil), args...))
+		calls = append(calls, append([]string{name}, args...))
 		return exec.CommandContext(ctx, name, args...)
 	}
 	t.Cleanup(func() { maintenanceCommand = old })
@@ -93,6 +93,9 @@ func TestMaintenancePlanAndPreservation(t *testing.T) {
 		t.Fatal("dirty contents changed")
 	}
 	mustGit(t, work, "commit-graph", "verify")
+	if anyGitForce(*calls) {
+		t.Fatalf("maintenance invoked Git with force: %v", *calls)
+	}
 	for _, c := range *calls {
 		for _, a := range c {
 			switch a {
@@ -102,6 +105,32 @@ func TestMaintenancePlanAndPreservation(t *testing.T) {
 		}
 	}
 }
+func TestMaintenanceStashRefPreserved(t *testing.T) {
+	work, _ := maintenanceFixture(t)
+	writeFile(t, filepath.Join(work, "README.md"), "stashed work\n")
+	mustGit(t, work, "stash", "push", "-m", "maintenance recovery fixture")
+	before := mustGit(t, work, "show-ref")
+	reflog := mustGit(t, work, "reflog", "--all")
+	for _, args := range [][]string{{"--repo", work}, {"--repo", work, "--apply"}} {
+		report, err := maintenanceRun(t, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Before.RefNamespaces["refs/stash"] != 1 {
+			t.Fatalf("stash missing from inventory: %+v", report.Before)
+		}
+		if got := mustGit(t, work, "show-ref"); got != before {
+			t.Fatal("refs changed")
+		}
+		if got := mustGit(t, work, "reflog", "--all"); got != reflog {
+			t.Fatal("stash recovery history changed")
+		}
+	}
+	if got := mustGit(t, work, "show", "refs/stash:README.md"); got != "stashed work" {
+		t.Fatal("stashed content changed")
+	}
+}
+
 func TestMaintenanceCommonDirCadenceAndHeldLock(t *testing.T) {
 	work, calls := maintenanceFixture(t)
 	linked := filepath.Join(t.TempDir(), "linked")
