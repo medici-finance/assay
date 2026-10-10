@@ -72,6 +72,9 @@ type WitnessInfo struct {
 	Passed   bool
 	Version  int
 	Released bool
+	// Run names the recorded run the witness read (`<login> @ <sha>`), for the
+	// cell's witness column. Optional.
+	Run string
 }
 
 // ApprovalInfo is the App approval at head — the `done` witness for a gate:model
@@ -80,6 +83,9 @@ type WitnessInfo struct {
 type ApprovalInfo struct {
 	Approved bool
 	AtHead   bool
+	// Witness names the approval read (reviewer, PR and head), for the cell's
+	// witness column. Optional.
+	Witness string
 }
 
 // BriefIdent is the per-brief identity the fold needs: its id, its gate (which
@@ -93,15 +99,25 @@ type BriefIdent struct {
 // LifecycleInput is the complete witness set for one reconcile run. Maps are keyed
 // by brief ID. LookedAt is whether the PR fetch SUCCEEDED; when false, every
 // PR-derived cell is `unknown` with Reason.
+//
+// Rulings maps a gate:human brief to the human stamp read for it (non-empty =
+// ruled). Undecided names the briefs whose verified/done decision could not be
+// made (a read failed): such a brief's merged cell is `unknown` with the reason,
+// never the lower state the missing read would leave. LabelsUnread names the
+// briefs whose linked-issue labels could not be read: such a brief's
+// in-progress/todo cell is `unknown` with the reason, never a definite
+// not-blocked.
 type LifecycleInput struct {
-	Briefs      []BriefIdent
-	PRs         []PRRecord
-	Witnesses   map[string]WitnessInfo
-	Approvals   map[string]ApprovalInfo
-	Rulings     map[string]bool
-	IssueLabels map[string][]string
-	LookedAt    bool
-	Reason      string
+	Briefs       []BriefIdent
+	PRs          []PRRecord
+	Witnesses    map[string]WitnessInfo
+	Approvals    map[string]ApprovalInfo
+	Rulings      map[string]string
+	Undecided    map[string]string
+	LabelsUnread map[string]string
+	IssueLabels  map[string][]string
+	LookedAt     bool
+	Reason       string
 }
 
 // BriefCell is the derived lifecycle cell for one brief. Source names the witness
@@ -114,6 +130,10 @@ type BriefCell struct {
 	Witness string `json:"witness"`
 	Reason  string `json:"reason"`
 	Version int    `json:"version"`
+	// MergedPR names the merged PR the base cell rests on ("PR #N (merged
+	// <sha>)"), set whenever a merge is on record — also when a witness
+	// overlay replaced the cell's own Witness text.
+	MergedPR string `json:"mergedPR,omitempty"`
 }
 
 // blockingIssueLabels are the labels that overlay `blocked` on an in-progress or
@@ -153,9 +173,10 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 	// rate-limit), the PR-derived cell is `unknown` with the reason — never a
 	// silent todo (the three-state invariant applied to the board). When it DID
 	// look: `implemented` at the LATEST merge; else `in-progress` for any open PR;
-	// else `todo` — and the todo carries the evidence the search ran. Witnesses
-	// (verified/done) still resolve below in BOTH cases, since a verify witness and
-	// an Evidence ruling are tree-readable and do not depend on the PR fetch.
+	// else `todo` — and the todo carries the evidence the search ran. The
+	// witnesses (verified/done) overlay only a merge on record (step 3): a verify
+	// witness attests an implementation, so with no merged PR read there is
+	// nothing for it to promote.
 	if !in.LookedAt {
 		c.Cell = "unknown"
 		c.Reason = in.Reason
@@ -165,6 +186,7 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 		case latestMerged != nil:
 			c.Cell = "implemented"
 			c.Witness = fmt.Sprintf("PR #%d (merged %s)", latestMerged.Number, shortSHA(latestMerged.MergeSHA))
+			c.MergedPR = c.Witness
 		case open != nil:
 			state := "ready"
 			if open.Draft {
@@ -178,7 +200,50 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 		}
 	}
 
-	// 3. Verify witness overlay (verified / done), and its demotions.
+	// 2. A brief whose verified/done decision could not be made this run
+	// (Undecided: a witness, provenance, version or approval read failed) is
+	// `unknown` with the reason over ANY base the PR read produced — consulted
+	// before the merged-PR gate, because the read that failed is exactly what
+	// would have said whether a todo/in-progress base is contradicted by a
+	// passing run. A could-not-look base keeps its own reason.
+	if in.LookedAt {
+		if why, ok := in.Undecided[b.ID]; ok {
+			c.Cell = "unknown"
+			c.Source = "witness"
+			c.Reason = why
+			return c
+		}
+	}
+
+	// 3. Verify witness overlay (verified / done), and its demotions — over a
+	// merge on record only. A could-not-look base stays `unknown`. A todo or
+	// in-progress base with a passing witness is a contradiction the fold cannot
+	// settle (no merged PR carries the trailer, yet a run passed): `unknown` with
+	// the reason, never a promotion and never a definite lower state.
+	if c.Cell != "implemented" {
+		if w, ok := in.Witnesses[b.ID]; ok && w.Passed && (c.Cell == "todo" || c.Cell == "in-progress") {
+			c.Cell = "unknown"
+			c.Source = "witness"
+			c.Reason = passingWitnessNoMergeReason
+			return c
+		}
+		return deriveBlocked(b, c, in)
+	}
+	return overlayWitness(b, c, in)
+}
+
+// passingWitnessNoMergeReason is the reason a todo/in-progress base with a
+// passing verify witness derives `unknown`.
+const passingWitnessNoMergeReason = "a verify witness passed but no merged PR carries this brief's trailer"
+
+// overlayWitness is the verify-witness overlay over a merge on record: c is
+// an `implemented` cell whose MergedPR names that merge (a trailer PR, or the
+// declared --backfill branch/body match). It applies the stale-version and
+// coverage demotions, then `verified` and `done`. Shared by deriveOne and the
+// --backfill path, so a backfilled merge is overlaid by the same rule as a
+// trailer one. An Undecided brief never reaches it: step 2 of deriveOne has
+// already rendered it `unknown`.
+func overlayWitness(b BriefIdent, c BriefCell, in LifecycleInput) BriefCell {
 	if w, ok := in.Witnesses[b.ID]; ok {
 		if b.Version != 0 && w.Version != 0 && w.Version != b.Version {
 			// Stale-Verify demotion (spec §5): the witness was run against a
@@ -215,6 +280,9 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 			c.Cell = "verified"
 			c.Source = "witness"
 			c.Witness = fmt.Sprintf("verifyrun --check pass (v%d)", w.Version)
+			if w.Run != "" {
+				c.Witness += " by " + w.Run
+			}
 			if done, why := isDone(b, in); done {
 				c.Cell = "done"
 				c.Witness = why
@@ -224,17 +292,29 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 		// Red witness: verify was RUN and FAILED → not verified. The cell falls
 		// back to the highest state still witnessed (the PR base above). No promotion.
 	}
+	return c
+}
 
-	// 4. Blocked overlay — in-progress / todo ONLY (spec §2). A merged/verified/done
-	// brief is not overlaid; a blocking label there is a data problem for another
-	// check, not a lifecycle demotion.
-	if c.Cell == "in-progress" || c.Cell == "todo" {
-		if label, blocked := blockingLabel(in.IssueLabels[b.ID]); blocked {
-			c.Cell = "blocked"
-			c.Source = "none"
-			c.Witness = fmt.Sprintf("linked issue label %q", label)
-			c.Reason = "linked issue carries a blocking label"
-		}
+// deriveBlocked is step 4, the blocked overlay — in-progress / todo ONLY (spec
+// §2). A merged/verified/done brief is not overlaid; a blocking label there is a
+// data problem for another check, not a lifecycle demotion. A brief whose
+// linked-issue labels could not be read is `unknown` with the reason: the
+// overlay cannot say it is not blocked.
+func deriveBlocked(b BriefIdent, c BriefCell, in LifecycleInput) BriefCell {
+	if c.Cell != "in-progress" && c.Cell != "todo" {
+		return c
+	}
+	if label, blocked := blockingLabel(in.IssueLabels[b.ID]); blocked {
+		c.Cell = "blocked"
+		c.Source = "none"
+		c.Witness = fmt.Sprintf("linked issue label %q", label)
+		c.Reason = "linked issue carries a blocking label"
+		return c
+	}
+	if why, ok := in.LabelsUnread[b.ID]; ok {
+		c.Cell = "unknown"
+		c.Source = "none"
+		c.Reason = why
 	}
 	return c
 }
@@ -279,11 +359,14 @@ func isDone(b BriefIdent, in LifecycleInput) (bool, string) {
 	switch b.Gate {
 	case "model":
 		if a, ok := in.Approvals[b.ID]; ok && a.Approved && a.AtHead {
+			if a.Witness != "" {
+				return true, a.Witness
+			}
 			return true, "App approval at merged head"
 		}
 	case "human":
-		if in.Rulings[b.ID] {
-			return true, "human:<login> Evidence ruling"
+		if stamp := in.Rulings[b.ID]; stamp != "" {
+			return true, "human sign-off " + stamp
 		}
 	}
 	return false, ""

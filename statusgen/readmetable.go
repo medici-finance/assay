@@ -498,7 +498,11 @@ func assertedVsDerivedNotices(s *Stream, derived []BriefCell) []string {
 		if c.Cell == "unknown" || c.Cell == "" {
 			continue
 		}
-		a, ok := asserted[c.ID]
+		// canonicalBriefKey, not the raw c.ID: a brief-v2 hierarchical id
+		// (<cell>:<repo>:<stream>:<NN>) never equals the stream/NN shape the
+		// asserted map is keyed on, which made the comparator silently blind on
+		// a v2 tree — no drift NOTICE could ever fire there.
+		a, ok := asserted[canonicalBriefKey(c.ID)]
 		if !ok || a == "" {
 			continue
 		}

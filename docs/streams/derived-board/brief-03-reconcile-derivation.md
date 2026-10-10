@@ -28,7 +28,7 @@ domain: complicated
 consumers:
   - "statusgen/README.md (verbs): fixed-here"
   - "docs/streams/derived-board/spec.md §8 Q2: fixed-here"
-version: 2
+version: 3
 id: c4f45c56-1898-4dcc-aaaa-d10ecda4df98
 ---
 
@@ -54,8 +54,10 @@ files:
   the HTTP status, never an empty "nothing found".
 - `statusgen/main.go` — new verb `reconcile [--root . --repo owner/name --json --offline]`;
   `--lint` gains the offline arm (PR-derived cells `unknown (offline)`).
-- `statusgen/testdata/lifecycle/` — fixtures: one per row of the spec §2 table plus
-  demotion cases (reopened PR, red witness, dismissed approval) and the offline arm.
+- `statusgen/lifecycle_test.go` — the fixture matrix: one per row of the spec §2 table
+  plus demotion cases (reopened PR, red witness, dismissed approval) and the offline
+  arm. (Authored above as `statusgen/testdata/lifecycle/`; the matrix landed inline in
+  the test file — text corrected 2026-10-09, the /03 half of #1909.)
 
 facts:
 - Cell precedence (highest witnessed wins): `done` > `verified` > `implemented` >
@@ -89,16 +91,18 @@ facts:
 4. `reconcile` verb + `--lint` offline arm + `statusgen/README.md` verb entry.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd statusgen && go test . -run 'Lifecycle' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'BriefV2' -count=1 -v \| grep -c '^--- PASS'; go test . -run 'GHFetch' -count=1 -v \| grep -c '^--- PASS'` | ≥ 14 (7 cells + 3 demotions + offline + 3 v2-parse cases) |
-| 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | `ok` — offline never renders a PR-derived cell as todo |
-| 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | `ok` — an auth failure is an `unknown` with the status, not a clean board |
-| 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell — DEREFERENCES the real merged PR #80, whose body carries `Brief: derived-board/02` (the trailer the engine witnesses; needs a read token in env). Re-anchored from the original `desk-containers/02`/`PR #67`, which the engine correctly returns `todo` for: that brief's deliverable PR lives in another repository and carries no `Brief:` trailer (its board flip went via a separate PR), so this `--repo medici-finance/assay` run has no witness for it. The engine is sound; the old row anchored on a brief whose deliverable it cannot witness from this repo. Re-baselined 2026-09-19 (issue #1305): the `id` field is the hierarchical `assay:assay:derived-board:02` since the derived-board/07 flag-day, so the lookup is now id-shape-tolerant (`endswith(':derived-board:02')` pins stream/NN, tolerating a cell/repo prefix change) — a flat-literal match broke on this anchor a second time. |
-| 5 | `cd statusgen && printf -- '---\nbrief: x/01\ntitle: t\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nschema: brief-v2\ngates: [{on: "rec:ingest/06", type: ordering-gate, reason: r}]\n---\n' > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke; echo rc=$?` | `rc=0` and output contains `[eligibility-could-not-check] demo/01: held by rec:ingest/06` — fixture dir prepared by the brief. Re-baselined 2026-09-19 (issue #1305): `gates:` became an actively gating eligibility evaluator (#1251), so the `reserved, not gating` wording can no longer appear — in this fixture the `rec:` alias is unpublished from the tree and the evaluator's honest three-state answer is the could-not-check NOTICE. |
-| 6 | `cd statusgen && go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | ≥ 3 |
-| 7 | `grep -c 'reconcile' statusgen/README.md` | ≥ 1 |
-| 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 — the derivation's own network layer uses REST, never GraphQL (the grep is scoped to the files THIS brief introduces; a repo-wide grep additionally matches the pre-existing `trustgate.go` trust-query `gh api graphql`, a security control landed by forward-sync after this brief was authored and out of this brief's scope) |
+| # | Command | Expect | Class |
+|---|---------|--------|-------|
+| 1 | `cd statusgen && ok=0; for f in Lifecycle:20 BriefV2:14 GHFetch:5; do s=${f%%:*}; out=$(go test . -run "$s" -count=1 -v) \|\| { echo "suite $s failed"; exit 1; }; n=$(printf '%s\n' "$out" \| grep -c '^--- PASS'); [ "$n" -ge "${f##*:}" ] && ok=$((ok+1)) \|\| echo "suite $s: $n passes, below ${f##*:}"; done; echo "suites-at-floor=$ok"` | exit 0, output is `suites-at-floor=3` — each suite meets its OWN floor (Lifecycle 20, BriefV2 14, GHFetch 5: the counts at the 2026-10-09 rework), so a missing, shrunken or failing suite fails the row; a red `go test` ends the command non-zero rather than being discarded by a pipe. Re-authored 2026-10-09 (#1787): the original three-command form printed three counts but a witness records only the last pipeline value, so the Lifecycle and BriefV2 suites went unscored (the recorded 5 was GHFetch alone); a single summed count with a floor of 14 could not fail when a whole suite went missing | check |
+| 2 | `cd statusgen && go run . reconcile --root . --offline --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert all(b['cell']=='unknown' for b in d['briefs'] if b['source']=='pr');print('ok')"` | `ok` — offline never renders a PR-derived cell as todo | check |
+| 3 | `cd statusgen && GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt']==False and d['reason'].startswith('HTTP');print('ok')"` | `ok` — an auth failure is an `unknown` with the status, not a clean board | check |
+| 4 | `cd statusgen && go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);b=[x for x in d['briefs'] if x['id'].endswith(':derived-board:02')][0];assert b['cell'] in ('implemented','verified','done') and b['witness'].startswith('PR #80');print(b['cell'])"` | prints the cell — DEREFERENCES the real merged PR #80, whose body carries `Brief: derived-board/02` (the trailer the engine witnesses; needs a read token in env). Re-anchored from the original `desk-containers/02`/`PR #67`, which the engine correctly returns `todo` for: that brief's deliverable PR lives in another repository and carries no `Brief:` trailer (its board flip went via a separate PR), so this `--repo medici-finance/assay` run has no witness for it. The engine is sound; the old row anchored on a brief whose deliverable it cannot witness from this repo. Re-baselined 2026-09-19 (issue #1305): the `id` field is the hierarchical `assay:assay:derived-board:02` since the derived-board/07 flag-day, so the lookup is now id-shape-tolerant (`endswith(':derived-board:02')` pins stream/NN, tolerating a cell/repo prefix change) — a flat-literal match broke on this anchor a second time. | check |
+| 5 | `cd statusgen && printf -- '---\nbrief: x/01\ntitle: t\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nschema: brief-v2\ngates: [{on: "rec:ingest/06", type: ordering-gate, reason: r}]\n---\n' > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke; echo rc=$?` | `rc=0` and output contains `[eligibility-could-not-check] demo/01: held by rec:ingest/06` — fixture dir prepared by the brief. Re-baselined 2026-09-19 (issue #1305): `gates:` became an actively gating eligibility evaluator (#1251), so the `reserved, not gating` wording can no longer appear — in this fixture the `rec:` alias is unpublished from the tree and the evaluator's honest three-state answer is the could-not-check NOTICE. | check |
+| 6 | `cd statusgen && go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | ≥ 3 | check |
+| 7 | `grep -c 'reconcile' statusgen/README.md` | ≥ 1 | check |
+| 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 — the derivation's own network layer uses REST, never GraphQL (the grep is scoped to the files THIS brief introduces; a repo-wide grep additionally matches the pre-existing `trustgate.go` trust-query `gh api graphql`, a security control landed by forward-sync after this brief was authored and out of this brief's scope) | check |
+| 9 | `F=$(mktemp) && cd statusgen && { go test . -run '^TestFoldWiresAllInputs$' -count=1 -v > "$F" 2>&1 && grep -qF -e '--- PASS: TestFoldWiresAllInputs' "$F"; } \|\| { echo fold-test-failed; exit 1; }; go run . reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);assert d['lookedAt'] and not d.get('unread'),'a fold read is unread: %s'%d.get('unread');bl=[b for b in d['briefs'] if b['cell']=='blocked' and b['witness'].startswith('linked issue label')];assert bl,'no brief derives blocked from a linked issue label - the fold inputs are not wired (#1787)';print('fold-wired')"` | exit 0, output is `fold-wired` — two halves, both needed. (a) The fixture test `TestFoldWiresAllInputs` drives the PRODUCTION `runReconcile` over a git-backed tree and asserts `done` on both gates (gate:model from the bound reviewer's App approval at the merged head via `decideModelFlip`; gate:human from an anchored Reviewed-cell `human:` stamp), `blocked` from a linked issue label, and no promotion from a red witness. (b) The live read-only run (needs a read token in env, same lane as rows 3/4) reads every fold input with nothing unread, and at least one brief derives `blocked` from a linked issue's label — a cell the unwired engine could not reach. The live tree is NOT asserted to derive `done`: the fold takes `verified` only from the flip owner's rule (`flipLatestPass` — the latest strict bold PASS marker with Date/Runner rows naming the verifier at a sha), and at the 2026-10-09 rework no brief's recorded Evidence meets it (most predate that format), so the live tree derives zero `verified`/`done`; asserting a live `done` would need the fold to accept weaker Evidence than the flip gate does. Re-authored 2026-10-09 from the earlier live `done` count, which counted witnesses the flip owner refuses; the test log goes to a `mktemp` file, not a fixed temp name (2026-10-10, review S12) | check +flow |
+| 10 | `T=$(mktemp -d) && (cd tools/desk && go build -o "$T/muhar" ./cmd/muhar) && cd statusgen && "$T/muhar" -spec reconcilefold-mutations.json -j 4 > "$T/out" 2>&1; rc=$?; tail -1 "$T/out"; exit $rc` | exit 0, output is `Totals: 32 caught, 0 NOT CAUGHT, 0 could-not-mutate.` — the mutation harness removes each guard the fold relies on, one at a time, and the fold suites redden for every one: the anchored and relay-stripped human stamp, the held-row and closure-audit refusals, verifier provenance, the version read at the run's sha, approval could-not-check, the at-head and gate checks in `isDone`, the merged-PR overlay requirement and the ListPRs merged check, PR entries filtered from the issues read, issues paging and the page cap, the failed labels read, the `--apply` refusal on unread inputs, and the witnessed-row write; and (2026-10-10 review round 2) every surviving could-not-check guard one fixture each — the tree read's undecided map and its copy into the fold input, `Undecided` consulted before the merged-PR gate, the version and provenance read failures, the coverage release, the pass-code clause of the closure audit, the failed tree load, the undecodable issues page, the in-progress half of the passing-witness rule, the apply guard on a witness-sourced row with no merge, and the three `--backfill` guards over a passing-witness todo cell (admitted, open trailer PR excluded, gate:model `done` not decided). The positive control (the witness map left unwired, the #1787 defect) must also be caught, or the harness reports itself broken and the row fails. Added 2026-10-09 (`+mutation`: this change alters `lifecycle.go`, a control this brief declares) | check +mutation |
 
 ## Evidence
 ### Non-implementer verifier run — VERIFY: FAIL (row 4 — stale Verify-row anchor, not an engine defect); rows 3/4 re-run ONLINE read-only per the desk online-read-only-lane ruling — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
@@ -485,6 +489,66 @@ rows_passed=7 rows_total=8
 VERIFY: BLOCKED — check-definition. Verify row 1 prints three counts against a single ≥ 14 Expect, so the execution witness scores it fail (7/8), although all 37 tests pass (18, 14, 5). The engine gap in #1787 also still reproduces on this main: reconcile never populates the fold's Witnesses, Approvals, Rulings or IssueLabels, and 0 of 367 live cells derive above implemented. Rows 2 to 8 are checked-clean on merged main 91f04b81ba064394aa121a4940cf11a138b55402. Status stays implemented.
 
 Blocker re-confirmed and attached: https://github.com/medici-finance/assay/issues/1787#issuecomment-6037701998. The NAMED, NOT DERIVED value (version = 1 at statusgen/reconcile.go:203) is already routed to https://github.com/medici-finance/assay/issues/1910.
+
+<!-- appended at rework time (#1787) -->
+
+Rework on `feat/assay--derived-board--03`, covering the #1787 defect.
+
+**The defect.** Both production callers (`reconcile.go`, and the drift comparator in `regen.go`) built `LifecycleInput{Briefs: idents}` and nothing else. The fold's Witnesses, Approvals, Rulings and IssueLabels inputs were therefore always nil, and no live cell derived above `implemented`: 0 of 367 at the 2026-10-07 verify.
+
+**The fix.** New `statusgen/reconcilefold.go` is the single wiring point both callers share. It makes no promotion rule of its own. Each fold input is read by the rule that the state's existing writer already enforces:
+
+- **verified**
+  - The latest strict PASS run comes from `flipLatestPass`, which is extracted from verify-gate-close's `flipStampFromEvidence`. It requires the bold marker and Date/Runner rows naming `<login> @ <sha>`.
+  - `closeVerifyHeldRefusal` and `closeVerifyFailRefusal` must not refuse it.
+  - The Evidence audit must pass (`closureWitnesses`, which is the `verifyrun --check` path).
+  - The PASS lines must have been committed by the roster's verifier (`flipProvenance`).
+  - The brief version is read at the run's sha (`briefVersionAt`), never copied from the current brief.
+  - Coverage must be released (`evaluateCoverage`).
+- **gate:model done**: `decideModelFlip`, the auto-flip's own decision. It requires the bound reviewer's approval at the merged head. A could-not-check result is `unknown` and is disclosed.
+- **gate:human done**: the anchored Reviewed-cell `human:<name>` stamp. That is the stamp the close writes and that the existing done-row lint requires. Relays and substrings never count.
+- **blocked**: one paged open-issues read. PR entries are filtered out. A capped or failed read leaves every brief that links an issue `unknown`.
+
+**Overlay and refusals.**
+- The witness overlay applies only over an `implemented` base, which means a merged PR.
+- Every input that could not be read is listed in the JSON `unread` field, and `--apply` refuses with exit 3 while that list is non-empty.
+- `--offline` keeps every map nil (row 2 is unchanged).
+
+**Drift comparator.** Its join was blind on brief-v2 hierarchical ids. Both sides now key on `canonicalBriefKey`/`briefStreamNum`.
+
+**Verify table.**
+- Row 1 is re-authored to per-suite floors.
+- Row 9 asserts the fixture `done` path and the live `blocked` path. It does not assert a live `done` (see row 9's Expect: no recorded Evidence on the tree meets the flip owner's rule today).
+- The table gains a `Class` column. Every row stays the runner-executed `check` it was by default; row 9 (production `reconcile` end to end, tree plus forge) carries `+flow`, and new row 10 carries `+mutation`. Row 10 runs the fold's mutation set (`statusgen/reconcilefold-mutations.json`, 18 guard removals plus a positive control) through the existing `muhar` harness.
+
+Fail-first (clause 9). Each guard was removed in turn, and the named test went red. The first failing line of each:
+
+```
+anchored human stamp ............ TestHumanSignoffAnchored: humanSignoff("2026-10-05 superhuman:x") = "human:x", want ""
+held-row refusal ................ TestFoldHeldRowNoWitness: cell = "verified", want implemented
+verifier provenance ............. TestFoldImplementerPassNoWitness: cell = "done", want implemented
+version read at the run's sha ... TestFoldStaleVersionUnknown: cell = "done", want unknown
+closure audit ................... TestFoldRefusedAuditNoWitness: cell = "done", want implemented
+approval unchecked -> unknown ... TestFoldModelUncheckedUnknown: cell = "verified", want unknown
+at-head check (isDone) .......... TestLifecycleDemotionApprovalNotAtHead: got "done"
+gate check (isDone) ............. TestLifecycleDemotionModelGateRuling: got "done"
+merged-PR overlay requirement ... TestFoldUnmergedWitnessUnknown: cell = "verified", want unknown
+ListPRs merged check ............ TestFoldUnmergedWitnessUnknown: cell = "done", want unknown
+PR entries filtered from issues . TestFoldIssuePRsFiltered: cell = "blocked", want todo
+issues paging ................... TestFoldIssuesPaged: cell = "unknown", want blocked
+page cap is a truncated read .... TestFoldIssuesCapUnknown: cell = "todo", want unknown
+failed labels read -> unknown ... TestFoldIssuesFailUnknown: cell = "todo", want unknown
+--apply refuses on unread ....... TestFoldIssuesFailUnknown: --apply exit 0, want 3
+apply writes witnessed rows ..... TestFoldApplyWritesWitnessed: applied=[]
+```
+
+Implementer runs (the independent verifier re-runs all rows):
+
+| # | Result | Runner |
+|---|--------|--------|
+| 1 | PASS: `suites-at-floor=3`, exit 0 | 2026-10-09 worker |
+| 9 | PASS (live, read-only): `fold-wired`. Nothing unread; 9 briefs derive `blocked` from a linked issue's `help wanted`/`needs-decision` label; 0 derive `verified`/`done` (the flip owner refuses every recorded Evidence: 195 record no verdict, 70 end on a non-PASS verdict, 51 lack the strict marker, the rest lack `<login> @ <sha>` Date/Runner rows) | 2026-10-09 worker |
+| 10 | PASS: `Totals: 18 caught, 0 NOT CAUGHT, 0 could-not-mutate.`, exit 0 (baseline green, control caught) | 2026-10-09 worker |
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

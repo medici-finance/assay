@@ -395,9 +395,45 @@ func flipVerdictTokens(lines []string) []flipVerdictTok {
 // line from there to the end of Evidence, because the witness reader consumes
 // the whole run and the verdict choice depends on every line after the PASS.
 func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (stamp, run string, marks []int, runStart int, err error) {
+	p, err := flipLatestPass(evidence)
+	if err != nil {
+		return "", "", nil, 0, err
+	}
+	rec, want := strings.ToLower(p.SHA), strings.ToLower(wantSHA)
+	if !strings.HasPrefix(rec, want) && !strings.HasPrefix(want, rec) {
+		return "", "", nil, 0, refuseFlip("sha mismatch: the latest PASS ran at %s, expected %s", p.SHA, wantSHA)
+	}
+	if p.Runner != wantRunner {
+		return "", "", nil, 0, refuseFlip("runner mismatch: the latest PASS was run by %q, expected %q", p.Runner, wantRunner)
+	}
+	return p.Stamp, p.Run, p.Marks, p.RunStart, p.StampErr
+}
+
+// flipPass is the latest strict PASS run as flipLatestPass reads it: who ran
+// it at which sha, its own lines, and the line indices the provenance check
+// judges. StampErr is flipStamp's verdict on the rendered stamp, kept apart so
+// a reader that never writes a stamp (the reconcile fold) is not refused by a
+// rule that governs only the write.
+type flipPass struct {
+	Stamp    string
+	StampErr error
+	Runner   string
+	SHA      string
+	Run      string
+	Marks    []int
+	RunStart int
+}
+
+// flipLatestPass reads the latest strict PASS run out of Evidence with every
+// check flipStampFromEvidence applies except the caller's expected sha and
+// runner: the latest verdict of any word is the strict bold PASS, and every
+// Date/Runner row of its run agrees on one date, one `<login> @ <sha>`. Every
+// error is a *flipRefusal. The reconcile fold (reconcilefold.go) derives
+// `verified` from it, so the board and verifyflip read one PASS the same way.
+func flipLatestPass(evidence string) (flipPass, error) {
 	stripped, unterminated := stripRowComments(evidence)
 	if unterminated >= 0 {
-		return "", "", nil, 0, refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
+		return flipPass{}, refuseFlip("Evidence carries an unterminated <!-- — the record cannot be read as written")
 	}
 	lines := strings.Split(stripped, "\n")
 	toks := flipVerdictTokens(lines)
@@ -408,14 +444,14 @@ func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (stamp, run str
 		}
 	}
 	if li < 0 {
-		return "", "", nil, 0, refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
+		return flipPass{}, refuseFlip("verdict mismatch: Evidence records no VERIFY verdict")
 	}
 	last := toks[li]
 	if last.word != "PASS" {
-		return "", "", nil, 0, refuseFlip("verdict mismatch: the latest recorded verdict is VERIFY: %s, not PASS", last.word)
+		return flipPass{}, refuseFlip("verdict mismatch: the latest recorded verdict is VERIFY: %s, not PASS", last.word)
 	}
 	if !last.strict {
-		return "", "", nil, 0, refuseFlip("non-strict PASS: the latest verdict is not the strict **VERIFY: PASS** marker — record the canonical bold marker; the gate is not loosened")
+		return flipPass{}, refuseFlip("non-strict PASS: the latest verdict is not the strict **VERIFY: PASS** marker — record the canonical bold marker; the gate is not loosened")
 	}
 	start := 0
 	for i := li - 1; i >= 0; i-- {
@@ -428,57 +464,51 @@ func flipStampFromEvidence(evidence, wantSHA, wantRunner string) (stamp, run str
 	// rows above this PASS belong to the run before it. Rows after the latest
 	// PASS mean the convention does not hold here: refuse, never guess.
 	if after, _ := flipDateRunnerRows(lines[last.line+1:]); len(after) > 0 {
-		return "", "", nil, 0, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
+		return flipPass{}, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
 	}
 	rows, at := flipDateRunnerRows(lines[start:last.line])
 	if len(rows) == 0 {
-		return "", "", nil, 0, refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
+		return flipPass{}, refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
 	}
 	date, runner := rows[0][0], rows[0][1]
 	if !flipDateRe.MatchString(date) {
-		return "", "", nil, 0, refuseFlip("bad date: the latest PASS is dated %q, not YYYY-MM-DD", date)
+		return flipPass{}, refuseFlip("bad date: the latest PASS is dated %q, not YYYY-MM-DD", date)
 	}
 	if _, perr := time.Parse("2006-01-02", date); perr != nil {
-		return "", "", nil, 0, refuseFlip("bad date: the latest PASS is dated %q, not a calendar date", date)
+		return flipPass{}, refuseFlip("bad date: the latest PASS is dated %q, not a calendar date", date)
 	}
 	if today := flipToday(); date > today {
-		return "", "", nil, 0, refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
+		return flipPass{}, refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
 	}
 	m0 := flipRunnerRe.FindStringSubmatch(runner)
 	for _, r := range rows {
 		if r[0] == "" || normalizeMark(r[0]) == "" || r[1] == "" {
-			return "", "", nil, 0, refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
+			return flipPass{}, refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
 		}
 		m := flipRunnerRe.FindStringSubmatch(r[1])
 		if m == nil {
-			return "", "", nil, 0, refuseFlip("sha mismatch: runner %q does not read <login> @ <sha>", r[1])
+			return flipPass{}, refuseFlip("sha mismatch: runner %q does not read <login> @ <sha>", r[1])
 		}
 		if r[0] != date {
-			return "", "", nil, 0, refuseFlip("date mismatch: rows of the latest PASS carry %q and %q", date, r[0])
+			return flipPass{}, refuseFlip("date mismatch: rows of the latest PASS carry %q and %q", date, r[0])
 		}
 		if m[1] != m0[1] {
-			return "", "", nil, 0, refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", m0[1], m[1])
+			return flipPass{}, refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", m0[1], m[1])
 		}
 		if !strings.EqualFold(m[2], m0[2]) {
-			return "", "", nil, 0, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", m0[2], m[2])
+			return flipPass{}, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", m0[2], m[2])
 		}
 		if r[1] != runner {
-			return "", "", nil, 0, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
+			return flipPass{}, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
 		}
 	}
-	rec, want := strings.ToLower(m0[2]), strings.ToLower(wantSHA)
-	if !strings.HasPrefix(rec, want) && !strings.HasPrefix(want, rec) {
-		return "", "", nil, 0, refuseFlip("sha mismatch: the latest PASS ran at %s, expected %s", m0[2], wantSHA)
-	}
-	if m0[1] != wantRunner {
-		return "", "", nil, 0, refuseFlip("runner mismatch: the latest PASS was run by %q, expected %q", m0[1], wantRunner)
-	}
-	stamp, err = flipStamp(date, m0)
+	p := flipPass{Runner: m0[1], SHA: m0[2], Run: strings.Join(lines[start:last.line], "\n"), RunStart: start}
+	p.Stamp, p.StampErr = flipStamp(date, m0)
 	for _, i := range at {
-		marks = append(marks, start+i)
+		p.Marks = append(p.Marks, start+i)
 	}
-	marks = append(marks, last.line)
-	return stamp, strings.Join(lines[start:last.line], "\n"), marks, start, err
+	p.Marks = append(p.Marks, last.line)
+	return p, nil
 }
 
 // flipQualRe matches one trailing parenthetical qualifier of a Runner cell.

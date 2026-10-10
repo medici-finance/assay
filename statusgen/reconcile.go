@@ -50,6 +50,10 @@ type reconcileResult struct {
 	Applied    []appliedRow  `json:"applied,omitempty"`
 	WouldApply *[]appliedRow `json:"wouldApply,omitempty"`
 	Held       []heldRow     `json:"held,omitempty"`
+	// Unread lists every fold read that could not be made this run (a failed
+	// or truncated forge read, a provenance or version read that failed). The
+	// briefs it touches derive `unknown`; --apply refuses while it is non-empty.
+	Unread []string `json:"unread,omitempty"`
 }
 
 const (
@@ -103,6 +107,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 
 	in := LifecycleInput{Briefs: idents}
 	var client *ghClient
+	var unread []string
 	switch {
 	case *offline:
 		in.LookedAt = false
@@ -123,6 +128,14 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		in.PRs = prs
 		in.LookedAt = lookedAt
 		in.Reason = reason
+		// The witness fold (#1787): populate the inputs DeriveLifecycle needs
+		// to derive above `implemented`, each by its owner's rule (see
+		// reconcilefold.go). Every read that could not be made is disclosed in
+		// `unread` and leaves the briefs it touches `unknown`. Online only:
+		// --offline keeps every map nil and every cell unknown.
+		if boardRoot, found := findBoardRoot(*root); found {
+			unread = wireFoldInputs(&in, boardRoot, client, *repo, stderr)
+		}
 	}
 
 	cells := DeriveLifecycle(in)
@@ -146,13 +159,19 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 				}
 			}
 		}
-		cells = applyReconcileBackfill(cells, pulls, pullsLookedAt, lookup)
+		cells = applyReconcileBackfill(cells, in, pulls, pullsLookedAt, lookup)
 	}
 
 	if *apply && !in.LookedAt {
 		// Nothing was read, so nothing can be written — and the exit must say
 		// so: a scheduled writer exiting 0 here reads as "board current".
 		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %s; nothing written\n", in.Reason)
+		return reconcileCouldNotCheck
+	}
+	if *apply && len(unread) > 0 {
+		// A fold read failed: the cells it touches are `unknown`, and a write
+		// from a partial read would pass for a complete one.
+		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %d fold read(s) failed (see `unread`); nothing written\n", len(unread))
 		return reconcileCouldNotCheck
 	}
 
@@ -196,6 +215,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		Applied:    applied,
 		WouldApply: wouldApply,
 		Held:       held,
+		Unread:     unread,
 	}
 
 	if *report {
@@ -237,35 +257,16 @@ func reconcileBriefIdents(root string) ([]BriefIdent, error) {
 	if !found {
 		return nil, nil
 	}
-	streams, _, err := loadStreams(boardRoot)
+	// The enumeration lives in loadReconcileFoldData (reconcilefold.go), which
+	// keeps the fold's raw material alongside each ident; this is the ident-only
+	// view of the same walk, so the two can never drift apart.
+	data, _, err := loadReconcileFoldData(boardRoot)
 	if err != nil {
 		return nil, err
 	}
-	var idents []BriefIdent
-	seen := map[string]bool{}
-	for _, s := range streams {
-		for _, path := range briefFilePaths(s) {
-			bf, ok, perr := parseBriefFile(path)
-			var id, gate string
-			version := 1
-			if perr == nil && ok {
-				id, gate, version = bf.Brief, bf.Gate, bf.Version
-				if version == 0 {
-					version = 1
-				}
-			} else {
-				derived, _, okName := expectedBriefID(path)
-				if !okName {
-					continue // not a brief file shape we can key on
-				}
-				id = derived
-			}
-			if id == "" || seen[id] {
-				continue
-			}
-			seen[id] = true
-			idents = append(idents, BriefIdent{ID: id, Gate: gate, Version: version})
-		}
+	idents := make([]BriefIdent, 0, len(data))
+	for _, d := range data {
+		idents = append(idents, d.ident)
 	}
 	return idents, nil
 }
@@ -290,6 +291,21 @@ func findBoardRoot(start string) (string, bool) {
 	}
 }
 
+// reconcileDetail is a table row's evidence column. An `unknown` cell prints
+// its reason first — why the board cannot say — and then any witness it rests
+// on; the spec's `unknown` row has the board say why per cell, not only in the
+// JSON and on stderr.
+func reconcileDetail(b BriefCell) string {
+	switch {
+	case b.Witness == "":
+		return b.Reason
+	case b.Cell == "unknown" && b.Reason != "":
+		return b.Reason + " — " + b.Witness
+	default:
+		return b.Witness
+	}
+}
+
 func printReconcileTable(w *os.File, res reconcileResult) {
 	if !res.LookedAt {
 		fmt.Fprintf(w, "reconcile: could-not-check — %s\n", res.Reason)
@@ -297,11 +313,7 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 		fmt.Fprintf(w, "reconcile: %s (%d brief(s))\n", res.Repo, len(res.Briefs))
 	}
 	for _, b := range res.Briefs {
-		detail := b.Witness
-		if detail == "" {
-			detail = b.Reason
-		}
-		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, detail)
+		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, reconcileDetail(b))
 	}
 	if res.WouldApply != nil && len(*res.WouldApply) > 0 {
 		fmt.Fprintf(w, "reconcile --backfill (read-only): --apply would write %d row(s)\n", len(*res.WouldApply))

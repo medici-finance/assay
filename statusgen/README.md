@@ -175,18 +175,51 @@ statusgen reconcile --root . --repo medici-finance/assay --json
 statusgen reconcile --root . --offline --json
 ```
 
-It is the **only verb that reads the network**, and only read-only REST endpoints
-(`GET /pulls`, `GET /pulls/{n}/reviews`) — never GraphQL. The token comes from
-`--token-file` or `GITHUB_TOKEN`. Every fetch is three-state: a failure is
+It is the **only verb that reads the network**, and its own network layer uses only
+read-only REST endpoints (`GET /pulls`, `GET /issues`) — never GraphQL. The token
+comes from `--token-file` or `GITHUB_TOKEN`. Every fetch is three-state: a failure is
 `lookedAt: false` with the HTTP status as the reason, never an empty board that
-reads like "nothing found". The verify-witness / approval-at-head fold that lifts a
-cell to `verified`/`done` is the pure engine in `lifecycle.go`; the demotions
+reads like "nothing found". The verify-witness / approval fold that lifts a cell to
+`verified`/`done` is the pure engine in `lifecycle.go`; online runs wire its inputs
+from real reads (`reconcilefold.go`, shared with `regen`'s drift comparator so the
+two derive identically), each by the rule the state's own writer already obeys —
+the fold owns no rule of its own:
+
+- **`verified`** — the brief's latest strict `**VERIFY: PASS**` run (the reader
+  `statusgen verifyflip` uses), refused by an unrouted HELD row or a FAIL as `closeVerify`
+  refuses it, audited by the `verifyrun --check` closure path, with the PASS lines
+  committed by the roster's verifier (not the implementer), the brief version read
+  from the brief as it stood at the run's sha, and the evidence-coverage verdict.
+  A `**VERIFY: BLOCKED**` run is not a PASS.
+- **`done`, gate:model** — the auto-flip decision (`decideModelFlip`): the PR that
+  delivered the brief, the roster-bound reviewer App, its approval at that PR's
+  merged head. Its PR reads go through the `gh` CLI under the caller's own `gh`
+  credential, as `--auto-flip-model` does (including that owner's one GraphQL read
+  of a PR body's last edit); with no `gh` access the decision is could-not-check.
+- **`done`, gate:human** — the README Reviewed cell's `human:<name>` stamp, read by
+  the anchored stamp reader the human-stamp guard uses; on-behalf-of relays, a bare
+  `human:`, and a substring such as `superhuman:` never count.
+- **`blocked`** — one paged open-issues read (PR entries dropped) mapped onto each
+  brief's `issues:` list.
+
+A read that could not be made never renders as a state: a failed or capped
+open-issues read makes each brief with linked issues `unknown`, and a verified/done
+decision that could not be made is `unknown` with the reason, whatever the PR
+base (a `todo` or `in-progress` base included). The table prints that reason per
+cell. Every such read is disclosed on stderr and in the JSON's `unread` list, and
+`--apply` refuses (exit 3, nothing written) while any is present — one undecidable
+brief holds the write for the whole board, by design: a scheduled writer then
+writes nothing rather than a partial board. A passing witness with no merged PR on
+record is `unknown` too — the fold cannot settle that contradiction; under
+`--backfill` a branch/body-matched merged PR is that merge, and the cell is
+re-derived over it by the same overlay a trailer merge gets. The demotions
 (a reverted merge, a red witness, a dismissed approval, a stale-version witness)
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
 
 `--backfill --apply` writes a witnessed `todo`/`in-progress` → `implemented`
-Status cell back into the stream README and lists the rows it wrote under
+Status cell (a trailer or branch/body-matched merged PR on record, with or without
+a verify witness over it) back into the stream README and lists the rows it wrote under
 `applied`. `--backfill` WITHOUT `--apply` is the read-only form: it writes nothing
 and lists, under `wouldApply`, the rows `--apply` would write on the same tree —
 computed by the same function that writes, so the two cannot disagree. Each row
