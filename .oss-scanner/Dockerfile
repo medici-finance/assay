@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # Anthropic OSS Scanner build image for medici-finance/assay.
 # Enrollment: github.com/anthropics/oss-scanner, projects/assay/.
 #
@@ -12,15 +10,21 @@
 #   - Tests run at build time but must not abort the build on failure —
 #     warn and continue, so a flaky test never blocks the scanner.
 #
-# This repository is a multi-module Go workspace (~20 independent go.mod
-# modules under tools/, plus the top-level modules) with shell tooling and
-# Claude Code plugins alongside. There is no single root module, so the
-# build loops over every module.
+# This repository carries 20 independent Go modules (14 under tools/, 6
+# top-level; no go.work), plus shell tooling and a Claude Code plugin
+# bundle. There is no single root module, so the build loops over every
+# module.
+#
+# LOCAL-BUILD CAVEAT: with no .dockerignore in this repository, building
+# from a working checkout copies everything in the context — including
+# .git/config and ignored local state that may hold credentials
+# (.gitignore:37-44). Build from a CLEAN CLONE when checking locally, and
+# never share a locally built image. In the scanner's environment the
+# context is always a fresh clone.
 
 FROM golang:1.25-bookworm
 
-ENV CGO_ENABLED=0 \
-    GOFLAGS=-mod=mod
+ENV CGO_ENABLED=0
 
 # Shell tooling dependencies: bash for the tools/*.sh suites, python3 for
 # the scanner's own helpers and the repo's python scripts, git because
@@ -50,7 +54,10 @@ RUN set -u; \
     done
 
 # Test suites: run but never abort the image build (scanner-template
-# convention — a red test suite must not stall scanning).
+# convention — a red test suite must not stall scanning). Parts of the
+# tools/desk suite expect a desk operator environment (roster config, git
+# identity, credentials) and fail closed without it — see
+# .oss-scanner/threat_model.md §"How to exercise it".
 RUN set -u; \
     failed=0; \
     for gomod in $(find . -name go.mod -not -path './.git/*' | sort); do \
