@@ -231,6 +231,119 @@ path, both of which the guard correctly flagged (this repo's whole `docs/streams
 withheld). Neutralised to prose with no bare slug/number or `docs/streams/` path; the guard is now
 clean.
 
+Independent verification — 2026-10-09.
+
+Runner: assay-verifier-app[bot], on-behalf-of human:ian — model claude-opus-5-5 — a fresh
+session that did not implement this brief. Run against merged main at
+a65f270aa9c10e73bd68e68b6a29d253a9a8ac28 (the implementation landed in #971). Toolchain:
+go1.27.1 darwin/arm64, git 2.56.0, GNU bash 5.3.20, statusgen v1.0.34. Every Go row ran in a
+cleared environment with a throwaway home and temp directory and the module proxy disabled.
+
+Verification-Attestation (dispatcher pre-work check, read before the first row and again before
+this block was written; both reads returned the same binding): Run
+fbf2d4b0ff94384f132dce92c73563e03666c2cbbd880a458619ed18766646c7 — Source
+a65f270aa9c10e73bd68e68b6a29d253a9a8ac28 — BriefSHA256
+81f353462db936b074bc762930062f36f8183852646129d5489b3264c70edc70 — PlanSHA256
+7714fb0395e1249e60c71fc50c5d2ee9688d5590df8460b3c098a1ff1436667b — HomeSHA256
+8ae1541160c639fc4168b3eb5293cd34d28bedbd5c8aa17be01657c6f71b207a — Model claude-opus-5-5 —
+Tier any — decision issue #2480.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTier' -count=1` | exit 0; output contains `ok` | exit 0; the single output line reads: ok, the deskkit package import path, 0.279s; a second pass with -v listed 9 tests, all PASS. Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierAbsentLedger' -count=1 -v` | exit 0; `default-absent`; `unknown` | exit 0; `ResolveTier = tier=unknown provenance=default-absent`. Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierUnreadableLedger' -count=1 -v` | exit 0; `default-unreadable`; `unknown`; no `contributor` | exit 0; `ResolveTier = tier=unknown provenance=default-unreadable`; standard error carried `trust-ledger: malformed ledger fixture: not valid JSON — resolving medici-finance/example/outsider to unknown`; the real-file variant of the test also PASS; zero occurrences of `contributor` in the output. Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierRosterWins' -count=1 -v` | exit 0; `maintainer` | exit 0; `ResolveTier = tier=maintainer provenance=roster`. Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierUnpinnedHuman' -count=1 -v` | exit 0; `unknown` | exit 0; `ResolveTier = tier=unknown provenance=default-absent`. Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 6 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'RosterCoupling' -count=1` | exit 0; output contains `ok` | exit 0; the single output line reads: ok, the deskkit package import path, 0.244s; a second pass with -v showed exactly one test selected, `TestContributorLedgerRosterCoupling`, PASS — the `ok` is a real test result, never an empty selection. Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 7 | `grep -n 'never published' docs/contributor-trust.md` | exit 0; at least one matching line | exit 0; one match, line 84: `**The rows are never published.** The ledger — which identity holds which tier,` (the earlier Evidence above says line 69; the document has grown since). Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 8 | `git -C . grep -n -E 'unknown.*blessed-once.*contributor.*maintainer' -- docs/contributor-trust.md` | exit 0; at least one matching line | exit 0; one match, line 11: the sentence beginning "Four tiers, ordered:" names the four in order. Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 9 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | exit 0 | exit 0; no output; the tree was still clean afterwards, ignored files included. Executed by hand with the module proxy disabled. The row's class asks for a network-off sandbox, which this host (darwin) cannot provide, so the hermetic condition is could-not-check here; the command itself meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierPublishedModelMatchesTable' -count=1 -v` | exit 0; output contains `PASS` | exit 0; `--- PASS: TestTrustTierPublishedModelMatchesTable`, with the log line "capability table matches capabilityTable for all four tiers". Meets Expect: yes | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:02` | exit 0; no `DISPROVED`; no `COULD-NOT-CHECK`; contains `corroborated` | exit 2; `statusgen: --consumers: COULD-NOT-CHECK: assay:assay:contributor-trust:02 is not in the diff against a65f270aa9c10e73bd68e68b6a29d253a9a8ac28, so this run carries no evidence about its claims — no entry was corroborated and none was disproved.` Meets Expect: no — could-not-check. On merged main the default comparison base is the checked-out commit itself, so the brief is never in the diff and the row as written cannot corroborate anything after the merge; this is a property of the row, and says nothing about the implementation | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+
+Row 11, supplementary read (does not turn the row green). The same command with the base moved
+to the parent of the commit that landed #971 exits 0 with `summary: 4 corroborated, 0 disproved,
+2 unchecked, 0 brief(s) claiming nothing` — all four `fixed-here` entries corroborated, the
+`follow-up` and `out-of-scope` entries unchecked by design. That diff spans everything merged
+since, so it is weak on its own; the narrower fact is that the landing commit's own file list
+contains all four `fixed-here` paths.
+
+Execution witness (`statusgen verifyrun`): held back on this host, for every row. The runner
+gives each row the caller's own home directory, with no way to substitute a throwaway one and
+no way to select a subset of rows, and this verification's standing rule keeps Go test rows
+under the desk tools away from a real home. Row 9 would additionally need the network-off
+sandbox the tool provides on Linux only. Witness tally: 0 pass, 0 fail, 11 without a witness
+result. No witness table accompanies this block.
+
+Mutation checks (each made in a throwaway copy of the tracked tree, never in the verified
+checkout; each reverted, and the five touched files compared byte-identical to the checkout
+afterwards; the copy's baseline was green before and after):
+
+- Row 2: the not-configured arm returns `contributor` → row 2 red (`tier = contributor, want
+  unknown`). The final no-match fallthrough returning `contributor` SURVIVES row 2 (its fixture
+  only reaches the not-configured arm) and is caught by row 1.
+- Row 3: unreadable arm reports `default-absent` → red. Unreadable arm returns `contributor` →
+  red, and the output then contains `contributor`. The file reader skipping a malformed line →
+  red. The file reader reporting a malformed file as not-configured → red. Deleting the
+  standard-error announcement SURVIVES row 3, row 1 and the neighbouring lane tests.
+- Row 4: roster arm disabled → red (`tier = blessed-once, want maintainer`).
+- Row 5: three weakenings of the pinned-id condition. Accepting a row with no pinned id → red.
+  Accepting a caller with no id → red. Dropping the id-equality term SURVIVES row 5 and is
+  caught by row 1 (`TestTrustTierLedgerRowGrants`, the mismatched-id case).
+- Row 6: key dropped from the twin's recognised list → red. Twin's literal changed → red. Key
+  dropped from the shared vector → red. Key dropped from the desk copy's recognised list → red.
+  Parsed value never stored → red.
+- Row 7: the sentence reworded to offer the rows on request → red (exit 1).
+- Row 8: two tiers swapped in the ordered sentence → red (exit 1).
+- Row 10: document claims an extra grant for `blessed-once` → red. Code grants `unknown` a
+  capability → red. Code grants `blessed-once` a second capability → red. Two shapes SURVIVE:
+  a fifth capability added to `contributor` in code that the document has no column for
+  (survives row 1 as well), and a capability column deleted from the document.
+
+Risk-bearing values (enumerated over the landing commit's diff, ranked, top entries derived;
+line numbers are in trusttier.go under the desk tools' deskkit package unless stated):
+
+- RISK-VALUE: NAMED, NOT DERIVED — capabilityTable[TierContributor] = {review-depth, fork-ci-auto-run, desk-automation, changelog-proxy} @ trusttier.go:297 — it equals the published table, but no source assigns capabilities to tiers: the facts above name the four capabilities, the scoping document names the dimensions, and this brief reserves the per-tier list for the human gate, whose design record is still PROPOSED. A verifier cannot derive a value the gate exists to decide.
+- RISK-VALUE: NAMED, NOT DERIVED — capabilityTable[TierBlessedOnce] = {review-depth} @ trusttier.go:296 — same missing source; additionally the lane table that later shipped gives `blessed-once` the same lane set as `unknown`, so what this one grant means in practice is not established anywhere.
+- RISK-VALUE: DERIVED — capabilityTable[TierUnknown] = {} @ trusttier.go:295 — `unknown` is every identity the ledger does not name and the brief is inert on landing, so the only set that leaves every existing answer unchanged is the empty one.
+- RISK-VALUE: DERIVED — TierUnknown Tier = iota (0), then 1, 2, 3 @ trusttier.go:57-60, compared by `t >= min` @ trusttier.go:79 — the order is the one the facts state, and making the lowest tier the type's zero value means an unset tier satisfies no minimum above `unknown`.
+- RISK-VALUE: DERIVED — a ledger row is passed over when `row.ID == 0 || id == 0 || row.ID != id` @ trusttier.go:256 — the facts require the strict pinned-id path, and the existing strict author check refuses the same three shapes (record never pinned, caller without an id, mismatch). The ledger path has no bot exemption, which only narrows.
+- RISK-VALUE: DERIVED — failure arms return TierUnknown with "default-absent" @ trusttier.go:115 (returned at 239 and 265) and "default-unreadable" @ trusttier.go:119 (returned at 242) — the facts require both states to resolve `unknown` and to stay distinguishable. Observed beyond the fixtures: missing file, empty file and comment-only file resolve default-absent; a malformed line after a good row, a half-written last row, a directory, an unreadable file, a string-typed id, a JSON array, trailing text, a byte-order mark and an over-long line all resolve default-unreadable with the announcement.
+- RISK-VALUE: NAMED, NOT DERIVED — parseTier accepts "maintainer" @ trusttier.go:92, so a ledger row can resolve the top tier with provenance "ledger-row" @ trusttier.go:111 — the facts above and the published model both say that tier is resolved from the roster and never from the ledger; no source supports accepting it from a row.
+
+Ranked last, reversible by an edit, no derivation attempted: the line-buffer bounds 64*1024 and
+1024*1024 (trusttier.go:186; an over-long line was observed to fail closed), the key literal
+"ASSAY_CONTRIBUTOR_LEDGER" (one copy in each roster reader and one in the shared vector, held
+equal by row 6), the path separator set (desk copy of the roster reader, line 1813), the row's
+seven field names (trusttier.go:125-131), the comment prefix "#" (trusttier.go:191), and the
+provenance and capability name strings. One further entry is carried in the desk hand-back.
+
+Observations outside the table (handed to the desk; none changes a row result):
+
+1. Row 11 cannot pass on merged main (above). The row needs an explicit base, or a different
+   class, to be runnable after the merge.
+2. A ledger row naming `maintainer` is honoured (last NAMED, NOT DERIVED line above).
+3. Duplicate rows for one identity: the first matching row wins. A promotion followed by a
+   later demotion row therefore still resolves the promotion. No test pins either order and
+   the row shape carries no scope for the single item a `blessed-once` grant is meant to cover.
+4. Two row shapes are passed over without an announcement and resolve default-absent: a tier
+   name outside the four, and a row with no id field. Both stay `unknown`.
+5. The published `review-depth` column and the lane table that shipped later point in opposite
+   directions for `unknown` and `contributor`; no shipped caller reads the capability table.
+6. Row 10's comparison walks only the columns the document has (the two surviving mutations),
+   and no row pins the standard-error announcement.
+7. Housekeeping: the `(planned)` markers on the published model's path are stale; the changelog
+   fragment listed under files: has since been folded into the aggregated changelog, so that
+   one path is gone at this commit while its content is present; every other listed path exists.
+8. The design record this brief is authored against is still PROPOSED with no recorded ruling.
+
+VERIFY: BLOCKED — check-definition: rows 1-10 meet Expect by hand; row 11 exits 2 with a
+could-not-check that the row as written cannot avoid on merged main. Evidence only: this brief
+is human-gated, and nothing here changes its status.
+
+Desk note, 2026-10-10: the row 11 could-not-check above is an instance of #1915 (the consumers check cannot corroborate on merged main as written). #1915 is the blocker this pass's outcome record names.
+
 ## Review
 Gate: human (from frontmatter). Reviewer records verdict + date in the stream README table.
 Human gate is MANDATORY when any risk answer is yes.
