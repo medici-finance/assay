@@ -499,3 +499,123 @@ func TestDispatchAuditCarriesRef(t *testing.T) {
 		t.Errorf("the audit line does not carry dispatch_ref=%s:\n%s", *recs[0].DispatchRef, raw)
 	}
 }
+
+// rosterRepos re-plants the fixture roster under home with extra allowed-repo entries, so a test
+// can dispatch into a repo the shared fixture does not name.
+func rosterRepos(t *testing.T, home string, extra ...string) {
+	t.Helper()
+	const key = "ASSAY_ALLOWED_REPOS="
+	if !strings.Contains(fixtureRoster, key) {
+		t.Fatal("the fixture roster has no allowed-repo line")
+	}
+	body := strings.Replace(fixtureRoster, key, key+strings.Join(extra, ",")+",", 1)
+	if err := os.WriteFile(filepath.Join(home, ".config", "assay", "roster.env"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deskkit.ReloadConfig()
+}
+
+// regression: F2-repo-grammar-drops-record
+// TestRecordRepoBranchAgree holds the record's repo and branch grammars to the dispatcher's own
+// acceptance, the way TestTierReadersAgree and TestRecordKitsAgree hold tier and kit: every repo
+// the roster admits (explicitly or by an owner/* pattern) and every branch --branch accepts up to
+// the record's 256-byte cap goes through a stubbed dispatch and must write exactly one line
+// carrying that value. A branch past the cap is recorded null and the line is still written.
+func TestRecordRepoBranchAgree(t *testing.T) {
+	long := "example-org/" + strings.Repeat("n", 101)
+	explicit := []string{"example-org/.github", "example-org/_template", "example-org/-x", "_owner/x", long,
+		"Example-Org/Mixed.Case_1"}
+	patterned := []string{"pattern-org/.dotfile", "pattern-org/_x", "pattern-org/-y"}
+	roster := append(append([]string(nil), explicit...), "pattern-org/*")
+	for _, repo := range append(append([]string{allowedRepo}, explicit...), patterned...) {
+		name := repo
+		if len(name) > 30 {
+			name = name[:30]
+		}
+		t.Run("repo "+name, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			rosterRepos(t, home, roster...)
+			plantScripts(t, root)
+			fixEntropy(t)
+			s.replies = happyReplies(t.TempDir())
+			var rc int
+			errOut := captureStderr(t, func() {
+				rc = run([]string{"agree--03", "--root", root, "--repo", repo,
+					"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+			})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("--repo %q: dispatch rc = %d, want 0\n%s", repo, rc, errOut)
+			}
+			recs := recordLines(t, home)
+			if len(recs) != 1 || recs[0].Repo != repo {
+				t.Fatalf("--repo %q: want one line with that repo, got %s\n%s", repo, dump(recs), errOut)
+			}
+		})
+	}
+	b200, b255, b300 := "f"+strings.Repeat("b", 199), "f"+strings.Repeat("b", 254), "f"+strings.Repeat("b", 299)
+	for _, tc := range []struct{ name, branch, want string }{
+		{"plain", "feat/x", "feat/x"},
+		{"200 chars", b200, b200},
+		{"255 chars", b255, b255},
+		{"300 chars is null", b300, ""},
+	} {
+		t.Run("branch "+tc.name, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			plantScripts(t, root)
+			fixEntropy(t)
+			s.replies = happyReplies(t.TempDir())
+			var rc int
+			errOut := captureStderr(t, func() {
+				rc = run([]string{"agree--04", "--root", root, "--repo", allowedRepo, "--branch", tc.branch,
+					"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+			})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("--branch of %d chars: dispatch rc = %d, want 0\n%s", len(tc.branch), rc, errOut)
+			}
+			recs := recordLines(t, home)
+			if len(recs) != 1 {
+				t.Fatalf("--branch of %d chars: want one line, got %d\n%s", len(tc.branch), len(recs), errOut)
+			}
+			got := ""
+			if recs[0].Branch != nil {
+				got = *recs[0].Branch
+			}
+			if got != tc.want {
+				t.Errorf("--branch of %d chars recorded %s, want %q", len(tc.branch), sv(recs[0].Branch), tc.want)
+			}
+		})
+	}
+}
+
+// regression: F2-repo-grammar-drops-record (second instance of the class: frontmatter fields)
+// TestOutOfSetBriefFieldsNull: an exec-tier or effort outside the record's closed set is
+// recorded null and the line is still written with the brief id, never refused whole.
+func TestOutOfSetBriefFieldsNull(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	plantScripts(t, root)
+	fixEntropy(t)
+	s.replies = happyReplies(t.TempDir())
+	body := "---\nbrief: example-stream/28\ngate: model\nexec-tier: fast\neffort: XL\n---\n\n# fixture\n"
+	if err := os.WriteFile(filepath.Join(root, "oos.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var rc int
+	errOut := captureStderr(t, func() {
+		rc = run([]string{"oos--03", "--root", root, "--brief", "oos.md",
+			"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
+	}
+	recs := recordLines(t, home)
+	if len(recs) != 1 {
+		t.Fatalf("want exactly one line, got %d\n%s", len(recs), errOut)
+	}
+	r := recs[0]
+	if r.BriefExec != nil || r.BriefEffort != nil || r.Brief == nil || *r.Brief != "example-stream/28" {
+		t.Errorf("brief %s exec %s effort %s: want example-stream/28 / null / null", sv(r.Brief), sv(r.BriefExec), sv(r.BriefEffort))
+	}
+}

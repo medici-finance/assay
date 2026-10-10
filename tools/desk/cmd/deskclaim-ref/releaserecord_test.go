@@ -164,3 +164,25 @@ func TestReleaseWritesReleasedRecord(t *testing.T) {
 		}
 	})
 }
+
+// regression: F2-repo-grammar-drops-record
+// TestReleaseOddRepoRecorded: a release whose --repo is a slug a forge can host but which starts
+// with `.`, `_` or `-`, or has a long name, still writes its released line.
+func TestReleaseOddRepoRecorded(t *testing.T) {
+	const id = "at--stream--28"
+	for _, repo := range []string{"example-org/.github", "example-org/_template", "_owner/-x",
+		"example-org/" + strings.Repeat("n", 101)} {
+		home := recordHome(t)
+		inWorktreeWithRef(t, id+"@20261006T141502Z.3fa9c01b7d2e")
+		f := newStore()
+		f.seedClaim(id, "sess-A", "dispatched", "feat/x", time.Minute)
+		run, _, se := harness(t, f)
+		if rc := run("release", id, "--repo", repo); rc != exitOK {
+			t.Fatalf("release --repo %q rc = %d; stderr=%s", repo, rc, se.String())
+		}
+		recs := readRecords(t, home)
+		if len(recs) != 1 || recs[0]["repo"] != repo {
+			t.Errorf("release --repo %q: want one released line with that repo, got %v; stderr=%s", repo, recs, se.String())
+		}
+	}
+}

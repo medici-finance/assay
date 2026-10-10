@@ -82,6 +82,8 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 	if o.itemAlias != "" {
 		item = o.itemAlias + ":" + o.item
 	}
+	// branchNameRe has no length bound, so a branch over the record's 256-byte cap is accepted by
+	// the dispatch and recorded null here (declared); a detached dispatch has no branch.
 	var branch *string
 	if !plan.detached && deskkit.ValidDispatchRecordField("branch", plan.branch) {
 		branch = opt(plan.branch)

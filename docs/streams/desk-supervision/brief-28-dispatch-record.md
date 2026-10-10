@@ -149,13 +149,16 @@ branch for a fresh worker dispatch whose PR did not yet exist.
    `any`/`strong` (so a vendor model name can never be a tier value); a `dispatch_ref` that does not
    parse as `<claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>` for the record's OWN `claim_key`; `brief_effort` outside
    `S`/`M`/`L`; a `kit` outside the kit vocabulary; a `repo`, `item`, `brief`, `branch` or
-   `session_tag` outside its identifier grammar (the writer's own input grammars for the first
-   four's dispatcher-chosen shapes; `<stream>/<NN>` or `<cell>:<alias>:<stream>:<NN>` for `brief`;
-   one token for `session_tag`); any string field over 256 bytes or containing a control
+   `session_tag` outside its identifier grammar (for `repo`, every slug a forge can host, since
+   the dispatcher admits a repo by roster membership alone; for `item` and `branch`, the
+   dispatcher's own rules within the 256-byte cap; `<stream>/<NN>` or
+   `<cell>:<alias>:<stream>:<NN>` for `brief`; one token for `session_tag`); any string field over
+   256 bytes or containing a control
    character. There is no free-text field, because the validator refuses one, and no model slug:
    the record carries tier only (the model slug stays on the PR's existing stamp label, joinable
-   via `pr`). `brief` and `session_tag` come from the brief file and the environment, so the
-   writer records null and `unknown` respectively for a value outside the grammar.
+   via `pr`). The writer drops what it cannot record rather than lose the line: an out-of-grammar
+   `brief`, `brief_exec_tier` or `brief_effort` value and a branch over 256 bytes are recorded
+   null, and an out-of-grammar session as `unknown`.
 2. **Writer.** `AppendDispatchRecord` validates, then appends one line to
    `<StateDir>/dispatch-records.jsonl` (mode 0600, O_APPEND), beside `audit.jsonl`. Never committed
    to git. No rotation in this brief (low volume: one line per dispatch).

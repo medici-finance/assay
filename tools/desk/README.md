@@ -5997,21 +5997,35 @@ enforces it: a line whose field is outside its grammar is never written.
 
 | Field | What the validator accepts |
 |---|---|
-| `repo` | `owner/name`: two segments of letters, digits, `.`, `_`, `-` |
+| `claim_key` | 1–226 printable ASCII bytes with no space and no `@` (the grammar above) |
+| `dispatch_ref` | `<claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>`, for the line's own `claim_key` |
+| `repo` | `owner/name`: exactly one `/`; each side 1–254 letters, digits, `.`, `_`, `-`, with any of them first |
 | `item` | an item key (letters, digits, `.`, `_`, `/`, `-`), optionally prefixed `alias:` |
 | `brief` | `<stream>/<NN>` or `<cell>:<alias>:<stream>:<NN>`; each segment letters, digits, `.`, `_`, `-` |
 | `kit` | `worker` \| `worker-objective` \| `review` \| `verifier` |
-| `branch` | letters, digits, `.`, `_`, `/`, `-`; no `..` |
+| `branch` | starts with a letter or digit, then letters, digits, `.`, `_`, `/`, `-`; no `..`; at most 256 bytes |
 | `session_tag` | one token of letters, digits, `.`, `_`, `:`, `-` |
 | `tier`, `brief_exec_tier` | `any` \| `strong` |
 | `brief_effort` | `S` \| `M` \| `L` |
 | `model_stamp` | `applied` \| `pending` \| `skipped` |
 
-No space, link, mention, markup, control character or invisible format character fits any of
-these. The check fails closed: a string field with no grammar in the validator is refused, so a
-field added later cannot be recorded as free text by omission. Two fields are not chosen by the dispatcher. `brief` is copied from the brief file's own
-`brief:` line, and `session_tag` from `DESK_SESSION` (or the session id). A value outside its
-grammar is dropped: `brief` to null, `session_tag` to `unknown`. A grammar fixes a field's
+No space, control character or invisible format character fits any row. No markdown link, URL
+with a scheme, mention or markup fits any row except `claim_key` and `dispatch_ref`: the
+claim-key grammar admits every printable ASCII byte but space and `@`, because
+`deskclaim-ref` accepts such ids, so a quote, angle bracket, ampersand or backtick can land in
+either, and a consumer encodes both on output. A bare dotted name such as `www.example.com/28`
+fits the identifier rows; some renderers auto-link it. The check fails closed: a string field
+with no grammar in the validator is refused, so a field added later cannot be recorded as free
+text by omission.
+
+The writer drops a value it cannot record rather than lose the line. `brief`,
+`brief_exec_tier` and `brief_effort` (copied from the brief file's front matter) and `branch`
+(a `--branch`, derived or resumed branch over 256 bytes) are recorded as null; `session_tag`
+(from `DESK_SESSION`, or the session id) is recorded as `unknown`. `repo` and `claim_key` are
+not nullable. `repo` admits every slug a forge can host, which is every repo the roster can
+usefully admit; a rostered or `owner/*`-admitted slug outside that alphabet, which no forge
+hosts, still loses its line with a WARNING. A claim key over 226 bytes (on either side) or a
+released id carrying `@` does the same. A grammar fixes a field's
 shape, not its meaning: a one-word `DESK_SESSION` is still whatever word the operator chose. The
 tier fields accept only `any` and `strong`, so a model slug cannot land in one; the slug stays
 on the PR's `dispatched-model:` label, which joins via `pr`.

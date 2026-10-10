@@ -36,6 +36,7 @@ func validReleased() DispatchRecord {
 	}
 }
 
+// regression: F2-repo-grammar-drops-record
 // TestDispatchRecord_Refusals is Verify row 2: every out-of-schema value is refused, one field
 // at a time, and a valid record of each event is accepted (the positive controls — a validator
 // that refused everything would otherwise pass every refusal subtest).
@@ -65,6 +66,17 @@ func TestDispatchRecord_Refusals(t *testing.T) {
 		{"dotted session", func(r *DispatchRecord) { r.SessionTag = "worker-desk.2:night_1" }},
 		{"unknown session", func(r *DispatchRecord) { r.SessionTag = "unknown" }},
 		{"dotted repo", func(r *DispatchRecord) { r.Repo = "example.org/my_project-2" }},
+		// A session UUID's shape (8-4-4-4-12 hex), built from zeros so no real session id is named.
+		{"uuid session", func(r *DispatchRecord) {
+			r.SessionTag = strings.Join([]string{strings.Repeat("0", 8), "0000", "4000", "8000", strings.Repeat("0", 12)}, "-")
+		}},
+		// Every slug a forge can host is a repo the roster can admit, so each is recorded.
+		{"repo dot name", func(r *DispatchRecord) { r.Repo = "example-org/.github" }},
+		{"repo underscore name", func(r *DispatchRecord) { r.Repo = "example-org/_template" }},
+		{"repo dash name", func(r *DispatchRecord) { r.Repo = "example-org/-x" }},
+		{"repo underscore owner", func(r *DispatchRecord) { r.Repo = "_owner/x" }},
+		{"repo 101-char name", func(r *DispatchRecord) { r.Repo = "example-org/" + strings.Repeat("n", 101) }},
+		{"branch 255 chars", func(r *DispatchRecord) { r.Branch = strp("f" + strings.Repeat("b", 254)) }},
 	} {
 		t.Run(c.name+" accepted", func(t *testing.T) {
 			r := validDispatched()
@@ -122,6 +134,18 @@ func TestDispatchRecord_Refusals(t *testing.T) {
 		{"branch has dotdot", func(r *DispatchRecord) { r.Branch = strp("feat/../x") }},
 		{"repo is prose", func(r *DispatchRecord) { r.Repo = "any sentence / with a slash" }},
 		{"repo two slashes", func(r *DispatchRecord) { r.Repo = "a/b/c" }},
+		{"repo empty name", func(r *DispatchRecord) { r.Repo = "example-org/" }},
+		{"repo has @", func(r *DispatchRecord) { r.Repo = "example-org/a@b" }},
+		{"repo has scheme", func(r *DispatchRecord) { r.Repo = "https://example.org/x" }},
+		// The v2 grammar's end anchor: a valid v2 prefix followed by more is refused.
+		{"brief v2 five parts", func(r *DispatchRecord) { r.Brief = strp("cell-a:proj:example-stream:28:9") }},
+		// 64+64+64+62 characters and three colons: 257 bytes, inside the v2 shape, so only the
+		// 256-byte cap refuses it.
+		{"brief v2 257 bytes", func(r *DispatchRecord) {
+			seg := strings.Repeat("s", 64)
+			r.Brief = strp(seg + ":" + seg + ":" + seg + ":" + strings.Repeat("n", 62))
+		}},
+		{"brief v2 then slash", func(r *DispatchRecord) { r.Brief = strp("cell-a:proj:example-stream:28/x") }},
 		{"session is prose", func(r *DispatchRecord) { r.SessionTag = "any words at all, a name included" }},
 		{"session has PSEP", func(r *DispatchRecord) { r.SessionTag = "sess A" }},
 		{"session empty", func(r *DispatchRecord) { r.SessionTag = "" }},
@@ -221,6 +245,7 @@ func TestAppendDispatchRecordStore(t *testing.T) {
 	}
 }
 
+// regression: F2-repo-grammar-drops-record (the walk now fails on a field kind it does not know)
 // TestDispatchRecordEveryStringFieldHasAGrammar closes the free-text class for fields added
 // later: every string field of DispatchRecord, found by reflection rather than by a list a new
 // field could be left off, is set in turn to prose and must be refused. A new field missing from
@@ -233,7 +258,14 @@ func TestDispatchRecordEveryStringFieldHasAGrammar(t *testing.T) {
 		f := typ.Field(i)
 		isStr := f.Type.Kind() == reflect.String
 		isPtrStr := f.Type.Kind() == reflect.Pointer && f.Type.Elem().Kind() == reflect.String
+		isPtrInt := f.Type.Kind() == reflect.Pointer && f.Type.Elem().Kind() == reflect.Int
+		if isPtrInt {
+			continue // pr and attempt_local: numbers, bounded by ValidateDispatchRecord
+		}
 		if !isStr && !isPtrStr {
+			// A slice, map, interface or any other kind is seen neither by this walk nor by the
+			// validator's field list, so it could carry text unchecked: refuse it here.
+			t.Errorf("field %s has kind %s, which neither this walk nor the validator checks", f.Name, f.Type)
 			continue
 		}
 		n++
@@ -256,5 +288,27 @@ func TestDispatchRecordEveryStringFieldHasAGrammar(t *testing.T) {
 	}
 	if !ValidDispatchRecordField("kit", "worker") || ValidDispatchRecordField("no_such_field", "x") {
 		t.Fatal("checkRecordField must accept a known field's value and refuse a field it has no grammar for")
+	}
+}
+
+// regression: S2-claim-key-comment (advisory 4: the backstop was unpinned)
+// TestCheckRecordStringBackstop pins the three generic checks every string field passes before
+// its own grammar: the 256-byte cap, valid UTF-8 and no control character. Each field grammar
+// refuses these values too, so only a direct call shows the backstop itself holds.
+func TestCheckRecordStringBackstop(t *testing.T) {
+	for name, v := range map[string]string{
+		"257 bytes":    strings.Repeat("k", 257),
+		"invalid UTF8": "a\xffb",
+		"newline":      "a\nb",
+		"escape":       "a\x1b[2Jb",
+		"C1 control":   "a\u0085b",
+		"DEL":          "a\x7fb",
+	} {
+		if err := checkRecordString("f", v); err == nil {
+			t.Errorf("checkRecordString accepted %s (%q)", name, v)
+		}
+	}
+	if err := checkRecordString("f", strings.Repeat("k", 256)); err != nil {
+		t.Errorf("checkRecordString refused 256 bytes, the cap itself: %v", err)
 	}
 }

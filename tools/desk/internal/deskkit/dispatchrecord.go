@@ -21,9 +21,12 @@ package deskkit
 // WHAT IS NEVER RECORDED. No prompt text, brief body, PR/issue text, tool output, transcript,
 // vendor model name or per-person metric. There is no free-text field, and the validator is what
 // makes that true: every string is a fixed token, an identifier matching its own grammar (repo,
-// item, brief, branch, session_tag, claim_key, dispatch_ref) or a closed-vocabulary value (kit,
-// the two tier fields, brief_effort, model_stamp), so no space, link, mention, markup or
-// format character can land in one, and a model slug cannot land in a tier field. Two fields
+// item, brief, branch, session_tag) or a closed-vocabulary value (kit, the two tier fields,
+// brief_effort, model_stamp), so no space, markdown link, URL with a scheme, mention, markup or
+// format character can land in one, and a model slug cannot land in a tier field. claim_key and
+// dispatch_ref are WIDER: the claim-key grammar is every printable ASCII byte but space and `@`,
+// because deskclaim-ref accepts such keys, so a quote, angle bracket, ampersand or backtick can
+// land in either and a consumer encodes both on output. Two fields
 // are not chosen by the dispatcher: `brief` is copied from the brief file's own `brief:` line and
 // `session_tag` from the environment, so the writer drops a value outside its grammar (brief to
 // null, session_tag to "unknown") rather than record it. An identifier still names its repo,
@@ -84,14 +87,19 @@ var claimKeyRe = regexp.MustCompile(`^[\x21-\x3F\x41-\x7E]{1,226}$`)
 // dispatchRefSuffixRe is everything after the claim key: "@" timestamp "." nonce.
 var dispatchRefSuffixRe = regexp.MustCompile(`^@[0-9]{8}T[0-9]{6}Z\.[0-9a-f]{12}$`)
 
-// The identifier grammars of the remaining string fields. Each is the writer's own input grammar
-// (deskdispatch's repo slug, alias, item key and branch rules) or, for the two fields the
-// dispatcher does not choose, the shape the real values take: a brief id is `<stream>/<NN>` (v1)
-// or `<cell>:<alias>:<stream>:<NN>` (v2), and a session tag is a token such as a session UUID.
+// The identifier grammars of the remaining string fields. repo is the forge-name alphabet
+// (letters, digits, `.`, `_`, `-`) on each side of the one slash, with no first-character rule:
+// the dispatcher admits a repo by roster membership alone, and a roster entry is held only to
+// "exactly one slash", so any slug a forge can host is recorded (`owner/.github`, `owner/_x`). A
+// rostered slug outside that alphabet, which no forge hosts, still loses its line with a WARNING.
+// item and branch are deskdispatch's own item-key and branch rules, bounded by the 256-byte
+// record cap; a longer branch is recorded null by the writer. For the two fields the dispatcher
+// does not choose, each grammar is the shape the real values take: a brief id is `<stream>/<NN>`
+// (v1) or `<cell>:<alias>:<stream>:<NN>` (v2), and a session tag is a token such as a session UUID.
 var (
-	recordRepoRe    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
+	recordRepoRe    = regexp.MustCompile(`^[A-Za-z0-9._-]{1,254}/[A-Za-z0-9._-]{1,254}$`)
 	recordItemRe    = regexp.MustCompile(`^(?:[a-z][a-z0-9_-]{0,31}:)?[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
-	recordBranchRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$`)
+	recordBranchRe  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$`)
 	recordBriefV1Re = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 	recordBriefV2Re = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,63}){3}$`)
 	recordSessionRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
