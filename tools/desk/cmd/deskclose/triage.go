@@ -196,15 +196,26 @@ func applyTriage(r triageReq, out io.Writer) error {
 		return nil
 	}
 
-	source, err := authorizeTriage(r, it)
+	source, ruling, err := authorizeTriage(r, it)
 	if err != nil {
 		a.log(resultFor(err), err.Error())
 		return err
 	}
 
 	body := triageComment(r, source)
+	// human-decided only: the human-decision-v1 record (decisionrecord.go).
+	// Its forge copy rides in this comment; an invalid record is never written, and never
+	// stops the close.
+	var record []byte
+	recordStatus := ""
+	if ruling != nil {
+		record, recordStatus = composeTriageRecord(r, it, *ruling)
+		if record != nil {
+			body += "\n" + deskkit.DecisionRecordBlock(record) + "\n"
+		}
+	}
 	if r.dryRun {
-		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
+		a.log(deskkit.ResultDryRun, joinDetail("dry-run: verified, wrote nothing", recordStatus))
 		fmt.Fprintf(out, "dry-run\t%s#%d\t%s\tdisposition=%s\n", r.repo, r.number, modeTriage, r.disposition)
 		fmt.Fprintln(out, body)
 		return nil
@@ -227,8 +238,11 @@ func applyTriage(r triageReq, out io.Writer) error {
 	if err := closeItem(r.repo, r.number, deskkit.TargetIssue, reasonNotPlanned, true); err != nil {
 		return closeRefused(a, r.repo, r.number, err)
 	}
-	a.log(deskkit.ResultOK, fmt.Sprintf("closed as %s via lane %s (disposition %s, %s)",
-		reasonNotPlanned, modeTriage, r.disposition, deskkit.StripControl(source)))
+	if record != nil {
+		recordStatus = appendTriageRecord(record)
+	}
+	a.log(deskkit.ResultOK, joinDetail(fmt.Sprintf("closed as %s via lane %s (disposition %s, %s)",
+		reasonNotPlanned, modeTriage, r.disposition, deskkit.StripControl(source)), recordStatus))
 	fmt.Fprintf(out, "closed\t%s#%d\t%s\tdisposition=%s\treason=%s\n",
 		r.repo, r.number, modeTriage, r.disposition, reasonNotPlanned)
 	return nil
@@ -236,41 +250,43 @@ func applyTriage(r triageReq, out io.Writer) error {
 
 // authorizeTriage applies the decision-label gate, the disposition's fetched-and-verified
 // artifact, and then --tracker existence (never authority). It returns a human-legible SOURCE
-// naming the fetched artifact for the close comment to cite.
-func authorizeTriage(r triageReq, it item) (string, error) {
+// naming the fetched artifact for the close comment to cite, and — for human-decided — the
+// verified ruling comment itself (nil for every other disposition).
+func authorizeTriage(r triageReq, it item) (string, *ghComment, error) {
 	var src string
+	var ruling *ghComment
 	switch r.disposition {
 	case dispositionNotPlanned:
 		// A decision item — needs-decision OR human-decided — is never a plain skip.
 		if err := refuseDecisionItem(r.repo, it); err != nil {
-			return "", err
+			return "", nil, err
 		}
 		s, err := notPlannedAuthority(r)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		src = s
 	case dispositionHumanDecided:
 		// Still on the human's decision queue → refused; a human-decided label is PERMITTED.
 		if err := refuseNeedsDecision(r.repo, it); err != nil {
-			return "", err
+			return "", nil, err
 		}
-		s, err := humanDecidedAuthority(r)
+		s, c, err := humanDecidedAuthority(r)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		src = s
+		src, ruling = s, &c
 	default:
-		return "", deskkit.Refused(fmt.Sprintf("refused: unknown disposition %q", deskkit.StripControl(r.disposition)))
+		return "", nil, deskkit.Refused(fmt.Sprintf("refused: unknown disposition %q", deskkit.StripControl(r.disposition)))
 	}
 
 	if r.tracker != nil {
 		if err := requireTrackerExists(*r.tracker); err != nil {
-			return "", err
+			return "", nil, err
 		}
 		src += "; tracker " + renderRef(*r.tracker) + " (verified present)"
 	}
-	return src, nil
+	return src, ruling, nil
 }
 
 // notPlannedAuthority authorizes on a triage-disposition marker comment on issue N that is
@@ -324,17 +340,17 @@ func notPlannedAuthority(r triageReq) (string, error) {
 // fetchComment and its author verified as the roster-pinned blessing authority via
 // verifyHumanAuthor, exactly as every ruled artifact is. The permalink must be ON the issue
 // being closed — a ruling from elsewhere cannot be reused here.
-func humanDecidedAuthority(r triageReq) (string, error) {
+func humanDecidedAuthority(r triageReq) (string, ghComment, error) {
 	m := commentURLRe.FindStringSubmatch(strings.TrimSpace(r.decision))
 	if m == nil {
-		return "", deskkit.Refused(
+		return "", ghComment{}, deskkit.Refused(
 			"refused: --decision must be a GitHub comment permalink " +
 				"(https://github.com/<owner>/<repo>/issues|pull/<N>#issuecomment-<id>) naming the human's " +
 				"ruling comment on this issue — a link to a thread is not an authorization.")
 	}
 	owner, repo, itemStr := m[1], m[2], m[4]
 	if !strings.EqualFold(owner+"/"+repo, r.repo) || itemStr != fmt.Sprint(r.number) {
-		return "", deskkit.Refused(fmt.Sprintf(
+		return "", ghComment{}, deskkit.Refused(fmt.Sprintf(
 			"refused: --decision names a comment on %s#%s, but the close targets %s#%d — the recorded human "+
 				"decision must be ON the issue being closed, never a ruling from elsewhere reused here.",
 			deskkit.StripControl(owner+"/"+repo), deskkit.StripControl(itemStr), r.repo, r.number))
@@ -345,13 +361,13 @@ func humanDecidedAuthority(r triageReq) (string, error) {
 	// the lane could never execute.
 	c, err := fetchCommentTyped(strings.TrimSpace(r.decision), deskkit.TargetIssue)
 	if err != nil {
-		return "", err
+		return "", ghComment{}, err
 	}
 	if err := verifyHumanAuthor(c, "the recorded human decision (--decision)"); err != nil {
-		return "", err
+		return "", ghComment{}, err
 	}
 	return fmt.Sprintf("recorded human decision %s (by %s, verified blessing authority)",
-		deskkit.StripControl(c.HTMLURL), deskkit.StripControl(c.User.Login)), nil
+		deskkit.StripControl(c.HTMLURL), deskkit.StripControl(c.User.Login)), c, nil
 }
 
 // requireTrackerExists confirms a --tracker names a REAL item (a fetch), so the close records

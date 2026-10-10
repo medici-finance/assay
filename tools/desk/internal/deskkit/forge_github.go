@@ -389,8 +389,9 @@ type ghIssueWire struct {
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
-	HTMLURL string `json:"html_url"`
-	Labels  []struct {
+	HTMLURL   string `json:"html_url"`
+	CreatedAt string `json:"created_at"`
+	Labels    []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
 }
@@ -576,6 +577,7 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 		URL:           w.HTMLURL,
 		Labels:        labels,
 		Body:          w.Body,
+		CreatedAt:     w.CreatedAt,
 	}
 	// closed_by survives a reopen; a closer on an issue that is not closed no longer stands
 	// (forge-neutral brief 33 Task 2.7). A null closer on a closed issue stays zero — could-not-check.

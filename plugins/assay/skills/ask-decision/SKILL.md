@@ -183,6 +183,15 @@ Rules that make the relay honest:
   driver's queue. Close authority, and the rule that a decided issue's close comment must name
   the tracker carrying the remaining work, are that skill's; follow them there.
 
+When the item is closed, close a ruled decision through `deskclose triage --disposition
+human-decided --decision <the ruling's permalink> --tracker <ref>`. That lane writes the
+`human-decision-v1` record: which options were offered, which one was recommended, which one
+was picked, and how long the decision waited. It keeps two copies, one as a hidden block in
+the close comment and one as a local line. A hand close writes no record, so the decision
+drops out of every later measure of default-acceptance and gate latency. For the record to
+read the options, state them under an `Options` heading, as §The format requires, and keep
+the relay's `Answer: <letter>` line, which a ratification resolves through.
+
 Where the project keeps a decision log — an operation's drive-plan record, a register, a
 stream doc — the relay is copied there too, with the issue as its source. This skill does not
 define that log; it feeds it.
