@@ -62,7 +62,10 @@ func main() {
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	// P3: echo the effective roster once per run. A control surface that lives in settings rather
 	// than in a diff is visible only at RUN time; without the echo a NARROWING is invisible.
-	deskkit.EchoEffectiveConfig(os.Stderr)
+	args := commandArgs(os.Args[1:])
+	if len(args) == 0 || args[0] != "deskd" {
+		deskkit.EchoEffectiveConfig(os.Stderr)
+	}
 	code := run()
 	os.Exit(code)
 }

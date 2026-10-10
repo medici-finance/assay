@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/cellctl -count=1 -timeout 60s -run '^(TestRoleInitReceivesCellSessionAndCustody|TestDeskHelperEnvReplacesCustodyWithoutChangingParent)$'",
+  "control": {
+    "name": "invert exact helper argv assertion",
+    "file": "cmd/cellctl/roleinit_failure_test.go",
+    "old": "if got := strings.Join(args, \" \"); got != want {",
+    "new": "if got := strings.Join(args, \" \"); got == want {"
+  },
+  "mutations": [
+    {
+      "name": "drop explicit generated session",
+      "file": "cmd/cellctl/git.go",
+      "old": "deskwtCommand(\"deskwt\", \"role-init\", role, \"--session\", session)",
+      "new": "deskwtCommand(\"deskwt\", \"role-init\", role)"
+    },
+    {
+      "name": "help probe inherits operator custody",
+      "file": "cmd/cellctl/git.go",
+      "old": "help.Env = c.deskHelperEnv(help.Environ(), role, session)",
+      "new": "help.Env = help.Environ()"
+    },
+    {
+      "name": "role initialization inherits operator custody",
+      "file": "cmd/cellctl/git.go",
+      "old": "cmd.Env = c.deskHelperEnv(cmd.Environ(), role, session)",
+      "new": "cmd.Env = cmd.Environ()"
+    },
+    {
+      "name": "empty cell roots retain operator roots",
+      "file": "cmd/cellctl/helper_custody.go",
+      "old": "env = envSet(env, key, value)",
+      "new": "if key != \"DESK_ROOTS\" || value != \"\" { env = envSet(env, key, value) }"
+    }
+  ]
+}

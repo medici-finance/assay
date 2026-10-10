@@ -40,6 +40,9 @@ func cmdDeskd(cell string) {
 	if !isExecFile(bin) {
 		die("no deskd at %s", bin)
 	}
+	restore := c.enterDeskCustody()
+	defer restore()
+	deskkit.EchoEffectiveConfig(os.Stderr)
 	var extraEnv []string
 	switch c.Forge {
 	case "github":
@@ -83,7 +86,18 @@ func (c *Cell) deskdMintGitHub() []string {
 	// The forge the cell's own repo resolves to, asked of deskkit rather than derived from
 	// cell.env's CELL_FORGE a second time. This is also the agreement check: a roster entry
 	// naming another forge for this repo is refused HERE, before any credential is read.
-	repo := forgeRepoOf(c.Env.Get("CELL_REPO_SLUG"), orgs)
+	repo := c.deskdRepo()
+	if !deskkit.EffectiveConfig().Configured() {
+		die("deskd: cell roster is missing or invalid; provision home/.config/assay/roster.env before minting")
+	}
+	origin, _ := gitOut(c.Repo, "config", "--get", "remote.origin.url")
+	resolution, err := deskkit.ForgeKindForRepoRemote(repo, origin)
+	if err != nil {
+		die("deskd: could not resolve the forge for %s: %v", repo.Slug(), err)
+	}
+	if resolution.Kind != deskkit.ForgeGitHub {
+		die("deskd: CELL_FORGE=github disagrees with resolved forge %s for %s", resolution.Kind, repo.Slug())
+	}
 	_, res, err := deskkit.ResolveForge(repo, "desk")
 	if err != nil {
 		die("deskd: could not resolve the forge for %s: %v", repo.Slug(), err)
@@ -130,32 +144,20 @@ func (c *Cell) deskdProvisionGitLab() []string {
 	return []string{"GITLAB_API_BASE=" + c.ForgeAPIBase}
 }
 
-// forgeRepoOf turns the cell's own repo coordinate into deskkit's ForgeRepo. A cell that names
-// CELL_REPO_SLUG (every scrubbed cell, and any other cell that sets it) is taken at its word;
-// otherwise the first org in ORGS supplies the owner and the checkout's directory name the
-// repository name, which is the same pair the oracle's per-org loop walks.
-func forgeRepoOf(slug, orgs string) deskkit.ForgeRepo {
-	if i := strings.IndexByte(slug, '/'); i > 0 {
-		return deskkit.ForgeRepo{Owner: slug[:i], Name: slug[i+1:]}
+// deskdRepo uses the configured coordinate or the cell checkout's origin. The caller's
+// working directory and ORGS are never repository identity sources.
+func (c *Cell) deskdRepo() deskkit.ForgeRepo {
+	slug := c.Env.Get("CELL_REPO_SLUG")
+	if slug == "" {
+		var err error
+		slug, err = deskkit.OriginRepoSlug(c.Repo)
+		if err != nil {
+			die("deskd: cannot read the cell repository coordinate; set CELL_REPO_SLUG=owner/repo in cell.env")
+		}
 	}
-	first := ""
-	if f := strings.Fields(strings.ReplaceAll(orgs, ",", " ")); len(f) > 0 {
-		first = f[0]
+	if !deskkit.ValidRepoSlug(slug) {
+		die("deskd: invalid CELL_REPO_SLUG; expected owner/repo")
 	}
-	if first == "" {
-		die("deskd: neither CELL_REPO_SLUG nor ORGS names an owner to resolve the forge against")
-	}
-	name := slug
-	if name == "" {
-		name = filepath.Base(mustWD())
-	}
-	return deskkit.ForgeRepo{Owner: first, Name: name}
-}
-
-func mustWD() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	return wd
+	owner, name, _ := strings.Cut(slug, "/")
+	return deskkit.ForgeRepo{Owner: owner, Name: name}
 }
