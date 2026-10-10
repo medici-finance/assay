@@ -24,19 +24,31 @@ package main
 //	  how this differs from `git cherry` and why.)
 //
 // The NEVER list is absolute: `main` and `master` are never candidates; a branch checked
-// out in ANY registered worktree is never a candidate (git would refuse the delete anyway —
-// a refusal is treated as a skip, not an error); a branch carrying at least one patch the
-// mainline lacks is KEPT, always — this GC targets proven residue, not judgement calls; and
-// any branch whose proof cannot be COMPLETED (an unreadable mainline, an uncountable patch
-// set, a delete that fails) is kept and reported, because an unreadable gate is not a
-// passed one.
+// out in ANY registered worktree is never a candidate; a branch carrying at least one
+// patch the mainline lacks is KEPT, always — this GC targets proven residue, not
+// judgement calls; and any branch whose proof cannot be COMPLETED (an unreadable
+// mainline, an uncountable patch set, a delete that fails) is kept and reported, because
+// an unreadable gate is not a passed one.
 //
-// The delete is `git update-ref -d <ref> <sha-at-proof>` — a compare-and-delete against the
-// sha the proof was taken on, so a branch that moved between proof and delete is left alone.
-// It is deliberately NOT `git branch -d` (that refuses the cherry-clean class it just proved
-// safe, because -d asks about ancestry and a squash-merged branch is not an ancestor) and
-// NEVER `-D`: this tool has no force verb anywhere, and the tool's OWN proof is the safety
-// gate, exactly as on the add-collision reclaim path (branchcollision.go).
+// The checked-out NEVER rule is enforced by the HOLDER SET (`branchHolders`, from
+// `git worktree list --porcelain`) and by nothing else. It is read twice: once to filter
+// candidates before classification, and RE-READ immediately before each delete, because
+// the whole classification of every earlier candidate sits between the first read and a
+// given branch's delete — a worktree created on a to-be-collected branch inside that
+// window is invisible to a single snapshot. NOTE: git's ref-update layer carries NO
+// checked-out refusal for linked worktrees — `git update-ref -d` on a branch a worktree
+// has checked out EXITS 0 and deletes the ref (that refusal belongs to `git branch -d`,
+// which cannot delete the cherry-clean class). There is no git-level backstop here; the
+// re-read before each delete is the guard, which is exactly why it exists.
+//
+// The delete is `git update-ref -d --no-deref <ref> <sha-at-proof>` — a compare-and-delete
+// against the sha the proof was taken on, so a branch that moved between proof and delete
+// is left alone; --no-deref so a hand-planted refs/heads SYMREF is deleted as itself (or
+// refused), never dereferenced into its target. It is deliberately NOT `git branch -d`
+// (that refuses the cherry-clean class it just proved safe, because -d asks about
+// ancestry and a squash-merged branch is not an ancestor) and NEVER `-D`: this tool has
+// no force verb anywhere, and the tool's OWN proof is the safety gate, exactly as on the
+// add-collision reclaim path (branchcollision.go).
 //
 // Patch-id proof, and why not `git cherry`. `git cherry origin/main <branch>` answers the
 // right question but pays for it per branch: it computes patch-ids over the mainline
@@ -64,14 +76,15 @@ package main
 //     proven for a commit whose patch-id could not be computed.
 //
 // Output discipline follows the desk noise-floor contract: a live sweep prints COUNTS per
-// class on the one summary line (and any warnings); the per-branch plan — every candidate,
-// COLLECT and KEEP alike, with the reason — is printed only by --dry-run, which deletes
-// nothing.
+// class on the one summary line (and any warnings); --dry-run prints the per-branch COLLECT
+// plan — what would be deleted, with the proof class — and deletes nothing. The KEEP rows
+// are deliberately NOT printed: a checkout that needs this pass can carry thousands of held
+// branches, and their aggregate is the held counts on the summary line.
 
 import (
 	"bytes"
 	"fmt"
-	"io"
+	"os"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -159,16 +172,18 @@ func listLocalBranches(dir string) ([]localBranch, error) {
 	return branches, nil
 }
 
-// branchCommitsAhead lists the commits in <mainline>..<ref> with their parents in ONE call
+// branchCommitsAhead lists the commits in <mainline>..<rev> with their parents in ONE call
 // (`git rev-list --parents`), returning the non-merge commit shas and whether ANY merge
 // commit is ahead. The merge answer is a gate, not a statistic: a merge commit carries no
 // patch-id, so a patch-id proof over the non-merge commits says nothing about content a
 // merge introduced — a branch with one ahead is held, however clean its other commits are.
-func branchCommitsAhead(dir, ref string) (nonMerge []string, hasMerge bool, err error) {
-	out, err := runGit(dir, "rev-list", "--parents", mainlineRef+".."+ref)
+// Callers pass the candidate's ENUMERATED sha (not its live ref) so the answer refers to
+// the same immutable position the compare-and-delete will.
+func branchCommitsAhead(dir, rev string) (nonMerge []string, hasMerge bool, err error) {
+	out, err := runGit(dir, "rev-list", "--parents", mainlineRef+".."+rev)
 	if err != nil {
 		return nil, false, deskkit.Unverifiable(
-			"cannot list "+ref+"'s commits ahead of "+mainlineRef, err)
+			"cannot list "+rev+"'s commits ahead of "+mainlineRef, err)
 	}
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
@@ -186,9 +201,16 @@ func branchCommitsAhead(dir, ref string) (nonMerge []string, hasMerge bool, err 
 
 // patchIDsForRange computes the set of patch-ids of every non-merge commit in <rangeSpec>
 // by piping `git log -p` into `git patch-id --stable` — WITHOUT a shell: the two processes
-// are joined by an OS pipe directly, so no shell string and no intermediate file ever
-// exists. Both processes go through the package's single argv seam, so the recording tests
-// (and the no-force-flag assertion) see them exactly as they see every other git call.
+// are joined by a real OS pipe whose ends are handed to the children as their stdout/stdin
+// file descriptors, so no copy goroutine and no intermediate buffer exists at all. That
+// choice is the hang guard, not a flourish: with a copied pipe (io.Pipe), a consumer that
+// dies mid-stream leaves the producer's copy blocked on a reader that will never come and
+// the sweep hangs with no timeout — on the desk-boot path. With an OS pipe, the parent
+// closes its own ends right after both children start, so a dead patch-id leaves the pipe
+// readerless and the NEXT write kills git log with SIGPIPE: a consumer crash surfaces as
+// an ordinary Unverifiable error, never a hang. Both processes go through the package's
+// single argv seam, so the recording tests (and the no-force-flag assertion) see them
+// exactly as they see every other git call.
 //
 // --stable is spelled explicitly on every call: patch-id's default stability changed across
 // git versions, and a set built under one algorithm compared against ids computed under the
@@ -207,7 +229,10 @@ func patchIDsForRange(dir, rangeSpec string) (map[string]struct{}, error) {
 	idCmd := execCommand("git", "patch-id", "--stable")
 	idCmd.Dir = dir
 
-	pr, pw := io.Pipe()
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot open the log-to-patch-id pipe", err)
+	}
 	logCmd.Stdout = pw
 	idCmd.Stdin = pr
 	var idOut, logErrBuf, idErrBuf bytes.Buffer
@@ -215,20 +240,24 @@ func patchIDsForRange(dir, rangeSpec string) (map[string]struct{}, error) {
 	logCmd.Stderr = &logErrBuf
 	idCmd.Stderr = &idErrBuf
 
-	// The consumer starts first: writes into an io.Pipe block until a reader takes them,
-	// and patch-id's stdin-copy goroutine is that reader.
 	if err := idCmd.Start(); err != nil {
+		_ = pr.Close()
+		_ = pw.Close()
 		return nil, deskkit.Unverifiable("cannot start git patch-id", err)
 	}
 	if err := logCmd.Start(); err != nil {
 		_ = pr.Close()
+		_ = pw.Close()
 		_ = idCmd.Wait()
 		return nil, deskkit.Unverifiable("cannot start git log for the patch-id pass", err)
 	}
+	// The parent drops its own pipe ends IMMEDIATELY: afterwards the only writer is git
+	// log and the only reader is git patch-id, so EOF propagates on producer exit and a
+	// dead consumer costs the producer a SIGPIPE on its next write. Never reordered after
+	// the Waits — closing late re-opens the hang this comment exists to foreclose.
+	_ = pw.Close()
+	_ = pr.Close()
 	logErr := logCmd.Wait()
-	// CloseWithError hands the consumer the producer's failure as its read error, so a
-	// failed log can never masquerade as a complete (truncated) diff stream.
-	_ = pw.CloseWithError(logErr)
 	idErr := idCmd.Wait()
 	if logErr != nil {
 		return nil, deskkit.Unverifiable("git log for the patch-id pass failed: "+
@@ -250,14 +279,20 @@ func patchIDsForRange(dir, rangeSpec string) (map[string]struct{}, error) {
 	return ids, nil
 }
 
+// listBranchHolders is the seam through which the pass reads `branchHolders` — a package
+// var so a test can watch a holder APPEAR between the candidate snapshot and the pre-delete
+// re-verification, which is the window the re-verification exists to close.
+var listBranchHolders = branchHolders
+
 // deleteProvenBranch drops a local branch whose content was JUST proven redundant, by
-// compare-and-delete: `git update-ref -d <ref> <sha-at-proof>`. See the file header for why
-// this is neither `git branch -d` (refuses the cherry-clean class it just proved safe) nor
-// ever `-D` (no force verb exists in this tool).
+// compare-and-delete: `git update-ref -d --no-deref <ref> <sha-at-proof>`. See the file
+// header for why this is neither `git branch -d` (refuses the cherry-clean class it just
+// proved safe) nor ever `-D` (no force verb exists in this tool), and for why --no-deref
+// (a planted refs/heads symref must never be dereferenced into deleting its target).
 func deleteProvenBranch(dir, ref, sha string) error {
-	if _, err := runGit(dir, "update-ref", "-d", ref, sha); err != nil {
+	if _, err := runGit(dir, "update-ref", "-d", "--no-deref", ref, sha); err != nil {
 		return deskkit.Unverifiable("git update-ref -d "+ref+" failed (the branch may have "+
-			"moved since its proof, or been checked out)", err)
+			"moved since its proof)", err)
 	}
 	return nil
 }
@@ -276,11 +311,13 @@ func gcLocalBranches(sc *sweepCtx, dir string, dryRun bool) branchGCResult {
 			" — no branch can be classified, so the branch GC collected nothing this sweep")
 		return res
 	}
-	// The holder set is the checked-out guard: a branch any registered worktree has checked
-	// out is never a candidate. A failure to read it fails CLOSED for the whole pass — an
+	// The holder set is the checked-out guard's FIRST read: a branch any registered
+	// worktree has checked out is never classified. It is re-read immediately before each
+	// delete below — git's ref-update layer carries no checked-out refusal, so these two
+	// reads are the whole guard. A failure to read it fails CLOSED for the whole pass: an
 	// unknown holder set is never read as "nobody holds anything", because that reading is
 	// the one that would delete a branch out from under a live worktree.
-	holders, herr := branchHolders(dir)
+	holders, herr := listBranchHolders(dir)
 	if herr != nil {
 		res.warns = append(res.warns, "could-not-check: "+errText(herr)+
 			" — which branches are checked out is unknown, so the branch GC collected nothing this sweep")
@@ -317,9 +354,13 @@ func gcLocalBranches(sc *sweepCtx, dir string, dryRun bool) branchGCResult {
 		if _, ok := sc.mainAncestors[b.sha]; ok {
 			class = "merged"
 		} else {
-			// Cherry-clean proof: squash-merge-visible residue. Any merge commit ahead
-			// holds the branch outright — patch-ids cannot see what a merge introduced.
-			nonMerge, hasMerge, lerr := branchCommitsAhead(dir, b.ref)
+			// Cherry-clean proof: squash-merge-visible residue. The proof is pinned to the
+			// ENUMERATED sha, not the live ref: b.sha is the immutable position the
+			// compare-and-delete below will also name, so the proof and the delete can
+			// never refer to two different positions of a branch that moved mid-pass.
+			// Any merge commit ahead holds the branch outright — patch-ids cannot see
+			// what a merge introduced.
+			nonMerge, hasMerge, lerr := branchCommitsAhead(dir, b.sha)
 			if lerr != nil {
 				res.heldUnproven++
 				res.plan = append(res.plan, branchGCVerdict{name: b.name,
@@ -356,7 +397,7 @@ func gcLocalBranches(sc *sweepCtx, dir string, dryRun bool) branchGCResult {
 					reason: "could-not-check: the mainline patch-id set is unavailable"})
 				continue
 			}
-			branchIDs, perr := patchIDsForRange(dir, mainlineRef+".."+b.ref)
+			branchIDs, perr := patchIDsForRange(dir, mainlineRef+".."+b.sha)
 			if perr != nil {
 				res.heldUnproven++
 				res.plan = append(res.plan, branchGCVerdict{name: b.name,
@@ -398,6 +439,29 @@ func gcLocalBranches(sc *sweepCtx, dir string, dryRun bool) branchGCResult {
 			}
 			res.plan = append(res.plan, branchGCVerdict{name: b.name, collect: true, class: class,
 				reason: class + " [dry-run: not deleted]"})
+			continue
+		}
+		// The checked-out guard's SECOND read, immediately before the delete. The snapshot
+		// above was taken before the classification of every earlier candidate — and the
+		// lazy whole-mainline patch-id pass — so a worktree created on this branch inside
+		// that window is invisible to it. Git's ref-update layer will NOT save us:
+		// `git update-ref -d` on a branch a linked worktree has checked out exits 0 and
+		// deletes the ref (the checked-out refusal belongs to `git branch -d`, which
+		// cannot take the cherry-clean class). This re-read is the guard; a read failure
+		// holds the branch (fail closed), and a branch now held is a skip, not an error.
+		fresh, ferr := listBranchHolders(dir)
+		if ferr != nil {
+			res.heldUnproven++
+			res.warns = append(res.warns, "branch "+b.name+" was proven "+class+
+				" but the checked-out set could not be re-read before its delete (left in place): "+errText(ferr))
+			res.plan = append(res.plan, branchGCVerdict{name: b.name,
+				reason: "proven " + class + " but the pre-delete holder re-read failed: " + errText(ferr)})
+			continue
+		}
+		if wt, held := fresh[b.ref]; held {
+			res.checkedOut++
+			res.plan = append(res.plan, branchGCVerdict{name: b.name,
+				reason: "checked out in worktree " + wt + " (appeared during this sweep)"})
 			continue
 		}
 		if derr := deleteProvenBranch(dir, b.ref, b.sha); derr != nil {

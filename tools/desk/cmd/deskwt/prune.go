@@ -451,11 +451,20 @@ func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, opt
 		} else {
 			totalRemoved += res.removed
 			totalReclaimed += len(res.reclaimed)
-			tick := fmt.Sprintf("%s deskwt prune tick %d: bookkept=%d removed=%d held=%d locked_held=%d locks_reclaimed=%d",
-				nowStamp(), ticks, res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
-			if res.branchGC.ran {
-				tick += fmt.Sprintf(" branches_gc=%d (merged=%d cherry=%d) branches_held=%d",
+			var tick string
+			if res.branchGC.only {
+				// --branches-only: the worktree arms did not run, so their zeros are not
+				// counts of anything and the tick leads with the half that did.
+				tick = fmt.Sprintf("%s deskwt prune tick %d: branches_gc=%d (merged=%d cherry=%d) branches_held=%d",
+					nowStamp(), ticks,
 					res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+			} else {
+				tick = fmt.Sprintf("%s deskwt prune tick %d: bookkept=%d removed=%d held=%d locked_held=%d locks_reclaimed=%d",
+					nowStamp(), ticks, res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
+				if res.branchGC.ran {
+					tick += fmt.Sprintf(" branches_gc=%d (merged=%d cherry=%d) branches_held=%d",
+						res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+				}
 			}
 			fmt.Fprintln(os.Stdout, tick)
 			renderSweepDetail(os.Stdout, res)

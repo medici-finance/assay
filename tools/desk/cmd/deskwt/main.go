@@ -132,12 +132,13 @@ stale local ref behind per worktree, and nothing else reaps them). A branch is c
 ONLY when its content is provably on refs/remotes/origin/main: its tip is an ancestor of
 the mainline (a fresh, never-used handle is exactly this), or every unique commit's
 patch-id is already in the mainline's history (the squash-merge case). Never collected:
-main/master, any branch checked out in any worktree (a git refusal is a skip, not an
-error), and anything whose proof fails or cannot be completed — a branch with unique
-patches is KEPT, always. The delete is a compare-and-delete against the proven sha, never
-a force verb. --no-branches skips this pass; --branches-only runs it alone, so the boot
-path can control cadence. Live sweeps print the per-class COUNTS only; --dry-run prints
-the per-branch COLLECT plan and deletes nothing.
+main/master, any branch checked out in any worktree (guarded by the worktree-list holder
+set, re-read immediately before each delete — git's ref-update layer has NO checked-out
+refusal to lean on), and anything whose proof fails or cannot be completed — a branch with
+unique patches is KEPT, always. The delete is a compare-and-delete against the proven sha
+(git update-ref -d --no-deref), never a force verb. --no-branches skips this pass;
+--branches-only runs it alone, so the boot path can control cadence. Live sweeps print the
+per-class COUNTS only; --dry-run prints the per-branch COLLECT plan and deletes nothing.
 
 A LOCKED worktree is always held — and nothing else ever unlocks one, so a lock taken by a
 session that has since died is permanent and the locked population only grows.

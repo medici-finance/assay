@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -413,8 +414,8 @@ func TestPruneBranchGCDeletesByCompareAndDelete(t *testing.T) {
 	if branchExists(t, work, "stale-merged") {
 		t.Fatalf("merged branch survived; stderr:\n%s", errout)
 	}
-	// The ref went by `git update-ref -d <ref> <sha-at-proof>` — the compare-and-delete —
-	// never `git branch -D` and never any force flag.
+	// The ref went by `git update-ref -d --no-deref <ref> <sha-at-proof>` — the
+	// compare-and-delete — never `git branch -D` and never any force flag.
 	sawCAD := false
 	for _, c := range gitCalls(*calls) {
 		args := c[1:]
@@ -423,12 +424,154 @@ func TestPruneBranchGCDeletesByCompareAndDelete(t *testing.T) {
 				t.Fatalf("the branch GC used a force delete: %v", c)
 			}
 		}
-		if len(args) == 4 && args[0] == "update-ref" && args[1] == "-d" &&
-			args[2] == "refs/heads/stale-merged" && args[3] == wantSHA {
+		if len(args) == 5 && args[0] == "update-ref" && args[1] == "-d" && args[2] == "--no-deref" &&
+			args[3] == "refs/heads/stale-merged" && args[4] == wantSHA {
 			sawCAD = true
 		}
 	}
 	if !sawCAD {
 		t.Fatalf("no compare-and-delete of refs/heads/stale-merged at its proven sha %s in: %v", wantSHA, gitCalls(*calls))
+	}
+}
+
+// --- branch GC: a holder that APPEARS mid-sweep is caught by the pre-delete re-read ----
+//
+// The checked-out guard is the holder set and nothing else — `git update-ref -d` carries
+// no checked-out refusal for linked worktrees (that refusal belongs to `git branch -d`,
+// which cannot take the cherry-clean class). The candidate snapshot is taken before the
+// classification loop; the whole classification of every earlier candidate sits between
+// it and a given branch's delete. This test watches the SECOND read catch a worktree that
+// "appeared" inside that window: the branch is provably merged, and only the re-read can
+// keep it.
+func TestPruneBranchGCReVerifiesHolderBeforeDelete(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	mustGit(t, work, "branch", "stale-merged")
+	advanceMain(t, work, "mainline")
+
+	// The listBranchHolders seam: the FIRST read (the candidate filter) sees the branch
+	// free; every LATER read (the pre-delete re-verification) reports it checked out — a
+	// worktree created mid-sweep.
+	real := listBranchHolders
+	reads := 0
+	listBranchHolders = func(dir string) (map[string]string, error) {
+		reads++
+		h, err := real(dir)
+		if reads >= 2 {
+			if h == nil {
+				h = map[string]string{}
+			}
+			h["refs/heads/stale-merged"] = "/private/tmp/tracker-appeared-mid-sweep"
+		}
+		return h, err
+	}
+	t.Cleanup(func() { listBranchHolders = real })
+
+	resetCalls(calls)
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !branchExists(t, work, "stale-merged") {
+		t.Fatalf("the pre-delete holder re-read failed to keep a branch a worktree appeared on; stderr:\n%s", errout)
+	}
+	if reads < 2 {
+		t.Fatalf("the holder set was read %d time(s) — the pre-delete re-verification did not run", reads)
+	}
+	for _, c := range gitCalls(*calls) {
+		args := c[1:]
+		if len(args) >= 2 && args[0] == "update-ref" && args[1] == "-d" {
+			t.Fatalf("a delete ran for a branch the re-read reported held: %v", c)
+		}
+	}
+}
+
+// --- branch GC: the shared checkout's own non-protected branch is held ------------------
+//
+// Every other fixture sits the shared checkout on `main`, which the protected-NAME rule
+// already holds — so without this test the suite cannot see whether the checked-out guard
+// covers the MAIN checkout's own branch. (Reviewer-driven coverage close.)
+func TestPruneBranchGCKeepsBranchCheckedOutInSharedCheckout(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	// Advance the mainline FIRST (advanceMain commits onto the checked-out branch), then
+	// sit the shared checkout on a merged-below-tip branch with a non-protected name.
+	advanceMain(t, work, "mainline")
+	original := mustGit(t, work, "rev-parse", "refs/remotes/origin/main~1")
+	mustGit(t, work, "checkout", "-b", "trunk", original)
+
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !branchExists(t, work, "trunk") {
+		t.Fatalf("the branch GC deleted the SHARED CHECKOUT's own branch; stderr:\n%s", errout)
+	}
+	// trunk (checked out) and main (protected name) are the held two; nothing collected.
+	if !strings.Contains(errout, "branches-gc 0") || !strings.Contains(errout, "branches-held 2") {
+		t.Fatalf("expected 0 collected and 2 held (trunk checked-out, main protected); got:\n%s", errout)
+	}
+}
+
+// --- branch GC: a planted refs/heads symref can never delete its TARGET -----------------
+//
+// `git update-ref -d` dereferences symbolic refs by default: with refs/heads/decoy ->
+// refs/heads/main planted, deleting "decoy" WITHOUT --no-deref deletes main itself (the
+// enumerator reads the symref at its target's objectname, so the proof runs against the
+// target's position). The delete carries --no-deref so the symref is deleted as itself —
+// or refused — and the target is never touched.
+func TestPruneBranchGCPlantedSymrefCannotDeleteItsTarget(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	mainSHA := mustGit(t, work, "rev-parse", "refs/heads/main")
+	mustGit(t, work, "symbolic-ref", "refs/heads/decoy", "refs/heads/main")
+
+	resetCalls(calls)
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if got := mustGit(t, work, "rev-parse", "refs/heads/main"); got != mainSHA {
+		t.Fatalf("deleting the planted symref touched its TARGET (main moved from %s to %s)", mainSHA, got)
+	}
+	if anyGitForce(*calls) {
+		t.Fatalf("a git argv carried a force flag: %v", gitCalls(*calls))
+	}
+}
+
+// --- the patch-id pipe: a dead consumer is an error, never a hang -----------------------
+//
+// patchIDsForRange joins git log to git patch-id with a real OS pipe whose ends the parent
+// drops immediately after both children start, so a dead consumer leaves the pipe
+// readerless and the producer dies by SIGPIPE instead of blocking a boot-path sweep
+// forever. This test kills the consumer outright and requires an error within a bounded
+// time — the io.Pipe shape this replaced hangs here even on a one-commit fixture.
+func TestPatchIDConsumerFailureIsAnErrorNotAHang(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	inner := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) >= 1 && args[0] == "patch-id" {
+			return inner("false")
+		}
+		return inner(name, args...)
+	}
+	t.Cleanup(func() { execCommand = inner })
+
+	type result struct {
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		_, err := patchIDsForRange(work, "refs/remotes/origin/main")
+		done <- result{err}
+	}()
+	select {
+	case r := <-done:
+		if r.err == nil {
+			t.Fatal("patchIDsForRange with a dead consumer returned no error")
+		}
+	case <-time.After(60 * time.Second):
+		t.Fatal("patchIDsForRange hung on a dead consumer — the pipe ends are not being dropped")
 	}
 }

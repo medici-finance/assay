@@ -2417,8 +2417,9 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   **E2BIG** (one deny-path per registered worktree) and the #742 writeguard mis-classifies
   top-level worktrees as the shared checkout. It runs these steps:
   1. **Step A (always safe):** `git worktree prune` — drops admin entries whose directories
-     are already gone (pure bookkeeping, no working tree touched). Unconditional: no flag
-     turns it on or off.
+     are already gone (pure bookkeeping, no working tree touched). Unconditional within the
+     worktree arms: no flag turns it on or off there. (`--branches-only` runs the branch GC
+     alone, skipping every worktree arm including this one.)
   2. **Step A2 (opt-in, `--reclaim-stale-locks`):** the lock lifecycle — see below.
   3. **Step B (safe gate):** walk the registered worktrees under the sanctioned prefixes and
      remove — via the exact same safe primitive as `remove` — ONLY those it can prove safe:
