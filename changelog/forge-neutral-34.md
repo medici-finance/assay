@@ -1,3 +1,0 @@
-### Added
-- `deskread --ci-workflow-token` reads over the job's own workflow token: an explicit, CI-only, read-only opt-in beside the App custody default. The token comes from `DESKREAD_CI_WORKFLOW_TOKEN` only and must be an app installation token. It serves the `issues`, `trust` and `comments` kinds, for the job's own repository only, and every refusal names its layer as `[ci-transport:<layer>]` (exit 5).
-- Every `deskread` envelope carries an additive `identity` object (`app-custody` with the role, or `ci-workflow-token` with the repository and run id), and one stderr line names the transport. The token never appears in output.

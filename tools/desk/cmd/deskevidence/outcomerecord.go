@@ -69,9 +69,13 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: --outcome-record target failed the path-prefix guard: " + perr.Error())
 	}
 	ac.file = targetRepoPath
-	// Pre-work admission, bound to this record's brief key: the record's target is
-	// derived from its brief, so an attestation for another brief refuses here.
-	if _, aerr := admitVerifierEvidence(root, repoSlug, targetRepoPath, ac); aerr != nil {
+	// Mint, resolve the forge, then pre-work admission through that forge (admitLanding),
+	// bound to this record's brief key: the record's target is derived from its brief, so an
+	// attestation for another brief refuses here. The refusals above need only the record's
+	// own bytes, so a record they refuse never mints; everything below reads or writes the
+	// forge and runs only for an admitted landing.
+	fg, fr, _, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, ac)
+	if aerr != nil {
 		return aerr
 	}
 	commitContent := deskkit.CanonicalBytes(rec.Raw)
@@ -83,14 +87,6 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// PUBLISH-identity gate — see cmdEvidence's own call for the full rationale (#1490 lane B).
 	if ierr := publishIdentityGate(root, branch); ierr != nil {
 		return ierr
-	}
-
-	if merr := mintTokenFn(repoSlug); merr != nil {
-		return merr
-	}
-	fg, fr, ferr := forgeForFn(owner, name)
-	if ferr != nil {
-		return ferr
 	}
 
 	// verify-reset/03: every verify-fail / blocked record lands with a complete
