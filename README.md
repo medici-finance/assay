@@ -4,6 +4,14 @@ Assay is a methodology for running software delivery across a fleet of AI agents
 
 [assay.guide](https://assay.guide/) · [Video walkthroughs](https://www.youtube.com/watch?v=zlIsDjFjqT4&list=PLQ-vGHp06goU)
 
+## Run engineering as a system
+
+![Assay: from a single brief to engineering operations.](docs/vision/assets/01-vision.png)
+
+**A governed operating model for agent-led engineering** — an agent-operated delivery pipeline with a human-governance layer.
+
+Read the [Assay vision report](docs/vision/README.md) for the direction from governed delivery to cells, continuing operations, quality, assurance and bounded machine judgment. The report distinguishes current foundations from unfinished integration and future work, and includes an evidence appendix and a [designed PDF](docs/vision/assay-vision.pdf).
+
 ## Overview
 
 When agents do the work, generating code is the easy part; knowing whether it was done correctly is not. Assay makes each unit of work a self-contained, checkable artifact, and derives the project's status board from those artifacts rather than from a human's assertion.
@@ -21,6 +29,7 @@ The board is derived from agent-authored artifacts, checked by the linter and re
 
 | Path | What it is |
 |------|-----------|
+| [docs/vision/](docs/vision/) | The public strategic vision, GitHub-rendered diagrams and matching PDF. |
 | [docs/](docs/) | The methodology: the [adoption runbook](docs/adopting-assay.md), the brief schema ([rules](docs/brief-rules.md), [template](docs/brief-template.md)), the [lifecycle](docs/lifecycle.md), the [registers](docs/registers.md), the [evidence bundle](docs/evidence-bundle.md), and the [telemetry posture](docs/telemetry.md) (opt-in, off by default). |
 | [statusgen/](statusgen/) | The generator and linter. Run `cd statusgen && go run . --root ../examples/adopter-scaffold --lint`. |
 | [plugins/assay/](plugins/assay/) | The Assay plugin for Claude Code: methodology skills for adopting Assay, shaping specifications and authoring briefs (`adopt`, `author-spec`, `author-brief`). |
