@@ -1,0 +1,27 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/9001/jobs",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/jobs/70/trace"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/jobs/71/trace"
+    }
+  ],
+  "result": [
+    {
+      "Name": "build",
+      "Text": "compiled\n"
+    },
+    {
+      "Name": "test",
+      "Text": "FAIL: TestThing\n"
+    }
+  ]
+}

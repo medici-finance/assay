@@ -1,0 +1,15 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/actions/runs/501/logs"
+    },
+    {
+      "method": "GET",
+      "path": "/_run_archive/501.zip"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: the log archive for run 501 on medici-finance/assay holds no log file, so there is no log to read",
+  "not_found": false
+}

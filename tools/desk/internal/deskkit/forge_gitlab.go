@@ -143,15 +143,34 @@ func (g *GitLabForge) client() (*gitlab.Client, error) {
 		gitlab.WithoutRetries(),
 		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
 	}
-	if g.Client != nil {
-		opts = append(opts, gitlab.WithHTTPClient(g.Client))
-	}
+	opts = append(opts, gitlab.WithHTTPClient(gitlabNoRedirectClient(g.Client)))
 	cl, err := gitlab.NewClient(g.Token, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab API client", err)
 	}
 	g.cl = cl
 	return cl, nil
+}
+
+// gitlabNoRedirectClient is the HTTP client every GitLab call in this backend goes through: a
+// COPY of the injected client (or a fresh one when none is injected — production) that follows
+// no redirect at all. The reason is the credential's shape (review finding SEC-1). GitLab
+// authenticates with PRIVATE-TOKEN, a custom header, and net/http strips only Authorization and
+// cookies when it follows a redirect to another host — every other header goes with it — so a
+// followed redirect hands the role's token to whatever host the Location names. The trigger call
+// carries its token in the request BODY, which a 307/308 re-sends. The GitLab API answers its
+// own routes directly, run-log traces included, so no call here needs a redirect: a 3xx comes
+// back as the response, the library reports it as an error, and mapErr makes it a could-not-check
+// naming the status. The copy leaves the caller's client untouched.
+// forge_redirect_test.go pins it over the wire; gitlabcredsites_test.go lists every site.
+func gitlabNoRedirectClient(base *http.Client) *http.Client {
+	c := &http.Client{}
+	if base != nil {
+		cp := *base
+		c = &cp
+	}
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return c
 }
 
 // project renders a ForgeRepo as the URL-encoded project path GitLab addresses projects by
@@ -4137,7 +4156,8 @@ const gitlabPipelineDefinition = ".gitlab-ci.yml"
 // PRIVATE-TOKEN header: the pipeline trigger token authenticates as a `token` field of the
 // request itself, and presenting it as an access token too would both misuse it and have the
 // instance reject the call as an invalid access token. The same three construction choices
-// client() makes (no retries, no internal limiter, the injected HTTP client) apply, and an
+// client() makes (no retries, no internal limiter, the injected HTTP client with redirects
+// refused — gitlabNoRedirectClient) apply, and an
 // empty token is refused here too — the trigger call never goes out anonymous.
 func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
 	if g.Token == "" {
@@ -4149,9 +4169,7 @@ func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
 		gitlab.WithoutRetries(),
 		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
 	}
-	if g.Client != nil {
-		opts = append(opts, gitlab.WithHTTPClient(g.Client))
-	}
+	opts = append(opts, gitlab.WithHTTPClient(gitlabNoRedirectClient(g.Client)))
 	cl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab trigger client", err)
@@ -4341,6 +4359,141 @@ func (g *GitLabForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 			"mapping does not know — not rounded to a known state", pid, repo.Slug(), StripControl(p.Status)), nil)
 	}
 	return st, nil
+}
+
+// gitlabPipelineJobs lists every job of a pipeline (`GET /projects/:id/pipelines/:id/jobs`),
+// page by page under lim (production: defaultRunLogBounds). It is the shared first hop of RunLog
+// and RetryRun: GitLab's trace and retry are per JOB, so a pipeline-level verb resolves its jobs
+// first. More than lim.maxParts jobs, or more pages than lim.maxPages, is a could-not-check — a
+// silently shortened list would read as the whole pipeline.
+func (g *GitLabForge) gitlabPipelineJobs(cl *gitlab.Client, repo ForgeRepo, pid int64, lim runLogBounds) ([]*gitlab.Job, error) {
+	path := fmt.Sprintf("/projects/%s/pipelines/%d/jobs", g.projectPath(repo), pid)
+	var all []*gitlab.Job
+	for page := 1; page <= lim.maxPages; page++ {
+		chunk, resp, lerr := cl.Jobs.ListPipelineJobs(repo.Slug(), pid, &gitlab.ListJobsOptions{
+			ListOptions: gitlab.ListOptions{PerPage: lim.perPage, Page: int64(page)},
+		})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, path, lerr)
+		}
+		for _, j := range chunk {
+			if j != nil {
+				all = append(all, j)
+			}
+		}
+		if len(all) > lim.maxParts {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has more than %d jobs — "+
+				"refusing to act on a silently shortened job list", pid, repo.Slug(), lim.maxParts), nil)
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return all, nil
+		}
+	}
+	return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has more job pages than this read "+
+		"will walk — refusing a silently shortened job list", pid, repo.Slug()), nil)
+}
+
+// RunLog reads the log of a pipeline: its jobs are listed, then EVERY job's trace is read
+// (`GET /projects/:id/jobs/:job_id/trace`, `read_api`), one RunLogPart per job. A pipeline
+// with several jobs is never reduced to the first job's trace; a pipeline with no jobs is a
+// could-not-check (404 semantics), not an empty success. Each trace is STREAMED through the
+// bounded sink, so the download itself is bounded and the trace's true tail is what is kept.
+func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	return g.runLog(repo, run, defaultRunLogBounds)
+}
+
+// runLog is RunLog under explicit bounds (production: defaultRunLogBounds).
+func (g *GitLabForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]RunLogPart, error) {
+	pid, err := ValidateRunID(run)
+	if err != nil {
+		return nil, err
+	}
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	jobs, err := g.gitlabPipelineJobs(cl, repo, pid, lim)
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) == 0 {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has no jobs, so there is no log to read",
+			pid, repo.Slug()), nil)
+	}
+	parts := make([]RunLogPart, 0, len(jobs))
+	for _, j := range jobs {
+		rel := fmt.Sprintf("projects/%s/jobs/%d/trace", g.projectPath(repo), j.ID)
+		req, rerr := cl.NewRequest(http.MethodGet, rel, nil, nil)
+		if rerr != nil {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: GET /%s could not be built", rel), rerr)
+		}
+		sink := &runLogSink{limit: lim.readCap, keep: lim.partCap}
+		_, derr := cl.Do(req, sink)
+		if errors.Is(derr, errRunLogOverRead) {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: the trace of job %q (%d) in pipeline %d on %s exceeds %d bytes — "+
+				"refusing to present a slice of it as its tail", StripControl(j.Name), j.ID, pid, repo.Slug(), lim.readCap), nil)
+		}
+		if derr != nil {
+			return nil, g.mapErr(http.MethodGet, "/"+rel, derr)
+		}
+		text, trunc := sink.tail()
+		parts = append(parts, RunLogPart{Name: j.Name, Text: text, Truncated: trunc})
+	}
+	return parts, nil
+}
+
+// RetryRun retries the FAILED jobs of a pipeline: the jobs are listed and each job whose
+// status is failed is retried (`POST /projects/:id/jobs/:job_id/retry`, `api`). Passed, running
+// and manual jobs are left alone — the same narrowness as GitHub's rerun-failed-jobs. A
+// pipeline with no failed job is a could-not-check naming it; nothing is written.
+func (g *GitLabForge) RetryRun(repo ForgeRepo, run RunRef) error {
+	pid, err := ValidateRunID(run)
+	if err != nil {
+		return err
+	}
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	jobs, err := g.gitlabPipelineJobs(cl, repo, pid, defaultRunLogBounds)
+	if err != nil {
+		return err
+	}
+	var failed []*gitlab.Job
+	for _, j := range jobs {
+		if j.Status == string(gitlab.Failed) {
+			failed = append(failed, j)
+		}
+	}
+	if len(failed) == 0 {
+		return Unverifiable(fmt.Sprintf("could-not-check: pipeline %d on %s has no failed job to retry — "+
+			"nothing was written", pid, repo.Slug()), nil)
+	}
+	var retried []string
+	for _, j := range failed {
+		path := fmt.Sprintf("/projects/%s/jobs/%d/retry", g.projectPath(repo), j.ID)
+		if _, _, rerr := cl.Jobs.RetryJob(repo.Slug(), j.ID); rerr != nil {
+			return partialRetryErr(g.mapErr(http.MethodPost, path, rerr), j.Name, retried)
+		}
+		retried = append(retried, j.Name)
+	}
+	return nil
+}
+
+// partialRetryErr names, on a retry that failed part-way, the job it failed at and the jobs it
+// had ALREADY retried — those retries are live on the forge, and a caller told only "retry
+// failed" would retry them a second time. The error keeps its class (refused or
+// could-not-check) and its cause.
+func partialRetryErr(err error, at string, retried []string) error {
+	prefix := fmt.Sprintf("retrying job %s failed after retrying %d job(s) (%s): ",
+		strconv.Quote(StripControl(at)), len(retried), quotedList(retried))
+	var de *DeskError
+	if errors.As(err, &de) {
+		cp := *de
+		cp.Msg = prefix + de.Msg
+		return &cp
+	}
+	return Unverifiable(prefix+"could-not-check", err)
 }
 
 // GitLab issues do not expose lastEditedAt. The existing activity-note query is

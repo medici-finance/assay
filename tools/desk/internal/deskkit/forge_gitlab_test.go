@@ -68,6 +68,12 @@ type glServer struct {
 	commitMRs []map[string]any
 	statuses  []map[string]any
 	jobs      []map[string]any
+	// traces maps a job id (decimal string) to the plain-text trace its trace route serves;
+	// an id absent from it answers 404 (forge-neutral brief 17's RunLog).
+	traces map[string]string
+	// retryForbid names job ids (decimal string) whose retry route answers 403 — a retry that
+	// fails part-way through a pipeline's failed jobs.
+	retryForbid map[string]bool
 	// pipelines is the project-pipelines LIST payload, served by SHA: an entry is returned only
 	// when its "sha" equals the request's ?sha=, so a fixture cannot answer for a head it does
 	// not belong to. Empty/absent → the instance ran no pipeline at that head.
@@ -242,6 +248,8 @@ var (
 	lTrigger     = regexp.MustCompile(`^/api/v4/projects/[^/]+/trigger/pipeline$`)
 	lPipeline1   = regexp.MustCompile(`^/api/v4/projects/[^/]+/pipelines/[0-9]+$`)
 	lJobPlay     = regexp.MustCompile(`^/api/v4/projects/[^/]+/jobs/[0-9]+/play$`)
+	lJobTrace    = regexp.MustCompile(`^/api/v4/projects/[^/]+/jobs/([0-9]+)/trace$`)
+	lJobRetry    = regexp.MustCompile(`^/api/v4/projects/[^/]+/jobs/[0-9]+/retry$`)
 	lDeployments = regexp.MustCompile(`^/api/v4/projects/[^/]+/deployments$`)
 	lDeployApprv = regexp.MustCompile(`^/api/v4/projects/[^/]+/deployments/[0-9]+/approval$`)
 	// forge-neutral brief 33's routes (ops 56 and 57).
@@ -522,6 +530,22 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.triggerPipeline)
 	case r.Method == http.MethodGet && lPipeline1.MatchString(path):
 		enc(s.pipeline)
+	case r.Method == http.MethodGet && lJobTrace.MatchString(path):
+		tr, ok := s.traces[lJobTrace.FindStringSubmatch(path)[1]]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte(tr))
+	case r.Method == http.MethodPost && lJobRetry.MatchString(path):
+		if s.retryForbid[strings.TrimSuffix(path[strings.LastIndex(path, "/jobs/")+len("/jobs/"):], "/retry")] {
+			w.WriteHeader(http.StatusForbidden)
+			enc(map[string]any{"message": "403 Forbidden"})
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		enc(map[string]any{"id": 99, "status": "pending"})
 	case r.Method == http.MethodPost && lJobPlay.MatchString(path):
 		enc(map[string]any{"id": 71, "name": "deploy-production", "status": "pending"})
 	case r.Method == http.MethodGet && lDeployments.MatchString(path):
@@ -2622,6 +2646,77 @@ func glCases() []glCase {
 					"web_url": "https://gitlab.example/medici-finance/assay/-/pipelines/9001"}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.RunStatus(glRepo, RunRef{ID: "9001"}) },
+		},
+		// --- forge-neutral brief 17: RunLog and RetryRun ---
+		{
+			// A MULTI-JOB pipeline: every job's trace is read, one part per job in listing order.
+			// Reading only the first job's trace would pass a single-job fixture and fail this.
+			name: "run_log", method: "RunLog",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{
+					{"id": 70, "name": "build", "status": "success"},
+					{"id": 71, "name": "test", "status": "failed"},
+				}
+				s.traces = map[string]string{"70": "compiled\n", "71": "FAIL: TestThing\n"}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RunLog(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			// A pipeline with no jobs has no log: could-not-check, never an empty success.
+			name: "run_log_no_jobs", method: "RunLog",
+			setup: func(s *glServer) { s.jobs = []map[string]any{} },
+			run:   func(f *GitLabForge) (any, error) { return f.RunLog(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			name: "run_log_trace_not_found", method: "RunLog",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{{"id": 70, "name": "build", "status": "success"}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RunLog(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			// RetryRun retries ONLY the failed jobs; the passed and manual ones are not touched.
+			name: "retry_run", method: "RetryRun",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{
+					{"id": 70, "name": "build", "status": "success"},
+					{"id": 71, "name": "test", "status": "failed"},
+					{"id": 72, "name": "lint", "status": "failed"},
+					{"id": 73, "name": "deploy", "status": "manual"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return nil, f.RetryRun(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			// A retry that fails part-way names the job it failed at AND the jobs it had already
+			// retried (live on the forge), and keeps the failure's class; no later job is tried.
+			name: "retry_run_partial", method: "RetryRun",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{
+					{"id": 71, "name": "test", "status": "failed"},
+					{"id": 72, "name": "lint", "status": "failed"},
+					{"id": 74, "name": "e2e", "status": "failed"},
+				}
+				s.retryForbid = map[string]bool{"72": true}
+			},
+			run: func(f *GitLabForge) (any, error) { return nil, f.RetryRun(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			// No failed job: could-not-check naming it, and NO retry is written.
+			name: "retry_run_no_failed_job", method: "RetryRun",
+			setup: func(s *glServer) {
+				s.jobs = []map[string]any{{"id": 70, "name": "build", "status": "success"}}
+			},
+			run: func(f *GitLabForge) (any, error) { return nil, f.RetryRun(glRepo, RunRef{ID: "9001"}) },
+		},
+		{
+			// The backend layer's own refusal: no minted token, zero requests.
+			name: "retry_run_refuses_unminted_token", method: "RetryRun",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				f.Token = ""
+				return nil, f.RetryRun(glRepo, RunRef{ID: "9001"})
+			},
 		},
 		// --- forge-neutral brief 33: ops 55-58 and the widened fields ---
 		{

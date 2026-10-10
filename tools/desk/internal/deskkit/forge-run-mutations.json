@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestRunWorkflow|TestApproveGateCredentialCannotApprove|TestApproveGate|TestGitLabRunWorkflow|TestRunStatus|TestRunID|TestResolveRunCredential|TestRunCredentials|TestExtCatalogue|TestRosterKnownKeySet|TestForgeGithubGolden|TestForgeGitlabGolden|TestRunLog|TestForgeNoPassthroughAfterRunLogRetry|RedirectKeepsToken|RedirectDropsToken|NilClientRefusesRedirect|InjectedClientRefusesRedirect|TestGitLabCred'",
   "control": {
     "name": "CONTROL — the GitHub dispatch body loses its ref",
     "file": "internal/deskkit/forge_github.go",
@@ -72,6 +72,162 @@
       "file": "internal/deskkit/runcredential.go",
       "old": "\tif len(cfg.Problems) > 0 {",
       "new": "\tif false && len(cfg.Problems) > 0 {"
+    },
+    {
+      "name": "brief 17 — GitHub retry re-runs the WHOLE run, including jobs that passed (rerun instead of rerun-failed-jobs)",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "/actions/runs/%d/rerun-failed-jobs\"",
+      "new": "/actions/runs/%d/rerun\""
+    },
+    {
+      "name": "brief 17 — GitLab log reads only the FIRST job's trace of a multi-job pipeline",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tparts := make([]RunLogPart, 0, len(jobs))\n\tfor _, j := range jobs {",
+      "new": "\tparts := make([]RunLogPart, 0, len(jobs))\n\tfor _, j := range jobs[:1] {"
+    },
+    {
+      "name": "brief 17 — GitLab retry re-runs every job, not only the failed ones",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif j.Status == string(gitlab.Failed) {",
+      "new": "\t\tif j.Status != \"\" {"
+    },
+    {
+      "name": "review B3 — the run-log sink keeps the HEAD of an oversized log instead of the tail (the failure at the end is lost)",
+      "file": "internal/deskkit/forge.go",
+      "old": "\t\treturn string(s.buf[len(s.buf)-s.keep:]), true",
+      "new": "\t\treturn string(s.buf[:s.keep]), true"
+    },
+    {
+      "name": "review B3 — the sink's compaction keeps the oldest bytes, so a streamed log's tail is the middle of the log",
+      "file": "internal/deskkit/forge.go",
+      "old": "\t\ts.buf = append(s.buf[:0], s.buf[len(s.buf)-s.keep:]...)",
+      "new": "\t\ts.buf = s.buf[:s.keep]"
+    },
+    {
+      "name": "review B6 — the sink's read bound is removed (an unbounded log is read whole)",
+      "file": "internal/deskkit/forge.go",
+      "old": "\tif s.n+int64(len(p)) > s.limit {",
+      "new": "\tif false && s.n+int64(len(p)) > s.limit {"
+    },
+    {
+      "name": "review B6 — production's read bound is raised past the documented constant",
+      "file": "internal/deskkit/forge.go",
+      "old": "\treadCap:    RunLogReadCap,",
+      "new": "\treadCap:    RunLogReadCap << 4,"
+    },
+    {
+      "name": "review B4 — GitHub returns a part per step file even when whole-job files exist",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif !covered[j.name] {",
+      "new": "\t\tif true {"
+    },
+    {
+      "name": "review B4 — an empty GitHub archive is an empty success",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tif len(jobs) == 0 {\n\t\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: the log archive",
+      "new": "\tif false && len(jobs) == 0 {\n\t\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: the log archive"
+    },
+    {
+      "name": "review B6 — the GitHub job bound is removed",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tif len(jobs) > lim.maxParts {",
+      "new": "\tif false && len(jobs) > lim.maxParts {"
+    },
+    {
+      "name": "review B6 — the GitHub archive download is not bounded by archiveCap",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tarc := &runLogSink{limit: lim.archiveCap}",
+      "new": "\tarc := &runLogSink{limit: lim.archiveCap + 1<<30}"
+    },
+    {
+      "name": "review B6 — a GitHub job log is read under the archive bound, not the per-part read bound",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
+      "new": "\t\tsink := &runLogSink{limit: lim.archiveCap, keep: lim.partCap}"
+    },
+    {
+      "name": "review B3 — a GitHub job log is kept whole, not cut to its tail",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
+      "new": "\t\tsink := &runLogSink{limit: lim.readCap, keep: 0}"
+    },
+    {
+      "name": "review B6 — the GitLab job bound is removed",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif len(all) > lim.maxParts {",
+      "new": "\t\tif false && len(all) > lim.maxParts {"
+    },
+    {
+      "name": "review B6 — GitLab reads only the first page of a pipeline's jobs",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages",
+      "new": "\t\tif _ = resp; true {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages"
+    },
+    {
+      "name": "review B6 — a GitLab job list past the page bound returns the pages read as the whole list",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages",
+      "new": "\t\tif resp == nil || resp.NextPage == 0 {\n\t\t\treturn all, nil\n\t\t}\n\t}\n\treturn all, nil\n\treturn nil, Unverifiable(fmt.Sprintf(\"could-not-check: pipeline %d on %s has more job pages"
+    },
+    {
+      "name": "review B6 — a GitLab trace is read under the archive bound, not the per-part read bound",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
+      "new": "\t\tsink := &runLogSink{limit: lim.archiveCap, keep: lim.partCap}"
+    },
+    {
+      "name": "review B3 — a GitLab trace is kept whole, not cut to its tail",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tsink := &runLogSink{limit: lim.readCap, keep: lim.partCap}",
+      "new": "\t\tsink := &runLogSink{limit: lim.readCap, keep: 0}"
+    },
+    {
+      "name": "review SEC-1 — the GitLab backend's client follows redirects again (CheckRedirect dropped)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }\n\treturn c\n}",
+      "new": "\treturn c\n}"
+    },
+    {
+      "name": "review SEC-1 — client() uses the injected client as given, or the library default (the pre-fix construction)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\topts = append(opts, gitlab.WithHTTPClient(gitlabNoRedirectClient(g.Client)))\n\tcl, err := gitlab.NewClient(",
+      "new": "\tif g.Client != nil {\n\t\topts = append(opts, gitlab.WithHTTPClient(g.Client))\n\t}\n\tcl, err := gitlab.NewClient("
+    },
+    {
+      "name": "review SEC-1 — the trigger client follows redirects (a 307 re-sends the trigger token in the body)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\topts = append(opts, gitlab.WithHTTPClient(gitlabNoRedirectClient(g.Client)))\n\tcl, err := gitlab.NewAuthSourceClient(",
+      "new": "\tif g.Client != nil {\n\t\topts = append(opts, gitlab.WithHTTPClient(g.Client))\n\t}\n\tcl, err := gitlab.NewAuthSourceClient("
+    },
+    {
+      "name": "review SEC-1 sibling — the liveness fetcher uses an injected client as given (follows redirects with PRIVATE-TOKEN)",
+      "file": "internal/deskkit/trustliveness_gitlab.go",
+      "old": "\t\treturn gitlabNoRedirectClient(f.Client)",
+      "new": "\t\treturn f.Client"
+    },
+    {
+      "name": "review SEC-1 class guard — a listed credential site is dropped from the register",
+      "file": "internal/deskkit/gitlabcredsites_test.go",
+      "old": "\t\"internal/deskkit/forge_gitlab.go|triggerClient|client\": \"TestGitLabClientRedirectKeepsToken\",\n",
+      "new": ""
+    },
+    {
+      "name": "review advisory — a GitLab retry that fails part-way no longer names the jobs it already retried",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\t\treturn partialRetryErr(g.mapErr(http.MethodPost, path, rerr), j.Name, retried)",
+      "new": "\t\t\treturn g.mapErr(http.MethodPost, path, rerr)"
+    },
+    {
+      "name": "review advisory — a GitLab partial-retry failure loses its class (a refusal reads as could-not-check)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif errors.As(err, &de) {\n\t\tcp := *de",
+      "new": "\tif false && errors.As(err, &de) {\n\t\tcp := *de"
+    },
+    {
+      "name": "review advisory — a job the archive carries only as steps is dropped when other jobs have whole files",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tout := whole\n\tfor _, j := range steps {",
+      "new": "\tout := whole\n\tif len(whole) > 0 {\n\t\treturn out\n\t}\n\tfor _, j := range steps {"
     }
   ]
 }

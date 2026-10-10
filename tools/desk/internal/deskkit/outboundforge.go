@@ -17,7 +17,7 @@ package deskkit
 //                 EditChange, PostReview, ApplyLabels, WriteFile.
 //   no author text (pass straight through)  CloseIssue, CloseIssueTyped, ReopenIssue,
 //                 MarkReadyForReview, SetMergeHold, DeleteRef — plus OpenMergeHold,
-//                 RunWorkflow and ApproveGate, whose only text is composed by the backend
+//                 RunWorkflow, ApproveGate and RetryRun, whose only text is composed by the backend
 //                 from fixed strings or is a workflow input that never renders as prose.
 //   reads         everything else.
 

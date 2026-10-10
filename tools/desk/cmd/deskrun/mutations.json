@@ -30,6 +30,156 @@
       "file": "cmd/deskrun/verbs.go",
       "old": "deskkit.ApproveGateInput{Gate: *gate, Shape: cred.GateShape}",
       "new": "deskkit.ApproveGateInput{Gate: *gate}"
+    },
+    {
+      "name": "brief 17 — retry ignores the resolver's refusal and proceeds for a human-bound repo (the identity rule is read but not acted on)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tcred, err := bindingFor(verb, fr)\n\tif err != nil {\n\t\tif cred.Human != \"\" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {",
+      "new": "\tcred, err := bindingFor(verb, fr)\n\tif cred.Human != \"\" {\n\t\terr = nil\n\t}\n\tif err != nil {\n\t\tif cred.Human != \"\" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {"
+    },
+    {
+      "name": "brief 17 — the log role set is widened to every desk role (a verifier or desk session may read a run log)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tif !logRoles[role] {\n\t\terr := deskkit.Refused(fmt.Sprintf(\"refused: %s log is served",
+      "new": "\tif false && !logRoles[role] {\n\t\terr := deskkit.Refused(fmt.Sprintf(\"refused: %s log is served"
+    },
+    {
+      "name": "brief 17 — custody mints ANY role's token, not just the release-runner and the log roles",
+      "file": "cmd/deskrun/forge.go",
+      "old": "\tif role != deskkit.ReleaseRunnerRole && !logRoles[role] {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "review B7 — GitLab's RunLog fails: the worker/reviewer log path must go red over the real resolver",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {\n\treturn g.runLog(repo, run, defaultRunLogBounds)",
+      "new": "func (g *GitLabForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {\n\treturn nil, Unverifiable(\"mutant\", nil)"
+    },
+    {
+      "name": "review B7 — GitHub's RunLog fails: the worker/reviewer log path must go red over the real resolver",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {\n\treturn g.runLog(repo, run, defaultRunLogBounds)",
+      "new": "func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {\n\treturn nil, Unverifiable(\"mutant\", nil)"
+    },
+    {
+      "name": "review B7 — GitLab's RetryRun retries every job, not only the failed ones",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif j.Status == string(gitlab.Failed) {\n\t\t\tfailed = append(failed, j)",
+      "new": "\t\tif j.Status != \"\" {\n\t\t\tfailed = append(failed, j)"
+    },
+    {
+      "name": "review B5/B8 — a read verb's lines go back into the write verbs' bucket (a read reaches the write budget and the breaker)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\ttool = deskkit.DeskrunReadTool",
+      "new": "\t\ttool = toolName"
+    },
+    {
+      "name": "review B5 — a read verb's lines are dropped from the ledger (the access decision is lost)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tif readVerbs[verb] {\n\t\ttool = deskkit.DeskrunReadTool\n\t}",
+      "new": "\tif readVerbs[verb] {\n\t\treturn\n\t}"
+    },
+    {
+      "name": "review B8 — the read bucket's key is unregistered, so it folds into deskrun's write bucket",
+      "file": "internal/deskkit/audittoolkey.go",
+      "old": "\tDeskrunReadTool: {},\n}",
+      "new": "}"
+    },
+    {
+      "name": "review B8 — log is dropped from the read set (its refusals open the write breaker again)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "var readVerbs = map[string]bool{\"status\": true, \"log\": true}",
+      "new": "var readVerbs = map[string]bool{\"status\": true}"
+    },
+    {
+      "name": "review SEC-7/B9 — status disarms its read trail once the forge resolves (its forge reads write no audit line)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.stage = \"status\"\n",
+      "new": "\ttrail.stage, trail.mark = \"status\", -1\n"
+    },
+    {
+      "name": "review SEC-7/B9 — log disarms its read trail at the identity step (a successful log read writes no line)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.stage = \"identity\"\n",
+      "new": "\ttrail.stage, trail.mark = \"identity\", -1\n"
+    },
+    {
+      "name": "review SEC-6/B9 — a successful read records nothing (the trail writes only failures)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tauditLine(r.repo, r.verb, deskkit.ResultOK, detail)\n}",
+      "new": "\t_ = detail\n}"
+    },
+    {
+      "name": "review SEC-7/B9 — the audit sequence never advances, so a read that already wrote its line writes a second",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "func auditLine(repo, verb, result, detail string) {\n\tauditSeq++\n",
+      "new": "func auditLine(repo, verb, result, detail string) {\n"
+    },
+    {
+      "name": "review SEC-7/B9 — a failed read is recorded as ok",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tauditLine(r.repo, r.verb, resultOf(err), r.stage+\": \"+err.Error())",
+      "new": "\tauditLine(r.repo, r.verb, deskkit.ResultOK, r.stage+\": \"+err.Error())"
+    },
+    {
+      "name": "review advisory — retry's loop-identity check is removed (any caller, or none, may re-run a run)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tif err := deskkit.RequireLoopIdentity(toolName); err != nil {\n\t\treturn err\n\t}\n\tcred, err := bindingFor(verb, fr)\n\tif err != nil {\n\t\tif cred.Human != \"\" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {\n\t\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\t\"refused: retry needs",
+      "new": "\tcred, err := bindingFor(verb, fr)\n\tif err != nil {\n\t\tif cred.Human != \"\" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {\n\t\t\treturn deskkit.Refused(fmt.Sprintf(\n\t\t\t\t\"refused: retry needs"
+    },
+    {
+      "name": "review SEC-2 — a job name prints raw (control bytes and newlines reach the terminal)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tname := strings.Join(strings.Fields(deskkit.StripControl(p.Name)), \" \")",
+      "new": "\t\tname := p.Name"
+    },
+    {
+      "name": "review SEC-2 — a job name's newlines are kept (a name can print a forged section rule)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tname := strings.Join(strings.Fields(deskkit.StripControl(p.Name)), \" \")",
+      "new": "\t\tname := deskkit.StripControl(p.Name)"
+    },
+    {
+      "name": "review SEC-7 — log records its ok line after its output (a reader closing the pipe early leaves no line)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.succeed(fmt.Sprintf(\"run %s as %s: %d part(s)\", run.ID, role, len(parts)))",
+      "new": "\tdefer trail.succeed(fmt.Sprintf(\"run %s as %s: %d part(s)\", run.ID, role, len(parts)))"
+    },
+    {
+      "name": "review SEC-7 — status records its ok line after its output (a reader already gone leaves no line)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.succeed(fmt.Sprintf(\"run %s: %s\", run.ID, st.Status))",
+      "new": "\tdefer trail.succeed(fmt.Sprintf(\"run %s: %s\", run.ID, st.Status))"
+    },
+    {
+      "name": "review advisory — a read that ends with no recorded outcome (a panic) is recorded as ok",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tauditLine(r.repo, r.verb, deskkit.ResultUnverifiable,\n\t\t\tr.stage+\": the verb ended",
+      "new": "\t\tauditLine(r.repo, r.verb, deskkit.ResultOK,\n\t\t\tr.stage+\": the verb ended"
+    },
+    {
+      "name": "review advisory — retry's ok audit line is dropped",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\tauditLine(fr.Slug(), verb, deskkit.ResultOK, \"run \"+run.ID)\n\tfmt.Fprintf(out, \"retried:",
+      "new": "\tfmt.Fprintf(out, \"retried:"
+    },
+    {
+      "name": "review advisory — retry's failure audit line is dropped",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tauditLine(fr.Slug(), verb, resultOf(err), \"retry: \"+err.Error())\n",
+      "new": ""
+    },
+    {
+      "name": "review advisory — retry --dry-run is recorded as ok",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\t\tauditLine(fr.Slug(), verb, deskkit.ResultDryRun, \"run \"+run.ID)",
+      "new": "\t\tauditLine(fr.Slug(), verb, deskkit.ResultOK, \"run \"+run.ID)"
+    },
+    {
+      "name": "review advisory — status drops its stage label (a forge failure reads as an argument failure)",
+      "file": "cmd/deskrun/verbs.go",
+      "old": "\ttrail.stage = \"status\"\n\tst, err := fg.RunStatus(fr, run)",
+      "new": "\tst, err := fg.RunStatus(fr, run)"
     }
   ]
 }

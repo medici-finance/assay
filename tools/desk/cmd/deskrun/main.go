@@ -1,5 +1,6 @@
-// deskrun — start a workflow run, or clear a deployment gate on one, under the repo's
-// roster-bound RUN CREDENTIAL (forge-neutral brief 14).
+// deskrun — start a workflow run, clear a deployment gate on one, or retry its failed work,
+// under the repo's roster-bound RUN CREDENTIAL (forge-neutral brief 14), and read a run's log
+// under the calling worker or reviewer role's own read-only credential (brief 17).
 //
 // WHY THIS EXISTS. Starting a release run or approving a gated deployment used to be done
 // with whoever's ambient forge CLI happened to be logged in. On GitHub, dispatching needs
@@ -23,6 +24,10 @@
 // ForgeFor's ordinary custody path for the release-runner role, and the backend's own refusal
 // of an unminted token is the second, independent layer.
 //
+// `retry` carries the same over-broad write scope (actions: write / api) and so the same
+// binding rule. `log` is the deliberate exception: a read scope reaches nothing destructive, so
+// it runs under the session's own role (worker or reviewer) with no roster binding.
+//
 // It never posts to GitHub's repository_dispatch endpoint (a trigger any App with
 // contents: write could fire), and on GitLab it starts pipelines through the pipeline trigger
 // token, not a project token.
@@ -44,6 +49,8 @@ USAGE:
   deskrun <owner/repo> <workflow> --ref <ref> [-f key=value ...] [--dry-run]
   deskrun approve <owner/repo> <run-id> --gate <name> [--dry-run]
   deskrun status  <owner/repo> <run-id>
+  deskrun retry   <owner/repo> <run-id> [--dry-run]
+  deskrun log     <owner/repo> <run-id>
   deskrun --version
 
 dispatch — starts ONE run of <workflow> (GitHub: the workflow file name, e.g. release.yml;
@@ -54,6 +61,12 @@ approve  — approves the ONE deployment gate named --gate that run <run-id> is 
            the repo's run-credential binding, never a flag. On GitHub a required-reviewer gate
            cannot be approved by an App (reviewers are users or teams): could-not-check.
 status   — prints the run's lifecycle: queued | in_progress | waiting | completed (+ conclusion).
+retry    — re-runs the FAILED work of run <run-id> (GitHub: rerun-failed-jobs; GitLab: each failed
+           job). Needs the write scope (actions: write / api), so it takes the dispatch identity
+           rule: the repo's run-credential binding, human-bound refused (exit 5), unbound exit 6.
+log      — prints run <run-id>'s log, one section per job. READ-ONLY (actions: read / read_api),
+           so it runs under the calling session's OWN worker or reviewer credential and has no
+           roster binding; any other session role is refused.
 
 WHO ACTS: the credential is chosen by ASSAY_RUN_CREDENTIALS in the roster, per repo:
   <owner/name>=release-runner[+environment|+manual-job]  the dedicated release-runner credential
@@ -100,6 +113,10 @@ func run(args []string) int {
 		err = cmdApprove(args[1:], os.Stdout)
 	case "status":
 		err = cmdStatus(args[1:], os.Stdout)
+	case "retry":
+		err = cmdRetry(args[1:], os.Stdout)
+	case "log":
+		err = cmdLog(args[1:], os.Stdout)
 	default:
 		err = cmdDispatch(args, os.Stdout)
 	}

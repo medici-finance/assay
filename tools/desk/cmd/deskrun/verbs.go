@@ -223,13 +223,17 @@ func cmdApprove(args []string, out io.Writer) error {
 	return nil
 }
 
-// cmdStatus is `deskrun status <owner/repo> <run-id>` — a READ under the same binding (the
-// release-runner credential is the one that can see the run it started; a human-bound repo is
-// refused here too, because deskrun never reads a forge under any other identity).
-func cmdStatus(args []string, out io.Writer) error {
-	const verb = "status"
+// cmdRetry is `deskrun retry <owner/repo> <run-id>` — re-runs the FAILED work of one run.
+// Retrying needs GitHub `actions: write` / GitLab `api`, the same over-broad scopes that made
+// dispatch roster-bound, so it takes the dispatch identity rule verbatim: the repo's
+// run-credential binding is read BEFORE anything is minted, a human-bound repo is refused
+// (exit 5, naming the role and the human) and an unbound one is could-not-check (exit 6).
+// The write then runs under the release-runner credential, never the session's own role.
+func cmdRetry(args []string, out io.Writer) error {
+	const verb = "retry"
 	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	dryRun := fs.Bool("dry-run", false, "resolve the binding and budget, print what would happen, mint nothing")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return deskkit.Refused(verb + ": " + err.Error())
@@ -245,6 +249,147 @@ func cmdStatus(args []string, out io.Writer) error {
 	if _, err := deskkit.ValidateRunID(run); err != nil {
 		return err
 	}
+	if err := deskkit.RequireLoopIdentity(toolName); err != nil {
+		return err
+	}
+	cred, err := bindingFor(verb, fr)
+	if err != nil {
+		if cred.Human != "" && deskkit.ExitCodeOf(err) == deskkit.ExitRefused {
+			return deskkit.Refused(fmt.Sprintf(
+				"refused: retry needs the %s role, but %s's run credential resolves to human:%s — re-running a run "+
+					"is a human action today, done by that human in their own identity. Nothing was minted, no request "+
+					"was made and no ambient credential was read", deskkit.ReleaseRunnerRole, fr.Slug(), cred.Human))
+		}
+		return err
+	}
+	if err := deskkit.AllowWrite(toolName, fr.Slug(), 0); err != nil {
+		return err
+	}
+	if *dryRun {
+		fmt.Fprintf(out, "dry-run: would retry the failed work of %s run %s as the %s credential\n",
+			fr.Slug(), run.ID, deskkit.ReleaseRunnerRole)
+		auditLine(fr.Slug(), verb, deskkit.ResultDryRun, "run "+run.ID)
+		return nil
+	}
+	fg, _, err := resolveForge(verb, fr)
+	if err != nil {
+		return err
+	}
+	if err := fg.RetryRun(fr, run); err != nil {
+		auditLine(fr.Slug(), verb, resultOf(err), "retry: "+err.Error())
+		return err
+	}
+	auditLine(fr.Slug(), verb, deskkit.ResultOK, "run "+run.ID)
+	fmt.Fprintf(out, "retried: the failed work of %s run %s\n", fr.Slug(), run.ID)
+	return nil
+}
+
+// logRoles are the session roles `deskrun log` serves: the worker and the reviewer. A run log is
+// read-only (GitHub `actions: read`, GitLab `read_api`), so it needs no roster-bound identity —
+// the argument is that nothing destructive is reachable through a read scope. The set is still
+// closed and named: a role outside it is refused, so widening the read to another desk role is
+// a deliberate edit here, never a side effect of a role table change.
+var logRoles = map[string]bool{"worker": true, "reviewer": true}
+
+// sessionRoleFn resolves the App role the session acts as. Package var so a test can fix it.
+var sessionRoleFn = deskkit.SessionTokenRole
+
+// cmdLog is `deskrun log <owner/repo> <run-id>` — prints the run's log, one section per job
+// (each over-cap job's tail, the true end of its log).
+// It is a READ under the CALLING role's own token (no binding check, no release-runner
+// custody), for the worker and reviewer roles. Log text is forge-origin: terminal-active
+// bytes are stripped before it reaches stdout.
+func cmdLog(args []string, out io.Writer) (err error) {
+	const verb = "log"
+	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return deskkit.Refused(verb + ": " + err.Error())
+	}
+	if len(pos) != 2 {
+		return deskkit.Refused(fmt.Sprintf("%s: want exactly two positionals <owner/repo> <run-id>, got %d", verb, len(pos)))
+	}
+	fr, err := parseRepo(pos[0])
+	if err != nil {
+		return err
+	}
+	trail := startReadTrail(fr.Slug(), verb)
+	defer func() { trail.finish(err) }()
+	run := deskkit.RunRef{ID: strings.TrimSpace(pos[1])}
+	if _, err := deskkit.ValidateRunID(run); err != nil {
+		return err
+	}
+	trail.stage = "identity"
+	role, _, err := sessionRoleFn(toolName)
+	if err != nil {
+		return err
+	}
+	if !logRoles[role] {
+		err := deskkit.Refused(fmt.Sprintf("refused: %s log is served to the worker and reviewer roles; this session acts as %q", toolName, role))
+		auditLine(fr.Slug(), verb, deskkit.ResultRefused, err.Error())
+		return err
+	}
+	fg, _, err := logForgeFn(fr, role)
+	if err != nil {
+		var de *deskkit.DeskError
+		if !errors.As(err, &de) {
+			err = deskkit.Unverifiable("could-not-check: cannot obtain the "+role+" credential for "+fr.Slug(), err)
+		}
+		auditLine(fr.Slug(), verb, resultOf(err), "custody: "+err.Error())
+		return err
+	}
+	parts, err := fg.RunLog(fr, run)
+	if err != nil {
+		auditLine(fr.Slug(), verb, resultOf(err), "log: "+err.Error())
+		return err
+	}
+	// The read is recorded BEFORE any of its output is released: a reader that closes the pipe
+	// early (`| head`) kills the process on the broken pipe, and deferred calls do not run then.
+	trail.succeed(fmt.Sprintf("run %s as %s: %d part(s)", run.ID, role, len(parts)))
+	for _, p := range parts {
+		note := ""
+		if p.Truncated {
+			note = fmt.Sprintf(" (truncated: the last %d bytes)", len(p.Text))
+		}
+		// A job name is forge-origin text and sits on the section rule's own line: control bytes are
+		// stripped as in the text, and its whitespace (newlines included) folds to single spaces, so a
+		// name can never end the rule's line and print a forged rule of its own.
+		name := strings.Join(strings.Fields(deskkit.StripControl(p.Name)), " ")
+		fmt.Fprintf(out, "===== %s%s =====\n", name, note)
+		text := deskkit.StripControl(p.Text)
+		fmt.Fprint(out, text)
+		if !strings.HasSuffix(text, "\n") {
+			fmt.Fprintln(out)
+		}
+	}
+	return nil
+}
+
+// cmdStatus is `deskrun status <owner/repo> <run-id>` — a READ under the same binding (the
+// release-runner credential is the one that can see the run it started; a human-bound repo is
+// refused here too, because deskrun never reads a forge under any other identity).
+func cmdStatus(args []string, out io.Writer) (err error) {
+	const verb = "status"
+	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return deskkit.Refused(verb + ": " + err.Error())
+	}
+	if len(pos) != 2 {
+		return deskkit.Refused(fmt.Sprintf("%s: want exactly two positionals <owner/repo> <run-id>, got %d", verb, len(pos)))
+	}
+	fr, err := parseRepo(pos[0])
+	if err != nil {
+		return err
+	}
+	trail := startReadTrail(fr.Slug(), verb)
+	defer func() { trail.finish(err) }()
+	run := deskkit.RunRef{ID: strings.TrimSpace(pos[1])}
+	if _, err := deskkit.ValidateRunID(run); err != nil {
+		return err
+	}
 	if _, err := bindingFor(verb, fr); err != nil {
 		return err
 	}
@@ -252,10 +397,12 @@ func cmdStatus(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	trail.stage = "status"
 	st, err := fg.RunStatus(fr, run)
 	if err != nil {
 		return err
 	}
+	trail.succeed(fmt.Sprintf("run %s: %s", run.ID, st.Status)) // recorded before output, as in cmdLog
 	line := fmt.Sprintf("run %s on %s: %s", run.ID, fr.Slug(), st.Status)
 	if st.Conclusion != "" {
 		line += " (" + st.Conclusion + ")"
@@ -303,14 +450,30 @@ func resultOf(err error) string {
 	}
 }
 
-// auditLine writes deskrun's one audit line. A run has no PR number, so the line records
-// none — the unnumbered bucket AllowWrite(…, 0) gates on (the bucket a gate reads must be the
-// bucket its writes land in).
+// readVerbs are deskrun's verbs that only READ the forge. Their audit lines are recorded under
+// their own ledger key (deskkit.DeskrunReadTool), never under toolName, whose lines the write
+// verbs' gate (AllowWrite(toolName, repo, 0)) meters TWICE: the budget would count a read's ok
+// or could-not-check line as a charged write, and the circuit breaker would count a read's
+// refusal as a writer spinning on bad input — so reading logs to diagnose a red check, or a
+// session outside the read grant calling `log`, would shut the release-runner's dispatch,
+// approve and retry on that repo. In their own bucket a read's lines stay on the audit trail and
+// reach neither meter. readledger_test.go pins both halves.
+var readVerbs = map[string]bool{"status": true, "log": true}
+
+// auditLine writes deskrun's one audit line — the ONLY ledger write in this package
+// (readledger_test.go fails on any other). A run has no PR number, so the line records none —
+// the unnumbered bucket AllowWrite(…, 0) gates on (the bucket a gate reads must be the bucket
+// its writes land in). A read verb's line goes to the read bucket instead (readVerbs).
 func auditLine(repo, verb, result, detail string) {
+	auditSeq++
+	tool := toolName
+	if readVerbs[verb] {
+		tool = deskkit.DeskrunReadTool
+	}
 	sha, built := deskkit.Version()
 	_ = deskkit.Log(deskkit.Entry{
 		TS:         nowFunc().UTC().Format(time.RFC3339),
-		Tool:       toolName,
+		Tool:       tool,
 		Verb:       verb,
 		ArgsDigest: deskkit.ArgsDigest(os.Args[1:]),
 		Repo:       repo,
@@ -320,4 +483,57 @@ func auditLine(repo, verb, result, detail string) {
 		BuiltAt:    built,
 		SessionTag: deskkit.SessionTag(),
 	})
+}
+
+// auditSeq counts the audit lines this process has written. A read verb's trail compares it
+// with the count at its start, which is how it knows whether the path it ended on already
+// wrote that invocation's line.
+var auditSeq int
+
+// readTrail makes a read verb's audit coverage a property of its SHAPE rather than of each
+// return path. Once <owner/repo> has parsed into the desk-tools repo set, the verb starts a
+// trail and defers finish: every way the verb ends from there — success, a refusal, a
+// could-not-check, at any step, or the process killed by a closed output pipe — writes
+// exactly one line under the read key. A success is recorded by succeed, called once the
+// forge read has answered and BEFORE the verb writes any of its output, so a reader that
+// stops early (`| head`, which kills the process on the broken pipe before any deferred call
+// runs) cannot leave the read unrecorded. A path that already wrote its own line (the binding
+// and custody steps it shares with the write verbs, the role refusal, a forge failure on log)
+// is left as written; any other path gets its line here, so a new return added later cannot
+// end unrecorded. A trail that ends with no error and no recorded success (a panic unwinding
+// through the deferred finish, or a return path that skipped succeed) is recorded as
+// could-not-check, never as ok. The argument errors before the trail starts (bad flags, a
+// wrong positional count, a repo outside the set) name no repo to attribute a line to and
+// write none, exactly as the write verbs' argument errors write none. readledger_test.go
+// drives every outcome and asserts the one line; readpipe_test.go drives log and status
+// through a real pipe its reader closes early.
+type readTrail struct {
+	repo, verb string
+	mark       int    // auditSeq when the trail started
+	stage      string // what the verb was doing; prefixes the detail of an unrecorded failure
+}
+
+func startReadTrail(repo, verb string) *readTrail {
+	return &readTrail{repo: repo, verb: verb, mark: auditSeq, stage: "args"}
+}
+
+// succeed records the read's ok line now, before the verb releases any output. It writes
+// only when the trail has recorded nothing yet, so a trail still ends with exactly one line.
+func (r *readTrail) succeed(detail string) {
+	if auditSeq != r.mark {
+		return
+	}
+	auditLine(r.repo, r.verb, deskkit.ResultOK, detail)
+}
+
+func (r *readTrail) finish(err error) {
+	if auditSeq != r.mark {
+		return
+	}
+	if err == nil {
+		auditLine(r.repo, r.verb, deskkit.ResultUnverifiable,
+			r.stage+": the verb ended with no recorded outcome (a panic, or a return that skipped succeed)")
+		return
+	}
+	auditLine(r.repo, r.verb, resultOf(err), r.stage+": "+err.Error())
 }

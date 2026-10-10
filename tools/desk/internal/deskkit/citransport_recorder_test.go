@@ -325,6 +325,16 @@ func (f *ciRecordingForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, err
 	return nil, nil
 }
 
+func (f *ciRecordingForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	f.rec("RunLog")
+	return nil, nil
+}
+
+func (f *ciRecordingForge) RetryRun(repo ForgeRepo, run RunRef) error {
+	f.rec("RetryRun")
+	return nil
+}
+
 func (f *ciRecordingForge) PushTransportHint(repo ForgeRepo) PushTransport {
 	f.rec("PushTransportHint")
 	return PushTransport{}

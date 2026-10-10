@@ -198,6 +198,12 @@
       "file": "cmd/desktoken/desktoken.go",
       "old": "\t\tif installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {",
       "new": "\t\tif errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
+    },
+    {
+      "name": "review SEC-1 — desktoken's GitLab calls follow redirects again (rotation and self-check forward PRIVATE-TOKEN)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }\n\treturn &c",
+      "new": "\treturn &c"
     }
   ]
 }

@@ -397,6 +397,20 @@ func AllowWriteRepoWide(tool, repo string) error {
 // hard limits are the final backstop.
 const VerdictIssueTool = "verifyloop-verdict"
 
+// DeskrunReadTool is the audit `tool` name deskrun's READ verbs (status, log) record under —
+// their own ledger bucket, distinct from "deskrun", whose lines the write verbs (dispatch,
+// approve, retry) are metered from. Both meters on that bucket read a read's lines wrongly:
+// the budget would count an ok or could-not-check read as a charged write, and the circuit
+// breaker would count a read's refusal as a writer spinning on bad input — five refused reads
+// on a repo (or twenty anywhere) would shut the release-runner's writes for the cooldown. No
+// write gate is ever called with this key, so a read's lines stay on the audit trail without
+// reaching either meter. What lands here: once a read verb's <owner/repo> has parsed into the
+// desk-tools repo set, each invocation writes exactly one line — ok, refused or could-not-check
+// (deskrun's readTrail); its argument errors before that write none. Reads are therefore
+// UNMETERED in deskrun: no budget or breaker of their own, bounded per call by the run-log
+// bounds and by the forge's own rate limits.
+const DeskrunReadTool = "deskrun-read"
+
 // AllowVerdictIssueWrite gates one verdict-issue filing on `repo`. Each filing creates a
 // FRESH issue whose number the filer cannot know in advance — the same shape as `deskpr
 // create` — so it is metered REPO-WIDE (see AllowWriteRepoWide): every charged verdict write

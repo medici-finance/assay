@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
@@ -3056,6 +3057,158 @@ func (g *GitHubForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error) {
 			"does not know — not rounded to a known state", id, repo.Slug(), StripControl(w.Status)), nil)
 	}
 	return st, nil
+}
+
+// RunLog reads one run's log (`GET /repos/{o}/{r}/actions/runs/{id}/logs`). GitHub answers a
+// redirect to a zip archive; the redirect is followed by the HTTP client, and go-gh's transport
+// attaches the bearer token only when the target is the API host or a subdomain of it (GitHub
+// serves the archive from a separate storage host). The archive is read under a byte cap. Its
+// real layout is a top-level whole-job file per job (`0_build.txt`) PLUS a directory per job of
+// per-step files (`build/1_Set up job.txt`, the same text split), so ONE RunLogPart is built per
+// job: from the whole-job files when the archive has them, else by joining each job directory's
+// step files in archive order — never a part per zip entry, which would print every job twice.
+// An archive with no log file is a could-not-check, not an empty success. An expired or deleted
+// log answers 404 (IsForgeNotFound). Needs only `actions: read`.
+func (g *GitHubForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	return g.runLog(repo, run, defaultRunLogBounds)
+}
+
+// runLog is RunLog under explicit bounds (production: defaultRunLogBounds).
+func (g *GitHubForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]RunLogPart, error) {
+	id, err := ValidateRunID(run)
+	if err != nil {
+		return nil, err
+	}
+	rc, err := g.restClient()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/logs", repo.Owner, repo.Name, id)
+	resp, rerr := rc.Request(http.MethodGet, g.baseURL()+path, nil)
+	if rerr != nil {
+		var he *ghapi.HTTPError
+		if errors.As(rerr, &he) {
+			return nil, &ForgeAPIError{Status: he.StatusCode, Method: http.MethodGet, Path: path,
+				Message: he.Message, RateLimited: ghHTTPErrorRateLimited(he)}
+		}
+		return nil, Unverifiable(fmt.Sprintf("GET %s failed", path), rerr)
+	}
+	defer resp.Body.Close()
+	arc := &runLogSink{limit: lim.archiveCap}
+	if _, cerr := io.Copy(arc, resp.Body); cerr != nil {
+		if errors.Is(cerr, errRunLogOverRead) {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: the log archive for run %d on %s exceeds %d bytes — "+
+				"refusing to read it whole", id, repo.Slug(), lim.archiveCap), nil)
+		}
+		return nil, Unverifiable(fmt.Sprintf("GET %s response body cut off mid-transfer (%d bytes arrived) — "+
+			"refusing to treat a partial log as a complete one", path, arc.n), cerr)
+	}
+	zr, zerr := zip.NewReader(bytes.NewReader(arc.buf), int64(len(arc.buf)))
+	if zerr != nil {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log for run %d on %s is not a readable archive", id, repo.Slug()), zerr)
+	}
+	jobs := githubLogJobs(zr.File)
+	if len(jobs) == 0 {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: the log archive for run %d on %s holds no log file, "+
+			"so there is no log to read", id, repo.Slug()), nil)
+	}
+	if len(jobs) > lim.maxParts {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: run %d on %s has more than %d jobs — "+
+			"refusing to return a silently shortened log", id, repo.Slug(), lim.maxParts), nil)
+	}
+	parts := make([]RunLogPart, 0, len(jobs))
+	for _, j := range jobs {
+		sink := &runLogSink{limit: lim.readCap, keep: lim.partCap}
+		for _, f := range j.files {
+			rd, oerr := f.Open()
+			if oerr != nil {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot open log file %q of run %d", StripControl(f.Name), id), oerr)
+			}
+			_, cerr := io.Copy(sink, rd)
+			rd.Close()
+			if errors.Is(cerr, errRunLogOverRead) {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: the log of job %q in run %d on %s exceeds %d bytes — "+
+					"refusing to present a slice of it as its tail", StripControl(j.name), id, repo.Slug(), lim.readCap), nil)
+			}
+			if cerr != nil {
+				return nil, Unverifiable(fmt.Sprintf("could-not-check: cannot read log file %q of run %d", StripControl(f.Name), id), cerr)
+			}
+		}
+		text, trunc := sink.tail()
+		parts = append(parts, RunLogPart{Name: j.name, Text: text, Truncated: trunc})
+	}
+	return parts, nil
+}
+
+// githubLogJob is one job of a run-log archive and the entries its text is read from.
+type githubLogJob struct {
+	name  string
+	files []*zip.File
+}
+
+// githubLogJobs groups a run-log archive's entries into jobs: each top-level file
+// (`<n>_<job>.txt`) is one job's whole log, and each top-level directory is one job whose step
+// files are joined. A directory is dropped only when a whole file names the SAME job, so a job
+// the archive carries only as steps is still a part when other jobs have whole files. Whole-file
+// jobs come first, in archive order, then the step-only jobs, in archive order. Directory entries
+// carry no text and are skipped.
+func githubLogJobs(files []*zip.File) []*githubLogJob {
+	var whole, steps []*githubLogJob
+	byDir := map[string]*githubLogJob{}
+	for _, f := range files {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		dir, _, nested := strings.Cut(f.Name, "/")
+		if !nested {
+			whole = append(whole, &githubLogJob{name: f.Name, files: []*zip.File{f}})
+			continue
+		}
+		j := byDir[dir]
+		if j == nil {
+			j = &githubLogJob{name: dir}
+			byDir[dir] = j
+			steps = append(steps, j)
+		}
+		j.files = append(j.files, f)
+	}
+	covered := map[string]bool{}
+	for _, w := range whole {
+		covered[githubWholeLogJob(w.name)] = true
+	}
+	out := whole
+	for _, j := range steps {
+		if !covered[j.name] {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// githubWholeLogJob is the job a whole-log file names: `3_build.txt` and `build.txt` both name
+// `build`. A name without the `.txt` suffix names itself, so it covers no step directory.
+func githubWholeLogJob(file string) string {
+	job, ok := strings.CutSuffix(file, ".txt")
+	if !ok {
+		return file
+	}
+	if n, rest, cut := strings.Cut(job, "_"); cut && n != "" && rest != "" && strings.Trim(n, "0123456789") == "" {
+		return rest
+	}
+	return job
+}
+
+// RetryRun re-runs the failed jobs of one run (`POST …/actions/runs/{id}/rerun-failed-jobs`).
+// This is the narrower of GitHub's two rerun endpoints (`…/rerun` re-runs every job, including
+// ones that passed), chosen because a retry's purpose is to recover the failed work. Needs
+// `actions: write`, so the caller holds the roster-bound run credential.
+func (g *GitHubForge) RetryRun(repo ForgeRepo, run RunRef) error {
+	id, err := ValidateRunID(run)
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/rerun-failed-jobs", repo.Owner, repo.Name, id)
+	return g.doJSON(http.MethodPost, path, nil, nil)
 }
 
 // quotedList renders names for a refusal message; an empty list reads "nothing".
