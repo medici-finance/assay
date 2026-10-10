@@ -48,6 +48,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -201,7 +203,7 @@ func pushedState(sc *sweepCtx, rt string, inactiveNamedOwner bool) (bool, string
 	if (branch == "HEAD" || branch == "") && inactiveNamedOwner {
 		// Review evidence may be ignored by Git. Remote reachability protects
 		// committed source only; keep any ignored payload for explicit handoff.
-		ignored, ierr := runGit(rt, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
+		ignored, ierr := ignoredReviewFiles(rt)
 		if ierr != nil {
 			return false, "", deskkit.Unverifiable("cannot inventory ignored review files", ierr)
 		}
@@ -305,4 +307,23 @@ func deleteLocalBranch(dir, branch string) error {
 		return err
 	}
 	return nil
+}
+
+// Keep this destructive eligibility read bound to the candidate worktree rather
+// than an inherited GIT_DIR, GIT_WORK_TREE or alternate index from a caller.
+func ignoredReviewFiles(rt string) (string, error) {
+	env := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(entry), "GIT_") {
+			env = append(env, entry)
+		}
+	}
+	result := deskkit.Run(deskkit.ToolCall{
+		Name: "git", Args: []string{"ls-files", "-z", "--others", "--ignored", "--exclude-standard"},
+		Dir: rt, Env: env, Start: execCommand,
+	})
+	if result.Failed() {
+		return "", result.Fail(deskkit.ExitUnverifiable, "git ignored-file inventory")
+	}
+	return result.Stdout, nil
 }

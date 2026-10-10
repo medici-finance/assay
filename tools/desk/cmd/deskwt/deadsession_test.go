@@ -432,3 +432,23 @@ func TestReapDetachedSquashReview(t *testing.T) {
 		})
 	}
 }
+
+func TestIgnoredReviewFilesIgnoresInheritedGitRouting(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	target, _ := openPRWorktree(t, work, "ignored-routing")
+	writeFile(t, filepath.Join(work, ".git", "info", "exclude"), "review-evidence.txt\n")
+	writeFile(t, filepath.Join(target, "review-evidence.txt"), "required evidence")
+	foreign := newRepo(t)
+	t.Setenv("GIT_DIR", filepath.Join(foreign, ".git"))
+	t.Setenv("GIT_WORK_TREE", foreign)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(foreign, ".git", "index"))
+	wrong, err := runGit(target, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
+	if err != nil || wrong != "" {
+		t.Fatalf("fixture did not redirect the ordinary Git read: %q %v", wrong, err)
+	}
+	got, err := ignoredReviewFiles(target)
+	if err != nil || !strings.Contains(got, "review-evidence.txt\x00") {
+		t.Fatalf("candidate evidence hidden by inherited routing: %q %v", got, err)
+	}
+}
