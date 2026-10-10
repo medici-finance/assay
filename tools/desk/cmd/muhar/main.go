@@ -58,9 +58,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 type spec struct {
@@ -143,6 +145,21 @@ func resolveJobs(requested, numCPU int) int {
 	return maxAutoJobs
 }
 
+// envWithGOCACHE returns env with GOCACHE pinned to dir, overriding any
+// inherited value: the quarantine only holds if the suite's build artifacts
+// land in the throwaway per-run cache even when the environment already names
+// a GOCACHE. GOMODCACHE is never touched — module downloads are immutable and
+// shared-safe, and re-downloading them would cost network per run.
+func envWithGOCACHE(env []string, dir string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, e := range env {
+		if !strings.HasPrefix(e, "GOCACHE=") {
+			out = append(out, e)
+		}
+	}
+	return append(out, "GOCACHE="+dir)
+}
+
 // muhar does NOT call deskkit.Guard(): it is a local diagnostic that makes no
 // outward writes (no GitHub, no shared-state mutation — it edits a source file
 // and restores it within the same run), so the kill switch and outward-write
@@ -201,6 +218,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Quarantine the Go build cache for this run. Every mutant is a unique
+	// source tree, so each suite run injects hundreds of never-reused entries
+	// into whatever GOCACHE the suite command inherits; in a long-lived cell
+	// that cache grows without bound (Go's own 5-day trim horizon is a
+	// compile-time constant, not a knob). One throwaway cache for the WHOLE
+	// run — mutants of one package share most build artifacts, so per-run
+	// keeps the intra-run speedup — removed when the run ends, whatever the
+	// exit path. os.Exit skips defers, so the Broken exit below removes it
+	// explicitly; the defer covers a normal return.
+	gocache, err := os.MkdirTemp("", "assay-mutant-gocache-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "muhar: create per-run GOCACHE: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = os.RemoveAll(gocache) }()
+	// An interrupt mid-run must not strand the cache either.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		_ = os.RemoveAll(gocache)
+		os.Exit(130)
+	}()
+
 	h := &Harness{
 		Root:      s.Root,
 		Control:   s.Control,
@@ -217,6 +258,7 @@ func main() {
 			if root != "" {
 				cmd.Dir = root
 			}
+			cmd.Env = envWithGOCACHE(os.Environ(), gocache)
 			cmd.Stdout = os.Stderr // suite chatter goes to stderr; report to stdout
 			cmd.Stderr = os.Stderr
 			// Non-zero exit == suite failed == mutation caught.
@@ -231,6 +273,7 @@ func main() {
 		if srcRoot == "" {
 			wd, err := os.Getwd()
 			if err != nil {
+				_ = os.RemoveAll(gocache) // os.Exit skips the deferred cleanup
 				fmt.Fprintf(os.Stderr, "muhar: cwd: %v\n", err)
 				os.Exit(1)
 			}
@@ -253,6 +296,7 @@ func main() {
 
 	rep := h.Run()
 	fmt.Print(rep.Summary())
+	_ = os.RemoveAll(gocache) // os.Exit skips the deferred cleanup
 	if rep.Broken {
 		os.Exit(2)
 	}
