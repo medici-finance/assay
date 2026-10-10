@@ -257,6 +257,7 @@ jobs:
           "${RUNNER_TEMP}/statusgen-base" --root . --corroborate --pr "${PR_NUMBER}"
 
   regen:
+    environment: board-writer
     # STATUS.md is generated on main only, never on a branch (single writer).
     # loop guard 2: skip our own [skip-status-regen] regen commit.
     if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') }}
@@ -271,7 +272,7 @@ jobs:
       # on the protect-main + leak-sweep ruleset bypass lists, so its push to
       # main is admitted where the default GITHUB_TOKEN's is rejected (GH013:
       # PR-required + leak-sweep-required). App perms: contents:write on THIS
-      # repo only; key held as repo Actions secrets (BOARD_APP_*).
+      # repo only; key held in the main-only board-writer Environment (BOARD_APP_*).
       - name: Mint assay-board-writer App token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -370,6 +371,7 @@ jobs:
   # when set, else falls back to this repo's own reviewer App — the one
   # identity whose approval the flip corroborates.
   model-autoflip:
+    environment: board-writer
     if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') && !contains(github.event.head_commit.message, '[skip-autoflip]') }}
     runs-on: medici-builder-public
     permissions:
@@ -579,6 +581,7 @@ jobs:
   # runner's own binaries (git, bash, curl), which no job may write, and a
   # runner that ends every process of an earlier job when that job ends.
   reconcile:
+    environment: board-writer
     if: ${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}
     runs-on: medici-builder-public
     # Read-only token for the witness reads. The writes below use the App token.

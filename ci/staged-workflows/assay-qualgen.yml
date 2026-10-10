@@ -47,19 +47,12 @@ on:
 # without this they run concurrently and all but the last lose the `git push`
 # race against a moving main ("! [rejected] main -> main (fetch first)"), so main
 # shows red runs indistinguishable from a real regen failure. This is the fix
-# proven on the statusgen board CI. cancel-in-progress is deliberately FALSE on
-# `main`: queue, never cancel — a cancelled regen throws away that push's view
-# rather than merely delaying it.
-#
-# It is TRUE on a pull-request ref, for the same reason and with the same
-# asymmetry the statusgen board CI now carries: the `main` half runs the REGEN
-# job, which WRITES QUALITY.md and must never be cancelled, while the
-# pull-request half runs the RENDER job, which explicitly discards its output. A
-# superseded render is answering a question about a head nobody will read, and
-# on a saturated runner pool it is what the current head's run waits behind.
+# proven on the statusgen board CI (#221 / #216). cancel-in-progress is
+# deliberately FALSE: queue, never cancel — a cancelled regen throws away that
+# push's view rather than merely delaying it.
 concurrency:
   group: quality-report-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 # Least-privilege default: the PR render job needs only read. The push-to-main
 # regen job is the sole thing that commits, so it alone gets contents: write
