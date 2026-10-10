@@ -14,15 +14,11 @@ func (c *Cell) deskHelperEnv(parent []string, role, session string) []string {
 		"HOME": c.Home, "USERPROFILE": c.Home, "ASSAY_CONFIG_HOME": c.Config,
 		"DESK_LOOP": role, "DESK_SESSION": session, "DESK_ROOTS": c.Env.Get("CELL_ROOTS"),
 	}
-	env := make([]string, 0, len(parent)+len(values))
-	for _, pair := range parent {
-		key, _, _ := strings.Cut(pair, "=")
-		if _, replaced := values[key]; !replaced {
-			env = append(env, pair)
-		}
-	}
+	// Empty cell roots deliberately clear inherited operator roots. envSet also
+	// removes case variants on Windows without changing the parent's slice.
+	env := parent
 	for key, value := range values {
-		env = append(env, key+"="+value)
+		env = envSet(env, key, value)
 	}
 	return env
 }

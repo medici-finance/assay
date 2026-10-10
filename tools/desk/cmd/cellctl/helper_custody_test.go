@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -140,5 +142,45 @@ func TestDeskdMintUsesCellCustodyAndFailsClosed(t *testing.T) {
 	assertDies(t, "forge mismatch", func() { c.deskdMintGitHub() })
 	if len(owners) != 2 {
 		t.Fatal("forge mismatch reached GitHub custody")
+	}
+}
+
+func TestDeskHelperEnvReplacesCustodyWithoutChangingParent(t *testing.T) {
+	parent := []string{"HOME=operator", "HOME=duplicate", "home=case-variant", "DESK_ROOTS=operator/repo=/operator", "KEEP=value"}
+	before := append([]string(nil), parent...)
+	c := &Cell{Home: "/cell/home", Config: "/cell/config", Env: envWith(nil)}
+	got := c.deskHelperEnv(parent, "worker-desk", "demo-worker-codex")
+	if !reflect.DeepEqual(parent, before) {
+		t.Fatal("helper custody changed parent slice")
+	}
+	counts := map[string]int{}
+	for _, pair := range got {
+		key, value, _ := strings.Cut(pair, "=")
+		if runtime.GOOS == "windows" {
+			key = strings.ToUpper(key)
+		}
+		counts[key]++
+		switch key {
+		case "HOME", "USERPROFILE":
+			if value != c.Home {
+				t.Fatal("helper inherited operator home")
+			}
+		case "DESK_ROOTS":
+			if value != "" {
+				t.Fatal("empty cell roots inherited operator roots")
+			}
+		case "KEEP":
+			if value != "value" {
+				t.Fatal("unrelated parent key changed")
+			}
+		}
+	}
+	for _, key := range []string{"HOME", "USERPROFILE", "ASSAY_CONFIG_HOME", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "KEEP"} {
+		if counts[key] != 1 {
+			t.Fatalf("%s count = %d", key, counts[key])
+		}
+	}
+	if runtime.GOOS != "windows" && counts["home"] != 1 {
+		t.Fatal("Unix case-sensitive key removed")
 	}
 }
