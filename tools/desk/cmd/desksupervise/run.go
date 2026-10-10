@@ -30,6 +30,7 @@ func cmdRun(args []string) (err error) {
 	intervalStr := fs.String("interval", "", "sweep every interval (e.g. 5m) — required")
 	root := fs.String("root", "", "repo root to read the live claim tool against (default: cwd)")
 	repo := fs.String("repo", "", "owner/name of the repo whose dispatch claims to sweep — required")
+	limit := fs.Int("limit", 50, "maximum claim payloads per interval (1..500)")
 	dryRun := fs.Bool("dry-run", false, "classify and print only on every tick — never release a claim, file an issue, or journal")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
@@ -50,6 +51,9 @@ func cmdRun(args []string) (err error) {
 	if strings.TrimSpace(*repo) == "" {
 		return deskkit.Refused("refused: run needs --repo OWNER/NAME")
 	}
+	if *limit < 1 || *limit > 500 {
+		return deskkit.Refused("refused: --limit must be between 1 and 500")
+	}
 	ac.repo = *repo
 
 	dir := *root
@@ -67,6 +71,7 @@ func cmdRun(args []string) (err error) {
 	stop := make(chan struct{})
 	go func() { <-sigCh; close(stop) }()
 
+	after := ""
 	ticks, alive, reclaimed, blocked, blind := 0, 0, 0, 0, 0
 	for {
 		if gErr := deskkit.Guard(); gErr != nil {
@@ -81,15 +86,25 @@ func cmdRun(args []string) (err error) {
 			return perr
 		}
 		now := time.Now().UTC()
-		claims, cerr := readLiveClaims(dir, *repo, now)
+		claims, next, cerr := readLiveClaimsPage(*repo, now, *limit, after)
 		if cerr != nil {
 			ac.detail = runDetail(interval, ticks, alive, reclaimed, blocked, blind, "aborted on claim read error")
 			return cerr
 		}
-		results, tickBlind, serr := sweep(claims, liveObservationSource(houseProbesOnce()), pol, now, *dryRun, doReclaim, doFileBlockedTimeout, doArmRunStop, os.Stdout)
+		eligible, _, recBlind, rerr := reconcile(claims, liveEligibilitySource(dir), now, *dryRun, doReclaim, doArmRunStop, os.Stdout)
+		if rerr != nil {
+			return rerr
+		}
+		results, tickBlind, serr := sweep(eligible, liveObservationSource(houseProbesOnce()), pol, now, *dryRun, doReclaim, doFileBlockedTimeout, doArmRunStop, os.Stdout)
 		if serr != nil {
 			ac.detail = runDetail(interval, ticks, alive, reclaimed, blocked, blind, "aborted on sweep error")
 			return serr
+		}
+		pageOnly := after != "" || next != ""
+		tickBlind = tickBlind || recBlind || pageOnly
+		after = next
+		if pageOnly {
+			fmt.Fprintf(os.Stderr, "claims-page partial: next_after=%q limit=%d; continuing next interval\n", next, *limit)
 		}
 		ticks++
 		// Write the runtime snapshot for a local reader, atomically, from THIS tick's own
@@ -97,7 +112,7 @@ func cmdRun(args []string) (err error) {
 		// continues: status.json is a convenience for a local reader, never a precondition for
 		// the observer's own reclaim work.
 		if statusPath, spErr := statusJSONPath(); spErr == nil {
-			if werr := writeStatusJSON(statusPath, snapshotFromSweep(results, pol, now)); werr != nil {
+			if werr := writeStatusJSON(statusPath, pageSnapshot(results, pol, now, pageOnly)); werr != nil {
 				fmt.Fprintf(os.Stderr, "%s desksupervise run: WARNING: could not write %s: %v\n", nowStamp(), statusPath, werr)
 			}
 		} else {
@@ -152,3 +167,11 @@ func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 var sharedHouseProbes = loopengine.HouseProbes()
 
 func houseProbesOnce() *loopengine.ObservableProbes { return sharedHouseProbes }
+
+func pageSnapshot(results []sweepResult, pol loopengine.LivenessPolicy, now time.Time, partial bool) StatusSnapshot {
+	snapshot := snapshotFromSweep(results, pol, now)
+	if partial {
+		snapshot.Aggregates.BlindSources = append(snapshot.Aggregates.BlindSources, "partial claim page; other claims not measured this interval")
+	}
+	return snapshot
+}

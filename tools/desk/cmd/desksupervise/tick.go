@@ -28,6 +28,8 @@ func cmdTick(args []string) (err error) {
 	root := fs.String("root", "", "repo root to read a live claim tool against (default: cwd)")
 	repo := fs.String("repo", "", "owner/name of the repo whose dispatch claims to sweep (live mode)")
 	dryRun := fs.Bool("dry-run", false, "classify and print only — never release a claim, file an issue, or journal")
+	limit := fs.Int("limit", 50, "maximum live claim payloads per tick (1..500)")
+	after := fs.String("after", "", "resume strictly after this claim key")
 	nowStr := fs.String("now", "", "RFC3339 clock override — Verify-fixture use only; a live run always uses the real clock")
 	claimsFixture := fs.String("claims-fixture", "", "JSON array of claim records — bypasses the live claim tool")
 	obsFixture := fs.String("observations-fixture", "", "JSON object keyed by claim key — bypasses the forge and audit file")
@@ -39,6 +41,9 @@ func cmdTick(args []string) (err error) {
 	}
 	if (*claimsFixture == "") != (*obsFixture == "") {
 		return deskkit.Refused("refused: --claims-fixture and --observations-fixture are given together or not at all")
+	}
+	if *limit < 1 || *limit > 500 {
+		return deskkit.Refused("refused: --limit must be between 1 and 500")
 	}
 	ac.repo = *repo
 
@@ -56,6 +61,7 @@ func cmdTick(args []string) (err error) {
 		return perr
 	}
 
+	pageIncomplete := false
 	var (
 		claims     []claimRecord
 		obsSource  observationSource
@@ -81,11 +87,15 @@ func cmdTick(args []string) (err error) {
 			}
 			dir = wd
 		}
-		liveClaims, cerr := readLiveClaims(dir, *repo, now)
+		liveClaims, next, cerr := readLiveClaimsPage(*repo, now, *limit, *after)
+		if next != "" {
+			fmt.Fprintf(os.Stderr, "claims-page incomplete: resume with --after %s --limit %d\n", next, *limit)
+		}
 		if cerr != nil {
 			return cerr
 		}
 		claims = liveClaims
+		pageIncomplete = next != "" || *after != ""
 		obsSource = liveObservationSource(loopengine.HouseProbes())
 		eligSource = liveEligibilitySource(dir)
 	}
@@ -119,6 +129,9 @@ func cmdTick(args []string) (err error) {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"%d of %d claim(s) were COULD-NOT-CHECK — the tick ran, the reading is incomplete",
 			reconcileBlindCount(recResults)+blindCount(results), totalClassified), nil)
+	}
+	if pageIncomplete {
+		return deskkit.Unverifiable("claim inventory was a partial page; use the reported continuation when present", nil)
 	}
 	return nil
 }

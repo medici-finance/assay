@@ -5,12 +5,12 @@
 //
 // Verbs:
 //
-//	desksupervise tick [--root DIR] [--repo OWNER/NAME] [--dry-run] [--now RFC3339]
+//	desksupervise tick [--limit N] [--after KEY] [--root DIR] [--repo OWNER/NAME] [--dry-run] [--now RFC3339]
 //	                    [--claims-fixture FILE] [--observations-fixture FILE]
-//	desksupervise run --interval DUR [--root DIR] [--repo OWNER/NAME] [--dry-run]
+//	desksupervise run --interval DUR [--limit N] [--root DIR] [--repo OWNER/NAME] [--dry-run]
 //	desksupervise --version
 //
-// tick enumerates every `state=dispatched` dispatch claim, runs the three house probes
+// tick enumerates a bounded page of dispatched claims and runs the three probes
 // (or the fixtures, which bypass the forge and audit file so the Verify rows run offline),
 // evaluates loopengine.DefaultLivenessPolicy() (or `<StateDir>/liveness.json` when
 // present) against each, and prints one classification line per claim. With --dry-run
@@ -19,11 +19,9 @@
 // WOULD do. run --interval loops tick forever, honouring the kill switch between ticks and
 // exiting 0 on SIGTERM, mirroring `deskwt prune --interval`.
 //
-// This is a READ-MOSTLY tool: the only writes are a claim release
-// (deskkit.Forge.DeleteRef on "dispatch/<key>" — see actions.go for why this, not
-// deskkit.ReleaseMatching, is the release path a DISPATCH claim actually needs), a journal
-// line, and — at most once per key, deskfile's own dedupe makes the repeat a no-op — a
-// `help wanted` issue naming a blocked-timeout run. None of the three run under --dry-run.
+// Writes are a compare-delete of the assessed claim object, the existing stop
+// flag and journal, and a deduplicated help-wanted issue for blocked-timeout.
+// None of these run under --dry-run.
 //
 // Exit codes (deskkit contract): 0 ok (every claim classified, none blind) · 3 disabled ·
 // 5 refused · 6 unverifiable — including a tick that classified every claim but found at
@@ -42,22 +40,29 @@ import (
 const usage = `desksupervise — the liveness observer: reclaim a wedged dispatch in minutes, not hours.
 
 USAGE:
-  desksupervise tick [--root DIR] [--repo OWNER/NAME] [--dry-run] [--now RFC3339]
+  desksupervise tick [--limit N] [--after KEY] [--root DIR] [--repo OWNER/NAME] [--dry-run] [--now RFC3339]
                       [--claims-fixture FILE] [--observations-fixture FILE]
   desksupervise status [--json] [--stops] [--root DIR] [--repo OWNER/NAME] [--now RFC3339]
                       [--claims-fixture FILE] [--observations-fixture FILE] [--stops-fixture FILE]
                       [--beacons-fixture FILE]
-  desksupervise run --interval DUR [--root DIR] [--repo OWNER/NAME] [--dry-run]
+  desksupervise run --interval DUR [--limit N] [--root DIR] [--repo OWNER/NAME] [--dry-run]
   desksupervise stop <key> --reason "..."
   desksupervise status --stops
   desksupervise --version
 
-tick enumerates every state=dispatched dispatch claim (live: via the claim tool's own
-records under --root/--repo; offline: via --claims-fixture, a JSON array of claim
+tick enumerates a page of state=dispatched claims (live: immutable tag payloads
+from the active claim namespace in --repo; offline: via --claims-fixture, a JSON array of claim
 records), runs the three house liveness probes (offline: via --observations-fixture, a
 JSON object keyed by claim key, which BYPASSES the forge and audit file entirely — this
 is what makes the Verify table run with no network and no filesystem audit dependency),
 classifies each against loopengine.DefaultLivenessPolicy(), and prints one line per claim.
+
+Live ticks and run intervals read at most 50 claim payloads by default (--limit 1..500), in key order.
+An incomplete page prints an --after continuation and returns exit 6 after processing
+that page; it never claims the whole inventory was clean. run advances one page per
+interval, wraps after the final page, and marks page-only snapshots incomplete. Malformed payloads hold the
+page for inspection without deleting refs. Release compares the exact assessed object
+id on the server; a replacement holder is preserved. No age-only reaper is added.
 
 Reconciliation runs FIRST, before the liveness classification: for every dispatched claim it
 joins three reads (the current claim holder, the item's board row on origin/main, and the PR's
