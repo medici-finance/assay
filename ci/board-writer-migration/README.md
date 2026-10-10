@@ -1,13 +1,13 @@
 # Board-writer Environment migration
 
-This proposal uses the existing board-writer App with the `board-writer`
+This migration uses the existing board-writer App with the `board-writer`
 Environment, whose allowed deployment ref must be exactly **Branch `main`**.
 The Environment must contain `BOARD_APP_ID` and `BOARD_APP_PRIVATE_KEY`.
 
-The App that authors this PR cannot push `.github/workflows/**`. The live
-workflow changes are therefore reviewable in `workflows.patch`; until a
-maintainer applies and pushes that patch to this PR branch, the live workflows
-remain unchanged. Do not remove the repository secrets before that promotion.
+The five live workflow changes are included in this PR in a maintainer-authored
+commit. `workflows.patch` records the exact migration for review and for any
+checkout that still needs promotion. Do not remove the repository secrets
+before merge and successful Environment-backed writer runs.
 
 The patch modifies only these five live workflows:
 
@@ -35,9 +35,10 @@ also receive the Environment restriction so a future promotion cannot restore
 an unfenced credential consumer. The staged reconcile proposal is fenced too;
 this migration does not activate it or change the App's permissions.
 
-## Add the live changes to this PR
+## Applying the migration patch
 
-Run as a maintainer in a checkout of the PR branch:
+The patch is already applied on this PR branch. For a checkout where the five
+workflow changes are absent, run as a maintainer:
 
 ```sh
 git apply --check ci/board-writer-migration/workflows.patch
@@ -47,8 +48,9 @@ git commit -m "ci: activate board-writer Environment migration"
 git push https://github.com:443/medici-finance/assay HEAD:codex/board-writer-environment
 ```
 
-If the patch no longer applies, stop and refresh it against the current live
-files. Do not copy the staged release/statusgen proposals wholesale: that would
+If the patch no longer applies, first check whether it is already present with
+`git apply --reverse --check ci/board-writer-migration/workflows.patch`. Otherwise,
+stop and refresh it against the current live files. Do not copy the staged release/statusgen proposals wholesale: that would
 activate other work in addition to this migration. A merged staged-only PR does
 not complete the migration.
 

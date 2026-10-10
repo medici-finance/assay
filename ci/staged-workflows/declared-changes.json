@@ -1,7 +1,6 @@
 {
   "evidence-automerge.yml": {
-    "mode": "pending",
-    "reason": "Board-writer main-only Environment migration; apply ci/board-writer-migration/workflows.patch to the live workflows before removing repository secrets."
+    "mode": "identical"
   },
   "loopadmin.yml": {
     "mode": "pending",
@@ -22,11 +21,9 @@
     "mode": "identical"
   },
   "assay-qualgen.yml": {
-    "mode": "pending",
-    "reason": "Board-writer main-only Environment migration; apply ci/board-writer-migration/workflows.patch to the live workflows before removing repository secrets."
+    "mode": "identical"
   },
   "verify-gate-close.yml": {
-    "mode": "pending",
-    "reason": "Board-writer main-only Environment migration; apply ci/board-writer-migration/workflows.patch to the live workflows before removing repository secrets."
+    "mode": "identical"
   }
 }
