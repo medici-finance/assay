@@ -1,5 +1,7 @@
 # Managed task scratch
 
+Command-line forms (flags, precedence, exit codes) are listed in [the `cellctl` command reference](cellctl-cli-reference.md); what changed from the earlier hand-written parser is in [the compatibility table](cellctl-cli-compat.md).
+
 `cellctl` owns disposable task scratch under the cell's private `run/scratch`
 directory. House-cell cadence passes and interactive launches enroll automatically,
 set `TMPDIR`/`TMP`/`TEMP`, and propagate that owner to Codex command environments.

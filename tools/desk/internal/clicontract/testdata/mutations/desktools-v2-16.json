@@ -1,0 +1,221 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv|TestScratchRunFlagsBeforeVerb|TestCLILegacyShapeRefusals|TestCLILegacyShapeAccepted|TestCLILegacyWordsRestored|TestCLIEveryVerbDeclaresItsPositionals|TestCLIOpaqueArgvVerbResolvedLikeTheParser|TestCLIWholeLineScans|TestKindScanRefusesUnknown)$' ./cmd/cellctl/ ./internal/cli/",
+  "control": {
+    "name": "CONTROL — a parse failure exits with the wrong code (usage exit 3 becomes 4)",
+    "file": "cmd/cellctl/cobra.go",
+    "old": "UsageExit:       3,",
+    "new": "UsageExit:       4,"
+  },
+  "mutations": [
+    {
+      "name": "help runs after the roster echo: the echo is called while the tree is built, so every help and version form reads configuration first",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "root := cli.NewRoot(\"cellctl\", \"start, stop and scaffold an Assay CELL on one laptop\")",
+      "new": "root := cli.NewRoot(\"cellctl\", \"start, stop and scaffold an Assay CELL on one laptop\")\n\techoRoster()"
+    },
+    {
+      "name": "version no longer exempt from the roster echo (the pre-run hook ignores the no-echo annotation)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if cmd.Annotations[noEcho] == \"1\" {",
+      "new": "if false && cmd.Annotations[noEcho] == \"1\" {"
+    },
+    {
+      "name": "a setting opens the config-map source nobody declared (the tick-budget binding gains Config)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "bStr(\"tick-budget\", \"per-pass tick budget (a duration)\", \"CELL_TICK_BUDGET\"),",
+      "new": "func() cli.Binding { b := bStr(\"tick-budget\", \"per-pass tick budget (a duration)\", \"CELL_TICK_BUDGET\"); b.Config = true; return b }(),"
+    },
+    {
+      "name": "a setting reads an undeclared environment name (the model binding also consults ANTHROPIC_MODEL)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\"model for THIS run only, passed through verbatim to the harness\", \"DESK_MODEL_OVERRIDE\"),",
+      "new": "\"model for THIS run only, passed through verbatim to the harness\", \"DESK_MODEL_OVERRIDE\", \"ANTHROPIC_MODEL\"),"
+    },
+    {
+      "name": "one legacy flag form dropped (scratch's single-dash -apply stops being accepted)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "GoFlagCompat: scratchLine(args),",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "the-desk Opus refusal removed from the domain check (nothing below the adapter refuses; a parser-bypassing caller is admitted)",
+      "file": "cmd/cellctl/desk.go",
+      "old": "\t\trefuseOpusForTheDesk(model)\n",
+      "new": "\t\t_ = model\n"
+    },
+    {
+      "name": "--set stops persisting (the cell.env write after a launch's overrides is dropped)",
+      "file": "cmd/cellctl/launch.go",
+      "old": "\t\tapplyEnvKVs(c.Env, filepath.Join(c.Dir, \"cell.env\"), false, persistKVs)\n",
+      "new": "\t\t_ = persistKVs\n"
+    },
+    {
+      "name": "scratch run loses its command boundary (the OpaqueArgv declaration dropped): a word of the supervised command that spells --source, --task or --help is parsed by cellctl",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tcli.OpaqueArgv(cmd, 2)\n",
+      "new": ""
+    },
+    {
+      "name": "the adapter stops inserting the opaque-argv boundary (the split splitOpaqueArgv computes is discarded)",
+      "file": "internal/cli/cli.go",
+      "old": "\targs, walked := splitOpaqueArgv(root, args)\n",
+      "new": "\t_, walked := splitOpaqueArgv(root, args)\n"
+    },
+    {
+      "name": "the hidden completion entrypoints answer again (the refusal command is not registered)",
+      "file": "internal/cli/cli.go",
+      "old": "\trefuseCompletionRequests(root)\n",
+      "new": "\n"
+    },
+    {
+      "name": "the legacy-shape check is skipped: a flag before the verb, a selector after it or in another spelling, a flag in a positional's place and a single-dash long flag outside scratch all parse again",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if err := legacyShape(buildRoot(), args); err != nil {",
+      "new": "if err := legacyShape(buildRoot(), args); false && err != nil {"
+    },
+    {
+      "name": "the hook watchdog and fail-closed detection see only the separated double-dash selector (a refused = or single-dash spelling before the hook exits with the non-blocking 3)",
+      "file": "cmd/cellctl/main.go",
+      "old": "for n := selectorSpan(args); n > 0 && len(args) > n; n = selectorSpan(args) {",
+      "new": "for n := selectorSpan(args); n > 0 && len(args) > n && args[0] == \"--cells-root\"; n = selectorSpan(args) {"
+    },
+    {
+      "name": "a raw verb takes its own first words as the selector (a --cells-root after the verb is stripped and applied instead of reaching the child)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tif rawSelected {\n\t\tselectCellsRoot(rawSelector)\n\t}\n\treturn args\n",
+      "new": "\tif rawSelected {\n\t\tselectCellsRoot(rawSelector)\n\t}\n\tif len(args) > 2 && args[0] == \"--cells-root\" {\n\t\tselectCellsRoot(args[1])\n\t\treturn args[2:]\n\t}\n\treturn args\n"
+    },
+    {
+      "name": "the desk role is no longer checked ahead of the flags (a bad role is reported only after flag values resolve)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\tif !valueIn(args[1], knownRoles) {\n\t\t\tdie(\"unknown role '%s'\", args[1])\n\t\t}\n\t\tv := resolve(set, c)",
+      "new": "\t\tv := resolve(set, c)"
+    },
+    {
+      "name": "the adapter no longer refuses a line whose opaque-argv command its split walk did not reach (a flag before the verb moves the supervised command's start)",
+      "file": "internal/cli/cli.go",
+      "old": "if found, _, ferr := root.Find(args); ferr == nil && found != walked {",
+      "new": "if found, _, ferr := root.Find(args); ferr == nil && false && found != walked {"
+    },
+    {
+      "name": "a verb loses its declared positional count (show reads a flag in its cell's place again)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\"Launches and writes nothing.\",\n\t\tAnnotations: map[string]string{leadingArgsKey: \"1\"},",
+      "new": "\"Launches and writes nothing.\",\n\t\tAnnotations: map[string]string{leadingArgsKey: \"0\"},"
+    },
+    {
+      "name": "a lone `-` in the verb's place is exempt from the shape check again (it runs the next word as the verb)",
+      "file": "cmd/cellctl/shape.go",
+      "old": "\tif strings.HasPrefix(verb, \"-\") {",
+      "new": "\tif strings.HasPrefix(verb, \"-\") && verb != \"-\" {"
+    },
+    {
+      "name": "a relative selector is no longer refused first (help and version answer behind it)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if len(args) >= 2 && args[0] == \"--cells-root\" && !filepath.IsAbs(args[1]) {",
+      "new": "if false && len(args) >= 2 && args[0] == \"--cells-root\" && !filepath.IsAbs(args[1]) {"
+    },
+    {
+      "name": "every model-policy line, not only the hook line, has its exit rewritten to the blocking 2",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "return len(a) > 1 && a[0] == \"model-policy\" && a[1] == \"hook\"",
+      "new": "return len(a) > 0 && a[0] == \"model-policy\""
+    },
+    {
+      "name": "a help flag in the verb's place no longer ends the line (the words after it are parsed)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "case \"\", \"-h\", \"--help\":",
+      "new": "case \"\":"
+    },
+    {
+      "name": "a repeated --kind takes its last value (the whole-line scan keeps scanning past the first --kind)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "func kindScan(cmd *cobra.Command, words []string) string {\n\tisFlag, end := flagWordAt(cmd, words)\n\tfor i, w := range words {\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")\n\t\tswitch {\n\t\tcase i >= end:\n\t\t\treturn \"\"\n\t\tcase eq && isFlag[i]:\n\t\tcase eq:\n\t\t\tcontinue\n\t\tcase w == \"--kind\" && i+1 < len(words):\n\t\t\tk = words[i+1]\n\t\tcase w == \"--kind\":\n\t\t\tk = \"\"\n\t\tdefault:\n\t\t\tcontinue\n\t\t}\n\t\tif k == \"\" {\n\t\t\tdie(\"--kind needs a value (%s)\", joinPipe(kindValues))\n\t\t}\n\t\tif !valueIn(k, kindValues) {\n\t\t\tdie(\"--kind must be one of %s, got '%s'\", joinPipe(kindValues), k)\n\t\t}\n\t\treturn k\n\t}\n\treturn \"\"\n}",
+      "new": "func kindScan(cmd *cobra.Command, words []string) string {\n\tlast := \"\"\n\tisFlag, end := flagWordAt(cmd, words)\n\tfor i, w := range words {\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")\n\t\tswitch {\n\t\tcase i >= end:\n\t\t\treturn last\n\t\tcase eq && isFlag[i]:\n\t\tcase eq:\n\t\t\tcontinue\n\t\tcase w == \"--kind\" && i+1 < len(words):\n\t\t\tk = words[i+1]\n\t\tcase w == \"--kind\":\n\t\t\tk = \"\"\n\t\tdefault:\n\t\t\tcontinue\n\t\t}\n\t\tif k == \"\" {\n\t\t\tdie(\"--kind needs a value (%s)\", joinPipe(kindValues))\n\t\t}\n\t\tif !valueIn(k, kindValues) {\n\t\t\tdie(\"--kind must be one of %s, got '%s'\", joinPipe(kindValues), k)\n\t\t}\n\t\tlast = k\n\t}\n\treturn last\n}"
+    },
+    {
+      "name": "a confirmation word escaped by `--` confirms a recovery (the terminator is always dropped)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if rest != nil && valueIn(flag, rest) {",
+      "new": "if false && rest != nil && valueIn(flag, rest) {"
+    },
+    {
+      "name": "cadence reads the parser's positionals and boolean again, not the words as given",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\twords := legacyWords(verbWords, \"--confirm-stopped\")\n\t\tcmdCadence(cellArg(words), words[1:])",
+      "new": "\t\twords := append([]string{}, args...)\n\t\tif cmd.Flags().Changed(\"confirm-stopped\") {\n\t\t\twords = append(words, \"--confirm-stopped\")\n\t\t}\n\t\tcmdCadence(cellArg(words), words[1:])"
+    },
+    {
+      "name": "the flag-less verbs lose their exemption (a flag-shaped word after the cell of check or deskd is refused)",
+      "file": "cmd/cellctl/shape.go",
+      "old": "\t\tif flagless && pos >= n {",
+      "new": "\t\tif false && flagless && pos >= n {"
+    },
+    {
+      "name": "the flag-less verbs are exempt from the shape check entirely (a flag ahead of their cell is taken as the cell)",
+      "file": "cmd/cellctl/shape.go",
+      "old": "return cmd.DisableFlagParsing && cmd.Annotations[leadingArgsKey] == \"\"",
+      "new": "return cmd.DisableFlagParsing"
+    },
+    {
+      "name": "a help flag after a scratch action is the verb's help, exit 0, not the action's usage error",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if !c.Flags().Changed(\"help\") || len(pos) < 2 {",
+      "new": "if true {"
+    },
+    {
+      "name": "a trailing valueless --kind on desk, up and show is left to the parser, which refuses a line the old pre-scan ran",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if j < 0 || (verb != \"new\" && words[j] != \"--kind\") {",
+      "new": "if j < 0 || verb != \"new\" {"
+    },
+    {
+      "name": "a trailing valueless value flag on new is left to the parser, which refuses a line that scaffolded a cell",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if j < 0 || (verb != \"new\" && words[j] != \"--kind\") {",
+      "new": "if j < 0 || verb == \"new\" || words[j] != \"--kind\" {"
+    },
+    {
+      "name": "a help word on new is help only where the parser sees a flag, so a help word in a value position scaffolds the cell",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\t\tif w == \"-h\" || w == \"--help\" {\n\t\t\t\treturn append(append([]string{}, args[:i+1]...), \"--help\")",
+      "new": "\t\t\tif false && (w == \"-h\" || w == \"--help\") {\n\t\t\t\treturn append(append([]string{}, args[:i+1]...), \"--help\")"
+    },
+    {
+      "name": "the --kind override is read only where the parser sees a flag, so a --kind in another flag's value position goes unapplied and unvalidated",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tfor i, w := range words {\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")",
+      "new": "\tfor i, w := range words {\n\t\tif i > 0 && strings.HasPrefix(words[i-1], \"--\") && words[i-1] != \"--kind\" {\n\t\t\tcontinue\n\t\t}\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")"
+    },
+    {
+      "name": "a bare -- where the scratch cell goes is a missing cell (exit 1), not the cell word the old parser refused (exit 3)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\t\tloadCell(\"--\")\n",
+      "new": "\t\t\tcellArg(nil)\n"
+    },
+    {
+      "name": "a sole help word on defaults reaches the verb's own comparison (the usage refusal, after the roster echo), not the help verb",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tif i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {",
+      "new": "\tif false && i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {"
+    },
+    {
+      "name": "a --kind=<k> in another flag's value position or after a bare `--` kinds the cell (the old pre-scan read the separate word only)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\tcase eq && isFlag[i]:\n",
+      "new": "\t\tcase eq:\n"
+    },
+    {
+      "name": "a separated --kind after a bare `--` that ends the flags kinds the cell (an operand read as the kind)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\tcase i >= end:\n\t\t\treturn \"\"\n",
+      "new": "\t\tcase i >= end && false:\n\t\t\treturn \"\"\n"
+    },
+    {
+      "name": "the shape check refuses a --cells-root after the verb on a new help line, which the legacy parser answered with the usage",
+      "file": "cmd/cellctl/shape.go",
+      "old": "\tif verb == \"new\" {\n",
+      "new": "\tif false && verb == \"new\" {\n"
+    }
+  ]
+}

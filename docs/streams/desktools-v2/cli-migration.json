@@ -200,7 +200,7 @@
       "complexity": "complex",
       "basis": "8889 LOC, ~34 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/16",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "clusterguard",

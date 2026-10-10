@@ -60,7 +60,11 @@ var envReaderMethods = map[string]bool{"Get": true, "GetOr": true, "GetOrSet": t
 
 // envKeyParamFuncs are functions that read the key they are handed; the value is which
 // argument. A call to one is a read of that argument, so the keys are checked at the call sites.
-var envKeyParamFuncs = map[string]int{"envFileValue": 1, "configuredPath": 1}
+//
+// bStr's third argument is the environment variable a command-line setting falls back to: the
+// command tree (cobra.go) declares the binding and resolve reads the key through the cell's Env,
+// so the binding's literal is the read.
+var envKeyParamFuncs = map[string]int{"envFileValue": 1, "configuredPath": 1, "bStr": 2}
 
 // envKeyReads walks one file for every reader call and every reader taken as a value.
 func envKeyReads(name string, src any, consts map[string]string) ([]envRead, error) {
@@ -246,6 +250,17 @@ var envKeyOtherReads = map[string]envOtherRead{
 
 	// ── forwarding: the key is a parameter, and the call sites are walked instead ──
 	"Get(key)@provider_defaults.go:configuredPath": {why: "configuredPath reads the key it is handed; its callers are checked (envKeyParamFuncs)"},
+	"Get(k)@cobra.go:resolve":                      {why: "a command-line setting's environment fallback, read through the cell's Env; the key is a bStr binding's literal, checked at the bStr call sites (envKeyParamFuncs)"},
+	"os.Getenv(k)@cobra.go:procEnv":                {why: "the same fallback with no cell loaded; the key is a bStr binding's literal, checked at the bStr call sites (envKeyParamFuncs)"},
+
+	// ── a command-line setting's value or source (cli.Values), keyed by flag name, not an Env read ──
+	"Source(key)@cobra.go:flagOnly":            {why: "whether a setting came from its flag; the key is a flag name"},
+	"Source(key)@cobra.go:needValue":           {why: "whether a setting came from its flag; the key is a flag name"},
+	"Source(hostOnly)@up.go:cmdUp":             {why: "whether one of up's own flags was given to a desk line; the keys are flag names"},
+	`Source("roles")@new.go:scaffoldCell`:      {why: "whether --roles was given; a flag name"},
+	`IsSet("harness")@smoke.go:cmdSmoke`:       {why: "whether --harness was given; a flag name"},
+	`IsSet("max-age")@scratch.go:cmdScratch`:   {why: "whether --max-age was given; a flag name"},
+	`IsSet("max-bytes")@scratch.go:cmdScratch`: {why: "whether --max-bytes was given; a flag name"},
 
 	// ── not configuration ──
 	"Get(p.TokenEnv)@provider.go:providerCredential":           {why: "the credential variable a provider's TOKEN_ENV names: the operator's own variable, read from the layered environment (process environment, defaults file, cell.env) like any other key"},
@@ -1118,13 +1133,9 @@ func docTableKeys(t *testing.T, doc, heading string) []string {
 var usageKeyToken = regexp.MustCompile(`\b(?:CELLS?|CELLCTL|DESKD|DESK_MODEL|CODEX_MODEL|CURSOR_MODEL|TIER_MODEL)_[A-Za-z0-9_<>]*[A-Za-z0-9>]`)
 
 // usageKeysNotInRegistry is every such name the usage text carries that the registry does not,
-// with the reason. The usage text is shared word for word with the shell implementation
-// (TestUsageMatchesOracle), so it also describes what only that implementation does.
+// with the reason. The usage text is every help text the command tree carries (treeHelpText).
 var usageKeysNotInRegistry = map[string]string{
-	"CELL_PROVIDER_<NAME>":              "the stem of the provider family, written before its three suffixes",
-	"CELL_PROVIDER_<NAME>_MODEL_<TIER>": "the shell implementation's per-tier provider model; this cellctl has no --model-top/mid/fast and reads no such key",
-	"CELL_TIER_MODEL_<TIER>":            "the variable the shell implementation threads those flags through; not read here",
-	"CELLCTL_VERSION":                   "the shell script's version variable, named in a comment about the build stamp",
+	"CELL_PROVIDER_<NAME>": "the stem of the provider family, written before its three suffixes",
 }
 
 // TestEnvKeyListsAgree holds the hand-written key lists to the registry: the two tables in the
@@ -1158,7 +1169,7 @@ func TestEnvKeyListsAgree(t *testing.T) {
 
 	// The usage text.
 	// One placeholder is written out in words; read it as the placeholder it is.
-	usage := strings.ReplaceAll(usageText, "<role with - as _>", "<role>")
+	usage := strings.ReplaceAll(treeHelpText(), "<role with - as _>", "<role>")
 	met := map[string]bool{}
 	for _, tok := range usageKeyToken.FindAllString(usage, -1) {
 		probe := tok
@@ -1216,13 +1227,13 @@ func TestNewSeedsCellDefaults(t *testing.T) {
 	}
 	scaffold := func(name string) string {
 		return captureStdout(t, func() {
-			cmdNew([]string{name, "--kind", "scrubbed", "--repo", repo, "--repo-slug", "o/r", "--roots", "o/r=" + repo})
+			newArgv([]string{name, "--kind", "scrubbed", "--repo", repo, "--repo-slug", "o/r", "--roots", "o/r=" + repo})
 		})
 	}
 	root := defaultsRoot(t)
 	path := filepath.Join(root, cellDefaultsFile)
 
-	refusal(t, "new with no --repo", func() { cmdNew([]string{"refused", "--kind", "scrubbed"}) })
+	refusal(t, "new with no --repo", func() { newArgv([]string{"refused", "--kind", "scrubbed"}) })
 	if _, err := os.Lstat(path); !os.IsNotExist(err) {
 		t.Fatalf("a refused `new` left %s behind (%v)", path, err)
 	}

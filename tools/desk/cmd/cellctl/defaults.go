@@ -222,9 +222,7 @@ func seedCellDefaults() {
 // default, and what to diff an existing file against. `init` creates the file for a cells root
 // that predates it, on the same never-overwrite rule `cellctl new` follows.
 func cmdDefaults(args []string) {
-	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
-		usage(0)
-	}
+	// A sole -h/--help is the verb's help, answered by the command tree before this runs.
 	if len(args) != 1 || (args[0] != "init" && args[0] != "print") {
 		die("usage: cellctl defaults init|print (init creates CELLS_ROOT/%s without overwriting; print writes the template to stdout)", cellDefaultsFile)
 	}

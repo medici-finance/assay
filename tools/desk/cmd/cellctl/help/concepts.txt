@@ -1,0 +1,90 @@
+Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role, on the
+claude harness) and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are
+what `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
+role `cellctl desk`/`cellctl check` refuse to pin to Opus.
+
+PER-HARNESS NAMESPACES (#986). A claude pin names a Claude model; Codex does not understand it (and
+vice versa), so each harness keeps its OWN namespace: DESK_MODEL_<role>/DESK_MODEL_DEFAULT for claude,
+CODEX_MODEL_<role>/CODEX_MODEL_default for codex — set independently, never cross-read. A role/harness
+with NEITHER its own per-role pin NOR that harness's default falls back to the TIER MAP (see the table
+in docs/cellctl.md's Pinned models section):
+the-desk resolves at the TOP tier, every other role at MID — so a cell pinned Claude-only (the common
+case today) still resolves a sane model on a first `--harness codex` boot with no manual re-pin. The
+tier map's compiled defaults are themselves overridable per entry via cell.env
+(TIER_MODEL_<TIER>_<HARNESS>, e.g. TIER_MODEL_TOP_CODEX) — the same one-key-one-value override shape
+DESK_MODEL_<role> and CELL_PROVIDER_<NAME>_* already use elsewhere.
+
+PROVIDERS (#1303). `--provider <name>` / CELL_PROVIDER switches the claude harness to an
+Anthropic-compatible endpoint: CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV,MODEL} in cell.env, with
+built-in presets `kimi` (https://api.kimi.com/coding, $KIMI_API_KEY, k3[1m]) and `glm`
+(https://api.z.ai/api/anthropic, $ZAI_API_KEY, glm-5.3[1m]) that need no cell.env line — a line
+overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
+cellctl never stores, prints or persists a token value. With a provider the launch unsets
+ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL,
+each alias mapping to the provider's MODEL_<tier> for its tier when one exists (glm maps MID —
+the sonnet slot — to glm-5.3-flash[1m], assay#1352), else the flat provider model
+(docs/cellctl.md Providers).
+
+`cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
+pin for one run without touching cell.env, PASSED THROUGH VERBATIM to the selected harness — it is
+never remapped through the namespace/tier resolution above, whichever harness is active. `cellctl set`
+(or `desk ... --model <m> --set`) is the form that edits cell.env. `cellctl check` is never affected by
+an override — it reports what a plain boot with no --model would resolve to, per role. `--model`
+changes the model NAME only: a non-Anthropic model still needs ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN
+set in the launching shell, which cellctl inherits and does not manage.
+
+The HARNESS a role window runs on is pinned the same way: cell.env CELL_HARNESS (claude, the
+default, or codex), `--harness` on `desk`/`up` overrides it for one run without touching cell.env.
+The claude arm is unchanged (cellctl execs `claude --model <m> "/assay:<role>"`); the codex
+arm execs `codex --sandbox danger-full-access -C <worktree> -m <model> "<invoke-by-name prompt>"`
+with the same DESK_LOOP/DESK_SESSION/DESK_ROOTS/shim-PATH env — CLAUDE_CONFIG_DIR is irrelevant
+there. The Opus refusal binds the claude arm ONLY: on codex it refuses nothing and prints
+the resolved model, because Opus is a Claude-family alias with no meaning to codex. See Harnesses
+in docs/cellctl.md.
+
+A cell directory holds:
+cell.env            the per-cell variables (written by `cellctl new`)
+cells-<cell>.yaml   the cell's slice of the desk console's cells.yaml (must validate on its own; k8s kind)
+home/               the CELL config-home: .config/assay/roster.env (this cell's role→App bindings),
+                    .config/assay/apps.env + <role>-app.pem symlinks into the operator's real
+                    config home (key material is symlinked, never copied), and .config/gh +
+                    .gitconfig symlinked to the operator's real ones.
+                    A HOUSE cell symlinks the whole .config/assay to the operator's real config
+                    home instead — the desks ARE the operator's desks; nothing is copied.
+bin/                deskd + deskcli for this cell (k8s kind, or a house cell with DESKD=1)
+index/              the persistent deskd index
+worktrees/<role>/   one worktree per role, fast-forwarded to origin/main at every boot
+shim/               generated: every desk verb wrapped to run with HOME=<cell>/home
+
+cell.env keys that decide the KIND:
+CELL_KIND=k8s|house|container   default k8s (a cell scaffolded before kinds existed carries none)
+CELL_ROOTS=<owner>/<repo>=<abs path>,...   exported to every role window as DESK_ROOTS — the stream-root
+                      map the desk verbs (deskboard / verifyloop / deskdispatch) read. REQUIRED on a house
+                      cell; optional on k8s, where a boot without it leaves the verbs on their compiled
+                      placeholder topology.
+DESKD=1               on a house cell: require and stand a deskd as a k8s cell does (default: no deskd)
+CELL_FF_ROOTS=1       at `cellctl desk` boot, fast-forward every CELL_ROOTS stream root that can move
+                      without a decision (on a branch with an upstream, clean tree, 0 ahead). Off by
+                      default: the roots are the OPERATOR's checkouts, not cell-managed worktrees.
+                      `cellctl check` reports root drift either way, as a non-fatal `warn` row.
+CELL_COCKPIT=auto|tmux|herdr|orca   the surface `up` opens the role windows in (default auto: herdr if on
+                      PATH, else orca if on PATH AND its desktop app answers, else tmux). Only the surface
+                      changes — the per-role worktree, the roster beacon, the pinned model and the shim
+                      PATH are identical in every cockpit. `desk` (and so every window `up` opens)
+                      exports the RESOLVED value — never `auto` — as ASSAY_COCKPIT, the one value the
+                      worker-desk skill's worktree-create step reads (tmux = plain `git worktree add`);
+                      an explicit cockpit that is not available is refused there as `up` refuses it.
+
+Model policy: CELL_MODEL_POLICY=<JSON path relative to cell dir, or absolute> enables
+per-role provider, exact model and effort selection. See docs/cellctl-model-policy.md.
+Without that key, legacy pins and defaults retain their existing behavior.
+
+Repair-admission opt-in: ASSAY_REPAIR_ADMISSION=on|off durably enables (or disables) the
+dispatch-boundary repair-admission gate for a cell. Set it in cell.env (cellctl set accepts
+on|off only) and every desk this cell launches carries it in its environment, so the gate can
+be turned on for a cell rather than only via a one-off shell export. off and unset are
+identical: the key is simply absent from the launched environment. Default: off.
+
+Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
+harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
+login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.

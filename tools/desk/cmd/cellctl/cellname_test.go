@@ -96,7 +96,7 @@ func TestCellNameNewRefusesANameOutsideTheRoot(t *testing.T) {
 	scaffold := func(name string) func() {
 		return func() {
 			captureStdout(t, func() {
-				cmdNew([]string{name, "--kind", "scrubbed", "--repo", repo, "--repo-slug", "o/r", "--roots", "o/r=" + repo})
+				newArgv([]string{name, "--kind", "scrubbed", "--repo", repo, "--repo-slug", "o/r", "--roots", "o/r=" + repo})
 			})
 		}
 	}
@@ -164,7 +164,7 @@ func TestCellNameLoaderRefusesANameOutsideTheRoot(t *testing.T) {
 		} else {
 			assertNotLocalRefusal(t, "load "+name, msg, name, root)
 		}
-		msg, refused := tryRefusal(t, func() { cmdSet(name, []string{"CELL_COCKPIT=tmux"}) })
+		msg, refused := tryRefusal(t, func() { setArgv(name, []string{"CELL_COCKPIT=tmux"}) })
 		if !refused {
 			t.Errorf("set %q (%s) wrote a cell.env; want a refusal naming the name and the cells root %s", name, what, root)
 		} else {

@@ -14,7 +14,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -57,117 +56,27 @@ func main() {
 	// is missing or wider than its CELL_REPO_SLUG could pass its own check on inherited env vars.
 	// The cell home's file is the thing under audit, so it is the only admissible source.
 	// The model-policy hook's deadline starts before anything that can block, the roster echo
-	// below included (policy_enforce.go, armHookDeadline).
+	// included (policy_enforce.go, armHookDeadline).
 	armHookDeadline(commandArgs(os.Args[1:]))
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// P3: echo the effective roster once per run. A control surface that lives in settings rather
-	// than in a diff is visible only at RUN time; without the echo a NARROWING is invisible.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	code := run()
-	os.Exit(code)
+	// The roster echo (deskkit.EchoEffectiveConfig) runs from the command tree's pre-run hook
+	// (cobra.go), once per run, so that --help and --version stay pure introspection.
+	os.Exit(run())
 }
+
+// echoEffectiveConfig is P3: echo the effective roster once per run. A control surface that
+// lives in settings rather than in a diff is visible only at RUN time; without the echo a
+// NARROWING is invisible.
+func echoEffectiveConfig() { deskkit.EchoEffectiveConfig(os.Stderr) }
+
+// run parses and executes os.Args[1:] through the Cobra tree and returns the exit code.
+func run() int { return runTree(os.Args[1:]) }
 
 // cellsRootSelected is the cells root this invocation was given with --cells-root, or empty. It
 // is kept apart from CELLS_ROOT, which the same flag sets, for the one caller that must tell a
 // root named on its own command line from one inherited through the environment (cmdModelPolicy).
+// selectCellsRoot sets it; runTree clears it for every invocation.
 var cellsRootSelected string
-
-func run() (code int) {
-	defer func() {
-		if r := recover(); r != nil {
-			if ec, ok := r.(exitCode); ok {
-				code = ec.code
-				return
-			}
-			panic(r)
-		}
-	}()
-	args := os.Args[1:]
-	cellsRootSelected = ""
-	if len(args) > 0 && args[0] == "--cells-root" {
-		if len(args) < 3 || !filepath.IsAbs(args[1]) {
-			die("--cells-root requires an absolute registry path and a command")
-		}
-		if err := os.Setenv("CELLS_ROOT", args[1]); err != nil {
-			die("cannot select cell registry: %v", err)
-		}
-		cellsRootSelected = args[1]
-		args = args[2:]
-	}
-
-	// `--version` / `version` — pure introspection, recognised as the SOLE argument only, and
-	// answered before any other parsing, so a stale copy is detectable exactly the way
-	// `statusgen --version` makes a stale statusgen detectable.
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
-		fmt.Println(versionString(cellctlVersion, readBuildInfo))
-		return 0
-	}
-
-	verb := ""
-	if len(args) > 0 {
-		verb = args[0]
-	}
-	rest := []string{}
-	if len(args) > 1 {
-		rest = args[1:]
-	}
-
-	switch verb {
-	case "container-run":
-		cmdContainerRun(rest)
-	case "providers":
-		cmdProviders(rest)
-	case "defaults":
-		cmdDefaults(rest)
-	case "model-policy":
-		// The runtime hook a policy launch installs in Claude's --settings (policy_enforce.go);
-		// not an operator verb, so it is not in the usage text.
-		cmdModelPolicy(rest)
-	case "ls":
-		cmdLs()
-	case "check":
-		// `check`'s second parameter really is a single optional positional (a config dir), not
-		// a flag set, so the oracle's fixed-arity form is kept here too.
-		cfg := ""
-		if len(rest) > 1 {
-			cfg = rest[1]
-		}
-		cmdCheck(needCell(rest), cfg)
-	case "deskd":
-		cmdDeskd(needCell(rest))
-	case "cadence":
-		cmdCadence(needCell(rest), rest[1:])
-	case "scratch":
-		cmdScratch(needCell(rest), rest[1:])
-	case "cache":
-		cmdCache(needCell(rest), rest[1:])
-	case "cache-run":
-		cmdCacheRun(rest)
-	case "comms":
-		cmdComms(needCell(rest), rest[1:])
-	case "desk":
-		cmdDesk(needCell(rest), rest[1:])
-	case "smoke":
-		cmdSmoke(needCell(rest), rest[1:])
-	case "status":
-		cmdStatus(needCell(rest))
-	case "up":
-		cmdUp(needCell(rest), rest[1:])
-	case "down":
-		cmdDown(needCell(rest), rest[1:])
-	case "new":
-		cmdNew(rest)
-	case "set":
-		cmdSet(needCell(rest), rest[1:])
-	case "show":
-		cmdShow(needCell(rest), rest[1:])
-	case "-h", "--help", "":
-		usage(0)
-	default:
-		die("unknown verb '%s' (try --help)", verb)
-	}
-	return 0
-}
 
 // needCell mirrors the oracle's `"${2:?cell}"` — bash's own message on an unset parameter is
 // `<script>: line N: 2: cell`, which is not a contract anything reads; what IS the contract is
@@ -180,12 +89,14 @@ func needCell(rest []string) string {
 	return rest[0]
 }
 
-// commandArgs recognizes the one global selector before hook deadline detection.
-// Validation still happens in run, but no alternate hook spelling can defer its
-// watchdog until after the potentially blocking roster echo.
+// commandArgs recognizes the global selector before hook deadline detection, in every spelling
+// (--cells-root <abs>, --cells-root=<abs>, the Go single-dash forms, repeated), although the tree
+// accepts only one separated selector. Validation still happens in run, but no alternate hook
+// spelling can defer its watchdog until after the potentially blocking roster echo.
 func commandArgs(args []string) []string {
-	if len(args) >= 3 && args[0] == "--cells-root" {
-		return args[2:]
+	// A repeated selector is refused (legacyShape), but the hook behind it still fails closed.
+	for n := selectorSpan(args); n > 0 && len(args) > n; n = selectorSpan(args) {
+		args = args[n:]
 	}
 	return args
 }
