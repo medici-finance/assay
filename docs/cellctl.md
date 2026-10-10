@@ -1005,6 +1005,47 @@ cellctl show <cell>        [--kind <k>] [--cockpit <c>] [--harness <h>] [--provi
   `--kind` the cell is not provisioned for refuses just as `desk` would. Nothing is launched or
   written.
 
+### Cheap-default reset
+
+A pin that nobody revisits drifts to the most expensive setting and stays there. The reset is the
+periodic pull-back for pins nobody chose: a **DEFAULT** model pin older than the TTL is lowered to
+the harness's mid-tier model, and people move back up only when they need to.
+
+- **Pin record.** Every model pin written through `cellctl set` (or `desk`/`up --set`) is recorded in
+  `<cell>/model-pins.json` with the value the loader reads, when it was set and who owns it. A pin an
+  operator sets is **EXPLICIT**: plain `set`, the role form and `--set` all record EXPLICIT, and the
+  reset never touches it. Only `cellctl set <cell> ... --default` records a **DEFAULT** pin, one the
+  reset may lower; `--default` on a call that sets no model pin is refused. The latest `set` decides
+  the kind. Clearing a pin (`KEY=`) drops its record.
+- **What moves.** A DEFAULT pin moves only when all of these hold: it is older than the TTL; its
+  `cell.env` line is still there, non-empty and equal to the record (a different value was
+  hand-edited, and its clock restarts instead); the mid-tier model ranks strictly BELOW it (by the
+  cell's tier map, then by the Claude family name: haiku < sonnet < opus/fable; a model neither
+  places is never moved, and the reset never raises a pin); it is not a claude pin on a provider cell
+  (`CELL_PROVIDER` or `--provider`, whose endpoint rejects tier names); and it is not the
+  coordinator's model, meaning neither the `the-desk` pin nor a harness default (`DESK_MODEL_DEFAULT`,
+  `CODEX_MODEL_default`, `CURSOR_MODEL_default`) while `the-desk` has no pin of its own on that
+  harness. EXPLICIT pins and pins with no record (provenance unknown) are never touched. Pin keys are
+  the exact per-role and harness-default names; `DESK_MODEL_OVERRIDE` and other keys sharing the
+  prefix are never pins.
+- **Target.** `TIER_MODEL_MID_<HARNESS>` from the cell's own files (`cell.env`, the machine-wide
+  defaults file), else the compiled tier map, never a variable exported in the launching shell.
+- **When.** At every `cellctl desk` boot, and on demand with `cellctl models reset <cell>
+  [--model-ttl <Nd>]`. Each repin prints one line, `[model-reset] <role>: <old> -> <new> (...)`; a
+  boot with nothing to repin prints nothing. Under `DRY_RUN=1` both plan the repin, mark each line
+  `[dry-run: not written]` and write nothing. `show` and `check` apply the same rule read-only, so the
+  model they report is the one the next boot runs: `show` prints the pending line and tags the role
+  row `pending model-reset of cell.env <KEY>`, `check` prints a `warn  model reset pending:` row.
+- **Write.** A live reset writes one `cell.env.bak-<stamp>` backup, rewrites `cell.env` atomically
+  (temp file and rename) and keeps the previous value in the record (`prev`). Every writer of
+  `cell.env` and the record (`set`, a boot, `models reset`) holds `<cell>/.model-pins.lock`; a boot
+  that cannot take it within a few seconds skips its reset with one `[model-reset] skipped` line.
+- **TTL.** `CELL_MODEL_TTL_DAYS` in `cell.env`, default `7` (weekly); `0` turns the reset off for the
+  cell. It takes `7d`, a bare number of days (up to five digits, optional fraction) or a Go duration
+  (`36h`); anything else, `NaN`, `Inf`, exponents and underscores included, is refused by `set`. A
+  hand-edited malformed value refuses a boot and is a `check` MISS. `--model-ttl` replaces the cell's
+  value for one `models reset` call, so it also works while the cell's line is malformed.
+
 ---
 
 ## Harnesses

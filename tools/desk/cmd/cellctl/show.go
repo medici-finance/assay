@@ -137,6 +137,18 @@ func cmdShow(cell string, args []string) {
 		fmt.Printf("[show] policy=%s sha256=%s (role rows supersede legacy cell defaults below)\n", policyPath, policy.SHA256)
 	}
 
+	// The cheap-default reset a boot would run first, applied read-only so the rows below are
+	// what that boot resolves.
+	pending := map[string]bool{}
+	moves, err := c.pendingModelReset(provider)
+	if err != nil {
+		die("show: cell.env: %v", err)
+	}
+	for _, m := range moves {
+		pending[m.Key] = true
+		fmt.Printf("[show] %s [pending: the next boot writes it]\n", m.notice())
+	}
+
 	for _, r := range c.Roles {
 		if policy != nil {
 			res, err := policy.Resolve(r, providerFlag, modelFlag, harnessFlag)
@@ -160,6 +172,8 @@ func cmdShow(cell string, args []string) {
 		src := ""
 		if strings.HasPrefix(rm.Src, "tier:") {
 			src = "default: " + rm.Src
+		} else if pending[rm.Src] {
+			src = "pending model-reset of cell.env " + rm.Src
 		} else if _, ok := envFileValue(envfile, rm.Src); ok {
 			src = "cell.env " + rm.Src
 		} else if c.Env.Source(rm.Src) == layerDefaults {

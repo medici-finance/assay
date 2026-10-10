@@ -235,6 +235,18 @@ var envKeyOtherReads = map[string]envOtherRead{
 		why: "the per-role pin, read to refuse an Opus pin on the-desk"},
 	"GetOrSet(k)@cell.go:loadCell": {prefixes: []string{"TIER_MODEL_"},
 		why: "the compiled tier map, applied from tierModelDefaults"},
+	"Get(k)@modelreset.go:tierEntry": {prefixes: []string{"TIER_MODEL_"},
+		why: "a tier-map entry from the cell's files: the cheap default and the ranks the reset compares"},
+	"Get(k)@modelreset.go:planModelReset": {keys: modelPinKeyList(),
+		why: "the model pin cell.env carries for a pin record"},
+	"Source(k)@modelreset.go:planModelReset": {keys: modelPinKeyList(),
+		why: "whether the pin a record names is still a line of the cell's own cell.env"},
+	"Get(k)@modelreset.go:recordPins": {keys: modelPinKeyList(),
+		why: "the value a just-written model pin reads back as, recorded in the pin record"},
+	"Get(k)@modelreset.go:theDeskFallsThrough": {keys: []string{"DESK_MODEL_the_desk", "CODEX_MODEL_the_desk", "CURSOR_MODEL_the_desk"},
+		why: "whether the-desk has its own pin, or resolves through the harness default"},
+	"Get(m.Key)@modelreset.go:resetAgedDefaultPins": {keys: modelPinKeyList(),
+		why: "the launch value of a pin the reset moves, so a shell override is not replaced"},
 	"Get(providerVar(name, suffix))@provider.go:providerValue": {provider: true,
 		why: "a provider's endpoint, token variable name or model"},
 	"Source(providerVar(name, suffix))@provider.go:providerValue": {provider: true,
@@ -1349,4 +1361,16 @@ func TestDefaultsVerb(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != edited {
 		t.Errorf("a refused `defaults` changed the file:\n%s", got)
 	}
+}
+
+// modelPinKeyList is every model pin key, the exact set modelPinKey accepts.
+func modelPinKeyList() []string {
+	var keys []string
+	for _, s := range pinSpaces {
+		keys = append(keys, s.def)
+		for _, r := range knownRoles {
+			keys = append(keys, s.prefix+underscore(r))
+		}
+	}
+	return keys
 }

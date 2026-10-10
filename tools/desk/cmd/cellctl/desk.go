@@ -235,6 +235,11 @@ func cmdDesk(cell string, args []string) {
 		die("desk: --provider '%s' is a claude-harness switch and has no codex equivalent — drop the provider or use --harness claude", provider)
 	}
 
+	// Cheap-default reset: pull aged DEFAULT pins back to the cheap default BEFORE the pin is
+	// resolved, so this boot already runs on the repinned model. Explicit pins never move, and
+	// a provider window's claude pins are left alone (the provider is passed in).
+	c.bootModelReset(time.Now(), provider)
+
 	var model string
 	resolvedSrc := ""
 	switch {

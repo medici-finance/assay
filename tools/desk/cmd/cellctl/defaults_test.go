@@ -420,13 +420,13 @@ func TestCellDefaultsSetWritesOnlyCellEnv(t *testing.T) {
 		t.Errorf("other cell.env =\n%s\nwant\n%s", got, want)
 	}
 	// Nothing appears in the cells root but the two cells and the one defaults file, and each
-	// cell directory holds its cell.env and that file's backups only.
+	// cell directory holds its cell.env, that file's backups, and the pin record a model pin writes.
 	if names, want := mustReadDir(t, root), []string{cellDefaultsFile, "demo", "other"}; !reflect.DeepEqual(names, want) {
 		t.Errorf("cells root holds %v, want %v", names, want)
 	}
 	for _, cell := range []string{"demo", "other"} {
 		for _, n := range mustReadDir(t, filepath.Join(root, cell)) {
-			if n != "cell.env" && !strings.HasPrefix(n, "cell.env.bak-") {
+			if n != "cell.env" && n != modelPinsFile && !strings.HasPrefix(n, "cell.env.bak-") {
 				t.Errorf("set left %s in cell %s", n, cell)
 			}
 		}
