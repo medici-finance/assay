@@ -38,6 +38,10 @@ type pruneResult struct {
 	// plan is the reap arm's judgement for every worktree it considered, REAP and KEEP
 	// alike — what `--dry-run` prints in full.
 	plan []reapVerdict
+	// branchGC is the LOCAL-BRANCH GC half of the sweep (branchgc.go, Step C): the local
+	// refs the worktree lifecycle leaves behind, collected ONLY when provably on the
+	// remote mainline. branchGC.ran is false when --no-branches skipped the pass.
+	branchGC branchGCResult
 	// dryRun records which mode produced this result, so the renderer prints the FULL plan
 	// for an inspection run and only the acted-on rows for a live one.
 	dryRun bool
@@ -63,6 +67,14 @@ type pruneOpts struct {
 	// than this ago holds a new one. 0 disables the debounce ONLY — the singleton's lock
 	// is always taken and cannot be disabled (prunesingleton.go).
 	singletonTTL time.Duration
+	// noBranches skips the local-branch GC (Step C, branchgc.go) for this sweep — the
+	// cadence knob for a boot path that wants the worktree arms more often than the
+	// branch pass. Default OFF: the GC runs at the same moments as prune.
+	noBranches bool
+	// branchesOnly runs ONLY the local-branch GC, skipping every worktree arm — the other
+	// half of the cadence split. The opt-in worktree arms (--reclaim-stale-locks,
+	// --reap-dead-sessions) are REFUSED with it, because they would be silently inert.
+	branchesOnly bool
 }
 
 // cmdPrune implements `deskwt prune [--repo <path>] [--interval <dur>]
@@ -106,6 +118,17 @@ type pruneOpts struct {
 //	  merge check is the ACTIVE-WORKER guard: an unmerged branch (an open PR still in flight)
 //	  is NOT an ancestor of origin/main, so it is LEFT untouched. Anything failing any check is
 //	  LEFT and reported as skipped with a reason. There is NO --force anywhere.
+//
+//	Step C (default ON, --no-branches to skip / --branches-only to run alone): the
+//	  LOCAL-BRANCH GC (branchgc.go). Worktrees have this sweep and remote branches have the
+//	  forge's delete-on-merge, but the LOCAL branch a worktree leaves behind has neither —
+//	  they accumulate without bound. Step C collects a local branch ONLY when its content is
+//	  provably on refs/remotes/origin/main: its tip is an ancestor of the mainline (which
+//	  covers the fresh-never-used handle exactly), or every unique commit's patch-id is
+//	  already in the mainline's history (the squash-merge case). main/master, any branch
+//	  checked out in any worktree, and any branch whose proof fails or cannot be completed
+//	  are KEPT — unique-patch branches always. The delete is a compare-and-delete against
+//	  the proven sha (`git update-ref -d <ref> <sha>`), never a force verb.
 //
 // Without --interval it runs ONE sweep and exits (the boot-step behavior). With
 // `--interval 30m` it becomes a self-contained ticking loop — sweep, sleep the interval,
@@ -154,6 +177,14 @@ func cmdPrune(args []string) (err error) {
 		"skip the sweep when one completed less than this ago (e.g. 10m); 0 disables the recency check (the singleton lock is always taken)")
 	noSingleton := fs.Bool("no-singleton", false,
 		"disable the singleton's recency check (equivalent to --singleton-ttl 0); the lock is still taken, so a live sweep still holds this one")
+	// --no-branches / --branches-only are the cadence split for the local-branch GC
+	// (Step C, branchgc.go): the GC runs at the same moments as prune by default, and a
+	// boot path that wants the worktree arms more (or less) often than the branch pass
+	// controls that here.
+	noBranches := fs.Bool("no-branches", false,
+		"skip the local-branch GC (run the worktree arms only)")
+	branchesOnly := fs.Bool("branches-only", false,
+		"run ONLY the local-branch GC (skip every worktree arm)")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
 		// TIER TWO: a help screen is not a refusal and writes no audit row (deskkit/helprequest.go).
@@ -161,7 +192,8 @@ func cmdPrune(args []string) (err error) {
 			return deskkit.ErrHelpRequested
 		}
 		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
-			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl and --no-singleton " +
+			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl, " +
+			"--no-singleton, --no-branches and --branches-only " +
 			"(there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 0 {
@@ -173,6 +205,19 @@ func cmdPrune(args []string) (err error) {
 		reapDeadSessions:  *reapDead,
 		dryRun:            *dryRun,
 		singletonTTL:      defaultSingletonTTL,
+		noBranches:        *noBranches,
+		branchesOnly:      *branchesOnly,
+	}
+	// The split flags are contradictory together, and the opt-in WORKTREE arms under
+	// --branches-only would be silently inert — the exact shape of failure this tool
+	// refuses everywhere else (see --lock-ttl below). Say so instead of accepting a knob
+	// that does nothing.
+	if opts.noBranches && opts.branchesOnly {
+		return deskkit.Refused("refused: --no-branches and --branches-only are contradictory")
+	}
+	if opts.branchesOnly && (opts.reclaimStaleLocks || opts.reapDeadSessions) {
+		return deskkit.Refused("refused: --branches-only runs no worktree arm, so " +
+			"--reclaim-stale-locks and --reap-dead-sessions have no effect with it")
 	}
 	if s := strings.TrimSpace(*singletonTTLStr); s != "" {
 		d, derr := time.ParseDuration(s)
@@ -273,7 +318,8 @@ func cmdPrune(args []string) (err error) {
 			fmt.Fprintf(os.Stderr, "  skipped %s — %s\n", s.path, s.reason)
 		}
 		ac.detail = pruneAuditDetail(res)
-		if res.bookkept == 0 && res.removed == 0 && res.reaped == 0 && len(res.reclaimed) == 0 {
+		if res.bookkept == 0 && res.removed == 0 && res.reaped == 0 && len(res.reclaimed) == 0 &&
+			res.branchGC.collected() == 0 {
 			ac.successResult = deskkit.ResultNoop
 		}
 		return nil
@@ -291,19 +337,42 @@ func cmdPrune(args []string) (err error) {
 // pruneSummaryLine is the ONE line a sweep always emits. It reports the four counts a
 // caller needs to tell a drained repo from a stuck one: what bookkeeping was dropped, what
 // was removed, what was HELD (and how much of that hold is the lock gate specifically — the
-// number that used to grow without bound), and how many locks were retired.
+// number that used to grow without bound), and how many locks were retired. When the
+// local-branch GC ran, the line carries its counts too — collected per proof class, and
+// held — because "no branches collected" and "the branch pass did not run" are different
+// facts and only one of them should ever read as zero.
 func pruneSummaryLine(res pruneResult) string {
-	return fmt.Sprintf(
+	if res.branchGC.only {
+		// --branches-only: the worktree arms did not run, so their zeros are not counts of
+		// anything and the line leads with the half that did.
+		return fmt.Sprintf("deskwt prune: branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
+			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+	}
+	line := fmt.Sprintf(
 		"deskwt prune: pruned %d bookkeeping entr%s, removed %d merged+clean worktree%s, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
 		res.bookkept, plural(res.bookkept, "y", "ies"),
 		res.removed, plural(res.removed, "", "s"),
 		len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
+	if res.branchGC.ran {
+		line += fmt.Sprintf(", branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
+			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+	}
+	return line
 }
 
 // pruneAuditDetail is the same counts in the audit line's detail field.
 func pruneAuditDetail(res pruneResult) string {
-	return fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
+	if res.branchGC.only {
+		return fmt.Sprintf("branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
+			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+	}
+	detail := fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
 		res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
+	if res.branchGC.ran {
+		detail += fmt.Sprintf(", branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
+			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+	}
+	return detail
 }
 
 // renderSweepDetail writes the lines that must never be reduced to a count: every lock this
@@ -325,6 +394,18 @@ func renderSweepDetail(w io.Writer, res pruneResult) {
 		}
 		if v.reap && v.branch != "" {
 			fmt.Fprintf(w, "    deleted stale local branch %s (equal to or behind its upstream)\n", v.branch)
+		}
+	}
+	// The branch-GC plan. A checkout that needs this pass can carry THOUSANDS of candidate
+	// branches, so a LIVE sweep prints only the summary-line counts (the noise-floor
+	// contract); the per-branch plan — the COLLECT rows an operator is signing off, each
+	// with the proof class — is a --dry-run artifact, and a dry run prints nothing it would
+	// not collect.
+	if res.branchGC.ran && res.dryRun {
+		for _, v := range res.branchGC.plan {
+			if v.collect {
+				fmt.Fprintln(w, v.planLine())
+			}
 		}
 	}
 	for _, warn := range res.warns {
@@ -370,8 +451,13 @@ func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, opt
 		} else {
 			totalRemoved += res.removed
 			totalReclaimed += len(res.reclaimed)
-			fmt.Fprintf(os.Stdout, "%s deskwt prune tick %d: bookkept=%d removed=%d held=%d locked_held=%d locks_reclaimed=%d\n",
+			tick := fmt.Sprintf("%s deskwt prune tick %d: bookkept=%d removed=%d held=%d locked_held=%d locks_reclaimed=%d",
 				nowStamp(), ticks, res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
+			if res.branchGC.ran {
+				tick += fmt.Sprintf(" branches_gc=%d (merged=%d cherry=%d) branches_held=%d",
+					res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+			}
+			fmt.Fprintln(os.Stdout, tick)
 			renderSweepDetail(os.Stdout, res)
 		}
 
@@ -538,6 +624,17 @@ func (sc *sweepCtx) isMergedToOriginMain(rt string) (bool, error) {
 func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult, error) {
 	var res pruneResult
 	res.dryRun = opts.dryRun
+
+	// --branches-only: every worktree arm is skipped and the sweep is the local-branch GC
+	// alone. The flag parse has already refused the opt-in worktree arms with it, so what
+	// is skipped here can never be an arm the caller asked for.
+	if opts.branchesOnly {
+		sc := newSweepCtx(dir)
+		res.branchGC = gcLocalBranches(sc, dir, opts.dryRun)
+		res.branchGC.only = true
+		res.warns = append(res.warns, res.branchGC.warns...)
+		return res, nil
+	}
 
 	// Step A — bookkeeping prune (always safe: only drops entries for dirs already gone).
 	// --verbose prints one line per dropped entry so we can report the count.
@@ -832,6 +929,17 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			}
 			res.branches = append(res.branches, branch)
 		}
+	}
+
+	// Step C — the LOCAL-BRANCH GC (branchgc.go), default ON, skipped by --no-branches. It
+	// runs AFTER the worktree arms on purpose: a worktree Step B just removed leaves its
+	// (merged) local branch behind, and this pass collects exactly that residue in the same
+	// sweep. Its candidate view is read FRESH inside the pass (the holder set is re-listed),
+	// so the worktree deletions above are already reflected. The sweep's ONE mainline walk
+	// (sc) is shared, so the ancestry proof costs a map lookup per branch.
+	if !opts.noBranches {
+		res.branchGC = gcLocalBranches(sc, dir, opts.dryRun)
+		res.warns = append(res.warns, res.branchGC.warns...)
 	}
 	return res, nil
 }
