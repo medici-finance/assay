@@ -22,16 +22,23 @@ reviewable artifact, not a run.
 
 ## Contents
 
-- `evidence-automerge-tests.yml` — offline refusal-classifier and step-shell suites,
+- `assay-qualgen.yml` and `verify-gate-close.yml` — live workflow twins with
+  the board-writer Environment restriction. Both copies are byte-identical
+  to their live counterparts, enforced by `declared-changes.json`.
+
+- `evidence-automerge-tests.yml` — offline refusal-classifier, step-shell and poll suites,
   including the errexit status-capture class guard across staged, activation and live
-  workflow copies. Runs on the self-hosted runner for changes under any of those
-  workflow directories or `tools/evidence-automerge/`. **Staged, not live**; promote it
-  to `.github/workflows/evidence-automerge-tests.yml` to enforce the guard on PRs.
+  workflow copies. The live `ci.yml` build-test job already runs all three suites
+  through `tools/desk/internal/regression/evidenceautomerge_test.go` on every PR
+  and push. This optional standalone workflow is **staged, not live**; promotion
+  would add a separate check for changes under those workflow directories or
+  `tools/evidence-automerge/`.
 
 - `evidence-automerge.yml` — the Evidence-PR auto-merge lane. Unlike the other files here
   this one is **already live**: it was promoted, and the copy in this directory is kept
-  byte-identical to `.github/workflows/evidence-automerge.yml` as the reviewable edit
-  surface, because no App may push a `.github/workflows/*` file. Every change to that lane
+  as the reviewable edit surface, because no App may push a `.github/workflows/*`
+  file. The board-writer Environment/poll migration is included in the live
+  file, and the manifest enforces byte parity with this copy. Every change to that lane
   therefore lands here first, and a maintainer re-promotes it by copying the file over the
   live one (`cp ci/staged-workflows/evidence-automerge.yml .github/workflows/evidence-automerge.yml`)
   in a separate maintainer-credentialled commit. Until that copy lands, the merged change

@@ -1497,8 +1497,10 @@ jobs:
   # `needs: release` — the roll only ever narrates a release that actually
   # published. Same dispatch+non-dry-run condition the steps carried before.
   changelog-roll:
+    environment: board-writer
     needs: [resolve, release]
-    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+    # The run ref, not a checkout ref, authorizes access to the App key.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.dry_run
     runs-on: medici-builder-release
     # contents:read only. The WRITE is the board-writer App token minted below —
     # the same split assay-statusgen.yml's regen and model-autoflip jobs use.
@@ -1523,7 +1525,7 @@ jobs:
       # commits under the SAME identity that already writes STATUS.md straight
       # to main: the assay-board-writer App, whose ruleset bypass covers exactly
       # this class of generated-file write. App perms: contents:write on THIS
-      # repo only; key held as repo Actions secrets (BOARD_APP_*).
+      # repo only; key held in the main-only board-writer Environment (BOARD_APP_*).
       - name: Mint assay-board-writer App token (changelog roll)
         id: roll-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0

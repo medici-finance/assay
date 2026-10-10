@@ -19,5 +19,11 @@
   },
   "winparity.yml": {
     "mode": "identical"
+  },
+  "assay-qualgen.yml": {
+    "mode": "identical"
+  },
+  "verify-gate-close.yml": {
+    "mode": "identical"
   }
 }

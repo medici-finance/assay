@@ -220,6 +220,14 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{
+			test:   "tools/desk/internal/regression/evidenceautomerge_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/evidence-automerge", "ci/staged-workflows", "ci/board-writer-migration", "tools/ci-load/activation", ".github/workflows"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the live build-test floor executes all three offline Evidence suites, including every board-writer Environment fence",
+		},
 		{test: "tools/desk/cmd/deskdispatch/verifierattestation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the verifier dispatch fixture builds the actual statusgen executor and proves that two Verify rows require the shared pre-work admission"},
 		{
 			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
@@ -2467,8 +2475,8 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 			}
 		}
 	}
-	if count != 2 {
-		t.Fatalf("floor has %d CI registry entries, want 2", count)
+	if count != 3 {
+		t.Fatalf("floor has %d CI registry entries, want 3 (manifest, shell and Evidence suites)", count)
 	}
 }
 
