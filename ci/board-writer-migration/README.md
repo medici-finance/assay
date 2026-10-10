@@ -44,7 +44,7 @@ git apply --check ci/board-writer-migration/workflows.patch
 git apply ci/board-writer-migration/workflows.patch
 git add .github/workflows/assay-statusgen.yml .github/workflows/assay-qualgen.yml .github/workflows/verify-gate-close.yml .github/workflows/release.yml .github/workflows/evidence-automerge.yml
 git commit -m "ci: activate board-writer Environment migration"
-git -c remote.origin.pushurl=https://github.com/medici-finance/assay.git push origin HEAD:codex/board-writer-environment
+git push https://github.com:443/medici-finance/assay HEAD:codex/board-writer-environment
 ```
 
 If the patch no longer applies, stop and refresh it against the current live
