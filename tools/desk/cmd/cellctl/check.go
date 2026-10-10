@@ -69,6 +69,7 @@ func cmdCheck(cell, cfgArg string) {
 			}
 			fmt.Printf("[model] role=%s harness=%s model=%s\n", role, c.Harness, rm.Model)
 		}
+		c.checkCellDefaults(k)
 		// Every launch of a container cell refuses CELL_ROLE_CONTEXT, so its check must say so
 		// instead of passing: the row is a MISS and the exit is non-zero. The container's own
 		// check still runs. Nothing is printed for a cell that does not set the key.
@@ -83,6 +84,7 @@ func cmdCheck(cell, cfgArg string) {
 	}
 
 	fmt.Printf("[check] cell=%s dir=%s kind=%s forge=%s\n", c.Name, c.Dir, c.Kind, c.Forge)
+	c.checkCellDefaults(k)
 	// A scrubbed cell's whole point is that it never touches the operator's real config home —
 	// this row is n/a there (checkScrubbed proves the cell's OWN config home instead), unlike
 	// k8s/house where the cell's custody IS (a copy of, or a symlink to) that directory.
