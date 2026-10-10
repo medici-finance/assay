@@ -296,6 +296,16 @@ func goldenCases() []goldenCase {
 			st("show", "example", "--provider", "--kind", "house"),
 			st("show", "scrub", "--kind", "house", "--kind", "--kind"),
 		}},
+		// The old pre-scan read only the separate `--kind <k>`; a `--kind=<k>` word was the flag
+		// parser's alone, so in another flag's value position it was that flag's value and after a
+		// bare `--` it was a positional (the old parser refused the `--`; decision entry 4 accepts
+		// it, so that line is refused by the scrubbed cell instead, still exit 3 and not re-kinded).
+		{name: "kind-equals-value-position", steps: []goldenStep{
+			stEnv(dry, "desk", "scrub", "worker-desk", "--model", "--kind=house", "<ROOT>/claude-config"),
+			stEnv(dry, "up", "scrub", "--provider", "--kind=house"),
+			stEnv(dry, "desk", "scrub", "worker-desk", "--", "--kind=house", "<ROOT>/claude-config"),
+			stEnv(dry, "desk", "example", "worker-desk", "--model", "--kind=bogus"),
+		}},
 		// new read most values with a helper that took a missing trailing value as empty.
 		{name: "new-trailing-value", steps: []goldenStep{
 			st("new", "f1", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--forge"),
@@ -407,6 +417,12 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"set-refusals/9":  {code: 3, stderr: "cellctl: flag needs an argument: --harness\nRun 'cellctl --help' for usage.\n", why: whyParseText},
 	"scratch/10":      {code: 3, stderr: "cellctl: invalid argument \"bogus\" for \"--max-age\" flag: time: invalid duration \"bogus\"\nRun 'cellctl --help' for usage.\n", why: whyParseText + "; scratch's old flag-package exit 2 becomes 3"},
 	"cells-root/3":    {code: 3, stderr: "cellctl: flag needs an argument: --cells-root\nRun 'cellctl --help' for usage.\n", why: whyParseText},
+
+	// A bare `--` is accepted (decision entry 4), so the --kind=house after it is a positional and
+	// the scrubbed cell refuses the host config directory: exit 3, nothing run, not re-kinded, where
+	// the old parser refused the `--` itself.
+	"kind-equals-value-position/2": {code: 3, why: "a bare `--` is accepted (decision entry 4); the --kind= word after it is a positional, never the kind",
+		stderrHas: []string{echoFragment, "cellctl: scrubbed desks do not accept a host config directory or a provider"}},
 
 	// The hidden completion entrypoints refuse like any unknown command.
 	"completion-entrypoints/0": {code: 3, stderr: unknownCmd("__complete"), why: whyParseText},

@@ -73,6 +73,10 @@ func TestRootsValid(t *testing.T) {
 }
 
 func TestKindScanRefusesUnknown(t *testing.T) {
+	desk, _, err := buildRoot().Find([]string{"desk"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		words []string
 		want  string
@@ -83,15 +87,23 @@ func TestKindScanRefusesUnknown(t *testing.T) {
 		{[]string{"x", "--kind", "house", "--kind"}, "house"},
 		{[]string{"x", "--kind", "house", "--kind", "bogus"}, "house"},
 		{[]string{"x", "--model", "y"}, ""},
+		// --kind=<k> kinds only as a flag word: as another flag's value, or after `--`, it is
+		// that flag's value or a positional, as the old pre-scan (separate word only) left it.
+		{[]string{"x", "--model", "--kind=house"}, ""},
+		{[]string{"x", "--provider", "--kind=house"}, ""},
+		{[]string{"x", "--", "--kind=house"}, ""},
+		{[]string{"x", "--model", "--kind=bogus"}, ""},
+		{[]string{"x", "--model", "y", "--kind=house"}, "house"},
+		{[]string{"x", "--set", "--kind=house"}, "house"},
 	} {
-		if got := kindScan(tc.words); got != tc.want {
+		if got := kindScan(desk, tc.words); got != tc.want {
 			t.Errorf("kindScan(%q) = %q, want %q", tc.words, got, tc.want)
 		}
 	}
-	assertDies(t, "unknown kind", func() { kindScan([]string{"x", "--kind", "nope"}) })
-	assertDies(t, "empty kind", func() { kindScan([]string{"x", "--kind", ""}) })
-	assertDies(t, "empty = kind", func() { kindScan([]string{"x", "--kind="}) })
-	assertDies(t, "missing value", func() { kindScan([]string{"x", "--model", "--kind"}) })
+	assertDies(t, "unknown kind", func() { kindScan(desk, []string{"x", "--kind", "nope"}) })
+	assertDies(t, "empty kind", func() { kindScan(desk, []string{"x", "--kind", ""}) })
+	assertDies(t, "empty = kind", func() { kindScan(desk, []string{"x", "--kind="}) })
+	assertDies(t, "missing value", func() { kindScan(desk, []string{"x", "--model", "--kind"}) })
 }
 
 // assertDies runs fn and fails unless it raised the package's exit panic. die() writes to

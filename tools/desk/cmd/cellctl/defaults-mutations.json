@@ -406,8 +406,8 @@
     {
       "name": "`defaults --help` is answered with the usage refusal (TestBinaryCellDefaultsHelp)",
       "file": "cmd/cellctl/cobra.go",
-      "old": "\t\tif len(words) == 1 && (words[0] == \"-h\" || words[0] == \"--help\") {\n\t\t\treturn c.Help()",
-      "new": "\t\tif false && len(words) == 1 && (words[0] == \"-h\" || words[0] == \"--help\") {\n\t\t\treturn c.Help()"
+      "old": "\tif i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {",
+      "new": "\tif false && i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {"
     }
   ]
 }

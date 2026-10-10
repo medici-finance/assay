@@ -35,31 +35,42 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   is the one help-shaped line that reads the roster, and the selector is never applied.
 - **An empty verb word, `-h` or `--help` in the verb's place** prints the usage, exit 0, and runs
   nothing, whatever follows (`-h --bogus`, `--help up <cell>`), as before.
-- **Raw entrypoints.** `model-policy`, `cache-run` and `container-run` receive the tokens after
-  the verb verbatim; a flag-shaped token after one of these verbs belongs to the verb, including a
-  `--cells-root` (it reaches the child and is never applied as the selector). Only the separated
-  selector in front of the verb is stripped. The hook verb keeps its own exit codes (a parse
-  failure is 2, never the usage code 3). A line that is `model-policy hook ...` after the
-  selector, the only form a launch installs, exits 2 whatever refuses it (decision entry 7); any
-  other `model-policy` line keeps the exit it had.
+- **Raw entrypoints.** `model-policy`, `cache-run`, `container-run` and `defaults` (four;
+  `defaults` was added on `main` after this migration began and is ported into the tree here)
+  receive the tokens after the verb verbatim; a flag-shaped token after one of these verbs belongs
+  to the verb, including a `--cells-root` (it reaches the verb and is never applied as the
+  selector). Only the separated selector in front of the verb is stripped. The hook verb keeps its
+  own exit codes (a parse failure is 2, never the usage code 3). A line that is `model-policy hook
+  ...` after the selector, the only form a launch installs, exits 2 whatever refuses it (decision
+  entry 7); any other `model-policy` line keeps the exit it had.
 - **Words read as words.** `cadence`, `cache` and `comms` compare the words after the verb
   exactly, as before: `--confirm-stopped` confirms only as the one word after the action (or
   `cadence`'s role), so a repeated, misplaced or `--`-escaped confirmation is refused with the
   verb's own message and nothing recorded. `check` and `deskd` parse no flags: `check` takes the
   cell, then a `CLAUDE_CONFIG_DIR`, and ignores the rest; `deskd` takes the cell and ignores the
-  rest, a flag-shaped word included. A flag ahead of their cell is still refused.
+  rest, a flag-shaped word included. A flag ahead of their cell is still refused. `defaults`
+  compares its words exactly too: `init` or `print` as its one word, anything else its own usage
+  refusal, as before.
 - **`--kind` on `desk`, `up` and `show`** is read as the old pre-scan read it: the first `--kind`
   anywhere among the verb's words, before the cell loads, whatever word comes before it. A `--kind`
   in another flag's value position is still the kind (`--model --kind house <dir>` runs
   house-kinded, as before) and is still validated (`--model --kind` is refused with
   `--kind needs a value`, exit 3, nothing run). A later `--kind` is skipped unread, with or
   without a value after it, so a word appended after a pinned kind never re-kinds a launch. The
-  parity cases `kind-whole-line/*` replay these against the pre-migration binary.
+  parity cases `kind-whole-line/*` replay these against the pre-migration binary. The old pre-scan
+  matched the separate `--kind` word only, so `--kind=<k>` is the kind only where the parser reads
+  it as a flag: in another flag's value position it is that flag's value
+  (`--model --kind=house <dir>` on a scrubbed cell is refused, exit 3, not house-kinded;
+  `--model --kind=bogus` runs with that model), and after a bare `--` it is a positional (cases
+  `kind-equals-value-position/*`). The old parser refused that `--` itself; it is accepted now
+  (decision entry 4), so `desk <scrubbed> <role> -- --kind=house <dir>` is refused by the scrubbed
+  cell instead: exit 3, nothing run, not re-kinded (`kind-equals-value-position/2`).
 - **`new` reads its whole line for help, and a missing last value as empty.** `-h` or `--help`
   anywhere on a `new` line prints the usage, exit 0, and writes nothing, also as another flag's
-  value (`--orgs --help`) or after a bare `--`. A value flag left last with no value is taken as
-  empty, as before: a trailing `--forge` scaffolds a house cell and is refused for a k8s cell
-  (`--forge must be github or gitlab, got ''`); `--launcher`, `--container-config` and
+  value (`--orgs --help`), after a bare `--`, or with a `--cells-root` after the verb (`new <cell>
+  --cells-root <abs> --help`), which any other line refuses. A value flag left last with no value
+  is taken as empty, as before: a trailing `--forge` scaffolds a house cell and is refused for a
+  k8s cell (`--forge must be github or gitlab, got ''`); `--launcher`, `--container-config` and
   `--repo-slug` are refused in their own words (cases `new-trailing-value/*`).
 - **`scratch -- <cell> ...`** takes the `--` as the cell word and is refused
   `no cell '--' under <registry> (cell.env missing)`, exit 3, as before (cases
@@ -120,11 +131,12 @@ pre-migration binary.
 | `completion-entrypoints/0`, `completion-entrypoints/1`, `completion-entrypoints/2` | `__complete ...`, `__completeNoDesc ...` | `unknown verb '__complete'` | `unknown command "__complete" for "cellctl"`; the parser's hidden completion entrypoint is replaced so it never answers |
 
 Also refused, with no recorded case of its own: a `--cells-root` anywhere after the verb (`ls
---cells-root <abs>`), a flag or a lone `-` in the verb's place (`-- ls`, `--bogus`, `- ls`), a
-flag ahead of the cell of `check` or `deskd` (`check --bogus <cell>`), `help` with more than one
-word or with a hidden or unknown verb (`help __complete`, `help completion`), and `version` with
-any word but `-h`/`--help`. `TestCLILegacyShapeRefusals` and `TestCLILegacyWordsRestored` pin
-these and the lines under "What did not change" that read as they did.
+--cells-root <abs>`; on a `new` help line the help is read first, above), a flag or a lone `-` in
+the verb's place (`-- ls`, `--bogus`, `- ls`), a flag ahead of the cell of `check` or `deskd`
+(`check --bogus <cell>`), `help` with more than one word or with a hidden or unknown verb (`help
+__complete`, `help completion`), and `version` with any word but `-h`/`--help`.
+`TestCLILegacyShapeRefusals` and `TestCLILegacyWordsRestored` pin these and the lines under "What
+did not change" that read as they did.
 
 One ordering is also held: the `desk` role is validated before any flag, as the old parser did, so
 a bad role is refused first whatever flags follow (`refusal-order/0` replays it unchanged).
@@ -145,6 +157,9 @@ a bad role is refused first whatever flags follow (`refusal-order/0` replays it 
   `deskd <cell> -h` included; on `new`, anywhere on the line (above). On a verb that parses flags, a single-dash token that is not a known
   long flag is an error (decision entry 4); a single-dash long flag outside `scratch` is refused
   (above). `check` and `deskd` parse no flags, so such a word after their cell is still theirs.
+  `defaults -h` and `defaults --help` (the help word as its only word) print the verb's help, exit
+  0, with no roster echo; before, they printed the whole usage after the echo. A help word with
+  anything else on a `defaults` line is still its usage refusal.
 - No roster echo is printed for `help`, `-h`, `--help`, `--version`, `version` or a parse failure
   (decision entry 1).
 - `cadence recover` without a role is refused (decision entry 4).

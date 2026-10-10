@@ -130,8 +130,8 @@
     {
       "name": "a repeated --kind takes its last value (the whole-line scan keeps scanning past the first --kind)",
       "file": "cmd/cellctl/cobra.go",
-      "old": "func kindScan(words []string) string {\n\tfor i, w := range words {\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")\n\t\tswitch {\n\t\tcase eq:\n\t\tcase w == \"--kind\" && i+1 < len(words):\n\t\t\tk = words[i+1]\n\t\tcase w == \"--kind\":\n\t\t\tk = \"\"\n\t\tdefault:\n\t\t\tcontinue\n\t\t}\n\t\tif k == \"\" {\n\t\t\tdie(\"--kind needs a value (%s)\", joinPipe(kindValues))\n\t\t}\n\t\tif !valueIn(k, kindValues) {\n\t\t\tdie(\"--kind must be one of %s, got '%s'\", joinPipe(kindValues), k)\n\t\t}\n\t\treturn k\n\t}\n\treturn \"\"\n}",
-      "new": "func kindScan(words []string) string {\n\tlast := \"\"\n\tfor i, w := range words {\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")\n\t\tswitch {\n\t\tcase eq:\n\t\tcase w == \"--kind\" && i+1 < len(words):\n\t\t\tk = words[i+1]\n\t\tcase w == \"--kind\":\n\t\t\tk = \"\"\n\t\tdefault:\n\t\t\tcontinue\n\t\t}\n\t\tif k == \"\" {\n\t\t\tdie(\"--kind needs a value (%s)\", joinPipe(kindValues))\n\t\t}\n\t\tif !valueIn(k, kindValues) {\n\t\t\tdie(\"--kind must be one of %s, got '%s'\", joinPipe(kindValues), k)\n\t\t}\n\t\tlast = k\n\t}\n\treturn last\n}"
+      "old": "func kindScan(cmd *cobra.Command, words []string) string {\n\tisFlag := flagWordAt(cmd, words)\n\tfor i, w := range words {\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")\n\t\tswitch {\n\t\tcase eq && isFlag[i]:\n\t\tcase eq:\n\t\t\tcontinue\n\t\tcase w == \"--kind\" && i+1 < len(words):\n\t\t\tk = words[i+1]\n\t\tcase w == \"--kind\":\n\t\t\tk = \"\"\n\t\tdefault:\n\t\t\tcontinue\n\t\t}\n\t\tif k == \"\" {\n\t\t\tdie(\"--kind needs a value (%s)\", joinPipe(kindValues))\n\t\t}\n\t\tif !valueIn(k, kindValues) {\n\t\t\tdie(\"--kind must be one of %s, got '%s'\", joinPipe(kindValues), k)\n\t\t}\n\t\treturn k\n\t}\n\treturn \"\"\n}",
+      "new": "func kindScan(cmd *cobra.Command, words []string) string {\n\tlast := \"\"\n\tisFlag := flagWordAt(cmd, words)\n\tfor i, w := range words {\n\t\tk, eq := strings.CutPrefix(w, \"--kind=\")\n\t\tswitch {\n\t\tcase eq && isFlag[i]:\n\t\tcase eq:\n\t\t\tcontinue\n\t\tcase w == \"--kind\" && i+1 < len(words):\n\t\t\tk = words[i+1]\n\t\tcase w == \"--kind\":\n\t\t\tk = \"\"\n\t\tdefault:\n\t\t\tcontinue\n\t\t}\n\t\tif k == \"\" {\n\t\t\tdie(\"--kind needs a value (%s)\", joinPipe(kindValues))\n\t\t}\n\t\tif !valueIn(k, kindValues) {\n\t\t\tdie(\"--kind must be one of %s, got '%s'\", joinPipe(kindValues), k)\n\t\t}\n\t\tlast = k\n\t}\n\treturn last\n}"
     },
     {
       "name": "a confirmation word escaped by `--` confirms a recovery (the terminator is always dropped)",
@@ -192,6 +192,24 @@
       "file": "cmd/cellctl/cobra.go",
       "old": "\t\t\tloadCell(\"--\")\n",
       "new": "\t\t\tcellArg(nil)\n"
+    },
+    {
+      "name": "a sole help word on defaults reaches the verb's own comparison (the usage refusal, after the roster echo), not the help verb",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tif i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {",
+      "new": "\tif false && i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {"
+    },
+    {
+      "name": "a --kind=<k> in another flag's value position or after a bare `--` kinds the cell (the old pre-scan read the separate word only)",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\t\tcase eq && isFlag[i]:\n",
+      "new": "\t\tcase eq:\n"
+    },
+    {
+      "name": "the shape check refuses a --cells-root after the verb on a new help line, which the legacy parser answered with the usage",
+      "file": "cmd/cellctl/shape.go",
+      "old": "\tif verb == \"new\" {\n",
+      "new": "\tif false && verb == \"new\" {\n"
     }
   ]
 }

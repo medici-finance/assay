@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
@@ -160,6 +161,12 @@ func runTree(args []string) (code int) {
 	if flagless && helpAmong(args[i+1:]) {
 		// A flag-less verb parses no flags; its help (decision entry 5) is the help verb's.
 		args, flagless = append(append([]string{}, args[:i]...), "help", args[i]), false
+	}
+	if i+2 == len(args) && args[i] == "defaults" && (args[i+1] == "-h" || args[i+1] == "--help") {
+		// defaults reads its words by exact comparison, so the tree parses no flags for it and
+		// Cobra never sees its help flag. Its sole help word is the help verb's, which reads no
+		// roster (decision entries 1 and 9); any other line keeps the verb's own comparison.
+		args = append(append([]string{}, args[:i]...), "help", "defaults")
 	}
 	if i < len(args) {
 		verbWords = append([]string{}, args[i+1:]...)
@@ -348,12 +355,20 @@ func trailingValueFlag(cmd *cobra.Command, words []string) int {
 // before anything loads (loadCell asserts the kind's own preconditions, so the override has to
 // be in force by then). A later --kind is skipped unread. The parsed --kind is never read: the
 // kind selects the launched window's confinement class, so no word on the line that names one
-// goes unapplied or unvalidated. --kind=<k> (decision entry 4) is the same occurrence.
-func kindScan(words []string) string {
+// goes unapplied or unvalidated.
+//
+// --kind=<k> (decision entry 4) is the same occurrence only where the parser reads it as a flag.
+// The old pre-scan matched the separate word alone, so a --kind=<k> in another flag's value
+// position was that flag's value, and one after a bare `--` was a positional: neither kinds the
+// cell here either (flagWordAt).
+func kindScan(cmd *cobra.Command, words []string) string {
+	isFlag := flagWordAt(cmd, words)
 	for i, w := range words {
 		k, eq := strings.CutPrefix(w, "--kind=")
 		switch {
+		case eq && isFlag[i]:
 		case eq:
+			continue
 		case w == "--kind" && i+1 < len(words):
 			k = words[i+1]
 		case w == "--kind":
@@ -370,6 +385,36 @@ func kindScan(words []string) string {
 		return k
 	}
 	return ""
+}
+
+// flagWordAt marks the words the parser reads as flags, walking them as it does: a value flag
+// (long, or a one-letter shorthand) takes the next word whatever it is, and a bare `--` ends the
+// flags, so a word in a value position or after the `--` is never a flag.
+func flagWordAt(cmd *cobra.Command, words []string) []bool {
+	at := make([]bool, len(words))
+	for i := 0; i < len(words); i++ {
+		w := words[i]
+		if w == "--" {
+			break
+		}
+		if !strings.HasPrefix(w, "-") || w == "-" {
+			continue
+		}
+		at[i] = true
+		if strings.Contains(w, "=") {
+			continue
+		}
+		var f *pflag.Flag
+		if name, long := strings.CutPrefix(w, "--"); long {
+			f = cmd.Flags().Lookup(name)
+		} else if len(w) == 2 {
+			f = cmd.Flags().ShorthandLookup(w[1:])
+		}
+		if f != nil && f.NoOptDefVal == "" {
+			i++
+		}
+	}
+	return at
 }
 
 func cellArg(pos []string) string { return needCell(pos) }
@@ -569,7 +614,7 @@ func deskCmd() *cobra.Command {
 			fmt.Fprintln(os.Stderr, "cellctl: "+deskUsage)
 			exitWith(1)
 		}
-		c := loadCellWithKind(args[0], kindScan(verbWords))
+		c := loadCellWithKind(args[0], kindScan(cmd, verbWords))
 		// The role is validated before any flag, as the legacy parser ordered it.
 		if !valueIn(args[1], knownRoles) {
 			die("unknown role '%s'", args[1])
@@ -608,7 +653,7 @@ func upCmd() *cobra.Command {
 	set := declare(cmd, bs...)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
-		c := loadCellWithKind(cell, kindScan(verbWords))
+		c := loadCellWithKind(cell, kindScan(cmd, verbWords))
 		v := resolve(set, c)
 		launchNeeds(v)
 		needValue(v, "automate", "--automate needs a trigger (a 5-field cron string or a preset)")
@@ -683,7 +728,7 @@ func showCmd() *cobra.Command {
 	)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
-		c := loadCellWithKind(cell, kindScan(verbWords))
+		c := loadCellWithKind(cell, kindScan(cmd, verbWords))
 		cmdShow(c, resolve(set, nil), args[1:])
 		return nil
 	}
@@ -919,7 +964,8 @@ func scratchHelp(c *cobra.Command, a []string) {
 
 // defaultsCmd is the machine-wide defaults file's verb. Its words are read as the pre-migration
 // parser read them, by exact comparison (cmdDefaults): `init` or `print` as the one word, a sole
-// -h/--help for its help, anything else the usage refusal. So the tree parses no flags for it, and
+// -h/--help for its help (runTree routes it to the help verb, with no roster echo), anything else
+// the usage refusal. So the tree parses no flags for it, and
 // a leading --cells-root is applied by rawArgs, as for the internal entrypoints.
 func defaultsCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -935,19 +981,17 @@ func defaultsCmd() *cobra.Command {
 		DisableFlagParsing: true,
 	}
 	cmd.RunE = func(c *cobra.Command, args []string) error {
-		words := rawArgs(args)
-		if len(words) == 1 && (words[0] == "-h" || words[0] == "--help") {
-			return c.Help()
-		}
-		cmdDefaults(words)
+		// A sole -h/--help never reaches here: runTree hands it to the help verb.
+		cmdDefaults(rawArgs(args))
 		return nil
 	}
 	return cmd
 }
 
-// The four internal entrypoints below take an opaque argv (a hook's positional arguments, a
-// command line to supervise), so Cobra parses no flags for them; rawArgs applies a leading
-// --cells-root exactly as the legacy selector did. They are hidden from help.
+// The three internal entrypoints after providersCmd take an opaque argv (a hook's positional
+// arguments, a command line to supervise), so Cobra parses no flags for them; rawArgs applies a
+// leading --cells-root exactly as the legacy selector did. They are hidden from help. defaults
+// (defaultsCmd) is the fourth raw verb, and is documented.
 
 func providersCmd() *cobra.Command {
 	return &cobra.Command{

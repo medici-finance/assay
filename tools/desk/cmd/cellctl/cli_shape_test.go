@@ -262,6 +262,9 @@ func TestCLIWholeLineScans(t *testing.T) {
 		append(append([]string{}, n...), "--", "-h"),
 		{"new", "--orgs", "--help"},
 		{"new", "--forge", "-h"},
+		// A --cells-root after the verb is refused on any other line; on a help line new's whole-line
+		// read comes first, as it did before the migration.
+		{"new", "nx", "--cells-root", filepath.Join(w.root, "cells"), "--help"},
 	} {
 		if r := w.run(t, nil, args...); r.Code != 0 || !strings.Contains(r.Stdout, "Usage:") {
 			t.Errorf("%q: exit %d, want new's usage and exit 0\nstdout:\n%s\nstderr:\n%s", args, r.Code, r.Stdout, r.Stderr)

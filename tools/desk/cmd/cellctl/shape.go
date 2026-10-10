@@ -55,6 +55,16 @@ func legacyShape(root *cobra.Command, args []string) error {
 		}
 		return fmt.Errorf("unknown help topic %q", strings.Join(rest[1:], " "))
 	}
+	if verb == "new" {
+		// The legacy parser read new's help word on its whole line before anything else (a bare
+		// `--` and a value position included), so a help line is new's usage (wholeLineScans)
+		// whatever shape the other words have, a --cells-root after the verb included.
+		for _, w := range rest[1:] {
+			if w == "-h" || w == "--help" {
+				return nil
+			}
+		}
+	}
 	cmd := verbNamed(root, verb)
 	if cmd == nil || rawCommand(cmd) {
 		return nil // an unknown verb is the parser's refusal; a raw verb's argv is its own

@@ -19,11 +19,11 @@ import (
 // The CLI contract tests (desktools-v2/16). They exercise the BUILT binary through the fixture
 // world (cli_world_test.go); nothing here contacts a forge, a model endpoint or a cluster.
 
-// visibleVerbs is every documented verb. The four internal entrypoints (model-policy,
-// cache-run, container-run, providers) are covered by the legacy-forms and boundary tests.
+// visibleVerbs is every documented verb. The three internal entrypoints (model-policy,
+// cache-run, container-run) are covered by the legacy-forms and boundary tests.
 var visibleVerbs = []string{
 	"ls", "version", "new", "set", "show", "check", "deskd", "desk", "up", "down",
-	"smoke", "status", "cadence", "scratch", "cache", "comms",
+	"smoke", "status", "cadence", "scratch", "cache", "comms", "defaults", "providers",
 }
 
 // snapshotTree is a stable fingerprint of every path under dir: name, mode, size and mtime.
@@ -74,6 +74,24 @@ func execIn(t *testing.T, bin string, env []string, args ...string) cliRun {
 		code = ee.ExitCode()
 	}
 	return cliRun{Args: args, Code: code, Stdout: out.String(), Stderr: errb.String()}
+}
+
+// TestVisibleVerbsCoverTheTree: every verb the root help lists is in visibleVerbs, so a verb added
+// to the tree (as `defaults` was, by a merge of main) cannot skip TestCLIHelpOffline's offline-help
+// and no-echo checks.
+func TestVisibleVerbsCoverTheTree(t *testing.T) {
+	listed := map[string]bool{}
+	for _, v := range visibleVerbs {
+		listed[v] = true
+	}
+	for _, c := range buildRoot().Commands() {
+		if c.Hidden || c.Name() == "help" || c.Name() == "completion" {
+			continue
+		}
+		if !listed[c.Name()] {
+			t.Errorf("verb %q is in the tree's help but not in visibleVerbs, so its help is not checked offline", c.Name())
+		}
+	}
 }
 
 // TestCLIHelpOffline: help and version are pure introspection. They run against a missing
