@@ -1,17 +1,15 @@
 ### Fixed
-- `statusgen reconcile` / `regen` drift comparator: the lifecycle fold's four
-  inputs (Witnesses, Approvals, Rulings, IssueLabels) are now populated from
-  real reads — both production callers previously built
-  `LifecycleInput{Briefs: idents}` alone, so no live cell could derive above
-  `implemented` and the drift comparator reported every `done` brief as drift
-  (#1787). The verify witness is each brief's own Evidence audit (the
-  `verifyrun --check` code path), a gate:human ruling is the Reviewed-cell
-  `human:` stamp, the App approval is read at the merged head of each
-  witnessed gate:model brief, and one paged open-issues read feeds the
-  blocked overlay; every failed read is disclosed and its overlay left off.
-- Drift comparator: the asserted-vs-derived join is id-shape-tolerant
-  (`canonicalBriefKey`), so brief-v2 hierarchical ids are no longer silently
-  invisible to it.
-- derived-board/03 brief: Verify row 1 re-authored to a single summed count
-  (the three-command form let the witness score only the last suite), new row
-  9 asserts a known-done brief derives `done`, `version:` 2 → 3.
+- `statusgen reconcile` and the `regen` drift comparator now fill in the lifecycle fold's four inputs (Witnesses, Approvals, Rulings, IssueLabels) from real reads (#1787).
+  - Before this fix, both production callers built `LifecycleInput{Briefs: idents}` and nothing else. No live cell could derive above `implemented`.
+  - Each input is read by the rule its state's existing writer already enforces. The fold adds no promotion rule of its own:
+    - `verified` comes from the flip owner's latest strict PASS run. That run must be committed by the roster's verifier, must not be refused by the held or fail checks, and must pass the Evidence audit. The brief version is read at the run's sha, and coverage must be released.
+    - gate:model `done` comes from the auto-flip's `decideModelFlip`.
+    - gate:human `done` comes from the anchored Reviewed-cell `human:` stamp.
+    - `blocked` comes from one paged open-issues read, with PR entries filtered out.
+  - A read that could not be made renders `unknown`. It is listed in the JSON `unread` field, and `--apply` refuses with exit 3 until it can be read.
+- Drift comparator: the asserted-vs-derived join now tolerates both id shapes (`canonicalBriefKey`). Brief-v2 hierarchical ids are no longer silently invisible to it.
+- derived-board/03 brief:
+  - Verify row 1 is re-authored to per-suite floors.
+  - Row 9 asserts the fixture `done` path and the live `blocked` path.
+  - New `+mutation` row 10 runs the fold's mutation set through `muhar`.
+  - `version:` goes from 2 to 3.

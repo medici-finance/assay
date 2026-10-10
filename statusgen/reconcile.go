@@ -50,6 +50,10 @@ type reconcileResult struct {
 	Applied    []appliedRow  `json:"applied,omitempty"`
 	WouldApply *[]appliedRow `json:"wouldApply,omitempty"`
 	Held       []heldRow     `json:"held,omitempty"`
+	// Unread lists every fold read that could not be made this run (a failed
+	// or truncated forge read, a provenance or version read that failed). The
+	// briefs it touches derive `unknown`; --apply refuses while it is non-empty.
+	Unread []string `json:"unread,omitempty"`
 }
 
 const (
@@ -103,6 +107,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 
 	in := LifecycleInput{Briefs: idents}
 	var client *ghClient
+	var unread []string
 	switch {
 	case *offline:
 		in.LookedAt = false
@@ -123,13 +128,13 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		in.PRs = prs
 		in.LookedAt = lookedAt
 		in.Reason = reason
-		// The witness fold (#1787): populate the four inputs DeriveLifecycle
-		// needs to derive above `implemented` — the tree witness and ruling
-		// always; the forge labels and approvals with each failed read
-		// disclosed and its overlay left off. Online only: --offline keeps
-		// every map nil and every cell unknown.
+		// The witness fold (#1787): populate the inputs DeriveLifecycle needs
+		// to derive above `implemented`, each by its owner's rule (see
+		// reconcilefold.go). Every read that could not be made is disclosed in
+		// `unread` and leaves the briefs it touches `unknown`. Online only:
+		// --offline keeps every map nil and every cell unknown.
 		if boardRoot, found := findBoardRoot(*root); found {
-			wireFoldInputs(&in, boardRoot, client, *repo, stderr)
+			unread = wireFoldInputs(&in, boardRoot, client, *repo, stderr)
 		}
 	}
 
@@ -161,6 +166,12 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		// Nothing was read, so nothing can be written — and the exit must say
 		// so: a scheduled writer exiting 0 here reads as "board current".
 		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %s; nothing written\n", in.Reason)
+		return reconcileCouldNotCheck
+	}
+	if *apply && len(unread) > 0 {
+		// A fold read failed: the cells it touches are `unknown`, and a write
+		// from a partial read would pass for a complete one.
+		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %d fold read(s) failed (see `unread`); nothing written\n", len(unread))
 		return reconcileCouldNotCheck
 	}
 
@@ -204,6 +215,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		Applied:    applied,
 		WouldApply: wouldApply,
 		Held:       held,
+		Unread:     unread,
 	}
 
 	if *report {
@@ -248,7 +260,7 @@ func reconcileBriefIdents(root string) ([]BriefIdent, error) {
 	// The enumeration lives in loadReconcileFoldData (reconcilefold.go), which
 	// keeps the fold's raw material alongside each ident; this is the ident-only
 	// view of the same walk, so the two can never drift apart.
-	data, err := loadReconcileFoldData(boardRoot)
+	data, _, err := loadReconcileFoldData(boardRoot)
 	if err != nil {
 		return nil, err
 	}

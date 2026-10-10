@@ -175,21 +175,39 @@ statusgen reconcile --root . --repo medici-finance/assay --json
 statusgen reconcile --root . --offline --json
 ```
 
-It is the **only verb that reads the network**, and only read-only REST endpoints
-(`GET /pulls`, `GET /pulls/{n}/reviews`, `GET /issues`) — never GraphQL. The token
+It is the **only verb that reads the network**, and its own network layer uses only
+read-only REST endpoints (`GET /pulls`, `GET /issues`) — never GraphQL. The token
 comes from `--token-file` or `GITHUB_TOKEN`. Every fetch is three-state: a failure is
 `lookedAt: false` with the HTTP status as the reason, never an empty board that
-reads like "nothing found". The verify-witness / approval-at-head fold that lifts a
-cell to `verified`/`done` is the pure engine in `lifecycle.go`, and online runs wire
-its four inputs from real reads (`reconcilefold.go`, shared with `regen`'s drift
-comparator so the two derive identically): the verify witness is each brief's own
-Evidence table audited by the `verifyrun --check` code path; a gate:human ruling is
-the README Reviewed cell's `human:<login>` stamp; the App approval is read at the
-merged head of each witnessed gate:model brief's latest merged PR (the only briefs
-an approval can promote, so the per-PR reviews read stays bounded); and the blocked
-overlay comes from one paged open-issues read mapped onto each brief's `issues:`
-list. A failed labels or reviews read never reaches `done` or `blocked`: the run
-discloses it on stderr and leaves that overlay off. The demotions
+reads like "nothing found". The verify-witness / approval fold that lifts a cell to
+`verified`/`done` is the pure engine in `lifecycle.go`; online runs wire its inputs
+from real reads (`reconcilefold.go`, shared with `regen`'s drift comparator so the
+two derive identically), each by the rule the state's own writer already obeys —
+the fold owns no rule of its own:
+
+- **`verified`** — the brief's latest strict `**VERIFY: PASS**` run (the reader
+  `statusgen verifyflip` uses), refused by an unrouted HELD row or a FAIL as `closeVerify`
+  refuses it, audited by the `verifyrun --check` closure path, with the PASS lines
+  committed by the roster's verifier (not the implementer), the brief version read
+  from the brief as it stood at the run's sha, and the evidence-coverage verdict.
+  A `**VERIFY: BLOCKED**` run is not a PASS.
+- **`done`, gate:model** — the auto-flip decision (`decideModelFlip`): the PR that
+  delivered the brief, the roster-bound reviewer App, its approval at that PR's
+  merged head. Its PR reads go through the `gh` CLI under the caller's own `gh`
+  credential, as `--auto-flip-model` does (including that owner's one GraphQL read
+  of a PR body's last edit); with no `gh` access the decision is could-not-check.
+- **`done`, gate:human** — the README Reviewed cell's `human:<name>` stamp, read by
+  the anchored stamp reader the human-stamp guard uses; on-behalf-of relays, a bare
+  `human:`, and a substring such as `superhuman:` never count.
+- **`blocked`** — one paged open-issues read (PR entries dropped) mapped onto each
+  brief's `issues:` list.
+
+A read that could not be made never renders as a state: a failed or capped
+open-issues read makes each brief with linked issues `unknown`, and a verified/done
+decision that could not be made is `unknown` with the reason. Every such read is
+disclosed on stderr and in the JSON's `unread` list, and `--apply` refuses (exit 3,
+nothing written) while any is present. A passing witness with no merged PR on
+record is `unknown` too — the fold cannot settle that contradiction. The demotions
 (a reverted merge, a red witness, a dismissed approval, a stale-version witness)
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
