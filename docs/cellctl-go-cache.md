@@ -12,7 +12,9 @@ The shipped default is **off**. Enabling selects an 8 GiB logical-byte budget
 and 10 GiB minimum available-space floor. These are configurable starting values,
 not a filesystem quota or a promise about peak build size. Budget bytes must be
 positive; a floor of `0` disables only the free-space floor. Invalid values refuse
-launch. No host-wide scheduled job is installed.
+launch. No host-wide scheduled job is installed; the `deskwt prune` sweep
+pressure-checks every marked cache root under the cells root on each pass as
+the cadence backstop (see "Launch, cleanup and recovery").
 
 To enable it for every cell on a machine, put the same lines in the machine-wide
 defaults file, `$CELLS_ROOT/defaults.env`, instead of in each `cell.env`, and opt
@@ -89,6 +91,14 @@ lock. Under byte-budget or free-space pressure, only inactive compiler/module
 roots are removed. Active consumers protect both caches, including module readers.
 Go's read-only module directories are made writable through verified open
 directory descriptors during inactive cleanup. No `go clean -cache` runs.
+
+The `deskwt prune` sweep runs the same pressure check on a cadence: each pass
+discovers the marked roots under the cells root (a custom `CELL_GO_CACHE_ROOT`
+outside it is out of the sweep's sight; `cellctl cache <cell> clean` remains
+its instrument) and enforces each root's last recorded policy — reclaiming
+only under pressure, never under a live consumer record, and printing a count
+line only when it acts. A root whose owning directory the sweep itself removed
+is reaped as an orphan, gated on its lease set re-read under its own lock.
 
 The same lock serializes cleanup and consumer enrollment. Active records survive
 supervisor crashes and uncertain child-tree cleanup; PID age never proves

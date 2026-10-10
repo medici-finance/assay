@@ -1,0 +1,2 @@
+### Added
+- `deskwt prune` now pressure-checks every marked per-cell Go cache root under the cells root on each sweep — the cadence backstop for the managed caches that were previously checked only at launch and dispatch. Enforcement keeps the package's own semantics (reclaim only over the byte budget or under the free-space floor, never under a live consumer lease), a cache root whose owning directory the sweep removed is reaped as an orphan, and the pass stays silent unless it acts. New `prune` flags: `--no-cache`, `--cells-root`.

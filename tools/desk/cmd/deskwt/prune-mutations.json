@@ -22,8 +22,8 @@
     {
       "name": "the batched deregistration stops DEMOTING a path that is still registered (an unverified removal is counted as removed)",
       "file": "cmd/deskwt/prune.go",
-      "old": "\t\tfor _, rt := range pendingRemoved {\n\t\t\tif strandedSet[rt] {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif reapedPaths[rt] {\n\t\t\t\tres.reaped++\n\t\t\t} else {\n\t\t\t\tres.removed++\n\t\t\t}\n\t\t}",
-      "new": "\t\tfor _, rt := range pendingRemoved {\n\t\t\tif reapedPaths[rt] {\n\t\t\t\tres.reaped++\n\t\t\t} else {\n\t\t\t\tres.removed++\n\t\t\t}\n\t\t}"
+      "old": "\t\tfor _, rt := range pendingRemoved {\n\t\t\tif strandedSet[rt] {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif reapedPaths[rt] {\n\t\t\t\tres.reaped++\n\t\t\t} else {\n\t\t\t\tres.removed++\n\t\t\t}\n\t\t\tremovedPaths = append(removedPaths, rt)\n\t\t}",
+      "new": "\t\tfor _, rt := range pendingRemoved {\n\t\t\tif reapedPaths[rt] {\n\t\t\t\tres.reaped++\n\t\t\t} else {\n\t\t\t\tres.removed++\n\t\t\t}\n\t\t\tremovedPaths = append(removedPaths, rt)\n\t\t}"
     },
     {
       "name": "--dry-run reaches the REAL `git worktree prune` again (the read-only promise is gone)",
@@ -94,14 +94,26 @@
     {
       "name": "the reap arm's --dry-run arm reaps for real (an inspection run deletes what it was asked to describe)",
       "file": "cmd/deskwt/prune.go",
-      "old": "\t\t\t\tif opts.dryRun {\n\t\t\t\t\tres.reaped++\n\t\t\t\t\tres.plan = append(res.plan, v)\n\t\t\t\t\tcontinue\n\t\t\t\t}",
-      "new": "\t\t\t\tif false {\n\t\t\t\t\tres.reaped++\n\t\t\t\t\tres.plan = append(res.plan, v)\n\t\t\t\t\tcontinue\n\t\t\t\t}"
+      "old": "\t\t\t\tif opts.dryRun {\n\t\t\t\t\tres.reaped++\n\t\t\t\t\tres.plan = append(res.plan, v)\n\t\t\t\t\tremovedPaths = append(removedPaths, rt)\n\t\t\t\t\tcontinue\n\t\t\t\t}",
+      "new": "\t\t\t\tif false {\n\t\t\t\t\tres.reaped++\n\t\t\t\t\tres.plan = append(res.plan, v)\n\t\t\t\t\tremovedPaths = append(removedPaths, rt)\n\t\t\t\t\tcontinue\n\t\t\t\t}"
     },
     {
       "name": "the identity refusals stop binding the reap arm (the shared checkout / the current worktree become reap candidates)",
       "file": "cmd/deskwt/prune.go",
       "old": "\t\tif opts.reapDeadSessions && !protected {",
       "new": "\t\tif opts.reapDeadSessions {"
+    },
+    {
+      "name": "the sweep never runs the cache pressure pass (the cadence this PR exists for is gone)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\tif !opts.noCache {\n\t\tcacheRes, cacheWarns := sweepCellCaches(opts.cellsRoot, opts.dryRun, removedPaths)",
+      "new": "\tif false && !opts.noCache {\n\t\tcacheRes, cacheWarns := sweepCellCaches(opts.cellsRoot, opts.dryRun, removedPaths)"
+    },
+    {
+      "name": "the orphan reap keys on the cache root path instead of the trust domain (the match can never fire — an orphaned root is never reaped)",
+      "file": "cmd/deskwt/cachepressure.go",
+      "old": "\t\tif owner, orphan := orphans[p.Domain]; orphan {",
+      "new": "\t\tif owner, orphan := orphans[p.Root]; orphan {"
     }
   ]
 }
