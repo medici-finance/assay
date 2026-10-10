@@ -207,6 +207,101 @@ what they pin. No code, no test suite: the changed paths are markdown only.
 | 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | exit 0; ≥1 line each | exit 0; line 76 (link to `docs/contributor-trust.md`) and lines 69, 74 (`provenance card`, link to `contributor-provenance.md`); both halves RED (rc=1) at base | 2026-09-20 | glm-5.3[1m]-worker |
 | 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | exit 0; `corroborated`; no `DISPROVED`/`COULD-NOT-CHECK` | exit 0; `summary: 3 corroborated, 0 disproved, 1 unchecked` against merge-base `e4109205` (the unchecked entry is SECURITY.md `out-of-scope`, byte-identical to the merge-base — a reviewer judgement by design, never a pass); requires the brief file itself in the branch diff, which its Evidence edit supplies | 2026-09-20 | glm-5.3[1m]-worker |
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `test -f .github/PULL_REQUEST_TEMPLATE.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -n -i 'how you verified' .github/PULL_REQUEST_TEMPLATE.md` | pass exit=0 | sha256:53b118f6a842 | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -n -i 'automated' .github/PULL_REQUEST_TEMPLATE.md` | pass exit=0 | sha256:aecab1b99705 | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -n -i 'provenance' CONTRIBUTING.md` | pass exit=0 | sha256:d48a4d2609ca | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -n -i 'advisory' CONTRIBUTING.md` | pass exit=0 | sha256:4fe4a447f3e5 | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -n -i 'not published' CONTRIBUTING.md` | pass exit=0 | sha256:69a77305e0b0 | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -n 'changelog' CONTRIBUTING.md` | pass exit=0 | sha256:acf59439d849 | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `git -C . grep -n -i -e assay-desk-app -e assay-worker-app -e assay-reviewer-app -- CONTRIBUTING.md .github/PULL_REQUEST_TEMPLATE.md docs/contributor-trust.md` | pass exit=1 | sha256:e3b0c44298fc | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `grep -n -i 'SECURITY.md' CONTRIBUTING.md` | pass exit=0 | sha256:b5a307cd7646 | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | pass exit=0 | sha256:2f7979d9dc24 | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | fail exit=2 | sha256:ceed588b236a | 2026-10-09 | assay-verifier-app[bot] @ a65f270aa9c1 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#2483 run=c9b7a6cff7ad6cd08473f3c6107e80225f19d91fc13ba92815d275280cf8d886 source=a65f270aa9c10e73bd68e68b6a29d253a9a8ac28 brief=docs/streams/contributor-trust/brief-06-contributor-facing-docs.md model=claude-opus-5-5 tier=any
+
+### Non-implementer verification, hand-run — 2026-10-09
+
+Runner: assay-verifier-app[bot], on-behalf-of human:ian; model claude-opus-5-5. Merged main at
+`a65f270aa9c1`; git 2.56.0, bash 5.3.20, statusgen v1.0.34. Every row was run by hand on a clean
+tree before the execution witness above, and each matched passage was then read against the
+row's Expect. Admission: the witness block's Verification-Attestation line (#2483, run
+`c9b7a6cff7ad`, source `a65f270aa9c1`). Evidence only: this brief is `gate: human` with
+`customer: yes`, so nothing here changes its status and the verdict below is input for the human
+gate.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `test -f .github/PULL_REQUEST_TEMPLATE.md` | exit 0 | exit 0; no output; the file is tracked under exactly this upper-case name | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 2 | `grep -n -i 'how you verified' .github/PULL_REQUEST_TEMPLATE.md` | exit 0; ≥1 line | exit 0; 3 lines: 11 "## Claims and how you verified them", 14, 18 "How you verified it:". Passage read: it does ask for each claim and how it was checked | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 3 | `grep -n -i 'automated' .github/PULL_REQUEST_TEMPLATE.md` | exit 0; ≥1 line (the assistance-disclosure field) | exit 0; 1 line: 20 "## Automated assistance". Passage read: lines 22-24 ask whether the change was produced with an AI coding tool or agent; it is the disclosure field and states no tiering consequence. The match is the heading alone (note 4) | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 4 | `grep -n -i 'provenance' CONTRIBUTING.md` | exit 0; ≥1 line | exit 0; 2 lines: 93 "**provenance card** — a comment on the pull request", 106 the link to the published signal page. Passage read: lines 91-107 state what the card is, what it measures and what it excludes; the list of measured facts is incomplete (note 2) | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 5 | `grep -n -i 'advisory' CONTRIBUTING.md` | exit 0; ≥1 line (existing guidelines still described as advisory) | exit 0; 4 lines: 35, 41, 44 "Both guidelines are **advisory** unless this page says otherwise", 89 "the guidelines stay advisory". Passage read: yes, both guidelines are described as advisory and nothing is described as enforcing; the two enforcement switches in the inbound triage workflow both read "false" at this commit | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 6 | `grep -n -i 'not published' CONTRIBUTING.md` | exit 0; ≥1 line (boundary stated to the contributor) | exit 0; 1 line: 114 "**Who holds which tier is not published** —". Passage read: yes, lines 114-116 state the boundary to the reader: "the model is public, the records are not" | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 7 | `grep -n 'changelog' CONTRIBUTING.md` | exit 0; ≥1 line (fork proxy explained from the contributor's side) | exit 0; 3 lines: 112, 139, 140. Passage read: lines 137-146 do explain the proxy from the contributor's side, but they disagree with the tier table about who receives it (note 3) | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 8 | `git -C . grep -n -i -e assay-desk-app -e assay-worker-app -e assay-reviewer-app -- CONTRIBUTING.md .github/PULL_REQUEST_TEMPLATE.md docs/contributor-trust.md` | exit 1; no matching line | exit 1; no output. Read as well as grepped: a wider pattern (any "assay-…-app" name, any "[bot]" suffix) also finds nothing in the three files; they name no automation identity | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 9 | `grep -n -i 'SECURITY.md' CONTRIBUTING.md` | exit 0; ≥1 line (reporting path linked, never restated) | exit 0; 3 lines: 24, 77, 127 (each a markdown link to the security policy file). Passage read: yes, the trust-bar section links the policy at line 127 and repeats no reporting channel or contact from it | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | exit 0; ≥1 line from each | exit 0; first half 1 line (112, the link to the tier page), second half 2 lines (69, 74). Passage read: every hop exists and every link target is a tracked file — contribution guide to tier page to the published signal page | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | exit 0; contains `corroborated`; no `DISPROVED`; no `COULD-NOT-CHECK` | exit 2; "COULD-NOT-CHECK: assay:assay:contributor-trust:06 is not in the diff against a65f270aa9c1…, so this run carries no evidence about its claims — no entry was corroborated and none was disproved". Does NOT meet Expect; a check-definition fault, never a pass (note 1) | 2026-10-09 | assay-verifier-app[bot], on-behalf-of human:ian |
+
+Notes.
+
+1. Row 11 cannot corroborate anything on merged main (check-definition). The command diffs the
+   working tree against the default base, which on merged main is the same commit, so the tool
+   answers COULD-NOT-CHECK and exits 2. The result is also order-dependent: once this Evidence
+   section carries an uncommitted edit, the same command exits 0 with "summary: 0 corroborated,
+   0 disproved, 4 unchecked" — and that output mechanically satisfies the Expect as written,
+   because the substring `corroborated` appears in "0 corroborated". Neither outcome is evidence.
+   Supplementary only, and not the row: the same command with `--base` set to the parent of the
+   #1370 squash commit exits 0 with "summary: 3 corroborated, 0 disproved, 1 unchecked" (the
+   unchecked entry is the out-of-scope security policy).
+2. The contribution guide lists six measured facts at lines 94-98 and introduces them as "a
+   fixed list"; the published signal page and the signal registry in code both carry seven. The
+   one left out is body-shape similarity — whether a description is near-identical in shape to
+   another recent submission by the same author. It was already on the signal page when #1370
+   landed. The guide does defer to that page as the place where the list is "published in full".
+3. The guide says a tier unlocks "the fork changelog arrangement below" (lines 110-112) and the
+   tier page gives that capability to the two upper tiers only, yet the section below (lines
+   137-146) tells every fork contributor that a missing fragment "is not something you need to
+   fix yourself". The changelog check at this commit consults no tier, so the unconditional
+   wording is what happens today; the two published statements still disagree about a
+   first-time contributor.
+4. Several rows stay green when the guarded statement is removed, shown by mutation on scratch
+   copies (the tree here was never edited): row 5 stays exit 0 with the "Both guidelines are
+   advisory" paragraph deleted, and also with that sentence rewritten to "enforced and no longer
+   advisory"; row 7 stays exit 0 with the whole fork-changelog section deleted (line 112 still
+   matches); row 9 stays exit 0 with the trust-bar link deleted, and with a reporting path
+   restated inline; row 3 stays exit 0 with the question deleted and only the heading kept.
+   Rows 1, 2, 4, 6 and 10 went red under their mutation. Row 8 went red (exit 0, a match) for
+   each of its three names planted in each of the three files, and stayed exit 1 for a role
+   identity outside its three-name pattern.
+5. Changed on main since #1370: #1480 added the "What must not appear" section to the guide and
+   one sentence to the template's assistance field. No guarded statement was altered; line
+   numbers moved by 35. The template now carries a conditional confirmation beyond the "two
+   prompts" the guide still describes.
+6. Of the files named in Context, the changelog fragment is absent at this commit: the release
+   aggregation folded it into the changelog under v1.0.16, which is its expected lifecycle.
+7. The design record this brief is authored against still reads "PROPOSED — no ruling is
+   recorded" at this commit, and the published signal page still says whether the card is ever
+   posted on a real pull request awaits a ruling. No workflow at this commit invokes the
+   provenance probe. The guide's wording is "may be measured".
+
+Risk-bearing values (enumerated over the #1370 and #965 diffs to the three documents):
+
+- RISK-VALUE: NAMED, NOT DERIVED — publication authority, decided-by = "human:&lt;name&gt;" (placeholder) @ docs/streams/decisions/DR-contrib-disclosure.md:5 — the disclosure boundary at CONTRIBUTING.md:114 is published, and the record that would authorise publishing it carries no ruling; only the human gate can supply that derivation.
+- RISK-VALUE: NAMED, NOT DERIVED — measured facts listed = 6 @ CONTRIBUTING.md:94-98 — the registry holds 7 (tools/desk/internal/deskkit/provenance.go:161-197; docs/contributor-provenance.md:25-31); no source was found for stating six.
+- RISK-VALUE: DERIVED — guidelines "advisory" @ CONTRIBUTING.md:44,89 — ENFORCE_ISSUE_FIRST = "false" and ENFORCE_CONCURRENCY = "false" @ .github/workflows/inbound-triage.yml:43,45; the stated guideline of three matches MAX_OPEN_PR_PER_AUTHOR = "3" @ line 48.
+- RISK-VALUE: DERIVED — tiers = 4 (unknown, blessed-once, contributor, maintainer) @ CONTRIBUTING.md:109-110 — the tier enumeration has exactly these four in this order (tools/desk/internal/deskkit/trusttier.go:57-60) and the four unlocks named at lines 110-112 are the four capabilities at trusttier.go:276-279.
+- RISK-VALUE: DERIVED — burst window "in a day" @ CONTRIBUTING.md:96 — the signal counts pull requests "in the preceding 24h" (tools/desk/internal/deskkit/provenance.go:174).
+- Ranked last, reversible wording, no derivation owed: template prompts = "two" @ CONTRIBUTING.md:131.
+
+VERIFY: BLOCKED — check-definition: rows 1-10 meet Expect at `a65f270aa9c1`; row 11 exits 2 with COULD-NOT-CHECK and cannot corroborate on merged main as written. Notes 2, 3 and 7 are content questions for the human gate and are open whatever row 11 does.
+
+Desk note, 2026-10-10: the row 11 could-not-check above is an instance of #1915 (the consumers check cannot corroborate on merged main as written). #1915 is the blocker this pass's outcome record names.
+
+
 ## Review
 Gate: human (from frontmatter). Reviewer records verdict + date in the stream README table.
 Human gate is MANDATORY when any risk answer is yes.
