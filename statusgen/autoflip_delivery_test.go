@@ -19,6 +19,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -48,14 +49,12 @@ func humanApproved(head string, d int) prReviewState {
 	}}
 }
 
-// evidenceShape is a verify Evidence PR: the brief file, the README row and the
-// verify-outcome record, all under docs/streams/, by author.
+// evidenceShape is a verify Evidence PR: the brief's Evidence section, the
+// README row's status cells and the verify-outcome record. Since
+// verify-reset/07 the author plays no part; it is kept as a parameter so each
+// fixture still says who landed it.
 func evidenceShape(author string) prShape {
-	return prShape{Author: author, Files: []string{
-		"docs/streams/af/README.md",
-		"docs/streams/af/brief-50-walk.md",
-		"docs/streams/af/verify-outcomes/50.json",
-	}}
+	return evidenceOnlyShape(author)
 }
 
 // authoringShape is a stream-authoring PR: it created the brief file, touched
@@ -68,11 +67,11 @@ var authoringShape = prShape{Author: "desk-app[bot]", Files: []string{
 	"docs/streams/af/brief-51-other.md",
 }}
 
-// verifierRev is the reviewer identity with the roster's verifier App bound.
+// verifierRev is the reviewer identity the delivery fixtures run under. Before
+// verify-reset/07 it also bound the verifier App the Evidence exclusion keyed
+// on; the exclusion is now by diff shape, so it is the plain reviewer.
 func verifierRev() reviewerIdentity {
-	r := ghReviewer(afReviewer)
-	r.EvidenceLanders = []string{afVerifier, "app/verifier-app"}
-	return r
+	return ghReviewer(afReviewer)
 }
 
 func decideWalkRev(t *testing.T, src *fakeFlipSource, rev reviewerIdentity) modelFlipResult {
@@ -139,37 +138,6 @@ func TestAutoFlipTrailerPastAuthoring(t *testing.T) {
 			got := decideWalkRev(t, src, verifierRev())
 			if got.Outcome != flipDone || got.PR != 151 {
 				t.Fatalf("want flipDone crediting #151 past the authoring PR; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
-			}
-		})
-	}
-}
-
-// TestAutoFlipEvidenceNeedsVerifier: the exclusion is the verifier App's
-// identity AND a docs/streams-only diff. Either half missing, the PR is an
-// ordinary candidate and its missing App approval refuses the flip.
-func TestAutoFlipEvidenceNeedsVerifier(t *testing.T) {
-	codeTouching := evidenceShape(afVerifier)
-	codeTouching.Files = append(codeTouching.Files, "statusgen/autoflip.go")
-	renamedIn := evidenceShape(afVerifier)
-	renamedIn.RenamedFrom = []string{"statusgen/autoflip.go"}
-	for name, tc := range map[string]struct {
-		shape prShape
-		rev   reviewerIdentity
-	}{
-		"author is not the verifier":    {evidenceShape("some-human"), verifierRev()},
-		"no verifier bound in roster":   {evidenceShape(afVerifier), ghReviewer(afReviewer)},
-		"verifier PR also touches code": {codeTouching, verifierRev()},
-		"verifier PR with no file list": {prShape{Author: afVerifier}, verifierRev()},
-		"author unknown (empty login)":  {evidenceShape(""), verifierRev()},
-		"verifier PR renames code in":   {renamedIn, verifierRev()},
-	} {
-		t.Run(name, func(t *testing.T) {
-			src := walkSource([]int{190, 151},
-				map[int]prReviewState{190: humanApproved(afNoAppSHA, 5), 151: mergedApproved(afRealDeliveryHeadSHA, 1)},
-				map[int]prShape{190: tc.shape, 151: realDelivery50})
-			src.trailerHits = map[string][]int{"af/50": {151}}
-			if got := decideWalkRev(t, src, tc.rev); got.Outcome != flipRefused || got.PR != 190 {
-				t.Fatalf("want REFUSED naming #190; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
 			}
 		})
 	}
@@ -445,35 +413,6 @@ func TestAutoFlipSummaryBase(t *testing.T) {
 	}
 }
 
-// TestAutoFlipVerifierFromRoster pins the roster wiring of the Evidence
-// exclusion: the App bound to `verifier=` is the one Evidence landings are
-// matched against, under both GitHub renderings, and an unbound role gives
-// none (the exclusion then never applies).
-func TestAutoFlipVerifierFromRoster(t *testing.T) {
-	scanWithRoster(t, map[string]string{
-		scanEnvBlessLogin:      "ada:100001",
-		scanEnvTrustedLogins:   "ada:100001",
-		scanEnvTrustedBotSlugs: "reviewer=github:example-reviewer-app:300000005,verifier=github:example-verifier-app:300000006",
-	})
-	rev := modelReviewer()
-	for _, l := range []string{"example-verifier-app[bot]", "app/example-verifier-app"} {
-		if !loginInSet(rev.EvidenceLanders, l) {
-			t.Errorf("verifier rendering %q missing; EvidenceLanders = %v", l, rev.EvidenceLanders)
-		}
-	}
-	if loginInSet(rev.EvidenceLanders, "example-reviewer-app[bot]") {
-		t.Errorf("the reviewer App must not be an Evidence lander; EvidenceLanders = %v", rev.EvidenceLanders)
-	}
-	scanWithRoster(t, map[string]string{
-		scanEnvBlessLogin:      "ada:100001",
-		scanEnvTrustedLogins:   "ada:100001",
-		scanEnvTrustedBotSlugs: "reviewer=github:example-reviewer-app:300000005",
-	})
-	if rev := modelReviewer(); len(rev.EvidenceLanders) != 0 {
-		t.Errorf("no verifier bound: want no Evidence landers; got %v", rev.EvidenceLanders)
-	}
-}
-
 // TestAutoFlipParseLastEdited: null is never edited. A missing pull request or
 // an unparseable time is an error, never a pass.
 func TestAutoFlipParseLastEdited(t *testing.T) {
@@ -499,12 +438,18 @@ func TestAutoFlipParseLastEdited(t *testing.T) {
 // TestAutoFlipParseFileListing: a rename's old path is kept; a malformed line
 // is an error, never skipped.
 func TestAutoFlipParseFileListing(t *testing.T) {
-	files, from, err := parseFileListing(1, []byte("[\"docs/streams/af/x.md\",\"statusgen/x.go\"]\n[\"docs/streams/af/y.md\",\"\"]\n"))
-	if err != nil || strings.Join(files, ",") != "docs/streams/af/x.md,docs/streams/af/y.md" || strings.Join(from, ",") != "statusgen/x.go" {
+	files, from, patches, err := parseFileListing(1, []byte(`["docs/streams/af/x.md","statusgen/x.go"]
+["docs/streams/af/y.md","","@@ -1 +1 @@\n-a\n+b"]
+["z.bin","",null]
+`))
+	if err != nil || strings.Join(files, ",") != "docs/streams/af/x.md,docs/streams/af/y.md,z.bin" || strings.Join(from, ",") != "statusgen/x.go" {
 		t.Errorf("got files=%v from=%v err=%v", files, from, err)
 	}
-	for _, bad := range []string{"docs/streams/af/x.md\n", "[\"a\"]\n", "[\"\",\"b\"]\n"} {
-		if _, _, err := parseFileListing(1, []byte(bad)); err == nil {
+	if len(patches) != 1 || patches["docs/streams/af/y.md"] != "@@ -1 +1 @@\n-a\n+b" {
+		t.Errorf("want one patch (y.md); a null or absent patch is no entry; got %q", patches)
+	}
+	for _, bad := range []string{"docs/streams/af/x.md\n", "[\"a\"]\n", "[\"\",\"b\"]\n", "[null,\"\"]\n", "[\"a\",null]\n", "[\"a\",\"\",\"p\",\"x\"]\n"} {
+		if _, _, _, err := parseFileListing(1, []byte(bad)); err == nil {
 			t.Errorf("%q: want an error", bad)
 		}
 	}
@@ -619,5 +564,419 @@ func TestApprovalGuardCatchesPlant(t *testing.T) {
 	}
 	if p := approvalRefProblems(map[string]int{}); len(p) != 1 || !strings.Contains(p[0], "wrong place") {
 		t.Errorf("an empty scan must fail loud; got %v", p)
+	}
+}
+
+// ---- verify-reset/07: diff shape, files: overlap, visible refusals ------------------
+
+// afBriefHead is brief af/50 at an Evidence PR's head: lines 13-18 are the
+// `## Evidence` section (heading on 13, `## Review` on 19).
+var afBriefHead = strings.Join([]string{
+	"---", "brief: af/50", "---", "", "# Brief 50", "", // 1-6
+	"## Verify", "", "| # | Command | Expect |", "|---|---|---|", "| 1 | `true` | exit 0 |", "", // 7-12
+	"## Evidence", "", "| # | Result |", "|---|---|", "| 1 | pass |", "", // 13-18
+	"## Review", "Gate: model", "", // 19-21
+}, "\n")
+
+// afBriefEvidencePatch appends the Evidence table: new lines 15-17.
+const afBriefEvidencePatch = "@@ -13,3 +13,6 @@\n ## Evidence\n \n+| # | Result |\n+|---|---|\n+| 1 | pass |\n \n"
+
+// afReadmeHead is the af stream README at the Evidence PR's head.
+var afReadmeHead = strings.Join([]string{
+	"# af", "",
+	"| # | Brief | Status | Verified | Reviewed |",
+	"|---|---|---|---|---|",
+	"| 49 | [other](brief-49-other.md) | done | 2026-09-01 v | 2026-09-02 r |",
+	"| 50 | [walk](brief-50-walk.md) | verified | 2026-09-06 verifier | — |",
+	"",
+}, "\n")
+
+// afReadmeStatusPatch moves row 50's status and Verified cells only.
+const afReadmeStatusPatch = "@@ -6 +6 @@\n-| 50 | [walk](brief-50-walk.md) | implemented | — | — |\n+| 50 | [walk](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n"
+
+// evidenceOnlyShape is a verify Evidence PR by diff shape: the brief's
+// `## Evidence` section, the README row's status cells and a verify-outcome
+// record. It names af/50 in a `Brief:` trailer, so before verify-reset/07 it
+// was a delivery candidate whenever its author was not the verifier App.
+func evidenceOnlyShape(author string) prShape {
+	return prShape{
+		Author:        author,
+		BriefTrailers: 1, Briefs: []string{"af/50"},
+		BaseRef: "main", DefaultBranch: "main",
+		Files: []string{
+			"docs/streams/af/README.md",
+			"docs/streams/af/brief-50-walk.md",
+			"docs/streams/verify-outcomes/af/50.json",
+		},
+		Patches: map[string]string{
+			"docs/streams/af/README.md":               afReadmeStatusPatch,
+			"docs/streams/af/brief-50-walk.md":        afBriefEvidencePatch,
+			"docs/streams/verify-outcomes/af/50.json": "@@ -0,0 +1 @@\n+{}\n",
+		},
+		Heads: map[string]string{
+			"docs/streams/af/README.md":        afReadmeHead,
+			"docs/streams/af/brief-50-walk.md": afBriefHead,
+		},
+	}
+}
+
+// TestAutoflipIgnoresEvidenceOnlyPR — verify-reset/07 Task 1. A newer PR whose
+// diff is Evidence-only (whoever authored it, and carrying `Brief: af/50`) is
+// never the delivering PR and is asked for no approval; the older, App-approved
+// delivery is credited. Every way out of the Evidence-only shape makes the PR an
+// ordinary candidate again, whose missing App approval refuses the flip.
+func TestAutoflipIgnoresEvidenceOnlyPR(t *testing.T) {
+	run := func(t *testing.T, ev prShape) modelFlipResult {
+		t.Helper()
+		src := walkSource([]int{195, 151},
+			map[int]prReviewState{195: humanApproved(afNoAppSHA, 5), 151: mergedApproved(afRealDeliveryHeadSHA, 1)},
+			map[int]prShape{195: ev, 151: realDelivery50})
+		src.trailerHits = map[string][]int{"af/50": {195, 151}}
+		return decideWalkRev(t, src, ghReviewer(afReviewer))
+	}
+	statusOnly := prShape{Author: "some-human", Files: []string{"STATUS.md"}, Patches: map[string]string{"STATUS.md": "@@ -1 +1 @@\n-a\n+b\n"}}
+	for name, ev := range map[string]prShape{
+		"evidence-only, human author":    evidenceOnlyShape("some-human"),
+		"evidence-only, verifier author": evidenceOnlyShape(afVerifier),
+		"evidence-only, no author read":  evidenceOnlyShape(""),
+		"status-only":                    statusOnly,
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := run(t, ev)
+			if got.Outcome != flipDone || got.PR != 151 || got.SHA != afRealDeliveryHeadSHA {
+				t.Fatalf("want flipDone crediting the delivery #151; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+			}
+		})
+	}
+
+	edit := func(f func(*prShape)) prShape { s := evidenceOnlyShape("some-human"); f(&s); return s }
+	for name, ev := range map[string]prShape{
+		"touches code": edit(func(s *prShape) {
+			s.Files = append(s.Files, "statusgen/autoflip.go")
+			s.Patches["statusgen/autoflip.go"] = "@@ -1 +1 @@\n-a\n+b\n"
+		}),
+		"renames code in": edit(func(s *prShape) { s.RenamedFrom = []string{"statusgen/autoflip.go"} }),
+		"no file list":    {Author: "some-human", Briefs: []string{"af/50"}, BriefTrailers: 1},
+		"brief hunk in Verify": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -11 +11 @@\n-| 1 | `false` | exit 0 |\n+| 1 | `true` | exit 0 |\n"
+		}),
+		"brief hunk adds a section heading": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -13,3 +13,4 @@\n ## Evidence\n \n+## Review\n \n"
+		}),
+		"brief hunk deletes the Review heading": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -18,3 +18,2 @@\n \n-## Review\n Gate: model\n"
+		}),
+		"README edits a brief title": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/README.md"] = "@@ -6 +6 @@\n-| 50 | [old](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n+| 50 | [walk](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n"
+		}),
+		"README adds a row": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/README.md"] = "@@ -5,0 +6 @@\n+| 50 | [walk](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n"
+		}),
+		"README edits prose": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/README.md"] = "@@ -1 +1 @@\n-# old\n+# af\n"
+		}),
+		"brief patch not reported": edit(func(s *prShape) { delete(s.Patches, "docs/streams/af/brief-50-walk.md") }),
+		"brief head not read":      edit(func(s *prShape) { delete(s.Heads, "docs/streams/af/brief-50-walk.md") }),
+		"README head not read":     edit(func(s *prShape) { delete(s.Heads, "docs/streams/af/README.md") }),
+		"other docs/streams file": edit(func(s *prShape) {
+			s.Files = append(s.Files, "docs/streams/af/design.md")
+			s.Patches["docs/streams/af/design.md"] = "@@ -1 +1 @@\n-a\n+b\n"
+		}),
+	} {
+		t.Run("not evidence-only: "+name, func(t *testing.T) {
+			if got := run(t, ev); got.Outcome != flipRefused || got.PR != 195 {
+				t.Fatalf("want REFUSED naming the unapproved #195; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+			}
+		})
+	}
+}
+
+// decideWalkFiles runs decideModelFlipFiles for af/50 with a `files:`
+// declaration.
+func decideWalkFiles(t *testing.T, src *fakeFlipSource, files ...string) modelFlipResult {
+	t.Helper()
+	root, streams := loadAFStreams(t)
+	s := streams[0]
+	bf := briefFiles{entries: files, declared: files != nil}
+	return decideModelFlipFiles(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", bf, src, ghReviewer(afReviewer))
+}
+
+// TestAutoflipDeliveringByFilesOverlap — verify-reset/07 Task 2. Of the PRs
+// credited to af/50, the delivering PR is the newest one whose diff touches a
+// path in the brief's `files:`, never a newer credited PR that touches none.
+// When no PR touches them the result is COULD-NOT-CHECK and nothing flips.
+func TestAutoflipDeliveringByFilesOverlap(t *testing.T) {
+	other := prShape{Files: []string{"internal/other/x.go"}, BriefTrailers: 1, Briefs: []string{"af/50"}}
+	states := func(newer prReviewState) map[int]prReviewState {
+		return map[int]prReviewState{151: mergedApproved(afRealDeliveryHeadSHA, 1), 152: newer}
+	}
+	shapes := map[int]prShape{151: realDelivery50, 152: other}
+	declared := []string{"./internal/walk/walk.go", "changelog/<slug>.md", "docs/streams/af/README.md"}
+
+	t.Run("trailer: the PR touching files: is credited over a newer one", func(t *testing.T) {
+		src := walkSource(nil, states(mergedApproved(afHeadSHA, 4)), shapes)
+		src.trailerHits = map[string][]int{"af/50": {152, 151}}
+		got := decideWalkFiles(t, src, declared...)
+		if got.Outcome != flipDone || got.PR != 151 || got.SHA != afRealDeliveryHeadSHA {
+			t.Fatalf("want flipDone crediting #151 (touches internal/walk/walk.go) over the newer #152; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+		}
+	})
+	t.Run("history walk: a credited PR touching none is walked past", func(t *testing.T) {
+		src := walkSource([]int{152, 151}, states(mergedApproved(afHeadSHA, 4)), shapes)
+		got := decideWalkFiles(t, src, declared...)
+		if got.Outcome != flipDone || got.PR != 151 {
+			t.Fatalf("want flipDone crediting #151; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+		}
+	})
+	t.Run("no PR touches files: is COULD-NOT-CHECK", func(t *testing.T) {
+		src := walkSource([]int{152, 151}, states(mergedApproved(afHeadSHA, 4)), shapes)
+		src.trailerHits = map[string][]int{"af/50": {152, 151}}
+		got := decideWalkFiles(t, src, "internal/nothing/")
+		if got.Outcome != flipUnchecked || !strings.Contains(got.Reason, "no PR touches the brief's files") {
+			t.Fatalf("want COULD-NOT-CHECK naming that no PR touches the brief's files; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+		}
+	})
+	t.Run("files: naming only another repo is COULD-NOT-CHECK", func(t *testing.T) {
+		src := walkSource(nil, states(mergedApproved(afHeadSHA, 4)), shapes)
+		src.trailerHits = map[string][]int{"af/50": {152, 151}}
+		got := decideWalkFiles(t, src, "../elsewhere/internal/walk/walk.go")
+		if got.Outcome != flipUnchecked || !strings.Contains(got.Reason, "no PR touches the brief's files") ||
+			!strings.Contains(got.Reason, "names a path in this repo: ../elsewhere/internal/walk/walk.go") {
+			t.Fatalf("want COULD-NOT-CHECK naming the entry as no path in this repo; got %v (%s)", got.Outcome, got.Reason)
+		}
+	})
+	t.Run("files: naming this repo by its own ../<name>/ path still overlaps", func(t *testing.T) {
+		b := briefFiles{entries: []string{"../assay/internal/walk/", "STATUS.md"}, declared: true}.forRepo("medici-finance/assay")
+		if len(b.entries) != 1 || b.entries[0] != "internal/walk/" || len(b.dropped) != 1 || b.dropped[0] != "STATUS.md" {
+			t.Fatalf("want entries [internal/walk/] and dropped [STATUS.md]; got %+v", b)
+		}
+		if !b.overlaps(prShape{Files: []string{"internal/walk/walk.go"}}) || b.overlaps(prShape{Files: []string{"STATUS.md"}}) {
+			t.Fatalf("overlap wrong for %+v", b)
+		}
+	})
+	t.Run("a non-overlapping credited PR still needs its approval", func(t *testing.T) {
+		src := walkSource(nil, states(humanApproved(afHeadSHA, 4)), shapes)
+		src.trailerHits = map[string][]int{"af/50": {152, 151}}
+		if got := decideWalkFiles(t, src, declared...); got.Outcome != flipRefused || got.PR != 152 {
+			t.Fatalf("want REFUSED naming the unapproved #152; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+		}
+	})
+	t.Run("no files: declared keeps the newest credited PR", func(t *testing.T) {
+		src := walkSource(nil, states(mergedApproved(afHeadSHA, 4)), shapes)
+		src.trailerHits = map[string][]int{"af/50": {152, 151}}
+		if got := decideWalkFiles(t, src); got.Outcome != flipDone || got.PR != 152 {
+			t.Fatalf("want flipDone crediting the newest #152; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+		}
+	})
+	t.Run("autoFlipModel reads the brief's files: line", func(t *testing.T) {
+		for files, want := range map[string]flipOutcome{"`internal/example/`": flipDone, "`internal/nothing/`": flipUnchecked} {
+			root, _ := loadAFStreams(t)
+			p := filepath.Join(root, "docs", "streams", "af", "brief-01-model-approved-at-head.md")
+			b, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			withCtx := strings.Replace(string(b), "## Verify (executable)", "## Context\n\nfiles: "+files+"\n\n## Verify (executable)", 1)
+			if err := os.WriteFile(p, []byte(withCtx), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			streams, _, err := loadStreams(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			results, err := autoFlipModel(root, streams, afSource(), ghReviewer(afReviewer), afNow, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := afResult(t, results, "af/01"); got.Outcome != want {
+				t.Errorf("files: %s — af/01 outcome %v (%s), want %v", files, got.Outcome, got.Reason, want)
+			}
+		}
+	})
+}
+
+// TestAutoflipCouldNotCheckIsVisible — verify-reset/07 Task 3. A gate:model
+// brief the flip leaves at `verified` (here af/01, REFUSED on unreleased
+// coverage, and af/06, COULD-NOT-CHECK with no merged PR) is a row in
+// STATUS.md's roll-up, and `--auto-flip-model --check` exits 2 on it. Without
+// --check the exit stays 0, and a misconfiguration keeps its exit 1.
+func TestAutoflipCouldNotCheckIsVisible(t *testing.T) {
+	root, _ := loadAFStreams(t)
+	p := filepath.Join(root, "docs", "streams", "af", "brief-01-model-approved-at-head.md")
+	orig, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	witnessRow := "| 1 | `go vet ./...` | pass exit=0 | sha256:abc123def456 | 2026-07-08 | fixture-verifier @ " + afWitnessTree(t, root) + " |"
+	mutated := strings.Replace(string(orig), witnessRow, "", 1)
+	if mutated == string(orig) {
+		t.Fatalf("the af/01 witness row was not found in %s — the fixture has drifted", p)
+	}
+	if err := os.WriteFile(p, []byte(mutated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, err := loadHydratedStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := autoFlipModel(root, streams, afSource(), ghReviewer(afReviewer), afNow, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := afResult(t, results, "af/01"); got.Outcome != flipRefused {
+		t.Fatalf("af/01 with unreleased coverage: want REFUSED; got %v (%s)", got.Outcome, got.Reason)
+	}
+	if got := afResult(t, results, "af/06"); got.Outcome != flipUnchecked || got.Misconfig {
+		t.Fatalf("af/06 with no merged PR: want a structural COULD-NOT-CHECK; got %v misconfig=%v (%s)", got.Outcome, got.Misconfig, got.Reason)
+	}
+
+	// The roll-up row.
+	board := emit(streams, nil, NextUp{}, nil, nil, IntakeAlarmResult{}, nil, "")
+	rollup := board[strings.Index(board, "## Roll-up"):]
+	if i := strings.Index(rollup[len("## Roll-up"):], "\n## "); i >= 0 {
+		rollup = rollup[:len("## Roll-up")+i]
+	}
+	if !strings.Contains(rollup, "### Stuck auto-flips") {
+		t.Fatalf("STATUS.md's roll-up has no stuck auto-flip table:\n%s", rollup)
+	}
+	for _, b := range []string{"af/01", "af/06"} {
+		if !strings.Contains(rollup, "| ["+b+"](docs/streams/af/README.md) |") {
+			t.Errorf("STATUS.md's roll-up has no row for the stuck %s:\n%s", b, rollup)
+		}
+	}
+	if strings.Contains(rollup, "[af/03]") {
+		t.Errorf("af/03 is gate:human: the model flip never judges it, so it is no stuck auto-flip row:\n%s", rollup)
+	}
+
+	// The exit. reportAutoFlipModel alone is the green run that hid them.
+	code := reportAutoFlipModel(io.Discard, io.Discard, results, afReviewer, true)
+	if code != 0 {
+		t.Fatalf("reportAutoFlipModel: want 0 (non-fatal) for REFUSED/COULD-NOT-CHECK; got %d", code)
+	}
+	var errb strings.Builder
+	if got := autoFlipCheckExit(&errb, results, code, true); got != 2 || !strings.Contains(errb.String(), "exit 2") {
+		t.Errorf("--check with a stuck candidate: want exit 2 and a stderr line; got %d %q", got, errb.String())
+	}
+	if got := autoFlipCheckExit(io.Discard, results, code, false); got != 0 {
+		t.Errorf("without --check: want exit 0; got %d", got)
+	}
+	if got := autoFlipCheckExit(io.Discard, results, 1, true); got != 1 {
+		t.Errorf("a misconfiguration keeps exit 1 under --check; got %d", got)
+	}
+	if got := autoFlipCheckExit(io.Discard, []modelFlipResult{{Brief: "af/01", Outcome: flipDone}}, 0, true); got != 0 {
+		t.Errorf("--check with every candidate flipped: want 0; got %d", got)
+	}
+	// A board with no gate:model brief at `verified` renders no table at all.
+	if lines := stuckFlipLines(nil, nil); lines != nil {
+		t.Errorf("no stuck brief: want no roll-up lines; got %q", lines)
+	}
+}
+
+// ---- the class guard: the delivery-candidate decision reads no identity -----------
+
+// identityIdents are the names through which a PR's author or a roster role
+// reaches code: the prShape/note Author field, the reviewer identity's login
+// set, the pre-verify-reset/07 verifier set, and the set-membership helper.
+var identityIdents = map[string]bool{"Author": true, "Logins": true, "EvidenceLanders": true, "loginInSet": true}
+
+// evidenceShapeGuarded names the declarations the guard holds: every function in
+// evidenceshape.go, plus candidateGate wherever it lives.
+func evidenceShapeGuarded(file, fn string) bool {
+	return file == "evidenceshape.go" || fn == approvalGateName
+}
+
+// scanIdentityReads parses every non-test Go file directly in dir and returns
+// `<file>:<func> reads <ident>` for each identity name a guarded function
+// references. It also reports when no guarded function was found at all.
+func scanIdentityReads(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	fset := token.NewFileSet()
+	var problems []string
+	seenGate, seenShape := false, false
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, perr := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+		if perr != nil {
+			return nil, perr
+		}
+		for _, decl := range f.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Body == nil || !evidenceShapeGuarded(name, fd.Name.Name) {
+				continue
+			}
+			if fd.Name.Name == approvalGateName {
+				seenGate = true
+			}
+			if fd.Name.Name == "evidenceOnlyReason" {
+				seenShape = true
+			}
+			ast.Inspect(fd, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && identityIdents[id.Name] {
+					problems = append(problems, fmt.Sprintf("%s:%s reads %s — whether a PR is a delivery candidate "+
+						"is decided by its diff shape, never by who authored it (verify-reset/07)", name, fd.Name.Name, id.Name))
+				}
+				return true
+			})
+		}
+	}
+	if !seenGate || !seenShape {
+		problems = append(problems, fmt.Sprintf("found candidateGate=%v evidenceOnlyReason=%v — this guard is looking in the wrong place", seenGate, seenShape))
+	}
+	sort.Strings(problems)
+	return problems, nil
+}
+
+// TestEvidenceShapeNeverReadsIdentity is the class guard over this package: the
+// Evidence-only classifier and the gate that consults it read no identity.
+func TestEvidenceShapeNeverReadsIdentity(t *testing.T) {
+	problems, err := scanIdentityReads(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range problems {
+		t.Error(p)
+	}
+}
+
+// TestEvidenceShapeGuardCatchesPlant is the guard's own control: a second,
+// author-keyed exclusion planted in candidateGate and in the classifier file is
+// reported; the same read outside the guarded declarations is not; a tree
+// without the guarded functions fails loud.
+func TestEvidenceShapeGuardCatchesPlant(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("gate.go", "package main\n\ntype shape struct{ Author string }\n\n"+
+		"func candidateGate(s shape, verifiers []string) bool { return loginInSet(verifiers, s.Author) }\n\n"+
+		"func loginInSet(a []string, l string) bool { return len(a) > 0 && l != \"\" }\n\n"+
+		"func approvalNote(s shape) string { return s.Author }\n")
+	write("evidenceshape.go", "package main\n\nfunc evidenceOnlyReason(s shape) bool { return s.Author == \"verifier\" }\n")
+	problems, err := scanIdentityReads(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(problems, "\n")
+	for _, want := range []string{"gate.go:candidateGate reads loginInSet", "gate.go:candidateGate reads Author",
+		"evidenceshape.go:evidenceOnlyReason reads Author"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("planted identity read %q not reported; got:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "approvalNote") || strings.Contains(joined, "gate.go:loginInSet") {
+		t.Errorf("an unguarded declaration was reported; got:\n%s", joined)
+	}
+	empty := t.TempDir()
+	if p, err := scanIdentityReads(empty); err != nil || len(p) != 1 || !strings.Contains(p[0], "wrong place") {
+		t.Errorf("an empty scan must fail loud; got %v (err %v)", p, err)
 	}
 }

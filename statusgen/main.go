@@ -1513,7 +1513,7 @@ func main() {
 	// The `(default ".")` is spelled out because flag.Var — unlike flag.String —
 	// prints no default in usage output, and the default is unchanged.
 	flag.Var(&roots, "root", `repository root (default "."; repeatable — one STATUS.md per root)`)
-	checkMode := flag.Bool("check", false, "verify STATUS.md is current instead of writing it")
+	checkMode := flag.Bool("check", false, "verify STATUS.md is current instead of writing it; with --auto-flip-model, exit 2 when any candidate is REFUSED or COULD-NOT-CHECK (so a stuck row fails the run visibly)")
 	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
 	forgeMode := flag.Bool("forge", false, "opt in to the forge-backed checks. WITHOUT it statusgen is OFFLINE: it starts no forge process and makes no network call, and every forge-backed check reports could-not-check as itself rather than reading green. WITH it those checks read through the desk-tools `deskread` verb on the forge seam. The default is offline because a check that quietly stopped looking is indistinguishable from one that looked and found nothing")
 	lintAuditMode := flag.Bool("lint-audit", false, "30-day check-firing audit (statusgen/01): sample daily commits, tally per-rule PROBLEM/NOTICE firings, flag COLD (0-firing, un-tested) rules as retirement candidates — read-only, advisory, never retires a rule")
@@ -2020,7 +2020,7 @@ func main() {
 	// stream README rows, and only for gate:model briefs whose merge PR carries
 	// a live App approval at the merged head.
 	if *autoFlipModelMode {
-		os.Exit(runAutoFlipModel(*root, *scanDryRun))
+		os.Exit(runAutoFlipModel(*root, *scanDryRun, *checkMode))
 	}
 	if *alarmsMode {
 		os.Exit(runAlarms(*root))
