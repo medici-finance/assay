@@ -186,6 +186,8 @@ type witness struct {
 	// as a `sandbox=<mode>` token in the Result cell (witnessSandboxOf reads it
 	// back). A compile-time token, never caller text.
 	Sandbox string
+	// Base is the fail-first cell (verify-integrity/03); "" for an ordinary run.
+	Base string
 	// Note is console-only commentary (why could-not-run, which Expect
 	// constraints were undecidable). It is deliberately NOT written into the
 	// row: the row is a record, and free text in a record is where a caption
@@ -236,8 +238,15 @@ func (w witness) row() string {
 	if w.RunnerSource != "" {
 		runnerCell += " (" + w.RunnerSource + ")"
 	}
-	return fmt.Sprintf("| %s | %s | %s | sha256:%s | %s | %s |",
+	row := fmt.Sprintf("| %s | %s | %s | sha256:%s | %s | %s |",
 		w.ID, codeSpanOf(w.Command), result, w.OutHash, w.Date, runnerCell)
+	// The fail-first Base cell (verify-integrity/03) is a trailing 7th cell, so
+	// every positional cell above keeps its index and an ordinary run renders
+	// byte-identical to before.
+	if w.Base != "" {
+		row += " " + w.Base + " |"
+	}
+	return row
 }
 
 // codeSpanOf writes cmd as ONE inline code span that witnessCommandOf lifts back
@@ -1402,7 +1411,14 @@ func proseLedNote(reason string) string {
 // to prevent. The skip is reported to the console instead.
 func witnessTable(ws []witness) string {
 	var b strings.Builder
-	b.WriteString(witnessHeader)
+	header := witnessHeader
+	for _, w := range ws {
+		if w.Base != "" {
+			header = witnessHeaderFailFirst // a fail-first run: the Base column
+			break
+		}
+	}
+	b.WriteString(header)
 	for _, w := range ws {
 		if w.State == stateSkipped {
 			continue
@@ -1640,6 +1656,7 @@ const verifyrunUsage = `statusgen verifyrun — execution witness for a brief's 
 
 Usage:
   statusgen verifyrun --brief <path> [--dry-run] [--timeout <dur>] [--root <dir>] [--sandbox <mode>]
+  statusgen verifyrun --brief <path> --fail-first [--base <rev>] [--dry-run]
   statusgen verifyrun --check <path>
 
 Runs each Verify row's Command in a fresh subshell at the repo root and appends
@@ -1676,6 +1693,18 @@ Flags:
                     unpinned/placeholder digest. Bind-mounts the checkout at /work,
                     maps --user to the host uid:gid (POSIX) so Evidence lands
                     host-owned, and passes ONLY --env-file through for credentials.
+  --fail-first      fail-first audit (verify-integrity/03): BEFORE the head run, check
+                    the base out into a temporary worktree and run each
+                    RISK-BEARING row there (brief-wide risk yes, or a
+                    risk-bearing|live|mutating|end-to-end row tag). The witness
+                    table gains a Base column, ` + "`base=<sha> red|green|unproven · head=<sha>`" + `;
+                    a risk-bearing row green at base and passing at head is
+                    non-discriminating and folds the exit code to 1. The lint
+                    refuses a new closure whose risk-bearing row has no such
+                    witness, is non-discriminating, or names a base that is not
+                    an ancestor of HEAD. Refused with --check and --in-container.
+  --base <rev>      the base for --fail-first (default: the exact merge-base of
+                    HEAD and origin/main)
   --env-file <path> role env-file forwarded to the container as --env-file (the
                     PATH only; its contents are never read or logged). Defaults to
                     the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.
@@ -1737,6 +1766,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	ci := fs.Bool("ci", false, "CI context: skip explicitly-classed env-bound `check` rows")
 	inContainer := fs.Bool("in-container", false, "run the Verify rows inside the pinned harness container (the supported witness runner on Windows) instead of on the host")
 	sandbox := fs.String("sandbox", sandboxUnshare, "network-off sandbox for check:ci rows: "+sandboxUnshare+" (default) or "+sandboxContainerNetns+" (runner already inside a --network none container; refused in CI)")
+	failFirstMode := fs.Bool("fail-first", false, "run each risk-bearing row at the merge-base first and record red/green in a Base column")
+	baseRev := fs.String("base", "", "base revision for --fail-first (default: the merge-base of HEAD and origin/main)")
 	envFile := fs.String("env-file", "", "role env-file passed to the container as --env-file (path only; contents never read/logged); defaults to $"+inContainerEnvFileVar)
 	// --help is handled by ContinueOnError returning flag.ErrHelp; print the
 	// usage and exit 0, because asking for help is not an error.
@@ -1754,6 +1785,15 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// --in-container is a usage refusal (issue #2350).
 	if why := sandboxRefusal(*sandbox, *ci, *inContainer); why != "" {
 		fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+		return verifyrunExitUsageError
+	}
+
+	if *baseRev != "" && !*failFirstMode {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --base only applies to --fail-first")
+		return verifyrunExitUsageError
+	}
+	if *failFirstMode && (*checkMode || *inContainer) {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first runs rows on two trees; it is refused with --check (which runs nothing) and with --in-container (which does not mount the base)")
 		return verifyrunExitUsageError
 	}
 
@@ -1843,7 +1883,38 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if attestation != "" {
 		plan.env = admittedRowEnv(os.Environ())
 	}
+	// Fail-first (verify-integrity/03): the base run comes FIRST, on its own
+	// checkout, so the head run below is the ordinary run, unchanged.
+	var ff map[string]failFirst
+	var riskyIDs map[string]bool
+	if *failFirstMode {
+		base, berr := failFirstBaseRev(root, *baseRev)
+		if berr != nil {
+			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", berr)
+			return verifyrunExitCouldNot
+		}
+		var risk map[string]string
+		if bf, ok, perr := parseBriefFile(path); perr == nil && ok {
+			risk = bf.Risk
+		}
+		riskyIDs = failFirstRiskyIDs(risk, verify)
+		if len(riskyIDs) == 0 {
+			fmt.Fprintln(stdout, "--fail-first: no risk-bearing row in this table; every row is recorded not-selected at base")
+		}
+		var ferr error
+		ff, ferr = runFailFirstBase(plan, *sandbox, root, base, rows, riskyIDs, *timeout)
+		if ferr != nil {
+			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", ferr)
+			return verifyrunExitCouldNot
+		}
+	}
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
+	if ff != nil {
+		for i := range ws {
+			f := ff[ws[i].ID]
+			ws[i].Base = failFirstCell(f.Base, f.State, f.Exit, ws[i].Tree)
+		}
+	}
 	target := witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
 	for i := range ws {
 		ws[i].Repo = target
@@ -1874,6 +1945,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 				worst = verifyrunExitFail
 			}
 		}
+	}
+	if ff != nil {
+		worst = foldFailFirst(ws, ff, riskyIDs, worst, stdout)
 	}
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, table)

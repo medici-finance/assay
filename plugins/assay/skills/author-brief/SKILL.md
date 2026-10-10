@@ -523,7 +523,7 @@ it is an authoring convention only.
 
 | rule | what it checks | status |
 | --- | --- | --- |
-| `bre-alternation` | a pipe in a basic-regex grep pattern (no `-E`/`-P`) is an ordinary character, so the pattern matches the Verify row itself | advisory |
+| `bre-alternation` | a pipe in a basic-regex grep pattern (no `-E`/`-P`) is an ordinary character, so the pattern matches the Verify row itself — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `cmd-marker-ambiguous` | a Command cell carrying more than one `cmd:`-marked code span, so which command the row names is ambiguous | advisory |
 | `cmd-marker-not-honoured` | a `cmd:` span verifyrun ignores because the rendered cell may not show it as code (backslash-escaped backticks; raw HTML, a link, an image, a dollar in any spelling or a character reference in the cell's prose; a span fused to the text before it; or a marker not set apart by whitespace), so the row runs its first span | advisory |
 | `cmd-marker-overrides-command` | a `cmd:` marker that replaces a first code span which reads as a command itself (multi-word), so the row runs something other than the span a reader sees first | advisory |
@@ -538,24 +538,27 @@ it is an authoring convention only.
 | `consumers-prose` | a `consumers:` written as a prose paragraph rather than a routed list, so nothing can corroborate it | advisory |
 | `consumers-unrouted` | a `consumers:` entry that names no routing token (`fixed-here` / `follow-up` / `out-of-scope`) | advisory |
 | `eligibility-could-not-check` | a gates: edge (or unsatisfied depends:) the eligibility evaluator could not resolve offline — an unregistered/unpublished alias, an absent sibling checkout, or a forge-backed target — which HOLDS the brief out of Next-up | advisory |
-| `ere-literal-pipe` | a `\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind | advisory |
-| `gnu-only` | a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on | advisory |
-| `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success | advisory |
+| `ere-literal-pipe` | a `\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
+| `gnu-only` | a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
+| `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `gotest-run-vacuous` | a `go test -run` selector with no `--- PASS` assertion in the same command, so the row passes whether or not the named test exists, is built, or was ever renamed away (open briefs only; a closed brief's rows are summarised, not individually flagged) | advisory |
-| `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing | advisory |
-| `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it | advisory |
+| `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
+| `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
+| `no-output-assertion` | an Expect of exactly `exit 0` on a command whose output nobody asserts on (use `exit 0; output contains "<literal>"` or `exit 0; <N> lines`) | advisory |
 | `pattern-effect-exceeds-role` | a pattern node whose declared effect kind is not permitted for its role, per the role-to-effect-kind table in spec/workflow-pattern-v1.md §7 — a generated instance would carry a permission its role does not hold | fatal |
 | `pattern-effect-target-not-owned` | a non-effect-kind pattern node declares an effect whose target is not among its own outputs — a node claiming a consequence outside its own declared output boundary | fatal |
 | `pattern-join-not-check` | a pattern's `join` names a node whose kind is not `check` — the pattern has no independent integration check | fatal |
 | `pattern-review-same-role` | a pattern node whose evidence includes a review claim but shares its role with the node that produced its input — the implementer<->reviewer separation is not machine-checked | fatal |
 | `pattern-risk-input-missing-verdict` | a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates | fatal |
-| `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail | advisory |
+| `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `prose-led-command` | a prose Command cell whose first code span — the text the lift returns — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; verifyrun records the row could-not-run until the command is marked with a `cmd:` code span | advisory |
-| `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation | advisory |
-| `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column | advisory |
+| `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
+| `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `stream-cap` | a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap | fatal |
 | `stream-source` | a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec | fatal |
-| `unsubstituted-metavar` | an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written | advisory |
+| `table-touches-no-files` | no Verify command references any path the brief's `files:` declares, so the table may prove nothing about the change (an unparseable `files:` is COULD-NOT-CHECK) | advisory |
+| `trivially-green` | a command that exits 0 whatever the tree holds — `true`, `echo ok`, a trailing `|| true`, a `git log --grep` with no count, or an existence test on a path the brief itself declares | advisory |
+| `unsubstituted-metavar` | an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `verify-row-portability` | a Verify row hardcodes /tmp, sh/bash -c or findstr without an explicit OS marker (TMPDIR fallback is exempt) | advisory |
 
 ## Before dispatch — mistake-proofing the brief itself

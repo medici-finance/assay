@@ -768,6 +768,7 @@ var mergeBaseAllow = map[string]string{
 	"productionResolveBase":  "operator-supplied base revision",
 	"runMergecheck":          "both sides already resolved to commits by resolveCommit",
 	"ancestorNoOtherChanges": "--is-ancestor on two commits verified with cat-file first",
+	"commitIsAncestor":       "--is-ancestor on a hex-validated witness base resolved to an object id by rev-parse first, against HEAD (verify-integrity/03 fail-first provenance)",
 	"flipMergeBases":         "both sides are the %P parent object ids of a commit rev-list yielded; it refuses any operand isObjectID rejects and passes --end-of-options before them",
 }
 
