@@ -1,0 +1,2 @@
+### Fixed
+- The Verify table of the Windows-port build-tag-split brief can now be scored by the execution witness. Four rows (the windows vet row, the roster-owner ACL row, and the two pinned-merge diff rows) now open with their command instead of a prose code span, so the witness runs them rather than recording could-not-run or passing a bare environment assignment. The two rows that run the desk test suites now point HOME at a throwaway directory so a witness run cannot write test lines into an operator's live audit log. No row's expected result changed.
