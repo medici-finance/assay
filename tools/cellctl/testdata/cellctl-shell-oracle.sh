@@ -136,17 +136,6 @@
 #                                                precondition (container: CELL_CONTAINER_LAUNCHER; house:
 #                                                CELL_ROOTS; scrubbed: CELL_REPO_SLUG) is neither in cell.env
 #                                                nor given in the same call.
-#                                                A model pin set through `set` is recorded as a DEFAULT in
-#                                                <cell>/model-pins.json; `set ... --explicit` records it as
-#                                                EXPLICIT (a brief or ruling chose it) so the reset below
-#                                                never touches it.
-#   cellctl models reset <cell> [--model-ttl <Nd>]
-#                                                cheap-default reset: repin every DEFAULT model pin older than
-#                                                the TTL (--model-ttl, else cell.env CELL_MODEL_TTL_DAYS, else
-#                                                7d; 0 = off) to the harness's MID tier model, one
-#                                                `[model-reset] <role>: <old> -> <new>` line per pin moved.
-#                                                EXPLICIT pins, pins with no record, and the-desk are never
-#                                                touched. `cellctl desk` runs the same reset at boot.
 #   cellctl show  <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>] [--model <m>]
 #                                                a READ: one `[show] KEY=VALUE (flag|cell.env|default)` line
 #                                                per per-run choice (CELL_KIND, CELL_COCKPIT, CELL_HARNESS,

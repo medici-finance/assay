@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,71 +16,71 @@ import (
 //
 // A model pin drifts to the most expensive setting and stays there unless something pulls it
 // back. The pull-back needs two facts the cell.env line itself does not carry: WHEN the pin was
-// set, and WHETHER anyone decided it (a flag or a ruling) or it is just a default riding along.
-// Those two facts live in a pin record beside cell.env (model-pins.json). A DEFAULT pin older
-// than the TTL is repinned to the cheap default (the harness's MID tier entry); an EXPLICIT pin
-// is never touched. A pin with no record has unknown provenance and is treated as EXPLICIT.
+// set, and WHETHER anyone decided it or it is a default riding along. Those two facts live in a
+// pin record beside cell.env (model-pins.json).
+//
+// A pin an operator sets is EXPLICIT: plain `cellctl set`, the role form, and `desk`/`up --set`
+// all record EXPLICIT, and the reset never touches an explicit pin. Only a pin set with
+// `cellctl set ... --default` is recorded DEFAULT. A pin with no record has unknown provenance and
+// is treated as EXPLICIT. A DEFAULT pin older than the TTL is repinned to the cheap default (the
+// harness's MID tier entry in the cell's own files) only when that LOWERS it.
 
 const (
 	pinKindDefault  = "default"
 	pinKindExplicit = "explicit"
 
-	// modelPinsFile is the pin record, in the cell directory next to cell.env.
+	// modelPinsFile is the pin record, in the cell directory next to cell.env; modelPinsLock is
+	// the mkdir lock every write of cell.env-plus-record holds.
 	modelPinsFile = "model-pins.json"
+	modelPinsLock = ".model-pins.lock"
 
 	// modelTTLKey is the cell.env key holding the TTL in days; modelTTLDefaultDays is the
-	// house default (weekly). 0 turns the reset off for that cell.
+	// default (weekly). 0 turns the reset off for that cell.
 	modelTTLKey         = "CELL_MODEL_TTL_DAYS"
 	modelTTLDefaultDays = 7
 )
 
 // pinRecord is one pin's provenance. Value is what cell.env held when the record was written, so
-// a later cell.env that disagrees with it is recognisable as a hand edit.
+// a later cell.env that disagrees with it is recognisable as a hand edit. Prev is the value a
+// reset moved the pin from, kept so the repin stays reviewable after the boot's output is gone.
 type pinRecord struct {
 	Kind  string `json:"kind"`
 	Value string `json:"value"`
 	At    string `json:"at"`
+	Prev  string `json:"prev,omitempty"`
 }
 
 type pinFile struct {
 	Pins map[string]pinRecord `json:"pins"`
 }
 
-// isModelPinKey is true for a per-harness model pin key: DESK_MODEL_<role|DEFAULT>,
-// CODEX_MODEL_<role|default>, CURSOR_MODEL_<role|default>.
-func isModelPinKey(k string) bool {
-	for _, p := range []string{"DESK_MODEL_", "CODEX_MODEL_", "CURSOR_MODEL_"} {
-		if strings.HasPrefix(k, p) && len(k) > len(p) {
-			return true
-		}
-	}
-	return false
+// pinSpaces are the three harness namespaces a model pin lives in.
+var pinSpaces = []struct{ prefix, def, harness string }{
+	{"DESK_MODEL_", "DESK_MODEL_DEFAULT", "claude"},
+	{"CODEX_MODEL_", "CODEX_MODEL_default", "codex"},
+	{"CURSOR_MODEL_", "CURSOR_MODEL_default", "cursor"},
 }
 
-// pinRole is the role a pin key names, for the notice: DESK_MODEL_worker_desk -> worker-desk,
-// and the harness-wide default key -> "default".
-func pinRole(k string) string {
-	for _, p := range []string{"DESK_MODEL_", "CODEX_MODEL_", "CURSOR_MODEL_"} {
-		if strings.HasPrefix(k, p) {
-			r := strings.TrimPrefix(k, p)
-			if strings.EqualFold(r, "default") {
-				return "default"
+// modelPinKey names the harness and role a model pin key belongs to. The set is exact, the
+// per-role pin of every known role plus the harness default, never a prefix match:
+// DESK_MODEL_OVERRIDE and the floor-override name share the prefix and are not pins.
+func modelPinKey(k string) (harness, role string, ok bool) {
+	for _, s := range pinSpaces {
+		if k == s.def {
+			return s.harness, "default", true
+		}
+		for _, r := range knownRoles {
+			if k == s.prefix+underscore(r) {
+				return s.harness, r, true
 			}
-			return strings.ReplaceAll(r, "_", "-")
 		}
 	}
-	return k
+	return "", "", false
 }
 
-// pinHarness is the harness namespace a pin key belongs to.
-func pinHarness(k string) string {
-	switch {
-	case strings.HasPrefix(k, "CODEX_MODEL_"):
-		return "codex"
-	case strings.HasPrefix(k, "CURSOR_MODEL_"):
-		return "cursor"
-	}
-	return "claude"
+func isModelPinKey(k string) bool {
+	_, _, ok := modelPinKey(k)
+	return ok
 }
 
 func loadPinFile(dir string) pinFile {
@@ -101,109 +102,197 @@ func savePinFile(dir string, pf pinFile) {
 	if err != nil {
 		die("model pins: cannot encode record: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, modelPinsFile), append(raw, '\n'), 0o600); err != nil {
+	if err := writeFileAtomic(filepath.Join(dir, modelPinsFile), append(raw, '\n'), 0o600); err != nil {
 		die("model pins: cannot write %s: %v", filepath.Join(dir, modelPinsFile), err)
 	}
 }
 
-// recordPins stamps the pin record for every model pin key in kvs after a `set`. A plain set
-// records DEFAULT; an existing EXPLICIT record is sticky (a later plain set updates its value
-// but never downgrades it), so only an `--explicit` set or a deliberate edit of the record
-// changes who owns a pin.
-func recordPins(dir string, kvs []string, kind string, now time.Time) {
-	var pf pinFile
-	loaded := false
-	for _, kv := range kvs {
-		k, v, ok := splitKV(kv)
-		if !ok || !isModelPinKey(k) {
+// pinLockTries is how many 50ms waits a held pin lock gets (3s) before the caller is told.
+var pinLockTries = 60
+
+// lockModelPins serialises the writers of cell.env and its pin record (a `set`, a boot reset,
+// `models reset`), so windows booting together cannot interleave a read-modify-write. A lock
+// whose holder is dead is taken over; one held past the wait is an error the caller reports.
+func lockModelPins(dir string) (func(), error) {
+	lockdir := filepath.Join(dir, modelPinsLock)
+	for i := 0; i < pinLockTries; i++ {
+		err := os.Mkdir(lockdir, 0o700)
+		if err == nil {
+			writePid(lockdir, strconv.Itoa(os.Getpid()))
+			return func() { _ = os.RemoveAll(lockdir) }, nil
+		}
+		if !os.IsExist(err) {
+			return nil, err
+		}
+		if held := readPid(lockdir); held != "" && !pidAlive(held) {
+			_ = os.RemoveAll(lockdir)
 			continue
 		}
-		if !loaded {
-			pf, loaded = loadPinFile(dir), true
-		}
-		k2 := kind
-		if old, had := pf.Pins[k]; had && old.Kind == pinKindExplicit {
-			k2 = pinKindExplicit
-		}
-		pf.Pins[k] = pinRecord{Kind: k2, Value: v, At: now.UTC().Format(time.RFC3339)}
+		time.Sleep(50 * time.Millisecond)
 	}
-	if loaded {
-		savePinFile(dir, pf)
-	}
+	return nil, fmt.Errorf("%s is held by another cellctl (pid %q); remove it if no cellctl is running", lockdir, readPid(lockdir))
 }
 
-// parseModelTTL reads a TTL as Nd (days), or any time.ParseDuration form, or a bare number of
-// days. Zero means "off".
+// recordPins stamps the pin record for every model pin key in kvs after a `set` has written
+// them. The value recorded is the one the loader reads back (a quoted line is unquoted), so the
+// next reset does not mistake the quoting for a hand edit. An empty value is not a pin: its
+// record is dropped.
+func recordPins(envfile string, kvs []string, kind string, now time.Time) {
+	var keys []string
+	for _, kv := range kvs {
+		if k, _, ok := splitKV(kv); ok && isModelPinKey(k) {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return
+	}
+	dir := filepath.Dir(envfile)
+	pf := loadPinFile(dir)
+	fileEnv := effectiveCellEnv(envfile, nil)
+	for _, k := range keys {
+		if v := fileEnv.Get(k); v == "" {
+			delete(pf.Pins, k)
+		} else {
+			pf.Pins[k] = pinRecord{Kind: kind, Value: v, At: now.UTC().Format(time.RFC3339)}
+		}
+	}
+	savePinFile(dir, pf)
+}
+
+// ttlDays is the days form of a TTL: digits, an optional fraction, an optional d. Five digits
+// bound it well inside a time.Duration, and NaN, Inf, exponents and underscores never match.
+var ttlDays = regexp.MustCompile(`^[0-9]{1,5}(\.[0-9]{1,6})?d?$`)
+
+// parseModelTTL reads a TTL as Nd or N (days) or a Go duration (36h). Zero means "off".
 func parseModelTTL(s string) (time.Duration, error) {
-	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, fmt.Errorf("empty TTL")
 	}
-	days := strings.TrimSuffix(s, "d")
-	if n, err := strconv.ParseFloat(days, 64); err == nil {
-		if n < 0 {
-			return 0, fmt.Errorf("TTL must not be negative: %q", s)
+	if ttlDays.MatchString(s) {
+		n, err := strconv.ParseFloat(strings.TrimSuffix(s, "d"), 64)
+		if err != nil {
+			return 0, fmt.Errorf("TTL %q: %v", s, err)
 		}
 		return time.Duration(n * float64(24*time.Hour)), nil
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d < 0 {
-		return 0, fmt.Errorf("TTL %q is not Nd (days), a Go duration, or a number of days", s)
+		return 0, fmt.Errorf("TTL %q is not Nd (days, e.g. 7d), a number of days, or a non-negative Go duration (e.g. 36h)", s)
 	}
 	return d, nil
 }
 
-// cellModelTTL is the cell's TTL: cell.env CELL_MODEL_TTL_DAYS, else the weekly default. A
-// malformed value is a refusal, not a silent default.
-func cellModelTTL(e *Env) time.Duration {
+// cellModelTTLErr is the cell's TTL: CELL_MODEL_TTL_DAYS, else the weekly default.
+func cellModelTTLErr(e *Env) (time.Duration, error) {
 	v := e.Get(modelTTLKey)
 	if v == "" {
-		return modelTTLDefaultDays * 24 * time.Hour
+		return modelTTLDefaultDays * 24 * time.Hour, nil
 	}
 	d, err := parseModelTTL(v)
 	if err != nil {
-		die("cell.env: %s: %v", modelTTLKey, err)
+		return 0, fmt.Errorf("%s: %v", modelTTLKey, err)
+	}
+	return d, nil
+}
+
+// cellModelTTL is cellModelTTLErr with a malformed value as a refusal, not a silent default.
+func cellModelTTL(e *Env) time.Duration {
+	d, err := cellModelTTLErr(e)
+	if err != nil {
+		die("cell.env: %v (`cellctl set` refuses it; fix the line or pass --model-ttl)", err)
 	}
 	return d
 }
 
-// cheapDefault is the model a DEFAULT pin is pulled back to: the MID tier entry for the pin's
-// harness, already configured per cell (TIER_MODEL_MID_<HARNESS>).
-func cheapDefault(e *Env, key string) string {
-	return e.Get("TIER_MODEL_MID_" + strings.ToUpper(pinHarness(key)))
+// tierEntry is one tier-map entry from the cell's own files, else the compiled map. Never the
+// launch environment: a variable exported in the invoking shell must not be persisted.
+func tierEntry(fileEnv *Env, level, harness string) string {
+	k := "TIER_MODEL_" + level + "_" + strings.ToUpper(harness)
+	if v := fileEnv.Get(k); v != "" {
+		return v
+	}
+	return tierModelDefaults[k]
 }
 
-// resetAgedDefaultPins repins every DEFAULT pin older than ttl to the cheap default and returns
-// one notice line per pin it moved. EXPLICIT pins and pins with no record are never touched; the
-// the-desk pin is never touched either (the methodology pins the coordinator to the top tier).
-// A DEFAULT pin whose cell.env value no longer matches its record was hand-edited: its clock
-// restarts instead of being repinned on the old age. write=false computes and applies the
-// result to the in-memory env only (the dry-run plan), leaving cell.env and the record alone.
-func (c *Cell) resetAgedDefaultPins(ttl time.Duration, now time.Time, write bool) []string {
-	if ttl <= 0 {
-		return nil
+// modelRank orders a model for the reset's one question, "is this above the cheap default":
+// 3 top, 2 mid, 1 fast, by the cell's tier map, then (claude only) by the model family named in
+// the value. 0 is unknown, and an unknown model is never repinned.
+func modelRank(fileEnv *Env, harness, v string) int {
+	for i, level := range []string{"TOP", "MID", "FAST"} {
+		if t := tierEntry(fileEnv, level, harness); t != "" && t == v {
+			return 3 - i
+		}
+	}
+	if harness == "claude" {
+		b := policyBase(v)
+		switch {
+		case strings.Contains(b, "haiku"):
+			return 1
+		case strings.Contains(b, "sonnet"):
+			return 2
+		case strings.Contains(b, "opus"), strings.Contains(b, "fable"):
+			return 3
+		}
+	}
+	return 0
+}
+
+// pinMove is one repin the reset makes (or, read-only, would make).
+type pinMove struct {
+	Key, Role, From, To string
+	Age, TTL            time.Duration
+}
+
+func (m pinMove) notice() string {
+	return fmt.Sprintf("[model-reset] %s: %s -> %s (default pin %s old, ttl %s)", m.Role, m.From, m.To, fmtAge(m.Age, m.TTL), fmtTTL(m.TTL))
+}
+
+// planModelReset decides which DEFAULT pins the reset moves, from the cell's own files and the
+// pin record; it writes nothing. A pin is moved only when ALL of these hold:
+//   - its record says DEFAULT and its key is a real model pin;
+//   - it is not the-desk's, and it is not a harness default the-desk resolves through (no
+//     per-role the-desk pin on that harness): the coordinator's resolved model never moves;
+//   - it is not a claude pin on a provider cell (the provider's endpoint rejects tier names);
+//   - cell.env still carries a non-empty line for it, equal to the recorded value (a different
+//     value is a hand edit: the clock restarts), and the record is older than the TTL;
+//   - the cheap default ranks known and strictly below the current value.
+//
+// The returned record has stale entries dropped and hand-edited clocks restarted; dirty says
+// it changed.
+func (c *Cell) planModelReset(ttl time.Duration, now time.Time, provider string) ([]pinMove, pinFile, bool) {
+	pf := loadPinFile(c.Dir)
+	if ttl <= 0 || len(pf.Pins) == 0 {
+		return nil, pf, false
 	}
 	envfile := filepath.Join(c.Dir, "cell.env")
-	pf := loadPinFile(c.Dir)
-	// What cell.env itself says, read through the loader (not the launch env, which a flag or the
-	// process environment may already have overlaid).
 	fileEnv := effectiveCellEnv(envfile, nil)
+	onProvider := provider != "" || fileEnv.Get("CELL_PROVIDER") != ""
 	keys := make([]string, 0, len(pf.Pins))
 	for k := range pf.Pins {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	var notices []string
+	var moves []pinMove
 	dirty := false
 	for _, k := range keys {
 		rec := pf.Pins[k]
-		if rec.Kind != pinKindDefault || !isModelPinKey(k) || pinRole(k) == "the-desk" {
-			continue
-		}
-		if !fileEnv.IsSet(k) {
+		harness, role, ok := modelPinKey(k)
+		if !ok || rec.Kind != pinKindDefault {
 			continue
 		}
 		cur := fileEnv.Get(k)
+		if fileEnv.Source(k) != layerCellEnv || cur == "" {
+			delete(pf.Pins, k) // the line is gone or empty: nothing is pinned any more
+			dirty = true
+			continue
+		}
+		if role == "the-desk" || (role == "default" && c.theDeskFallsThrough(fileEnv, harness)) {
+			continue
+		}
+		if harness == "claude" && onProvider {
+			continue
+		}
 		at, err := time.Parse(time.RFC3339, rec.At)
 		if err != nil {
 			continue // an unreadable stamp is unknown provenance: leave the pin alone
@@ -213,27 +302,74 @@ func (c *Cell) resetAgedDefaultPins(ttl time.Duration, now time.Time, write bool
 			dirty = true
 			continue
 		}
-		if now.Sub(at) < ttl {
+		age := now.Sub(at)
+		if age <= ttl {
 			continue
 		}
-		cheap := cheapDefault(c.Env, k)
-		if cheap == "" || cheap == cur {
+		to := tierEntry(fileEnv, "MID", harness)
+		if to == "" || to == cur {
 			continue
 		}
-		ageDays := int(now.Sub(at) / (24 * time.Hour))
-		notices = append(notices, fmt.Sprintf("[model-reset] %s: %s -> %s (default pin %dd old, ttl %s)",
-			pinRole(k), cur, cheap, ageDays, fmtTTL(ttl)))
-		c.Env.Put(k, cheap)
-		if write {
-			writeEnvKey(envfile, k, cheap, false)
-			pf.Pins[k] = pinRecord{Kind: pinKindDefault, Value: cheap, At: now.UTC().Format(time.RFC3339)}
-			dirty = true
+		if rt := modelRank(fileEnv, harness, to); rt == 0 || modelRank(fileEnv, harness, cur) <= rt {
+			continue
+		}
+		moves = append(moves, pinMove{Key: k, Role: role, From: cur, To: to, Age: age, TTL: ttl})
+	}
+	return moves, pf, dirty
+}
+
+// theDeskFallsThrough is true when the-desk has no per-role pin on harness, in the cell's files
+// or in the launch env, so it resolves through that harness's default.
+func (c *Cell) theDeskFallsThrough(fileEnv *Env, harness string) bool {
+	for _, s := range pinSpaces {
+		if s.harness == harness {
+			k := s.prefix + underscore("the-desk")
+			return fileEnv.Get(k) == "" || c.Env.Get(k) == ""
 		}
 	}
-	if write && dirty {
+	return true
+}
+
+// resetAgedDefaultPins applies the plan. The in-memory env always takes the repin (so a dry-run
+// plan matches the launch); write=false stops there. A live run validates every repin before
+// touching anything, then writes one cell.env backup, one atomic cell.env rewrite and the record,
+// under the pin lock. It returns the moves and the backup path ("" when nothing was written).
+func (c *Cell) resetAgedDefaultPins(ttl time.Duration, now time.Time, write bool, provider string) ([]pinMove, string, error) {
+	if write && ttl > 0 {
+		unlock, err := lockModelPins(c.Dir)
+		if err != nil {
+			return nil, "", err
+		}
+		defer unlock()
+	}
+	moves, pf, dirty := c.planModelReset(ttl, now, provider)
+	for _, m := range moves {
+		if c.Env.Get(m.Key) == m.From {
+			c.Env.Put(m.Key, m.To)
+		}
+	}
+	if !write {
+		return moves, "", nil
+	}
+	backup := ""
+	if len(moves) > 0 {
+		envfile := filepath.Join(c.Dir, "cell.env")
+		kvs := make([]string, 0, len(moves))
+		for _, m := range moves {
+			validateEnvKey(m.Key, m.To, false)
+			kvs = append(kvs, m.Key+"="+m.To)
+		}
+		backup = backupCellEnv(envfile)
+		writeEnvKeys(envfile, kvs)
+		for _, m := range moves {
+			pf.Pins[m.Key] = pinRecord{Kind: pinKindDefault, Value: m.To, At: now.UTC().Format(time.RFC3339), Prev: m.From}
+		}
+		dirty = true
+	}
+	if dirty {
 		savePinFile(c.Dir, pf)
 	}
-	return notices
+	return moves, backup, nil
 }
 
 func fmtTTL(ttl time.Duration) string {
@@ -243,23 +379,54 @@ func fmtTTL(ttl time.Duration) string {
 	return ttl.String()
 }
 
-// bootModelReset is the launch-time hook: reset aged DEFAULT pins and print the one-line
-// notices. A dry run plans the repin without writing it.
-func (c *Cell) bootModelReset(now time.Time) {
+// fmtAge prints the age in the TTL's own unit: whole days beside a days TTL, else a duration.
+func fmtAge(age, ttl time.Duration) string {
+	if ttl%(24*time.Hour) == 0 {
+		return fmt.Sprintf("%dd", int(age/(24*time.Hour)))
+	}
+	return age.Truncate(time.Minute).String()
+}
+
+// dryRunMark is appended to every reset line a DRY_RUN=1 run prints.
+const dryRunMark = " [dry-run: not written]"
+
+// bootModelReset is the launch-time hook: reset aged DEFAULT pins and print one line per pin
+// moved. A dry run plans the repin without writing it. A held lock skips this boot's reset.
+func (c *Cell) bootModelReset(now time.Time, provider string) {
 	write := c.Env.Get("DRY_RUN") != "1"
-	for _, n := range c.resetAgedDefaultPins(cellModelTTL(c.Env), now, write) {
+	moves, _, err := c.resetAgedDefaultPins(cellModelTTL(c.Env), now, write, provider)
+	if err != nil {
+		fmt.Printf("[model-reset] skipped this boot: %v\n", err)
+		return
+	}
+	for _, m := range moves {
+		n := m.notice()
 		if !write {
-			n += " [dry-run: not written]"
+			n += dryRunMark
 		}
 		fmt.Println(n)
 	}
 }
 
+// pendingModelReset is the read-only reset `show` and `check` apply before they resolve, so
+// what they report is what the next boot runs.
+func (c *Cell) pendingModelReset(provider string) ([]pinMove, error) {
+	ttl, err := cellModelTTLErr(c.Env)
+	if err != nil {
+		return nil, err
+	}
+	moves, _, _ := c.resetAgedDefaultPins(ttl, time.Now(), false, provider)
+	return moves, nil
+}
+
+const modelsUsage = "cellctl models reset <cell> [--model-ttl <Nd|duration>]"
+
 // cmdModels is `cellctl models reset <cell> [--model-ttl <Nd|duration>]`: the explicit form of
-// the boot-time reset.
+// the boot-time reset. --model-ttl replaces the cell's TTL for this run, so it also recovers a
+// cell whose CELL_MODEL_TTL_DAYS line is malformed.
 func cmdModels(args []string) {
 	if len(args) == 0 || args[0] != "reset" {
-		die("models: usage: cellctl models reset <cell> [--model-ttl <Nd>]")
+		die("models: usage: %s", modelsUsage)
 	}
 	cell := needCell(args[1:])
 	var ttlFlag string
@@ -269,23 +436,36 @@ func cmdModels(args []string) {
 		case "--model-ttl":
 			ttlFlag = needFlagValue(rest, &i, "--model-ttl needs a value (Nd, e.g. 7d)")
 		default:
-			die("models reset: unknown argument %s", a)
+			die("models reset: unknown argument %s (usage: %s)", a, modelsUsage)
 		}
 	}
 	c := loadCell(cell)
-	ttl := cellModelTTL(c.Env)
+	var ttl time.Duration
 	if ttlFlag != "" {
 		d, err := parseModelTTL(ttlFlag)
 		if err != nil {
 			die("models reset: --model-ttl: %v", err)
 		}
 		ttl = d
+	} else {
+		ttl = cellModelTTL(c.Env)
 	}
-	notices := c.resetAgedDefaultPins(ttl, time.Now(), c.Env.Get("DRY_RUN") != "1")
-	for _, n := range notices {
-		fmt.Println(n)
+	write := c.Env.Get("DRY_RUN") != "1"
+	moves, backup, err := c.resetAgedDefaultPins(ttl, time.Now(), write, c.Env.Get("CELL_PROVIDER"))
+	if err != nil {
+		die("models reset: %v; nothing written", err)
 	}
-	if len(notices) == 0 {
-		fmt.Printf("[model-reset] nothing to repin (ttl %s)\n", fmtTTL(ttl))
+	mark := ""
+	if !write {
+		mark = dryRunMark
+	}
+	if backup != "" {
+		fmt.Printf("[model-reset] backup written: %s\n", backup)
+	}
+	for _, m := range moves {
+		fmt.Println(m.notice() + mark)
+	}
+	if len(moves) == 0 {
+		fmt.Printf("[model-reset] nothing to repin (ttl %s)%s\n", fmtTTL(ttl), mark)
 	}
 }

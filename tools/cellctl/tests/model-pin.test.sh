@@ -144,8 +144,8 @@ probe="$("$CELLCTL" models 2>&1 || true)"
 if grep -q 'models reset' <<<"$probe"; then
   echo "[models reset: cheap-default reset]"
   grep -v '^DESK_MODEL_worker_desk=' "$CELL/cell.env" > "$CELL/cell.env.tmp"; mv "$CELL/cell.env.tmp" "$CELL/cell.env"
-  "$CELLCTL" set house-cell worker-desk --model fable >/dev/null 2>&1                 # recorded DEFAULT
-  "$CELLCTL" set house-cell pr-review-desk --model fable --explicit >/dev/null 2>&1    # recorded EXPLICIT
+  "$CELLCTL" set house-cell worker-desk --model fable --default >/dev/null 2>&1       # recorded DEFAULT
+  "$CELLCTL" set house-cell pr-review-desk --model fable >/dev/null 2>&1               # plain set: EXPLICIT
   assert "set records the pin record next to cell.env" '[[ -f "$CELL/model-pins.json" ]]'
   sed -i.bak 's/"at": "[^"]*"/"at": "2020-01-01T00:00:00Z"/' "$CELL/model-pins.json"; rm -f "$CELL/model-pins.json.bak"
   out="$(DRY_RUN=1 "$CELLCTL" desk house-cell worker-desk 2>&1)" && rc=0 || rc=$?

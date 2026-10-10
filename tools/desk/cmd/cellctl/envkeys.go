@@ -155,7 +155,7 @@ func buildEnvKeys() []envKey {
 		keys = append(keys, envKey{key: "CURSOR_MODEL_" + underscore(role), class: envMachine, group: envGroupModels, desc: pinCursor})
 	}
 	keys = append(keys, envKey{key: "CELL_MODEL_TTL_DAYS", class: envMachine, group: envGroupModels,
-		desc: "Days a model pin set by default (not --explicit) stays before a launch repins it to the MID tier: Nd, a Go duration, or a number of days; 0 turns the reset off. Default: 7."})
+		desc: "Days a model pin recorded DEFAULT (`set ... --default`) stays before a launch lowers it to the MID tier: Nd, a number of days, or a Go duration; 0 turns the reset off. Default: 7."})
 	const tier = "Tier map, used when no pin and no harness default names a model: the-desk resolves at TOP, every other role at MID."
 	for _, harness := range []string{"claude", "codex", "cursor"} {
 		for _, level := range []string{"TOP", "MID", "FAST"} {

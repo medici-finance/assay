@@ -236,8 +236,9 @@ func cmdDesk(cell string, args []string) {
 	}
 
 	// Cheap-default reset: pull aged DEFAULT pins back to the cheap default BEFORE the pin is
-	// resolved, so this boot already runs on the repinned model. Explicit pins never move.
-	c.bootModelReset(time.Now())
+	// resolved, so this boot already runs on the repinned model. Explicit pins never move, and
+	// a provider window's claude pins are left alone (the provider is passed in).
+	c.bootModelReset(time.Now(), provider)
 
 	var model string
 	resolvedSrc := ""

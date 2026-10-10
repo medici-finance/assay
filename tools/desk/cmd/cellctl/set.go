@@ -65,6 +65,11 @@ func validateEnvKey(key, value string, force bool) {
 		if value != "on" && value != "off" {
 			die("set: %s must be 'on' or 'off', got '%s'", deskkit.EnvRepairAdmission, value)
 		}
+	case modelTTLKey:
+		// Every boot reads this key; a value parseModelTTL refuses would stop the next boot.
+		if _, err := parseModelTTL(value); err != nil {
+			die("set: %s: %v", modelTTLKey, err)
+		}
 	}
 }
 
@@ -189,14 +194,15 @@ func splitKV(kv string) (string, string, bool) {
 
 // applyEnvKVs is the ONE write path for every persisted change — `cellctl set` (both forms) and
 // `desk`/`up --set` alike. Pass 1 validates every pair and touches nothing on a refusal; pass 2
-// writes exactly one backup, then applies each pair in order.
+// writes exactly one backup, then applies each pair in order. A model pin set here is recorded
+// EXPLICIT: an operator chose it, so the cheap-default reset never moves it.
 func applyEnvKVs(e *Env, envfile string, force bool, kvs []string) {
-	applyEnvKVsKind(e, envfile, force, kvs, pinKindDefault)
+	applyEnvKVsKind(e, envfile, force, kvs, pinKindExplicit)
 }
 
-// applyEnvKVsKind is applyEnvKVs with the provenance a model pin in kvs is recorded under: a
-// pin set through `set` is a DEFAULT (the cheap-default reset may repin it once it ages past the
-// TTL) unless the caller declares it EXPLICIT (`set --explicit`, for a pin a brief or ruling set).
+// applyEnvKVsKind is applyEnvKVs with the provenance a model pin in kvs is recorded under:
+// EXPLICIT, or DEFAULT for `set ... --default` (a pin the reset may lower once it ages past the
+// TTL).
 func applyEnvKVsKind(e *Env, envfile string, force bool, kvs []string, pinKind string) {
 	if len(kvs) == 0 {
 		die("set: at least one KEY=VALUE is required (cellctl set <cell> KEY=VALUE [...])")
@@ -216,6 +222,21 @@ func applyEnvKVsKind(e *Env, envfile string, force bool, kvs []string, pinKind s
 			die("set: %v; nothing written", err)
 		}
 	}
+	unlock, err := lockModelPins(filepath.Dir(envfile))
+	if err != nil {
+		die("set: %v; nothing written", err)
+	}
+	defer unlock()
+	fmt.Printf("[set] backup written: %s\n", backupCellEnv(envfile))
+	for _, kv := range kvs {
+		key, value, _ := splitKV(kv)
+		setEnvKey(envfile, key, value, force)
+	}
+	recordPins(envfile, kvs, pinKind, time.Now())
+}
+
+// backupCellEnv writes one `cell.env.bak-<stamp>` copy of envfile and returns its path.
+func backupCellEnv(envfile string) string {
 	backup := envfile + ".bak-" + time.Now().UTC().Format("20060102T150405Z")
 	raw, err := os.ReadFile(envfile)
 	if err != nil {
@@ -224,12 +245,7 @@ func applyEnvKVsKind(e *Env, envfile string, force bool, kvs []string, pinKind s
 	if err := os.WriteFile(backup, raw, 0o600); err != nil {
 		die("set: cannot write %s: %v", backup, err)
 	}
-	fmt.Printf("[set] backup written: %s\n", backup)
-	for _, kv := range kvs {
-		key, value, _ := splitKV(kv)
-		setEnvKey(envfile, key, value, force)
-	}
-	recordPins(filepath.Dir(envfile), kvs, pinKind, time.Now())
+	return backup
 }
 
 func envWithFileForCursor(envfile string, kvs []string) *Env {
@@ -249,55 +265,94 @@ func setEnvKey(envfile, key, value string, force bool) {
 }
 
 // writeEnvKey is setEnvKey's write, silent, returning the value the key held before ("" when it
-// had no active line). The boot-time model reset writes through it so that its one notice line
-// is the only thing a launch prints.
+// had no active line).
 func writeEnvKey(envfile, key, value string, force bool) string {
 	validateEnvKey(key, value, force)
+	return writeEnvKeys(envfile, []string{key + "=" + value})[0]
+}
+
+// writeEnvKeys rewrites every pair into envfile in ONE atomic replace (a temp file in the same
+// directory, renamed over it), so a reader never sees a half-written cell.env. The caller has
+// validated the pairs. It returns each key's previous value, in order.
+func writeEnvKeys(envfile string, kvs []string) []string {
 	raw, err := os.ReadFile(envfile)
 	if err != nil {
 		die("set: cannot read %s: %v", envfile, err)
 	}
-	// The comms argument is a literal manifest path. Encode it in the existing
-	// cell.env grammar so apostrophes, dollars and backslashes survive reload.
-	stored := value
-	if key == "CELL_COMMS_CONFIG" {
-		stored = bashQuote(value)
-	}
-	trailingNewline := strings.HasSuffix(string(raw), "\n")
-	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
-	before, has := "", false
-	for _, l := range lines {
-		if strings.HasPrefix(l, key+"=") {
-			if !has {
-				before = strings.TrimPrefix(l, key+"=")
-			}
-			has = true
+	out := string(raw)
+	befores := make([]string, 0, len(kvs))
+	for _, kv := range kvs {
+		key, value, _ := splitKV(kv)
+		// The comms argument is a literal manifest path. Encode it in the existing
+		// cell.env grammar so apostrophes, dollars and backslashes survive reload.
+		stored := value
+		if key == "CELL_COMMS_CONFIG" {
+			stored = bashQuote(value)
 		}
-	}
-	if has {
-		replaced := false
-		for i, l := range lines {
-			if !replaced && strings.HasPrefix(l, key+"=") {
-				lines[i] = key + "=" + stored
-				replaced = true
-			}
-		}
-	} else {
-		lines = append(lines, key+"="+stored)
-	}
-	out := strings.Join(lines, "\n")
-	if trailingNewline || !has {
-		out += "\n"
+		var before string
+		out, before = rewriteEnvLine(out, key, stored)
+		befores = append(befores, before)
 	}
 	st, serr := os.Stat(envfile)
 	mode := os.FileMode(0o600)
 	if serr == nil {
 		mode = st.Mode().Perm()
 	}
-	if err := os.WriteFile(envfile, []byte(out), mode); err != nil {
+	if err := writeFileAtomic(envfile, []byte(out), mode); err != nil {
 		die("set: cannot write %s: %v", envfile, err)
 	}
-	return before
+	return befores
+}
+
+// rewriteEnvLine replaces the first active `key=` line of raw in place (comments and ordering
+// untouched) or appends one, and returns the new text and the value the key held before.
+func rewriteEnvLine(raw, key, stored string) (string, string) {
+	trailingNewline := strings.HasSuffix(raw, "\n")
+	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
+	before, has := "", false
+	for i, l := range lines {
+		if strings.HasPrefix(l, key+"=") {
+			if !has {
+				before = strings.TrimPrefix(l, key+"=")
+				lines[i] = key + "=" + stored
+			}
+			has = true
+		}
+	}
+	if !has {
+		lines = append(lines, key+"="+stored)
+	}
+	out := strings.Join(lines, "\n")
+	if trailingNewline || !has {
+		out += "\n"
+	}
+	return out, before
+}
+
+// writeFileAtomic replaces path with data through a temp file in the target's own directory and
+// a rename. A symlinked path is resolved first, so the link survives and its target is replaced.
+func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
 }
 
 // activeHarnessOf is the LAST `CELL_HARNESS=` line in a cell.env, or `claude` when the file
@@ -308,7 +363,7 @@ func activeHarnessOf(envfile string) string {
 	return envWithFileForCursor(envfile, nil).GetOr("CELL_HARNESS", "claude")
 }
 
-const setUsage = "cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force] [--explicit]  |  cellctl set <cell> <role> [--harness claude|codex|cursor] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
+const setUsage = "cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force] [--default]  |  cellctl set <cell> <role> [--harness claude|codex|cursor] --model <m>  |  cellctl set <cell> [--kind <k>] [--cockpit <c>] [--harness <h>] [--provider <p>]"
 
 func cmdSet(cell string, args []string) {
 	e := newEnvFromProcess()
@@ -319,15 +374,15 @@ func cmdSet(cell string, args []string) {
 	}
 	envfile := filepath.Join(abs, "cell.env")
 
-	force, explicit := false, false
+	force, resettable := false, false
 	role, harness, model, kind, cockpit, provider := "", "", "", "", "", ""
 	var kvs, sugar []string
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; a {
 		case "--force":
 			force = true
-		case "--explicit":
-			explicit = true
+		case "--default":
+			resettable = true
 		case "--harness":
 			harness = needFlagValue(args, &i, "--harness needs a value ("+joinPipe(harnessValues)+")")
 		case "--model":
@@ -401,9 +456,18 @@ func cmdSet(cell string, args []string) {
 		}
 	}
 	kvs = append(kvs, sugar...)
-	pinKind := pinKindDefault
-	if explicit {
-		pinKind = pinKindExplicit
+	pinKind := pinKindExplicit
+	if resettable {
+		pinKind = pinKindDefault
+		pins := false
+		for _, kv := range kvs {
+			if k, _, ok := splitKV(kv); ok && isModelPinKey(k) {
+				pins = true
+			}
+		}
+		if !pins {
+			die("set: --default records a model pin as resettable, and this call sets no model pin (DESK_MODEL_<role>, CODEX_MODEL_<role>, CURSOR_MODEL_<role> or a harness default); nothing written")
+		}
 	}
 	applyEnvKVsKind(e, envfile, force, kvs, pinKind)
 }

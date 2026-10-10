@@ -1,2 +1,2 @@
 ### Added
-- `cellctl` records who owns each model pin (default or explicit) and repins default pins older than the TTL (weekly by default) to the mid-tier model at boot and on `cellctl models reset`; explicit pins are never touched.
+- `cellctl` records who owns each model pin and lowers a pin recorded DEFAULT (`cellctl set ... --default`) to the mid-tier model once it is older than the TTL (weekly by default), at boot and on `cellctl models reset`. Plain `set` records EXPLICIT and is never reset; the reset never raises a pin, never moves the coordinator's model or a provider cell's claude pins, and `show`/`check` report the pending repin.
