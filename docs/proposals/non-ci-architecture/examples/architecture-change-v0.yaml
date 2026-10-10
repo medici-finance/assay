@@ -1,0 +1,166 @@
+# SYNTHETIC DESIGN EXAMPLE. Valid YAML, not an implemented Assay schema.
+# Target/component/contract and example plan identities are illustrative.
+# This is a partial design sketch, not an approved or dispatchable change set.
+schema: assay.architecture-change/v0-proposal
+id: proposal:assay-next-verifier
+lifecycle: draft
+source_snapshot:
+  repositories:
+    medici-finance/assay: f9327a5954d57e786464e244a8e9c06f695d980d
+  observation_kind: public-source-plus-synthetic-plans
+  deployment_observed: false
+  coverage: partial-verifier-example
+  unresolved:
+    - adopter-and-installed-consumer-inventory
+    - deployment-and-custody-qualification
+    - full-impact-closure
+baseline:
+  approved_target: null  # The whole-system target has not been approved.
+  controlling_sources:
+    - medici-finance/assay:docs/contracts.md
+    - medici-finance/assay:docs/library-first.md
+proposed_target:
+  id: target:assay-next
+  revision: draft-public-1
+  deployment_profile: one-host-isolated-cells
+  product_home: medici-finance/assay
+  storage:
+    canonical_intent_and_evidence: git
+    external_objects: forge
+    operational_coordination_and_queries: postgresql
+    local_deployment: docker
+    kubernetes_deployment: cloudnative-pg
+    recovery: reconstruct-canonical-state-reconcile-effects-allow-safe-reruns
+    transient_loss: permitted-for-explicitly-classified-data
+    effect_precondition: authorized-intent-persisted-in-postgresql
+    retained_evidence_home: git-for-this-phase
+  authority:
+    mutation_domain: provider-instance-plus-immutable-repository-id
+    assignment: one-mutating-cell-per-repository
+    owner: trusted-operator
+    enforcement: reject-overlapping-managed-cell-assignments-before-capability-issue
+    upstream_read: allowed-only-by-separate-read-authorization
+    incarnation: fresh-random-id-and-signing-key-outside-postgresql
+    rotate_on: [database-reconstruction, backup-rollback, cross-cell-transfer]
+    old_provider_credentials: revoke-or-independently-restrict-or-hold-until-expiry
+    existing_external_writers: inventory-and-restrict-before-exclusive-activation
+  forge_mirror:
+    ingestion: events-plus-reconciliation-polling
+    retained_observations: selected-by-history-policy
+    query_store: postgresql
+    completeness: explicit-per-source-watermarks
+  includes:
+    - component:cell-controller
+    - component:evidence-evaluator
+    - component:verification-runner
+    - component:verifier-publisher
+    - component:deskd
+    - component:cockpit
+  contracts:
+    - id: contract:verification-result
+      version: proposed-2
+      semantic_owner: component:evidence-evaluator
+      provider: component:verification-runner
+      consumers:
+        - component:cell-controller
+        - component:verifier-publisher
+        - component:deskd
+      invariants:
+        - acceptance-contract-selected-from-approved-source
+        - result-bound-to-candidate-and-acceptance-revisions
+        - runner-has-no-publisher-credential
+        - incomplete-observation-cannot-authorize-acceptance
+        - bookkeeping-only-append-does-not-change-acceptance-subject
+  relationships:
+    - from: component:cockpit
+      relation: consumes
+      to: component:deskd
+      basis: proposed
+      evidence: ../11-target-architecture.md
+# Requirements for the future shared schema, NOT an executed receipt or approval.
+authoring_contract:
+  status: proposed-requirements
+  owner: public-assay-context-and-planning
+  interface_available: false
+  required_handoff_records:
+    - target-intent-and-contract-revisions
+    - source-universe-and-discovery-receipt
+    - qualified-impact-obligations-and-inspected-maturity
+    - amendment-deltas-base-revisions-and-result-digests
+    - protected-history-locators-and-correction-lineage
+    - observed-active-claim-checkpoint-and-acknowledgement
+    - unresolved-decisions-permitted-act-and-phase-prerequisites
+  discovery:
+    enumerate: explicitly-authorized-sources-independent-of-readme-or-typed-edges
+    retain: [membership, inclusion-exclusion-reasons, query-versions-and-inputs, positive-and-negative-results, access-failures, truncation]
+    inferred_relations: reviewable-candidates-with-source-provenance
+    unsupported_sources: explicit-coverage-gap
+  receipt:
+    canonicalization: versioned-by-shared-schema-before-operational-use
+    recheck: re-enumerate-additions-deletions-access-and-membership-changes
+    semantic_assessment: affected-slice-only-unrelated-changes-preserve-conclusions
+    missing_required_input: scoped-could-not-check
+  history:
+    protect: [evidence, dated-source-and-decision-accounts, source-identities]
+    new_intent: explicit-versioned-amendment
+    historical_correction: preserve-original-and-reviewed-correction-lineage
+  authority:
+    phases: [draft-and-review, approve, publish-approved-plan, dispatch-and-implement, activate]
+    unapproved_rival: no-veto-over-authorized-independent-work
+    active_rebinding: checkpoint-and-acknowledged-adjustment-or-cancel-and-reconcile
+    activation_proofs: outputs-of-implementation-required-before-live-cutover
+  bootstrap:
+    route: manually-reviewed-source-pinned-handoff
+    requires: existing-approval-rules-and-explicit-scope-and-time-or-revision-bound
+    approval: null
+    automated_dispatch_use: only-after-resolver-and-both-skills-qualification
+  qualification:
+    source: ../15-regression-from-day-one.md#authoring-and-plan-evolution-qualification
+    implementation_evidence: null
+plan_reconciliation:
+  # Synthetic rows demonstrate the handoff; no existing brief is amended here.
+  - brief: example/project:verification/01
+    disposition: amend
+    reason: Bind candidate, acceptance, publisher authority and regression obligations.
+  - brief: example/project:runner/01
+    disposition: inspect-and-reuse
+    reason: Preserve delivered runner evidence; route new obligations to unfinished work.
+  - brief: example/project:cockpit/01
+    disposition: amend
+    reason: Consume the shared API and preserve historical source accounts during a destination change.
+transition:
+  id: transition:verifier-canary
+  selected_repository: to-be-named-in-ratified-pilot
+  cutover_unit: whole-repository-verifier-flow
+  ownership_key: provider-instance-plus-immutable-repository-id
+  lease_key: work-plus-flow-within-assigned-repository
+  later_partial_cohorts: require-shared-publisher-and-no-direct-legacy-bypass
+  entry_requirements:
+    - acceptance-and-identity-contracts-qualified
+    - old-repository-verifier-admission-paused
+    - all-direct-legacy-publication-paths-inventoried-and-revoked-or-restricted
+    - old-capability-refused-at-effect-boundary
+    - exclusive-cell-repository-assignment-proven
+    - outstanding-provider-effects-drained-or-reconciled
+    - existing-contract-regression-floor-passes
+    - whole-database-loss-reconstruction-and-safe-reruns-qualified
+    - durable-state-migration-and-restore-rehearsed
+    - fresh-incarnation-and-generation-publisher-authority-activated
+  recovery:
+    - freeze-new-admission
+    - reconcile-unknown-effects
+    - teardown-whole-managed-execution-and-publisher-group
+    - revoke-old-sockets-capabilities-and-provider-credentials
+    - rotate-authority-incarnation-outside-rollbackable-sql
+    - prove-no-active-writer-before-handover
+    - preserve-canonical-evidence-and-declare-missing-transient-attempt-history
+    - resume-compatible-old-path-or-repair-forward
+  retire_when:
+    - remaining-consumers-in-inventory-equal-zero
+    - supported-evidence-and-state-readable
+    - fallback-window-closed-by-recorded-decision
+approval:
+  architecture: null
+  custody_profile: null
+  pilot_success_criteria: null
+  expanded_budget: null
