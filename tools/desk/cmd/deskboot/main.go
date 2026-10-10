@@ -52,7 +52,10 @@ STEPS, in order. Each prints one line; the first red one stops the boot and NAME
   1 loop-identity     $DESK_LOOP is set and resolves to <role>'s loop class, so a
                       STOP.<name> flag a human is holding actually halts this session.
   2 worktree-prune    ` + "`deskwt prune`" + ` — bounded worktree growth. Only tracked-clean,
-                      fully-merged worktrees are removed; active work is left alone.
+                      fully-merged worktrees are removed; active work is left alone. The
+                      same sweep collects stale LOCAL branches whose content is provably
+                      on origin/main (merged, or every patch already landed); unique-patch
+                      branches, main/master, and anything checked out anywhere are kept.
   3 worktree-lock     locks THIS session's worktree so the prune supervisor cannot
                       reclaim it underneath a live desk. Refuses to boot in the shared
                       checkout — isolate first: the refusal names the exact fix,

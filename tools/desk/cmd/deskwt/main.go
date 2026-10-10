@@ -34,6 +34,7 @@ USAGE:
   deskwt remove <path>
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
+               [--no-branches | --branches-only]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
   deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
   deskwt --version
@@ -125,6 +126,18 @@ With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s 
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
 Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
 dead-session-reaped, and branches-deleted.
+
+Every sweep ALSO garbage-collects LOCAL branches (Step C — the worktree lifecycle leaves a
+stale local ref behind per worktree, and nothing else reaps them). A branch is collected
+ONLY when its content is provably on refs/remotes/origin/main: its tip is an ancestor of
+the mainline (a fresh, never-used handle is exactly this), or every unique commit's
+patch-id is already in the mainline's history (the squash-merge case). Never collected:
+main/master, any branch checked out in any worktree (a git refusal is a skip, not an
+error), and anything whose proof fails or cannot be completed — a branch with unique
+patches is KEPT, always. The delete is a compare-and-delete against the proven sha, never
+a force verb. --no-branches skips this pass; --branches-only runs it alone, so the boot
+path can control cadence. Live sweeps print the per-class COUNTS only; --dry-run prints
+the per-branch COLLECT plan and deletes nothing.
 
 A LOCKED worktree is always held — and nothing else ever unlocks one, so a lock taken by a
 session that has since died is permanent and the locked population only grows.
