@@ -56,6 +56,12 @@
       "new": "if err := storageAdmission(o.dryRun, o.root); false && err != nil {"
     },
     {
+      "name": "omit destination-volume floor",
+      "file": "cmd/deskdispatch/storage.go",
+      "old": "if free < floor {",
+      "new": "if false && free < floor {"
+    },
+    {
       "name": "lose process custody",
       "file": "internal/cellprocess/run.go",
       "old": "lease, err := cellcache.Acquire(env)",
