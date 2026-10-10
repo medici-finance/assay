@@ -1,1 +1,2 @@
-Managed task scratch now removes the disposable workspace before its ownership record and evidence receipt. A partial workspace deletion can be retried after restarting the store without classifying the remaining payload as unowned. Existing liveness, evidence, Git-data and resumability protections are unchanged.
+### Fixed
+- Managed task scratch can retry an interrupted workspace cleanup after restart, preserving ownership and evidence receipts until the disposable workspace is removed.
