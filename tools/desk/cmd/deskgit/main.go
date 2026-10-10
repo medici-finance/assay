@@ -4,65 +4,58 @@
 // refuses everything else, instead of the allowlist rule `Bash(git fetch *)`.
 //
 // Why a binary and not a glob (issue #1555): `Bash(git fetch *)` is an unanchored
-// wildcard granting git fetch's whole flag surface. `git fetch --upload-pack="sh -c …"
-// <local-path>` runs that program on the "remote" end — which for a local-path remote is
-// THIS machine — so the allow rule is unprompted arbitrary code execution. A glob has no
-// end anchor. This tool's main() does: `deskgit fetch` takes a fixed set of modes, each
-// building a FIXED git argv from literal verbs plus a refspec derived from a validated
-// value — nothing appendable after the verb can change what runs.
+// wildcard granting git fetch's whole flag surface, including the option that names a
+// program to run on the "remote" end — which for a local-path remote is THIS machine — so
+// the allow rule is unprompted arbitrary code execution. A glob has no end anchor. This
+// tool's main() does: `deskgit fetch` takes a fixed set of modes, each building a FIXED
+// refspec from a validated value — nothing appendable can change what runs.
 //
-// A fixed argv closes FLAGS but not config or environment; the security review (#1555)
-// proved git honours the upload-pack program from `.git/config` and from injected env
-// config too. deskgit closes those proven vectors:
-//   - it pins `--upload-pack=git-upload-pack` on the CLI, which overrides
-//     remote.origin.uploadpack from config OR env — the code-execution vector;
-//   - it pins `--refmap=` + an explicit `+refs/heads/*:refs/remotes/origin/*`, so a
-//     malicious remote.origin.fetch cannot redirect writes to local branches;
-//   - it scrubs the child environment to an allowlist (see exec.go), dropping every
-//     GIT_* var (GIT_SSH_COMMAND, GIT_CONFIG_*, GIT_ASKPASS, …);
-//   - it gates on the origin URL (`git remote get-url --all origin`, git's own resolution of
-//     the fetch url list, exactly one value; the `--as` forms additionally gate every URL git
-//     itself resolves for the verb — pushurl, insteadOf and pushInsteadOf from every config
-//     scope — before any credential is minted), rejects
-//     remote-helper (`<helper>::…`) transport forms, and requires an
+// `deskgit fetch` now runs IN-PROCESS (internal/gitcore, go-git): it starts no child process
+// for any origin shape — a local-path or file:// origin included, which gitcore serves from the
+// local repository's storage rather than through go-git's stock local transport (that one
+// starts a git helper program with this process's environment; see gitcore/localtransport.go). So
+// there is no program name to pin, no child environment to scrub, no config key that can name
+// a program to execute, no credential helper and no askpass file. The environment still
+// parameterises the connection itself (the Go HTTP client's proxy and trust-store variables;
+// the ssh client's agent socket and known_hosts) — a route or a trust root, never a program.
+// What is left, and what this tool still enforces:
+//   - the refspec is a Go value built from a validated mode (never a caller flag), and the
+//     explicit tracking refspec confines a bare fetch to refs/remotes/origin/*, so a
+//     malicious remote.origin.fetch cannot redirect writes to local branches. No tag is
+//     followed, in any mode: the refspec is the whole write set, so no refs/tags/* ref is
+//     created or replaced (`git fetch` auto-followed tags but never replaced an existing one;
+//     go-git's default mode would replace one, so the fetch follows none);
+//   - a --branch/--pr fetch never writes a branch some worktree is using — its HEAD branch,
+//     a branch it is rebasing or bisecting, or one an in-progress `rebase --update-refs`
+//     will rewrite: git's own refusal set;
+//   - it gates on the origin URL — the repository's own configured remote.origin.url, exactly
+//     one value — and connects to THAT SAME STRING, so the decision and the connection cannot
+//     diverge; it rejects remote-helper (`<helper>::…`) transport forms, and requires an
 //     exact owner/repo path for any HOST-BEARING URL, so a padded URL cannot present an
 //     allowed slug in its trailing components. Two routing bypasses of that rule — a
 //     `scheme://` URL whose PATH contains '@', and a scp-like URL with no `user@` — are
-//     closed as of the security review; and a BARE LOCAL PATH (which an insteadOf rewrite
-//     can reach) is now gated too — its identity is a match against the configured
-//     local-roots allowlist, not its last two path components (#215). See
+//     closed; and a BARE LOCAL PATH is gated too — its identity is a match against the
+//     configured local-roots allowlist, not its last two path components (#215). See
 //     parseRepo, which documents the one residual that remains (host is NOT bound to
-//     github.com).
+//     github.com);
+//   - the `--as` form binds a credential to that one gated URL, in memory, over https to
+//     github.com only (roleTokenForRepo refuses any other host before a token is read).
 //
-// It is NOT a sandbox, and the boundary is wider than "a compromised repo" (security
-// review). cmdFetch binds to os.Getwd() and does not check the worktree against
-// deskkit's known roots, so the CALLER chooses the repo and therefore the `.git/config`
-// that governs the fetch. In the #1555 threat model the caller IS the adversary, so an
-// attacker-controlled `.git/config` is the ordinary reachable state, not an edge case.
-// Under it, ANY config key that names a program is an execution route — the class, not
-// just the examples: `core.sshCommand`, `core.gitProxy` (whose env twin GIT_PROXY_COMMAND
-// *is* scrubbed, making it easy to misread as closed), `core.fsmonitor`,
-// `remote.<n>.vcs` (which makes git run `git-remote-<name>` while `git remote get-url`
-// still reports an innocent URL, so the gate is structurally blind to it), and others.
+// Global- and worktree-scope git config (url.<base>.insteadOf, pushurl) no longer play any
+// part in where a FETCH goes: only the repository's own config is read, and it is read
+// through the same lens for the gate and for the connection. `deskgit push` still runs the
+// git binary (a later brief migrates it) and keeps its own destination gate.
 //
-// deskgit also TRUSTS `PATH` (security review): `PATH` is on the env allowlist and
-// runGit invokes `git` by bare name, so the binary that runs is whatever PATH resolves —
-// and pinning `--upload-pack=git-upload-pack` pins that program's NAME, not its path.
-// The "a glob has no end anchor, but a main() does" argument therefore holds only while
-// PATH is trusted. Resolving git to an absolute path and passing a fixed minimal PATH is
-// a follow-up, not done here because a minimal PATH risks breaking ssh/credential helpers
-// on the desk machine.
-//
-// deskgit closes the proven upload-pack, env, fetch-refspec and submodule vectors, and the
-// insteadOf IDENTITY-SUBSTITUTION vector for BOTH host-bearing URLs and bare local paths
-// (the latter via the local-roots allowlist, #215). It claims no more.
+// It is NOT a sandbox against a caller who picks the repository: cmdFetch binds to
+// os.Getwd() and does not check the worktree against deskkit's known roots, so the CALLER
+// chooses the repo and therefore the config that governs the fetch.
 //
 // fetch is a local-read verb: it reaches the network read-only, makes no outward WRITE
-// (no GitHub mutation, no shared-state change) and holds no credentials, so like deskwt
-// it takes the audit line and the kill switch but NOT the outward-write rate
-// limit. It is allowlisted ONLY at its root-owned installed path (`/opt/desk-tools/bin/
-// deskgit`); the `go run` form is excluded because it would run agent-writable source —
-// the statusgen source exemption covers writes/creds, not local code execution.
+// (no GitHub mutation, no shared-state change), so like deskwt it takes the audit line and
+// the kill switch but NOT the outward-write rate limit. It is allowlisted ONLY at its
+// root-owned installed path (`/opt/desk-tools/bin/deskgit`); the `go run` form is excluded
+// because it would run agent-writable source — the statusgen source exemption covers
+// writes/creds, not local code execution.
 //
 // Exit codes (deskkit contract): 0 success/noop, 3 disabled, 5 refused,
 // 6 unverifiable. See deskkit/exitcodes.go.
@@ -78,23 +71,24 @@ import (
 const usage = `deskgit — the desk's narrow git verb: refresh refs from origin, and push the current branch.
 
 USAGE:
-  deskgit fetch [--prune]         # refs/remotes/origin/* (--prune drops stale ones)
+  deskgit fetch [--prune]         # refs/remotes/origin/* only (--prune drops stale ones, never a symbolic ref; no tags fetched)
   deskgit fetch --pr <N>          # pull/<N>/head -> local branch pr<N> (N digits only)
   deskgit fetch --branch <B>      # origin's <B> -> local branch <B> (not main/master in any case)
   deskgit fetch --as <role>       # any fetch mode above, authenticated from <role>'s token file
   deskgit push --as <role>        # push the CURRENT branch to origin, authenticated (not main/master)
   deskgit --version
 
-deskgit is safe by construction: each mode builds a FIXED git argv from literal verbs
-plus a refspec derived from a validated value — no caller flag, no arbitrary refspec, no
---upload-pack/--exec/--receive-pack reaches git. fetch pins --upload-pack=git-upload-pack
-(overriding the config/env upload-pack code-execution vector), pins --refmap= + an explicit
-refspec; push pins --receive-pack=git-receive-pack and refuses --force/--delete/--no-verify
-by name. Both scrub the child env to an allowlist and gate on the effective origin URL
-(expands insteadOf). --as reads the role's 0600 token file and supplies it to the child ONLY
-via an ephemeral credential helper scoped to https://github.com, with every ambient credential
-helper cleared (-c credential.helper=); the helper answers no other host, push also pins
---no-recurse-submodules, and the token never reaches argv, a URL, stdout, or the audit line.
+deskgit is safe by construction: each mode builds a FIXED refspec from a validated value —
+no caller flag and no arbitrary refspec reach the transport, and fetch writes only that
+refspec's refs (no tag is followed or replaced; a branch any worktree is using — checked out,
+being rebased or bisected — is never written; an existing --pr/--branch ref moves only by
+fast-forward, and a refused update exits 6, never 0). fetch runs in-process (no git
+child, so no program to name, no child environment, no credential helper); push runs git with a
+fixed argv that pins --receive-pack=git-receive-pack and refuses --force/--delete/--no-verify
+by name. Both gate on the origin URL. --as reads the role's 0600 token file and sends the token
+over https to github.com only — fetch hands it to the in-process transport in memory, push to
+its one git child through an ephemeral helper that clears every ambient one; the token never
+reaches argv, a URL, stdout, or the audit line. push also pins --no-recurse-submodules.
 It is not a sandbox against a fully attacker-controlled .git/config. On any state it cannot
 positively verify it refuses.
 

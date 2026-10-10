@@ -136,12 +136,11 @@ func (r *Repo) UpdateRemoteTracking(remote, remoteRef, hash string) (string, err
 	return "", nil
 }
 
-// DeleteLocalRef removes a local reference, matching `git update-ref -d <name>`.
-// Deleting an already-absent reference is a no-op success, matching real git's own
-// `update-ref -d` on a ref that does not exist.
+// DeleteLocalRef removes a local reference, matching `git update-ref -d <name>`: the ref, its
+// reflog, and the directories that leaves empty. Deleting an already-absent reference is a
+// no-op success, matching real git's own `update-ref -d` on a ref that does not exist.
 func (r *Repo) DeleteLocalRef(name string) error {
-	err := r.repo.Storer.RemoveReference(plumbing.ReferenceName(name))
-	if err != nil {
+	if _, err := r.removeRef(plumbing.ReferenceName(name)); err != nil {
 		return fmt.Errorf("gitcore: delete-ref %s: %w", name, err)
 	}
 	return nil

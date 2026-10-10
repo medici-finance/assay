@@ -20,7 +20,8 @@ const appUsername = "x-access-token"
 // lifetime of the caller's process only:
 //
 //   - never written to a file — there is no credential-helper layer to write it to;
-//   - never placed in an environment variable — gitcore spawns no child process;
+//   - never placed in an environment variable — the https transport it rides is go-git's
+//     Go HTTP client, which starts no child process;
 //   - never embedded in a URL — Fetch/Push/List take URL and Auth as separate fields,
 //     and BasicAuth never renders Password into its Username, its error text, or any
 //     string a caller could log; only the request's Authorization header carries it;

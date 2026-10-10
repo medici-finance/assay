@@ -86,9 +86,14 @@ func TestAsRole_DestinationOffGitHub_RefusedBeforeAnyMint(t *testing.T) {
 			repoConfig: [][]string{{"--add", "remote.origin.url", "https://gitlab.example.com/" + allowedSlug + ".git"}}},
 		{name: "pushInsteadOf-self-hosted", verbs: []string{"push"},
 			repoConfig: [][]string{{"url.https://gitlab.example.com/.pushInsteadOf", "https://github.com/"}}},
-		{name: "global-insteadOf-self-hosted", verbs: []string{"push", "fetch"},
+		// Global scope moves where a PUSH goes (the git binary still runs it). A FETCH runs
+		// in-process and reads only the repository's own config, so the same global rewrite
+		// is not part of it — see the "not-consulted" control below.
+		{name: "global-insteadOf-self-hosted", verbs: []string{"push"},
 			globalConfig: "[url \"https://gitlab.example.com/\"]\n\tinsteadOf = https://github.com/\n"},
-		{name: "second-insteadOf-value", verbs: []string{"push", "fetch"},
+		// (push only: git honours every insteadOf value, and the git binary still runs push. A
+		// fetch connects to the exact string it gated — see the control below.)
+		{name: "second-insteadOf-value", verbs: []string{"push"},
 			repoConfig: [][]string{
 				// git honours every insteadOf value of a url section; a reader that keeps only
 				// the last one misses the rewrite that matches.
@@ -126,6 +131,19 @@ func TestAsRole_DestinationsAllGitHub_ReachTheMinter(t *testing.T) {
 				{"--add", "remote.origin.pushurl", "https://github.com:443/" + allowedSlug + ".git"},
 				{"--add", "remote.origin.pushurl", "git@github.com:" + allowedSlug + ".git"},
 			}},
+		// A fetch connects to (and gates) the repository's own url only: a global rewrite to
+		// another host does not change where it goes, so the credential is still bound to
+		// github.com and the fetch reaches the minter.
+		// Whatever the in-process config reader makes of a multi-valued insteadOf, the fetch
+		// connects to the very string the gate decided on (here github.com), so the gate and
+		// the connection cannot disagree.
+		{name: "second-insteadOf-same-str", verbs: []string{"fetch"},
+			repoConfig: [][]string{
+				{"--add", "url.https://gitlab.example.com/.insteadOf", "https://github.com/"},
+				{"--add", "url.https://gitlab.example.com/.insteadOf", "https://nowhere.example/"},
+			}},
+		{name: "global-insteadOf-not-consulted", verbs: []string{"fetch"},
+			globalConfig: "[url \"https://gitlab.example.com/\"]\n\tinsteadOf = https://github.com/\n"},
 		{name: "insteadOf-to-github-ssh", verbs: []string{"push", "fetch"},
 			globalConfig: "[url \"ssh://git@github.com/\"]\n\tinsteadOf = https://github.com/\n"},
 	}

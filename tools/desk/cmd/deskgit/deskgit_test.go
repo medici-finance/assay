@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // allowedSlug is in the allowed-repo set; deniedSlug is not. The test upstream is a bare repo
@@ -100,73 +102,118 @@ func withEnvCmds(t *testing.T, work string) (*[][]string, *[]*exec.Cmd) {
 		return c
 	}
 	t.Cleanup(func() { execCommand = oldExec })
+
+	// fetch runs in-process, so it never reaches execCommand. Record what cmdFetch handed the
+	// transport (as a synthetic `gitcore fetch` entry in calls, and as the typed options in
+	// fetchRecorded) and then run the REAL gitcore fetch against the scratch fixture, so a
+	// fetch test still proves the refs land.
+	fetchRecorded = nil
+	oldFetch := fetchFn
+	fetchFn = func(dir string, opts gitcore.FetchOpts) error {
+		fetchRecorded = append(fetchRecorded, opts)
+		argv := []string{"gitcore", "fetch"}
+		if opts.Prune {
+			argv = append(argv, "--prune")
+		}
+		argv = append(argv, opts.URL)
+		argv = append(argv, opts.RefSpecs...)
+		*calls = append(*calls, argv)
+		return oldFetch(dir, opts)
+	}
+	t.Cleanup(func() { fetchFn = oldFetch; fetchRecorded = nil })
 	return calls, cmds
 }
 
-// fetchArgv returns the argv of the `git fetch …` call the run made, or nil.
+// fetchRecorded is every gitcore.FetchOpts cmdFetch handed the in-process transport during
+// the current test (reset by withEnvCmds).
+var fetchRecorded []gitcore.FetchOpts
+
+// fetchArgv returns the synthetic `gitcore fetch …` entry the fetch seam recorded for the
+// run, or nil when no fetch was constructed. (Fetch is in-process: there is no git argv.)
 func fetchArgv(calls [][]string) []string {
 	for _, c := range calls {
-		if len(c) >= 2 && c[0] == "git" && c[1] == "fetch" {
+		if len(c) >= 2 && c[0] == "gitcore" && c[1] == "fetch" {
 			return c
 		}
 	}
 	return nil
 }
 
-// The pinned hardening flags must appear in every fetch (issue #1555 finding 1).
-func assertHardened(t *testing.T, argv []string) {
+// originURL reads the checkout's configured remote.origin.url with the git binary — the
+// value cmdFetch must gate on and connect to, unchanged.
+func originURL(t *testing.T, work string) string {
 	t.Helper()
-	joined := strings.Join(argv, " ")
-	for _, want := range []string{"--upload-pack=git-upload-pack", "--refmap=", "--no-recurse-submodules"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("fetch argv %q missing hardening flag %q", joined, want)
-		}
-	}
+	return mustGit(t, work, "config", "--get", "remote.origin.url")
 }
 
-func TestFetch_Bare_HardenedArgv(t *testing.T) {
+// onlyFetch returns the single FetchOpts the run handed the transport, failing the test if
+// there was not exactly one.
+func onlyFetch(t *testing.T) gitcore.FetchOpts {
+	t.Helper()
+	if len(fetchRecorded) != 1 {
+		t.Fatalf("fetch seam saw %d call(s), want exactly 1", len(fetchRecorded))
+	}
+	return fetchRecorded[0]
+}
+
+func TestFetch_Bare_FixedRefspecAndLandsRefs(t *testing.T) {
 	work := newRepo(t, allowedSlug)
+	// Drop the remote-tracking ref the fixture's `push -u` created, so the only way it can
+	// come back is the fetch under test.
+	mustGit(t, work, "update-ref", "-d", "refs/remotes/origin/main")
 	calls := withEnv(t, work)
 
 	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
 		t.Fatalf("fetch exit = %d, want %d", code, deskkit.ExitOK)
 	}
-	argv := fetchArgv(*calls)
-	if argv == nil {
-		t.Fatal("no `git fetch` was invoked")
+	if fetchArgv(*calls) == nil {
+		t.Fatal("no fetch was constructed")
 	}
-	assertHardened(t, argv)
-	want := "git fetch --refmap= --upload-pack=git-upload-pack --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/*"
-	if strings.Join(argv, " ") != want {
-		t.Fatalf("bare fetch argv = %q\n want %q", strings.Join(argv, " "), want)
+	got := onlyFetch(t)
+	if got.URL != originURL(t, work) {
+		t.Errorf("fetch URL = %q, want the configured origin URL %q verbatim", got.URL, originURL(t, work))
+	}
+	if len(got.RefSpecs) != 1 || got.RefSpecs[0] != trackingRefspec {
+		t.Errorf("bare fetch refspecs = %q, want exactly [%q]", got.RefSpecs, trackingRefspec)
+	}
+	if got.Prune || got.Force || got.Auth != nil {
+		t.Errorf("bare fetch opts = %+v, want no prune, no force, no credential", got)
+	}
+	// The expected ref actually landed (a real in-process fetch against the fixture).
+	want := mustGit(t, work, "rev-parse", "refs/heads/main")
+	if have := mustGit(t, work, "rev-parse", "refs/remotes/origin/main"); have != want {
+		t.Fatalf("refs/remotes/origin/main = %s, want %s", have, want)
 	}
 }
 
 func TestFetch_Prune(t *testing.T) {
 	work := newRepo(t, allowedSlug)
-	calls := withEnv(t, work)
+	// A stale remote-tracking ref the upstream does not have: --prune must drop it.
+	mustGit(t, work, "update-ref", "refs/remotes/origin/stale", mustGit(t, work, "rev-parse", "HEAD"))
+	withEnv(t, work)
 	if code := run([]string{"fetch", "--prune"}); code != deskkit.ExitOK {
 		t.Fatalf("fetch --prune exit = %d, want %d", code, deskkit.ExitOK)
 	}
-	want := "git fetch --refmap= --upload-pack=git-upload-pack --no-recurse-submodules --prune origin +refs/heads/*:refs/remotes/origin/*"
-	if got := strings.Join(fetchArgv(*calls), " "); got != want {
-		t.Fatalf("fetch --prune argv = %q\n want %q", got, want)
+	got := onlyFetch(t)
+	if !got.Prune || len(got.RefSpecs) != 1 || got.RefSpecs[0] != trackingRefspec {
+		t.Fatalf("fetch --prune opts = %+v, want prune with exactly the tracking refspec", got)
+	}
+	if out, err := exec.Command("git", "-C", work, "rev-parse", "--verify", "-q", "refs/remotes/origin/stale").CombinedOutput(); err == nil {
+		t.Fatalf("--prune left the stale ref in place (%s)", out)
 	}
 }
 
 func TestFetch_PR_BuildsPullRefspec(t *testing.T) {
 	work := newRepo(t, allowedSlug)
-	calls := withEnv(t, work)
-	// origin has no pull/* ref, so git fetch will fail; we assert the ARGV regardless.
+	withEnv(t, work)
+	// origin has no pull/* ref, so the fetch itself fails; we assert the OPTIONS regardless.
 	run([]string{"fetch", "--pr", "42"})
-	argv := fetchArgv(*calls)
-	if argv == nil {
-		t.Fatal("no `git fetch` invoked for --pr")
+	got := onlyFetch(t)
+	if len(got.RefSpecs) != 1 || got.RefSpecs[0] != "refs/pull/42/head:refs/heads/pr42" {
+		t.Fatalf("--pr refspecs = %q, want exactly the pull refspec", got.RefSpecs)
 	}
-	assertHardened(t, argv)
-	joined := strings.Join(argv, " ")
-	if !strings.HasSuffix(joined, "origin refs/pull/42/head:refs/heads/pr42") {
-		t.Fatalf("--pr argv = %q, want pull refspec suffix", joined)
+	if got.URL != originURL(t, work) {
+		t.Errorf("--pr fetch URL = %q, want the configured origin URL", got.URL)
 	}
 }
 
@@ -185,9 +232,12 @@ func TestFetch_Branch_BuildsRefspec(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	calls := withEnv(t, work)
 	run([]string{"fetch", "--branch", "fix/issue-1"})
-	joined := strings.Join(fetchArgv(*calls), " ")
-	if !strings.HasSuffix(joined, "origin refs/heads/fix/issue-1:refs/heads/fix/issue-1") {
-		t.Fatalf("--branch argv = %q, want branch refspec suffix", joined)
+	if fetchArgv(*calls) == nil {
+		t.Fatal("no fetch was constructed for --branch")
+	}
+	got := onlyFetch(t)
+	if len(got.RefSpecs) != 1 || got.RefSpecs[0] != "refs/heads/fix/issue-1:refs/heads/fix/issue-1" {
+		t.Fatalf("--branch refspecs = %q, want exactly the branch refspec", got.RefSpecs)
 	}
 }
 
@@ -288,7 +338,7 @@ func TestFetch_Branch_RejectsInjection(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	calls := withEnv(t, work)
 	// leading '+' (force), ':' (2nd refspec), and leading '-' (flag) must all be refused.
-	for _, bad := range []string{"+refs/heads/x", "x:refs/heads/main", "--upload-pack=evil"} {
+	for _, bad := range []string{"+refs/heads/x", "x:refs/heads/main", "--evil-flag"} {
 		if code := run([]string{"fetch", "--branch", bad}); code != deskkit.ExitRefused {
 			t.Fatalf("--branch %q exit = %d, want refused", bad, code)
 		}
@@ -309,17 +359,17 @@ func TestFetch_ModesMutuallyExclusive(t *testing.T) {
 	}
 }
 
-// The core of issue #1555: --upload-pack / --exec / a raw refspec cannot be smuggled
-// through the verb. flag parsing refuses the unknown flag; the operand guard refuses the
-// refspec. In neither case does the string reach git.
-func TestFetch_RejectsUploadPackFlag(t *testing.T) {
+// The core of issue #1555: a program-naming flag cannot be smuggled through the verb. fetch
+// runs in-process, so there is no program for it to name; a flag the verb does not define is
+// refused by the FlagSet (exit 5) and nothing reaches the transport.
+func TestFetch_RejectsUnknownProgramFlag(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	calls := withEnv(t, work)
-	if code := run([]string{"fetch", "--upload-pack=sh -c 'touch /tmp/PROOF'"}); code != deskkit.ExitRefused {
-		t.Fatalf("fetch --upload-pack exit = %d, want %d (refused)", code, deskkit.ExitRefused)
+	if code := run([]string{"fetch", "--helper=sh -c 'touch /tmp/PROOF'"}); code != deskkit.ExitRefused {
+		t.Fatalf("fetch with an unknown flag exit = %d, want %d (refused)", code, deskkit.ExitRefused)
 	}
 	if fetchArgv(*calls) != nil {
-		t.Fatal("git fetch must NOT run when a flag is refused")
+		t.Fatal("fetch must NOT run when a flag is refused")
 	}
 }
 
@@ -334,7 +384,9 @@ func TestFetch_RejectsRefspecOperand(t *testing.T) {
 	}
 }
 
-func TestFetch_RefusesRepoOutsideSet(t *testing.T) {
+// A fetch whose origin is outside the allowed-repo set is refused (exit 5) and never reaches the
+// transport — the allowed-repo gate survives the move off the git binary.
+func TestFetch_DisallowedOriginRefused(t *testing.T) {
 	work := newRepo(t, deniedSlug)
 	calls := withEnv(t, work)
 	if code := run([]string{"fetch"}); code != deskkit.ExitRefused {
@@ -342,6 +394,24 @@ func TestFetch_RefusesRepoOutsideSet(t *testing.T) {
 	}
 	if fetchArgv(*calls) != nil {
 		t.Fatal("git fetch must NOT run for a repo outside the set")
+	}
+}
+
+// The allowed-repo set is the SOLE refuser here: an https origin parses cleanly (no
+// configured-root layer to refuse it first, unlike the bare-local-path fixture above), names a
+// repo outside the set, and the fetch must neither run nor be offered a credential. The name
+// keeps the "DisallowedOriginRefused" substring on purpose: brief 05's Verify row 3 selects by
+// it, and this is the case that goes red when the allowed-repo check is removed — the bare-path
+// case above stays green then, because the configured-root layer refuses it first.
+func TestFetch_HTTPSDisallowedOriginRefused(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "remote", "set-url", "origin", "https://github.com/"+deniedSlug+".git")
+	calls := withEnv(t, work)
+	if code := run([]string{"fetch"}); code != deskkit.ExitRefused {
+		t.Fatalf("fetch on an out-of-set https origin exit = %d, want %d (refused)", code, deskkit.ExitRefused)
+	}
+	if fetchArgv(*calls) != nil || len(fetchRecorded) != 0 {
+		t.Fatal("a fetch must NOT run for a repo outside the set")
 	}
 }
 
@@ -365,32 +435,452 @@ func TestFetch_EffectiveURLDrivesDecision(t *testing.T) {
 	}
 }
 
-// re-review: assert the scrub is WIRED, not just that scrubbedEnv() is correct. A
-// hostile GIT_* in the process env must be absent from the CHILD git's actual .Env.
-// Deleting `cmd.Env = scrubbedEnv(...)` in runGit makes this fail.
-func TestFetch_ScrubIsWiredToChild(t *testing.T) {
+// fetch starts NO child process — observed at the PROCESS, not at deskgit's own exec seam.
+// The fixture origin is a bare LOCAL PATH, the one shape for which go-git's stock transport
+// would start a git helper program with this process's whole environment; gittest's
+// recording stand-in for that helper sits first on PATH, under an environment carrying git
+// configuration and a program-naming variable a child git would honour. Neither the seam nor
+// the stand-in may see a start, and the fetch still lands. With gitcore's in-process local
+// transport removed this goes red on the stand-in (the seam alone stays empty, which is why
+// the seam is not the assertion). `git` itself is not stood in here (withGit=false): the
+// verb's kill-switch read at start-up runs it, outside the fetch transport; gitcore's
+// TestFileFetchStartsNoChild stands in both.
+func TestFetch_RunsNoGitChild(t *testing.T) {
 	work := newRepo(t, allowedSlug)
-	t.Setenv("GIT_SSH_COMMAND", "sh -c 'touch /tmp/should-not-run'")
 	_, cmds := withEnvCmds(t, work)
-	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+	logPath := gittest.StandInLocalTransport(t, false)
+	gittest.HostileGitEnv(t)
+	code := run([]string{"fetch"})
+	gittest.AssertNoChild(t, logPath, "fetch")
+	if code != deskkit.ExitOK {
 		t.Fatalf("fetch exit = %d, want ok", code)
 	}
-	var fetchCmd *exec.Cmd
-	for _, c := range *cmds {
-		if len(c.Args) >= 2 && c.Args[1] == "fetch" {
-			fetchCmd = c
+	if len(*cmds) != 0 {
+		var argvs []string
+		for _, c := range *cmds {
+			argvs = append(argvs, strings.Join(c.Args, " "))
+		}
+		t.Fatalf("fetch started %d git child process(es): %q — it must run in-process", len(*cmds), argvs)
+	}
+	repo, err := gitcore.Open(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Resolve("refs/remotes/origin/main"); err != nil {
+		t.Fatalf("fetch did not land refs/remotes/origin/main: %v", err)
+	}
+}
+
+// The expected-refs-land golden for the authenticated form's absence of side channels: no
+// askpass file, no credential-helper config and no token in the URL. (The credential itself
+// is asserted in the --as tests; here, the filesystem and the audit line.)
+func TestFetch_WritesNoCredentialFiles(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	withEnv(t, work)
+	asWorker(t)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	if code := run([]string{"fetch", "--as", "worker"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch --as worker exit = %d, want ok", code)
+	}
+	ents, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ents) != 0 {
+		t.Fatalf("fetch --as left %d file(s) in TMPDIR (an askpass/helper script?): %v", len(ents), ents)
+	}
+	if cfg := mustGit(t, work, "config", "--local", "--list"); strings.Contains(cfg, fixtureToken) || strings.Contains(cfg, "credential") {
+		t.Fatalf("fetch --as touched the repo config: %s", cfg)
+	}
+	for _, e := range readAudit(t) {
+		if strings.Contains(e.Detail, fixtureToken) {
+			t.Fatalf("the audit line carries the token: %+v", e)
 		}
 	}
-	if fetchCmd == nil {
-		t.Fatal("no git fetch cmd captured")
+}
+
+// Behaviour note, pinned: the gate and the connection read ONE string — the repository's own
+// remote.origin.url. Global-scope url.<base>.insteadOf (which the git binary applied and the
+// in-process transport does not) plays no part in where a fetch goes, so a global rewrite
+// cannot make the connection differ from the string the allowed-repo check decided on.
+func TestFetch_GlobalInsteadOfIsNotConsulted(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	recorded := originURL(t, work)
+	withEnv(t, work)
+	denied := filepath.Join(t.TempDir(), filepath.FromSlash(deniedSlug)+".git")
+	cfg := "[url \"" + denied + "\"]\n\tinsteadOf = " + recorded + "\n"
+	if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".gitconfig"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if fetchCmd.Env == nil {
-		t.Fatal("runGit did not set cmd.Env (scrub not wired) — child inherited os.Environ()")
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch exit = %d, want ok (the global rewrite is not part of this fetch)", code)
 	}
-	for _, kv := range fetchCmd.Env {
-		if strings.HasPrefix(kv, "GIT_SSH_COMMAND=") {
-			t.Fatalf("child git inherited GIT_SSH_COMMAND — scrub not wired: %q", kv)
+	if got := onlyFetch(t); got.URL != recorded {
+		t.Fatalf("fetch connected to %q, want the gated %q", got.URL, recorded)
+	}
+}
+
+// A branch checked out in the worktree is not rewritten by --branch/--pr (git fetch refused
+// that itself; an in-process ref update would not).
+func TestFetch_RefusesToWriteCheckedOutBranch(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "checkout", "-b", "feature-here")
+	withEnv(t, work)
+	if code := run([]string{"fetch", "--branch", "feature-here"}); code != deskkit.ExitUnverifiable {
+		t.Fatalf("fetch --branch <checked-out branch> exit = %d, want %d (unverifiable)", code, deskkit.ExitUnverifiable)
+	}
+	if len(fetchRecorded) != 0 {
+		t.Fatal("the transport was reached for the checked-out branch")
+	}
+}
+
+// The same refusal holds for a branch checked out in a LINKED worktree, not just this one:
+// git fetch refused that too, and the in-process update would otherwise move the branch under
+// the other worktree's index and files. The upstream is one commit ahead so a fetch that went
+// through would visibly move the ref.
+func TestFetch_RefusesBranchCheckedOutInLinkedWorktree(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "branch", "held-elsewhere")
+	mustGit(t, work, "push", "-q", "origin", "held-elsewhere")
+	before := mustGit(t, work, "rev-parse", "refs/heads/held-elsewhere")
+	linked := filepath.Join(t.TempDir(), "linked")
+	mustGit(t, work, "worktree", "add", "-q", linked, "held-elsewhere")
+
+	// Move the upstream branch one commit ahead from a scratch clone.
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	scratch := filepath.Join(t.TempDir(), "scratch")
+	mustGit(t, "", "clone", "-q", "-b", "held-elsewhere", upstream, scratch)
+	mustGit(t, scratch, "-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false",
+		"commit", "-q", "--allow-empty", "-m", "ahead")
+	mustGit(t, scratch, "push", "-q", "origin", "held-elsewhere")
+
+	withEnv(t, work)
+	if code := run([]string{"fetch", "--branch", "held-elsewhere"}); code != deskkit.ExitUnverifiable {
+		t.Fatalf("fetch --branch <branch checked out in a linked worktree> exit = %d, want %d (unverifiable)", code, deskkit.ExitUnverifiable)
+	}
+	if len(fetchRecorded) != 0 {
+		t.Fatal("the transport was reached for a branch checked out in a linked worktree")
+	}
+	if after := mustGit(t, work, "rev-parse", "refs/heads/held-elsewhere"); after != before {
+		t.Fatalf("held-elsewhere moved %s -> %s under the linked worktree", before, after)
+	}
+}
+
+// aheadUpstream moves the upstream's <branch> one commit ahead from a scratch clone, so a
+// fetch that went through would visibly move a local ref.
+func aheadUpstream(t *testing.T, work, branch string) string {
+	t.Helper()
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	scratch := filepath.Join(t.TempDir(), "scratch")
+	mustGit(t, "", "clone", "-q", "-b", branch, upstream, scratch)
+	mustGit(t, scratch, "-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false",
+		"commit", "-q", "--allow-empty", "-m", "ahead")
+	mustGit(t, scratch, "push", "-q", "origin", branch)
+	return mustGit(t, scratch, "rev-parse", "HEAD")
+}
+
+// A branch a linked worktree is in the middle of REBASING or BISECTING is not written either:
+// that worktree's HEAD is detached for the duration, but git still counts the branch as in use
+// (its rebase finishes onto it; `bisect reset` returns to it) and refused to fetch into it.
+func TestFetch_RefusesBusyBranch(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		start []string
+	}{
+		{"rebase", []string{"rebase", "-q", "--force-rebase", "-x", "false", "HEAD~1"}},
+		{"bisect", []string{"bisect", "start", "HEAD", "HEAD~2"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newRepo(t, allowedSlug)
+			linked := filepath.Join(t.TempDir(), "linked")
+			mustGit(t, work, "worktree", "add", "-q", "-b", "busy", linked)
+			for _, m := range []string{"one", "two"} {
+				mustGit(t, linked, "commit", "-q", "--allow-empty", "-m", m)
+			}
+			mustGit(t, linked, "push", "-q", "origin", "busy")
+			before := mustGit(t, work, "rev-parse", "refs/heads/busy")
+			cmd := exec.Command("git", tc.start...)
+			cmd.Dir = linked
+			_ = cmd.Run() // a stopped rebase exits non-zero by design
+			if err := exec.Command("git", "-C", linked, "symbolic-ref", "-q", "HEAD").Run(); err == nil {
+				t.Fatalf("the %s fixture left HEAD on a branch; the case needs it detached", tc.name)
+			}
+			aheadUpstream(t, work, "busy")
+
+			withEnv(t, work)
+			if code := run([]string{"fetch", "--branch", "busy"}); code != deskkit.ExitUnverifiable {
+				t.Fatalf("fetch --branch <branch mid-%s in a linked worktree> exit = %d, want %d (unverifiable)",
+					tc.name, code, deskkit.ExitUnverifiable)
+			}
+			if len(fetchRecorded) != 0 {
+				t.Fatalf("the transport was reached for a branch mid-%s", tc.name)
+			}
+			if after := mustGit(t, work, "rev-parse", "refs/heads/busy"); after != before {
+				t.Fatalf("busy moved %s -> %s under the linked worktree's %s", before, after, tc.name)
+			}
+		})
+	}
+}
+
+// A bare fetch writes refs/remotes/origin/* and nothing else: a local tag whose name the
+// upstream also uses (at a different commit) is left alone, and no upstream tag is created.
+// `git fetch` never replaced an existing local tag; the in-process fetch follows no tags.
+func TestFetch_KeepsLocalTags(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "tag", "v1")
+	local := mustGit(t, work, "rev-parse", "refs/tags/v1")
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	scratch := filepath.Join(t.TempDir(), "scratch")
+	mustGit(t, "", "clone", "-q", upstream, scratch)
+	mustGit(t, scratch, "-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false",
+		"commit", "-q", "--allow-empty", "-m", "ahead")
+	mustGit(t, scratch, "tag", "v1")
+	mustGit(t, scratch, "tag", "v2")
+	mustGit(t, scratch, "push", "-q", "origin", "main", "v1", "v2")
+	ahead := mustGit(t, scratch, "rev-parse", "HEAD")
+
+	withEnv(t, work)
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch exit = %d, want 0", code)
+	}
+	if got := mustGit(t, work, "rev-parse", "refs/remotes/origin/main"); got != ahead {
+		t.Fatalf("refs/remotes/origin/main = %s, want %s", got, ahead)
+	}
+	if got := mustGit(t, work, "rev-parse", "refs/tags/v1"); got != local {
+		t.Fatalf("local tag v1 moved %s -> %s; a fetch must never replace a local tag", local, got)
+	}
+	if tags := mustGit(t, work, "for-each-ref", "--format=%(refname)", "refs/tags/"); tags != "refs/tags/v1" {
+		t.Fatalf("tags after fetch = %q, want only the local refs/tags/v1", tags)
+	}
+}
+
+// A bare fetch from a checkout holding a commit the local-path origin has never seen — the
+// ordinary state of a working checkout — succeeds and lands the origin's new commit.
+func TestFetch_LocalOnlyCommitOK(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	mustGit(t, work, "commit", "-q", "--allow-empty", "-m", "unpushed")
+	ahead := aheadUpstream(t, work, "main")
+
+	withEnv(t, work)
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch with an unpushed local commit exit = %d, want 0", code)
+	}
+	if got := mustGit(t, work, "rev-parse", "refs/remotes/origin/main"); got != ahead {
+		t.Fatalf("refs/remotes/origin/main = %s, want %s", got, ahead)
+	}
+}
+
+// --branch and --pr refresh an EXISTING local ref only by fast-forward. When the origin's ref
+// was rewritten to a commit that does not descend from the local one, the fetch fails closed
+// (exit 6, as `git fetch` refused "non-fast-forward") and the local ref is left where it was —
+// never a success that silently kept the superseded commit.
+func TestFetch_RewrittenRefFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, local string
+		args             []string
+	}{
+		{"branch", "refs/heads/side", "refs/heads/side", []string{"fetch", "--branch", "side"}},
+		{"pr", "refs/pull/7/head", "refs/heads/pr7", []string{"fetch", "--pr", "7"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newRepo(t, allowedSlug)
+			upstream := mustGit(t, work, "remote", "get-url", "origin")
+			mustGit(t, work, "commit", "-q", "--allow-empty", "-m", "first")
+			first := mustGit(t, work, "rev-parse", "HEAD")
+			mustGit(t, work, "push", "-q", "origin", "HEAD:"+tc.src)
+			mustGit(t, work, "reset", "-q", "--hard", "HEAD~1")
+
+			withEnv(t, work)
+			if code := run(tc.args); code != deskkit.ExitOK {
+				t.Fatalf("first %v exit = %d, want 0", tc.args, code)
+			}
+			if got := mustGit(t, work, "rev-parse", tc.local); got != first {
+				t.Fatalf("%s = %s after the first fetch, want %s", tc.local, got, first)
+			}
+
+			// Rewrite the origin's ref to a commit off main that does not descend from first.
+			mustGit(t, work, "commit", "-q", "--allow-empty", "-m", "rewritten")
+			rewritten := mustGit(t, work, "rev-parse", "HEAD")
+			mustGit(t, work, "push", "-q", "--force", "origin", "HEAD:"+tc.src)
+			if got := mustGit(t, upstream, "rev-parse", tc.src); got != rewritten {
+				t.Fatalf("fixture: origin %s = %s, want %s", tc.src, got, rewritten)
+			}
+
+			if code := run(tc.args); code != deskkit.ExitUnverifiable {
+				t.Fatalf("%v over a rewritten origin ref exit = %d, want %d (unverifiable): the update was not applied",
+					tc.args, code, deskkit.ExitUnverifiable)
+			}
+			if got := mustGit(t, work, "rev-parse", tc.local); got != first {
+				t.Fatalf("%s moved %s -> %s on a non-fast-forward", tc.local, first, got)
+			}
+		})
+	}
+}
+
+// --prune drops a stale remote-tracking ref but never a symbolic one: in a real clone,
+// refs/remotes/origin/HEAD (the origin's default branch) survives, as it does under git.
+func TestFetch_PruneKeepsOriginHEAD(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	clone := filepath.Join(t.TempDir(), "clone")
+	mustGit(t, "", "clone", "-q", upstream, clone)
+	head := mustGit(t, clone, "symbolic-ref", "refs/remotes/origin/HEAD")
+	mustGit(t, clone, "update-ref", "refs/remotes/origin/stale", mustGit(t, clone, "rev-parse", "HEAD"))
+
+	withEnv(t, clone)
+	if code := run([]string{"fetch", "--prune"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch --prune exit = %d, want 0", code)
+	}
+	if out, err := exec.Command("git", "-C", clone, "rev-parse", "--verify", "-q", "refs/remotes/origin/stale").CombinedOutput(); err == nil {
+		t.Fatalf("--prune left the stale ref in place (%s)", out)
+	}
+	out, err := exec.Command("git", "-C", clone, "symbolic-ref", "refs/remotes/origin/HEAD").CombinedOutput()
+	if got := strings.TrimSpace(string(out)); err != nil || got != head {
+		t.Fatalf("refs/remotes/origin/HEAD after --prune = %q (%v), want the symbolic ref to %s kept", got, err, head)
+	}
+}
+
+// Review finding ref-name-conflict-wedges-fetch: upstream replaces branch X with X/a (or X/a
+// with X) while a clone still holds the old tracking ref — loose, as a fetch after the clone
+// leaves it, or packed, as a fresh clone or a gc leaves it. The two names cannot both exist.
+// git prunes before it updates, so `fetch --prune` clears the old name and lands everything;
+// a plain fetch refuses that one ref (git exits 1; deskgit exits 6) and still updates every
+// other. Each shape runs the git binary in one clone and deskgit in an identical twin, twice,
+// and requires the same outcome and the same refs — and refs/remotes/origin/main current.
+func TestFetch_RefNameConflictMatchesGit(t *testing.T) {
+	for _, names := range [][2]string{{"feat", "feat/a"}, {"feat/a", "feat"}, {"zed", "zed/a"}, {"zed/a", "zed"}} {
+		for _, packed := range []bool{false, true} {
+			for _, prune := range []bool{true, false} {
+				old, nu := names[0], names[1]
+				name := old + "->" + nu
+				if packed {
+					name += "/packed"
+				} else {
+					name += "/loose"
+				}
+				if prune {
+					name += "/prune"
+				}
+				t.Run(strings.ReplaceAll(name, "/", "_"), func(t *testing.T) {
+					work := newRepo(t, allowedSlug)
+					upstream := mustGit(t, work, "remote", "get-url", "origin")
+					root := t.TempDir()
+					twins := [2]string{filepath.Join(root, "git"), filepath.Join(root, "deskgit")}
+					mustGit(t, upstream, "branch", old, "main")
+					for _, c := range twins {
+						mustGit(t, "", "clone", "-q", upstream, c)
+						if packed {
+							mustGit(t, c, "pack-refs", "--all")
+						} else {
+							// Re-write it loose, as a fetch after the clone leaves it.
+							sha := mustGit(t, c, "rev-parse", "refs/remotes/origin/"+old)
+							mustGit(t, c, "update-ref", "-d", "refs/remotes/origin/"+old)
+							mustGit(t, c, "pack-refs", "--all")
+							mustGit(t, c, "update-ref", "refs/remotes/origin/"+old, sha)
+						}
+						loose := filepath.Join(c, ".git", "refs", "remotes", "origin", filepath.FromSlash(old))
+						if _, err := os.Stat(loose); (err == nil) == packed {
+							t.Fatalf("fixture: %s loose = %v, want %v", loose, err == nil, !packed)
+						}
+					}
+					// Upstream swaps the branch, moves main and adds a branch named after both.
+					mustGit(t, upstream, "branch", "-D", old)
+					mustGit(t, upstream, "branch", nu, "main")
+					mustGit(t, work, "commit", "-q", "--allow-empty", "-m", "ahead")
+					mustGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/main", "HEAD:refs/heads/zzz")
+					want := mustGit(t, upstream, "rev-parse", "refs/heads/main")
+
+					args := []string{"fetch"}
+					if prune {
+						args = append(args, "--prune")
+					}
+					withEnv(t, twins[1])
+					for i := 1; i <= 2; i++ {
+						gitErr := exec.Command("git", append([]string{"-C", twins[0]}, append(args, "origin")...)...).Run()
+						code := run(args)
+						if wantCode := map[bool]int{true: deskkit.ExitOK, false: deskkit.ExitUnverifiable}[gitErr == nil]; code != wantCode {
+							t.Fatalf("run %d: deskgit %v exit = %d, want %d (git: %v)", i, args, code, wantCode, gitErr)
+						}
+						refs := [2]string{}
+						for j, c := range twins {
+							refs[j] = mustGit(t, c, "for-each-ref", "--format=%(refname) %(objectname) %(symref)")
+							if got := mustGit(t, c, "rev-parse", "refs/remotes/origin/main"); got != want {
+								t.Fatalf("run %d: %s refs/remotes/origin/main = %s, want %s", i, filepath.Base(c), got, want)
+							}
+						}
+						if refs[0] != refs[1] {
+							t.Fatalf("run %d: refs differ from git's\ngit:\n%s\ndeskgit:\n%s", i, refs[0], refs[1])
+						}
+					}
+					if !prune {
+						return
+					}
+					// The checkout stays usable by the git binary: a prune that left the old ref's
+					// reflog behind makes git's next update of the new name fail on every run
+					// ("unable to append to …/logs/…" or "there are still logs under …").
+					mustGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/"+nu)
+					moved := mustGit(t, upstream, "rev-parse", "refs/heads/"+nu)
+					for _, c := range twins {
+						if out, err := exec.Command("git", "-C", c, "fetch", "origin").CombinedOutput(); err != nil {
+							t.Fatalf("%s: git fetch origin after the prune: %v\n%s", filepath.Base(c), err, out)
+						}
+						if got := mustGit(t, c, "rev-parse", "refs/remotes/origin/"+nu); got != moved {
+							t.Fatalf("%s: refs/remotes/origin/%s = %s after git fetch, want %s", filepath.Base(c), nu, got, moved)
+						}
+					}
+				})
+			}
 		}
+	}
+}
+
+// --prune drops only what the tracking refspec covers: a local branch, a local tag and another
+// remote's tracking ref survive it, as under git. And without --prune nothing is dropped.
+func TestFetch_PruneScopeIsTheRefspec(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	upstream := mustGit(t, work, "remote", "get-url", "origin")
+	clone := filepath.Join(t.TempDir(), "clone")
+	mustGit(t, "", "clone", "-q", upstream, clone)
+	sha := mustGit(t, clone, "rev-parse", "HEAD")
+	keep := []string{"refs/heads/keep", "refs/tags/v1", "refs/remotes/other/x"}
+	for _, ref := range append(keep, "refs/remotes/origin/stale") {
+		mustGit(t, clone, "update-ref", ref, sha)
+	}
+
+	withEnv(t, clone)
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch exit = %d, want 0", code)
+	}
+	if _, err := exec.Command("git", "-C", clone, "rev-parse", "--verify", "-q", "refs/remotes/origin/stale").CombinedOutput(); err != nil {
+		t.Fatal("a fetch without --prune dropped the stale tracking ref")
+	}
+	if code := run([]string{"fetch", "--prune"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch --prune exit = %d, want 0", code)
+	}
+	if out, err := exec.Command("git", "-C", clone, "rev-parse", "--verify", "-q", "refs/remotes/origin/stale").CombinedOutput(); err == nil {
+		t.Fatalf("--prune left the stale ref in place (%s)", out)
+	}
+	for _, ref := range keep {
+		if out, err := exec.Command("git", "-C", clone, "rev-parse", "--verify", "-q", ref).CombinedOutput(); err != nil {
+			t.Errorf("--prune dropped %s, which the tracking refspec does not cover (%s)", ref, out)
+		}
+	}
+}
+
+// When the checked-out set cannot be read, a fetch that would write a local branch stops
+// (unverifiable) rather than assuming no worktree holds it.
+func TestFetch_CheckedOutSetUnreadableFailsClosed(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	withEnv(t, work)
+	old := checkedOutBranchesFn
+	checkedOutBranchesFn = func(string) ([]string, error) { return nil, os.ErrPermission }
+	t.Cleanup(func() { checkedOutBranchesFn = old })
+	if code := run([]string{"fetch", "--branch", "anything"}); code != deskkit.ExitUnverifiable {
+		t.Fatalf("fetch exit = %d, want %d (unverifiable) when the checked-out set is unreadable", code, deskkit.ExitUnverifiable)
+	}
+	if len(fetchRecorded) != 0 {
+		t.Fatal("the transport was reached although the checked-out set was unreadable")
 	}
 }
 
@@ -802,7 +1292,7 @@ func TestNoArgsRefused(t *testing.T) {
 	}
 }
 
-// finding 1 env vector: the child env must carry no GIT_* var (upload-pack via
+// finding 1 env vector: the child env must carry no GIT_* var (a program-naming key via
 // GIT_CONFIG_*, GIT_SSH_COMMAND, GIT_ASKPASS, …) and must force GIT_TERMINAL_PROMPT=0.
 func TestScrubbedEnv_DropsGitAndDangerous(t *testing.T) {
 	parent := []string{

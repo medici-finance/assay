@@ -576,6 +576,34 @@ func TestRemoteURLMatchesConfigGet(t *testing.T) {
 	}
 }
 
+// RemoteURLs returns the whole url list (a multi-valued list is visible as multi-valued) and
+// applies the repository file's own insteadOf rules, so the gate and the connection read one
+// string. A missing remote is an error, never an empty list.
+func TestRemoteURLsReturnsWholeList(t *testing.T) {
+	f := gittest.NewFixture(t)
+	if _, err := f.Git("remote", "add", "origin", "https://example.invalid/o/r.git"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Git("config", "--add", "remote.origin.url", "https://example.invalid/o/second.git"); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.RemoteURLs("origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"https://example.invalid/o/r.git", "https://example.invalid/o/second.git"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("RemoteURLs = %v, want %v", got, want)
+	}
+	if _, err := repo.RemoteURLs("nope"); err == nil {
+		t.Fatal("RemoteURLs of an absent remote must be an error")
+	}
+}
+
 func TestCommitVerifyQuiet(t *testing.T) {
 	f := gittest.NewFixture(t)
 	repo, err := Open(f.Dir)
@@ -1356,6 +1384,32 @@ func TestDeleteLocalRefRemovesAndIsNoopOnAbsent(t *testing.T) {
 	if err := repo.DeleteLocalRef("refs/deskmerge/pr-7"); err != nil {
 		t.Fatalf("DeleteLocalRef on an already-absent ref must be a no-op success, got: %v", err)
 	}
+}
+
+// DeleteLocalRef removes the ref's reflog and the ref and log directories that leaves empty,
+// as `git update-ref -d` does, so a later ref named after a parent of it can be created.
+func TestDeleteLocalRefRemovesReflog(t *testing.T) {
+	f := gittest.NewFixture(t)
+	sha := mustGitOutput(t, f, "rev-parse", "HEAD")
+	mustGit2(t, f, "update-ref", "refs/heads/gone/x", sha)
+	log := filepath.Join(f.Dir, ".git", "logs", "refs", "heads", "gone", "x")
+	if _, err := os.Stat(log); err != nil {
+		t.Fatalf("fixture: no reflog for refs/heads/gone/x: %v", err)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteLocalRef("refs/heads/gone/x"); err != nil {
+		t.Fatalf("DeleteLocalRef: %v", err)
+	}
+	for _, p := range []string{log, filepath.Dir(log), filepath.Join(f.Dir, ".git", "refs", "heads", "gone")} {
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Fatalf("DeleteLocalRef left %s (%v)", p, err)
+		}
+	}
+	mustGit2(t, f, "update-ref", "refs/heads/gone", sha)
 }
 
 // TestUpdateRemoteTracking — the tracking ref is the one origin's fetch refspec maps the

@@ -122,6 +122,20 @@ func OpenWith(dir string, objects ObjectCache) (*Repo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
 	}
+	st, alt := storageAt(gitDir, objects)
+	r, err := git.Open(st, osfs.New(worktreeDir))
+	if err != nil {
+		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
+	}
+	return &Repo{repo: r, dir: dir, alternates: alt}, nil
+}
+
+// storageAt builds the object/ref storage for the repository whose admin directory is gitDir
+// (a checkout's .git, a linked worktree's .git/worktrees/<name>, or a bare repository), with
+// the same common-dir, alternates and extension handling OpenWith needs. The local transport
+// (localtransport.go) serves a local remote from exactly this storage, so a fetch from a
+// local origin reads it the way an Open of that origin would.
+func storageAt(gitDir string, objects ObjectCache) (storage.Storer, alternates) {
 	// A linked worktree's gitDir (.git/worktrees/<name>) holds only HEAD/index/the
 	// worktree-scoped config — refs, objects, packed-refs and the SHARED config live
 	// one level up, in the main checkout's common .git. dotgit.RepositoryFilesystem
@@ -144,11 +158,7 @@ func OpenWith(dir string, objects ObjectCache) (*Repo, error) {
 	// readAlternates for the resolution rules and the boundary this keeps.
 	alt := readAlternates(objectsDir)
 	st := filesystem.NewStorageWithOptions(repoFS, objects, filesystem.Options{AlternatesFS: alt.fs})
-	r, err := git.Open(extensionTolerantStorer{st}, osfs.New(worktreeDir))
-	if err != nil {
-		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
-	}
-	return &Repo{repo: r, dir: dir, alternates: alt}, nil
+	return extensionTolerantStorer{st}, alt
 }
 
 // commonDirOf reads gitDir's own "commondir" pointer file (present only for a linked
@@ -504,27 +514,62 @@ type FetchOpts struct {
 }
 
 // Fetch fetches RefSpecs from URL into the repo, entirely in-process: no external git
-// binary is spawned, no credential helper or askpass is consulted, no hook runs.
-// Returns nil on success, including when the remote was already up to date.
-func (r *Repo) Fetch(opts FetchOpts) error {
+// binary is spawned for any scheme (a local-path or file:// URL is served by localTransport,
+// not go-git's stock local client — see localtransport.go), no credential helper or askpass
+// is consulted, no hook runs.
+//
+// It writes the RefSpecs' destinations and nothing else. Tags are NOT followed (go-git's
+// default tag mode writes every advertised tag whose object is present, replacing a local tag
+// of the same name that differs): no refs/tags/* ref is created or moved by a fetch, so an
+// existing local tag is never replaced. A caller that wants a tag names it in a refspec.
+//
+// The ref updates are gitcore's, not go-git's (fetchstage.go): go-git fetches into a private
+// staging namespace, and Fetch then applies each value under git's rules. A destination a
+// non-forced refspec would move to a commit that does not descend from its current one is
+// left where it is and REPORTED — the returned error wraps ErrRefsNotUpdated and names it —
+// as is a destination that is a symbolic ref, which is never written through, an existing tag
+// a non-forced refspec would move, a new name that conflicts with an existing ref (X vs X/a),
+// and a destination that cannot be written; none of them stops the other destinations.
+// Prune runs first, as in git fetch: it drops a local ref the refspecs cover that the origin
+// no longer advertises, never a symbolic ref (so refs/remotes/origin/HEAD survives), and the
+// directories that leaves empty. Every RefSpec destination must be a full refs/ name.
+//
+// Returns nil only when every advertised value landed and every prune succeeded, including
+// when the remote was already up to date.
+func (r *Repo) Fetch(opts FetchOpts) (err error) {
 	specs, err := buildRefSpecs(opts.RefSpecs, opts.Force)
 	if err != nil {
 		return err
+	}
+	stage, staged, err := stageRefSpecs(specs)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if derr := r.dropStage(stage); derr != nil && err == nil {
+			err = derr
+		}
+	}()
+	stagedSpecs := make([]config.RefSpec, len(staged))
+	for i, s := range staged {
+		stagedSpecs[i] = s.staged
 	}
 	remote := git.NewRemote(r.repo.Storer, &config.RemoteConfig{
 		Name: transientRemoteName,
 		URLs: []string{opts.URL},
 	})
-	err = remote.Fetch(&git.FetchOptions{
-		RefSpecs: specs,
+	// Force: every staging refspec is forced, so go-git never makes (or silently drops) a
+	// fast-forward decision; applyStaged makes it. No Prune: applyStaged prunes.
+	ferr := remote.Fetch(&git.FetchOptions{
+		RefSpecs: stagedSpecs,
 		Auth:     opts.Auth,
-		Force:    opts.Force,
-		Prune:    opts.Prune,
+		Force:    true,
+		Tags:     git.NoTags,
 	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return fmt.Errorf("gitcore: fetch: %w", err)
+	if ferr != nil && ferr != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("gitcore: fetch: %w", ferr)
 	}
-	return nil
+	return r.applyStaged(staged, opts.Prune)
 }
 
 // PushOpts configures an in-process Push. Same shape and same containment guarantee
@@ -818,6 +863,27 @@ func (r *Repo) RemoteURL(name string) (string, error) {
 		return "", fmt.Errorf("gitcore: remote-url %s: no URL configured", name)
 	}
 	return urls[0], nil
+}
+
+// RemoteURLs returns EVERY URL configured for the named remote, in order — the whole
+// remote.<name>.url list, where RemoteURL returns only the first. A caller that gates a fetch
+// on the URL it will connect to uses this so a multi-valued list is seen as multi-valued
+// rather than silently narrowed to its first entry.
+//
+// Same scope as RemoteURL: the repository's own config file only (go-git reads no global or
+// worktree scope), with that file's url.<base>.insteadOf rules already applied by go-git. The
+// strings returned are the strings a following Fetch should be handed, so the gate and the
+// connection cannot disagree.
+func (r *Repo) RemoteURLs(name string) ([]string, error) {
+	remote, err := r.repo.Remote(name)
+	if err != nil {
+		return nil, fmt.Errorf("gitcore: remote-urls %s: %w", name, err)
+	}
+	urls := remote.Config().URLs
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("gitcore: remote-urls %s: no URL configured", name)
+	}
+	return append([]string(nil), urls...), nil
 }
 
 // CommitVerifyQuiet reports whether rev resolves to a commit, matching

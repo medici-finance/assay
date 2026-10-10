@@ -26,10 +26,10 @@ func TestAllowlistRefusesUnknownToolVerb(t *testing.T) {
 
 // TestDeskmergeAllowlistNarrowedToTrialMergeFamily is brief 07's own
 // golden: the verbs that migrated to gitcore in this brief must be OFF the allowlist,
-// and the trial-merge family (plus the still-pending transport verbs briefs 05/06 own)
+// and the trial-merge family (plus the still-pending push transport verb brief 06 owns)
 // must stay on it.
 func TestDeskmergeAllowlistNarrowedToTrialMergeFamily(t *testing.T) {
-	stayed := []string{"merge", "diff", "add", "worktree", "fetch", "push"}
+	stayed := []string{"merge", "diff", "add", "worktree", "push"}
 	for _, v := range stayed {
 		if !Allowed("deskmerge", v) {
 			t.Fatalf("deskmerge:%s must stay allowlisted (trial-merge family, or a "+
@@ -41,10 +41,11 @@ func TestDeskmergeAllowlistNarrowedToTrialMergeFamily(t *testing.T) {
 	if !Allowed("deskmerge", "remote") {
 		t.Fatal("deskmerge:remote must stay allowlisted for `remote get-url [--push] --all origin`")
 	}
-	migrated := []string{"rev-parse", "rev-list", "merge-base", "commit", "update-ref"}
+	// fetch migrated to gitcore.Fetch in brief 05 (desktools-go-git).
+	migrated := []string{"rev-parse", "rev-list", "merge-base", "commit", "update-ref", "fetch"}
 	for _, v := range migrated {
 		if Allowed("deskmerge", v) {
-			t.Fatalf("deskmerge:%s migrated to gitcore in brief 07 — must no "+
+			t.Fatalf("deskmerge:%s migrated to gitcore (brief 07; fetch brief 05) — must no "+
 				"longer be allowlisted", v)
 		}
 	}

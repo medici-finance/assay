@@ -40,13 +40,16 @@ func newDeniedUpstream(t *testing.T) string {
 	return denied
 }
 
-// The fail-first case. The shared config says origin is the allowed upstream; the linked
-// worktree resets the url list (an empty value) and sets an alias, which a worktree-scoped
-// insteadOf rewrites to the DENIED upstream. `git remote get-url --all origin` — what the
-// fetch uses — names the denied repo. A read of `.git/config` alone sees the allowed one and
-// lets `git fetch` run against the denied repo.
-func TestFetch_WorktreeScopedURLAndInsteadOf_GateSeesGitsURL(t *testing.T) {
+// Behaviour change, pinned (the git binary is gone from fetch): the gate and the connection read
+// ONE string — the repository's own configured remote.origin.url. The shared config says origin
+// is the allowed upstream; the linked worktree resets the url list and rewrites an alias, via
+// worktree-scoped config, to the DENIED upstream. The git binary used to follow that and fetch
+// from the denied repo (so the old gate had to see it). The in-process transport reads no
+// worktree-scope config, so the fetch goes to the allowed upstream the gate decided on and the
+// denied repo is never contacted: the gate cannot be contradicted by a scope it does not read.
+func TestFetch_WorktreeScopedURL_NotConsulted(t *testing.T) {
 	work := newRepo(t, allowedSlug)
+	shared := originURL(t, work)
 	wt := newLinkedWorktree(t, work)
 	denied := newDeniedUpstream(t)
 
@@ -54,37 +57,18 @@ func TestFetch_WorktreeScopedURLAndInsteadOf_GateSeesGitsURL(t *testing.T) {
 	mustGit(t, wt, "config", "--worktree", "--add", "remote.origin.url", fixtureAlias)
 	mustGit(t, wt, "config", "--worktree", "url."+denied+".insteadOf", fixtureAlias)
 
-	// Precondition: git itself resolves origin to the denied upstream in this worktree.
-	if got := mustGit(t, wt, "remote", "get-url", "--all", "origin"); got != denied {
-		t.Fatalf("fixture: git resolves origin to %q, want the denied upstream %q", got, denied)
+	withEnv(t, wt)
+	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+		t.Fatalf("fetch exit = %d, want ok (the worktree-scope rewrite is not part of this fetch)", code)
 	}
-
-	calls := withEnv(t, wt)
-	if code := run([]string{"fetch"}); code != deskkit.ExitRefused {
-		t.Fatalf("fetch exit = %d, want %d (git's effective origin is out of set)", code, deskkit.ExitRefused)
-	}
-	if fetchArgv(*calls) != nil {
-		t.Fatal("git fetch must NOT run when the URL git will use is not allowed")
-	}
-	var saw bool
-	for _, e := range readAudit(t) {
-		if e.Verb == "fetch" && e.Result == deskkit.ResultRefused {
-			saw = true
-			// The refusal must be about the URL git would fetch from, not the shared one.
-			if !strings.Contains(e.Detail, deniedSlug+".git") {
-				t.Fatalf("audit detail = %q, want it to name the URL git would fetch from (…%s.git)", e.Detail, deniedSlug)
-			}
-		}
-	}
-	if !saw {
-		t.Fatal("no refused fetch audit line was written")
+	if got := onlyFetch(t); got.URL != shared {
+		t.Fatalf("fetch connected to %q, want the gated shared URL %q (never the denied %q)", got.URL, shared, denied)
 	}
 }
 
-// The same resolution on the allowed side: a worktree whose OWN url (reset + alias rewritten
-// by a worktree-scoped insteadOf) lands on the allowed upstream is admitted, even though the
-// shared config names a repo that does not parse. The gate follows git, in both directions.
-func TestFetch_WorktreeScopedURL_AllowedByGitsResolution(t *testing.T) {
+// The gate still refuses when the repository's OWN url is bad, and a worktree-scoped alias
+// cannot rescue it: the string that fails the gate is the string that would be connected to.
+func TestFetch_BadSharedURL_NotRescuedByWorktreeScope(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	upstream := mustGit(t, work, "remote", "get-url", "origin")
 	wt := newLinkedWorktree(t, work)
@@ -95,11 +79,38 @@ func TestFetch_WorktreeScopedURL_AllowedByGitsResolution(t *testing.T) {
 	mustGit(t, wt, "config", "--worktree", "url."+upstream+".insteadOf", fixtureAlias)
 
 	calls := withEnv(t, wt)
-	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
-		t.Fatalf("fetch exit = %d, want ok (git resolves origin to the allowed upstream)", code)
+	if code := run([]string{"fetch"}); code != deskkit.ExitRefused {
+		t.Fatalf("fetch exit = %d, want %d (the repository's own url does not parse)", code, deskkit.ExitRefused)
 	}
-	if fetchArgv(*calls) == nil {
-		t.Fatal("git fetch should have run")
+	if fetchArgv(*calls) != nil {
+		t.Fatal("the transport must not be reached when the gated url is refused")
+	}
+}
+
+// A repo-LOCAL insteadOf is part of the repository's own config, and go-git applies it to the
+// url list it hands back — so the string the gate decides on is already the rewritten one.
+// Recorded origin allowed, a local insteadOf rewrites it to a DENIED slug: refused.
+func TestFetch_RepoLocalInsteadOf_GateSeesRewrittenURL(t *testing.T) {
+	work := newRepo(t, allowedSlug)
+	recorded := originURL(t, work)
+	denied := newDeniedUpstream(t)
+	mustGit(t, work, "config", "url."+denied+".insteadOf", recorded)
+
+	calls := withEnv(t, work)
+	if code := run([]string{"fetch"}); code != deskkit.ExitRefused {
+		t.Fatalf("fetch exit = %d, want %d (the rewritten url is out of set)", code, deskkit.ExitRefused)
+	}
+	if fetchArgv(*calls) != nil {
+		t.Fatal("the transport must not be reached when the rewritten url is out of set")
+	}
+	var saw bool
+	for _, e := range readAudit(t) {
+		if e.Verb == "fetch" && e.Result == deskkit.ResultRefused && strings.Contains(e.Detail, deniedSlug+".git") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("no refused fetch audit line names the rewritten url; got %+v", readAudit(t))
 	}
 }
 
@@ -153,25 +164,5 @@ func TestPush_MultiValuedOriginURL_Refused(t *testing.T) {
 	}
 	if *tokenRead {
 		t.Fatal("no token may be read when origin has more than one url")
-	}
-}
-
-// A global-scope insteadOf (the operator's ~/.gitconfig) also rewrites what git fetches from,
-// so the gate must see it too.
-func TestFetch_GlobalInsteadOf_GateSeesGitsURL(t *testing.T) {
-	work := newRepo(t, allowedSlug)
-	recorded := mustGit(t, work, "config", "--get", "remote.origin.url")
-	denied := newDeniedUpstream(t)
-
-	calls := withEnv(t, work) // sets a private HOME
-	gc := "[url \"" + denied + "\"]\n\tinsteadOf = " + recorded + "\n"
-	if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".gitconfig"), []byte(gc), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if code := run([]string{"fetch"}); code != deskkit.ExitRefused {
-		t.Fatalf("fetch exit = %d, want %d (a global insteadOf points origin out of set)", code, deskkit.ExitRefused)
-	}
-	if fetchArgv(*calls) != nil {
-		t.Fatal("git fetch must NOT run when a global insteadOf rewrites origin out of set")
 	}
 }
