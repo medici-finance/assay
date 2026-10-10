@@ -37,13 +37,13 @@ sources:
   - "research note (driver-held, 2026-10-06): an independent review of applying decision models to the pipeline named the five-exit triage call as the first shadow target for a cheap decision model, and found no labelled record of it"
   - "freshness-checked 2026-10-06 @ 1fbf1153f (origin/main): docs/streams/intake/ does not exist in this repo and docs/streams/INTAKE.md reads 'No intake entries yet'; intakeEntry (statusgen/registerentries.go:24-41) has no triage-time, triager or tier key; scanloop's production run wires no Feeder, so every judgment item is parked (adapter.go:466-467, run.go:267-272) and never reaches Land"
 consumers:
-  - "spec/registers-v1.md (§5.2 format, §5.3 rules; new §5.4 exit mapping): follow-up desk-supervision/33 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/registerentries.go (intakeEntry gains three optional keys; the strict key set is derived from the struct): follow-up desk-supervision/33 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/main.go (the --intake-exits flag): follow-up desk-supervision/33 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/scanloop/land.go and adapter.go (record writer called from Land): follow-up desk-supervision/33 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/scanloop/main.go (the land verb and usage text): follow-up desk-supervision/33 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "plugins/assay/skills/intake-desk/SKILL.md (exits table naming, triage stamp, land verb step): follow-up desk-supervision/33 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/README.md (scanloop section): follow-up desk-supervision/33 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "spec/registers-v1.md (§5.2 format: the optional triage stamp and `scoped → F-<slug>`; new §5.4 exit mapping): fixed-here"
+  - "statusgen/registerentries.go (intakeEntry gains three optional keys; the strict key set is derived from the struct): fixed-here"
+  - "statusgen/main.go (the --intake-exits flag): fixed-here"
+  - "tools/desk/cmd/scanloop/{adapter,exitrecord,landverb}.go (record writer called from Land, and the land verb; land.go's ExitOf and auditExit are reused unchanged): fixed-here"
+  - "tools/desk/cmd/scanloop/main.go (the land verb and usage text): fixed-here"
+  - "plugins/assay/skills/intake-desk/SKILL.md (exits table naming, triage stamp, land verb step): fixed-here"
+  - "tools/desk/README.md (scanloop section): fixed-here"
   - "docs/records-and-retention.md (lists the new record and its retention): follow-up desk-supervision/35 (the records page brief owns every row of that table)"
   - "statusgen/intake_alarm.go (isUntriagedDisposition, the intake-debt line): out-of-scope (it reads only `disposition`; the three new keys are additive and do not change which entries count as untriaged — Verify row 3 keeps a neighbour case)"
   - "statusgen/graph.go (intake nodes): out-of-scope (graph nodes carry id and title only; no exit or triage field is added to the graph)"
@@ -57,7 +57,7 @@ files:
 - **edit** `spec/registers-v1.md` — §5.2: three OPTIONAL frontmatter keys on an intake entry
   (`triaged`, `triaged-by`, `triager-tier`); new §5.4 "Exit record": the disposition → exit
   mapping table and a pointer to the record schema doc.
-- **add** `docs/streams/desk-supervision/intake-exit-v1.md` (planned) — the record schema: fields
+- **add** `spec/intake-exit-v1.md` (first planned in this stream's directory; moved because `tools/desk` ships and its schema test must not name a withheld stream path) — the record schema: fields
   table, closed vocabularies, the never-recorded list, where each writer puts records.
 - **edit** `statusgen/registerentries.go` (+ test) — `intakeEntry` gains `Triaged`, `TriagedBy`,
   `TriagerTier`; value checks when present.

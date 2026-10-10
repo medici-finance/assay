@@ -273,7 +273,7 @@ func TestDrainPass_OneFailingDispatchDoesNotStrandTheRestOfTheQueue(t *testing.T
 	loop.Write = func(string, string) error { return nil }
 	loop.Feeder = func(it loopengine.Item, _ loopengine.Tier, _ LaneOutcome) (loopengine.Result, error) {
 		it.Payload["exit"] = string(ExitNeedsDecision)
-		return loopengine.Result{Item: it, Verdict: loopengine.VerdictPass}, nil
+		return loopengine.Result{Item: it, Verdict: loopengine.VerdictPass, Artifact: "medici-finance/assay#900"}, nil
 	}
 
 	var sb strings.Builder

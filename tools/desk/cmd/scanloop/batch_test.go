@@ -300,7 +300,7 @@ func TestBatch_MixedPassBatchesTheMechanicalHalfAndEmitsTheRest(t *testing.T) {
 	}
 	loop.Feeder = func(it loopengine.Item, _ loopengine.Tier, _ LaneOutcome) (loopengine.Result, error) {
 		it.Payload["exit"] = string(ExitNeedsDecision)
-		return loopengine.Result{Item: it, Verdict: loopengine.VerdictPass}, nil
+		return loopengine.Result{Item: it, Verdict: loopengine.VerdictPass, Artifact: "medici-finance/assay#900"}, nil
 	}
 
 	if err := drainPass(passConfig(t), loop, io_Discard{}); err != nil {

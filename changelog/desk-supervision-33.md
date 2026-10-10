@@ -1,0 +1,2 @@
+### Added
+- Every exit the intake desk takes now lands one structured `intake-exit-v1` record: `scanloop run` appends a `mechanical` record per landed exit, the new `scanloop land` verb records a `judgment` exit for a parked item, and `statusgen --intake-exits --json` exports the intake register's stamped entries with a stamped/unstamped/unmapped summary. Intake entries gain an optional `triaged` / `triaged-by` / `triager-tier` stamp, linted against a closed role set so no person's login can enter it.

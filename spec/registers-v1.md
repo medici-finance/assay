@@ -258,6 +258,22 @@ Each entry is a file under `docs/streams/intake/`, rendering into the generated 
 Disposition: new | watching | scoped → <stream> | rejected — <why> | decision-needed → issue #NN
 ```
 
+The `scoped →` target may also name a finding (`scoped → F-<slug>`); the disposition grammar is
+otherwise unchanged.
+
+A per-entry file MAY carry a **triage stamp** — three optional frontmatter keys, set in the same
+commit that moves the entry out of `new` (forward-only: an entry triaged before the stamp existed
+is not backfilled):
+
+| Key | Value | A conforming linter MUST report a PROBLEM when |
+|---|---|---|
+| `triaged` | a date (`YYYY-MM-DD`) or an RFC3339 timestamp | the value parses as neither |
+| `triaged-by` | one member of the closed role set: `the-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`, `intake-desk`, `driver` | the value is not a member. Membership is checked against the list, never a pattern, so a person's login is always a PROBLEM. The PROBLEM quotes the value only up to the longest member's length |
+| `triager-tier` | `any` or `strong` | the value is anything else, such as a vendor model name |
+
+An absent key is legal. The register is committed to git, which is why no key may carry a person's
+login.
+
 ### 5.3 Rules
 
 - `id` MUST be a slug-form ID per section 3.4.
@@ -271,6 +287,30 @@ Disposition: new | watching | scoped → <stream> | rejected — <why> | decisio
   report intake debt that does not exist.
 - Withdrawal: keep the file, set `Disposition: rejected — <why>`, and explain in the
   body. The file MUST NOT be deleted.
+
+### 5.4 Exit mapping
+
+Every triaged entry maps to exactly one of the intake desk's five tracked exits, and
+`statusgen --intake-exits --json` exports one `intake-exit-v1` record per entry that maps AND
+carries a complete, valid stamp (section 5.2). The record schema lives in
+[`intake-exit-v1.md`](./intake-exit-v1.md).
+
+| Disposition | Exit | `artifact` | `detail` |
+|---|---|---|---|
+| `scoped → <stream>` or `scoped → <stream>/<NN>` | `placeholder` | the stream or brief | |
+| `scoped → issue #NN` | `bug` | `#NN` | |
+| `scoped → F-<slug>` | `finding` | `F-<slug>` | |
+| `decision-needed` (with `decision-issue: NN`) | `needs-decision` | `#NN` | |
+| `watching` | `rejected-watching` | | `watching` |
+| `rejected — <why>` | `rejected-watching` | | `rejected` |
+| legacy `adopted` (target a stream or brief) | `placeholder` | the stream or brief | |
+
+An entry whose disposition does not map (for example `decision-needed` with no `decision-issue`, a
+`scoped` target that is none of the forms above, or a value outside the vocabulary) is counted as
+`unmapped`, never guessed. An entry that maps but has no complete stamp is counted as `unstamped`.
+The export's last line is the summary `{"stamped": N, "unstamped": M, "unmapped": K}`. When neither
+the per-entry directory nor the `INTAKE.md` view exists, the export is could-not-check (exit 6), never
+an empty export.
 
 ## 6. REQUIREMENTS register
 

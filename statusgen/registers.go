@@ -213,6 +213,13 @@ func registerIntegrityEntries(root string) []registerProblem {
 				"intake register: %s: unparseable date %q — age not computable; fix the date: field",
 				e.ID, e.Date), intakeIdx[e.ID]...)
 		}
+		// triage-stamp check (desk-supervision/33): a present triaged / triaged-by /
+		// triager-tier must be valid. triaged-by is checked for MEMBERSHIP in the closed
+		// role set, never against a pattern — the register is committed, and a pattern that
+		// admits a role slug admits a person's login too.
+		for _, msg := range intakeStampProblems(e) {
+			add(msg, intakeIdx[e.ID]...)
+		}
 	}
 
 	// disposition-key check: parse each raw file's frontmatter and look for the

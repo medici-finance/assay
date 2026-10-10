@@ -38,6 +38,13 @@ type intakeEntry struct {
 	// from frontmatter — identity is the id, placement is a fact about the
 	// filesystem, not a claim the entry makes about itself.
 	Subdir string `yaml:"-"`
+	// The triage stamp (desk-supervision/33), all optional and forward-only: when the entry was
+	// triaged (a date or RFC3339), by which role (a member of the CLOSED role set in
+	// intakeexits.go, never a login), at which tier (any | strong). --lint checks each key that is
+	// present; --intake-exits exports only entries that carry all three.
+	Triaged     string `yaml:"triaged,omitempty"`
+	TriagedBy   string `yaml:"triaged-by,omitempty"`
+	TriagerTier string `yaml:"triager-tier,omitempty"`
 }
 
 // intakeKnownSubdirs are the five triage-state subdirectories under
