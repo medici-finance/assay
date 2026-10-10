@@ -18,17 +18,20 @@ shipped artifacts are:
   `loopadmin`, `qualgen`, `cellconfig`). No `go.work`; each module is
   independent except `tools/loopresolve`, which replaces `cellconfig` with
   the in-tree relative path.
-- **`plugins/` (markdown, YAML, and shell)** — the Claude Code plugin
-  bundle: skills, command definitions, references, and hooks. The wired
-  hooks (`plugins/assay/hooks/hooks.json`) run on `SessionStart` only, and
-  execute two bash scripts. The bundle also carries ~18 shell scripts,
+- **`plugins/` (markdown, JSON, YAML, shell)** — the agent-harness plugin
+  bundle: skills, commands, references, scripts and hooks. The only hooks it
+  wires (`plugins/assay/hooks/hooks.json`) are two `SessionStart` shell
+  scripts that inject text into a session; it ships no agents directory and
+  wires no hook on tool-call events — an adopting repository registers
+  `writeguard` as a tool-call hook in its own harness settings
+  (`tools/desk/README.md`). The bundle also carries ~18 shell scripts,
   including the adopter installer `plugins/assay/scripts/assay-install.sh`,
   whose checksum verification of downloaded binaries is a stated supply-chain
   control.
-- **`tools/desk/cmd/cellctl` + `tools/desk/internal/cell*`** — container
-  orchestration for running agent cells (images, mounts, network policy).
-  (`tools/cellctl/` holds only examples, testdata and parity tests — the
-  shipped launcher is the Go command.)
+- **`tools/desk/cmd/cellctl`** (with `tools/desk/internal/cellcontainer`) —
+  the cell launcher: scaffolds, starts and stops agent cells on one machine,
+  including container cells run through Docker (image, mounts, network).
+  `tools/cellctl/` holds only its examples, shell test suites and test data.
 - **CI workflows (`.github/workflows/`) and guardrail config
   (`.claude/guardrails/`)** — declared risk surfaces per `.assay-surfaces`;
   SECURITY.md explicitly puts workflow and CI weaknesses in scope.
@@ -51,17 +54,17 @@ the guard binaries exist).
    `desksourceguard`, `repohardenguard`, `clusterguard` (all under
    `tools/desk/cmd/`). These are the enforcement layer standing between an
    autonomous (possibly prompt-injected) agent and the repository/forge.
-   **A bypass of any guard — writing outside the allowed tree, pushing to a
-   protected ref, evading a path or command check — is the single most
-   valuable finding class here.** Pay attention to TOCTOU between policy
-   check and action, symlink/hardlink tricks, path canonicalization (`..`,
+   (`tools/claimguard` is not one of them: it is a heuristic that flags
+   uncited product names in markdown, not an enforcement point.) **A bypass
+   of any guard — writing outside the allowed tree, pushing to a protected
+   ref, evading a path or command check — is the single most valuable
+   finding class here.** Pay attention to TOCTOU between policy check and
+   action, symlink/hardlink tricks, path canonicalization (`..`,
    case-folding, unicode, alternate spellings of the same file), and
    argument-injection through filenames or branch names that begin with `-`.
    Note `deskpushguard` documents a deliberate fail-open-on-ambiguity
    contract (`tools/desk/cmd/deskpushguard/main.go`) — ambiguity there is
    not itself a finding, but a bypass of a check it *does* perform is.
-   (`tools/claimguard/` is NOT one of these — it is a markdown citation
-   heuristic that gates no write.)
 2. **Credential and token handling** — the GitHub App key parse and
    installation-token exchange in `tools/desk/cmd/desktoken/desktoken.go`
    and `tools/desk/cmd/deskpost/github.go`, plus credential-path resolution
@@ -73,11 +76,10 @@ the guard binaries exist).
    string, branch name, or file path reaches `exec`, `sh -c`, `git`, or `gh`
    without strict quoting/allowlisting. This is the classic injection class
    for this codebase and should be hunted hard.
-4. **`cellctl` container orchestration** (`tools/desk/cmd/cellctl` with
-   `internal/cellcontainer`, `celllaunch`, `cellprocess`, `cellcache`,
-   `cellcadence`, `cellscratch`) — mount scope escapes, unintended host path
-   exposure, network-policy gaps, or privilege escalation between the
-   orchestrator and the cell workload.
+4. **`cellctl` container cells** (`tools/desk/cmd/cellctl`,
+   `tools/desk/internal/cellcontainer`) — mount scope escapes, unintended
+   host path exposure, network-policy gaps, or privilege escalation between
+   the orchestrator and the cell workload.
 5. **The install and acquisition path** — `plugins/assay/scripts/`
    (installer, checksum verification) and the release/pin machinery that
    decides which binary an adopter runs. A way to make the installer fetch
@@ -94,28 +96,31 @@ the guard binaries exist).
 ## How to exercise it
 
 - Every Go module builds with `go build ./...` and tests with `go test ./...`
-  from its own directory (no workspace file; each `go.mod` is independent).
+  from its own directory (no workspace file; each `go.mod` is independent,
+  except that `tools/loopresolve` replaces `cellconfig` with the in-tree
+  copy).
 - `tools/desk` is the large one: `cd tools/desk && go test ./...` runs the
   guard and forge-transport unit tests, including adversarial-path cases —
   extend those patterns.
-- The hostile-input corpus for the trust gate lives at
-  `fixtures/untrusted-corpus/*/corpus.yaml` and
-  `tools/desk/internal/deskkit/untrustcorpus/testdata/corpus.yaml` (the
-  shipped default); `tools/desk/cmd/untrustcorpus` validates corpus files
-  and `tools/desk/cmd/deskscanuntrusted` scans content against one. The
-  corpus is the best seed material for new injection attempts.
-- `tools/skillslint` runs offline checks over the plugin tree's markdown
-  (structure, frontmatter conformance, invisible-character/Trojan-Source
-  lint, guardrail byte-diffs). `tools/winparity` asserts the Windows build
-  script (`scripts/build-windows.ps1`) mirrors the root Makefile's target
-  set. Both are lint-style gates, good references for what the project
-  already checks mechanically.
+- `tools/desk/internal/deskkit/untrustcorpus` holds the positive-control
+  corpus of known-bad and known-good untrusted-input samples (a codepoint
+  table under `testdata/`, assembled at run time), read by
+  `tools/desk/cmd/untrustcorpus`; further tables sit under
+  `fixtures/untrusted-corpus/`. `tools/desk/cmd/deskscanuntrusted` is the
+  deterministic pre-scanner the samples are meant to trip; it carries no
+  corpus of its own. The corpus is the best seed material for new injection
+  attempts.
+- `tools/skillslint` lints the plugin tree offline (skill structure, hidden
+  and bidirectional characters, shared-guardrail copies) and
+  `tools/winparity` checks the Windows build script against the Makefile.
+  The shell layer is exercised by the `*.test.sh` / `*_test.sh` suites,
+  most of them under `tools/cellctl/tests/` and `plugins/assay/scripts/`.
 - Note on test baselines: parts of the `tools/desk` suite expect a desk
   operator environment (a roster config naming the forge, a git identity,
   credential files). Failures whose message is about resolving the forge,
   reading the roster, or a missing credential are environmental, not
-  regressions — most tools fail closed by design when unconfigured
-  (`deskpushguard` is the documented exception, fail-open on ambiguity).
+  regressions — most of the tools fail closed by design when unconfigured
+  (`deskpushguard` is the documented exception: it fails open on ambiguity).
   Judge a change by whether it introduces a *new* failure mode, not by the
   absolute count.
 
