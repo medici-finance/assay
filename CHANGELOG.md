@@ -23,6 +23,12 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.37 — 2026-10-10
+
+### Fixed
+- `deskevidence` lands Evidence rows and outcome records again. Since v1.0.33 every landing, including `--dry-run`, exited 5 with "refusing to reach the forge with no minted verifier token": pre-work admission reads the dispatcher's attestation record from the forge, and it ran before the verifier token was minted, so the tool's own custody step refused the read. The landing now mints the token and resolves its forge first, then runs admission through that same forge, so admission and the write use one forge under one minted token. Admission still runs before the landing reads the evidence file or the branch and before any write, no check is skipped or made optional, and there is still no fallback to an ambient identity. One visible change: a landing that admission or a later local check refuses (for example a `--root` that is not the dispatched verifier home, or an oversized file) now mints a token before it is refused. On a GitHub-served repository that mint reuses a cached token inside its reuse window; on a GitLab-served repository the mint rotates the role credential, so such a refused landing now spends one rotation it did not spend before. The refusals placed before admission still refuse without minting: a malformed or unlisted repository, an unsanctioned `main`, bad or conflicting flags, a generated or appended-log target, and an outcome record that does not parse, is future-dated or cannot be named. Two refusals that need only the command line sit after admission, as they did before this change, and so now mint first: a target outside `docs/streams/`, and an absolute `--evidence-file` with `--root` that is not a `--brief-path` fragment outside it.
+- forge-neutral/04's `consumers:` Verify row is decidable on merged main: the `statusgen --consumers --brief` row pins `--base` to the parent of the commit that first added the brief file (#1281), and three routing claims now use the `follow-up` token naming the brief that actually shipped the deskpr/deskfile/deskclose migration (forge-neutral/13).
+
 ## v1.0.36 — 2026-10-09
 
 ### Changed
