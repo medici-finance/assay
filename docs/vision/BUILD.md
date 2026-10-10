@@ -10,7 +10,7 @@ Use Python 3 with ReportLab installed, then run from the repository root:
 python3 docs/vision/build_pdf.py
 ```
 
-The output is `docs/vision/assay-vision.pdf`. The script uses PDF-standard Helvetica for body text and Times for chapter titles. A small renderer handles the static rectangles, paths and text used by these figures without rasterizing them. It fails on unsupported elements so future edits require an explicit renderer update. It creates a cover, linked contents, numbered chapters, source links and page numbers. Text streams remain uncompressed for straightforward publication inspection; no font files or pixel data are embedded. A fixed publication date and pinned evidence revision live in the README. Revise those only when the corresponding source review has been performed.
+The output is `docs/vision/assay-vision.pdf`. The script uses PDF-standard Helvetica for body text and Times for chapter titles. A small renderer handles the static rectangles, paths and text used by these figures without rasterizing them. It fails on unsupported elements so future edits require an explicit renderer update. It creates a cover, linked contents, an installation quickstart, numbered chapters, source links and page numbers. The website and installation commands come from the same Markdown source; the cover also links to the website. Text streams remain uncompressed for straightforward publication inspection; no font files or pixel data are embedded. A fixed publication date and pinned evidence revision live in the README. Revise those only when the corresponding source review has been performed.
 
 After a change, render every page with Poppler and inspect the result:
 

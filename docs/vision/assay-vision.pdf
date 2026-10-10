@@ -2,7 +2,8 @@
 %“Œ‹ž ReportLab Generated PDF document (opensource)
 1 0 obj
 <<
-/F1 2 0 R /F2 3 0 R /F3 4 0 R /F4 5 0 R /F5 6 0 R /F6 39 0 R
+/F1 2 0 R /F2 3 0 R /F3 4 0 R /F4 5 0 R /F5 6 0 R /F6 43 0 R 
+  /F7 52 0 R
 >>
 endobj
 2 0 obj
@@ -32,159 +33,14 @@ endobj
 endobj
 7 0 obj
 <<
-/Contents 102 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://assay.guide/)
+>> /Border [ 0 0 0 ] /Rect [ 54 76 119 89 ] /Subtype /Link /Type /Annot
 >>
 endobj
 8 0 obj
 <<
-/Border [ 0 0 0 ] /Contents () /Dest [ 37 0 R /Fit ] /Rect [ 535.6044 580.1898 541.2756 596.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-9 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 37 0 R /Fit ] /Rect [ 54 578.1498 129.9594 590.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-10 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 38 0 R /Fit ] /Rect [ 535.6044 544.1898 541.2756 560.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-11 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 38 0 R /Fit ] /Rect [ 54 542.1498 244.485 554.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-12 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 40 0 R /Fit ] /Rect [ 535.6044 508.1898 541.2756 524.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-13 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 40 0 R /Fit ] /Rect [ 54 506.1498 221.2698 518.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-14 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 42 0 R /Fit ] /Rect [ 535.6044 472.1898 541.2756 488.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-15 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 42 0 R /Fit ] /Rect [ 54 470.1498 234.2646 482.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-16 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 43 0 R /Fit ] /Rect [ 535.6044 436.1898 541.2756 452.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-17 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 43 0 R /Fit ] /Rect [ 54 434.1498 290.4258 446.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-18 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 44 0 R /Fit ] /Rect [ 535.6044 400.1898 541.2756 416.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-19 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 44 0 R /Fit ] /Rect [ 54 398.1498 275.6868 410.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-20 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 46 0 R /Fit ] /Rect [ 529.9332 364.1898 541.2756 380.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-21 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 46 0 R /Fit ] /Rect [ 54 362.1498 252.4308 374.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-22 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 47 0 R /Fit ] /Rect [ 529.9332 328.1898 541.2756 344.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-23 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 47 0 R /Fit ] /Rect [ 54 326.1498 188.9256 338.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-24 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 48 0 R /Fit ] /Rect [ 529.9332 292.1898 541.2756 308.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-25 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 48 0 R /Fit ] /Rect [ 54 290.1498 228.063 302.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-26 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 50 0 R /Fit ] /Rect [ 529.9332 256.1898 541.2756 272.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-27 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 50 0 R /Fit ] /Rect [ 54 254.1498 215.007 266.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-28 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 52 0 R /Fit ] /Rect [ 529.9332 220.1898 541.2756 236.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-29 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 52 0 R /Fit ] /Rect [ 54 218.1498 323.2902 230.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-30 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 56 0 R /Fit ] /Rect [ 529.9332 184.1898 541.2756 200.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-31 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 56 0 R /Fit ] /Rect [ 54 182.1498 283.0716 194.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-32 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 57 0 R /Fit ] /Rect [ 529.9332 148.1898 541.2756 164.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-33 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 57 0 R /Fit ] /Rect [ 54 146.1498 253.002 158.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-34 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 80 0 R /Fit ] /Rect [ 529.9332 112.1898 541.2756 128.1898 ] /Subtype /Link /Type /Annot
->>
-endobj
-35 0 obj
-<<
-/Border [ 0 0 0 ] /Contents () /Dest [ 80 0 R /Fit ] /Rect [ 54 110.1498 184.968 122.3898 ] /Subtype /Link /Type /Annot
->>
-endobj
-36 0 obj
-<<
-/Annots [ 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R 15 0 R 16 0 R 17 0 R 
-  18 0 R 19 0 R 20 0 R 21 0 R 22 0 R 23 0 R 24 0 R 25 0 R 26 0 R 27 0 R 
-  28 0 R 29 0 R 30 0 R 31 0 R 32 0 R 33 0 R 34 0 R 35 0 R ] /Contents 103 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Annots [ 7 0 R ] /Contents 116 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
 >> /Rotate 0 
   /Trans <<
@@ -192,134 +48,242 @@ endobj
 >> /Type /Page
 >>
 endobj
+9 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 49 0 R /Fit ] /Rect [ 535.6044 580.1898 541.2756 596.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+10 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 49 0 R /Fit ] /Rect [ 54 578.1498 104.4594 590.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+11 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 50 0 R /Fit ] /Rect [ 535.6044 544.1898 541.2756 560.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+12 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 50 0 R /Fit ] /Rect [ 54 542.1498 129.9594 554.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+13 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 51 0 R /Fit ] /Rect [ 535.6044 508.1898 541.2756 524.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+14 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 51 0 R /Fit ] /Rect [ 54 506.1498 244.485 518.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+15 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 53 0 R /Fit ] /Rect [ 535.6044 472.1898 541.2756 488.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+16 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 53 0 R /Fit ] /Rect [ 54 470.1498 221.2698 482.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+17 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 55 0 R /Fit ] /Rect [ 535.6044 436.1898 541.2756 452.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+18 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 55 0 R /Fit ] /Rect [ 54 434.1498 234.2646 446.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+19 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 56 0 R /Fit ] /Rect [ 535.6044 400.1898 541.2756 416.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+20 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 56 0 R /Fit ] /Rect [ 54 398.1498 290.4258 410.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+21 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 57 0 R /Fit ] /Rect [ 529.9332 364.1898 541.2756 380.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+22 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 57 0 R /Fit ] /Rect [ 54 362.1498 275.6868 374.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+23 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 59 0 R /Fit ] /Rect [ 529.9332 328.1898 541.2756 344.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+24 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 59 0 R /Fit ] /Rect [ 54 326.1498 252.4308 338.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+25 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 60 0 R /Fit ] /Rect [ 529.9332 292.1898 541.2756 308.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+26 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 60 0 R /Fit ] /Rect [ 54 290.1498 188.9256 302.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+27 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 61 0 R /Fit ] /Rect [ 529.9332 256.1898 541.2756 272.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+28 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 61 0 R /Fit ] /Rect [ 54 254.1498 228.063 266.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+29 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 63 0 R /Fit ] /Rect [ 529.9332 220.1898 541.2756 236.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+30 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 63 0 R /Fit ] /Rect [ 54 218.1498 215.007 230.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+31 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 65 0 R /Fit ] /Rect [ 529.9332 184.1898 541.2756 200.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+32 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 65 0 R /Fit ] /Rect [ 54 182.1498 323.2902 194.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+33 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 69 0 R /Fit ] /Rect [ 529.9332 148.1898 541.2756 164.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+34 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 69 0 R /Fit ] /Rect [ 54 146.1498 283.0716 158.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+35 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 70 0 R /Fit ] /Rect [ 529.9332 112.1898 541.2756 128.1898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+36 0 obj
+<<
+/Border [ 0 0 0 ] /Contents () /Dest [ 70 0 R /Fit ] /Rect [ 54 110.1498 253.002 122.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
 37 0 obj
 <<
-/Contents 104 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/Border [ 0 0 0 ] /Contents () /Dest [ 93 0 R /Fit ] /Rect [ 529.9332 76.18976 541.2756 92.18976 ] /Subtype /Link /Type /Annot
 >>
 endobj
 38 0 obj
 <<
-/Contents 105 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/Border [ 0 0 0 ] /Contents () /Dest [ 93 0 R /Fit ] /Rect [ 54 74.14976 184.968 86.38976 ] /Subtype /Link /Type /Annot
 >>
 endobj
 39 0 obj
 <<
-/BaseFont /Symbol /Name /F6 /Subtype /Type1 /Type /Font
+/Annots [ 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R 15 0 R 16 0 R 17 0 R 18 0 R 
+  19 0 R 20 0 R 21 0 R 22 0 R 23 0 R 24 0 R 25 0 R 26 0 R 27 0 R 28 0 R 
+  29 0 R 30 0 R 31 0 R 32 0 R 33 0 R 34 0 R 35 0 R 36 0 R 37 0 R 38 0 R ] /Contents 117 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 
+  /Trans <<
+
+>> /Type /Page
 >>
 endobj
 40 0 obj
 <<
-/Contents 106 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://assay.guide/)
+>> /Border [ 0 0 0 ] /Rect [ 75.67 691.8898 129.03 703.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
 41 0 obj
 <<
-/Contents 107 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/adopting-assay.md)
+>> /Border [ 0 0 0 ] /Rect [ 456.65 691.8898 503.89 703.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
 42 0 obj
 <<
-/Contents 108 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/adopting-assay.md)
+>> /Border [ 0 0 0 ] /Rect [ 54 676.3898 90.13 688.3898 ] /Subtype /Link /Type /Annot
 >>
 endobj
 43 0 obj
 <<
-/Contents 109 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/BaseFont /Courier /Encoding /WinAnsiEncoding /Name /F6 /Subtype /Type1 /Type /Font
 >>
 endobj
 44 0 obj
 <<
-/Contents 110 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/adopting-assay-gitlab.md)
+>> /Border [ 0 0 0 ] /Rect [ 343.59 475.3898 441.43 487.3898 ] /Subtype /Link /Type /Annot
 >>
 endobj
 45 0 obj
 <<
-/Contents 111 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/adopting-assay.md#running-assay-on-codex)
+>> /Border [ 0 0 0 ] /Rect [ 389.1 448.8898 436.34 460.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
 46 0 obj
 <<
-/Contents 112 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/adopting-assay.md#running-assay-on-cursor--a-second-first-class-harness)
+>> /Border [ 0 0 0 ] /Rect [ 441.9 448.8898 471.9 460.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
 47 0 obj
 <<
-/Contents 113 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/adopting-assay.md#windows-adopters)
+>> /Border [ 0 0 0 ] /Rect [ 486.35 448.8898 526.91 460.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
 48 0 obj
 <<
-/Contents 114 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
-/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
-
->> 
-  /Type /Page
+/A <<
+/S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/adopting-assay.md)
+>> /Border [ 0 0 0 ] /Rect [ 233 417.8898 304.7 429.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
 49 0 obj
 <<
-/Contents 115 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Annots [ 40 0 R 41 0 R 42 0 R 44 0 R 45 0 R 46 0 R 47 0 R 48 0 R ] /Contents 118 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 /Trans <<
+>> /Rotate 0 
+  /Trans <<
 
->> 
-  /Type /Page
+>> /Type /Page
 >>
 endobj
 50 0 obj
 <<
-/Contents 116 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Contents 119 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
 >> /Rotate 0 /Trans <<
 
@@ -329,7 +293,7 @@ endobj
 endobj
 51 0 obj
 <<
-/Contents 117 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Contents 120 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
 >> /Rotate 0 /Trans <<
 
@@ -339,7 +303,12 @@ endobj
 endobj
 52 0 obj
 <<
-/Contents 118 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/BaseFont /Symbol /Name /F7 /Subtype /Type1 /Type /Font
+>>
+endobj
+53 0 obj
+<<
+/Contents 121 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
 >> /Rotate 0 /Trans <<
 
@@ -347,40 +316,39 @@ endobj
   /Type /Page
 >>
 endobj
-53 0 obj
-<<
-/A <<
-/S /URI /Type /Action /URI (https://about.gitlab.com/platform/)
->> /Border [ 0 0 0 ] /Rect [ 464.76 241.8898 538.4956 253.8898 ] /Subtype /Link /Type /Annot
->>
-endobj
 54 0 obj
 <<
-/A <<
-/S /URI /Type /Action /URI (https://factory.com/product/software-factory)
->> /Border [ 0 0 0 ] /Rect [ 54 226.3898 167.61 238.3898 ] /Subtype /Link /Type /Annot
+/Contents 122 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
 >>
 endobj
 55 0 obj
 <<
-/A <<
-/S /URI /Type /Action /URI (https://www.harness.io/products/platform)
->> /Border [ 0 0 0 ] /Rect [ 189.85 226.3898 272.89 238.3898 ] /Subtype /Link /Type /Annot
+/Contents 123 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
 >>
 endobj
 56 0 obj
 <<
-/Annots [ 53 0 R 54 0 R 55 0 R ] /Contents 119 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Contents 124 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
->> /Rotate 0 
-  /Trans <<
+>> /Rotate 0 /Trans <<
 
->> /Type /Page
+>> 
+  /Type /Page
 >>
 endobj
 57 0 obj
 <<
-/Contents 120 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Contents 125 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
 >> /Rotate 0 /Trans <<
 
@@ -390,7 +358,7 @@ endobj
 endobj
 58 0 obj
 <<
-/Contents 121 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Contents 126 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
 >> /Rotate 0 /Trans <<
 
@@ -400,156 +368,277 @@ endobj
 endobj
 59 0 obj
 <<
+/Contents 127 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+60 0 obj
+<<
+/Contents 128 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+61 0 obj
+<<
+/Contents 129 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+62 0 obj
+<<
+/Contents 130 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+63 0 obj
+<<
+/Contents 131 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+64 0 obj
+<<
+/Contents 132 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+65 0 obj
+<<
+/Contents 133 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+66 0 obj
+<<
+/A <<
+/S /URI /Type /Action /URI (https://about.gitlab.com/platform/)
+>> /Border [ 0 0 0 ] /Rect [ 464.76 241.8898 538.4956 253.8898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+67 0 obj
+<<
+/A <<
+/S /URI /Type /Action /URI (https://factory.com/product/software-factory)
+>> /Border [ 0 0 0 ] /Rect [ 54 226.3898 167.61 238.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+68 0 obj
+<<
+/A <<
+/S /URI /Type /Action /URI (https://www.harness.io/products/platform)
+>> /Border [ 0 0 0 ] /Rect [ 189.85 226.3898 272.89 238.3898 ] /Subtype /Link /Type /Annot
+>>
+endobj
+69 0 obj
+<<
+/Annots [ 66 0 R 67 0 R 68 0 R ] /Contents 134 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 
+  /Trans <<
+
+>> /Type /Page
+>>
+endobj
+70 0 obj
+<<
+/Contents 135 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+71 0 obj
+<<
+/Contents 136 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+72 0 obj
+<<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/tree/afa97c523701abdc65ce9afce1e73485c0b9ebc7)
 >> /Border [ 0 0 0 ] /Rect [ 54 676.3898 274.14 688.3898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-60 0 obj
+73 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/README.md)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 582.1698 213.4659 591.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-61 0 obj
+74 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/adopting-assay.md)
 >> /Border [ 0 0 0 ] /Rect [ 217.9695 582.1698 280.5582 591.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-62 0 obj
+75 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/brief-rules.md)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 540.1698 195.9132 549.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-63 0 obj
+76 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/brief-template.md)
 >> /Border [ 0 0 0 ] /Rect [ 200.4168 540.1698 231.4803 549.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-64 0 obj
+77 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/lifecycle.md)
 >> /Border [ 0 0 0 ] /Rect [ 235.9839 540.1698 264.7875 549.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-65 0 obj
+78 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/evidence-bundle.md)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 498.1698 219.3384 507.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-66 0 obj
+79 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/telemetry.md)
 >> /Border [ 0 0 0 ] /Rect [ 223.842 498.1698 286.4145 507.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-67 0 obj
+80 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/streams/quality/README.md)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 468.1698 211.6677 477.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-68 0 obj
+81 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/tree/afa97c523701abdc65ce9afce1e73485c0b9ebc7/qualgen)
 >> /Border [ 0 0 0 ] /Rect [ 216.1713 468.1698 259.3929 477.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-69 0 obj
+82 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/qualgen/dorajoin/source.go)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 426.7773 300.8163 438.7773 ] /Subtype /Link /Type /Annot
 >>
 endobj
-70 0 obj
+83 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/qualgen/riskscore/learned.go)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 384.7773 252.6375 396.7773 ] /Subtype /Link /Type /Annot
 >>
 endobj
-71 0 obj
+84 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/cellconfig/config/schema/cells.go)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 342.1698 204.0132 351.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-72 0 obj
+85 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/tree/afa97c523701abdc65ce9afce1e73485c0b9ebc7/tools/desk/internal/topology)
 >> /Border [ 0 0 0 ] /Rect [ 208.5168 342.1698 258.9474 351.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-73 0 obj
+86 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/tools/desk/cmd/commsgw/cross_cell_test.go)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 300.7773 210.7767 312.7773 ] /Subtype /Link /Type /Annot
 >>
 endobj
-74 0 obj
+87 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/streams/graph-execution/README.md)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 270.7773 246.3357 282.7773 ] /Subtype /Link /Type /Annot
 >>
 endobj
-75 0 obj
+88 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/streams/harness-portability/README.md)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 228.7773 253.974 240.7773 ] /Subtype /Link /Type /Annot
 >>
 endobj
-76 0 obj
+89 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/streams/continuing-operations/README.md)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 198.1698 185.5614 207.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-77 0 obj
+90 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/streams/continuing-operations/spec.md)
 >> /Border [ 0 0 0 ] /Rect [ 190.065 198.1698 225.6321 207.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-78 0 obj
+91 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/streams/continuing-operations/cockpit.md)
 >> /Border [ 0 0 0 ] /Rect [ 230.1357 198.1698 289.5573 207.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-79 0 obj
+92 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/afa97c523701abdc65ce9afce1e73485c0b9ebc7/docs/streams/iso-9001/README.md)
 >> /Border [ 0 0 0 ] /Rect [ 159.4551 156.7773 220.683 168.7773 ] /Subtype /Link /Type /Annot
 >>
 endobj
-80 0 obj
+93 0 obj
 <<
-/Annots [ 59 0 R 60 0 R 61 0 R 62 0 R 63 0 R 64 0 R 65 0 R 66 0 R 67 0 R 68 0 R 
-  69 0 R 70 0 R 71 0 R 72 0 R 73 0 R 74 0 R 75 0 R 76 0 R 77 0 R 78 0 R 
-  79 0 R ] /Contents 122 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Annots [ 72 0 R 73 0 R 74 0 R 75 0 R 76 0 R 77 0 R 78 0 R 79 0 R 80 0 R 81 0 R 
+  82 0 R 83 0 R 84 0 R 85 0 R 86 0 R 87 0 R 88 0 R 89 0 R 90 0 R 91 0 R 
+  92 0 R ] /Contents 137 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
 >> /Rotate 0 
   /Trans <<
@@ -557,23 +646,23 @@ endobj
 >> /Type /Page
 >>
 endobj
-81 0 obj
+94 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/tree/main/docs/vision/assets)
 >> /Border [ 0 0 0 ] /Rect [ 313.54 683.3898 342.44 695.3898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-82 0 obj
+95 0 obj
 <<
 /A <<
 /S /URI /Type /Action /URI (https://github.com/medici-finance/assay/blob/main/docs/vision/BUILD.md)
 >> /Border [ 0 0 0 ] /Rect [ 266.3 594.8898 312.42 606.8898 ] /Subtype /Link /Type /Annot
 >>
 endobj
-83 0 obj
+96 0 obj
 <<
-/Annots [ 81 0 R 82 0 R ] /Contents 123 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 101 0 R /Resources <<
+/Annots [ 94 0 R 95 0 R ] /Contents 138 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 115 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
 >> /Rotate 0 
   /Trans <<
@@ -581,102 +670,107 @@ endobj
 >> /Type /Page
 >>
 endobj
-84 0 obj
+97 0 obj
 <<
-/Outlines 86 0 R /PageMode /UseNone /Pages 101 0 R /Type /Catalog
+/Outlines 99 0 R /PageMode /UseNone /Pages 115 0 R /Type /Catalog
 >>
 endobj
-85 0 obj
+98 0 obj
 <<
 /Author (Assay) /CreationDate (D:20000101000000+00'00') /Creator (Assay vision publication builder) /Keywords () /ModDate (D:20000101000000+00'00') /Producer (ReportLab PDF Library - \(opensource\)) 
   /Subject (Public strategic vision) /Title (Assay: from governed delivery to engineering operations) /Trapped /False
 >>
 endobj
-86 0 obj
-<<
-/Count 14 /First 87 0 R /Last 100 0 R /Type /Outlines
->>
-endobj
-87 0 obj
-<<
-/Dest [ 37 0 R /Fit ] /Next 88 0 R /Parent 86 0 R /Title (1. What Assay is)
->>
-endobj
-88 0 obj
-<<
-/Dest [ 38 0 R /Fit ] /Next 89 0 R /Parent 86 0 R /Prev 87 0 R /Title (2. Where the strategic direction is heading)
->>
-endobj
-89 0 obj
-<<
-/Dest [ 40 0 R /Fit ] /Next 90 0 R /Parent 86 0 R /Prev 88 0 R /Title (3. The brief: intent, change and proof)
->>
-endobj
-90 0 obj
-<<
-/Dest [ 42 0 R /Fit ] /Next 91 0 R /Parent 86 0 R /Prev 89 0 R /Title (4. Desks: a coordinated delivery system)
->>
-endobj
-91 0 obj
-<<
-/Dest [ 43 0 R /Fit ] /Next 92 0 R /Parent 86 0 R /Prev 90 0 R /Title (5. Streams and the enduring subjects of engineering)
->>
-endobj
-92 0 obj
-<<
-/Dest [ 44 0 R /Fit ] /Next 93 0 R /Parent 86 0 R /Prev 91 0 R /Title (6. Cells: bounded units of engineering operations)
->>
-endobj
-93 0 obj
-<<
-/Dest [ 46 0 R /Fit ] /Next 94 0 R /Parent 86 0 R /Prev 92 0 R /Title (7. Measurements and operational cadences)
->>
-endobj
-94 0 obj
-<<
-/Dest [ 47 0 R /Fit ] /Next 95 0 R /Parent 86 0 R /Prev 93 0 R /Title (8. Compliance and assurance)
->>
-endobj
-95 0 obj
-<<
-/Dest [ 48 0 R /Fit ] /Next 96 0 R /Parent 86 0 R /Prev 94 0 R /Title (9. ML and bounded machine judgment)
->>
-endobj
-96 0 obj
-<<
-/Dest [ 50 0 R /Fit ] /Next 97 0 R /Parent 86 0 R /Prev 95 0 R /Title (10. The cockpit and public progress)
->>
-endobj
-97 0 obj
-<<
-/Dest [ 52 0 R /Fit ] /Next 98 0 R /Parent 86 0 R /Prev 96 0 R /Title (11. What is built, what is being integrated and what remains)
->>
-endobj
-98 0 obj
-<<
-/Dest [ 56 0 R /Fit ] /Next 99 0 R /Parent 86 0 R /Prev 97 0 R /Title (12. Positioning, adoption and the test of leadership)
->>
-endobj
 99 0 obj
 <<
-/Dest [ 57 0 R /Fit ] /Next 100 0 R /Parent 86 0 R /Prev 98 0 R /Title (13. The organization we are trying to enable)
+/Count 15 /First 100 0 R /Last 114 0 R /Type /Outlines
 >>
 endobj
 100 0 obj
 <<
-/Dest [ 80 0 R /Fit ] /Parent 86 0 R /Prev 99 0 R /Title (14. Evidence and reading list)
+/Dest [ 49 0 R /Fit ] /Next 101 0 R /Parent 99 0 R /Title (Get started)
 >>
 endobj
 101 0 obj
 <<
-/Count 22 /Kids [ 7 0 R 36 0 R 37 0 R 38 0 R 40 0 R 41 0 R 42 0 R 43 0 R 44 0 R 45 0 R 
-  46 0 R 47 0 R 48 0 R 49 0 R 50 0 R 51 0 R 52 0 R 56 0 R 57 0 R 58 0 R 
-  80 0 R 83 0 R ] /Type /Pages
+/Dest [ 50 0 R /Fit ] /Next 102 0 R /Parent 99 0 R /Prev 100 0 R /Title (1. What Assay is)
 >>
 endobj
 102 0 obj
 <<
-/Length 4827
+/Dest [ 51 0 R /Fit ] /Next 103 0 R /Parent 99 0 R /Prev 101 0 R /Title (2. Where the strategic direction is heading)
+>>
+endobj
+103 0 obj
+<<
+/Dest [ 53 0 R /Fit ] /Next 104 0 R /Parent 99 0 R /Prev 102 0 R /Title (3. The brief: intent, change and proof)
+>>
+endobj
+104 0 obj
+<<
+/Dest [ 55 0 R /Fit ] /Next 105 0 R /Parent 99 0 R /Prev 103 0 R /Title (4. Desks: a coordinated delivery system)
+>>
+endobj
+105 0 obj
+<<
+/Dest [ 56 0 R /Fit ] /Next 106 0 R /Parent 99 0 R /Prev 104 0 R /Title (5. Streams and the enduring subjects of engineering)
+>>
+endobj
+106 0 obj
+<<
+/Dest [ 57 0 R /Fit ] /Next 107 0 R /Parent 99 0 R /Prev 105 0 R /Title (6. Cells: bounded units of engineering operations)
+>>
+endobj
+107 0 obj
+<<
+/Dest [ 59 0 R /Fit ] /Next 108 0 R /Parent 99 0 R /Prev 106 0 R /Title (7. Measurements and operational cadences)
+>>
+endobj
+108 0 obj
+<<
+/Dest [ 60 0 R /Fit ] /Next 109 0 R /Parent 99 0 R /Prev 107 0 R /Title (8. Compliance and assurance)
+>>
+endobj
+109 0 obj
+<<
+/Dest [ 61 0 R /Fit ] /Next 110 0 R /Parent 99 0 R /Prev 108 0 R /Title (9. ML and bounded machine judgment)
+>>
+endobj
+110 0 obj
+<<
+/Dest [ 63 0 R /Fit ] /Next 111 0 R /Parent 99 0 R /Prev 109 0 R /Title (10. The cockpit and public progress)
+>>
+endobj
+111 0 obj
+<<
+/Dest [ 65 0 R /Fit ] /Next 112 0 R /Parent 99 0 R /Prev 110 0 R /Title (11. What is built, what is being integrated and what remains)
+>>
+endobj
+112 0 obj
+<<
+/Dest [ 69 0 R /Fit ] /Next 113 0 R /Parent 99 0 R /Prev 111 0 R /Title (12. Positioning, adoption and the test of leadership)
+>>
+endobj
+113 0 obj
+<<
+/Dest [ 70 0 R /Fit ] /Next 114 0 R /Parent 99 0 R /Prev 112 0 R /Title (13. The organization we are trying to enable)
+>>
+endobj
+114 0 obj
+<<
+/Dest [ 93 0 R /Fit ] /Parent 99 0 R /Prev 113 0 R /Title (14. Evidence and reading list)
+>>
+endobj
+115 0 obj
+<<
+/Count 23 /Kids [ 8 0 R 39 0 R 49 0 R 50 0 R 51 0 R 53 0 R 54 0 R 55 0 R 56 0 R 57 0 R 
+  58 0 R 59 0 R 60 0 R 61 0 R 62 0 R 63 0 R 64 0 R 65 0 R 69 0 R 70 0 R 
+  71 0 R 93 0 R 96 0 R ] /Type /Pages
+>>
+endobj
+116 0 obj
+<<
+/Length 4895
 >>
 stream
 1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
@@ -951,13 +1045,15 @@ n 0 65 m 487.2756 65 l S
 BT /F4 9 Tf 10.8 TL ET
 BT 1 0 0 1 0 43 Tm (9 October 2026 \267 For engineering leaders) Tj T* ET
 BT 1 0 0 1 0 25 Tm (Public strategic vision \267 current foundations and future direction) Tj T* ET
+.129412 .368627 .909804 rg
+BT 1 0 0 1 0 7 Tm (assay.guide) Tj T* ET
 Q
  
 endstream
 endobj
-103 0 obj
+117 0 obj
 <<
-/Length 4925
+/Length 5149
 >>
 stream
 1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
@@ -996,17 +1092,27 @@ q
 1 0 0 1 54 607.3898 cm
 Q
 q
-1 0 0 1 54 103.3898 cm
+1 0 0 1 54 67.38976 cm
 q
 0 0 0 rg
 BT /F1 10 Tf 12 TL ET
+q
+1 0 0 1 0 529 cm
+Q
+q
+1 0 0 1 0 507 cm
+q
+BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (3) Tj T* ET
+BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (Get started) Tj  T* ET
+Q
+Q
 q
 1 0 0 1 0 493 cm
 Q
 q
 1 0 0 1 0 471 cm
 q
-BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (3) Tj T* ET
+BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (4) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (1. What Assay is) Tj  T* ET
 Q
 Q
@@ -1016,7 +1122,7 @@ Q
 q
 1 0 0 1 0 435 cm
 q
-BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (4) Tj T* ET
+BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (5) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (2. Where the strategic direction is heading) Tj  T* ET
 Q
 Q
@@ -1026,7 +1132,7 @@ Q
 q
 1 0 0 1 0 399 cm
 q
-BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (5) Tj T* ET
+BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (6) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (3. The brief: intent, change and proof) Tj  T* ET
 Q
 Q
@@ -1036,7 +1142,7 @@ Q
 q
 1 0 0 1 0 363 cm
 q
-BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (7) Tj T* ET
+BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (8) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (4. Desks: a coordinated delivery system) Tj  T* ET
 Q
 Q
@@ -1046,7 +1152,7 @@ Q
 q
 1 0 0 1 0 327 cm
 q
-BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (8) Tj T* ET
+BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (9) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (5. Streams and the enduring subjects of engineering) Tj  T* ET
 Q
 Q
@@ -1056,7 +1162,7 @@ Q
 q
 1 0 0 1 0 291 cm
 q
-BT 1 0 0 1 481.6044 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (9) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (10) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (6. Cells: bounded units of engineering operations) Tj  T* ET
 Q
 Q
@@ -1066,7 +1172,7 @@ Q
 q
 1 0 0 1 0 255 cm
 q
-BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (11) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (12) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (7. Measurements and operational cadences) Tj  T* ET
 Q
 Q
@@ -1076,7 +1182,7 @@ Q
 q
 1 0 0 1 0 219 cm
 q
-BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (12) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (13) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (8. Compliance and assurance) Tj  T* ET
 Q
 Q
@@ -1086,7 +1192,7 @@ Q
 q
 1 0 0 1 0 183 cm
 q
-BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (13) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (14) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (9. ML and bounded machine judgment) Tj  T* ET
 Q
 Q
@@ -1096,7 +1202,7 @@ Q
 q
 1 0 0 1 0 147 cm
 q
-BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (15) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (16) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (10. The cockpit and public progress) Tj  T* ET
 Q
 Q
@@ -1106,7 +1212,7 @@ Q
 q
 1 0 0 1 0 111 cm
 q
-BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (17) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (18) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (11. What is built, what is being integrated and what remains) Tj  T* ET
 Q
 Q
@@ -1116,7 +1222,7 @@ Q
 q
 1 0 0 1 0 75 cm
 q
-BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (18) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (19) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (12. Positioning, adoption and the test of leadership) Tj  T* ET
 Q
 Q
@@ -1126,7 +1232,7 @@ Q
 q
 1 0 0 1 0 39 cm
 q
-BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (19) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (20) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (13. The organization we are trying to enable) Tj  T* ET
 Q
 Q
@@ -1136,7 +1242,7 @@ Q
 q
 1 0 0 1 0 3 cm
 q
-BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (21) Tj T* ET
+BT 1 0 0 1 475.9332 5.8 Tm /F4 10.2 Tf 12.24 TL .090196 .105882 .129412 rg (22) Tj T* ET
 BT 1 0 0 1 0 5.8 Tm 16 TL /F4 10.2 Tf .090196 .105882 .129412 rg (14. Evidence and reading list) Tj  T* ET
 Q
 Q
@@ -1147,7 +1253,77 @@ Q
  
 endstream
 endobj
-104 0 obj
+118 0 obj
+<<
+/Length 3064
+>>
+stream
+1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
+q
+.364706 .392157 .439216 rg
+BT /F4 7.4 Tf 8.88 TL ET
+BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
+.862745 .878431 .901961 RG
+.6 w
+n 54 41 m 541.2756 41 l S
+BT /F4 7.5 Tf 9 TL ET
+BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
+BT 1 0 0 1 537.1056 27 Tm (3) Tj T* ET
+Q
+q
+1 0 0 1 54 771.8898 cm
+q
+.129412 .368627 .909804 rg
+BT 1 0 0 1 0 4 Tm /F2 8 Tf 12 TL (ADOPT ASSAY) Tj T* ET
+Q
+Q
+q
+1 0 0 1 54 725.8898 cm
+q
+.090196 .105882 .129412 rg
+BT 1 0 0 1 0 4 Tm /F3 30 Tf 34 TL (Get started) Tj T* ET
+Q
+Q
+q
+1 0 0 1 54 672.8898 cm
+q
+BT 1 0 0 1 0 21 Tm 15.5 TL /F4 10 Tf .090196 .105882 .129412 rg (Visit ) Tj .129412 .368627 .909804 rg (assay.guide) Tj .090196 .105882 .129412 rg ( for Assay) Tj (') Tj (s website. To adopt the method in your own repository, use the ) Tj .129412 .368627 .909804 rg (installation) Tj T* (runbook) Tj .090196 .105882 .129412 rg (.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 54 630.8898 cm
+q
+BT 1 0 0 1 0 21 Tm 15.5 TL /F2 10 Tf .090196 .105882 .129412 rg (Quick install with Claude Code \(GitHub or GitLab\).) Tj /F4 10 Tf ( Open Claude Code in the repository where you want to) Tj T* (adopt Assay, then run these commands inside Claude Code:) Tj T* ET
+Q
+Q
+q
+1 0 0 1 54 589.8898 cm
+%PreformattedPara
+.090196 .105882 .129412 rg
+BT 1 0 0 1 0 21 Tm /F6 9 Tf 15 TL (/plugin marketplace add medici-finance/assay) Tj T* (/plugin install assay@assay) Tj T* ET
+Q
+q
+1 0 0 1 54 529.3898 cm
+q
+BT 1 0 0 1 0 36.5 Tm 15.5 TL /F4 10 Tf .090196 .105882 .129412 rg (Then invoke the ) Tj /F2 10 Tf (assay:install) Tj /F4 10 Tf ( skill. It confirms the target repository, rehearses the installation, acquires) Tj T* (pinned and hash-verified tools, scaffolds the streams and registers, wires the checks and prepares a draft PR.) Tj T* (Human setup and approval steps remain part of adoption.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 54 471.8898 cm
+q
+BT 1 0 0 1 0 36.5 Tm 15.5 TL /F4 10 Tf .090196 .105882 .129412 rg (For macOS or Linux, have curl and a SHA-256 tool available. Read the runbook) Tj (') Tj (s identity and permissions) Tj T* (requirements before starting: implementation and approval need separate identities, and a human retains) Tj T* (governance and merge authority. GitLab adopters also follow the ) Tj .129412 .368627 .909804 rg (GitLab adoption guide) Tj .090196 .105882 .129412 rg (.) Tj T* ET
+Q
+Q
+q
+1 0 0 1 54 414.3898 cm
+q
+BT 1 0 0 1 0 36.5 Tm 15.5 TL /F2 10 Tf .090196 .105882 .129412 rg (Using another harness or platform?) Tj /F4 10 Tf ( Follow the dedicated instructions for ) Tj .129412 .368627 .909804 rg (Codex CLI) Tj .090196 .105882 .129412 rg (, ) Tj .129412 .368627 .909804 rg (Cursor) Tj .090196 .105882 .129412 rg ( or ) Tj .129412 .368627 .909804 rg (Windows) Tj .090196 .105882 .129412 rg (.) Tj T* (The Claude Code commands above apply only to Claude Code. For a multi-repository setup, carve-out or) Tj T* (other nonstandard adoption, use the full ) Tj .129412 .368627 .909804 rg (manual runbook) Tj .090196 .105882 .129412 rg (.) Tj T* ET
+Q
+Q
+ 
+endstream
+endobj
+119 0 obj
 <<
 /Length 3918
 >>
@@ -1162,7 +1338,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 537.1056 27 Tm (3) Tj T* ET
+BT 1 0 0 1 537.1056 27 Tm (4) Tj T* ET
 Q
 q
 1 0 0 1 54 771.8898 cm
@@ -1224,7 +1400,7 @@ Q
  
 endstream
 endobj
-105 0 obj
+120 0 obj
 <<
 /Length 7173
 >>
@@ -1239,7 +1415,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 537.1056 27 Tm (4) Tj T* ET
+BT 1 0 0 1 537.1056 27 Tm (5) Tj T* ET
 Q
 q
 1 0 0 1 54 767.8898 cm
@@ -1540,7 +1716,7 @@ Q
  
 endstream
 endobj
-106 0 obj
+121 0 obj
 <<
 /Length 4024
 >>
@@ -1555,7 +1731,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 537.1056 27 Tm (5) Tj T* ET
+BT 1 0 0 1 537.1056 27 Tm (6) Tj T* ET
 Q
 q
 1 0 0 1 54 721.8898 cm
@@ -1594,7 +1770,7 @@ Q
 q
 1 0 0 1 54 479.8898 cm
 q
-BT 1 0 0 1 0 52 Tm 15.5 TL /F4 10 Tf .090196 .105882 .129412 rg (A brief is the smallest durable unit of Assay) Tj (') Tj (s operating model. For a public explanation, its structure can be) Tj T* (read as ) Tj /F2 10 Tf (Intent ) Tj /F6 10 Tf (\256) Tj /F2 10 Tf ( Change ) Tj /F6 10 Tf (\256) Tj /F2 10 Tf ( Proof) Tj /F4 10 Tf (. These are explanatory labels for the existing method, not a declaration of) Tj T* (a new brief schema. Their purpose is to make the contract understandable before a reader learns the) Tj T* (frontmatter and lifecycle details.) Tj T* ET
+BT 1 0 0 1 0 52 Tm 15.5 TL /F4 10 Tf .090196 .105882 .129412 rg (A brief is the smallest durable unit of Assay) Tj (') Tj (s operating model. For a public explanation, its structure can be) Tj T* (read as ) Tj /F2 10 Tf (Intent ) Tj /F7 10 Tf (\256) Tj /F2 10 Tf ( Change ) Tj /F7 10 Tf (\256) Tj /F2 10 Tf ( Proof) Tj /F4 10 Tf (. These are explanatory labels for the existing method, not a declaration of) Tj T* (a new brief schema. Their purpose is to make the contract understandable before a reader learns the) Tj T* (frontmatter and lifecycle details.) Tj T* ET
 Q
 Q
 q
@@ -1618,7 +1794,7 @@ Q
  
 endstream
 endobj
-107 0 obj
+122 0 obj
 <<
 /Length 6305
 >>
@@ -1633,7 +1809,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 537.1056 27 Tm (6) Tj T* ET
+BT 1 0 0 1 537.1056 27 Tm (7) Tj T* ET
 Q
 q
 1 0 0 1 54 564.6157 cm
@@ -1668,7 +1844,7 @@ Q
 q
 1 0 0 -1 56 100 cm
 BT /F3 38 Tf 45.6 TL ET
-BT 1 0 0 1 0 0 Tm (Intent ) Tj /F6 38 Tf 45.6 TL (\256) Tj /F3 38 Tf 45.6 TL ( Change ) Tj /F6 38 Tf 45.6 TL (\256) Tj /F3 38 Tf 45.6 TL ( Proof) Tj T* ET
+BT 1 0 0 1 0 0 Tm (Intent ) Tj /F7 38 Tf 45.6 TL (\256) Tj /F3 38 Tf 45.6 TL ( Change ) Tj /F7 38 Tf 45.6 TL (\256) Tj /F3 38 Tf 45.6 TL ( Proof) Tj T* ET
 Q
 2 w
 [] 0 d
@@ -1946,7 +2122,7 @@ Q
  
 endstream
 endobj
-108 0 obj
+123 0 obj
 <<
 /Length 4126
 >>
@@ -1961,7 +2137,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 537.1056 27 Tm (7) Tj T* ET
+BT 1 0 0 1 537.1056 27 Tm (8) Tj T* ET
 Q
 q
 1 0 0 1 54 767.8898 cm
@@ -2026,7 +2202,7 @@ Q
  
 endstream
 endobj
-109 0 obj
+124 0 obj
 <<
 /Length 5920
 >>
@@ -2041,7 +2217,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 537.1056 27 Tm (8) Tj T* ET
+BT 1 0 0 1 537.1056 27 Tm (9) Tj T* ET
 Q
 q
 1 0 0 1 54 767.8898 cm
@@ -2225,9 +2401,9 @@ Q
  
 endstream
 endobj
-110 0 obj
+125 0 obj
 <<
-/Length 3112
+/Length 3113
 >>
 stream
 1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
@@ -2240,7 +2416,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 537.1056 27 Tm (9) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (10) Tj T* ET
 Q
 q
 1 0 0 1 54 752.8898 cm
@@ -2300,7 +2476,7 @@ Q
  
 endstream
 endobj
-111 0 obj
+126 0 obj
 <<
 /Length 5944
 >>
@@ -2315,7 +2491,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (10) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (11) Tj T* ET
 Q
 q
 1 0 0 1 54 517.5124 cm
@@ -2478,7 +2654,7 @@ Q
 q
 1 0 0 -1 304 366 cm
 BT /F5 26 Tf 31.2 TL ET
-BT 1 0 0 1 0 0 Tm (Intent ) Tj /F6 26 Tf 31.2 TL (\256) Tj /F5 26 Tf 31.2 TL ( Change ) Tj /F6 26 Tf 31.2 TL (\256) Tj /F5 26 Tf 31.2 TL ( Proof) Tj T* ET
+BT 1 0 0 1 0 0 Tm (Intent ) Tj /F7 26 Tf 31.2 TL (\256) Tj /F5 26 Tf 31.2 TL ( Change ) Tj /F7 26 Tf 31.2 TL (\256) Tj /F5 26 Tf 31.2 TL ( Proof) Tj T* ET
 Q
 1 w
 [] 0 d
@@ -2544,7 +2720,7 @@ Q
  
 endstream
 endobj
-112 0 obj
+127 0 obj
 <<
 /Length 7706
 >>
@@ -2559,7 +2735,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (11) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (12) Tj T* ET
 Q
 q
 1 0 0 1 54 767.8898 cm
@@ -2892,7 +3068,7 @@ Q
  
 endstream
 endobj
-113 0 obj
+128 0 obj
 <<
 /Length 5068
 >>
@@ -2907,7 +3083,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (12) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (13) Tj T* ET
 Q
 q
 1 0 0 1 54 737.3898 cm
@@ -2985,7 +3161,7 @@ Q
  
 endstream
 endobj
-114 0 obj
+129 0 obj
 <<
 /Length 3966
 >>
@@ -3000,7 +3176,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (13) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (14) Tj T* ET
 Q
 q
 1 0 0 1 54 752.8898 cm
@@ -3072,7 +3248,7 @@ Q
  
 endstream
 endobj
-115 0 obj
+130 0 obj
 <<
 /Length 5457
 >>
@@ -3087,7 +3263,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (14) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (15) Tj T* ET
 Q
 q
 1 0 0 1 54 561.3672 cm
@@ -3319,7 +3495,7 @@ Q
  
 endstream
 endobj
-116 0 obj
+131 0 obj
 <<
 /Length 7179
 >>
@@ -3334,7 +3510,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (15) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (16) Tj T* ET
 Q
 q
 1 0 0 1 54 767.8898 cm
@@ -3616,7 +3792,7 @@ Q
  
 endstream
 endobj
-117 0 obj
+132 0 obj
 <<
 /Length 3617
 >>
@@ -3631,7 +3807,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (16) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (17) Tj T* ET
 Q
 q
 1 0 0 1 54 752.8898 cm
@@ -3679,7 +3855,7 @@ Q
  
 endstream
 endobj
-118 0 obj
+133 0 obj
 <<
 /Length 7350
 >>
@@ -3694,7 +3870,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (17) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (18) Tj T* ET
 Q
 q
 1 0 0 1 54 767.8898 cm
@@ -3981,7 +4157,7 @@ Q
  
 endstream
 endobj
-119 0 obj
+134 0 obj
 <<
 /Length 5109
 >>
@@ -3996,7 +4172,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (18) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (19) Tj T* ET
 Q
 q
 1 0 0 1 54 768.8898 cm
@@ -4069,7 +4245,7 @@ Q
  
 endstream
 endobj
-120 0 obj
+135 0 obj
 <<
 /Length 4963
 >>
@@ -4084,7 +4260,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (19) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (20) Tj T* ET
 Q
 q
 1 0 0 1 54 752.8898 cm
@@ -4165,7 +4341,7 @@ Q
  
 endstream
 endobj
-121 0 obj
+136 0 obj
 <<
 /Length 1084
 >>
@@ -4180,7 +4356,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (20) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (21) Tj T* ET
 Q
 q
 1 0 0 1 54 752.8898 cm
@@ -4199,7 +4375,7 @@ Q
  
 endstream
 endobj
-122 0 obj
+137 0 obj
 <<
 /Length 7736
 >>
@@ -4214,7 +4390,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (21) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (22) Tj T* ET
 Q
 q
 1 0 0 1 54 771.8898 cm
@@ -4538,7 +4714,7 @@ Q
  
 endstream
 endobj
-123 0 obj
+138 0 obj
 <<
 /Length 2039
 >>
@@ -4553,7 +4729,7 @@ BT 1 0 0 1 54 810.8898 Tm (ASSAY / PUBLIC STRATEGIC VISION) Tj T* ET
 n 54 41 m 541.2756 41 l S
 BT /F4 7.5 Tf 9 TL ET
 BT 1 0 0 1 54 27 Tm (Governed agent-led engineering \267 Vision edition 2026-10-09) Tj T* ET
-BT 1 0 0 1 532.9356 27 Tm (22) Tj T* ET
+BT 1 0 0 1 532.9356 27 Tm (23) Tj T* ET
 Q
 q
 1 0 0 1 54 721.8898 cm
@@ -4577,141 +4753,156 @@ Q
 endstream
 endobj
 xref
-0 124
+0 139
 0000000000 65535 f 
 0000000061 00000 n 
-0000000143 00000 n 
-0000000250 00000 n 
-0000000362 00000 n 
-0000000471 00000 n 
-0000000578 00000 n 
-0000000690 00000 n 
-0000000897 00000 n 
-0000001045 00000 n 
-0000001187 00000 n 
-0000001336 00000 n 
-0000001478 00000 n 
-0000001627 00000 n 
-0000001770 00000 n 
-0000001919 00000 n 
-0000002062 00000 n 
-0000002211 00000 n 
-0000002354 00000 n 
-0000002503 00000 n 
-0000002646 00000 n 
-0000002795 00000 n 
-0000002938 00000 n 
-0000003087 00000 n 
-0000003230 00000 n 
-0000003379 00000 n 
-0000003521 00000 n 
-0000003670 00000 n 
-0000003812 00000 n 
-0000003961 00000 n 
-0000004104 00000 n 
-0000004253 00000 n 
-0000004396 00000 n 
-0000004545 00000 n 
-0000004687 00000 n 
-0000004836 00000 n 
-0000004978 00000 n 
-0000005398 00000 n 
-0000005606 00000 n 
-0000005814 00000 n 
-0000005892 00000 n 
-0000006100 00000 n 
-0000006308 00000 n 
-0000006516 00000 n 
-0000006724 00000 n 
-0000006932 00000 n 
-0000007140 00000 n 
-0000007348 00000 n 
-0000007556 00000 n 
-0000007764 00000 n 
-0000007972 00000 n 
-0000008180 00000 n 
-0000008388 00000 n 
-0000008596 00000 n 
-0000008781 00000 n 
-0000008970 00000 n 
-0000009159 00000 n 
-0000009400 00000 n 
-0000009608 00000 n 
-0000009816 00000 n 
-0000010046 00000 n 
-0000010294 00000 n 
-0000010555 00000 n 
-0000010813 00000 n 
-0000011074 00000 n 
-0000011330 00000 n 
-0000011592 00000 n 
-0000011847 00000 n 
-0000012116 00000 n 
-0000012362 00000 n 
-0000012627 00000 n 
-0000012894 00000 n 
-0000013166 00000 n 
-0000013433 00000 n 
-0000013713 00000 n 
-0000013990 00000 n 
-0000014270 00000 n 
-0000014553 00000 n 
-0000014833 00000 n 
-0000015117 00000 n 
-0000015386 00000 n 
-0000015759 00000 n 
-0000015976 00000 n 
-0000016194 00000 n 
-0000016428 00000 n 
-0000016516 00000 n 
-0000016856 00000 n 
-0000016932 00000 n 
-0000017030 00000 n 
-0000017168 00000 n 
-0000017301 00000 n 
-0000017435 00000 n 
-0000017581 00000 n 
-0000017725 00000 n 
-0000017860 00000 n 
-0000017982 00000 n 
-0000018111 00000 n 
-0000018241 00000 n 
-0000018396 00000 n 
-0000018543 00000 n 
-0000018683 00000 n 
-0000018795 00000 n 
-0000019010 00000 n 
-0000023890 00000 n 
-0000028868 00000 n 
-0000032839 00000 n 
-0000040065 00000 n 
-0000044142 00000 n 
-0000050500 00000 n 
-0000054679 00000 n 
-0000060652 00000 n 
-0000063817 00000 n 
-0000069814 00000 n 
-0000077573 00000 n 
-0000082694 00000 n 
-0000086713 00000 n 
-0000092223 00000 n 
-0000099455 00000 n 
-0000103125 00000 n 
-0000110528 00000 n 
-0000115690 00000 n 
-0000120706 00000 n 
-0000121843 00000 n 
-0000129632 00000 n 
+0000000157 00000 n 
+0000000264 00000 n 
+0000000376 00000 n 
+0000000485 00000 n 
+0000000592 00000 n 
+0000000704 00000 n 
+0000000853 00000 n 
+0000001078 00000 n 
+0000001226 00000 n 
+0000001369 00000 n 
+0000001518 00000 n 
+0000001661 00000 n 
+0000001810 00000 n 
+0000001952 00000 n 
+0000002101 00000 n 
+0000002244 00000 n 
+0000002393 00000 n 
+0000002536 00000 n 
+0000002685 00000 n 
+0000002828 00000 n 
+0000002977 00000 n 
+0000003120 00000 n 
+0000003269 00000 n 
+0000003412 00000 n 
+0000003561 00000 n 
+0000003704 00000 n 
+0000003853 00000 n 
+0000003995 00000 n 
+0000004144 00000 n 
+0000004286 00000 n 
+0000004435 00000 n 
+0000004578 00000 n 
+0000004727 00000 n 
+0000004870 00000 n 
+0000005019 00000 n 
+0000005161 00000 n 
+0000005310 00000 n 
+0000005452 00000 n 
+0000005887 00000 n 
+0000006055 00000 n 
+0000006312 00000 n 
+0000006564 00000 n 
+0000006670 00000 n 
+0000006934 00000 n 
+0000007213 00000 n 
+0000007522 00000 n 
+0000007796 00000 n 
+0000008049 00000 n 
+0000008325 00000 n 
+0000008533 00000 n 
+0000008741 00000 n 
+0000008819 00000 n 
+0000009027 00000 n 
+0000009235 00000 n 
+0000009443 00000 n 
+0000009651 00000 n 
+0000009859 00000 n 
+0000010067 00000 n 
+0000010275 00000 n 
+0000010483 00000 n 
+0000010691 00000 n 
+0000010899 00000 n 
+0000011107 00000 n 
+0000011315 00000 n 
+0000011523 00000 n 
+0000011708 00000 n 
+0000011897 00000 n 
+0000012086 00000 n 
+0000012327 00000 n 
+0000012535 00000 n 
+0000012743 00000 n 
+0000012973 00000 n 
+0000013221 00000 n 
+0000013482 00000 n 
+0000013740 00000 n 
+0000014001 00000 n 
+0000014257 00000 n 
+0000014519 00000 n 
+0000014774 00000 n 
+0000015043 00000 n 
+0000015289 00000 n 
+0000015554 00000 n 
+0000015821 00000 n 
+0000016093 00000 n 
+0000016360 00000 n 
+0000016640 00000 n 
+0000016917 00000 n 
+0000017197 00000 n 
+0000017480 00000 n 
+0000017760 00000 n 
+0000018044 00000 n 
+0000018313 00000 n 
+0000018686 00000 n 
+0000018903 00000 n 
+0000019121 00000 n 
+0000019355 00000 n 
+0000019443 00000 n 
+0000019783 00000 n 
+0000019860 00000 n 
+0000019955 00000 n 
+0000020069 00000 n 
+0000020210 00000 n 
+0000020346 00000 n 
+0000020483 00000 n 
+0000020632 00000 n 
+0000020779 00000 n 
+0000020917 00000 n 
+0000021042 00000 n 
+0000021174 00000 n 
+0000021307 00000 n 
+0000021465 00000 n 
+0000021615 00000 n 
+0000021757 00000 n 
+0000021870 00000 n 
+0000022092 00000 n 
+0000027040 00000 n 
+0000032242 00000 n 
+0000035359 00000 n 
+0000039330 00000 n 
+0000046556 00000 n 
+0000050633 00000 n 
+0000056991 00000 n 
+0000061170 00000 n 
+0000067143 00000 n 
+0000070309 00000 n 
+0000076306 00000 n 
+0000084065 00000 n 
+0000089186 00000 n 
+0000093205 00000 n 
+0000098715 00000 n 
+0000105947 00000 n 
+0000109617 00000 n 
+0000117020 00000 n 
+0000122182 00000 n 
+0000127198 00000 n 
+0000128335 00000 n 
+0000136124 00000 n 
 trailer
 <<
 /ID 
 [<a6b1ad13dc52d14a765689121ef3f514><a6b1ad13dc52d14a765689121ef3f514>]
 % ReportLab generated PDF document -- digest (opensource)
 
-/Info 85 0 R
-/Root 84 0 R
-/Size 124
+/Info 98 0 R
+/Root 97 0 R
+/Size 139
 >>
 startxref
-131724
+138216
 %%EOF

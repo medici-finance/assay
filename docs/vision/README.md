@@ -8,9 +8,26 @@
 
 **Vision report · 9 October 2026 · For engineering leaders**
 
-[Download the designed PDF](assay-vision.pdf) · [Adopt Assay](../adopting-assay.md) · [Read the public work board](../../STATUS.md)
+[Visit assay.guide](https://assay.guide/) · [Install Assay](#get-started) · [Download the designed PDF](assay-vision.pdf) · [Read the public work board](../../STATUS.md)
 
 This report describes the direction of Assay, the reasoning behind it and the foundations already present in this repository. It also names the work still needed. It is a strategic vision, not a product availability statement, an approved implementation specification or a promise of delivery dates. Capability descriptions are grounded in the public source snapshot listed in the evidence appendix. A completed brief is evidence about that brief's scope; it does not establish the maturity of an entire operating system.
+
+## Get started
+
+Visit [assay.guide](https://assay.guide/) for Assay's website. To adopt the method in your own repository, use the [installation runbook](../adopting-assay.md).
+
+**Quick install with Claude Code (GitHub or GitLab).** Open Claude Code in the repository where you want to adopt Assay, then run these commands inside Claude Code:
+
+```text
+/plugin marketplace add medici-finance/assay
+/plugin install assay@assay
+```
+
+Then invoke the **assay:install** skill. It confirms the target repository, rehearses the installation, acquires pinned and hash-verified tools, scaffolds the streams and registers, wires the checks and prepares a draft PR. Human setup and approval steps remain part of adoption.
+
+For macOS or Linux, have `curl` and a SHA-256 tool available. Read the runbook's identity and permissions requirements before starting: implementation and approval need separate identities, and a human retains governance and merge authority. GitLab adopters also follow the [GitLab adoption guide](../adopting-assay-gitlab.md).
+
+**Using another harness or platform?** Follow the dedicated instructions for [Codex CLI](../adopting-assay.md#running-assay-on-codex), [Cursor](../adopting-assay.md#running-assay-on-cursor--a-second-first-class-harness) or [Windows](../adopting-assay.md#windows-adopters). The Claude Code commands above apply only to Claude Code. For a multi-repository setup, carve-out or other nonstandard adoption, use the full [manual runbook](../adopting-assay.md).
 
 ## Read the report
 

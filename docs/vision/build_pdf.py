@@ -17,7 +17,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import Font
 from reportlab.platypus import (
     BaseDocTemplate, CondPageBreak, Flowable, Frame, KeepTogether, PageBreak,
-    PageTemplate, Paragraph, Spacer, Table, TableStyle,
+    PageTemplate, Paragraph, Preformatted, Spacer, Table, TableStyle,
 )
 from reportlab.platypus.tableofcontents import TableOfContents
 
@@ -60,6 +60,9 @@ STYLES = {
                             leading=12, textColor=INK, spaceAfter=0),
     "tablehead": ParagraphStyle("TableHead", fontName="Body-Bold", fontSize=8.1,
                                 leading=12, textColor=INK, spaceAfter=0),
+    "code": ParagraphStyle("InstallCommand", fontName="Courier", fontSize=9,
+                           leading=15, textColor=INK, spaceAfter=14,
+                           backColor=colors.HexColor("#f3f5f8"), borderPadding=10),
     "toc": ParagraphStyle("ContentsEntry", fontName="Body", fontSize=10.2,
                           leading=16, textColor=INK, spaceBefore=8,
                           leftIndent=0, firstLineIndent=0),
@@ -144,6 +147,9 @@ class Cover(Flowable):
         c.setFont("Body", 9)
         c.drawString(0, 43, "9 October 2026 · For engineering leaders")
         c.drawString(0, 25, "Public strategic vision · current foundations and future direction")
+        c.setFillColor(BLUE)
+        c.drawString(0, 7, "assay.guide")
+        c.linkURL("https://assay.guide/", (0, 4, 65, 17), relative=1)
 
 
 class SVGFigure(Flowable):
@@ -299,7 +305,7 @@ def build():
     # Intro, cover metadata and contents are laid out explicitly. All numbered
     # report chapters and their narrative are consumed directly from Markdown.
     boundary = source.index("## 1. What Assay is")
-    introduction = source[source.index("This report describes"):source.index("## Read the report")].strip()
+    introduction = source[source.index("This report describes"):source.index("## Get started")].strip()
     story = [Cover(), PageBreak(),
              Paragraph("READING THE REPORT", STYLES["eyebrow"]),
              Paragraph("The vision, and its evidence", STYLES["chapter"]),
@@ -307,6 +313,16 @@ def build():
     toc = TableOfContents()
     toc.levelStyles = [STYLES["toc"]]
     story.append(toc)
+    story.extend([PageBreak(), Paragraph("ADOPT ASSAY", STYLES["eyebrow"])])
+    heading = Paragraph("Get started", STYLES["chapter"])
+    heading.chapter_name = "Get started"
+    story.append(heading)
+    installation = source[source.index("## Get started") + len("## Get started"):source.index("## Read the report")].strip()
+    for block in re.split(r"\n\s*\n", installation):
+        if block.startswith("```text\n") and block.endswith("```"):
+            story.append(Preformatted(block[len("```text\n"):-3].rstrip(), STYLES["code"]))
+        else:
+            story.append(Paragraph(inline(" ".join(block.splitlines())), STYLES["body"]))
     blocks = re.split(r"\n\s*\n", source[boundary:].strip())
     publication_notes = []
     first_chapter = True
