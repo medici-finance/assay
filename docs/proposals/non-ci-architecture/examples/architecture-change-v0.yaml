@@ -7,7 +7,7 @@ lifecycle: draft
 source_snapshot:
   repositories:
     medici-finance/assay: f9327a5954d57e786464e244a8e9c06f695d980d
-  observation_kind: source-and-recorded-plans
+  observation_kind: public-source-plus-synthetic-plans
   deployment_observed: false
   coverage: partial-verifier-example
   unresolved:
