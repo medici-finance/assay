@@ -2494,7 +2494,8 @@ independent gates, both of which must hold:
   tracked-only gate on purpose, because an untracked file is reachable from no commit and this
   directory is its only copy — *and* HEAD must already be reachable from its own upstream, or
   (no upstream) from `refs/remotes/origin/main`. Detached review heads instead require
-  reachability from a remote-tracking ref, so a squash merge does not strand them while
+  a named session lock judged inactive and reachability from a remote-tracking ref,
+  so a squash merge does not strand them while
   the fetched source branch still preserves their history. This detached proof also holds
   **ignored files**, which may contain evidence; their owner must finish evidence handoff
   and remove disposable output before retrying. No PR state is inferred. Once the source

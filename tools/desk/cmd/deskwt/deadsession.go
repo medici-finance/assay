@@ -134,7 +134,7 @@ func judgeReap(sc *sweepCtx, rt, lockReason string, isLocked bool, mt time.Time,
 		return v
 	}
 
-	pushed, why, perr := pushedState(sc, rt)
+	pushed, why, perr := pushedState(sc, rt, isLocked && v.session != "")
 	if perr != nil {
 		v.reason += "; could-not-check: " + errText(perr)
 		return v
@@ -184,7 +184,7 @@ var dirtyAnyIn = func(sc *sweepCtx, rt string) (string, error) {
 //
 // Every failure to READ a ref is returned as an error, never as a false — an unreadable
 // upstream must leave the worktree alone, not condemn it.
-func pushedState(sc *sweepCtx, rt string) (bool, string, error) {
+func pushedState(sc *sweepCtx, rt string, inactiveNamedOwner bool) (bool, string, error) {
 	repo, err := sc.open(rt)
 	if err != nil {
 		return false, "", deskkit.Unverifiable("cannot open the worktree to check whether HEAD is pushed", err)
@@ -192,11 +192,13 @@ func pushedState(sc *sweepCtx, rt string) (bool, string, error) {
 	// Detached review heads have no upstream, including after squash merges.
 	// Use the same remote-reachability proof as explicit remove. The opt-in
 	// reap arm has already checked ownership and all untracked evidence.
+	// Require a named inactive owner: a freshly allocated, unlocked detached
+	// worktree may belong to a reviewer that has not taken its lock yet.
 	branch, berr := repo.AbbrevRefHEAD()
 	if berr != nil {
 		return false, "", deskkit.Unverifiable("cannot resolve worktree branch", berr)
 	}
-	if branch == "HEAD" || branch == "" {
+	if (branch == "HEAD" || branch == "") && inactiveNamedOwner {
 		// Review evidence may be ignored by Git. Remote reachability protects
 		// committed source only; keep any ignored payload for explicit handoff.
 		ignored, ierr := runGit(rt, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
@@ -236,6 +238,9 @@ func pushedState(sc *sweepCtx, rt string) (bool, string, error) {
 	}
 	if onMain {
 		return true, "HEAD is reachable from refs/remotes/origin/main", nil
+	}
+	if (branch == "HEAD" || branch == "") && !inactiveNamedOwner {
+		return false, "detached remote proof requires a named inactive session lock", nil
 	}
 	if uerr != nil {
 		return false, "no-upstream-and-not-on-main (this branch has no upstream and HEAD is not reachable from refs/remotes/origin/main)", nil

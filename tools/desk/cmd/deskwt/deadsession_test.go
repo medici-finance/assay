@@ -365,7 +365,7 @@ func TestLockTTLAcceptedWithReapOptIn(t *testing.T) {
 // Squashing preserves the patch in main but not the review commit's ancestry.
 // The existing opt-in reaper should accept the same remote proof as remove.
 func TestReapDetachedSquashReview(t *testing.T) {
-	for _, variant := range []string{"safe", "dry-run", "no-opt-in", "live", "evidence", "ignored-evidence", "ignored-whitespace", "unpushed", "remote-gone"} {
+	for _, variant := range []string{"safe", "dry-run", "no-opt-in", "live", "unlocked", "anonymous-lock", "evidence", "ignored-evidence", "ignored-whitespace", "unpushed", "remote-gone"} {
 		t.Run(variant, func(t *testing.T) {
 			work := newRepo(t)
 			withEnv(t, work)
@@ -389,6 +389,12 @@ func TestReapDetachedSquashReview(t *testing.T) {
 				args = []string{"prune"}
 			case "live":
 				plantBeacon(t, "review-finished", time.Now())
+			case "unlocked":
+				mustGit(t, work, "worktree", "unlock", target)
+			case "anonymous-lock":
+				mustGit(t, work, "worktree", "unlock", target)
+				mustGit(t, work, "worktree", "lock", "--reason", "anonymous", target)
+				args = append(args, "--lock-ttl", "1ns")
 			case "evidence":
 				writeFile(t, filepath.Join(target, "review-evidence.txt"), "retain verdict evidence")
 			case "ignored-evidence":
