@@ -170,7 +170,8 @@ var dirtyAnyIn = func(sc *sweepCtx, rt string) (string, error) {
 // pushedState reports whether every commit in this worktree's HEAD is already on the remote,
 // and says in words which ref proved it (or which one failed to).
 //
-// Two acceptable proofs, in order:
+// For a detached head, a remote-tracking ref must contain the commit and no
+// ignored payload may remain. For a branch, two acceptable proofs, in order:
 //
 //	HEAD is reachable from its own UPSTREAM — the normal case for a branch behind a draft
 //	  PR. Nothing local is lost: the upstream ref holds HEAD and everything below it.
@@ -187,6 +188,36 @@ func pushedState(sc *sweepCtx, rt string) (bool, string, error) {
 	repo, err := sc.open(rt)
 	if err != nil {
 		return false, "", deskkit.Unverifiable("cannot open the worktree to check whether HEAD is pushed", err)
+	}
+	// Detached review heads have no upstream, including after squash merges.
+	// Use the same remote-reachability proof as explicit remove. The opt-in
+	// reap arm has already checked ownership and all untracked evidence.
+	branch, berr := repo.AbbrevRefHEAD()
+	if berr != nil {
+		return false, "", deskkit.Unverifiable("cannot resolve worktree branch", berr)
+	}
+	if branch == "HEAD" || branch == "" {
+		// Review evidence may be ignored by Git. Remote reachability protects
+		// committed source only; keep any ignored payload for explicit handoff.
+		ignored, ierr := runGit(rt, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
+		if ierr != nil {
+			return false, "", deskkit.Unverifiable("cannot inventory ignored review files", ierr)
+		}
+		if ignored != "" {
+			return false, "ignored review files require owner evidence handoff", nil
+		}
+		head, herr := repo.Resolve("HEAD")
+		if herr != nil {
+			return false, "", deskkit.Unverifiable("cannot resolve detached HEAD", herr)
+		}
+		refs, rerr := repo.RefsContaining(head.String(), "refs/remotes/")
+		if rerr != nil {
+			return false, "", deskkit.Unverifiable("cannot prove detached HEAD on a remote-tracking ref", rerr)
+		}
+		if len(refs) == 0 {
+			return false, "detached HEAD is not reachable from any remote-tracking ref", nil
+		}
+		return true, "detached HEAD is reachable from remote-tracking ref " + refs[0], nil
 	}
 	upstream, uerr := repo.UpstreamRef()
 	if uerr == nil {

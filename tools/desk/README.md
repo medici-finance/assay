@@ -2493,8 +2493,12 @@ independent gates, both of which must hold:
 - **Safety.** The tree must be clean with **untracked files counted** — stricter than Step B's
   tracked-only gate on purpose, because an untracked file is reachable from no commit and this
   directory is its only copy — *and* HEAD must already be reachable from its own upstream, or
-  (no upstream) from `refs/remotes/origin/main`. Every commit is then on the remote and the
-  directory is the only thing deleted.
+  (no upstream) from `refs/remotes/origin/main`. Detached review heads instead require
+  reachability from a remote-tracking ref, so a squash merge does not strand them while
+  the fetched source branch still preserves their history. This detached proof also holds
+  **ignored files**, which may contain evidence; their owner must finish evidence handoff
+  and remove disposable output before retrying. No PR state is inferred. Once the source
+  remote-tracking ref is gone, an otherwise unpreserved detached head remains held.
 
 On a reap it also deletes the **stale local branch**, when that branch is equal to or behind
 its upstream, with the non-force `git branch -d` — whose own merged-into-upstream refusal is a

@@ -361,3 +361,68 @@ func TestLockTTLAcceptedWithReapOptIn(t *testing.T) {
 		t.Fatalf("--lock-ttl alone rc = %d, want %d (refused as inert); stderr:\n%s", rc, deskkit.ExitRefused, errout)
 	}
 }
+
+// Squashing preserves the patch in main but not the review commit's ancestry.
+// The existing opt-in reaper should accept the same remote proof as remove.
+func TestReapDetachedSquashReview(t *testing.T) {
+	for _, variant := range []string{"safe", "dry-run", "no-opt-in", "live", "evidence", "ignored-evidence", "ignored-whitespace", "unpushed", "remote-gone"} {
+		t.Run(variant, func(t *testing.T) {
+			work := newRepo(t)
+			withEnv(t, work)
+			target, branch := openPRWorktree(t, work, "squashreview")
+			head := mustGit(t, target, "rev-parse", "HEAD")
+			mustGit(t, target, "checkout", "--detach", head)
+			mustGit(t, work, "merge", "--squash", branch)
+			mustGit(t, work, "commit", "-m", "squashed change")
+			mustGit(t, work, "push", "origin", "main")
+			mustGit(t, work, "fetch", "origin")
+			if got := mustGit(t, work, "rev-list", "refs/remotes/origin/main"); strings.Contains(got, head) {
+				t.Fatal("fixture is not a squash", got)
+			}
+			lockAs(t, work, target, "review-finished")
+			plantBeacon(t, "review-finished", time.Now().Add(-6*time.Hour))
+			args := []string{"prune", "--reap-dead-sessions"}
+			switch variant {
+			case "dry-run":
+				args = append(args, "--dry-run")
+			case "no-opt-in":
+				args = []string{"prune"}
+			case "live":
+				plantBeacon(t, "review-finished", time.Now())
+			case "evidence":
+				writeFile(t, filepath.Join(target, "review-evidence.txt"), "retain verdict evidence")
+			case "ignored-evidence":
+				writeFile(t, filepath.Join(work, ".git", "info", "exclude"), "review-evidence.txt\n")
+				writeFile(t, filepath.Join(target, "review-evidence.txt"), "ignored verdict evidence")
+			case "ignored-whitespace":
+				writeFile(t, filepath.Join(work, ".git", "info", "exclude"), "*\n")
+				writeFile(t, filepath.Join(target, "   "), "ignored verdict evidence")
+			case "unpushed":
+				writeFile(t, filepath.Join(target, "local.txt"), "unpublished work")
+				mustGit(t, target, "add", "local.txt")
+				mustGit(t, target, "commit", "-m", "local review work")
+			case "remote-gone":
+				mustGit(t, work, "update-ref", "-d", "refs/remotes/origin/"+branch)
+			}
+			rc, out := runCapErr(t, args)
+			if rc != deskkit.ExitOK {
+				t.Fatalf("rc=%d: %s", rc, out)
+			}
+			_, err := os.Stat(target)
+			if variant == "safe" {
+				if !os.IsNotExist(err) {
+					t.Fatal("squashed review held", out, err)
+				}
+				if !strings.Contains(out, "detached HEAD is reachable from remote-tracking ref") {
+					t.Fatal("missing preservation proof", out)
+				}
+			} else if err != nil {
+				t.Fatal("protected review removed", variant, out, err)
+			}
+			// Retiring a detached review never retires the implementer's branch.
+			if !localBranchExists(t, work, branch) {
+				t.Fatal("implementation branch deleted")
+			}
+		})
+	}
+}
