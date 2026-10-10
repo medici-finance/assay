@@ -350,22 +350,27 @@ func trailingValueFlag(cmd *cobra.Command, words []string) int {
 }
 
 // kindScan is the --kind override of desk, up and show, read as the legacy pre-scan read it:
-// the first --kind among the verb's words, whatever word comes before it, so a --kind in
-// another flag's value position is still the kind; refused with no value or an unknown one
-// before anything loads (loadCell asserts the kind's own preconditions, so the override has to
+// the first --kind among the verb's words ahead of a bare `--`, whatever word comes before it,
+// so a --kind in another flag's value position is still the kind; refused with no value or an
+// unknown one before anything loads (loadCell asserts the kind's own preconditions, so the override has to
 // be in force by then). A later --kind is skipped unread. The parsed --kind is never read: the
 // kind selects the launched window's confinement class, so no word on the line that names one
 // goes unapplied or unvalidated.
 //
 // --kind=<k> (decision entry 4) is the same occurrence only where the parser reads it as a flag.
 // The old pre-scan matched the separate word alone, so a --kind=<k> in another flag's value
-// position was that flag's value, and one after a bare `--` was a positional: neither kinds the
-// cell here either (flagWordAt).
+// position was that flag's value: it does not kind the cell here either (flagWordAt).
+//
+// Neither spelling is read after a bare `--` that ends the flags. The old parser refused every
+// such `--`, so no line it ran had a --kind there; decision entry 4 accepts the `--`, and a word
+// after it is an operand, never a flag, so it never selects the kind.
 func kindScan(cmd *cobra.Command, words []string) string {
-	isFlag := flagWordAt(cmd, words)
+	isFlag, end := flagWordAt(cmd, words)
 	for i, w := range words {
 		k, eq := strings.CutPrefix(w, "--kind=")
 		switch {
+		case i >= end:
+			return ""
 		case eq && isFlag[i]:
 		case eq:
 			continue
@@ -389,13 +394,14 @@ func kindScan(cmd *cobra.Command, words []string) string {
 
 // flagWordAt marks the words the parser reads as flags, walking them as it does: a value flag
 // (long, or a one-letter shorthand) takes the next word whatever it is, and a bare `--` ends the
-// flags, so a word in a value position or after the `--` is never a flag.
-func flagWordAt(cmd *cobra.Command, words []string) []bool {
-	at := make([]bool, len(words))
+// flags, so a word in a value position or after the `--` is never a flag. end is the index of
+// that `--` (len(words) when there is none); a `--` taken as a flag's value ends nothing.
+func flagWordAt(cmd *cobra.Command, words []string) (at []bool, end int) {
+	at = make([]bool, len(words))
 	for i := 0; i < len(words); i++ {
 		w := words[i]
 		if w == "--" {
-			break
+			return at, i
 		}
 		if !strings.HasPrefix(w, "-") || w == "-" {
 			continue
@@ -414,7 +420,7 @@ func flagWordAt(cmd *cobra.Command, words []string) []bool {
 			i++
 		}
 	}
-	return at
+	return at, len(words)
 }
 
 func cellArg(pos []string) string { return needCell(pos) }

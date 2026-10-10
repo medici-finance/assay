@@ -52,9 +52,9 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   compares its words exactly too: `init` or `print` as its one word, anything else its own usage
   refusal, as before.
 - **`--kind` on `desk`, `up` and `show`** is read as the old pre-scan read it: the first `--kind`
-  anywhere among the verb's words, before the cell loads, whatever word comes before it. A `--kind`
-  in another flag's value position is still the kind (`--model --kind house <dir>` runs
-  house-kinded, as before) and is still validated (`--model --kind` is refused with
+  among the verb's words ahead of a bare `--`, before the cell loads, whatever word comes before
+  it. A `--kind` in another flag's value position is still the kind (`--model --kind house <dir>`
+  runs house-kinded, as before) and is still validated (`--model --kind` is refused with
   `--kind needs a value`, exit 3, nothing run). A later `--kind` is skipped unread, with or
   without a value after it, so a word appended after a pinned kind never re-kinds a launch. The
   parity cases `kind-whole-line/*` replay these against the pre-migration binary. The old pre-scan
@@ -64,7 +64,14 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   `--model --kind=bogus` runs with that model), and after a bare `--` it is a positional (cases
   `kind-equals-value-position/*`). The old parser refused that `--` itself; it is accepted now
   (decision entry 4), so `desk <scrubbed> <role> -- --kind=house <dir>` is refused by the scrubbed
-  cell instead: exit 3, nothing run, not re-kinded (`kind-equals-value-position/2`).
+  cell instead: exit 3, nothing run, not re-kinded (`kind-equals-value-position/2`). The separate
+  spelling after that `--` is an operand too, never the kind: `desk <scrubbed> <role> -- --kind
+  house <dir>` and `up <scrubbed> -- --kind house <dir>` are refused by the scrubbed cell, exit 3,
+  nothing run, not re-kinded (`kind-after-terminator/0`, `kind-after-terminator/1`), where the old
+  parser refused the `--`. A `--kind` ahead of the `--` is the kind as before, so
+  `desk <scrubbed> <role> --kind house -- <dir>` runs house-kinded; the old parser refused that
+  line only for its `--` (`kind-after-terminator/2`). A `--` that is another flag's value
+  (`--model -- --kind house`) ends nothing, as the parser reads it.
 - **`new` reads its whole line for help, and a missing last value as empty.** `-h` or `--help`
   anywhere on a `new` line prints the usage, exit 0, and writes nothing, also as another flag's
   value (`--orgs --help`), after a bare `--`, or with a `--cells-root` after the verb (`new <cell>

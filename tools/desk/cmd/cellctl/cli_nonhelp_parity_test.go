@@ -306,6 +306,15 @@ func goldenCases() []goldenCase {
 			stEnv(dry, "desk", "scrub", "worker-desk", "--", "--kind=house", "<ROOT>/claude-config"),
 			stEnv(dry, "desk", "example", "worker-desk", "--model", "--kind=bogus"),
 		}},
+		// The separate `--kind <k>` after a bare `--` was refused with the `--` itself; decision
+		// entry 4 accepts the `--`, and the words after it are operands, so the line is refused by
+		// the scrubbed cell, still exit 3 and not re-kinded. Ahead of the `--` the word kinds the
+		// cell as it always did (the old parser refused the `--`, so that line runs only now).
+		{name: "kind-after-terminator", steps: []goldenStep{
+			stEnv(dry, "desk", "scrub", "worker-desk", "--", "--kind", "house", "<ROOT>/claude-config"),
+			stEnv(dry, "up", "scrub", "--", "--kind", "house", "<ROOT>/claude-config"),
+			stEnv(dry, "desk", "scrub", "worker-desk", "--kind", "house", "--", "<ROOT>/claude-config"),
+		}},
 		// new read most values with a helper that took a missing trailing value as empty.
 		{name: "new-trailing-value", steps: []goldenStep{
 			st("new", "f1", "--kind", "house", "--repo", "<ROOT>/repo", "--roots", "o/r=<ROOT>/repo", "--forge"),
@@ -423,6 +432,17 @@ var deliberateDiffs = map[string]deliberateDiff{
 	// the old parser refused the `--` itself.
 	"kind-equals-value-position/2": {code: 3, why: "a bare `--` is accepted (decision entry 4); the --kind= word after it is a positional, never the kind",
 		stderrHas: []string{echoFragment, "cellctl: scrubbed desks do not accept a host config directory or a provider"}},
+
+	// The same for the separate `--kind <k>` after the `--`: an operand, so the scrubbed cell refuses
+	// the host config directory (exit 3, nothing run, not re-kinded). Ahead of the `--` the separate
+	// word is the kind, as it always was; only the `--` after it is new (decision entry 4).
+	"kind-after-terminator/0": {code: 3, why: "a bare `--` is accepted (decision entry 4); the --kind word after it is an operand, never the kind",
+		stderrHas: []string{echoFragment, "cellctl: scrubbed desks do not accept a host config directory or a provider"}},
+	"kind-after-terminator/1": {code: 3, why: "a bare `--` is accepted (decision entry 4); the --kind word after it is an operand, never the kind",
+		stderrHas: []string{echoFragment, "cellctl: scrubbed desks do not accept a host config directory or a provider"}},
+	"kind-after-terminator/2": {code: 0, why: "a bare `--` is accepted (decision entry 4); a --kind ahead of it kinds the cell as before",
+		stdoutHas: []string{"[dry-run] cell=scrub kind=house (override) role=worker-desk", "cfg=<ROOT>/claude-config"},
+		stderrHas: []string{echoFragment}},
 
 	// The hidden completion entrypoints refuse like any unknown command.
 	"completion-entrypoints/0": {code: 3, stderr: unknownCmd("__complete"), why: whyParseText},

@@ -72,6 +72,7 @@ func TestRootsValid(t *testing.T) {
 	}
 }
 
+// regression: #2391 (a separate --kind after a bare `--` kinded the cell)
 func TestKindScanRefusesUnknown(t *testing.T) {
 	desk, _, err := buildRoot().Find([]string{"desk"})
 	if err != nil {
@@ -95,6 +96,15 @@ func TestKindScanRefusesUnknown(t *testing.T) {
 		{[]string{"x", "--model", "--kind=bogus"}, ""},
 		{[]string{"x", "--model", "y", "--kind=house"}, "house"},
 		{[]string{"x", "--set", "--kind=house"}, "house"},
+		// Neither spelling kinds the cell after a bare `--` that ends the flags: the words after it
+		// are operands. Ahead of it the separate --kind is read as before, and a `--` that is a
+		// flag's value ends nothing.
+		{[]string{"x", "--", "--kind", "house"}, ""},
+		{[]string{"x", "--model", "y", "--", "--kind", "house"}, ""},
+		{[]string{"x", "--set", "--", "--kind", "house"}, ""},
+		{[]string{"x", "--help=false", "--", "y", "--kind", "house"}, ""},
+		{[]string{"x", "--kind", "house", "--", "--kind", "scrubbed"}, "house"},
+		{[]string{"x", "--model", "--", "--kind", "house"}, "house"},
 	} {
 		if got := kindScan(desk, tc.words); got != tc.want {
 			t.Errorf("kindScan(%q) = %q, want %q", tc.words, got, tc.want)
