@@ -45,6 +45,9 @@ func cmdTick(args []string) (err error) {
 	if *limit < 1 || *limit > 500 {
 		return deskkit.Refused("refused: --limit must be between 1 and 500")
 	}
+	if *claimsFixture == "" && strings.TrimSpace(*repo) == "" {
+		return deskkit.Refused("refused: tick needs --repo OWNER/NAME")
+	}
 	ac.repo = *repo
 
 	now := time.Now().UTC()

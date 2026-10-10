@@ -63,7 +63,7 @@ func reclaimVersion(claim claimRecord, opts gitcore.ListOpts, push func(context.
 		return fmt.Errorf("reclaim %s: could not conditionally release: %w", claim.Key, err)
 	}
 	if result != gitcore.RefUpdateApplied {
-		return fmt.Errorf("reclaim %s: claim changed or release refused; held for reassessment", claim.Key)
+		return &loopengine.BlindError{Source: "claim-release", Err: fmt.Errorf("reclaim %s: claim changed or release refused; held for reassessment", claim.Key)}
 	}
 	return nil
 }

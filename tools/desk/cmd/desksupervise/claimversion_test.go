@@ -80,22 +80,16 @@ func TestReclaimVersionPreservesConcurrentNewOwner(t *testing.T) {
 	}
 }
 
-func TestClaimPageUnreadableAndFuturePayloadsHold(t *testing.T) {
+func TestClaimPageUnreadableAndMalformedPayloadsHold(t *testing.T) {
 	now := time.Now().UTC()
 	refs := []*plumbing.Reference{plumbing.NewHashReference(plumbing.ReferenceName(deskkit.DispatchClaimActiveRefsPrefix+"r--issue-1"), plumbing.NewHash(strings.Repeat("1", 40)))}
-	for _, mode := range []string{"transport", "future", "unknown", "wrong-key"} {
+	for _, mode := range []string{"transport", "wrong-key"} {
 		_, _, err := claimPage(refs, "org/repo", now, 50, "", func(plumbing.Hash) (gitcore.TagPayload, error) {
 			if mode == "transport" {
 				return gitcore.TagPayload{}, fmt.Errorf("unreadable")
 			}
 			msg := "dispatch-claim r--issue-1 owner=session state=dispatched branch=topic"
 			at := now.Add(-time.Hour)
-			if mode == "future" {
-				at = now.Add(time.Hour)
-			}
-			if mode == "unknown" {
-				msg = strings.Replace(msg, "owner=session", "owner=unknown", 1)
-			}
 			if mode == "wrong-key" {
 				msg = strings.Replace(msg, "r--issue-1", "r--issue-2", 1)
 			}

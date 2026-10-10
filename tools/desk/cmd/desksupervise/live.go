@@ -89,7 +89,7 @@ func claimPage(refs []*plumbing.Reference, repo string, now time.Time, limit int
 		if !ownerOK || !stateOK || !branchOK {
 			return nil, next, deskkit.Unverifiable("malformed claim held for inspection: "+ref.Name().String(), nil)
 		}
-		if owner == "" || owner == "unknown" || branch == "" || (state != "claimed" && state != "dispatched") || payload.When.IsZero() || payload.When.After(now) {
+		if owner == "" || branch == "" || (state != "claimed" && state != "dispatched") || payload.When.IsZero() {
 			return nil, next, deskkit.Unverifiable("unverifiable claim held for inspection: "+ref.Name().String(), nil)
 		}
 		if state != "dispatched" {
@@ -185,4 +185,16 @@ func liveObservationSource(probes *loopengine.ObservableProbes) observationSourc
 		}
 		return resolvedObservation{obs: obs, observed: true}, nil
 	}
+}
+
+// Well-formed but unattributable or clock-skewed claims are held individually.
+// Neither condition is evidence that their owner is dead.
+func claimInventoryBlind(c claimRecord, now time.Time) string {
+	if c.Owner == "unknown" {
+		return "claim-owner-unknown"
+	}
+	if at, err := time.Parse(time.RFC3339, c.DispatchedAt); err == nil && at.After(now) {
+		return "claim-future-timestamp"
+	}
+	return ""
 }

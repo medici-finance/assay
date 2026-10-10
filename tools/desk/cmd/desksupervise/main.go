@@ -68,11 +68,12 @@ Reconciliation runs FIRST, before the liveness classification: for every dispatc
 joins three reads (the current claim holder, the item's board row on origin/main, and the PR's
 forge state — cheapest first, short-circuit on the first ineligible) and, for an INELIGIBLE
 claim, STOPS the run — arming the per-run stop flag and, for a TERMINAL verdict (PR merged/
-closed, board row at implemented/verified/done, or the claim already released), also releasing
-the claim; a HELD verdict (the claim reassigned to a different live holder, a blocked board row,
+closed, board row at implemented/verified/done), also releasing the claim. A claim already
+confirmed released is stopped without another delete; a HELD verdict (the claim reassigned
+to a different live holder, a blocked board row,
 a SUPERSEDED/RESOLVED-ELSEWHERE disposition, or a needs-decision/question label) stops the run
-WITHOUT releasing it — releasing there would delete a ref its new owner holds, or re-dispatch
-into a human-held state. An INELIGIBLE claim is journalled SUPERSEDED and
+WITHOUT releasing it — a different holder owns the next move, and a held item must not
+be re-dispatched. An INELIGIBLE claim is journalled SUPERSEDED and
 skipped by the liveness step; a reconcile read that could-not-check keeps the run (RECONCILE-BLIND,
 action=BLIND(<source>)) and, like a liveness BLIND, makes the tick exit 6. Reconcile lines are:
 
@@ -90,6 +91,13 @@ the run (idempotent — deskfile's own dedupe makes a repeat filing a no-op) —
 write a journal line. A COULD-NOT-CHECK claim (action=BLIND) is never acted on either way,
 and a tick that saw one exits 6 — the reading is incomplete even though the tick itself
 ran cleanly (see the three-state-instrument rule: could-not-check is never a pass).
+
+A refused compare-delete is BLIND for that claim; other claims and later intervals
+continue. A claim already confirmed released needs no delete. A well-formed claim with
+owner=unknown or a future timestamp is individually BLIND; malformed or unreadable
+payloads hold the page. Stop flags remain task-keyed and are not cleared on a refused
+release. A resumed tick measures only its own page, so even the final page exits 6;
+no continuation key means that traversal is complete, not a fresh whole-inventory read.
 
 status renders the observer's per-claim runtime state as ONE structured record — a human
 table, or (--json) a document validating against schemas/desksupervise-status-v1.json: per

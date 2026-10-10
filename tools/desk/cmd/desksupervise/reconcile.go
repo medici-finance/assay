@@ -56,7 +56,13 @@ func reconcile(claims []claimRecord, src eligibilitySource, now time.Time, dryRu
 	runTag := fmt.Sprintf("desksupervise-%d", now.UnixNano())
 
 	for _, claim := range claims {
-		verdict, verr := src(claim)
+		var verdict loopengine.EligibilityVerdict
+		var verr error
+		if source := claimInventoryBlind(claim, now); source != "" {
+			verr = &loopengine.BlindError{Source: source}
+		} else {
+			verdict, verr = src(claim)
+		}
 		if verr != nil {
 			source, ok := loopengine.BlindSource(verr)
 			if !ok {
@@ -77,11 +83,17 @@ func reconcile(claims []claimRecord, src eligibilitySource, now time.Time, dryRu
 
 		action := "STOP"
 		release := false
-		if verdict.Terminal() {
+		if verdict.Terminal() && verdict.Reason != "claim-released" {
 			action = "STOP+RELEASE"
 			release = true
 		}
 		if aerr := runReconcileAction(claim, verdict, release, dryRun, reclaim, arm, runTag); aerr != nil {
+			if source, ok := loopengine.BlindSource(aerr); ok {
+				anyBlind = true
+				results = append(results, reconcileResult{Claim: claim, Blind: true, Source: source, Action: "STOP+BLIND"})
+				fmt.Fprintf(out, "%s  RECONCILE-BLIND via=%s action=STOP+BLIND (release not confirmed)\n", claim.Key, source)
+				continue
+			}
 			return eligible, results, anyBlind, deskkit.Unverifiable("claim "+claim.Key+": reconcile action failed", aerr)
 		}
 		results = append(results, reconcileResult{Claim: claim, Verdict: verdict, Action: action})
@@ -103,7 +115,7 @@ func runReconcileAction(claim claimRecord, verdict loopengine.EligibilityVerdict
 		if release {
 			fmt.Fprintf(os.Stderr, "[dry-run] would arm STOP.run.%s, release dispatch claim %s, journal SUPERSEDED reason=%s\n", claim.Key, claim.Key, reason)
 		} else {
-			fmt.Fprintf(os.Stderr, "[dry-run] would arm STOP.run.%s, journal SUPERSEDED reason=%s (HELD — claim NOT released)\n", claim.Key, reason)
+			fmt.Fprintf(os.Stderr, "[dry-run] would arm STOP.run.%s, journal SUPERSEDED reason=%s (claim NOT released)\n", claim.Key, reason)
 		}
 		fireAfterRun(claim, true)
 		return nil
