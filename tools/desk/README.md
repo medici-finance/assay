@@ -3776,7 +3776,10 @@ check never observed to both pass and fail is a comment that happens to compile.
 A manifest applies **one row at a time**, each with its own audit line, and each row is a
 comment **then** a close — two charged writes, in that order, so the trail naming the lane,
 the canonical target and the authorizing artifact survives even a batch that turns out to be
-wrong. Reopen is cheap; an unexplained close is not.
+wrong. Reopen is cheap; an unexplained close is not. A close whose post-close re-read still
+shows the item open adds one more charged write — a repair issue on the item's repo, deduped
+by exact title and recorded as its own audit line — and fails the row (exit 6), which stops
+the batch.
 
 - **A hard error stops the run**, leaving every later row untouched, and prints the exact
   `--resume-from <N>` to continue with.
@@ -5396,6 +5399,87 @@ A provider writes a single-line value from outside the tool with `packet.Code` a
 text with `Content.Untrusted`; `Content.Text` keeps the Markdown it is given, so a value put
 into it bare is not marked as data.
 
+**Worker packets (#2439).** A `--kit worker` or `--kit worker-objective` dispatch gets a packet
+too (`packet_worker.go`), and WHICH one follows the kind of run the dispatch already derives:
+`--pr` onto an open change is a run that works that change, every other worker dispatch
+implements a brief or an issue. Measured on one adopter fleet over a day (135 worker runs,
+8,668 model requests), a run made a median of 20 tool calls before its first edit, and
+reading the brief, the files it names, the repository's own instructions, the change, its
+checks and its reviews was 25% of those calls for an implementing run and 45% for a run on an
+open change — almost all of them one read per request. The packet holds what those calls
+fetched:
+
+| Kind of run | Sections, in order |
+|---|---|
+| implementing (no change open) | `Run` — item, repository, worktree, branch, base commit, the claim this dispatch took; `Issue` — an issue item's title, body and newest comments; `Brief` — the specification, read from the run's worktree; `Dependencies` — the board status of each brief its `depends:` names; `Repository` — the top of the tree, workflow file names, `Makefile` targets, whether a `changelog/` directory exists, and the root instruction files quoted; `Files the brief names` — each path of the brief's `files:` list (or its `write-scopes:`, when it states one) as it stands in the worktree: a file quoted, a directory listed, an absent path said to be absent |
+| working an open change (`--pr`) | `Run`; `Change` — title, author, state, branches, head; `Description`; `Brief` when `--brief` names one; `Against the base branch` — whether it conflicts, and whether the base has commits the branch lacks; `Checks at head` — every check with its state, those not passing called out, and the checks the base branch requires; `Reviews and findings` — every review with its state, commit and author; the reviewer identity's reviews with each finding record's entries, those at the head and the newest two earlier ones quoted; reviews by any other account under their own heading; `Comments` — the newest eight quoted, newest first, each author marked; `Diff` |
+
+**A worker packet is smaller than a review packet, on purpose.** Everything in a packet is read
+again on every later request of the run, and a worker run makes dozens. So the caps are 32 KiB
+an item, 64 KiB for the brief and for the diff, 192 KiB of quoted text in all, and at most 12
+named files — against the review packet's 64 KiB, 192 KiB and 512 KiB. The rule is the same:
+an item over a cap is left out whole and listed under "Omitted" with its size, and the agent
+reads the part it needs at the source.
+
+**What a worker packet does not hold, and says it does not hold.** The typed forge surface reads
+neither a job's log nor review comments anchored to a file and a line, so a failing check
+arrives as a name and a state and a finding arrives as its record and the review that carries
+it; the packet states both gaps in the section where the reader would look for them. It does
+not name "the test command" or "the lint command" either: no file states that mechanically,
+so it lists where the repository states it (the brief's Verify table, the instruction files,
+`Makefile` targets, workflow files). A path the brief names in another repository is listed
+as omitted, never read from a sibling checkout. And it folds no finding ledger: which finding
+still blocks is decided by the tools that decide it, and the packet repeats each record as
+written.
+
+**A review is the reviewer's only by its author.** A change's author can post a review on it,
+and so can anyone else who can read it; such a review can carry a finding record of its own
+that calls every finding resolved. So the packet asks the forge who posted each review and
+reads a finding record ONLY from one the reviewer identity posted — the same binding, through
+the same lookup, that the review packet uses to tell an earlier verdict from a look-alike.
+Every other review goes under "Reviews by other accounts — not the reviewer's": one line each,
+no record read, and the newest five bodies quoted (16 KiB each at most) between boundary lines
+under a label that says whose they are, because a run may still have to answer them. When the
+reviewer identity cannot be resolved — it is not bound, or it is bound to a blank name — the
+section fails closed: every review is indexed with the state, commit and author the forge
+reports, none is listed as the reviewer's, no finding record is read and no body is quoted,
+and the section says to read the reviews at the source.
+
+**A finding record speaks of the commit its review is at.** An entry is called a standing
+blocker when it is blocking and not resolved with evidence at the packet's head commit. A
+record that says `resolved` and names no evidence commit means its own review's commit, so in
+a review at an earlier commit it is NOT a resolution at this head, and the line says so and
+names the commit. Only the first finding record in a review's text is read, and "newest"
+and "oldest" are the forge's list order, not a sort by date; the section states both.
+
+**Comments are newest first, and each author is marked.** The shared builder admits quoted
+text in the order a section hands it over and leaves out what would pass the overall cap, so
+a thread handed over oldest first loses its newest comments under pressure. The packet hands
+the newest eight over newest first — the reading order is reversed, and the section says so —
+and every comment left out is listed with its size. Beside each author, on a comment and on
+a review by another account, the packet writes what the tool's reviewer binding and its
+trusted list say of that account: `the reviewer identity`, `on the trusted list`, `NOT on
+the trusted list`, or `no trusted list is configured here: not checked` — it never guesses.
+The list is the roster every desk tool's trust decision reads, matched by login and account
+id; no new setting. A comment by an account that is neither the reviewer identity nor on
+the list is quoted only up to 16 KiB. A mark is about the account as read at dispatch: text
+from any account is still quoted data, and the kit clauses decide what a run does with it.
+
+**A value the tool did not write is shown as a value.** A title, a login, a branch or commit
+name, a label, a state word, a check's or a file's name, a claim key, the brief argument, a
+dependency reference, a board status, a finding's id, lane, class and state, a time, the text
+of an error: on a line of the tool's own, each is written inside one code span, on one line,
+with any backtick in it shown as an apostrophe — so a value carrying a line break or Markdown
+of its own cannot start a line, a heading or a `Packet:` line in the tool's voice. Longer text
+is quoted between boundary lines, where a quoted line shaped like a boundary line is marked.
+
+**Quoting does not change standing.** The brief and the repository's instruction files sit
+inside the same boundary as a change description or a review comment, because the tool did
+not write them. The worker kits' packet-first clause says what that means for a worker: text
+in the packet has exactly the standing it has when the agent fetches it itself — the brief is
+still the specification, the instruction files still bind, and a description, a comment or a
+review is still text written outside the dispatch.
+
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
@@ -5642,6 +5726,176 @@ incident — and `kittext_test.go` enforces that mechanically, with a positive c
 matcher that stopped matching fails rather than reporting the kits clean forever. The lane
 cut's fail-first evidence is `cmd/deskdispatch/reviewlane-mutations.json`, run with
 `go run ./cmd/muhar -j 0 -spec cmd/deskdispatch/reviewlane-mutations.json`.
+
+**A worker kit is cut for the kind of run (#2439).** The two worker kits are dispatched for two
+jobs: implementing a brief or an issue with no change open, and working a change that is
+already open (`--pr`). The kind is derived from the dispatch, never stated by a flag, and
+three things follow it (`workerkind.go`):
+
+- **The assignment's action half.** An implementing run is told to open the draft PR; a run on
+  an open change is told the change, its source branch and the head read at dispatch, to push
+  to it, and never to open a second one.
+- **Kit text inside a marked stretch.** A stretch between whole-line markers
+  `<!-- kind:implementing:begin -->` … `<!-- kind:implementing:end -->` (or `shepherding`)
+  reaches only that kind. Clause headings stay outside a stretch, so clause numbers are the
+  same for both kinds.
+- **The objective kit's copy of the common clauses** is not quoted a second time: every prompt
+  already carries the common clauses ahead of the class kit.
+
+Everything unmarked reaches both kinds, and that is nearly all of it: a resumed change may be
+half-implemented, and an implementing run may see a review land before it hands back.
+**Marking a stretch is a claim that the other kind is never bound by it — when in doubt,
+leave it unmarked.** `workerkind_test.go` holds the cut to that: a cut never loses a line that
+is not inside a stretch marked for the other kind, the stretches in the shipped kits are a
+declared list a new one must be added to on purpose, no marker reaches a prompt, and a kit
+whose markers are unbalanced or nested is refused rather than guessed at.
+
+The same change gives both worker kits three clauses about HOW a run gathers and waits, none
+of which changes what it must do: gather in few requests (read a file whole, send independent
+reads together), read the packet first when the assignment names one, and wait on a check or
+a review in one bounded command instead of a look per request. On the same fleet 93% of
+worker requests carried a single tool call, 62% of file reads were ranged and a third were
+re-reads, and runs on an open change spent a quarter of their wall-clock in separate
+sleep-then-look requests.
+
+**A review dispatch states its round and can be held (#2444).** A `--kit review --pr <N>`
+dispatch reads the forge after every caller precondition and before the claim
+(`reviewroundread.go`); `--dry-run` skips the read. Three things come of it.
+
+- **The round's scope, per lane** (`reviewround.go`). The assignment's "This round" block says
+  `Scope: DELTA` or `Scope: FULL PASS` and why. A lane's own verdicts are the submitted
+  reviews by the reviewer identity whose body carries that lane's verdict line and no other
+  lane's. The scope is a full pass on any of these, each named in the assignment:
+
+  | reason | when |
+  |---|---|
+  | `no-verdict-of-its-own` | the lane has no verdict of its own on the change |
+  | `verdict-already-at-this-head` | the lane's latest verdict is at the dispatched head |
+  | `inter-head-diff-not-computable` | the forge cannot compare the two heads, the interval's commit list is incomplete or empty, the dispatched head's first-parent chain does not reach the previously reviewed head, a commit carries no parent list, or a commit on the chain has no complete file list |
+  | `large-delta` | the first-parent chain between the heads holds more than 20 commits, or touches more than 10 of the change's own paths (its file list at either head) |
+  | `merge-in-files-the-change-touches` | a commit on that chain with two or more parents changed a file the change touches, or whose merged-in side changed one, whichever way a conflict was resolved: the forge's file list for the commit, and its comparison of the commit's first parent with each other parent, are both read |
+  | `path-not-reviewed-before` | the change's file list at the dispatched head holds a path its file list at the previously reviewed head did not |
+  | `could-not-determine` | the change, its reviews, the reviewer identity, the lane, a head, the base branch, either file list or what a merge brought in could not be read in full; or one of the lane's verdicts names, in its own text or typed block, a different head than the forge records for it |
+
+  The merge test does not tell a merge that resolved conflicts from one that did not: a
+  merge whose own file list, or whose merged-in side, names a file the change touches is a
+  full pass either way. A conflict needs both sides to have changed the file, so the
+  merged-in side names it even when the conflict was resolved to the branch's side and the
+  merge commit's own list, which is relative to its first parent, does not. A merged-in side
+  that cannot be compared, or whose file list may be cut short (300 files or more), is
+  `could-not-determine`. A reviewer that finds the stated scope wrong does the full pass
+  (kit clause 19).
+
+  **A verdict's head is checked against the verdict's own record.** The round count, the
+  first-review head and the delta base are read from the commit the forge records each
+  review against, and that field has been seen to disagree with the head a review's own
+  text names. So for every one of the lane's verdicts the dispatcher also reads the head the
+  verdict itself names. In its text that is a full commit id (40 or 64 hex digits, with or
+  without one opening backtick) directly after `Head reviewed:` anywhere, after `Head:`
+  opening a line, or after `at head` on the body's opening line (its first non-empty line
+  that is not a verdict line). In its typed finding block it is each finding's
+  `evidenceHead` and `originHead`. A head named in the text, and an `evidenceHead`, must be
+  the commit the forge records for that verdict; an `originHead` must be the commit the
+  forge records for that verdict or for an earlier one of the lane's. When any of the
+  lane's verdicts names a different head than the forge records for it, or carries a typed
+  finding block that cannot be read, the scope is `could-not-determine`, the round is not
+  determined, and the gate's `lane-awaits-ruling` condition is not evaluated. A verdict that
+  names no full commit id in those places changes nothing: an abbreviated id, and an id
+  anywhere else in the body, are not read.
+- **The lane's round** — the number of distinct heads among the lane's own verdicts and the
+  dispatched head — and the head of the lane's first review. Kit clause 20 reads both: from a
+  lane's fourth round, a finding first raised then in code unchanged since that head is
+  advisory or an arbiter hand-off, unless it is safety-relevant. A round that cannot be
+  counted is stated as not determined, and the clause is then inert.
+- **The pre-dispatch gate** (`reviewgate.go`). The dispatch is refused, exit 5, with a first
+  line `review dispatch HELD — <owner/repo>#<N> at head <sha>: <reasons>`, when:
+
+  | reason | when |
+  |---|---|
+  | `required-check-red` | the forge served every check at the head, a check the base branch requires has reports there, and every latest report under its name is a failure: a check run that completed with `failure`, `timed_out` or `startup_failure`, or a commit status of `failure` or `error` |
+  | `description-stale` | the description's `## Weight` section has a line whose first word, after list, quote and table markers, is `head`, followed by a commit id of 7 to 40 hex digits with at least one digit, and the head on the forge begins with none of the ids so declared |
+  | `decision-not-ruled` | the change carries `needs-decision`, its comment and review history was read in full, and it holds nothing by the roster's blessing authority created after that label's latest application |
+  | `lane-awaits-ruling` | the lane's latest own verdict is at the dispatched head, blocks, and declares only external prerequisites; each is an open item of the same repository carrying `needs-decision`; and at least one of them has no ruling recorded, by the same test |
+
+  A hold claims nothing, cuts no worktree and writes nothing to the forge; its first line is
+  the `Detail` of the dispatch audit row. The round and gate reads are read-only requests
+  (GETs, and the GraphQL queries of the two trust-event reads) made under the dispatcher
+  role's existing credential, the one the review packet already resolves, which the first
+  read in a process may mint; there is no new credential path. The gate's forge surface
+  has no write method, so a hold cannot post a verdict, mark a head reviewed or flip a change
+  ready. A gate read that fails is a note on stderr and the reviewer is dispatched.
+
+The fail-first evidence is `cmd/deskdispatch/reviewround-mutations.json` and
+`cmd/deskdispatch/reviewgate-mutations.json`, run like the lane cut's spec above.
+
+**The verifier packet — a reading aid, never evidence (#2439).** `deskdispatch --kit verifier`
+writes one owner-only Markdown file and adds one line, `Packet: <absolute path>`, to the
+assignment. It hands the verifier the reads it would otherwise make before running its first
+row — measured on one adopter fleet at about four tool calls a run, 7 to 16 percent of a
+run's requests. It does not shorten the rest, and is built so that it cannot: **a row's result
+comes only from running the row at the verified commit, and nothing in a packet is
+evidence.**
+
+| Section | What it holds | What it never holds |
+|---|---|---|
+| Gate and risk | the brief's `gate:`, `gate-why:` and `risk:` frontmatter lines, as written | a reading of them — an absent field is shown as absent |
+| Brief text | the brief from its first line up to its first Evidence heading, Verify table included; the whole brief when the tool finds no such heading, and the packet says so | the Evidence section, or any section after it |
+| Verify rows | each row's `#` and Command cells, character for character | an Expect cell, a result, a prediction, output from any run |
+| Earlier Evidence | the section's line count and how many sections follow it | its rows, its dates, its verdicts |
+| Commits | at most 6 commits, newest first, that changed the brief file or whose message has a `Brief: <id>` line, by full id, each with the paths it changed against its first parent (at most 60) | a subject, message or date — an evidence-landing commit's subject states an earlier verdict |
+
+The dispatcher does **not** know which commit delivered an item's work, and the packet says
+so: it lists candidates and leaves the choice, and the diff, to the verifier. The history
+search goes no further back than the commit that added the brief file, and never more than
+2,000 commits; when it stops short of the brief's first commit the packet says so. **The
+list is the newest six, and the packet says how many it left out:** on a brief verified
+more than once the newest are the Evidence landings and the delivering change is older, so
+the search carries on past the sixth to count the rest, and an omission line gives the
+count (`at least` that many when the search itself stopped early). When the item key gives
+no brief id, no commit message is searched, and the packet says that too.
+
+It **declines** rather than guess. A table with a result-like column (`observed`, `exit`,
+`status`, …) anywhere in the text the packet would carry — in the Verify section or outside
+it — is not a table this tool quotes: no packet is written. A Verify section
+with no table carrying both a `#` and a Command column, or with a row whose cell count
+differs from its header's (an unescaped pipe in a command), gets no command list — the brief
+text still carries the table as written.
+
+**What the packet claims is what was cut, never what the rest holds.** The tool finds
+headings and table headers; it does not read prose for meaning. A heading is found the way
+this repository's own readers of a brief find one — the white space around the line comes
+off first — so an indented `## Evidence` or `## Verify` is that heading here as it is to
+them, and the one recogniser serves the Evidence cut, the Verify heading and the heading
+that ends the Verify section. The cut is the first Evidence heading at any level (a numbered
+or emphasised title included) and ignores code fences, which errs toward carrying less. A
+brief can still record a result under a heading the tool does not take for Evidence, so the
+packet never says it holds no result: it says the dispatcher ran no row, lists what it left
+out, and, where it found no Evidence heading, says it **could not determine** whether the
+text it carries records an earlier result.
+
+Nothing read from the repository is written at the tool's own level except as a value in a
+code span: the brief's path, a commit id, the brief id in the `Brief:` line searched for.
+Each is written with the shared builder's `packet.Code`, so a path chosen by a brief's author
+cannot close the span or start a line of its own, and a note that a long value was cut
+stands outside the span. Everything copied whole — the gate and risk lines, the brief text,
+the row commands, a commit's changed paths — is between a boundary pair, where the builder
+puts `[quoted] ` in front of any line that would begin like a boundary line. The packet
+lists no review and counts no earlier verdict, so no author identity is involved.
+
+Caps are the shared builder's — 64 KiB for one item, 512 KiB overall — plus the limits
+above, all stated in the file; an item over a cap is listed by name and size, never cut short. The file is written
+beside `--prompt-file`, else under the user cache directory, and **never inside the verifier
+home**: an additional file there refuses `--check-verifier`, so a prompt file that sits in
+the home gets no packet. The packet records the home's commit, reads the brief from that
+commit's tree rather than the working tree, and is discarded if the home moved while it was
+being built. It starts no process — every read is in-process through `internal/gitcore` —
+and stops reading history after ten seconds. A read that fails inside a section is stated
+as an omission in one of two fixed sentences; the reader's own error text is never written
+into the file, and a test fails each read in turn to hold that. **Building it can never fail a dispatch:** on
+any failure the dispatch prints one `packet: NOT built` line to stderr, the assignment
+carries no `Packet:` line, and the verifier gathers for itself exactly as before. `--dry-run`
+writes no packet. Nothing about `verifyrun`, the witness, the Evidence format, a gate, a
+budget or a claim changes.
 
 ## The dispatch-claim store — `ResolveClaimStore`
 

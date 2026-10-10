@@ -311,6 +311,18 @@ func dispatch(o dispatchOpts) error {
 	// rather than at merge, and proceeding over it is correct when the overlap is intended.
 	echoWriteOverlap(os.Stderr, o)
 
+	// The review round (#2444), BEFORE the claim: the pre-dispatch gate may HOLD the head
+	// (a refusal — nothing has been claimed or written), and otherwise the lane's scope and
+	// round number are read for the assignment. A read that fails never holds: it yields a
+	// full pass with the round not determined (reviewroundread.go).
+	if reviewKit(o.kit) && o.pr > 0 {
+		round, herr := prepareReviewRound(o, plan, repo)
+		if herr != nil {
+			return herr
+		}
+		plan.round = round
+	}
+
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
 	// must not also be doing. The claim child is handed the DISPATCHING role's credential
 	// before it runs (resolveClaimAuth): the claim is a forge write, and the stamp step's mint
@@ -636,6 +648,10 @@ type dispatchPlan struct {
 	// "" when none was (no provider for the kit, --dry-run, or the build did not succeed).
 	// Set once, after the worktree exists; the prompt carries a `Packet:` line iff it is set.
 	packetPath string
+	// round is the review round this dispatch opens: the lane's scope (full pass or delta)
+	// and its round number, read before the claim. The zero value — every non-review
+	// dispatch, --dry-run, and a run with no forge read wired — states a full pass.
+	round reviewRound
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs

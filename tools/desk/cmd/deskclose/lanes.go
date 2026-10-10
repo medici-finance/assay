@@ -270,9 +270,7 @@ func applySelfWithdraw(r selfWithdrawReq, out io.Writer) error {
 	// reasonNotPlanned is the lane's disposition; closeItem drops it for a change (no forge
 	// records a state reason there), and the comment above carries it instead.
 	if err := closeItem(r.repo, r.number, deskkit.TargetChange, reasonNotPlanned, true); err != nil {
-		a.log(deskkit.ResultUnverifiable, "partial: comment posted, close refused: "+err.Error())
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"could-not-check: %s#%d — partial: comment posted, close refused", r.repo, r.number), err)
+		return closeRefused(a, r.repo, r.number, err)
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("closed via lane %s (because %s, by %s) as %s",
 		modeSelfWithdraw, r.because, r.by, deskkit.StripControl(self.login)))

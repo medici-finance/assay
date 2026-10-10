@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -100,10 +99,11 @@ func (c *Cell) roleCmdIn(sh paneShell, self, role, cfg string, o upOverrides) st
 		o.TickBudget = cadence.Budget.String()
 	}
 	out := sh.invoke(sh.quote(self))
+	root, name := c.reenter()
 	if cadence != nil || o.Cadence != "" {
-		out += " --cells-root " + sh.quote(filepath.Dir(c.Dir))
+		out += " --cells-root " + sh.quote(root)
 	}
-	out += " desk " + sh.quote(c.Name) + " " + sh.quote(role)
+	out += " desk " + sh.quote(name) + " " + sh.quote(role)
 	for _, pair := range [][2]string{{"--kind", c.KindOverride}, {"--model", o.Model}, {"--harness", o.Harness}, {"--provider", o.Provider}, {"--cockpit", o.Cockpit}, {"--cadence", o.Cadence}, {"--tick-budget", o.TickBudget}} {
 		if pair[1] != "" {
 			out += " " + pair[0] + " " + sh.quote(pair[1])

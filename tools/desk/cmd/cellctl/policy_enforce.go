@@ -89,7 +89,9 @@ func (res *PolicyResolution) allowedModels() []string {
 }
 
 // policyHookCommand is the shell command line Claude Code runs for both hooks. It names the cell
-// by its ABSOLUTE directory (so the hook needs no CELLS_ROOT from the window's environment) and
+// by its ABSOLUTE directory and the cells root the launch loaded it from, also absolute (so the
+// hook needs no CELLS_ROOT from the window's environment, and reads the same machine-wide
+// defaults file and provider catalog the launch read, however deep the cell's name nests), and
 // carries the launch's own resolved provider/harness and explicit request, so the hook resolves
 // exactly the route this window was launched on. It also pins the launch policy's SHA-256: the
 // hook process inherits Claude Code's environment — which a settings file's `env` block can
@@ -99,8 +101,8 @@ func (res *PolicyResolution) allowedModels() []string {
 // The trailing `|| exit 2` is the SHELL-level fail-closed half. The binary's own failures are
 // rewritten to the blocking status in cmdModelPolicy, but a binary that is gone or no longer
 // executable fails in the shell first (127 / 126), and Claude Code treats those as NON-blocking.
-func policyHookCommand(self, cellDir string, res *PolicyResolution) string {
-	parts := []string{self, "model-policy", "hook", cellDir, res.Role, res.Provider, res.Requested, res.Harness, res.PolicySHA256}
+func policyHookCommand(self, root, cellDir string, res *PolicyResolution) string {
+	parts := []string{self, "--cells-root", root, "model-policy", "hook", cellDir, res.Role, res.Provider, res.Requested, res.Harness, res.PolicySHA256}
 	for i, p := range parts {
 		parts[i] = bashQuote(p)
 	}
@@ -110,8 +112,8 @@ func policyHookCommand(self, cellDir string, res *PolicyResolution) string {
 // policyClaudeSettings is the port of the oracle's `settings` object: the compact JSON passed to
 // `claude --settings`. It carries no credential — the env block holds model IDs, the effort and
 // (anthropic only) the public base URL; a provider token never enters argv.
-func policyClaudeSettings(self, cellDir string, res *PolicyResolution) (string, error) {
-	command := policyHookCommand(self, cellDir, res)
+func policyClaudeSettings(self, root, cellDir string, res *PolicyResolution) (string, error) {
+	command := policyHookCommand(self, root, cellDir, res)
 	hook := []map[string]any{{"type": "command", "command": command, "timeout": hookTimeoutSeconds}}
 	settings := map[string]any{
 		"env":             res.ClaudeEnv,
@@ -168,12 +170,24 @@ func cmdModelPolicy(args []string) {
 	if !filepath.IsAbs(cellDir) {
 		hookFail("cell directory must be absolute: %s", cellDir)
 	}
-	// Address the cell by its own directory: its parent IS the cells root it was loaded from at
-	// launch, so the shared provider catalog's default path resolves identically here.
-	if err := os.Setenv("CELLS_ROOT", filepath.Dir(cellDir)); err != nil {
+	// Load the cell from the cells root the LAUNCH loaded it from, which the hook command names
+	// with --cells-root: the machine-wide defaults file and the shared provider catalog's default
+	// path then resolve here exactly as they did there. A command without it (a settings file an
+	// older cellctl wrote) can only take the cell directory's parent, which is the root for a
+	// cell one level down. CELLS_ROOT as the window's environment happens to carry it is never
+	// what decides.
+	root, ref := filepath.Dir(cellDir), filepath.Base(cellDir)
+	if cellsRootSelected != "" {
+		rel, err := filepath.Rel(cellsRootSelected, cellDir)
+		if err != nil || rel == "." || !filepath.IsLocal(rel) {
+			hookFail("cell directory %s is not under the cells root %s this window launched from", cellDir, cellsRootSelected)
+		}
+		root, ref = cellsRootSelected, rel
+	}
+	if err := os.Setenv("CELLS_ROOT", root); err != nil {
 		hookFail("%v", err)
 	}
-	c := loadCell(filepath.Base(cellDir))
+	c := loadCell(ref)
 	policy, _, err := c.cellModelPolicy()
 	if err != nil {
 		hookFail("%s", strings.TrimPrefix(err.Error(), "model-policy: "))

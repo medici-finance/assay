@@ -72,6 +72,14 @@ type stubRemote struct {
 	failClose      map[string]bool
 	closeNoReflect map[string]bool
 
+	// The repair-issue filing on a close that did not take (postcondition.go). openIssues are
+	// issues the dedupe search returns; failSearch / failFile force the search or the filing to
+	// fail; filed records the title of every issue the run filed.
+	openIssues []deskkit.IssueSearchResult
+	failSearch bool
+	failFile   bool
+	filed      []string
+
 	// viewer is the login the forge reports for the token in use (`viewer { login }`);
 	// failViewer makes that read fail, which is the could-not-check arm of the
 	// two-role superseded lane. threads holds each item's comment list as JSON
@@ -115,6 +123,9 @@ func (s *stubRemote) writes() [][]string {
 	var out [][]string
 	for _, c := range s.calls {
 		if len(c) >= 2 && (c[0] == "issue" || c[0] == "pr") && (c[1] == "close" || c[1] == "comment" || c[1] == "edit" || c[1] == "reopen") {
+			out = append(out, c)
+		}
+		if len(c) >= 2 && c[0] == "issue" && c[1] == "create" {
 			out = append(out, c)
 		}
 		if len(c) >= 2 && c[0] == "label" && c[1] == "create" {
