@@ -1,1 +1,2 @@
-The opt-in dead-session worktree reaper now recognizes detached review heads with a named inactive session lock preserved by a remote-tracking ref, including after a squash merge. This added proof preserves live locks, unpublished commits, untracked evidence and ignored review files. This does not infer completion from PR state or retire remote refs.
+### Fixed
+- The opt-in dead-session worktree reaper recognizes detached review heads preserved by remote refs after squash merges, requiring a named inactive owner and retaining unpublished commits and local review evidence.
