@@ -758,6 +758,7 @@ func forgeRowCount(b []byte) int {
 // fail-safe direction (a stampless queued orphan never supersedes a completed run).
 type RollupNode struct {
 	Typename    string // "CheckRun" | "StatusContext" (empty when the forge did not tag it)
+	ID          string // CheckRun: the forge's run id, same meaning and rendering as CheckRun.ID ("" when none)
 	Name        string // CheckRun name
 	Status      string // CheckRun: queued | in_progress | completed
 	Conclusion  string // CheckRun: success | failure | ...

@@ -31,13 +31,13 @@ sources:
   - "docs/streams/desk-supervision/brief-27-verify-outcome-join-keys.md — the join-key convention (repo + PR + head SHA) this record shares"
   - "freshness-checked 2026-10-06 @ 1fbf1153f (origin/main): no CI-result persistence exists — every check read in tools/desk goes through deskkit Forge.ChecksAtHead (tools/desk/internal/deskkit/forge.go:1499) or the rollup carried on ListOpenChanges / ReviewQueueSnapshot (forge.go:724-760, forge_github.go:692, :719, :827-858), and the results are only reduced to in-memory verdicts"
 consumers:
-  - "tools/desk/internal/deskkit/cicheckhistory.go (planned — record type, writer, reader): follow-up desk-supervision/31 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/outboundforge.go (the single Forge decorator gains three recording read overrides; header classification comment): follow-up desk-supervision/31 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/forge.go (RollupNode gains ID): follow-up desk-supervision/31 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/forge_github.go (both rollup queries select databaseId; ghOpenChange maps it): follow-up desk-supervision/31 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/outbound_test.go (obClass table, if it must name the overridden reads): follow-up desk-supervision/31 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "docs/streams/desk-supervision/ci-check-v1.md (planned — canonical record schema): follow-up desk-supervision/31 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/README.md (a short 'CI check history' paragraph linking the schema): follow-up desk-supervision/31 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/internal/deskkit/cicheckhistory.go (record type, writer, reader): fixed-here (added, with cicheckhistory_test.go and cicheckhistory-mutations.json)"
+  - "tools/desk/internal/deskkit/outboundforge.go (the single Forge decorator gains three recording read overrides; header classification comment): fixed-here"
+  - "tools/desk/internal/deskkit/forge.go (RollupNode gains ID): fixed-here"
+  - "tools/desk/internal/deskkit/forge_github.go (both rollup queries select databaseId; ghOpenChange maps it): fixed-here (the review-queue golden fixture re-pins the query string)"
+  - "tools/desk/internal/deskkit/outbound_test.go (obClass table, if it must name the overridden reads): out-of-scope (obClass already classifies ChecksAtHead, ListOpenChanges and ReviewQueueSnapshot as reads, and no write method is added, so the table needs no edit)"
+  - "tools/desk/internal/deskkit/ci-check-v1.md (canonical record schema; homed beside the code, not in this stream, because the shipped tools/desk tree may name no withheld stream path and the row-7 test reads the doc): fixed-here (added)"
+  - "tools/desk/README.md (a short 'CI check history' paragraph linking the schema): fixed-here (a Runtime state bullet)"
   - "docs/records-and-retention.md (lists the new record): follow-up desk-supervision/35"
   - "tools/desk/cmd/deskflip, deskboard, deskpost, deskautolane, deskmonitor, deskroster, deskdisposition (the CI readers): out-of-scope (they read through the Forge that ResolveForge returns, so they gain recording without a code change; their returned values are unchanged — Verify row 5 proves it)"
   - "tools/desk/internal/deskkit/forge_gitlab.go: out-of-scope (its ChecksAtHead and rollup already populate the fields the record needs; a GitLab CheckRun with no ID falls back to the timestamp attempt key defined in Task 2)"
@@ -53,7 +53,7 @@ files:
 - **edit** `tools/desk/internal/deskkit/forge.go` — `RollupNode` gains `ID string` (same meaning and rendering as `CheckRun.ID`, via `checkRunID`).
 - **edit** `tools/desk/internal/deskkit/forge_github.go` — add `databaseId` to the `...on CheckRun{…}` selection of `ghOpenChangesQuery` and `ghReviewQueueQuery`; decode and map it in `ghOpenChange`.
 - **edit** `tools/desk/internal/deskkit/outbound_test.go` — only if `obClass` must name an overridden read.
-- **add** `docs/streams/desk-supervision/ci-check-v1.md` (planned) — the canonical record schema.
+- **add** `tools/desk/internal/deskkit/ci-check-v1.md` (planned) — the canonical record schema. Homed beside the code rather than in this stream: the shipped tools/desk tree may not name a withheld stream path (the corpus guard), and the row-7 test and the README both reference the doc.
 - **edit** `tools/desk/README.md` — one paragraph: what is recorded, where, and the schema link.
 - **add** `changelog/desk-supervision-31.md` (planned).
 
