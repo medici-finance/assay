@@ -15,7 +15,7 @@ func TestVerifierEvidenceAdmissionRefusesBeforeWrites(t *testing.T) {
 	for _, failure := range []error{deskkit.Refused("missing stamp"), deskkit.Unverifiable("unreadable stamp", errors.New("offline"))} {
 		t.Run(failure.Error(), func(t *testing.T) {
 			f, _ := setupFake(t)
-			verifierEvidenceAdmissionFn = func(string, string, string) (deskkit.VerifierReceipt, error) {
+			verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
 				return deskkit.VerifierReceipt{}, failure
 			}
 			root := rootWithFile(t, "docs/streams/x/brief.md", "## Evidence\nfixture\n")
@@ -33,7 +33,7 @@ func TestVerifierEvidenceDraftBindsExactRun(t *testing.T) {
 	f.defaultBranch = "main"
 	receipt := deskkit.VerifierReceipt{Issue: 77, Binding: deskkit.VerifierBinding{Repo: "example-org/tracker", Run: strings.Repeat("a", 64), Source: strings.Repeat("b", 40), Brief: "docs/streams/x/brief-01-source.md", PlanSHA256: planDigest(""), Model: "gpt-6.1-sol", Tier: "strong"}}
 	target := "docs/streams/x/brief-01-source.md"
-	verifierEvidenceAdmissionFn = func(root, repo, got string) (deskkit.VerifierReceipt, error) {
+	verifierEvidenceAdmissionFn = func(root, repo, got string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
 		if repo != receipt.Binding.Repo || got != target {
 			t.Fatalf("admission asked for %s %s, want %s %s", repo, got, receipt.Binding.Repo, target)
 		}
@@ -55,7 +55,7 @@ func TestVerifierEvidenceTargetBoundToAttestedBrief(t *testing.T) {
 	receipt := deskkit.VerifierReceipt{Issue: 77, Binding: deskkit.VerifierBinding{Repo: "example-org/tracker", Run: strings.Repeat("a", 64), Source: strings.Repeat("b", 40), Brief: "docs/streams/x/brief-01-attested.md", PlanSHA256: planDigest("# Brief"), Model: "gpt-6-astra", Tier: "strong"}}
 	// The stub answers as admission does for this receipt; the test proves each
 	// landing shape hands admission the path it actually writes.
-	stub := func(_, _, target string) (deskkit.VerifierReceipt, error) {
+	stub := func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
 		return receipt, receipt.CheckEvidenceTarget(target)
 	}
 	unbound := "docs/streams/y/brief-02-never-attested.md"

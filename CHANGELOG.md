@@ -23,6 +23,198 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.36 — 2026-10-09
+
+### Changed
+- The release workflow pins `actions/upload-artifact` v6.0.0 and `actions/download-artifact` v7.0.0 (both run on Node 24), replacing v4.6.2 and v4.3.0, which target the deprecated Node 20 runtime and drew a deprecation warning on the `test (deskmerge)` legs of every release run. Inputs are unchanged. The staged and proposed copies of the workflow carry the same pins.
+
+## v1.0.35 — 2026-10-09
+
+### Added
+- A read that fails while the verifier packet's commit list is built is stated in a fixed sentence of the tool's own; a test fails each of the provider's reads in turn and holds the reader's error text out of the file (#2439).
+- A staged copy of the board workflow (`ci/staged-workflows/assay-statusgen.yml`) adds an hourly `reconcile` job, pending maintainer promotion into `.github/workflows/`. It writes the generated Briefs tables in stream READMEs by pull request only: it flips Status cells witnessed by a merged PR's `Brief:` trailer, re-renders the tables, and carries any change as one draft pull request on `board/reconcile`. It never pushes the default branch, scheduled runs have their own concurrency group so they cannot displace a pending push regen, and the schedule runs only in this repository, never a fork. Each tick recomputes from the default branch, so a change on the default branch never wedges it; it refuses to overwrite a branch carrying a commit whose subject or change is not its own, anywhere on the branch (the check reads a commit's subject and what it changes, renames included, not who made it, and a failed read fails the tick); and it fails when the remote, the pull requests or the PR list cannot be read. Its pull request is the open one from this repository's own branch into the default branch, whoever opened it: a fork's same-named branch, or a pull request from that branch into another base, never stands in for it, and two candidates fail the tick. Each push rewrites the PR title and text from that tick's report, and the report, including any held rows, is printed to the job log. `statusgen` runs holding only the read token; the board-writer App token is minted only when there is a commit to publish, narrowed to contents and pull-request writes, and only the step that pushes and opens the PR holds it. The job uses the same isolation as the corroborate job (a job-local, checksum-verified Go toolchain and caches, a pinned gh), with Go workspace files off so none left above its temporary directory is read, and reads no git state an earlier job on the runner could leave: it clones the default branch fresh under the job's temporary directory instead of checking out into the workspace, uses git and gh configuration of its own with hooks off, pushes to the forge by URL, and binds its credential helper to that host. Once the file is promoted, the board workflow's pull-request lint runs the job's tests.
+- A worker packet shows every value it did not write — a title, a login, a branch, a label, a
+  check or file name, a finding's id and state, an error's text — inside a code span the value
+  cannot end, and quotes longer text between boundary lines. It reads a finding record only
+  from a review the forge attributes to the reviewer identity: a review by any other account
+  is listed under its own heading as not the reviewer's, and when that identity cannot be
+  resolved no review is listed as the reviewer's, no record is read and no body is quoted.
+- Both worker kits gain three clauses about how a run gathers and waits — batch independent
+  reads into one request, read the packet first when the assignment names one, and wait on a
+  check or a review in one bounded command — none of which changes what a worker must do or
+  wait for.
+- Every `deskread` envelope carries an additive `identity` object (`app-custody` with the role, or `ci-workflow-token` with the repository and run id), and one stderr line names the transport. The token never appears in output.
+- In a worker packet for an open change, a finding record in a review at an earlier commit is
+  judged against that review's commit: `resolved` with no evidence commit of its own is not a
+  resolution at the current head, and the line says so. Comments are quoted newest first, so
+  the packet's cap leaves out the oldest; each comment, and each review by another account,
+  says whether its author is the reviewer identity, on the trusted list, not on it, or not
+  checked because no list is configured; a comment by an account that is neither is quoted
+  only up to 16 KiB (#2439).
+- Review kit clause 20 and the `pr-review-desk` skill make the lane round cap bind: from a lane's fourth round, a finding first raised then, in code unchanged since the lane's first review, is advisory or an arbiter hand-off, except a safety-relevant finding, which still blocks. A late finding the reviewer cannot place with confidence blocks, the cap never changes a security verdict, and a finding whose evidence did not exist at the first review (the base branch moved, the description was edited, a check result at the head, a could-not-check gap, an undeclared decision) is not a late finding.
+- Text taken from the change is marked as data in the packet two ways. Multi-line text sits between two boundary lines that carry a random value made for that one file; inside them, a line that would begin with three less-than signs is prefixed with `[quoted] `, and line-break characters other than the newline are written as `\uXXXX`, so no quoted line begins with a boundary mark. Single-line values (title, branch, check and file names, logins, error texts) are written in code spans in which a backtick is shown as an apostrophe. The packet's opening lines tell the reader both.
+- The `// regression: #<N>` doc-comment tag (also `F-<slug>`, `class #<N>`) on the line above a test says which incident it pins; seven existing regression tests carry it. Only a line holding refs of those shapes and nothing else is a tag: doc-comment prose that happens to wrap onto a `regression: ` line is not.
+- The outbound-write check can consult a deployment's own executable, the house callout. Set `ASSAY_OUTBOUND_CALLOUT` in the roster to an absolute path; every outward write the compiled checks have passed is put to it AFTER them (a push: once for the branch name, once per commit message, once for the added lines), as one JSON object on stdin with the text as plain JSON strings (no HTML escaping), and it answers `allow` or `block <reason>`, the first word exact and lower case. It can only narrow: a compiled refusal is never put to the callout, and a callout `allow` clears nothing. Any failure of the callout (missing, writable by group or world, non-zero exit, timeout, empty or oversized output, an answer that is neither word) refuses the write, and the message names the failure. Every refusal is the `house.callout` rule and is not overridable by `--force-scan-override`. Everything the callout printed — a block's reason, an answer outside the vocabulary, its own stderr — goes to stderr only, on one line, never to the audit log, the error text or the forge. The callout runs with an environment of exactly `PATH`, `HOME`, `TMPDIR` and `LANG`, holding the calling process's own values; a callout sets its own `PATH` and its own locale, as the example does (`PATH=/usr/bin:/bin`, `LC_ALL=C`), so the caller's `PATH` or `LANG` cannot decide its answer. When the callout answers `allow`, anything it wrote to stderr is still printed to stderr.
+- The review kit gains two clauses on every lane. Clause 17 tells a reviewer to read a file in the fewest requests (normally one read, whole; one targeted read of a large file the PR barely touches), to send independent reads in one request, and to gather a PR's state in one command, because every request re-reads the whole conversation. Clause 18 tells a reviewer to read a prepared review packet first when the assignment carries a `Packet:` line; it is inert when no such line is present, only the dispatcher's assignment block can arm it, and the PR's head and every check are still read from the forge before the verdict (#2437).
+- The verifier kit gains clause 7, "Packet first — a reading aid, never evidence": read the packet first, whole, in one read, fetch only what it lacks, and never copy a packet line into an observed cell or count a row as run because its command is quoted. A row's result comes only from running the row at the verified commit (#2439).
+- The verifier packet finds a brief's Evidence and Verify headings the way the repository's own readers do, with the white space around the line taken off first, so an indented heading no longer leaves an Evidence section in the packet. It no longer says it holds no result: it says what it cut, and where it finds no Evidence heading it says it could not determine whether the carried text records an earlier result. The result-like-column check now covers every table in the carried text, and a numbered or emphasised Evidence title cuts too (#2439).
+- The verifier packet writes every value it read from the repository and shows at its own level — the brief's path, a commit id, the brief id — with `packet.Code`, so a path chosen by a brief's author cannot close its code span or start a line of its own; copied text stays between a boundary pair, where a line that would begin like a boundary line is shown with `[quoted] ` in front (#2439).
+- The verifier packet's commit list says how many commits it left out when it stops at its limit of six, and says when no commit message was searched because the item key gives no brief id. The verifier kit's packet clause says what to do when one read does not return the whole packet (#2439).
+- The worker-desk skill adds a rule for new dependencies, plugins and MCP servers: before install, file an issue with an agent-generated risk summary covering source, permissions and persistence. The minimum release age is 7 days, and a younger release also needs a driver `bless`. The worker dispatch prompt carries the same rule.
+- Versioned source obligations and project applicability: `spec/project-obligations-v1.md`, `schemas/project-obligations-v1.json` and an offline loader library in `statusgen` (tested, not yet called by any lint check, command or workflow) that bind a permitted source revision to existing requirement ids and accept an applicability decision only as a link to an existing decision record, bound by an injective digest to the exact subject, including the whole decision proposal. The digest-bearing decision record and its corroboration receipt are one admitted file; a decision id claimed by two files is held, not resolved by file order. The digest binds the record as it stands in the evaluated tree, not the moment its issue closed; the spec states that limit. Source text enters a model only when permitted, forged or stale approvals and dangling requirement references are refused, and unresolved applicability holds a complete claim. Extends the requirements register with the link contract (`registers-v1.md` section 6.6).
+- `ASSAY_OUTBOUND_CALLOUT_REQUIRED=public` refuses a write to a public or unknown target when no callout is configured; private targets are unaffected. `ASSAY_OUTBOUND_CALLOUT_TIMEOUT` sets the deadline (1s to 60s, default 5s). All three keys are recognised by the roster parser in `deskkit` and in `statusgen`; a set but malformed value refuses outward writes rather than reading as unconfigured. The startup echo shows the timeout and marks the path `INVALID` when any of the three keys is malformed. The contract, and an example executable that decodes the JSON text before matching (so a listed word containing `&`, `<`, `>`, `"` or `\`, or a phrase split by a line break, is matched, and which answers `allow` only when its match ran over every text field and found nothing: a missing or failing tool refuses the write, and a write with non-ASCII text is matched whatever locale the caller runs in), are in `tools/desk/README.md`.
+- `cellctl`: a machine-wide cell defaults file. `$CELLS_ROOT/defaults.env`, in `cell.env`'s
+  grammar, sets a key once for every cell under that cells root — `CELL_GO_CACHE=on` is the
+  motivating case. A value comes from the highest layer that sets it: cellctl's compiled default,
+  then the process environment, then `defaults.env`, then the cell's own `cell.env`, so one cell
+  opts out with a line in its own file. `cellctl set` resolves through the same layers and still
+  writes the cell's `cell.env` only; `cellctl show` labels a value the file supplied. It applies
+  to every cell kind and adds no variable to a scrubbed or container launch. See
+  `docs/cellctl.md`.
+- `cellctl`: a template for the defaults file, listing the keys. `cellctl new` writes
+  `defaults.env` into a cells root that has none, from a template in which every machine-wide
+  key is a commented-out `# KEY=<compiled default>` line under its description, followed by the
+  keys the file refuses and why. The new verb `cellctl defaults init` writes the same file for a
+  cells root that already has cells, and `cellctl defaults print` writes the template to
+  standard output to read or to diff an existing file against. An existing file is never
+  overwritten, appended to or replaced; when something that is not a regular file is already
+  at the path, `new` leaves it and prints a notice. The template is generated from one registry
+  of keys and prints every key in it except four internal variables cellctl sets for its own
+  child processes, which are listed in `docs/cellctl.md` only. A test fails when cellctl reads
+  a key the registry does not classify, for the reads it recognises: `os.Getenv` /
+  `os.LookupEnv` calls and cellctl's own environment readers. A scan of the whole environment,
+  a `$VAR` inside a file value and a variable only a child process reads are outside it.
+- `cellctl`: in `defaults.env`, a line with an empty value sets nothing. `KEY=`, `KEY=""` and
+  a value that expands to nothing are skipped for every key, so the layer below stands — an
+  uncommented template line with no value cannot displace a value the environment sets, such
+  as the model policy path. A line with a value outranks the environment, also when the value
+  is the compiled default. The file therefore cannot blank a variable for every cell; a
+  cell's own `cell.env` still can, and its empty assignments behave as before.
+- `cellctl`: per-role starting context (#2438). A cell can set `CELL_ROLE_CONTEXT` to a JSON
+  declaration that, per role, switches off plugins, skills, built-in tools, agent types,
+  connectors and instruction files, points the role at its own memory directory, appends a role
+  instruction file, and installs agent definitions for what the role dispatches. `cellctl desk`
+  applies it at launch and prints what it applied, in every window `cellctl up` opens; `cellctl
+  check` reports what each role will start with and refuses a declaration naming something
+  missing. No key grants a plugin, permission, hook, connector or model. Two keys do more than
+  remove context and are bounded: `plugins_off` drops a plugin whole, hooks included (the role's
+  own plugin is refused, and `check`, a dry run and the launch name every plugin switched off),
+  and `memory_dir` is a write location that must resolve below `<cell-dir>/memory/`. A repeated
+  key is refused. So is a declaration or named file in `<cell-dir>/worktrees/`, in
+  `<cell-dir>/memory/` or in a tree a role worktree links to, decided by file identity and not by
+  how the path is spelled. A cell that declares nothing launches and checks exactly as before.
+  Ships a `builtin:lean-reviewer` agent definition (shell and file read/write only), which
+  roughly halved a dispatched agent's starting context in measurement. See
+  `docs/cellctl-role-context.md`.
+- `cellctl`: the defaults file is read strictly. A file that cannot be read, a line that is not
+  an assignment, or a key that is not a machine-wide lever refuses, naming the key, the file and
+  the line. Refused are the keys that name or scope one cell (`CELL`, `CELL_KIND`, `CELL_REPO`,
+  `CELL_REPO_SLUG`, `CELL_ROOTS`, `ROLES`, a cell's `deskd` address, session, cache root,
+  container binding and forge binding); the switches for one run (`CELLS_ROOT`, `DRY_RUN`,
+  `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE`); the locations and host variables cellctl follows from
+  the launching shell (`HOME`, `USERPROFILE`, `XDG_DATA_HOME`, the config homes, `PATH`, `TERM`,
+  `LANG`); and cellctl's own internal variables. A key cellctl does not read is carried as a
+  `cell.env` line would be.
+- `cellctl`: what a defaults file changes. A file that sets no key — none at all, or the
+  template as written — changes no resolved value and no launch. `cellctl check` gains two rows
+  (the file read and the keys it sets; the managed Go cache's state and the layer that set
+  `CELL_GO_CACHE`): a cells root with a defaults file prints them for every cell, and one
+  without prints them only for a cell that sets `CELL_GO_CACHE`.
+- `deskclose` checks the item again after every verified close. If the close call returned without error but the item still reads open, the run now fails (exit 6) and files one repair issue on the item's repo, deduplicated by exact title. The repair issue is a charged write: it passes the outward-write budget and records its own audit line, and a refusal from the budget leaves the close failed with nothing filed. Re-running a close on an item that was already closed still exits cleanly as an idempotent no-op.
+- `deskdispatch --kit review --pr <N>` now states each lane's round in the reviewer's assignment: the round number, the head of the lane's first review, and whether the round is `Scope: DELTA` or `Scope: FULL PASS` with the reason. A delta round covers the lane's previous findings, whatever its previous verdict recorded as could-not-check, not run or incomplete, the diff between the previously reviewed head and the new head, the description check, and the head-level duties that stand in every round. The scope is a full pass when the lane has no verdict of its own, its latest verdict is already at the dispatched head, the inter-head diff cannot be computed, the delta is more than 20 commits or more than 10 of the change's own paths, a merge in the delta changed a file the change touches or its merged-in side did (whichever way a conflict was resolved), the change touches a path it did not touch at the previously reviewed head, one of the lane's verdicts names in its own text or typed finding block a different head than the forge records for it or carries a typed finding block that cannot be read, or any of that could not be determined. A verdict that names no full commit id on a recognised head line or in its typed block is taken at the forge's record. Review kit clause 19 binds the reviewer to do the full pass when it finds the stated scope wrong, when its lane's previous verdict names another head than the assignment gives, and when that verdict calls itself incomplete.
+- `deskdispatch --kit review --pr N` writes a review packet: one owner-only Markdown file holding the change's facts and description, the checks at its head, the earlier verdicts, the whole diff, each touched file as it reads after the change, and the brief when one resolves. The assignment gains one line, `Packet: <absolute path>`. Only a review posted by the reviewer identity is listed or counted as an earlier verdict — this lane's in full, the rest as an index; a review by any other account is listed under its own heading as not a verdict, and when the reviewer identity cannot be resolved nothing is listed as one. Caps are stated in the file and anything over one is listed by name and size instead of being cut short. Building it can never fail a dispatch, and it needs no flag or configuration (#2437).
+- `deskdispatch --kit verifier` writes a verifier packet: one owner-only Markdown file holding the brief's gate and risk frontmatter lines, the brief text up to its Evidence heading, each Verify row's `#` and Command cells exactly as written, the size of any earlier Evidence section, and up to six commits that changed or name the brief with the paths each changed. The assignment gains one line, `Packet: <absolute path>`. It is a reading aid only: the dispatcher runs no row, the packet leaves out the brief from its first Evidence heading on, the Expect cells from the command list and every commit subject, message and date, a brief whose carried text has a table with a result-like column gets no packet at all, and the file is never written inside the verifier home. Building it can never fail a dispatch (#2439).
+- `deskdispatch` holds a review dispatch before the claim, exit 5 with a first line beginning `review dispatch HELD`, when a check the base branch requires has failed on every latest report under its name, the description's `## Weight` section declares a head that is not the head on the forge, the change carries `needs-decision` with no ruling recorded since the label was applied, or the lane's latest verdict at that head blocked only on rulings not yet recorded. A hold takes no claim, cuts no worktree and writes no reviewer prompt; its first line is the dispatch audit row's detail. A gate read that fails dispatches the reviewer. `--dry-run` skips the read.
+- `deskdispatch` writes a packet for worker dispatches too (#2439): one owner-only read-ahead
+  file named on the assignment's `Packet:` line. An implementing run gets the run's facts, the
+  brief or issue, the board status of the briefs it depends on, the repository's instruction
+  files and build entry points, and the files the brief names; a run dispatched with `--pr`
+  onto an open change gets the change, how it stands against its base, check states, every
+  review with the findings it records, the newest comments and the diff. Caps are tighter than
+  the review packet's (32 KiB an item, 192 KiB in all) because a worker run re-reads the packet
+  on every later request. A packet that cannot be built never fails the dispatch.
+- `deskevidence` has a new composition test, `TestRefuseIntroducedProblem`, for its statusgen PROBLEM-diff pre-flight in the `--brief-path` landing shape. It runs the production pre-flight with a lint stub that reads the tree, checks that the second lint saw exactly the bytes to be committed, and covers both refusing a landing that adds a PROBLEM and passing one that only meets a PROBLEM already in the tree. The direct shape (`--evidence-file` under `--root`, no `--brief-path`) is not covered, because there the gate cannot refuse; that gap is tracked in #2460. New mutation entries back the test.
+- `deskinstall` now verifies each release asset's build attestation before placing anything: after the sha256 pin check it fetches `<asset>.sigstore.json` from the same release and refuses unless the Sigstore bundle proves SLSA provenance for those exact bytes, signed by this repository's release workflow (run by the push of the pinned tag, or by `workflow_dispatch` from `main`) and recorded in the transparency log. The check is mandatory, so there is no `--no-attest` or other opt-out. Assets that have no bundle are refused, and a bundle download over 1 MiB is refused while it is being read.
+- `deskpost finish review|security-review … --claim <claim key>` is the one command a reviewer ends with. It posts the verdict through the existing verdict verb, confirms the review is recorded at the reviewed head, releases the dispatch claim, and prints one result line. It stops at the first step that fails and says what was and was not done. `--claim` must be the key of this change and of the lane whose verdict is posted, or nothing is posted. The release writes its own audit row (#2437).
+- `deskread --ci-workflow-token` reads over the job's own workflow token: an explicit, CI-only, read-only opt-in beside the App custody default. The token comes from `DESKREAD_CI_WORKFLOW_TOKEN` only and must be an app installation token. It serves the `issues`, `trust` and `comments` kinds, for the job's own repository only, and every refusal names its layer as `[ci-transport:<layer>]` (exit 5).
+- `gitcore.PathHistory` walks a history once and reports, for each commit, what a path held there and at each parent, so a caller need not resolve every commit separately.
+- `internal/packet` is the kit-neutral half of the dispatch packet, so another kit adds a packet by registering an ordered list of named sections.
+- `statusgen --transcribe-verdict` re-reads what it applied before it reports success. Every Evidence line must be inside its brief's `## Evidence` section, and the board loader must read every flipped row as `verified` with the stamp that was written. If any check fails, it prints `POSTCONDITION FAILED` and exits 1. The R-6 enactment gate and the trust checks are unchanged.
+- `statusgen reconcile --backfill --json` without `--apply` now reports, under `wouldApply`, the stream README rows `--apply` would write, and writes nothing. The rows come from the same function that performs the write, so the read-only report and the write cannot disagree. Each row (in `wouldApply` and in `applied`) now also carries the whole table line before and after the edit (`rowBefore`, `rowAfter`). The pr-review-desk carve-out B reproduction step uses this read-only run by default, with the token from `--token-file` holding the reviewer role's own credential; the `--apply` form in a throwaway worktree stays valid. What admits a promotion row is unchanged.
+- `tools/desk/internal/testledger`: a report of test functions that left the tree between two revisions or directories, and whether a `Retires-test:` trailer said why. It lists every deletion (with the test's `// regression:` tag when it has one) and rename (paired by an identical body or a shared tag), untrailed or with each covering trailer's commit and reason; a kept test whose tag lost a ref; and the brief Verify rows that still name a departed test. A trailer never hides a departure, so the report reads `clean` only when nothing departed. Run it from a current-main checkout with `go test ./internal/testledger/ -run TestReportTestLedger -v -args -base=<rev|dir> -head=<rev|dir>`, naming revisions by full commit id. It never fails on what it finds; a range it cannot read, or a name that is both a directory and a revision, is `could-not-check`.
+- statusgen brief 18 (authoring only) and design-decision record `DR-gate-rederive`
+  (`docs/streams/decisions/`). The record transcribes the maintainer's answer on #2405, option
+  c, detect only: the issue scan never changes a stored placeholder gate. The brief specifies
+  the notice that answer asks for: `--scan-issues` prints one `NOTICE` for each open issue
+  whose labels and title derive `gate: human` while its placeholder reads `gate: model`,
+  writes nothing and leaves the exit code alone. Raising the gate stays a hand edit, and the
+  first run of the notice lists the existing placeholders to look at. The desk's scan drain
+  discards the scan's output, so the notice is read by running the scan directly (a
+  `--dry-run` scan prints it and writes nothing); relaying it is not part of the brief.
+
+### Fixed
+- On a forge with a merge-hold, `deskpost review` run again after its verdict was recorded no longer exits 0 without looking at the hold. A run can land a verdict and not complete the hold step — the hold write fails, or the forge accepts the post and its answer is lost. The next run posts nothing and checks the hold against the recorded verdict: it re-arms the hold for a request-changes that is the reviewer identity's newest verdict of that lane at the head, re-arms a hold resolved at another head, and exits non-zero where the hold does not match and it cannot tell what to do, or cannot read the hold. It never releases a hold on that path; a hold an approve failed to release is released by posting the approve again.
+- The desk's adopter callouts (the writeguard, untrust-scan and risk-classification callouts) now resolve a configured executable path once and make every check against the file it resolves to: its type, its executable and writable mode bits, and the mode of the directory that really holds it. The directory holding the configured name, and the directory holding each link on the way to the file, are checked too, whether the link is a file's own name or a linked directory in the middle of a path, so a callout reached through a symbolic link is refused when any of those directories is group- or world-writable. A refusal names the directory by its real path. A callout configured as a plain path, or as a link into a safe directory, runs as before. The risk-classification callout now uses the same shared check rather than its own copy.
+- `cellctl set`: a `$VAR` reference in a `cell.env` or `defaults.env` value is expanded as a
+  launch expands it, against the process environment and the lines above it, so `set` no longer
+  judges a cell on a value the cell does not boot with.
+- `cellctl`: a cell with a nested name (`team/demo`) is re-entered under the cells root its
+  launch used. The model-policy hook, a container cell's console, a managed scratch task and
+  the cadence and comms panes took the cell directory's parent as the cells root, which for a
+  nested cell is a different directory, so the later process looked for the cell, the shared
+  provider defaults and the machine-wide defaults file in the wrong place. Each is now handed
+  the launch's cells root, and the hook refuses a cell directory that is not under the root it
+  was given. Not changed: the `deskd` stand pane and the precheck of a scheduled run still
+  name the cell by its `CELL=` value and take the cells root from their own environment.
+- `deskpost review` and `deskpost security-review` no longer post a second copy of a verdict when the same command runs again from a session whose audit log does not hold the first post. The check against the change's own reviews now compares the two bodies with the on-behalf-of line the tool appends removed from both, so it matches a review the tool itself posted.
+- `deskpr update --pr N` no longer refuses every push to a PR whose published head already carries another App's commit: like the default and `--branch` forms, it now judges only the commits the push adds beyond the PR's verified live head. A foreign commit among the added commits is still refused, an unreadable or diverged head still judges the whole range, and `--pr N --check` still judges the whole range and names `--branch <head-branch> --check` as the offline way to narrow it (#2432).
+- `pr-review-desk` skill, carve-out B: the delivery-repo bullet now states where a brief's
+  `deliverable_repo:` alias sits in the reading order (after `homed-in:`, before the stream
+  README's `repo:`), resolved through `docs/streams/graph-repos.yaml` at the same fetched ref.
+  An alias that does not resolve, or one that disagrees with `homed-in:`, is could-not-check
+  and bounces the row; it never falls through to the board repo. Same wording as carve-out C
+  (#2430).
+
+### Changed
+- **Merge ordering:** a `deskinstall` built from this change refuses every release that does not publish attestation bundles, and no release pinned today publishes them. That includes the documented Windows route that builds `deskinstall` from source (`go build ./cmd/deskinstall` from a clone): after this merges, that build refuses every currently pinned release until the release workflow uploads `<asset>.sigstore.json` beside each asset and the pins move to a release that carries them. `docs/adopting-assay.md` says so and names the interim routes.
+- **worker-desk skill and Claude Code reference: how a session below strong tier launches a
+  strong-tier worker.** The skill said a strong item "goes only to session-tier", which left a
+  worker window running at a provider's mid tier with no stated way to dispatch one: its default
+  launches landed on the mid model and stopped at the kit's pickup check. The skill now says such
+  a session names the strong tier explicitly in the launch, confirms before the dispatch that the
+  slot it names is pinned to a strong-tier model, stamps that pinned id, and holds the item when it
+  cannot confirm; the Claude Code reference states that a `model` alias is a slot whose model the
+  launch pins and carries no tier claim by itself, where the session reads the pin, the form the
+  stamp takes, and which documents own the launcher's maps. No tool, kit text or gate changes.
+- A `deskdispatch --kit review --pr <N>` run without `--dry-run` now reads the forge before it claims, which adds forge requests to each one.
+- A worker dispatch is handed what its kind of run needs (#2439). The kind is derived from the
+  dispatch: `--pr` onto an open change is a run that works that change, every other worker
+  dispatch implements a brief or an issue. The assignment's action half follows the kind (a
+  run on an open change is told to push to it and never to open a second one), kit text
+  marked for one kind is not quoted to the other, and the objective kit's own copy of the
+  common clauses is no longer quoted a second time. Unmarked kit text — nearly all of it —
+  still reaches both kinds.
+- Implementer kits (`worker`, `worker-objective`) §9: tag every fail-first test, give every deleted or renamed test function a `Retires-test: <Name> — <why>` trailer (`— renamed <New>; <why>` for a rename), re-point the Verify rows the report names, and paste a non-empty report under `## Tests retired`.
+- Plan library-first fact-reader and evaluation APIs, with explicit custody boundaries and consumer migration ownership. This change authors implementation work; it does not ship the SDKs.
+- Review kit §4 and `pr-review-desk`: run the report from a current-main checkout against the merge-base and judge each line (still pinned, and by which test; is the trailer's reason sound; Verify rows re-pointed). An unjustified departure, trailed or not, is a `test-evidence` finding.
+- The `pr-review-desk` skill no longer tells the desk to ask a resumed reviewer for a delta review: the desk hands on the round the dispatcher's assignment states.
+- `cellctl defaults --help` prints the usage and exits 0.
+- `cellctl set`: the keys accepted without `--force` are now every key the registry classifies
+  as a machine-wide or per-cell setting, instead of a separate hand-kept list. Thirteen keys
+  that needed `--force` no longer do: `CELL_GO_CACHE`, `CELL_GO_CACHE_BYTES`,
+  `CELL_GO_CACHE_MIN_FREE`, `CELL_GO_CACHE_ROOT`, `CELL_SCRATCH_MAX_AGE`,
+  `CELL_SCRATCH_MAX_BYTES`, `CELL_FF_ROOTS`, `CELLCTL_DESKWT`, `CELLCTL_GENERATED_FILES`,
+  `CELLCTL_ORCA_TIMEOUT`, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `DESK_TOOLS_BIN` and
+  `GITHUB_HOST`. No key that was accepted is now refused.
+- `cellctl`: a cell name must be a path under the cells root. `cellctl new`, `cellctl set` and
+  every verb that loads a cell refuse an absolute path, `.`, and a name that leaves the root
+  through `..` (`../other/x`), naming the name and the root. Such a cell used to scaffold and
+  load from outside the root, with a different defaults file and provider catalog beside it. A
+  nested name (`team/demo`) and a symlinked cell directory are unaffected. A cell that was
+  made outside the root is reached by pointing `CELLS_ROOT` at its parent directory.
+- `deskdispatch --kit review` emits the review kit cut for the dispatched lane. The security claim key of the PR under review (`<label>--pr-<N>--security`) gets the security cut, in which a pass only the correctness lane runs (design fit, the board-row flip check, the same-head re-approve exemptions, the prompt-audit procedure) is replaced by a short note naming its owner, and the correctness verdict's steps for an undeclared desk decision by the one line that applies to a security verdict; the bare PR key and its `--correctness` form get the correctness cut; any other key, including a `--security` key whose PR is not the one dispatched, gets the whole kit, which carries every procedure and none of those notes. No rule is dropped from a lane it binds: the limits on a finding either lane may post (the design-fit bounds, what a well-formed Status cell is, never executing PR content) stay on both lanes, and a test table pins each section to its lanes. An adopter addendum that points a security reviewer at the procedure text of one of those four passes now points at text that reviewer is not given (#2437).
+- `statusgen reconcile --apply` now runs without `--backfill`, writing only rows witnessed by a `Brief:` trailer. It holds any row whose write would add a lint problem (for example a risk-gated brief with no design record), reports it with the problem it would cause, and leaves it unwritten. It exits 3 when it could not read the pull requests, and writes nothing.
+
 ## v1.0.34 — 2026-10-09
 
 ### Added

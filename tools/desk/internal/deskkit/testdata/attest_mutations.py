@@ -83,7 +83,7 @@ mutations = [
     ("outcome-key", [(ATTEST, "recStream == stream && recNN == nn", "recStream == stream && (recNN == nn || nn != recNN)")], KIT, TARGET),
     ("index-rows", [(ATTEST, "if strings.TrimSpace(row) != nn {", "if false {")], KIT, TARGET),
     ("target-in-admission", [(ATTEST, "if err := r.VerifierReceipt.CheckEvidenceTarget(target); err != nil {", "if err := error(nil); err != nil {")], KIT, TARGET),
-    ("landing-target", [(EVIDENCE, "admitVerifierEvidence(*root, repoSlug, targetRepoPath, ac)", "admitVerifierEvidence(*root, repoSlug, evidenceRepoPath, ac)")], "./cmd/deskevidence", "TestVerifierEvidenceTargetBoundToAttestedBrief/brief-path"),
+    ("landing-target", [(EVIDENCE, "admitLanding(*root, repoSlug, owner, name, targetRepoPath, ac)", "admitLanding(*root, repoSlug, owner, name, evidenceRepoPath, ac)")], "./cmd/deskevidence", "TestVerifierEvidenceTargetBoundToAttestedBrief/brief-path"),
     ("fragment-outside-root", [(EVIDENCE, '*briefPath == "" || pathWithin(*root, evidenceRepoPath)', '*briefPath == ""')], "./cmd/deskevidence", "TestVerifierEvidenceLandingFormAdmitted/fragment-inside-home-refuses"),
     ("absolute-fragment-form", [(EVIDENCE, '*briefPath == "" || pathWithin(*root, evidenceRepoPath)', 'true')], "./cmd/deskevidence", "TestVerifierEvidenceLandingFormAdmitted/documented-form-lands"),
     ("landing-home-direction", [(ATTEST, 'if _, serr := os.Stat(record); perr != nil || serr != nil {', 'if _, serr := os.Stat(record); false && (perr != nil || serr != nil) {')], "./cmd/deskevidence", "TestVerifierEvidenceLandingFormAdmitted/desk-checkout"),
