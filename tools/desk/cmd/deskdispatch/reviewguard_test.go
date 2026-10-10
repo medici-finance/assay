@@ -225,7 +225,10 @@ func guardSafeGit(args []ast.Expr, i int) bool {
 			return false
 		}
 		switch guardLiteral(args, i+2) {
-		case "user.name", "user.email", "assay.runKey":
+		// assay.dispatchRef is a data-only key in the
+		// assay.* namespace like assay.runKey: git interprets no assay.* key,
+		// so it cannot select an executable for a later call.
+		case "user.name", "user.email", "assay.runKey", "assay.dispatchRef":
 			return true
 		}
 	}

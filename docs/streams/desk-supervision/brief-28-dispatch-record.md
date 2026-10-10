@@ -28,18 +28,18 @@ domain: complicated
 outcome: none
 sources:
   - "research note (driver-held, 2026-10-06): an independent review of applying decision models and statistical learning to the pipeline found the records cannot be joined; the only key surviving every stage is brief → PR → head SHA → dispatch claim/session → verify receipt"
-  - "sibling verify-outcome join-keys brief (draft PR #2287) — adds an OPTIONAL `dispatch_ref` to verify-outcome records and defers its definition to a dispatch-side brief; this is that brief"
+  - "sibling verify-outcome join-keys brief (brief 27, merged in #2287) — adds an OPTIONAL `dispatch_ref` to verify-outcome records and defers its definition to a dispatch-side brief; this is that brief"
   - "code read 2026-10-06 @ 1fbf1153f: the claim key is per ITEM, not per dispatch (claimKeyFor, tools/desk/cmd/deskdispatch/dispatch.go:1800-1834); a re-review re-acquires the SAME key (plugins/assay/skills/pr-review-desk/SKILL.md:345-348), so the bare claim id cannot identify one dispatch"
   - "freshness-checked 2026-10-06 @ 1fbf1153f (origin/main): no dispatch record exists; deskdispatch's only durable outputs are the forge claim ref, the `assay.runKey` worktree config (dispatch.go:464-478), the `dispatched-model:`/`dispatched-tier:` labels when --pr is known (dispatch.go:1494-1512; deskkit/modelstamp.go:106,110), and one audit line whose repo/pr/headSHA fields deskdispatch leaves empty (dispatch.go:1944-1967)"
 consumers:
-  - "tools/desk/cmd/deskdispatch/dispatch.go (mints dispatch_ref after claim-acquire, records assay.dispatchRef at worktree-create, writes the record at model-stamp): follow-up desk-supervision/28 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskdispatch/brief.go (reads the brief's own `brief:`, `exec-tier:` and `effort:` frontmatter): follow-up desk-supervision/28 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/internal/deskkit/dispatchrecord.go (planned — the record type, validator and append writer): follow-up desk-supervision/28 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/cmd/deskclaim-ref/claim.go (cmdRelease writes the `released` line): follow-up desk-supervision/28 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "tools/desk/README.md (deskdispatch and deskclaim-ref sections): follow-up desk-supervision/28 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/cmd/deskdispatch/dispatch.go (mints dispatch_ref after claim-acquire, records assay.dispatchRef at worktree-create, writes the record at model-stamp): fixed-here (helpers in cmd/deskdispatch/dispatchrecord.go)"
+  - "tools/desk/cmd/deskdispatch/brief.go (reads the brief's own `brief:`, `exec-tier:` and `effort:` frontmatter): fixed-here"
+  - "tools/desk/internal/deskkit/dispatchrecord.go (the record type, validator and append writer): fixed-here"
+  - "tools/desk/cmd/deskclaim-ref/claim.go (cmdRelease writes the `released` line): fixed-here"
+  - "tools/desk/README.md (new `The dispatch record` section, covering deskdispatch and deskclaim-ref): fixed-here"
   - "worker usage counts at claim release (joins on dispatch_ref): follow-up desk-supervision/34"
   - "records-and-retention page (lists this record's location, writer, schema and retention): follow-up desk-supervision/35"
-  - "verify-outcome records' optional dispatch_ref (sibling brief in draft PR #2287): out-of-scope (that brief lands separately and reads this definition; its verifier reads `assay.dispatchRef` from its own dispatched worktree, which this brief writes)"
+  - "verify-outcome records' optional dispatch_ref (sibling brief 27, merged in #2287): out-of-scope (that brief landed separately and reads this definition; its verifier reads `assay.dispatchRef` from its own dispatched worktree, which this brief writes)"
   - "tools/desk/internal/deskkit/killswitch.go (per-run stop reads assay.runKey): out-of-scope (assay.runKey is left byte-identical; the new assay.dispatchRef is a separate key — Verify row 7 proves the neighbour is untouched)"
   - "tools/dispatch-claim.sh (the legacy bash claim tool): out-of-scope (fallback for trees without the Go binary; it writes no released line, which this brief documents as a known gap rather than porting record-writing into shell)"
 ---
@@ -148,9 +148,17 @@ branch for a fresh worker dispatch whose PR did not yet exist.
    `ValidateDispatchRecord` refuses: unknown schema/event; `tier` or `brief_exec_tier` outside
    `any`/`strong` (so a vendor model name can never be a tier value); a `dispatch_ref` that does not
    parse as `<claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>` for the record's OWN `claim_key`; `brief_effort` outside
-   `S`/`M`/`L`; any string field over 256 bytes or containing a control character. There is no
-   free-text field and no model slug: the record carries tier only (the model slug stays on the
-   PR's existing stamp label, joinable via `pr`).
+   `S`/`M`/`L`; a `kit` outside the kit vocabulary; a `repo`, `item`, `brief`, `branch` or
+   `session_tag` outside its identifier grammar (for `repo`, every slug a forge can host, since
+   the dispatcher admits a repo by roster membership alone; for `item` and `branch`, the
+   dispatcher's own rules within the 256-byte cap; `<stream>/<NN>` or
+   `<cell>:<alias>:<stream>:<NN>` for `brief`; one token for `session_tag`); any string field over
+   256 bytes or containing a control
+   character. There is no free-text field, because the validator refuses one, and no model slug:
+   the record carries tier only (the model slug stays on the PR's existing stamp label, joinable
+   via `pr`). The writer drops what it cannot record rather than lose the line: an out-of-grammar
+   `brief`, `brief_exec_tier` or `brief_effort` value and a branch over 256 bytes are recorded
+   null, and an out-of-grammar session as `unknown`.
 2. **Writer.** `AppendDispatchRecord` validates, then appends one line to
    `<StateDir>/dispatch-records.jsonl` (mode 0600, O_APPEND), beside `audit.jsonl`. Never committed
    to git. No rotation in this brief (low volume: one line per dispatch).
@@ -185,7 +193,7 @@ per brief / tier / kit, never for ranking people or agents.
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go test ./cmd/deskdispatch/... ./cmd/deskclaim-ref/... ./internal/deskkit/...` | exit 0 | check:ci |
-| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDispatchRecord_Refusals$' -v > "${TMPDIR:-/tmp}/b28-refusals.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecord_Refusals' "${TMPDIR:-/tmp}/b28-refusals.out"` | exit 0; subtests each refused: tier `opus-4.8`; brief_exec_tier `fast`; dispatch_ref `other--x--1@20261006T141502Z.3fa9c01b7d2e` on a record whose claim_key is `assay--x--1`; dispatch_ref without `@`; dispatch_ref with no nonce (`assay--x--1@20261006T141502Z`); a nonce of the wrong length, with uppercase hex or with a non-hex character; effort `XL`; a field holding a newline; unknown event. A valid `dispatched` and a valid `released` record are accepted | check:ci +mutation |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDispatchRecord_Refusals$' -v > "${TMPDIR:-/tmp}/b28-refusals.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecord_Refusals' "${TMPDIR:-/tmp}/b28-refusals.out"` | exit 0; subtests each refused: tier `opus-4.8`; brief_exec_tier `fast`; dispatch_ref `other--x--1@20261006T141502Z.3fa9c01b7d2e` on a record whose claim_key is `assay--x--1`; dispatch_ref without `@`; dispatch_ref with no nonce (`assay--x--1@20261006T141502Z`); a nonce of the wrong length, with uppercase hex or with a non-hex character; effort `XL`; a field holding a newline; unknown event; prose, a link, markup, U+202E, U+200B or U+2028 in `brief`; prose in `item`, `branch`, `repo` and `session_tag`; a `kit` outside the vocabulary. A valid `dispatched` and a valid `released` record are accepted, and so is each identifier shape the dispatcher writes | check:ci +mutation |
 | 3 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDispatchRecordWrittenAtModelStamp$' -v > "${TMPDIR:-/tmp}/b28-write.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecordWrittenAtModelStamp' "${TMPDIR:-/tmp}/b28-write.out"` | exit 0; a stubbed real dispatch with `--brief` writes exactly ONE `dispatched` line whose `claim_key` equals the key passed to the stubbed `acquire`, whose `dispatch_ref` starts with that key + `@`, and whose `brief`/`brief_exec_tier`/`brief_effort` match the fixture brief's frontmatter; a `--dry-run` writes zero lines | check:ci |
 | 4 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDispatchRefRecordedInWorktree$' -v > "${TMPDIR:-/tmp}/b28-wt.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRefRecordedInWorktree' "${TMPDIR:-/tmp}/b28-wt.out"` | exit 0; the worktree's `assay.dispatchRef` equals the record's `dispatch_ref`, and two sequential dispatches of the same item (release between) produce two DIFFERENT refs with the same `claim_key` and `attempt_local` 1 then 2 — run with the injected clock FIXED to one instant for both dispatches (the same-second case) and a seeded entropy reader that yields different bytes each call, so the result never depends on wall-clock timing; a second subtest with a failing entropy reader leaves `dispatch_ref` null, prints the WARNING and still exits 0 | check:ci +flow |
 | 5 | `cd tools/desk && go test ./cmd/deskclaim-ref/ -run '^TestReleaseWritesReleasedRecord$' -v > "${TMPDIR:-/tmp}/b28-rel.out" 2>&1 && grep -F -e '--- PASS: TestReleaseWritesReleasedRecord' "${TMPDIR:-/tmp}/b28-rel.out"` | exit 0; subtests: release of a held claim from a worktree carrying a matching `assay.dispatchRef` writes a `released` line with that same ref; a non-matching `assay.dispatchRef` yields `dispatch_ref: null`; a no-op release writes nothing; an unwritable record store leaves the release exit code 0 | check:ci +flow |

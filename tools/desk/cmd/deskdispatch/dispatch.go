@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -145,7 +147,26 @@ type dispatchOpts struct {
 	// A real dispatch names the path deskwt printed and nothing else — this flag never
 	// reaches one. See validateOperatorWorktree for the fail-closed checks it must pass.
 	worktree string
+	// run carries what the dispatch minted back to cmdDispatch's audit line. A POINTER, because
+	// dispatch() works on copies of the options (resolveBrief returns a new value) and the audit
+	// line is written from the caller's copy. nil on paths that mint nothing (--stamp-only).
+	run *dispatchRun
 }
+
+// dispatchRun is the per-run state a dispatch hands back to its own audit line.
+type dispatchRun struct {
+	// dispatchRef is the dispatch_ref minted after claim-acquire, or ""
+	// when none was minted (a dry run, a dispatch that stopped before the claim, a failed mint).
+	dispatchRef string
+}
+
+// dispatchClock and dispatchEntropy are the production clock and secure entropy source the
+// dispatch_ref is minted from. They are copied onto the dispatch plan (plan.now, plan.entropy)
+// before the claim, so a test fixes both by replacing these package seams.
+var (
+	dispatchClock             = func() time.Time { return time.Now().UTC() }
+	dispatchEntropy io.Reader = rand.Reader
+)
 
 func cmdDispatch(args []string) error {
 	if len(args) > 0 && (args[0] == "--check-verifier" || args[0] == "--attest-verifier") {
@@ -199,6 +220,7 @@ func cmdDispatch(args []string) error {
 		item: item, itemAlias: itemAlias, rework: *rework, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
 		model: *model, branch: *branch, brief: *brief, gateHuman: *gateHuman, pr: *pr,
 		promptFile: *promptFile, quiet: *quiet, dryRun: *dryRun, worktree: *worktree,
+		run: &dispatchRun{},
 	}
 	err := dispatch(o)
 	audit(o, err)
@@ -227,6 +249,7 @@ func dispatch(o dispatchOpts) error {
 		return err
 	}
 	repo, branch, wtName := plan.repo, plan.branch, plan.wtName
+	plan.now, plan.entropy = dispatchClock, dispatchEntropy
 
 	if o.dryRun {
 		wtBanner := ""
@@ -375,6 +398,12 @@ func dispatch(o dispatchOpts) error {
 	// From here every abort returns through held.settle, which releases the claim (#2355).
 	held := &heldClaim{o: o, tool: plan.claimTool, key: plan.claimKey, repo: repo, auth: auth}
 
+	// dispatch_ref: the per-RUN key, minted right after the claim stands —
+	// the claim key alone names the ITEM, which every re-dispatch, re-review and stale reclaim
+	// reuses. A mint failure (the secure source failing) is a WARNING: the dispatch proceeds with
+	// no ref and never falls back to a weaker source.
+	dispatchRef := mintDispatchRef(o, plan)
+
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
 	// this step delegates rather than re-deriving any of it — INCLUDING where the
@@ -504,6 +533,7 @@ func dispatch(o dispatchOpts) error {
 			"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
 			stepWorktreeCreate, home, ext.run.Said())
 	}
+	recordDispatchRefInWorktree(o, home, dispatchRef)
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
 	// agent's "run"). FATAL failure class: a failure ABORTS the attempt — no prompt is
@@ -557,6 +587,7 @@ func dispatch(o dispatchOpts) error {
 		return held.settle(serr)
 	}
 	o.say("%s %s", stepModelStamp, stamp)
+	writeDispatchRecord(o, plan, dispatchRef, stamp)
 
 	// 6 — the review-lane queue label. When a reviewer is dispatched onto a known change,
 	// apply `authorization-needed` forge-neutrally (the resolved forge's idempotent label
@@ -633,6 +664,10 @@ type dispatchPlan struct {
 	// followUpOf is the MERGED PR a --rework dispatch follows up (0 = not a follow-up). Set by
 	// applyFollowUp, pre-claim, so the worktree branch and the prompt agree.
 	followUpOf int
+	// now and entropy are the clock and the secure entropy source the dispatch_ref is minted
+	// from — fields on the plan so a test can fix both.
+	now     func() time.Time
+	entropy io.Reader
 	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
 	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
 	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
@@ -1876,14 +1911,10 @@ func tokenPathForMessage(path string) string {
 }
 
 // validTier checks the tier against the dispatch-tier vocabulary the stamp reader owns,
-// rather than against a second hand-written list here.
+// through the one normalisation the stamp label and the dispatch record also use.
 func validTier(t string) bool {
-	for _, v := range deskkit.DispatchTiers() {
-		if strings.EqualFold(strings.TrimSpace(t), v) {
-			return true
-		}
-	}
-	return false
+	_, ok := deskkit.CanonicalDispatchTier(t)
+	return ok
 }
 
 // consumerHelper is one consumer script this verb wraps, with its PATH port: the binary the
@@ -2107,6 +2138,11 @@ func audit(o dispatchOpts, err error) {
 	}
 	if o.dryRun {
 		detail = "dry-run item=" + o.item
+	}
+	// The audit log is local state (mode 0600), so the visibility rule lets the ref appear here
+	// in clear — it is how an operator joins this line to the dispatch record.
+	if o.run != nil && o.run.dispatchRef != "" && !o.stampOnly && !o.dryRun {
+		detail += " dispatch_ref=" + o.run.dispatchRef
 	}
 	if err != nil {
 		switch deskkit.ExitCodeOf(err) {

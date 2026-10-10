@@ -127,6 +127,16 @@ func DispatchTiers() []string {
 	return out
 }
 
+// CanonicalDispatchTier is the ONE normalisation of a tier spelling: trimmed and lower-cased,
+// then checked against the exec-tier vocabulary. It returns the canonical token and whether it
+// is in the vocabulary. Every reader that accepts a tier spelling (the --tier flag, the stamp
+// label, the dispatch record) goes through it, so a spelling one of them accepts can never be
+// one another refuses.
+func CanonicalDispatchTier(tier string) (string, bool) {
+	want := strings.ToLower(strings.TrimSpace(tier))
+	return want, want != "" && isDispatchTier(want)
+}
+
 func isDispatchTier(tier string) bool {
 	for _, t := range execTierValues {
 		if t == tier {
@@ -226,13 +236,13 @@ func DispatchedModelLabel(slug string) (string, error) {
 // The refusal enumerates the vocabulary, because "invalid tier" without the set is a
 // refusal the caller cannot act on.
 func DispatchedTierLabel(tier string) (string, error) {
-	want := strings.ToLower(strings.TrimSpace(tier))
+	want, ok := CanonicalDispatchTier(tier)
 	if want == "" {
 		return "", Refused("dispatched-tier: an empty tier is not a stamp — " +
 			"the tier vocabulary is the brief-schema exec-tier set (" + strings.Join(DispatchTiers(), " | ") +
 			"); omit the label if the tier is genuinely unrecorded")
 	}
-	if !isDispatchTier(want) {
+	if !ok {
 		return "", Refused("dispatched-tier: " + StripControl(tier) +
 			" is not an exec-tier value. The vocabulary is the brief-schema exec-tier set: " +
 			strings.Join(DispatchTiers(), " | ") + " — it is DERIVED from that one set, not a second " +
