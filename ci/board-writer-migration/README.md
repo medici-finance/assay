@@ -68,7 +68,10 @@ git apply --check ci/board-writer-migration/workflows.patch
 The poll test applies the patch in a disposable directory and checks every
 live key consumer, the main-only triggers and checkout, pagination, refreshed
 eligibility, unreadable metadata/files and the unchanged shared Evidence guard.
-The refusal and step tests retain their fail-first controls.
+The poll suite also plants four mutations of the Environment, consumer-count,
+main-ref and parity assertions and requires each to fail. The refusal and step
+tests retain their fail-first controls. All three suites run in the existing live
+`ci.yml` build-test job through the desk regression package on every PR and push.
 
 After promotion and merge, check legitimate main-triggered writer runs and a
 scheduled Evidence poll. Once those succeed with the Environment credentials,

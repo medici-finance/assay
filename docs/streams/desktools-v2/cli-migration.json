@@ -23,6 +23,11 @@
     },
     {
       "class": "test",
+      "pattern": "tools/evidence-automerge/automerge-poll_test.py",
+      "reason": "offline workflow fixture suite run by build-test through the desk regression package; never an operator entrypoint"
+    },
+    {
+      "class": "test",
       "pattern": "**/*.harness.mjs",
       "reason": "workflow fixture harness: executes committed workflow text against mocks"
     },

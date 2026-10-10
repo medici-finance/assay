@@ -82,22 +82,61 @@ class PollTests(unittest.TestCase):
                 reverse = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)], cwd=tmp,
                                          text=True, capture_output=True, timeout=10)
                 self.assertEqual(reverse.returncode, 0, result.stderr + reverse.stderr)
-            count = 0
-            for path in workflows.glob("*.yml"):
-                jobs = re.split(r"^  [\w-]+:\n", path.read_text().split("\njobs:\n", 1)[1], flags=re.M)[1:]
-                for job in jobs:
-                    if "secrets.BOARD_APP_PRIVATE_KEY" in job:
-                        self.assertIn("    environment: board-writer\n", job, path.name)
-                        count += 1
-            self.assertEqual(count, 6)
-            self.assertNotIn("  reconcile:\n", (workflows / "assay-statusgen.yml").read_text())
-            poll = (workflows / "evidence-automerge.yml").read_text()
-            self.assertEqual(poll, WORKFLOW.read_text())
-            self.assertNotIn("  pull_request:", poll)
-            self.assertNotIn("  pull_request_review:", poll)
-            self.assertIn("          ref: ${{ github.sha }}\n", poll)
-            self.assertIn("    if: github.ref == 'refs/heads/main'\n", poll)
-            self.assertIn("github.ref == 'refs/heads/main'", (workflows / "release.yml").read_text().split("  changelog-roll:\n", 1)[1])
+            self.assert_projected_workflows(workflows)
+
+    def assert_projected_workflows(self, workflows):
+        count = 0
+        for path in workflows.glob("*.yml"):
+            jobs = re.split(r"^  [\w-]+:\n", path.read_text().split("\njobs:\n", 1)[1], flags=re.M)[1:]
+            for job in jobs:
+                if "secrets.BOARD_APP_PRIVATE_KEY" in job:
+                    self.assertIn("    environment: board-writer\n", job, path.name)
+                    count += 1
+        self.assertEqual(count, 6)
+        self.assertNotIn("  reconcile:\n", (workflows / "assay-statusgen.yml").read_text())
+        poll = (workflows / "evidence-automerge.yml").read_text()
+        self.assertEqual(poll, WORKFLOW.read_text())
+        self.assertNotIn("  pull_request:", poll)
+        self.assertNotIn("  pull_request_review:", poll)
+        self.assertIn("          ref: ${{ github.sha }}\n", poll)
+        self.assertIn("    if: github.ref == 'refs/heads/main'\n", poll)
+        self.assertIn("github.ref == 'refs/heads/main'", (workflows / "release.yml").read_text().split("  changelog-roll:\n", 1)[1])
+
+    def test_environment_and_parity_pins_reject_mutations(self):
+        names = ("assay-statusgen.yml", "assay-qualgen.yml", "verify-gate-close.yml",
+                 "release.yml", "evidence-automerge.yml")
+        mutations = (
+            ("assay-qualgen.yml", "    environment: board-writer\n", ""),
+            ("assay-qualgen.yml", "secrets.BOARD_APP_PRIVATE_KEY", "secrets.ANOTHER_KEY"),
+            ("release.yml", " && github.ref == 'refs/heads/main'", ""),
+            ("evidence-automerge.yml", "name: evidence-automerge", "name: altered-poll"),
+        )
+        for name, before, after in mutations:
+            with self.subTest(workflow=name, mutation=before):
+                with tempfile.TemporaryDirectory() as directory:
+                    workflows = Path(directory)
+                    for filename in names:
+                        shutil.copyfile(ROOT / ".github/workflows" / filename, workflows / filename)
+                    # This control operates on the final promoted shape even
+                    # when the suite is run before maintainer promotion.
+                    patch = ROOT / "ci/board-writer-migration/workflows.patch"
+                    if "    environment: board-writer\n" not in (workflows / "assay-qualgen.yml").read_text():
+                        tree = workflows / ".github/workflows"
+                        tree.mkdir(parents=True)
+                        for filename in names:
+                            shutil.copyfile(workflows / filename, tree / filename)
+                        result = subprocess.run(["git", "apply", str(patch)], cwd=workflows,
+                                                text=True, capture_output=True, timeout=10)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        for filename in names:
+                            shutil.copyfile(tree / filename, workflows / filename)
+                    self.assert_projected_workflows(workflows)
+                    path = workflows / name
+                    original = path.read_text()
+                    self.assertIn(before, original)
+                    path.write_text(original.replace(before, after, 1))
+                    with self.assertRaises(AssertionError):
+                        self.assert_projected_workflows(workflows)
 
     def run_step(self, name, **changes):
         fixture = {"pages": [[pr()]], "current": pr(), "files": ["docs/streams/example/brief-01.md"]}
