@@ -31,6 +31,14 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	if err != nil {
 		return nil, err
 	}
+	claudeConfig, err := claudeConfigDirFor(runtime.GOOS, c.Env)
+	if err != nil {
+		return nil, err
+	}
+	operatorConfig, err := captureOperatorConfig(c.Env, c.Home, c.Config)
+	if err != nil {
+		return nil, err
+	}
 	values := map[string]string{
 		"HOME":              c.Home,
 		"USERPROFILE":       c.Home,
@@ -38,14 +46,23 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 		"ASSAY_CONFIG_HOME": c.Config,
 		"CODEX_HOME":        codexHome,
 		"GH_CONFIG_DIR":     ghConfig,
+		// Rechecks may include Claude routes even from a Codex desk. Resolve
+		// before HOME changes, just like the other operator resource paths.
+		"CLAUDE_CONFIG_DIR": claudeConfig,
 		"PATH":              filepath.Join(c.Dir, "bin") + string(filepath.ListSeparator) + deskToolsBin(c.Env) + string(filepath.ListSeparator) + c.Env.Get("PATH"),
 		// Noninteractive Bash reads BASH_ENV even without login semantics.
 		"BASH_ENV": "",
 		"ENV":      "",
 	}
+	// Record the operator context only when capture found an operator-side
+	// resource. From an already cell-scoped parent it stays unset, and the house
+	// check then refuses the cell link compared with itself.
+	if operatorConfig != "" {
+		values[operatorConfigKey] = operatorConfig
+	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.
-	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOPATH", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
+	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
 		for _, kv := range env {
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {

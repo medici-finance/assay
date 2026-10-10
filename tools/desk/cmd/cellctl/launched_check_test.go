@@ -1,0 +1,345 @@
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// All subprocess tools are local stubs; the check never contacts a service.
+func TestLaunchedHouseCheck(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture executables are Unix shell scripts")
+	}
+	f := newPolicyFixture(t, "2.1.278")
+	operator := filepath.Join(t.TempDir(), "operator")
+	cfg := filepath.Join(operator, ".config", "assay")
+	claude := filepath.Join(operator, ".claude")
+	cellHome := filepath.Join(f.cellDir, "home")
+	cellConfig := filepath.Join(cellHome, ".config", "assay")
+	for _, p := range []string{cfg, claude, filepath.Join(cellHome, ghConfigRelPath), filepath.Join(f.repoDir, "docs", "streams"), filepath.Join(f.repoDir, ".agents", "skills", "example")} {
+		must(t, os.MkdirAll(p, 0700))
+	}
+	must(t, os.Remove(filepath.Join(cellConfig, "roster.env")))
+	must(t, os.Remove(cellConfig))
+	must(t, os.Symlink(cfg, cellConfig))
+	must(t, os.WriteFile(filepath.Join(cfg, "roster.env"), []byte("ASSAY_BLESS_LOGIN=example-human:1\nASSAY_TRUSTED_LOGINS=example-human:1\nASSAY_ALLOWED_REPOS=example-org/example-repo:no-ci:public\n"), 0600))
+	must(t, os.WriteFile(filepath.Join(cellHome, ".gitconfig"), nil, 0600))
+	must(t, os.WriteFile(filepath.Join(f.repoDir, "AGENTS.md"), []byte("Assay resident operating rules"), 0600))
+	cmd := exec.Command("git", "init", "-q", f.repoDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	for _, name := range strings.Fields(houseVerbs + " tmux") {
+		must(t, os.WriteFile(filepath.Join(f.binDir, name), []byte("#!/bin/sh\nexit 0\n"), 0700))
+	}
+	must(t, os.WriteFile(filepath.Join(f.binDir, "codex"), []byte("#!/bin/sh\necho 'multi_agent stable true'\n"), 0700))
+	must(t, os.WriteFile(filepath.Join(f.binDir, "claude"), []byte("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 2.1.278; else echo '[{\"id\":\"assay@assay\",\"enabled\":true}]'; fi\n"), 0700))
+	file, err := os.OpenFile(filepath.Join(f.cellDir, "cell.env"), os.O_APPEND|os.O_WRONLY, 0600)
+	must(t, err)
+	_, err = file.WriteString("CELL_HARNESS=codex\nCELL_COCKPIT=tmux\nDESKD=0\n")
+	must(t, err)
+	must(t, file.Close())
+	e := envWith(map[string]string{"HOME": operator, "USERPROFILE": operator, "PATH": f.binDir + ":/usr/bin:/bin", "DESK_TOOLS_BIN": f.binDir})
+	c := &Cell{Env: e, Dir: f.cellDir, Home: cellHome, Config: cellConfig}
+	values, err := c.codexCommandEnvironment(nil)
+	must(t, err)
+	runIn := func(dir string, env map[string]string, arg string) (string, error) {
+		args := []string{"check", "example"}
+		if arg != "" {
+			args = append(args, arg)
+		}
+		cmd := exec.Command(cellctlBinary(t), args...)
+		cmd.Dir = dir
+		cmd.Env = []string{"CELLS_ROOT=" + f.cellsRoot, "DESK_TOOLS_BIN=" + f.binDir, "KUBECONFIG=/dev/null", "ZAI_API_KEY=fixture-zai", "KIMI_API_KEY=fixture-kimi"}
+		for k, v := range env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	run := func(env map[string]string, arg string) (string, error) { return runIn("", env, arg) }
+	// misdirect repoints the cell config link at a foreign directory holding a
+	// valid roster copy, restoring the operator link when the subtest ends.
+	misdirectTo := func(t *testing.T, foreign string) {
+		must(t, os.MkdirAll(foreign, 0700))
+		raw, err := os.ReadFile(filepath.Join(cfg, "roster.env"))
+		must(t, err)
+		must(t, os.WriteFile(filepath.Join(foreign, "roster.env"), raw, 0600))
+		must(t, os.Remove(cellConfig))
+		must(t, os.Symlink(foreign, cellConfig))
+		t.Cleanup(func() {
+			must(t, os.Remove(cellConfig))
+			must(t, os.Symlink(cfg, cellConfig))
+		})
+	}
+	misdirect := func(t *testing.T) { misdirectTo(t, t.TempDir()) }
+	without := func(env map[string]string, drop string) map[string]string {
+		out := map[string]string{}
+		for k, v := range env {
+			if k != drop {
+				out[k] = v
+			}
+		}
+		return out
+	}
+	t.Run("host", func(t *testing.T) {
+		out, err := run(e.vals, "")
+		if err != nil {
+			t.Fatalf("host check: %v\n%s", err, out)
+		}
+	})
+	t.Run("launched", func(t *testing.T) {
+		out, err := run(values, "")
+		if err != nil {
+			t.Fatalf("launched check: %v\n%s", err, out)
+		}
+	})
+	t.Run("missing-operator-context", func(t *testing.T) {
+		out, err := run(without(values, operatorConfigKey), claude)
+		if err == nil || !strings.Contains(out, "MISS  config home linked") {
+			t.Fatalf("self-referential target accepted: %v\n%s", err, out)
+		}
+	})
+	t.Run("misdirected-link-launched", func(t *testing.T) {
+		misdirect(t)
+		// Recomposition must preserve the original expectation too, including
+		// after a resource stops matching it. Keep the first environment intact.
+		nested := *c
+		nested.Env = envWith(values)
+		nestedValues, err := nested.codexCommandEnvironment(nil)
+		must(t, err)
+		for name, env := range map[string]map[string]string{"launched": values, "nested": nestedValues} {
+			t.Run(name, func(t *testing.T) {
+				out, err := run(env, claude)
+				if err == nil || !strings.Contains(out, "MISS  config home linked") {
+					t.Fatalf("misdirected config link accepted: %v\n%s", err, out)
+				}
+			})
+		}
+	})
+	// A launch composed from an environment that is already cell-scoped and
+	// carries no operator context must not take the cell's own config link as
+	// the operator expectation: with the link misdirected, the check reports MISS.
+	t.Run("cell-scoped-compose", func(t *testing.T) {
+		// A relative alias that names the cell link must be caught on the link
+		// node, before resolution reaches the link's (foreign) target.
+		aliasDir := t.TempDir()
+		rel, err := filepath.Rel(aliasDir, cellConfig)
+		must(t, err)
+		alias := filepath.Join(aliasDir, "config-alias")
+		must(t, os.Symlink(rel, alias))
+		// Absolute stored targets the OS resolves through the cell link but a
+		// node lookup on the raw string does not examine: a trailing separator or
+		// dot element follows the final link. "/y/../assay" with y a link into
+		// the cell's .config reaches the link only when ".." applies after y.
+		sepAlias := filepath.Join(aliasDir, "sep-alias")
+		must(t, os.Symlink(cellConfig+string(filepath.Separator), sepAlias))
+		dotAlias := filepath.Join(aliasDir, "dot-alias")
+		must(t, os.Symlink(cellConfig+string(filepath.Separator)+".", dotAlias))
+		sepChain := filepath.Join(aliasDir, "sep-chain")
+		must(t, os.Symlink(sepAlias+string(filepath.Separator), sepChain))
+		must(t, os.MkdirAll(filepath.Join(cellHome, ".config", "sub"), 0700))
+		must(t, os.Symlink(filepath.Join(cellHome, ".config", "sub"), filepath.Join(aliasDir, "y")))
+		dotdotAlias := filepath.Join(aliasDir, "dotdot-alias")
+		must(t, os.Symlink(filepath.Join(aliasDir, "y")+"/../assay", dotdotAlias))
+		// A chain longer than the walk's link budget fails closed.
+		longChain := cellConfig
+		for i := 0; i <= maxConfigLinks; i++ {
+			next := filepath.Join(aliasDir, "chain-"+strconv.Itoa(i))
+			must(t, os.Symlink(longChain, next))
+			longChain = next
+		}
+		inHome := filepath.Join(cellHome, "foreign-config")
+		// Created only after composition: judged by its existing prefix.
+		inHomeLater := filepath.Join(cellHome, "later-config")
+		// Another cell under the same cells root, its config link misdirected
+		// to the same foreign directory as this cell's.
+		shared := filepath.Join(t.TempDir(), "shared-foreign")
+		otherHome := filepath.Join(f.cellsRoot, "other", "home")
+		must(t, os.MkdirAll(filepath.Join(otherHome, ".config"), 0700))
+		must(t, os.Symlink(shared, filepath.Join(otherHome, ".config", "assay")))
+		t.Cleanup(func() { must(t, os.RemoveAll(filepath.Dir(otherHome))) })
+		operatorWith := func(override string) map[string]string {
+			return map[string]string{"HOME": operator, "USERPROFILE": operator, "PATH": e.vals["PATH"], "DESK_TOOLS_BIN": f.binDir, "ASSAY_CONFIG_HOME": override}
+		}
+		cases := []struct {
+			name   string
+			target string
+			late   bool
+			parent map[string]string
+		}{
+			{"cell-home", "", false, map[string]string{"HOME": cellHome, "USERPROFILE": cellHome, "PATH": e.vals["PATH"], "DESK_TOOLS_BIN": f.binDir}},
+			{"cell-override", "", false, operatorWith(cellConfig)},
+			{"alias-override", "", false, operatorWith(alias)},
+			{"stripped", "", false, without(values, operatorConfigKey)},
+			// The link and the candidate both name a directory inside the cell
+			// home; only the resolved-location rule tells it from the operator's.
+			{"in-home-target", inHome, false, operatorWith(inHome)},
+			{"alias-trailing-sep", "", false, operatorWith(sepAlias)},
+			{"alias-trailing-dot", "", false, operatorWith(dotAlias)},
+			{"alias-sep-chain", "", false, operatorWith(sepChain)},
+			{"alias-dotdot", "", false, operatorWith(dotdotAlias)},
+			{"alias-long-chain", "", false, operatorWith(longChain)},
+			{"in-home-later", inHomeLater, true, operatorWith(inHomeLater)},
+			{"sibling-cell-home", shared, false, map[string]string{"HOME": otherHome, "USERPROFILE": otherHome, "PATH": e.vals["PATH"], "DESK_TOOLS_BIN": f.binDir}},
+		}
+		for _, tc := range cases {
+			parent := tc.parent
+			t.Run(tc.name, func(t *testing.T) {
+				switch {
+				case tc.late:
+				case tc.target != "":
+					misdirectTo(t, tc.target)
+				default:
+					misdirect(t)
+				}
+				composer := *c
+				composer.Env = envWith(parent)
+				composed, err := composer.codexCommandEnvironment(nil)
+				must(t, err)
+				// Capture itself refuses, not only the check behind it.
+				if v, ok := composed[operatorConfigKey]; ok {
+					t.Fatalf("cell-owned candidate recorded as operator context: %q", v)
+				}
+				if tc.late {
+					misdirectTo(t, tc.target)
+				}
+				out, err := run(composed, claude)
+				if err == nil || !strings.Contains(out, "MISS  config home linked") {
+					t.Fatalf("cell-scoped composition accepted a misdirected link: %v\n%s", err, out)
+				}
+			})
+		}
+	})
+	// The check applies the capture test to its own expectation: a config
+	// override that is an alias of the cell link, no recorded context, is the
+	// link compared with itself and is refused, misdirected or not.
+	t.Run("check-side-alias", func(t *testing.T) {
+		aliasDir := t.TempDir()
+		abs := filepath.Join(aliasDir, "abs-alias")
+		must(t, os.Symlink(cellConfig, abs))
+		rel, err := filepath.Rel(aliasDir, cellConfig)
+		must(t, err)
+		relAlias := filepath.Join(aliasDir, "rel-alias")
+		must(t, os.Symlink(rel, relAlias))
+		for _, misdirected := range []bool{true, false} {
+			for name, override := range map[string]string{"absolute": abs, "relative": relAlias} {
+				t.Run(name+"-misdirected-"+strconv.FormatBool(misdirected), func(t *testing.T) {
+					if misdirected {
+						misdirect(t)
+					}
+					env := without(values, operatorConfigKey)
+					env["ASSAY_CONFIG_HOME"] = override
+					out, err := run(env, claude)
+					if err == nil || !strings.Contains(out, "MISS  config home linked") {
+						t.Fatalf("alias of the cell link accepted as the expectation: %v\n%s", err, out)
+					}
+				})
+			}
+		}
+	})
+	t.Run("host-misdirected-link", func(t *testing.T) {
+		misdirect(t)
+		out, err := run(e.vals, "")
+		if err == nil || !strings.Contains(out, "MISS  config home linked") {
+			t.Fatalf("host check accepted a misdirected link: %v\n%s", err, out)
+		}
+	})
+	// The recorded context must be an absolute local path: a relative one would
+	// resolve against whatever directory the check happens to run in.
+	t.Run("malformed-context", func(t *testing.T) {
+		env := without(values, operatorConfigKey)
+		env[operatorConfigKey] = filepath.Join(".config", "assay")
+		out, err := runIn(operator, env, claude)
+		if err == nil || !strings.Contains(out, operatorConfigKey) {
+			t.Fatalf("relative operator context accepted: %v\n%s", err, out)
+		}
+	})
+	t.Run("explicit-claude", func(t *testing.T) {
+		out, err := run(values, claude)
+		if err != nil {
+			t.Fatalf("positional check: %v\n%s", err, out)
+		}
+	})
+	t.Run("missing-claude", func(t *testing.T) {
+		out, err := run(values, filepath.Join(operator, "missing"))
+		if err == nil || !strings.Contains(out, "CLAUDE_CONFIG_DIR not a directory") {
+			t.Fatalf("missing Claude not refused: %v\n%s", err, out)
+		}
+	})
+	t.Run("misdirected-config", func(t *testing.T) {
+		env := map[string]string{}
+		for k, v := range values {
+			env[k] = v
+		}
+		env["ASSAY_CONFIG_HOME"] = t.TempDir()
+		out, err := run(env, claude)
+		if err == nil || !strings.Contains(out, "MISS  config home linked") {
+			t.Fatalf("misdirected config not refused: %v\n%s", err, out)
+		}
+	})
+	t.Run("broken-config", func(t *testing.T) {
+		must(t, os.Remove(cellConfig))
+		must(t, os.Symlink(filepath.Join(operator, "missing"), cellConfig))
+		out, err := run(values, claude)
+		if err == nil || !strings.Contains(out, "MISS  config home linked") {
+			t.Fatalf("broken config not refused: %v\n%s", err, out)
+		}
+		must(t, os.Remove(cellConfig))
+		must(t, os.Symlink(cfg, cellConfig))
+	})
+	t.Run("relative-alias", func(t *testing.T) {
+		must(t, os.Remove(cellConfig))
+		rel, err := filepath.Rel(filepath.Dir(cellConfig), cfg)
+		must(t, err)
+		must(t, os.Symlink(rel, cellConfig))
+		out, err := run(values, "")
+		if err != nil {
+			t.Fatalf("relative config link refused: %v\n%s", err, out)
+		}
+	})
+	t.Run("plain-directory", func(t *testing.T) {
+		must(t, os.Remove(cellConfig))
+		must(t, os.Mkdir(cellConfig, 0700))
+		out, err := run(values, claude)
+		if err == nil || !strings.Contains(out, "MISS  config home linked") {
+			t.Fatalf("plain directory not refused: %v\n%s", err, out)
+		}
+		must(t, os.Remove(cellConfig))
+		must(t, os.Symlink(cfg, cellConfig))
+	})
+	t.Run("policy-settings", func(t *testing.T) {
+		must(t, os.WriteFile(filepath.Join(claude, "settings.json"), []byte(`{"modelOverrides":{"opus":"x"}}`), 0600))
+		out, err := run(values, "")
+		if err == nil || !strings.Contains(out, "modelOverrides must be removed") {
+			t.Fatalf("operator policy conflict missed: %v\n%s", err, out)
+		}
+	})
+}
+
+func TestCodexConfigLaunchOverride(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture executable is a Unix shell script")
+	}
+	f := newPolicyFixture(t, "2.1.278")
+	f.prepareLocalLaunch(t)
+	must(t, os.WriteFile(filepath.Join(f.binDir, "codex"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\necho \"process CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR\"\n"), 0700))
+	positional := t.TempDir()
+	r := f.run(t, []string{"CELLCTL_DESKWT=0", "PATH=" + f.binDir + ":/usr/bin:/bin"}, "desk", "example", "intake-desk", "--cadence", "off", positional)
+	if r.code != 0 {
+		t.Fatalf("launch: %+v", r)
+	}
+	if !strings.Contains(r.stdout, "shell_environment_policy.set.CLAUDE_CONFIG_DIR=\""+positional+"\"") {
+		t.Fatalf("positional config lost at command boundary:\n%s", r.stdout)
+	}
+	// cellctl sets no CLAUDE_CONFIG_DIR on the Codex process: it keeps the
+	// value the launching environment exported, not the positional override.
+	if !strings.Contains(r.stdout, "process CLAUDE_CONFIG_DIR="+f.cfgDir+"\n") {
+		t.Fatalf("Codex process environment changed:\n%s", r.stdout)
+	}
+}

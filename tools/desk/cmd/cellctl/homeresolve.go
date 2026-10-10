@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -77,6 +78,173 @@ func configHomeFor(goos string, e *Env) (string, error) {
 		return v, nil
 	}
 	return underHome(goos, e, ".config", "assay")
+}
+
+// operatorConfigKey is launch context, not the active roster override. Only
+// cellctl reads it; desk tools continue to use ASSAY_CONFIG_HOME. A nested launch
+// must retain this independently captured target instead of capturing its alias.
+const operatorConfigKey = "CELLCTL_OPERATOR_CONFIG_HOME"
+
+func operatorConfigHomeFor(goos string, e *Env) (string, error) {
+	if e.IsSet(operatorConfigKey) {
+		v := e.Get(operatorConfigKey)
+		if err := homePathCheck(goos, v); err != nil {
+			return "", fmt.Errorf("%s %v", operatorConfigKey, err)
+		}
+		return v, nil
+	}
+	return configHomeFor(goos, e)
+}
+
+// Capture before HOME/ASSAY_CONFIG_HOME change. Resolve existing aliases so the
+// stored expectation is a resource path independent of the cell's config link.
+// A missing config stays a missing path: launch composition does not provision
+// it, and check reports it unavailable. Nested context is never recaptured.
+//
+// With no recorded context, a candidate that reaches the cell's own config link
+// (cellConfig) or lies inside the cell home is NOT an operator resource: the
+// composing environment is already cell-scoped, and resolving through the link
+// would record wherever the link points as the expectation. Capture then returns
+// "" and the context stays unset, so the house check falls back to the cell link
+// and refuses the self-comparison.
+func captureOperatorConfig(e *Env, cellHome, cellConfig string) (string, error) {
+	p, err := operatorConfigHomeFor(runtime.GOOS, e)
+	if err != nil || e.IsSet(operatorConfigKey) {
+		return p, err
+	}
+	p, err = filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	if cellOwnedConfig(p, cellHome, cellConfig) {
+		return "", nil
+	}
+	resolved, err := filepath.EvalSymlinks(p)
+	if err == nil {
+		return resolved, nil
+	}
+	if !os.IsNotExist(err) {
+		return "", fmt.Errorf("cannot resolve operator config: %w", err)
+	}
+	return p, nil
+}
+
+// cellOwnedConfig reports whether the path p is cell-owned: it reaches
+// a cell's config link, or it lies inside a cell home. The cells are this one
+// and every sibling under the same cells root (<root>/<name>/home). p is walked
+// one path element at a time, the way the OS resolves it (resolvedPrefix), and
+// every node on the way is compared with each config link by identity. A
+// spelling therefore cannot hide the link: an alias, a relative alias, a target
+// ending in a separator or a dot element, or a ".." after a link. Containment is
+// node identity of an ancestor, not a string prefix, so letter case on a
+// case-insensitive filesystem is irrelevant. A candidate that does not exist yet
+// is judged by its existing prefix. A walk that cannot finish (the link budget
+// is spent, or an element cannot be read) counts as cell-owned: no independent
+// expectation is recorded, and the house check refuses.
+func cellOwnedConfig(p, cellHome, cellConfig string) bool {
+	p, err := filepath.Abs(p)
+	if err != nil {
+		return true
+	}
+	homes := []string{cellHome}
+	if cellHome != "" {
+		siblings, _ := filepath.Glob(filepath.Join(filepath.Dir(filepath.Dir(cellHome)), "*", "home"))
+		homes = append(homes, siblings...)
+	}
+	var links, roots []os.FileInfo
+	for _, h := range homes {
+		if fi, err := os.Stat(h); h != "" && err == nil {
+			roots = append(roots, fi)
+		}
+		link := filepath.Join(h, ".config", "assay")
+		if h == cellHome {
+			link = cellConfig
+		}
+		if fi, err := os.Lstat(link); link != "" && err == nil {
+			links = append(links, fi)
+		}
+	}
+	isAny := func(node os.FileInfo, set []os.FileInfo) bool {
+		for _, s := range set {
+			if os.SameFile(node, s) {
+				return true
+			}
+		}
+		return false
+	}
+	prefix, ok := resolvedPrefix(p, func(node os.FileInfo) bool { return isAny(node, links) })
+	if !ok {
+		return true
+	}
+	for d := prefix; ; d = filepath.Dir(d) {
+		if fi, err := os.Stat(d); err == nil && isAny(fi, roots) {
+			return true
+		}
+		if filepath.Dir(d) == d {
+			return false
+		}
+	}
+}
+
+// maxConfigLinks bounds resolvedPrefix. It is at least the limit any supported
+// OS applies, so a chain the OS still resolves never outruns the walk.
+const maxConfigLinks = 64
+
+// resolvedPrefix resolves the absolute path p element by element, following
+// each link where it is met, as the OS does: a relative link target continues
+// from the link's resolved directory, and ".." applies to the resolved path so
+// far. stop sees every node that exists on the way. It returns the resolved
+// path of the longest existing prefix of p, and ok=false when stop matched, the
+// link budget was spent, or an element could not be read for a reason other
+// than not existing.
+func resolvedPrefix(p string, stop func(os.FileInfo) bool) (string, bool) {
+	vol := filepath.VolumeName(p)
+	dest := vol + string(filepath.Separator)
+	pending := p[len(vol):]
+	for followed := 0; ; {
+		pending = strings.TrimLeftFunc(pending, func(r rune) bool { return r < 0x80 && os.IsPathSeparator(uint8(r)) })
+		if pending == "" {
+			return dest, true
+		}
+		elem := pending
+		if i := strings.IndexFunc(pending, func(r rune) bool { return r < 0x80 && os.IsPathSeparator(uint8(r)) }); i >= 0 {
+			elem, pending = pending[:i], pending[i:]
+		} else {
+			pending = ""
+		}
+		switch elem {
+		case ".":
+			continue
+		case "..":
+			dest = filepath.Dir(dest)
+			continue
+		}
+		next := filepath.Join(dest, elem)
+		node, err := os.Lstat(next)
+		if os.IsNotExist(err) {
+			return dest, true
+		}
+		if err != nil || stop(node) {
+			return "", false
+		}
+		if node.Mode()&os.ModeSymlink == 0 {
+			dest = next
+			continue
+		}
+		if followed++; followed > maxConfigLinks {
+			return "", false
+		}
+		target, err := os.Readlink(next)
+		if err != nil {
+			return "", false
+		}
+		if filepath.IsAbs(target) {
+			vol = filepath.VolumeName(target)
+			dest = vol + string(filepath.Separator)
+			target = target[len(vol):]
+		}
+		pending = target + string(filepath.Separator) + pending
+	}
 }
 
 // ghConfigDirFor matches the GitHub CLI's own documented precedence: $GH_CONFIG_DIR, then

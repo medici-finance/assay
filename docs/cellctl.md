@@ -94,6 +94,35 @@ and `CLAUDE_CONFIG_DIR`; every desk verb it invokes resolves the cell's roster a
 The split is exact: identity for the tools that write, the operator's own environment for the harness
 that hosts them.
 
+For Codex command subprocesses, `cellctl` composes the cell `HOME`, `USERPROFILE`
+and `ASSAY_CONFIG_HOME` directly. It first records the independently resolved
+operator config path in `CELLCTL_OPERATOR_CONFIG_HOME`; nested launches preserve
+that context. This is automatic launch metadata, not a replacement for the
+active roster override. Existing config aliases are resolved before composition;
+missing inputs remain missing and fail preflight. Operator Claude configuration,
+including an explicit positional override, is preserved for policy rechecks.
+When the composing environment is already cell-scoped, nothing is recorded:
+the context stays unset and the house check refuses, rather than accepting
+whatever the cell link points at. A config candidate is cell-scoped when the
+path, resolved one element at a time as the OS resolves it, passes through a
+cell's config link (whatever the stored spelling of each link: absolute,
+relative, a trailing separator or dot element) or lies inside a cell home,
+including one that does not exist yet. "A cell" is this cell or any sibling
+under the same cells root. A path that cannot be resolved to the end (too many
+links, an unreadable element) counts as cell-scoped. The house check applies the
+same test to its expected target, so a config override that is an alias of the
+cell link is refused even when the link points at the right place: the link
+compared with itself establishes nothing.
+
+Only `cellctl` consumes this context: the operator-config resolver serves the
+common operator-directory check, the house config-link check, and configuration
+paths used by `new`/`new --kind house`; Codex composition carries it onward.
+Desk tools still read the cell's `ASSAY_CONFIG_HOME`. The house check requires the
+link, the active config and the independent operator target to agree; comparing
+the same named symlink to itself cannot establish that identity. Relative config
+links and distinct aliases of the same resource remain valid. Scrubbed and
+container launch paths keep their separate config contracts.
+
 The shims are regenerated on every `cellctl desk`, so installing a new desk-tools release picks up
 automatically.
 
@@ -1038,8 +1067,12 @@ codex --sandbox danger-full-access -C <worktree> -m <model> "Invoke the \"assay:
 ```
 
 The same exported env the claude arm gets — `DESK_LOOP`, `DESK_SESSION`, `DESK_ROOTS` (when
-`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. `CLAUDE_CONFIG_DIR` is irrelevant on
-this arm and is not passed; the model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
+`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. `cellctl` sets no
+`CLAUDE_CONFIG_DIR` on the Codex process itself (one the launching shell exports is inherited
+unchanged); the command environment `cellctl` composes for its subprocesses carries the
+resolved Claude config directory (a positional override when one is given, otherwise the operator's,
+resolved before `HOME` changes), so a policy recheck that routes through Claude reads that
+configuration. The model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
 `CODEX_MODEL_default`, falling back to the tier map — never the claude arm's `DESK_MODEL_<role>` /
 `DESK_MODEL_DEFAULT` (`#986`: the two were conflated before this, which is why a Claude-only pin
 used to reach `codex -m` unchanged and fail there). See *Per-harness namespaces and the tier-map

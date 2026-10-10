@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes|NewRefusesBeforeMkdir)$'",
+  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes|NewRefusesBeforeMkdir|LaunchedHouseCheck|ConfigReplayClass|OperatorContextChoke|CodexConfigLaunchOverride)$'",
   "control": {
     "name": "Unset-home refusal removed (empty home resolves)",
     "file": "cmd/cellctl/homeresolve.go",
@@ -28,7 +28,7 @@
     {
       "name": "Config home derived from raw HOME outside the resolver",
       "file": "cmd/cellctl/cell.go",
-      "old": "\treturn mustResolve(configHomeFor(runtime.GOOS, e))",
+      "old": "\treturn mustResolve(operatorConfigHomeFor(runtime.GOOS, e))",
       "new": "\treturn filepath.Join(e.Get(\"HOME\"), \".config\", \"assay\")"
     },
     {
@@ -96,6 +96,84 @@
       "file": "internal/deskkit/selfcontain.go",
       "old": "\t\t\tif re == reWinUNCPath && loc[0] > 0 && notUNCLead(s[loc[0]-1]) {",
       "new": "\t\t\tif re == reWinUNCPath && loc[0] > 0 && false && notUNCLead(s[loc[0]-1]) {"
+    },
+    {
+      "name": "Cell-owned capture candidate recorded as the operator target",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\tif cellOwnedConfig(p, cellHome, cellConfig) {",
+      "new": "\tif false && cellOwnedConfig(p, cellHome, cellConfig) {"
+    },
+    {
+      "name": "Cell config link reached by another spelling not recognised",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\tprefix, ok := resolvedPrefix(p, func(node os.FileInfo) bool { return isAny(node, links) })",
+      "new": "\tprefix, ok := resolvedPrefix(p, func(node os.FileInfo) bool { return false })"
+    },
+    {
+      "name": "Relative link target resolved from the root, not the link's directory",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tif filepath.IsAbs(target) {\n\t\t\tvol = filepath.VolumeName(target)",
+      "new": "\t\tif true {\n\t\t\tvol = filepath.VolumeName(target)"
+    },
+    {
+      "name": "Candidate resolving inside the cell home not refused",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tif fi, err := os.Stat(d); err == nil && isAny(fi, roots) {",
+      "new": "\t\tif fi, err := os.Stat(d); false && err == nil && isAny(fi, roots) {"
+    },
+    {
+      "name": "Operator context shape check skipped",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tif err := homePathCheck(goos, v); err != nil {",
+      "new": "\t\tif err := homePathCheck(goos, v); false && err != nil {"
+    },
+    {
+      "name": "House check cell-owned expectation refusal dropped",
+      "file": "cmd/cellctl/check.go",
+      "old": "\t\t!cellOwnedConfig(real, c.Home, c.Config) && linkErr == nil",
+      "new": "\t\tlinkErr == nil"
+    },
+    {
+      "name": "House check link-to-operator-target identity dropped",
+      "file": "cmd/cellctl/check.go",
+      "old": "target.IsDir() && os.SameFile(linked, target) && os.SameFile(used, target),",
+      "new": "target.IsDir() && os.SameFile(used, target),"
+    },
+    {
+      "name": "House check active-config agreement dropped",
+      "file": "cmd/cellctl/check.go",
+      "old": "os.SameFile(linked, target) && os.SameFile(used, target),",
+      "new": "os.SameFile(linked, target) && used != nil,"
+    },
+    {
+      "name": "Link target cleaned lexically before its links are followed",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tpending = target + string(filepath.Separator) + pending",
+      "new": "\t\tpending = filepath.Clean(target) + string(filepath.Separator) + pending"
+    },
+    {
+      "name": "Spent link budget treated as a finished walk",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tif followed++; followed > maxConfigLinks {\n\t\t\treturn \"\", false",
+      "new": "\t\tif followed++; followed > maxConfigLinks {\n\t\t\treturn dest, true"
+    },
+    {
+      "name": "Not-yet-existing candidate not judged by its existing prefix",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\tif os.IsNotExist(err) {\n\t\t\treturn dest, true",
+      "new": "\t\tif os.IsNotExist(err) {\n\t\t\treturn \"\", true"
+    },
+    {
+      "name": "Sibling cells under the cells root not considered",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\t\thomes = append(homes, siblings...)",
+      "new": "\t\thomes = append(homes, siblings[:0]...)"
+    },
+    {
+      "name": "Codex process environment carries the resolved Claude config",
+      "file": "cmd/cellctl/launch.go",
+      "old": "\t\tcommandArgs, err := c.codexEnvironmentArgs(envSet(env, \"CLAUDE_CONFIG_DIR\", cfg))",
+      "new": "\t\tenv = envSet(env, \"CLAUDE_CONFIG_DIR\", cfg)\n\t\tcommandArgs, err := c.codexEnvironmentArgs(env)"
     }
   ]
 }
