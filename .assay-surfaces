@@ -26,3 +26,7 @@
 .claude/guardrails/**
 tools/desk/cmd/*guard*/**
 tools/desk/hooks/**
+
+# The external vulnerability scanner builds and acts on these; an edit changes what an
+# outside service executes and what it is told to skip (oss-scanner enrollment).
+.oss-scanner/**
