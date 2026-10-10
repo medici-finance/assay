@@ -163,7 +163,7 @@ func cmdMaintain(args []string) (err error) {
 	interval := fs.Duration("min-interval", 6*time.Hour, "minimum time between attempts (at least 1h)")
 	timeout := fs.Duration("timeout", 30*time.Second, "total work budget (1s to 5m)")
 	if e := fs.Parse(args); e != nil {
-		if errors.Is(e, flag.ErrHelp) {
+		if deskkit.IsHelpRequest(e) {
 			return deskkit.ErrHelpRequested
 		}
 		return deskkit.Refused("bad maintenance flags: " + e.Error())
