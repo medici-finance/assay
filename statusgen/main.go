@@ -1389,6 +1389,17 @@ func main() {
 		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen runtime-resource --lint --adapters FILE [--as-of RFC3339]
+	// PATH...` — validate runtime-resource-v1 records against
+	// schemas/runtime-resource-v1.json, an adapter registry, and the contract
+	// rules a schema cannot express (sdlc/24, runtimeresource.go,
+	// docs/runtime-adapters.md). Offline: it reads the files it is given and
+	// never contacts an adapter. A distinct artifact class, so a subcommand,
+	// same shape as `patterns`.
+	if len(os.Args) > 1 && os.Args[1] == "runtime-resource" {
+		os.Exit(runRuntimeResource(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
 	// brief-v2 flag-day migration (derived-board/06, migrate.go). Intercepted
 	// before flag parsing for verifyrun's reason: it owns its own target

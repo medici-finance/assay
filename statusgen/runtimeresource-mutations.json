@@ -1,0 +1,83 @@
+{
+  "test": "go test . -run 'TestRuntimeResourceContract' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — every record reports checked-failed",
+    "file": "runtimeresource.go",
+    "old": "return patternStateClean, nil",
+    "new": "return patternStateFailed, nil"
+  },
+  "mutations": [
+    {
+      "name": "brief row 3 — the valid fixture loses its ttl (the schema must refuse it by name)",
+      "file": "testdata/runtime-resource/records/good-valid.yaml",
+      "old": "ttl: 4h\n",
+      "new": ""
+    },
+    {
+      "name": "brief row 4 — the lost-ack fixture loses its reconciliation receipt (success must not be inferred from absence)",
+      "file": "testdata/runtime-resource/records/good-lost-ack.yaml",
+      "old": "    receipt:\n      adapter-ref: mock://branch/rr-lost-ack-01\n      observed-at: \"2026-01-01T00:02:01Z\"\n      observed-state: present\n",
+      "new": ""
+    },
+    {
+      "name": "the registry is ignored — every record is checked against the mock adapter",
+      "file": "runtimeresource.go",
+      "old": "if a, ok := adapters[d.AdapterID]; !ok {",
+      "new": "if a, ok := adapters[\"local-mock\"]; !ok {"
+    },
+    {
+      "name": "a claim by an agent is accepted",
+      "file": "runtimeresource.go",
+      "old": "if !isOwnerPrincipal(e.Principal) {",
+      "new": "if false {"
+    },
+    {
+      "name": "an unknown-outcome effect never becomes pending",
+      "file": "runtimeresource.go",
+      "old": "if e.Outcome == \"unknown\" && e.Verb != \"reconcile\" {",
+      "new": "if e.Outcome == \"never\" && e.Verb != \"reconcile\" {"
+    },
+    {
+      "name": "a release counts as done on the adapter's acknowledgment alone",
+      "file": "runtimeresource.go",
+      "old": "if r, ok := resolved[e.ID]; ok && r.ObservedState == \"absent\" {",
+      "new": "if e.Outcome == \"succeeded\" {"
+    },
+    {
+      "name": "the TTL never elapses",
+      "file": "runtimeresource.go",
+      "old": "asOf.After(ttlEnd)",
+      "new": "asOf.After(ttlEnd.Add(240 * time.Hour))"
+    },
+    {
+      "name": "a succeeded effect needs no receipt",
+      "file": "runtimeresource.go",
+      "old": "if e.Outcome == \"succeeded\" && !e.HasReceipt {",
+      "new": "if e.Outcome == \"never\" && !e.HasReceipt {"
+    },
+    {
+      "name": "a registry adapter need not implement the required verbs",
+      "file": "runtimeresource.go",
+      "old": "for _, v := range runtimeAdapterRequiredVerbs {",
+      "new": "for _, v := range runtimeAdapterRequiredVerbs[:0] {"
+    },
+    {
+      "name": "provisioned is accepted with no receipt showing the resource present",
+      "file": "runtimeresource.go",
+      "old": "case \"provisioned\":\n\t\tif !established {",
+      "new": "case \"provisioned\":\n\t\tif false {"
+    },
+    {
+      "name": "a claim need not rotate the agent credential",
+      "file": "runtimeresource.go",
+      "old": "if !rrHasRotation(d.Rotations, e.ID, \"\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "the agent credential may outlive the resource",
+      "file": "runtimeresource.go",
+      "old": "d.CredLife > d.TTL",
+      "new": "d.CredLife > 100*d.TTL"
+    }
+  ]
+}

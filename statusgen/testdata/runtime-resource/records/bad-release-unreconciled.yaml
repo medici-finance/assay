@@ -1,0 +1,75 @@
+# BAD: the release was acknowledged but no reconcile ever observed the
+# snapshot absent. A release is a request until a receipt shows it gone.
+schema: runtime-resource-v1
+id: rr-release-unrec-01
+class: snapshot
+adapter:
+  id: local-mock
+  version: "1"
+owner:
+  brief: example/02
+  run: run-0003
+input-revision: 9b81e07
+ttl: 2h
+quota:
+  - dimension: storage-mb
+    limit: 2048
+data-classification: internal
+provisioning:
+  requested-by: agent:worker-2
+  via: control-plane
+credentials:
+  durable-custody: control-plane
+  agent-credential:
+    scope: resource
+    lifetime: 30m
+  rotations:
+    - after: eff-0002
+      action: rotated
+      at: "2026-01-01T00:30:01Z"
+    - after: eff-0003
+      action: revoked
+      at: "2026-01-01T01:30:01Z"
+cleanup-owner: human:reviewer-a
+evidence-kind: runtime-receipt
+cost:
+  amount: 1.25
+  unit: USD
+  basis: metered
+recovery: reconcile-before-retry
+state: released
+ownership:
+  principal: human:reviewer-a
+  claimed-at: "2026-01-01T00:30:00Z"
+  retain-until: "2026-01-08T00:00:00Z"
+effects:
+  - id: eff-0001
+    verb: create
+    idempotency-key: run-0003/create
+    requested-at: "2026-01-01T00:00:00Z"
+    outcome: succeeded
+    principal: agent:worker-2
+    receipt:
+      adapter-ref: mock://snapshot/rr-release-unrec-01
+      observed-at: "2026-01-01T00:00:03Z"
+      observed-state: present
+  - id: eff-0002
+    verb: claim
+    idempotency-key: run-0003/claim
+    requested-at: "2026-01-01T00:30:00Z"
+    outcome: succeeded
+    principal: human:reviewer-a
+    receipt:
+      adapter-ref: mock://snapshot/rr-release-unrec-01
+      observed-at: "2026-01-01T00:30:01Z"
+      observed-state: present
+  - id: eff-0003
+    verb: release
+    idempotency-key: run-0003/release
+    requested-at: "2026-01-01T01:30:00Z"
+    outcome: succeeded
+    principal: human:reviewer-a
+    receipt:
+      adapter-ref: mock://snapshot/rr-release-unrec-01
+      observed-at: "2026-01-01T01:30:01Z"
+      observed-state: absent

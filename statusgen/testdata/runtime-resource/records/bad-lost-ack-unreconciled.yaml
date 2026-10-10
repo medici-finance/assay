@@ -1,0 +1,51 @@
+# BAD: the create's acknowledgment was lost and the run simply created again,
+# with no reconcile in between. Success is never inferred from absence.
+schema: runtime-resource-v1
+id: rr-lost-ack-bad-01
+class: database-branch
+adapter:
+  id: local-mock
+  version: "1"
+owner:
+  brief: example/01
+  run: run-0002
+input-revision: 3f2a9c1
+ttl: 4h
+quota:
+  - dimension: storage-mb
+    limit: 512
+data-classification: synthetic
+provisioning:
+  requested-by: agent:worker-1
+  via: control-plane
+credentials:
+  durable-custody: control-plane
+  agent-credential:
+    scope: resource
+    lifetime: 1h
+  rotations: []
+cleanup-owner: control-plane
+evidence-kind: runtime-receipt
+cost:
+  amount: 0
+  unit: USD
+  basis: estimate
+recovery: reconcile-before-retry
+state: provisioned
+effects:
+  - id: eff-0001
+    verb: create
+    idempotency-key: run-0002/create
+    requested-at: "2026-01-01T00:00:00Z"
+    outcome: unknown
+    principal: agent:worker-1
+  - id: eff-0002
+    verb: create
+    idempotency-key: run-0002/create-retry
+    requested-at: "2026-01-01T00:02:00Z"
+    outcome: succeeded
+    principal: agent:worker-1
+    receipt:
+      adapter-ref: mock://branch/rr-lost-ack-bad-01-b
+      observed-at: "2026-01-01T00:02:04Z"
+      observed-state: present
