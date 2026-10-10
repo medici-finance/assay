@@ -299,12 +299,19 @@ func splitRuledCheck(body string) (rest, ruledCheck string) {
 const rulingNeedle = "ruling"
 
 // filingOneWay is the one-way check every off-queue route in `deskfile new` consults: the
-// title, the body and the caller labels through deskkit.OneWay, with the ruled-check line
-// read separately through deskkit.OneWayExempting(…, "ruling").
+// title, the body and the caller labels through deskkit.OneWay, then the human-only hand-off
+// test the act gate uses (isHumanOnlyHandoff), with the ruled-check line read separately
+// through deskkit.OneWayExempting(…, "ruling"). The hand-off test is here so the two gates
+// agree on what a hand-off is: deskkit.OneWayLabels sees the human-only label but not a body
+// led by the BLOCKED-ON-HUMAN marker, and without this a marker-led hand-off could leave the
+// driver's queue through the notice lane or a --no-fork re-route.
 func filingOneWay(title, body string, labels []string) (deskkit.OneWayHit, bool) {
 	rest, rc := splitRuledCheck(body)
 	if hit, ok := deskkit.OneWay(title, rest, labels); ok {
 		return hit, true
+	}
+	if isHumanOnlyHandoff(labels, body) {
+		return deskkit.OneWayHit{Match: blockedOnHumanMarker + " on the body's first non-blank line", Category: "human-only hand-off"}, true
 	}
 	if rc != "" {
 		if hit, ok := deskkit.OneWayExempting(rc, rulingNeedle); ok {

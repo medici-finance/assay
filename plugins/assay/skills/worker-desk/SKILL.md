@@ -212,8 +212,13 @@ This is enforced in two INDEPENDENT layers that fail on different signals in dif
 neither is the single point of failure: the skill clause here, AND — should a desk skip the clause —
 `deskfile new`, which **REFUSES (exit 5)** any filing labelled `needs-decision`, `help wanted` or
 `question` whose body has no `### Evidence` heading followed by a fenced block, naming the missing
-section. `human-only` is not in that set (it is an ACT, not a claim); `attach` observations are not
-claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
+section. `human-only` is not in that set (it is an ACT, not a claim). A `BLOCKED-ON-HUMAN` report is
+still a blocker claim, so it carries BOTH the `### Evidence` section above AND the act itself, as the
+runnable **Act block** `ask-decision` §"Act — the shape of the fifth part" defines. `deskfile new`
+refuses (exit 5) a filing with no ` ```sh ` or ` ```url ` fence when it is labelled `human-only` or its
+body's first non-blank line opens with `BLOCKED-ON-HUMAN`; a marker in the title or after an opening
+paragraph is not caught, and there the Act block rests on this clause alone. `attach`
+observations are not claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
 refusal does, for a blocker whose evidence genuinely cannot be produced.
 
 ## THE REPO SET — derived once, consumed by every sweep
@@ -660,7 +665,8 @@ shows the helper itself refused (its status 5), that brief is a refusal — repa
 toward the repeat filing. In either case, never hand-run the decision-issue helper around the
 refusal (a hand-run once landed a duplicate decision issue). Record the issue in
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
-step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
+step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN —
+the report carrying the step the human runs as an Act block (`ask-decision` §"Act — the shape of the fifth part").
 
 **Security-gate removal is gate:human BEFORE the commit, not only at approval**: such a diff
 erases the red-check signal that makes the decision visible downstream, so "a worker behind a draft PR

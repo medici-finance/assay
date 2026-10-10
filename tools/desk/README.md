@@ -3426,6 +3426,9 @@ way).
 `deskkit.NoticeLaneVerdict`). An item is admitted only when ALL of these hold:
 
 - no caller label marks it one-way: `human-only`, `security`, `gate:human`;
+- it is not a human-only hand-off: `deskfile` checks this before the verdict, with the same
+  test its act gate uses, so a body whose first non-blank line opens with `BLOCKED-ON-HUMAN`
+  stays on `needs-decision` just as the `human-only` label does, and `--no-fork` refuses it;
 - no one-way term appears in the title or body — neither a `deskkit.HumanOnlySignals` needle
   (the list `deskdigest`'s classifier uses) nor a `deskkit.OneWayPatterns` match. The
   patterns are word-bounded and cover: merge; ready-flip; push to main and force-push;

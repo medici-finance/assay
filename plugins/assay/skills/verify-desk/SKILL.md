@@ -636,7 +636,10 @@ two-stamp model, #1170). Model-gated briefs are unchanged: one local-tier stamp,
    the second stamp has landed — it is not ready for the human until the stamp is on the cell. A card
    the close workflow refused and reopened is THIS desk's work item: land the second stamp, then the
    human closes it again. Never hand-edit the cell to a runner that did not run the rows — the
-   Evidence-actor and runner-agreement checks read that as a forgery, not a fix.
+   Evidence-actor and runner-agreement checks read that as a forgery, not a fix. **The card carries
+   the act:** closing it is the human's act, so the card holds an Act block (`ask-decision` §"Act — the shape of the fifth part")
+   — where the generated packet has none, this desk attaches it (`deskfile attach`) when the card is
+   ready for the human.
 
 ## Irreversible briefs (`risk.irreversible: yes`) — the model records Evidence, a HUMAN flips
 
@@ -662,7 +665,7 @@ fail `--lint` and redden main CI directly. So the model path STOPS short of the 
    FROM the Evidence's recorded runner, which is why the second stamp (the floor-tier re-verify rows,
    previous section) must be in the Evidence before the human closes: the close refuses a below-floor
    runner rather than landing it. Surface the open wait in the
-   report. Where that wiring is not deployed, the brief stays at `implemented` with Evidence — a
+   report, with the card's Act block (step 3 of the previous section). Where that wiring is not deployed, the brief stays at `implemented` with Evidence — a
    documented wait state, never a checkpoint PR.
    **Re-firing a cycle.** When a CLOSED verify-gate card must fire its close event again (the
    Evidence row it lifted was corrected; the flip did not land), this desk runs

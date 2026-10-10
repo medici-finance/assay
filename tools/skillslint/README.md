@@ -25,6 +25,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
+| Act blocks paste safely in zsh (hard) | every act block (an `sh`, `bash`, `zsh` or `shell` fence defining a `driver_act…()` function) in a `*.md` under `plugins/` | `actblock.go` |
 
 ### 1. Skill-file structure
 
@@ -296,6 +297,101 @@ original read, and the write itself goes through a temp file plus atomic
 rename rather than an in-place truncate-then-write. This closes a
 read-compute-write race that let concurrent `--sync` runs corrupt a file
 (medici-finance/assay#1692).
+
+### 5. Act blocks paste safely in zsh
+
+An act block is the fenced shell block the `ask-decision` skill's §Act tells a
+desk to hand the driver: pasting it must only print what it would do. zsh, the
+default macOS login shell, does not treat `#` as a comment at an interactive
+prompt unless `interactive_comments` is set, and it is unset by default. There a
+comment line is part of a command: a `;` ends it, and a backtick span or `$(...)`
+after it runs. The same goes for text after a `#` on a code line. Even a
+plain-text comment line is a command named `#` that fails, and that failure is
+not inert where a status is read: after `&&` or `||`, in an `if`, `elif`,
+`while` or `until` condition, or last in a tested group or function, it can
+change which branch runs. After a line that ends in a backslash its text joins
+the command before it, in every shell.
+
+The control on a block's first paste is the comment rule: plain text, and in
+the header only. A terminal
+hands zsh a paste as one bracketed paste, and zsh reads all of it before running
+its first line, so the zsh comment guard
+`[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments` covers only later
+pastes and lines typed after it, never the paste that carries it. The
+`ACT-BLOCK` check holds every act block under `plugins/` (an `sh`, `bash`, `zsh`
+or `shell` fence that defines a function named `driver_act…`) to five rules:
+
+1. every full-line comment holds only letters, digits, spaces, tabs and
+   `. , : - / _ + = #`, indented or not, and no code line carries a trailing
+   `#` comment, so a comment's words run nothing even where zsh reads it as a
+   command (rule 2 keeps its failing status from mattering).
+   Two checks find a trailing comment, and a line either one flags fails.
+   The guarantee is the per-line floor: it flags any `#` straight after a
+   blank, a tab, a carriage return or one of `;`, `&`, `|`, `(`, `)`, `<`,
+   `>`, a backtick, `!` or `-` on a code line. Those characters end every bash
+   and zsh operator (the `-` of `>&-`, the `!` of zsh's `>!` and `&!`
+   included), and the floor reads no quote, span or heredoc state, so no
+   misreading can hide such a `#`. It flags one inside quotes or a heredoc body
+   too (`echo "a;#b"` fails; write it another way). So `echo dry;#;echo live`
+   and `echo dry >&-#;echo live` are flagged (a first zsh paste runs
+   `echo live`), while `a#b`, `${#T}`, `${T#x}`, `$#`, `$((16#ff))` and `\#`
+   are not. A scanner, a best-effort reader rather than a shell parser, reads
+   the block whole: it adds a `#` that starts a word on a continuation line,
+   and it fails the block on the constructs where its reading could part from
+   a shell's. It models single quotes, double quotes, `$'...'` (with backslash
+   escapes), `$"..."`, `$( )` with nested `( )`, arithmetic (`$(( ))`, `(( ))`,
+   `$[ ]`), `${ }`, `$$`, backtick spans, backslash escapes and line
+   continuations, here-strings (`<<<`), and heredocs (`<<WORD` and `<<-WORD`,
+   `WORD` bare or quoted, several on one line): a quoted-delimiter body is
+   data, and an unquoted body is read like a double-quoted string, so `$( )`
+   and backticks in it are code. Text in a comment opens no quote. It fails
+   the block on: a block, or an unquoted heredoc body, that ends inside a
+   quote, a span, a heredoc with no closing line, or a line continuation;
+   `\'` inside `$'...'` (dash ends the quote there); a `'` inside `${ }`; the
+   word `case` inside `$( )`; a `<<` with no delimiter word, or with a `$` or
+   a backtick in it (`<<$'EOF'`); a heredoc whose `$( )` or backtick span
+   closes on its line (`x=$(cat <<EOF)`), or whose line ends inside a span
+   opened after it (`cat <<EOF $(`); a `<<` in arithmetic (`$((1<<2))`,
+   `(( x << 2 ))`); a `(( ))` or `$(( ))` closed by a single `)`; and a `${`
+   followed by a blank or `|` (bash 5.3's `${ cmd; }`). It does not follow
+   `eval`, `sh -c` or aliases;
+2. a full-line comment stands only in the header: every non-blank line before
+   it is the guard line or another `#` line. Anywhere else, inside the act
+   function, after the call, or after any code line, it is refused, and so is
+   a `#`-led line inside a multi-line quote or heredoc body, which errs strict.
+   In the header only the guard comes before it, so no status reads the
+   comment's failure and no continuation reaches it. A step inside the act
+   function opens with `echo '<n>. <text>'` instead;
+3. the block's first non-blank line is the zsh comment guard;
+4. the act function has a per-act name, `driver_act_<id>`, never the bare
+   `driver_act`, so a block that fails to parse leaves no earlier act's
+   function under the name the driver is told to type;
+5. every `read` is the whole safe shape on one line,
+   `NAME=; read -rs NAME || exit N` or `NAME=; read -rs NAME || { ...; exit N; }`:
+   the clear comes first in command position (never after `&&`, `||` or a
+   pipe), the read carries `-r` and `-s` and no other option, and the failure
+   branch ends with `exit N`, `N` from 1 to 255, closing the list. The shape
+   must run in the act function's own shell: not inside a subshell, `$( )`,
+   backticks, a pipeline or a background job, nor in another function, whether
+   that opens on the read's line or on another one. A shell whose `read` has no
+   `-s` fails without assigning, so an inherited value would pass as the
+   secret, and an `exit` in a child shell ends only that child. Any word that
+   is `read` once quotes and backslashes are removed (`read`, `\read`,
+   `"read"`, `r''ead`) counts as a read wherever it sits, so the rule errs
+   strict.
+
+A violation is exit 1, naming the file and line. Finding no act block at all is
+could-not-check (exit 2), never a pass: the `ask-decision` example must exist.
+The check reads only the examples the plugin ships. An act block a desk writes
+at run time gets no lint. Its fence finder matches the opening character and a
+closing run at least as long, but applies no indentation or list rule, so a
+four-space-indented example is still checked, which errs strict. The read rule
+tokenizes the block whole (quotes, backslashes and line continuations, `$( )`,
+backticks, `( )`, `{ }`, pipes, `&` and the compound commands), so a subshell or
+pipe that opens or closes on another line is seen. It does not see a read run
+through `eval`, `sh -c` or a command name built from an expansion, and it takes
+a full line that starts with `#` as a comment even inside a multi-line quoted
+string; rule 2 then refuses that line unless it sits in the header.
 
 ## Fixtures
 
