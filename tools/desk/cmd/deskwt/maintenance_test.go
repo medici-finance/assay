@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -228,17 +231,46 @@ func TestMaintenanceDeadline(t *testing.T) {
 func TestMaintenanceLockSymlinkDoesNotTruncate(t *testing.T) {
 	work, calls := maintenanceFixture(t)
 	victim := filepath.Join(t.TempDir(), "precious")
-	writeFile(t, victim, "keep me\n")
+	// A malformed stamp would be refused even if no-follow were removed, masking
+	// that regression. An expired, valid stamp would allow a write through the link.
+	stamp, err := json.Marshal(time.Now().Add(-24 * time.Hour).UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, victim, string(stamp))
 	if err := os.Symlink(victim, filepath.Join(work, ".git", "assay-maintenance.lock")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	_, err := maintenanceRun(t, "--repo", work, "--apply")
+	_, err = maintenanceRun(t, "--repo", work, "--apply")
 	if err == nil || maintenanceWrites(*calls) != 0 {
 		t.Fatal("symlink lock was accepted")
 	}
 	b, err := os.ReadFile(victim)
-	if err != nil || string(b) != "keep me\n" {
+	if err != nil || string(b) != string(stamp) {
 		t.Fatal("lock target changed")
+	}
+}
+
+func TestMaintenanceDeniesTransportDespiteProtocolOverride(t *testing.T) {
+	work, _ := maintenanceFixture(t)
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.Error(w, "fixture transport must never be contacted", http.StatusNotFound)
+	}))
+	defer server.Close()
+	// Per-protocol configuration takes precedence over protocol.allow=never.
+	// The child must still refuse transport, including a hostile ambient allowlist.
+	mustGit(t, work, "config", "protocol.http.allow", "always")
+	t.Setenv("GIT_ALLOW_PROTOCOL", "http")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result := maintenanceGit(ctx, work, "ls-remote", server.URL+"/fixture.git")
+	if !result.Failed() || !strings.Contains(result.Stderr, "transport 'http' not allowed") {
+		t.Fatalf("expected Git's transport refusal, got exit=%d stderr=%s", result.ExitCode, result.Stderr)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("maintenance contacted HTTP transport %d times", requests.Load())
 	}
 }
 
