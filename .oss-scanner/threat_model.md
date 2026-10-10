@@ -9,16 +9,22 @@ Assay is a methodology and tooling bundle for running AI-agent "desks"
 against one or more git forges (GitHub today, GitLab support in tree). The
 shipped artifacts are:
 
-- **`tools/desk/` (Go, ~60 commands under `cmd/`)** — the desk-tools suite.
+- **`tools/desk/` (Go, ~70 commands under `cmd/`)** — the desk-tools suite.
   Agents and CI loops shell out to these binaries for every interaction with
   a forge: reading boards, posting comments, opening PRs, minting GitHub App
   tokens, and enforcing guardrails on what an agent may write or push.
 - **`statusgen/`, `tools/*` (Go)** — board generator/linters and small
   single-purpose tools that parse markdown stream docs and YAML/JSON config.
-- **`plugins/` (markdown + JSON)** — Claude Code plugin bundle: skills,
-  agents, and hooks. Hooks execute `tools/desk` binaries on tool-call events.
-- **`tools/cellctl`** — container orchestration for running agent cells
-  (images, mounts, network policy).
+- **`plugins/` (markdown, JSON, YAML, shell)** — agent-harness plugin bundle:
+  skills, commands, references, scripts and hooks. The only hooks it wires
+  (`plugins/assay/hooks/hooks.json`) are two `SessionStart` shell scripts that
+  inject text into a session. The bundle ships no agents directory and wires
+  no hook on tool-call events; an adopting repository registers `writeguard`
+  as a tool-call hook in its own harness settings (`tools/desk/README.md`).
+- **`tools/desk/cmd/cellctl`** (with `tools/desk/internal/cellcontainer`) —
+  the cell launcher: scaffolds, starts and stops agent cells on one machine,
+  including container cells run through Docker (image, mounts, network).
+  `tools/cellctl/` holds only its examples, shell test suites and test data.
 
 Untrusted input enters primarily as **forge content**: issue titles/bodies,
 PR titles/bodies/diffs, review comments, branch names, tag names, and file
@@ -35,9 +41,12 @@ the guard binaries exist).
 ## Components that matter most
 
 1. **The guard binaries** — `writeguard`, `deskpushguard`, `deskpathguard`,
-   `desksourceguard`, `repohardenguard`, `clusterguard`, `claimguard`. These
-   are the enforcement layer standing between an autonomous (possibly
-   prompt-injected) agent and the repository/forge. **A bypass of any guard
+   `desksourceguard`, `repohardenguard`, `clusterguard` (all under
+   `tools/desk/cmd/`). These are the enforcement layer standing between an
+   autonomous (possibly prompt-injected) agent and the repository/forge.
+   (`tools/claimguard` is not one of them: it is a heuristic that flags
+   uncited product names in markdown, not an enforcement point.) **A bypass
+   of any guard
    — writing outside the allowed tree, pushing to a protected ref, evading a
    path or command check — is the single most valuable finding class here.**
    Pay attention to TOCTOU between policy check and action, symlink/hardlink
@@ -54,7 +63,8 @@ the guard binaries exist).
    string, branch name, or file path reaches `exec`, `sh -c`, `git`, or `gh`
    without strict quoting/allowlisting. This is the classic injection class
    for this codebase and should be hunted hard.
-4. **`cellctl` container orchestration** — mount scope escapes, unintended
+4. **`cellctl` container cells** (`tools/desk/cmd/cellctl`,
+   `tools/desk/internal/cellcontainer`) — mount scope escapes, unintended
    host path exposure, network-policy gaps, or privilege escalation between
    the orchestrator and the cell workload.
 5. **`deskcomms` / `commsgw` message signing** — signature verification
@@ -68,20 +78,31 @@ the guard binaries exist).
 ## How to exercise it
 
 - Every Go module builds with `go build ./...` and tests with `go test ./...`
-  from its own directory (no workspace file; each `go.mod` is independent).
+  from its own directory (no workspace file; each `go.mod` is independent,
+  except that `tools/loopresolve` replaces `cellconfig` with the in-tree
+  copy).
 - `tools/desk` is the large one: `cd tools/desk && go test ./...` runs the
   guard and forge-transport unit tests, including adversarial-path cases —
   extend those patterns.
-- `tools/untrustcorpus` and `deskscanuntrusted` carry a corpus of hostile
-  input samples used to test the trust gate; it is the best seed material
-  for new injection attempts.
-- `tools/skillslint`, `tools/winparity`, and the `*_test.sh` suites under
-  `tools/` exercise the shell layer with `bash -n` and golden-output tests.
+- `tools/desk/internal/deskkit/untrustcorpus` holds the positive-control
+  corpus of known-bad and known-good untrusted-input samples (a codepoint
+  table under `testdata/`, assembled at run time), read by
+  `tools/desk/cmd/untrustcorpus`; further tables sit under
+  `fixtures/untrusted-corpus/`. `tools/desk/cmd/deskscanuntrusted` is the
+  deterministic pre-scanner the samples are meant to trip; it carries no
+  corpus of its own. The corpus is the best seed material for new injection
+  attempts.
+- `tools/skillslint` lints the plugin tree offline (skill structure, hidden
+  and bidirectional characters, shared-guardrail copies) and
+  `tools/winparity` checks the Windows build script against the Makefile.
+  The shell layer is exercised by the `*.test.sh` / `*_test.sh` suites,
+  most of them under `tools/cellctl/tests/` and `plugins/assay/scripts/`.
 - Note on test baselines: parts of the `tools/desk` suite expect a desk
   operator environment (a roster config naming the forge, a git identity,
   credential files). Failures whose message is about resolving the forge,
   reading the roster, or a missing credential are environmental, not
-  regressions — the tools fail closed by design when unconfigured. Judge a
+  regressions — most of the tools fail closed by design when unconfigured
+  (`deskpushguard` is the documented exception: it fails open). Judge a
   change by whether it introduces a *new* failure mode, not by the absolute
   count.
 
