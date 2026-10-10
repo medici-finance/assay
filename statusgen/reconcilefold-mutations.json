@@ -114,6 +114,90 @@
       "file": "reconcilefold.go",
       "old": "\t\tif n > 0 {\n\t\t\tdisclose(",
       "new": "\t\tif true {\n\t\t\tdisclose("
+    },
+    {
+      "name": "C4 tree could-not-check -> undecided (reconcilefold.go:138)",
+      "file": "reconcilefold.go",
+      "old": "t.undecided[d.ident.ID] = why",
+      "new": "_ = why"
+    },
+    {
+      "name": "C4 tree undecided copied into the fold input (reconcilefold.go:377)",
+      "file": "reconcilefold.go",
+      "old": "in.Undecided[id] = why\n",
+      "new": "_, _ = id, why\n"
+    },
+    {
+      "name": "C4 Undecided consulted before the merged-PR gate (lifecycle.go step 2)",
+      "file": "lifecycle.go",
+      "old": "if in.LookedAt {\n\t\tif why, ok := in.Undecided[b.ID]; ok {",
+      "new": "if false {\n\t\tif why, ok := in.Undecided[b.ID]; ok {"
+    },
+    {
+      "name": "version read failure is a could-not-check (reconcilefold.go:187)",
+      "file": "reconcilefold.go",
+      "old": "return WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version at the run's sha %s: %v\", p.SHA, verr)",
+      "new": "return WitnessInfo{}, false, \"\""
+    },
+    {
+      "name": "provenance read failure is a could-not-check (reconcilefold.go:183)",
+      "file": "reconcilefold.go",
+      "old": "return WitnessInfo{}, false, \"could-not-check provenance: \" + err.Error()",
+      "new": "return WitnessInfo{}, false, \"\""
+    },
+    {
+      "name": "coverage release wired (reconcilefold.go:192)",
+      "file": "reconcilefold.go",
+      "old": "Released: coverage[d.key].Released,",
+      "new": "Released: true,"
+    },
+    {
+      "name": "pass-code clause of the closure audit (reconcilefold.go:175)",
+      "file": "reconcilefold.go",
+      "old": "|| checkExitCode(findings) != verifyrunExitPass {",
+      "new": " {"
+    },
+    {
+      "name": "failed tree load marks every brief undecided (reconcilefold.go:368)",
+      "file": "reconcilefold.go",
+      "old": "\t\t\tin.Undecided[b.ID] = why\n\t\t\tin.LabelsUnread[b.ID] = why\n",
+      "new": "\t\t\t_, _ = b, why\n"
+    },
+    {
+      "name": "undecodable issues page is a failed read (reconcilefold.go:331)",
+      "file": "reconcilefold.go",
+      "old": "return nil, false, fmt.Sprintf(\"decoding open issues (page %d): %v\", page, err)",
+      "new": "return map[int][]string{}, true, \"\""
+    },
+    {
+      "name": "in-progress half of the passing-witness rule (lifecycle.go)",
+      "file": "lifecycle.go",
+      "old": "|| c.Cell == \"in-progress\") {",
+      "new": ") {"
+    },
+    {
+      "name": "apply writes a witness-sourced row only over a merge (reconcileapply.go:88)",
+      "file": "reconcileapply.go",
+      "old": "return c.MergedPR != \"\"\n\t}\n\treturn c.Cell == \"implemented\"",
+      "new": "return true\n\t}\n\treturn c.Cell == \"implemented\""
+    },
+    {
+      "name": "C7 backfill admits the passing-witness todo cell",
+      "file": "reconcilebackfill.go",
+      "old": "witnessedTodo := passingWitnessNoMerge(out[i], in)",
+      "new": "witnessedTodo := false"
+    },
+    {
+      "name": "C7 backfill: no trailer PR of any kind (open excluded)",
+      "file": "reconcilebackfill.go",
+      "old": "return merged == nil && open == nil",
+      "new": "return merged == nil && (open == nil || true)"
+    },
+    {
+      "name": "C7 backfill: gate:model done not decided over a branch match",
+      "file": "reconcilebackfill.go",
+      "old": "if c.Cell == \"verified\" && b.Gate == \"model\" {",
+      "new": "if false {"
     }
   ]
 }

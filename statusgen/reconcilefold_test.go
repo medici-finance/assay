@@ -721,3 +721,291 @@ func TestDriftNoticeHierarchicalID(t *testing.T) {
 		t.Fatalf("want exactly 1 drift NOTICE for the hierarchical id, got %d: %v", len(notices), notices)
 	}
 }
+
+// foldUnreadableSHA is a well-formed run sha no fixture commit carries: the
+// brief's version cannot be read at it.
+const foldUnreadableSHA = "0123456789ab"
+
+// TestFoldUnreadableRunUnknownNoTrailer is C4: a strict PASS whose run sha the
+// checkout cannot read, with NO trailer PR on record, derives unknown with the
+// reason — never the todo base — over any README assertion; the count line
+// counts it, the JSON discloses it, and the drift comparator stays silent.
+// regression: #2472
+func TestFoldUnreadableRunUnknownNoTrailer(t *testing.T) {
+	root := writeFoldFixture(t,
+		[]foldFixtureBrief{
+			{num: "01", id: "fx/01", gate: "model", ev: strings.ReplaceAll(foldPassEv, "{SHA}", foldUnreadableSHA)},
+			{num: "05", id: "fx/05", gate: "model"},
+		},
+		map[string][3]string{"01": {"verified", "2026-10-01 verifier", "—"}, "05": {"todo", "—", "—"}})
+	foldServer(t, []map[string]any{}, foldIssues())
+	code, res, stderr := foldRun(t, root)
+	if code != reconcileOK {
+		t.Fatalf("exit %d; stderr:\n%s", code, stderr)
+	}
+	cells := map[string]BriefCell{}
+	for _, c := range res.Briefs {
+		cells[c.ID] = c
+	}
+	c := wantCell(t, cells, "fx/01", "unknown", "the version read at the run's sha failed: undecided, not todo")
+	if !strings.Contains(c.Reason, "could-not-check the brief version") {
+		t.Errorf("fx/01: reason must name the failed read, got %q", c.Reason)
+	}
+	wantCell(t, cells, "fx/05", "todo", "nothing anywhere")
+	if !strings.Contains(strings.Join(res.Unread, "\n"), "fx/01") {
+		t.Errorf("the failed read must be disclosed in unread, got %v", res.Unread)
+	}
+	if !strings.Contains(stderr, "1 brief(s) could not be decided") {
+		t.Errorf("the count line must count the one undecided brief, stderr:\n%s", stderr)
+	}
+
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range streams {
+		s.Board = "generated"
+	}
+	errf, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(regenDriftNotices(root, streams, "o/r", false, "", errf), "\n"); strings.Contains(joined, "fx/01") {
+		t.Errorf("an unknown cell is no drift; the comparator NOTICEd fx/01:\n%s", joined)
+	}
+}
+
+// TestFoldTablePrintsUnknownReason is C4's table half: an unknown cell over a
+// merged PR prints why, not only the PR it rests on.
+// regression: #2472
+func TestFoldTablePrintsUnknownReason(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	printReconcileTable(f, reconcileResult{Repo: "o/r", LookedAt: true, Briefs: []BriefCell{
+		{ID: "fx/01", Cell: "unknown", Source: "witness", Witness: "PR #11 (merged aaaaaaa)",
+			Reason: "could-not-check provenance: x", MergedPR: "PR #11 (merged aaaaaaa)"},
+		{ID: "fx/02", Cell: "implemented", Source: "pr", Witness: "PR #12 (merged bbbbbbb)"},
+		{ID: "fx/03", Cell: "todo", Source: "pr", Reason: "PR search ran"},
+	}})
+	_ = f.Close()
+	out, _ := os.ReadFile(f.Name())
+	for _, want := range []string{"could-not-check provenance: x — PR #11", "PR #12 (merged bbbbbbb)", "PR search ran"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("table must print %q, got:\n%s", want, out)
+		}
+	}
+}
+
+// TestFoldInProgressWitnessUnknown pins the in-progress half of the
+// passing-witness rule: an open trailer PR and a passing run derive unknown.
+// regression: #2472
+func TestFoldInProgressWitnessUnknown(t *testing.T) {
+	root := writeFoldFixture(t,
+		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
+		map[string][3]string{"01": {"in-progress", "—", "—"}})
+	open := foldMergedPull(11, "fx/01", foldPR11Head)
+	delete(open, "merged_at")
+	open["state"] = "open"
+	foldServer(t, []map[string]any{open}, foldIssues())
+	foldFlipSeam(t, foldApproved())
+	wantCell(t, foldCells(t, root), "fx/01", "unknown", "an open PR and a passing run: no merge on record")
+}
+
+// TestFoldProvenanceErrorUnknown: a provenance read that fails (a shallow
+// clone: blame cannot reach the PASS commits) is a could-not-check, never
+// "no witness".
+// regression: #2472
+func TestFoldProvenanceErrorUnknown(t *testing.T) {
+	root := writeFoldFixture(t,
+		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
+		map[string][3]string{"01": {"implemented", "—", "—"}})
+	head, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".git", "shallow"), head, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	foldServer(t, foldStdPulls()[:1], foldIssues())
+	foldFlipSeam(t, foldApproved())
+	c := wantCell(t, foldCells(t, root), "fx/01", "unknown", "provenance could not be read")
+	if !strings.Contains(c.Reason, "could-not-check provenance") {
+		t.Errorf("fx/01: reason must name the provenance read, got %q", c.Reason)
+	}
+}
+
+// TestFoldCoverageNotReleasedUnknown pins the coverage input: the row's
+// Expect was tightened after the run, so coverage does not release the
+// witness and the brief is unknown, never verified or done.
+// regression: #2472
+func TestFoldCoverageNotReleasedUnknown(t *testing.T) {
+	root := writeFoldFixture(t,
+		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
+		map[string][3]string{"01": {"implemented", "—", "—"}})
+	p := filepath.Join(root, "docs", "streams", "fx", "brief-01-fixture.md")
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := strings.Replace(string(raw), "| 1 | `true` | exit 0 |\n", "| 1 | `true` | exit 0 and prints nothing |\n", 1)
+	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	foldGit(t, root, foldMailVerifier, "commit", "-q", "-am", "tighten expect")
+	foldServer(t, foldStdPulls()[:1], foldIssues())
+	foldFlipSeam(t, foldApproved())
+	c := wantCell(t, foldCells(t, root), "fx/01", "unknown", "coverage is not released")
+	if !strings.Contains(c.Reason, "coverage") {
+		t.Errorf("fx/01: reason must name coverage, got %q", c.Reason)
+	}
+}
+
+// TestFoldPassMarkerOverFailedRowNoWitness pins the audit's pass-code test: a
+// strict PASS marker over a witness row that failed is no witness.
+// regression: #2472
+func TestFoldPassMarkerOverFailedRowNoWitness(t *testing.T) {
+	ev := witnessHeader + "\n| 1 | `true` | fail exit=1 | sha256:aaaaaaaaaaaa | 2026-10-01 | assay-verifier-app[bot] @ {SHA} |\n" +
+		"\n**VERIFY: PASS** — row 1 green.\n"
+	wantCell(t, foldOneModel(t, foldFixtureBrief{ev: ev}), "fx/01", "implemented",
+		"the audited row did not pass")
+}
+
+// TestFoldTreeLoadFailUnknown: the fold's tree read failed; every brief is
+// undecided and labels-unread, so each derives unknown — never its PR base.
+// regression: #2472
+func TestFoldTreeLoadFailUnknown(t *testing.T) {
+	in := LifecycleInput{
+		Briefs:   []BriefIdent{{ID: "fx/01", Gate: "model", Version: 1}, {ID: "fx/02", Gate: "model", Version: 1}},
+		PRs:      []PRRecord{{Number: 11, BriefRef: "fx/01", State: prMerged, MergeSHA: strings.Repeat("a", 40)}},
+		LookedAt: true,
+	}
+	errf, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := wireFoldInputs(&in, t.TempDir(), &ghClient{}, "o/r", errf); len(got) == 0 {
+		t.Errorf("a failed tree read must be disclosed")
+	}
+	for _, c := range DeriveLifecycle(in) {
+		if c.Cell != "unknown" || !strings.Contains(c.Reason, "fold reads") {
+			t.Errorf("%s: cell = %q (%q), want unknown naming the failed tree read", c.ID, c.Cell, c.Reason)
+		}
+	}
+}
+
+// TestFoldIssuesUndecodableUnknown: an issues page that does not decode is a
+// failed read, never a complete one with no labels.
+// regression: #2472
+func TestFoldIssuesUndecodableUnknown(t *testing.T) {
+	root := foldStdTree(t)
+	foldServer(t, foldStdPulls(), nil)
+	pullsJSON, err := json.Marshal(foldStdPulls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/issues"):
+			_, _ = w.Write([]byte(`[{"number": 7, "labels": [`)) // a truncated page
+		case strings.Contains(r.URL.Path, "/pulls"):
+			if p := r.URL.Query().Get("page"); p != "" && p != "1" {
+				_, _ = w.Write([]byte("[]"))
+				return
+			}
+			_, _ = w.Write(pullsJSON)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	reconcileGHClient = func(token string) *ghClient { // foldServer's cleanup restores it
+		return &ghClient{doer: srv.Client(), base: srv.URL, token: token}
+	}
+	code, res, _ := foldRun(t, root)
+	if code != reconcileOK {
+		t.Fatalf("exit %d", code)
+	}
+	for _, c := range res.Briefs {
+		if c.ID == "fx/03" && (c.Cell != "unknown" || !strings.Contains(c.Reason, "decoding open issues")) {
+			t.Errorf("fx/03: cell = %q (%q), want unknown naming the undecodable page", c.Cell, c.Reason)
+		}
+	}
+}
+
+// foldBackfillPull is a merged PR with NO trailer whose branch name carries
+// the brief's <stream>-<NN> form — a --backfill branch match only.
+func foldBackfillPull(n int, num string) map[string]any {
+	return map[string]any{
+		"number": n, "state": "closed", "body": "Does it, no trailer.\n",
+		"merged_at": "2026-10-01T00:00:00Z", "merge_commit_sha": strings.Repeat("f", 40),
+		"head": map[string]any{"sha": strings.Repeat("9", 40), "ref": "feat/fx-" + num},
+	}
+}
+
+// TestFoldBackfillWritesWitnessed is C7 on the --backfill path, and pins the
+// write guard: a todo row whose brief has a passing witness and a
+// branch-matched merged PR is written like the unwitnessed one (the match is
+// the merge the witness lacked), while a passing witness with no merged PR of
+// any kind is never written.
+// regression: #2472
+func TestFoldBackfillWritesWitnessed(t *testing.T) {
+	root := writeFoldFixture(t,
+		[]foldFixtureBrief{
+			{num: "01", id: "fx/01", gate: "model", ev: foldPassEv},
+			{num: "02", id: "fx/02", gate: "human", ev: foldPassEv},
+			{num: "03", id: "fx/03", gate: "model"},
+			{num: "04", id: "fx/04", gate: "model", ev: foldPassEv},
+			{num: "05", id: "fx/05", gate: "model", ev: foldPassEv},
+		},
+		map[string][3]string{
+			"01": {"todo", "—", "—"}, "02": {"todo", "—", "—"},
+			"03": {"todo", "—", "—"}, "04": {"todo", "—", "—"},
+			"05": {"in-progress", "—", "—"},
+		})
+	// fx/05 has an OPEN trailer PR (an in-progress base) beside a
+	// branch-matched merged one: not a todo, so backfill leaves it alone.
+	open05 := foldMergedPull(15, "fx/05", strings.Repeat("5", 40))
+	delete(open05, "merged_at")
+	open05["state"] = "open"
+	foldServer(t, []map[string]any{foldBackfillPull(21, "01"), foldBackfillPull(22, "02"), foldBackfillPull(23, "03"),
+		open05, foldBackfillPull(25, "05")}, foldIssues())
+	code, res, e := foldRun(t, root, "--backfill", "--apply")
+	if code != reconcileOK {
+		t.Fatalf("--backfill --apply exit %d; stderr:\n%s", code, e)
+	}
+	wrote := map[string]string{}
+	for _, a := range res.Applied {
+		wrote[a.ID] = a.Witness
+	}
+	// fx/02 (gate:human) reaches the same write decision and is then held by
+	// the lint hold (a human-gated brief needs a design record) — admitted,
+	// not skipped.
+	for _, h := range res.Held {
+		wrote[h.ID] = h.Witness
+	}
+	for id, pr := range map[string]string{"fx/01": "PR #21", "fx/02": "PR #22", "fx/03": "PR #23"} {
+		if !strings.Contains(wrote[id], pr) {
+			t.Errorf("%s: want admitted for write naming %s, got applied=%+v held=%+v", id, pr, res.Applied, res.Held)
+		}
+	}
+	if _, ok := wrote["fx/04"]; ok {
+		t.Errorf("fx/04 has no merged PR of any kind and must not be written: %+v", res.Applied)
+	}
+	if _, ok := wrote["fx/05"]; ok {
+		t.Errorf("fx/05 has an open trailer PR (not a todo base) and must not be backfilled: %+v", res.Applied)
+	}
+	cells := map[string]BriefCell{}
+	for _, c := range res.Briefs {
+		cells[c.ID] = c
+	}
+	c := wantCell(t, cells, "fx/01", "unknown", "gate:model over a backfill match: the approval was not read")
+	if c.Reason != backfillModelDoneUndecided {
+		t.Errorf("fx/01: reason = %q, want the done-not-decided reason", c.Reason)
+	}
+	wantCell(t, cells, "fx/02", "verified", "gate:human, no stamp: the overlay over the backfill merge")
+	wantCell(t, cells, "fx/03", "implemented", "the plain backfill match")
+	wantCell(t, cells, "fx/04", "unknown", "a passing run with no merge on record")
+	wantCell(t, cells, "fx/05", "unknown", "an open trailer PR and a passing run")
+}

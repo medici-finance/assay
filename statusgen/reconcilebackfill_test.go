@@ -97,7 +97,7 @@ func TestApplyReconcileBackfill(t *testing.T) {
 		return "", "", false // 02 is answered by the PR match, not by history
 	}
 
-	out := applyReconcileBackfill(cells, pulls, true, lookup)
+	out := applyReconcileBackfill(cells, LifecycleInput{}, pulls, true, lookup)
 
 	if out[0].Cell != "implemented" || out[0].Source != "pr" {
 		t.Fatalf("01: an already-witnessed cell must be untouched, got %+v", out[0])
@@ -121,7 +121,7 @@ func TestApplyReconcileBackfill_PullFetchFailed(t *testing.T) {
 		{ID: "assay:assay:derived-board:02", Cell: "todo", Source: "pr", Reason: "PR search ran; no open or merged PR carries this brief's trailer"},
 	}
 	lookup := func(stream, num string) (string, string, bool) { return "done", "sha1", true }
-	out := applyReconcileBackfill(cells, nil, false /* pullsLookedAt */, lookup)
+	out := applyReconcileBackfill(cells, LifecycleInput{}, nil, false /* pullsLookedAt */, lookup)
 	// pullsLookedAt=false skips the PR-match arm entirely, but the hand-said
 	// fallback still runs off the (independently git-read) lookup.
 	if out[0].Cell != "unknown" || !strings.Contains(out[0].Reason, "hand-asserted done") {

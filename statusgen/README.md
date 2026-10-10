@@ -204,16 +204,22 @@ the fold owns no rule of its own:
 
 A read that could not be made never renders as a state: a failed or capped
 open-issues read makes each brief with linked issues `unknown`, and a verified/done
-decision that could not be made is `unknown` with the reason. Every such read is
-disclosed on stderr and in the JSON's `unread` list, and `--apply` refuses (exit 3,
-nothing written) while any is present. A passing witness with no merged PR on
-record is `unknown` too — the fold cannot settle that contradiction. The demotions
+decision that could not be made is `unknown` with the reason, whatever the PR
+base (a `todo` or `in-progress` base included). The table prints that reason per
+cell. Every such read is disclosed on stderr and in the JSON's `unread` list, and
+`--apply` refuses (exit 3, nothing written) while any is present — one undecidable
+brief holds the write for the whole board, by design: a scheduled writer then
+writes nothing rather than a partial board. A passing witness with no merged PR on
+record is `unknown` too — the fold cannot settle that contradiction; under
+`--backfill` a branch/body-matched merged PR is that merge, and the cell is
+re-derived over it by the same overlay a trailer merge gets. The demotions
 (a reverted merge, a red witness, a dismissed approval, a stale-version witness)
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
 
 `--backfill --apply` writes a witnessed `todo`/`in-progress` → `implemented`
-Status cell back into the stream README and lists the rows it wrote under
+Status cell (a trailer or branch/body-matched merged PR on record, with or without
+a verify witness over it) back into the stream README and lists the rows it wrote under
 `applied`. `--backfill` WITHOUT `--apply` is the read-only form: it writes nothing
 and lists, under `wouldApply`, the rows `--apply` would write on the same tree —
 computed by the same function that writes, so the two cannot disagree. Each row

@@ -200,6 +200,21 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 		}
 	}
 
+	// 2. A brief whose verified/done decision could not be made this run
+	// (Undecided: a witness, provenance, version or approval read failed) is
+	// `unknown` with the reason over ANY base the PR read produced — consulted
+	// before the merged-PR gate, because the read that failed is exactly what
+	// would have said whether a todo/in-progress base is contradicted by a
+	// passing run. A could-not-look base keeps its own reason.
+	if in.LookedAt {
+		if why, ok := in.Undecided[b.ID]; ok {
+			c.Cell = "unknown"
+			c.Source = "witness"
+			c.Reason = why
+			return c
+		}
+	}
+
 	// 3. Verify witness overlay (verified / done), and its demotions — over a
 	// merge on record only. A could-not-look base stays `unknown`. A todo or
 	// in-progress base with a passing witness is a contradiction the fold cannot
@@ -209,17 +224,26 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 		if w, ok := in.Witnesses[b.ID]; ok && w.Passed && (c.Cell == "todo" || c.Cell == "in-progress") {
 			c.Cell = "unknown"
 			c.Source = "witness"
-			c.Reason = "a verify witness passed but no merged PR carries this brief's trailer"
+			c.Reason = passingWitnessNoMergeReason
 			return c
 		}
 		return deriveBlocked(b, c, in)
 	}
-	if why, ok := in.Undecided[b.ID]; ok {
-		c.Cell = "unknown"
-		c.Source = "witness"
-		c.Reason = why
-		return c
-	}
+	return overlayWitness(b, c, in)
+}
+
+// passingWitnessNoMergeReason is the reason a todo/in-progress base with a
+// passing verify witness derives `unknown`.
+const passingWitnessNoMergeReason = "a verify witness passed but no merged PR carries this brief's trailer"
+
+// overlayWitness is the verify-witness overlay over a merge on record: c is
+// an `implemented` cell whose MergedPR names that merge (a trailer PR, or the
+// declared --backfill branch/body match). It applies the stale-version and
+// coverage demotions, then `verified` and `done`. Shared by deriveOne and the
+// --backfill path, so a backfilled merge is overlaid by the same rule as a
+// trailer one. An Undecided brief never reaches it: step 2 of deriveOne has
+// already rendered it `unknown`.
+func overlayWitness(b BriefIdent, c BriefCell, in LifecycleInput) BriefCell {
 	if w, ok := in.Witnesses[b.ID]; ok {
 		if b.Version != 0 && w.Version != 0 && w.Version != b.Version {
 			// Stale-Verify demotion (spec §5): the witness was run against a

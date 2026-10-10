@@ -159,7 +159,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 				}
 			}
 		}
-		cells = applyReconcileBackfill(cells, pulls, pullsLookedAt, lookup)
+		cells = applyReconcileBackfill(cells, in, pulls, pullsLookedAt, lookup)
 	}
 
 	if *apply && !in.LookedAt {
@@ -291,6 +291,21 @@ func findBoardRoot(start string) (string, bool) {
 	}
 }
 
+// reconcileDetail is a table row's evidence column. An `unknown` cell prints
+// its reason first — why the board cannot say — and then any witness it rests
+// on; the spec's `unknown` row has the board say why per cell, not only in the
+// JSON and on stderr.
+func reconcileDetail(b BriefCell) string {
+	switch {
+	case b.Witness == "":
+		return b.Reason
+	case b.Cell == "unknown" && b.Reason != "":
+		return b.Reason + " — " + b.Witness
+	default:
+		return b.Witness
+	}
+}
+
 func printReconcileTable(w *os.File, res reconcileResult) {
 	if !res.LookedAt {
 		fmt.Fprintf(w, "reconcile: could-not-check — %s\n", res.Reason)
@@ -298,11 +313,7 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 		fmt.Fprintf(w, "reconcile: %s (%d brief(s))\n", res.Repo, len(res.Briefs))
 	}
 	for _, b := range res.Briefs {
-		detail := b.Witness
-		if detail == "" {
-			detail = b.Reason
-		}
-		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, detail)
+		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, reconcileDetail(b))
 	}
 	if res.WouldApply != nil && len(*res.WouldApply) > 0 {
 		fmt.Fprintf(w, "reconcile --backfill (read-only): --apply would write %d row(s)\n", len(*res.WouldApply))
