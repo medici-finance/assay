@@ -443,7 +443,7 @@ func TestPruneBranchGCDeletesByCompareAndDelete(t *testing.T) {
 // it and a given branch's delete. This test watches the SECOND read catch a worktree that
 // "appeared" inside that window: the branch is provably merged, and only the re-read can
 // keep it.
-func TestPruneBranchGCReVerifiesHolderBeforeDelete(t *testing.T) {
+func TestPruneBranchGCRechecksHolderAtDelete(t *testing.T) {
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	mustGit(t, work, "branch", "stale-merged")
@@ -461,7 +461,7 @@ func TestPruneBranchGCReVerifiesHolderBeforeDelete(t *testing.T) {
 			if h == nil {
 				h = map[string]string{}
 			}
-			h["refs/heads/stale-merged"] = "/private/tmp/tracker-appeared-mid-sweep"
+			h["refs/heads/stale-merged"] = "worktree-appeared-mid-sweep"
 		}
 		return h, err
 	}
