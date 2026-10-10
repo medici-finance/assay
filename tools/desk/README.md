@@ -2507,6 +2507,41 @@ it with `--dry-run` first: that prints the whole plan — path, session (or `uno
 `REAP`/`KEEP`, reason — for every registered worktree, including the ones the identity
 refusals put out of reach, and changes nothing at all.
 
+### Offline repository indexes — `deskwt maintain`
+
+```bash
+deskwt maintain --repo .          # JSON inventory + read-only plan
+deskwt maintain --repo . --apply  # bounded offline index maintenance
+```
+
+The plan reports ref namespace counts, registered/locked worktree counts, native
+`count-objects -v` output (including alternate stores), and configured reflog retention
+overrides. An empty override string means Git's defaults apply. Apply emits before/after
+inventories and runs exactly two native builtins: `pack-refs --all`, then a reachable,
+split commit-graph write with no new Bloom filters. Ref values, working files and
+recovery history are preserved. The plan writes nothing in the repository; the standard
+desk audit record still records the invocation.
+
+All linked worktrees and roles coordinate through one kernel advisory lock in the
+resolved common Git directory, independent of their `HOME`. Attempts, including failed
+or interrupted attempts, are coalesced for six hours by default (`--min-interval`, minimum
+one hour). A held or recent attempt reports `held` or `recent` without repeating inventory
+or work. Each invocation has a 30-second total command budget (`--timeout`, one second to
+five minutes). The lock is kernel-released on exit; its file must never be unlinked during
+operation. Unreadable/corrupt timestamps fail closed and require operator inspection.
+A killed native Git write may leave its own lockfile; that is reported as a failure on the
+next eligible attempt, never automatically removed.
+
+This is an explicit command for the repository supervisor to invoke; it does not install
+a scheduler or add work to every agent boot. It disables lazy fetching and all network
+protocols for its Git children, ignores ambient `GIT_*` redirects, and never invokes
+configured maintenance strategies, prefetch, full GC, reflog expiry or object deletion.
+Object reclamation is explicitly **held**: a source repository cannot enumerate every
+external clone borrowing its objects. Even an empty alternates list does not prove there
+are no borrowers. Loose-object/incremental-pack reclamation and a managed borrower registry
+remain follow-up work. Branch/worktree retirement stays in `deskwt prune`, claims in their
+claim protocol, and remote-tracking refresh in the sanctioned transport.
+
 ### The prune loop — one command, two supervisors
 
 The **periodic** prune mechanism is the portable ticking mode, identical on the mac and in

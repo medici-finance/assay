@@ -32,6 +32,7 @@ const usage = `deskwt — add, remove, or prune git worktrees, only under sancti
 USAGE:
   deskwt add <name> [--branch B | --detach] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]
   deskwt remove <path>
+  deskwt maintain [--repo <path>] [--apply] [--min-interval <dur>] [--timeout <dur>]
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
@@ -52,6 +53,13 @@ foreign-repo path is refused, never re-pointed. The
 LAST line on stdout is the worktree's absolute path — the launcher contract:
 ` + "`cd \"$(deskwt role-init <role> --repo-root <checkout>)\"`" + `.
 role-clean unlocks and removes it under the same safety guards as remove.
+
+maintain plans offline repository index work and prints JSON. --apply packs refs and writes
+a split commit graph, with before/after counts. A common-directory lock and attempt cadence
+(default 6h, minimum 1h) coalesce worktrees and roles. --timeout bounds all Git commands
+(default 30s, range 1s..5m). No scheduler is installed. Object reclamation is held because
+external borrowers cannot be inventoried reliably; refs, objects and reflogs are preserved.
+This verb operates on the shared repository indexes, not worktree directories.
 
 <role> is EVERY desk role desktoken mints (desk, worker, reviewer, verifier, issue-loop,
 intake-loop), spelled either as that token role or as the loop name deskboot boots
@@ -224,6 +232,8 @@ func run(args []string) int {
 		err = cmdRemove(rest)
 	case "prune":
 		err = cmdPrune(rest)
+	case "maintain":
+		err = cmdMaintain(rest)
 	case "role-init":
 		err = cmdRoleInit(rest)
 	case "role-clean":
