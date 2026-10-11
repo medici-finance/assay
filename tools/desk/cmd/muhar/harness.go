@@ -227,8 +227,9 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 	if h.Selector != nil {
 		// Decided only AFTER the edit is proven on disk, so a selection can
 		// never stand in for the could-not-mutate state. A Skip is NotCaught,
-		// never Caught: selection removes tests, so it can only turn a caught
-		// mutation into NOT CAUGHT, never a survivor green.
+		// never Caught: skipping cannot produce red. A narrowed run only uses a
+		// set Prepare proved green on pristine source (selection.go states the
+		// safety property and the one case it leaves open).
 		sel := h.Selector.For(m, orig)
 		if sel.Skip {
 			return NotCaught, nil

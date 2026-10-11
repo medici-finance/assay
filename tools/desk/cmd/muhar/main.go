@@ -32,9 +32,10 @@
 // catch it: after the baseline, one coverage profile per top-level test records
 // which tests execute which functions, and each mutant runs the tests that
 // executed the function it lands in, plus the spec's select.always list. It
-// only ever REMOVES tests, so it can turn caught into NOT CAUGHT but never a
-// survivor green; the control runs under selection too. selection.go states the
-// property and what falls back to the full command. Baseline, control, exit
+// only ever REMOVES tests, and each distinct narrowed set must pass on pristine
+// source first (a red one runs the full command); the control runs under
+// selection too. selection.go states the safety property, the one case it does
+// not close, and what falls back to the full command. Baseline, control, exit
 // codes, the report and -shard/-j are unchanged. It needs the spec's `test` to
 // be a plain `go test [flags] <packages>` command and refuses anything else.
 //
@@ -253,6 +254,7 @@ func main() {
 	go func() {
 		<-sig
 		_ = os.RemoveAll(gocache)
+		selectTemps.removeAll() // -select's coverage binaries, if a pass is running
 		os.Exit(130)
 	}()
 

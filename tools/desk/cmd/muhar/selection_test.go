@@ -412,3 +412,109 @@ func TestSelectAlwaysUnknown(t *testing.T) {
 		t.Fatalf("unknown always-run name must break the run; got broken=%v %q", rep.Broken, rep.BrokenReason)
 	}
 }
+
+// A narrowed set can be red on pristine source even when every test passes
+// alone and the full order passes: here TestT2 cleans up after TestT1, and
+// selection drops TestT2 for a mutant in F. Using that set would report an
+// equivalent mutant (one the full suite cannot see) as CAUGHT. Prepare runs
+// each distinct set on pristine source, and a red one runs the full command.
+//
+// regression: #2636
+func TestSelectSubsetRedOnPristine(t *testing.T) {
+	needGo(t)
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"go.mod": "module example.com/subset\n\ngo 1.21\n",
+		"p/p.go": `package p
+
+var polluted bool
+
+func Pollute() { polluted = true }
+
+func Reset() { polluted = false }
+
+func Polluted() bool { return polluted }
+
+func F(x int) int {
+	y := x + 1
+	return y
+}
+
+func G(x int) int { return x * 2 }
+`,
+		"p/p_test.go": `package p
+
+import "testing"
+
+func TestT1(t *testing.T) {
+	Pollute()
+	if F(1) != 2 {
+		t.Fatal("F")
+	}
+}
+
+func TestT2(t *testing.T) {
+	Reset()
+	if G(2) != 4 {
+		t.Fatal("G")
+	}
+}
+
+func TestT3(t *testing.T) {
+	if Polluted() {
+		t.Fatal("state leaked from an earlier test")
+	}
+	if F(2) != 3 {
+		t.Fatal("F")
+	}
+}
+`,
+	})
+	s := spec{
+		Test:      "go test ./p/ -count=1",
+		Control:   Mutation{Name: "control", File: "p/p.go", Old: "x * 2", New: "x * 3"},
+		Mutations: []Mutation{{Name: "equivalent-F", File: "p/p.go", Old: "y := x + 1", New: "y := x + 1 + 0"}},
+	}
+	cmd, err := parseGoTest(s.Test)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := selHarness(t, root, s, nil)
+	if full.Broken || verdicts(full)["equivalent-F"] != NotCaught {
+		t.Fatalf("full sweep: want healthy with equivalent-F NOT_CAUGHT, got broken=%v %v", full.Broken, verdicts(full))
+	}
+	var log bytes.Buffer
+	sel := selHarness(t, root, s, newCoverSelector(s, cmd, 2, os.Environ(), &log, runGo))
+	if sel.Broken {
+		t.Fatalf("selected sweep broken: %s\n%s", sel.BrokenReason, log.String())
+	}
+	if got, want := sel.Summary(), full.Summary(); got != want {
+		t.Fatalf("a set red on pristine source changed the report:\nfull:\n%s\nselected:\n%s\nlog:\n%s", want, got, log.String())
+	}
+	if !strings.Contains(log.String(), "-run ^(TestT1|TestT3)$ example.com/subset/p` is RED on pristine source") {
+		t.Fatalf("the red set must be named in the log:\n%s", log.String())
+	}
+	if !strings.Contains(log.String(), `"equivalent-F": full suite (narrowed set not proven green on pristine source)`) {
+		t.Fatalf("the mutant on the red set must run the full suite:\n%s", log.String())
+	}
+}
+
+// The coverage pass runs each test under the spec's own -race, -short and
+// -timeout, so "passes alone" is checked in the narrowed runs' configuration.
+func TestCoverFlags(t *testing.T) {
+	cmd, err := parseGoTest("go test -race -short -count=1 -timeout 90s -v ./p/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	build, run := (&coverSelector{cmd: cmd}).coverFlags()
+	if got := strings.Join(build, " "); got != "-race" {
+		t.Fatalf("build flags = %q, want -race", got)
+	}
+	if got := strings.Join(run, " "); got != "-test.short -test.timeout=90s" {
+		t.Fatalf("run flags = %q", got)
+	}
+	cmd, _ = parseGoTest("go test -count=1 ./p/")
+	if _, run := (&coverSelector{cmd: cmd}).coverFlags(); strings.Join(run, " ") != "-test.timeout=10m" {
+		t.Fatalf("default run flags = %q", run)
+	}
+}

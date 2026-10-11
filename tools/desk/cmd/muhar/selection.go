@@ -6,23 +6,39 @@
 // then runs each mutant against only the tests that executed the FUNCTION the
 // mutation lands in, plus the spec's always-run list.
 //
-// SAFETY PROPERTY. Selection can only REMOVE tests from a mutant's run. The
-// narrowed command is the spec's own `go test` invocation with the same flags,
-// over a subset of its packages, with -run narrowed to an anchored list of
-// top-level test names drawn from the suite's own `-test.list` of the spec's
-// -run filter. Every test it runs is one the full command would run. So a red
-// narrowed run is a red the full suite would also produce, and the only verdict
-// selection can change is caught -> NOT CAUGHT (a test that would have caught
-// the mutant was not selected). It can never turn a surviving mutant green, and
-// any divergence from the full sweep shows as a NOT CAUGHT, which reddens the
-// gate — never as a silent pass. Two things keep that honest:
+// SAFETY PROPERTY, and what it rests on. A narrowed command is the spec's own
+// `go test` invocation with the same flags, over a subset of its packages, with
+// -run narrowed to an anchored list of top-level test names drawn from the
+// suite's own `-test.list` of the spec's -run filter. So every test a narrowed
+// run runs, the full command runs too. That alone does NOT make a red narrowed
+// run a red the full suite would give: tests share process state (package
+// variables, sync.Once, caches, files), and dropping a test can change how a
+// later one behaves. So before any mutant runs, muhar proves on pristine source
+// what the narrowing relies on:
 //
-//   - The positive control runs UNDER SELECTION, through the same path as every
-//     mutant, so a narrowed suite that cannot fail breaks the run (exit 2).
-//   - Every test is run alone on pristine source during the coverage pass, and a
-//     test that fails alone breaks the run: a narrowed run of an order-dependent
-//     test could otherwise go red for a reason that has nothing to do with the
-//     mutation.
+//   - every test passes ALONE (the coverage pass), and a test that does not
+//     breaks the run (exit 2); and
+//   - every distinct narrowed command a mutant will use passes AS A WHOLE. A set
+//     that is red on pristine source is never used: its mutants run the full
+//     command, and the log says so. A mutant whose set was not proven this way
+//     also runs the full command.
+//
+// With both, a narrowed run on a mutant is red only because the mutated tree
+// differs from the pristine one. What that still leaves open, stated rather than
+// closed: if the mutation's OWN effect leaks into shared state, and a test that
+// selection dropped would have reset that state before the selected test that
+// reads it, the narrowed run is red where the full run is green (a false
+// CAUGHT). That needs a selected test that executes the mutated function and
+// leaves state behind, a later selected test that reads it, and an unselected
+// test between them that clears it. Closing it in general means confirming
+// every CAUGHT with the full command, which gives back the whole saving; so
+// -select is opt-in, and a gate enables it only after a parity run against the
+// full sweep on that gate's spec.
+//
+// The other direction is loud by construction: a test that would have caught
+// the mutant but was not selected shows as NOT CAUGHT, which reddens the gate.
+// The positive control runs UNDER SELECTION, through the same path as every
+// mutant, so a narrowed suite that cannot fail breaks the run (exit 2).
 //
 // What cannot be attributed is never narrowed: a mutation in a non-Go file, in a
 // file the coverage build did not instrument, or outside any function body (a
@@ -222,11 +238,16 @@ type coverSelector struct {
 	// goTest runs `go test <args>` in root and reports whether it FAILED.
 	goTest func(root string, args []string) bool
 
+	muts []Mutation // the control, then every mutation
+
 	// Filled by Prepare.
 	pkgs      []testPkg
 	tests     []testRef
 	alwaysIDs []int
 	blocks    map[string][]cblock // spec-relative file -> instrumented blocks
+	// proven holds the narrowed commands (setKey) that passed as a whole on
+	// pristine source; For narrows only to one of these.
+	proven map[string]bool
 }
 
 func newCoverSelector(s spec, cmd goTestCmd, jobs int, env []string, log io.Writer, goTest func(string, []string) bool) *coverSelector {
@@ -234,8 +255,9 @@ func newCoverSelector(s spec, cmd goTestCmd, jobs int, env []string, log io.Writ
 	if s.Select != nil {
 		cs.always = s.Select.Always
 	}
+	cs.muts = append([]Mutation{s.Control}, s.Mutations...)
 	seen := map[string]bool{}
-	for _, m := range append([]Mutation{s.Control}, s.Mutations...) {
+	for _, m := range cs.muts {
 		if !seen[m.File] {
 			seen[m.File] = true
 			cs.files = append(cs.files, m.File)
@@ -339,7 +361,9 @@ func (cs *coverSelector) Prepare(root string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.RemoveAll(tmp) }()
+	selectTemps.add(tmp)
+	defer func() { selectTemps.remove(tmp) }()
+	buildFlags, runFlags := cs.coverFlags()
 
 	listFilter := cs.cmd.run
 	if listFilter == "" {
@@ -355,8 +379,8 @@ func (cs *coverSelector) Prepare(root string) error {
 		}
 		pi := len(cs.pkgs)
 		bin := filepath.Join(tmp, strconv.Itoa(pi)+".test")
-		build := exec.Command("go", "test", "-c", "-cover", "-covermode=set",
-			"-coverpkg="+strings.Join(coverpkg, ","), "-o", bin, p.ImportPath)
+		build := exec.Command("go", append(append([]string{"test", "-c"}, buildFlags...), "-cover", "-covermode=set",
+			"-coverpkg="+strings.Join(coverpkg, ","), "-o", bin, p.ImportPath)...)
 		build.Dir = root
 		build.Env = cs.env
 		if out, err := build.CombinedOutput(); err != nil {
@@ -406,8 +430,8 @@ func (cs *coverSelector) Prepare(root string) error {
 			for id := range ids {
 				t := cs.tests[id]
 				prof := filepath.Join(tmp, fmt.Sprintf("c%d.out", id))
-				run := exec.Command(bins[t.pkg], "-test.run", "^"+regexp.QuoteMeta(t.name)+"$",
-					"-test.count=1", "-test.timeout=10m", "-test.coverprofile="+prof)
+				run := exec.Command(bins[t.pkg], append([]string{"-test.run", "^" + regexp.QuoteMeta(t.name) + "$",
+					"-test.count=1", "-test.coverprofile=" + prof}, runFlags...)...)
 				run.Dir = cs.pkgs[t.pkg].dir
 				run.Env = cs.env
 				out, err := run.CombinedOutput()
@@ -475,7 +499,116 @@ func (cs *coverSelector) Prepare(root string) error {
 	}
 	fmt.Fprintf(cs.log, "muhar: select: coverage pass recorded %d tests across %d package(s); %d of %d mutated file(s) instrumented, in %s\n",
 		len(cs.tests), len(cs.pkgs), len(cs.blocks), len(cs.files), time.Since(start).Round(100*time.Millisecond))
+	return cs.proveSets(root)
+}
+
+// proveSets runs, on pristine source, every distinct narrowed command that a
+// mutation (or the control) will use, and records the ones that pass. A set
+// that is red here would make a narrowed run red for a reason that is not the
+// mutation, so its mutants run the full command instead (the SAFETY PROPERTY
+// above). The sets are worked out exactly as For works them out, from the same
+// pristine file content.
+func (cs *coverSelector) proveSets(root string) error {
+	start := time.Now()
+	cs.proven = map[string]bool{}
+	sets := map[string][]string{}
+	var keys []string
+	for _, m := range cs.muts {
+		orig, err := os.ReadFile(resolve(root, m.File))
+		if err != nil {
+			continue // runOne reports it as could-not-mutate
+		}
+		if d := cs.decide(m, orig); d.args != nil {
+			k := setKey(d.args)
+			if _, ok := sets[k]; !ok {
+				sets[k] = d.args
+				keys = append(keys, k)
+			}
+		}
+	}
+	sort.Strings(keys)
+	red := make([]bool, len(keys))
+	ids := make(chan int)
+	var wg sync.WaitGroup
+	jobs := cs.jobs
+	if jobs < 1 {
+		jobs = 1
+	}
+	for w := 0; w < jobs; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range ids {
+				red[i] = cs.goTest(root, sets[keys[i]])
+			}
+		}()
+	}
+	for i := range keys {
+		ids <- i
+	}
+	close(ids)
+	wg.Wait()
+	nred := 0
+	for i, k := range keys {
+		if red[i] {
+			nred++
+			fmt.Fprintf(cs.log, "muhar: select: narrowed set `go %s` is RED on pristine source; its mutants run the full suite\n", strings.Join(sets[k], " "))
+			continue
+		}
+		cs.proven[k] = true
+	}
+	fmt.Fprintf(cs.log, "muhar: select: %d distinct narrowed set(s) run on pristine source, %d red, in %s\n",
+		len(keys), nred, time.Since(start).Round(100*time.Millisecond))
 	return nil
+}
+
+func setKey(args []string) string { return strings.Join(args, "\x00") }
+
+// coverFlags carries the spec's own -race, -short and -timeout into the coverage
+// pass, so each test is attributed and run alone under the conditions the
+// narrowed runs use. -count, -v and -failfast do not change what one test
+// executes.
+func (cs *coverSelector) coverFlags() (build, run []string) {
+	timeout := "10m"
+	for _, f := range cs.cmd.flags {
+		name, val, _ := strings.Cut(f, "=")
+		switch "-" + strings.TrimLeft(name, "-") {
+		case "-race":
+			build = append(build, "-race")
+		case "-short":
+			run = append(run, "-test.short")
+		case "-timeout":
+			timeout = val
+		}
+	}
+	return build, append(run, "-test.timeout="+timeout)
+}
+
+// selectTemps tracks the coverage pass's temp dir so an interrupt can remove
+// it: os.Exit in main's signal handler skips Prepare's deferred cleanup.
+var selectTemps = &tempSet{dirs: map[string]bool{}}
+
+type tempSet struct {
+	mu   sync.Mutex
+	dirs map[string]bool
+}
+
+func (t *tempSet) add(d string) { t.mu.Lock(); t.dirs[d] = true; t.mu.Unlock() }
+
+func (t *tempSet) remove(d string) {
+	t.mu.Lock()
+	delete(t.dirs, d)
+	t.mu.Unlock()
+	_ = os.RemoveAll(d)
+}
+
+// removeAll deletes every tracked dir; main's signal handler calls it.
+func (t *tempSet) removeAll() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for d := range t.dirs {
+		_ = os.RemoveAll(d)
+	}
 }
 
 // resolveAlways maps the spec's always-run names to tests. A name the suite
@@ -579,29 +712,38 @@ func declCount(filename string, src []byte) int {
 	return len(f.Decls)
 }
 
-// For decides m's suite. orig is the pristine content of m's file.
-func (cs *coverSelector) For(m Mutation, orig []byte) Selection {
-	full := func(why string) Selection {
-		fmt.Fprintf(cs.log, "muhar: select %q: full suite (%s)\n", m.Name, why)
-		return Selection{}
-	}
+// decision is what decide worked out for one mutation: the full command (args
+// nil, skip false, with why), NOT CAUGHT without a run (skip), or a narrowed
+// command (args).
+type decision struct {
+	why      string
+	skip     bool
+	args     []string
+	covering int
+	picked   int
+}
+
+// decide works out m's suite from the coverage index and orig, the pristine
+// content of m's file. It has no side effects: Prepare calls it to prove the
+// narrowed sets, and For calls it again per mutant.
+func (cs *coverSelector) decide(m Mutation, orig []byte) decision {
 	if filepath.Ext(m.File) != ".go" {
-		return full("not a Go file")
+		return decision{why: "not a Go file"}
 	}
 	blocks, ok := cs.blocks[m.File]
 	if !ok {
-		return full("file not instrumented by the coverage build")
+		return decision{why: "file not instrumented by the coverage build"}
 	}
 	l1, l2, ok := funcLines(m.File, orig, m.Old)
 	if !ok {
-		return full("mutation is outside any function body")
+		return decision{why: "mutation is outside any function body"}
 	}
 	// The replacement must stay inside that body too: New text that closes the
 	// function and opens another adds a declaration no coverage describes. A
 	// mutated file that no longer parses is a compile failure, which the full
 	// command reports as faithfully as any subset.
 	if mutated, err := applyEdit(string(orig), m); err != nil || declCount(m.File, []byte(mutated)) != declCount(m.File, orig) {
-		return full("mutation adds or removes a top-level declaration")
+		return decision{why: "mutation adds or removes a top-level declaration"}
 	}
 	instrumented := false
 	picked := map[int]bool{}
@@ -615,26 +757,43 @@ func (cs *coverSelector) For(m Mutation, orig []byte) Selection {
 		}
 	}
 	if !instrumented {
-		return full("no coverage block in the enclosing function")
+		return decision{why: "no coverage block in the enclosing function"}
 	}
 	covering := len(picked)
 	for _, id := range cs.alwaysIDs {
 		picked[id] = true
 	}
 	if len(picked) == 0 {
+		return decision{skip: true}
+	}
+	return decision{args: cs.narrowedArgs(picked), covering: covering, picked: len(picked)}
+}
+
+// For decides m's suite. orig is the pristine content of m's file.
+func (cs *coverSelector) For(m Mutation, orig []byte) Selection {
+	d := cs.decide(m, orig)
+	switch {
+	case d.skip:
 		fmt.Fprintf(cs.log, "muhar: select %q: no test executes the mutated function — NOT CAUGHT without a run\n", m.Name)
 		return Selection{Skip: true}
+	case d.args == nil:
+		fmt.Fprintf(cs.log, "muhar: select %q: full suite (%s)\n", m.Name, d.why)
+		return Selection{}
+	case !cs.proven[setKey(d.args)]:
+		fmt.Fprintf(cs.log, "muhar: select %q: full suite (narrowed set not proven green on pristine source)\n", m.Name)
+		return Selection{}
 	}
-	args := cs.narrowedArgs(picked)
 	fmt.Fprintf(cs.log, "muhar: select %q: %d of %d tests (%d covering, %d always-run)\n",
-		m.Name, len(picked), len(cs.tests), covering, len(picked)-covering)
+		m.Name, d.picked, len(cs.tests), d.covering, d.picked-d.covering)
+	args := d.args
 	return Selection{Test: func(root string) bool { return cs.goTest(root, args) }}
 }
 
 // narrowedArgs builds the subset command: the spec's flags verbatim, -run
 // anchored to the picked names, and only the packages that hold one of them.
 // Every name came from `-test.list` of the spec's own -run filter, so every test
-// this runs is one the full command runs too (the SAFETY PROPERTY above).
+// this runs is one the full command runs too; proveSets checks the set as a
+// whole on pristine source before any mutant uses it (the SAFETY PROPERTY above).
 func (cs *coverSelector) narrowedArgs(picked map[int]bool) []string {
 	names := map[string]bool{}
 	pkgs := map[int]bool{}
