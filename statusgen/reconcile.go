@@ -34,14 +34,19 @@ import (
 // reconcileResult is the machine-readable output shape (--json). Its per-brief
 // rows are BriefCell values (id/cell/source/witness/reason/version). Applied
 // is populated only with --apply, and only with rows this run actually wrote
-// (reconcileapply.go) — omitted (nil) otherwise. WouldApply is the read-only
-// form (#2440): set on every --backfill run WITHOUT --apply, to the rows --apply
-// would write on the same tree, computed by the same function that writes
-// (reconcileWrites) — an empty list `[]` when there are none, so "looked and
-// found nothing" is distinguishable from "not computed" (field absent). Held
-// lists the witnessed rows the write did NOT take (on the read-only form: would
-// not take) because the move would add a lint PROBLEM (reconcilehold.go),
-// decided by the same function — omitted (nil) when none.
+// (reconcileapply.go) — omitted (nil) otherwise. WouldApply is the --apply-free
+// form (#2440): set on a --backfill run WITHOUT --apply that LOOKED (the PR
+// fetch and the raw pull-list fetch both read, and a docs/streams board found),
+// to the rows --apply would write on the same tree, computed by the same
+// function that writes (reconcileWrites). Present means looked: an empty list
+// `[]` is "looked and found nothing", and the field is ABSENT whenever the run
+// could not look (offline, no --repo, a refused or failed fetch, no board under
+// --root) so "found nothing" can never be read off a run that read nothing.
+// Held lists the witnessed rows the write did NOT take (on the --apply-free
+// form: would not take) because the move would add a lint PROBLEM
+// (reconcilehold.go), decided by the same function — omitted (nil) when none.
+// reportWrote (not in the JSON) records that --report wrote the drift report in
+// this run, so the table output stops calling it read-only (#2443).
 type reconcileResult struct {
 	Repo       string        `json:"repo"`
 	LookedAt   bool          `json:"lookedAt"`
@@ -50,6 +55,8 @@ type reconcileResult struct {
 	Applied    []appliedRow  `json:"applied,omitempty"`
 	WouldApply *[]appliedRow `json:"wouldApply,omitempty"`
 	Held       []heldRow     `json:"held,omitempty"`
+
+	reportWrote bool
 }
 
 const (
@@ -77,7 +84,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	offline := fs.Bool("offline", false, "do not touch the network; every PR-derived cell is unknown")
 	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN)")
-	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo. Without --apply it also reports, read-only, the rows --apply would write (JSON: wouldApply)")
+	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo. Without --apply it also reports the rows --apply would write (JSON: wouldApply, present only when the run could look) and writes no stream README; it writes the drift report file only when --report is also given")
 	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
 	apply := fs.Bool("apply", false, "WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion). Without --backfill only a `Brief:` trailer witness is written; with --backfill the declared branch/body match is written too. A row whose move would add a lint PROBLEM is held and reported, never written. Exits 3 when the PR read could not be done")
 	if err := fs.Parse(args); err != nil {
@@ -128,12 +135,12 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	cells := DeriveLifecycle(in)
 
 	var lookup handSaidLookup
+	pullsLookedAt := false
 	if *backfill {
 		lookup = func(stream, num string) (string, string, bool) {
 			return handSaidBeforeGeneration(*root, stream, num)
 		}
 		var pulls []ghPull
-		pullsLookedAt := false
 		if client != nil {
 			var reason string
 			pulls, pullsLookedAt, reason = client.fetchAllPulls(*repo)
@@ -163,14 +170,19 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		// One decision path for both forms (reconcileWrites), lint hold
 		// included: --apply writes the rows (trailer-only without --backfill);
 		// --backfill without it reports the same rows as wouldApply and writes
-		// nothing. boardRoot mirrors reconcileBriefIdents' own resolution
-		// (reconcile is commonly run from a subdirectory), so the rows land on
-		// the same docs/streams tree the briefs above were enumerated from.
+		// no stream README (--report, when given, still writes its own drift
+		// report file below). wouldApply is set only when the run looked — the
+		// PR list and the raw pull list both read, and a board found — so an
+		// empty list always means "looked and found nothing" (#2443).
+		// boardRoot mirrors reconcileBriefIdents' own resolution (reconcile is
+		// commonly run from a subdirectory), so the rows land on the same
+		// docs/streams tree the briefs above were enumerated from.
 		rows := []appliedRow{}
-		if boardRoot, found := findBoardRoot(*root); found {
+		boardRoot, found := findBoardRoot(*root)
+		if found {
 			var werr error
 			if rows, held, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {
-				label := "reconcile --backfill (read-only)"
+				label := "reconcile --backfill"
 				if *apply {
 					label = "reconcile --apply"
 				}
@@ -183,7 +195,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		}
 		if *apply {
 			applied = rows
-		} else {
+		} else if in.LookedAt && pullsLookedAt && found {
 			wouldApply = &rows
 		}
 	}
@@ -206,6 +218,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 			return reconcileUsageErr
 		}
 		fmt.Fprintf(stderr, "reconcile --report: wrote %s (%d drift row(s))\n", path, len(rows))
+		res.reportWrote = true
 	}
 
 	if *jsonOut {
@@ -303,8 +316,14 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 		}
 		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, detail)
 	}
+	// The --apply-free label says what the run wrote: "read-only" is true only
+	// when --report did not write the drift report file (#2443).
+	label := "reconcile --backfill (read-only)"
+	if res.reportWrote {
+		label = "reconcile --backfill (no stream README written; --report wrote the drift report)"
+	}
 	if res.WouldApply != nil && len(*res.WouldApply) > 0 {
-		fmt.Fprintf(w, "reconcile --backfill (read-only): --apply would write %d row(s)\n", len(*res.WouldApply))
+		fmt.Fprintf(w, "%s: --apply would write %d row(s)\n", label, len(*res.WouldApply))
 		for _, a := range *res.WouldApply {
 			fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
 		}
@@ -319,7 +338,7 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 	// every row must still show each one.
 	if len(res.Held) > 0 {
 		if res.WouldApply != nil {
-			fmt.Fprintf(w, "reconcile --backfill (read-only): --apply would hold %d row(s) — writing them would add a lint PROBLEM\n", len(res.Held))
+			fmt.Fprintf(w, "%s: --apply would hold %d row(s) — writing them would add a lint PROBLEM\n", label, len(res.Held))
 		} else {
 			fmt.Fprintf(w, "reconcile --apply: held %d row(s) — writing them would add a lint PROBLEM; not written\n", len(res.Held))
 		}

@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'WouldApply|ApplyReconcile|WriteStatusCell|HoldParity|HoldTreeRule|ApplyThenLint' -count=1 -timeout 300s",
+  "test": "go test . -run 'WouldApply|ReportRunNotCalled|ApplyReconcile|WriteStatusCell|HoldParity|HoldTreeRule|ApplyThenLint' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the Status write puts a different token than the one asked for",
     "file": "reconcileapply.go",
@@ -66,6 +66,18 @@
       "file": "reconcile.go",
       "old": "\t\tHeld:       held,",
       "new": "\t\tHeld:       nil,"
+    },
+    {
+      "name": "wouldApply is emitted by a run that could not look (offline, a failed fetch, no board)",
+      "file": "reconcile.go",
+      "old": "} else if in.LookedAt && pullsLookedAt && found {",
+      "new": "} else {"
+    },
+    {
+      "name": "a --report run that wrote the drift report still calls itself read-only",
+      "file": "reconcile.go",
+      "old": "if res.reportWrote {",
+      "new": "if false {"
     }
   ]
 }

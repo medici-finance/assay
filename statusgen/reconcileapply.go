@@ -44,12 +44,18 @@ package main
 //
 // The read-only form (#2440): `reconcile --backfill` WITHOUT --apply reports, as
 // `wouldApply`, the rows --apply would write, so a reviewer can reproduce a
-// board promotion with no tree write. It is not a second implementation: both
+// board promotion with no stream-README write (the verb's own `--report` flag,
+// when also given, still writes its drift report file; that is not this
+// function). It is not a second implementation: both
 // forms run reconcileWrites, and only its last step — write to disk, or keep
 // the edited README in memory — differs. Nothing about which rows are admitted
 // changes between them, the lint hold included: both forms evaluate it the same
 // way, against the edited README held in memory, so wouldApply never lists a row
-// --apply would hold and the hold never writes to disk to decide.
+// --apply would hold and the hold never writes to disk to decide. The parity is
+// per path string: the overlay is keyed by the README path as spelled, so on a
+// case-insensitive filesystem two stream names differing only in letter case
+// (a board the lint already rejects) reach one file, and the plan would report
+// both rows where --apply, reading the file back, writes one.
 
 import (
 	"fmt"
