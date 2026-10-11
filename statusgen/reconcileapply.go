@@ -50,6 +50,11 @@ package main
 // changes between them, the lint hold included: both forms evaluate it the same
 // way, against the edited README held in memory, so wouldApply never lists a row
 // --apply would hold and the hold never writes to disk to decide.
+//
+// The whole-run admission decision is shared too (#2472 C10): an unread input
+// that makes --apply refuse every row (reconcileWriteRefusal in reconcile.go)
+// makes the read-only form list none and report the refusal as wouldRefuse,
+// so wouldApply never lists a row --apply refuses with exit 3.
 
 import (
 	"fmt"
@@ -77,13 +82,27 @@ type appliedRow struct {
 }
 
 // witnessedImplemented reports whether c is a real PR-backed `implemented`
-// witness eligible for --apply: the normal trailer fold or the declared
-// backfill branch/body match. A witness-sourced verified/done cell, a
-// blocked/none cell, and the backfill's no-PR hand-said `unknown` shape are
-// all excluded by construction — none of them is Cell=="implemented" with
-// Source in {"pr","backfill"}.
+// witness eligible for --apply: the normal trailer fold, the declared
+// backfill branch/body match, or a witness-sourced cell (verified, done, or
+// a demoted unknown) whose base is a merged PR on record (MergedPR) — the
+// verify overlay sits on top of that merge and does not remove it. A
+// blocked/none cell, a witness-sourced cell with no merged PR, and the
+// backfill's no-PR hand-said `unknown` shape are all excluded by
+// construction.
 func witnessedImplemented(c BriefCell) bool {
+	if c.Source == "witness" {
+		return c.MergedPR != ""
+	}
 	return c.Cell == "implemented" && (c.Source == "pr" || c.Source == "backfill")
+}
+
+// applyWitness is the PR witness an --apply row names: the merged PR the
+// write rests on, never the verify overlay's text.
+func applyWitness(c BriefCell) string {
+	if c.MergedPR != "" {
+		return c.MergedPR
+	}
+	return c.Witness
 }
 
 // applyReconcileWrites writes the derived `implemented` cell back into each
@@ -194,7 +213,7 @@ func reconcileWritesWith(root string, cells []BriefCell, write bool, opts holdOp
 			added = []string{couldNotCheckRow(c.ID)}
 		}
 		if len(added) > 0 {
-			held = append(held, heldRow{ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: c.Witness, Problems: added})
+			held = append(held, heldRow{ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: applyWitness(c), Problems: added})
 			continue
 		}
 		if write {
@@ -205,7 +224,7 @@ func reconcileWritesWith(root string, cells []BriefCell, write bool, opts holdOp
 			overlay[path] = edit.content
 		}
 		rows = append(rows, appliedRow{
-			ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: c.Witness,
+			ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: applyWitness(c),
 			RowBefore: edit.rowBefore, RowAfter: edit.rowAfter,
 		})
 	}

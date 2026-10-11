@@ -64,8 +64,8 @@
     {
       "name": "the verb drops held rows from its result",
       "file": "reconcile.go",
-      "old": "\t\tHeld:       held,",
-      "new": "\t\tHeld:       nil,"
+      "old": "\t\tHeld:        held,",
+      "new": "\t\tHeld:        nil,"
     },
     {
       "name": "a stream-local rule keeps its pre-move output for the moved stream (the move is judged against a stale board)",
