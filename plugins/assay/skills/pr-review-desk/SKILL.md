@@ -781,20 +781,21 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        Rows with different delivery repos need one run per delivery repo, and each row is
        compared only against the run for its own delivery repo. Admit only when every row the
        hunk changes is reproduced byte-identically by that run's rows — the hunk's removed and
-       added line equal the `rowBefore` and `rowAfter` of a `wouldApply` entry whose `readme` is
-       the hunk's own file and whose `id` is that row's brief (read-only form; a byte-identical
-       row in another stream's README is not matched by the entry for this one),
+       added line equal the `rowBefore` and `rowAfter` of a `wouldApply` entry whose `readme`,
+       taken relative to the `--root` worktree, is the hunk's own file and whose `id` is that
+       row's brief (read-only form; a byte-identical row in another stream's README is not
+       matched by the entry for this one),
        or in `applied` and the resulting README diff (`--apply` form); a hunk row the run does
        not report, or reports differently, bounces. A row current main already shows as
        `implemented` is never reported by the run, so it bounces with the one line "already
        `implemented` on main — merge main and drop the hunk." Rows the run reports that the PR
        does not carry do not affect admission. A run that could not look — a non-zero exit,
        missing or unparseable JSON on stdout, `lookedAt: false` in its JSON, a `could-not-check`
-       on stderr (no token, a failed or rate-limited PR fetch), or a read-only run whose JSON
-       carries no `wouldApply` key at all (a run that could not look, or a binary that predates
-       the read-only form: use the `--apply` form, never read the absent key as zero rows; a
-       `wouldApply` of `[]` is read together with `lookedAt: true`, and means looked and found
-       nothing) — is not a reproduction: hold the
+       on stderr (no token, a failed or rate-limited PR fetch), a `wouldRefuse` key in its JSON,
+       or a read-only run whose JSON carries no `wouldApply` key at all (a run that could not
+       look; never read the absent key as zero rows — only where the binary predates the
+       read-only form, use the `--apply` form instead; a `wouldApply` of `[]` is read together
+       with `lookedAt: true`, and means looked and found nothing) — is not a reproduction: hold the
        verdict and say so, never admit on it. The binary is the pinned release binary the target
        repo's CI uses; where the target repo vendors `statusgen/`, build it from the throwaway
        `origin/main` worktree's own `statusgen/` — NEVER one built or resolved from the PR head

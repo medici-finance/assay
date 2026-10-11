@@ -78,6 +78,12 @@
       "file": "reconcile.go",
       "old": "if res.reportWrote {",
       "new": "if false {"
+    },
+    {
+      "name": "the held label is chosen from wouldApply's presence, not the run's mode",
+      "file": "reconcile.go",
+      "old": "if !res.applyRun {",
+      "new": "if res.WouldApply != nil {"
     }
   ]
 }

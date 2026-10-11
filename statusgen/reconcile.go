@@ -46,8 +46,9 @@ import (
 // nothing. Held lists the witnessed rows the write did NOT take (on the
 // --apply-free form: would not take) because the move would add a lint PROBLEM
 // (reconcilehold.go), decided by the same function — omitted (nil) when none.
-// reportWrote (not in the JSON) records that --report wrote the drift report in
-// this run, so the table output stops calling it read-only (#2443).
+// reportWrote and applyRun (not in the JSON) record that --report wrote the
+// drift report in this run and that --apply was given, so the table output
+// labels the run by what it did, never by which fields it carries (#2443).
 type reconcileResult struct {
 	Repo       string        `json:"repo"`
 	LookedAt   bool          `json:"lookedAt"`
@@ -68,6 +69,7 @@ type reconcileResult struct {
 	Unread []string `json:"unread,omitempty"`
 
 	reportWrote bool
+	applyRun    bool
 }
 
 const (
@@ -236,6 +238,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		WouldRefuse: wouldRefuse,
 		Held:        held,
 		Unread:      unread,
+		applyRun:    *apply,
 	}
 
 	if *report {
@@ -380,9 +383,11 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 		}
 	}
 	// Held rows print whether or not anything was written: a tick that holds
-	// every row must still show each one.
+	// every row must still show each one. The label follows the run's mode,
+	// never the presence of wouldApply: a run without --apply never prints the
+	// --apply label, whatever it could read (#2443).
 	if len(res.Held) > 0 {
-		if res.WouldApply != nil {
+		if !res.applyRun {
 			fmt.Fprintf(w, "%s: --apply would hold %d row(s) — writing them would add a lint PROBLEM\n", label, len(res.Held))
 		} else {
 			fmt.Fprintf(w, "reconcile --apply: held %d row(s) — writing them would add a lint PROBLEM; not written\n", len(res.Held))

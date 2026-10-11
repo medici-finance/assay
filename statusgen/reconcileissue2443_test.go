@@ -168,6 +168,9 @@ func TestWouldApplyAbsentNoLook(t *testing.T) {
 			if v, ok := raw["wouldApply"]; ok {
 				t.Fatalf("a run that could not look must omit wouldApply, got %s", v)
 			}
+			if v, ok := raw["held"]; ok {
+				t.Fatalf("a run that could not look must omit held, got %s", v)
+			}
 		})
 	}
 
@@ -234,5 +237,55 @@ func TestWouldApplyBoundToReadme(t *testing.T) {
 	}
 	if e.Path == bpPath {
 		t.Fatalf("the entry names the unwitnessed README: %+v", e)
+	}
+}
+
+// printedTable renders res through the verb's own table printer.
+func printedTable(t *testing.T, res reconcileResult) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	printReconcileTable(f, res)
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestHeldLabelFollowsRunMode pins finding C2548-1: the held line's label is
+// chosen from the run's mode, never from whether wouldApply is present, so a
+// run without --apply that carries held rows and no wouldApply never prints
+// the --apply label.
+// regression: #2443
+func TestHeldLabelFollowsRunMode(t *testing.T) {
+	held := []heldRow{{ID: "apstream/01", From: "todo", To: "implemented", Witness: "PR #10", Problems: []string{"p"}}}
+	cases := []struct {
+		name      string
+		res       reconcileResult
+		want, not string
+	}{
+		{"no apply, no wouldApply", reconcileResult{LookedAt: true, Held: held},
+			"reconcile --backfill (read-only): --apply would hold 1 row(s)", "reconcile --apply"},
+		{"no apply, report written", reconcileResult{LookedAt: true, Held: held, reportWrote: true},
+			"reconcile --backfill (no stream README written; --report wrote the drift report): --apply would hold 1 row(s)", "reconcile --apply"},
+		{"apply", reconcileResult{LookedAt: true, Held: held, applyRun: true},
+			"reconcile --apply: held 1 row(s)", "would hold"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := printedTable(t, tc.res)
+			if !strings.Contains(out, tc.want) {
+				t.Fatalf("want %q in:\n%s", tc.want, out)
+			}
+			if strings.Contains(out, tc.not) {
+				t.Fatalf("the label misstates the run's mode (%q present):\n%s", tc.not, out)
+			}
+		})
 	}
 }
