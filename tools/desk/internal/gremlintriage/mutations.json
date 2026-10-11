@@ -1,0 +1,95 @@
+{
+  "test": "go test ./internal/gremlintriage/ -count=1 -skip '^TestRunScriptOffline$'",
+  "control": {
+    "name": "no-evidence check removed: a sweep where nothing finished reads as clean",
+    "file": "internal/gremlintriage/triage.go",
+    "old": "if evidence == 0 {",
+    "new": "if false {"
+  },
+  "mutations": [
+    {
+      "name": "testdata specs no longer skipped",
+      "file": "internal/gremlintriage/specindex.go",
+      "old": "name == \"testdata\" || ",
+      "new": ""
+    },
+    {
+      "name": "same-function spec no longer counts",
+      "file": "internal/gremlintriage/specindex.go",
+      "old": "if s.Func == fn {",
+      "new": "if false && s.Func == fn {"
+    },
+    {
+      "name": "multi-line spec entry spans only its first line",
+      "file": "internal/gremlintriage/specindex.go",
+      "old": "end := start + strings.Count(old, \"\\n\")",
+      "new": "end := start"
+    },
+    {
+      "name": "unknown Gremlins status accepted",
+      "file": "internal/gremlintriage/report.go",
+      "old": "if !knownStatus[m.Status] {",
+      "new": "if false {"
+    },
+    {
+      "name": "report without go_module accepted",
+      "file": "internal/gremlintriage/report.go",
+      "old": "if r.GoModule == nil {",
+      "new": "if false {"
+    },
+    {
+      "name": "colour codes no longer stripped from the log",
+      "file": "internal/gremlintriage/report.go",
+      "old": "ansiRE.ReplaceAllString(sc.Text(), \"\")",
+      "new": "sc.Text()"
+    },
+    {
+      "name": "empty ok report reads as clean",
+      "file": "internal/gremlintriage/triage.go",
+      "old": "case len(ms) == 0:",
+      "new": "case false:"
+    },
+    {
+      "name": "all-not-viable report reads as clean",
+      "file": "internal/gremlintriage/triage.go",
+      "old": "case c.Killed+c.Lived+c.TimedOut == 0 && c.NotViable > 0:",
+      "new": "case false:"
+    },
+    {
+      "name": "red copy probe downgraded to a note",
+      "file": "internal/gremlintriage/triage.go",
+      "old": "pr.Broke = \"package tests fail in the mutant copy layout; kills would be false\"",
+      "new": "pr.Note = \"package tests fail in the mutant copy layout; kills would be false\""
+    },
+    {
+      "name": "broken sweep exits 0",
+      "file": "internal/gremlintriage/triage.go",
+      "old": "if res.Broke {\n\t\tfmt.Fprintln(stderr,",
+      "new": "if false {\n\t\tfmt.Fprintln(stderr,"
+    },
+    {
+      "name": "rotation stuck on the first bin",
+      "file": "internal/gremlintriage/plan.go",
+      "old": "p := plan{Bin: day % len(bins),",
+      "new": "p := plan{Bin: 0,"
+    },
+    {
+      "name": "comma in a file name no longer refused",
+      "file": "internal/gremlintriage/plan.go",
+      "old": "if strings.Contains(f.Name, \",\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "budget no longer pays for the coverage run",
+      "file": "internal/gremlintriage/plan.go",
+      "old": "left := budget - coverage",
+      "new": "left := budget"
+    },
+    {
+      "name": "coverage timing line no longer required",
+      "file": "internal/gremlintriage/plan.go",
+      "old": "if m == nil {\n\t\treturn 0, fmt.Errorf(\"%s: no coverage timing line\", path)",
+      "new": "if m == nil {\n\t\treturn 0, nil"
+    }
+  ]
+}
