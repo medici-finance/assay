@@ -159,9 +159,10 @@ behavior bumps the version, so a recorded verdict can be tied to what produced i
 The manifest carries one relative `replace`, for the in-repository sibling module `forgeread`
 (the fact reader); a consumer ignores a dependency's `replace`, so an external pin must also
 resolve `forgeread` at the version the manifest requires, which is currently a placeholder
-pseudo-version that no published proxy serves. Resolving that placeholder is a gap for external
-pinning until the sibling is released; it is tracked as a follow-up and is not hidden by the
-test. A contract test qualifies the packaging: a throwaway module outside this repository builds
+pseudo-version that no published proxy serves. Until `forgeread` is released at a real version
+and the manifest requires that version, an external pin of the statusgen module fails at module
+resolution; this is an open gap, and the test below does not close it. A contract test
+qualifies the packaging: a throwaway module outside this repository builds
 and exercises both entry points against a local file module proxy that serves both modules, with
 the workspace off, no replace in the consumer and every network proxy pointed at a dead address,
 and a second consumer that expects an API the module does not offer fails to build.
