@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -60,5 +63,41 @@ func TestFetchFailureDrainsRefs(t *testing.T) {
 	}
 	if out := git(t, w.root, "for-each-ref", "--format=%(refname)", "refs/deskmerge/tmp/"); out != "" {
 		t.Fatalf("failed fetch leaked owned refs: %s", out)
+	}
+}
+
+// regression: #2525
+func TestFetchHookKeepsVerdict(t *testing.T) {
+	withScratchTemp(t)
+	w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
+	w.install(t, defaultPR(), false)
+	hooks := t.TempDir()
+	if err := os.WriteFile(filepath.Join(hooks, "reference-transaction"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, w.root, "config", "core.hooksPath", hooks)
+	assertCleanupKeepsVerdict(t, w)
+}
+
+// assertCleanupKeepsVerdict: producer cleanup refused by the shared hook gate
+// leaves the observed SHAs as the answer and the owned ref for later recovery.
+func assertCleanupKeepsVerdict(t *testing.T, w *world) {
+	t.Helper()
+	var warn bytes.Buffer
+	prev := cleanupWarn
+	cleanupWarn = &warn
+	t.Cleanup(func() { cleanupWarn = prev })
+	p := prInfo{Number: testPR, HeadRefOid: w.headSHA, BaseRefName: "main"}
+	base, head, err := fetchState(w.root, testRepo, p)
+	if err != nil || base != w.baseSHA || head != w.headSHA {
+		t.Fatalf("cleanup changed the verdict: %s,%s,%v", base, head, err)
+	}
+	out := git(t, w.root, "for-each-ref", "--format=%(refname) %(objectname)", "refs/deskmerge/tmp/")
+	name, _, _ := strings.Cut(out, " ")
+	if !strings.HasSuffix(out, " "+w.headSHA) || strings.Contains(out, "\n") {
+		t.Fatalf("owned ref not retained for recovery: %q", out)
+	}
+	if !strings.Contains(warn.String(), name) || !strings.Contains(warn.String(), "receipt is retained") {
+		t.Fatalf("cleanup failure was silent: %q", warn.String())
 	}
 }

@@ -524,11 +524,27 @@ func tempRefHeld(common string, gr *gitcore.Repo, r tempReceipt) (bool, error) {
 			if name == r.Ref {
 				return true, nil
 			}
-			h, err := gr.Resolve(name)
-			if err != nil {
+			h, exists, err := gr.LocalRefHash(name)
+			switch {
+			case err == nil && !exists:
+				// An unborn branch (fresh or orphan worktree) holds no object. The
+				// reader treats an unopenable loose ref as absent, so absence is
+				// proved on disk: a present-but-unreadable branch stays unknown.
+				if err := refFileAbsent(common, filepath.Dir(path), name); err != nil {
+					return false, err
+				}
+				continue
+			case err != nil && exists:
+				// A symbolic chain is resolved in full; any failure stays could-not-check.
+				rh, rerr := gr.Resolve(name)
+				if rerr != nil {
+					return false, rerr
+				}
+				h = rh.String()
+			case err != nil:
 				return false, err
 			}
-			head = h.String()
+			head = h
 		}
 		if !validRefHash(head) {
 			return false, fmt.Errorf("worktree HEAD is not a full object id")
@@ -538,4 +554,19 @@ func tempRefHeld(common string, gr *gitcore.Repo, r tempReceipt) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// refFileAbsent proves a loose ref file is absent from both the common and the
+// per-worktree ref stores. Packed absence was already proved by the reader.
+func refFileAbsent(common, gitDir, name string) error {
+	for _, dir := range []string{common, gitDir} {
+		_, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(name)))
+		if err == nil {
+			return fmt.Errorf("worktree HEAD branch %s exists but is unreadable", name)
+		}
+		if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }

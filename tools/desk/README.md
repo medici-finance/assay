@@ -2538,7 +2538,13 @@ The producer's completion declaration ends consumption of its private nonce ref;
 the holder check covers registered heads at that gate. This protocol does not
 synchronize an external actor manually assigning a HEAD to that private ref
 during cleanup. A detached checkout's object remains available because every
-object ID is retained.
+object ID is retained. A worktree on an unborn (fresh or orphan) branch holds no
+object; a branch file that exists but cannot be read stays held as could-not-check.
+
+Producer cleanup is best-effort: deskmerge answers from the base and head SHAs it
+observed before completion, so a hook refusal or missing native `git hook list`
+never changes its verdict. It warns on stderr naming the retained ref, and the
+completed receipt stays for a later `deskwt maintain objects --apply` pass.
 
 Remote-tracking refresh stays a separate, explicit forge operation:
 

@@ -81,7 +81,8 @@ func TestPrimaryLockHeld(t *testing.T) {
 	requireNativeHooks(t, repo)
 	// The shipped index coordinator holds only this primary lock. A separate
 	// temp-ref coordinator cannot stand in for honoring that owner's custody.
-	primary, err := OpenLock(filepath.Join(repo, ".git", "assay-maintenance.lock"))
+	lock := filepath.Join(repo, ".git", "assay-maintenance.lock")
+	primary, err := OpenLock(lock)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,13 +94,13 @@ func TestPrimaryLockHeld(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repo, ".git", "assay-maintenance-temprefs.lock")); !os.IsNotExist(err) {
 		t.Fatal("positive control: temp-ref lock must be absent and free")
 	}
-	before := diskImage(t, repo)
+	before := diskImageHolding(t, repo, lock)
 	report, err := Run(context.Background(), repo, Options{})
 	if err != nil || report.Skipped != "another coordinator is running" || len(report.Tasks) != 0 || report.After != nil || report.Before.LastAttempt != nil {
 		t.Fatalf("primary-only coordinator custody bypassed: %#v %v", report, err)
 	}
-	if !reflect.DeepEqual(before, diskImage(t, repo)) {
-		t.Fatalf("busy primary coordinator caused writes: %v", snapshotChanges(before, diskImage(t, repo)))
+	if after := diskImageHolding(t, repo, lock); !reflect.DeepEqual(before, after) {
+		t.Fatalf("busy primary coordinator caused writes: %v", snapshotChanges(before, after))
 	}
 }
 

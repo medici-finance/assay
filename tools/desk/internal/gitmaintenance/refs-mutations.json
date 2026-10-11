@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/gitmaintenance ./cmd/deskmerge -run 'TestTemp|TestState|TestFetchRefsArePrivate|TestFetchFailureDrainsRefs' -count=1 -timeout=90s",
+  "test": "go test ./internal/gitmaintenance ./cmd/deskmerge -run 'TestTemp|TestState|TestFetchRefsArePrivate|TestFetchFailureDrainsRefs|TestFetchHookKeepsVerdict|TestFetchNoHookListVerdict' -count=1 -timeout=120s",
   "control": {
     "name": "CONTROL invert producer completion proof",
     "file": "internal/gitmaintenance/refs.go",
@@ -204,6 +204,30 @@
       "file": "internal/gitmaintenance/refs.go",
       "old": "row := TempRefResult{Ref: r.Ref, State: \"held\", CleanupPending: r.CleanupPending}\n\tif err := ctx.Err();",
       "new": "row := TempRefResult{Ref: r.Ref, State: \"held\", CleanupPending: false}\n\tif err := ctx.Err();"
+    },
+    {
+      "name": "fail closed on an unborn worktree holder",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "\t\t\t\tcontinue\n\t\t\tcase err != nil && exists:",
+      "new": "\t\t\t\treturn false, fmt.Errorf(\"unborn\")\n\t\t\tcase err != nil && exists:"
+    },
+    {
+      "name": "treat an unreadable worktree holder as unborn",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if err := refFileAbsent(common, filepath.Dir(path), name); err != nil {",
+      "new": "if err := refFileAbsent(common, filepath.Dir(path), name); false && err != nil {"
+    },
+    {
+      "name": "let producer cleanup change the verdict",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "if _, cleanupErr := tmp.Complete(context.Background()); cleanupErr != nil {",
+      "new": "if _, cleanupErr := tmp.Complete(context.Background()); cleanupErr != nil {\n\t\t\tif err == nil {\n\t\t\t\terr = cleanupErr\n\t\t\t}"
+    },
+    {
+      "name": "silence producer cleanup failure",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "fmt.Fprintf(cleanupWarn,",
+      "new": "fmt.Fprintf(io.Discard,"
     }
   ]
 }

@@ -147,6 +147,34 @@ func TestTempRefsPreserveHolders(t *testing.T) {
 	assertRef(t, root, a.Name, old)
 }
 
+// regression: #2525
+func TestTempUnbornHolder(t *testing.T) {
+	root, old := refWorld(t)
+	a := seedTemp(t, root, old)
+	wt := filepath.Join(t.TempDir(), "orphan")
+	refGit(t, root, "worktree", "add", "-q", "--orphan", "-b", "unborn", wt)
+	// An unborn branch holds no object; it must not turn cleanup into could-not-check.
+	row, err := a.Complete(context.Background())
+	if err != nil || row.State != "deleted" {
+		t.Fatalf("unborn holder=%+v,%v", row, err)
+	}
+	assertRef(t, root, a.Name, "")
+	// Positive control: a branch file that exists but is malformed still holds.
+	b := seedTemp(t, root, old)
+	common, err := gitcore.CommonDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch := filepath.Join(common, "refs", "heads", "unborn")
+	if err := os.WriteFile(branch, []byte("broken\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if row, err := b.Complete(context.Background()); err == nil || row.State != "held" {
+		t.Fatalf("malformed branch holder=%+v,%v", row, err)
+	}
+	assertRef(t, root, b.Name, old)
+}
+
 // regression: #2513
 func TestTempRefsKeepUnknown(t *testing.T) {
 	root, old := refWorld(t)

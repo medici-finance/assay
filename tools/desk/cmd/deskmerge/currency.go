@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -262,6 +263,9 @@ func originNames(url, repo string) bool {
 // silent "well, use the newer one": every verdict below is relative to a specific head,
 // and quietly re-basing the question onto a different one would make the answer true of
 // a PR nobody asked about.
+// cleanupWarn receives best-effort temporary-ref cleanup warnings (a test seam).
+var cleanupWarn io.Writer = os.Stderr
+
 func fetchState(root, repo string, p prInfo) (baseSHA, headSHA string, err error) {
 	tmp, err := gitmaintenance.BeginTempRef(root, "deskmerge")
 	if err != nil {
@@ -276,9 +280,12 @@ func fetchState(root, repo string, p prInfo) (baseSHA, headSHA string, err error
 		if !observed {
 			_, _ = tmp.Observe()
 		}
-		_, cleanupErr := tmp.Complete(context.Background())
-		if cleanupErr != nil && err == nil {
-			err = deskkit.Unverifiable("could-not-check: temporary reference cleanup was not completed; receipt retained", cleanupErr)
+		// Cleanup is best-effort and never changes the verdict: both SHAs were
+		// observed before completion and everything downstream uses only them.
+		// The completed receipt is durable custody a later maintenance pass recovers.
+		if _, cleanupErr := tmp.Complete(context.Background()); cleanupErr != nil {
+			fmt.Fprintf(cleanupWarn, "deskmerge: warning: temporary fetch ref %s was not removed (%s); its completed receipt is retained for a later `deskwt maintain objects --apply` pass\n",
+				deskkit.StripControl(tmp.Name), deskkit.StripControl(cleanupErr.Error()))
 		}
 	}()
 	if _, ferr := runGit(root, "fetch", "--quiet", "origin",

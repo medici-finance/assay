@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -86,6 +87,14 @@ func fixtureCommit(t testing.TB, dir, text string) string {
 // maintenance bookkeeping. Reading an inventory must not create a lock, stamp or config.
 func diskImage(t testing.TB, dir string) map[string]string {
 	t.Helper()
+	return diskImageHolding(t, dir)
+}
+
+// diskImageHolding records each named file the test itself holds a byte-range
+// lock on by mode and size only: Windows locks are mandatory, so reading a held
+// lock file fails even though production never reads lock contents.
+func diskImageHolding(t testing.TB, dir string, held ...string) map[string]string {
+	t.Helper()
 	image := map[string]string{}
 	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -107,6 +116,8 @@ func diskImage(t testing.TB, dir string) map[string]string {
 				return err
 			}
 			value += ":" + target
+		case info.Mode().IsRegular() && slices.Contains(held, path):
+			value += fmt.Sprintf(":held:%d", info.Size())
 		case info.Mode().IsRegular():
 			data, err := os.ReadFile(path)
 			if err != nil {
