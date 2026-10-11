@@ -263,6 +263,30 @@ func TestRuntimeResourceContractOrd(t *testing.T) {
 	}
 }
 
+// regression: deleting the per-effect release check, or reading a release's own
+// receipt as an observation, left the suite green — the released-state check
+// emitted the same tag, and no case pinned the exact line set.
+//
+// TestRuntimeResourceContractAck pins an acknowledged, unreconciled release on a
+// record that still says provisioned: the release-level guard is the only one
+// that may fire, and the release receipt's "absent" must not end the resource.
+func TestRuntimeResourceContractAck(t *testing.T) {
+	valid := rrFixture(t, "good-valid.yaml")
+	release := "  - id: eff-0003\n    verb: release\n    idempotency-key: run-0001/release\n    requested-at: \"2026-01-01T01:30:00Z\"\n    outcome: succeeded\n    principal: agent:worker-1\n    receipt:\n      adapter-ref: mock://branch/rr-valid-01\n      observed-at: \"2026-01-01T01:30:01Z\"\n      observed-state: absent\n"
+	revoked := "rotations:\n    - after: eff-0003\n      action: revoked\n      at: \"2026-01-01T01:30:02Z\"\n"
+	if !strings.Contains(valid, "rotations: []\n") {
+		t.Fatal("anchor rotations: [] not found")
+	}
+	body := strings.Replace(valid, "rotations: []\n", revoked, 1) + release
+	state, lines := rrLintText(t, t.TempDir(), "ack.yaml", body)
+	if state != patternStateFailed {
+		t.Fatalf("state = %v, want checked-failed; lines:\n%s", state, strings.Join(lines, "\n"))
+	}
+	if len(lines) != 1 || !rrLineHas(lines, ruleRRUnreconciledRelease, `release effect "eff-0003" succeeded but no later reconcile observed the resource absent`) {
+		t.Fatalf("want exactly the release-level unreconciled-release line; got:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
 // TestRuntimeResourceContractReg covers every registry refusal. The registry is
 // the trust anchor, so each defect is could-not-check for the whole run, and
 // each case names the message only its guard emits.
