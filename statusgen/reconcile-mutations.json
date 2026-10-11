@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'WouldApply|ReportRunNotCalled|ApplyReconcile|WriteStatusCell|HoldParity|HoldTreeRule|ApplyThenLint' -count=1 -timeout 300s",
+  "test": "go test . -run 'WouldApply|ReportRunNotCalled|HeldLabel|ApplyReconcile|WriteStatusCell|HoldParity|HoldTreeRule|ApplyThenLint' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the Status write puts a different token than the one asked for",
     "file": "reconcileapply.go",
