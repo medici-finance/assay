@@ -95,3 +95,15 @@ Dispatchable briefs, named implementers, estimates and applied amendments are
 still required. This PR neither closes existing work nor claims quantified savings.
 Runtime proof gates activation; it must not become a circular prerequisite to
 authorizing the implementation that produces that proof.
+
+## Operating research incorporated in this revision
+
+The proposal now includes resumable resource retirement, bounded repository maintenance, durable feedback reevaluation, observable execution guards, governed learned context and separate cockpit states. These extend existing domain owners and R1–R8; implementation and activation remain separate.
+
+Public research inputs, inspected 10 October 2026:
+
+- [langgraph-harness at 95368b4](https://github.com/vrajpal-jhala/langgraph-harness/tree/95368b4ef964b6fff82d0d54572e558d98d693c9): tool-call guards, pending reruns, memory curation and worktree lifecycle are useful implementation examples. Its framework, model-assessed ready transition and process-local ownership assumptions are not adopted. Source inspection is not a reproduced runtime test.
+- [Cursor: Git at any scale](https://cursor.com/blog/git-at-any-scale): storage layout, maintenance cost and reconstruction motivate qualification. Its hosting architecture and vendor throughput claims are not adopted or independently validated here.
+- Recent public Assay fixes are mapped in the [migration obligations](13-migration-and-decisions.md#preserve-recent-repository-hygiene-behavior), with new [continuous-work qualification](15-regression-from-day-one.md#continuous-work-and-resource-qualification).
+
+PostgreSQL remains the operational transaction owner; reviewed Git records retain canonical intent and published evidence. These lessons introduce neither a mandatory Git append per operation nor a replacement authoritative store.

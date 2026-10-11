@@ -67,6 +67,28 @@ The specific tolerable recovery time, history window and loss classes still need
 
 Notification delivery must preserve deduplication and persisted delivery-unknown outcomes. Ordinary process restart preserves the no-repost obligation. After total SQL loss, reconstruct delivery identities/outcomes where provider records or retained canonical evidence support them; unverifiable pre-loss delivery is held for reconciliation or an explicit operator resend decision. Do not replay all transitions as fresh notifications. Circuit-breaker timers and pending coalescing may be transient. Allowing duplicate notifications requires a separate policy amendment; it is not implied by accepting repeated analysis or verification.
 
+## Workspace retirement is a resumable operation
+
+Extend the existing attempt/lease model with resource identities: repository, common Git store, work/candidate, owning attempt and generation, resource kind/locator, retention obligation and durable evidence destination. Cover owned worktrees, local task branches, detached review HEADs and scratch. Remote branches and local tracking refs are distinct resources with distinct authority. Keep PostgreSQL as operational coordination and the established Git publication path for retained evidence; no mandatory per-step Git journal is introduced.
+
+Track `requested → eligibility-checked → preservation-confirmed → removing → reconciled`, with explicit held, failed and unknown outcomes. Persist the operation and each completed step so removal can resume after a crash without guessing. Preservation may be explicitly not required under the approved loss policy; otherwise verify the saved artifact/receipt before deletion. A cleanup request grants no new deletion authority.
+
+Before each destructive step, revalidate the resource identity, expected ref tip and owner/generation against allocation, and confirm no active holder or required unpublished work remains. Reacquisition invalidates an earlier retirement decision. Check untracked and ignored evidence as well as tracked changes. Age, missing database rows, a clean working tree or expired heartbeat alone never proves disposability. Database-loss reconstruction inventories unknown resources and holds them for ownership/evidence reconciliation; it does not delete them as orphans.
+
+Worktree removal, owned local-branch retirement and remote-reference reconciliation are separate steps. A squash-merged branch is not necessarily an ancestor of main; a historic patch match does not establish disposability if main later reverted it. Retain ambiguous work. Preserve normal reflog recovery periods and inventory alternate-object borrowers before reclamation. A retry after partial scratch deletion must retain enough ownership information to finish or hold safely.
+
+## Repository maintenance has one owner and a measured budget
+
+Four operations have different purposes: retire completed work and refs; organize object packs and indexes; reclaim objects when retention permits; remove repeated lookup work in readers. None is a substitute for the others. Resolve linked worktrees to a common Git directory and give that store one maintenance owner under the cell's existing resource coordination. Separate stores remain separate maintenance units even when they represent the same external repository.
+
+Run explicit tasks with version/capability checks, measured work/time limits, adequate temporary space and a declared cancellation/recovery policy. Coordinate tasks with active Git operations and other maintenance; application locks alone do not establish compatibility with unmanaged Git processes. Keep expensive maintenance outside task-startup latency. Network prefetch is an explicit profile choice, not a side effect of enabling a default schedule. Do not add immediate reflog expiry or `gc --prune=now` as routine cleanup.
+
+[PR #2516](https://github.com/medici-finance/assay/pull/2516) supplies bounded manual ref packing and commit-graph maintenance. Object-pack consolidation, scheduling and unreachable-object reclamation need separate qualification. Upstream [Git maintenance](https://git-scm.com/docs/git-maintenance) and [multi-pack indexes](https://git-scm.com/docs/git-multi-pack-index) are mechanisms to evaluate, not proof every library reader uses them.
+
+Measure ref/worktree counts, held reasons, loose objects, pack count/bytes, reader index/object opens, operation latency, maintenance duration and peak temporary space. Report stale/unavailable measurements rather than zero. Benchmark the actual native-Git and go-git paths independently on old repositories; reduced index opens are not an end-to-end latency claim. Select cadence, limits and recovery objectives from the workload before activation rather than inventing universal thresholds.
+
+Any future hot/cold evidence tiering must preserve the canonical-record and retention contracts above. A checkpoint can reduce projection work while Git ancestry still retains all old objects; a cold export alone proves neither local reclamation nor restorability. Require a physical reachability/layout explanation and verified restore before claiming storage savings. Moving durable evidence or acceptance authority to another store is a separate architectural decision.
+
 ## Reuse and expand the existing forge-mirror work
 
 Reuse existing mirror and event-consumer designs after checking their current source, implementation and approval state. The target includes queryable PR/MR/issue data, freshness, conditional reads, events, desk wakeups and fallback. A poller for a selected issue subset is not a complete forge mirror.
@@ -95,6 +117,14 @@ Webhooks accelerate refresh; polling repairs missed notifications and covers uns
 Routine queries use the mirror. A consequential write may need a targeted fresh read or provider precondition rather than another fleet-wide scan. Centralize these refresh requests, request coalescing, rate limits and backoff; a mirror outage must not cause every client to start a competing full poll. Responses include source scope, last complete refresh, observed revision, retained-history window and unavailable/stale status. Events are prompts to reevaluate, not approval or proof that a queue is empty.
 
 Forge history and deletion need an explicit retention policy. Re-polling the provider cannot recover an edited/deleted comment's old body. Selective retained snapshots can preserve what was observed, but expand the private-data footprint and storage volume. Define which history matters and what may disappear after database loss; do not imply a record of every event that ever happened. Canonical verification/evidence stays in Git for this phase. Existing read-only reports should remain useful while freshness-dependent execution is held.
+
+### Feedback received during an active attempt
+
+Persist a scoped reevaluation requirement when new relevant feedback arrives while work is active, rather than admitting a second writer. Bind it to the work/candidate and observed source revision or refresh requirement. Distinct instructions, decisions and effect requests remain separate attributed records; coalescing refresh demand must not erase their contents or authorization requirements.
+
+Record demand and finish/consume it transactionally with attempt ownership and the existing outbox. Use an observed/processed generation or equivalent contract so feedback racing completion cannot be cleared by an older run. Admission consumes a known generation; later arrivals remain pending. A successor refreshes authoritative permitted state and reevaluates eligibility instead of replaying an old webhook as an instruction. Superseded candidates retain explicit disposition. A crash between terminal state and enqueue is repaired from durable demand; duplicate delivery cannot create competing attempts.
+
+After complete database loss, re-enumerate source obligations where possible and report missing historical coverage; do not claim every transient message was recovered. Provider polling repairs refresh hints, not deleted instructions or missing authority records.
 
 ## Graph capabilities from the first slice
 

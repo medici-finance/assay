@@ -107,6 +107,14 @@ A lease timeout does not cancel an external request already in flight. Where a p
 
 Independent verification uses a trusted selector for the acceptance contract, a disposable runner without publisher credentials, an attributed result, and a separately authorized publisher. Candidate code cannot edit the selector or weaken its own contract. A human decision binds a human actor, subject, revision and permitted act; agent/MCP surfaces cannot fabricate that act. Exact custody deployment remains a design decision before activation.
 
+## Execution guards and resource lifetime
+
+The runtime coordination owner also owns [workspace retirement and pending reevaluation](14-storage-forge-graph.md#workspace-retirement-is-a-resumable-operation). The cell-operation owner performs repository maintenance through the existing resource/runner contracts. These are responsibilities within the proposed controller, not separate schedulers or writable ownership registries. Attempt completion, accepted work, resource retirement and storage reclamation are distinct outcomes.
+
+Efficiency guards detect repeated calls/failures, no progress and exhausted output/time/cost budgets. Emit attributed events with attempt, candidate, guard/version, triggering observation, corrective action and outcome; bound and redact stored payloads. Distinguish a model-directed nudge from deterministic refusal or cancellation. A legitimate repeated read must be able to observe changed state; equal tool arguments do not prove equal intent or stale data. Budgets come from the admitted operation profile, with explicit unavailable measurements.
+
+Authority controls remain at the executor: scope, policy, candidate, lease generation and stable effect identity. An in-memory duplicate-call cache is only an efficiency aid; it cannot prove that a timed-out write did not occur or prevent replay after restart. A model-based comment critic may improve prose, but its failure policy must never bypass an authorization or publication check. A model's completion assessment is an attributed suggestion, not independent evidence, acceptance or permission to mark a change ready. Existing role and human gates remain controlling.
+
 ## Public Assay includes the control plane and cockpit
 
 The target is **public `medici-finance/assay`** for shared contracts, controller/service, operator tools, role clients, authoring support and cockpit. The private house repository retains private cell composition, policy overlays, credentials references and operational records. Public software can operate a private cell without publicizing its contents.
@@ -120,6 +128,10 @@ Use one versioned HTTP/JSON contract for UI and remote clients; generate a TypeS
 Authorization must also cover the actual mounted/served handler graph: a correct route registry is insufficient if an extra mount bypasses its middleware. Missing authorizers and required credentials refuse; tests must exercise the served bypass and the authorized positive case. Existing per-cell rollout opt-ins remain until explicitly migrated.
 
 Public/private authorization applies before traversal, counts, joins and cache lookup. Cross-cell queries require explicit per-cell authorization; no shared index may leak another cell's existence through counts. Configuration resolves at one boundary and carries its provenance: portable cell definition, operator overrides, deployment bindings and secrets references remain distinguishable.
+
+### Separate operating states in the cockpit
+
+Expose execution outcome, evidence/acceptance state, pending reevaluation, resource-retirement state and maintenance health separately, with reasons and observation times. An accepted change may retain a review workspace; a successful process may still lack required evidence. Show held resources and resumable recovery actions without turning a display action into additional authority. Explanations and aggregate resource counts obey the same cell/visibility restrictions as their source records.
 
 ## What happens to today's tools
 

@@ -73,6 +73,20 @@ A workflow engine, standing verify desk or manual invocation can request this us
 
 These cases turn reported mechanisms into a qualification plan; this research has not reproduced every incident or executed the new architecture. Each implementation brief must pin the incident or independent fixture that demonstrates its claimed failure mechanism. Tests should observe behavior and authority at the actual boundary, rather than assert that expected strings or package names exist.
 
+## Preserve recent repository-hygiene behavior
+
+The follow-up source baseline is public Assay `b78b495be` (10 October 2026), which includes the following merged repairs. Inspect their actual code and tests when authoring the owning delivery briefs; merged code is not evidence of an installed release or qualification of the replacement.
+
+| Source | Preservation obligation |
+|---|---|
+| [#2508](https://github.com/medici-finance/assay/pull/2508), [#2518](https://github.com/medici-finance/assay/pull/2518) | Prove local-branch redundancy and detached-review retirement eligibility; retain active, unique or ambiguous work. |
+| [#2514](https://github.com/medici-finance/assay/pull/2514), [#2517](https://github.com/medici-finance/assay/pull/2517) | Recover interrupted scratch deletion and preserve replacement claim holders during reconciliation. |
+| [#2515](https://github.com/medici-finance/assay/pull/2515) | Check actual checkout and temporary-volume capacity before allocation. |
+| [#2512](https://github.com/medici-finance/assay/pull/2512) | Reuse alternate pack readers within a repository opening; preserve the repeated-index-work regression when changing readers. |
+| [#2516](https://github.com/medici-finance/assay/pull/2516) | Preserve coordinated, bounded offline ref/index maintenance; do not describe it as object-pack consolidation or automatic reclamation. |
+
+Map each selected old fixture to its replacement under the existing regression-ledger contract. Keep supported-path fixes shipping while the replacement is developed; do not close an implementation obligation on the strength of this proposal.
+
 ## Handover and rollback are state migrations
 
 **First cutover unit: one repository's complete verifier flow.** The first pilot does not require a credential to distinguish individual work cohorts inside that repository. Pause legacy verifier admission and publication for the repository. Other legacy roles may continue only if their credentials cannot take the retired verifier publication path; a broad worker credential that can still perform that effect is part of the revocation inventory.

@@ -63,6 +63,27 @@ CLI parser or path-layout tests can retire with an explicitly retired command. T
 
 These are additional tests to author with implementation. They are not claimed to run in this documentation task, and existing CI-only test plumbing is outside the architectural refactor scope except where needed to ensure the selected suite actually runs.
 
+## Continuous-work and resource qualification
+
+Add these cases to the existing runtime suite; they are future executable obligations, not results of this documentation change.
+
+| Scenario | Required assertion |
+|---|---|
+| Feedback races attempt completion or enqueue | Durable reevaluation survives every crash boundary; duplicate delivery admits no second writer; later feedback is not cleared with the previous generation. |
+| Superseded candidate receives distinct instructions | Preserve the attributed inputs and disposition; refresh/coalescing does not turn an old message into new authority. |
+| Crash after worktree removal but before branch retirement | Resume the recorded remaining steps; preserve evidence and report partial completion without repeating unsafe effects. |
+| Retirement races allocation or encounters a moved ref | Current owner/generation and expected tip win; the stale removal plan is refused. |
+| Missing ownership rows, detached reviews, ignored evidence or ambiguous squash history | Unknown resources and required unique work are held; missing records never imply deletion permission. Include the merge-then-revert counterexample. |
+| Scratch deletion partially succeeds or checkout/temp volume fills | Ownership remains recoverable; refusal precedes unsafe allocation/removal and records the affected resource without leaking private paths. |
+| Repeated tool calls and a restart after a lost write acknowledgment | Reads can observe fresh state; guards record actions; durable effect reconciliation prevents unsafe replay across invocations. |
+| Critic fails or agent confidently reports completion | Neither event grants authority, acceptance or ready status; required independent evidence still controls. |
+| Concurrent knowledge updates and source retirement | Expected-version conflict is visible; provenance/required history survives; unapproved context cannot change a gate. |
+| Maintenance overlaps foreground work or loses its process | Store ownership, actual Git compatibility and retained objects remain correct; interrupted work is diagnosable and safely resumable. |
+
+Run a sustained allocate → execute → review → retire → recover workload against disposable repositories as well as the single verifier journey. Vary ref count, pack count, retained history, alternate stores and concurrency independently. Pin implementations and workload seeds; separate cold/warm caches and native-Git/go-git readers. Record p50/p95/p99 foreground latency, index/object opens, resource counts, held reasons, maintenance cost and peak temporary space before and after. Growth required by retention is expected; measure whether disposable resources retire and explain retained growth instead of requiring constant total disk use.
+
+Declare workload-specific limits before evaluating the result. Include stopped owners, partial cleanup, failed refresh and low-space controls. A smaller ref count or successful maintenance exit is insufficient evidence of improved latency or correct retention. Future cold-storage support additionally requires successful reconstruction and negative missing/corrupt-segment cases; it is not a prerequisite to the first verifier.
+
 ## Authoring and plan-evolution qualification
 
 Use neutral synthetic cases for the public shared schema/resolver and author skills. Adopters can retain additional source-pinned overlay checks separately. The public suite must be independently runnable. Use existing test runners and record the implementation/query/target versions actually exercised; do not present a manually reasoned diagnostic as a passing automated suite.

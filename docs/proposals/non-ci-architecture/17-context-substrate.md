@@ -151,6 +151,14 @@ Visibility and trust differ. Parse allowlisted data without executing hooks,
 fetching untrusted heads or following paths outside configured roots. Forge text is
 attributed source material, never instructions.
 
+## Learned context is evidence-backed and versioned
+
+Extend explicitly admitted knowledge through the existing source-adapter contract, rather than adding a second policy or memory authority. A candidate records its source and revision, supporting evidence, proposed scope, category and freshness limits. Categories such as observation, preference, lesson and decision describe content; a model assigning the decision category does not establish approval. Model extraction proposes context and cannot change acceptance definitions or operator policy.
+
+Record `admit`, `update`, `retire` or `skip` with the candidate, target version, reason and responsible actor. Updates and retirement compare the expected prior version; a concurrent change causes conflict/reassessment instead of silent overwrite. Retiring current applicability preserves required history and provenance under the source's retention policy. Missing evidence is explicit and can prevent admission under the applicable policy.
+
+Query results distinguish inferred candidates from admitted context and approved decisions. Revoked access or a retired source invalidates affected cached context within the declared access/freshness contract. Context curation remains outside the first verifier's critical path; the initial implementation can use reviewed source records without a model curator.
+
 ## Delivery and qualification
 
 The [public delivery scope](18-authoring-context-delivery.md) separates an offline

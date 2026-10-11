@@ -40,6 +40,21 @@ to building itself. Nor does an unapproved competing proposal freeze approved wo
 | R7: public API and thin cockpit | Same work/evidence/hold semantics for human UI and clients; freshness and recovery visibility | R5–R6; interface work may begin earlier | Actual mounted-route authorization; cross-cell/private isolation including counts; reconnect cannot launch work or imply acceptance |
 | R8: shadow, migration and retirement tooling | Read-only comparisons; bounded recovery/handover rehearsals; legacy publisher inventory; migration notices and adapters with removal conditions | R5–R7 | Old capability refusal, repository-wide handover and rollback in disposable environment; classified old/new differences; required history remains readable |
 
+### Operating obligations within these packages
+
+| Package | Added obligation |
+|---|---|
+| R1 | Resource/retirement identities, reevaluation generations, guard events and distinct execution/acceptance/retirement states; contract fixtures for the new boundaries. |
+| R2 | Durable pending feedback and retirement progress, transaction/outbox handoff and safe reconstruction of unknown resources. |
+| R3 | Runner guard events/budgets, resource capacity and custody; preserve the actual isolation and network-control guarantees of the chosen profile. |
+| R4–R5 | Keep duplicate-effect protection at the role-bound effect boundary; integrate resumable retirement, reevaluation and the sustained-work qualification into the complete flow. |
+| R6 | Translate scoped refreshed feedback into durable reevaluation; preserve distinct source records and incomplete coverage. |
+| R7 | Show execution, acceptance, pending feedback, resource holds and maintenance health independently through the same authorized API. |
+| R8 | Preserve and map the recent hygiene regressions in the migration inventory; qualify one maintenance owner per common Git store, bounded tasks and release/pin migration. |
+
+Basic safe resource release, capacity and recovery apply from the first runner; R8 is the migration/retirement gate, not permission to postpone those safeguards. Object-pack scheduling is a separately qualified extension of the same cell-operation owner, required before activating a profile that relies on it. Learned-context curation follows the context-adapter delivery lane and does not block R1–R8. No new scheduler, workflow engine or Git host is selected by these additions.
+
+
 The runtime integration path is R1 → R2/R3 → R4 → R5 → R7 → R8, with R6 feeding
 R7. This is a dependency sequence, not an elapsed-time estimate. Later feature
 work does not have to wait for every optional graph or UI capability.
