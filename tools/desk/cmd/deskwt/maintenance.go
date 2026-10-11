@@ -75,7 +75,7 @@ func maintenanceCheckHooks(ctx context.Context, dir string) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.Open(hookDir)
+	f, err := openMaintenanceDirectory(hookDir)
 	if err != nil {
 		return deskkit.Unverifiable("read maintenance hook directory", err)
 	}

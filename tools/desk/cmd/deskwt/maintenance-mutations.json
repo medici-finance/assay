@@ -96,6 +96,12 @@
       "file": "cmd/deskwt/maintenance.go",
       "old": "if !r.Failed() && r.Stderr == \"\" && r.Stdout != \"\" {",
       "new": "if strings.HasPrefix(r.Stdout, \"disabled\\t\") { return nil }; if !r.Failed() && r.Stderr == \"\" && r.Stdout != \"\" {"
+    },
+    {
+      "name": "directory inspection must not perform an untyped blocking open",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "openMaintenanceDirectory(hookDir)",
+      "new": "os.Open(hookDir)"
     }
   ]
 }

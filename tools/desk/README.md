@@ -2585,6 +2585,10 @@ effective configuration. Any listed entry holds maintenance; hooks and their con
 are preserved. Unrelated events do not hold it. Disabled entries are conservatively held
 because Git's display can be ambiguous with configured names. Unsupported inventory,
 missing or unreadable hook directories, broken hook paths, and unexpected output fail closed.
+Directory inspection requires a directory during the open operation; special-file paths
+fail closed. On Windows, only drive-rooted paths are supported; other namespaces fail
+closed. This removes the demonstrated blocking-open case, but native command deadlines
+do not impose a hard bound on arbitrary filesystem latency.
 The common-directory lock coordinates maintenance callers, not external configuration
 editors: configuration must remain stable during a run. Rechecks narrow the race window
 but do not provide an atomic security boundary against concurrent configuration changes.
