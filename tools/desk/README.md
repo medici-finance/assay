@@ -2543,6 +2543,64 @@ it with `--dry-run` first: that prints the whole plan — path, session (or `uno
 `REAP`/`KEEP`, reason — for every registered worktree, including the ones the identity
 refusals put out of reach, and changes nothing at all.
 
+### Offline repository indexes — `deskwt maintain`
+
+```bash
+deskwt maintain --repo .          # JSON inventory + read-only plan
+deskwt maintain --repo . --apply  # bounded offline index maintenance
+```
+
+The plan reports ref namespace counts, registered/locked worktree counts, native
+`count-objects -v` output (local object/pack counts and any reported alternate
+paths, not object counts for those stores), and configured reflog retention
+overrides. An empty override string means Git's defaults apply. Apply emits before/after
+inventories and runs exactly two native builtins: `pack-refs --all`, then a reachable,
+split commit-graph write with no new Bloom filters. Ref values, working files and
+recovery history are preserved. The plan writes nothing in the repository; the standard
+desk audit record still records the invocation.
+
+All linked worktrees and roles coordinate through one kernel advisory lock in the
+resolved common Git directory, independent of their `HOME`. Attempts, including failed
+or interrupted attempts, are coalesced for six hours by default (`--min-interval`, minimum
+one hour). A held or recent attempt reports `held` or `recent` without repeating inventory
+or work. Each invocation has a 30-second total command budget (`--timeout`, one second to
+five minutes). The lock is kernel-released on exit; its file must never be unlinked during
+operation. Unreadable/corrupt timestamps fail closed and require operator inspection.
+A killed native Git write may leave its own lockfile; that is reported as a failure on the
+next eligible attempt, never automatically removed.
+
+This is an explicit command for the repository supervisor to invoke; it does not install
+a scheduler or add work to every agent boot. It disables lazy fetching and all network
+protocols for its Git children, ignores ambient `GIT_*` redirects, and never invokes
+configured maintenance strategies, prefetch, full GC, reflog expiry or object deletion.
+Object reclamation is explicitly **held**: a source repository cannot enumerate every
+external clone borrowing its objects. Even an empty alternates list does not prove there
+are no borrowers. Loose-object/incremental-pack reclamation and a managed borrower registry
+remain follow-up work. Branch/worktree retirement stays in `deskwt prune`, claims in their
+claim protocol, and remote-tracking refresh in the sanctioned transport.
+
+Maintenance requires native `git hook list` support. Before the attempt stamp and again
+before each index task, it inventories the relevant ref-transaction event using Git's
+effective configuration. Any listed entry holds maintenance; hooks and their configuration
+are preserved. Unrelated events do not hold it. Disabled entries are conservatively held
+because Git's display can be ambiguous with configured names. Unsupported inventory,
+missing or unreadable hook directories, broken hook paths, and unexpected output fail closed.
+Directory inspection requires a directory during the open operation; special-file paths
+fail closed. On Windows, only drive-rooted paths are supported; other namespaces fail
+closed. This removes the demonstrated blocking-open case, but native command deadlines
+do not impose a hard bound on arbitrary filesystem latency.
+The common-directory lock coordinates maintenance callers, not external configuration
+editors: configuration must remain stable during a run. Rechecks narrow the race window
+but do not provide an atomic security boundary against concurrent configuration changes.
+
+The targeted regression audit is reproducible with
+`go -C tools/desk run ./cmd/muhar -j 2 -spec cmd/deskwt/maintenance-mutations.json`.
+It requires local loopback for the HTTP transport-denial fixture and symlink support for
+the no-follow fixture. A green baseline and a caught read-only-plan control gate the committed
+mutations: locking, cadence, environment isolation, unreadable inventory and command warnings, valid stash refs, symlink refusal,
+command budget, transport denial, and recovery/borrowed-object preservation. Read the
+per-mutation verdicts; a healthy harness exit alone does not mean every mutation was caught.
+
 ### The prune loop — one command, two supervisors
 
 The **periodic** prune mechanism is the portable ticking mode, identical on the mac and in
