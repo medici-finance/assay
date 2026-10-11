@@ -2437,14 +2437,24 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      are already gone (pure bookkeeping, no working tree touched). Unconditional within the
      worktree arms: no flag turns it on or off there. (`--branches-only` runs the branch GC
      alone, skipping every worktree arm including this one.)
-  2. **Step A1 (always safe):** the **stale-registration sweep** — clears admin entries
+  2. **Step A1 (always safe):** the **stale-registration sweep** — handles admin entries
      whose worktree directory still EXISTS but whose `.git` gitdir file is GONE (a partial
      delete). `git worktree remove` refuses the shape ("validation failed … does not
      exist") and a lock makes `git worktree prune` keep it forever, so without this pass
      the registration is immortal: it still counts as a branch holder, and every content
-     gate in Step B fails closed on it sweep after sweep. Only the REGISTRATION is
-     cleared (unlocked first if locked — the lock's object, a removable working tree, no
-     longer exists); the directory is left on disk, untouched.
+     gate in Step B fails closed on it sweep after sweep. Clearing deletes the admin dir
+     (`.git/worktrees/<id>/` — HEAD, index, reflog), so it happens only behind three
+     gates: the **scope gates** every arm enforces (never the shared checkout, never the
+     current worktree, never outside the sanctioned prefixes); a **content proof** read
+     from the admin dir's HEAD — branch-pointing (the branch ref holds the commits) or a
+     detached commit already on `refs/remotes/origin/main`, else HELD (clearing would
+     strand possibly-unpushed commits), and a content-held husk is also excluded from the
+     lock-reclaim pass so the post-reclaim prune cannot drop it; and the **lock rule** —
+     the default sweep NEVER retires a lock, so a locked husk clears only when
+     `--reclaim-stale-locks` has proven its lock stale this same sweep (git's own
+     in-flight `"initializing"` add lock is never retired by any arm). A husk whose clear
+     fails after its lock was reclaimed is re-locked with its original reason. The
+     directory is always left on disk, untouched.
   3. **Step A2 (opt-in, `--reclaim-stale-locks`):** the lock lifecycle — see below.
   4. **Step B (safe gate):** walk the registered worktrees under the sanctioned prefixes and
      remove — via the exact same safe primitive as `remove` — ONLY those it can prove safe:
@@ -2454,10 +2464,13 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      **active-worker guard** — an UNMERGED branch (an open PR still in flight) is never an
      ancestor of `origin/main`, so it is LEFT untouched. A worktree whose HEAD **is** the
      `origin/main` tip (zero landed commits — the fresh-worktree case, and the shape a
-     reclaim-by-detach leaves behind) must additionally prove it holds **nothing** the
-     mainline does not: the untracked-INCLUSIVE status gate runs for exactly these, so a
-     pristine detached-at-main tree drains while one holding uncommitted or untracked work
-     is LEFT. Dirty / unpushed / unmerged / the
+     reclaim-by-detach leaves behind) must additionally pass three at-tip gates: **old
+     enough** to be no session's just-created workspace (the fresh-worktree safety window —
+     `deskwt add` never locks what it creates, so a new pristine tree is otherwise
+     indistinguishable from residue), **nothing uncommitted or untracked** (the
+     untracked-INCLUSIVE status), and **no git-ignored payload** (ignored files exist in no
+     commit). An at-tip tree passing all three drains; any other is LEFT with the reason
+     named. Dirty / unpushed / unmerged / the
      current worktree / out-of-prefix are all LEFT and reported as skipped with a reason. No
      `--force`. `--repo <path>` targets a repo without a session cwd (used by the multi-repo
      sweep script). Exit `0` ok/noop · `3` disabled · `5` refused · `6` unverifiable.

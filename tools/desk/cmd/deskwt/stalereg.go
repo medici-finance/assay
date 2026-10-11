@@ -1,7 +1,7 @@
 package main
 
-// stalereg.go — prune's STALE-REGISTRATION sweep: registrations whose worktree directory
-// EXISTS but whose .git gitdir file is GONE.
+// stalereg.go — prune's STALE-REGISTRATION sweep (Step A1): registrations whose worktree
+// directory EXISTS but whose .git gitdir file is GONE.
 //
 // The shape is half-dead residue: the directory survived while the git link inside it did
 // not (a partial delete, a cleaner that took the file but not the tree). git can do
@@ -9,10 +9,8 @@ package main
 //
 //   - `git worktree remove` refuses — "validation failed: '<dir>/.git' does not exist" —
 //     even with --force, because there is no tree state left to validate;
-//   - `git worktree prune` drops the unlocked variant (the entry reads "prunable: gitdir
-//     file points to non-existent location") but keeps the LOCKED one — a lock vetoes
-//     pruning however dead the tree behind it is — so a locked stale registration
-//     survives every sweep forever;
+//   - `git worktree prune` keeps it while it is LOCKED (a lock vetoes pruning however
+//     dead the tree is), so the locked variant survives every sweep forever;
 //   - every content gate in the candidate loop fails CLOSED on it (a worktree with no
 //     .git link cannot be opened), so Step B would report it "unverifiable" and hold it
 //     every sweep, forever.
@@ -21,140 +19,286 @@ package main
 // `git worktree list` — residue that wedges exactly the things this sweep exists to keep
 // moving.
 //
-// What this pass clears is the REGISTRATION, never the tree. A directory with no .git
-// link is git-inert — no git command runs in it, its HEAD is unreadable through it — so
-// the admin entry can never again map to a functioning worktree. Clearing the entry frees
-// the branch it held and takes it out of every later listing; the directory itself is
-// LEFT ON DISK, UNTOUCHED, for the operator or the OS's own temp reaper.
+// THE PASS runs in two phases, and clearing one of these registrations is gated harder
+// than the bookkeeping Step A it follows, because clearing deletes the admin dir
+// (.git/worktrees/<id>/ — HEAD, index, reflog), which is the last git record the husk
+// has:
 //
-// The lock question, stated plainly: this pass clears a LOCKED stale registration too,
-// unlocking it first. That is not the lock gate weakening — the lock gate protects a
-// removable WORKING TREE, and there is no working tree here for git to remove or for a
-// session to work in; the lock's remaining content is a veto on bookkeeping, which is
-// the exact mechanism that made this residue immortal. The candidate loop's lock gate is
-// unchanged and still holds every locked worktree whose tree is intact.
+//   - SCOPE (phase 1, judgeStaleRegistrations): the same predicate the lock-reclaim pass
+//     enforces — never the shared checkout, never the current worktree, never anything
+//     outside the sanctioned prefixes. A husk outside the sweep's scope is not judged
+//     and not touched.
+//   - CONTENT (phase 1): the admin dir's HEAD is the one git record that survives the
+//     loss of the worktree's .git file, and clearing the registration deletes it. A
+//     branch-pointing HEAD loses nothing (the branch ref holds the commits). A DETACHED
+//     HEAD must be proven reachable from refs/remotes/origin/main via the sweep's
+//     ancestor set — otherwise clearing would strand possibly-unpushed commits, and the
+//     husk is HELD with that reason. Anything unreadable or unclassifiable is held as
+//     could-not-check. A content-held husk is also excluded from the lock-reclaim pass:
+//     an unlock there would feed it to the post-reclaim bookkeeping prune, which drops
+//     what this gate just held.
+//   - LOCK (phase 2, clearStaleRegistrations): the default sweep NEVER retires a lock.
+//     A locked husk is cleared only when --reclaim-stale-locks has already retired its
+//     lock this sweep — judgeLock's proven-staleness evidence, the one place unlocks may
+//     happen — and git's own in-flight add lock (reason "initializing") is never judged
+//     stale anywhere (judgeLock itself exempts it).
+//
+// What a clear removes is the REGISTRATION — never the tree: a directory with no .git
+// link is git-inert, so the admin entry can never again map to a functioning worktree.
+// The directory itself is LEFT ON DISK, UNTOUCHED, for the operator or the OS's own temp
+// reaper. (Note what this pass does NOT govern: git's own Step A prune drops an UNLOCKED
+// husk on sight, as it always has — that is git's bookkeeping semantics, unchanged here.)
 //
 // Fail-closed, as everywhere in this tool: any stat that errors for a reason other than
-// "not there" leaves the entry alone (the candidate loop will hold it as unverifiable);
-// an unlock or the deregistration prune failing leaves the entry registered and named in
-// a warning; and an entry still registered after the prune is NOT counted as cleared.
+// "not there" leaves the entry alone; a prune failure or a still-registered verification
+// is a named warning and never counts as cleared; and an entry this pass attempted after
+// the reclaim pass retired its lock is RE-LOCKED with its original reason if the clear
+// fails, so a failed sweep never leaves a tree less protected than it found it.
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// staleRegEntry is one registration this pass cleared (or, under --dry-run, would clear).
-// wasLocked records whether the clearing had to retire a lock first, so the report line
-// can say so — an unlock that hides inside a count is the kind of surprise this tool's
-// audit output exists to prevent.
+// staleRegEntry is one stale registration (worktree dir present, .git file gone) that the
+// sweep judged. wasLocked records whether it was locked when the sweep read lock state,
+// and lockReason carries that lock's reason, so the held report can name git's in-flight
+// add lock and a failed clear can restore the exact reason it found.
 type staleRegEntry struct {
-	path      string
-	wasLocked bool
+	path       string
+	wasLocked  bool
+	lockReason string
 }
 
-// clearStaleRegistrations finds the stale-registration shape among the sweep's already
-// enumerated roots and clears it: unlock first where locked, then ONE repo-wide
-// `git worktree prune`, then a POSITIVE verification listing — an entry still registered
-// afterwards is named in a warning and not counted. Nothing here aborts a sweep: every
-// failure is a named warning and the entry left registered (fail closed), so the
-// signature carries no error.
-//
-// roots is the post-Step-A registration list and locked the sweep's single lock-state
-// read, so the pass costs no extra git invocation until it has something to clear. Under
-// --dry-run it reports and touches nothing: no unlock, no prune.
-func clearStaleRegistrations(guard *pathGuard, dir string, roots []string, locked map[string]string, dryRun bool) (cleared []staleRegEntry, warns []string) {
-	var stale []staleRegEntry
+// staleRegVerdict is phase 1's judgement for one in-scope stale registration:
+// holdReason == "" means the CONTENT gate passes (clearing the registration can strand
+// no commit); anything else is the hold reason the sweep reports.
+type staleRegVerdict struct {
+	entry staleRegEntry
+	// holdReason is the CONTENT hold only. The lock question is phase 2's, because it
+	// can only be answered after the reclaim pass has run.
+	holdReason string
+}
+
+// judgeStaleRegistrations is phase 1 — PURE (no mutation, no clock): find the stale
+// registrations among the sweep's enumerated roots, apply the scope gates every sweep
+// arm enforces, and judge each survivor's CONTENT against the one record that survives
+// it — the admin dir's HEAD.
+func judgeStaleRegistrations(guard *pathGuard, sc *sweepCtx, cwd string, roots []string, locked map[string]string) []staleRegVerdict {
+	var out []staleRegVerdict
 	for _, rt := range roots {
-		// The shared checkout is identity-refused here as everywhere: its .git is a
-		// directory, and its registration is the main checkout, not bookkeeping.
-		if rt == guard.sharedCheckout {
+		// The scope gates, identical to the lock-reclaim pass's: the shared checkout by
+		// identity, the current worktree, and anything outside the sanctioned prefixes
+		// are none of this pass's business.
+		if rt == guard.sharedCheckout || rt == cwd || !guard.allowed(rt) {
 			continue
 		}
 		if _, serr := os.Stat(rt); serr != nil {
-			// Directory gone: Step A's class (dangling admin entry), already handled
-			// there for the unlocked shape and by --reclaim-stale-locks for the locked
-			// one. Any OTHER stat failure fails closed into the candidate loop, which
-			// will hold the entry as unverifiable.
+			// Directory gone: Step A's class (dangling admin entry). Any OTHER stat
+			// failure fails closed into the candidate loop, which holds the entry as
+			// unverifiable.
 			continue
 		}
 		_, gerr := os.Stat(filepath.Join(rt, ".git"))
 		switch {
 		case gerr == nil:
-			// A live link (file or directory): a functioning worktree, not this pass's
-			// shape.
-			continue
+			continue // a live link (file or directory): a functioning worktree
 		case os.IsNotExist(gerr):
-			_, isLocked := locked[rt]
-			stale = append(stale, staleRegEntry{path: rt, wasLocked: isLocked})
+			// the stale shape — judge it below
 		default:
-			// Unreadable in some other way: fail closed, leave it to the candidate
-			// loop's unverifiable hold.
-			continue
+			continue // unreadable in some other way: fail closed, the loop holds it
+		}
+
+		reason, isLocked := locked[rt]
+		v := staleRegVerdict{entry: staleRegEntry{path: rt, wasLocked: isLocked, lockReason: reason}}
+
+		// The CONTENT gate: the admin dir's HEAD survives the lost .git file and is
+		// deleted by the clearing, so it decides whether clearing can strand commits.
+		admin, aerr := guard.adminDirFor(rt)
+		if aerr != nil {
+			v.holdReason = "could-not-check: " + errText(aerr)
+		} else {
+			v.holdReason = staleRegContentHold(sc, admin)
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// staleRegContentHold reads the husk's admin HEAD and returns "" when clearing the
+// registration can strand no commit, else the hold reason.
+//
+// A branch-pointing HEAD ("ref: refs/heads/...") loses nothing: the branch ref — in the
+// shared git dir, not the admin dir — holds the commits, and the local-branch GC only
+// ever deletes a branch proven on the mainline. A DETACHED HEAD is the admin dir's only
+// ref to its commit, so clearing is allowed only when that commit is in the sweep's
+// mainline ancestor set — already on the remote, so nothing is lost. Anything else
+// (unreadable, unparseable, an ancestor set the sweep could not build) is a
+// could-not-check hold.
+func staleRegContentHold(sc *sweepCtx, admin string) string {
+	raw, rerr := os.ReadFile(filepath.Join(admin, "HEAD"))
+	if rerr != nil {
+		return "could-not-check: cannot read the admin entry's HEAD: " + errText(rerr)
+	}
+	head := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(head, "ref: refs/heads/") {
+		return "" // branch-pointing: the branch ref holds the commits
+	}
+	if !isFullSHA(head) {
+		return "could-not-check: the admin entry's HEAD is neither a branch ref nor a commit id"
+	}
+	if sc.mainAncestors == nil {
+		return "could-not-check: detached HEAD, and the sweep could not build the refs/remotes/origin/main ancestor set"
+	}
+	if _, ok := sc.mainAncestors[head]; !ok {
+		return "detached HEAD " + head[:12] + " is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits"
+	}
+	return ""
+}
+
+// isFullSHA reports whether s is a full lowercase-or-uppercase hex commit id.
+func isFullSHA(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
 		}
 	}
-	if len(stale) == 0 || dryRun {
-		return stale, nil
-	}
+	return true
+}
 
-	// Unlock the locked ones first — `git worktree prune` will not drop a locked entry,
-	// however dead the tree behind it. An unlock failure excludes the entry from the
-	// prune set and says so; the entry stays registered (fail closed).
-	prunable := make([]staleRegEntry, 0, len(stale))
-	for _, e := range stale {
+// clearStaleRegistrations is phase 2 — the act half. It takes phase 1's verdicts and the
+// set of locks the reclaim pass retired THIS sweep (reclaimed: path → original lock
+// reason; under --dry-run, the locks it WOULD retire), and clears every verdict that is
+// content-clearable AND not locked behind a lock this sweep may not touch.
+//
+// The lock rule is absolute here: this pass contains no unlock call. A locked husk whose
+// lock the reclaim pass did not (or would not) retire is HELD — the default sweep never
+// retires a lock, and git's in-flight add lock ("initializing") is never retired by any
+// arm (judgeLock exempts it, so the reclaim pass never reaches it either).
+//
+// The clear itself is one repo-wide `git worktree prune` plus a POSITIVE verification
+// listing. If the clear fails for an entry the reclaim pass unlocked this sweep, the
+// entry is RE-LOCKED with its original reason: a failed sweep never leaves a husk less
+// protected than it found it. Under --dry-run it reports and touches nothing.
+func clearStaleRegistrations(guard *pathGuard, dir string, verdicts []staleRegVerdict, reclaimed map[string]string, dryRun bool) (cleared []staleRegEntry, held []skipEntry, warns []string) {
+	var toClear []staleRegEntry
+	for _, v := range verdicts {
+		e := v.entry
+		if v.holdReason != "" {
+			held = append(held, skipEntry{e.path, "stale registration (its .git file is gone): " + v.holdReason})
+			continue
+		}
 		if e.wasLocked {
-			if _, uerr := runGit(dir, "worktree", "unlock", e.path); uerr != nil {
-				warns = append(warns, "stale registration "+e.path+" (its .git file is gone) could not be unlocked for clearing: "+errText(uerr))
+			if _, unlocked := reclaimed[e.path]; !unlocked {
+				why := "locked — the default sweep never retires a lock; --reclaim-stale-locks clears this registration once the lock is PROVEN stale"
+				if strings.TrimSpace(e.lockReason) == gitInitLockReason {
+					why = "locked with git's in-flight `worktree add` lock (\"initializing\") — never retired by any sweep arm"
+				}
+				held = append(held, skipEntry{e.path, "stale registration (its .git file is gone): " + why})
 				continue
 			}
 		}
-		prunable = append(prunable, e)
+		toClear = append(toClear, e)
 	}
-	if len(prunable) == 0 {
-		return nil, warns
+	if len(toClear) == 0 {
+		return nil, held, nil
 	}
+	if dryRun {
+		return toClear, held, nil
+	}
+
 	if _, perr := runGit(dir, "worktree", "prune"); perr != nil {
 		warns = append(warns, "git worktree prune failed while clearing stale registrations: "+errText(perr))
-		return nil, warns
+		warns = append(warns, relockReclaimedHusks(guard, dir, toClear, reclaimed)...)
+		return nil, held, warns
 	}
 
 	// POSITIVE verification, batched: one listing for the whole pass, and only the paths
 	// proven GONE from the registration are counted as cleared.
 	set, lerr := worktreePathsFn(guard, dir)
 	if lerr != nil {
-		for _, e := range prunable {
+		for _, e := range toClear {
 			warns = append(warns, "stale registration "+e.path+": deregistration unverifiable after prune: "+errText(lerr))
 		}
-		return nil, warns
+		warns = append(warns, relockReclaimedHusks(guard, dir, toClear, reclaimed)...)
+		return nil, held, warns
 	}
-	for _, e := range prunable {
+	var failed []staleRegEntry
+	for _, e := range toClear {
 		if set[e.path] {
 			warns = append(warns, "stale registration "+e.path+" is still registered after prune (not counted as cleared)")
+			failed = append(failed, e)
 			continue
 		}
 		cleared = append(cleared, e)
 	}
-	return cleared, warns
+	if len(failed) > 0 {
+		warns = append(warns, relockReclaimedHusks(guard, dir, failed, reclaimed)...)
+	}
+	return cleared, held, warns
 }
 
-// staleRegSet renders the cleared list as a set, so the candidate loop can skip entries
-// this pass already accounted for (they are gone from the registration in a live sweep,
-// and spoken for in a dry run) instead of reporting each a second time as an
-// unverifiable hold.
-func staleRegSet(entries []staleRegEntry) map[string]bool {
-	if len(entries) == 0 {
+// relockReclaimedHusks restores the original lock on each entry whose lock the reclaim
+// pass retired this sweep but whose clearing FAILED — the N2 guarantee that a failed
+// sweep leaves no husk less protected than it found it. Entries the sweep found unlocked
+// have nothing to restore. Each re-lock is reported, and a re-lock failure doubly so.
+func relockReclaimedHusks(guard *pathGuard, dir string, entries []staleRegEntry, reclaimed map[string]string) (warns []string) {
+	for _, e := range entries {
+		reason, wasReclaimed := reclaimed[e.path]
+		if !wasReclaimed {
+			continue
+		}
+		if _, lerr := runGit(dir, "worktree", "lock", "--reason", reason, e.path); lerr != nil {
+			warns = append(warns, "stale registration "+e.path+" survived the clearing AND its reclaimed lock could not be restored: "+errText(lerr))
+			continue
+		}
+		warns = append(warns, "stale registration "+e.path+" survived the clearing; its lock was restored with the original reason")
+	}
+	return warns
+}
+
+// staleRegHeldLocked is phase 1's output projected onto the reclaim pass's input: the
+// LOCKED husks the content gate holds. The reclaim pass must not unlock them — an unlock
+// there would feed them to the post-reclaim bookkeeping prune, which drops what the
+// content gate just held.
+func staleRegHeldLocked(verdicts []staleRegVerdict) map[string]bool {
+	var out map[string]bool
+	for _, v := range verdicts {
+		if v.entry.wasLocked && v.holdReason != "" {
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[v.entry.path] = true
+		}
+	}
+	return out
+}
+
+// staleRegSet renders the verdict list as a set, so the candidate loop can skip entries
+// this pass already accounted for — cleared AND held alike — instead of reporting each a
+// second time as an unverifiable hold. (Their trees cannot be opened, so every gate
+// there would only fail closed into a misleading reason.)
+func staleRegSet(verdicts []staleRegVerdict) map[string]bool {
+	if len(verdicts) == 0 {
 		return nil
 	}
-	set := make(map[string]bool, len(entries))
-	for _, e := range entries {
-		set[e.path] = true
+	set := make(map[string]bool, len(verdicts))
+	for _, v := range verdicts {
+		set[v.entry.path] = true
 	}
 	return set
 }
 
-// staleRegLine is the per-entry report row, in both modes: a dry run says what it WOULD
-// clear, a live sweep what it DID.
+// staleRegLine is the per-entry report row for a CLEAR, in both modes: a dry run says
+// what it WOULD clear, a live sweep what it DID.
 func staleRegLine(e staleRegEntry, dryRun bool) string {
 	verb := "cleared stale registration "
 	if dryRun {
@@ -163,9 +307,9 @@ func staleRegLine(e staleRegEntry, dryRun bool) string {
 	line := verb + e.path + " — worktree directory exists but its .git file is gone (directory left on disk, untouched)"
 	if e.wasLocked {
 		if dryRun {
-			line += "; locked — the lock would be retired with the registration"
+			line += "; its lock would be retired by the reclaim pass first"
 		} else {
-			line += "; its lock was retired with the registration"
+			line += "; its lock was retired by the reclaim pass first"
 		}
 	}
 	return line
@@ -179,4 +323,50 @@ func staleRegSegment(n int) string {
 		return ""
 	}
 	return fmt.Sprintf(", stale-registrations-cleared %d", n)
+}
+
+// adminDirFor returns the worktree's admin directory under the shared git dir, matched by
+// the gitdir pointer rather than by name (git deduplicates names), so it works even when
+// the worktree's own .git file is GONE — the whole point of the stale-registration pass.
+// The comparison resolves the pointer the same way lockFileMtimes does, so keys compare
+// equal to the resolved roots the caller iterates.
+func (g *pathGuard) adminDirFor(rt string) (string, error) {
+	if g.commonDir == "" {
+		return "", deskkit.Unverifiable("the shared git-common-dir is not resolved", nil)
+	}
+	adminRoot := filepath.Join(g.commonDir, "worktrees")
+	entries, err := os.ReadDir(adminRoot)
+	if err != nil {
+		return "", deskkit.Unverifiable("cannot read the worktree admin registry", err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		admin := filepath.Join(adminRoot, e.Name())
+		gd, rerr := os.ReadFile(filepath.Join(admin, "gitdir"))
+		if rerr != nil {
+			continue
+		}
+		dotGit := strings.TrimSpace(string(gd))
+		if dotGit != "" && resolvePath(filepath.Dir(dotGit)) == rt {
+			return admin, nil
+		}
+	}
+	return "", deskkit.Unverifiable("no admin entry points at "+rt, nil)
+}
+
+// adminEntryAge returns how long ago the worktree's admin entry was last touched — the
+// only "how fresh is this worktree" signal available without opening the tree (which the
+// at-tip gate's callers sometimes cannot do, and a stale registration never can).
+func (g *pathGuard) adminEntryAge(rt string, now time.Time) (time.Duration, error) {
+	admin, err := g.adminDirFor(rt)
+	if err != nil {
+		return 0, err
+	}
+	fi, serr := os.Stat(admin)
+	if serr != nil {
+		return 0, deskkit.Unverifiable("cannot stat the worktree's admin entry", serr)
+	}
+	return now.Sub(fi.ModTime()), nil
 }
