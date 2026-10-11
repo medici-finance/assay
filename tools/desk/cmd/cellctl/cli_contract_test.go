@@ -647,7 +647,6 @@ func dieRun(fn func()) (code int) {
 // either way. A parse failure causes no effect at all.
 func TestCLIAdmissionBoundary(t *testing.T) {
 	w := newCLIWorld(t, "")
-	w.installPolicy(t)
 	envFile := filepath.Join(w.cellDir, "cell.env")
 
 	type refusal struct {
@@ -670,7 +669,16 @@ func TestCLIAdmissionBoundary(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			w.writeHouseEnv(t, "")
 			if c.pol {
-				w.installPolicy(t)
+				// Keep this fixture inside the module: parallel mutation workers
+				// copy that boundary only, so an external example would skip the test.
+				raw, err := os.ReadFile("testdata/cli-admission-policy.json")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(w.policy, raw, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				w.writeHouseEnv(t, "CELL_MODEL_POLICY=model-policy.json\n")
 			}
 			before := string(readFileOrEmpty(envFile))
 			args := append([]string{"desk", "example", c.role}, c.args...)
