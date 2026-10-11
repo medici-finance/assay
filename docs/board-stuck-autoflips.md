@@ -76,6 +76,10 @@ statusgen --root . --auto-flip-model --dry-run
   A brief without `files:` uses the older rule: the newest approved PR carrying
   its `Brief:` trailer, cross-checked against the brief file's history.
 
+`statusgen reconcile` derives a gate:model brief's `done` from the same
+resolver, with the same `files:` rule, so the derived board and the flip agree
+on which PR delivered a brief.
+
 ## In CI
 
 `statusgen --auto-flip-model --check` exits **2** when any candidate is REFUSED

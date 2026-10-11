@@ -78,7 +78,7 @@ func decideWalkRev(t *testing.T, src *fakeFlipSource, rev reviewerIdentity) mode
 	t.Helper()
 	root, streams := loadAFStreams(t)
 	s := streams[0]
-	return decideModelFlip(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", src, rev)
+	return decideModelFlip(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", briefFilesOf(&BriefFile{}), src, rev)
 }
 
 // TestAutoFlipSkipsEvidenceLanding — shape A, delivery in the file history. The
@@ -753,14 +753,14 @@ func TestAutoflipIgnoresEvidenceOnlyPR(t *testing.T) {
 	}
 }
 
-// decideWalkFiles runs decideModelFlipFiles for af/50 with a `files:`
-// declaration.
+// decideWalkFiles runs decideModelFlip for af/50 with a `files:`
+// declaration (nil files: none declared).
 func decideWalkFiles(t *testing.T, src *fakeFlipSource, files ...string) modelFlipResult {
 	t.Helper()
 	root, streams := loadAFStreams(t)
 	s := streams[0]
-	bf := briefFiles{entries: files, declared: files != nil}
-	return decideModelFlipFiles(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", bf, src, ghReviewer(afReviewer))
+	bf := briefFilesOf(&BriefFile{DeclaredPaths: files, DeclaredPathsFound: files != nil})
+	return decideModelFlip(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", bf, src, ghReviewer(afReviewer))
 }
 
 // TestAutoflipDeliveringByFilesOverlap — verify-reset/07 Task 2. Of the PRs
@@ -828,6 +828,17 @@ func TestAutoflipDeliveringByFilesOverlap(t *testing.T) {
 		src.trailerHits = map[string][]int{"af/50": {152, 151}}
 		if got := decideWalkFiles(t, src); got.Outcome != flipDone || got.PR != 152 {
 			t.Fatalf("want flipDone crediting the newest #152; got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
+		}
+	})
+	// regression: F-fold-bypasses-files-overlap
+	t.Run("a files: declaration never read is COULD-NOT-CHECK", func(t *testing.T) {
+		src := walkSource(nil, states(mergedApproved(afHeadSHA, 4)), shapes)
+		src.trailerHits = map[string][]int{"af/50": {152, 151}}
+		root, streams := loadAFStreams(t)
+		s := streams[0]
+		got := decideModelFlip(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", briefFiles{}, src, ghReviewer(afReviewer))
+		if got.Outcome != flipUnchecked || !strings.Contains(got.Reason, "declaration was not read") {
+			t.Fatalf("want COULD-NOT-CHECK naming the unread declaration (the same inputs flip #152 when read); got %v PR #%d (%s)", got.Outcome, got.PR, got.Reason)
 		}
 	})
 	t.Run("autoFlipModel reads the brief's files: line", func(t *testing.T) {

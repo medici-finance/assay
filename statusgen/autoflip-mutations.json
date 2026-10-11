@@ -190,8 +190,32 @@
     {
       "name": "autoFlipModel does not pass the brief's files:",
       "file": "autoflip.go",
-      "old": "briefFiles{entries: bf.DeclaredPaths, declared: bf.DeclaredPathsFound}",
-      "new": "briefFiles{}"
+      "old": "briefFilesOf(bf), src, rev)",
+      "new": "briefFilesOf(&BriefFile{}), src, rev)"
+    },
+    {
+      "name": "PLANTED second caller with a never-read files: declaration (the F-fold-bypasses-files-overlap class: autoFlipModel passes the zero value)",
+      "file": "autoflip.go",
+      "old": "briefFilesOf(bf), src, rev)",
+      "new": "briefFiles{}, src, rev)"
+    },
+    {
+      "name": "a never-read files: declaration falls back to the trailer-only rule (the read guard dropped)",
+      "file": "autoflip.go",
+      "old": "if !bfiles.read {",
+      "new": "if false {"
+    },
+    {
+      "name": "briefFilesOf does not mark the declaration read",
+      "file": "deliveryfiles.go",
+      "old": "declared: bf.DeclaredPathsFound, read: true}",
+      "new": "declared: bf.DeclaredPathsFound}"
+    },
+    {
+      "name": "forRepo drops the read mark of a declared files: list",
+      "file": "deliveryfiles.go",
+      "old": "out := briefFiles{declared: true, read: b.read}",
+      "new": "out := briefFiles{declared: true}"
     },
     {
       "name": "--check does not fail on a stuck candidate (the hidden green run)",

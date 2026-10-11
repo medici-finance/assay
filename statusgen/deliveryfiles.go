@@ -13,6 +13,11 @@ package main
 // is COULD-NOT-CHECK, "no PR touches the brief's files", and nothing flips.
 //
 // A brief with no `files:` declaration keeps the trailer-and-history rule.
+//
+// Every caller of the resolver passes the declaration, built by briefFilesOf
+// from the parsed brief. The zero value is "never read", not "none declared":
+// decideModelFlip answers COULD-NOT-CHECK for it, so a caller that forgets the
+// declaration cannot fall back to the trailer-only rule.
 
 import (
 	"fmt"
@@ -22,13 +27,26 @@ import (
 )
 
 // briefFiles is a brief's `files:` declaration as the delivering-PR resolvers
-// read it. The zero value (declared false) imposes no overlap rule.
+// read it. Build it with briefFilesOf; the zero value has read false and the
+// resolver refuses it.
 type briefFiles struct {
 	entries  []string
 	declared bool
+	// read is true only when briefFilesOf built this from a parsed brief.
+	read bool
 	// dropped are declared entries that cannot name a path in the PR's repo:
 	// another repo's `../<repo>/…` path, `.`, an absolute path, brace syntax.
 	dropped []string
+}
+
+// briefFilesOf is the one constructor: the brief's `files:` declaration as the
+// parser read it. A brief with no `files:` line yields declared false, which
+// imposes no overlap rule.
+func briefFilesOf(bf *BriefFile) briefFiles {
+	if bf == nil {
+		return briefFiles{}
+	}
+	return briefFiles{entries: bf.DeclaredPaths, declared: bf.DeclaredPathsFound, read: true}
 }
 
 // forRepo normalises the declaration against the repo whose PRs are read:
@@ -45,7 +63,7 @@ func (b briefFiles) forRepo(repo string) briefFiles {
 	if i := strings.LastIndex(name, "/"); i >= 0 {
 		name = name[i+1:]
 	}
-	out := briefFiles{declared: true}
+	out := briefFiles{declared: true, read: b.read}
 	for _, d := range evaluation.DeclaredEntries(b.entries) {
 		e := d
 		if name != "" {

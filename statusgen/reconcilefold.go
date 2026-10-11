@@ -25,7 +25,8 @@ package main
 //     marks the brief Undecided: its cell is `unknown`, never `verified` and
 //     never a definite `implemented`.
 //   - Approvals (`done`, gate:model): autoflip.go's decideModelFlip — the
-//     delivering PR by trailer and history, the roster-bound reviewer App, its
+//     delivering PR by trailer and history, narrowed by the brief's `files:`
+//     exactly as --auto-flip-model narrows it, the roster-bound reviewer App, its
 //     approval at that PR's merged head. Asked only for a brief that would
 //     otherwise derive `verified`. A refusal leaves it `verified`; a
 //     could-not-check marks it Undecided.
@@ -58,14 +59,15 @@ import (
 // tree and shared by the tree and forge gatherers below.
 type reconcileFoldData struct {
 	ident    BriefIdent
-	path     string  // the brief file
-	stream   *Stream // the stream it belongs to
-	key      string  // the canonical "<stream>/<NN>" key (coverage, closeVerify)
-	parsed   bool    // the brief file parsed
-	verify   string  // the brief's ## Verify section
-	evidence string  // the brief's ## Evidence section
-	issues   []int   // the frontmatter issues: list
-	reviewed string  // the README row's Reviewed cell
+	path     string     // the brief file
+	stream   *Stream    // the stream it belongs to
+	key      string     // the canonical "<stream>/<NN>" key (coverage, closeVerify)
+	parsed   bool       // the brief file parsed
+	verify   string     // the brief's ## Verify section
+	evidence string     // the brief's ## Evidence section
+	files    briefFiles // the brief's files: declaration (briefFilesOf)
+	issues   []int      // the frontmatter issues: list
+	reviewed string     // the README row's Reviewed cell
 }
 
 // loadReconcileFoldData enumerates every brief under boardRoot exactly as
@@ -93,6 +95,7 @@ func loadReconcileFoldData(boardRoot string) ([]reconcileFoldData, []*Stream, er
 				}
 				d.verify = bf.Verify
 				d.evidence = bf.Evidence
+				d.files = briefFilesOf(bf)
 				d.issues = bf.Issues
 			} else {
 				derived, _, okName := expectedBriefID(path)
@@ -261,7 +264,7 @@ func foldApprovals(root string, in *LifecycleInput, data []reconcileFoldData) ma
 		if merged, _ := classifyPRs(prsByBrief[canonicalBriefKey(id)]); merged == nil {
 			continue
 		}
-		res := decideModelFlip(root, d.stream, d.path, id, d.evidence, src, rev)
+		res := decideModelFlip(root, d.stream, d.path, id, d.evidence, d.files, src, rev)
 		switch res.Outcome {
 		case flipDone:
 			out[id] = ApprovalInfo{Approved: true, AtHead: true,

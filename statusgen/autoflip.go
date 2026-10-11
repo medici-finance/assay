@@ -570,18 +570,22 @@ func attributeCandidate(shape prShape, briefID string) (candidateVerdict, string
 
 // decideModelFlip judges ONE candidate brief. It never writes.
 //
+// bfiles is the brief's `files:` declaration (briefFilesOf): when one is
+// declared, only a PR whose diff touches one of those paths can be the
+// delivering PR (verify-reset/07; briefFiles.overlaps). Every caller passes
+// it; there is no variant without it, and a declaration that was never read
+// (the zero value) is COULD-NOT-CHECK, never the trailer-only rule.
+//
 // Order matters: the held-contradiction read and the reviewer identity/repo
 // are resolved BEFORE any fetch, so an unconfigured roster or a contradicted
 // marker cost nothing and reach nothing.
-func decideModelFlip(root string, s *Stream, path string, briefID string, evidence string, src modelFlipSource, rev reviewerIdentity) modelFlipResult {
-	return decideModelFlipFiles(root, s, path, briefID, evidence, briefFiles{}, src, rev)
-}
-
-// decideModelFlipFiles is decideModelFlip with the brief's `files:` declaration:
-// when one is declared, only a PR whose diff touches one of those paths can be
-// the delivering PR (verify-reset/07; briefFiles.overlaps).
-func decideModelFlipFiles(root string, s *Stream, path string, briefID string, evidence string, bfiles briefFiles, src modelFlipSource, rev reviewerIdentity) modelFlipResult {
+func decideModelFlip(root string, s *Stream, path string, briefID string, evidence string, bfiles briefFiles, src modelFlipSource, rev reviewerIdentity) modelFlipResult {
 	res := modelFlipResult{Brief: briefID, Outcome: flipUnchecked}
+
+	if !bfiles.read {
+		res.Reason = "the brief's `files:` declaration was not read, so which PR delivered it cannot be checked"
+		return res
+	}
 
 	// A **VERIFY: PASS** marker is not a flip signal on its own when the same
 	// Evidence entry contradicts it — a row not marked deferred still reading
@@ -1123,8 +1127,8 @@ func autoFlipModel(root string, streams []*Stream, src modelFlipSource, rev revi
 				continue
 			}
 
-			res := decideModelFlipFiles(root, s, path, bf.Brief, bf.Evidence, // briefid:raw label + attributeCandidate, which reduces it via canonicalBriefKey
-				briefFiles{entries: bf.DeclaredPaths, declared: bf.DeclaredPathsFound}, src, rev)
+			res := decideModelFlip(root, s, path, bf.Brief, bf.Evidence, // briefid:raw label + attributeCandidate, which reduces it via canonicalBriefKey
+				briefFilesOf(bf), src, rev)
 			if res.Outcome != flipDone {
 				results = append(results, res)
 				continue
