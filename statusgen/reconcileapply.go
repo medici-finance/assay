@@ -120,6 +120,10 @@ func planReconcileWrites(root string, cells []BriefCell) ([]appliedRow, []heldRo
 // The writer never produces a tree its own lint step rejects, and never weakens
 // or skips that lint to get there.
 func reconcileWrites(root string, cells []BriefCell, write bool) (rows []appliedRow, held []heldRow, err error) {
+	return reconcileWritesWith(root, cells, write, holdOptions{})
+}
+
+func reconcileWritesWith(root string, cells []BriefCell, write bool, opts holdOptions) (rows []appliedRow, held []heldRow, err error) {
 	defer beginGitReadSession()()
 	staged := newReadmeStage()
 	defer staged.clear()
@@ -153,6 +157,7 @@ func reconcileWrites(root string, cells []BriefCell, write bool) (rows []applied
 			if env, err = loadLintEnv(root); err != nil {
 				return rows, held, fmt.Errorf("loading the board for the lint hold: %w", err)
 			}
+			env.stats = opts.stats
 		}
 		added, found, merr := env.tryMove(stream, num, "implemented", func() (func() error, error) {
 			return staged.put(path, edit.content), nil

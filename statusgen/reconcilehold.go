@@ -105,6 +105,18 @@ type lintEnv struct {
 	edge     []*Stream
 	findings []Finding
 	baseline []string // status-keyed PROBLEMs of the board as currently written; nil until first needed
+	stats    *holdStats
+}
+
+// holdStats is the test hook that counts the hold's work (#2615).
+type holdStats struct {
+	// FullRuleEvals counts evaluations of one registered rule over the whole board.
+	FullRuleEvals int
+}
+
+// holdOptions configures one reconcileWrites run.
+type holdOptions struct {
+	stats *holdStats // nil: not collected
 }
 
 // loadLintEnv loads root the way run() does before its per-stream checks.
@@ -151,6 +163,9 @@ var statusKeyedNotRows = map[string]string{
 func (e *lintEnv) problems() []string {
 	var out []string
 	for _, r := range statusKeyedLintRules {
+		if e.stats != nil {
+			e.stats.FullRuleEvals++
+		}
 		out = append(out, r.problems(e)...)
 	}
 	return out
