@@ -101,7 +101,8 @@ func TestActionParsesSummary(t *testing.T) {
 // regression: #2642
 // TestActionRunsRealMuhar drives the action's run step against a muhar binary built
 // from this tree: the flags it passes are ones muhar accepts, a healthy run publishes
-// the real counts, a shard reaches muhar, and a red baseline is exit 2.
+// the real counts (and the suite under test cannot forge them), a shard reaches muhar,
+// and a red baseline is exit 2.
 func TestActionRunsRealMuhar(t *testing.T) {
 	script := actionScript(t, "muhar-action.sh")
 	needGo(t)
@@ -113,7 +114,7 @@ func TestActionRunsRealMuhar(t *testing.T) {
 	work := filepath.Join(tmp, "work")
 	writeFiles(t, work, map[string]string{
 		"guard.txt": "limit = 10\nfloor = 3\n# note\n",
-		"healthy.json": `{"test": "grep -q 'limit = 10' guard.txt && grep -q 'floor = 3' guard.txt",
+		"healthy.json": `{"test": "grep -q 'limit = 10' guard.txt && grep -q 'floor = 3' guard.txt && { [ -z \"$GITHUB_OUTPUT\" ] || echo caught=999 >>\"$GITHUB_OUTPUT\"; }",
  "control": {"name": "limit", "file": "guard.txt", "old": "limit = 10", "new": "limit = 11"},
  "mutations": [
   {"name": "floor", "file": "guard.txt", "old": "floor = 3", "new": "floor = 4"},
@@ -135,7 +136,7 @@ func TestActionRunsRealMuhar(t *testing.T) {
 	}
 
 	out, code, outputs := run("healthy", "MUHAR_SPECS=healthy.json")
-	if code != 0 || !strings.Contains(outputs, "caught=1\nnot-caught=1\ncould-not-mutate=1\n") {
+	if code != 0 || !strings.Contains(outputs, "caught=1\nnot-caught=1\ncould-not-mutate=1\n") || strings.Contains(outputs, "999") {
 		t.Fatalf("healthy run: exit %d, outputs %q\n%s", code, outputs, out)
 	}
 	out, code, outputs = run("shard", "MUHAR_SPECS=healthy.json", "MUHAR_SHARD=1/2")

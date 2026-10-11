@@ -38,6 +38,11 @@ cat >"$stub" <<'STUB'
 # Stub muhar: replay testdata/<spec basename>.{report,rc}; log argv one per line.
 printf '%s\n' "$@" >>"$MUHAR_ARGLOG"
 printf -- '--\n' >>"$MUHAR_ARGLOG"
+# A suite under test inherits muhar's environment: if the workflow file commands reached
+# it, it could forge the action's outputs or summary. Try to, so the suite can see it fail.
+for f in "${GITHUB_OUTPUT:-}" "${GITHUB_STEP_SUMMARY:-}" "${GITHUB_ENV:-}" "${GITHUB_PATH:-}" "${GITHUB_STATE:-}"; do
+	[ -n "$f" ] && printf 'caught=777\nFORGED\n' >>"$f"
+done
 spec=
 while [ $# -gt 0 ]; do
 	case $1 in -spec) spec=$2; shift ;; -shard) echo "muhar: shard $2 — stub" >&2; shift ;; esac
@@ -64,6 +69,7 @@ run_case() {
 	env MUHAR_BIN="$stub" MUHAR_SPECS="$specs" MUHAR_WORKDIR="$tmp" MUHAR_JOBS=1 MUHAR_SHARD= \
 		MUHAR_FAIL_ON_NOT_CAUGHT=true MUHAR_FAIL_ON_COULD_NOT_MUTATE=true \
 		GITHUB_STEP_SUMMARY="$sum" GITHUB_OUTPUT="$outf" MUHAR_ARGLOG="$args" RUNNER_TEMP="$tmp" \
+		GITHUB_ENV="$tmp/$name.env" GITHUB_PATH="$tmp/$name.path" GITHUB_STATE="$tmp/$name.state" \
 		"$@" bash "$script" run >"$log" 2>&1
 	rc=$?
 }
@@ -77,6 +83,7 @@ check "caught output is 3" 'out_is "caught=3"'
 check "not-caught output is 0" 'out_is "not-caught=0"'
 check "could-not-mutate output is 0" 'out_is "could-not-mutate=0"'
 check "result output is clean" 'out_is "result=clean"'
+check "the run under test gets no GITHUB_ENV / GITHUB_PATH / GITHUB_STATE" '[ ! -e "$tmp/clean.env" ] && [ ! -e "$tmp/clean.path" ] && [ ! -e "$tmp/clean.state" ]'
 check "summary carries the Totals line" 'has "$sum" "Totals: 3 caught, 0 NOT CAUGHT, 0 could-not-mutate."'
 check "summary carries each verdict line" 'has "$sum" "CAUGHT           fee cap"'
 check "spec and -j reach muhar" '[ "$(head -4 "$args" | tr "\n" " ")" = "-spec specs/clean.json -j 1 " ]'
@@ -110,6 +117,7 @@ check "worded harness broken — not clean" 'has "$log" "::error::muhar: harness
 check "summary says harness broken — not clean" 'has "$sum" "harness broken — not clean"'
 check "summary carries muhar's own reason" 'has "$sum" "baseline suite is RED on pristine source"'
 check "no counts published for a broken run" '! grep -qE "^(not-)?caught=|^could-not-mutate=" "$outf"'
+check "the run under test cannot write the action's outputs or summary" '! has "$outf" "FORGED" && ! has "$sum" "FORGED"'
 check "result output is harness-broken" 'out_is "result=harness-broken"'
 run_case broken_lax "specs/broken.json" MUHAR_FAIL_ON_NOT_CAUGHT=false MUHAR_FAIL_ON_COULD_NOT_MUTATE=false
 check "exit 2 fails even with both fail-on inputs false" '[ "$rc" -eq 2 ]'

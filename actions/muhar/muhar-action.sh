@@ -90,7 +90,9 @@ cmd_install() {
 	command -v go >/dev/null 2>&1 || die "could-not-check: no Go toolchain on PATH. Keep setup-go: true, or install Go in an earlier step."
 	bindir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/muhar-action-bin"
 	mkdir -p "$bindir" || die "cannot create $bindir"
-	(cd "$src" && go build -trimpath -o "$bindir/muhar" ./cmd/muhar) || die "go build ./cmd/muhar failed in $src"
+	# GOFLAGS is pinned for this build only: a caller's own value (say -mod=vendor, set
+	# for its suite) must not change how muhar's committed go.mod/go.sum build.
+	(cd "$src" && GOFLAGS=-mod=readonly go build -trimpath -o "$bindir/muhar" ./cmd/muhar) || die "go build ./cmd/muhar failed in $src"
 	echo "muhar built at $bindir/muhar"
 	output muhar-bin "$bindir/muhar"
 }
@@ -134,7 +136,11 @@ cmd_run() {
 		local args=(-spec "$spec" -j "$jobs")
 		[ -n "$shard" ] && args+=(-shard "$shard")
 		echo "::group::muhar $(escape_cmd "$spec")"
-		(cd "$workdir" && "$bin" "${args[@]}") >"$out"
+		# The spec's test command is the suite under test and inherits muhar's
+		# environment. Withhold the workflow file commands from it, so nothing it runs
+		# can write this action's outputs or summary, or set env/PATH for later steps.
+		(cd "$workdir" && env -u GITHUB_OUTPUT -u GITHUB_ENV -u GITHUB_PATH -u GITHUB_STATE -u GITHUB_STEP_SUMMARY \
+			"$bin" "${args[@]}") >"$out"
 		rc=$?
 		cat "$out"
 		echo "::endgroup::"

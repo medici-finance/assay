@@ -63,14 +63,30 @@ builds with any recent Go) or set up your own toolchain and pass `setup-go: fals
 | `could-not-mutate` | Mutations that could not be planted, summed. |
 | `result` | `clean`, `not-caught`, `could-not-mutate`, `harness-broken` or `error`. |
 
-The three counts are set only when every spec ran healthy. After a broken or errored run
-they are empty — an empty count is "no verdict", never zero. Use `result` to branch.
+The action sets the three counts only when every spec ran healthy. After a broken or
+errored run it leaves them unset — "no verdict", never zero. Use `result` to branch. (The
+suite under test runs without the workflow file-command variables — `GITHUB_OUTPUT`,
+`GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` — so it cannot set
+these outputs by accident. That is not a boundary against hostile code: see below.)
 
 The counts come from muhar's own `Totals:` line, read exactly as muhar prints it:
 
 ```
 Totals: 3 caught, 1 NOT CAUGHT, 0 could-not-mutate.
 ```
+
+## Trust model — read before wiring it to pull requests
+
+muhar runs each spec's `test` command with `sh -c`, with the job's environment. In a
+`pull_request` job that is code the pull request's author wrote — the spec, the suite and
+the source being mutated all come from the PR head. So:
+
+- Never run this action under `pull_request_target` or `workflow_run` with the PR head
+  checked out: that hands PR code your repository's secrets and a write token.
+- Keep the job's `permissions` read-only (`contents: read`) and give it no secrets.
+- The gate is not a boundary against a PR that edits its own spec or suite: a PR can
+  delete a mutation or weaken the test that catches it. Protect the spec paths (for example
+  with CODEOWNERS), or read the specs from the base ref, if that matters to you.
 
 ## Job summary
 
@@ -104,12 +120,19 @@ jobs:
             mutation/auth-guards.json
           jobs: "0"
       - if: always()
-        run: echo "result=${{ steps.muhar.outputs.result }} caught=${{ steps.muhar.outputs.caught }}"
+        env:  # pass outputs through env, never spliced into the run line
+          RESULT: ${{ steps.muhar.outputs.result }}
+          CAUGHT: ${{ steps.muhar.outputs.caught }}
+        run: echo "result=$RESULT caught=$CAUGHT"
 ```
 
 A large spec split across matrix legs (every leg must run for the sweep to be complete):
 
 ```yaml
+name: mutation gate (sharded)
+on: [pull_request]
+permissions:
+  contents: read
 jobs:
   muhar:
     runs-on: ubuntu-latest
@@ -128,6 +151,15 @@ jobs:
 A runner that already carries Go:
 
 ```yaml
+name: mutation gate (own Go)
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  muhar:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@<full-commit-sha>  # pin by SHA
       - uses: medici-finance/assay/actions/muhar@<full-commit-sha>  # pin by SHA
         with:
           spec: mutation/fee-guards.json
@@ -138,7 +170,8 @@ A runner that already carries Go:
 
 `action.yml` is thin: it optionally sets up Go, then calls
 [`muhar-action.sh`](muhar-action.sh) twice — `install` builds `tools/desk/cmd/muhar`
-from the action's own checkout, and `run` runs every spec, writes the summary, sets the
+from the action's own checkout (with `GOFLAGS=-mod=readonly`, so a caller's own `GOFLAGS`
+cannot change that build), and `run` runs every spec, writes the summary, sets the
 outputs and decides the exit code. Every input reaches the script as an environment
 variable, never spliced into a shell line.
 
