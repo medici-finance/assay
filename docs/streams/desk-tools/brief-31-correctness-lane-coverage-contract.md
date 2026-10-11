@@ -1,6 +1,6 @@
 ---
 brief: assay:assay:desk-tools:31
-title: "The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, n/a with a reason, or could-not-check)"
+title: "The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, checked-clean, n/a with a reason, or could-not-check)"
 why: >-
   A correctness review today is only as exhaustive as the reviewer's attention that round.
   Nothing in the reviewer's prompt or the verdict-body schema requires a review to ACCOUNT
@@ -15,8 +15,12 @@ why: >-
   axes under the rule "silence is not n/a" — every skipped axis needs an explicit
   `n/a: <one reason>` line, so selective review becomes visible as a gap in the accounting.
   The mechanic is adoptable as a neutral body: a fixed class register plus per-class
-  accounting lines in the verdict body, with the accounting reusing this repo's existing
-  third state (could-not-check) rather than inventing a new one.
+  accounting lines in the verdict body. Four line shapes, and the reason there are four:
+  `checked-clean` and `could-not-check` reuse this repo's existing checked/unchecked
+  vocabulary (common-clauses C4) verbatim; `n/a` is the one deliberately new line shape,
+  because "this class does not apply to this diff" and "this class was examined and is
+  sound" must never share a state — collapsing them is exactly what lets selective review
+  hide inside `n/a` lines.
 wave: 1
 depends: []
 unblocks: []
@@ -27,7 +31,7 @@ issues: []
 schema: brief-v2
 authored: 2026-10-11 by a house authoring session at the driver's direction (external mechanic surveyed from permanu/superskill, public)
 sources:
-  - "tools/desk/cmd/deskdispatch/references/review-prompt.md — the reviewer's current first-pass duties: finding-class register, round caps, class continuity. All of it governs classes the reviewer RAISED; nothing requires accounting for classes never considered. Line ~202: correctness and security verdicts are separate artifacts — the register below is correctness-only by design."
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md — the reviewer's current first-pass duties: finding-class register, round caps, class continuity. All of it governs classes the reviewer RAISED; nothing requires accounting for classes never considered. Line 221: correctness and security verdicts are separate artifacts — the register below is correctness-only by design."
   - "plugins/assay/skills/pr-review-desk/references/verdict-format.md — the body schema deskpost enforces (H2 heading, bare verdict line, 16 KiB cap, one verdict kind). The Coverage block must ride INSIDE that schema as plain body lines; no schema change, no new enforced structure."
   - "PR #2474 (merged 2026-10) — review rounds: the dispatcher states each round's scope (DELTA or FULL PASS with the reason) in the reviewer's assignment. The coverage accounting keys on that stated scope: a delta round accounts for the classes the scope's paths can touch; a full pass accounts for every class."
   - "permanu/superskill review/architect pack (public, Apache-2.0, surveyed 2026-10-11, https://github.com/permanu/superskill/blob/main/catalog/review/architect.md) — the external evidence for the mechanic: 18 axes, 'silence is not n/a', one n/a-with-reason line per skipped axis, escalation when an axis cannot be honestly n/a'd."
@@ -58,13 +62,18 @@ The failure shape is not hypothetical: a reviewer that reads a diff as "a small 
 never ask what happens to the caller two packages over, whether a write is atomic mid-failure,
 or whether a loop tolerates duplicate input — and its APPROVE reads exactly like one that did.
 
-The mechanic this brief adopts (surveyed from the public superskill repo, cited above) is one
-sentence: **every class in a fixed register is accounted for, and silence is not accounting.**
-Adapted to this repo's vocabulary, each class ends the review in exactly one of three states —
-a finding (carrying its class id under the existing finding-class machinery), an
-`n/a: <class> — <one-sentence reason>` line, or a `could-not-check: <class> — <what was
-missing>` line. The third state already exists in this methodology; the register merely
-forces it to be per-class instead of per-review.
+The mechanic this brief adopts (surveyed from the public superskill repo, cited above, and
+corrected by its round-1 review) is one sentence: **every class in a fixed register is
+accounted for, and silence is not accounting.** Each class ends the review in exactly one of
+four line shapes — a **finding** (carrying its class id under the existing finding-class
+machinery), a **`checked-clean: <class> — <what was examined>`** line (the class applied,
+was examined, and is sound — this is the methodology's existing checked-clean, made
+per-class), an **`n/a: <class> — <one-sentence reason>`** line (the class genuinely does not
+apply to this diff), or a **`could-not-check: <class> — <what was missing>`** line (the
+methodology's existing unchecked state, per-class). Two of the four reuse existing
+vocabulary verbatim; `n/a` and the per-class `checked-clean` are the new surface, and the
+reviewer must never write `n/a` for a class that was examined — examined-and-sound is
+`checked-clean`, and conflating the two is precisely the leak this contract exists to close.
 
 **Design boundaries this brief holds, stated so the worker does not re-litigate them:**
 
@@ -72,14 +81,16 @@ forces it to be per-class instead of per-review.
    injection). Those are the security lane's, and the two lanes' independence is the design
    (#2474, review-prompt §"SEPARATE artifacts"). The security lane's coverage accounting is a
    possible follow-up, not this brief.
-2. **Delta rounds account for the stated scope.** The assignment's `Scope: DELTA` names paths;
-   the review accounts for the classes those paths can touch. A `Scope: FULL PASS` accounts
+2. **Delta rounds account for the stated scope.** The assignment's `Scope: DELTA` states the
+   head range; the review accounts for the classes the paths that delta range touches can
+   apply to (the assignment itself carries no path list — the paths are derived from the
+   range). A `Scope: FULL PASS` accounts
    for the whole register. A delta that grows a path into a class the scope did not name is
    the existing clause-19 wrong-stated-scope case: full pass, say so.
 3. **No enforcement in deskpost.** The block rides the verdict body as plain lines. Whether
    deskpost should REFUSE a correctness body with no Coverage block is a real question with a
    real cost (five schema refusals open the 15-minute breaker), and it is a control-narrowing
-   decision: ruled separately, named here as follow-up `desk-tools/32+`.
+   decision: ruled separately, named here as a later desk-tools brief.
 4. **Project layer appends, never removes.** The base register lives in the public reviewer
    prompt (neutral body). A house may append classes for its stack; it may never strike a
    base class. This is the same layer-2 boundary the desk-shell reference uses.
@@ -102,30 +113,34 @@ kebab ids:
 | `persistence-migrations` | schema expand-then-contract, backfill, dual-write drift, source of truth |
 | `resource-lifecycle` | handles, files, servers, timers, processes closed on failure; no leaks |
 | `time-ordering` | wall vs monotonic clocks, timezone, TTL/expiry, replay semantics |
-| `observability-signals` | a failure in this change can be reconstructed from what it emits; no secrets in logs |
+| `observability-signals` | a failure in this change can be reconstructed from what it emits (secret-free-logging itself is the security lane's, not this register's) |
 | `tests-evidence` | a check that fails if the new branch is wrong; no generated theater |
 | `operability-ship` | feature flag, config, rollback path; who acts when it fails |
-| `ui-a11y` | keyboard, labels, contrast, XSS — ONLY when the diff touches UI surfaces; `n/a` otherwise is the norm |
+| `ui-a11y` | keyboard, labels, contrast — ONLY when the diff touches UI surfaces; `n/a` otherwise is the norm (injection into the new surface, XSS included, is the security lane's) |
 | `structure-ownership` | the owning module is named; a new pattern with one implementation is a finding |
 
-The clause states: every class ends the round as a finding, an `n/a:` line with a one-sentence
-reason, or a `could-not-check:` line naming what was missing; silence is not accounting; the
-accounting covers the stated scope (delta: the classes the scope's paths can touch; full pass:
-the whole register); the project layer may append classes and may never remove a base class;
-and the refusal rule — **a class that cannot be honestly n/a'd and was not checked is
-`could-not-check`, never a silent APPROVE** — which is the whole point of the contract.
+The clause states: every class ends the round as a finding, a `checked-clean:` line naming
+what was examined, an `n/a:` line with a one-sentence reason, or a `could-not-check:` line
+naming what was missing; silence is not accounting; an examined-and-sound class is
+`checked-clean`, never `n/a`; the accounting covers the stated scope (delta: the classes the
+delta range's paths can touch; full pass: the whole register); the project layer may append
+classes and may never remove a base class; and the refusal rule — **a class that cannot be
+honestly n/a'd and was not checked is `could-not-check`, never a silent APPROVE** — which is
+the whole point of the contract.
 
 **Task 2 — the verdict body reference.**
 `plugins/assay/skills/pr-review-desk/references/verdict-format.md` documents the Coverage
 block: an `## Coverage` section at the end of the correctness verdict body, one line per class
-(`class — finding <id>` / `class — n/a: <reason>` / `class — could-not-check: <what>`), the
-16 KiB budget note (the block for all 14 classes runs well under 1 KiB), and the statement
+(`class — finding <id>` / `class — checked-clean: <what was examined>` / `class — n/a:
+<reason>` / `class — could-not-check: <what>`), the 16 KiB budget note (the block for all 14
+classes is a small fraction of the 16 KiB cap), and the statement
 that deskpost neither requires nor refuses the block today (design boundary 3).
 
 **Task 3 — the skill body (neutral paragraph).**
 `plugins/assay/skills/pr-review-desk/SKILL.md` §"The reviewer's bar" gains one paragraph
 stating the coverage contract and pointing at the register's home (the review-prompt
-reference), with the project-layer append-only rule. Neutral body: no house-specific class
+reference), carrying the sentence "the project layer may append classes and never removes a
+base one" verbatim (row 4 greps it). Neutral body: no house-specific class
 names, no house identifiers.
 
 **Task 4 — changelog fragment.** changelog/desk-tools-31.md (planned), one bullet.
@@ -148,11 +163,11 @@ once the Task lands. Row 6 passes today and must still pass. Run every row from 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `grep -q 'spec-intent' tools/desk/cmd/deskdispatch/references/review-prompt.md && grep -q 'callers-blast-radius' tools/desk/cmd/deskdispatch/references/review-prompt.md && grep -q 'structure-ownership' tools/desk/cmd/deskdispatch/references/review-prompt.md && grep -q 'silence is not accounting' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | prints `ok`: the register and the accounting rule are in the reviewer prompt. FAILS today: none of these strings appear. |
-| 2 | check | `grep -c -E '^\| `[a-z-]+` \|' tools/desk/cmd/deskdispatch/references/review-prompt.md > "${TMPDIR:-/tmp}/dt31-reg.txt"; [ "$(cat "${TMPDIR:-/tmp}/dt31-reg.txt")" -ge 14 ] && echo ok` | prints `ok`: at least the 14 register rows are present as table rows in the prompt. FAILS today: 0. |
-| 3 | check | `grep -q -F '## Coverage' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q 'could-not-check' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q '16 KiB' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q 'neither requires nor refuses' plugins/assay/skills/pr-review-desk/references/verdict-format.md && echo ok` | prints `ok`: the Coverage block, the third state, the budget note and the no-enforcement statement are all in the verdict-body reference. FAILS today: '## Coverage' appears 0 times in that file. |
-| 4 | check | `grep -q 'coverage contract' plugins/assay/skills/pr-review-desk/SKILL.md && grep -q 'review-prompt' plugins/assay/skills/pr-review-desk/SKILL.md && grep -q 'append' plugins/assay/skills/pr-review-desk/SKILL.md && echo ok` | prints `ok`: the skill states the contract, points at the register's home, and carries the append-only rule. House-neutrality is Review-gate question 4, not a grep — a withheld-name negative grep would itself publish the names. FAILS today: 'coverage contract' appears 0 times in the skill. |
-| 5 | check +flow | READ FROM THE FORGE after the first dispatched correctness review post-landing: its verdict body carries an `## Coverage` section with one line per register class in the stated scope's set, each line a finding reference, an `n/a:` with a reason, or a `could-not-check:` with what was missing; and deskpost accepted the body (the review exists as the reviewer App's review at that head). | A real correctness verdict on a real PR demonstrates the contract end to end. Could-not-check at authoring: no review has run under the contract yet. |
-| 6 | check +neighbour | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt31-sg" . && "${TMPDIR:-/tmp}/dt31-sg" --root .. --lint 2>&1 | grep -q 'LINT: PASS' && test -f ../changelog/desk-tools-31.md && cd ../tools/skillslint && go run . --root ../.. > /dev/null 2>&1 && echo ok` | prints `ok`: the tree lints clean (statusgen brief/board lint — the new brief file must parse and the README table stays generated), the changelog fragment exists, and skillslint passes. Passes today and must still pass. |
+| 2 | check | ``grep -c -E '^[|] `[a-z0-9-]+`[ ]*[|]' tools/desk/cmd/deskdispatch/references/review-prompt.md > "${TMPDIR:-/tmp}/dt31-reg.txt"; [ "$(cat "${TMPDIR:-/tmp}/dt31-reg.txt")" -ge 14 ] && echo ok`` | prints `ok`: at least the 14 register rows are present as table rows in the prompt (the cell is double-fenced because the ERE carries backticks; the pipe is a `[|]` bracket class, never a backslash escape the lifter would unescape into a match-everything empty alternative). FAILS today: 0 matches in review-prompt.md. |
+| 3 | check | `grep -q -F '## Coverage' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q 'checked-clean' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q 'could-not-check' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q '16 KiB' plugins/assay/skills/pr-review-desk/references/verdict-format.md && grep -q 'neither requires nor refuses' plugins/assay/skills/pr-review-desk/references/verdict-format.md && echo ok` | prints `ok`: the Coverage block, the checked-clean and could-not-check line shapes, the budget note and the no-enforcement statement are all in the verdict-body reference. FAILS today: '## Coverage' appears 0 times in that file. |
+| 4 | check | `grep -q 'coverage contract' plugins/assay/skills/pr-review-desk/SKILL.md && grep -q 'never removes a base' plugins/assay/skills/pr-review-desk/SKILL.md && echo ok` | prints `ok`: the skill states the contract and carries the append-only sentence Task 3 fixes verbatim (`never removes a base` appears nowhere in the skill today). House-neutrality is Review-gate question 4, not a grep — a withheld-name negative grep would itself publish the names. FAILS today: both strings appear 0 times in the skill. |
+| 5 | check +flow | READ FROM THE FORGE after the first dispatched correctness review post-landing: its verdict body carries an `## Coverage` section with one line per register class in the stated scope's set, each line a finding reference, a `checked-clean:` naming what was examined, an `n/a:` with a reason, or a `could-not-check:` with what was missing — and no examined-and-sound class written as `n/a`; and deskpost accepted the body (the review exists as the reviewer App's review at that head). | A real correctness verdict on a real PR demonstrates the contract end to end. Could-not-check at authoring: no review has run under the contract yet. |
+| 6 | check +neighbour | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt31-sg" . && "${TMPDIR:-/tmp}/dt31-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && cd ../tools/skillslint && go run . --root ../.. > /dev/null 2>&1 && echo ok` | prints `ok`: the tree lints clean (statusgen brief/board lint — the new brief file must parse and the README table stays generated) and skillslint passes. The changelog fragment is deliberately NOT tested here — the release workflow clears `changelog/` when it aggregates, so a fragment-existence check cannot survive a release. Passes today and must still pass. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
@@ -165,6 +180,7 @@ once the Task lands. Row 6 passes today and must still pass. Run every row from 
 Gate: model (from frontmatter). The reviewer answers, in the verdict: (1) is the register
 correctness-only — no class that belongs to the security lane or to a deterministic control?
 (2) does every register row owe an answer a competent reviewer could actually give, or is any
-row unfalsifiable filler? (3) does the accounting reuse the existing three states with no new
-vocabulary? (4) does the skill paragraph stay neutral-body (project-layer extension stated,
+row unfalsifiable filler? (3) do the four line shapes keep `checked-clean` and
+`could-not-check` in their existing C4 meanings, with `n/a` reserved strictly for a class
+that does not apply? (4) does the skill paragraph stay neutral-body (project-layer extension stated,
 no house values inlined)? (5) is deskpost genuinely untouched?
