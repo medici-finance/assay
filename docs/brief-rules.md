@@ -598,6 +598,21 @@ passing run — which is why they are lint rules and not review vigilance.
       the PR's own `base.sha`.
     - `refs/remotes/origin/main` is the same moving ref by its long name.
 
+28a. **A zero-count row must not pipe a bare `grep` into a later stage**
+    (`grep-pipe-zero-count`, #1862). `statusgen verifyrun` runs every row under
+    `bash -o pipefail`, and grep exits 1 when it matches nothing. A row like
+    `grep -rn old docs/ | wc -l` with Expect `0` therefore FAILS when the property
+    holds (nothing found), and when a match is present grep exits 0, so a bare `0`
+    Expect leaves the verdict to exit status alone.
+    - Write: `{ grep -rn old docs/ || [ $? -eq 1 ]; } | wc -l`, with Expect
+      ``output is `0` ``. Tolerate only grep's no-match status; a plain `|| true`
+      also hides a real grep error.
+    - Where the searched path could vanish, add a positive leg that proves it
+      exists: `test -n "$(git ls-tree --name-only HEAD docs)" && …`.
+    - A leading `!`, the guarded `{ … || … ; } |` form, a `≥ 1` Expect and an
+      Expect that also declares a non-zero exit (``output is `0`, exit 1``) are
+      silent.
+
 29. **Rows run on macOS too — no GNU-isms** (`gnu-only`, #650). A Verify row is
     run by whoever verifies, on their own machine, and a row that only works on
     ubuntu produces a different verdict per platform with the platform invisible
@@ -703,6 +718,22 @@ boards); the issue-loop scan PR's body counts (rule 34); and each stream README'
 Briefs table, whose lifecycle cells derive from the witnesses rule 30 names — the table
 becomes a generated surface with exactly one writer (rule 47) as each stream is wrapped
 in markers, and is diffed against merge history until then (rule 35).
+
+A stream README's generated region sits between `<!-- statusgen:briefs:begin -->` and
+`<!-- statusgen:briefs:end -->`; its README frontmatter carries `board: generated`.
+`statusgen regen --readmes` rewrites only the lines between the markers, so everything
+outside them is hand-written prose it never touches. The scheduled writer is a staged
+proposal until a maintainer promotes it: the board workflow's hourly reconcile job
+(`ci/staged-workflows/assay-statusgen.yml`), which
+will never push the default branch: it carries a change as one pull request on the branch
+`board/reconcile`, and the push-to-default-branch job keeps writing `STATUS.md` alone.
+Until that promotion, the desk-side `deskreconcile` verb carries changes on the same branch
+and pull request; after it, each of the two replaces the other's tree on that branch
+(the job writes trailer-witnessed rows only, the verb also backfills). Either way a
+Status cell moves to `implemented`, and a table is re-rendered, only by a reviewed pull
+request. Other lifecycle cells are not covered by that sentence: the board workflow's
+`model-autoflip` job and the verify-gate close workflow write their rows on the default
+branch.
 
 32. **A worker's terminal verdict on a PR is a DISPOSITION RECORD, not a prose comment.**
     A conclusion that only a human can read is one a sweep must re-derive. In one

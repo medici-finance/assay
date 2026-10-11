@@ -152,7 +152,6 @@ var knownRowClasses = map[string]bool{
 // this). mutation, flow and dereference are derived; neighbour is carried.
 const (
 	classMutation    = "mutation"    // breaks the guarded thing and proves the guard reddens (spec D1)
-	classFlow        = "flow"        // exercises the cross-component path end to end, not just the changed site
 	classDereference = "dereference" // resolves a claim rather than counting its presence
 	classNeighbour   = "neighbour"   // exercises a sibling site the change did not touch (validated, not yet derived)
 )
@@ -310,7 +309,6 @@ func (r verifyRowCells) class() string {
 // The row shells. Stable identifiers — verifyrun dispatch and the lint select on
 // these exact strings.
 const (
-	rowShellSh   = "sh"   // POSIX bash — the default, today's behaviour
 	rowShellCmd  = "cmd"  // Windows cmd.exe
 	rowShellPwsh = "pwsh" // PowerShell
 )

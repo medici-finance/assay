@@ -342,9 +342,9 @@ func TestNewRefusesBeforeMkdir(t *testing.T) {
 		t.Setenv("USERPROFILE", "")
 		t.Setenv("CELLS_ROOT", root)
 		t.Setenv("ASSAY_CONFIG_HOME", t.TempDir())
-		assertDies(t, "k8s new with no home", func() {
-			cmdNew([]string{"k1", "--repo", repo, "--cells-yaml", yaml, "--orgs", "example", "--deskd-app-pem", yaml})
-		})
+		if code := inproc("new", "k1", "--repo", repo, "--cells-yaml", yaml, "--orgs", "example", "--deskd-app-pem", yaml); code == 0 {
+			t.Fatal("k8s new with no home: expected a refusal, got none")
+		}
 		if exists(filepath.Join(root, "k1")) {
 			t.Fatal("k8s new refused after creating the cell directory")
 		}

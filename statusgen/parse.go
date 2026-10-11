@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -240,7 +239,7 @@ func parseBriefTable(body string) ([]Brief, error) {
 }
 
 func parseStreamREADME(path string) (*Stream, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := readStreamREADME(path)
 	if err != nil {
 		return nil, err
 	}

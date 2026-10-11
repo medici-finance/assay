@@ -21,6 +21,7 @@ package main
 
 import (
 	"embed"
+	"io/fs"
 	"sort"
 	"strings"
 
@@ -28,7 +29,11 @@ import (
 )
 
 //go:embed references/*.md
-var kitFS embed.FS
+var embeddedKits embed.FS
+
+// kitFS is where every kit is read from: the embedded set. It is a variable so a test can
+// hand the pre-claim checks a kit they must refuse.
+var kitFS fs.ReadFileFS = embeddedKits
 
 // commonKitPath holds the clauses EVERY dispatched agent receives, whatever its class.
 //

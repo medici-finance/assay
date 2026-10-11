@@ -103,8 +103,9 @@ never-autonomous escalation points below.
 - **macOS, Linux, or native Windows.** The statusgen binary acquisition is Unix-first via that
   HTTPS fetch; on a **native Windows** host follow the **[Windows adopters](#windows-adopters)**
   section — the pinned `statusgen-windows-<arch>.exe` is acquired through the PowerShell
-  bootstrap + Go-native `deskinstall` path (same sha256-verify-or-refuse control), with the
-  SessionStart-hook `bash`+`jq` workaround and the arm64-native-smoke caveat stated there.
+  bootstrap + Go-native `deskinstall` path (same sha256-verify-or-refuse control; a
+  `deskinstall` built from this tree also refuses any asset whose build attestation does not
+  verify — see that section), with the SessionStart-hook `bash`+`jq` workaround and the arm64-native-smoke caveat stated there.
 
 **What the skill does** — it DELEGATES every PRIMITIVE and every human-gate to the manual runbook
 below; the two are **one story with one mechanism**, not two implementations:
@@ -681,7 +682,8 @@ refuse on a malformed value: every acting command refuses exactly as described a
 as; a malformed entry refuses the whole roster, not only `deskrun` (unset stays valid: no repo is
 bound and `deskrun` dispatches nothing). The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
-`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS` — no longer collapse the
+`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`,
+`ASSAY_OS_USER_LOGIN_MAP` — no longer collapse the
 whole roster when one of them is malformed: the loader records the rejection against that ONE
 key, the key's own feature falls back to its shipped default (exactly the unset behaviour), and
 only the desk unit that actually declares a dependency on that key deactivates and reports why —
@@ -689,6 +691,13 @@ every unrelated acting command keeps running. This is the fix for the outage cla
 paragraph's typo bullet still describes for an **unrecognised** key name: a stray unrecognised
 `ASSAY_*` key still collapses the whole roster today (that bullet is unchanged), but a
 **recognised** extension key's own bad VALUE no longer does.
+
+`ASSAY_OS_USER_LOGIN_MAP` carries comma-separated `osuser:login` entries binding an OS
+account name to the roster login the scan-override audit row names (the desk tools'
+`OverrideIdentity`). The login half must be a trusted human of the same roster — one
+present in `ASSAY_TRUSTED_LOGINS`, never a configured App slug; anything else invalidates
+the key. An OS account name containing a list separator (space, comma, semicolon) cannot
+be expressed and always lands on the audit row's marked `os:<username>` fallback.
 
 #### Failure mode 2 — a PARTIAL roster looks like a normal board, not an empty one
 
@@ -1124,7 +1133,13 @@ rather than warning and continuing on a sha256 mismatch, but they signal it diff
   `powershell -File` that is a non-zero exit (not `5`), and nothing is placed.
   `scripts/windows-bootstrap-hashcheck-smoke.ps1` asserts on that refusal's message text (for
   example `sha256 mismatch`), not on the `REFUSED:` prefix.
-- **`deskinstall`** exits `5` (refused, nothing placed).
+- **`deskinstall`** exits `5` (refused, nothing placed). A `deskinstall` built from this tree
+  runs a second check after the sha256 one: it downloads each asset's Sigstore build attestation
+  (`<asset>.sigstore.json`, from the same release) and refuses unless it verifies as SLSA
+  provenance for those exact bytes, signed by this repo's release workflow (run by the push of
+  the pinned tag, or by `workflow_dispatch` from `main`) and recorded in the public transparency
+  log. A missing or failing attestation is the same exit `5`, and no flag skips the check. A
+  `deskinstall` taken from an older release runs the checks that release shipped (sha256 only).
 
 #### The first `deskinstall` on a clean host — an open gap
 
@@ -1140,7 +1155,13 @@ file it places in `--dest`, and Windows does not let a running `.exe` overwrite 
   `go build -C tools/desk -o $env:TEMP\deskinstall.exe ./cmd/deskinstall`, then run step 1's
   second command as `& $env:TEMP\deskinstall.exe --manifest …`. That run places the pinned,
   sha256-verified release build of the whole toolchain, `deskinstall.exe` included, into `--dest`,
-  and that copy serves step 2.
+  and that copy serves step 2. **Read before using this route:** a `deskinstall` built from the
+  current tree also requires each asset's build attestation, and **no release pinned today
+  publishes one**, so this build refuses every currently pinned release (exit `5`, the refusal
+  names the missing `.sigstore.json`). It works again once the release workflow uploads the
+  attestation bundles and the pins move to a release that carries them. Until then, use the
+  route below, or build from the pinned release's tag
+  (`git checkout <tag>` before `go build`), which builds the installer that release shipped.
 - **Without Go.** Download the asset for the pinned tag from
   `https://github.com/medici-finance/assay/releases/download/<tag>/desk-tools-windows-<arch>.tar.gz`,
   where `<tag>` and the sha256 are the `desk-tools:` block's `windows-<arch>` line in
@@ -1273,14 +1294,17 @@ places nothing; it never warns-and-continues.
 3. **Install the rest with the Go-native installer.** `deskinstall` resolves the pinned tag +
    per-platform sha256 from the plugin-shipped `paired-versions.yaml` (never a floating ref),
    downloads `statusgen-windows-<arch>.exe` and `desk-tools-windows-<arch>.tar.gz`, **verifies each
-   sha256 and refuses on any mismatch** (nothing placed on a bad hash), then installs the verified
-   binaries into a `PATH`-resolvable dir:
+   sha256 and refuses on any mismatch** (nothing placed on a bad hash), then — in a `deskinstall`
+   built from this tree — **verifies each asset's build attestation** (`<asset>.sigstore.json`
+   from the same release) **and refuses on any failure**, then installs the verified binaries
+   into a `PATH`-resolvable dir:
 
    ```powershell
    deskinstall --manifest paired-versions.yaml --dest $env:LOCALAPPDATA\Assay\bin
    ```
 
-   Exit `0` = installed & verified; exit `5` = refused (hash mismatch, absent pin, or bad input).
+   Exit `0` = installed & verified; exit `5` = refused (hash mismatch, missing or failing
+   attestation, absent pin, or bad input).
    On a clean host nothing above has placed `deskinstall` itself (step 2 fetches only
    `statusgen`). See
    **[The first `deskinstall` on a clean host](#the-first-deskinstall-on-a-clean-host--an-open-gap)**
@@ -1579,7 +1603,8 @@ those commands actually does underneath. Nothing here is retired by the collapse
    home, PATH, and child processes** above.
 4. **Run `deskinstall` for the rest of the toolchain.** `deskinstall --manifest
    plugins/assay/paired-versions.yaml --dest $env:LOCALAPPDATA\Assay\bin` — downloads and
-   sha256-verifies `desk-tools-windows-<arch>.tar.gz`, refusing on any mismatch. Step 2 does not
+   sha256-verifies `desk-tools-windows-<arch>.tar.gz`, refusing on any mismatch, then (in a
+   `deskinstall` built from this tree) verifies its build attestation, refusing on any failure. Step 2 does not
    place `deskinstall` itself. For how to get the first one, see
    **[The first `deskinstall` on a clean host](#the-first-deskinstall-on-a-clean-host--an-open-gap)**.
 5. **Pin the Windows assets in `.assay-versions`** — see **Pin the Windows assets** above; one

@@ -94,11 +94,163 @@ func TestOneImplementationPerMeaning(t *testing.T) {
 	t.Logf("markers=%d over %d index rows; owner half could-not-check (owner outside tools/desk or undeclared): %s",
 		len(ms), len(index), strings.Join(skipped, " "))
 	for _, r := range index {
+		if sliceHas(skipped, r.ID) {
+			continue // its owner is outside tools/desk; TestEvaluationOwnerIsLibrary reads it
+		}
 		if n, c := countOf(ms, r.ID), ceilings[r.ID]; n < c {
 			t.Logf("NOTE: %s has %d markers under its ceiling of %d; lower markers.txt to lock in the gain", r.ID, n, c)
 		}
 	}
 	failAll(t, append(vs, rv...))
+}
+
+// evaluationIDs are the semantic-index rows whose owner moved into the statusgen
+// evaluation library (the evaluation-extraction brief). statusgen is a separate module, so its markers are
+// read from the repository root like tools/desk's, and only these rows are held to the
+// owner half here; the module's other rows keep their could-not-check owner half.
+var evaluationIDs = []string{"S-eligibility", "S-evidence-coverage"}
+
+func subIndex(index []arch.SRow, ids []string) []arch.SRow {
+	var out []arch.SRow
+	for _, r := range index {
+		for _, id := range ids {
+			if r.ID == id {
+				out = append(out, r)
+			}
+		}
+	}
+	return out
+}
+
+func subCeilings(all map[string]int, ids []string) map[string]int {
+	out := map[string]int{}
+	for _, id := range ids {
+		if n, ok := all[id]; ok {
+			out[id] = n
+		}
+	}
+	return out
+}
+
+// TestEvaluationOwnerIsLibrary: the eligibility and evidence-coverage meanings are
+// implemented once, in the owner the semantic index names inside statusgen/evaluation, and
+// the ceilings in markers.txt are not raised to make room for a second copy
+// (R-one-implementation, the evaluation-extraction brief).
+func TestEvaluationOwnerIsLibrary(t *testing.T) {
+	modRoot := moduleRoot(t)
+	repo, ok := repoRoot(modRoot)
+	if !ok {
+		t.Skipf("could-not-check (no semantic index): %s is not tools/desk inside a repository carrying docs/contracts.md", modRoot)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "statusgen", "evaluation")); err != nil {
+		t.Skipf("could-not-check: no statusgen/evaluation in %s", repo)
+	}
+	f, err := os.Open(filepath.Join(repo, "docs", "contracts.md"))
+	if err != nil {
+		t.Fatalf("docs/contracts.md: %v", err)
+	}
+	defer f.Close()
+	index, err := arch.ParseIndex(f)
+	if err != nil {
+		t.Fatalf("docs/contracts.md: %v", err)
+	}
+	rows := subIndex(index, evaluationIDs)
+	if len(rows) != len(evaluationIDs) {
+		t.Fatalf("the semantic index lacks one of %v", evaluationIDs)
+	}
+	for _, r := range rows {
+		for _, o := range r.Owners {
+			if !strings.HasPrefix(o, "statusgen/evaluation/") {
+				t.Errorf("%s's owner %s is not inside statusgen/evaluation", r.ID, o)
+			}
+		}
+	}
+	ms, vs, err := arch.Markers(os.DirFS(repo), "statusgen", index)
+	if err != nil {
+		t.Fatalf("Markers: %v", err)
+	}
+	cf, err := os.Open("markers.txt")
+	if err != nil {
+		t.Fatalf("markers.txt: %v", err)
+	}
+	defer cf.Close()
+	all, err := arch.ParseCeilings(cf)
+	if err != nil {
+		t.Fatalf("markers.txt: %v", err)
+	}
+	ceilings := subCeilings(all, evaluationIDs)
+	for _, id := range evaluationIDs {
+		if ceilings[id] != 1 {
+			t.Errorf("markers.txt ceiling for %s is %d, want 1 — one implementation, in the library", id, ceilings[id])
+		}
+	}
+	rv, skipped := arch.Ratchet(ms, rows, ceilings, "statusgen")
+	if len(skipped) != 0 {
+		t.Errorf("the owner half of %v could not be checked: owners outside statusgen", skipped)
+	}
+	for _, id := range evaluationIDs {
+		if n := countOf(ms, id); n != 1 {
+			t.Errorf("%s has %d declared implementations in statusgen, want exactly 1", id, n)
+		}
+	}
+	failAll(t, append(vs, rv...))
+}
+
+// TestEvaluationOwnerPlanted: the check above fails on the planted violations it exists
+// for — a second copy of the meaning left in the adapter, a missing marker in the
+// library, a marker that has drifted off its function — and passes on the clean control.
+func TestEvaluationOwnerPlanted(t *testing.T) {
+	index := []arch.SRow{
+		{ID: "S-eligibility", Owners: []string{"statusgen/evaluation/eligibility.go"}},
+		{ID: "S-evidence-coverage", Owners: []string{"statusgen/evaluation/coverage_api.go"}},
+	}
+	ceilings := map[string]int{"S-eligibility": 1, "S-evidence-coverage": 1}
+	run := func(files map[string]string) []arch.Violation {
+		m := fstest.MapFS{}
+		for p, c := range files {
+			m[p] = &fstest.MapFile{Data: []byte(c)}
+		}
+		ms, vs, err := arch.Markers(m, "statusgen", index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rv, _ := arch.Ratchet(ms, index, ceilings, "statusgen")
+		return append(vs, rv...)
+	}
+	clean := map[string]string{
+		"statusgen/evaluation/eligibility.go":  "package evaluation\n\n// semantic: S-eligibility\nfunc EvaluateEligibility() {}\n",
+		"statusgen/evaluation/coverage_api.go": "package evaluation\n\n// semantic: S-evidence-coverage\nfunc EvaluateCoverage() {}\n",
+	}
+	t.Run("control", func(t *testing.T) { assertSet(t, run(clean), nil) })
+	t.Run("second-copy-in-adapter", func(t *testing.T) {
+		files := map[string]string{"statusgen/eligibility.go": "package main\n\n// semantic: S-eligibility\nfunc evaluateEligibility() {}\n"}
+		for k, v := range clean {
+			files[k] = v
+		}
+		assertSet(t, run(files), []string{
+			"R-one-implementation: S-eligibility has 2 declared implementations, over its markers.txt ceiling of 1",
+			"R-one-implementation: statusgen/eligibility.go:3: S-eligibility implemented outside its owner at statusgen/eligibility.go:3; add it to the row's duplicates with a design-fit finding, or move it to the owner",
+		})
+	})
+	t.Run("owner-lost-its-marker", func(t *testing.T) {
+		files := map[string]string{
+			"statusgen/evaluation/eligibility.go":  "package evaluation\n\nfunc EvaluateEligibility() {}\n",
+			"statusgen/evaluation/coverage_api.go": clean["statusgen/evaluation/coverage_api.go"],
+		}
+		assertSet(t, run(files), []string{
+			"R-one-implementation: S-eligibility's owner (statusgen/evaluation/eligibility.go) declares no implementation; mark the function that computes the meaning",
+		})
+	})
+	t.Run("marker-drifted-off-its-func", func(t *testing.T) {
+		files := map[string]string{
+			"statusgen/evaluation/eligibility.go":  "package evaluation\n\n// semantic: S-eligibility\n//\n// Rules follow.\nfunc EvaluateEligibility() {}\n",
+			"statusgen/evaluation/coverage_api.go": clean["statusgen/evaluation/coverage_api.go"],
+		}
+		got := run(files)
+		if len(got) == 0 {
+			t.Fatal("a marker that is not directly above its func was accepted")
+		}
+	})
 }
 
 // TestMissingIndexIsCouldNotCheck: a module root that is not tools/desk inside a
@@ -425,6 +577,15 @@ func readListAt(t *testing.T, p string) []string {
 		t.Fatalf("%s: %v", p, err)
 	}
 	return l
+}
+
+func sliceHas(s []string, id string) bool {
+	for _, x := range s {
+		if x == id {
+			return true
+		}
+	}
+	return false
 }
 
 func countOf(ms []arch.Marker, id string) int {

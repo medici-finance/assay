@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -19,31 +20,17 @@ const showUsage = "cellctl show <cell> [--kind <k>] [--cockpit <c>] [--harness <
 // It launches nothing and writes nothing. The same flags `desk`/`up` take are accepted so "what
 // would THIS invocation resolve to" is answerable BEFORE booting it; a `--kind` the cell is not
 // provisioned for refuses exactly as `desk` would.
-func cmdShow(cell string, args []string) {
-	kindOverride := prescanKindOverride(args)
-	c := loadCellWithKind(cell, kindOverride)
+func cmdShow(c *Cell, v *cli.Values, extra []string) {
+	if len(extra) > 0 {
+		die("show: unexpected argument '%s'", extra[0])
+	}
 	envfile := filepath.Join(c.Dir, "cell.env")
 
-	harnessFlag, cockpitFlag, providerFlag, modelFlag := "", "", "", ""
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; a {
-		case "--kind":
-			i++
-		case "--cockpit":
-			cockpitFlag = needFlagValue(args, &i, "--cockpit needs a value ("+joinPipe(cockpitValues)+")")
-		case "--harness":
-			harnessFlag = needFlagValue(args, &i, "--harness needs a value ("+joinPipe(harnessValues)+")")
-		case "--provider":
-			providerFlag = needFlagValue(args, &i, "--provider needs a value")
-		case "--model":
-			modelFlag = needFlagValue(args, &i, "--model needs a value")
-		default:
-			if strings.HasPrefix(a, "--") {
-				die("show: unknown flag %s", a)
-			}
-			die("show: unexpected argument '%s'", a)
-		}
-	}
+	needValue(v, "cockpit", "--cockpit needs a value ("+joinPipe(cockpitValues)+")")
+	needValue(v, "harness", "--harness needs a value ("+joinPipe(harnessValues)+")")
+	needValue(v, "provider", "--provider needs a value")
+	needValue(v, "model", "--model needs a value")
+	harnessFlag, cockpitFlag, providerFlag, modelFlag := v.String("harness"), v.String("cockpit"), v.String("provider"), v.String("model")
 	if harnessFlag != "" && !valueIn(harnessFlag, harnessValues) {
 		die("show: --harness must be one of %s, got '%s'", joinPipe(harnessValues), harnessFlag)
 	}
@@ -51,7 +38,7 @@ func cmdShow(cell string, args []string) {
 		die("show: --cockpit must be one of %s, got '%s'", joinPipe(cockpitValues), cockpitFlag)
 	}
 
-	// showLine: source is flag > cell.env line > default.
+	// showLine: source is flag > cell.env line > machine-wide defaults file > default.
 	showLine := func(key, flag, eff string) {
 		src := "default"
 		switch {
@@ -60,6 +47,8 @@ func cmdShow(cell string, args []string) {
 		default:
 			if _, ok := envFileValue(envfile, key); ok {
 				src = "cell.env"
+			} else if c.Env.Source(key) == layerDefaults {
+				src = cellDefaultsFile
 			}
 		}
 		fmt.Printf("[show] %s=%s (%s)\n", key, eff, src)
@@ -75,12 +64,19 @@ func cmdShow(cell string, args []string) {
 	// answers "would a desk booted from this cell turn the dispatch gate on" the same way a
 	// DRY_RUN boot would. "on" is what deskLaunch composes; anything else is identical absence
 	// to the deskdispatch consumer.
-	if v, ok := envFileValue(envfile, deskkit.EnvRepairAdmission); ok {
+	// The machine-wide defaults file can carry it too, and a launch composes it from there just
+	// the same, so that source is named rather than left out.
+	ra, inCellEnv := envFileValue(envfile, deskkit.EnvRepairAdmission)
+	src := "cell.env"
+	if !inCellEnv && c.Env.Source(deskkit.EnvRepairAdmission) == layerDefaults {
+		ra, src = c.Env.Get(deskkit.EnvRepairAdmission), cellDefaultsFile
+	}
+	if inCellEnv || src == cellDefaultsFile {
 		composed := "not composed — off/unset behaves identically to the deskdispatch gate"
-		if strings.TrimSpace(v) == "on" {
+		if strings.TrimSpace(ra) == "on" {
 			composed = "composed into every desk launch"
 		}
-		fmt.Printf("[show] %s=%s (cell.env; %s)\n", deskkit.EnvRepairAdmission, v, composed)
+		fmt.Printf("[show] %s=%s (%s; %s)\n", deskkit.EnvRepairAdmission, ra, src, composed)
 	}
 	showLine("CELL_KIND", c.KindOverride, c.Kind)
 	want, _ := c.cockpitWant(cockpitFlag)
@@ -153,6 +149,8 @@ func cmdShow(cell string, args []string) {
 			src = "default: " + rm.Src
 		} else if _, ok := envFileValue(envfile, rm.Src); ok {
 			src = "cell.env " + rm.Src
+		} else if c.Env.Source(rm.Src) == layerDefaults {
+			src = cellDefaultsFile + " " + rm.Src
 		} else {
 			src = "default: " + rm.Src
 		}

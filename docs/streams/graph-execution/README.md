@@ -231,3 +231,9 @@ provider calls, automatic fallback or live authority changes are commissioned by
 
 Dependency waves (including the existing graph/advice branches) are the authoring table above;
 `wave` is recalculated from in-repo `depends`, while adopter gates remain outside this graph.
+
+## Library-first work — 2026-10-08
+
+Library-first update: /19 now depends on `statusgen/15` for the existing evaluator API.
+The instance store no longer owns an independent evaluator extraction.
+See [the component contract](../../library-first.md). Existing completed history is unchanged.

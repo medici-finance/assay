@@ -154,12 +154,12 @@ func TestReclaimDeletesTheBranchWithACompareAndDelete(t *testing.T) {
 	}
 	var found bool
 	for _, g := range gitCalls(*calls) {
-		if len(g) >= 5 && g[1] == "update-ref" && g[2] == "-d" && g[3] == "refs/heads/cad" && g[4] == sha {
+		if len(g) >= 6 && g[1] == "update-ref" && g[2] == "-d" && g[3] == "--no-deref" && g[4] == "refs/heads/cad" && g[5] == sha {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("no `git update-ref -d refs/heads/cad %s` in: %v", sha, gitCalls(*calls))
+		t.Fatalf("no `git update-ref -d --no-deref refs/heads/cad %s` in: %v", sha, gitCalls(*calls))
 	}
 }
 

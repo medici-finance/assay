@@ -15,7 +15,7 @@ why: >-
   re-derive a stored gate is open and tracked in #2405.
 wave: 1
 depends: []
-unblocks: []
+unblocks: ["statusgen/18"]
 effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -31,8 +31,8 @@ sources:
   - "plugins/assay/skills/intake-desk/SKILL.md §'The judgment half', item 1 — the scan lane writes the placeholder and leaves triage to the session, so the placeholder can exist before the `risk:` label does"
   - "freshness-checked 2026-10-08 @ 82caf63b2 (origin/main) — `riskGateLabels` is `funds`, `security`; no Go file reads a `risk:` issue label; no open PR touches `statusgen/placeholder.go`"
 consumers:
-  - "statusgen/placeholder.go: follow-up statusgen/17 (this brief; one entry in the base label set and its comment)"
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up statusgen/17 (this brief; the scored-triage section gains one bullet: what `risk:high` does at first write, and what a triage session does when the placeholder came first)"
+  - "statusgen/placeholder.go: fixed-here statusgen/17 (this brief; one entry in the base label set and its comment)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here statusgen/17 (this brief; the scored-triage section gains one bullet: what `risk:high` does at first write, and what a triage session does when the placeholder came first)"
 ---
 
 # Brief 17 — `risk:high` label derives the human gate on a placeholder

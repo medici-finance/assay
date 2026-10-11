@@ -160,7 +160,9 @@ func TestNewScrubbedRoundTrip(t *testing.T) {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	t.Setenv("CELLS_ROOT", t.TempDir())
-	cmdNew([]string{"rt", "--kind", "scrubbed", "--repo", repo, "--repo-slug", "o/r", "--roots", "o/r=" + repo})
+	if code := inproc("new", "rt", "--kind", "scrubbed", "--repo", repo, "--repo-slug", "o/r", "--roots", "o/r="+repo); code != 0 {
+		t.Fatalf("new exited %d", code)
+	}
 	envfile := filepath.Join(os.Getenv("CELLS_ROOT"), "rt", "cell.env")
 	raw, err := os.ReadFile(envfile)
 	if err != nil {
@@ -233,7 +235,7 @@ func cellEnvReaders(name string, src any) ([]string, error) {
 // check, a kind precondition, a launch) is read through the loader; envFileValue answers
 // "is the key in the file" for `show` and nothing else.
 var cellEnvReadersAllowed = map[string]string{
-	"unquoteShellValueFor@cell.go:parseCellEnvFor":   "the loader",
+	"unquoteShellValueFor@cell.go:overlayEnvLines":   "the loader: the one reader of the cell.env grammar, for cell.env and the machine-wide defaults file",
 	"unquoteShellValueFor@cell.go:unquoteShellValue": "host-goos wrapper",
 	"unquoteShellValue@set.go:effectiveCellEnv":      "set's own KEY=VALUE overlay, read as the loader will",
 	"envFileValue@show.go:cmdShow":                   "presence/display only",
