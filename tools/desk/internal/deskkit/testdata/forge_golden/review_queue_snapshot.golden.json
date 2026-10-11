@@ -4,7 +4,7 @@
       "method": "POST",
       "path": "/graphql",
       "body": {
-        "query": "query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}",
+        "query": "query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}",
         "variables": {
           "limit": 100,
           "name": "assay",

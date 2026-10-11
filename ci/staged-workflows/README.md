@@ -53,6 +53,15 @@ reviewable artifact, not a run.
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
   live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
   build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
+- `forge-surface-control.yml` — staged twin of the live forge-surface job adding `forgeread/**` to
+  both path filters (`pull_request` and `push`) and a step running the shared fact reader's
+  controls (the module's tests, the ambient-token rule over `forgeread/`, the lower-layer scope
+  check, statusgen's import-path guard), and noting that `forge-ban.sh` now exits non-zero on a
+  `forgeread` site. **Staged, not live** — a maintainer promotes it
+  (`cp ci/staged-workflows/forge-surface-control.yml .github/workflows/forge-surface-control.yml`)
+  in a maintainer-credentialled commit, together with the `assay-statusgen.yml` staged change
+  (`forgeread/**` path filters, and the base-tree archive that now carries the sibling module,
+  without which the corroboration guard cannot build a base that already has `forgeread/`).
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
   `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
   (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set
