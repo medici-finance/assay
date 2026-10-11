@@ -1938,7 +1938,7 @@ func TestScanRiskHighPlaceholderGate(t *testing.T) {
 			{Number: 404, Title: "plain bug four", Labels: lbl("risk:high")},
 		},
 	}
-	plans, _, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	plans, _, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll, labelHoldClearAll)
 	if len(plans) != 3 {
 		t.Fatalf("expected 3 plans (404 already has a placeholder), got %d: %+v", len(plans), plans)
 	}
