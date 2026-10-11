@@ -144,7 +144,15 @@ func OpenWith(dir string, objects ObjectCache) (*Repo, error) {
 	// readAlternates for the resolution rules and the boundary this keeps.
 	alt := readAlternates(objectsDir)
 	st := filesystem.NewStorageWithOptions(repoFS, objects, filesystem.Options{AlternatesFS: alt.fs})
-	r, err := git.Open(extensionTolerantStorer{st}, osfs.New(worktreeDir))
+	var store storage.Storer = st
+	if alt.fs != nil {
+		store = alternateStorer{Storer: st, reader: &alternateReader{
+			objects: &st.ObjectStorage,
+			dir:     dotgit.NewWithOptions(repoFS, dotgit.Options{AlternatesFS: alt.fs}),
+			cache:   objects,
+		}}
+	}
+	r, err := git.Open(extensionTolerantStorer{store}, osfs.New(worktreeDir))
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: open %s: %w", dir, err)
 	}

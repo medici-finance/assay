@@ -247,9 +247,13 @@ func TestTreeDiffItemUnresolvable(t *testing.T) {
 // judgement must be argued in review and allowlisted here by file, with why.
 func TestNoAncestryWitnessJudge(t *testing.T) {
 	allow := map[string]string{} // file -> why; empty by design
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
+	var files []string
+	for _, pat := range []string{"*.go", "evaluation/*.go"} {
+		m, err := filepath.Glob(pat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, m...)
 	}
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {

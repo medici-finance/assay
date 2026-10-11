@@ -74,7 +74,7 @@ func TestCursorSetUsesCursorNamespace(t *testing.T) {
 	if err := os.WriteFile(file, []byte("CELL=example\nCELL_KIND=house\nCELL_HARNESS='cursor'\nDESK_MODEL_worker_desk=claude-pin\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	captureStdout(t, func() { cmdSet("example", []string{"worker-desk", "--model", "cursor-pin"}) })
+	captureStdout(t, func() { inproc("set", "example", "worker-desk", "--model", "cursor-pin") })
 	data, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)

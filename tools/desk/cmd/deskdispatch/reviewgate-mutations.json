@@ -1,0 +1,317 @@
+{
+  "test": "go test ./cmd/deskdispatch -run '^(TestRequiredCheckRed|TestStaleDescription|TestRulingRecordedSince|TestGateHolds|TestGateNames|TestGateRead|TestGateNear|TestLaneAwaits|TestHeldDispatch|TestDryRunIsNeverHeld|TestFailedGateRead|TestPendingRequiredCheck|TestRoundReadErrors)' -count=1 -timeout 120s",
+  "control": {
+    "name": "a hold is not a refusal",
+    "file": "cmd/deskdispatch/reviewroundread.go",
+    "old": "return rr, holdRefusal(repo, o.pr, rr.head, holds)",
+    "new": "return rr, nil"
+  },
+  "mutations": [
+    {
+      "name": "checks: a required check still running is red",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if strings.EqualFold(strings.TrimSpace(r.Status), \"completed\") && failedConclusion(r.Conclusion) {",
+      "new": "if !strings.EqualFold(strings.TrimSpace(r.Status), \"completed\") || failedConclusion(r.Conclusion) {"
+    },
+    {
+      "name": "checks: a pending commit status is red",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "case \"failure\", \"error\":\n\t\t\t\tfailed++",
+      "new": "case \"failure\", \"error\", \"pending\":\n\t\t\t\tfailed++"
+    },
+    {
+      "name": "checks: a cancelled run is red",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "case \"failure\", \"timed_out\", \"startup_failure\":",
+      "new": "case \"failure\", \"timed_out\", \"startup_failure\", \"cancelled\":"
+    },
+    {
+      "name": "checks: a timed-out run is not red",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "case \"failure\", \"timed_out\", \"startup_failure\":",
+      "new": "case \"failure\", \"startup_failure\":"
+    },
+    {
+      "name": "checks: one failed report beside a green one is red",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if reported > 0 && failed == reported {",
+      "new": "if failed > 0 {"
+    },
+    {
+      "name": "checks: a required check nothing reported under is red",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if reported > 0 && failed == reported {",
+      "new": "if failed == reported {"
+    },
+    {
+      "name": "checks: an older failed run is not superseded",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "runs := deskkit.LatestRunPerName(checks.CheckRuns,\n\t\tfunc(r deskkit.CheckRun) string { return strings.ToLower(strings.TrimSpace(r.Name)) },",
+      "new": "runs := deskkit.LatestRunPerName(checks.CheckRuns,\n\t\tfunc(r deskkit.CheckRun) string { return r.Name + r.Conclusion },"
+    },
+    {
+      "name": "checks: an older failed status is not superseded",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "func(s deskkit.StatusContext) string { return strings.ToLower(strings.TrimSpace(s.Context)) },",
+      "new": "func(s deskkit.StatusContext) string { return s.Context + s.State },"
+    },
+    {
+      "name": "checks: a red required check does not hold",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "red := redRequiredChecks(required, checks)\n\tif len(red) == 0 {",
+      "new": "red := redRequiredChecks(required, checks)\n\tif len(red) >= 0 {"
+    },
+    {
+      "name": "checks: a failed check that is not required is counted",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "\t\t\tif strings.ToLower(strings.TrimSpace(r.Name)) != key {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\treported++\n\t\t\tif strings.EqualFold(",
+      "new": "\t\t\treported++\n\t\t\tif strings.EqualFold("
+    },
+    {
+      "name": "checks: a partly served rollup can hold",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if checks.CheckRunsTotalCount > len(checks.CheckRuns) || checks.StatusTotalCount > len(checks.Statuses) {",
+      "new": "if false {"
+    },
+    {
+      "name": "checks: an unreadable required-check list holds",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "return nil, \"could not read the base branch's required checks\"",
+      "new": "return &gateHold{holdRequiredCheckRed, \"unreadable\"}, \"could not read the base branch's required checks\""
+    },
+    {
+      "name": "checks: unreadable checks at the head hold",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "return nil, \"could not read the checks at the head\"",
+      "new": "return &gateHold{holdRequiredCheckRed, \"unreadable\"}, \"could not read the checks at the head\""
+    },
+    {
+      "name": "description: a head line outside the weight section counts",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if next := anyHeadingRe.FindStringIndex(section); next != nil {",
+      "new": "if next := anyHeadingRe.FindStringIndex(section); next != nil && false {"
+    },
+    {
+      "name": "description: a description with no weight section is read whole",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if loc == nil {\n\t\treturn nil\n\t}\n\tsection := body[loc[1]:]",
+      "new": "if loc == nil {\n\t\tloc = []int{0, 0}\n\t}\n\tsection := body[loc[1]:]"
+    },
+    {
+      "name": "description: a stale description never holds",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if len(declared) == 0 || !isCommitID(head) {",
+      "new": "if true {"
+    },
+    {
+      "name": "description: an abbreviated head must equal the full head",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if strings.HasPrefix(head, d) {",
+      "new": "if head == d {"
+    },
+    {
+      "name": "description: every declared head must be this head",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "for _, d := range declared {\n\t\tif strings.HasPrefix(head, d) {\n\t\t\treturn nil\n\t\t}\n\t}",
+      "new": "if strings.HasPrefix(head, declared[0]) {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "description: a word of letters is taken for a commit id",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if strings.ContainsAny(m[1], \"0123456789\") {",
+      "new": "if true {"
+    },
+    {
+      "name": "description: a commit id anywhere on a line is a declaration",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "\"(?mi)^[ \\\\t>|*+-]*head[ \\\\t]+`?([0-9a-f]{7,40})\\\\b\"",
+      "new": "\"(?mi)head[ \\\\t]+`?([0-9a-f]{7,40})\\\\b\""
+    },
+    {
+      "name": "ruling: a comment before the label is a ruling",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if isRatifier(ev.Author, ev.AuthorID) && ev.CreatedAt.After(applied) {",
+      "new": "if isRatifier(ev.Author, ev.AuthorID) {"
+    },
+    {
+      "name": "ruling: anyone's comment is a ruling",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if isRatifier(ev.Author, ev.AuthorID) && ev.CreatedAt.After(applied) {",
+      "new": "if ev.CreatedAt.After(applied) {"
+    },
+    {
+      "name": "ruling: an incomplete history is read as no ruling",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !trust.Complete {\n\t\treturn rulingUnknown\n\t}",
+      "new": "if false {\n\t\treturn rulingUnknown\n\t}"
+    },
+    {
+      "name": "ruling: an undatable label is read as no ruling",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if err != nil {\n\t\t\t\treturn rulingUnknown\n\t\t\t}\n\t\t\tapplied = t",
+      "new": "if err != nil {\n\t\t\t\treturn rulingMissing\n\t\t\t}\n\t\t\tapplied = t"
+    },
+    {
+      "name": "ruling: the label's first application is the one dated",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "\t\t\tapplied = t\n",
+      "new": "\t\t\tif applied.IsZero() {\n\t\t\t\tapplied = t\n\t\t\t}\n"
+    },
+    {
+      "name": "ruling: a removed label still stands",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "standing = !e.Removed",
+      "new": "standing = true"
+    },
+    {
+      "name": "ruling: no configured ratifier is read as no ruling",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !ok || is == nil {\n\t\treturn rulingUnknown",
+      "new": "if !ok || is == nil {\n\t\treturn rulingMissing"
+    },
+    {
+      "name": "ruling: an unreadable label history is read as no ruling",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if err != nil {\n\t\treturn rulingUnknown\n\t}\n\tif isChange {\n\t\ttrust, err",
+      "new": "if err != nil {\n\t\treturn rulingMissing\n\t}\n\tif isChange {\n\t\ttrust, err"
+    },
+    {
+      "name": "ruling: an unreadable comment history is read as no ruling",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if err != nil {\n\t\treturn rulingUnknown\n\t}\n\treturn rulingRecordedSince(events, trust, is)",
+      "new": "if err != nil {\n\t\treturn rulingMissing\n\t}\n\treturn rulingRecordedSince(events, trust, is)"
+    },
+    {
+      "name": "decision: a change without the label is checked for a ruling",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !hasDecisionLabel(pr.Labels) {\n\t\treturn nil, \"\"\n\t}",
+      "new": "if false {\n\t\treturn nil, \"\"\n\t}"
+    },
+    {
+      "name": "decision: an unruled decision does not hold",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "add(decisionHold(fg, fr, number, pr))",
+      "new": "_, _ = decisionHold(fg, fr, number, pr)"
+    },
+    {
+      "name": "lane: a verdict at an earlier head holds",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !last.blocking || !isCommitID(head) || !strings.EqualFold(last.head, head) {",
+      "new": "if !last.blocking || !isCommitID(head) {"
+    },
+    {
+      "name": "lane: an approving verdict holds",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !last.blocking || !isCommitID(head) || !strings.EqualFold(last.head, head) {",
+      "new": "if !isCommitID(head) || !strings.EqualFold(last.head, head) {"
+    },
+    {
+      "name": "lane: the lane's first verdict is read, not its latest",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "last := verdicts[len(verdicts)-1]",
+      "new": "last := verdicts[0]"
+    },
+    {
+      "name": "lane: a verdict with a content blocker holds",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !decl.Declared || decl.Err != nil || decl.HasContentBlocker || len(decl.Conditions) == 0 {",
+      "new": "if !decl.Declared || decl.Err != nil || len(decl.Conditions) == 0 {"
+    },
+    {
+      "name": "lane: a verdict without the declaration line holds",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !decl.Declared || decl.Err != nil || decl.HasContentBlocker || len(decl.Conditions) == 0 {",
+      "new": "if decl.Err != nil || decl.HasContentBlocker || len(decl.Conditions) == 0 {"
+    },
+    {
+      "name": "lane: another repository's item is read as this one's",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if m == nil || (m[1] != \"\" && !strings.EqualFold(m[1], fr.Slug())) {",
+      "new": "if m == nil {"
+    },
+    {
+      "name": "lane: a prerequisite that is not an item is skipped",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if m == nil || (m[1] != \"\" && !strings.EqualFold(m[1], fr.Slug())) {\n\t\t\treturn nil, \"\" // not an item of this repository: not a ruling this gate can read\n\t\t}",
+      "new": "if m == nil {\n\t\t\tcontinue\n\t\t}\n\t\tif m[1] != \"\" && !strings.EqualFold(m[1], fr.Slug()) {\n\t\t\treturn nil, \"\"\n\t\t}"
+    },
+    {
+      "name": "lane: a closed prerequisite still holds",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !strings.EqualFold(strings.TrimSpace(item.State), \"open\") || !hasDecisionLabel(item.Labels) {",
+      "new": "if !hasDecisionLabel(item.Labels) {"
+    },
+    {
+      "name": "lane: a prerequisite that is not a decision still holds",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "if !strings.EqualFold(strings.TrimSpace(item.State), \"open\") || !hasDecisionLabel(item.Labels) {",
+      "new": "if !strings.EqualFold(strings.TrimSpace(item.State), \"open\") {"
+    },
+    {
+      "name": "lane: an unreadable prerequisite is counted as unruled",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "return nil, \"this lane's verdict at this head blocks on #\" + m[2] + \", which could not be read\"",
+      "new": "waiting = append(waiting, \"#\"+m[2])\n\t\t\tcontinue"
+    },
+    {
+      "name": "lane: an unknown ruling state is counted as unruled",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "case rulingUnknown:\n\t\t\treturn nil, \"this lane's verdict at this head blocks on #\" + m[2] + \", whose ruling state could not be read\"\n\t\tcase rulingMissing:",
+      "new": "case rulingUnknown, rulingMissing:"
+    },
+    {
+      "name": "lane: a prerequisite that is a change is read as an issue",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "switch itemRuling(fg, fr, n, item.IsPullRequest) {",
+      "new": "switch itemRuling(fg, fr, n, false) {"
+    },
+    {
+      "name": "lane: a lane waiting on rulings is dispatched anyway",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "add(laneRulingHold(fg, fr, pr, verdicts))",
+      "new": "_, _ = laneRulingHold(fg, fr, pr, verdicts)"
+    },
+    {
+      "name": "gate: a hold is skipped when the lane is not known",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if len(holds) > 0 {",
+      "new": "if len(holds) > 0 && unknown == \"\" {"
+    },
+    {
+      "name": "gate: the hold's error is dropped by the dispatcher",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\tif herr != nil {\n\t\t\treturn herr\n\t\t}\n\t\tplan.round = round",
+      "new": "\t\t_ = herr\n\t\tplan.round = round"
+    },
+    {
+      "name": "gate: the refusal does not name the head",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "heldMarker, repo, number, head, strings.Join(names, \", \")",
+      "new": "heldMarker, repo, number, \"unknown\", strings.Join(names, \", \")"
+    },
+    {
+      "name": "gate: the refusal names only the first reason",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "heldMarker, repo, number, head, strings.Join(names, \", \")",
+      "new": "heldMarker, repo, number, head, names[0]"
+    },
+    {
+      "name": "gate: a hold exits with another code",
+      "file": "cmd/deskdispatch/reviewgate.go",
+      "old": "return deskkit.Refused(fmt.Sprintf(\"%s — %s#%d at head %s: %s. No reviewer",
+      "new": "return deskkit.Disabled(fmt.Sprintf(\"%s — %s#%d at head %s: %s. No reviewer"
+    },
+    {
+      "name": "lane: a verdict whose own record names another head still holds on its ruling state",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "\t\t\tverdicts, unknown = nil, why\n",
+      "new": "\t\t\tunknown = why\n"
+    },
+    {
+      "name": "lane: a verdict's own record of its head is not compared before the gate",
+      "file": "cmd/deskdispatch/reviewroundread.go",
+      "old": "if why := disputedVerdictHead(verdicts); why != \"\" {",
+      "new": "if why := disputedVerdictHead(verdicts); why != \"\" && false {"
+    }
+  ]
+}

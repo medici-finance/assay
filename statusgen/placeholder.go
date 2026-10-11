@@ -81,8 +81,12 @@ var (
 
 	// riskGateLabels is the risk vocabulary recognised as an exact issue LABEL,
 	// kept separate from the free-text keyword match to preserve the two-stage
-	// derivation (exact-label check first, then whole-word text match).
-	riskGateLabels = []string{"funds", "security"}
+	// derivation (exact-label check first, then whole-word text match). The base
+	// set also carries the methodology's top triage risk label, risk:high;
+	// risk:med and risk:low are deliberately absent, and the match is exact
+	// (no prefix or pattern match on "risk:"). It stays out of riskGateKeywords
+	// so a title that merely mentions risk:high does not gate.
+	riskGateLabels = []string{"funds", "security", "risk:high"}
 
 	// placeholderRiskLabels / placeholderRiskKeywordRe are DERIVED from the risk
 	// vocabulary above (registerRiskGateVocabulary rebuilds them after an

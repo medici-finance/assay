@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,18 +142,36 @@ func TestActingToolsIgnoreAHostileEnvUnderCI(t *testing.T) {
 // cmd/ today: statusgen is the only report-class consumer and it lives in the other
 // module, with its own scanClassForMode.
 func TestEveryActingMainPassesFalse(t *testing.T) {
-	reportClassMains := map[string]string{} // none in tools/desk today
-
-	entries, err := os.ReadDir(cmdDir)
-	if err != nil {
-		t.Fatalf("cannot enumerate %s: %v", cmdDir, err)
+	reportClassMains := map[string]string{
+		"deskread": "flag-gated: ClassForTool(true) is chosen only under the explicit --ci-workflow-token " +
+			"opt-in (toolClassFor), the class is ClassCI only inside CI, and the CI transport resolves no " +
+			"acting role; without the flag deskread passes ClassForTool(false) exactly as before",
 	}
-	checked := 0
+	checked, problems := scanActingMains(t, cmdDir, reportClassMains)
+	if checked == 0 {
+		t.Fatal("no main.go under " + cmdDir + " calls ClassForTool — this guard enumerated " +
+			"nothing and would pass over a tree with the call deleted everywhere")
+	}
+	for _, p := range problems {
+		t.Error(p)
+	}
+}
+
+// scanActingMains checks every cmd/*/main.go under root that calls ClassForTool. A main listed in
+// reportClassMains must contain ClassForTool(true) (and, being flag-gated, ClassForTool(false) as
+// well); an UNLISTED main must contain ClassForTool(false) and must NOT contain ClassForTool(true),
+// so a true branch added to an acting main fails here until someone lists it with a reason.
+func scanActingMains(t *testing.T, root string, reportClassMains map[string]string) (checked int, problems []string) {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("cannot enumerate %s: %v", root, err)
+	}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		main := filepath.Join(cmdDir, e.Name(), "main.go")
+		main := filepath.Join(root, e.Name(), "main.go")
 		src, err := os.ReadFile(main)
 		if err != nil {
 			continue // not every command keeps its entrypoint in main.go
@@ -164,18 +183,61 @@ func TestEveryActingMainPassesFalse(t *testing.T) {
 		checked++
 		if why, ok := reportClassMains[e.Name()]; ok {
 			if !strings.Contains(text, "ClassForTool(true)") {
-				t.Errorf("%s is listed as report-class (%s) but does not call ClassForTool(true)", main, why)
+				problems = append(problems, fmt.Sprintf("%s is listed as report-class (%s) but does not call ClassForTool(true)", main, why))
+			}
+			if !strings.Contains(text, "ClassForTool(false)") {
+				problems = append(problems, fmt.Sprintf("%s is listed as flag-gated (%s) but has no ClassForTool(false) default branch", main, why))
 			}
 			continue
 		}
+		if strings.Contains(text, "ClassForTool(true)") {
+			problems = append(problems, fmt.Sprintf("%s calls ClassForTool(true) but is not listed in reportClassMains. "+
+				"A report-class branch in an acting tool is a decision someone writes down, with the reason", main))
+		}
 		if !strings.Contains(text, "ClassForTool(false)") {
-			t.Errorf("%s calls ClassForTool but not with false. Every ACTING tool must be "+
+			problems = append(problems, fmt.Sprintf("%s calls ClassForTool but not with false. Every ACTING tool must be "+
 				"file-only in CI as well as locally; if this tool really only classifies and "+
-				"prints, add it to reportClassMains with the reason", main)
+				"prints, add it to reportClassMains with the reason", main))
 		}
 	}
-	if checked == 0 {
-		t.Fatal("no main.go under " + cmdDir + " calls ClassForTool — this guard enumerated " +
-			"nothing and would pass over a tree with the call deleted everywhere")
+	return checked, problems
+}
+
+// TestActingMainGuardRefusesUnlistedTrueBranch is the guard's negative case: over a fixture tree
+// it must report an unlisted main with a ClassForTool(true) branch, and a listed one without
+// the default false branch, while accepting a plain acting main.
+func TestActingMainGuardRefusesUnlistedTrueBranch(t *testing.T) {
+	root := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"+body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("plain", "func main() { SetToolClass(ClassForTool(false)) }\n")
+	write("sneaky", "func main() { if flagged { SetToolClass(ClassForTool(true)) } else { SetToolClass(ClassForTool(false)) } }\n")
+	write("gated", "func main() { SetToolClass(ClassForTool(true)) }\n")
+	write("listednotrue", "func main() { SetToolClass(ClassForTool(false)) }\n")
+
+	checked, problems := scanActingMains(t, root, map[string]string{"gated": "fixture", "listednotrue": "fixture"})
+	if checked != 4 {
+		t.Fatalf("checked %d mains, want 4", checked)
+	}
+	joined := strings.Join(problems, "\n")
+	if !strings.Contains(joined, filepath.Join(root, "sneaky", "main.go")) || !strings.Contains(joined, "not listed in reportClassMains") {
+		t.Errorf("the unlisted ClassForTool(true) branch was not reported:\n%s", joined)
+	}
+	if !strings.Contains(joined, filepath.Join(root, "gated", "main.go")) || !strings.Contains(joined, "no ClassForTool(false) default branch") {
+		t.Errorf("the listed main without a default false branch was not reported:\n%s", joined)
+	}
+	if !strings.Contains(joined, filepath.Join(root, "listednotrue", "main.go")) || !strings.Contains(joined, "does not call ClassForTool(true)") {
+		t.Errorf("the listed main without a ClassForTool(true) call was not reported:\n%s", joined)
+	}
+	if strings.Contains(joined, filepath.Join(root, "plain", "main.go")) {
+		t.Errorf("a plain acting main was reported:\n%s", joined)
 	}
 }

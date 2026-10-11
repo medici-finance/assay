@@ -23,8 +23,8 @@ import (
 // and never falls back to an ambient CLI identity.
 
 // ghToken holds the verifier App installation token minted for the target repo. deskevidence
-// ALWAYS mints it before any forge call, so every read and every write is performed as the
-// verifier App.
+// ALWAYS mints it before any forge call — pre-work admission's read of the attestation record
+// included (admitLanding) — so every read and every write is performed as the verifier App.
 //
 // An EMPTY value is a HARD REFUSAL, never a fallback (custody minter below). With no minted
 // token the write would land as whatever identity the ambient credential holds — the exact
