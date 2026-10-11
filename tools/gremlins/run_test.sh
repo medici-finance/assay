@@ -180,7 +180,7 @@ pass "pin file shape"
 # records the install's environment and fails it, so nothing is downloaded.
 rc=0
 env PATH="$goshim:$PATH" BUILDINFO="$good_info" INSTALL_ENV="$work/h.env" \
-	GOPRIVATE=github.com/go-gremlins GOMODCACHE="$work/shared-cache" \
+	GOPRIVATE=github.com/go-gremlins GOMODCACHE="$work/shared-cache" GOCACHE="$work/shared-build" \
 	bash "$here/run.sh" --root "$root" -o "$work/h" pkg/ok >"$work/h.out" 2>&1 || rc=$?
 [ "$rc" = 2 ] || fail "failed install exit $rc, want 2"
 grep -q 'install failed' "$work/h.out" || fail "failed install not named"
@@ -188,6 +188,9 @@ grep -qx 'GOENV=off' "$work/h.env" || fail "install reads the go env file"
 grep -qx 'GOPRIVATE=' "$work/h.env" || fail "install keeps GOPRIVATE"
 grep -qx 'GOSUMDB=sum.golang.org' "$work/h.env" || fail "install does not pin GOSUMDB"
 grep -q '^GOMODCACHE=.*/gremlins-gotmp\.[^/]*/modcache$' "$work/h.env" || fail "install uses the shared module cache"
+grep -q '^GOCACHE=.*/gremlins-gotmp\.[^/]*/gocache$' "$work/h.env" || fail "install uses the shared build cache"
+# Without -modcacherw the fresh cache is read-only and the EXIT trap cannot delete it.
+grep -q '^GOFLAGS=.*-modcacherw' "$work/h.env" || fail "install cache is not removable"
 pass "install environment"
 
 if [ "$fails" -gt 0 ]; then

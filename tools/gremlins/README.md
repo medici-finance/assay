@@ -32,8 +32,9 @@ Gremlins never decides that on its own. That is why the sweep files no issues.
    checksum database forced on: `GOPROXY`, `GOSUMDB` and `GOFLAGS` are pinned, the
    `GONOSUMDB`/`GOPRIVATE`/`GOINSECURE` family is cleared, and `GOENV=off` keeps a
    `go env -w` file from setting them again (go reads an empty variable as unset). The
-   module cache is a fresh directory, so a cache already on a persistent runner is never
-   trusted in place of the download. It never installs `@latest`.
+   module cache and the build cache are fresh directories, so caches already on a
+   persistent runner are never trusted in place of the download or its build. It never
+   installs `@latest`.
    Then it checks the binary's build info (`go version -m`) for that module, version and
    `h1:` sum. A binary that does not match is refused (exit 2). The upstream binary
    reports `dev` for `--version`, so the version check uses the build info.

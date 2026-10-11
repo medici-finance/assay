@@ -101,10 +101,11 @@ if [ -z "$gremlins" ]; then
 	# - GOENV=off: go ignores the `go env -w` file, so an empty value below really
 	#   is empty (cmd/go reads an empty variable as unset and falls back to that file).
 	# - The GONOSUMDB/GOPRIVATE family is cleared; GOPROXY and GOSUMDB are pinned.
-	# - GOMODCACHE is fresh: go never re-hashes a module already extracted in a
-	#   shared cache, so a persistent runner's cache cannot stand in for the download.
+	# - GOMODCACHE and GOCACHE are fresh: go never re-hashes a module already
+	#   extracted in a shared cache, so a persistent runner's caches cannot stand
+	#   in for the download or its build. -modcacherw lets the EXIT trap delete them.
 	env GOENV=off GOBIN="$out/bin" GOTOOLCHAIN=local GOFLAGS="-mod=mod -modcacherw" \
-		GOMODCACHE="$gotmp/modcache" \
+		GOMODCACHE="$gotmp/modcache" GOCACHE="$gotmp/gocache" \
 		GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org \
 		GONOSUMDB= GONOSUMCHECK= GOPRIVATE= GONOPROXY= GOINSECURE= \
 		go install "${GREMLINS_MOD}/cmd/gremlins@${GREMLINS_VERSION}" || die "install failed"
