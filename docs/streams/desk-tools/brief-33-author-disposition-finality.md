@@ -18,10 +18,12 @@ why: >-
   same convergence that produced desk-tools/31's coverage contract: the failure class is
   real. This brief writes the rule into the reviewer's prompt and the review desk's skill
   body, in this methodology's own vocabulary: a disposition is an ANSWER, so the reviewer
-  answers it exactly one of two ways — accept (the finding class resolves, recorded with
-  the disposition's words as the resolution evidence) or escalate (ONE arbiter packet
-  quoting the disposition, under the existing cap-and-arbiter machinery, which is already
-  derived, never reviewer-asserted). A re-statement round is neither.
+  answers it exactly one of two ways — accept (the finding class resolves as
+  `resolved-by-author-disposition`, recorded with the disposition's words as the resolution
+  evidence; flip gates untouched — a same-head APPROVE is still not posted, the standing CR
+  clears at the next push or by the human) or escalate (clause 20's reviewer-named arbiter
+  hand-off, quoted disposition, ONE, filed by the desk — never reviewer-asserted).
+  A re-statement round is neither.
 wave: 1
 depends: []
 unblocks: []
@@ -32,7 +34,7 @@ issues: []
 schema: brief-v2
 authored: 2026-10-11 by a house authoring session at the driver's direction (external mechanic surveyed from vrajpal-jhala/langgraph-harness, public, MIT)
 sources:
-  - "tools/desk/cmd/deskdispatch/references/review-prompt.md — the finding-class register, round caps, class continuity, and the derived arbiter packet (line ~341: the round cap files ONE arbiter packet and holds the class). All of it governs findings and rounds; no clause governs an author's explicit disposition on a finding. The prompt-audit clause's 'pending disposition' (line ~464) is a different concept — a fleet-wide audit baseline's own accept/decline — and must not be conflated."
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md — the finding-class register, round caps, class continuity, and the derived arbiter packet (review-prompt.md:366 on main, cited as ~341 the round cap files ONE arbiter packet and holds the class). All of it governs findings and rounds; no clause governs an author's explicit disposition on a finding. The prompt-audit clause's 'pending disposition' (review-prompt.md:491 on main) is a different concept — a fleet-wide audit baseline's own accept/decline — and must not be conflated."
   - "CLAUDE.md-level worker doctrine already carries the author's half ('fix every finding with follow-up commits, reply-with-evidence to disputes') — this brief is the reviewer's half: what a reply-with-evidence disposition obliges the reviewer to do."
   - "vrajpal-jhala/langgraph-harness backend/src/skills/gitlab-mcp/code-review.md principle 8 (public, MIT, surveyed 2026-10-11) — the independently derived statement of the rule: an author's disposition on a thread is final; a thread the author explicitly answered does not withhold approval regardless of a matching code change."
   - "freshness-checked 2026-10-11 @ 69ca08c69 (origin/main) — no clause in either lane's cut or the skill body states disposition finality; grep for 'disposition' in the review prompt matches only the prompt-audit baseline concept; brief-33 is the next free number after brief-32 (PR #2535)."
@@ -43,10 +45,11 @@ exec-tier-why: >-
   two neighboring rules (resolve-with-evidence, round-cap arbiter) so the boundaries,
   not just the words, are right.
 consumers:
-  - "tools/desk/cmd/deskdispatch/references/review-prompt.md: fixed-here (the disposition-finality clause: an explicit author disposition on a finding class ends the reviewer's argument in accept-or-escalate; a re-statement round is neither; the disposition's words are resolution evidence when accepted)"
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md: fixed-here (the disposition-finality clause outside the lane markers: an explicit author disposition on a finding class ends the reviewer's argument in accept-or-escalate; a re-statement round is neither; the disposition's words are resolution evidence when accepted; escalate = clause 20's reviewer-named arbiter hand-off)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here (one neutral paragraph in the reviewer's bar: same rule, pointing at the prompt clause)"
   - "plugins/assay/skills/pr-shepherd/SKILL.md: out-of-scope (the worker's reply-with-evidence duty already exists; this brief changes nothing on the author side)"
-  - "tools/desk/cmd/deskdispatch/references/common-clauses.md: fixed-here only if the clause's natural home is the shared clauses both lane cuts read — the worker picks after reading both; if it lands there, the review-prompt entry is the pointer, not a second copy"
+  - "tools/desk/cmd/deskdispatch/references/common-clauses.md: out-of-scope (wrong home — emitted to every dispatched class; the rule binds reviewers only)"
+  - "tools/desk/cmd/deskflip: out-of-scope (route (b) chosen for review F3: an accept at an unchanged head records in the finding block; the standing CR clears at the next push or by the human — no new deskflip exemption)"
 version: 1
 id: 9a41e7d2-64c3-4f8a-b1e0-3c7d52a8f964
 ---
@@ -67,14 +70,21 @@ class (won't fix / fixed a different way / tracked separately / disputed with ev
 an ANSWER to that class. The reviewer's next move is exactly one of:
 
 1. **Accept** — the class resolves. The resolution evidence is the disposition's own words
-   (with its head), not a code read; "resolved-by-author-disposition" is a legitimate
-   resolution. The verdict that accepts carries the disposition's substance, so a later
-   reader sees why the class closed.
-2. **Escalate** — ONE arbiter packet under the existing machinery, quoting the disposition
-   and the finding, when the reviewer believes the disposition is wrong in a way that
-   matters (safety-consequence, a control weakened, a spec violated). The packet is filed
-   the way the round-cap packet is filed — derived by the existing path, never
-   reviewer-asserted as a fresh finding round.
+   (with its head), not a code read; `resolved-by-author-disposition` is a legitimate
+   resolution, recorded in the verdict's typed finding block so a later reader sees why the
+   class closed. **Flip-gate interaction (unchanged by this brief):** the common case — a
+   "won't fix" with no new commit — leaves the reviewer's own standing CHANGES_REQUESTED at
+   an unchanged head, and the same-head CR-to-APPROVE rule (clause 12) plus deskflip's
+   standing-CR refusal still stand. The accepted disposition ends the reviewer's ARGUMENT,
+   not the pipeline's gate: the CR clears at the author's next push (a re-review at the new
+   head then posts the APPROVE), or the human clears the standing CR. Nothing here asks
+   deskflip for a new exemption.
+2. **Escalate** — the reviewer names the class in its verdict as an arbiter hand-off for
+   the desk to file (review-prompt clause 20's existing reviewer-named hand-off form, the
+   one at review-prompt.md:589 on main), quoting the disposition and the finding, when the
+   reviewer believes the disposition is wrong in a way that matters (safety-consequence, a
+   control weakened, a spec violated). ONE hand-off, never a fresh finding round; the
+   derivation and filing stay the desk's, never the reviewer's own packet.
 
 A re-statement round is neither. A disposition is not re-opened by a later reviewer round
 absent NEW evidence that the disposed concern materially regressed — a code change alone is
@@ -87,19 +97,25 @@ not new evidence about the disposition, though it can be new evidence about the 
   ordinary rules (inadequate-fix reply, round cap) govern those.
 - **Never for safety-consequence findings.** A disposition on a safety-consequence finding
   escalates, full stop; it is never accepted by the reviewer alone.
-- **The disposition is the author's, not a third party's.** A comment from an untrusted or
-  unblessed login blesses nothing (trust gate); a disposition carries authority only from
-  the change's author identity.
+- **The disposition is the author's (or a trusted human maintainer's), not a third
+  party's.** A comment from an untrusted or unblessed login blesses nothing (trust gate);
+  a disposition carries authority from the change's author identity — and where the author
+  is a role App, a trusted human maintainer's disposition on the same finding carries the
+  same finality. Nobody else's does.
 - **Nothing here changes the flip gates.** A resolved class still needs the checks, the
   security lane, and the merge-time re-check; disposition finality governs the reviewer's
-  argument, not the pipeline's gates.
+  argument, not the pipeline's gates. An accept at an unchanged head does NOT post a
+  same-head APPROVE (clause 12 holds); it is recorded in the finding block and the standing
+  CR clears at the next push or by the human — the Accept move's flip-gate interaction is
+  stated in full above, so the reviewer never has to guess.
 
 ## Task
 
-**Task 1 — the clause.** Add the disposition-finality clause to the reviewer's shared
-clauses so BOTH lane cuts carry it (if `common-clauses.md` is the shared home both cuts
-read, it lands there and the review prompt points at it; otherwise it lands in the review
-prompt directly — the worker reads both files and picks the home with no second copy).
+**Task 1 — the clause.** Add the disposition-finality clause to
+`tools/desk/cmd/deskdispatch/references/review-prompt.md` OUTSIDE the lane markers (the
+next numbered clause), so BOTH lane cuts carry it. NOT `common-clauses.md` — that kit is
+emitted to every dispatched class (workers and verifiers too), and the rule's two legal
+moves are the reviewer's alone. One home, no second copy, no pointer needed.
 The clause states the rule, the two legal moves, the resolution-evidence shape
 (`resolved-by-author-disposition` + the disposition's words + its head), the
 safety-consequence carve-out, the explicit-only boundary, and the no-reopen rule with its
@@ -111,7 +127,7 @@ reviewer's bar stating the rule and pointing at the clause's home.
 **Task 3 — changelog fragment.** changelog/desk-tools-33.md (planned), one bullet.
 
 files:
-- `tools/desk/cmd/deskdispatch/references/common-clauses.md` or `tools/desk/cmd/deskdispatch/references/review-prompt.md` — Task 1 (ONE home, no second copy)
+- `tools/desk/cmd/deskdispatch/references/review-prompt.md` — Task 1 (the clause, outside the lane markers)
 - `plugins/assay/skills/pr-review-desk/SKILL.md` — Task 2
 - changelog/desk-tools-33.md (planned) — Task 3
 
@@ -122,10 +138,10 @@ once the Task lands. Row 4 passes today and must still pass. Run from the repo r
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `grep -rq 'resolved-by-author-disposition' tools/desk/cmd/deskdispatch/references/ && grep -rq 'disposition' tools/desk/cmd/deskdispatch/references/common-clauses.md tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | prints `ok`: the clause exists with its named resolution form. FAILS today: the string exists in neither reference. |
-| 2 | check | `grep -rq 'safety-consequence' tools/desk/cmd/deskdispatch/references/common-clauses.md tools/desk/cmd/deskdispatch/references/review-prompt.md && grep -rqi 're-state\|restate' tools/desk/cmd/deskdispatch/references/common-clauses.md tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | prints `ok`: the carve-out and the no-restate rule are both present in the clause's home. FAILS today: neither formulation exists. |
+| 1 | check | `grep -rq 'resolved-by-author-disposition' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | prints `ok`: the clause exists in its home with its named resolution form (`disposition` alone cannot discriminate — the prompt-audit baseline already uses the word). FAILS today: the string appears 0 times in the reference. |
+| 2 | check | `grep -rq 're-statement round is neither' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | prints `ok`: the clause's own sentence for the illegal third move is present in its home (a phrase the clause introduces — `safety-consequence` and `restate` both already exist in the reference today, so neither can discriminate; alternations are written as repeated `-e`, never a `\|` BRE inside a cell). FAILS today: the phrase appears 0 times. |
 | 3 | check | `grep -q 'disposition' plugins/assay/skills/pr-review-desk/SKILL.md && echo ok` | prints `ok`: the skill's reviewer's bar carries the rule's paragraph. FAILS today: the word appears 0 times in the skill. |
-| 4 | check +neighbour | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt33-sg" . && "${TMPDIR:-/tmp}/dt33-sg" --root .. --lint 2>&1 | grep -q 'LINT: PASS' && test -f ../changelog/desk-tools-33.md && cd ../tools/skillslint && go run . --root ../.. > /dev/null 2>&1 && echo ok` | prints `ok`: tree lints clean, fragment exists, skillslint passes. Passes today (modulo the fragment) and must still pass. |
+| 4 | check +neighbour | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt33-sg" . && "${TMPDIR:-/tmp}/dt33-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && cd ../tools/skillslint && go run . --root ../.. > /dev/null 2>&1 && echo ok` | prints `ok`: tree lints clean, skillslint passes. The changelog fragment is deliberately NOT tested — the release workflow clears `changelog/` at aggregation. Passes today and must still pass. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
