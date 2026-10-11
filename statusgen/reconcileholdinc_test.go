@@ -274,7 +274,27 @@ func TestHoldParityManyRow(t *testing.T) {
 // move on mr00 changes the render (so the region drifts and the row is held),
 // a move elsewhere does not.
 func driveManyRowBoard(t *testing.T) (string, []BriefCell) {
+	return driveBoard(t, false)
+}
+
+// drivePlaceholderBoard is driveManyRowBoard with a placeholder file in every
+// stream, so each stream the hold mirrors carries a synthetic placeholder row
+// after its README rows.
+func drivePlaceholderBoard(t *testing.T) (string, []BriefCell) {
+	return driveBoard(t, true)
+}
+
+func driveBoard(t *testing.T, placeholders bool) (string, []BriefCell) {
 	root, cells := manyRowBoard(t, 4, 5, 2)
+	if placeholders {
+		for s := 0; s < 4; s++ {
+			name := fmt.Sprintf("mr%02d", s)
+			p := filepath.Join(root, "docs", "streams", name, fmt.Sprintf("issue-%d.md", 900+s))
+			if err := os.WriteFile(p, []byte(placeholderFile(name, 900+s, "")), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	writeDrive(t, root, "d1", "declared-by: ian\n"+liveWindow+"intensity: focus\nstate: active\nwhy: fixture\nitems:\n  - stream: mr00\n  - stream: mr02\n")
 	fresh, rc := driveSnapshotSection(root, "d1", driveTestNow)
 	if rc != 0 {
@@ -303,6 +323,33 @@ func TestHoldParityDriveRegion(t *testing.T) {
 	// evaluation beyond the one baseline pass.
 	if bound := len(statusKeyedLintRules); got.Stats.FullRuleEvals > bound {
 		t.Fatalf("%d moves took %d whole-board rule evaluations; want at most %d", got.Stats.Moves, got.Stats.FullRuleEvals, bound)
+	}
+}
+
+// TestHoldParityDrivePlaceholders is the drive-region parity on a board whose
+// streams carry placeholder files: the hold must still answer the drive rule
+// from its mirrored board, never fall back to a whole-board pass per move.
+func TestHoldParityDrivePlaceholders(t *testing.T) {
+	pinNow(t, driveTestNow)
+	root, _ := drivePlaceholderBoard(t)
+	streams, _, err := loadHydratedStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range streams {
+		if len(s.Placeholders) != 1 {
+			t.Fatalf("fixture drift: stream %s must carry one placeholder, got %d", s.Name, len(s.Placeholders))
+		}
+	}
+	if problems, _ := driveRegionLintProblems(root, driveTestNow); len(problems) != 0 {
+		t.Fatalf("fixture drift: the fresh region must lint clean, got %v", problems)
+	}
+	got := assertHoldParity(t, drivePlaceholderBoard)
+	if !strings.Contains(got.Held, "drive-region") || got.Rows == "null" {
+		t.Fatalf("fixture drift: want driven moves held and undriven ones admitted, got held=%s rows=%s", got.Held, got.Rows)
+	}
+	if bound := len(statusKeyedLintRules); got.Stats.FullRuleEvals > bound {
+		t.Fatalf("%d moves took %d whole-board rule evaluations; want at most %d — a placeholder row broke the drive rule's mirror", got.Stats.Moves, got.Stats.FullRuleEvals, bound)
 	}
 }
 

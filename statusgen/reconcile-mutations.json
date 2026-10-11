@@ -102,6 +102,12 @@
       "file": "reconcilehold.go",
       "old": "!equalStrings(full, after)",
       "new": "false"
+    },
+    {
+      "name": "the drive mirror counts placeholder rows as README rows",
+      "file": "reconcileholdinc.go",
+      "old": "n := len(s.Briefs) - len(s.Placeholders)",
+      "new": "n := len(s.Briefs)"
     }
   ]
 }

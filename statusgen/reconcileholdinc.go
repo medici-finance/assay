@@ -458,15 +458,25 @@ func (st *driveHoldState) after(m *holdMove) ([]string, bool) {
 // mirrorExact reports whether a reload of the board would differ from the
 // render's board only by the moved row's Status: the stream README parsed after
 // staging equals its parse before staging with that one cell changed, and the
-// render's rows match that parse cell for cell.
+// render's README rows match that parse cell for cell. The render's stream
+// also carries one synthetic row per placeholder file, appended after the
+// README rows (attachPlaceholders); staging writes only the README, so those
+// tail rows are left out of the comparison, and a move that lands on one is
+// not mirrored.
 func (st *driveHoldState) mirrorExact(s *Stream, row *Brief, m *holdMove) bool {
 	staged, err := parseStreamREADME(filepath.Join(s.Dir, "README.md"))
-	if err != nil || len(staged.Briefs) != len(st.pre.Briefs) || len(staged.Briefs) != len(s.Briefs) {
+	n := len(s.Briefs) - len(s.Placeholders)
+	if err != nil || n < 0 || len(staged.Briefs) != len(st.pre.Briefs) || len(staged.Briefs) != n {
 		return false
+	}
+	for i := n; i < len(s.Briefs); i++ {
+		if &s.Briefs[i] == row || s.Briefs[i].Schema != "placeholder-v1" {
+			return false
+		}
 	}
 	want := *st.pre
 	want.Briefs = append([]Brief(nil), st.pre.Briefs...)
-	for i := range s.Briefs {
+	for i := range s.Briefs[:n] {
 		have := s.Briefs[i]
 		status := have.Status
 		if &s.Briefs[i] == row {
