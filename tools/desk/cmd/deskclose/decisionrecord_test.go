@@ -52,14 +52,31 @@ func recWorld(t *testing.T, createdAt string) (*stubRemote, string, string) {
 	return s, rul, home
 }
 
-// plantAtComment plants a comment on issue n carrying its creation time.
+// plantAtComment plants a comment on issue n carrying its creation time, never edited (its
+// update time is its creation time, as the forge reports an unedited comment).
 func plantAtComment(s *stubRemote, n int, cid, login string, id int64, typ, at, body string) string {
+	return plantEditedComment(s, n, cid, login, id, typ, at, at, body)
+}
+
+// plantEditedComment is plantAtComment with the forge's update time given separately.
+func plantEditedComment(s *stubRemote, n int, cid, login string, id int64, typ, at, updated, body string) string {
 	issueURL := fmt.Sprintf("https://api.github.com/repos/%s/issues/%d", testRepo, n)
 	html := fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-%s", testRepo, n, cid)
 	s.comment[cid] = fmt.Sprintf(
-		`{"id":%s,"html_url":%q,"issue_url":%q,"body":%q,"minimized":false,"created_at":%q,"user":{"login":%q,"id":%d,"type":%q}}`,
-		cid, html, issueURL, body, at, login, id, typ)
+		`{"id":%s,"html_url":%q,"issue_url":%q,"body":%q,"minimized":false,"created_at":%q,"updated_at":%q,`+
+			`"user":{"login":%q,"id":%d,"type":%q}}`,
+		cid, html, issueURL, body, at, updated, login, id, typ)
 	return html
+}
+
+// recDecode reads the one block in the close comment.
+func recDecode(t *testing.T, s *stubRemote) deskkit.HumanDecisionRecord {
+	t.Helper()
+	var rec deskkit.HumanDecisionRecord
+	if err := json.Unmarshal([]byte(recBlockJSON(t, commentBody(t, s))), &rec); err != nil {
+		t.Fatal(err)
+	}
+	return rec
 }
 
 func recClose(t *testing.T, rul, url string, extra ...string) (int, string) {
@@ -303,5 +320,155 @@ func TestTriageNotPlannedNoRecord(t *testing.T) {
 	}
 	if _, err := os.Stat(recLocalPath(home)); !os.IsNotExist(err) {
 		t.Fatalf("the not-planned lane wrote a local line: %v", err)
+	}
+}
+
+// regression: medici-finance/assay#2426 (SEC-1/SEC-2) — the record states whether any text
+// it was read from changed after the ruling, from what the forge reports at close time.
+func TestTriageRecordEditState(t *testing.T) {
+	key := fmt.Sprintf("%s#%d", testRepo, triageIssue)
+	t.Run("unedited", func(t *testing.T) {
+		s, rul, _ := recWorld(t, recT0)
+		url := plantAtComment(s, triageIssue, "7501", blessLogin, blessID, "User", recT1, "B")
+		if code, out := recClose(t, rul, url); code != deskkit.ExitOK {
+			t.Fatalf("want exit 0, got %d\n%s", code, out)
+		}
+		if rec := recDecode(t, s); rec.EditState != deskkit.DecisionEditUnedited || rec.Picked != "B" {
+			t.Fatalf("edit_state %q picked %q, want unedited B", rec.EditState, rec.Picked)
+		}
+	})
+	t.Run("body edited after the ruling", func(t *testing.T) {
+		s, rul, _ := recWorld(t, recT0)
+		s.bodyEdited[key] = "2026-10-04T00:00:00Z"
+		url := plantAtComment(s, triageIssue, "7502", blessLogin, blessID, "User", recT1, "B")
+		if code, out := recClose(t, rul, url); code != deskkit.ExitOK {
+			t.Fatalf("want exit 0, got %d\n%s", code, out)
+		}
+		rec := recDecode(t, s)
+		if rec.EditState != deskkit.DecisionEditEdited || rec.Picked != deskkit.DecisionPickUnparsed ||
+			rec.Recommended != deskkit.DecisionRecommendedNone || rec.PickedIsRecommended {
+			t.Fatalf("an edit after the ruling kept a reading: %+v", rec)
+		}
+	})
+	t.Run("ruling edited after it was posted", func(t *testing.T) {
+		s, rul, _ := recWorld(t, recT0)
+		url := plantEditedComment(s, triageIssue, "7503", blessLogin, blessID, "User", recT1, "2026-10-03T11:00:00Z", "B")
+		if code, out := recClose(t, rul, url); code != deskkit.ExitOK {
+			t.Fatalf("want exit 0, got %d\n%s", code, out)
+		}
+		if rec := recDecode(t, s); rec.EditState != deskkit.DecisionEditEdited || rec.Picked != deskkit.DecisionPickUnparsed {
+			t.Fatalf("edit_state %q picked %q, want edited unparsed", rec.EditState, rec.Picked)
+		}
+	})
+	t.Run("body history unknown", func(t *testing.T) {
+		s, rul, _ := recWorld(t, recT0)
+		s.bodyEditUnknown = true
+		url := plantAtComment(s, triageIssue, "7504", blessLogin, blessID, "User", recT1, "B")
+		if code, out := recClose(t, rul, url); code != deskkit.ExitOK {
+			t.Fatalf("want exit 0, got %d\n%s", code, out)
+		}
+		if rec := recDecode(t, s); rec.EditState != deskkit.DecisionEditUnverifiable {
+			t.Fatalf("edit_state %q, want unverifiable", rec.EditState)
+		}
+	})
+}
+
+// regression: medici-finance/assay#2426 (definite-pick-not-in-ruling) — the pick is read
+// only from comments BEFORE the verified ruling: an App relay posted after it never supplies
+// the answer a ratification resolves through.
+func TestTriageRecordRelayAfterRuling(t *testing.T) {
+	s, rul, _ := recWorld(t, recT0)
+	url := plantAtComment(s, triageIssue, "7601", blessLogin, blessID, "User", recT1, "ratified")
+	relay := "Relayed.\n\n## Options\nA. " + recOptB + " (recommended)\nB. " + recOptA + "\n\nAnswer: A\n"
+	plantAtComment(s, triageIssue, "7602", recAppSlug, recAppID, "Bot", "2026-10-03T12:00:00Z", relay)
+	if code, out := recClose(t, rul, url); code != deskkit.ExitOK {
+		t.Fatalf("want exit 0, got %d\n%s", code, out)
+	}
+	rec := recDecode(t, s)
+	if rec.Picked != deskkit.DecisionPickUnparsed || rec.OptionsSource != deskkit.DecisionSourceBody {
+		t.Fatalf("a relay posted after the ruling supplied the pick: %+v", rec)
+	}
+}
+
+// regression: medici-finance/assay#2426 (close-blocked-by-forge-copy) — a record block the
+// outbound check refuses never costs the close: the prose-only comment is posted, the issue
+// closes, and the local line is the record's only copy.
+func TestTriageRecordBlockRefusedStillCloses(t *testing.T) {
+	s, rul, home := recWorld(t, recT0)
+	// The tracker repo is public here, and the brief id is a withheld identifier: the block
+	// naming it cannot be posted, while the prose comment (which never names the brief) can.
+	roster := strings.Replace(fixtureRoster, "example-org/tracker:ci:private", "example-org/tracker:ci:public", 1) +
+		deskkit.EnvWithheldIdentifiers + "=example-withheld-slug\n"
+	if err := os.WriteFile(filepath.Join(home, ".config", "assay", "roster.env"), []byte(roster), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deskkit.ReloadConfig()
+	t.Setenv(deskkit.EnvWithheldIdentifiers, "example-withheld-slug")
+	s.items[fmt.Sprintf("%s#%d", testRepo, triageIssue)] = fmt.Sprintf(
+		`{"number":%d,"title":"stub item","state":"open","body":%q,"labels":[{"name":"human-decided"}],"created_at":%q}`,
+		triageIssue, strings.Replace(recIssueBody(), "demo-stream/07", "example-withheld-slug/3", 1), recT0)
+	url := plantAtComment(s, triageIssue, "7701", blessLogin, blessID, "User", recT1, "B")
+	code, out := recClose(t, rul, url)
+	if code != deskkit.ExitOK {
+		t.Fatalf("want exit 0, got %d\n%s", code, out)
+	}
+	assertClosedWith(t, s, reasonNotPlanned)
+	if body := commentBody(t, s); strings.Contains(body, "human-decision-v1") || strings.Contains(body, "example-withheld-slug") {
+		t.Fatalf("the refused block was posted:\n%s", body)
+	}
+	local, err := os.ReadFile(recLocalPath(home))
+	if err != nil || !strings.Contains(string(local), `"brief":"example-withheld-slug/3"`) {
+		t.Fatalf("the local copy should hold the record: %v\n%s", err, local)
+	}
+	if d := recLastTriageDetail(t, home); !strings.Contains(d, "decision-record: local only") {
+		t.Fatalf("audit detail should name the local-only copy: %q", d)
+	}
+}
+
+// regression: medici-finance/assay#2426 (thread re-read) — a thread that cannot be re-read
+// for the record leaves the record unwritten and the close standing.
+func TestTriageRecordThreadUnreadable(t *testing.T) {
+	s, rul, home := recWorld(t, recT0)
+	// The lane's own authorization reads the thread first; the record's re-read is the second.
+	s.threadFailFrom[fmt.Sprintf("%s#%d", testRepo, triageIssue)] = 2
+	url := plantAtComment(s, triageIssue, "7801", blessLogin, blessID, "User", recT1, "B")
+	code, out := recClose(t, rul, url)
+	if code != deskkit.ExitOK {
+		t.Fatalf("want exit 0, got %d\n%s", code, out)
+	}
+	assertClosedWith(t, s, reasonNotPlanned)
+	if strings.Contains(commentBody(t, s), "human-decision-v1") {
+		t.Fatal("a record was composed without the thread")
+	}
+	if _, err := os.Stat(recLocalPath(home)); !os.IsNotExist(err) {
+		t.Fatalf("a local line was written: %v", err)
+	}
+	if d := recLastTriageDetail(t, home); !strings.Contains(d, "comment thread unreadable") {
+		t.Fatalf("audit detail should name the unreadable thread: %q", d)
+	}
+}
+
+// regression: medici-finance/assay#2426 — the local line is written only after the close is
+// confirmed: a close that fails, or does not take, leaves no local line claiming a ruled close.
+func TestTriageRecordNoLocalLineWithoutClose(t *testing.T) {
+	key := fmt.Sprintf("%s#%d", testRepo, triageIssue)
+	for _, tc := range []struct {
+		name string
+		arm  func(s *stubRemote)
+	}{
+		{"close refused", func(s *stubRemote) { s.failClose[key] = true }},
+		{"close did not take", func(s *stubRemote) { s.closeNoReflect[key] = true }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rul, home := recWorld(t, recT0)
+			tc.arm(s)
+			url := plantAtComment(s, triageIssue, "7901", blessLogin, blessID, "User", recT1, "B")
+			if code, out := recClose(t, rul, url); code == deskkit.ExitOK {
+				t.Fatalf("a failed close exited 0:\n%s", out)
+			}
+			if _, err := os.Stat(recLocalPath(home)); !os.IsNotExist(err) {
+				t.Fatalf("a local line was written for a close that did not happen: %v", err)
+			}
+		})
 	}
 }

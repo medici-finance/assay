@@ -100,6 +100,16 @@ type stubRemote struct {
 	typedThreads  []string
 	typedComments []string
 	typedCloses   []string
+
+	// The decision record's edit check (decisionrecord.go). bodyEdited is each issue's body
+	// last-edit time ("" = never edited) as IssueTrustEvents reports it; bodyEditUnknown makes
+	// that read report no body history; threadFailFrom makes the Nth typed thread read of an
+	// item (counted from 1) and every later one fail, so a lane that reads the thread twice can
+	// be failed on the second read only.
+	bodyEdited      map[string]string
+	bodyEditUnknown bool
+	threadReads     map[string]int
+	threadFailFrom  map[string]int
 }
 
 func newStub(t *testing.T) *stubRemote {
@@ -112,6 +122,9 @@ func newStub(t *testing.T) *stubRemote {
 		failClose:      map[string]bool{},
 		closeNoReflect: map[string]bool{},
 		threads:        map[string][]string{},
+		bodyEdited:     map[string]string{},
+		threadReads:    map[string]int{},
+		threadFailFrom: map[string]int{},
 	}
 }
 

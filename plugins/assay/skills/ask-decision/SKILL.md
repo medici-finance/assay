@@ -189,8 +189,10 @@ human-decided --decision <the ruling's permalink> --tracker <ref>`. That lane wr
 was picked, and how long the decision waited. It keeps two copies, one as a hidden block in
 the close comment and one as a local line. A hand close writes no record, so the decision
 drops out of every later measure of default-acceptance and gate latency. For the record to
-read the options, state them under an `Options` heading, as §The format requires, and keep
-the relay's `Answer: <letter>` line, which a ratification resolves through.
+read the options, state them under an `Options` heading in the issue body. A relay that
+restates them under its own `Options` heading becomes the ask the record reads instead. For a
+ratification to resolve, the relay's `Answer:` line must be its own unquoted line naming one
+offered letter. A word answer (`Answer: yes`) leaves the record's pick `unparsed`.
 
 Where the project keeps a decision log — an operation's drive-plan record, a register, a
 stream doc — the relay is copied there too, with the issue as its source. This skill does not

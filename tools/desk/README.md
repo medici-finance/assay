@@ -3790,22 +3790,33 @@ record. The record holds:
 - the recommended id;
 - the picked id, or `ambiguous` / `unparsed`;
 - `ruler: driver`;
-- the issue-opened, ask, ruling and recording times, with the two latencies in seconds.
+- the issue-opened, ask, ruling and recording times, with the two latencies in seconds;
+- `edit_state`: whether the body, a relay it read or the ruling was edited after the ruling
+  (`edited` records no pick and no recommendation; `unverifiable` when the forge did not say).
 
-It never holds option or ruling text, and never a login or account id. The record is written
-twice, as the same JSON bytes:
+It never holds option or ruling text, and never a login or account id. Its one free-form
+field, `brief`, is held to the `<stream>/<NN>` grammar. A ruling a person could read as
+anything other than one option is `unparsed`. The record is written twice, as the same JSON
+bytes:
 
 | Copy | Where | When |
 |---|---|---|
 | forge | a `<!-- human-decision-v1 {…} -->` block appended to the close comment | rides the comment write, before the close |
-| local | one line of `~/.config/assay/decision-records.jsonl` (0600, append-only) | after the close succeeds |
+| local | one line of `~/.config/assay/decision-records.jsonl` (0600, append-only, never through a symlink) | after the close is confirmed |
 
-Neither copy ever blocks the close:
+The record never stops the close:
 
 - An invalid record is not written. The audit line says `decision-record: invalid (<field>)`.
+- If the outbound check refuses the comment with the block, the comment is posted without it
+  and the local line is the only copy. The audit line says `decision-record: local only (…)`.
+- A thread that cannot be re-read writes no record. The audit line says
+  `decision-record: unrecorded (…)`.
 - A failed local append leaves the forge copy standing. The audit line and stderr say
   `decision-record: local-unwritten`.
 - `--dry-run` prints the block and writes nothing.
+
+A comment write that fails for any other reason fails the close as it would with no record.
+A re-run after a failed close writes a second record for the same ruling.
 
 The not-planned triage lane and every other lane write no record.
 

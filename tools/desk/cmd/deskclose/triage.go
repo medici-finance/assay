@@ -202,9 +202,11 @@ func applyTriage(r triageReq, out io.Writer) error {
 		return err
 	}
 
-	body := triageComment(r, source)
+	prose := triageComment(r, source)
+	body := prose
 	// human-decided only: the human-decision-v1 record (decisionrecord.go).
-	// Its forge copy rides in this comment; an invalid record is never written, and never
+	// Its forge copy rides in this comment. An invalid record is never written; a block the
+	// outbound check refuses is dropped and the prose-only comment posted instead — neither
 	// stops the close.
 	var record []byte
 	recordStatus := ""
@@ -225,7 +227,15 @@ func applyTriage(r triageReq, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, err.Error())
 		return err
 	}
-	if err := postComment(r.repo, r.number, deskkit.TargetIssue, body); err != nil {
+	forgePosted := record != nil
+	err = postComment(r.repo, r.number, deskkit.TargetIssue, body)
+	if err != nil && record != nil && outboundRefused(err) {
+		// Refused before any write: the same comment without the block, so the record can
+		// never cost the close. The local copy below is then the only one.
+		forgePosted = false
+		err = postComment(r.repo, r.number, deskkit.TargetIssue, prose)
+	}
+	if err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
 	}
@@ -239,7 +249,7 @@ func applyTriage(r triageReq, out io.Writer) error {
 		return closeRefused(a, r.repo, r.number, err)
 	}
 	if record != nil {
-		recordStatus = appendTriageRecord(record)
+		recordStatus = appendTriageRecord(record, forgePosted)
 	}
 	a.log(deskkit.ResultOK, joinDetail(fmt.Sprintf("closed as %s via lane %s (disposition %s, %s)",
 		reasonNotPlanned, modeTriage, r.disposition, deskkit.StripControl(source)), recordStatus))

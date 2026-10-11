@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -50,6 +51,7 @@ type stubCommentWire struct {
 	Body      string `json:"body"`
 	Minimized bool   `json:"minimized"`
 	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 	User      struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
@@ -188,7 +190,28 @@ func (s *stubRemote) ListCommentsTyped(fr deskkit.ForgeRepo, n int, kind deskkit
 		}
 	}
 	s.typedThreads = append(s.typedThreads, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
+	s.threadReads[key]++
+	if from := s.threadFailFrom[key]; from > 0 && s.threadReads[key] >= from {
+		return nil, errors.New("HTTP 502: bad gateway")
+	}
 	return s.listCommentsAt(fr, n, key)
+}
+
+// IssueTrustEvents serves the issue body's last-edit time — the only part of the trust payload
+// deskclose reads (the decision record's edit check). Events are not modelled.
+func (s *stubRemote) IssueTrustEvents(fr deskkit.ForgeRepo, n int) (*deskkit.TrustPayload, error) {
+	if s.bodyEditUnknown {
+		return &deskkit.TrustPayload{Complete: true}, nil
+	}
+	tp := &deskkit.TrustPayload{BodyHistoryKnown: true, Complete: true}
+	if at := s.bodyEdited[fmt.Sprintf("%s#%d", fr.Slug(), n)]; at != "" {
+		t, err := time.Parse(time.RFC3339, at)
+		if err != nil {
+			return nil, err
+		}
+		tp.BodyEdited = t
+	}
+	return tp, nil
 }
 
 func (s *stubRemote) GetPullRequest(fr deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
@@ -308,6 +331,7 @@ func (s *stubRemote) listCommentsAt(fr deskkit.ForgeRepo, n int, key string) ([]
 			URL:        w.HTMLURL,
 			Minimized:  w.Minimized,
 			CreatedAt:  w.CreatedAt,
+			UpdatedAt:  w.UpdatedAt,
 			Author:     deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
 		})
 	}

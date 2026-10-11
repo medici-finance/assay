@@ -28,20 +28,41 @@ One record is written for each ruled close, and it is written twice by independe
    only ever appended to (`O_APPEND`), one `write` per line.
 
 Either copy survives the loss of the other. The local line is appended only **after** the
-close succeeds. If that append fails, the close still stands, the forge copy holds the
-record, and the audit line and stderr both say `decision-record: local-unwritten`.
+close is confirmed; a close that fails or does not take leaves no local line. If the append
+fails, the close still stands, the forge copy holds the record, and the audit line and
+stderr both say `decision-record: local-unwritten`.
 
-A record that fails validation is **never written**. In that case the close proceeds with no
-block and no line, and the audit line says `decision-record: invalid (<field>)`. A
-`--dry-run` prints the comment, block included, and writes nothing. No other `deskclose`
-lane writes a record.
+The record never stops the close:
+
+- A record that fails validation is **never written**. The close proceeds with no block and
+  no line, and the audit line says `decision-record: invalid (<field>)`.
+- If the outbound check refuses the close comment **with** the block (for example, a `brief`
+  that names a withheld identifier on a public repo), the check refused before anything was
+  written. The lane posts the same comment **without** the block and closes. The local line
+  is then the only copy.
+- If the thread cannot be re-read, or the re-read no longer carries the ruling, no record is
+  composed and the close proceeds.
+
+The record adds no other failure. A comment write that fails for any other reason fails the
+close exactly as it would with no record. A `--dry-run` prints the comment, block included,
+and writes nothing. No other `deskclose` lane writes a record.
 
 Every audit outcome is named:
 
 - `decision-record: forge+local` — both copies were written.
 - `decision-record: local-unwritten (…)` — only the forge copy was written.
+- `decision-record: local only (the outbound check refused the block)` — only the local copy
+  was written.
+- `decision-record: unrecorded (the outbound check refused the block; local-unwritten) (…)` —
+  neither copy was written.
 - `decision-record: invalid (<field>)` — nothing was written.
-- `decision-record: unrecorded (…)` — the thread could not be read, so nothing was written.
+- `decision-record: unrecorded (…)` — the thread could not be re-read, or no longer carries
+  the ruling, so nothing was written.
+
+**A re-run can write a second record.** If the comment posts and the close then fails, a
+re-run of the lane posts a second close comment with its own block, and a second local line.
+Records with the same `repo`, `issue` and `ruling_sha256` describe the same ruling. A reader
+takes the one with the newest `recorded_at`.
 
 ## The fields
 
@@ -54,13 +75,14 @@ copies are byte-identical.
 | `repo` | string | `owner/name` of the decision issue. |
 | `issue` | int | The decision issue's number (> 0). |
 | `tracker` | string | `owner/repo#N` (or `!N`): the `--tracker` ref the close names, where the decided work continues. |
-| `brief` | string, optional | The brief id from the body's `<!-- needs-decision: <brief> -->` marker. Omitted when the body has no marker. |
-| `options` | list of `{id, text_sha256}` | At most four. `id` is the option's letter **as the anchor ask wrote it** (`A`–`D` or `1`–`4`, uppercased). `text_sha256` is the sha256 hex of its cleaned text, never the text itself. Empty when the ask stated no options. |
+| `brief` | string, optional | The brief id from the body's `<!-- needs-decision: <brief> -->` marker. Read only from a marker that is a whole line of its own (surrounding spaces allowed; not inside a sentence or a `>` quote). The id must match `<stream>/<NN>`: a lower-case stream of 1–64 characters (`a-z`, `0-9`, `-`, starting with a letter or digit), `/`, and 1–4 digits. Omitted when there is no such marker, when the id breaks that grammar, or when two markers name different ids. |
+| `options` | list of `{id, text_sha256}` | At most four. `id` is the option's letter **as the anchor ask wrote it** (`A`–`D` or `1`–`4`, uppercased). `text_sha256` is the sha256 hex of its cleaned text, never the text itself (cleaning: below). Empty when the ask stated no options. |
 | `options_source` | `body` \| `relay` | Which ask the options were read from (the **anchor**; see below). |
 | `recommended` | id \| `none` | The id marked "recommended", or `none` when no option carried the mark. |
 | `picked` | id \| `ambiguous` \| `unparsed` | The offered id the ruling names. See the pick rules below. |
 | `picked_via` | `direct` \| `ratified-relay` | `direct`: the ruling's first line names a letter. `ratified-relay`: the ruling ratifies a relay's `Answer: <letter>`. |
 | `picked_is_recommended` | bool | True only when `picked` is an id equal to `recommended`. |
+| `edit_state` | `unedited` \| `edited` \| `unverifiable` | Whether any text the record was read from changed after the ruling. See "Edits after the ruling" below. |
 | `ruler` | string | The literal role string `driver`. Never a login or account id. |
 | `ruling_sha256` | string | The sha256 hex of the ruling comment's body. |
 | `opened_at` | RFC3339 UTC | The decision issue's creation time, as the forge reports it. |
@@ -72,29 +94,56 @@ copies are byte-identical.
 | `tool_sha` | string | The build's source SHA (the value every audit entry carries; `unpinned` for an unstamped build). |
 
 **Join keys.** The record joins by `repo` + `issue`, by `tracker`, and by `brief` when present.
-It cannot know a dispatch reference, and it does not carry one.
+It cannot know a dispatch reference, and it does not carry one. `brief` comes from the issue
+body, so its value is whoever wrote the body's marker; the grammar bounds its shape, not who
+set it.
+
+**Option text cleaning.** An option's text is the rest of its list line after the letter and
+its `.` or `)`. Then, in order: `**` and backticks are removed; control characters are
+removed; surrounding whitespace is trimmed; a trailing `(recommended)` / `— recommended`
+mark and a leading `(recommended)` mark (either case of `R`) are removed; whitespace is
+trimmed again. `text_sha256` is the sha256 of the UTF-8 bytes of that result. An option
+whose cleaned text is empty is dropped.
 
 ## The anchor: which ask the options come from
 
-The anchor is the **newest** comment before the ruling that is authored by a roster-trusted
-App (login **and** account id pinned in the roster, `deskkit.TrustedAuthorID`), is not
-minimized, and states an Options section. That is a relay restating the ask. If no such
-comment exists, the anchor is the issue body.
+"Before the ruling" means before the ruling's own position in the thread, located by its
+comment id. If the thread does not carry the ruling, nothing comes before it: `deskclose`
+writes no record, and a composed record reads `picked: unparsed`.
 
-A comment by any other author is never an anchor, however it is formatted.
+The anchor is the **newest** comment before the ruling that is authored by a roster-trusted
+App, is not minimized, and states an Options section. That is a relay restating the ask. A
+roster-trusted App is an App-shaped login (`…[bot]` or `app/…`) **and** a non-zero account
+id that matches the roster's pin. A comment whose author id the forge did not report is not
+a trusted App. If no such comment exists, the anchor is the issue body.
+
+A comment by any other author is never an anchor, however it is formatted. That includes a
+roster-trusted human who restates the options.
+
+**A body anchor's author is not checked.** The issue body is read whoever wrote it. When the
+anchor is the body, `options` and `recommended` are what the body states. `recommended` is
+the desk's recommendation only when the desk wrote the body.
 
 ## The pick rules
 
 The ruling's lines are prepared the way the inbox oracle's `isruling` prepares them: HTML
 comment lines and blank lines are dropped, and Markdown and control characters are stripped.
-Then:
 
-1. **A question or a hold is `unparsed`.** This covers a `?` anywhere in the ruling, and any
-   of `no`, `not`, `don't`, `didn't`, `won't`, `hold`, `wait`, `later`, `undecided`, `unsure`,
-   `pending`, `…n't`.
+The oracle only screens an item for a desk that then reads the comment. Nobody reads the
+comment behind a record, so the record's reading is stricter. Whenever a person could read
+the ruling as anything other than one definite option, the record says `unparsed`:
+
+1. **A question, a refusal, a hold or a qualifier is `unparsed`.** This covers a `?`
+   anywhere in the ruling, and any of these words anywhere in it: `no`, `not`, `none`,
+   `neither`, `nor`, `don't`, `didn't`, `won't`, `hold`, `wait`, `later`, `undecided`,
+   `unsure`, `pending`, `reject`/`rejects`/`rejected`/`rejecting`, `except`, `instead`,
+   `unless`, `rather`, `but`, `however`, `actually`, `…n't`.
 2. **Direct letter.** The first line is `<letter>` or `Option <letter>`, followed by the end
-   of the line, `.`, `)`, `!`, `:`, `,` or a dash. The letter is read in the **anchor's own
-   lettering**.
+   of the line, `.`, `)`, `!`, `:`, `,` or a dash. If the ruling names any **other** offered
+   id anywhere, the pick is `unparsed`. An id is named when it stands alone as a token, so
+   `A, B`, `B` then `go with C` on a later line, and `2-3 days` all name more than one id.
+   The ids counted are the anchor's, plus the body's when the anchor is a relay. Otherwise
+   the letter is read in the **anchor's own lettering**.
    - Against a **body** anchor, the letter is the body's own. A ruling of `B` on a body that
      offers A/B/C picks `B`.
    - Against a **relay** anchor whose issue body also states options, two other letterings
@@ -103,14 +152,43 @@ Then:
      as `A`. If any alternative names a different option from the anchor, the pick is
      `ambiguous`.
 3. **Ratification.** The first line starts with `ratify`/`ratified`/`approve`/`approved`
-   (optionally preceded by `I`). The ratification resolves through the **newest
-   roster-trusted App comment** before the ruling that carries `Answer: <letter>`.
+   (optionally preceded by `I`). A ratification that names any offered id itself
+   (`Approved — B`) is `unparsed`. It resolves through the **newest roster-trusted App
+   comment** that is at or after the anchor, is before the ruling, and carries an `Answer:`
+   line of its own.
+   - Only the relay's own lines count: an `Answer:` inside a `>` quote is someone else's
+     text and is never read.
+   - That relay's answer must be one offered letter. If it is a word (`Answer: yes, go
+     ahead`), or the relay gives two different answers, the pick is `unparsed`. The search
+     never skips a newer relay to reach an older one.
+   - The search never reaches a relay older than the anchor. A ratification after a new ask
+     with no answer of its own is `unparsed`.
    - If no such relay exists, the pick is `unparsed`. An untrusted, minimized or wrong-id
      author's `Answer:` line is never read.
    - If that relay is itself the anchor, its letter is read in the relay's own lettering.
    - Otherwise, the letter may be the walk's re-lettering of the anchor (and, for a relay
      anchor, the body's own lettering or its walk). Any disagreement is `ambiguous`.
 4. **Anything else is `unparsed`.** That includes a letter that no lettering offers.
+
+## Edits after the ruling
+
+The record states what stood when the driver ruled, or says it cannot tell. `edit_state`
+compares these edit times with the ruling's creation time:
+
+- the issue body's last edit (always read: the options, the alternative letterings, the
+  brief);
+- the anchor relay and the relay a ratification resolved through, when either was read;
+- the ruling itself (edited at all after it was posted).
+
+If any of them was edited after the ruling, `edit_state` is `edited`, and the record carries
+`picked: unparsed` and `recommended: none`. The values read now may not be the ones the
+ruler saw. Otherwise, if the forge did not report any of those edit times, `edit_state` is
+`unverifiable`, and the values stand as read. Otherwise it is `unedited`.
+
+A forge can move an update time for reasons other than a text edit, so `edited` errs toward
+saying less, never more.
+
+## Lettering
 
 A direct letter against a body anchor is read as the body's own letter, not flagged
 `ambiguous`. The brief's Verify row 2 fixes this: options A/B/C with B recommended, ruled
@@ -132,13 +210,19 @@ carries:
   are never a target for ranking the driver, the desk or any agent;
 - any model name.
 
-`ValidateDecisionRecord` refuses a record that breaks the closed sets, so one that has
-picked up a login or a text cannot be written. It refuses, naming the field:
+`ValidateDecisionRecord` refuses a record that breaks the closed sets or the grammars. Every
+string field is a closed-set value, a digest, a timestamp, the `owner/name` refs the close
+comment already names, or `brief`. `brief` is held to the brief-id grammar and 64 characters,
+which bounds its shape but not its meaning: a short word can satisfy it. The validator refuses,
+naming the field:
 
 - `ruler` ≠ `driver`;
 - `picked` outside the offered ids ∪ {`ambiguous`, `unparsed`};
-- an unknown `options_source` or `picked_via`;
-- more than four options, or a duplicate or malformed id;
+- an unknown `options_source`, `picked_via` or `edit_state`;
+- `edit_state: edited` with a `picked` other than `unparsed` or a `recommended` other than
+  `none`;
+- a `brief` outside the brief-id grammar;
+- more than four options, or a duplicate id, or an id other than one of `A`–`D` / `1`–`4`;
 - a digest that is not 64 lowercase hex;
 - a timestamp that is not RFC3339 UTC;
 - latencies that disagree with the timestamps, or are negative;
@@ -150,11 +234,13 @@ picked up a login or a text cannot be written. It refuses, naming the field:
 The forge copy lands on the close comment's own repo, and that repo's visibility can differ
 from the visibility of the `tracker` item's repo.
 
-`tracker` is the **only** repo-bearing field besides `repo` itself, and `repo` is the repo the
-comment is posted on. `tracker` is already rendered in the close comment's prose ("tracker …
-(verified present)"), and the outbound check scans the whole comment body, block included.
-So the block discloses nothing the comment did not already carry, and `tracker` is exactly
-as visible as the close comment itself.
+`repo` is the repo the comment is posted on. `tracker` is already rendered in the close
+comment's prose ("tracker … (verified present)"). `brief` can name a stream, and a stream
+name can be an identifier that must not appear on a public repo.
+
+The outbound check scans the whole comment body, block included. If it refuses the block,
+the lane posts the comment without it, and the local line is the only copy (see "Where it
+lives"). The forge copy therefore never carries anything the outbound check refuses.
 
 The record holds no dispatch reference, no option or ruling text and no login.
 
@@ -167,6 +253,10 @@ honoured.
 
 When both copies exist, a reader prefers the local `decision-records.jsonl` line.
 
+The local file is refused, not written through, when the path is a symlink or any other
+non-regular file, including one swapped in while the file was opened. An existing file is
+set back to 0600 on each append. Each line is one short `O_APPEND` write; there is no lock.
+
 ## What is not covered
 
 - A decision issue closed by hand, outside `deskclose`, has no record, because no writer
@@ -174,3 +264,9 @@ When both copies exist, a reader prefers the local `decision-records.jsonl` line
   this reason.
 - `deskclose`'s other lanes (manifest, duplicate, superseded, self-withdraw, not-planned) close
   no single ruled decision and write no record.
+- `edit_state: unverifiable` keeps the values as read. A forge that reports no edit times
+  gives a record that cannot say whether the body or a relay changed after the ruling.
+- A body anchor's options and recommended mark are the body author's. The record does not
+  check who wrote the body.
+- The pick reading is conservative, not complete. A ruling in a form the grammar does not
+  know is `unparsed` even when a person would read one option from it.

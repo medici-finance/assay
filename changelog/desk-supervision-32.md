@@ -7,10 +7,16 @@
   - the ruler, always the role `driver`;
   - how long the decision waited, from the issue's opening and from the ask.
 
-  It never holds option or ruling text, and never a login. Two copies are written as the same
-  bytes: a hidden block in the close comment, and a line of
-  `~/.config/assay/decision-records.jsonl`. Neither copy can block the close: an invalid
-  record is skipped, and a failed local write is named in the audit line.
+  - whether any text it was read from was edited after the ruling (`edit_state`). An edited
+    record carries no pick and no recommendation.
+
+  It never holds option or ruling text. Its one free-form field, the brief id, is held to the
+  `<stream>/<NN>` grammar. A ruling that a person could read as anything other than one
+  option is recorded as `unparsed`. Two copies are written as the same bytes: a hidden block
+  in the close comment, and a line of `~/.config/assay/decision-records.jsonl`. The record
+  never stops the close. An invalid record is skipped. A block the outbound check refuses is
+  dropped, and the comment is posted without it. A failed local write is named in the audit
+  line.
 - `deskkit.Issue` carries the forge's `CreatedAt` on both backends.
 
 ### Changed

@@ -40,6 +40,10 @@ const (
 	DecisionSourceRelay     = "relay"
 	DecisionViaDirect       = "direct"
 	DecisionViaRatified     = "ratified-relay"
+	// edit_state: whether any text the record was read from changed after the ruling.
+	DecisionEditUnedited     = "unedited"
+	DecisionEditEdited       = "edited"
+	DecisionEditUnverifiable = "unverifiable"
 
 	decisionRecordsFile = "decision-records.jsonl"
 	maxDecisionOptions  = 4
@@ -66,6 +70,7 @@ type HumanDecisionRecord struct {
 	Picked              string           `json:"picked"`
 	PickedVia           string           `json:"picked_via"`
 	PickedIsRecommended bool             `json:"picked_is_recommended"`
+	EditState           string           `json:"edit_state"`
 	Ruler               string           `json:"ruler"`
 	RulingSHA256        string           `json:"ruling_sha256"`
 	OpenedAt            string           `json:"opened_at"`
@@ -229,25 +234,42 @@ func decSection(bl []string, re *regexp.Regexp) []string {
 
 // ---------------------------------------------------------------- the anchor and the pick
 
-// The ruling grammar — the oracle's `isruling` (assay-inbox.sh): the first content line
-// names an offered letter ("B", "B.", "Option C — …") or ratifies ("ratified", "I ratify",
-// "approved"); a question, a refusal or a hold anywhere in the comment is not a ruling.
+// The ruling grammar. Its first-line shapes are the oracle's `isruling` (assay-inbox.sh): the
+// first content line names an offered letter ("B", "B.", "Option C — …") or ratifies
+// ("ratified", "I ratify", "approved"). The oracle only screens an item for a desk that then
+// reads the comment; the record is read by nobody, so the record's reading is stricter: a
+// question, a refusal, a hold or a qualifier anywhere in the comment, or any SECOND offered
+// id named anywhere in it, is `unparsed`, never a definite pick.
 var (
-	rulingLetterRe  = regexp.MustCompile(`^(?:[Oo]ption\s+)?([A-D1-4])(?:$|[.)!:,]|\s*[—–-])`)
-	rulingRatifyRe  = regexp.MustCompile(`(?i)^(?:i\s+)?(?:ratif(?:y|ied)|approved?)\b`)
-	rulingNegatesRe = regexp.MustCompile(`(?i)\b(?:no|not|don'?t|didn'?t|won'?t|hold|wait|later|undecided|unsure|pending)\b|n't\b`)
-	relayAnswerRe   = regexp.MustCompile(`\b[Aa]nswer:\s*([A-D1-4])(?:$|[^A-Za-z0-9])`)
-	decisionBriefRe = regexp.MustCompile(`<!-- needs-decision: ([^>\s][^>]*?) -->`)
+	rulingLetterRe = regexp.MustCompile(`^(?:[Oo]ption\s+)?([A-D1-4])(?:$|[.)!:,]|\s*[—–-])`)
+	rulingRatifyRe = regexp.MustCompile(`(?i)^(?:i\s+)?(?:ratif(?:y|ied)|approved?)\b`)
+	// A refusal, a hold, or a qualifier that changes what was ratified or picked.
+	rulingNegatesRe = regexp.MustCompile(`(?i)\b(?:no|not|none|neither|nor|don'?t|didn'?t|won'?t|hold|wait|later|` +
+		`undecided|unsure|pending|reject(?:s|ed|ing)?|except|instead|unless|rather|but|however|actually)\b|n't\b`)
+	// An id mention: one offered id standing alone as a token ("B", "B.", "2-3" names 2 and 3).
+	rulingIDTokenRe = regexp.MustCompile(`\b[A-D1-4]\b`)
+	// A relay's answer: `Answer: <letter>` — the letter alone, then the end or punctuation.
+	relayAnswerRe       = regexp.MustCompile(`\b[Aa]nswer:\s*`)
+	relayAnswerLetterRe = regexp.MustCompile(`^([A-D1-4])(?:$|[^A-Za-z0-9])`)
+	// The brief marker statusgen writes: one whole line `<!-- needs-decision: <stream>/<NN> -->`.
+	decisionBriefLineRe = regexp.MustCompile(`^<!-- needs-decision: (\S+) -->$`)
+	// A brief id: `<stream>/<NN>`, lower-case stream, at most 64 + 1 + 4 bytes.
+	decBriefIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}/[0-9]{1,4}$`)
 )
 
-// isTrustedApp reports a roster-trusted APP account (login AND id), not minimized — the only
-// author whose comment can be an ask (anchor) or a relay a ratification resolves through.
+// isTrustedApp reports a roster-trusted APP account — login AND a non-zero account id that
+// matches the roster's pin — whose comment is not minimized: the only author whose comment
+// can be an ask (anchor) or a relay a ratification resolves through. The id is required: a
+// surface that reports no id cannot speak for an App here.
 func isTrustedApp(c Comment) bool {
 	l := strings.ToLower(c.Author.Login)
 	if !strings.HasSuffix(l, "[bot]") && !strings.HasPrefix(l, "app/") {
 		return false
 	}
-	return !c.Minimized && TrustedAuthorID(c.Author.Login, c.Author.ID)
+	if c.Minimized || c.Author.ID == 0 {
+		return false
+	}
+	return TrustedAuthorID(c.Author.Login, c.Author.ID)
 }
 
 // DecisionAnchor returns the index of the ask the options are read from: the NEWEST
@@ -262,6 +284,36 @@ func DecisionAnchor(comments []Comment) int {
 	return -1
 }
 
+// DecisionRulingIndex returns the ruling's position in the thread, matched by database id or
+// node id, or -1 when the thread does not carry it.
+func DecisionRulingIndex(comments []Comment, ruling Comment) int {
+	for i, c := range comments {
+		if (ruling.DatabaseID != 0 && c.DatabaseID == ruling.DatabaseID) ||
+			(ruling.ID != "" && c.ID == ruling.ID) {
+			return i
+		}
+	}
+	return -1
+}
+
+// parseDecisionBrief reads the brief id from the body's marker. Only a marker on a line of its
+// own counts (a marker inside a sentence or a `>` quote is not the one statusgen writes); an
+// id outside the brief-id grammar, or two markers naming different ids, yields no brief.
+func parseDecisionBrief(body string) string {
+	brief := ""
+	for _, l := range decLines(body) {
+		m := decisionBriefLineRe.FindStringSubmatch(decStrip(l))
+		if m == nil {
+			continue
+		}
+		if !decBriefIDRe.MatchString(m[1]) || (brief != "" && brief != m[1]) {
+			return ""
+		}
+		brief = m[1]
+	}
+	return brief
+}
+
 // rulingContentLines is the oracle's per-comment line prep: HTML-comment lines dropped,
 // blank lines dropped, each stripped, de-markdowned and control-cleaned.
 func rulingContentLines(body string) []string {
@@ -273,6 +325,26 @@ func rulingContentLines(body string) []string {
 		out = append(out, decClean(decDemd(decStrip(l))))
 	}
 	return out
+}
+
+// relayAnswers returns every `Answer:` value on the comment's OWN lines — a `>`-quoted line is
+// someone else's text and is never read — and whether the comment carries an answer at all.
+// A value that is not a lone offered letter is returned as "" (a word answer).
+func relayAnswers(body string) (answers []string, ok bool) {
+	for _, l := range rulingContentLines(body) {
+		if strings.HasPrefix(l, ">") {
+			continue
+		}
+		for _, loc := range relayAnswerRe.FindAllStringIndex(l, -1) {
+			ok = true
+			if m := relayAnswerLetterRe.FindStringSubmatch(l[loc[1]:]); m != nil {
+				answers = append(answers, m[1])
+			} else {
+				answers = append(answers, "")
+			}
+		}
+	}
+	return answers, ok
 }
 
 // lettering maps a letter to the option text it names under one way of lettering an ask.
@@ -318,25 +390,49 @@ func resolveLetter(letter string, anchor DecisionOptions, alts []lettering) stri
 	return letter
 }
 
+// mentionedIDs returns the distinct ids of ids named as standalone tokens anywhere in text.
+func mentionedIDs(text string, ids map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for _, tok := range rulingIDTokenRe.FindAllString(text, -1) {
+		if ids[tok] {
+			out[tok] = true
+		}
+	}
+	return out
+}
+
 // ParseRulingPick resolves the ruling to an offered id of the anchor ask, or to one of the
 // closed tokens `ambiguous` / `unparsed`, and says how it was picked.
 //
 //   - body is the issue body; comments is the thread in order, and rulingIdx the ruling's
 //     position in it (only comments before it are read); anchorIdx is DecisionAnchor's answer
-//     over those comments (-1 = the body).
-//   - A DIRECT letter is read in the anchor's lettering. When the anchor is a relay and the
-//     body states options too, the body's own lettering and the inbox walk's re-lettering of
-//     it are alternatives the ruler could have read: a letter they disagree on is ambiguous.
-//     A direct letter against a BODY anchor is the body's own letter.
-//   - A RATIFICATION resolves through the newest roster-trusted App comment before the ruling
-//     carrying `Answer: <letter>`; an untrusted or minimized relay is never read, so with no
-//     trusted relay the pick is unparsed. When that relay is itself the anchor, its letter is
-//     the relay's own; otherwise the letter may be the walk's re-lettering of the anchor (and,
-//     for a relay anchor, the body's) — a disagreement is ambiguous.
-//   - A question or a refusal/hold anywhere in the ruling is unparsed.
+//     over those comments (-1 = the body). A rulingIdx that does not locate the ruling in the
+//     thread is `unparsed`: what came before it cannot be told apart from what came after.
+//   - A question, a refusal, a hold or a qualifier anywhere in the ruling is unparsed.
+//   - A DIRECT letter is read in the anchor's lettering, and only when it is the ONE offered id
+//     the ruling names anywhere ("A, B", "B — rejected, go with A" are unparsed). When the
+//     anchor is a relay and the body states options too, the body's own lettering and the inbox
+//     walk's re-lettering of it are alternatives the ruler could have read: a letter they
+//     disagree on is ambiguous. A direct letter against a BODY anchor is the body's own letter.
+//   - A RATIFICATION names no offered id of its own ("Approved — B" is unparsed). It resolves
+//     through the newest roster-trusted App comment AT OR AFTER the anchor that carries an
+//     `Answer:` line of its own (a `>`-quoted line is not its own); that relay's answer must be
+//     one offered letter, or the pick is unparsed — the search never walks past a newer relay
+//     with a word answer to an older one with a letter, and never to a relay older than the
+//     ask being ratified. When that relay is itself the anchor, its letter is the relay's own;
+//     otherwise the letter may be the walk's re-lettering of the anchor (and, for a relay
+//     anchor, the body's) — a disagreement is ambiguous.
 func ParseRulingPick(body string, comments []Comment, anchorIdx, rulingIdx int, ruling Comment) (picked, via string) {
-	if rulingIdx < 0 || rulingIdx > len(comments) {
-		rulingIdx = len(comments)
+	picked, via, _ = parseRulingPick(body, comments, anchorIdx, rulingIdx, ruling)
+	return picked, via
+}
+
+// parseRulingPick is ParseRulingPick that also returns the index of the relay a ratification
+// was resolved through (-1 when none was read), for the record's edit check.
+func parseRulingPick(body string, comments []Comment, anchorIdx, rulingIdx int, ruling Comment) (picked, via string, relayIdx int) {
+	relayIdx = -1
+	if rulingIdx < 0 || rulingIdx >= len(comments) {
+		return DecisionPickUnparsed, DecisionViaDirect, relayIdx
 	}
 	before := comments[:rulingIdx]
 	bodyOpts := ParseDecisionOptions(body)
@@ -348,31 +444,63 @@ func ParseRulingPick(body string, comments []Comment, anchorIdx, rulingIdx int, 
 	}
 
 	ls := rulingContentLines(ruling.Body)
-	all := strings.Join(ls, " ")
-	if len(ls) == 0 || strings.Contains(all, "?") || rulingNegatesRe.MatchString(all) {
-		return DecisionPickUnparsed, DecisionViaDirect
+	if len(ls) == 0 {
+		return DecisionPickUnparsed, DecisionViaDirect, relayIdx
 	}
+	all := strings.Join(ls, " ")
 	first := ls[0]
+	letter := rulingLetterRe.FindStringSubmatch(first)
+	via = DecisionViaDirect
+	if letter == nil && rulingRatifyRe.MatchString(first) {
+		via = DecisionViaRatified
+	}
+	if strings.Contains(all, "?") || rulingNegatesRe.MatchString(all) {
+		return DecisionPickUnparsed, via, relayIdx
+	}
+	ids := map[string]bool{}
+	for _, l := range anchor.Letters {
+		ids[l] = true
+	}
+	if anchorIdx >= 0 {
+		for _, l := range bodyOpts.Letters {
+			ids[l] = true
+		}
+	}
+	named := mentionedIDs(all, ids)
 
-	if m := rulingLetterRe.FindStringSubmatch(first); m != nil {
+	if letter != nil {
+		if len(named) > 1 || (len(named) == 1 && !named[letter[1]]) {
+			return DecisionPickUnparsed, via, relayIdx
+		}
 		var alts []lettering
 		if anchorIdx >= 0 && bodyOpts.Stated() {
 			alts = append(alts, sourceLettering(bodyOpts), walkLettering(bodyOpts))
 		}
-		return resolveLetter(m[1], anchor, alts), DecisionViaDirect
+		return resolveLetter(letter[1], anchor, alts), via, relayIdx
 	}
 
-	if !rulingRatifyRe.MatchString(first) {
-		return DecisionPickUnparsed, DecisionViaDirect
+	if via != DecisionViaRatified || len(named) > 0 {
+		return DecisionPickUnparsed, via, relayIdx
 	}
-	for i := len(before) - 1; i >= 0; i-- {
+	lo := anchorIdx
+	if lo < 0 {
+		lo = 0
+	}
+	for i := len(before) - 1; i >= lo; i-- {
 		c := before[i]
 		if !isTrustedApp(c) {
 			continue
 		}
-		m := relayAnswerRe.FindStringSubmatch(strings.Join(rulingContentLines(c.Body), "\n"))
-		if m == nil {
+		answers, ok := relayAnswers(c.Body)
+		if !ok {
 			continue
+		}
+		relayIdx = i
+		answer := answers[0]
+		for _, a := range answers {
+			if a == "" || a != answer {
+				return DecisionPickUnparsed, DecisionViaRatified, relayIdx
+			}
 		}
 		var alts []lettering
 		if i != anchorIdx {
@@ -381,9 +509,9 @@ func ParseRulingPick(body string, comments []Comment, anchorIdx, rulingIdx int, 
 				alts = append(alts, sourceLettering(bodyOpts), walkLettering(bodyOpts))
 			}
 		}
-		return resolveLetter(m[1], anchor, alts), DecisionViaRatified
+		return resolveLetter(answer, anchor, alts), DecisionViaRatified, relayIdx
 	}
-	return DecisionPickUnparsed, DecisionViaRatified
+	return DecisionPickUnparsed, DecisionViaRatified, relayIdx
 }
 
 // ---------------------------------------------------------------- compose, validate, encode
@@ -396,23 +524,26 @@ type DecisionInput struct {
 	Tracker        string // owner/repo#N (or !N) — where the decided work continues
 	IssueBody      string
 	IssueCreatedAt string    // RFC3339, as the forge reports it
-	Comments       []Comment // the thread, in order
+	Comments       []Comment // the thread, in order (each with the forge's UpdatedAt)
 	Ruling         Comment   // the verified ruling comment (its body and creation time)
 	Now            time.Time // the recording time
+	// The issue body's last edit time, RFC3339 ("" = never edited), and whether the forge
+	// answered at all: IssueBodyEditKnown=false means the edit time could not be read, which
+	// the record states as edit_state `unverifiable`, never as `unedited`.
+	IssueBodyEditedAt  string
+	IssueBodyEditKnown bool
 }
 
 // ComposeDecisionRecord builds the record. It does not validate: ValidateDecisionRecord does,
 // and a record that fails it is never written.
 func ComposeDecisionRecord(in DecisionInput) HumanDecisionRecord {
-	rulingIdx := len(in.Comments)
-	for i, c := range in.Comments {
-		if (in.Ruling.DatabaseID != 0 && c.DatabaseID == in.Ruling.DatabaseID) ||
-			(in.Ruling.ID != "" && c.ID == in.Ruling.ID) {
-			rulingIdx = i
-			break
-		}
+	// A ruling the thread does not carry has no "before": no relay is read and the pick is
+	// unparsed (parseRulingPick), rather than every later comment counting as earlier.
+	rulingIdx := DecisionRulingIndex(in.Comments, in.Ruling)
+	var before []Comment
+	if rulingIdx >= 0 {
+		before = in.Comments[:rulingIdx]
 	}
-	before := in.Comments[:rulingIdx]
 	anchorIdx := DecisionAnchor(before)
 
 	rec := HumanDecisionRecord{
@@ -430,9 +561,7 @@ func ComposeDecisionRecord(in DecisionInput) HumanDecisionRecord {
 		RecordedAt:    in.Now.UTC().Format(time.RFC3339),
 		ToolSHA:       decisionToolSHA(),
 	}
-	if m := decisionBriefRe.FindStringSubmatch(in.IssueBody); m != nil {
-		rec.Brief = m[1]
-	}
+	rec.Brief = parseDecisionBrief(in.IssueBody)
 
 	opts := ParseDecisionOptions(in.IssueBody)
 	rec.AskedAt = rec.OpenedAt
@@ -447,7 +576,27 @@ func ComposeDecisionRecord(in DecisionInput) HumanDecisionRecord {
 	if opts.Recommended >= 0 {
 		rec.Recommended = opts.Letters[opts.Recommended]
 	}
-	rec.Picked, rec.PickedVia = ParseRulingPick(in.IssueBody, in.Comments, anchorIdx, rulingIdx, in.Ruling)
+	var relayIdx int
+	rec.Picked, rec.PickedVia, relayIdx = parseRulingPick(in.IssueBody, in.Comments, anchorIdx, rulingIdx, in.Ruling)
+
+	// The edit check: the record states what stood when the driver ruled, or says it cannot.
+	// An edit after the ruling to any text it was read from leaves no definite pick and no
+	// recommendation standing — the values read now may not be the ones the ruler saw.
+	read := []Comment{}
+	if anchorIdx >= 0 {
+		read = append(read, before[anchorIdx])
+	}
+	if relayIdx >= 0 && relayIdx != anchorIdx {
+		read = append(read, before[relayIdx])
+	}
+	var rulingRead *Comment
+	if rulingIdx >= 0 {
+		rulingRead = &in.Comments[rulingIdx]
+	}
+	rec.EditState = decisionEditState(in, rulingRead, read)
+	if rec.EditState == DecisionEditEdited {
+		rec.Picked, rec.Recommended = DecisionPickUnparsed, DecisionRecommendedNone
+	}
 	rec.PickedIsRecommended = rec.Recommended != DecisionRecommendedNone && rec.Picked == rec.Recommended
 
 	opened, oerr := time.Parse(time.RFC3339, rec.OpenedAt)
@@ -460,6 +609,46 @@ func ComposeDecisionRecord(in DecisionInput) HumanDecisionRecord {
 		rec.AskedToRuledS = int64(ruled.Sub(asked) / time.Second)
 	}
 	return rec
+}
+
+// decisionEditState compares every text the record was read from with the ruling's creation
+// time: the issue body (always read — options, alternative lettering, brief), the anchor and
+// resolving relay (read), and the ruling itself (edited at all after it was posted). Any edit
+// after the ruling is `edited`; otherwise any edit time the forge did not report is
+// `unverifiable`; otherwise `unedited`. A forge update time can move for reasons other than
+// a text edit, so `edited` errs toward saying less, never more.
+func decisionEditState(in DecisionInput, ruling *Comment, read []Comment) string {
+	ruled, err := time.Parse(time.RFC3339, strings.TrimSpace(in.Ruling.CreatedAt))
+	if err != nil || ruling == nil {
+		return DecisionEditUnverifiable
+	}
+	edited, unknown := false, false
+	after := func(stamp string, t time.Time) {
+		u, err := time.Parse(time.RFC3339, strings.TrimSpace(stamp))
+		switch {
+		case err != nil:
+			unknown = true
+		case u.After(t):
+			edited = true
+		}
+	}
+	after(ruling.UpdatedAt, ruled)
+	for _, c := range read {
+		after(c.UpdatedAt, ruled)
+	}
+	switch {
+	case !in.IssueBodyEditKnown:
+		unknown = true
+	case strings.TrimSpace(in.IssueBodyEditedAt) != "":
+		after(in.IssueBodyEditedAt, ruled)
+	}
+	switch {
+	case edited:
+		return DecisionEditEdited
+	case unknown:
+		return DecisionEditUnverifiable
+	}
+	return DecisionEditUnedited
 }
 
 // utcStamp normalises a forge timestamp to RFC3339 UTC; an unparseable or empty one is
@@ -491,14 +680,16 @@ var (
 
 // ValidateDecisionRecord refuses a record that could mislead or leak: ruler other than the
 // role `driver`; picked outside the offered ids ∪ {ambiguous, unparsed}; an unknown
-// options_source / picked_via; more than four options; latency that disagrees with the
-// timestamps or is negative; a newline in any field. The error is a *DecisionRecordError
+// options_source / picked_via / edit_state; an edited record with a definite pick or
+// recommendation; a brief outside the brief-id grammar; more than four options, a duplicate
+// or malformed option id or a malformed digest; latency that disagrees with the timestamps or
+// is negative; a newline in any field. The error is a *DecisionRecordError
 // naming the field.
 func ValidateDecisionRecord(r HumanDecisionRecord) error {
 	strs := []struct{ name, v string }{
 		{"schema", r.Schema}, {"repo", r.Repo}, {"tracker", r.Tracker}, {"brief", r.Brief},
 		{"options_source", r.OptionsSource}, {"recommended", r.Recommended}, {"picked", r.Picked},
-		{"picked_via", r.PickedVia}, {"ruler", r.Ruler}, {"ruling_sha256", r.RulingSHA256},
+		{"picked_via", r.PickedVia}, {"edit_state", r.EditState}, {"ruler", r.Ruler}, {"ruling_sha256", r.RulingSHA256},
 		{"opened_at", r.OpenedAt}, {"asked_at", r.AskedAt}, {"ruled_at", r.RuledAt},
 		{"recorded_at", r.RecordedAt}, {"tool_sha", r.ToolSHA},
 	}
@@ -523,6 +714,8 @@ func ValidateDecisionRecord(r HumanDecisionRecord) error {
 		return decRefuse("tracker", "empty")
 	case len(r.Options) > maxDecisionOptions:
 		return decRefuse("options", fmt.Sprintf("%d options; at most %d", len(r.Options), maxDecisionOptions))
+	case r.Brief != "" && !decBriefIDRe.MatchString(r.Brief):
+		return decRefuse("brief", "must be a brief id <stream>/<NN> (lower-case stream, at most 64 characters) or absent")
 	}
 	ids := map[string]bool{}
 	for _, o := range r.Options {
@@ -549,6 +742,15 @@ func ValidateDecisionRecord(r HumanDecisionRecord) error {
 	case DecisionViaDirect, DecisionViaRatified:
 	default:
 		return decRefuse("picked_via", "must be direct or ratified-relay")
+	}
+	switch r.EditState {
+	case DecisionEditUnedited, DecisionEditUnverifiable:
+	case DecisionEditEdited:
+		if r.Picked != DecisionPickUnparsed || r.Recommended != DecisionRecommendedNone {
+			return decRefuse("edit_state", "an edited record carries picked unparsed and recommended none")
+		}
+	default:
+		return decRefuse("edit_state", "must be unedited, edited or unverifiable")
 	}
 	if want := ids[r.Picked] && r.Picked == r.Recommended; r.PickedIsRecommended != want {
 		return decRefuse("picked_is_recommended", "disagrees with picked and recommended")
@@ -604,7 +806,9 @@ func DecisionRecordBlock(line []byte) string {
 }
 
 // AppendDecisionRecord appends one encoded record as one line to decision-records.jsonl in
-// the desk state directory (0600, O_APPEND), beside the audit log.
+// the desk state directory (0600, O_APPEND), beside the audit log. A symlink or any other
+// non-regular file at that path is refused rather than written through, and an existing file
+// is brought back to 0600. The write is ONE short O_APPEND write; there is no lock.
 func AppendDecisionRecord(line []byte) error {
 	if len(line) == 0 || strings.ContainsAny(string(line), "\r\n") || !json.Valid(line) {
 		return Refused("refusing to append a decision record that is not one JSON line")
@@ -616,9 +820,26 @@ func AppendDecisionRecord(line []byte) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Unverifiable("cannot create the desk state directory", err)
 	}
-	f, err := os.OpenFile(filepath.Join(dir, decisionRecordsFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	p := filepath.Join(dir, decisionRecordsFile)
+	if fi, err := os.Lstat(p); err == nil && !fi.Mode().IsRegular() {
+		return Refused("refusing to append to decision-records.jsonl: it is not a regular file (" + fi.Mode().Type().String() + ")")
+	}
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return Unverifiable("cannot open decision-records.jsonl", err)
+	}
+	// The path is checked again after the open: a link swapped in between the check and the
+	// open would make the opened file differ from what the path names now.
+	if lfi, lerr := os.Lstat(p); lerr != nil || !lfi.Mode().IsRegular() {
+		_ = f.Close()
+		return Refused("refusing to append to decision-records.jsonl: the path changed while it was opened")
+	} else if ffi, ferr := f.Stat(); ferr != nil || !os.SameFile(lfi, ffi) {
+		_ = f.Close()
+		return Refused("refusing to append to decision-records.jsonl: the opened file is not the file at the path")
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return Unverifiable("cannot set decision-records.jsonl to 0600", err)
 	}
 	if _, err := f.Write(append(append([]byte(nil), line...), '\n')); err != nil {
 		_ = f.Close()
