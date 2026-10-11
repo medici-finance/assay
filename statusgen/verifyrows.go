@@ -920,8 +920,10 @@ func escapedPipeOutsideBracket(pat string) bool {
 
 // expectsZeroCount reports whether an Expect cell asserts a count of exactly
 // zero. Deliberately narrow: the cell's first token, stripped of markdown, must
-// be exactly "0" ("0", "0 (F-12)", "`0` — forbidden numbers absent"). Anything
-// relational ("≥ 3", "0 or more") is not a zero-count assertion.
+// be exactly "0" ("0", "0 (F-12)", "`0` — forbidden numbers absent"). A cell
+// led by a relation ("≥ 3", "at least 1") is not a zero-count assertion; a cell
+// whose first token is "0" is read as one even when prose follows it, so
+// "0 or more" counts as zero here.
 func expectsZeroCount(expect string) bool {
 	s := strings.TrimSpace(expect)
 	s = strings.NewReplacer("`", "", "*", "", "**", "").Replace(s)
@@ -2029,7 +2031,10 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	}
 
 	// Rule 13 (#1862): a grep feeding a later stage, under a zero-count Expect.
-	if stage := grepFeedingLaterStage(toks); stage != "" && expectsZeroOutput(expect) {
+	// An Expect that also declares a non-zero exit (`output is `0`, exit 1`)
+	// already accounts for grep's no-match status under pipefail, so it is
+	// correct as written and stays silent.
+	if stage := grepFeedingLaterStage(toks); stage != "" && expectsZeroOutput(expect) && !declaresNonZeroExit(expect) {
 		add(ruleGrepPipeZeroCount, "pipes `%s` into a later stage and expects a count of `0` — `statusgen verifyrun` runs every row under `bash -o pipefail`, and grep exits 1 when it matches nothing, so on the SUCCESS path (nothing found) the pipeline exits 1 and the row FAILS; when a match IS present grep exits 0 and a bare `0` Expect is not machine-decidable, so the row can pass on exit status alone. Keep the grep but tolerate only its no-match status — `{ %s || [ $? -eq 1 ]; } | wc -l` — and write the Expect as output is `0`; where the searched path could vanish, add a positive leg that proves it exists (`test -n \"$(git ls-tree --name-only HEAD <dir>)\"`). A plain `|| true` also passes the success path but hides a real grep error", stage, stage)
 	}
 
@@ -2042,9 +2047,10 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 
 // expectsZeroOutput reports whether an Expect cell asserts that the row PRINTS
 // a count of zero: a bare `0` (the shape expectsZeroCount already reads), or
-// "prints `0`" / "output is `0`" with the number after the verb. Anything
-// relational ("≥ 1", "0 or more") and anything led by another word ("exit 1 …")
-// is not a zero-count assertion.
+// "prints `0`" / "output is `0`" with the number after the verb. A cell led by
+// a relation ("≥ 1") or by another word ("exit 1 …") is not a zero-count
+// assertion; a cell whose first token is "0" is, even with prose after it
+// ("0 or more"), because expectsZeroCount reads only that first token.
 func expectsZeroOutput(expect string) bool {
 	if expectsZeroCount(expect) {
 		return true
@@ -2067,6 +2073,13 @@ func expectsZeroOutput(expect string) bool {
 		return false
 	}
 	return strings.TrimRight(f[i], ".,;:") == "0"
+}
+
+// declaresNonZeroExit reports whether verifyrun reads a non-zero required exit
+// code out of the Expect cell, the same way it does when it runs the row.
+func declaresNonZeroExit(expect string) bool {
+	spec := parseExpect(expect)
+	return spec.exitFrom && spec.exitCode != 0
 }
 
 // grepFeedingLaterStage returns the text of a grep stage (`grep`, `egrep`,

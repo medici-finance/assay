@@ -609,7 +609,8 @@ passing run — which is why they are lint rules and not review vigilance.
       also hides a real grep error.
     - Where the searched path could vanish, add a positive leg that proves it
       exists: `test -n "$(git ls-tree --name-only HEAD docs)" && …`.
-    - A leading `!`, the guarded `{ … || … ; } |` form and a `≥ 1` Expect are
+    - A leading `!`, the guarded `{ … || … ; } |` form, a `≥ 1` Expect and an
+      Expect that also declares a non-zero exit (``output is `0`, exit 1``) are
       silent.
 
 29. **Rows run on macOS too — no GNU-isms** (`gnu-only`, #650). A Verify row is
