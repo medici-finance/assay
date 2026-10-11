@@ -1,0 +1,65 @@
+{
+  "test": "go test ./cmd/deskwt -run '^(TestMaintenanceRequiresExplicitApply|TestMaintenanceInvalidOptionsNeverReachEngine|TestMaintenanceFailureIsUnverifiableAndPruneReportsIt|TestPruneMaintenanceCadenceIsIndependentAndBranchesOnlyStaysNarrow|TestMaintenanceIncompleteReport)$' -count=1 -timeout=30s",
+  "control": {
+    "name": "CONTROL invert requested read-only mode",
+    "file": "cmd/deskwt/objectmaintenance.go",
+    "old": "DryRun: !*apply,",
+    "new": "DryRun: *apply,"
+  },
+  "mutations": [
+    {
+      "name": "inspection requests apply",
+      "file": "cmd/deskwt/objectmaintenance.go",
+      "old": "DryRun: !*apply,",
+      "new": "DryRun: false,"
+    },
+    {
+      "name": "option bounds admit unbounded requests",
+      "file": "cmd/deskwt/objectmaintenance.go",
+      "old": "if *interval < time.Hour || *timeout < time.Second || *timeout > 5*time.Minute {",
+      "new": "if false && (*interval < time.Hour || *timeout < time.Second || *timeout > 5*time.Minute) {"
+    },
+    {
+      "name": "interval option is discarded",
+      "file": "cmd/deskwt/objectmaintenance.go",
+      "old": "MinInterval: *interval,",
+      "new": "MinInterval: gitmaintenance.DefaultInterval,"
+    },
+    {
+      "name": "timeout option is discarded",
+      "file": "cmd/deskwt/objectmaintenance.go",
+      "old": "Timeout: *timeout,",
+      "new": "Timeout: gitmaintenance.DefaultTimeout,"
+    },
+    {
+      "name": "explicit failed maintenance claims success",
+      "file": "cmd/deskwt/objectmaintenance.go",
+      "old": "if runErr != nil {",
+      "new": "if false && runErr != nil {"
+    },
+    {
+      "name": "prune hides coordinator failure",
+      "file": "cmd/deskwt/objectmaintenance.go",
+      "old": "if err != nil {\n\t\tfmt.Fprintf(w, \"  maintenance could-not-check: %s\\n\", err)",
+      "new": "if false && err != nil {\n\t\tfmt.Fprintf(w, \"  maintenance could-not-check: %s\\n\", err)"
+    },
+    {
+      "name": "narrow prune opts launch object tasks",
+      "file": "cmd/deskwt/objectmaintenance.go",
+      "old": "if opts.noMaintenance || opts.branchesOnly {",
+      "new": "if false && (opts.noMaintenance || opts.branchesOnly) {"
+    },
+    {
+      "name": "lifecycle debounce suppresses independent cadence",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\t\tpruneMaintenance(ctx, dir, opts, os.Stderr)\n\t\t\treturn nil",
+      "new": "\t\t\t_ = ctx\n\t\t\treturn nil"
+    },
+    {
+      "name": "failed apply is rendered as a plan",
+      "file": "cmd/deskwt/objectmaintenance.go",
+      "old": "if report.After == nil && !report.DryRun {",
+      "new": "if false && report.After == nil && !report.DryRun {"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/gitmaintenance"
 )
 
 // currency.go — the instrument. Everything here is READ-ONLY; the write path is
@@ -253,11 +255,6 @@ func originNames(url, repo string) bool {
 		strings.HasSuffix(u, ":"+strings.ToLower(repo))
 }
 
-// prHeadRef is the namespaced local ref deskmerge fetches a PR head into. It lives
-// under refs/deskmerge/ so it can never be mistaken for — or listed among — the
-// operator's own branches, and so a stale one cannot shadow a real branch name.
-func prHeadRef(pr int) string { return fmt.Sprintf("refs/deskmerge/pr-%d", pr) }
-
 // fetchState fetches the base branch and the PR head, and returns their SHAs.
 //
 // The head SHA is cross-checked against the one GitHub reported. A mismatch means the
@@ -266,9 +263,27 @@ func prHeadRef(pr int) string { return fmt.Sprintf("refs/deskmerge/pr-%d", pr) }
 // and quietly re-basing the question onto a different one would make the answer true of
 // a PR nobody asked about.
 func fetchState(root, repo string, p prInfo) (baseSHA, headSHA string, err error) {
+	tmp, err := gitmaintenance.BeginTempRef(root, "deskmerge")
+	if err != nil {
+		return "", "", deskkit.Unverifiable("could-not-check: cannot reserve the operation's temporary fetch reference", err)
+	}
+	// Consume the hash before declaring completion. Each fetch owns a distinct
+	// receipt/ref, so one same-PR run cannot read or remove another run's head.
+	observed := false
+	defer func() {
+		// A failed fetch may have written its private destination before failing
+		// elsewhere. Its child has stopped, so bind that owned residue as well.
+		if !observed {
+			_, _ = tmp.Observe()
+		}
+		_, cleanupErr := tmp.Complete(context.Background())
+		if cleanupErr != nil && err == nil {
+			err = deskkit.Unverifiable("could-not-check: temporary reference cleanup was not completed; receipt retained", cleanupErr)
+		}
+	}()
 	if _, ferr := runGit(root, "fetch", "--quiet", "origin",
 		"+refs/heads/"+p.BaseRefName+":refs/remotes/origin/"+p.BaseRefName,
-		"+refs/pull/"+strconv.Itoa(p.Number)+"/head:"+prHeadRef(p.Number),
+		"+refs/pull/"+strconv.Itoa(p.Number)+"/head:"+tmp.Name,
 	); ferr != nil {
 		return "", "", deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot fetch %s's %s and refs/pull/%d/head — an unfetched ref makes "+
@@ -287,12 +302,12 @@ func fetchState(root, repo string, p prInfo) (baseSHA, headSHA string, err error
 			"could-not-check: cannot resolve origin/"+deskkit.StripControl(p.BaseRefName)+" after fetching it", err)
 	}
 	baseSHA = baseHash.String()
-	headHash, err := gr.Resolve(prHeadRef(p.Number))
+	headSHA, err = tmp.Observe()
 	if err != nil {
 		return "", "", deskkit.Unverifiable(
 			"could-not-check: cannot resolve the fetched PR head", err)
 	}
-	headSHA = headHash.String()
+	observed = true
 	if !strings.EqualFold(headSHA, p.HeadRefOid) {
 		return "", "", deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: GitHub reported head %s but refs/pull/%d/head fetched %s — the PR moved "+
@@ -300,17 +315,6 @@ func fetchState(root, repo string, p prInfo) (baseSHA, headSHA string, err error
 			short(deskkit.StripControl(p.HeadRefOid)), p.Number, short(headSHA)), nil)
 	}
 	return baseSHA, headSHA, nil
-}
-
-// dropPRHeadRef removes the namespaced fetch ref. Best-effort: a leftover ref is
-// harmless (it is namespaced out of every branch listing), so its removal must never
-// turn a successful run into a failure.
-func dropPRHeadRef(root string, pr int) {
-	repo, err := gitcore.Open(root)
-	if err != nil {
-		return
-	}
-	_ = repo.DeleteLocalRef(prHeadRef(pr))
 }
 
 // ---------------------------------------------------------------------------

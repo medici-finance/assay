@@ -8,7 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitmaintenance"
 )
 
 var maintenanceCommand = exec.CommandContext
@@ -71,40 +71,10 @@ func maintenanceRead(ctx context.Context, dir string, args ...string) (string, e
 // worktree settings. Never interpret list display prefixes as proof a hook is disabled:
 // configured names can contain the same bytes. Refuse every listed relevant entry.
 func maintenanceCheckHooks(ctx context.Context, dir string) error {
-	hookDir, err := maintenanceRead(ctx, dir, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
-	if err != nil {
+	if err := gitmaintenance.CheckHooksWithStart(ctx, dir, maintenanceCommand); err != nil {
 		return err
 	}
-	f, err := openMaintenanceDirectory(hookDir)
-	if err != nil {
-		return deskkit.Unverifiable("read maintenance hook directory", err)
-	}
-	_, readErr := f.ReadDir(1)
-	closeErr := f.Close()
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return deskkit.Unverifiable("read maintenance hook directory", readErr)
-	}
-	if closeErr != nil {
-		return deskkit.Unverifiable("close maintenance hook directory", closeErr)
-	}
-	path := filepath.Join(hookDir, "reference-transaction")
-	if _, err := os.Lstat(path); err == nil {
-		if _, err := os.Stat(path); err != nil {
-			return deskkit.Unverifiable("resolve maintenance hook", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return deskkit.Unverifiable("inspect maintenance hook", err)
-	}
-	r := maintenanceGit(ctx, dir, "hook", "list", "-z", "reference-transaction")
-	// This is the sole accepted no-hook outcome on a Git version with native inventory.
-	// Unsupported commands, missing configuration, extra warnings and empty success fail closed.
-	if r.ExitCode == 1 && r.Stdout == "" && r.Stderr == "warning: no hooks found for event 'reference-transaction'" {
-		return nil
-	}
-	if !r.Failed() && r.Stderr == "" && r.Stdout != "" {
-		return deskkit.Refused("repository maintenance requires no configured hooks for its ref transaction; hooks were preserved")
-	}
-	return r.Fail(deskkit.ExitUnverifiable, "verify maintenance hook inventory (native git hook list required)")
+	return gitmaintenance.CheckCustody(ctx, dir)
 }
 
 func inventoryMaintenance(ctx context.Context, dir string) (*maintenanceInventory, error) {
@@ -151,7 +121,7 @@ func inventoryMaintenance(ctx context.Context, dir string) (*maintenanceInventor
 // values converge on the same inode. Never unlink it, which would split the lock domain.
 // The stamp records attempts, including failed/interrupted work, to bound retry storms.
 func maintenanceLock(common string, interval time.Duration) (*os.File, string, error) {
-	f, err := openMaintenanceLock(filepath.Join(common, "assay-maintenance.lock"))
+	f, err := gitmaintenance.OpenLock(filepath.Join(common, "assay-maintenance.lock"))
 	if err != nil {
 		return nil, "", deskkit.Unverifiable("open repository maintenance lock", err)
 	}
@@ -198,6 +168,9 @@ func maintenanceLock(common string, interval time.Duration) (*os.File, string, e
 }
 
 func cmdMaintain(args []string) (err error) {
+	if len(args) > 0 && args[0] == "objects" {
+		return cmdObjectMaintenance(args[1:])
+	}
 	audit := auditCtx{verb: "maintain"}
 	defer func() { audit.finalize(err) }()
 	fs := flag.NewFlagSet("maintain", flag.ContinueOnError)
@@ -255,6 +228,23 @@ func cmdMaintain(args []string) (err error) {
 			return nil
 		}
 		defer func() { _ = deskkit.UnlockFile(lock); _ = lock.Close() }()
+		// The object coordinator and standalone ref cleanup share this second
+		// lock. Keep the same main-then-temprefs order through both index tasks.
+		refLock, e := gitmaintenance.OpenLock(filepath.Join(common, "assay-maintenance-temprefs.lock"))
+		if e != nil {
+			return deskkit.Unverifiable("open temporary reference custody lock", e)
+		}
+		defer refLock.Close()
+		if e := deskkit.TryLockExclusive(refLock); e != nil {
+			if errors.Is(e, deskkit.ErrLockBusy) {
+				report.Status = "held"
+				audit.successResult = deskkit.ResultNoop
+				audit.detail = "temporary reference cleanup is running"
+				return nil
+			}
+			return deskkit.Unverifiable("lock temporary reference custody", e)
+		}
+		defer deskkit.UnlockFile(refLock)
 	}
 	report.Before, err = inventoryMaintenance(ctx, *repo)
 	if err != nil {
@@ -264,24 +254,8 @@ func cmdMaintain(args []string) (err error) {
 		audit.detail = "read-only plan"
 		return nil
 	}
-	// These two explicit builtins cannot select gc, prefetch, loose-object deletion or
-	// incremental-repack through maintenance configuration. Each runs at most once.
-	for _, argv := range [][]string{
-		{"pack-refs", "--all"},
-		{"-c", "core.commitGraph=true", "-c", "commitGraph.changedPaths=false", "commit-graph", "write", "--reachable", "--split", "--no-progress", "--max-new-filters=0"},
-	} {
-		if e := deskkit.Guard(); e != nil {
-			return e
-		}
-		// Recheck immediately before each task. The cooperative maintenance lock does
-		// not serialize external configuration edits; this is not an atomic sandbox.
-		if e := maintenanceCheckHooks(ctx, *repo); e != nil {
-			return e
-		}
-		r := maintenanceGit(ctx, *repo, argv...)
-		if r.Failed() || r.Stderr != "" {
-			return r.Fail(deskkit.ExitUnverifiable, "offline repository maintenance")
-		}
+	if e := gitmaintenance.RunIndexes(ctx, *repo, maintenanceCommand); e != nil {
+		return deskkit.Unverifiable("offline repository maintenance", e)
 	}
 	report.After, err = inventoryMaintenance(ctx, *repo)
 	if err != nil {

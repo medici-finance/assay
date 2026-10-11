@@ -1,12 +1,12 @@
 // Command deskwt is the worktree-lifecycle desk tool.
-// It encodes TWO local-only verbs — "add a worktree under a sanctioned prefix" and
-// "remove a worktree I can prove is safe to delete" — so the mandated isolate-first rule
+// Its lifecycle verbs add under a sanctioned prefix and remove only proven-safe
+// worktrees; its maintenance verb compacts the shared Git store offline. The isolate-first rule
 // is the path of least resistance instead of
 // a prompt, and so cleanup can never wipe another session's uncommitted work the way a raw
 // rm-class delete can.
 //
 // Safety is by construction:
-//   - both verbs act only under the RESOLVED (EvalSymlinks) prefixes `/private/tmp/tracker-*`
+//   - add/remove act only under the RESOLVED (EvalSymlinks) temporary-root worktree prefix
 //     and `<repo-root>/.claude/worktrees/`; a path that resolves elsewhere is refused;
 //   - the shared checkout is refused by IDENTITY (git-common-dir's parent), not prefix;
 //   - remove refuses a dirty TRACKED tree, unpushed commits, or a branch with no upstream,
@@ -27,7 +27,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskwt — add, remove, or prune git worktrees, only under sanctioned prefixes.
+const usage = `deskwt — safe worktree lifecycle and coordinated offline Git maintenance.
 
 USAGE:
   deskwt add <name> [--branch B | --detach] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]
@@ -35,13 +35,24 @@ USAGE:
   deskwt maintain [--repo <path>] [--apply] [--min-interval <dur>] [--timeout <dur>]
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
-               [--no-branches | --branches-only] [--no-cache] [--cells-root <path>]
+               [--no-branches | --branches-only] [--no-cache] [--cells-root <path>] [--no-maintenance]
+  deskwt maintain objects [--repo <path>] [--dry-run | --apply] [--json]
+                     [--min-interval 24h] [--timeout 2m]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
   deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
   deskwt --version
 
+maintain objects prints a read-only inventory and task plan by default. --apply runs bounded,
+offline ref packing, commit-graph and incremental object packing, once per common Git
+directory per 24h attempt interval. Failed attempts consume the same interval. Every object ID is retained, including unreachable objects borrowed
+by other clones. Configured reference-transaction hooks or uncertain native hook inventory
+hold maintenance. It never fetches, runs gc, expires reflogs or changes branches/worktrees.
+prune also attempts this daily maintenance after its lifecycle sweep; --no-maintenance
+skips it, and --branches-only retains its branch-only meaning. Child process groups
+or Windows jobs enforce the runtime budget before releasing repository ownership.
+
 role-init provisions a DESK ROLE's own worktree in one idempotent call: a session-scoped
-path under /private/tmp/tracker-*, a uniquely-named branch cut from a FRESHLY FETCHED
+path under the sanctioned temporary-root prefix, a uniquely-named branch cut from a FRESHLY FETCHED
 origin/main (so the preflight landing probe is green and the session does not start behind
 main), a worktree lock, and the role's App commit identity set PER-WORKTREE (bot USER id,
 #638) so concurrent sessions cannot race each other's identity via shared config, plus the
@@ -54,13 +65,6 @@ foreign-repo path is refused, never re-pointed. The
 LAST line on stdout is the worktree's absolute path — the launcher contract:
 ` + "`cd \"$(deskwt role-init <role> --repo-root <checkout>)\"`" + `.
 role-clean unlocks and removes it under the same safety guards as remove.
-
-maintain plans offline repository index work and prints JSON. --apply packs refs and writes
-a split commit graph, with before/after counts. A common-directory lock and attempt cadence
-(default 6h, minimum 1h) coalesce worktrees and roles. --timeout bounds all Git commands
-(default 30s, range 1s..5m). No scheduler is installed. Object reclamation is held because
-external borrowers cannot be inventoried reliably; refs, objects and reflogs are preserved.
-This verb operates on the shared repository indexes, not worktree directories.
 
 <role> is EVERY desk role desktoken mints (desk, worker, reviewer, verifier, issue-loop,
 intake-loop), spelled either as that token role or as the loop name deskboot boots
@@ -122,9 +126,9 @@ upstream (or --base) lacks is RECLAIMED — deleted and recreated — with an au
 is checked out somewhere, or carries unpushed commits, is REFUSED, naming the worktree path or
 the commit count.
 
-deskwt is safe by construction: every verb acts ONLY on paths that RESOLVE under
-/private/tmp/tracker-* or <repo-root>/.claude/worktrees/, the shared checkout is refused by
-identity, and remove/prune refuse a dirty tracked tree or unpushed commits. There is NO
+Worktree creation/removal acts only on paths that RESOLVE under the sanctioned
+temporary-root prefix or <repo-root>/.claude/worktrees/. The shared checkout is refused
+by identity, and remove/prune refuse a dirty tracked tree or unpushed commits. There is NO
 --force flag. On any state it cannot positively verify it refuses.
 
 prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then removes

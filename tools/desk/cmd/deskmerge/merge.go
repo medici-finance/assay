@@ -61,8 +61,6 @@ func cmdMerge(args []string, out io.Writer) error {
 	if err := assertPushableBranch(p); err != nil {
 		return err
 	}
-	defer dropPRHeadRef(root, o.pr)
-
 	t, aerr := assess(root, o.repo, p, o.probe)
 	defer t.close()
 	if aerr != nil {

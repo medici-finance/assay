@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitmaintenance"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -389,5 +390,59 @@ func TestMaintenancePreservesRefMovedAfterInventory(t *testing.T) {
 	}
 	if !moved || mustGit(t, work, "rev-parse", "refs/heads/moving") != next {
 		t.Fatal("maintenance clobbered moved ref")
+	}
+}
+
+// regression: #2513
+func TestMaintenanceUnknownProcessCustody(t *testing.T) {
+	for _, kind := range []string{"active-marker", "pending-receipt", "invalid-receipt"} {
+		t.Run(kind, func(t *testing.T) {
+			work, calls := maintenanceFixture(t)
+			common := filepath.Join(work, ".git")
+			path := filepath.Join(common, "assay-maintenance-active.json")
+			body := "{}"
+			if kind != "active-marker" {
+				dir := filepath.Join(common, "assay-maintenance", "temporary-refs")
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				key := strings.Repeat("ab", 16)
+				path = filepath.Join(dir, key+".json")
+				if kind == "pending-receipt" {
+					body = `{"version":1,"owner":"deskmerge","ref":"refs/deskmerge/tmp/` + key + `","complete":true,"cleanup_pending":true}`
+				}
+			}
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := maintenanceRun(t, "--repo", work, "--apply")
+			if err == nil || maintenanceWrites(*calls) != 0 {
+				t.Fatalf("unknown child custody accepted: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(common, "assay-maintenance.lock")); !os.IsNotExist(err) {
+				t.Fatal("custody refusal wrote attempt lock")
+			}
+			if got, err := os.ReadFile(path); err != nil || string(got) != body {
+				t.Fatal("custody refusal changed its evidence")
+			}
+		})
+	}
+}
+
+// regression: #2513
+func TestMaintenanceTemporaryRefLockHeld(t *testing.T) {
+	work, calls := maintenanceFixture(t)
+	f, err := gitmaintenance.OpenLock(filepath.Join(work, ".git", "assay-maintenance-temprefs.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := deskkit.TryLockExclusive(f); err != nil {
+		t.Fatal(err)
+	}
+	defer deskkit.UnlockFile(f)
+	r, err := maintenanceRun(t, "--repo", work, "--apply")
+	if err != nil || r.Status != "held" || maintenanceWrites(*calls) != 0 {
+		t.Fatalf("active temp cleanup not held: %v %+v", err, r)
 	}
 }

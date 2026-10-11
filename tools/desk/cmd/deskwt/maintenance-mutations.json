@@ -34,7 +34,7 @@
     {
       "name": "lock open must refuse symlinks",
       "file": "cmd/deskwt/maintenance.go",
-      "old": "openMaintenanceLock(filepath.Join(common, \"assay-maintenance.lock\"))",
+      "old": "gitmaintenance.OpenLock(filepath.Join(common, \"assay-maintenance.lock\"))",
       "new": "os.OpenFile(filepath.Join(common, \"assay-maintenance.lock\"), os.O_CREATE|os.O_RDWR, 0600)"
     },
     {
@@ -51,7 +51,7 @@
     },
     {
       "name": "immediate expiry and pruning must not enter the task set",
-      "file": "cmd/deskwt/maintenance.go",
+      "file": "internal/gitmaintenance/indexes.go",
       "old": "{\"pack-refs\", \"--all\"},",
       "new": "{\"reflog\", \"expire\", \"--expire=now\", \"--all\"},\n\t\t{\"prune\", \"--expire=now\"},\n\t\t{\"pack-refs\", \"--all\"},"
     },
@@ -75,9 +75,9 @@
     },
     {
       "name": "write warnings must prevent reporting completed",
-      "file": "cmd/deskwt/maintenance.go",
-      "old": "if r.Failed() || r.Stderr != \"\" {\n\t\t\treturn r.Fail",
-      "new": "if r.Failed() {\n\t\t\treturn r.Fail"
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "if runErr != nil || code != 0 || stderr.Len() != 0 {",
+      "new": "if runErr != nil || code != 0 {"
     },
     {
       "name": "preflight must refuse before recording an attempt",
@@ -87,21 +87,33 @@
     },
     {
       "name": "task preconditions must be rechecked after inventory",
-      "file": "cmd/deskwt/maintenance.go",
-      "old": "if e := maintenanceCheckHooks(ctx, *repo); e != nil {\n\t\t\treturn e\n\t\t}\n\t\tr :=",
-      "new": "r :="
+      "file": "internal/gitmaintenance/indexes.go",
+      "old": "if err := CheckHooksWithStart(ctx, repo, start); err != nil {\n\t\t\treturn err\n\t\t}",
+      "new": ""
     },
     {
       "name": "ambiguous disabled display prefix must not authorize apply",
-      "file": "cmd/deskwt/maintenance.go",
+      "file": "internal/gitmaintenance/hooks.go",
       "old": "if !r.Failed() && r.Stderr == \"\" && r.Stdout != \"\" {",
       "new": "if strings.HasPrefix(r.Stdout, \"disabled\\t\") { return nil }; if !r.Failed() && r.Stderr == \"\" && r.Stdout != \"\" {"
     },
     {
       "name": "directory inspection must not perform an untyped blocking open",
-      "file": "cmd/deskwt/maintenance.go",
+      "file": "internal/gitmaintenance/hooks.go",
       "old": "openMaintenanceDirectory(hookDir)",
       "new": "os.Open(hookDir)"
+    },
+    {
+      "name": "unknown process custody must block index-only maintenance",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "return gitmaintenance.CheckCustody(ctx, dir)",
+      "new": "return nil"
+    },
+    {
+      "name": "index-only tasks must hold the temporary cleanup lock",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if e := deskkit.TryLockExclusive(refLock); e != nil {",
+      "new": "if e := error(nil); e != nil {"
     }
   ]
 }

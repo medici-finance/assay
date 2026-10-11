@@ -1,0 +1,29 @@
+{
+  "test": "go test ./internal/gitmaintenance -run ^TestEffectiveReflogRetention$ -count=1 -timeout 30s",
+  "control": {
+    "name": "invert effective retention assertion",
+    "file": "internal/gitmaintenance/retention_test.go",
+    "old": "if !reflect.DeepEqual(inv.ReflogRecovery, want) {",
+    "new": "if reflect.DeepEqual(inv.ReflogRecovery, want) {"
+  },
+  "mutations": [
+    {
+      "name": "effective inventory hides global retention policy",
+      "file": "internal/gitmaintenance/retention.go",
+      "old": "env := append(refCASEnv(os.Environ()),",
+      "new": "env := append(maintenanceEnv(os.Environ()),"
+    },
+    {
+      "name": "effective inventory lowercases ref subsection patterns",
+      "file": "internal/gitmaintenance/retention.go",
+      "old": "key = \"gc\" + key[2:last+1] + field",
+      "new": "key = strings.ToLower(\"gc\" + key[2:last+1] + field)"
+    },
+    {
+      "name": "native tasks inherit effective global packing settings",
+      "file": "internal/gitmaintenance/native.go",
+      "old": "maintenanceEnv(os.Environ())",
+      "new": "refCASEnv(os.Environ())"
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "test": "go test ./internal/gitmaintenance -count=1 -timeout 60s",
+  "control": {
+    "name": "invert object-set retention assertion",
+    "file": "internal/gitmaintenance/safety_test.go",
+    "old": "if !sameObjectSet(all, got) {",
+    "new": "if sameObjectSet(all, got) {"
+  },
+  "mutations": [
+    {
+      "name": "dry-run executes writes",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "if opts.DryRun {",
+      "new": "if false && opts.DryRun {"
+    },
+    {
+      "name": "linked worktrees ignore shared cadence",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "if report.Before.LastSuccess != nil && time.Since(*report.Before.LastSuccess) < opts.MinInterval {\n\t\treport.Skipped = \"minimum interval has not elapsed\"\n\t\treturn report, nil\n\t}\n\tif report.Before.LastAttempt != nil && time.Since(*report.Before.LastAttempt) < opts.MinInterval {",
+      "new": "if false && report.Before.LastSuccess != nil && time.Since(*report.Before.LastSuccess) < opts.MinInterval {\n\t\treport.Skipped = \"minimum interval has not elapsed\"\n\t\treturn report, nil\n\t}\n\tif false && report.Before.LastAttempt != nil && time.Since(*report.Before.LastAttempt) < opts.MinInterval {"
+    },
+    {
+      "name": "parallel coordinators skip common-directory lock",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "if err = deskkit.TryLockExclusive(f); err != nil {",
+      "new": "if err = nil; false {"
+    },
+    {
+      "name": "GC discards unknown borrower's unreachable objects",
+      "file": "internal/gitmaintenance/native.go",
+      "old": "operationArgs = []string{\"multi-pack-index\", \"repack\", \"--no-progress\", \"--batch-size=\" + strconv.FormatInt(batch, 10)}",
+      "new": "_ = strconv.FormatInt(batch, 10); operationArgs = []string{\"gc\", \"--prune=now\"}"
+    },
+    {
+      "name": "invalid and future success stamps authorize work",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "if stamp.Version != 1 || stamp.SuccessAt.IsZero() || stamp.SuccessAt.After(time.Now()) {",
+      "new": "if false && (stamp.Version != 1 || stamp.SuccessAt.IsZero() || stamp.SuccessAt.After(time.Now())) {"
+    },
+    {
+      "name": "parent Git overrides leak into maintenance",
+      "file": "internal/gitmaintenance/native.go",
+      "old": "maintenanceEnv(os.Environ())",
+      "new": "os.Environ()"
+    },
+    {
+      "name": "configuration includes accepted",
+      "file": "internal/gitmaintenance/inventory.go",
+      "old": "if strings.HasPrefix(key, \"include.\") || strings.HasPrefix(key, \"includeif.\") ||",
+      "new": "if false && (strings.HasPrefix(key, \"include.\") || strings.HasPrefix(key, \"includeif.\")) ||"
+    },
+    {
+      "name": "declared alternate object store omitted from inventory",
+      "file": "internal/gitmaintenance/inventory.go",
+      "old": "func inspectAlternates(ctx context.Context, objects string) ([]string, error) {",
+      "new": "func inspectAlternates(ctx context.Context, objects string) ([]string, error) {\n return nil,nil"
+    },
+    {
+      "name": "canceled caller loses custody",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "func Run(ctx context.Context, repo string, opts Options) (report Report, err error) {",
+      "new": "func Run(ctx context.Context, repo string, opts Options) (report Report, err error) {\n ctx = context.Background()"
+    },
+    {
+      "name": "deadline kills parent but leaves descendant writing",
+      "file": "internal/cellprocess/tree_unix.go",
+      "old": "syscall.Kill(-p.Pid, syscall.SIGKILL)",
+      "new": "syscall.Kill(p.Pid, syscall.SIGKILL)"
+    },
+    {
+      "name": "effective reference hooks bypass refusal",
+      "file": "internal/gitmaintenance/hooks.go",
+      "old": "func checkHooks(ctx context.Context, dir, common string, start func(context.Context, string, ...string) *exec.Cmd) error {",
+      "new": "func checkHooks(ctx context.Context, dir, common string, start func(context.Context, string, ...string) *exec.Cmd) error {\n return nil"
+    },
+    {
+      "name": "worktrees and dispatch refs retired as maintenance",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "for _, name := range maintenanceTasks {",
+      "new": "_ = os.Remove(filepath.Join(report.Before.CommonDir, \"refs\", \"heads\", \"unpublished\"))\n _ = os.RemoveAll(filepath.Join(report.Before.CommonDir, \"refs\", \"dispatch\"))\n for _, name := range maintenanceTasks {"
+    },
+    {
+      "name": "unreadable stamp pretends no prior state",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "func readStamp(common string) (*time.Time, error) {",
+      "new": "func readStamp(common string) (*time.Time, error) {\n return nil,nil"
+    },
+    {
+      "name": "old process custody marker ignored",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "if _, err := os.Lstat(filepath.Join(common, activeName)); err == nil {",
+      "new": "if _, err := os.Lstat(filepath.Join(common, activeName)); false && err == nil {"
+    },
+    {
+      "name": "corrupt loose-ref stderr silently accepted",
+      "file": "internal/gitmaintenance/native.go",
+      "old": "if stderr.Len() != 0 {",
+      "new": "if false && stderr.Len() != 0 {"
+    },
+    {
+      "name": "coordinator lock follows symlink",
+      "file": "internal/gitmaintenance/maintenancelock_unix.go",
+      "old": "unix.O_RDWR|unix.O_CREAT|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC",
+      "new": "unix.O_RDWR|unix.O_CREAT|unix.O_NONBLOCK|unix.O_CLOEXEC"
+    },
+    {
+      "name": "hook directory FIFO blocks inspection",
+      "file": "internal/gitmaintenance/maintenancedir_unix.go",
+      "old": "unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NONBLOCK|unix.O_CLOEXEC",
+      "new": "unix.O_RDONLY|unix.O_CLOEXEC"
+    },
+    {
+      "name": "failed late task retries without attempt cadence",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "if report.Before.LastAttempt != nil && time.Since(*report.Before.LastAttempt) < opts.MinInterval {",
+      "new": "if false && report.Before.LastAttempt != nil && time.Since(*report.Before.LastAttempt) < opts.MinInterval {"
+    },
+    {
+      "name": "invalid and future attempts authorize work",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "if stamp.Version != 1 || stamp.AttemptedAt.IsZero() || stamp.AttemptedAt.After(time.Now()) {",
+      "new": "if false && (stamp.Version != 1 || stamp.AttemptedAt.IsZero() || stamp.AttemptedAt.After(time.Now())) {"
+    },
+    {
+      "name": "metadata reads block or allocate beyond budget",
+      "file": "internal/gitmaintenance/inventory.go",
+      "old": "func readMaintenanceFile(path string, limit int64) ([]byte, error) {",
+      "new": "func readMaintenanceFile(path string, limit int64) ([]byte, error) {\n return os.ReadFile(path)"
+    },
+    {
+      "name": "borrower alternate hold occurs after bookkeeping writes",
+      "file": "internal/gitmaintenance/maintenance.go",
+      "old": "if len(alternates) != 0 {",
+      "new": "if false && len(alternates) != 0 {"
+    }
+  ]
+}

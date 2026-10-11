@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -80,6 +81,8 @@ type pruneOpts struct {
 	// half of the cadence split. The opt-in worktree arms (--reclaim-stale-locks,
 	// --reap-dead-sessions) are REFUSED with it, because they would be silently inert.
 	branchesOnly bool
+	// noMaintenance skips the independently coalesced, offline object-store pass.
+	noMaintenance bool
 	// noCache skips the cell-cache pressure pass (Step D, cachepressure.go) for this
 	// sweep. Default OFF: every sweep pressure-checks the marked cell Go-cache roots.
 	noCache bool
@@ -209,11 +212,12 @@ func cmdPrune(args []string) (err error) {
 		"skip the local-branch GC (run the worktree arms only)")
 	branchesOnly := fs.Bool("branches-only", false,
 		"run ONLY the local-branch GC (skip every worktree arm)")
+	noMaintenance := fs.Bool("no-maintenance", false, "skip the daily offline object-store maintenance pass")
 	// --no-cache / --cells-root are the cache pressure pass's (Step D,
 	// cachepressure.go) cadence and scope knobs: the pass runs at the same moments as
 	// prune by default, against $CELLS_ROOT unless told otherwise.
 	noCache := fs.Bool("no-cache", false,
-		"skip the cell-cache pressure pass (run the worktree arms and branch GC only)")
+		"skip the cell-cache pressure pass")
 	cellsRootFlag := fs.String("cells-root", "",
 		"cells root the cache pressure pass sweeps for marked cell Go-cache roots (default: $CELLS_ROOT, then the per-user data-directory default)")
 	positionals, perr := parseInterspersed(fs, args)
@@ -224,7 +228,7 @@ func cmdPrune(args []string) (err error) {
 		}
 		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
 			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl, " +
-			"--no-singleton, --no-branches, --branches-only, --no-cache and --cells-root " +
+			"--no-singleton, --no-branches, --branches-only, --no-cache, --cells-root and --no-maintenance " +
 			"(there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 0 {
@@ -238,6 +242,7 @@ func cmdPrune(args []string) (err error) {
 		singletonTTL:      defaultSingletonTTL,
 		noBranches:        *noBranches,
 		branchesOnly:      *branchesOnly,
+		noMaintenance:     *noMaintenance,
 		noCache:           *noCache,
 		cellsRoot:         cellsRootForSweep(*cellsRootFlag),
 	}
@@ -350,6 +355,8 @@ func cmdPrune(args []string) (err error) {
 
 	// One-shot mode: single sweep, detailed per-worktree summary to stderr.
 	if interval == 0 {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
 		res, swept, why, serr := sweepWithSingleton(guard, dir, cwd, opts)
 		if serr != nil {
 			return serr
@@ -361,6 +368,7 @@ func cmdPrune(args []string) (err error) {
 			fmt.Fprintf(os.Stderr, "deskwt prune: %s — skipping this sweep\n", why)
 			ac.detail = "singleton: " + why
 			ac.successResult = deskkit.ResultNoop
+			pruneMaintenance(ctx, dir, opts, os.Stderr)
 			return nil
 		}
 		fmt.Fprintln(os.Stderr, pruneSummaryLine(res))
@@ -368,6 +376,7 @@ func cmdPrune(args []string) (err error) {
 		for _, s := range res.skips {
 			fmt.Fprintf(os.Stderr, "  skipped %s — %s\n", s.path, s.reason)
 		}
+		pruneMaintenance(ctx, dir, opts, os.Stderr)
 		ac.detail = pruneAuditDetail(res)
 		if res.bookkept == 0 && res.removed == 0 && res.reaped == 0 && len(res.reclaimed) == 0 &&
 			res.branchGC.collected() == 0 && res.cache.reclaimed == 0 && len(res.cache.reaped) == 0 {
@@ -481,6 +490,15 @@ func renderSweepDetail(w io.Writer, res pruneResult) {
 // sleeps a partial tick past a stop — the select blocks on both channels. Each tick emits
 // one stdout summary line; a sweep error aborts the loop (fail closed).
 func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, opts pruneOpts, stop <-chan struct{}, ac *auditCtx) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -535,6 +553,7 @@ func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, opt
 			renderSweepDetail(os.Stdout, res)
 		}
 
+		pruneMaintenance(ctx, dir, opts, os.Stdout)
 		select {
 		case <-stop:
 			fmt.Fprintf(os.Stdout, "%s deskwt prune: shutdown signal — exiting after %d tick(s)\n", nowStamp(), ticks)
