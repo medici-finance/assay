@@ -3834,7 +3834,7 @@ The record never stops the close:
 A comment write that fails for any other reason fails the close as it would with no record;
 it is attempted once and never retried without the block.
 A re-run after a failed close writes a second record for the same ruling. The record's
-guards are pinned by `go run ./cmd/muhar -j 0 -spec cmd/deskclose/decisionrecord-mutations.json`.
+guards are pinned by `go run ./cmd/muhar -spec cmd/deskclose/decisionrecord-mutations.json`.
 
 The not-planned triage lane and every other lane write no record.
 
