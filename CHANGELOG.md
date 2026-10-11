@@ -23,6 +23,30 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.38 — 2026-10-11
+
+### Added
+- Maintenance requires native Git hook inventory and holds repositories with listed relevant entries or unverifiable configuration, preserving existing hooks. Unrelated events remain usable.
+- `deskwt maintain` plans and applies bounded offline ref packing and commit-graph updates, with a shared-repository lock, attempt cadence, and before/after inventory. Object reclamation remains held until borrowed-object ownership can be established.
+- `deskwt prune` now garbage-collects stale local branches in the same sweep (Step C): a branch is collected only when its content is provably on `refs/remotes/origin/main` — ancestry-merged (which covers fresh, never-used handles) or cherry-clean (every unique commit's patch-id already in the mainline, the squash-merge case) — and never `main`/`master`, a branch checked out in any worktree, or anything whose proof cannot be completed. Deletes are compare-and-delete against the proven sha (no force verb), live sweeps print per-class counts only, and `--no-branches` / `--branches-only` split the pass from the worktree arms for cadence control. (#2504)
+- `deskwt prune` now pressure-checks every marked per-cell Go cache root under the cells root on each sweep — the cadence backstop for the managed caches that were previously checked only at launch and dispatch. Enforcement keeps the package's own semantics (reclaim only over the byte budget or under the free-space floor, never under a live consumer lease), a cache root whose owning directory the sweep removed is reaped as an orphan, and the pass stays silent unless it acts. New `prune` flags: `--no-cache`, `--cells-root`.
+
+### Fixed
+- Combining stale-lock reclamation with dead-session reaping is refused before mutation so named owner evidence is retained.
+- Decode repository-bound brief, PR and issue claim keys before live reconciliation; use the matching board or forge item reader, keeping unknown mappings and unreadable sources blind.
+- Dispatch storage admission checks checkout and temporary volumes even when managed Go caches reside elsewhere, and supports an explicit disk floor without managed caches.
+- Git reads and pushes from shared-object clones reuse alternate pack indexes instead of decoding them for every borrowed object.
+- Keep healthy claims and the standing supervisor running when a claim has an unknown owner, a future timestamp, or a refused stale release; report those claims blind. Already-released claims skip deletion.
+- Managed task scratch can retry an interrupted workspace cleanup after restart, preserving ownership and evidence receipts until the disposable workspace is removed.
+- Supervisor claim retirement compares the exact assessed claim version, preserving replacement holders, and reads immutable payloads from the active claim namespace. Live ticks use bounded pages with explicit continuation and hold malformed claims for inspection.
+- The mutation runners (`muhar`, `loopadmin/mutate`) no longer poison the ambient Go build cache: each mutation run now gets a throwaway `GOCACHE` (overriding any inherited one) that is removed when the run ends, including on interrupt and error exits. `GOMODCACHE` stays shared — module downloads are immutable and shared-safe.
+- The opt-in dead-session worktree reaper recognizes detached review heads preserved by remote refs after squash merges, requiring a named inactive owner and retaining unpublished commits and local review evidence.
+- `cellctl` passes each generated role session and the cell's roster and credential home to worktree initialization. Deskd resolves the repository from the cell checkout and uses the cell's custody context instead of the launching shell's.
+- graph-execution/07 Verify table re-authored after #1740: row 3 pins `--since`/`--until` to the fixture range (the default 28-day window made the row clock-dependent), row 7 reads the exit code from a built binary instead of `go run`, row 8 uses `--base` with a pinned SHA instead of the `--lint`-only `--diff-base`, rows 3 and 5 capture the report to a per-run `mktemp` file before jq so a pipefail shell cannot report the report's own exit 3 as the row's and jq never reads a file the run did not write, row 4 escapes its Command-cell pipe and the other rows drop theirs so the witness runs each full command, rows 7, 8 and 9 end in a status-carrying `test` with an `output is` Expect so each can fail under the execution witness, and rows 1, 2 and 6 anchor their `-run` selectors and assert the `--- PASS:` line.
+
+### Changed
+- Route all six live board-writer credential consumers through the main-only board-writer Environment. Evidence auto-merge uses a default-branch metadata poll, and changelog rolls require a non-dry-run dispatch on main.
+
 ## v1.0.37 — 2026-10-10
 
 ### Fixed
