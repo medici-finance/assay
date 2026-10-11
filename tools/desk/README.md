@@ -30,7 +30,7 @@ it on day one.
 | `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
-| `scanloop` | `plan` (read-only queue print), `run` (one drain pass) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) | yes (`run`) |
+| `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
 | `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine`. `--records <thread.json>` additionally derives the PERSISTENT REVIEW-FINDING ledger for one PR (`review-finding/v1`; `deskkit.DeriveLedger`): outstanding findings, per-class rounds against the existing cap, the single arbiter packet, and every could-not-check — so finding IDs and round counts survive a replacement agent | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
 | `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
@@ -376,6 +376,22 @@ At runtime the tools read/write, under `~/.config/assay/`:
   whatever the ledger's size. An absent ledger says so and exits 0; an unreadable one is
   exit 6; a malformed line is printed with a note naming `deskaudit recover`, never
   dropped.
+- `ci-checks.jsonl` (+ `ci-checks.jsonl.<YYYY-MM-DD>` segments, `ci-checks.lock`) — **CI
+  check history**. One line per FINISHED check run or terminal commit
+  status (`success`/`failure`/`error`) that a desk tool read: repo, head SHA, PR when the
+  read carried one, kind, name, attempt (the forge run id, or the creation/start stamp),
+  conclusion, timestamps and duration — never check output, URLs, or who posted it. It is
+  written by the single Forge decorator from the `ChecksAtHead` / `ListOpenChanges` /
+  `ReviewQueueSnapshot` results the tools already fetch, so it costs **no extra forge
+  request**; recording is best-effort (a failed write, a lock held past 2 s, or a recorder
+  panic drops the batch with one stderr line; after one lock timeout the process stops
+  recording) and never changes the read's result. It
+  rotates daily like the audit log; no tool deletes a segment (retention is yours), and no
+  desk decision reads it — it is local operational state for later analysis, never
+  committed. `deskkit.LoadCIChecks` reads every segment, de-duplicated on (repo, head SHA,
+  kind, name, attempt, conclusion). A check name is whatever the check's poster supplied:
+  unauthenticated, sanitize before display. Schema: [`ci-check-v1`](internal/deskkit/ci-check-v1.md);
+  fail-first: `muhar -spec internal/deskkit/cicheckhistory-mutations.json`.
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing
   `result=disabled`. Its first line is shown as the reason.
@@ -2346,6 +2362,9 @@ deskwt remove <path>                                   # remove ONE proven-safe 
 deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
+deskwt prune --branches-only                           # …or run ONLY the local-branch GC (see Step C)
+deskwt prune --no-branches                             # …or skip the branch GC for one sweep
+deskwt prune --no-cache                                # …or skip the cell-cache pressure pass (Step D)
 deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   # a desk role's own locked worktree
 deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
@@ -2413,10 +2432,11 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
 - **`prune`** exists because stale worktrees accumulate (the desk loops spawn one per worker
   and rarely remove them — ~1065 observed) until tooling breaks: the bash sandbox hits
   **E2BIG** (one deny-path per registered worktree) and the #742 writeguard mis-classifies
-  top-level worktrees as the shared checkout. It runs two steps:
+  top-level worktrees as the shared checkout. It runs these steps:
   1. **Step A (always safe):** `git worktree prune` — drops admin entries whose directories
-     are already gone (pure bookkeeping, no working tree touched). Unconditional: no flag
-     turns it on or off.
+     are already gone (pure bookkeeping, no working tree touched). Unconditional within the
+     worktree arms: no flag turns it on or off there. (`--branches-only` runs the branch GC
+     alone, skipping every worktree arm including this one.)
   2. **Step A2 (opt-in, `--reclaim-stale-locks`):** the lock lifecycle — see below.
   3. **Step B (safe gate):** walk the registered worktrees under the sanctioned prefixes and
      remove — via the exact same safe primitive as `remove` — ONLY those it can prove safe:
@@ -2428,10 +2448,43 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      current worktree / out-of-prefix are all LEFT and reported as skipped with a reason. No
      `--force`. `--repo <path>` targets a repo without a session cwd (used by the multi-repo
      sweep script). Exit `0` ok/noop · `3` disabled · `5` refused · `6` unverifiable.
+  4. **Step C (default ON — `--no-branches` skips it, `--branches-only` runs it alone):**
+     the **local-branch GC**. Worktrees have this sweep and remote branches have the
+     forge's delete-on-merge, but the LOCAL branch a finished worktree leaves behind has
+     neither, and they accumulate without bound. Step C deletes a local branch ONLY when
+     its content is provably on `refs/remotes/origin/main`: its tip is an ancestor of the
+     mainline (a fresh, never-used handle is exactly this shape — tip == fork point), or
+     every unique commit's **patch-id** is already in the mainline's history (the
+     squash-merge case; computed against a whole-history patch-id set built once per
+     sweep, not per branch, so thousands of residue branches cost one mainline diff pass).
+     Never collected: `main`/`master`, any branch checked out in any registered worktree,
+     any branch with a merge commit ahead of the mainline (a patch-id proof cannot see
+     merge-introduced content), any branch with unique patches, and any branch whose proof
+     cannot be completed — an unreadable gate is not a passed one. The delete is a
+     compare-and-delete against the proven sha (`git update-ref -d <ref> <sha>`), never a
+     force verb. Live sweeps print per-class counts only; `--dry-run` prints the
+     per-branch COLLECT plan and deletes nothing.
+  5. **Step D (default ON — `--no-cache` skips it; `--cells-root` re-points it):** the
+     **cell-cache pressure pass**. A cell's managed Go cache (see
+     `docs/cellctl-go-cache.md`) is otherwise pressure-checked only at launch admission
+     and dispatch, so a long-lived cell can sit over its byte budget — or the filesystem
+     under its free-space floor — indefinitely. Each sweep discovers the marked cache
+     roots under the cells root (`--cells-root`, then `$CELLS_ROOT`, then the compiled
+     per-user default; a custom `CELL_GO_CACHE_ROOT` outside it is out of the sweep's
+     sight) and runs the package's own `Check` against each root's last recorded policy:
+     reclaim only under pressure, never while a consumer record exists, never a warm
+     purge. A root whose owning directory the same sweep removed is reaped as an orphan,
+     gated on its lease set re-read under its own lock at act time. The pass is silent
+     when every cache is within policy; the summary gains a cache segment only when it
+     reclaimed, reaped, or found pressure it could not clear.
 
 Every sweep prints one summary line with four counts — **pruned** (bookkeeping entries
 dropped), **removed**, **held** (with **locked-held** broken out), and **locks-reclaimed** —
-so an operator can tell a repo that is draining from one that is stuck, and on which gate.
+plus, when the branch GC ran, **branches-gc** (split into its **merged** and
+**cherry-clean** proof classes) and **branches-held** — so an operator can tell a repo
+that is draining from one that is stuck, and on which gate. The cache pass adds its counts
+(**cache-checked** / **cache-reclaimed** / **cache-deferred** / **cache-orphans-reaped**)
+only when it acted or found pressure it could not clear.
 
 ### `--reclaim-stale-locks` — giving the lock a lifecycle
 
@@ -2481,6 +2534,10 @@ That backlog is not merely untidy: git permits exactly **one worktree per branch
 later resume or dispatch of such a branch fails at worktree-create, and the queue wedges on
 the leftovers it produced.
 
+Use `--reap-dead-sessions` on its own: combining it with `--reclaim-stale-locks`
+is refused before any mutation. Reaping needs the original named lock as owner evidence
+and already unlocks a worktree only after its safety checks pass.
+
 `--reap-dead-sessions` (default **OFF**) answers a different question from Step B's. Not "has
 this landed?" but "does anything LIVE still own this, and is deleting it lossless?" — two
 independent gates, both of which must hold:
@@ -2493,8 +2550,19 @@ independent gates, both of which must hold:
 - **Safety.** The tree must be clean with **untracked files counted** — stricter than Step B's
   tracked-only gate on purpose, because an untracked file is reachable from no commit and this
   directory is its only copy — *and* HEAD must already be reachable from its own upstream, or
-  (no upstream) from `refs/remotes/origin/main`. Every commit is then on the remote and the
-  directory is the only thing deleted.
+  (no upstream) from `refs/remotes/origin/main`. Detached review heads instead require
+  a named session lock judged inactive and reachability from a remote-tracking ref,
+  so a squash merge does not strand them while
+  the fetched source branch still preserves their history. This detached proof also holds
+  **ignored files**, which may contain evidence; their owner must finish evidence handoff
+  and remove disposable output before retrying. No PR state is inferred. Once the source
+  remote-tracking ref is gone, an otherwise unpreserved detached head remains held.
+  Worktrees with submodules require separate preservation and remain held by this
+  detached proof, including when the submodules are uninitialized.
+
+The detached reap itself deletes no implementation branch. The default final branch-GC
+pass can independently collect a squash-equivalent branch; add `--no-branches` to run
+only the worktree arms.
 
 On a reap it also deletes the **stale local branch**, when that branch is equal to or behind
 its upstream, with the non-force `git branch -d` — whose own merged-into-upstream refusal is a
@@ -2506,6 +2574,64 @@ no-upstream-and-not-on-main / could-not-check) and left alone — never silently
 it with `--dry-run` first: that prints the whole plan — path, session (or `unowned`),
 `REAP`/`KEEP`, reason — for every registered worktree, including the ones the identity
 refusals put out of reach, and changes nothing at all.
+
+### Offline repository indexes — `deskwt maintain`
+
+```bash
+deskwt maintain --repo .          # JSON inventory + read-only plan
+deskwt maintain --repo . --apply  # bounded offline index maintenance
+```
+
+The plan reports ref namespace counts, registered/locked worktree counts, native
+`count-objects -v` output (local object/pack counts and any reported alternate
+paths, not object counts for those stores), and configured reflog retention
+overrides. An empty override string means Git's defaults apply. Apply emits before/after
+inventories and runs exactly two native builtins: `pack-refs --all`, then a reachable,
+split commit-graph write with no new Bloom filters. Ref values, working files and
+recovery history are preserved. The plan writes nothing in the repository; the standard
+desk audit record still records the invocation.
+
+All linked worktrees and roles coordinate through one kernel advisory lock in the
+resolved common Git directory, independent of their `HOME`. Attempts, including failed
+or interrupted attempts, are coalesced for six hours by default (`--min-interval`, minimum
+one hour). A held or recent attempt reports `held` or `recent` without repeating inventory
+or work. Each invocation has a 30-second total command budget (`--timeout`, one second to
+five minutes). The lock is kernel-released on exit; its file must never be unlinked during
+operation. Unreadable/corrupt timestamps fail closed and require operator inspection.
+A killed native Git write may leave its own lockfile; that is reported as a failure on the
+next eligible attempt, never automatically removed.
+
+This is an explicit command for the repository supervisor to invoke; it does not install
+a scheduler or add work to every agent boot. It disables lazy fetching and all network
+protocols for its Git children, ignores ambient `GIT_*` redirects, and never invokes
+configured maintenance strategies, prefetch, full GC, reflog expiry or object deletion.
+Object reclamation is explicitly **held**: a source repository cannot enumerate every
+external clone borrowing its objects. Even an empty alternates list does not prove there
+are no borrowers. Loose-object/incremental-pack reclamation and a managed borrower registry
+remain follow-up work. Branch/worktree retirement stays in `deskwt prune`, claims in their
+claim protocol, and remote-tracking refresh in the sanctioned transport.
+
+Maintenance requires native `git hook list` support. Before the attempt stamp and again
+before each index task, it inventories the relevant ref-transaction event using Git's
+effective configuration. Any listed entry holds maintenance; hooks and their configuration
+are preserved. Unrelated events do not hold it. Disabled entries are conservatively held
+because Git's display can be ambiguous with configured names. Unsupported inventory,
+missing or unreadable hook directories, broken hook paths, and unexpected output fail closed.
+Directory inspection requires a directory during the open operation; special-file paths
+fail closed. On Windows, only drive-rooted paths are supported; other namespaces fail
+closed. This removes the demonstrated blocking-open case, but native command deadlines
+do not impose a hard bound on arbitrary filesystem latency.
+The common-directory lock coordinates maintenance callers, not external configuration
+editors: configuration must remain stable during a run. Rechecks narrow the race window
+but do not provide an atomic security boundary against concurrent configuration changes.
+
+The targeted regression audit is reproducible with
+`go -C tools/desk run ./cmd/muhar -j 2 -spec cmd/deskwt/maintenance-mutations.json`.
+It requires local loopback for the HTTP transport-denial fixture and symlink support for
+the no-follow fixture. A green baseline and a caught read-only-plan control gate the committed
+mutations: locking, cadence, environment isolation, unreadable inventory and command warnings, valid stash refs, symlink refusal,
+command budget, transport denial, and recovery/borrowed-object preservation. Read the
+per-mutation verdicts; a healthy harness exit alone does not mean every mutation was caught.
 
 ### The prune loop — one command, two supervisors
 

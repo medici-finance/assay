@@ -1,0 +1,23 @@
+{
+  "repos": ["example-org/full", "example-org/empty", "example-org/down", "example-org/loop"],
+  "github": {
+    "issues": {
+      "example-org/full": [
+        {"number": 7, "title": "first open", "state": "open", "authorLogin": "alice", "authorId": 11, "labels": ["bug", "p1"], "createdAt": "2026-01-02T03:04:05Z", "url": "https://forge.example/example-org/full/issues/7"},
+        {"number": 9, "title": "second page", "state": "open", "authorLogin": "carol", "authorId": 13, "createdAt": "2026-02-01T00:00:00Z", "url": "https://forge.example/example-org/full/issues/9"}
+      ],
+      "example-org/empty": []
+    },
+    "unavailable": {"example-org/down": "unreadable", "example-org/loop": "truncated"}
+  },
+  "gitlab": {
+    "issues": {
+      "example-org/full": [
+        {"number": 7, "title": "first open", "state": "open", "authorLogin": "alice", "authorId": 11, "labels": ["bug", "p1"], "createdAt": "2026-01-02T03:04:05Z", "url": "https://forge.example/example-org/full/-/issues/7"},
+        {"number": 9, "title": "second page", "state": "open", "authorLogin": "carol", "authorId": 13, "createdAt": "2026-02-01T00:00:00Z", "url": "https://forge.example/example-org/full/-/issues/9"}
+      ],
+      "example-org/empty": []
+    },
+    "unavailable": {"example-org/down": "unreadable", "example-org/loop": "truncated"}
+  }
+}

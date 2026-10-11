@@ -99,6 +99,7 @@ jobs:
           echo "rendered QUALITY.md preview ($(wc -l < "${RUNNER_TEMP}/QUALITY.preview.md") lines) — discarded on a branch"
 
   regen:
+    environment: board-writer
     # QUALITY.md is generated on main only, never on a branch (single writer).
     # loop guard 2: skip our own [skip-qualgen-regen] regen commit.
     if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-qualgen-regen]') }}

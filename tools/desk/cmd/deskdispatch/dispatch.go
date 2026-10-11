@@ -228,7 +228,7 @@ func cmdDispatch(args []string) error {
 }
 
 func dispatch(o dispatchOpts) error {
-	if err := storageAdmission(o.dryRun); err != nil {
+	if err := storageAdmission(o.dryRun, o.root); err != nil {
 		return err
 	}
 	// --brief is resolved ONCE, first, to the absolute path every later reader uses (resolveBrief):

@@ -481,7 +481,19 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 			}
 			growthWritten += c.growth
 		}
-		if err = s.remove(target); err != nil {
+		// Remove the workspace before retiring its ownership record and receipt.
+		// RemoveAll(task) may otherwise unlink record.json first and fail on a
+		// workspace file, leaving a large tree that no later sweep may authorize.
+		targets := []string{c.r.ID + "/work"}
+		if entire {
+			targets = append(targets, target)
+		}
+		for _, next := range targets {
+			if err = s.remove(next); err != nil {
+				break
+			}
+		}
+		if err != nil {
 			left, _, measureErr := s.measure(target)
 			if measureErr == nil {
 				row.Reclaimed = planned - left

@@ -1,5 +1,7 @@
 # Windows cellctl launch contract
 
+Command-line forms (flags, precedence, exit codes) are listed in [the `cellctl` command reference](cellctl-cli-reference.md); what changed from the earlier hand-written parser is in [the compatibility table](cellctl-cli-compat.md).
+
 The `internal/celllaunch` Go package defines the versioned handoff for native Windows
 work in [cellctl-windows/00](streams/cellctl-windows/brief-00-launch-session-contract.md).
 It is not connected to production `cellctl` yet. The current implementation supplies
