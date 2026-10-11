@@ -64,8 +64,8 @@
     {
       "name": "the verb drops held rows from its result",
       "file": "reconcile.go",
-      "old": "\t\tHeld:       held,",
-      "new": "\t\tHeld:       nil,"
+      "old": "\t\tHeld:        held,",
+      "new": "\t\tHeld:        nil,"
     }
   ]
 }

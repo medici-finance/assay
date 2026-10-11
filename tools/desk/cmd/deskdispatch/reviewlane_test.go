@@ -202,6 +202,11 @@ var reviewObligations = []obligation{
 	{20, "**A finding whose evidence did not exist at the first-review head is not a late finding**", bothLanes},
 	{20, "`main` moved under unchanged code, the description was edited, a check result at the current head, a could-not-check gap, an undeclared decision", bothLanes},
 	{20, "**Clauses 2, 5, 7, 8 and 15 bind in every round.**", bothLanes},
+
+	{21, "every class in it ends the round ACCOUNTED FOR in the verdict body", []string{laneC}},
+	{21, "The project layer may append classes for its stack and may never remove a base class", []string{laneC}},
+	{21, "a class that cannot be honestly `n/a`'d and was not checked is `could-not-check`, never a silent APPROVE", []string{laneC}},
+	{21, "The coverage contract and its class register are the correctness lane's", []string{laneS}},
 }
 
 var clauseHeadingRE = regexp.MustCompile(`^## (\d+)\. `)
