@@ -439,6 +439,13 @@ const (
 	gitlabPerPage     = 100
 	gitlabMaxFilePage = 40 // 4000 entries, matching forgeMaxFilePages
 	gitlabMaxCIPage   = 25 // 2500 entries, matching forgeMaxCIPages
+	// gitlabMaxNotePage is 25 pages of gitlabPerPage = 100, so 2500 entries: the same 25-page
+	// ceiling as gitlabMaxChangesPage and gitlabMaxIssuePage below and gitlabMaxCIPage above (not
+	// every GitLab walk uses 25; gitlabMaxFilePage and gitlabMaxHardeningPage differ). It is a
+	// convention, not a figure derived from GitLab, which sets no limit on the
+	// length of a note thread. It also bounds both GitLab IssueStateEvents reads (the issue's
+	// resource_state_events and its closed_by merge requests); reaching it with a next page still
+	// advertised makes that read Complete=false, never a short list presented as the whole.
 	gitlabMaxNotePage = 25
 	// gitlabOpenChangesCap bounds the bulk open-change board read to the SAME 100-change
 	// ceiling the GitHub backend uses (forgeOpenChangesCap), so one board sweep of a project
@@ -4561,7 +4568,11 @@ func (g *GitLabForge) IssueStateEvents(repo ForgeRepo, number int) (*IssueStateH
 	return out, nil
 }
 
-// gitlabMaxChangeCommitPage bounds op 57's walk (2500 commits).
+// gitlabMaxChangeCommitPage bounds op 57's walk (2500 commits): 25 pages of gitlabPerPage = 100,
+// the same 25-page ceiling as gitlabMaxNotePage, gitlabMaxChangesPage, gitlabMaxIssuePage and
+// gitlabMaxCIPage, not a figure derived from GitLab. Not every GitLab walk uses 25: the labels and
+// diff walks use gitlabMaxFilePage (40) and the protected-refs walk gitlabMaxHardeningPage (10).
+// Reaching it with a next page advertised makes the read Complete=false.
 const gitlabMaxChangeCommitPage = 25
 
 // ListChangeCommits is op 57 (forge-neutral brief 33) on GitLab: GET

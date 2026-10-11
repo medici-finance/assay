@@ -985,6 +985,16 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   report, not a row to soften or delete. Quietly weakening a correctly-red check to reach green is
   worse than leaving it red with a note explaining why; a correctly-red row is doing exactly its
   job, and this rule must never be read as pressure toward weaker checks.
+- **The coverage contract — a correctness verdict accounts for every class in the register.**
+  The dispatched review kit's `review-prompt` reference carries a fixed register of bug
+  classes; each class ends the round in the verdict body's `## Coverage` block as one of
+  four line shapes, one grammar — class first, state second: a finding reference, a
+  `checked-clean:` naming what was examined, an `n/a:` with a one-sentence reason, or a
+  `could-not-check:` naming what was missing. Silence is not accounting: the coverage
+  contract exists to make selective review visible as a gap in the accounting, and a class
+  that cannot be honestly `n/a`'d and was not checked is `could-not-check`, never a silent
+  approve. The register's home is that reference — this body never restates its rows. The
+  project layer may append classes and never removes a base one.
 - **Decision-drift pass — does this diff contradict a record no one is holding in their head.**
   Check the diff against three BOUNDED sources only, never a whole-repo archaeology pass: (a) the
   owning brief's own Context/constraints, (b) a finding in the findings register that names the

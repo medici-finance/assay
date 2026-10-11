@@ -73,6 +73,8 @@ separate reviewed slices, ordered by readiness and actual dependency. Add contin
 operations and richer quality consumers without redefining delivery acceptance.
 Keep urgent fixes on every supported path; route new features to the approved target.
 
+An early continuing-operations slice is **workspace lifecycle completion**: teardown at owning-attempt completion in dispatch; allocation verbs that stamp class and retention for every fleet-created resource, including scratch; class-aware retirement and forge-state eligibility in the sweep; lock-lifecycle retirement; consolidation of repository-local sweepers behind the single maintenance owner; and the supervised maintenance cadence with its per-OS keep-alive profiles. It depends on the approved retirement and maintenance contracts, ships behind explicit flags on current tools where possible, and proves itself through the sustained-work workload retiring disposable resources while held reasons stay explainable.
+
 Each slice carries the old entry points, new contract versions, supported version
 combination, state/evidence mapping, cutover action, rollback limit and removal
 condition. Old callers may use pure new libraries or isolated APIs when useful.

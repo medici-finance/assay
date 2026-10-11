@@ -64,13 +64,13 @@
     {
       "name": "the verb drops held rows from its result",
       "file": "reconcile.go",
-      "old": "\t\tHeld:       held,",
-      "new": "\t\tHeld:       nil,"
+      "old": "\t\tHeld:        held,",
+      "new": "\t\tHeld:        nil,"
     },
     {
       "name": "wouldApply is emitted by a run that could not look (offline, a failed fetch, no board)",
       "file": "reconcile.go",
-      "old": "} else if in.LookedAt && pullsLookedAt && found {",
+      "old": "} else if refusal == \"\" && found {",
       "new": "} else {"
     },
     {

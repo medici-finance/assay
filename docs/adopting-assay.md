@@ -682,7 +682,8 @@ refuse on a malformed value: every acting command refuses exactly as described a
 as; a malformed entry refuses the whole roster, not only `deskrun` (unset stays valid: no repo is
 bound and `deskrun` dispatches nothing). The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
-`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS` — no longer collapse the
+`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`,
+`ASSAY_OS_USER_LOGIN_MAP` — no longer collapse the
 whole roster when one of them is malformed: the loader records the rejection against that ONE
 key, the key's own feature falls back to its shipped default (exactly the unset behaviour), and
 only the desk unit that actually declares a dependency on that key deactivates and reports why —
@@ -690,6 +691,13 @@ every unrelated acting command keeps running. This is the fix for the outage cla
 paragraph's typo bullet still describes for an **unrecognised** key name: a stray unrecognised
 `ASSAY_*` key still collapses the whole roster today (that bullet is unchanged), but a
 **recognised** extension key's own bad VALUE no longer does.
+
+`ASSAY_OS_USER_LOGIN_MAP` carries comma-separated `osuser:login` entries binding an OS
+account name to the roster login the scan-override audit row names (the desk tools'
+`OverrideIdentity`). The login half must be a trusted human of the same roster — one
+present in `ASSAY_TRUSTED_LOGINS`, never a configured App slug; anything else invalidates
+the key. An OS account name containing a list separator (space, comma, semicolon) cannot
+be expressed and always lands on the audit row's marked `os:<username>` fallback.
 
 #### Failure mode 2 — a PARTIAL roster looks like a normal board, not an empty one
 

@@ -340,13 +340,7 @@ func mixedHarness(t *testing.T) (*Harness, string) {
 // src per worker.
 func tempWorkspace(t *testing.T, src string) func(int) (string, func(), error) {
 	t.Helper()
-	return func(id int) (string, func(), error) {
-		dir := filepath.Join(t.TempDir(), "ws")
-		if err := copyTree(src, dir); err != nil {
-			return "", nil, err
-		}
-		return dir, func() { _ = os.RemoveAll(dir) }, nil
-	}
+	return newWorkspace(src)
 }
 
 // --- the equivalence bar: -j changes the wall time, never the verdicts ---

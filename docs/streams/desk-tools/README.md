@@ -210,6 +210,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 28 | [Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path](brief-28-deskverdict-role-keys-and-scan-delta-verify.md) | 1 | M | implemented | — | — |
 | 29 | [`verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs](brief-29-verifyloop-unsigned-compose.md) | 1 | L | implemented | — | — |
 | 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
+| 31 | [The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, checked-clean, n/a with a reason, or could-not-check)](brief-31-correctness-lane-coverage-contract.md) | 1 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -227,7 +228,7 @@ stream — see each brief's Dependencies note.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
