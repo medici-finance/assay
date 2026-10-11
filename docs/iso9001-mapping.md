@@ -297,6 +297,42 @@ release" into "a person clicked approve".
 
 ---
 
+## 4.2 / 4.3 / 6.1 — source obligations and project applicability
+
+ISO 9001:2015 asks an organization to determine the requirements of interested parties that
+are relevant to its QMS (4.2), to define the scope of the QMS including applicability (4.3),
+and to plan actions around risks and obligations (6.1). Auditors in practice then ask which
+edition of a standard, regulation or contract a stated requirement came from, who decided it
+applies to this project, and what has happened since the source changed.
+
+[`spec/project-obligations-v1.md`](../spec/project-obligations-v1.md) and
+`statusgen/projectobligations.go` record the *chain*, not the answer.
+
+**Status: a tested library, not yet a control.** No lint check, command or workflow calls the
+loader at this release, so an adopter's obligations file, including one with a forged
+acceptance, fails nothing. Every row below is therefore **—** under this page's legend. The
+second column says what the library refuses in its own tests; it becomes an enforced row only
+when a lint check or gate calls it, which waits on the owner decision the source brief names.
+
+| Layer | What the library checks (not yet wired) | Enf. | What it does not establish |
+|---|---|---|---|
+| Source identity | A stable id, an edition, an issuer, a locator and dates (or an explicit `unknown`); a content digest where storage is permitted; a re-used id and edition with different content is refused | — | That the edition is the right one for your project |
+| Permitted use | Stored text needs permitted storage; a model sees full text only when an access reference exists and both storage and AI use are permitted; unknown is treated as denied | — | That the access reference truthfully describes your licence. That is your attestation |
+| Mapping to requirements | Each mapping references existing requirement ids; unknown or withdrawn ids reject the mapping, a cross-repo id holds it as could-not-check | — | That the paraphrase or the mapping is semantically right |
+| Applicability decision | Acceptance links to an existing decision record bound to the exact source, mapping and profile revisions and the whole proposal (reason, scope, period, decision time, supersession) by digest, with trusted corroboration, an approved disposition, a distinct reviewer and a review reference; unresolved applicability holds a complete claim | — | Whether the person had the competence to decide. Corroboration shows who closed which issue, not that the approval prose was correct |
+
+**The distinction to keep for an audit.** Source identity, permitted use and semantic
+correctness are three different claims. The first two are what the library checks mechanically
+once it is wired into a gate; the third is a qualified person's judgment that Assay can only
+point at. Even then, a green result would mean the recorded chain is internally consistent and
+bound to the right revisions, not that the project conforms to any standard.
+
+**Not covered here.** Assay ships no standards, no licensed text and no organizational
+records; the fixtures are synthetic. Change impact when a source is revised, and review
+packets that consume these records, belong to later work in the same stream.
+
+---
+
 ## What Assay does not claim, and what the adopter must supply
 
 **Assay makes no compliance claim of any kind.** It is not an audit opinion, not a

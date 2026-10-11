@@ -1,0 +1,1894 @@
+{
+  "_comment": "Frozen inputs for the eligibility and coverage evaluation contract (statusgen/15). Each scenario is a description of a tree: the CLI reads the materialized tree, the evaluation library reads the same description as direct inputs. Revisions are commit labels (c1, c2, ...), never SHAs.",
+  "eligibility": [
+    {
+      "name": "in-repo-todo-gate",
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "01",
+              "status": "todo",
+              "gate": "model"
+            },
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "alpha/01",
+                  "type": "ordering-gate",
+                  "reason": "01 first"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "in-repo-done-gate",
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "01",
+              "status": "done",
+              "gate": "model"
+            },
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "alpha/01",
+                  "type": "ordering-gate",
+                  "reason": "01 first"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unresolved-in-repo-gate",
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "alpha/09",
+                  "type": "ordering-gate",
+                  "reason": "no such brief"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "forge-backed-gates",
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "#12",
+                  "type": "ordering-gate",
+                  "reason": "issue"
+                },
+                {
+                  "on": "app#34",
+                  "type": "ordering-gate",
+                  "reason": "cross-repo issue"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no-registry-cross-repo",
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "app:beta/01",
+                  "type": "ordering-gate",
+                  "reason": "cross repo"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unpublished-alias-gate-and-feather",
+      "registry": {
+        "unpub": {
+          "unpublished": true
+        }
+      },
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "unpub:beta/01",
+                  "type": "ordering-gate",
+                  "reason": "withheld"
+                }
+              ]
+            },
+            {
+              "num": "03",
+              "status": "todo",
+              "gate": "model",
+              "feathers": [
+                "unpub:beta/01"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "alias-not-in-registry",
+      "registry": {
+        "unpub": {
+          "unpublished": true
+        }
+      },
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "ghost:beta/01",
+                  "type": "ordering-gate",
+                  "reason": "unknown alias"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "absent-sibling-checkout",
+      "registry": {
+        "app": {
+          "repo": "example-org/example-app"
+        }
+      },
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "app:beta/01",
+                  "type": "ordering-gate",
+                  "reason": "sibling absent"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sibling-satisfied-and-missing",
+      "registry": {
+        "app": {
+          "repo": "example-org/example-app"
+        }
+      },
+      "siblings": {
+        "example-app": [
+          {
+            "name": "beta",
+            "briefs": [
+              {
+                "num": "01",
+                "status": "verified",
+                "gate": "model"
+              },
+              {
+                "num": "02",
+                "status": "todo",
+                "gate": "model"
+              }
+            ]
+          }
+        ]
+      },
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "app:beta/01",
+                  "type": "ordering-gate",
+                  "reason": "satisfied"
+                }
+              ]
+            },
+            {
+              "num": "03",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "app:beta/02",
+                  "type": "ordering-gate",
+                  "reason": "unsatisfied"
+                }
+              ]
+            },
+            {
+              "num": "04",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "app:beta/07",
+                  "type": "ordering-gate",
+                  "reason": "absent in sibling"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cross-cell-and-bad-ref",
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "cellx:app:beta/01",
+                  "type": "ordering-gate",
+                  "reason": "cross cell"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "depends-human-gated-implemented",
+      "streams": [
+        {
+          "name": "alpha",
+          "briefs": [
+            {
+              "num": "01",
+              "status": "implemented",
+              "gate": "human",
+              "humanPass": true
+            },
+            {
+              "num": "02",
+              "status": "todo",
+              "gate": "model",
+              "depends": [
+                "alpha/01"
+              ]
+            },
+            {
+              "num": "03",
+              "status": "todo",
+              "gate": "model",
+              "gates": [
+                {
+                  "on": "alpha/01",
+                  "type": "ordering-gate",
+                  "reason": "gate edge stays unsatisfied"
+                }
+              ]
+            },
+            {
+              "num": "04",
+              "status": "implemented",
+              "gate": "human"
+            },
+            {
+              "num": "05",
+              "status": "todo",
+              "gate": "model",
+              "depends": [
+                "alpha/04"
+              ]
+            },
+            {
+              "num": "06",
+              "status": "todo",
+              "gate": "model",
+              "depends": [
+                "alpha/99"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "name": "witness-at-head-passes",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "evidence-commit-reuses-witness",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "other-path-changed-wrong-revision",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "write": {
+            "src/other.txt": "v1\n"
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "write": {
+            "src/other.txt": "v2\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "missing-witness",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        }
+      ]
+    },
+    {
+      "name": "command-changed-after-witness",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "false",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "expect-changed-after-witness",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0; output contains READY"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "witness-records-failure",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "fail",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "witness-could-not-run",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "could-not-run",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "witness-commit-absent-from-clone",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "0123456789ab"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "witness-token-too-short",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "abc"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "witness-without-git-history",
+      "noGit": true,
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "0123456789ab"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "dirty-witness-at-matching-head",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1+dirty"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "dirty-witness-expect-changed",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0; stricter"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1+dirty"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "declared-files-without-manifest-conservative",
+      "steps": [
+        {
+          "brief": {
+            "files": "`src/impl.go`",
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "write": {
+            "src/impl.go": "package x\n",
+            "src/unrelated.txt": "a\n"
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "files": "`src/impl.go`",
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "write": {
+            "src/unrelated.txt": "b\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "declared-file-changed-wrong-revision",
+      "steps": [
+        {
+          "brief": {
+            "files": "`src/impl.go`",
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "write": {
+            "src/impl.go": "package x\n"
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "files": "`src/impl.go`",
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "write": {
+            "src/impl.go": "package y\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "board-bookkeeping-still-releases",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "write": {
+            "STATUS.md": "regenerated\n",
+            "docs/streams/cov/NOTES.md": "notes\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "derived-input-unrelated-change-reuses",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "cat data/in.txt",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "write": {
+            "data/in.txt": "x\n",
+            "data/other.txt": "o1\n"
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "cat data/in.txt",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "cat data/in.txt",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "write": {
+            "data/other.txt": "o2\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "derived-input-changed-wrong-revision",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "cat data/in.txt",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "write": {
+            "data/in.txt": "x\n"
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "cat data/in.txt",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "cat data/in.txt",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          },
+          "write": {
+            "data/in.txt": "y\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "no-verify-rows-held",
+      "steps": [
+        {
+          "brief": {},
+          "commit": "c1"
+        }
+      ]
+    },
+    {
+      "name": "two-rows-one-held",
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              },
+              {
+                "id": "2",
+                "command": "echo ok",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              },
+              {
+                "id": "2",
+                "command": "echo ok",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "bound-join-without-flow-row",
+      "options": {
+        "bindings": {
+          "cov/01": {
+            "pattern": "p",
+            "node": "verify"
+          }
+        },
+        "patterns": {
+          "p": {
+            "join": "verify",
+            "nodes": {
+              "verify": {
+                "kind": "check",
+                "role": "verifier"
+              }
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0",
+                "class": "check"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0",
+                "class": "check"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "bound-join-with-flow-row",
+      "options": {
+        "bindings": {
+          "cov/01": {
+            "pattern": "p",
+            "node": "verify"
+          }
+        },
+        "patterns": {
+          "p": {
+            "join": "verify",
+            "nodes": {
+              "verify": {
+                "kind": "check",
+                "role": "verifier"
+              }
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0",
+                "class": "check +flow"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0",
+                "class": "check +flow"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "bound-observe-evidence-holds",
+      "options": {
+        "bindings": {
+          "cov/01": {
+            "pattern": "p",
+            "node": "deploy"
+          }
+        },
+        "patterns": {
+          "p": {
+            "nodes": {
+              "deploy": {
+                "kind": "effect",
+                "role": "deployer",
+                "evidence": [
+                  {
+                    "kind": "observe",
+                    "claim": "claim-observe",
+                    "mandatory": true,
+                    "source": "prometheus:error-rate"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "bound-observe-without-source",
+      "options": {
+        "bindings": {
+          "cov/01": {
+            "pattern": "p",
+            "node": "deploy"
+          }
+        },
+        "patterns": {
+          "p": {
+            "nodes": {
+              "deploy": {
+                "kind": "effect",
+                "role": "deployer",
+                "evidence": [
+                  {
+                    "kind": "observe",
+                    "claim": "claim-observe",
+                    "mandatory": true,
+                    "source": ""
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "bound-review-evidence-holds",
+      "options": {
+        "bindings": {
+          "cov/01": {
+            "pattern": "p",
+            "node": "deploy"
+          }
+        },
+        "patterns": {
+          "p": {
+            "nodes": {
+              "deploy": {
+                "kind": "effect",
+                "role": "deployer",
+                "evidence": [
+                  {
+                    "kind": "review",
+                    "claim": "claim-review",
+                    "mandatory": true,
+                    "source": ""
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "binding-to-unknown-pattern-is-ignored",
+      "options": {
+        "bindings": {
+          "cov/01": {
+            "pattern": "ghost",
+            "node": "deploy"
+          }
+        },
+        "patterns": {
+          "p": {
+            "nodes": {
+              "deploy": {
+                "kind": "effect",
+                "role": "deployer",
+                "evidence": [
+                  {
+                    "kind": "review",
+                    "claim": "claim-review",
+                    "mandatory": true,
+                    "source": ""
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "binding-to-unknown-node-is-ignored",
+      "options": {
+        "bindings": {
+          "cov/01": {
+            "pattern": "p",
+            "node": "ghost"
+          }
+        },
+        "patterns": {
+          "p": {
+            "nodes": {
+              "deploy": {
+                "kind": "effect",
+                "role": "deployer",
+                "evidence": [
+                  {
+                    "kind": "review",
+                    "claim": "claim-review",
+                    "mandatory": true,
+                    "source": ""
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ]
+          },
+          "commit": "c1"
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "policy-dependency-changed",
+      "options": {
+        "dependencies": {
+          "cov/01": {
+            "complete": true,
+            "deps": [
+              {
+                "kind": "source",
+                "path": "src/impl.go"
+              },
+              {
+                "kind": "policy",
+                "path": "policy/writer-auth.yaml",
+                "rows": [
+                  "1"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "commit": "c1",
+          "write": {
+            "src/impl.go": "v1\n",
+            "policy/writer-auth.yaml": "writers: [a]\n"
+          }
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "write": {
+            "policy/writer-auth.yaml": "writers: [a, b]\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "policy-dependency-unchanged",
+      "options": {
+        "dependencies": {
+          "cov/01": {
+            "complete": true,
+            "deps": [
+              {
+                "kind": "source",
+                "path": "src/impl.go"
+              },
+              {
+                "kind": "policy",
+                "path": "policy/writer-auth.yaml",
+                "rows": [
+                  "1"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "commit": "c1",
+          "write": {
+            "src/impl.go": "v1\n",
+            "policy/writer-auth.yaml": "writers: [a]\n"
+          }
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "write": {
+            "docs/streams/cov/NOTES.md": "n\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "environment-dependency-changed",
+      "options": {
+        "dependencies": {
+          "cov/01": {
+            "complete": true,
+            "deps": [
+              {
+                "kind": "source",
+                "path": "src/impl.go"
+              },
+              {
+                "kind": "environment",
+                "name": "toolchain",
+                "recorded": "go1.24",
+                "current": "go1.25"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "commit": "c1",
+          "write": {
+            "src/impl.go": "v1\n"
+          }
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "write": {
+            "docs/streams/cov/NOTES.md": "n\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "environment-dependency-current-unknown",
+      "options": {
+        "dependencies": {
+          "cov/01": {
+            "complete": true,
+            "deps": [
+              {
+                "kind": "source",
+                "path": "src/impl.go"
+              },
+              {
+                "kind": "environment",
+                "name": "toolchain",
+                "recorded": "go1.24",
+                "current": ""
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "commit": "c1",
+          "write": {
+            "src/impl.go": "v1\n"
+          }
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "write": {
+            "docs/streams/cov/NOTES.md": "n\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "complete-manifest-licenses-reuse",
+      "options": {
+        "dependencies": {
+          "cov/01": {
+            "complete": true,
+            "deps": [
+              {
+                "kind": "source",
+                "path": "src/impl.go"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "commit": "c1",
+          "write": {
+            "src/impl.go": "v1\n",
+            "src/helper.go": "h1\n"
+          }
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "write": {
+            "src/helper.go": "h2\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    },
+    {
+      "name": "incomplete-manifest-stays-conservative",
+      "options": {
+        "dependencies": {
+          "cov/01": {
+            "complete": false,
+            "deps": [
+              {
+                "kind": "source",
+                "path": "src/impl.go"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "commit": "c1",
+          "write": {
+            "src/impl.go": "v1\n",
+            "src/helper.go": "h1\n"
+          }
+        },
+        {
+          "brief": {
+            "verify": [
+              {
+                "id": "1",
+                "command": "true",
+                "expect": "exit 0"
+              }
+            ],
+            "witnesses": [
+              {
+                "row": "1",
+                "command": "true",
+                "state": "pass",
+                "tree": "c1"
+              }
+            ],
+            "files": "`src/impl.go`"
+          },
+          "write": {
+            "src/helper.go": "h2\n"
+          },
+          "commit": "c2"
+        }
+      ]
+    }
+  ]
+}

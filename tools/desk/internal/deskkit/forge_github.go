@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,9 @@ import (
 	"time"
 
 	ghapi "github.com/cli/go-gh/v2/pkg/api"
+
+	"github.com/medici-finance/assay/forgeread/adapters"
+	ghissues "github.com/medici-finance/assay/forgeread/adapters/github"
 )
 
 // forge_github.go — the GitHub implementation of Forge, seated on the official go-gh
@@ -57,6 +61,11 @@ type GitHubForge struct {
 	// rc caches the go-gh REST client built from Token/BaseURL. Lazily constructed by
 	// restClient so a bare struct literal (the golden test's construction shape) still works.
 	rc *ghapi.RESTClient
+
+	// onlyRepo, when non-empty, is the ONE owner/name this backend's credential was admitted
+	// for (the CI workflow token is the job's own repository). The shared read adapters'
+	// Access refuses any other repository before a request is built (sharedread.go).
+	onlyRepo string
 
 	// now and sleep, when non-nil, override the clock and the wait RunWorkflow's run
 	// correlation reads (the pre-dispatch time floor and the bounded wait between list
@@ -720,7 +729,11 @@ const (
 // whole read to an empty non-2xx. Every conclusion the board reads (CheckRun.status/
 // conclusion, StatusContext.state) is covered by `checks:read` alone, so requesting the
 // contexts ourselves without checkSuite/workflowRun drops the scope dependency entirely.
-const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+// CheckRun.databaseId is the same numeric run id the REST check-runs read serves as `id`; it
+// is selected so both reads render one run to the same RollupNode.ID / CheckRun.ID (via
+// checkRunID), which is the CI-check history's attempt key (ci-check-v1). It is a scalar on a
+// node already requested — no extra request, and no scope beyond `checks:read`.
+const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // ghListChangesQuery is the states-scoped, cursor-paginated changes read behind ListChanges. It
 // requests EXACTLY the ChangeRef fields — number, state, head oid, source branch (headRefName),
@@ -750,7 +763,7 @@ const ghReviewQueueReviewsSel = `reviews(first:100){pageInfo{hasNextPage} nodes{
 // rollup contexts and every change's reviews — so the head a change is classified at and the
 // reviews reduced against it come from one consistent read. Its point cost is the open-changes
 // read's plus one nested connection per change (see the stream's query-cost record).
-const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // forgeQueueReviewsCap is the per-change review bound of ghReviewQueueReviewsSel's first:.
 const forgeQueueReviewsCap = 100
@@ -788,6 +801,7 @@ type ghOpenChangeNode struct {
 					Contexts struct {
 						Nodes []struct {
 							Typename    string `json:"__typename"`
+							DatabaseID  int64  `json:"databaseId"`
 							Name        string `json:"name"`
 							Status      string `json:"status"`
 							Conclusion  string `json:"conclusion"`
@@ -881,7 +895,8 @@ func ghOpenChange(n ghOpenChangeNode) OpenChange {
 		if r := n.Commits.Nodes[0].Commit.StatusCheckRollup; r != nil {
 			for _, c := range r.Contexts.Nodes {
 				oc.Rollup = append(oc.Rollup, RollupNode{
-					Typename: c.Typename, Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
+					Typename: c.Typename, ID: checkRunID(c.DatabaseID),
+					Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 					StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
 					Context: c.Context, State: c.State, CreatedAt: c.CreatedAt,
 				})
@@ -1077,58 +1092,24 @@ func (g *GitHubForge) ListChanges(repo ForgeRepo, states ChangeStates) (*ChangeL
 // load (a slow, rate-limited or hiccuping upstream) end the walk early with a nil error —
 // and cmd/issueboard reads an issue's absence from this listing as evidence about it.
 func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
-	var out []IssueSummary
-	for page := 1; page <= forgeMaxIssuePages; page++ {
-		var chunk []struct {
-			Number int    `json:"number"`
-			Title  string `json:"title"`
-			User   struct {
-				Login string `json:"login"`
-				ID    int64  `json:"id"`
-			} `json:"user"`
-			Labels []struct {
-				Name string `json:"name"`
-			} `json:"labels"`
-			CreatedAt   string    `json:"created_at"`
-			UpdatedAt   string    `json:"updated_at"`
-			HTMLURL     string    `json:"html_url"`
-			PullRequest *struct{} `json:"pull_request"`
-		}
-		path := fmt.Sprintf("/repos/%s/%s/issues?state=open&per_page=%d&page=%d",
-			repo.Owner, repo.Name, forgeIssuePerPage, page)
-		hdr, err := g.doJSONHeader(http.MethodGet, path, nil, &chunk)
+	// The walk, its ceiling, the PR filter and the reduction live in the shared adapter
+	// (forgeread/adapters/github); this backend supplies the already-admitted, scope-checked Access.
+	issues, err := ghissues.New(g.sharedAccess(), sharedIssueSkip).OpenIssues(context.Background(), repo.Slug())
+	return sharedIssuesToSummaries(issues, err)
+}
+
+// sharedAccess is this backend's Access for the shared read adapters: one GET beneath the
+// repository's own route, through the REST client that already carries the resolved credential.
+func (g *GitHubForge) sharedAccess() adapters.Access {
+	return scopedAccess{only: g.onlyRepo, next: func(_ context.Context, repo ForgeRepo, rel string, q url.Values) (adapters.Page, error) {
+		var raw json.RawMessage
+		path := fmt.Sprintf("/repos/%s/%s/%s?%s", repo.Owner, repo.Name, rel, q.Encode())
+		hdr, err := g.doJSONHeader(http.MethodGet, path, nil, &raw)
 		if err != nil {
-			return nil, err
+			return adapters.Page{}, err
 		}
-		for _, is := range chunk {
-			// The REST /issues endpoint serves PRs too, distinguished by a non-nil
-			// pull_request member — the issue lane wants issues only, so a change is dropped.
-			if is.PullRequest != nil || IsVerifierAttestation(is.Title, is.User.Login) {
-				continue
-			}
-			labels := make([]string, 0, len(is.Labels))
-			for _, l := range is.Labels {
-				labels = append(labels, l.Name)
-			}
-			out = append(out, IssueSummary{
-				Number: is.Number, Title: is.Title,
-				Author:    Account{Login: is.User.Login, ID: is.User.ID},
-				Labels:    labels,
-				CreatedAt: is.CreatedAt,
-				UpdatedAt: is.UpdatedAt,
-				URL:       is.HTMLURL,
-			})
-		}
-		if len(chunk) < forgeIssuePerPage && !hasNextLink(hdr) {
-			return out, nil
-		}
-	}
-	return nil, Unverifiable(fmt.Sprintf(
-		"could-not-check: %s still reports more open issues after %d pages of %d (the open-issue page "+
-			"ceiling) — refusing to hand back a PARTIAL open-issue set, because the issue lane reads an "+
-			"issue's absence from this list as evidence about it and would retire placeholders for issues "+
-			"that are still open",
-		repo.Slug(), forgeMaxIssuePages, forgeIssuePerPage), nil)
+		return adapters.Page{Body: raw, More: hasNextLink(hdr)}, nil
+	}}
 }
 
 func (g *GitHubForge) PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
@@ -2325,9 +2306,14 @@ func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 		return "", Unverifiable(fmt.Sprintf("GET %s (diff) failed", path), derr)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, berr := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", &ForgeAPIError{Status: resp.StatusCode, Method: http.MethodGet, Path: path}
+	}
+	// A body that ended early is not the change's diff: return the failure, never the part
+	// that arrived, which a caller would show as the whole diff.
+	if berr != nil {
+		return "", Unverifiable(fmt.Sprintf("GET %s (diff): the response body was not read whole", path), berr)
 	}
 	return string(raw), nil
 }

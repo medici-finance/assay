@@ -36,6 +36,10 @@ func run(args []string) int {
 		return deskkit.ExitOK
 	}
 
+	// What the SESSION declared, read before the default below fills it in. 'land' writes the
+	// declared loop into the record as triager_role, so it must see the session's own declaration:
+	// the drain's default is not a statement about who decided a judgment exit.
+	declaredLoop := os.Getenv("DESK_LOOP")
 	// Declare the loop identity BEFORE Guard so the per-loop stop flag is scoped to this drain.
 	// An unrecognised name is could-not-check inside Guard, never "no flag held".
 	if os.Getenv("DESK_LOOP") == "" {
@@ -61,6 +65,12 @@ func run(args []string) int {
 			fmt.Fprintln(os.Stderr, err.Error())
 		}
 		return deskkit.ExitCodeOf(err)
+	case "land":
+		err := cmdLand(args[1:], declaredLoop, os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
+		return deskkit.ExitCodeOf(err)
 	default:
 		fmt.Fprintf(os.Stderr, "scanloop: unknown subcommand %q\n\n%s", args[0], usage)
 		return deskkit.ExitRefused
@@ -76,6 +86,9 @@ USAGE:
                 [--now <RFC3339>]
   scanloop run  --root <repo> [--worktree-base <abs dir>] [--offline --inbound <file|->]
                 [--dry-run] [everything 'plan' takes]
+  scanloop land --item <owner/repo#N> --exit <exit> --artifact <ref> --tier any|strong
+                [--opened <RFC3339>] [--detail rejected|watching] [--kind <reason>]
+                [--dispatch-ref <ref>]
   scanloop --version
 
 'plan' is READ-ONLY. It prints the inbound queue — surface, item, lane, age, claim state — the
@@ -88,6 +101,21 @@ Pass the standing window's captured poll with --inbound.
 the seeding pass reports no inbound rather than replaying the backlog), applies the trust gate
 BEFORE anything is queued, executes the dispatch lanes and records exactly ONE tracked exit per
 item. --offline takes the pass's events from --inbound and opens no network read at all.
+
+Every exit 'run' lands also appends one intake-exit-v1 record (decided_by: mechanical) to
+<state dir>/intake-exits.jsonl, after the audit 'land' line. --dry-run writes neither. A record that
+is refused or cannot be written never costs an audit line or another batch member's exit: the pass
+lands and audits every member, then exits 5 or 6 naming each record not written.
+
+'land' records a JUDGMENT exit: run it after routing a parked item, with the 'record it:' command
+the EMITTED report prints. It refuses (exit 5), before anything is written, an exit outside the five
+(unrouted included), an artifact that is not a typed ref (<stream>/<NN>, owner/repo#N, #N, F-<slug>,
+scan-pr:owner/repo), a tier other than any or strong, a --kind outside the classifier's reasons, a
+--dispatch-ref or --opened that does not parse, and a $DESK_LOOP the session did not declare or that
+is not a canonical desk loop name. The record file holds one exit per inbound EVENT (item, compared
+without regard to case, plus --opened): a DIFFERENT exit for the same event is refused and the first
+stands; the same exit again is a no-op (exit 0). It writes the audit 'land' line, then the record
+(decided_by: judgment). Schema: spec/intake-exit-v1.md.
 
 --dry-run prints every lane step without running it, and it does not advance the poller's per-repo
 baselines. A live dry-run polls a THROWAWAY COPY of the state dir, so the preview starts from the

@@ -1,7 +1,8 @@
 package main
 
-// reconcileapply.go — the `statusgen reconcile --backfill --apply` write arm
-// (derived-board/07 follow-on).
+// reconcileapply.go — the `statusgen reconcile --apply` write arm
+// (derived-board/07 follow-on; trailer-only mode and the lint hold,
+// derived-board/04).
 //
 // `reconcile --backfill [--report]` (reconcile.go, reconcilebackfill.go) is
 // READ-ONLY: it derives a cell and can write a drift REPORT, but nothing
@@ -14,8 +15,13 @@ package main
 //     never verified/done (those need the separate verify-witness fold,
 //     out of scope here) and never a demotion.
 //   - Only when the derived cell is backed by a REAL merged-PR witness: the
-//     normal trailer fold (Source "pr") or the declared backfill branch/body
-//     match (Source "backfill"). The backfill's OTHER Source=="backfill"
+//     normal trailer fold (Source "pr") or, ONLY when --backfill is also
+//     given, the declared backfill branch/body match (Source "backfill").
+//     Without --backfill the write is trailer-only — the mode the scheduled
+//     reconcile job runs, because a branch/body match also catches PRs that
+//     merely author or mention a brief. A trailer witness the board should
+//     not take is fixed at the trailer (spec §2), not by closing the job's PR.
+//     The backfill's OTHER Source=="backfill"
 //     shape — a hand-asserted implemented/verified/done with no PR at all —
 //     derives `unknown`, not `implemented`, so it is already excluded by the
 //     Cell check below; it is exactly what --report leaves for a human to
@@ -32,13 +38,18 @@ package main
 //     rows are immutable to this verb.
 //   - A row with no witness at all (still `todo`) is left untouched — exactly
 //     what --report already lists for a human, never guessed at here.
+//   - A row whose move would add a lint PROBLEM (a risk-gated brief with no
+//     design record, say) is HELD: reported with the PROBLEM, never written
+//     (reconcilehold.go). The lint itself is never relaxed to let a write in.
 //
 // The read-only form (#2440): `reconcile --backfill` WITHOUT --apply reports, as
 // `wouldApply`, the rows --apply would write, so a reviewer can reproduce a
 // board promotion with no tree write. It is not a second implementation: both
 // forms run reconcileWrites, and only its last step — write to disk, or keep
 // the edited README in memory — differs. Nothing about which rows are admitted
-// changes between them.
+// changes between them, the lint hold included: both forms evaluate it the same
+// way, against the edited README held in memory, so wouldApply never lists a row
+// --apply would hold and the hold never writes to disk to decide.
 
 import (
 	"fmt"
@@ -76,31 +87,43 @@ func witnessedImplemented(c BriefCell) bool {
 
 // applyReconcileWrites writes the derived `implemented` cell back into each
 // witnessed brief's stream README Status cell, and returns the rows it
-// actually changed. It is idempotent: a brief already at implemented (or
-// beyond) or with no witness is silently skipped, never an error, so a
-// re-run with nothing left to do still exits clean.
-func applyReconcileWrites(root string, cells []BriefCell) ([]appliedRow, error) {
+// actually changed plus the rows it HELD. It is idempotent: a brief already at
+// implemented (or beyond) or with no witness is silently skipped, never an
+// error, so a re-run with nothing left to do still exits clean.
+func applyReconcileWrites(root string, cells []BriefCell) ([]appliedRow, []heldRow, error) {
 	return reconcileWrites(root, cells, true)
 }
 
 // planReconcileWrites is the read-only form of applyReconcileWrites: it
-// returns exactly the rows applyReconcileWrites would write on the same tree
-// and cells, and writes nothing. It is the same function with the final disk
-// write swapped for an in-memory overlay, never a second implementation.
-func planReconcileWrites(root string, cells []BriefCell) ([]appliedRow, error) {
+// returns exactly the rows applyReconcileWrites would write (and would hold)
+// on the same tree and cells, and writes nothing. It is the same function with
+// the final disk write swapped for an in-memory overlay, never a second
+// implementation.
+func planReconcileWrites(root string, cells []BriefCell) ([]appliedRow, []heldRow, error) {
 	return reconcileWrites(root, cells, false)
 }
 
 // reconcileWrites is the ONE decision path behind both --apply and the
 // read-only report. Every admission decision — which cells are eligible, which
 // README and row they map to, whether the row's current Status permits the
-// transition, and what the edited line is — is made here, identically in both
-// modes. The modes differ only at the last step: write=true writes the edited
-// README to disk; write=false keeps it in an overlay that later reads of the
-// same README see, so a second cell mapping to the same file is decided
-// against exactly the content --apply would have left there.
-func reconcileWrites(root string, cells []BriefCell, write bool) ([]appliedRow, error) {
-	var rows []appliedRow
+// transition, what the edited line is, and whether the move would add a lint
+// PROBLEM (the hold, reconcilehold.go) — is made here, identically in both
+// modes. The hold is evaluated with the edited README staged in memory
+// (stageReadme), never on disk, so a rule that re-reads the tree sees the move
+// in both modes alike. The modes differ only at the last step: write=true
+// writes the edited README to disk; write=false keeps it in an overlay that
+// later reads of the same README see, so a second cell mapping to the same file
+// is decided against exactly the content --apply would have left there.
+//
+// A row is held — reported, not written — when moving it would add a PROBLEM
+// to any Status-keyed lint rule, e.g. a risk-gated brief with no design record.
+// The writer never produces a tree its own lint step rejects, and never weakens
+// or skips that lint to get there.
+func reconcileWrites(root string, cells []BriefCell, write bool) (rows []appliedRow, held []heldRow, err error) {
+	defer beginGitReadSession()()
+	staged := newReadmeStage()
+	defer staged.clear()
+	var env *lintEnv
 	overlay := map[string]string{}
 	for _, c := range cells {
 		if !witnessedImplemented(c) {
@@ -118,7 +141,7 @@ func reconcileWrites(root string, cells []BriefCell, write bool) ([]appliedRow, 
 				continue // no README for the stream: a board inconsistency, not a write failure
 			}
 			if err != nil {
-				return rows, fmt.Errorf("%s: %w", path, err)
+				return rows, held, fmt.Errorf("%s: %w", path, err)
 			}
 			content = string(raw)
 		}
@@ -126,9 +149,27 @@ func reconcileWrites(root string, cells []BriefCell, write bool) ([]appliedRow, 
 		if !changed {
 			continue
 		}
+		if env == nil {
+			if env, err = loadLintEnv(root); err != nil {
+				return rows, held, fmt.Errorf("loading the board for the lint hold: %w", err)
+			}
+		}
+		added, found, merr := env.tryMove(stream, num, "implemented", func() (func() error, error) {
+			return staged.put(path, edit.content), nil
+		}, true)
+		if merr != nil {
+			return rows, held, fmt.Errorf("%s: %w", path, merr)
+		}
+		if !found {
+			added = []string{couldNotCheckRow(c.ID)}
+		}
+		if len(added) > 0 {
+			held = append(held, heldRow{ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: c.Witness, Problems: added})
+			continue
+		}
 		if write {
 			if err := os.WriteFile(path, []byte(edit.content), 0o644); err != nil {
-				return rows, fmt.Errorf("%s: %w", path, err)
+				return rows, held, fmt.Errorf("%s: %w", path, err)
 			}
 		} else {
 			overlay[path] = edit.content
@@ -138,7 +179,7 @@ func reconcileWrites(root string, cells []BriefCell, write bool) ([]appliedRow, 
 			RowBefore: edit.rowBefore, RowAfter: edit.rowAfter,
 		})
 	}
-	return rows, nil
+	return rows, held, nil
 }
 
 // isBriefsTableHeaderRow reports whether cells is a briefs-table header row —

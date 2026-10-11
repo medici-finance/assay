@@ -1,11 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"os"
+	"github.com/go-git/go-git/v5/plumbing"
 	"os/exec"
-	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,80 +30,79 @@ import (
 // it only reads `show`).
 const dispatchClaimScriptRel = "tools/dispatch-claim.sh"
 
-// readLiveClaims enumerates every `state=dispatched` dispatch claim for repo, live:
-//
-//  1. list the claim namespace on the repo's remote (an in-process go-git listing, gitcore.List
-//     — never the git binary) to get the claim KEYS. The prefix is deskkit.ClaimRefsPrefix, the
-//     same constant the release path builds its ref from, so this listing and that delete cannot
-//     name different namespaces (the documented house convention: SKILL.md and the worker prompt
-//     both name `git ls-remote origin 'refs/heads/dispatch/*'` for this read). The listing is
-//     AUTHENTICATED as the session's role against the forge the resolver names (claimListOpts):
-//     an anonymous read against a hardcoded github.com 404s on every private repo, which made
-//     this whole instrument could-not-check on every private board root (#1197);
-//  2. for each key, shell to the consumer's own tools/dispatch-claim.sh `show <key> --repo
-//     <repo>` — the SAME external script cmd/deskdispatch/dispatch.go already shells to for
-//     acquire/show, so this is a second, read-only caller of an existing external contract,
-//     not a new one — and parse its `state=`/`age=`/`owner=`/`branch=` fields (state= and
-//     age= are the two fields cmd/deskdispatch/dispatch.go's own holderIsStale already
-//     parses from this exact output; owner=/branch= follow the same convention, per the
-//     brief's own fact that "the message carries owner, state and branch").
-//
-// Only state=dispatched claims are returned (state=claimed — acquired but never advanced —
-// is a different TTL class the brief scopes out: "enumerate state=dispatched claims").
-// dispatchedAt is derived from the script's own age=<N>m as now.Add(-N minutes) — the
-// script's age math is authoritative; this tool does not re-derive it from a tag timestamp.
+// readLiveClaims is the unbounded read-only status inventory. Mutating ticks use
+// readLiveClaimsPage so a backlog cannot turn one tick into unbounded forge traffic.
 func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
-	if strings.TrimSpace(repo) == "" {
-		return nil, deskkit.Refused("refused: tick needs --repo OWNER/NAME (or --claims-fixture) to read live dispatch claims")
-	}
-	script := filepath.Join(root, filepath.FromSlash(dispatchClaimScriptRel))
-	if _, err := os.Stat(script); err != nil {
-		return nil, deskkit.Unverifiable(
-			dispatchClaimScriptRel+" is not present under "+root+
-				" — no live claim can be enumerated (point --root at the checkout that carries it, or use --claims-fixture)", err)
-	}
+	claims, _, err := readLiveClaimsPage(repo, now, 0, "")
+	return claims, err
+}
 
-	opts, oerr := claimListOpts(repo)
-	if oerr != nil {
-		return nil, oerr
+func readLiveClaimsPage(repo string, now time.Time, limit int, after string) ([]claimRecord, string, error) {
+	opts, err := claimListOpts(repo)
+	if err != nil {
+		return nil, "", err
 	}
-	refs, lerr := gitcore.List(opts)
-	if lerr != nil {
-		return nil, deskkit.Unverifiable("cannot list "+deskkit.ClaimRefsPattern+" on "+repo+" at "+opts.URL, lerr)
+	refs, err := gitcore.List(opts)
+	if err != nil {
+		return nil, "", deskkit.Unverifiable("cannot list dispatch claims on "+repo, err)
 	}
-	var keys []string
-	for _, r := range refs {
-		if key, ok := deskkit.ClaimKeyFromRef(string(r.Name())); ok {
-			keys = append(keys, key)
+	return claimPage(refs, repo, now, limit, after, func(hash plumbing.Hash) (gitcore.TagPayload, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return gitcore.FetchTagPayload(ctx, opts.URL, opts.Auth, hash)
+	})
+}
+
+// A payload is fetched by the advertised immutable object id. Mutable `show`
+// output followed by a remembered ref id would mix two owners during a race.
+func claimPage(refs []*plumbing.Reference, repo string, now time.Time, limit int, after string, fetch func(plumbing.Hash) (gitcore.TagPayload, error)) ([]claimRecord, string, error) {
+	var selected []*plumbing.Reference
+	for _, ref := range refs {
+		key, ok := strings.CutPrefix(ref.Name().String(), deskkit.DispatchClaimActiveRefsPrefix)
+		if ok && key > after && !strings.HasSuffix(key, "^{}") {
+			selected = append(selected, ref)
 		}
 	}
-
+	sort.Slice(selected, func(i, j int) bool { return selected[i].Name() < selected[j].Name() })
+	next := ""
+	if limit > 0 && len(selected) > limit {
+		selected = selected[:limit]
+		next = strings.TrimPrefix(selected[len(selected)-1].Name().String(), deskkit.DispatchClaimActiveRefsPrefix)
+	}
 	var claims []claimRecord
-	for _, key := range keys {
-		out, serr := showClaim(script, key, repo)
-		if serr != nil {
-			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+" failed: "+strings.TrimSpace(out), serr)
+	for _, ref := range selected {
+		key := strings.TrimPrefix(ref.Name().String(), deskkit.DispatchClaimActiveRefsPrefix)
+		if key == "" || strings.Contains(key, "/") {
+			return nil, next, deskkit.Unverifiable("malformed claim key held for inspection: "+ref.Name().String(), nil)
 		}
-		state := claimShowField(claimStateFieldRe, out)
+		payload, err := fetch(ref.Hash())
+		if err != nil {
+			return nil, next, deskkit.Unverifiable("claim held for inspection: "+ref.Name().String()+" at "+ref.Hash().String(), err)
+		}
+		fields := strings.Fields(payload.Message)
+		if len(fields) < 5 || fields[0] != "dispatch-claim" || fields[1] != key {
+			return nil, next, deskkit.Unverifiable("malformed claim held for inspection: "+ref.Name().String(), nil)
+		}
+		owner, ownerOK := strings.CutPrefix(fields[2], "owner=")
+		state, stateOK := strings.CutPrefix(fields[3], "state=")
+		branch, branchOK := strings.CutPrefix(fields[4], "branch=")
+		if !ownerOK || !stateOK || !branchOK {
+			return nil, next, deskkit.Unverifiable("malformed claim held for inspection: "+ref.Name().String(), nil)
+		}
+		if owner == "" || branch == "" || (state != "claimed" && state != "dispatched") || payload.When.IsZero() {
+			return nil, next, deskkit.Unverifiable("unverifiable claim held for inspection: "+ref.Name().String(), nil)
+		}
 		if state != "dispatched" {
 			continue
 		}
-		ageMin, aerr := strconv.Atoi(claimShowField(claimAgeFieldRe, out))
-		if aerr != nil {
-			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+": no parseable age= field: "+strings.TrimSpace(out), aerr)
+		claim := claimRecord{Key: key, Item: key, Repo: repo, Owner: owner, Branch: branch, Tier: "cheap", State: state, DispatchedAt: payload.When.UTC().Format(time.RFC3339), Ref: ref.Name().String(), Version: ref.Hash().String()}
+		if target, err := decodeClaimTarget(key, repo); err == nil {
+			claim.Item, claim.PR = target.item, target.pr
 		}
-		claims = append(claims, claimRecord{
-			Key:          key,
-			Item:         key,
-			Owner:        claimShowField(claimOwnerFieldRe, out),
-			Repo:         repo,
-			Branch:       claimShowField(claimBranchFieldRe, out),
-			Tier:         "cheap", // the script's `show` carries no tier; see the doc note below
-			State:        state,
-			DispatchedAt: now.Add(-time.Duration(ageMin) * time.Minute).Format(time.RFC3339),
-		})
+		// Unknown forms stay visible and are held blind by live reconciliation.
+		claims = append(claims, claim)
 	}
-	return claims, nil
+	return claims, next, nil
 }
 
 // claimListOpts builds the ListOpts readLiveClaims lists the claim namespace with: the repo's
@@ -120,21 +120,18 @@ func claimListOpts(repo string) (gitcore.ListOpts, error) {
 	role, _, rerr := deskkit.SessionTokenRole("desksupervise")
 	if rerr != nil {
 		return gitcore.ListOpts{}, deskkit.Unverifiable(
-			"cannot list "+deskkit.ClaimRefsPattern+" on "+repo+": no session token role to list as", rerr)
+			"cannot list "+deskkit.DispatchClaimActiveRefsPrefix+"*"+" on "+repo+": no session token role to list as", rerr)
 	}
 	ep, eerr := deskkit.ForgeGitEndpointFor(repo, role)
 	if eerr != nil {
 		return gitcore.ListOpts{}, deskkit.Unverifiable(
-			"cannot list "+deskkit.ClaimRefsPattern+" on "+repo+": no authenticated forge endpoint", eerr)
+			"cannot list "+deskkit.DispatchClaimActiveRefsPrefix+"*"+" on "+repo+": no authenticated forge endpoint", eerr)
 	}
 	return ep.Opts, nil
 }
 
-// showClaim is the SINGLE exec site for the consumer repo's own tools/dispatch-claim.sh `show`
-// verb — both readLiveClaims (enumeration) and reconcile.go's live claim reader route through
-// it, so the tree carries ONE unresolved-argv blind spot for this script, not two (the
-// forgeban ledger entry keys on this function). argv[0] is the script path resolved at runtime
-// under --root; it is not a forge CLI, and this tree does not ship the script.
+// showClaim remains the consumer-script reader used by eligibility reconciliation.
+// Initial inventory reads immutable payloads directly rather than mixing snapshots.
 func showClaim(script, key, repo string) (string, error) {
 	out, err := exec.Command(script, "show", key, "--repo", repo).CombinedOutput()
 	return string(out), err
@@ -162,12 +159,9 @@ func claimShowField(re *regexp.Regexp, s string) string {
 	return m[1]
 }
 
-// KNOWN GAP: `show` carries no per-claim TIER, so a live claim always classifies under
-// TierCheap's wall cap (90m) regardless of the dispatch's real exec-tier. Getting the real
-// tier onto the claim record is follow-on work (a `tier=` field on the show output, or a
-// second read against the dispatch prompt/roster) — flagged here rather than silently
-// assumed correct. Every Verify-fixture claim states its own tier explicitly and is
-// unaffected by this gap.
+// The claim payload has no tier, so the existing cheap-tier liveness policy
+// remains the default. This change binds that policy to an immutable claim;
+// it does not expand the liveness evidence or treat age alone as death.
 
 // liveObservationSource is the production observationSource: run loopengine.HouseProbes()
 // against an Item built from the claim's own fields (Payload carries the identity keys the
@@ -196,4 +190,16 @@ func liveObservationSource(probes *loopengine.ObservableProbes) observationSourc
 		}
 		return resolvedObservation{obs: obs, observed: true}, nil
 	}
+}
+
+// Well-formed but unattributable or clock-skewed claims are held individually.
+// Neither condition is evidence that their owner is dead.
+func claimInventoryBlind(c claimRecord, now time.Time) string {
+	if c.Owner == "unknown" {
+		return "claim-owner-unknown"
+	}
+	if at, err := time.Parse(time.RFC3339, c.DispatchedAt); err == nil && at.After(now) {
+		return "claim-future-timestamp"
+	}
+	return ""
 }

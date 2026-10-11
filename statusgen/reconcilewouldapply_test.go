@@ -118,7 +118,7 @@ func TestWouldApplyParityUnit(t *testing.T) {
 	}
 	before := snapshotReadmes(t, root)
 
-	planned, err := planReconcileWrites(root, cells)
+	planned, plannedHeld, err := planReconcileWrites(root, cells)
 	if err != nil {
 		t.Fatalf("planReconcileWrites: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestWouldApplyParityUnit(t *testing.T) {
 		t.Fatalf("the read-only form wrote to the tree:\ngot:  %q\nwant: %q", got, before)
 	}
 
-	applied, err := applyReconcileWrites(root, cells)
+	applied, appliedHeld, err := applyReconcileWrites(root, cells)
 	if err != nil {
 		t.Fatalf("applyReconcileWrites: %v", err)
 	}
@@ -135,6 +135,9 @@ func TestWouldApplyParityUnit(t *testing.T) {
 	}
 	if !reflect.DeepEqual(planned, applied) {
 		t.Fatalf("wouldApply rows differ from the rows --apply wrote:\nplanned: %+v\napplied: %+v", planned, applied)
+	}
+	if len(plannedHeld) != 0 || len(appliedHeld) != 0 {
+		t.Fatalf("fixture drift: no row of this fixture may be held, got planned %+v applied %+v", plannedHeld, appliedHeld)
 	}
 	if got, want := replayRows(t, root, before, planned), snapshotReadmes(t, root); !reflect.DeepEqual(got, want) {
 		t.Fatalf("replaying rowBefore->rowAfter does not reproduce the applied README:\ngot:  %q\nwant: %q", got, want)

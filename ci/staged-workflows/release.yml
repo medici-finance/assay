@@ -816,7 +816,7 @@ jobs:
       # but produced nothing fail loudly rather than ship a quietly smaller pack.
       - name: Upload captured mutation reports (tool-validation pack)
         if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}
           path: ${{ runner.temp }}/tv-reports/
@@ -1243,7 +1243,7 @@ jobs:
       # merged into one directory. merge-multiple flattens every tv-reports-*
       # artifact into ${RUNNER_TEMP}/tv-reports.
       - name: Download captured mutation reports (tool-validation pack)
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: tv-reports-*
           path: ${{ runner.temp }}/tv-reports
@@ -1497,8 +1497,10 @@ jobs:
   # `needs: release` — the roll only ever narrates a release that actually
   # published. Same dispatch+non-dry-run condition the steps carried before.
   changelog-roll:
+    environment: board-writer
     needs: [resolve, release]
-    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+    # The run ref, not a checkout ref, authorizes access to the App key.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.dry_run
     runs-on: medici-builder-release
     # contents:read only. The WRITE is the board-writer App token minted below —
     # the same split assay-statusgen.yml's regen and model-autoflip jobs use.
@@ -1523,7 +1525,7 @@ jobs:
       # commits under the SAME identity that already writes STATUS.md straight
       # to main: the assay-board-writer App, whose ruleset bypass covers exactly
       # this class of generated-file write. App perms: contents:write on THIS
-      # repo only; key held as repo Actions secrets (BOARD_APP_*).
+      # repo only; key held in the main-only board-writer Environment (BOARD_APP_*).
       - name: Mint assay-board-writer App token (changelog roll)
         id: roll-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0

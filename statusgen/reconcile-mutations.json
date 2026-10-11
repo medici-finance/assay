@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'WouldApply|ApplyReconcile|WriteStatusCell' -count=1 -timeout 300s",
+  "test": "go test . -run 'WouldApply|ApplyReconcile|WriteStatusCell|HoldParity|HoldTreeRule|ApplyThenLint' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the Status write puts a different token than the one asked for",
     "file": "reconcileapply.go",
@@ -34,14 +34,38 @@
     {
       "name": "the verb's read-only run takes the write path",
       "file": "reconcile.go",
-      "old": "if rows, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {",
-      "new": "if rows, werr = reconcileWrites(boardRoot, cells, true); werr != nil {"
+      "old": "if rows, held, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {",
+      "new": "if rows, held, werr = reconcileWrites(boardRoot, cells, true); werr != nil {"
     },
     {
       "name": "a read-only run that found nothing reports null instead of an empty list",
       "file": "reconcile.go",
       "old": "\t\t\t\trows = []appliedRow{}",
       "new": "\t\t\t\trows = nil"
+    },
+    {
+      "name": "the lint hold is applied by --apply only (the read-only form lists a row --apply holds)",
+      "file": "reconcileapply.go",
+      "old": "if len(added) > 0 {",
+      "new": "if write && len(added) > 0 {"
+    },
+    {
+      "name": "the hold is not evaluated at all (a row the lint rejects is written)",
+      "file": "reconcileapply.go",
+      "old": "if len(added) > 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "stream-README reads ignore the staged edit (a tree-reading rule judges the unmoved board)",
+      "file": "reconcilehold.go",
+      "old": "c, ok := stagedReadmes.m[stageKey(path)]",
+      "new": "c, ok := \"\", false"
+    },
+    {
+      "name": "the verb drops held rows from its result",
+      "file": "reconcile.go",
+      "old": "\t\tHeld:       held,",
+      "new": "\t\tHeld:       nil,"
     }
   ]
 }
