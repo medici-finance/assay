@@ -160,8 +160,8 @@
     {
       "name": "the stale-registration pass clears for real under --dry-run (a report deregisters what it was asked to describe)",
       "file": "cmd/deskwt/stalereg.go",
-      "old": "\tif dryRun {\n\t\treturn toClear, held, nil\n\t}",
-      "new": "\tif false {\n\t\treturn toClear, held, nil\n\t}"
+      "old": "\tif dryRun {\n\t\treturn toClear, held, nil, nil\n\t}",
+      "new": "\tif false {\n\t\treturn toClear, held, nil, nil\n\t}"
     },
     {
       "name": "the stale-registration pass drops its scope gate (an out-of-prefix registration is deregistered by a sweep that has no business touching it)",
