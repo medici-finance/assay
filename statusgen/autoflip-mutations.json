@@ -178,13 +178,13 @@
     {
       "name": "every PR overlaps files:",
       "file": "deliveryfiles.go",
-      "old": "\t\t\tif declaredEntryMatches(d, p) {",
-      "new": "\t\t\tif true || declaredEntryMatches(d, p) {"
+      "old": "\t\t\tif evaluation.DeclaredEntryMatches(d, p) {",
+      "new": "\t\t\tif true || evaluation.DeclaredEntryMatches(d, p) {"
     },
     {
       "name": "another repo's files: entry kept as a path here",
       "file": "deliveryfiles.go",
-      "old": "if !declaredEntrySupported(e) || isVerifyWrittenPath(strings.TrimSuffix(e, \"/\")) {",
+      "old": "if !evaluation.DeclaredEntrySupported(e) || evaluation.IsVerifyWrittenPath(strings.TrimSuffix(e, \"/\")) {",
       "new": "if false {"
     },
     {

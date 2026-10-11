@@ -17,6 +17,8 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // briefFiles is a brief's `files:` declaration as the delivering-PR resolvers
@@ -32,7 +34,7 @@ type briefFiles struct {
 // forRepo normalises the declaration against the repo whose PRs are read:
 // `./` is dropped, a trailing `/**` reads as its directory, a `../<name>/`
 // prefix naming this repo itself is removed, and an entry that still cannot
-// name a path here (declaredEntrySupported) is dropped and remembered. A
+// name a path here (evaluation.DeclaredEntrySupported) is dropped and remembered. A
 // verify-written path (STATUS.md, a stream README, a brief file, a
 // verify-outcome record) is dropped too: touching it never delivers a brief.
 func (b briefFiles) forRepo(repo string) briefFiles {
@@ -44,12 +46,12 @@ func (b briefFiles) forRepo(repo string) briefFiles {
 		name = name[i+1:]
 	}
 	out := briefFiles{declared: true}
-	for _, d := range appendDeclaredEntries(nil, b.entries) {
+	for _, d := range evaluation.DeclaredEntries(b.entries) {
 		e := d
 		if name != "" {
 			e = strings.TrimPrefix(e, "../"+name+"/")
 		}
-		if !declaredEntrySupported(e) || isVerifyWrittenPath(strings.TrimSuffix(e, "/")) {
+		if !evaluation.DeclaredEntrySupported(e) || evaluation.IsVerifyWrittenPath(strings.TrimSuffix(e, "/")) {
 			out.dropped = append(out.dropped, d)
 			continue
 		}
@@ -65,11 +67,11 @@ func (b briefFiles) overlaps(shape prShape) bool {
 		return true
 	}
 	for _, p := range append(append([]string(nil), shape.Files...), shape.RenamedFrom...) {
-		if isVerifyWrittenPath(p) {
+		if evaluation.IsVerifyWrittenPath(p) {
 			continue
 		}
 		for _, d := range b.entries {
-			if declaredEntryMatches(d, p) {
+			if evaluation.DeclaredEntryMatches(d, p) {
 				return true
 			}
 		}
