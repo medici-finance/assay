@@ -16,6 +16,9 @@ import (
 	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+
+	"github.com/medici-finance/assay/forgeread/adapters"
+	glissues "github.com/medici-finance/assay/forgeread/adapters/gitlab"
 )
 
 // forge_gitlab.go — the GitLab implementation of Forge, seated on the OFFICIAL GitLab Go
@@ -75,6 +78,10 @@ type GitLabForge struct {
 	// cl caches the client built from Token/BaseURL. Lazily constructed by client() so a
 	// bare struct literal (the golden test's construction shape) still works.
 	cl *gitlab.Client
+
+	// onlyRepo, when non-empty, is the ONE owner/name this backend's credential was admitted
+	// for. The shared read adapters' Access refuses any other repository (sharedread.go).
+	onlyRepo string
 	// emailLogin memoises GetCommit's email→username resolution (gitlabLoginForEmail) for the
 	// life of this backend value, so a board sweep that reads many commits by the same few
 	// authors pays the users lookup once per address. "" is cached too: an address that
@@ -1147,51 +1154,37 @@ func gitlabRollupFor(headPipeline *gitlab.PipelineInfo, sha string) []RollupNode
 // project that is still paginating at the page ceiling is a could-not-check naming the
 // ceiling, never a partial set handed over as if it were complete.
 func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
-	cl, err := g.client()
-	if err != nil {
-		return nil, err
-	}
-	listPath := fmt.Sprintf("/projects/%s/issues", g.projectPath(repo))
-	state := "opened"
-	out := make([]IssueSummary, 0, gitlabPerPage)
-	for page := 1; page <= gitlabMaxIssuePage; page++ {
-		chunk, resp, lerr := cl.Issues.ListProjectIssues(repo.Slug(),
-			&gitlab.ListProjectIssuesOptions{
-				State:       &state,
-				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
-			})
-		if lerr != nil {
-			return nil, g.mapErr(http.MethodGet, listPath, lerr)
+	// The walk, its ceiling and the reduction live in the shared adapter (forgeread/adapters/gitlab);
+	// this backend supplies the already-admitted, scope-checked Access.
+	issues, err := glissues.New(g.sharedAccess(), sharedIssueSkip).OpenIssues(context.Background(), repo.Slug())
+	return sharedIssuesToSummaries(issues, err)
+}
+
+// sharedAccess is this backend's Access for the shared read adapters: one GET beneath the
+// project's own route, through the client that already carries the resolved credential. NextPage
+// (the X-Next-Page header) is GitLab's authoritative end-of-walk signal.
+func (g *GitLabForge) sharedAccess() adapters.Access {
+	return scopedAccess{only: g.onlyRepo, next: func(_ context.Context, repo ForgeRepo, rel string, q url.Values) (adapters.Page, error) {
+		cl, err := g.client()
+		if err != nil {
+			return adapters.Page{}, err
 		}
-		for _, iss := range chunk {
-			if iss == nil || (iss.Author != nil && IsVerifierAttestation(iss.Title, iss.Author.Username)) {
-				continue
-			}
-			s := IssueSummary{
-				Number:    int(iss.IID),
-				Title:     iss.Title,
-				Labels:    append([]string(nil), iss.Labels...),
-				CreatedAt: gitlabTime(iss.CreatedAt),
-				UpdatedAt: gitlabTime(iss.UpdatedAt),
-				URL:       iss.WebURL,
-			}
-			if iss.Author != nil {
-				s.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
-			}
-			out = append(out, s)
+		path := fmt.Sprintf("projects/%s/%s", g.projectPath(repo), rel)
+		req, rerr := cl.NewRequest(http.MethodGet, path, nil, nil)
+		if rerr != nil {
+			return adapters.Page{}, Unverifiable(fmt.Sprintf("could-not-check: GET %s could not be built", path), rerr)
 		}
-		// NextPage == 0 is GitLab's authoritative end-of-walk signal, unlike inferring the
-		// end from a short page.
-		if resp == nil || resp.NextPage == 0 {
-			return out, nil
+		req.URL.RawQuery = q.Encode()
+		var raw json.RawMessage
+		resp, derr := cl.Do(req, &raw)
+		if derr != nil {
+			return adapters.Page{}, g.mapErr(http.MethodGet, "/"+path, derr)
 		}
-	}
-	return nil, Unverifiable(fmt.Sprintf(
-		"could-not-check: %s still reports more open issues after %d pages of %d (the open-issue page "+
-			"ceiling) — refusing to hand back a PARTIAL open-issue set, because the issue lane reads an "+
-			"issue's absence from this list as CLOSED and would retire placeholders for issues that are "+
-			"still open",
-		repo.Slug(), gitlabMaxIssuePage, gitlabPerPage), nil)
+		if len(raw) == 0 {
+			return adapters.Page{}, Unverifiable(fmt.Sprintf("could-not-check: GET /%s answered with an empty body", path), nil)
+		}
+		return adapters.Page{Body: raw, More: resp != nil && resp.NextPage != 0}, nil
+	}}
 }
 
 // --- Trust events (the GitLab trust-events brief) ---
