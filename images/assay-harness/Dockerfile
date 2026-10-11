@@ -50,7 +50,7 @@ FROM --platform=$BUILDPLATFORM golang:1.25.0-bookworm@sha256:81dc45d05a7444ead8c
 
 # GOWORK=off is load-bearing: the repo root carries no go.work, and statusgen/
 # and tools/desk are self-contained modules (only external dep is
-# gopkg.in/yaml.v3, no `replace` directives), so each builds from its own dir with
+# gopkg.in/yaml.v3; the only `replace` is the stdlib-only sibling forgeread module), so each builds from its own dir with
 # GOWORK off. GOARCH is fixed to amd64 to match the runtime stage's platform.
 ENV GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
@@ -69,6 +69,10 @@ RUN if [ -z "${ASSAY_VERSION}" ]; then \
       exit 1; \
     fi
 
+# forgeread — the stdlib-only fact-reader module statusgen and tools/desk each resolve through a
+# `replace` to a sibling directory, so the sources keep the repository's layout under /src.
+COPY forgeread/ /src/forgeread/
+
 # statusgen — its own module, stamped with main.statusgenVersion.
 WORKDIR /src/statusgen
 COPY statusgen/go.mod statusgen/go.sum ./
@@ -80,7 +84,7 @@ RUN SG_TAG="${STATUSGEN_TAG:-${ASSAY_VERSION}}"; \
 
 # desk-tools — its own module; every command under cmd/*, stamped with the
 # deskkit SourceSHA/BuiltAt pair IsPinned() requires (matches release.yml).
-WORKDIR /src/desk
+WORKDIR /src/tools/desk
 COPY tools/desk/go.mod tools/desk/go.sum ./
 RUN go mod download
 COPY tools/desk/ ./

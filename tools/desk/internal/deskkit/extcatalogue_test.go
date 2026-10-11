@@ -39,6 +39,12 @@ var extCatalogueAllowList = map[string]string{
 	EnvRepoForges:         "repo-forges",
 	EnvChannelDriftTarget: "channel-drift-target",
 	EnvHomeRepo:           "home-repo",
+	// ASSAY_OS_USER_LOGIN_MAP feeds ONLY the scan-override audit identity — a
+	// forensic label on a row, never an authorisation decision — so a malformed
+	// value degrading that one feature (the identity falls back to its marked
+	// OS-username form) is the right failure, and a whole-roster refusal would be
+	// the wrong one.
+	EnvOSUserLoginMap: "os-user-login-map",
 }
 
 // extCatalogueViolations checks a catalogue against both rules and returns one line per breach.

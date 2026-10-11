@@ -13,11 +13,12 @@ shipped artifacts are:
   Agents and CI loops shell out to these binaries for every interaction with
   a forge: reading boards, posting comments, opening PRs, minting GitHub App
   tokens, and enforcing guardrails on what an agent may write or push.
-- **Go modules, 20 in all** — 14 under `tools/` (linters, corpus tools,
-  harvesters) and 6 top-level (`statusgen`, `deskcore`, `drainloop`,
-  `loopadmin`, `qualgen`, `cellconfig`). No `go.work`; each module is
-  independent except `tools/loopresolve`, which replaces `cellconfig` with
-  the in-tree relative path.
+- **Go modules, 21 in all** — 14 under `tools/` (linters, corpus tools,
+  harvesters) and 7 top-level (`statusgen`, `deskcore`, `drainloop`,
+  `loopadmin`, `qualgen`, `cellconfig`, `forgeread`). No `go.work`; each
+  module is independent except `tools/loopresolve`, which replaces
+  `cellconfig` with the in-tree relative path, and `statusgen` and
+  `tools/desk`, which replace the stdlib-only `forgeread` the same way.
 - **`plugins/` (markdown, JSON, YAML, shell)** — the agent-harness plugin
   bundle: skills, commands, references, scripts and hooks. The only hooks it
   wires (`plugins/assay/hooks/hooks.json`) are two `SessionStart` shell
@@ -122,8 +123,8 @@ findings should be weighted:
 
 - Every Go module builds with `go build ./...` and tests with `go test ./...`
   from its own directory (no workspace file; each `go.mod` is independent,
-  except that `tools/loopresolve` replaces `cellconfig` with the in-tree
-  copy).
+  except that `tools/loopresolve` replaces `cellconfig` and `statusgen` and
+  `tools/desk` replace `forgeread` with the in-tree copy).
 - `tools/desk` is the large one: `cd tools/desk && go test ./...` runs the
   guard and forge-transport unit tests, including adversarial-path cases —
   extend those patterns.

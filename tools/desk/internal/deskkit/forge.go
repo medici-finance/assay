@@ -763,7 +763,11 @@ func forgeRowCount(b []byte) int {
 // keys the latest-run-per-name reduction orders by — an entry carrying none sorts oldest, the
 // fail-safe direction (a stampless queued orphan never supersedes a completed run).
 type RollupNode struct {
-	Typename    string // "CheckRun" | "StatusContext" (empty when the forge did not tag it)
+	Typename string // "CheckRun" | "StatusContext" (empty when the forge did not tag it)
+	// ID is the CheckRun's forge run id, same meaning and rendering as CheckRun.ID ("" when
+	// none). omitempty keeps every rollup that carries no id (every GitLab node) byte-identical
+	// in the forge golden corpus.
+	ID          string `json:",omitempty"`
 	Name        string // CheckRun name
 	Status      string // CheckRun: queued | in_progress | completed
 	Conclusion  string // CheckRun: success | failure | ...
