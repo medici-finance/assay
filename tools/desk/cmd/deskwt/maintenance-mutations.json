@@ -60,6 +60,24 @@
       "file": "cmd/deskwt/maintenance.go",
       "old": "len(p) < 2 || p[0] != \"refs\"",
       "new": "len(p) < 3 || p[0] != \"refs\""
+    },
+    {
+      "name": "inventory stderr must not be discarded on successful exit",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if r.Failed() || r.Stderr != \"\" {\n\t\treturn \"\", r.Fail",
+      "new": "if r.Failed() {\n\t\treturn \"\", r.Fail"
+    },
+    {
+      "name": "retention warnings must not be accepted as no matching config",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if (retention.Failed() && retention.ExitCode != 1) || retention.Stderr != \"\" {",
+      "new": "if retention.Failed() && retention.ExitCode != 1 {"
+    },
+    {
+      "name": "write warnings must prevent reporting completed",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if r.Failed() || r.Stderr != \"\" {\n\t\t\treturn r.Fail",
+      "new": "if r.Failed() {\n\t\t\treturn r.Fail"
     }
   ]
 }

@@ -56,9 +56,11 @@ func maintenanceGit(ctx context.Context, dir string, args ...string) deskkit.Too
 		}})
 }
 
+// Git can exit successfully while omitting unreadable state. These bounded builtins
+// run without progress output, so any stderr is uncertainty, never silent success.
 func maintenanceRead(ctx context.Context, dir string, args ...string) (string, error) {
 	r := maintenanceGit(ctx, dir, args...)
-	if r.Failed() {
+	if r.Failed() || r.Stderr != "" {
 		return "", r.Fail(deskkit.ExitUnverifiable, "maintenance inventory: git %s", strings.Join(args, " "))
 	}
 	return r.Stdout, nil
@@ -97,7 +99,7 @@ func inventoryMaintenance(ctx context.Context, dir string) (*maintenanceInventor
 		return nil, err
 	}
 	retention := maintenanceGit(ctx, dir, "config", "--get-regexp", `^gc\.(.*\.)?reflogexpire(unreachable)?$`)
-	if retention.Failed() && retention.ExitCode != 1 {
+	if (retention.Failed() && retention.ExitCode != 1) || retention.Stderr != "" {
 		return nil, retention.Fail(deskkit.ExitUnverifiable, "read reflog retention")
 	}
 	inv.ReflogRetention = retention.Stdout
@@ -228,7 +230,7 @@ func cmdMaintain(args []string) (err error) {
 			return e
 		}
 		r := maintenanceGit(ctx, *repo, argv...)
-		if r.Failed() {
+		if r.Failed() || r.Stderr != "" {
 			return r.Fail(deskkit.ExitUnverifiable, "offline repository maintenance")
 		}
 	}

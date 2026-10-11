@@ -2567,8 +2567,8 @@ claim protocol, and remote-tracking refresh in the sanctioned transport.
 The targeted regression audit is reproducible with
 `go -C tools/desk run ./cmd/muhar -j 2 -spec cmd/deskwt/maintenance-mutations.json`.
 It requires local loopback for the HTTP transport-denial fixture and symlink support for
-the no-follow fixture. A green baseline and a caught read-only-plan control gate eight
-mutations: locking, cadence, environment isolation, unreadable inventory, symlink refusal,
+the no-follow fixture. A green baseline and a caught read-only-plan control gate the committed
+mutations: locking, cadence, environment isolation, unreadable inventory and command warnings, valid stash refs, symlink refusal,
 command budget, transport denial, and recovery/borrowed-object preservation. Read the
 per-mutation verdicts; a healthy harness exit alone does not mean every mutation was caught.
 

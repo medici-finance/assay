@@ -131,6 +131,69 @@ func TestMaintenanceStashRefPreserved(t *testing.T) {
 	}
 }
 
+func TestMaintenanceCorruptRefRefusesPlanAndApply(t *testing.T) {
+	for _, apply := range []bool{false, true} {
+		t.Run(map[bool]string{false: "plan", true: "apply"}[apply], func(t *testing.T) {
+			work, calls := maintenanceFixture(t)
+			writeFile(t, filepath.Join(work, ".git", "refs", "heads", "broken"), "not-an-object-id\n")
+			args := []string{"--repo", work}
+			if apply {
+				args = append(args, "--apply")
+			}
+			report, err := maintenanceRun(t, args...)
+			if err == nil || report.Status != "could-not-check" || maintenanceWrites(*calls) != 0 {
+				t.Fatalf("incomplete ref inventory accepted: status=%s err=%v writes=%d", report.Status, err, maintenanceWrites(*calls))
+			}
+		})
+	}
+}
+
+func TestMaintenanceWarningHelper(t *testing.T) {
+	if os.Getenv("ASSAY_MAINTENANCE_WARNING_HELPER") != "1" {
+		return
+	}
+	for i, a := range os.Args {
+		if a != "--" {
+			continue
+		}
+		cmd := exec.Command("git", os.Args[i+1:]...)
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		err := cmd.Run()
+		_, _ = os.Stderr.WriteString("fixture: incomplete state warning\n")
+		os.Exit(deskkit.ExitStatusOf(err))
+	}
+	os.Exit(2)
+}
+
+func TestMaintenanceWarningsFailClosed(t *testing.T) {
+	for _, task := range []string{"rev-parse", "for-each-ref", "worktree", "count-objects", "config", "config-match", "pack-refs", "commit-graph"} {
+		t.Run(task, func(t *testing.T) {
+			work, calls := maintenanceFixture(t)
+			if task == "config-match" {
+				mustGit(t, work, "config", "gc.reflogExpire", "60.days")
+				task = "config"
+			}
+			old := maintenanceCommand
+			t.Setenv("ASSAY_MAINTENANCE_WARNING_HELPER", "1")
+			maintenanceCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+				for _, arg := range args {
+					if arg == task {
+						return exec.CommandContext(ctx, os.Args[0], append([]string{"-test.run=^TestMaintenanceWarningHelper$", "--"}, args...)...)
+					}
+				}
+				return old(ctx, name, args...)
+			}
+			report, err := maintenanceRun(t, "--repo", work, "--apply")
+			if err == nil || report.Status == "completed" {
+				t.Fatalf("warning discarded: status=%s err=%v", report.Status, err)
+			}
+			if task != "pack-refs" && task != "commit-graph" && maintenanceWrites(*calls) != 0 {
+				t.Fatal("inventory warning allowed maintenance writes")
+			}
+		})
+	}
+}
+
 func TestMaintenanceCommonDirCadenceAndHeldLock(t *testing.T) {
 	work, calls := maintenanceFixture(t)
 	linked := filepath.Join(t.TempDir(), "linked")
