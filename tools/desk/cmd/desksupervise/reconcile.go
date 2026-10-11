@@ -56,7 +56,13 @@ func reconcile(claims []claimRecord, src eligibilitySource, now time.Time, dryRu
 	runTag := fmt.Sprintf("desksupervise-%d", now.UnixNano())
 
 	for _, claim := range claims {
-		verdict, verr := src(claim)
+		var verdict loopengine.EligibilityVerdict
+		var verr error
+		if source := claimInventoryBlind(claim, now); source != "" {
+			verr = &loopengine.BlindError{Source: source}
+		} else {
+			verdict, verr = src(claim)
+		}
 		if verr != nil {
 			source, ok := loopengine.BlindSource(verr)
 			if !ok {
@@ -77,11 +83,17 @@ func reconcile(claims []claimRecord, src eligibilitySource, now time.Time, dryRu
 
 		action := "STOP"
 		release := false
-		if verdict.Terminal() {
+		if verdict.Terminal() && verdict.Reason != "claim-released" {
 			action = "STOP+RELEASE"
 			release = true
 		}
 		if aerr := runReconcileAction(claim, verdict, release, dryRun, reclaim, arm, runTag); aerr != nil {
+			if source, ok := loopengine.BlindSource(aerr); ok {
+				anyBlind = true
+				results = append(results, reconcileResult{Claim: claim, Blind: true, Source: source, Action: "STOP+BLIND"})
+				fmt.Fprintf(out, "%s  RECONCILE-BLIND via=%s action=STOP+BLIND (release not confirmed)\n", claim.Key, source)
+				continue
+			}
 			return eligible, results, anyBlind, deskkit.Unverifiable("claim "+claim.Key+": reconcile action failed", aerr)
 		}
 		results = append(results, reconcileResult{Claim: claim, Verdict: verdict, Action: action})
@@ -103,7 +115,7 @@ func runReconcileAction(claim claimRecord, verdict loopengine.EligibilityVerdict
 		if release {
 			fmt.Fprintf(os.Stderr, "[dry-run] would arm STOP.run.%s, release dispatch claim %s, journal SUPERSEDED reason=%s\n", claim.Key, claim.Key, reason)
 		} else {
-			fmt.Fprintf(os.Stderr, "[dry-run] would arm STOP.run.%s, journal SUPERSEDED reason=%s (HELD — claim NOT released)\n", claim.Key, reason)
+			fmt.Fprintf(os.Stderr, "[dry-run] would arm STOP.run.%s, journal SUPERSEDED reason=%s (claim NOT released)\n", claim.Key, reason)
 		}
 		fireAfterRun(claim, true)
 		return nil
@@ -203,10 +215,11 @@ func (f *eligibilityFixture) readers(c claimRecord) loopengine.EligibilityReader
 //
 //   - Claim: the consumer's own tools/dispatch-claim.sh `show <key> --repo <repo>` (the same
 //     external contract readLiveClaims and cmd/deskdispatch already shell to), parsing owner=.
-//   - BoardRow: the item's Status cell on refs/remotes/origin/main, read in-process with
+//   - BoardRow: for a decoded brief, its Status cell on refs/remotes/origin/main, read in-process with
 //     gitcore.FileAt and parsed by loopengine.ParseBriefRowStatus (the pure parser this
 //     brief's reconcile_test covers offline).
-//   - PR: deskkit.Forge.GetPullRequest for the claim's PR, resolved through the single
+//   - PR/issue: GetPullRequest or GetIssue for a decoded ordinary forge item; these
+//     claims have no board axis. Forge access is resolved through the single
 //     ForgeFor construction site exactly as actions.go's doReclaim resolves the forge.
 //
 // KNOWN GAP: deskkit.PullRequest.State reduces to open|closed, folding a MERGED PR into
@@ -216,13 +229,48 @@ func (f *eligibilityFixture) readers(c claimRecord) loopengine.EligibilityReader
 // Surfacing merged distinctly is follow-on work (a merged_at read), flagged rather than
 // silently assumed.
 func liveEligibilitySource(root string) eligibilitySource {
+	return liveEligibilitySourceWith(root, func(c claimRecord) (loopengine.ClaimRecord, error) {
+		return liveShowClaimReader(root, c.Repo)(c.Key)
+	}, livePRReader(), liveIssueReader())
+}
+
+// Only the external holder/forge reads are seams; board selection and local Git reads
+// remain production code in offline integration tests.
+func liveEligibilitySourceWith(root string, claimRead func(claimRecord) (loopengine.ClaimRecord, error), prRead func(string, int) (loopengine.PRState, error), issueRead func(string, int) (*deskkit.Issue, error)) eligibilitySource {
 	return func(c claimRecord) (loopengine.EligibilityVerdict, error) {
-		readers := loopengine.EligibilityReaders{
-			Claim:    liveShowClaimReader(root, c.Repo),
-			BoardRow: liveBoardRowReader(root),
-			PR:       livePRReader(),
+		target, err := decodeClaimTarget(c.Key, c.Repo)
+		if err != nil {
+			return loopengine.EligibilityVerdict{}, &loopengine.BlindError{Source: "claim-item", Err: err}
 		}
-		return loopengine.Eligibility(toLoopClaim(c, root), readers)
+		c.Item, c.PR = target.item, target.pr
+		readers := loopengine.EligibilityReaders{
+			Claim:    func(string) (loopengine.ClaimRecord, error) { return claimRead(c) },
+			BoardRow: liveBoardRowReader(root), PR: prRead,
+		}
+		if target.pr > 0 || target.issue > 0 {
+			// No board axis exists for a positively identified PR/issue claim. This
+			// is not a fallback from a failed board read; brief boards still fail blind.
+			readers.BoardRow = func(string, string) (loopengine.Status, error) { return "in-progress", nil }
+		}
+		if target.issue > 0 {
+			readers.PR = func(repo string, _ int) (loopengine.PRState, error) {
+				issue, err := issueRead(repo, target.issue)
+				if err != nil {
+					return loopengine.PRState{}, err
+				}
+				return issueEligibilityState(issue, target.issue)
+			}
+		}
+		verdict, err := loopengine.Eligibility(toLoopClaim(c, root), readers)
+		if target.issue > 0 {
+			if source, ok := loopengine.BlindSource(err); ok && source == "pr" {
+				return verdict, &loopengine.BlindError{Source: "issue", Err: err}
+			}
+			if err == nil && verdict.Reason == "pr-closed" {
+				return loopengine.IneligibleTerminal("issue-closed"), nil
+			}
+		}
+		return verdict, err
 	}
 }
 
@@ -257,18 +305,9 @@ func livePRReader() func(repo string, n int) (loopengine.PRState, error) {
 		if n <= 0 {
 			return loopengine.PRState{Kind: deskkit.PROpen}, nil
 		}
-		owner, name, ok := strings.Cut(repoStr, "/")
-		if !ok || owner == "" || name == "" {
-			return loopengine.PRState{}, fmt.Errorf("repo %q is not owner/name", repoStr)
-		}
-		role, _, rerr := deskkit.SessionTokenRole("desksupervise")
-		if rerr != nil {
-			return loopengine.PRState{}, fmt.Errorf("cannot resolve a token role: %w", rerr)
-		}
-		repo := deskkit.ForgeRepo{Owner: owner, Name: name}
-		forge, ferr := deskkit.ForgeFor(repo, role)
+		forge, repo, ferr := reconcileForge(repoStr)
 		if ferr != nil {
-			return loopengine.PRState{}, fmt.Errorf("cannot resolve a forge for %s: %w", repoStr, ferr)
+			return loopengine.PRState{}, ferr
 		}
 		pr, perr := forge.GetPullRequest(repo, n)
 		if perr != nil {

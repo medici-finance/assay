@@ -2518,6 +2518,10 @@ That backlog is not merely untidy: git permits exactly **one worktree per branch
 later resume or dispatch of such a branch fails at worktree-create, and the queue wedges on
 the leftovers it produced.
 
+Use `--reap-dead-sessions` on its own: combining it with `--reclaim-stale-locks`
+is refused before any mutation. Reaping needs the original named lock as owner evidence
+and already unlocks a worktree only after its safety checks pass.
+
 `--reap-dead-sessions` (default **OFF**) answers a different question from Step B's. Not "has
 this landed?" but "does anything LIVE still own this, and is deleting it lossless?" — two
 independent gates, both of which must hold:
@@ -2530,8 +2534,19 @@ independent gates, both of which must hold:
 - **Safety.** The tree must be clean with **untracked files counted** — stricter than Step B's
   tracked-only gate on purpose, because an untracked file is reachable from no commit and this
   directory is its only copy — *and* HEAD must already be reachable from its own upstream, or
-  (no upstream) from `refs/remotes/origin/main`. Every commit is then on the remote and the
-  directory is the only thing deleted.
+  (no upstream) from `refs/remotes/origin/main`. Detached review heads instead require
+  a named session lock judged inactive and reachability from a remote-tracking ref,
+  so a squash merge does not strand them while
+  the fetched source branch still preserves their history. This detached proof also holds
+  **ignored files**, which may contain evidence; their owner must finish evidence handoff
+  and remove disposable output before retrying. No PR state is inferred. Once the source
+  remote-tracking ref is gone, an otherwise unpreserved detached head remains held.
+  Worktrees with submodules require separate preservation and remain held by this
+  detached proof, including when the submodules are uninitialized.
+
+The detached reap itself deletes no implementation branch. The default final branch-GC
+pass can independently collect a squash-equivalent branch; add `--no-branches` to run
+only the worktree arms.
 
 On a reap it also deletes the **stale local branch**, when that branch is equal to or behind
 its upstream, with the non-force `git branch -d` — whose own merged-into-upstream refusal is a
