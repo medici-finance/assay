@@ -1,0 +1,2 @@
+### Added
+- `muhar` has its own README (`tools/desk/cmd/muhar/README.md`): what the mutation harness guarantees, a worked end-to-end example with real output, the spec field reference, flags, verdicts, exit codes, and how to gate CI on the totals line. It documents the install routes that work today (the `muhar` binary already ships in every release's `desk-tools-<platform>.tar.gz`, or clone and `go install ./cmd/muhar` from `tools/desk`), and why `go install …/cmd/muhar@<version>` does not.
