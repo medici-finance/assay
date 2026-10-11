@@ -63,6 +63,20 @@ reviewable artifact, not a run.
   carries the sibling module, without which the corroboration guard cannot build a base that
   already has `forgeread/`. The rest of that staged change (the hourly `reconcile` job and the
   board-writer Environment) was promoted with it, as described below.
+- `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
+  muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
+  mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in
+  code no muhar spec covers are listed as candidate guards with file:line. The job fails
+  only when the sweep itself broke (install or pin check, a Gremlins failure, a package red
+  in the mutant copy layout, or no evidence at all). Daily cron at 03:43 UTC plus
+  `workflow_dispatch`, `contents: read`, one concurrency group, an estimated 60 to 80 runner-minutes a
+  day on the 2-CPU public runner. See `tools/gremlins/README.md`. **Staged, not live** —
+  a maintainer promotes it:
+  ```
+  git mv ci/staged-workflows/gremlins-daily.yml .github/workflows/gremlins-daily.yml
+  git commit -m "ci: activate gremlins-daily.yml"
+  git push
+  ```
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
   `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
   (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set

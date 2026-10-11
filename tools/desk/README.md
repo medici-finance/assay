@@ -5028,6 +5028,35 @@ mutations`) so a shard's partial report is never mistaken for a complete sweep; 
 owns running all n shards. A malformed `-shard` (index out of range, zero shards,
 non-integers) is a refusal, never a silent fall-back to the full or empty set.
 
+**Mutant schemata: one build per worker, for a spec that opts in (#2635).** Most of a
+classic mutant's cost is compiling and vetting the mutated package, not running its tests.
+A spec that sets `"schemata": true` (and whose `test` is a `go test … -count=1` command)
+has every eligible mutant compiled into **one** build per worker: a `-overlay` tree (the
+real files are never touched) in which each mutated function starts with `if <selector> ==
+"<id>" { <mutated body> }`, the selector read from `MUHAR_SCHEMATA_MUTANT`, and `//line`
+directives keep every file, line and function name what the classic mutated file would
+report. A mutant then costs a link and a test run. A mutant is eligible only when its edit
+sits inside one function body of a writable file and leaves the declarations alone (no
+labels, no `:=` redeclaring a parameter or result); mutants that do not compile together
+are found by one `go build -gcflags=-e` probe and dropped; the schemata baseline (no mutant
+selected) must be green in every worker copy, and an eligible positive control must be
+CAUGHT through it, or that run (or worker) is classic. A schemata NOT CAUGHT is re-run the
+classic way, so every NOT CAUGHT on the report is a classic verdict.
+
+Schemata is **off unless the spec asks for it**, because it rests on one assumption about
+the suite: that no test cross-checks two views of the code. Under schemata the mutant is
+live only in processes that inherit the selector and build through the overlay; the file on
+disk stays pristine. A test that compares the running code with its own source file, or
+with a child process started with a scrubbed environment, can go red because the two views
+disagree, and that red would be reported CAUGHT for a mutant the classic run calls NOT
+CAUGHT (`TestSchemataIsOptIn` pins the classic verdict for exactly that suite). Tests that
+depend on closure names, inlining or allocation counts can do the same. Turn it on for a
+spec only after a classic-vs-schemata run of that spec gives identical reports, and re-check
+when the suite gains such a test. `internal/deskkit/mutations.json` is the one spec opted in
+(parity recorded on #2653). Everything else — the baseline, the control, ineligible mutants,
+`-shard`, `-j` — runs as before, the report on stdout keeps its shape, and schemata notes
+go to stderr.
+
 `muhar` does **not** call `deskkit.Guard()`: it is a local diagnostic that makes no
 outward writes (no GitHub, no shared-state mutation — it edits a source file and restores
 it in the same run), so the C-6 kill switch and outward-write rate limit do not apply, the
