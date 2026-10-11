@@ -626,31 +626,37 @@ The register, lower-case kebab ids:
 | `persistence-migrations` | schema expand-then-contract, backfill, dual-write drift, source of truth |
 | `resource-lifecycle` | handles, files, servers, timers, processes closed on failure; no leaks |
 | `time-ordering` | wall vs monotonic clocks, timezone, TTL/expiry, replay semantics |
-| `observability-signals` | a failure in this change can be reconstructed from what it emits; no secrets in logs |
+| `observability-signals` | a failure in this change can be reconstructed from what it emits (secret-free-logging itself is the security lane's, not this register's) |
 | `tests-evidence` | a check that fails if the new branch is wrong; no generated theater |
 | `operability-ship` | feature flag, config, rollback path; who acts when it fails |
-| `ui-a11y` | keyboard, labels, contrast, XSS — ONLY when the diff touches UI surfaces; `n/a` otherwise is the norm |
+| `ui-a11y` | keyboard, labels, contrast — ONLY when the diff touches UI surfaces; `n/a` otherwise is the norm (injection into the new surface, XSS included, is the security lane's) |
 | `structure-ownership` | the owning module is named; a new pattern with one implementation is a finding |
 
-The project layer may APPEND classes for its stack and may never remove a base class — the
+The project layer may append classes for its stack and may never remove a base class — the
 same layer boundary every other neutral body here uses. Every class ends the round in
-exactly one of three states, the methodology's existing three, with no new vocabulary:
+exactly one of four line shapes, one grammar — class first, state second, colon, detail.
+`checked-clean` and `could-not-check` are the methodology's existing checked/unchecked states
+(common clauses C4) applied per class; `n/a` is the one new line shape:
 
 | state | line in the verdict body's Coverage block |
 |---|---|
 | `finding` | `class — finding <id>` — the finding that raised it, cited by id (clause 14) |
-| `n/a` | `class — n/a: <one-sentence reason>` — the stated scope cannot touch the class |
+| `checked-clean` | `class — checked-clean: <what was examined>` — the class applied, was examined, and is sound |
+| `n/a` | `class — n/a: <one-sentence reason>` — the class genuinely does not apply to this diff |
 | `could-not-check` | `class — could-not-check: <what was missing>` — not honestly n/a-able, and not checked |
 
 The accounting covers the round's stated scope (clause 19): a `Scope: DELTA` round accounts
-for the classes the scope's named paths can touch; a `Scope: FULL PASS` accounts for the
+for the classes the delta range's paths can touch — the assignment carries the head range,
+not a path list, and the paths are derived from it; a `Scope: FULL PASS` accounts for the
 whole register. A delta that grows a path into a class the scope did not name is clause 19's
 wrong-stated-scope case: full pass, say so.
 
-The refusal rule is the whole point of the contract: **a class that cannot be honestly
-`n/a`'d and was not checked is `could-not-check`, never a silent APPROVE** (clause 5). The
-register carries no security classes — trust/authz, secrets and PII, injection are the
-security lane's, and the two verdicts stay separate artifacts (clause 12).
+An examined-and-sound class is `checked-clean`, never `n/a` — conflating the two is
+precisely the leak this contract exists to close. The refusal rule is the whole point of the
+contract: **a class that cannot be honestly `n/a`'d and was not checked is
+`could-not-check`, never a silent APPROVE** (clause 5). The register carries no security
+classes — trust/authz, secrets and PII, injection are the security lane's, and the two
+verdicts stay separate artifacts (clause 12).
 <!-- lane:correctness:end -->
 <!-- lane:security:begin -->
 **Not run in the security lane.** The coverage contract and its class register are the
