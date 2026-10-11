@@ -41,7 +41,8 @@
 //	  },
 //	  "mutations": [
 //	    {"name": "breaker-active check", "file": "...", "old": "...", "new": "..."}
-//	  ]
+//	  ],
+//	  "schemata": true                    // optional; build eligible mutants once per worker (schemata.go)
 //	}
 //
 // Exit codes:
@@ -71,6 +72,11 @@ type spec struct {
 	Test      string     `json:"test"`
 	Control   Mutation   `json:"control"`
 	Mutations []Mutation `json:"mutations"`
+	// Schemata opts this spec into mutant schemata (#2635). Off unless set:
+	// schemata assumes the suite never cross-checks the running code against
+	// its source on disk or against a child that drops the environment (see
+	// schemata.go), so a spec turns it on only after a parity run on its suite.
+	Schemata bool `json:"schemata,omitempty"`
 }
 
 // parseShard parses a -shard value of the form "i/n": n total shards, this
@@ -283,11 +289,15 @@ func main() {
 			return cmd.Run() != nil
 		},
 	}
-	// Mutant schemata (#2635): eligible mutants share one build per worker and
-	// are picked per run by an environment selector, instead of each one
-	// recompiling its package. Only a suite run that goes RED is taken from it
-	// (see schemata.go); every other verdict still comes from the classic run.
-	if schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
+	// Mutant schemata (#2635), for a spec that opts in: eligible mutants share
+	// one build per worker and are picked per run by an environment selector,
+	// instead of each one recompiling its package. Only a suite run that goes
+	// RED is taken from it (see schemata.go); every other verdict still comes
+	// from the classic run.
+	if s.Schemata && !schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
+		fmt.Fprintln(os.Stderr, "muhar: schemata: the spec asks for it, but needs a go test -count=1 suite, no -overlay of its own and a TMPDIR without spaces; every mutation rebuilds the suite")
+	}
+	if s.Schemata && schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
 		h.Log = os.Stderr
 		h.SchemaTest = func(root, overlay, selector string) bool {
 			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design

@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -174,5 +176,112 @@ func TestSchemaBlameMapsLines(t *testing.T) {
 	}
 	if _, ok := tr.blame("go: no main packages to build\n"); ok {
 		t.Fatal("output with no diagnostic was blamed on a mutant")
+	}
+}
+
+// guardFixture is a package of nine one-line functions, each mutant one of
+// them, so every mutant is eligible and the eligibility floor is met. The
+// classic suite stub is red only for the control, so every classic verdict
+// for a mutant is NOT CAUGHT: any CAUGHT in a report came from schemata.
+func guardFixture(t *testing.T) *Harness {
+	t.Helper()
+	var src strings.Builder
+	src.WriteString("package g\n")
+	var ms []Mutation
+	for i := 0; i < 9; i++ {
+		lit := strconv.Itoa(1000 + i)
+		src.WriteString("\nfunc F" + strconv.Itoa(i) + "() int {\n\treturn " + lit + "\n}\n")
+		ms = append(ms, Mutation{Name: "f" + strconv.Itoa(i), File: "g.go", Old: "return " + lit, New: "return " + lit + "7"})
+	}
+	src.WriteString("\nfunc C() int {\n\treturn 5000\n}\n")
+	dir, path := writeSrc(t, "g.go", src.String())
+	return &Harness{
+		Root:      dir,
+		Control:   Mutation{Name: "control", File: "g.go", Old: "return 5000", New: "return 5001"},
+		Mutations: ms,
+		Test: func(string) bool {
+			raw, _ := os.ReadFile(path)
+			return strings.Contains(string(raw), "return 5001")
+		},
+	}
+}
+
+func wantAllClassic(t *testing.T, rep Report) {
+	t.Helper()
+	if rep.Broken {
+		t.Fatalf("harness broken: %s", rep.BrokenReason)
+	}
+	for _, r := range rep.Results {
+		if r.Result != NotCaught {
+			t.Errorf("%s: %s, want NOT_CAUGHT (the classic verdict): a schemata red was trusted without its guard", r.Mutation.Name, r.Result)
+		}
+	}
+}
+
+// A schemata build that is red with no mutant selected proves nothing: its
+// reds must never be read as CAUGHT.
+func TestSchemaBaselineRedIsClassic(t *testing.T) {
+	h := guardFixture(t)
+	h.SchemaTest = func(_, _, _ string) bool { return true } // red whatever is selected
+	wantAllClassic(t, h.Run())
+}
+
+// A schemata build that does not catch the positive control cannot be
+// trusted to catch anything, so the run goes classic.
+func TestSchemaControlMissIsClassic(t *testing.T) {
+	h := guardFixture(t)
+	h.SchemaTest = func(_, _, sel string) bool { return sel != schemaNone && sel != schemaControl }
+	wantAllClassic(t, h.Run())
+}
+
+// Each extra worker proves the schemata baseline in its own copy; a red one
+// gets no schemata tree, so all of that worker's mutants run classically.
+func TestSchemaWorkerBaselineRed(t *testing.T) {
+	h := guardFixture(t)
+	other := t.TempDir()
+	raw, _ := os.ReadFile(filepath.Join(h.Root, "g.go"))
+	if err := os.WriteFile(filepath.Join(other, "g.go"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.SchemaTest = func(root, _, sel string) bool {
+		if sel == schemaNone {
+			return root == other // the baseline is red only in the other copy
+		}
+		return true
+	}
+	plan, first := h.schemataSetup(h.Root)
+	defer first.cleanup()
+	if plan == nil || first == nil {
+		t.Fatal("schemata did not engage in the first copy, where its baseline is green")
+	}
+	if tr := h.schemataFor(other, plan); tr != nil {
+		tr.cleanup()
+		t.Fatal("a worker copy whose schemata baseline is red got a schemata tree")
+	}
+	if tr := h.schemataFor(h.Root, plan); tr == nil {
+		t.Fatal("a worker copy whose schemata baseline is green got none")
+	} else {
+		tr.cleanup()
+	}
+}
+
+// The classic run reports COULD_NOT_MUTATE for a file it cannot write;
+// schemata never writes, so such a file must stay classic.
+func TestSchemaReadOnlyFileClassic(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a file the process cannot open for writing")
+	}
+	dir, path := writeSrc(t, "p.go", "package p\n\nfunc C(n int) int {\n\treturn n + 1\n}\n")
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	tr, err := buildSchemaTree(dir, map[int]Mutation{0: {File: "p.go", Old: "n + 1", New: "n + 2"}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tr.cleanup()
+	if tr.ids["0"] || tr.skipped["file not writable"] != 1 {
+		t.Fatalf("read-only file: ids=%v skipped=%v, want it skipped as not writable", tr.ids, tr.skipped)
 	}
 }

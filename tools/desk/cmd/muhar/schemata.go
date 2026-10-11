@@ -26,15 +26,27 @@ package main
 // results), with every position mapped back to the line and column the classic
 // mutated file would report.
 //
-// Why the verdicts cannot get worse. Schemata never decides a NOT CAUGHT. A
-// schemata run that stays green is re-run the classic way (mutation written to
-// disk, proven landed, suite rebuilt) and the classic verdict is the one
-// reported. Every way schemata can differ from a classic mutant (a source-reading
-// test, a subprocess that drops the environment, a file the suite never builds)
-// makes it see LESS of the mutation, so those mutants fall through to the classic
-// run. Schemata is only trusted for CAUGHT. Anything the shape check below cannot
-// vouch for runs classically from the start, and a schemata build that does not
-// pass the pristine baseline is narrowed (bisected) until it does, or dropped.
+// What schemata assumes, and why it is opt-in. Under schemata the mutant is
+// live only in processes that inherit MUHAR_SCHEMATA_MUTANT and build through
+// the overlay; the file on disk stays pristine. So a suite that cross-checks
+// two views of the code (the running code against its own source file, or
+// against a child process that drops the environment) can go red because the
+// views disagree, not because it saw the mutation: a schemata CAUGHT where the
+// classic run says NOT CAUGHT. Name-, inlining- or allocation-sensitive tests
+// (closure numbers, AllocsPerRun) can do the same. The schemata baseline (no
+// mutant selected) cannot detect any of these, because the disagreement exists
+// only when a mutant is selected. A spec therefore turns schemata on itself
+// ("schemata": true), and only after a classic-vs-schemata parity run on its
+// own suite; nothing else does.
+//
+// Within that assumption: schemata never decides a NOT CAUGHT. A schemata run
+// that stays green is re-run the classic way (mutation written to disk, proven
+// landed, suite rebuilt) and the classic verdict is reported, so a source
+// reader, an env-dropping subprocess or an unbuilt file that sees LESS of the
+// mutation falls through to the classic run. Anything the shape check below
+// cannot vouch for runs classically from the start, and a schemata build that
+// does not pass the pristine baseline is narrowed (bisected) until it does, or
+// dropped.
 
 import (
 	"encoding/json"
@@ -307,6 +319,7 @@ func buildSchemaTree(root string, want map[int]Mutation, probe bool) (*schemaTre
 		sites []schemaSite
 	}
 	files := map[string]*fileSites{}
+	unwritable := map[string]bool{}
 	skipped := map[string]int{}
 	keys := make([]int, 0, len(want))
 	for i := range want {
@@ -319,6 +332,10 @@ func buildSchemaTree(root string, want map[int]Mutation, probe bool) (*schemaTre
 		if err != nil {
 			continue
 		}
+		if unwritable[path] {
+			skipped["file not writable"]++
+			continue
+		}
 		fs := files[path]
 		if fs == nil {
 			raw, err := os.ReadFile(path)
@@ -326,6 +343,17 @@ func buildSchemaTree(root string, want map[int]Mutation, probe bool) (*schemaTre
 				skipped["file unreadable"]++
 				continue
 			}
+			// The classic run writes the mutation to disk and reports
+			// COULD_NOT_MUTATE when it cannot; schemata never writes, so a file
+			// the classic run could not mutate stays classic. Opening for write
+			// without O_TRUNC changes nothing on disk.
+			f, err := os.OpenFile(path, os.O_WRONLY, 0)
+			if err != nil {
+				unwritable[path] = true
+				skipped["file not writable"]++
+				continue
+			}
+			_ = f.Close()
 			fs = &fileSites{src: string(raw)}
 			files[path] = fs
 		}
@@ -607,6 +635,8 @@ func (h *Harness) narrow(root string, want map[int]Mutation) (map[int]Mutation, 
 	if len(a) == 0 {
 		return nil, nil
 	}
+	// a was proven green by its own narrow call above on an identical,
+	// deterministic build, so this rebuild needs no second baseline run.
 	t, err = buildSchemaTree(root, a, false)
 	if err != nil {
 		return nil, nil
