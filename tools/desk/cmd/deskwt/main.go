@@ -35,7 +35,7 @@ USAGE:
   deskwt maintain [--repo <path>] [--apply] [--min-interval <dur>] [--timeout <dur>]
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
-               [--no-branches | --branches-only]
+               [--no-branches | --branches-only] [--no-cache] [--cells-root <path>]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
   deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
   deskwt --version
@@ -134,6 +134,15 @@ With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s 
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
 Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
 dead-session-reaped, and branches-deleted.
+
+Every sweep ALSO runs the CELL-CACHE pressure pass (Step D, default ON; --no-cache skips it):
+for each marked cell Go-cache root under the cells root (--cells-root, then $CELLS_ROOT,
+then the compiled per-user default) it runs the managed cache's own pressure check —
+reclaiming only over the byte budget or under the free-space floor, never while a consumer
+holds a lease — and it reaps a cache root whose owning directory this same sweep removed,
+gated on the root's lease set re-read under its own lock at act time. The pass is SILENT
+when every cache is within policy; the summary gains a cache segment only when it
+reclaimed, reaped, or found pressure it could not clear.
 
 Every sweep ALSO garbage-collects LOCAL branches (Step C — the worktree lifecycle leaves a
 stale local ref behind per worktree, and nothing else reaps them). A branch is collected

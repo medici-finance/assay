@@ -2348,6 +2348,7 @@ deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks who
 deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
 deskwt prune --branches-only                           # …or run ONLY the local-branch GC (see Step C)
 deskwt prune --no-branches                             # …or skip the branch GC for one sweep
+deskwt prune --no-cache                                # …or skip the cell-cache pressure pass (Step D)
 deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   # a desk role's own locked worktree
 deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
@@ -2447,12 +2448,27 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      compare-and-delete against the proven sha (`git update-ref -d <ref> <sha>`), never a
      force verb. Live sweeps print per-class counts only; `--dry-run` prints the
      per-branch COLLECT plan and deletes nothing.
+  5. **Step D (default ON — `--no-cache` skips it; `--cells-root` re-points it):** the
+     **cell-cache pressure pass**. A cell's managed Go cache (see
+     `docs/cellctl-go-cache.md`) is otherwise pressure-checked only at launch admission
+     and dispatch, so a long-lived cell can sit over its byte budget — or the filesystem
+     under its free-space floor — indefinitely. Each sweep discovers the marked cache
+     roots under the cells root (`--cells-root`, then `$CELLS_ROOT`, then the compiled
+     per-user default; a custom `CELL_GO_CACHE_ROOT` outside it is out of the sweep's
+     sight) and runs the package's own `Check` against each root's last recorded policy:
+     reclaim only under pressure, never while a consumer record exists, never a warm
+     purge. A root whose owning directory the same sweep removed is reaped as an orphan,
+     gated on its lease set re-read under its own lock at act time. The pass is silent
+     when every cache is within policy; the summary gains a cache segment only when it
+     reclaimed, reaped, or found pressure it could not clear.
 
 Every sweep prints one summary line with four counts — **pruned** (bookkeeping entries
 dropped), **removed**, **held** (with **locked-held** broken out), and **locks-reclaimed** —
 plus, when the branch GC ran, **branches-gc** (split into its **merged** and
 **cherry-clean** proof classes) and **branches-held** — so an operator can tell a repo
-that is draining from one that is stuck, and on which gate.
+that is draining from one that is stuck, and on which gate. The cache pass adds its counts
+(**cache-checked** / **cache-reclaimed** / **cache-deferred** / **cache-orphans-reaped**)
+only when it acted or found pressure it could not clear.
 
 ### `--reclaim-stale-locks` — giving the lock a lifecycle
 
