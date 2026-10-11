@@ -58,7 +58,7 @@ A record is always in exactly one state.
 
 | State | Meaning | Established by |
 |---|---|---|
-| `requested` | The control plane accepted a request and assigned the record its id; no adapter has confirmed anything yet | the record existing |
+| `requested` | The control plane accepted a request and assigned the record its id; no adapter has confirmed anything yet | the record existing; its effect list may still be empty, and no receipt has observed the resource or a failed create |
 | `provisioned` | The resource exists at the adapter, inside its TTL, unclaimed | a `create` receipt (or a reconcile receipt for an unacknowledged `create`) observing it `present` |
 | `claimed` | A human or organization principal has taken ownership, so the resource may outlive its TTL | a succeeded `claim` by that principal, plus an `ownership` block naming them |
 | `expired` | The TTL (or a claimed retention) has run out; the resource MUST be released | the clock passing the bound, read against the receipts |
@@ -81,6 +81,23 @@ The recorded state MUST be the one the receipts support. A record that says `pro
 with no receipt showing the resource present fails validation. The same goes for a record
 that says `released` with no reconcile showing the resource absent. In both cases the
 record and reality have drifted apart, and the record is the half that is wrong.
+
+**The receipts are read in order, and the latest authoritative observation wins.** The
+authoritative observations are the receipts of `create`, `inspect`, `snapshot`, `restore`
+and `claim` effects, and the receipt of a reconcile that resolves an earlier effect. A
+`release` effect's own receipt is not one: it says the adapter accepted the request, and
+only a later reconcile says the resource is gone (Recovery rule 4). So:
+
+- A resource observed `present` and later observed `absent` is no longer `provisioned` or
+  `claimed`, whatever the earlier receipt said.
+- A resource observed `present` again after a reconciled release is live again, and the
+  record MUST NOT say `released`. Its TTL counts from the observation that brought it
+  back, and a claim from before the release does not carry over to it.
+- A `requested` record whose create already failed, or was reconciled `absent`, is
+  `failed`; it cannot fall back to waiting for a create.
+- A reconcile of a `claim` whose answer was lost shows only that the resource is present.
+  It does not make the resource claimed: the claim is re-issued with the same idempotency
+  key, and that claim's own succeeded receipt records it.
 
 ## Adapter verbs
 
@@ -123,9 +140,9 @@ mandatory unless marked otherwise.
 | `adapter` | `id` (MUST be in the adapter registry) and `version` | an unregistered adapter is never trusted on its own say-so |
 | `owner` | `brief` and `run`: the brief and the run the resource was provisioned for | a resource with no owning run cannot be reconciled or cleaned up |
 | `input-revision` | The revision the resource was created from | evidence produced against the resource is valid only for this revision |
-| `ttl` | Time to live from the establishing receipt (`30m`, `4h`, `2d`) | a resource with no TTL is not ephemeral, so no agent may request it |
+| `ttl` | Time to live from the establishing receipt (`30m`, `4h`, `2d`; at most five digits) | a resource with no TTL is not ephemeral, so no agent may request it |
 | `quota` | One or more `{dimension, limit}` bounds | an unbounded resource is not one an agent may request |
-| `data-classification` | `synthetic`, `public`, `internal`, `confidential` or `restricted` | decides what data the resource may hold, and so who may claim it |
+| `data-classification` | `synthetic`, `public`, `internal`, `confidential` or `restricted` | states what data the resource may hold, so a reviewer and the adopter's control plane can apply their own policy to it; the v1 validator records it and does not decide from it who may claim |
 | `provisioning` | `requested-by` (an `agent:`, `human:` or `org:` principal) and `via: control-plane` | provisioning authority (see the next section) |
 | `credentials` | The credential-custody model (see "Credential custody") | durable credentials never reach an agent |
 | `cleanup-owner` | `control-plane`, or a `human:`/`org:` principal; never an agent | someone accountable removes the resource |
@@ -134,7 +151,7 @@ mandatory unless marked otherwise.
 | `recovery` | `reconcile-before-retry` | the recovery semantics, declared rather than assumed |
 | `state` | One state from the state machine | the claim the receipts must support |
 | `ownership` | *Present once claimed.* `principal`, `claimed-at`, optional `retain-until` | ownership authority, recorded |
-| `effects` | Every effect on the resource, in issue order | the evidence itself |
+| `effects` | Every effect on the resource, in issue order; empty only while the record is `requested` | the evidence itself |
 
 Each `effects[]` entry carries the following fields:
 
@@ -145,6 +162,15 @@ Each `effects[]` entry carries the following fields:
 - `principal`: who authorized the effect.
 - On a `reconcile`, `reconciles`: the id of the earlier effect it resolves.
 - On every succeeded effect, a `receipt`.
+
+Every bound the rules read MUST be one they can evaluate. A `ttl` or credential `lifetime`
+is a positive integer of at most five digits and one unit, so no accepted value can
+overflow. A timestamp MUST name a real instant: a value that has the right shape but no
+real date, such as month 13 or 30 February, is a schema violation. A bound the validator
+cannot read is never treated as a bound that holds.
+
+A record file holds exactly one YAML document. A file with a second document is
+`could-not-check`, because only the first would be checked.
 
 ## Provisioning authority and ownership authority
 
@@ -167,6 +193,10 @@ promote it into something longer-lived, or to pay for it. Only a `human:` or `or
 principal MAY hold it. An agent MUST NOT claim. A `claim` effect authorized by an `agent:`
 principal, or by no principal, fails validation regardless of its outcome. So does an
 `ownership` block that no succeeded claim by the same principal backs.
+
+Once a principal has claimed a resource, an agent cannot end it either. A `release` after a
+succeeded claim MUST be authorized by a `human:` or `org:` principal or by `control-plane`;
+a release authorized by an `agent:` principal, or by no principal, fails validation.
 
 The split matters because the dangerous moment is the moment a resource stops being
 ephemeral. An agent that could claim could turn a scratch branch into a standing database
@@ -212,6 +242,9 @@ The rules for receipts:
 - An effect recorded `failed` MAY carry a receipt. One that does tells a reviewer what the
   failure left behind.
 - An effect recorded `unknown` carries none. That is what `unknown` means.
+- A receipt's `observed-at` MUST NOT be later than the instant the record is checked at,
+  nor earlier than its effect's `requested-at`. A receipt dated outside that window would
+  move the anchor the TTL is read from.
 
 ## Recovery and reconciliation
 
@@ -264,7 +297,7 @@ wrong record:
 ## Adapter registry
 
 The validator checks each record against a registry of the adapters the adopter actually
-runs, never against the record's own claims. A registry is one YAML document:
+runs, never against the record's own claims. A registry is exactly one YAML document:
 
 ```yaml
 schema: runtime-adapters-v1
@@ -274,6 +307,11 @@ adapters:
     verbs: [create, inspect, snapshot, restore, claim, release, reconcile]
     max-ttl: 24h        # optional ceiling on an agent-requested TTL
 ```
+
+The registry's keys are closed: `schema` and `adapters` at the top level, and `id`,
+`classes`, `verbs` and `max-ttl` on each adapter. Any other key makes the registry invalid.
+A misspelt key, such as `max_ttl`, would otherwise read exactly like a key left out on
+purpose, and silently remove a ceiling.
 
 Each entry's `verbs` MUST include `create`, `inspect`, `release` and `reconcile`. A record
 fails validation in three cases:
@@ -302,17 +340,21 @@ on the same contract as `statusgen conform` and `statusgen patterns`:
 `--as-of` fixes the instant against which TTLs are read, so a verdict is reproducible. It
 defaults to now.
 
+A directory argument is walked whole, subdirectories included, and every `*.yaml` and
+`*.yml` file under it is checked. A directory with no record under it is
+`could-not-check`.
+
 | Rule | Fails when |
 |---|---|
-| `runtime-resource-schema-violation` | the record breaks the schema: a mandatory field missing (a missing `ttl` is reported by name), an agent as cleanup owner or ownership principal, no quota, durable credentials outside the control plane, a duplicated effect id |
+| `runtime-resource-schema-violation` | the record breaks the schema: a mandatory field missing (a missing `ttl` is reported by name), an agent as cleanup owner or ownership principal, no quota, durable credentials outside the control plane, a duplicated effect id, or a `ttl`, `lifetime` or timestamp the rules cannot evaluate |
 | `runtime-resource-unknown-adapter` | the adapter is unregistered, or not registered for the class or for a verb used |
 | `runtime-resource-ttl-exceeds-bound` | the TTL exceeds the adapter's registered `max-ttl` |
 | `runtime-resource-expired` | an unclaimed resource is past its TTL, or a claimed one past its `retain-until`, yet still recorded as live |
-| `runtime-resource-claim-without-principal` | a claim is authorized by anything but a `human:`/`org:` principal, a `claimed` record has no `ownership`, or `ownership` is not backed by a succeeded claim by that principal |
+| `runtime-resource-claim-without-principal` | a claim is authorized by anything but a `human:`/`org:` principal, a release after a succeeded claim is authorized by anything but such a principal or `control-plane`, a `claimed` record has no `ownership`, or `ownership` is not backed by a succeeded claim by that principal |
 | `runtime-resource-unreconciled-effect` | an `unknown` effect has no resolving reconcile, an effect was issued while one was unresolved, or a reconcile names no earlier effect |
 | `runtime-resource-unreconciled-release` | a succeeded release has no reconcile observing `absent`, or the record says `released` without one |
 | `runtime-resource-receipt-missing` | a succeeded effect carries no receipt |
-| `runtime-resource-state-unsupported` | the recorded state is not the one the receipts support |
+| `runtime-resource-state-unsupported` | the recorded state is not the one the receipts support, read in order so the latest authoritative observation wins; or a receipt is dated after the check instant or before its effect was requested |
 | `runtime-resource-credential-not-rotated` | a succeeded claim has no recorded rotation or revocation, or a release no recorded revocation |
 | `runtime-resource-credential-outlives-ttl` | the agent credential's lifetime exceeds the resource's TTL |
 
@@ -336,6 +378,16 @@ for:
 
 None of these needs a managed service, an account, or a network. A hosted provider is one
 more adapter, not a dependency of the contract.
+
+## Trust boundary
+
+The validator checks that a record is internally consistent and consistent with the
+registry. It does not check that the record is authentic: it cannot tell a receipt the
+adapter returned from one someone typed. Custody of the record files, meaning who can
+write them, is therefore the trust boundary. The control plane writes the records, and an
+adopter keeps agents from writing them directly, for the same reason an agent never calls
+an adapter directly. The verifier's independent receipt check, the third layer under
+"Recovery and reconciliation", is what compares a record with the adapter's real state.
 
 ## What this document does not do
 
