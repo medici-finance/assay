@@ -163,19 +163,18 @@ reviewable artifact, not a run.
   in a rig that plants hooks, a push address and URL rewrites, and checks that a list of
   edits to the job each turns a named test red, and the workflow-level wiring the job
   depends on (the hourly cron, the scheduled runs' concurrency group, the lint step's test
-  selection and its `paths:` entries) is pinned the same way; once promoted, the board
-  workflow's PR lint job runs those tests (before promotion no pull-request check runs
-  them). Two outcomes to expect: a reconcile PR a maintainer closed is not reopened, and
+  selection and its `paths:` entries) is pinned the same way, and the board workflow's
+  PR lint job runs those tests. Two outcomes to expect: a reconcile PR a maintainer closed is not reopened, and
   the next tick that makes a new commit (main moved, or another row changed) opens a
   fresh draft PR from the same branch; and a tick whose push lands but whose PR call
   fails exits red with the branch pushed and no PR, and a tick that finds the branch
   already carrying its result publishes nothing, so the missing PR is opened only by
   the next tick that makes a new commit. The same file holds every job that mints the App token to that
   isolation, except `regen` and `model-autoflip`, which are live today without it and
-  are listed as exempt (the list may only shrink). The job never pushes the default branch, and scheduled runs sit in their own concurrgroup so they cannot displace a pending push regen. **Already live** — a maintainer
+  are listed as exempt (the list may only shrink). The job never pushes the default branch, and scheduled runs sit in their own concurrency group so they cannot displace a pending push regen. **Already live** — a maintainer
   promoted it, and the manifest declares it `identical`: the job tests read the staged
   copy, so the parity check is what keeps an edit made straight to the live file from
-  leaving them green. The board-writer App needs `Pull requests: write` for the PR step.R step.
+  leaving them green. The board-writer App needs `Pull requests: write` for the PR step.
 
 ### `windows-ci-leg.yml` status
 
