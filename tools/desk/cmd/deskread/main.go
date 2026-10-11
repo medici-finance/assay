@@ -94,6 +94,7 @@ var readKinds = map[string]string{
 	"issue-list":     "issues of a stated state, optionally one label, with Incomplete on overflow (deskkit.Forge.ListIssues)",
 	"issue":          "one issue: state, body, author with type, closer (deskkit.Forge.GetIssueTyped, issue kind)",
 	"issue-states":   "an issue's close/reopen events and closing changes (deskkit.Forge.IssueStateEvents)",
+	"label-events":   "an issue's whole label history, unnamed events kept, with Complete (deskkit.Forge.IssueLabelHistory)",
 	"changes":        "changes of a stated state with author, base, fork facts (deskkit.Forge.ListChanges)",
 	"change":         "one change, with its merge-commit SHA (deskkit.Forge.GetPullRequest)",
 	"change-commits": "a change's own commit SHAs, with Complete (deskkit.Forge.ListChangeCommits)",
@@ -105,7 +106,7 @@ var readKinds = map[string]string{
 // is in BOTH issueKinds and changeKinds and must be given exactly one of the two.
 var (
 	repoKinds   = map[string]bool{"issues": true, "issue-list": true, "changes": true, "default-branch": true}
-	issueKinds  = map[string]bool{"trust": true, "comments": true, "issue": true, "issue-states": true}
+	issueKinds  = map[string]bool{"trust": true, "comments": true, "issue": true, "issue-states": true, "label-events": true}
 	changeKinds = map[string]bool{"comments": true, "change": true, "change-commits": true, "change-files": true}
 )
 
@@ -126,6 +127,7 @@ usage:
   deskread trust          --issue  <owner/repo#N> [--issue  <owner/repo#N> …]
   deskread issue          --issue  <owner/repo#N> …
   deskread issue-states   --issue  <owner/repo#N> …
+  deskread label-events   --issue  <owner/repo#N> …
   deskread comments       --issue  <owner/repo#N> …   (exactly one of --issue / --change)
   deskread comments       --change <owner/repo#N> …
   deskread change         --change <owner/repo#N> …
@@ -135,7 +137,7 @@ usage:
 
 flags:
   --repo <owner/repo>      repeatable (per-repo kinds); ONE invocation serves the whole set, read concurrently
-  --issue <owner/repo#N>   repeatable (trust, issue, issue-states, comments); one entry per issue
+  --issue <owner/repo#N>   repeatable (trust, issue, issue-states, label-events, comments); one entry per issue
   --change <owner/repo#N>  repeatable (change, change-commits, change-files, comments); one entry per change
   --state <word>           issue-list (open|closed|all, default open) and changes (merged|closed|all, required);
                            any other word, or --state on another kind, is refused
@@ -165,7 +167,13 @@ output: a versioned JSON envelope on stdout
    "partial": [{"repo": "o/n", "number": 7, "reason": "…"}]}
 
   per-issue and per-change kinds answer under "items", one key per kind: "issue",
-  "issueStates", "change", "changeCommits", "changeFiles".
+  "issueStates", "labelEvents", "change", "changeCommits", "changeFiles".
+
+  label-events answers {"complete": …, "events": [{"label": …, "removed": …, "createdAt": …,
+  "actorLogin": …, "actorId": …}]}: the whole history oldest first, an event whose label the
+  forge no longer names kept with an empty "label", an absent actor kept as an empty login and
+  id 0. "complete": false means a page bound was hit and the history is partial. The kind is
+  transport: it carries no verdict about the events.
 
 A repo (or issue, or change) that could not be read lands in "partial" with its reason and is
 ABSENT from "repos" ("items"); the exit code is still 0. That is deliberate: a caller must be
@@ -771,6 +779,7 @@ type ItemResult struct {
 	Comments      *[]CommentJSON     `json:"comments,omitempty"`
 	Issue         *IssueDetailJSON   `json:"issue,omitempty"`
 	IssueStates   *IssueStatesJSON   `json:"issueStates,omitempty"`
+	LabelEvents   *LabelEventsJSON   `json:"labelEvents,omitempty"`
 	Change        *ChangeDetailJSON  `json:"change,omitempty"`
 	ChangeCommits *ChangeCommitsJSON `json:"changeCommits,omitempty"`
 	ChangeFiles   *ChangeFilesJSON   `json:"changeFiles,omitempty"`
@@ -836,6 +845,24 @@ type IssueStatesJSON struct {
 	Complete       bool                `json:"complete"`
 	Events         []StateEventJSON    `json:"events"`
 	ClosingChanges []ClosingChangeJSON `json:"closingChanges"`
+}
+
+// LabelEventsJSON is deskkit.LabelHistory (the label-removal hold). Complete=false: a page bound was hit,
+// so the events below are a prefix of the history, never all of it.
+type LabelEventsJSON struct {
+	Complete bool             `json:"complete"`
+	Events   []LabelEventJSON `json:"events"`
+}
+
+// LabelEventJSON is one label application or removal. Label is empty for an event whose label the
+// forge no longer names (a deleted label); ActorLogin is empty and ActorID 0 where the forge
+// reported no actor. Nothing here is a verdict about who the actor is.
+type LabelEventJSON struct {
+	Label      string `json:"label"`
+	Removed    bool   `json:"removed"`
+	CreatedAt  string `json:"createdAt,omitempty"`
+	ActorLogin string `json:"actorLogin,omitempty"`
+	ActorID    int64  `json:"actorId,omitempty"`
 }
 
 // StateEventJSON is one close or reopen.
@@ -1029,6 +1056,22 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 			})
 		}
 		res.IssueStates = sj
+	case "label-events":
+		lh, lerr := f.IssueLabelHistory(fr, tgt.Number)
+		if lerr != nil {
+			return nil, lerr
+		}
+		if lh == nil {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("the forge returned no label history for %s#%d", tgt.Repo, tgt.Number), nil)
+		}
+		lj := &LabelEventsJSON{Complete: lh.Complete, Events: []LabelEventJSON{}}
+		for _, e := range lh.Events {
+			lj.Events = append(lj.Events, LabelEventJSON{
+				Label: e.Name, Removed: e.Removed, CreatedAt: e.CreatedAt,
+				ActorLogin: e.AppliedBy, ActorID: e.AppliedByID,
+			})
+		}
+		res.LabelEvents = lj
 	case "change":
 		pr, perr := f.GetPullRequest(fr, tgt.Number)
 		if perr != nil {

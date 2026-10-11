@@ -1057,6 +1057,16 @@ type ChangeCommits struct {
 	Complete bool
 }
 
+// LabelHistory is IssueLabelHistory's (op 64) result: every label add and remove event of one
+// issue, oldest first, INCLUDING an event whose label the forge no longer names (Name is empty,
+// the action, time and actor are kept). Complete=false means the walk stopped at its page bound
+// with the forge still paginating, so the list is a prefix of the history and a consumer must
+// read it as could-not-check, never as the whole.
+type LabelHistory struct {
+	Events   []LabelEvent
+	Complete bool
+}
+
 // TrustPayload is the parsed result of a trust-gate content-events read: the item's
 // body-edit time, its content events (comments/reviews with author identity and edit
 // times), and whether the read was COMPLETE. Complete=false means a comment/review
@@ -1703,6 +1713,15 @@ type Forge interface {
 	ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
 	// ListIssueLabelEvents reads issue stamp provenance without conflating an issue with a change.
 	ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
+	// IssueLabelHistory (op 64, the label-removal hold brief) reads ONE issue's whole label add/remove
+	// history with each actor's login AND numeric id, keeping the events of a label the forge no
+	// longer names (an empty Name), and reports Complete=false when the walk reached its page
+	// bound. It is its own operation, not a change to ListIssueLabelEvents, because that read
+	// drops the unnamed events (deliberately: an unnamed stamp attests to nothing) and errors,
+	// rather than reports, a page bound, and seven current readers depend on exactly that. A
+	// transport or permission failure is an error. Consumers: cmd/deskread's `label-events`
+	// kind (statusgen's label-removal hold) and cmd/issueboard's un-briefed-row classifier.
+	IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error)
 	// ListComments returns the comments/notes on a change or issue, oldest first.
 	ListComments(repo ForgeRepo, number int) ([]Comment, error)
 	// ListCommentsTyped is ListComments for a caller that has STATED which kind of object

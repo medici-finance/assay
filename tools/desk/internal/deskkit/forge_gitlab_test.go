@@ -1452,6 +1452,19 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ListIssueLabelEvents(glRepo, 7) },
 		},
 		{
+			// Op 64: the issue's whole label history with each user's id, the event of a DELETED
+			// label kept with an empty name (ListIssueLabelEvents drops it over the same payload).
+			name: "issue_label_history", method: "IssueLabelHistory",
+			setup: func(s *glServer) {
+				s.labelEvents = []map[string]any{
+					{"id": 1, "action": "add", "created_at": "2026-10-01T10:00:00Z", "user": map[string]any{"id": 42, "username": "desk-bot"}, "label": map[string]any{"id": 9, "name": "needs-decision"}},
+					{"id": 2, "action": "remove", "created_at": "2026-10-02T10:00:00Z", "user": map[string]any{"id": 42, "username": "desk-bot"}, "label": map[string]any{"id": 9, "name": "needs-decision"}},
+					{"id": 3, "action": "remove", "created_at": "2026-10-03T10:00:00Z", "user": map[string]any{"id": 43, "username": "someone"}, "label": map[string]any{"id": 0, "name": ""}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.IssueLabelHistory(glRepo, 7) },
+		},
+		{
 			// SYSTEM notes are dropped: GitLab records its own activity in the same list as
 			// human comments, and a caller filtering on authorship would otherwise treat a
 			// system note (which carries the acting user as its author) as somebody's comment.
