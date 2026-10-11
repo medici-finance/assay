@@ -35,6 +35,11 @@ on:
 permissions:
   contents: read
 
+# Superseded push runs are cancelled (#2634); the cron and dispatch runs never are.
+concurrency:
+  group: truth-suite-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
   GO_VERSION: "1.25.0"
 
