@@ -275,7 +275,13 @@ func TestPruneBatchesRemoval(t *testing.T) {
 	advanceMain(t, work, "first")
 
 	resetCalls(calls)
-	rc, errout := runCapErr(t, []string{"prune"})
+	// --no-branches: this test measures STEP B's call shape — the removal batching — so
+	// it runs the worktree arms alone. Step C (the branch GC) deliberately pays one
+	// `worktree list --porcelain` per COLLECTED branch (the pre-delete holder re-read —
+	// the checked-out guard git's ref-update layer does not provide), and that count
+	// grows with the number of branch deletions by design; pinning it here would conflate
+	// the two arms' budgets. branchgc_test.go pins the re-read behavior itself.
+	rc, errout := runCapErr(t, []string{"prune", "--no-branches"})
 	if rc != 0 {
 		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
 	}

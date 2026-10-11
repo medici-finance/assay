@@ -2,6 +2,7 @@ package cellscratch
 
 import (
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -188,7 +189,7 @@ func TestScratchPartial(t *testing.T) {
 	finish(t, r, 0)
 	original := s.remove
 	s.remove = func(path string) error {
-		if err := s.root.Remove(path + "/work/build"); err != nil {
+		if err := s.root.Remove(path + "/build"); err != nil {
 			return err
 		}
 		return errors.New("fixture deletion failed")
@@ -264,5 +265,55 @@ func TestScratchDeleteGuard(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sites, []string{"store.go:r.RemoveAll"}) {
 		t.Fatal("unowned deletion site:", sites)
+	}
+}
+
+// A task's ownership and evidence must survive a partial workspace deletion and
+// a store restart. Otherwise the next sweep can only inventory the residue.
+func TestScratchPartialWorkspaceRestart(t *testing.T) {
+	for _, code := range []int{0, 17} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			s := scratchStore(t)
+			r := scratchRun(t, s)
+			acknowledge(t, r)
+			finish(t, r, code)
+			original := s.remove
+			var calls []string
+			s.remove = func(path string) error {
+				calls = append(calls, path)
+				if path != r.Record.ID+"/work" {
+					t.Fatalf("metadata retired before workspace: %s", path)
+				}
+				if err := s.root.Remove(path + "/build"); err != nil {
+					return err
+				}
+				return errors.New("workspace removal interrupted")
+			}
+			got, err := s.Sweep(Policy{}, true)
+			if err == nil || !got.Partial || got.Reclaimed != 1000 || len(calls) != 1 {
+				t.Fatal(got, err, calls)
+			}
+			if _, err := s.record(r.Record.ID); err != nil {
+				t.Fatal("ownership lost", err)
+			}
+			if _, err := s.receipt(r.Record.ID); err != nil {
+				t.Fatal("evidence receipt lost", err)
+			}
+			s.remove = original
+			root := s.Path
+			s.Close()
+			recovered, err := Open(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer recovered.Close()
+			got = sweep(t, recovered, Policy{}, true)
+			if got.Partial || exists(t, filepath.Join(root, r.Record.ID)) {
+				t.Fatal("retry stranded task", got)
+			}
+			if got = sweep(t, recovered, Policy{}, true); len(got.Entries) != 0 {
+				t.Fatal("not idempotent", got)
+			}
+		})
 	}
 }
