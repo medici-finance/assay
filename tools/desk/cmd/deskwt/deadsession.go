@@ -48,6 +48,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -134,7 +136,7 @@ func judgeReap(sc *sweepCtx, rt, lockReason string, isLocked bool, mt time.Time,
 		return v
 	}
 
-	pushed, why, perr := pushedState(sc, rt)
+	pushed, why, perr := pushedState(sc, rt, isLocked && v.session != "")
 	if perr != nil {
 		v.reason += "; could-not-check: " + errText(perr)
 		return v
@@ -170,7 +172,8 @@ var dirtyAnyIn = func(sc *sweepCtx, rt string) (string, error) {
 // pushedState reports whether every commit in this worktree's HEAD is already on the remote,
 // and says in words which ref proved it (or which one failed to).
 //
-// Two acceptable proofs, in order:
+// For a detached head, a remote-tracking ref must contain the commit and no
+// ignored payload may remain. For a branch, two acceptable proofs, in order:
 //
 //	HEAD is reachable from its own UPSTREAM — the normal case for a branch behind a draft
 //	  PR. Nothing local is lost: the upstream ref holds HEAD and everything below it.
@@ -183,10 +186,53 @@ var dirtyAnyIn = func(sc *sweepCtx, rt string) (string, error) {
 //
 // Every failure to READ a ref is returned as an error, never as a false — an unreadable
 // upstream must leave the worktree alone, not condemn it.
-func pushedState(sc *sweepCtx, rt string) (bool, string, error) {
+func pushedState(sc *sweepCtx, rt string, inactiveNamedOwner bool) (bool, string, error) {
 	repo, err := sc.open(rt)
 	if err != nil {
 		return false, "", deskkit.Unverifiable("cannot open the worktree to check whether HEAD is pushed", err)
+	}
+	// Detached review heads have no upstream, including after squash merges.
+	// Use the same remote-reachability proof as explicit remove. The opt-in
+	// reap arm has already checked ownership and all untracked evidence.
+	// Require a named inactive owner: a freshly allocated, unlocked detached
+	// worktree may belong to a reviewer that has not taken its lock yet.
+	branch, berr := repo.AbbrevRefHEAD()
+	if berr != nil {
+		return false, "", deskkit.Unverifiable("cannot resolve worktree branch", berr)
+	}
+	if (branch == "HEAD" || branch == "") && inactiveNamedOwner {
+		// Nested repositories need their own preservation proof. This bounded
+		// arm deliberately holds all gitlinks, including uninitialized ones.
+		entries, eerr := reviewInventory(rt, "ls-files", "--stage", "-z")
+		if eerr != nil {
+			return false, "", deskkit.Unverifiable("cannot inventory review index", eerr)
+		}
+		for _, entry := range strings.Split(entries, "\x00") {
+			if strings.HasPrefix(entry, "160000 ") {
+				return false, "review submodules require separate preservation", nil
+			}
+		}
+		// Review evidence may be ignored by Git. Remote reachability protects
+		// committed source only; keep any ignored payload for explicit handoff.
+		ignored, ierr := ignoredReviewFiles(rt)
+		if ierr != nil {
+			return false, "", deskkit.Unverifiable("cannot inventory ignored review files", ierr)
+		}
+		if ignored != "" {
+			return false, "ignored review files require owner evidence handoff", nil
+		}
+		head, herr := repo.Resolve("HEAD")
+		if herr != nil {
+			return false, "", deskkit.Unverifiable("cannot resolve detached HEAD", herr)
+		}
+		refs, rerr := repo.RefsContaining(head.String(), "refs/remotes/")
+		if rerr != nil {
+			return false, "", deskkit.Unverifiable("cannot prove detached HEAD on a remote-tracking ref", rerr)
+		}
+		if len(refs) == 0 {
+			return false, "detached HEAD is not reachable from any remote-tracking ref", nil
+		}
+		return true, "detached HEAD is reachable from remote-tracking ref " + refs[0], nil
 	}
 	upstream, uerr := repo.UpstreamRef()
 	if uerr == nil {
@@ -205,6 +251,9 @@ func pushedState(sc *sweepCtx, rt string) (bool, string, error) {
 	}
 	if onMain {
 		return true, "HEAD is reachable from refs/remotes/origin/main", nil
+	}
+	if (branch == "HEAD" || branch == "") && !inactiveNamedOwner {
+		return false, "detached remote proof requires a named inactive session lock", nil
 	}
 	if uerr != nil {
 		return false, "no-upstream-and-not-on-main (this branch has no upstream and HEAD is not reachable from refs/remotes/origin/main)", nil
@@ -269,4 +318,27 @@ func deleteLocalBranch(dir, branch string) error {
 		return err
 	}
 	return nil
+}
+
+// Keep this destructive eligibility read bound to the candidate worktree rather
+// than an inherited GIT_DIR, GIT_WORK_TREE or alternate index from a caller.
+func ignoredReviewFiles(rt string) (string, error) {
+	return reviewInventory(rt, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
+}
+
+func reviewInventory(rt string, args ...string) (string, error) {
+	env := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(entry), "GIT_") {
+			env = append(env, entry)
+		}
+	}
+	result := deskkit.Run(deskkit.ToolCall{
+		Name: "git", Args: args,
+		Dir: rt, Env: env, Start: execCommand,
+	})
+	if result.Failed() {
+		return "", result.Fail(deskkit.ExitUnverifiable, "git review inventory")
+	}
+	return result.Stdout, nil
 }

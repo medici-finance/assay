@@ -1,0 +1,71 @@
+{
+  "test": "go test . -run 'WouldApply|ApplyReconcile|WriteStatusCell|HoldParity|HoldTreeRule|ApplyThenLint' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the Status write puts a different token than the one asked for",
+    "file": "reconcileapply.go",
+    "old": "cells[statusIdx] = leading + newStatus + trailing",
+    "new": "cells[statusIdx] = leading + \"verified\" + trailing"
+  },
+  "mutations": [
+    {
+      "name": "read-only form ignores its own earlier edits (a second id for the same row is decided against the stale file)",
+      "file": "reconcileapply.go",
+      "old": "content, ok := overlay[path]",
+      "new": "content, ok := \"\", false"
+    },
+    {
+      "name": "read-only form writes to disk",
+      "file": "reconcileapply.go",
+      "old": "if write {",
+      "new": "if true {"
+    },
+    {
+      "name": "rowAfter reports the unedited line",
+      "file": "reconcileapply.go",
+      "old": "rowAfter:  lines[i],",
+      "new": "rowAfter:  before,"
+    },
+    {
+      "name": "the verb drops wouldApply from the read-only run",
+      "file": "reconcile.go",
+      "old": "wouldApply = &rows",
+      "new": "_ = rows"
+    },
+    {
+      "name": "the verb's read-only run takes the write path",
+      "file": "reconcile.go",
+      "old": "if rows, held, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {",
+      "new": "if rows, held, werr = reconcileWrites(boardRoot, cells, true); werr != nil {"
+    },
+    {
+      "name": "a read-only run that found nothing reports null instead of an empty list",
+      "file": "reconcile.go",
+      "old": "\t\t\t\trows = []appliedRow{}",
+      "new": "\t\t\t\trows = nil"
+    },
+    {
+      "name": "the lint hold is applied by --apply only (the read-only form lists a row --apply holds)",
+      "file": "reconcileapply.go",
+      "old": "if len(added) > 0 {",
+      "new": "if write && len(added) > 0 {"
+    },
+    {
+      "name": "the hold is not evaluated at all (a row the lint rejects is written)",
+      "file": "reconcileapply.go",
+      "old": "if len(added) > 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "stream-README reads ignore the staged edit (a tree-reading rule judges the unmoved board)",
+      "file": "reconcilehold.go",
+      "old": "c, ok := stagedReadmes.m[stageKey(path)]",
+      "new": "c, ok := \"\", false"
+    },
+    {
+      "name": "the verb drops held rows from its result",
+      "file": "reconcile.go",
+      "old": "\t\tHeld:       held,",
+      "new": "\t\tHeld:       nil,"
+    }
+  ]
+}

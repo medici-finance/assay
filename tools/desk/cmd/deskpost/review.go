@@ -189,9 +189,10 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		}
 		// On-behalf-of trailer (multi-principal/01): resolved before any network call,
 		// refuses (exit 5) rather than post without one. Appended to the POSTED body only
-		// — `dig` (and every idempotency key derived from it, including the kind/dedup
-		// reads below that parse `body`) stays keyed on the CALLER-supplied body, so the
-		// same verdict retried from a different session still dedupes.
+		// — `dig` (and the local-log idempotency key derived from it) stays keyed on the
+		// CALLER-supplied body. The forge-state check below compares against POSTED bodies,
+		// which carry the trailer, so it reduces both sides with reviewComparableBody; that
+		// is what lets the same verdict retried from a different session still dedupe.
 		postBody, oerr := deskkit.AppendOnBehalfOf(body, "", repo)
 		if oerr != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", oerr), dig)
@@ -370,15 +371,41 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			return withDigest(fromReadErr(verb, repo, pr, curHead, err), dig)
 		}
 		dup, why := appReviewExistsAt(existing, curHead, shape.state, kind, reviewBodyDigest(body))
+		// writeGates are the two gates every outward write of this verb passes: the trust
+		// gate (no write on unvetted third-party work; exit 5, audited) and the public-repo
+		// gate (private, or a listed :public allowed-repos entry — see
+		// deskkit.PublicRepoGate). The post below passes them; so does a merge-hold write on
+		// the already-recorded path, which is an outward write with no post before it.
+		writeGates := func() (writeResult, bool) {
+			if terr := prTrustGate(client, pr, info.User.Login, info.User.ID); terr != nil {
+				return fromReadErr(verb, repo, pr, head, terr), true
+			}
+			if gerr := deskkit.PublicRepoGate(client, owner, name); gerr != nil {
+				return fromErr(verb, repo, pr, head, gerr), true
+			}
+			return writeResult{}, false
+		}
 		if dup {
 			// #238(2): the audit line records WHAT was suppressed and WHY, so a
 			// duplicate-suppression is distinguishable in the ledger from every other
 			// reason a write did not happen. The why names the suppressing review's id
 			// and author (#518 direction 2), so a caller can tell "my retry" from
 			// "someone else's verdict" without another API call.
-			return withDigest(noop(verb, repo, pr, curHead,
-				"equivalent "+verb+" by "+reviewerBotDisplay()+" already present at "+short(curHead)+
-					" (idempotent no-op; "+why+")"), dig)
+			found := "equivalent " + verb + " by " + reviewerBotDisplay() + " already present at " + short(curHead) +
+				" (idempotent no-op; " + why + ")"
+			if shape.wantKind != bodycheck.KindCorrectness {
+				// The security lane's verdict has no merge-hold step (see the post path).
+				return withDigest(noop(verb, repo, pr, curHead, found), dig)
+			}
+			// Nothing is posted — but the post is only the first half of what this verb
+			// does for a correctness verdict. A run that posted and then failed its
+			// merge-hold write exits non-zero, and the retry it asks for arrives HERE; the
+			// hold is checked against the recorded verdict before this run may exit 0.
+			return withDigest(holdForRecordedVerdict(recordedVerdict{
+				client: client, verb: verb, repo: repo, pr: pr, head: curHead, event: shape.event,
+				reviews: existing, at: lastRecordedVerdict(existing, curHead, shape.state, kind, reviewBodyDigest(body)),
+				bodyDig: dig, found: found, dryRun: opts.dryRun, gates: writeGates,
+			}), dig)
 		}
 		if why != "" {
 			// NOT a duplicate, but the App carries same-shaped material at this head:
@@ -390,14 +417,9 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			// proceed.
 			fmt.Fprintln(stderr, "deskpost: WARNING: "+why)
 		}
-		// Trust gate: no verdict on unvetted third-party work (exit 5, audited).
-		if terr := prTrustGate(client, pr, info.User.Login, info.User.ID); terr != nil {
-			return withDigest(fromReadErr(verb, repo, pr, head, terr), dig)
-		}
-		// Public-repo gate: refuse an outward write unless the repo is authorized
-		// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
-		if gerr := deskkit.PublicRepoGate(client, owner, name); gerr != nil {
-			return withDigest(fromErr(verb, repo, pr, head, gerr), dig)
+		// Trust gate, then public-repo gate — see writeGates above.
+		if wr, stop := writeGates(); stop {
+			return withDigest(wr, dig)
 		}
 		// Non-author verdict assertion (sdlc/10) — the SECOND layer behind the forge's own
 		// "an author cannot approve their own PR" refusal. The forge's refusal is keyed on
@@ -449,7 +471,9 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// Merge-hold release/re-arm (the forge-gitlab merge-hold brief, task 3): the CORRECTNESS
 		// verdict's own gate — the security lane (wantKind == KindSecurity) touches it not at
 		// all, and keeps its own gate (deskflip's security-verdict). A GitHub-resolved repo's
-		// readMergeHold answers the typed not-applicable and this is a no-op.
+		// readMergeHold answers the typed not-applicable and this is a no-op. A failure here
+		// exits non-zero with the verdict already posted; the run that retries it finds the
+		// verdict recorded and goes through holdForRecordedVerdict above.
 		if shape.wantKind == bodycheck.KindCorrectness {
 			if hErr := applyMergeHoldForVerdict(client, pr, shape.event, head); hErr != nil {
 				return withDigest(fromErr(verb, repo, pr, head, hErr), dig)
@@ -471,6 +495,192 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		}
 		return done(verb, repo, pr, head, dig, detail)
 	})
+}
+
+// recordedVerdict is what holdForRecordedVerdict works from: the correctness verdict this
+// run was asked to post, found already on the change.
+type recordedVerdict struct {
+	client  postBackend
+	verb    string
+	repo    string
+	pr      int
+	head    string // the change's current head, which the recorded verdict is pinned to
+	event   string // APPROVE or REQUEST_CHANGES
+	reviews []reviewInfo
+	at      int    // index in reviews of the recorded verdict
+	bodyDig string // digest of the body this run was given
+	found   string // the duplicate guard's account of the match — the plain no-op's detail
+	dryRun  bool
+	// gates are the checks an outward write of this verb passes first. They are run only
+	// when a hold write is about to be sent.
+	gates func() (writeResult, bool)
+}
+
+// lastRecordedVerdict returns the index of the LAST review appReviewExistsAt matches — the
+// same test, applied one review at a time from the newest end.
+func lastRecordedVerdict(reviews []reviewInfo, head, wantState, wantKind, wantBodyDigest string) int {
+	for i := len(reviews) - 1; i >= 0; i-- {
+		if ok, _ := appReviewExistsAt(reviews[i:i+1], head, wantState, wantKind, wantBodyDigest); ok {
+			return i
+		}
+	}
+	return -1
+}
+
+// laterVerdictByReviewer reports the first review AFTER reviews[at] that the reviewer
+// identity submitted as an approve or a request-changes and that is not readably the
+// security lane's. Reviews arrive oldest first (Forge.ReviewsAtHead), so such a review may
+// be a newer correctness verdict than the one at reviews[at]. A body whose kind cannot be
+// read counts: "could not tell" is never "nothing followed".
+func laterVerdictByReviewer(reviews []reviewInfo, at int) (id int64, found bool) {
+	if at < 0 {
+		return 0, true
+	}
+	for _, r := range reviews[at+1:] {
+		if !isReviewerBot(r.User.Login) || (r.State != "APPROVED" && r.State != "CHANGES_REQUESTED") {
+			continue
+		}
+		if k, err := bodycheck.VerdictKind([]byte(r.Body)); err == nil && k == bodycheck.KindSecurity {
+			continue
+		}
+		return r.ID, true
+	}
+	return 0, false
+}
+
+// holdForRecordedVerdict is the merge-hold step of a run that posts NOTHING because its
+// correctness verdict is already on the change at this head. It exists because the hold step
+// otherwise runs only after a post: a run that posted a request-changes and then failed to
+// re-arm the hold exits non-zero, and without this the retry would find the verdict, post
+// nothing, skip the hold and exit 0 with the server-side gate still down.
+//
+// It only ever ARMS the hold or CONFIRMS it. It never releases one:
+//
+//   - a forge with no merge-hold (the typed not-applicable): the plain no-op, unchanged;
+//   - the hold stands resolved at a head other than this one: re-armed, whatever the verdict
+//     — no verdict at this head can have released it there;
+//   - a recorded request-changes that no later verdict by the reviewer identity follows: the
+//     hold step runs again exactly as it does after a post (a re-arm), and the run exits 0
+//     with an `ok` row saying the verdict was not posted again;
+//   - a recorded request-changes that a later verdict follows: no write is sent on its
+//     account. An armed hold is confirmed (exit 0); a released one is a mismatch this run
+//     cannot settle, so it exits non-zero naming the later review;
+//   - a recorded approve: exit 0 only when the hold reads released at this head by the
+//     reviewer identity. Anything else exits non-zero. A release is sent only by a run that
+//     posts an approve, where the verdict and the release are one act of one run.
+//
+// A hold that cannot be read, or a change with no hold thread, exits non-zero: "could not
+// check" is never reported as agreement. A hold write here is an outward write with no post
+// before it, so it first passes the gates the post passes, and a dry run sends none.
+func holdForRecordedVerdict(v recordedVerdict) writeResult {
+	hold, err := v.client.readMergeHold(v.pr)
+	if err != nil && deskkit.IsMergeHoldNotApplicable(err) {
+		return noop(v.verb, v.repo, v.pr, v.head, v.found)
+	}
+	word := "approve"
+	rc := strings.EqualFold(v.event, "REQUEST_CHANGES")
+	if rc {
+		word = "request-changes"
+	}
+	rec := fmt.Sprintf("the %s verdict is already recorded on PR #%d at %s and was not posted again", word, v.pr, short(v.head))
+	if err != nil {
+		return unverifiableNoWrite(v.verb, v.repo, v.pr, v.head, fmt.Sprintf(
+			"%s, but the PR's merge-hold could not be read: %v — whether the server-side gate agrees with "+
+				"the recorded verdict is unknown. Run the command again.", rec, err), err)
+	}
+	switch hold.State {
+	case deskkit.MergeHoldNotApplicable:
+		return noop(v.verb, v.repo, v.pr, v.head, v.found)
+	case deskkit.MergeHoldUnresolved, deskkit.MergeHoldResolved:
+	case deskkit.MergeHoldAbsent:
+		return unverifiableNoWrite(v.verb, v.repo, v.pr, v.head, rec+", but the PR has no merge-hold thread, so "+
+			"there is no server-side gate to bring into step with it. This command does not open one; the "+
+			"command that opens a change does.", nil)
+	default:
+		return unverifiableNoWrite(v.verb, v.repo, v.pr, v.head, fmt.Sprintf(
+			"%s, but the PR's merge-hold reports an unrecognised state %q.", rec, hold.State), nil)
+	}
+
+	var laterID int64
+	superseded := false
+	if rc {
+		laterID, superseded = laterVerdictByReviewer(v.reviews, v.at)
+	}
+	stale := hold.State == deskkit.MergeHoldResolved && hold.Head != "" && hold.Head != v.head
+	var writes []deskkit.MergeHoldUpdate
+	if stale {
+		writes = append(writes, deskkit.MergeHoldUpdate{Reason: fmt.Sprintf("new head %s", v.head)})
+	}
+	if rc && !superseded {
+		writes = append(writes, deskkit.MergeHoldUpdate{Reason: "request-changes"})
+	}
+	if len(writes) > 0 {
+		if wr, stop := v.gates(); stop {
+			return wr
+		}
+		if v.dryRun {
+			return dryRun(v.verb, v.repo, v.pr, v.head, "DRY RUN: "+rec+"; a real run would re-arm the PR's "+
+				"merge-hold — stopped before any write")
+		}
+		for _, w := range writes {
+			if serr := v.client.setMergeHold(v.pr, w); serr != nil {
+				return unverifiable(v.verb, v.repo, v.pr, v.head, fmt.Sprintf(
+					"%s, but re-arming the PR's merge-hold (%s) failed: %v — the server-side gate may still "+
+						"read released. Run the command again.", rec, w.Reason, serr), serr)
+			}
+		}
+	}
+	wrote := len(writes) > 0
+	rearmed := ""
+	if wrote {
+		reasons := make([]string, 0, len(writes))
+		for _, w := range writes {
+			reasons = append(reasons, w.Reason)
+		}
+		rearmed = "merge-hold re-armed (" + strings.Join(reasons, "; ") + ")"
+	}
+
+	if rc {
+		switch {
+		case wrote:
+			return done(v.verb, v.repo, v.pr, v.head, v.bodyDig, v.found+"; the verdict was not posted again; "+rearmed)
+		case hold.State == deskkit.MergeHoldUnresolved:
+			return noop(v.verb, v.repo, v.pr, v.head, fmt.Sprintf(
+				"%s; merge-hold is armed, as a request-changes requires (no hold write was sent: review id %d "+
+					"by %s follows this verdict)", v.found, laterID, reviewerBotDisplay()))
+		default:
+			return unverifiableNoWrite(v.verb, v.repo, v.pr, v.head, fmt.Sprintf(
+				"%s, but the PR's merge-hold reads released and a later verdict by %s (review id %d) follows "+
+					"this one, so this run cannot tell which of the two the hold should follow and did not "+
+					"change it. If the request-changes is the verdict that stands, post it again with a body "+
+					"that says so: a body that differs is posted as a new review, and its hold step re-arms.",
+				rec, reviewerBotDisplay(), laterID), nil)
+		}
+	}
+
+	// A recorded approve. Confirm a release; never send one.
+	reviewer, bound := deskkit.RoleAppLogin("reviewer")
+	var state string
+	switch {
+	case stale:
+		state = fmt.Sprintf("its merge-hold stood resolved at %s, not at this head — %s", short(hold.Head), rearmed)
+	case hold.State == deskkit.MergeHoldUnresolved:
+		state = "its merge-hold is still up"
+	case hold.Head == "":
+		state = "its merge-hold is resolved but names no head, so it was not released by an approve at this head"
+	case !bound || !deskkit.SameActor(hold.ResolvedBy, reviewer):
+		state = fmt.Sprintf("its merge-hold was resolved by %q, not by the reviewer identity", hold.ResolvedBy)
+	default:
+		return noop(v.verb, v.repo, v.pr, v.head, v.found+"; merge-hold reads released at this head by "+reviewer)
+	}
+	detail := rec + ", but " + state + ". A run that finds its verdict already recorded does not release a " +
+		"hold; only a run that posts an approve does. To release it, post the approve again with a body " +
+		"that says the release is being retried: a body that differs is posted as a new review, and its " +
+		"hold step releases."
+	if wrote {
+		return unverifiable(v.verb, v.repo, v.pr, v.head, detail, nil)
+	}
+	return unverifiableNoWrite(v.verb, v.repo, v.pr, v.head, detail, nil)
 }
 
 // secVerdictName renders a secVerdict for a refusal message.
@@ -651,15 +861,32 @@ func appReviewExistsAt(reviews []reviewInfo, head, wantState, wantKind, wantBody
 }
 
 // reviewBodyDigest is the content identity the cross-session guard compares (#518): the
-// sha256 of the body with CRLF normalized to LF and trailing newlines dropped — the only
-// transforms a body plausibly picks up on the GitHub round trip. A true retry therefore
-// still matches the review it posted, while any substantive difference does not. The
-// normalization is deliberately minimal and biased toward POSTING: a miss here costs a
-// visible duplicate, a false match costs an invisible drop.
+// sha256 of reviewComparableBody(body). It is applied to BOTH sides — the incoming body and
+// each recorded one — so a true retry matches the review it posted, while any difference in
+// what the caller wrote does not. The reduction is deliberately small and biased toward
+// POSTING: a miss here costs a visible duplicate, a false match costs an invisible drop.
 func reviewBodyDigest(body []byte) string {
-	s := strings.ReplaceAll(string(body), "\r\n", "\n")
-	s = strings.TrimRight(s, "\n")
-	return deskkit.Sha256Hex([]byte(s))
+	return deskkit.Sha256Hex([]byte(reviewComparableBody(string(body))))
+}
+
+// reviewComparableBody is the part of a review body the caller wrote, in the form both sides
+// of the duplicate check are reduced to:
+//
+//   - CRLF becomes LF;
+//   - on-behalf-of lines are removed (deskkit.WithoutOnBehalfOf). The writer appends one to
+//     every body it posts and first removes any the caller's body held
+//     (deskkit.AppendOnBehalfOf), so NO posted review carries the caller's bytes verbatim.
+//     Comparing the caller's bytes with a posted body therefore never matched a review this
+//     tool posted, and a retry whose audit row was not in this HOME posted a second one;
+//   - surrounding whitespace is trimmed.
+//
+// Two bodies that differ only in those three ways are the same verdict to this check. It
+// compares text as the forge returns it: a forge that rewrote review text in some other way
+// would make a retry look distinct, and the retry would be posted with the warning
+// appReviewExistsAt writes for that case.
+func reviewComparableBody(body string) string {
+	s := strings.ReplaceAll(body, "\r\n", "\n")
+	return strings.TrimSpace(deskkit.WithoutOnBehalfOf(s))
 }
 
 // reviewAlreadyPostedIn is the LOCAL-audit idempotency guard for verdict reviews. It is

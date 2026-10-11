@@ -21,8 +21,8 @@ import (
 // did not also carry `exec-tier-why`, and the env-blocked segment was inert.
 //
 // So these run the PRODUCTION path end to end — write real brief files to a
-// temp tree, loadStreams -> checkBriefFiles -> classifyAwaiting — and assert
-// the segment the board would actually render.
+// temp tree, loadStreams -> checkBriefFiles -> placeAwaiting — and assert
+// the bucket the board would actually render.
 
 // segFixtureOpts describes a one-brief fixture repo.
 type segFixtureOpts struct {
@@ -120,8 +120,8 @@ func TestBlockedByParsedWithoutExecTierWhy(t *testing.T) {
 	if br.BlockedBy != "env" {
 		t.Fatalf("blocked-by must parse without exec-tier-why; got %q", br.BlockedBy)
 	}
-	if got := classifyAwaiting(s, br); got != segmentEnvBlocked {
-		t.Errorf("classifyAwaiting() = %v, want segmentEnvBlocked", got)
+	if got := placeAwaiting(s, br).bucket; got != bucketEnvBlocked {
+		t.Errorf("placeAwaiting() = %v, want environment-blocked", got)
 	}
 	if hasProblem(problems, "blocked-by") {
 		t.Errorf("valid blocked-by must raise no problem; got:\n%s", strings.Join(problems, "\n"))
@@ -138,8 +138,8 @@ func TestBlockedByParsedAlongsideExecTierWhy(t *testing.T) {
 	if br.BlockedBy != "env" {
 		t.Fatalf("blocked-by must parse alongside exec-tier-why; got %q", br.BlockedBy)
 	}
-	if got := classifyAwaiting(s, br); got != segmentEnvBlocked {
-		t.Errorf("classifyAwaiting() = %v, want segmentEnvBlocked", got)
+	if got := placeAwaiting(s, br).bucket; got != bucketEnvBlocked {
+		t.Errorf("placeAwaiting() = %v, want environment-blocked", got)
 	}
 }
 
@@ -158,8 +158,8 @@ func TestBlockedByInvalidValueIsProblem(t *testing.T) {
 	if br.BlockedBy != "" {
 		t.Errorf("an invalid blocked-by must not reach the row; got %q", br.BlockedBy)
 	}
-	if got := classifyAwaiting(s, br); got != segmentDeskActionable {
-		t.Errorf("classifyAwaiting() = %v, want segmentDeskActionable", got)
+	if got := placeAwaiting(s, br).bucket; got != bucketDeskActionable {
+		t.Errorf("placeAwaiting() = %v, want desk-actionable", got)
 	}
 }
 
@@ -177,8 +177,8 @@ func TestGateAndEvidenceWiredOntoRow(t *testing.T) {
 	if !strings.Contains(br.Evidence, "VERIFY: PASS") {
 		t.Fatalf("evidence must be wired onto the row; got %q", br.Evidence)
 	}
-	if got := classifyAwaiting(s, br); got != segmentHumanGate {
-		t.Errorf("classifyAwaiting() = %v, want segmentHumanGate", got)
+	if got := placeAwaiting(s, br).bucket; got != bucketHumanGate {
+		t.Errorf("placeAwaiting() = %v, want human gate", got)
 	}
 }
 
@@ -202,8 +202,8 @@ func TestSegmentWiringLiveMarkerForms(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, br, _ := segFixture(t, segFixtureOpts{gate: "human", evidence: tc.evidence})
-			if got := classifyAwaiting(s, br); got != segmentHumanGate {
-				t.Errorf("classifyAwaiting() = %v, want segmentHumanGate (evidence %q)", got, tc.evidence)
+			if got := placeAwaiting(s, br).bucket; got != bucketHumanGate {
+				t.Errorf("placeAwaiting() = %v, want human gate (evidence %q)", got, tc.evidence)
 			}
 		})
 	}
@@ -212,8 +212,9 @@ func TestSegmentWiringLiveMarkerForms(t *testing.T) {
 // TestSegmentWiringAccumulatedEvidence is the accumulated-evidence shape through the
 // production path: a `verified` brief whose Evidence holds superseded FAIL
 // records followed by the PASS that promoted it. Any-occurrence matching pinned
-// it in rework where the desk would never drain it and the headline would never
-// count it.
+// it in rework. The last verdict is PASS on a verified gate:model brief with an
+// empty Reviewed cell, so the row is CI's auto-flip (runner-pending), never the
+// desk's.
 func TestSegmentWiringAccumulatedEvidence(t *testing.T) {
 	evidence := `> earlier VERIFY: FAIL flagged (row 2 re-targeted below).
 
@@ -231,7 +232,7 @@ func TestSegmentWiringAccumulatedEvidence(t *testing.T) {
 
 **VERIFY: PASS — substantive goal MET on current main.**`
 	s, br, _ := segFixture(t, segFixtureOpts{status: "verified", evidence: evidence})
-	if got := classifyAwaiting(s, br); got != segmentDeskActionable {
-		t.Errorf("classifyAwaiting() = %v, want segmentDeskActionable — the last verdict is PASS on a gate:model brief", got)
+	if p := placeAwaiting(s, br); p.bucket != bucketRunnerPending || p.owner != ownerCIAutoFlip {
+		t.Errorf("placeAwaiting() = %v / %s, want runner-pending / CI auto-flip — the last verdict is PASS on a verified gate:model brief", p.bucket, p.owner)
 	}
 }

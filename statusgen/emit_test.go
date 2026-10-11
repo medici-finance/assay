@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -21,7 +23,7 @@ func TestEmitSections(t *testing.T) {
 		"### Product",
 		"| [frontend](docs/streams/frontend/README.md) | P1 | active | 1/3 |",
 		"## Next up",
-		"## Awaiting verification / review (1 desk-actionable of 1 total — 1 at implemented, 0 verified awaiting review)",
+		"## Awaiting verification / review (1 for the desk · 0 for the driver · 0 for workers · 0 for an operator · 0 runner-pending — of 1 total)",
 		"| frontend | 02 |", // implemented brief awaiting verify
 		"## Unresolved findings",
 		"| F-02 |",
@@ -52,245 +54,195 @@ func TestAwaitingHeadingCounts(t *testing.T) {
 	)
 	out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 
-	want := "## Awaiting verification / review (3 desk-actionable of 3 total — 2 at implemented, 1 verified awaiting review)"
+	want := "## Awaiting verification / review (3 for the desk · 0 for the driver · 0 for workers · 0 for an operator · 0 runner-pending — of 3 total)"
 	if !strings.Contains(out, want) {
 		t.Errorf("heading missing expected counts:\nwant: %s\ngot:\n%s", want, out)
 	}
 }
 
-func TestAwaitingSegmentedAssertions(t *testing.T) {
-	// Fixture spanning all five segment classes.
+// writeOutcomeRecord writes one verify-outcome record under root.
+func writeOutcomeRecord(t *testing.T, root, stream, name, body string) {
+	t.Helper()
+	dir := filepath.Join(root, "docs", "streams", "verify-outcomes", stream)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// awaitingFixture is one stream per bucket plus a paused stream: the board the
+// segmented assertions and the golden file both render.
+func awaitingFixture(t *testing.T) []*Stream {
+	t.Helper()
+	// Fixture spanning every bucket plus the unbucketed paused segment.
+	root := t.TempDir()
+	writeOutcomeRecord(t, root, "active-s", "03-20260715T000000Z-aaaaaaaaaaaa.json",
+		`{"brief":"active-s/03","ts":"2026-07-15T00:00:00Z","outcome":"verify-fail","blocker_kind":"implementation","blocker_ref":"#41"}`)
 	active := mkStream("active-s", "active", "P1",
 		Brief{Num: "01", Wave: 0, Status: "implemented"}, // desk-actionable (no gate, no evidence)
 		Brief{Num: "02", Wave: 0, Status: "implemented",
 			Gate: "human", Evidence: "**VERIFY: PASS**\n\n| 1 | go test | 0 | PASS | 2026-07-15 | opus-verifier |",
-		}, // human-gate
+		}, // human gate
 		Brief{Num: "03", Wave: 0, Status: "verified", Verified: "2026-07-08",
 			Evidence: "VERIFY: FAIL — test broken",
-		}, // rework
+		}, // implementer rework (outcome record names the issue)
 		Brief{Num: "04", Wave: 0, Status: "implemented",
 			BlockedBy: "env",
-		}, // env-blocked
+		}, // environment-blocked
+		Brief{Num: "05", Wave: 0, Status: "verified", Gate: "model", Verified: "2026-07-09",
+			Evidence: "**VERIFY: PASS**",
+		}, // runner-pending: CI's auto-flip
+		Brief{Num: "06", Wave: 0, Status: "implemented", Evidence: "**VERIFY: FAIL** — no record"}, // could-not-check
 	)
+	active.Root = root
 	paused := mkStream("paused-s", "paused", "P1",
-		Brief{Num: "01", Wave: 0, Status: "implemented"}, // paused stream — all awaiting briefs here are paused-segment
+		Brief{Num: "01", Wave: 0, Status: "implemented"}, // paused stream — unbucketed
 	)
 
 	streams := []*Stream{active, paused}
 	// LastTouch needed for gate-score staleness.
 	active.LastTouch = day(5)
 	paused.LastTouch = day(5)
+	return streams
+}
 
+func TestAwaitingSegmentedAssertions(t *testing.T) {
+	streams := awaitingFixture(t)
 	out := emit(streams, nil, nextUp(streams, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 
-	// Heading: desk-actionable = 1 (active-s/01), total = 5, implemented = 4, verified = 1
-	wantHeading := "## Awaiting verification / review (1 desk-actionable of 5 total — 4 at implemented, 1 verified awaiting review)"
+	wantHeading := "## Awaiting verification / review (1 for the desk · 1 for the driver · 1 for workers · 1 for an operator · 1 runner-pending — of 7 total; 1 could-not-check)"
 	if !strings.Contains(out, wantHeading) {
 		t.Errorf("heading mismatch:\nwant: %s\ngot:\n%s", wantHeading, out)
 	}
 
-	// Sub-headings assert each segment appears with the right label and count.
-	for _, want := range []string{
-		"### Desk-actionable (1)",
+	// Fixed order: the four owned queues, the desk's queue, then the rest.
+	order := []string{
 		"### Awaiting human gate (1)",
 		"### Awaiting implementer rework (1)",
+		"### Environment-blocked (1)",
+		"### Runner-pending (1)",
+		"### Desk-actionable (1)",
+		"### Could-not-check (1)",
 		"### Paused stream (1)",
-		"### Env-blocked (1)",
+	}
+	last := -1
+	for _, h := range order {
+		i := strings.Index(out, h)
+		if i < 0 {
+			t.Fatalf("output missing segment heading %q\n---\n%s", h, out)
+		}
+		if i < last {
+			t.Errorf("segment %q out of order", h)
+		}
+		last = i
+	}
+	section := func(from, to string) string {
+		return out[strings.Index(out, from):strings.Index(out, to)]
+	}
+	for _, c := range []struct{ from, to, row, owner, next string }{
+		{"### Awaiting human gate", "### Awaiting implementer rework", "| active-s | 02 |", ownerDriver, nextActCloseCard},
+		{"### Awaiting implementer rework", "### Environment-blocked", "| active-s | 03 |", ownerWorker, "fix, cite #41"},
+		{"### Environment-blocked", "### Runner-pending", "| active-s | 04 |", ownerOperator, nextActNoEnvCmd},
+		{"### Runner-pending", "### Desk-actionable", "| active-s | 05 |", ownerCIAutoFlip, nextActAutoFlip},
+		{"### Desk-actionable", "### Could-not-check", "| active-s | 01 |", ownerVerifyDesk, nextActTriage},
+		{"### Could-not-check", "### Paused stream", "| active-s | 06 |", ownerVerifyDesk, "could-not-check: "},
+		{"### Paused stream", "## Age at the human gate", "| paused-s | 01 |", "—", "—"},
 	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output missing expected segment sub-heading %q\n---\n%s", want, out)
+		sec := section(c.from, c.to)
+		line := ""
+		for _, l := range strings.Split(sec, "\n") {
+			if strings.HasPrefix(l, c.row) {
+				line = l
+			}
+		}
+		if line == "" {
+			t.Errorf("%s must appear under %q:\n%s", c.row, c.from, sec)
+			continue
+		}
+		if !strings.Contains(line, "| "+c.owner+" | "+c.next) {
+			t.Errorf("%s row must carry owner %q and next act %q; got %s", c.row, c.owner, c.next, line)
 		}
 	}
-
-	// Verify the specific briefs land in the right segment tables.
-	// active-s/01 (desk-actionable) must appear under Desk-actionable heading.
-	deskSection := out[strings.Index(out, "### Desk-actionable"):strings.Index(out, "### Awaiting human gate")]
-	if !strings.Contains(deskSection, "| active-s | 01 |") {
-		t.Error("active-s/01 must appear under Desk-actionable segment")
-	}
-	if strings.Contains(deskSection, "| active-s | 02 |") {
-		t.Error("active-s/02 (human-gate) must NOT appear under Desk-actionable segment")
-	}
-
-	// active-s/02 (human-gate) must appear under Awaiting human gate.
-	humanSection := out[strings.Index(out, "### Awaiting human gate"):strings.Index(out, "### Awaiting implementer rework")]
-	if !strings.Contains(humanSection, "| active-s | 02 |") {
-		t.Error("active-s/02 must appear under Awaiting human gate segment")
-	}
-
-	// active-s/03 (rework) must appear under rework segment.
-	reworkSection := out[strings.Index(out, "### Awaiting implementer rework"):strings.Index(out, "### Paused stream")]
-	if !strings.Contains(reworkSection, "| active-s | 03 |") {
-		t.Error("active-s/03 must appear under Awaiting implementer rework segment")
-	}
-
-	// paused-s/01 must appear under Paused stream segment.
-	pausedSection := out[strings.Index(out, "### Paused stream"):strings.Index(out, "### Env-blocked")]
-	if !strings.Contains(pausedSection, "| paused-s | 01 |") {
-		t.Error("paused-s/01 must appear under Paused stream segment")
-	}
-
-	// active-s/04 must appear under Env-blocked segment.
-	envSection := out[strings.Index(out, "### Env-blocked"):]
-	if !strings.Contains(envSection, "| active-s | 04 |") {
-		t.Error("active-s/04 must appear under Env-blocked segment")
+	if !strings.Contains(out, "| Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |") {
+		t.Error("segment tables must carry Owner and Next act columns, with Reviewed last")
 	}
 }
 
+// TestAwaitingEmptyBucketsStillRender: the five bucket headings render even
+// when a queue is empty, so an empty queue reads differently from a missing one.
+func TestAwaitingEmptyBucketsStillRender(t *testing.T) {
+	s := mkStream("only", "active", "P1", Brief{Num: "01", Wave: 0, Status: "done", Verified: "grandfathered", Reviewed: "grandfathered"})
+	s.LastTouch = day(5)
+	out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
+	for _, h := range []string{"### Awaiting human gate (0)", "### Awaiting implementer rework (0)", "### Environment-blocked (0)", "### Runner-pending (0)", "### Desk-actionable (0)"} {
+		if !strings.Contains(out, h) {
+			t.Errorf("missing empty bucket heading %q", h)
+		}
+	}
+	for _, h := range []string{"### Could-not-check", "### Paused stream", "### Parked stream"} {
+		if strings.Contains(out, h) {
+			t.Errorf("empty %q must not render", h)
+		}
+	}
+}
+
+// TestSegmentClassifier runs in-memory README rows (no brief file, no outcome
+// store) through placeAwaiting: the Evidence verdict forms the board has always
+// had to read, now under the bucket table.
 func TestSegmentClassifier(t *testing.T) {
 	active := mkStream("s", "active", "P1")
 	paused := mkStream("p", "paused", "P1")
-
-	tests := []struct {
-		name    string
-		stream  *Stream
-		brief   Brief
-		wantSeg blockerSegment
-	}{
-		{
-			name:    "desk-actionable legacy (no gate, no evidence)",
-			stream:  active,
-			brief:   Brief{Num: "01", Status: "implemented"},
-			wantSeg: segmentDeskActionable,
-		},
-		{
-			name:    "desk-actionable gate:model with evidence",
-			stream:  active,
-			brief:   Brief{Num: "02", Status: "implemented", Gate: "model", Evidence: "some evidence"},
-			wantSeg: segmentDeskActionable,
-		},
-		{
-			name:    "human-gate with VERIFY:PASS",
-			stream:  active,
-			brief:   Brief{Num: "03", Status: "implemented", Gate: "human", Evidence: "**VERIFY: PASS** model"},
-			wantSeg: segmentHumanGate,
-		},
-		{
-			name:    "human-gate without VERIFY:PASS (still awaiting dispatch)",
-			stream:  active,
-			brief:   Brief{Num: "04", Status: "implemented", Gate: "human", Evidence: ""},
-			wantSeg: segmentDeskActionable,
-		},
-		{
-			name:    "rework (VERIFY:FAIL)",
-			stream:  active,
-			brief:   Brief{Num: "05", Status: "implemented", Evidence: "VERIFY: FAIL — test crash"},
-			wantSeg: segmentRework,
-		},
-		{
-			// The recorded pass belongs to the desk, not to human:<name>: a gate:model
-			// brief that passed is still the desk's to flip. Dropping the
-			// Gate=="human" conjunct sends it to the human queue where it sits
-			// forever and the headline undercounts.
-			name:    "gate:model with a recorded pass stays desk-actionable",
-			stream:  active,
-			brief:   Brief{Num: "09", Status: "implemented", Gate: "model", Evidence: "**VERIFY: PASS** — all rows green"},
-			wantSeg: segmentDeskActionable,
-		},
-		{
-			// Precedence, now decided by recency rather than branch order: the
-			// LAST verdict is FAIL, so the implementer owns it even though the
-			// brief is human-gated and an earlier pass is on the record.
-			name:   "human-gated, last verdict FAIL, is rework not human-gate",
-			stream: active,
-			brief: Brief{Num: "10", Status: "implemented", Gate: "human",
-				Evidence: "**VERIFY: PASS** — 2026-07-15\n\nreopened\n\n**VERIFY: FAIL** — regression 2026-07-18",
-			},
-			wantSeg: segmentRework,
-		},
-		{
-			// The mirror image: failed, reworked, passed. Evidence accumulates,
-			// so any-occurrence matching would pin this in rework forever.
-			name:   "human-gated, FAIL then PASS, is human-gate not rework",
-			stream: active,
-			brief: Brief{Num: "11", Status: "verified", Gate: "human",
-				Evidence: "**VERIFY: FAIL** — 2026-07-16\n\nfixed\n\n**VERIFY: PASS** — 2026-07-20",
-			},
-			wantSeg: segmentHumanGate,
-		},
-		{
-			// Marker forms live in this repo's Evidence today. The bold
-			// delimiters wrap a longer span, so an exact `**VERIFY: PASS**`
-			// literal never matches and the row misfiles as drainable.
-			name:   "human-gate, pass inside a longer bold span",
-			stream: active,
-			brief: Brief{Num: "12", Status: "implemented", Gate: "human",
-				Evidence: "**Non-implementer verifier run — VERIFY: PASS** · 2026-07-20 · `glm-5.2-verifier`",
-			},
-			wantSeg: segmentHumanGate,
-		},
-		{
-			name:   "human-gate, pass with trailing prose in the span (loop-engine/01 form)",
-			stream: active,
-			brief: Brief{Num: "13", Status: "implemented", Gate: "human",
-				Evidence: "**VERIFY: PASS — all 6 rows green.**",
-			},
-			wantSeg: segmentHumanGate,
-		},
-		{
-			// A quoted marker is a reference to a verdict, not a verdict.
-			name:   "blockquoted FAIL does not override the live PASS",
-			stream: active,
-			brief: Brief{Num: "14", Status: "implemented", Gate: "human",
-				Evidence: "**VERIFY: PASS** — 2026-07-20\n\n> earlier VERIFY: FAIL flagged (superseded)",
-			},
-			wantSeg: segmentHumanGate,
-		},
-		{
-			name:   "code-fenced FAIL does not override the live PASS",
-			stream: active,
-			brief: Brief{Num: "15", Status: "implemented", Gate: "human",
-				Evidence: "**VERIFY: PASS** — 2026-07-20\n\n```\nlog line: VERIFY: FAIL\n```",
-			},
-			wantSeg: segmentHumanGate,
-		},
-		{
-			name:   "struck-through FAIL does not override the live PASS",
-			stream: active,
-			brief: Brief{Num: "16", Status: "implemented", Gate: "human",
-				Evidence: "**VERIFY: PASS** — 2026-07-20\n\n~~VERIFY: FAIL~~ (superseded)",
-			},
-			wantSeg: segmentHumanGate,
-		},
-		{
-			// VERIFY: PARTIAL is neither verdict — it must not invent a sixth
-			// segment nor silently read as a pass.
-			name:    "VERIFY: PARTIAL is not a verdict",
-			stream:  active,
-			brief:   Brief{Num: "17", Status: "implemented", Gate: "human", Evidence: "**VERIFY: PARTIAL** — 3 of 5 rows"},
-			wantSeg: segmentDeskActionable,
-		},
-		{
-			name:    "spaceless VERIFY:FAIL still reads as a fail",
-			stream:  active,
-			brief:   Brief{Num: "18", Status: "implemented", Evidence: "VERIFY:FAIL — harness died"},
-			wantSeg: segmentRework,
-		},
-		{
-			name:    "paused stream trumps everything",
-			stream:  paused,
-			brief:   Brief{Num: "06", Status: "implemented", Gate: "human", Evidence: "**VERIFY: PASS**"},
-			wantSeg: segmentPaused,
-		},
-		{
-			name:    "env-blocked",
-			stream:  active,
-			brief:   Brief{Num: "07", Status: "implemented", BlockedBy: "env"},
-			wantSeg: segmentEnvBlocked,
-		},
-		{
-			name:    "paused trumps env-blocked",
-			stream:  paused,
-			brief:   Brief{Num: "08", Status: "implemented", BlockedBy: "env"},
-			wantSeg: segmentPaused,
-		},
+	label := func(p awaitPlacement) string {
+		switch {
+		case p.paused:
+			return "paused"
+		case p.parked:
+			return "parked"
+		}
+		return p.bucket.String()
 	}
 
+	tests := []struct {
+		name   string
+		stream *Stream
+		brief  Brief
+		want   string
+	}{
+		{"desk-actionable legacy (no gate, no evidence)", active, Brief{Num: "01", Status: "implemented"}, "desk-actionable"},
+		{"gate:model with evidence and no Verify rows is the desk's to triage", active, Brief{Num: "02", Status: "implemented", Gate: "model", Evidence: "some evidence"}, "desk-actionable"},
+		{"human-gate with VERIFY:PASS", active, Brief{Num: "03", Status: "implemented", Gate: "human", Evidence: "**VERIFY: PASS** model"}, "human gate"},
+		{"human-gate without VERIFY:PASS (still awaiting dispatch)", active, Brief{Num: "04", Status: "implemented", Gate: "human", Evidence: ""}, "desk-actionable"},
+		// A FAIL with no outcome record: the blocker class is unrecorded, so the
+		// row is could-not-check rather than a guessed owner.
+		{"FAIL with no outcome record is could-not-check", active, Brief{Num: "05", Status: "implemented", Evidence: "VERIFY: FAIL — test crash"}, "could-not-check"},
+		{"gate:model implemented with a recorded pass stays the desk's", active, Brief{Num: "09", Status: "implemented", Gate: "model", Evidence: "**VERIFY: PASS** — all rows green"}, "desk-actionable"},
+		{"human-gated, last verdict FAIL, is not the human gate", active, Brief{Num: "10", Status: "implemented", Gate: "human",
+			Evidence: "**VERIFY: PASS** — 2026-07-15\n\nreopened\n\n**VERIFY: FAIL** — regression 2026-07-18"}, "could-not-check"},
+		{"human-gated, FAIL then PASS, is human-gate", active, Brief{Num: "11", Status: "verified", Gate: "human",
+			Evidence: "**VERIFY: FAIL** — 2026-07-16\n\nfixed\n\n**VERIFY: PASS** — 2026-07-20"}, "human gate"},
+		{"human-gate, pass inside a longer bold span", active, Brief{Num: "12", Status: "implemented", Gate: "human",
+			Evidence: "**Non-implementer verifier run — VERIFY: PASS** · 2026-07-20 · `glm-5.2-verifier`"}, "human gate"},
+		{"human-gate, pass with trailing prose in the span", active, Brief{Num: "13", Status: "implemented", Gate: "human",
+			Evidence: "**VERIFY: PASS — all 6 rows green.**"}, "human gate"},
+		{"blockquoted FAIL does not override the live PASS", active, Brief{Num: "14", Status: "implemented", Gate: "human",
+			Evidence: "**VERIFY: PASS** — 2026-07-20\n\n> earlier VERIFY: FAIL flagged (superseded)"}, "human gate"},
+		{"code-fenced FAIL does not override the live PASS", active, Brief{Num: "15", Status: "implemented", Gate: "human",
+			Evidence: "**VERIFY: PASS** — 2026-07-20\n\n```\nlog line: VERIFY: FAIL\n```"}, "human gate"},
+		{"struck-through FAIL does not override the live PASS", active, Brief{Num: "16", Status: "implemented", Gate: "human",
+			Evidence: "**VERIFY: PASS** — 2026-07-20\n\n~~VERIFY: FAIL~~ (superseded)"}, "human gate"},
+		{"VERIFY: PARTIAL is not a verdict", active, Brief{Num: "17", Status: "implemented", Gate: "human", Evidence: "**VERIFY: PARTIAL** — 3 of 5 rows"}, "desk-actionable"},
+		{"spaceless VERIFY:FAIL still reads as a fail", active, Brief{Num: "18", Status: "implemented", Evidence: "VERIFY:FAIL — harness died"}, "could-not-check"},
+		{"verified gate:model with empty Reviewed is CI's flip", active, Brief{Num: "19", Status: "verified", Gate: "model", Evidence: "**VERIFY: PASS**"}, "runner-pending"},
+		{"paused stream trumps everything", paused, Brief{Num: "06", Status: "implemented", Gate: "human", Evidence: "**VERIFY: PASS**"}, "paused"},
+		{"env-blocked", active, Brief{Num: "07", Status: "implemented", BlockedBy: "env"}, "environment-blocked"},
+		{"paused trumps env-blocked", paused, Brief{Num: "08", Status: "implemented", BlockedBy: "env"}, "paused"},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classifyAwaiting(tt.stream, &tt.brief)
-			if got != tt.wantSeg {
-				t.Errorf("classifyAwaiting() = %v, want %v", got, tt.wantSeg)
+			if got := label(placeAwaiting(tt.stream, &tt.brief)); got != tt.want {
+				t.Errorf("placeAwaiting() = %s, want %s", got, tt.want)
 			}
 		})
 	}
@@ -444,6 +396,12 @@ func TestDebtNotice(t *testing.T) {
 			Brief{Num: "d1", Wave: 0, Status: "done", Verified: "gf", Reviewed: "gf"},
 			Brief{Num: "d2", Wave: 0, Status: "done", Verified: "gf", Reviewed: "gf"},
 		)
+		// The FAIL briefs carry an outcome record naming an implementation
+		// issue: a FAIL with no record is could-not-check, which DOES count.
+		root := t.TempDir()
+		s.Root = root
+		writeOutcomeRecord(t, root, "test", "R-20260715T000000Z-aaaaaaaaaaaa.json",
+			`{"brief":"test/R","ts":"2026-07-15T00:00:00Z","outcome":"verify-fail","blocker_kind":"implementation","blocker_ref":"#41"}`)
 		for i := 0; i < 9; i++ {
 			s.Briefs = append(s.Briefs, Brief{
 				Num: "R", Wave: 0, Status: "implemented",
@@ -461,4 +419,104 @@ func TestDebtNotice(t *testing.T) {
 			t.Errorf("rework and env-blocked briefs must not count as desk-actionable; got NOTICE: %s", notice)
 		}
 	})
+
+	t.Run("could-not-check counts toward the debt", func(t *testing.T) {
+		// 11 briefs whose last verdict is FAIL with no outcome record are
+		// could-not-check. Dropping them from the measure would let an
+		// unreadable input switch the alarm off (fail open).
+		s := mkStream("test", "active", "P1",
+			Brief{Num: "d1", Wave: 0, Status: "done", Verified: "gf", Reviewed: "gf"},
+		)
+		for i := 0; i < 11; i++ {
+			s.Briefs = append(s.Briefs, Brief{Num: "C", Wave: 0, Status: "implemented", Evidence: "**VERIFY: FAIL** — no record"})
+		}
+		if !debtBreached([]*Stream{s}) {
+			t.Fatal("11 could-not-check rows vs 1 done must breach the debt gate")
+		}
+		want := "verification debt: 11 desk-actionable (11 of them could-not-check) awaiting vs 1 done — the queue is the constraint; drain before dispatching new implementation work"
+		if got := debtNotice([]*Stream{s}); got != want {
+			t.Errorf("notice:\ngot:  %s\nwant: %s", got, want)
+		}
+	})
+
+	t.Run("unparseable outcome store keeps the gate breached (end to end)", func(t *testing.T) {
+		// 11 FAIL briefs with a record each; the store then becomes
+		// unparseable. Every row turns could-not-check and the gate must
+		// STILL breach: an unreadable store never lowers the measure.
+		s := mkStream("test", "active", "P1",
+			Brief{Num: "d1", Wave: 0, Status: "done", Verified: "gf", Reviewed: "gf"},
+		)
+		root := t.TempDir()
+		s.Root = root
+		writeOutcomeRecord(t, root, "test", "bad-20260715T000000Z-aaaaaaaaaaaa.json", `{not json`)
+		for i := 0; i < 11; i++ {
+			s.Briefs = append(s.Briefs, Brief{Num: "U", Wave: 0, Status: "implemented", Evidence: "**VERIFY: FAIL** — x"})
+		}
+		if !debtBreached([]*Stream{s}) {
+			t.Fatal("an unparseable outcome store must keep the debt gate breached")
+		}
+	})
+}
+
+// awaitingGoldenPath is the rendered Awaiting section for awaitingGoldenFixture.
+// The fanoutloop board parser (tools/desk/cmd/fanoutloop) reads this same file
+// in its own test, so a drift between this emitter and that parser is red on
+// whichever side moved.
+const awaitingGoldenPath = "testdata/awaiting_board_golden.md"
+
+// awaitingGoldenFixture is awaitingFixture plus one stream carrying a recorded
+// blocker of each kind the table routes by kind.
+func awaitingGoldenFixture(t *testing.T) []*Stream {
+	t.Helper()
+	streams := awaitingFixture(t)
+	root := t.TempDir()
+	for _, r := range []struct{ num, kind, ref string }{
+		{"01", "human-action", "#51"},
+		{"02", "environment", "#52"},
+		{"03", "check-definition", "#53"},
+	} {
+		writeOutcomeRecord(t, root, "kinds-s", r.num+"-20260715T000000Z-aaaaaaaaaaaa.json",
+			`{"brief":"kinds-s/`+r.num+`","ts":"2026-07-15T00:00:00Z","outcome":"blocked","blocker_kind":"`+r.kind+`","blocker_ref":"`+r.ref+`"}`)
+	}
+	kinds := mkStream("kinds-s", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "implemented", Gate: "model"},
+		Brief{Num: "02", Wave: 0, Status: "implemented", Gate: "model"},
+		Brief{Num: "03", Wave: 0, Status: "implemented", Gate: "model"},
+	)
+	kinds.Root = root
+	kinds.LastTouch = day(5)
+	return append(streams, kinds)
+}
+
+// awaitingSection returns the rendered Awaiting section of a board.
+func awaitingSection(t *testing.T, out string) string {
+	t.Helper()
+	i := strings.Index(out, "## Awaiting verification / review")
+	if i < 0 {
+		t.Fatalf("no Awaiting section in:\n%s", out)
+	}
+	rest := out[i+3:]
+	if j := strings.Index(rest, "\n## "); j >= 0 {
+		return out[i : i+3+j+1]
+	}
+	return out[i:]
+}
+
+// TestAwaitingBoardGolden pins the rendered Awaiting section byte for byte.
+// STATUSGEN_UPDATE_GOLDEN=1 rewrites the file after an intended change.
+func TestAwaitingBoardGolden(t *testing.T) {
+	streams := awaitingGoldenFixture(t)
+	got := awaitingSection(t, emit(streams, nil, nextUp(streams, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, ""))
+	if os.Getenv("STATUSGEN_UPDATE_GOLDEN") == "1" {
+		if err := os.WriteFile(awaitingGoldenPath, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(awaitingGoldenPath)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("rendered Awaiting section differs from %s (STATUSGEN_UPDATE_GOLDEN=1 to rewrite after an intended change):\n--- got\n%s\n--- want\n%s", awaitingGoldenPath, got, want)
+	}
 }

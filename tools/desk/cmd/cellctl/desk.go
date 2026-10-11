@@ -113,6 +113,7 @@ func cmdDesk(cell string, args []string) {
 		}
 		harness = policyRes.Harness
 	}
+	c.mustRoleContext(role, harness) // CELL_ROLE_CONTEXT (#2438): refuse a broken declaration before anything is created
 
 	if harness == "cursor" && c.Kind != "house" {
 		die("cursor currently requires a house cell")
@@ -358,6 +359,7 @@ func cmdDesk(cell string, args []string) {
 		if harness == "claude" && c.Kind != "scrubbed" {
 			fmt.Println("[dry-run] env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false")
 		}
+		c.printRoleContextPlan(role, harness) // silent unless CELL_ROLE_CONTEXT is set
 		if persist {
 			for _, kv := range persistKVs {
 				fmt.Printf("[dry-run] --set: would persist %s into %s/cell.env (not written — dry run)\n", kv, c.Dir)

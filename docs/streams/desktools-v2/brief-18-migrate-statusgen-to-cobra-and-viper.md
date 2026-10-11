@@ -16,7 +16,7 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 2
 id: "818e8f71-66e0-4614-b503-a6fd0aa301a1"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
@@ -72,6 +72,14 @@ ready flip or merge. Preserve existing domain checks, custody decisions and exit
 CLI library is not a new authority source. Independent verification owns Evidence and
 lifecycle advancement. Proposed tests and files below are deliverables, not claims that
 they already exist.
+
+## Library-first amendment — 2026-10-08
+
+Read `docs/library-first.md`. Keep this a command/configuration adapter migration. Call
+existing application libraries or the typed client for an independent service; do not move
+policy, custody or admission into Cobra handlers. Preserve help/version offline behavior and
+underlying admission tests. No dependency on the SDK extraction or cell registry is added;
+coordinate overlapping files with the extraction owner when both changes are in flight.
 
 ## Task
 
