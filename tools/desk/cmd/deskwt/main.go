@@ -127,13 +127,20 @@ deskwt is safe by construction: every verb acts ONLY on paths that RESOLVE under
 identity, and remove/prune refuse a dirty tracked tree or unpushed commits. There is NO
 --force flag. On any state it cannot positively verify it refuses.
 
-prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then removes
+prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then clears
+stale registrations whose directory survives but whose .git gitdir file is gone (the shape
+` + "`git worktree remove`" + ` refuses and a lock makes ` + "`git worktree prune`" + ` keep forever — the
+REGISTRATION only; the directory is left on disk), then removes
 ONLY worktrees it can prove safe: tracked-clean AND fully merged into origin/main. An
 UNMERGED branch (an open PR in flight) is LEFT untouched — that is the active-worker guard.
+A worktree whose HEAD IS the origin/main tip (zero landed commits — the fresh-worktree case,
+and the shape a reclaim-by-detach leaves behind) must also prove it holds nothing the
+mainline does not: the untracked-inclusive status gate runs for exactly these, so a pristine
+detached-at-main tree drains while one holding uncommitted or untracked work is LEFT.
 With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s desk pod's
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
 Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
-dead-session-reaped, and branches-deleted.
+dead-session-reaped, and branches-deleted — plus, when it acted, stale-registrations-cleared.
 
 Every sweep ALSO runs the CELL-CACHE pressure pass (Step D, default ON; --no-cache skips it):
 for each marked cell Go-cache root under the cells root (--cells-root, then $CELLS_ROOT,

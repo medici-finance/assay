@@ -132,6 +132,36 @@
       "file": "cmd/deskwt/cachepressure.go",
       "old": "\tif abs, err := filepath.Abs(cellsRoot); err == nil {\n\t\tcellsRoot = abs\n\t}\n\tif canon, err := filepath.EvalSymlinks(cellsRoot); err == nil {\n\t\tcellsRoot = canon\n\t}",
       "new": "\t// root canonicalization omitted"
+    },
+    {
+      "name": "the fresh-worktree guard holds an at-tip tree without ever checking its content (pristine reclaim residue is immortal again — the defect this change fixes)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\t\tif anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}",
+      "new": "\t\t\tif true {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}"
+    },
+    {
+      "name": "the fresh-worktree guard's content check is dropped (an at-tip tree with untracked new source is deleted — the hole the guard exists to close)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\t\tif anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}",
+      "new": "\t\t\tif false && anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}"
+    },
+    {
+      "name": "the stale-registration pass clears a LOCKED entry without retiring its lock (git's prune keeps it — the immortal registration is back)",
+      "file": "cmd/deskwt/stalereg.go",
+      "old": "\t\tif e.wasLocked {\n\t\t\tif _, uerr := runGit(dir, \"worktree\", \"unlock\", e.path); uerr != nil {",
+      "new": "\t\tif false && e.wasLocked {\n\t\t\tif _, uerr := runGit(dir, \"worktree\", \"unlock\", e.path); uerr != nil {"
+    },
+    {
+      "name": "the stale-registration pass mutates under --dry-run (a report unlocks and deregisters for real)",
+      "file": "cmd/deskwt/stalereg.go",
+      "old": "\tif len(stale) == 0 || dryRun {\n\t\treturn stale, nil\n\t}",
+      "new": "\tif len(stale) == 0 {\n\t\treturn stale, nil\n\t}"
+    },
+    {
+      "name": "a cleared stale registration ALSO goes through the candidate loop (reported twice, and as a misleading unverifiable hold)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\tif staleSet[rt] {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif false {\n\t\t\tcontinue\n\t\t}"
     }
   ]
 }

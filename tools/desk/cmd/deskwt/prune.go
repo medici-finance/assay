@@ -28,6 +28,12 @@ type pruneResult struct {
 	reclaimed  []reclaimEntry // locks retired this sweep (only with --reclaim-stale-locks)
 	warns      []string       // things the sweep could not do, said out loud
 
+	// staleRegs are the registrations the STALE-REGISTRATION pass cleared (stalereg.go):
+	// worktree directory present but its .git gitdir file gone — a shape `git worktree
+	// remove` refuses and a lock makes `git worktree prune` keep forever. Only the
+	// registration is cleared; the directory is left on disk, untouched.
+	staleRegs []staleRegEntry
+
 	// reaped counts the worktrees the DEAD-SESSION arm removed (deadsession.go). It is
 	// kept apart from `removed` because the two arms cleared different populations under
 	// different gates, and one number that merged them could not tell an operator whether
@@ -98,6 +104,14 @@ type pruneOpts struct {
 //	Step A (always, safe bookkeeping): `git worktree prune --verbose` drops admin entries
 //	  whose working directories are already gone. This changes no on-disk working tree.
 //
+//	Step A1 (always, safe bookkeeping): the STALE-REGISTRATION sweep (stalereg.go) clears
+//	  the admin entries Step A cannot: worktree directory still present but its .git
+//	  gitdir file gone — a shape `git worktree remove` refuses ("validation failed") and
+//	  a lock makes `git worktree prune` keep forever. Only the registration is cleared
+//	  (unlocking it first if locked); the directory is left on disk, untouched. Each
+//	  cleared entry prints its own line, and the summary gains a
+//	  stale-registrations-cleared segment when the pass acted.
+//
 //	Step A2 (OPT-IN, --reclaim-stale-locks): give worktree locks a LIFECYCLE. Nothing else
 //	  ever unlocks a worktree, so a lock taken by a session that has since died is permanent
 //	  and the locked population grows without bound — and a lock even blocks Step A from
@@ -127,7 +141,12 @@ type pruneOpts struct {
 //	  tracked-clean, AND fully merged into origin/main (HEAD an ancestor of origin/main → every
 //	  commit reachable from HEAD is already on the remote mainline, so nothing is lost). The
 //	  merge check is the ACTIVE-WORKER guard: an unmerged branch (an open PR still in flight)
-//	  is NOT an ancestor of origin/main, so it is LEFT untouched. Anything failing any check is
+//	  is NOT an ancestor of origin/main, so it is LEFT untouched. A worktree whose HEAD IS
+//	  the origin/main tip (zero landed commits — the fresh-worktree case, and the shape a
+//	  reclaim-by-detach leaves behind) must additionally prove it holds NOTHING the
+//	  mainline does not: the untracked-INCLUSIVE status gate runs for exactly these, so a
+//	  pristine detached-at-main tree is removed while one holding uncommitted or untracked
+//	  work is LEFT. Anything failing any check is
 //	  LEFT and reported as skipped with a reason. There is NO --force anywhere.
 //
 //	Step C (default ON, --no-branches to skip / --branches-only to run alone): the
@@ -370,7 +389,7 @@ func cmdPrune(args []string) (err error) {
 		}
 		ac.detail = pruneAuditDetail(res)
 		if res.bookkept == 0 && res.removed == 0 && res.reaped == 0 && len(res.reclaimed) == 0 &&
-			res.branchGC.collected() == 0 && res.cache.reclaimed == 0 && len(res.cache.reaped) == 0 {
+			len(res.staleRegs) == 0 && res.branchGC.collected() == 0 && res.cache.reclaimed == 0 && len(res.cache.reaped) == 0 {
 			ac.successResult = deskkit.ResultNoop
 		}
 		return nil
@@ -406,6 +425,7 @@ func pruneSummaryLine(res pruneResult) string {
 		res.bookkept, plural(res.bookkept, "y", "ies"),
 		res.removed, plural(res.removed, "", "s"),
 		len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
+	line += staleRegSegment(len(res.staleRegs))
 	if res.branchGC.ran {
 		line += fmt.Sprintf(", branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
 			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
@@ -424,6 +444,7 @@ func pruneAuditDetail(res pruneResult) string {
 	}
 	detail := fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
 		res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
+	detail += staleRegSegment(len(res.staleRegs))
 	if res.branchGC.ran {
 		detail += fmt.Sprintf(", branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
 			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
@@ -439,6 +460,12 @@ func pruneAuditDetail(res pruneResult) string {
 // the sweep could not do. Both are rare and both change on-disk state or explain why it did
 // not change, so both print in one-shot AND in interval mode.
 func renderSweepDetail(w io.Writer, res pruneResult) {
+	// The stale-registration rows print in BOTH modes and always in full: each names a
+	// registration dropped (or, in a dry run, the one that would be) while its directory
+	// stays on disk — a distinction an operator must never have to guess at.
+	for _, e := range res.staleRegs {
+		fmt.Fprintln(w, "  "+staleRegLine(e, res.dryRun))
+	}
 	for _, r := range res.reclaimed {
 		fmt.Fprintf(w, "  reclaimed lock on %s — reason %s — stale: %s\n", r.path, lockReasonText(r.reason), r.why)
 	}
@@ -765,6 +792,19 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		return res, lkErr
 	}
 
+	// Step A1 — stale registrations (stalereg.go): the directory EXISTS but its .git
+	// gitdir file is GONE. `git worktree remove` refuses the shape ("validation failed")
+	// and a lock makes `git worktree prune` keep it forever, so without this pass the
+	// registration is immortal and every content gate below fails closed on it, sweep
+	// after sweep. The pass clears the REGISTRATION only — the directory is left on
+	// disk, untouched — so it runs unconditionally, exactly like Step A. Cleared entries
+	// are skipped by the candidate loop below (their registration is already gone; in a
+	// dry run they are reported here and only here).
+	staleCleared, staleWarns := clearStaleRegistrations(guard, dir, roots, locked, opts.dryRun)
+	res.staleRegs = staleCleared
+	res.warns = append(res.warns, staleWarns...)
+	staleSet := staleRegSet(staleCleared)
+
 	// Per-sweep state: ONE object cache, one repo handle per worktree, and ONE walk of
 	// refs/remotes/origin/main. See sweepCtx.
 	sc := newSweepCtx(dir)
@@ -809,6 +849,12 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	}
 
 	for _, rt := range roots {
+		// Cleared (or, in a dry run, spoken-for) stale registrations are Step A1's, already
+		// reported there; the candidate loop has nothing left to ask of them — their tree
+		// cannot be opened, so every gate would only fail closed into a misleading hold.
+		if staleSet[rt] {
+			continue
+		}
 		reason, isLocked := locked[rt]
 
 		// The identity gates bind the dead-session arm too, and must therefore be decided
@@ -873,7 +919,8 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			continue
 		}
 
-		// GATE ORDER. The two ancestry gates run FIRST and the tracked-clean gate last.
+		// GATE ORDER. The tip gate runs FIRST, then the ancestry gate, and the
+		// tracked-clean gate last.
 		//
 		// Every gate below is the one it always was and holds exactly what it always held;
 		// only the order changed. The two ancestry gates are now a hash comparison and a
@@ -888,22 +935,40 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		// "dirty" and is now reported "unmerged". Both are holds; nothing that was removed
 		// is removed differently, and nothing that was held stops being held.
 
-		// Fresh-worktree guard (prune-only): a worktree whose HEAD is exactly at
-		// origin/main tip (zero landed commits) may hold untracked new work. The
-		// automatic sweep must not delete another session's uncommitted new source
-		// files — dirtyTracked ignores untracked files deliberately (build artifacts
-		// don't block), but in prune this creates a hole: a fresh worktree with
-		// untracked new .go files is "tracked-clean AND merged" and would be removed.
-		// Skip it; a genuine merge-commit/rebase landing has HEAD below the tip and
-		// is still removed. remove (human-named single path) is not gated.
+		// Fresh-worktree guard (prune-only), CONTENT-AWARE: a worktree whose HEAD is
+		// exactly at the origin/main tip (zero landed commits) is held only while it
+		// provably CONTAINS something the mainline does not — tracked-clean deliberately
+		// ignores untracked files (build artifacts don't block), so the only way an
+		// at-tip tree can hold work is as uncommitted or untracked content, and the gate
+		// that answers that is the untracked-INCLUSIVE status (the dead-session arm's
+		// own dirtyAnyIn).
+		//
+		// The blanket hold this replaced kept EVERY at-tip worktree, pristine ones
+		// included — and a pristine at-tip tree is the exact shape a reclaim-by-detach
+		// flow leaves behind: HEAD detached at the mainline tip, no commits, no files of
+		// its own. Those accumulated without bound because the guard never checked the
+		// one thing it existed to protect. A pristine at-tip tree now FALLS THROUGH: the
+		// merge gate passes it (the tip is a member of its own ancestor set) and the
+		// tracked-clean gate passes it (a fully clean tree is tracked-clean), so it is
+		// removed — losslessly, since every byte in it derives from origin/main. A tree
+		// with uncommitted or untracked content is still held with this guard's reason;
+		// a tree whose content cannot be READ is held as unverifiable. remove
+		// (human-named single path) is not gated.
 		atTip, tipErr := headAtOriginMainTip(sc, rt)
 		if tipErr != nil {
 			res.skips = append(res.skips, skipEntry{rt, "unverifiable origin/main position: " + tipErr.Error()})
 			continue
 		}
 		if atTip {
-			res.skips = append(res.skips, skipEntry{rt, "fresh worktree at origin/main (no landed commits — may hold untracked new work)"})
-			continue
+			anyDirty, aErr := dirtyAnyIn(sc, rt)
+			if aErr != nil {
+				res.skips = append(res.skips, skipEntry{rt, "unverifiable working-tree status: " + errText(aErr)})
+				continue
+			}
+			if anyDirty != "" {
+				res.skips = append(res.skips, skipEntry{rt, "fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)"})
+				continue
+			}
 		}
 
 		// Merge gate — the active-worker protection. HEAD must be an ancestor of origin/main.
@@ -1163,7 +1228,11 @@ func unmergedReason(sc *sweepCtx, rt string) string {
 // tip (zero landed commits). Fresh worktrees at the tip may hold untracked new work
 // — `dirtyTracked` intentionally ignores untracked files so build artifacts (node_modules,
 // build/, dist/) don't block, but in an automatic sweep this means a fresh worktree
-// with new source files would be wrongly removed. This guard is prune-only: remove is a
+// with new source files would be wrongly removed. The caller therefore pairs an affirmative
+// answer with the untracked-INCLUSIVE status gate: an at-tip tree is held only while it
+// provably contains uncommitted or untracked content, and a pristine one (the shape a
+// reclaim-by-detach leaves behind) is removed — every byte of it derives from origin/main.
+// This guard is prune-only: remove is a
 // human-named single-path deletion where the caller affirms the path is safe.
 //
 // Like mergedToOriginMain, the tip is spelled FULLY QUALIFIED (`refs/remotes/origin/main`)
