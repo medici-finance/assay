@@ -166,12 +166,13 @@ func TestReleaseWritesReleasedRecord(t *testing.T) {
 }
 
 // regression: F2-repo-grammar-drops-record
-// TestReleaseOddRepoRecorded: a release whose --repo is a slug a forge can host but which starts
-// with `.`, `_` or `-`, or has a long name, still writes its released line.
+// TestReleaseOddRepoRecorded: a release whose --repo is a forge-name slug that starts with `.`,
+// `_` or `-`, or has a long name up to the 256-byte record cap, still writes its released line;
+// a 257-byte repo exits 0 and loses the line with a WARNING (declared).
 func TestReleaseOddRepoRecorded(t *testing.T) {
 	const id = "at--stream--28"
 	for _, repo := range []string{"example-org/.github", "example-org/_template", "_owner/-x",
-		"example-org/" + strings.Repeat("n", 101)} {
+		"example-org/" + strings.Repeat("n", 101), "example-org/" + strings.Repeat("n", 244)} {
 		home := recordHome(t)
 		inWorktreeWithRef(t, id+"@20261006T141502Z.3fa9c01b7d2e")
 		f := newStore()
@@ -185,4 +186,24 @@ func TestReleaseOddRepoRecorded(t *testing.T) {
 			t.Errorf("release --repo %q: want one released line with that repo, got %v; stderr=%s", repo, recs, se.String())
 		}
 	}
+	t.Run("repo 257 bytes loses the line", func(t *testing.T) {
+		repo := "example-org/" + strings.Repeat("n", 245)
+		home := recordHome(t)
+		inWorktreeWithRef(t, id+"@20261006T141502Z.3fa9c01b7d2e")
+		f := newStore()
+		f.seedClaim(id, "sess-A", "dispatched", "feat/x", time.Minute)
+		run, _, se := harness(t, f)
+		if rc := run("release", id, "--repo", repo); rc != exitOK {
+			t.Fatalf("release of a 257-byte repo rc = %d; stderr=%s", rc, se.String())
+		}
+		if recs := readRecords(t, home); len(recs) != 0 {
+			t.Errorf("a 257-byte repo: want no released line (over the record cap, declared), got %v", recs)
+		}
+		if !strings.Contains(se.String(), "could not write dispatch record") || !strings.Contains(se.String(), "256-byte cap") {
+			t.Errorf("a 257-byte repo: want the cap WARNING on stderr, got %q", se.String())
+		}
+		if _, held := f.claims[id]; held {
+			t.Error("the claim was not released")
+		}
+	})
 }

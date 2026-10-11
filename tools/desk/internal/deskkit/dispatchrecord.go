@@ -90,8 +90,11 @@ var dispatchRefSuffixRe = regexp.MustCompile(`^@[0-9]{8}T[0-9]{6}Z\.[0-9a-f]{12}
 // The identifier grammars of the remaining string fields. repo is the forge-name alphabet
 // (letters, digits, `.`, `_`, `-`) on each side of the one slash, with no first-character rule:
 // the dispatcher admits a repo by roster membership alone, and a roster entry is held only to
-// "exactly one slash", so any slug a forge can host is recorded (`owner/.github`, `owner/_x`). A
-// rostered slug outside that alphabet, which no forge hosts, still loses its line with a WARNING.
+// "exactly one slash", so a forge-name slug is recorded (`owner/.github`, `owner/_x`) while the
+// WHOLE slug fits the 256-byte record cap, which checkRecordString applies before this grammar.
+// repo is not nullable, so two kinds of rostered slug still lose their line with a WARNING: one
+// outside that alphabet (no forge hosts it), and one over 256 bytes in all, which a forge with
+// long project paths can host (each side fits its 254-character bound; the cap refuses the whole).
 // item and branch are deskdispatch's own item-key and branch rules, bounded by the 256-byte
 // record cap; a longer branch is recorded null by the writer. For the two fields the dispatcher
 // does not choose, each grammar is the shape the real values take: a brief id is `<stream>/<NN>`

@@ -70,13 +70,16 @@ func TestDispatchRecord_Refusals(t *testing.T) {
 		{"uuid session", func(r *DispatchRecord) {
 			r.SessionTag = strings.Join([]string{strings.Repeat("0", 8), "0000", "4000", "8000", strings.Repeat("0", 12)}, "-")
 		}},
-		// Every slug a forge can host is a repo the roster can admit, so each is recorded.
+		// Every forge-name slug the roster can admit is recorded while the whole slug fits the
+		// 256-byte record cap; a longer one is refused (see "repo 257 bytes" below).
 		{"repo dot name", func(r *DispatchRecord) { r.Repo = "example-org/.github" }},
 		{"repo underscore name", func(r *DispatchRecord) { r.Repo = "example-org/_template" }},
 		{"repo dash name", func(r *DispatchRecord) { r.Repo = "example-org/-x" }},
 		{"repo underscore owner", func(r *DispatchRecord) { r.Repo = "_owner/x" }},
 		{"repo 101-char name", func(r *DispatchRecord) { r.Repo = "example-org/" + strings.Repeat("n", 101) }},
 		{"branch 255 chars", func(r *DispatchRecord) { r.Branch = strp("f" + strings.Repeat("b", 254)) }},
+		// 11 + 1 + 244 = 256 bytes: the longest repo the cap admits.
+		{"repo 256 bytes", func(r *DispatchRecord) { r.Repo = "example-org/" + strings.Repeat("n", 244) }},
 	} {
 		t.Run(c.name+" accepted", func(t *testing.T) {
 			r := validDispatched()
@@ -137,6 +140,9 @@ func TestDispatchRecord_Refusals(t *testing.T) {
 		{"repo empty name", func(r *DispatchRecord) { r.Repo = "example-org/" }},
 		{"repo has @", func(r *DispatchRecord) { r.Repo = "example-org/a@b" }},
 		{"repo has scheme", func(r *DispatchRecord) { r.Repo = "https://example.org/x" }},
+		// Each side fits the per-side grammar, but the whole slug is 257 bytes: the 256-byte cap
+		// refuses it (declared; repo is not nullable, so such a repo loses its line).
+		{"repo 257 bytes", func(r *DispatchRecord) { r.Repo = "example-org/" + strings.Repeat("n", 245) }},
 		// The v2 grammar's end anchor: a valid v2 prefix followed by more is refused.
 		{"brief v2 five parts", func(r *DispatchRecord) { r.Brief = strp("cell-a:proj:example-stream:28:9") }},
 		// 64+64+64+62 characters and three colons: 257 bytes, inside the v2 shape, so only the

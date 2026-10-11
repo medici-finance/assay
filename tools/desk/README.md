@@ -5999,7 +5999,7 @@ enforces it: a line whose field is outside its grammar is never written.
 |---|---|
 | `claim_key` | 1–226 printable ASCII bytes with no space and no `@` (the grammar above) |
 | `dispatch_ref` | `<claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>`, for the line's own `claim_key` |
-| `repo` | `owner/name`: exactly one `/`; each side 1–254 letters, digits, `.`, `_`, `-`, with any of them first |
+| `repo` | `owner/name`: exactly one `/`; each side 1–254 letters, digits, `.`, `_`, `-`, with any of them first; at most 256 bytes in all |
 | `item` | an item key (letters, digits, `.`, `_`, `/`, `-`), optionally prefixed `alias:` |
 | `brief` | `<stream>/<NN>` or `<cell>:<alias>:<stream>:<NN>`; each segment letters, digits, `.`, `_`, `-` |
 | `kit` | `worker` \| `worker-objective` \| `review` \| `verifier` |
@@ -6022,10 +6022,11 @@ The writer drops a value it cannot record rather than lose the line. `brief`,
 `brief_exec_tier` and `brief_effort` (copied from the brief file's front matter) and `branch`
 (a `--branch`, derived or resumed branch over 256 bytes) are recorded as null; `session_tag`
 (from `DESK_SESSION`, or the session id) is recorded as `unknown`. `repo` and `claim_key` are
-not nullable. `repo` admits every slug a forge can host, which is every repo the roster can
-usefully admit; a rostered or `owner/*`-admitted slug outside that alphabet, which no forge
-hosts, still loses its line with a WARNING. A claim key over 226 bytes (on either side) or a
-released id carrying `@` does the same. A grammar fixes a field's
+not nullable. `repo` admits every forge-name slug up to 256 bytes in all. Two kinds of
+rostered or `owner/*`-admitted slug still lose their line with a WARNING: one outside that
+alphabet, which no forge hosts, and one longer than 256 bytes, which a forge that allows long
+project paths can host (the 256-byte cap refuses the whole slug even when each side fits). A
+claim key over 226 bytes (on either side) or a released id carrying `@` does the same. A grammar fixes a field's
 shape, not its meaning: a one-word `DESK_SESSION` is still whatever word the operator chose. The
 tier fields accept only `any` and `strong`, so a model slug cannot land in one; the slug stays
 on the PR's `dispatched-model:` label, which joins via `pr`.

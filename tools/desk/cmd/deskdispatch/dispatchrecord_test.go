@@ -517,20 +517,24 @@ func rosterRepos(t *testing.T, home string, extra ...string) {
 
 // regression: F2-repo-grammar-drops-record
 // TestRecordRepoBranchAgree holds the record's repo and branch grammars to the dispatcher's own
-// acceptance, the way TestTierReadersAgree and TestRecordKitsAgree hold tier and kit: every repo
-// the roster admits (explicitly or by an owner/* pattern) and every branch --branch accepts up to
-// the record's 256-byte cap goes through a stubbed dispatch and must write exactly one line
-// carrying that value. A branch past the cap is recorded null and the line is still written.
+// acceptance, the way TestTierReadersAgree and TestRecordKitsAgree hold tier and kit: each
+// forge-name repo shape the roster admits (explicitly or by an owner/* pattern), up to a 256-byte
+// slug, and each branch --branch accepts, up to the record's 256-byte cap, goes through a stubbed
+// dispatch and must write exactly one line carrying that value. A branch past the cap is recorded null and the line is still written. A
+// repo past the cap (each side inside the grammar, the whole slug over 256 bytes) is not
+// nullable: the dispatch still exits 0 and the line is lost with a WARNING (declared), pinned
+// below at the 256/257-byte boundary.
 func TestRecordRepoBranchAgree(t *testing.T) {
 	long := "example-org/" + strings.Repeat("n", 101)
+	atCap := "example-org/" + strings.Repeat("n", 244) // 256 bytes
 	explicit := []string{"example-org/.github", "example-org/_template", "example-org/-x", "_owner/x", long,
-		"Example-Org/Mixed.Case_1"}
+		"Example-Org/Mixed.Case_1", atCap}
 	patterned := []string{"pattern-org/.dotfile", "pattern-org/_x", "pattern-org/-y"}
 	roster := append(append([]string(nil), explicit...), "pattern-org/*")
 	for _, repo := range append(append([]string{allowedRepo}, explicit...), patterned...) {
 		name := repo
 		if len(name) > 30 {
-			name = name[:30]
+			name = name[:20] + ".." + strconv.Itoa(len(repo)) + "B"
 		}
 		t.Run("repo "+name, func(t *testing.T) {
 			s := &stub{}
@@ -553,6 +557,29 @@ func TestRecordRepoBranchAgree(t *testing.T) {
 			}
 		})
 	}
+	t.Run("repo 257 bytes loses the line", func(t *testing.T) {
+		overCap := "example-org/" + strings.Repeat("n", 245)
+		s := &stub{}
+		home, root := s.install(t)
+		rosterRepos(t, home, overCap)
+		plantScripts(t, root)
+		fixEntropy(t)
+		s.replies = happyReplies(t.TempDir())
+		var rc int
+		errOut := captureStderr(t, func() {
+			rc = run([]string{"agree--03", "--root", root, "--repo", overCap,
+				"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+		})
+		if rc != deskkit.ExitOK {
+			t.Fatalf("a 257-byte rostered repo: dispatch rc = %d, want 0\n%s", rc, errOut)
+		}
+		if recs := recordLines(t, home); len(recs) != 0 {
+			t.Fatalf("a 257-byte repo: want no line (over the record cap, declared), got %s", dump(recs))
+		}
+		if !strings.Contains(errOut, "could not write dispatch record") || !strings.Contains(errOut, "256-byte cap") {
+			t.Errorf("a 257-byte repo: want the cap WARNING on stderr, got:\n%s", errOut)
+		}
+	})
 	b200, b255, b300 := "f"+strings.Repeat("b", 199), "f"+strings.Repeat("b", 254), "f"+strings.Repeat("b", 299)
 	for _, tc := range []struct{ name, branch, want string }{
 		{"plain", "feat/x", "feat/x"},

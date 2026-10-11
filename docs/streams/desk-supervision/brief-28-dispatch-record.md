@@ -149,8 +149,9 @@ branch for a fresh worker dispatch whose PR did not yet exist.
    `any`/`strong` (so a vendor model name can never be a tier value); a `dispatch_ref` that does not
    parse as `<claim_key>@YYYYMMDDTHHMMSSZ.<12 lowercase hex>` for the record's OWN `claim_key`; `brief_effort` outside
    `S`/`M`/`L`; a `kit` outside the kit vocabulary; a `repo`, `item`, `brief`, `branch` or
-   `session_tag` outside its identifier grammar (for `repo`, every slug a forge can host, since
-   the dispatcher admits a repo by roster membership alone; for `item` and `branch`, the
+   `session_tag` outside its identifier grammar (for `repo`, every forge-name slug up to 256 bytes
+   in all, since the dispatcher admits a repo by roster membership alone, and a longer rostered
+   repo loses its line with a WARNING because `repo` is not nullable; for `item` and `branch`, the
    dispatcher's own rules within the 256-byte cap; `<stream>/<NN>` or
    `<cell>:<alias>:<stream>:<NN>` for `brief`; one token for `session_tag`); any string field over
    256 bytes or containing a control
