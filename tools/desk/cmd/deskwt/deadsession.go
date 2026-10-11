@@ -201,6 +201,17 @@ func pushedState(sc *sweepCtx, rt string, inactiveNamedOwner bool) (bool, string
 		return false, "", deskkit.Unverifiable("cannot resolve worktree branch", berr)
 	}
 	if (branch == "HEAD" || branch == "") && inactiveNamedOwner {
+		// Nested repositories need their own preservation proof. This bounded
+		// arm deliberately holds all gitlinks, including uninitialized ones.
+		entries, eerr := reviewInventory(rt, "ls-files", "--stage", "-z")
+		if eerr != nil {
+			return false, "", deskkit.Unverifiable("cannot inventory review index", eerr)
+		}
+		for _, entry := range strings.Split(entries, "\x00") {
+			if strings.HasPrefix(entry, "160000 ") {
+				return false, "review submodules require separate preservation", nil
+			}
+		}
 		// Review evidence may be ignored by Git. Remote reachability protects
 		// committed source only; keep any ignored payload for explicit handoff.
 		ignored, ierr := ignoredReviewFiles(rt)
@@ -312,6 +323,10 @@ func deleteLocalBranch(dir, branch string) error {
 // Keep this destructive eligibility read bound to the candidate worktree rather
 // than an inherited GIT_DIR, GIT_WORK_TREE or alternate index from a caller.
 func ignoredReviewFiles(rt string) (string, error) {
+	return reviewInventory(rt, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
+}
+
+func reviewInventory(rt string, args ...string) (string, error) {
 	env := make([]string, 0, len(os.Environ()))
 	for _, entry := range os.Environ() {
 		if !strings.HasPrefix(strings.ToUpper(entry), "GIT_") {
@@ -319,11 +334,11 @@ func ignoredReviewFiles(rt string) (string, error) {
 		}
 	}
 	result := deskkit.Run(deskkit.ToolCall{
-		Name: "git", Args: []string{"ls-files", "-z", "--others", "--ignored", "--exclude-standard"},
+		Name: "git", Args: args,
 		Dir: rt, Env: env, Start: execCommand,
 	})
 	if result.Failed() {
-		return "", result.Fail(deskkit.ExitUnverifiable, "git ignored-file inventory")
+		return "", result.Fail(deskkit.ExitUnverifiable, "git review inventory")
 	}
 	return result.Stdout, nil
 }
