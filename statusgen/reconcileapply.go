@@ -56,6 +56,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // appliedRow is one stream-README Status cell reconcile --apply actually
@@ -120,18 +121,42 @@ func planReconcileWrites(root string, cells []BriefCell) ([]appliedRow, []heldRo
 // The writer never produces a tree its own lint step rejects, and never weakens
 // or skips that lint to get there.
 func reconcileWrites(root string, cells []BriefCell, write bool) (rows []appliedRow, held []heldRow, err error) {
-	return reconcileWritesWith(root, cells, write, holdOptions{})
+	return reconcileWritesWith(root, cells, write, holdOptions{crossCheck: holdCrossCheck})
 }
 
+// holdProgressEvery is how many witnessed cells pass between progress lines.
+const holdProgressEvery = 25
+
+// reconcileWritesWith is reconcileWrites with the hold's options: its work
+// counters, the whole-board reference path the parity tests compare against,
+// the incremental self-check, and the progress writer (#2615).
 func reconcileWritesWith(root string, cells []BriefCell, write bool, opts holdOptions) (rows []appliedRow, held []heldRow, err error) {
 	defer beginGitReadSession()()
 	staged := newReadmeStage()
 	defer staged.clear()
 	var env *lintEnv
 	overlay := map[string]string{}
+	witnessed := 0
+	for _, c := range cells {
+		if witnessedImplemented(c) {
+			witnessed++
+		}
+	}
+	start, seen := time.Now(), 0
+	if opts.progress != nil {
+		defer func() {
+			fmt.Fprintf(opts.progress, "reconcile: lint hold: %d witnessed cell(s) checked, %d row(s) admitted, %d held (%s)\n",
+				seen, len(rows), len(held), time.Since(start).Round(time.Millisecond))
+		}()
+	}
 	for _, c := range cells {
 		if !witnessedImplemented(c) {
 			continue
+		}
+		seen++
+		if opts.progress != nil && seen%holdProgressEvery == 0 && seen < witnessed {
+			fmt.Fprintf(opts.progress, "reconcile: lint hold: at witnessed cell %d/%d, %d admitted, %d held so far (%s)\n",
+				seen, witnessed, len(rows), len(held), time.Since(start).Round(time.Millisecond))
 		}
 		stream, num, ok := briefStreamNum(c.ID)
 		if !ok {
@@ -157,7 +182,7 @@ func reconcileWritesWith(root string, cells []BriefCell, write bool, opts holdOp
 			if env, err = loadLintEnv(root); err != nil {
 				return rows, held, fmt.Errorf("loading the board for the lint hold: %w", err)
 			}
-			env.stats = opts.stats
+			env.opts, env.stats = opts, opts.stats
 		}
 		added, found, merr := env.tryMove(stream, num, "implemented", func() (func() error, error) {
 			return staged.put(path, edit.content), nil

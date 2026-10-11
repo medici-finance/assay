@@ -52,17 +52,30 @@ func manyRowBoard(tb testing.TB, nStreams, nBriefs, nWitnessed int) (string, []B
 	return root, cells
 }
 
+// BenchmarkReconcilePlanManyRow times the read-only hold over 100 moves on a
+// 500-brief board: "reference" is the whole-board path every move took before
+// #2615, "incremental" the default path (the package tests' per-move
+// cross-check is off in both, as in the binary).
 func BenchmarkReconcilePlanManyRow(b *testing.B) {
 	root, cells := manyRowBoard(b, 50, 10, 2)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		rows, held, err := planReconcileWrites(root, cells)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if i == 0 {
-			b.Logf("rows=%d held=%d", len(rows), len(held))
-		}
+	for _, mode := range []struct {
+		name string
+		opts holdOptions
+	}{{"reference", holdOptions{reference: true}}, {"incremental", holdOptions{}}} {
+		b.Run(mode.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				var st holdStats
+				opts := mode.opts
+				opts.stats = &st
+				rows, held, err := reconcileWritesWith(root, cells, false, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if i == 0 {
+					b.Logf("rows=%d held=%d whole-board rule evaluations=%d", len(rows), len(held), st.FullRuleEvals)
+				}
+			}
+		})
 	}
 }
 
@@ -83,5 +96,23 @@ func TestHoldPassesBoundedByRows(t *testing.T) {
 		if bound := len(statusKeyedLintRules); st.FullRuleEvals > bound {
 			t.Fatalf("%d moved rows took %d whole-board rule evaluations; want at most %d (one baseline pass of the %d rules) — the hold re-ran the board once per row", len(rows), st.FullRuleEvals, bound, len(statusKeyedLintRules))
 		}
+	}
+}
+
+// TestHoldProgressToWriter pins the progress lines: one every
+// holdProgressEvery witnessed cells and a final line with the counts, all on
+// the progress writer (stderr in the CLI), never on stdout.
+func TestHoldProgressToWriter(t *testing.T) {
+	root, cells := manyRowBoard(t, 30, 4, 1)
+	var progress strings.Builder
+	rows, held, err := reconcileWritesWith(root, cells, false, holdOptions{progress: &progress})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(progress.String()), "\n")
+	if len(lines) != 2 ||
+		!strings.HasPrefix(lines[0], "reconcile: lint hold: at witnessed cell 25/30, 24 admitted, 0 held so far (") ||
+		!strings.HasPrefix(lines[1], fmt.Sprintf("reconcile: lint hold: 30 witnessed cell(s) checked, %d row(s) admitted, %d held (", len(rows), len(held))) {
+		t.Fatalf("unexpected progress output:\n%s", progress.String())
 	}
 }
