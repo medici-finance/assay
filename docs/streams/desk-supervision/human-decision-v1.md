@@ -192,10 +192,16 @@ saying less, never more.
 
 A direct letter against a body anchor is read as the body's own letter, not flagged
 `ambiguous`. The brief's Verify row 2 fixes this: options A/B/C with B recommended, ruled
-`B`, records `picked: B`. The ask-decision format puts the recommended option first (§The
-format). Under that format the walk's lettering and the body's are the same, so the reading
-is unambiguous by construction. Only a relay, which the ruler may have read in walk order,
-introduces a second lettering.
+`B`, records `picked: B`. The ruler answered the ask the body states, in the letters the body
+gives.
+
+When the body lists the recommended option first, as the ask-decision format asks (§The
+format), the inbox walk's lettering and the body's are the same, and there is nothing to
+disagree about. When it does not, as in row 2's fixture, the walk re-letters the body with the
+recommended option first. A ruler who answered from the inbox in that lettering is recorded
+under the body's letter. That is a known limit of this default, and the default is declared
+and reversible. Only a relay, which the ruler may have read in walk order, is checked against
+the other letterings.
 
 ## Never recorded
 
@@ -212,8 +218,9 @@ carries:
 
 `ValidateDecisionRecord` refuses a record that breaks the closed sets or the grammars. Every
 string field is a closed-set value, a digest, a timestamp, the `owner/name` refs the close
-comment already names, or `brief`. `brief` is held to the brief-id grammar and 64 characters,
-which bounds its shape but not its meaning: a short word can satisfy it. The validator refuses,
+comment already names, or `brief`. `brief` is held to the brief-id grammar (a stream of at
+most 64 characters, `/`, a number of at most four digits), which bounds its shape but not its
+meaning: a short word can satisfy it. The validator refuses,
 naming the field:
 
 - `ruler` ≠ `driver`;
