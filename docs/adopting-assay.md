@@ -682,7 +682,8 @@ refuse on a malformed value: every acting command refuses exactly as described a
 as; a malformed entry refuses the whole roster, not only `deskrun` (unset stays valid: no repo is
 bound and `deskrun` dispatches nothing). The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
-`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS` — no longer collapse the
+`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`,
+`ASSAY_OS_USER_LOGIN_MAP` — no longer collapse the
 whole roster when one of them is malformed: the loader records the rejection against that ONE
 key, the key's own feature falls back to its shipped default (exactly the unset behaviour), and
 only the desk unit that actually declares a dependency on that key deactivates and reports why —

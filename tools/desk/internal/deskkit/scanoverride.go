@@ -134,15 +134,71 @@ func LogScanOverride(o ScanOverride) error {
 }
 
 // OverrideIdentity is the best identity the process can establish for the audit row: the
-// desk session tag and the OS user. Both are SELF-REPORTED — this is forensics, not
-// authentication, the same posture SessionTag documents. What makes the row useful is not
-// that the identity is unforgeable but that a bypass leaves one at all.
+// desk session tag and the ROSTER login the acting OS account resolves to. Both halves are
+// SELF-REPORTED — this is forensics, not authentication, the same posture SessionTag
+// documents. What makes the row useful is not that the identity is unforgeable but that a
+// bypass leaves one at all.
+//
+// WHY THE ROSTER LOGIN. The row used to name the raw OS account name, and the row's whole
+// point is accountability to a roster identity: a machine account named differently from the
+// roster login (the OS account is not a key in ASSAY_HUMAN_LOGIN_MAP, which maps the human's
+// NAME) logged rows nobody could answer for. Resolution is pure lookup over the loaded
+// roster — see resolveOverrideWho.
+//
+// IT NEVER BLOCKS. LogScanOverride is deliberately fatal when the row cannot be WRITTEN; the
+// identity half must therefore never be a reason the row does not land. An OS account no map
+// resolves still produces a row, under a clearly-marked fallback spelling, and an unconfigured
+// or refused roster resolves to that same fallback — the audit trail degrades its LABEL,
+// never its existence.
 func OverrideIdentity() string {
-	who := "unknown"
-	if u, err := user.Current(); err == nil && u.Username != "" {
-		who = u.Username
+	return resolveOverrideWho(osUsername(), EffectiveConfig()) + "/" + SessionTag()
+}
+
+// osUsername is the OS account name this process runs under, "" when the platform cannot
+// say. Separated from user.Current so resolveOverrideWho stays a pure function of its
+// inputs.
+func osUsername() string {
+	if u, err := user.Current(); err == nil {
+		return u.Username
 	}
-	return who + "/" + SessionTag()
+	return ""
+}
+
+// resolveOverrideWho maps an OS account name to the identity the override audit row names,
+// in the first order that answers:
+//
+//  1. ASSAY_OS_USER_LOGIN_MAP (cfg.OSUserLogins) — the explicit osuser→login binding. This
+//     is the arm that fixes the observed misattribution: the OS account name is not a key in
+//     the human-name map, so without an explicit binding no amount of consulting that map
+//     resolves it.
+//  2. ASSAY_HUMAN_LOGIN_MAP (cfg.HumanLogins) — the OS account name happens to BE a mapped
+//     human name; resolve it to the same login that map's other consumers answer for.
+//  3. The trusted-human set (cfg.Humans) — the OS account name IS itself a roster login;
+//     nothing to map, render the canonical (lowercased) spelling.
+//  4. Fallback: the raw OS username under an "os:" prefix, so an unresolved row is
+//     DISTINGUISHABLE from a resolved one at a glance — `os:<user>` can never be mistaken
+//     for a roster login, and an empty OS username (the platform could not say) stays the
+//     long-standing "unknown".
+//
+// All map keys are lowercased at load and the lookup lowercases the account name, so case
+// never decides attribution; the FALLBACK keeps the platform's own spelling for fidelity.
+// Nil maps (an unconfigured or refused roster) are the ordinary fallback path, not an
+// error: this function has no failure mode by construction.
+func resolveOverrideWho(osUser string, cfg Config) string {
+	if osUser == "" {
+		return "unknown"
+	}
+	lower := strings.ToLower(osUser)
+	if login, ok := cfg.OSUserLogins[lower]; ok && login != "" {
+		return login
+	}
+	if login, ok := cfg.HumanLogins[lower]; ok && login != "" {
+		return login
+	}
+	if _, ok := cfg.Humans[lower]; ok {
+		return lower
+	}
+	return "os:" + osUser
 }
 
 // impersonationMarker is the fragment of impersonationRefusal's message that identifies it.
