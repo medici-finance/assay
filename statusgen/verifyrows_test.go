@@ -1150,6 +1150,7 @@ func TestUnfailableRowNoticesAreDeterministic(t *testing.T) {
 // rowFindings: the unguarded shapes fire, and the three forms the rule must stay
 // silent on (a leading `!`, the guarded `{ … || … ; } |` form, a `≥ 1` Expect)
 // plus the neighbours it must not claim (no later stage, no grep, `|| true`).
+// regression: #1862
 func TestGrepPipeZeroCount_Shapes(t *testing.T) {
 	tests := []struct {
 		name string
