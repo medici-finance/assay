@@ -233,6 +233,41 @@ func TestLoadMarkedPolicyBoundary(t *testing.T) {
 		}
 	})
 
+	t.Run("fifo swapped in between check and open", func(t *testing.T) {
+		p := marked(t)
+		old := betweenCheckAndOpen
+		betweenCheckAndOpen = func(name string) {
+			if name != "report.json" {
+				return
+			}
+			// The regular report the checks just passed becomes a FIFO in the
+			// check/open window — the exact swap O_NONBLOCK exists for.
+			if err := os.Remove(p.ReportPath()); err != nil {
+				t.Error(err)
+			}
+			if err := syscall.Mkfifo(p.ReportPath(), 0600); err != nil {
+				t.Error(err)
+			}
+		}
+		t.Cleanup(func() { betweenCheckAndOpen = old })
+		done := make(chan error, 1)
+		go func() {
+			q, err := LoadMarkedPolicy(p.Root)
+			if q != nil {
+				err = fmt.Errorf("a swapped-in FIFO resolved a policy")
+			}
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatal("a swapped-in FIFO resolved a policy")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("a FIFO swapped in after the checks stalled the open")
+		}
+	})
+
 	t.Run("linked report refused", func(t *testing.T) {
 		p := marked(t)
 		if err := os.Remove(p.ReportPath()); err != nil {

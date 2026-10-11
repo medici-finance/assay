@@ -118,8 +118,14 @@
     {
       "name": "namespaces are never descended into (a nested cell's marked root gets no cadence check)",
       "file": "cmd/deskwt/cachepressure.go",
-      "old": "\t\tif d.IsDir() && !isCell {\n\t\t\treturn nil // a namespace: descend\n\t\t}",
-      "new": "\t\tif false && d.IsDir() && !isCell {\n\t\t\treturn nil // a namespace: descend\n\t\t}"
+      "old": "\t\treturn nil // a namespace: descend",
+      "new": "\t\treturn filepath.SkipDir // a namespace: descend"
+    },
+    {
+      "name": "a non-directory walk entry skips its siblings (a symlink hides every later cell from the sweep)",
+      "file": "cmd/deskwt/cachepressure.go",
+      "old": "\t\t\treturn nil\n\t\t}\n\t\tfi, serr := os.Stat(filepath.Join(path, \"cell.env\"))",
+      "new": "\t\t\treturn filepath.SkipDir\n\t\t}\n\t\tfi, serr := os.Stat(filepath.Join(path, \"cell.env\"))"
     }
   ]
 }

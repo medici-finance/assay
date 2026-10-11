@@ -234,21 +234,24 @@ func discoverCells(cellsRoot string, warns *[]string) []string {
 			return nil
 		}
 		// WalkDir's IsDir is the Lstat answer, so a symlinked directory arrives
-		// here through the symlink arm: probed as a cell (Stat follows the
-		// link, as cellctl's loader does) but never descended into, so a link
-		// cycle cannot loop the walk.
-		if !d.IsDir() && d.Type()&os.ModeSymlink == 0 {
+		// here as a NON-dir. It is probed as a cell (Stat follows the link, as
+		// cellctl's loader does) but never descended into — WalkDir never
+		// follows links anyway, and returning SkipDir for a non-dir entry would
+		// skip its remaining SIBLINGS, hiding every later cell from the sweep.
+		if !d.IsDir() {
+			if d.Type()&os.ModeSymlink != 0 {
+				if fi, serr := os.Stat(filepath.Join(path, "cell.env")); serr == nil && !fi.IsDir() {
+					cells = append(cells, path)
+				}
+			}
 			return nil
 		}
 		fi, serr := os.Stat(filepath.Join(path, "cell.env"))
-		isCell := serr == nil && !fi.IsDir()
-		if isCell {
+		if serr == nil && !fi.IsDir() {
 			cells = append(cells, path)
+			return filepath.SkipDir // a cell: never descend into its subtree
 		}
-		if d.IsDir() && !isCell {
-			return nil // a namespace: descend
-		}
-		return filepath.SkipDir
+		return nil // a namespace: descend
 	})
 	if werr != nil {
 		*warns = append(*warns, "could-not-check: cells root "+cellsRoot+" could not be walked: "+errText(werr))

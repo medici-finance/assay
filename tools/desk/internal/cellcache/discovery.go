@@ -40,6 +40,12 @@ func DomainFor(canonicalCellDir string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// betweenCheckAndOpen is the test seam readMetaBounded calls between the
+// metadata entry's checks and its open — the window a swap to a FIFO must not
+// be able to turn into a stalled read. See TestLoadMarkedPolicyBoundary's
+// swapped-FIFO fixture. Production code never sets it.
+var betweenCheckAndOpen = func(name string) {}
+
 // readMetaBounded reads name relative to the verified root, under the
 // package's one metadata discipline. os.Root deliberately resolves in-root
 // links (O_NOFOLLOW is no discipline there), so the layers are:
@@ -62,6 +68,9 @@ func readMetaBounded(r *os.Root, dev uint64, name string, max int64) ([]byte, er
 	if err := checkEntry(lst, dev); err != nil || !lst.Mode().IsRegular() || lst.Size() > max {
 		return nil, fmt.Errorf("invalid cache metadata file %s", name)
 	}
+	// A swap between the checks and the open is the window O_NONBLOCK exists
+	// for; the seam lets a test put a swap there deterministically.
+	betweenCheckAndOpen(name)
 	f, err := r.OpenFile(name, os.O_RDONLY|noBlock, 0)
 	if err != nil {
 		return nil, err

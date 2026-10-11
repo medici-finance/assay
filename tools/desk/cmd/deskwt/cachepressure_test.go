@@ -368,3 +368,31 @@ func TestPruneCachePassContinuesPastInvalidCandidate(t *testing.T) {
 		t.Fatal("the valid cell's over-budget cache survived the sweep", err)
 	}
 }
+
+// A symlink that sorts BEFORE a nested cell must not hide the cell from the
+// sweep: a link is not a directory to the walk, and treating it like one
+// skips its remaining siblings. The symlink itself is probed (it may BE a
+// cell) but never followed.
+func TestPruneCachePassSymlinkDoesNotHideLaterCells(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	cells := withCellsRoot(t)
+	// "a-link" sorts before "team": a walk that skips a non-dir entry's
+	// siblings never reaches team/demo.
+	if err := os.Symlink(filepath.Join(cells, "nowhere"), filepath.Join(cells, "a-link")); err != nil {
+		t.Fatal(err)
+	}
+	p := plantMarkedCell(t, cells, filepath.Join("team", "demo"), "", 1)
+	cacheMaterial(t, p, "build/result", 100)
+
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "cache-reclaimed 1") {
+		t.Fatalf("the nested cell behind the symlink was not swept:\n%s", errout)
+	}
+	if _, err := os.Stat(filepath.Join(p.Root, "build", "result")); !os.IsNotExist(err) {
+		t.Fatal("the nested cell's over-budget cache survived the sweep", err)
+	}
+}
