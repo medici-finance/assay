@@ -3,4 +3,10 @@ Gathering coverage... done in 1.2s
 [31m       LIVED[0m CONDITIONALS_NEGATION at a.go:30:11
  NOT COVERED CONDITIONALS_BOUNDARY at b.go:4:11
    TIMED OUT CONDITIONALS_NEGATION at a.go:14:7
-signal: interrupt
+
+Shutting down gracefully...
+[31m       LIVED[0m CONDITIONALS_NEGATION at a.go:40:3
+[32m      KILLED[0m CONDITIONALS_NEGATION at a.go:44:9
+panic: send on closed channel
+
+goroutine 1 [running]:

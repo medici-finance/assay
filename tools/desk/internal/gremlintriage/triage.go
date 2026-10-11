@@ -145,7 +145,12 @@ func triage(rows []manifestRow, idx *specIndex) triageResult {
 				pr.Broke = "report holds no mutants"
 			case c.Killed+c.Lived+c.TimedOut == 0 && c.NotViable > 0:
 				pr.Broke = "every mutant was not viable"
+			case c.Killed+c.Lived+c.TimedOut == 0 && c.NotCovered > 0:
+				pr.Broke = "no mutant was covered by the tests"
 			}
+		}
+		if pr.Broke == "" && row.State == statePartial && c.Killed+c.Lived+c.TimedOut == 0 {
+			pr.Broke = "budget ran out before any mutant finished"
 		}
 		if pr.Broke == "" && c.Killed+c.Lived+c.TimedOut > 0 {
 			evidence++

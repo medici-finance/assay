@@ -157,6 +157,13 @@ func TestReadLogStripsColour(t *testing.T) {
 	if ms[1].File != "a.go" || ms[1].Line != 30 || ms[1].Column != 11 {
 		t.Fatalf("lived mutant = %+v", ms[1])
 	}
+	// The LIVED and KILLED lines after "Shutting down gracefully" are interrupted
+	// mutants: counting them would move the totals above.
+	for _, m := range ms {
+		if m.Line == 40 || m.Line == 44 {
+			t.Fatalf("mutant after the shutdown line counted: %+v", m)
+		}
+	}
 }
 
 // regression: #2647
@@ -205,15 +212,17 @@ func TestTriageBrokeStates(t *testing.T) {
 	idx := loadFixtureSpecs(t)
 	good := row(stateOK, "testdata/report-ok.json", "")
 	cases := map[string]manifestRow{
-		"gremlins failed":       row(stateFailed, "", ""),
-		"probe red":             row(stateProbeRed, "", ""),
-		"dry run failed":        row(stateDryRunFail, "", ""),
-		"report missing":        row(stateOK, "testdata/missing.json", ""),
-		"all not viable":        row(stateOK, "testdata/report-notviable.json", ""),
-		"empty report":          row(stateOK, "testdata/report-empty.json", ""),
-		"partial log gone":      row(statePartial, "", "testdata/missing.log"),
-		"unknown status":        row(stateOK, "testdata/report-badstatus.json", ""),
-		"not a gremlins report": row(stateOK, "testdata/report-nomodule.json", ""),
+		"gremlins failed":        row(stateFailed, "", ""),
+		"probe red":              row(stateProbeRed, "", ""),
+		"dry run failed":         row(stateDryRunFail, "", ""),
+		"report missing":         row(stateOK, "testdata/missing.json", ""),
+		"all not viable":         row(stateOK, "testdata/report-notviable.json", ""),
+		"none covered":           row(stateOK, "testdata/report-notcovered.json", ""),
+		"partial, none finished": row(statePartial, "", "testdata/partial-nofinish.log"),
+		"empty report":           row(stateOK, "testdata/report-empty.json", ""),
+		"partial log gone":       row(statePartial, "", "testdata/missing.log"),
+		"unknown status":         row(stateOK, "testdata/report-badstatus.json", ""),
+		"not a gremlins report":  row(stateOK, "testdata/report-nomodule.json", ""),
 	}
 	for name, bad := range cases {
 		res := triage([]manifestRow{good, bad}, idx)
@@ -243,6 +252,11 @@ func TestTriageNoEvidenceBreaks(t *testing.T) {
 	res := triage([]manifestRow{row(statePartial, "", empty)}, loadFixtureSpecs(t))
 	if !res.Broke {
 		t.Fatal("no package produced a single finished mutant; the sweep must report broke")
+	}
+	// No package at all: no per-package check fires, so only the sweep-wide
+	// evidence check stands between this and a clean exit.
+	if res := triage(nil, loadFixtureSpecs(t)); !res.Broke {
+		t.Fatal("an empty manifest is no evidence; the sweep must report broke")
 	}
 }
 

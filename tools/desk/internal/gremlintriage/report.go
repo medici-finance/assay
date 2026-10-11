@@ -80,6 +80,9 @@ func readReport(path string) ([]mutant, error) {
 	return out, nil
 }
 
+// shutdownLine is what Gremlins prints when the first SIGINT arrives.
+const shutdownLine = "Shutting down gracefully"
+
 var (
 	ansiRE    = regexp.MustCompile("\x1b\\[[0-9;]*m")
 	logLineRE = regexp.MustCompile(`^\s*(KILLED|LIVED|NOT COVERED|TIMED OUT|NOT VIABLE|SKIPPED)\s+([A-Z_]+) at (.+):(\d+):(\d+)\s*$`)
@@ -87,13 +90,20 @@ var (
 
 // readLog recovers the mutants that completed before a run was interrupted.
 // Gremlins writes no JSON report on SIGINT, but prints one line per finished
-// mutant, so a budget-stopped run is still partial evidence.
+// mutant, so a budget-stopped run is still partial evidence. Reading stops at
+// "Shutting down gracefully": the lines after it are mutants whose go test the
+// interrupt cut short, so their status is not evidence (an interrupted test
+// exits non-zero and would read as KILLED).
 func readLog(r io.Reader) ([]mutant, error) {
 	var out []mutant
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
-		m := logLineRE.FindStringSubmatch(ansiRE.ReplaceAllString(sc.Text(), ""))
+		text := ansiRE.ReplaceAllString(sc.Text(), "")
+		if strings.HasPrefix(strings.TrimSpace(text), shutdownLine) {
+			break
+		}
+		m := logLineRE.FindStringSubmatch(text)
 		if m == nil {
 			continue
 		}

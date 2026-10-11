@@ -56,6 +56,24 @@
       "new": "case false:"
     },
     {
+      "name": "none-covered report reads as clean",
+      "file": "internal/gremlintriage/triage.go",
+      "old": "case c.Killed+c.Lived+c.TimedOut == 0 && c.NotCovered > 0:",
+      "new": "case false:"
+    },
+    {
+      "name": "partial with nothing finished reads as partial",
+      "file": "internal/gremlintriage/triage.go",
+      "old": "if pr.Broke == \"\" && row.State == statePartial && c.Killed+c.Lived+c.TimedOut == 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "lines after the shutdown line counted",
+      "file": "internal/gremlintriage/report.go",
+      "old": "if strings.HasPrefix(strings.TrimSpace(text), shutdownLine) {",
+      "new": "if false {"
+    },
+    {
       "name": "red copy probe downgraded to a note",
       "file": "internal/gremlintriage/triage.go",
       "old": "pr.Broke = \"package tests fail in the mutant copy layout; kills would be false\"",

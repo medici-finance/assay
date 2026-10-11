@@ -50,7 +50,10 @@ Gremlins never decides that on its own. That is why the sweep files no issues.
    sweep records `probe-red` and counts as broken.
 5. **Unleash.** This runs Gremlins with `--workers 2` under `timeout --signal=INT`. Gremlins
    writes no JSON when it is interrupted, so a run stopped at its budget is read back from
-   its log and recorded as `partial`. A partial run is still evidence.
+   its log and recorded as `partial`. A partial run is still evidence. The log is read up to
+   Gremlins' `Shutting down gracefully` line. The mutants printed after it had their
+   `go test` cut short by the interrupt, so their status is not counted. A partial run in
+   which no mutant finished counts as broken.
 6. **Triage.** `gremlintriage triage` merges the reports and cross-references every LIVED
    mutant against all muhar specs in the module:
    - **Lived near a spec:** the mutant is on a line a spec entry mutates, or in the same
@@ -125,7 +128,9 @@ The defaults are the six muhar-spec packages named in #2647, swept one after ano
 | `cmd/desksourceguard` | 600 s |
 
 The budgets total 70 minutes. Install, dry runs and copy probes come on top. The daily
-staged workflow allows 110 minutes.
+staged workflow allows 110 minutes. The dry run, the copy probe and the run each have their
+own `timeout` at the package budget, so the worst case is about three times the budgets,
+past the job cap. A job that hits the cap fails with "No summary", so it fails closed.
 
 `internal/deskkit` is the outlier. One run of its suite takes minutes, so only a handful of
 its roughly 5,600 runnable mutants fit in a day. For deskkit, Gremlins is a slow sample;
@@ -138,7 +143,7 @@ covers the dry run, the copy probe and the run.
 
 | Package | Bin | Wall | Killed | Lived | Not covered | Candidates |
 |---|---|---|---|---|---|---|
-| `internal/deskkit` | 27/139 (partial) | 1890 s | 10 | 2 | 0 | 2 |
+| `internal/deskkit` | 27/139 (partial) | 1890 s | 9 | 1 | 0 | 1 |
 | `cmd/deskmerge` | 4/7 | 211 s | 22 | 0 | 14 | 0 |
 | `internal/loopengine` | 2/2 | 258 s | 82 | 42 | 35 | 37 |
 | `cmd/deskclose` | 2/2 | 360 s | 142 | 0 | 1 | 0 |
@@ -146,7 +151,8 @@ covers the dry run, the copy probe and the run.
 | `cmd/desksourceguard` | 1/1 | 104 s | 12 | 8 | 3 | 8 |
 
 That is about 51 minutes in total. deskkit alone is about 31 of them, and it is
-budget-bound. The rest finished well inside their budgets.
+budget-bound. The rest finished well inside their budgets. deskkit's counts leave out the
+two mutants its log printed after the shutdown line.
 
 The capacity estimate (one coverage run per mutant) is conservative. deskmerge's bin of 22
 mutants finished in under four minutes, so its 7-day rotation could be shortened once
