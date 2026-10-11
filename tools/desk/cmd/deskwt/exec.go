@@ -8,11 +8,12 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// execCommand is the single seam through which every git invocation flows. Production
-// binds it to exec.Command; tests wrap it to RECORD every argv (so the "no --force in
+// execCommand is the seam for lifecycle git invocations. Maintenance uses the separate
+// context-aware maintenanceCommand seam so its total deadline also bounds inventory.
+// Production binds it to exec.Command; tests wrap it to RECORD every argv (so the "no --force in
 // any git argv" assertion is checked on the real constructed argv) while still
-// delegating to a real git process against a scratch fixture. Nothing else in this
-// package constructs commands, so there is exactly one place argv is built.
+// delegating to a real git process against a scratch fixture. Both seams keep explicit
+// argv and have real-Git command-contract tests.
 var execCommand = exec.Command
 
 // runGit executes `git <args...>` in dir and returns trimmed stdout. The argv is
