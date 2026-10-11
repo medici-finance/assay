@@ -62,6 +62,16 @@
       "reason": "developer mutation runner for the layer-secret-scan fixtures (issue #2256); runs layer-secret-scan.test.sh against mutated copies of the scan, not an operator entrypoint"
     },
     {
+      "class": "test",
+      "pattern": "tools/gremlins/run.sh",
+      "reason": "daily Gremlins mutation discovery sweep (issue #2647); runs the desk packages' tests against mutants in a disposable checkout from a staged CI workflow, not released and not an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/desk/internal/gremlintriage",
+      "reason": "plan and triage helper built and run only by tools/gremlins/run.sh (issue #2647); not released and not an operator entrypoint"
+    },
+    {
       "class": "fixture",
       "pattern": "**/testdata/**",
       "reason": "Go testdata convention: the go tool ignores these packages; they are inputs to tests"
@@ -1265,6 +1275,24 @@
       "parser": "Go flag: global FlagSet",
       "complexity": "simple",
       "basis": "695 LOC, ~0 verbs, ~3 flags at 3ad1ad83c871",
+      "owner": "desktools-v2/44",
+      "state": "pending"
+    },
+    {
+      "executable": "muhar-action.sh",
+      "path": "actions/muhar/muhar-action.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "composite GitHub Action (actions/muhar); run by its action.yml at the consumer's pinned ref",
+      "consumers": [
+        "actions/muhar/action.yml",
+        "actions/muhar/README.md",
+        "actions/muhar/muhar-action.test.sh",
+        "tools/desk/cmd/muhar/action_test.go"
+      ],
+      "parser": "bash subcommand positional; inputs as environment variables",
+      "complexity": "simple",
+      "basis": "220 lines at 7c94cb98919f",
       "owner": "desktools-v2/44",
       "state": "pending"
     },

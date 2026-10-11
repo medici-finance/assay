@@ -60,7 +60,7 @@ fall back only on exit 3 (disabled) / 6 (unverifiable).
 A correctness verdict body ENDS with an `## Coverage` section: one line per class in the
 correctness class register. The register's home is the dispatched review kit's `review-prompt`
 reference, never this file; each line is exactly one of four shapes, one grammar — class
-first, state second, colon, detail:
+first, state second, colon before the detail, except the finding shape:
 
 ```
 <class> — finding <finding-id>
@@ -74,7 +74,8 @@ does not apply to this diff is `n/a` with its one-sentence reason — the two mu
 a state, and an examined-and-sound class written as `n/a` is precisely the leak this
 contract exists to close. A class that could not be honestly `n/a`'d and was not checked is
 `could-not-check`, never a silent pass; silence is not accounting, and a class with no line
-is a gap in the accounting, not an answer. The accounting covers the stated scope: a delta
+is a gap in the accounting, not an answer. A could-not-check line is disclosure: an APPROVE
+stands unless it rests on that class. The accounting covers the stated scope: a delta
 round accounts for the classes the delta range's paths can touch; a full pass accounts for
 every class in the register. A security verdict carries no Coverage block — the register is
 the correctness lane's, and the two verdicts stay separate artifacts.

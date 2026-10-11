@@ -1244,7 +1244,21 @@ func cleanDeclaredPath(s string) string {
 // a decorated heading like `## Evidence (notes)` yields no section.
 func extractEvidence(body string) string {
 	lines := strings.Split(body, "\n")
-	start := -1
+	start, end, ok := evidenceSectionSpan(lines)
+	if !ok {
+		return ""
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
+// evidenceSectionSpan locates the `## Evidence` section in a brief BODY's
+// lines (frontmatter already split off): its content is lines[start:end], end
+// being the next section heading or len(lines). It is the one place the
+// section's boundaries are decided; extractEvidence and the auto-flip's
+// Evidence-only classifier (evidenceshape.go) both read them from here, so a
+// line the parser does not read as Evidence is never classified as Evidence.
+func evidenceSectionSpan(lines []string) (start, end int, ok bool) {
+	start = -1
 	for i, l := range lines {
 		if strings.TrimSpace(l) == "## Evidence" {
 			start = i + 1
@@ -1252,16 +1266,22 @@ func extractEvidence(body string) string {
 		}
 	}
 	if start < 0 {
-		return ""
+		return 0, 0, false
 	}
-	var out []string
-	for _, l := range lines[start:] {
-		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
+	end = len(lines)
+	for i := start; i < len(lines); i++ {
+		if isSectionHeading(lines[i]) {
+			end = i
 			break
 		}
-		out = append(out, l)
 	}
-	return strings.Join(out, "\n")
+	return start, end, true
+}
+
+// isSectionHeading reports whether a brief line is a `## ` section heading as
+// the parser reads one: leading and trailing whitespace ignored.
+func isSectionHeading(l string) bool {
+	return strings.HasPrefix(strings.TrimSpace(l), "## ")
 }
 
 // evidenceHasContent reports whether an Evidence section has at least one

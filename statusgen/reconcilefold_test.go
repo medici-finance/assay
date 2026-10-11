@@ -34,6 +34,8 @@ type foldFixtureBrief struct {
 	evMail string
 	// verifyTail is appended to the Verify section in every commit.
 	verifyTail string
+	// files, when non-empty, is the brief's `## Context` `files:` line value.
+	files string
 	// version, when non-zero, makes the brief brief-v2: the implementation
 	// commit carries version 1 and the Evidence commit writes this one.
 	version int
@@ -66,11 +68,15 @@ func foldBriefFile(b foldFixtureBrief, version int, ev string) string {
 	if version > 0 {
 		schema = "schema: brief-v2\nversion: " + strconv.Itoa(version) + "\n"
 	}
+	context := ""
+	if b.files != "" {
+		context = "## Context\n\nfiles: " + b.files + "\n\n"
+	}
 	return "---\n" + schema + "brief: " + b.id + "\n" + "title: Fold fixture " + b.num + "\n" +
 		"wave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: " + b.gate + "\n" +
 		"risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n" +
 		"issues: " + issues + "\nauthored: 2026-09-10 by fold fixture\nsources: [\"fixture\"]\n---\n\n" +
-		"# Brief " + b.num + "\n\n## Verify\n\n" +
+		"# Brief " + b.num + "\n\n" + context + "## Verify\n\n" +
 		"| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n" + b.verifyTail + "\n" +
 		"## Evidence\n\n" + ev + "\n## Review\n\nGate: " + b.gate + ".\n"
 }
@@ -402,6 +408,31 @@ func TestFoldOtherApproverNotDone(t *testing.T) {
 	}}
 	foldFlipSeam(t, src)
 	wantCell(t, foldCells(t, root), "fx/01", "verified", "only the bound reviewer's approval counts")
+}
+
+// regression: F-fold-bypasses-files-overlap
+//
+// TestFoldFilesOverlapNotDone: the fold reads the brief's `files:` exactly as
+// --auto-flip-model does. PR #11 is approved at its merged head and touches
+// internal/fx/fx.go. A brief declaring that path derives done; one declaring a
+// path no PR touches derives no approval (unknown, naming the reason), never done.
+func TestFoldFilesOverlapNotDone(t *testing.T) {
+	for _, tc := range []struct{ files, want, why string }{
+		{"`internal/fx/fx.go`", "done", "PR #11 touches the declared path"},
+		{"`internal/nothing/`", "unknown", "no PR touches the declared path"},
+	} {
+		t.Run(tc.files, func(t *testing.T) {
+			root := writeFoldFixture(t,
+				[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv, files: tc.files}},
+				map[string][3]string{"01": {"implemented", "—", "—"}})
+			foldServer(t, foldStdPulls()[:1], foldIssues())
+			foldFlipSeam(t, foldApproved())
+			c := wantCell(t, foldCells(t, root), "fx/01", tc.want, tc.why)
+			if tc.want == "unknown" && !strings.Contains(c.Reason, "no PR touches the brief's files") {
+				t.Errorf("fx/01: reason = %q, want it to name that no PR touches the brief's files", c.Reason)
+			}
+		})
+	}
 }
 
 // TestFoldModelGateIgnoresStamp: a gate:model brief's human stamp is not its
