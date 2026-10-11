@@ -28,7 +28,8 @@ gate-why: >-
   automated actor can turn into dispatchable work without a human act. The four risk answers
   stay `no`; the reasoning is under Context.
 decision-trigger: creation
-issues: []
+issues: [2414]
+design: DR-label-removal-hold
 outcome: none
 exec-tier: strong
 exec-tier-why: >-
