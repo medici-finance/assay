@@ -81,9 +81,9 @@ func TestEmitAwaitingAgeColumn(t *testing.T) {
 	s.LastTouch = day(5)
 	out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), map[string]string{"frontend/01": "3h"}, nil, IntakeAlarmResult{}, nil, "")
 	for _, want := range []string{
-		"| Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |",
-		"| frontend | 01 | implemented | 2000 | 0 | 3h | — | — |",
-		"| frontend | 02 | implemented | 2000 | 0 | — | — | — |",
+		"| Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |",
+		"| frontend | 01 | implemented | 2000 | 0 | 3h | verify-desk | triage, then re-bucket | — | — |",
+		"| frontend | 02 | implemented | 2000 | 0 | — | verify-desk | triage, then re-bucket | — | — |",
 	} {
 		if !contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)

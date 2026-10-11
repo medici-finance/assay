@@ -1,11 +1,12 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -22,12 +23,74 @@ var productionAdmission = verifierEvidenceAdmissionFn
 // attestationAPI is an offline GitHub API for the dispatcher-owned attestation
 // record. Only forge transport and custody are replaced; deskevidence runs the
 // real shared admission reader against it.
+//
+// It also serves the Contents API for the fixture repository, so a landing can
+// run its own remote read and its write through the same resolved backend that
+// admission reads through. Every request is logged with the credential it
+// carried, which is what lets a test say WHICH token reached the forge and in
+// what order admission and the landing read it.
 type attestationAPI struct {
 	mu                 sync.Mutex
 	title, body, state string
 	labels             []string
 	timeline           []map[string]any
 	unexpected         []string
+
+	files map[string]string // branch content, by repo path
+	puts  []contentsPut     // every Contents-API write, in order
+	calls []apiCall         // every request, in order
+}
+
+// contentsPut is one Contents-API write the offline API accepted.
+type contentsPut struct{ File, Message, Content string }
+
+// apiCall is one request the offline API received and the credential it carried.
+type apiCall struct{ Method, Path, Authorization string }
+
+// contentsPrefix is the Contents-API path of the fixture repository.
+const contentsPrefix = "/repos/example-org/tracker/contents/"
+
+// blobID is a stand-in blob id: stable for equal content, different otherwise.
+func blobID(content string) string {
+	sum := sha1.Sum([]byte(content))
+	return hex.EncodeToString(sum[:])
+}
+
+// serveContents answers a Contents-API read or write for file.
+func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, file string) {
+	enc := func(v any) { _ = json.NewEncoder(w).Encode(v) }
+	switch r.Method {
+	case http.MethodGet:
+		content, ok := a.files[file]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			enc(map[string]any{"message": "Not Found"})
+			return
+		}
+		enc(map[string]any{"sha": blobID(content), "encoding": "base64",
+			"content": base64.StdEncoding.EncodeToString([]byte(content))})
+	case http.MethodPut:
+		var in struct{ Message, Content, Branch, SHA string }
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		decoded, err := base64.StdEncoding.DecodeString(in.Content)
+		if err != nil {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			return
+		}
+		if a.files == nil {
+			a.files = map[string]string{}
+		}
+		a.files[file] = string(decoded)
+		a.puts = append(a.puts, contentsPut{File: file, Message: in.Message, Content: string(decoded)})
+		enc(map[string]any{
+			"content": map[string]any{"sha": blobID(string(decoded))},
+			"commit": map[string]any{"sha": blobID(in.Message + string(decoded)),
+				"author": map[string]any{"name": "assay-verifier-app[bot]"}},
+		})
+	default:
+		a.unexpected = append(a.unexpected, r.Method+" "+r.URL.Path)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
 func (a *attestationAPI) issue() map[string]any {
@@ -44,7 +107,10 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer a.mu.Unlock()
 	enc := func(v any) { _ = json.NewEncoder(w).Encode(v) }
 	p := r.URL.Path
+	a.calls = append(a.calls, apiCall{Method: r.Method, Path: p, Authorization: r.Header.Get("Authorization")})
 	switch {
+	case strings.Contains(p, contentsPrefix):
+		a.serveContents(w, r, p[strings.Index(p, contentsPrefix)+len(contentsPrefix):])
 	case r.Method == http.MethodPost && strings.HasSuffix(p, "/repos/example-org/tracker/issues"):
 		var in struct{ Title, Body string }
 		_ = json.NewDecoder(r.Body).Decode(&in)
@@ -84,71 +150,27 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // TestVerifierEvidenceLandingFormAdmitted runs the documented desk-side landing
-// through the REAL pre-work admission (no admission stub): --root names the
-// dispatched verifier home, the --brief-path fragment lives outside it, and the
-// refresh before an outcome record rewrites only the brief and stream index in
-// the home, never its detached HEAD. The forms the procedure forbids refuse.
+// through the REAL pre-work admission (no admission stub) and the tool's real
+// custody step, each landing minting its own token (newLandingFixture): --root
+// names the dispatched verifier home, the --brief-path fragment lives outside
+// it, and the refresh before an outcome record rewrites only the brief and
+// stream index in the home, never its detached HEAD. The forms the procedure
+// forbids refuse.
 func TestVerifierEvidenceLandingFormAdmitted(t *testing.T) {
-	if reflect.ValueOf(productionAdmission).Pointer() != reflect.ValueOf(deskkit.CheckVerifierEvidence).Pointer() {
+	if reflect.ValueOf(productionAdmission).Pointer() != reflect.ValueOf(deskkit.CheckVerifierEvidenceWithForge).Pointer() {
 		t.Fatal("the shipped landing does not bind the shared admission reader")
 	}
-	f, errBuf := setupFake(t)
-	verifierEvidenceAdmissionFn = productionAdmission
-	api := &attestationAPI{}
-	srv := httptest.NewServer(api)
-	t.Cleanup(srv.Close)
-	deskkit.SetGitHubCustodyMinter(func(string, deskkit.ForgeRepo) (string, string, error) {
-		return "example-installation-token", srv.URL, nil
-	})
-	t.Cleanup(func() { deskkit.SetGitHubCustodyMinter(nil) })
-
-	const repo, brief, index = "example-org/tracker", "docs/streams/x/brief-01-source.md", "docs/streams/x/README.md"
-	// Forge selection belongs to the fixture, not the enclosing checkout's origin.
-	pinFixtureForge(t, os.Getenv("HOME"), repo)
-	briefBody := "# Source\n\n## Verify\n\n| 1 | `true` | exit 0 |\n\n## Evidence\n\nPending.\n"
-	home := t.TempDir()
-	git := func(args ...string) {
-		t.Helper()
-		c := exec.Command("git", append([]string{"-C", home}, args...)...)
-		if out, err := c.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %s %v", args, out, err)
-		}
-	}
-	write := func(path, body string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	git("init", "-q")
-	git("config", "user.name", "fixture")
-	git("config", "user.email", "fixture@example.invalid")
-	write(filepath.Join(home, brief), briefBody)
-	write(filepath.Join(home, index), "# x\n")
-	write(filepath.Join(home, "source.txt"), "attested source\n")
-	git("add", brief, index, "source.txt")
-	git("commit", "-q", "-m", "fixture")
-	git("update-ref", "refs/remotes/origin/main", "HEAD")
-	git("checkout", "-q", "--detach")
-	if err := deskkit.PrepareVerifierAttestation(home, repo, brief, "gpt-6-astra", "strong"); err != nil {
-		t.Fatal(err)
-	}
-	receipt, err := deskkit.RecoverVerifierAttestation(home)
-	if err != nil {
-		t.Fatalf("dispatcher attestation: %v (unexpected API calls %v)", err, api.unexpected)
-	}
-	f.setFile(brief, briefBody)
+	lf := newLandingFixture(t)
+	api, home, errBuf := lf.api, lf.home, lf.errBuf
+	const brief = fixtureBrief
 
 	// The desk writes the verifier's returned rows to its own scratch, outside the home.
 	fragment := filepath.Join(t.TempDir(), "evidence.md")
-	write(fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
+	writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
 	land := func(args ...string) int {
 		t.Helper()
-		errBuf.Reset()
-		return run(append([]string{repo, "main"}, args...))
+		code, _ := lf.land(t, args...)
+		return code
 	}
 
 	t.Run("desk-checkout-root-refuses-and-names-home", func(t *testing.T) {
@@ -161,7 +183,7 @@ func TestVerifierEvidenceLandingFormAdmitted(t *testing.T) {
 	})
 	t.Run("fragment-inside-home-refuses", func(t *testing.T) {
 		inside := filepath.Join(home, "evidence.md")
-		write(inside, "| 1 | `true` | 0 | ok |\n")
+		writeFixtureFile(t, inside, "| 1 | `true` | 0 | ok |\n")
 		defer os.Remove(inside)
 		if code := land("--root", home, "--brief-path", brief, "--evidence-file", "evidence.md"); code == 0 {
 			t.Fatal("an untracked fragment inside the home was admitted")
@@ -179,41 +201,40 @@ func TestVerifierEvidenceLandingFormAdmitted(t *testing.T) {
 			t.Fatalf("refused for another reason: %s", errBuf)
 		}
 	})
-	if len(f.writes) != 0 {
-		t.Fatalf("a refused landing wrote: %+v", f.writes)
+	if len(api.puts) != 0 {
+		t.Fatalf("a refused landing wrote: %+v", api.puts)
 	}
 
 	t.Run("documented-form-lands", func(t *testing.T) {
 		if code := land("--root", home, "--brief-path", brief, "--evidence-file", fragment); code != 0 {
 			t.Fatalf("documented landing refused: %s", errBuf)
 		}
-		if len(f.writes) != 1 || f.writes[0].File != brief || !strings.Contains(f.writes[0].Message, receipt.EvidenceBinding()) {
-			t.Fatalf("landing lost target or run binding: %+v", f.writes)
+		if len(api.puts) != 1 || api.puts[0].File != brief || !strings.Contains(api.puts[0].Message, lf.receipt.EvidenceBinding()) {
+			t.Fatalf("landing lost target or run binding: %+v", api.puts)
 		}
 	})
 
 	record := filepath.Join(t.TempDir(), "outcome.json")
-	write(record, `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
+	writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
 	t.Run("refresh-files-only-keeps-admission", func(t *testing.T) {
 		// The documented refresh: the landed brief replaces the home's copy; HEAD stays.
-		landed := f.files[brief]
-		write(filepath.Join(home, brief), landed)
+		writeFixtureFile(t, filepath.Join(home, brief), api.files[brief])
 		if code := land("--root", home, "--outcome-record", record); code != 0 {
 			t.Fatalf("outcome record after a file-only refresh refused: %s", errBuf)
 		}
 	})
 	t.Run("moving-home-head-refuses", func(t *testing.T) {
-		git("commit", "-q", "--allow-empty", "-m", "newer main")
-		before := len(f.writes)
-		write(record, `{"brief":"x/01","ts":"2026-10-06T00:00:01Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
+		lf.git(t, "commit", "-q", "--allow-empty", "-m", "newer main")
+		before := len(api.puts)
+		writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:01Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
 		if code := land("--root", home, "--outcome-record", record); code == 0 {
 			t.Fatal("landing after moving the home's HEAD was admitted")
 		}
 		if !strings.Contains(errBuf.String(), "attested detached source commit") {
 			t.Fatalf("refused for another reason: %s", errBuf)
 		}
-		if len(f.writes) != before {
-			t.Fatalf("refused landing wrote: %+v", f.writes[before:])
+		if len(api.puts) != before {
+			t.Fatalf("refused landing wrote: %+v", api.puts[before:])
 		}
 	})
 	if len(api.unexpected) != 0 {

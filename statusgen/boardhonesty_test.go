@@ -407,6 +407,7 @@ func TestBoardHonestyNotices(t *testing.T) {
 // #1516-plain sub-test went red (the README's "de-housed" flagged the unrelated
 // row NON-DISPATCHABLE), and the row-cell sub-test went red (the dehoused arm did
 // not read the row cell at all). The body control passed under both.
+// regression: #1516
 func TestBoardHonestyDehousedRowScoped(t *testing.T) {
 	t.Run("#1516: a plain todo row is silent even when the stream README says de-housed", func(t *testing.T) {
 		root := t.TempDir()

@@ -122,3 +122,43 @@ func TestEnvFileValueReadsTheLastActiveLine(t *testing.T) {
 		t.Error("a cell.env with no CELL_HARNESS line defaults to claude")
 	}
 }
+
+// TestSetExpandsVariablesAsBootDoes: a `$VAR` in a defaults-file line, in a cell.env line or in
+// a pair `set` is about to write means to `set` what it will mean to the launch that reads the
+// file — the launching shell's value. loadCell is the reference; `set` validating a path it
+// expanded against nothing would judge a different path than the one a cell boots with.
+func TestSetExpandsVariablesAsBootDoes(t *testing.T) {
+	root := defaultsRoot(t)
+	for _, k := range []string{"CELLCTL_TEST_FROM_DEFAULTS", "CELLCTL_TEST_BRACED", "CELLCTL_TEST_FROM_CELL", "CELLCTL_TEST_CHAINED", "CELLCTL_TEST_PAIR"} {
+		t.Setenv(k, "")
+		os.Unsetenv(k)
+	}
+	t.Setenv("CELLCTL_TEST_PROBE", "/example/base")
+	writeDefaults(t, root, "CELLCTL_TEST_FROM_DEFAULTS=$CELLCTL_TEST_PROBE/defaults\nCELLCTL_TEST_BRACED=\"${CELLCTL_TEST_PROBE}/braced\"\n")
+	envfile := writeCell(t, root, "demo", demoCell+
+		"CELLCTL_TEST_FROM_CELL=$CELLCTL_TEST_PROBE/cell\nCELLCTL_TEST_CHAINED=$CELLCTL_TEST_FROM_DEFAULTS/$CELLCTL_TEST_FROM_CELL\n")
+	want := map[string]string{
+		"CELLCTL_TEST_FROM_DEFAULTS": "/example/base/defaults",
+		"CELLCTL_TEST_BRACED":        "/example/base/braced",
+		"CELLCTL_TEST_FROM_CELL":     "/example/base/cell",
+		"CELLCTL_TEST_CHAINED":       "/example/base/defaults//example/base/cell",
+	}
+	boot := loadCell("demo")
+	seen := effectiveCellEnv(envfile, []string{"CELLCTL_TEST_PAIR=$CELLCTL_TEST_PROBE/pair"})
+	for k, w := range want {
+		if got := boot.Env.Get(k); got != w {
+			t.Fatalf("fixture: the cell boots with %s=%q, want %q", k, got, w)
+		}
+		if got := seen.Get(k); got != w {
+			t.Errorf("set reads %s=%q, the cell boots with %q", k, got, w)
+		}
+	}
+	if got, w := seen.Get("CELLCTL_TEST_PAIR"), "/example/base/pair"; got != w {
+		t.Errorf("set reads the pair it is about to write as %q; the line will boot as %q", got, w)
+	}
+	// The shell is read to expand a reference and for nothing else: a variable only the shell
+	// sets is not part of what `set` judges.
+	if seen.IsSet("CELLCTL_TEST_PROBE") {
+		t.Errorf("a variable only the launching shell sets became part of set's view of the cell")
+	}
+}

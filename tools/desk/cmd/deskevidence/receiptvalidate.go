@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -54,41 +52,9 @@ func validateReceipt(root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch
 
 // --- (a) inputs coverage ------------------------------------------------------------------
 
-// filesBlockStartRe anchors the `files:` line inside a brief's `## Context` section — a bare
-// line, no leading indentation, per the brief-v2 authoring convention.
-var filesBlockStartRe = regexp.MustCompile(`(?m)^files:\s*$`)
-
-// backtickSpanRe extracts every backtick-quoted span in the files: block. Every span is treated
-// as a CANDIDATE declared path; one that is not a real repo path at the record's sha (a bare
-// identifier, a glob/placeholder pattern such as `<stream>`) simply resolves ABSENT and is
-// therefore never required — see validateReceiptInputsCoverDeliverables.
-var backtickSpanRe = regexp.MustCompile("`([^`]+)`")
-
-// parseDeclaredFiles returns the distinct backtick-quoted spans inside the brief's `## Context`
-// `files:` block, in first-seen order. The block runs from the `files:` line to the first blank
-// line (the brief-v2 convention every authored brief in this repo follows); an absent `files:`
-// line is an empty declared set, never an error — not every brief-v2 file necessarily carries one.
-func parseDeclaredFiles(content string) []string {
-	loc := filesBlockStartRe.FindStringIndex(content)
-	if loc == nil {
-		return nil
-	}
-	block := content[loc[1]:]
-	if end := strings.Index(block, "\n\n"); end >= 0 {
-		block = block[:end]
-	}
-	var out []string
-	seen := map[string]bool{}
-	for _, m := range backtickSpanRe.FindAllStringSubmatch(block, -1) {
-		p := strings.TrimSpace(m[1])
-		if p == "" || seen[p] {
-			continue
-		}
-		seen[p] = true
-		out = append(out, p)
-	}
-	return out
-}
+// parseDeclaredFiles is deskkit.BriefDeclaredFiles: the writer (BuildOutcomeRecord) derives a
+// receipt's inputs from the same parse this check (a) holds it to, so the two cannot drift.
+func parseDeclaredFiles(content string) []string { return deskkit.BriefDeclaredFiles(content) }
 
 // localBriefPath resolves a brief key to its repo-relative file path via the SAME glob
 // convention verifyloop's resolveBrief uses (docs/streams/<stream>/brief-<NN>-*.md) against the
@@ -200,12 +166,6 @@ func validateReceiptInputsCoverDeliverables(root string, wr deskkit.WakeReceipt)
 
 // --- (b) blocker_ref must be an actual reference ------------------------------------------
 
-var (
-	blockerRefBareRe = regexp.MustCompile(`^#([0-9]+)$`)
-	blockerRefRepoRe = regexp.MustCompile(`^([\w.-]+)/([\w.-]+)#([0-9]+)$`)
-	blockerRefURLRe  = regexp.MustCompile(`^https?://[^/]+/([\w.-]+)/([\w.-]+)/(issues|pull|actions/runs)/([0-9]+)(?:[/?#].*)?$`)
-)
-
 // validateReceiptBlockerRef is check (b): blocker_ref must match #<N>, <owner>/<repo>#<N>, or a
 // forge URL to an issue/PR/run — parsed into owner/repo/number, NEVER fetched as a URL — and the
 // writer then reads that issue/PR/run through the configured forge API. A well-formed reference
@@ -216,38 +176,12 @@ func validateReceiptBlockerRef(fg deskkit.Forge, defaultOwner, defaultName, raw 
 		return deskkit.Refused("refused: receipt blocker_ref is empty — must be #<N>, <owner>/<repo>#<N>, or a forge issue/PR/run URL")
 	}
 
-	var owner, name, kind, runID string
-	var number int
-	switch {
-	case blockerRefBareRe.MatchString(raw):
-		m := blockerRefBareRe.FindStringSubmatch(raw)
-		owner, name, kind = defaultOwner, defaultName, "numbered"
-		number, _ = strconv.Atoi(m[1])
-	case blockerRefRepoRe.MatchString(raw):
-		m := blockerRefRepoRe.FindStringSubmatch(raw)
-		owner, name, kind = m[1], m[2], "numbered"
-		number, _ = strconv.Atoi(m[3])
-	case blockerRefURLRe.MatchString(raw):
-		m := blockerRefURLRe.FindStringSubmatch(raw)
-		owner, name = m[1], m[2]
-		switch m[3] {
-		case "issues":
-			kind = "issue"
-			number, _ = strconv.Atoi(m[4])
-		case "pull":
-			kind = "change"
-			number, _ = strconv.Atoi(m[4])
-		case "actions/runs":
-			kind = "run"
-			runID = m[4]
-		}
-	default:
-		return deskkit.Refused("refused: receipt blocker_ref " + strconv.Quote(raw) +
-			" is not a reference — must be #<N>, <owner>/<repo>#<N>, or a forge issue/PR/run URL (free text and " +
-			"an action: … sentence are refused)")
+	ref, perr := deskkit.ParseBlockerRef(raw, defaultOwner, defaultName)
+	if perr != nil {
+		return perr
 	}
-
-	repo := deskkit.ForgeRepo{Owner: owner, Name: name}
+	kind, number, runID := ref.Kind, ref.Number, ref.RunID
+	repo := ref.Repo()
 	var lerr error
 	switch kind {
 	case "run":

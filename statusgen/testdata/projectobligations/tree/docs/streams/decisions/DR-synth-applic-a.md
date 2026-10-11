@@ -1,0 +1,13 @@
+---
+id: "DR-synth-applic-a"
+date: "2026-10-05"
+title: "Synthetic: mapping one applies"
+consequence: "major"
+decided-by: "human:<name>"
+alternatives:
+  - "Leave the question unresolved — the review would stay held."
+accepted:
+  - "The project carries the stated applicability until it is superseded."
+---
+
+Synthetic decision record. It binds exactly one subject: sha256:d8a2ae0bdef090bab514d892330836b6b24792649b3d3ae80e88b1b1f28179e1

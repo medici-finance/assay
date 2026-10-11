@@ -85,6 +85,12 @@ func sweep(claims []claimRecord, obsSource observationSource, pol loopengine.Liv
 		disp := loopengine.ClassifyLiveness(pol, clock, tier, now, resolved.obs)
 		action, aerr := runAction(claim, disp, dryRun, reclaim, fileBT, arm, runTag)
 		if aerr != nil {
+			if source, ok := loopengine.BlindSource(aerr); ok {
+				anyBlind = true
+				results = append(results, sweepResult{Claim: claim, Blind: true, Via: source, Action: "STOP+BLIND"})
+				fmt.Fprintf(out, "%s  COULD-NOT-CHECK via=%s action=STOP+BLIND (release not confirmed)\n", claim.Key, source)
+				continue
+			}
 			return results, anyBlind, deskkit.Unverifiable("claim "+claim.Key+": action "+action+" failed", aerr)
 		}
 
