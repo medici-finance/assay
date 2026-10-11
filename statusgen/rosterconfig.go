@@ -145,6 +145,18 @@ const (
 	scanEnvWriteguardCallout = "ASSAY_WRITEGUARD_CALLOUT"
 	scanEnvRosterSchema      = "ASSAY_ROSTER_SCHEMA"
 
+	// scanEnvOutboundCallout, scanEnvOutboundCalloutRequired and
+	// scanEnvOutboundCalloutTimeout (ASSAY_OUTBOUND_CALLOUT, _REQUIRED, _TIMEOUT) are the
+	// DESK-only keys of the outbound-write check's house callout (desktools-v2/11): an
+	// absolute executable path, a `public` requirement, and a bound. statusgen consumes none
+	// of them but must RECOGNISE all three for the same reason as scanEnvRepoAliases: a shared
+	// roster.env carrying them must not collapse statusgen's configuration. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvOutboundCallout / EnvOutboundCalloutRequired /
+	// EnvOutboundCalloutTimeout.
+	scanEnvOutboundCallout         = "ASSAY_OUTBOUND_CALLOUT"
+	scanEnvOutboundCalloutRequired = "ASSAY_OUTBOUND_CALLOUT_REQUIRED"
+	scanEnvOutboundCalloutTimeout  = "ASSAY_OUTBOUND_CALLOUT_TIMEOUT"
+
 	// scanEnvHomeRepo names the owner/repo whose issues get the bare
 	// `issue-<NN>.md` placeholder filename and whose slug the rendered
 	// --verify-issues bodies link into (verifyRepoSlug). A single owner/name
@@ -461,6 +473,9 @@ func scanKnownRosterKeys() []string {
 		scanEnvRiskPathTriggersExtra,
 		scanEnvRepoAliases, scanEnvReleaseRepo, scanEnvWriteguardCallout,
 		scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
+		// DESK-only, recognised-not-applied (desktools-v2/11): the outbound-write check's
+		// house callout — see their declarations above.
+		scanEnvOutboundCallout, scanEnvOutboundCalloutRequired, scanEnvOutboundCalloutTimeout,
 		scanEnvAuthorizedAuthors, scanEnvChannelDriftTarget,
 		scanEnvSweepWithheldStreams, scanEnvDeterministicGatePatterns,
 		// DESK-only, recognised-not-applied — see their declarations above for who

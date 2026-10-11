@@ -18,6 +18,8 @@ import (
 // claimRecord is one dispatch claim, either read from --claims-fixture (a JSON array of
 // these) or, in live mode, assembled from the claim tool's own records (see live.go).
 type claimRecord struct {
+	Ref          string `json:"ref,omitempty"`
+	Version      string `json:"version,omitempty"`
 	Key          string `json:"key"`
 	Item         string `json:"item"`
 	Owner        string `json:"owner"`

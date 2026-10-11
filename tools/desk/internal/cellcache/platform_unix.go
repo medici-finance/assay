@@ -12,6 +12,10 @@ import (
 
 const noFollow = unix.O_NOFOLLOW
 
+// noBlock keeps a FIFO or device at a metadata path from stalling its reader;
+// on regular files it is ignored.
+const noBlock = unix.O_NONBLOCK
+
 // Ancestors may be shared only when sticky (e.g. /tmp). No symlink component
 // is accepted; Resolve canonicalizes only the trusted cell location beforehand.
 func validatePath(path string) error {

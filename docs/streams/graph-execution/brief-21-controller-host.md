@@ -33,7 +33,7 @@ consumers:
 - 'workflow/internalreview: follow-up graph-execution/24'
 - 'statusgen/assuranceexperiment.go: follow-up graph-execution/18'
 - 'operator clients: out-of-scope (consume the published protocol through their own adoption gates)'
-version: 2
+version: 3
 id: 008dd7b9-6421-42bd-b6c6-d3c495837fa8
 ---
 
@@ -61,6 +61,14 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 - Offline fixtures/fake providers only in this brief; a concrete adapter does not authorize provider calls.
 - Stop at implemented; independent verification owns verified/done.
 - Preserve one canonical work identity and one claim authority; no credentials in packets or results.
+
+## Library-first amendment — 2026-10-08
+
+Read `docs/library-first.md`. Reuse the declared component library where it shares authority,
+and a typed SDK client where a process boundary enforces authority or isolation. Workflow
+progression, process supervision and effect execution remain distinct; a shared binary or
+library grants no additional role. Preserve the existing independent fence, no-store standing
+mode, process-launch audit and cross-journal recovery tests. No cell taxonomy dependency is added.
 
 ## Task
 

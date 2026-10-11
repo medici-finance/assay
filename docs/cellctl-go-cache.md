@@ -12,7 +12,36 @@ The shipped default is **off**. Enabling selects an 8 GiB logical-byte budget
 and 10 GiB minimum available-space floor. These are configurable starting values,
 not a filesystem quota or a promise about peak build size. Budget bytes must be
 positive; a floor of `0` disables only the free-space floor. Invalid values refuse
-launch. No host-wide scheduled job is installed.
+launch. No host-wide scheduled job is installed; the `deskwt prune` sweep
+pressure-checks every marked cache root under the cells root on each pass as
+the cadence backstop (see "Launch, cleanup and recovery").
+
+To enable it for every cell on a machine, put the same lines in the machine-wide
+defaults file, `$CELLS_ROOT/defaults.env`, instead of in each `cell.env`, and opt
+one cell back out in its own file. `cellctl new` writes that file with these keys
+already in it, commented out at their compiled defaults (`cellctl defaults init`
+writes it for a cells root that has none), so enabling the cache is uncommenting
+one line and changing `off` to `on`:
+
+```dotenv
+# $CELLS_ROOT/defaults.env — every cell under this cells root
+CELL_GO_CACHE=on
+```
+
+```dotenv
+# <cell-dir>/cell.env — this cell only
+CELL_GO_CACHE=off
+```
+
+A cell's `cell.env` overrides the defaults file key by key, and the defaults file
+overrides the shell `cellctl` was started from. Each cell still gets its own root
+and its own budget: `CELL_GO_CACHE_ROOT` names one cell's root and is refused in
+the defaults file, while `CELL_GO_CACHE_BYTES` and `CELL_GO_CACHE_MIN_FREE` may be
+shared there. `cellctl check <cell>` prints the effective state and the layer that
+supplied it, for example `managed Go cache: on (CELL_GO_CACHE=on from defaults
+file)`. Container cells ignore the setting, and on a platform the cache does not
+support a machine-wide `on` refuses every launch just as a per-cell `on` does. See
+[Machine-wide defaults](cellctl.md#machine-wide-defaults--defaultsenv).
 
 ## Scope and trust
 
@@ -62,6 +91,14 @@ lock. Under byte-budget or free-space pressure, only inactive compiler/module
 roots are removed. Active consumers protect both caches, including module readers.
 Go's read-only module directories are made writable through verified open
 directory descriptors during inactive cleanup. No `go clean -cache` runs.
+
+The `deskwt prune` sweep runs the same pressure check on a cadence: each pass
+discovers the marked roots under the cells root (a custom `CELL_GO_CACHE_ROOT`
+outside it is out of the sweep's sight; `cellctl cache <cell> clean` remains
+its instrument) and enforces each root's last recorded policy — reclaiming
+only under pressure, never under a live consumer record, and printing a count
+line only when it acts. A root whose owning directory the sweep itself removed
+is reaped as an orphan, gated on its lease set re-read under its own lock.
 
 The same lock serializes cleanup and consumer enrollment. Active records survive
 supervisor crashes and uncertain child-tree cleanup; PID age never proves
@@ -115,3 +152,23 @@ path replacement, check uncertain custody and typed dispatch recovery, and build
 an import-free Go package twice with different HOME values. Toolchain downloads
 and proxy access are disabled. Reproducible mutants live in
 `tools/desk/internal/cellcache/mutations.json`.
+
+## Dispatch destination volumes
+
+On macOS and Linux, `deskdispatch` also checks the item checkout (`--root`) and
+its process temporary directory before any forge read, claim, or worktree creation.
+These destinations may be on different filesystems from the managed cache. They
+inherit the managed cache minimum-free-space floor. Set `DESK_MIN_FREE_BYTES` in
+the dispatch process environment to select a separate nonnegative byte floor,
+including for dispatches without managed Go caches. With neither setting present,
+existing admission behavior is unchanged; `0` disables these destination checks.
+The cache's own budget and floor remain governed by its existing policy.
+
+Each checked destination emits a `storage-volume` JSON report with the configured
+floor, available bytes, path, dry-run state, and admission outcome. Insufficient
+space or an unreadable measurement returns exit 6 (`storage-deferred`) before
+claiming work. Free space and retry the same item. Dry-run performs the same
+read-only measurements and reports the hold. This is a point-in-time admission
+check, not a storage reservation or active-task quota; other writers can consume
+space after admission. It does not measure arbitrary custom output destinations.
+An explicit nonzero floor on an unsupported platform fails closed.

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -100,10 +99,11 @@ func (c *Cell) roleCmdIn(sh paneShell, self, role, cfg string, o upOverrides) st
 		o.TickBudget = cadence.Budget.String()
 	}
 	out := sh.invoke(sh.quote(self))
+	root, name := c.reenter()
 	if cadence != nil || o.Cadence != "" {
-		out += " --cells-root " + sh.quote(filepath.Dir(c.Dir))
+		out += " --cells-root " + sh.quote(root)
 	}
-	out += " desk " + sh.quote(c.Name) + " " + sh.quote(role)
+	out += " desk " + sh.quote(name) + " " + sh.quote(role)
 	for _, pair := range [][2]string{{"--kind", c.KindOverride}, {"--model", o.Model}, {"--harness", o.Harness}, {"--provider", o.Provider}, {"--cockpit", o.Cockpit}, {"--cadence", o.Cadence}, {"--tick-budget", o.TickBudget}} {
 		if pair[1] != "" {
 			out += " " + pair[0] + " " + sh.quote(pair[1])
@@ -375,6 +375,11 @@ func cmdUp(cell string, args []string) {
 			}
 			harness = route.Harness
 			fmt.Printf("[policy] role=%s provider=%s model=%s effort=%s source=%s sha256=%s\n", role, route.Provider, route.Model, route.Effort, policySource, policy.SHA256)
+		}
+		if _, rc, err := c.roleContextFor(role, harness); err != nil {
+			die("up: %v; no role windows launched", err)
+		} else if rc != nil && automate != "" {
+			die("up: --automate cannot apply the role context declared for %s; use live desk windows", role)
 		}
 		o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)
 		if automate != "" && (o.roleCadence[role] != nil || harness != "claude") {

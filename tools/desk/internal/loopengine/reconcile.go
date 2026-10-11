@@ -185,10 +185,9 @@ func Eligibility(c ClaimRecord, r EligibilityReaders) (EligibilityVerdict, error
 	}
 	if cur.Holder != c.Holder {
 		// The ref has moved to a DIFFERENT live holder — the "stolen underneath the run"
-		// case. STOP this run, but HELD, not Terminal: releasing here is an unconditional
-		// delete-by-key (doReclaim/DeleteRef has no expected-holder guard), which would
-		// delete the NEW holder's live claim and re-free an item they are working (a
-		// double-dispatch). The next move is the new holder's, not ours.
+		// case. STOP this run, but HELD, not Terminal: the current claim belongs to the
+		// replacement holder. Even a version-guarded release must not use this reading
+		// as authority to retire that holder. The next move is theirs, not ours.
 		return IneligibleHeld("claim-reassigned"), nil
 	}
 

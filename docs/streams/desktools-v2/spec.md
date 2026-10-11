@@ -8,6 +8,13 @@ The stream was approved on 2026-09-21. The 2026-10-03 maintainer request in
 Cobra/Viper CLI migration in §9. This is an additive migration within the same tool suite;
 the existing forge/custody commitments and implementation sign-off gates remain.
 
+**Amendment, 2026-10-08 (ruled on #2395, recorded in
+[`DR-forge-neutral-36`](../decisions/DR-forge-neutral-36.md)):** library-first for offline and
+frozen inputs only, in §2 Principle 2 and commitment 3. statusgen may link a narrow module's
+offline and frozen packages; every online forge read stays on the read verb, `deskkit` stays
+internal, and no credential moves into a process that has none today. The 2026-09-14 direction
+in Principle 2 is amended in that part only; the rest of the approved text stands.
+
 ## 1. The problem — the forge abstraction leaks
 
 The desk tools were written ad-hoc, one verb at a time, while the desk flows were still
@@ -114,6 +121,27 @@ migration:
   reads a real queue or reports could-not-check, never an empty one. `forge-neutral/18` is
   `gate: model` with every risk answer `no` and does not carry that proof.
 
+#### Amendment, 2026-10-08 — library-first for offline and frozen inputs only (`DR-forge-neutral-36`)
+
+`docs/library-first.md` sets out library-first reuse across modules. The driver ruled on #2395
+for option 1, recorded in [`DR-forge-neutral-36`](../decisions/DR-forge-neutral-36.md):
+library-first for offline and frozen inputs only. statusgen may link a narrow module's offline
+and frozen packages. Every online forge read stays on the `deskread` verb, `deskkit` stays
+internal, and no credential moves into a process that has none today. The 2026-09-14 direction
+above is amended in that part only; the rest of it stands. This is narrower than the withdrawn
+proposal: nothing here makes `deskkit` importable.
+
+- `forge-neutral/36` (human-gated) extracts a narrow `forgeread` module with the OpenIssues
+  slice. statusgen may link only its offline and frozen packages, never an authenticated read
+  adapter. `deskread` composes the credential and calls the adapters. The ruling makes /36
+  eligible for pick-up; it is not /36's sign-off, and /36 keeps its own human gate.
+- Retiring the `deskread` bridge for any online read is outside the ruling. It would need its
+  own human-gated brief and a driver ruling, and none is authored.
+- A CI read keeps `forge-neutral/34`'s explicit admission.
+
+One correction is independent of the ruling: `desktools-v2/08`'s final zero follows both
+`forge-neutral/18` and `/35`, because /18 deliberately leaves the control-feeding reads to /35.
+
 ### Principle 3 — PURPOSE-BUILT QUERIES (typed access-pattern operations)
 
 The v2 Forge library exposes typed **access-pattern** operations — e.g. *review-queue
@@ -158,7 +186,9 @@ Architectural commitments (including the additive CLI contract of §9):
    covers statusgen, which is not under `forgeban` today.
 3. **The cross-module boundary is a VERB, not a package.** A second module reaches the seam
    by running `deskread` and parsing its versioned envelope (Principle 2); `deskkit` stays
-   internal. v2 enforces that boundary, it does not replace it.
+   internal. v2 enforces that boundary, it does not replace it. (The 2026-10-08 amendment in
+   Principle 2, `DR-forge-neutral-36`, lets statusgen link a narrow module's offline and frozen
+   packages; every online forge read still crosses the verb.)
 4. **Custody-first native clients** (Principle 1): explicit minted-token, key-presence
    boundary, refuse-ambient — on the desk read path and on statusgen.
 5. **Incremental, tool-by-tool migration, with the old path REMOVED as each lands.**

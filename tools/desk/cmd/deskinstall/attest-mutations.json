@@ -1,0 +1,119 @@
+{
+  "test": "go test ./cmd/deskinstall -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL — signed entry timestamp check removed (a log body edited after the SET is accepted)",
+    "file": "cmd/deskinstall/attest.go",
+    "old": "if !ecdsa.VerifyASN1(key.pub, h[:], e.InclusionPromise.SignedEntryTimestamp) {",
+    "new": "if false && (!ecdsa.VerifyASN1(key.pub, h[:], e.InclusionPromise.SignedEntryTimestamp)) {"
+  },
+  "mutations": [
+    {
+      "name": "envelope signature check (verifySig) removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if err := verifySig(leaf.PublicKey, dssePAE(env.PayloadType, env.Payload), sig); err != nil {",
+      "new": "if err := verifySig(leaf.PublicKey, dssePAE(env.PayloadType, env.Payload), sig); false && err != nil {"
+    },
+    {
+      "name": "log body binding (checkLogBody) removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if err := checkLogBody(e.KindVersion.Kind, e.KindVersion.Version, e.CanonicalizedBody, leafDER, sig, payload); err != nil {",
+      "new": "if err := checkLogBody(e.KindVersion.Kind, e.KindVersion.Version, e.CanonicalizedBody, leafDER, sig, payload); false && err != nil {"
+    },
+    {
+      "name": "log body payload-hash comparison removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if rb.Spec.PayloadHash.Algorithm != \"sha256\" || !strings.EqualFold(rb.Spec.PayloadHash.Value, hex.EncodeToString(ph[:])) {",
+      "new": "if false && (rb.Spec.PayloadHash.Algorithm != \"sha256\" || !strings.EqualFold(rb.Spec.PayloadHash.Value, hex.EncodeToString(ph[:]))) {"
+    },
+    {
+      "name": "log body signature comparison removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if err != nil || !bytes.Equal(ls, sig) {",
+      "new": "if false && (err != nil || !bytes.Equal(ls, sig)) {"
+    },
+    {
+      "name": "log body verifier comparison removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if blk == nil || !bytes.Equal(blk.Bytes, leafDER) {",
+      "new": "if false && (blk == nil || !bytes.Equal(blk.Bytes, leafDER)) {"
+    },
+    {
+      "name": "entry kind dsse/0.0.1 check removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if kind != \"dsse\" || version != \"0.0.1\" {",
+      "new": "if false && (kind != \"dsse\" || version != \"0.0.1\") {"
+    },
+    {
+      "name": "body kind/version vs entry kindVersion check removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if rb.Kind != kind || rb.APIVersion != version {",
+      "new": "if false && (rb.Kind != kind || rb.APIVersion != version) {"
+    },
+    {
+      "name": "no-SET guard removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if e.InclusionPromise == nil || len(e.InclusionPromise.SignedEntryTimestamp) == 0 {",
+      "new": "if false && (e.InclusionPromise == nil || len(e.InclusionPromise.SignedEntryTimestamp) == 0) {"
+    },
+    {
+      "name": "log key validFor check removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if !key.validFor.contains(at) {",
+      "new": "if false && (!key.validFor.contains(at)) {"
+    },
+    {
+      "name": "CA validFor check removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if !ca.validFor.contains(at) {",
+      "new": "if false && (!ca.validFor.contains(at)) {"
+    },
+    {
+      "name": "code-signing EKU requirement widened to any usage",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},",
+      "new": "KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},"
+    },
+    {
+      "name": "single-URI-SAN check removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if len(leaf.URIs) != 1 {",
+      "new": "if false && (len(leaf.URIs) != 1) {"
+    },
+    {
+      "name": "statement _type check removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if st.Type != inTotoStatementV1 {",
+      "new": "if false && (st.Type != inTotoStatementV1) {"
+    },
+    {
+      "name": "DSSE payloadType check removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if env.PayloadType != inTotoPayloadType {",
+      "new": "if false && (env.PayloadType != inTotoPayloadType) {"
+    },
+    {
+      "name": "bundle size bound in verifyAttestation removed",
+      "file": "cmd/deskinstall/attest.go",
+      "old": "if len(raw) > maxBundleBytes {",
+      "new": "if false && (len(raw) > maxBundleBytes) {"
+    },
+    {
+      "name": "readBounded cap removed",
+      "file": "cmd/deskinstall/install.go",
+      "old": "if int64(len(b)) > limit {",
+      "new": "if false && (int64(len(b)) > limit) {"
+    },
+    {
+      "name": "readBounded reads the whole stream before measuring it",
+      "file": "cmd/deskinstall/install.go",
+      "old": "b, err := io.ReadAll(io.LimitReader(r, limit+1))",
+      "new": "b, err := io.ReadAll(r)"
+    },
+    {
+      "name": "bundle downloader drops its bound",
+      "file": "cmd/deskinstall/install.go",
+      "old": "return httpGet(url, maxBundleBytes)",
+      "new": "return httpGet(url, 0)"
+    }
+  ]
+}

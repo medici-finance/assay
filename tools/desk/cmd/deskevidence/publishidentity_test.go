@@ -4,8 +4,8 @@ package main
 //
 // deskevidence commits Evidence AS the verifier App via the Contents API, but derives the
 // witness Runner from the verifier WORKTREE's identity — the value #1490 saw come out wrong.
-// This gate refuses, before any network call, when the worktree the landing is authored from
-// carries commits ahead of the target branch that are not the verifier's.
+// This gate refuses, before the landing reads the branch, when the worktree the landing is
+// authored from carries commits ahead of the target branch that are not the verifier's.
 //
 // setupFake stubs the gate no-op for the general suite (its roots are not git repos); these
 // tests build a real git root and restore the real gate.

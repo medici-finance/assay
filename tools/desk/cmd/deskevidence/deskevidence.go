@@ -74,18 +74,65 @@ func refuseAppendedOutcomesLog(targetRepoPath string) error {
 // It is called ONLY from runOutward, which owns the audit lock and the single
 // deferred audit line (`ac`). Adding a second entry point without the lock would
 // re-open #227.
-var verifierEvidenceAdmissionFn = deskkit.CheckVerifierEvidence
+
+// verifierEvidenceAdmissionFn is pre-work admission, read through the forge the
+// CALLER hands it. Admission reads the dispatcher's attestation record from the
+// forge, so it needs a credential; the landing supplies the forge it has already
+// resolved under its minted verifier token (admitLanding), and admission never
+// resolves one of its own.
+var verifierEvidenceAdmissionFn = deskkit.CheckVerifierEvidenceWithForge
 
 // admitVerifierEvidence runs pre-work admission for the exact path this landing
 // writes, so the attested brief is part of what admits the landing, never only
-// of what is recorded about it.
-func admitVerifierEvidence(root, repo, target string, ac *auditCtx) (deskkit.VerifierReceipt, error) {
-	receipt, err := verifierEvidenceAdmissionFn(root, repo, target)
+// of what is recorded about it. fg is the landing's own resolved forge. A nil fg
+// refuses here: handed on, it would make the shared reader resolve a forge by
+// itself — a second resolution outside the landing's mint, which is the ordering
+// fault that refused every landing with "no minted verifier token".
+func admitVerifierEvidence(root, repo, target string, fg deskkit.Forge, ac *auditCtx) (deskkit.VerifierReceipt, error) {
+	if fg == nil {
+		return deskkit.VerifierReceipt{}, deskkit.Refused("refused: pre-work admission was reached with no resolved forge — " +
+			"the landing mints the verifier token and resolves its forge before admission, and admission never resolves its own")
+	}
+	receipt, err := verifierEvidenceAdmissionFn(root, repo, target, fg)
 	if err != nil {
 		return receipt, err
 	}
 	ac.attestation = receipt.EvidenceBinding()
 	return receipt, nil
+}
+
+// admitLanding is the one place a landing obtains its credential, its forge and its
+// admission, in the only order that works:
+//
+//  1. mint the verifier App installation token (mintTokenFn → `desktoken verifier`). The
+//     JWT→installation-token exchange lives in the identity layer, not in this package;
+//  2. resolve the forge that serves the repo under that token. The custody step refuses when
+//     no token has been minted and never falls back to an ambient identity;
+//  3. run pre-work admission THROUGH that forge, bound to the exact target this landing
+//     writes.
+//
+// Admission reads the forge, so it cannot precede the mint: run first, its read meets the
+// custody step's empty-token refusal and every landing refuses. Both landing shapes call
+// this, and every later read and the write use the forge it returns — one forge, one minted
+// token, for admission and the landing alike.
+//
+// The caller places it after the refusals that need only the command line (and, for an
+// outcome record, the record's own bytes), so those still never mint, and BEFORE any read
+// the landing takes as input to its write: the local evidence file, the branch content, the
+// merge and the gates over them all follow admission.
+func admitLanding(root, repoSlug, owner, name, target string, ac *auditCtx) (deskkit.Forge, deskkit.ForgeRepo, deskkit.VerifierReceipt, error) {
+	if merr := mintTokenFn(repoSlug); merr != nil {
+		return nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr
+	}
+	fg, fr, ferr := forgeForFn(owner, name)
+	if ferr != nil {
+		return nil, fr, deskkit.VerifierReceipt{}, ferr
+	}
+	receipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)
+	if aerr != nil {
+		return nil, fr, receipt, aerr
+	}
+	return fg, fr, receipt, nil
 }
 
 // pathWithin reports whether p lies inside dir, after resolving symlinks where
@@ -189,13 +236,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	appendOnlyFlag := fs.Bool("append-only", false, "refuse the commit if it would reduce the target's row count below the current remote (auto-enabled for .jsonl sidecars)")
 	allowShrink := fs.Bool("allow-shrink", false, "override the append-only shrink guard when a row reduction is genuinely intended")
 	// --dry-run (verify-integrity/04 item 1): print the commits-API landing plan and stop
-	// before the write. It still mints the verifier App token, resolves the forge, fetches
-	// the remote content, merges/scans it and runs the statusgen PROBLEM-diff guard — every
-	// gate that can fail BEFORE a write is exercised for real, so a clean dry-run is real
-	// evidence the landing would succeed. It stops short of AllowWrite (never spends the
-	// write-rate-limit budget) and fg.WriteFile (never writes). There is no local-git branch
-	// anywhere in this tool to fall back to: an unmintable token refuses at the mint step
-	// above, dry-run or not.
+	// before the write. It still mints the verifier App token, resolves the forge, runs
+	// pre-work admission, fetches the remote content, merges/scans it and runs the statusgen
+	// PROBLEM-diff guard — every gate that can fail BEFORE a write is exercised for real, so a
+	// clean dry-run is real evidence the landing would succeed. It stops short of AllowWrite
+	// (never spends the write-rate-limit budget) and fg.WriteFile (never writes). There is no
+	// local-git branch anywhere in this tool to fall back to: an unmintable token refuses at
+	// the mint step (admitLanding), dry-run or not.
 	dryRun := fs.Bool("dry-run", false, "print the commits-API landing plan without committing")
 	// --row (repeatable) names the brief-table row(s) a landing to a
 	// generated-table target may touch. Required whenever the target's REMOTE content
@@ -253,10 +300,8 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	ac.file = evidenceRepoPath
 
 	// Determine the target repo path this commit will land at. Computed here, ahead of the
-	// local-read resolution right below, because the docs/streams scoping guard a few lines
-	// down needs it and depends on nothing else (not --root, not the file's own content) —
-	// so it stays a cheap, pre-network check regardless of where exactly it runs relative to
-	// the root-contradiction/oversize checks that follow.
+	// local-read resolution below, because admission and the docs/streams scoping guard both
+	// need it and it depends on nothing else (not --root, not the file's own content).
 	var targetRepoPath string
 	if *briefPath != "" {
 		targetRepoPath = *briefPath
@@ -265,9 +310,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	}
 	ac.file = targetRepoPath
 
-	// Pre-work admission, bound to the exact target this landing writes. Placed
-	// before any read or network call the landing itself makes.
-	receipt, aerr := admitVerifierEvidence(*root, repoSlug, targetRepoPath, ac)
+	// Mint, resolve the forge, then pre-work admission through that forge — bound to the
+	// exact target this landing writes (admitLanding). Everything above is a refusal that
+	// needs only the command line, so a call those refuse never mints. Everything below — the
+	// local evidence read, the branch read, the merge and every gate over them — is input to
+	// the write, and runs only for an admitted landing.
+	fg, fr, receipt, aerr := admitLanding(*root, repoSlug, owner, name, targetRepoPath, ac)
 	if aerr != nil {
 		return aerr
 	}
@@ -312,7 +360,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// PROBLEM or lands outside docs/streams/). deskevidence exists to commit Evidence rows
 	// and the brief-status flips that accompany them under that tree; a target path
 	// resolving anywhere else — a stray root file, a directory-traversal escape, an
-	// absolute path — is refused here, before any network call. This is exactly the
+	// absolute path — is refused here, before the landing reads the branch. This is exactly the
 	// "landed outside docs/streams/" main-red shape: a stray root file landed by a
 	// deskevidence commit, outside the tree the tool is meant to write to.
 	//
@@ -333,7 +381,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// Contents API, so the Evidence commit itself is correctly attributed — but the witness
 	// Runner attribution is derived from the verifier WORKTREE's identity, which is exactly
 	// the value #1490 saw come out wrong when a dispatch provisioned the worktree with a stale
-	// role. This refuses, before any network call, if the worktree the landing is authored
+	// role. This refuses, before the landing reads the branch, if the worktree it is authored
 	// from carries commits ahead of the target branch that are not the verifier's — a signal
 	// the worktree's identity cannot be trusted to derive attribution from. Local (git +
 	// roster); in the sanctioned post-merge verify flow the worktree sits at the target
@@ -342,18 +390,8 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return ierr
 	}
 
-	// Mint the verifier App installation token and resolve the forge that serves this repo,
-	// under the verifier App's custody. The JWT→installation-token exchange moved OUT of this
-	// package to the identity layer (mintTokenFn → `desktoken verifier`); ForgeFor hands the
-	// minted token to the backend it constructs and never falls back to an ambient identity.
-	// Placed after the cheap/stateless refusals so a doomed call never mints.
-	if merr := mintTokenFn(repoSlug); merr != nil {
-		return merr
-	}
-	fg, fr, ferr := forgeForFn(owner, name)
-	if ferr != nil {
-		return ferr
-	}
+	// fg / fr below are the forge admitLanding resolved under the minted verifier token — the
+	// same forge admission read through. Nothing here mints or resolves again.
 
 	// Read the current remote content of the target ONCE, up front. It is the base every
 	// scoping decision below is judged against: the brief merge (a genuine read → transform →
@@ -571,7 +609,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	}
 
 	// --dry-run stops HERE — after every gate that can refuse a landing has already run
-	// (mint, forge resolution, remote read, merge, secret scan, public-repo gate, noop/shrink
+	// (mint, forge resolution, admission, remote read, merge, secret scan, public-repo gate, noop/shrink
 	// checks, statusgen PROBLEM-diff), before the write-rate-limit spend and the write itself.
 	// The plan below names the commits-API call this run WOULD make; it never mentions a
 	// local `git commit` because there is no such path in this tool to fall back to.

@@ -55,12 +55,56 @@ func TestStoragePreclaimRecovery(t *testing.T) {
 	if err = lease.Finish(true); err != nil {
 		t.Fatal(err)
 	}
-	if err = storageAdmission(false); err != nil {
+	if err = storageAdmission(false, ""); err != nil {
 		t.Fatal("space recovery did not admit same operation", err)
 	}
 	err = dispatch(dispatchOpts{})
 	var held *cellcache.Deferred
 	if err == nil || errors.As(err, &held) {
 		t.Fatalf("recovery bypassed normal dispatch validation: %v", err)
+	}
+}
+
+func TestStorageVolumes(t *testing.T) {
+	for _, dry := range []bool{false, true} {
+		for _, failing := range []string{"checkout", os.TempDir()} {
+			calls := 0
+			err := storageVolumes("checkout", 100, dry, func(path string) (uint64, error) {
+				calls++
+				if path == failing {
+					return 99, nil
+				}
+				return 100, nil
+			})
+			if err == nil || !strings.Contains(err.Error(), failing) || deskkit.ExitCodeOf(err) != 6 {
+				t.Fatalf("dry=%v failing=%s: %v", dry, failing, err)
+			}
+			if failing == os.TempDir() && calls != 2 {
+				t.Fatalf("temp volume not checked: %d", calls)
+			}
+		}
+	}
+	if err := storageVolumes("checkout", 100, false, func(string) (uint64, error) { return 100, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := storageVolumes("checkout", 100, false, func(string) (uint64, error) { return 0, errors.New("unreadable") }); err == nil {
+		t.Fatal("unreadable volume admitted")
+	}
+	if err := storageVolumes("checkout", 0, false, func(string) (uint64, error) { t.Fatal("disabled floor measured"); return 0, nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestStorageFloorWithoutManagedCaches(t *testing.T) {
+	t.Setenv(cellcache.EnvPolicy, "")
+	t.Setenv("DESK_MIN_FREE_BYTES", "18446744073709551615")
+	for _, kit := range []string{"worker", "worker-objective", "review", "verifier"} {
+		err := dispatch(dispatchOpts{kit: kit, root: t.TempDir()})
+		if err == nil || !strings.Contains(err.Error(), "storage-deferred") || deskkit.ExitCodeOf(err) != 6 {
+			t.Fatalf("%s: %v", kit, err)
+		}
+	}
+	t.Setenv("DESK_MIN_FREE_BYTES", "invalid")
+	if err := storageAdmission(false, ""); err == nil {
+		t.Fatal("invalid floor admitted")
 	}
 }

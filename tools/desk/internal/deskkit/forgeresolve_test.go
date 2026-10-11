@@ -286,6 +286,7 @@ func TestForgeSingleConstructionSite(t *testing.T) {
 	root := deskTreeRoot // "../.." — defined in forge_surface_test.go, this package
 	var offenders []string
 	sawResolverSite := map[string]bool{}
+	sawCISite := false
 	err := filepath.Walk(root, func(path string, info os.FileInfo, werr error) error {
 		if werr != nil {
 			return werr
@@ -334,6 +335,54 @@ func TestForgeSingleConstructionSite(t *testing.T) {
 				return true
 			})
 		}
+		// ReadOnlyForgeForCIToken (forge-neutral brief 34) is the ONE other function that may
+		// construct a backend, and only ONE GitHubForge literal, which must be the direct argument
+		// of OutboundChecked, itself the direct argument of ReadOnly: the CI-token backend leaves
+		// checked AND fenced to reads, or not at all.
+		ciSite := map[ast.Node]bool{}
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Name.Name != "ReadOnlyForgeForCIToken" || !isResolverFile {
+				continue
+			}
+			var lits []ast.Node
+			ast.Inspect(fd, func(n ast.Node) bool {
+				if u, ok := n.(*ast.UnaryExpr); ok && u.Op == token.AND {
+					if cl, isLit := u.X.(*ast.CompositeLit); isLit {
+						switch compositeLitTypeName(cl.Type) {
+						case "GitHubForge", "GitLabForge":
+							lits = append(lits, n)
+						}
+					}
+				}
+				return true
+			})
+			doubleWrapped := map[ast.Node]bool{}
+			ast.Inspect(fd, func(n ast.Node) bool {
+				outer, ok := n.(*ast.CallExpr)
+				if !ok || compositeLitTypeName(outer.Fun) != "ReadOnly" || len(outer.Args) != 1 {
+					return true
+				}
+				inner, ok := outer.Args[0].(*ast.CallExpr)
+				if !ok || compositeLitTypeName(inner.Fun) != "OutboundChecked" || len(inner.Args) < 1 {
+					return true
+				}
+				doubleWrapped[inner.Args[0]] = true
+				return true
+			})
+			if len(lits) != 1 {
+				offenders = append(offenders, fmt.Sprintf("%s: ReadOnlyForgeForCIToken constructs %d backend literals, want exactly 1",
+					fset.Position(fd.Pos()), len(lits)))
+			}
+			for _, l := range lits {
+				if u := l.(*ast.UnaryExpr); compositeLitTypeName(u.X.(*ast.CompositeLit).Type) != "GitHubForge" || !doubleWrapped[l] {
+					offenders = append(offenders, fmt.Sprintf("%s: the CI-token backend literal is not a GitHubForge wrapped by OutboundChecked inside ReadOnly",
+						fset.Position(l.Pos())))
+				}
+				ciSite[l] = true
+			}
+			sawCISite = true
+		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			var typeName string
 			switch expr := n.(type) {
@@ -348,6 +397,9 @@ func TestForgeSingleConstructionSite(t *testing.T) {
 			}
 			if typeName != "GitHubForge" && typeName != "GitLabForge" {
 				return true
+			}
+			if ciSite[n] {
+				return true // judged above: exactly one, double-wrapped
 			}
 			if isResolverFile {
 				if mustWrap[n] {
@@ -369,6 +421,9 @@ func TestForgeSingleConstructionSite(t *testing.T) {
 	if !sawResolverSite["GitHubForge"] || !sawResolverSite["GitLabForge"] {
 		t.Fatalf("forgeresolve.go does not construct both backends itself (saw %v) — this test would be "+
 			"vacuous if the resolver's own construction site did not exist", sawResolverSite)
+	}
+	if !sawCISite {
+		t.Fatal("forgeresolve.go has no ReadOnlyForgeForCIToken construction site — the CI-token clause of this test would be vacuous")
 	}
 	if len(offenders) > 0 {
 		sort.Strings(offenders)
