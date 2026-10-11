@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,61 @@ func DomainFor(canonicalCellDir string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// readMetaBounded reads name relative to the verified root, under the
+// package's one metadata discipline. os.Root deliberately resolves in-root
+// links (O_NOFOLLOW is no discipline there), so the layers are:
+//
+//   - Lstat first: a symlink, FIFO or device at a metadata path is refused
+//     before any open, so a planted FIFO cannot stall the read and a link
+//     cannot redirect it;
+//   - O_NONBLOCK on the open: a swap to a FIFO between the checks and the
+//     open still cannot stall;
+//   - the opened DESCRIPTOR's own fstat — never a path stat — proving a
+//     same-device, singly-owned, not other-writable regular file, and the
+//     descriptor must BE the entry the checks passed (device+inode), so a
+//     swap between Lstat and open loses the race;
+//   - a byte bound on the read, verified on both the entry and the stream.
+func readMetaBounded(r *os.Root, dev uint64, name string, max int64) ([]byte, error) {
+	lst, err := r.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkEntry(lst, dev); err != nil || !lst.Mode().IsRegular() || lst.Size() > max {
+		return nil, fmt.Errorf("invalid cache metadata file %s", name)
+	}
+	f, err := r.OpenFile(name, os.O_RDONLY|noBlock, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fst, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkEntry(fst, dev); err != nil || !fst.Mode().IsRegular() {
+		return nil, fmt.Errorf("invalid cache metadata file %s", name)
+	}
+	ldev, lino, err := identity(lst)
+	if err != nil {
+		return nil, err
+	}
+	fdev, fino, err := identity(fst)
+	if err != nil {
+		return nil, err
+	}
+	if ldev != fdev || lino != fino {
+		return nil, fmt.Errorf("cache metadata file %s changed during the read", name)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("oversized cache metadata file %s", name)
+	}
+	return b, nil
+}
+
 // LoadMarkedPolicy reads the policy a marked root runs under, for a caller
 // that found the root by walking a cells root rather than by resolving a
 // cell's environment. root is the candidate cache root itself (…/go-cache).
@@ -48,23 +104,38 @@ func DomainFor(canonicalCellDir string) string {
 // whose policy cannot be read or proven to belong to THIS root is an error:
 // the caller reports it could-not-check rather than inventing a policy.
 //
-// The reads here are advisory pre-checks. Enforcement goes through open(),
-// which re-validates the marker, the domain and the path under the root's own
-// lock; a race against these reads fails closed there, never opens.
+// The candidate's path discipline runs BEFORE any content read: a cells root
+// can be shared or sticky, so a candidate directory can belong to another
+// principal, and reading its "metadata" before the boundary check would let
+// that candidate stall the reader (a FIFO at report.json) or flood it (a link
+// to an endless source). The reads then go through readMetaBounded. These are
+// still advisory pre-checks: enforcement goes through open(), which
+// re-validates the marker, the domain and the path under the root's own lock.
 func LoadMarkedPolicy(root string) (*Policy, error) {
-	ownerPath := filepath.Join(root, "owner")
-	st, err := os.Lstat(ownerPath)
+	if err := validatePath(root); err != nil {
+		return nil, err
+	}
+	r, err := os.OpenRoot(root)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	if !st.Mode().IsRegular() || st.Size() > 1024 {
-		return nil, fmt.Errorf("invalid cache owner file")
-	}
-	b, err := os.ReadFile(ownerPath)
+	defer r.Close()
+	rst, err := r.Stat(".")
 	if err != nil {
+		return nil, err
+	}
+	dev, _, err := identity(rst)
+	if err != nil {
+		return nil, err
+	}
+	b, err := readMetaBounded(r, dev, "owner", 1024)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	lines := strings.Split(string(b), "\n")
@@ -73,7 +144,7 @@ func LoadMarkedPolicy(root string) (*Policy, error) {
 	}
 	domain := lines[1]
 
-	rb, err := os.ReadFile(filepath.Join(root, "report.json"))
+	rb, err := readMetaBounded(r, dev, "report.json", 64<<10)
 	if err != nil {
 		return nil, fmt.Errorf("marked cache root has no readable report of the policy it runs under: %v", err)
 	}

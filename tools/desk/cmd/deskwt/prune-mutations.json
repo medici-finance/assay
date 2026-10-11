@@ -114,6 +114,12 @@
       "file": "cmd/deskwt/cachepressure.go",
       "old": "\t\tif owner, orphan := orphans[p.Domain]; orphan {",
       "new": "\t\tif owner, orphan := orphans[p.Root]; orphan {"
+    },
+    {
+      "name": "namespaces are never descended into (a nested cell's marked root gets no cadence check)",
+      "file": "cmd/deskwt/cachepressure.go",
+      "old": "\t\tif d.IsDir() && !isCell {\n\t\t\treturn nil // a namespace: descend\n\t\t}",
+      "new": "\t\tif false && d.IsDir() && !isCell {\n\t\t\treturn nil // a namespace: descend\n\t\t}"
     }
   ]
 }

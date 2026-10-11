@@ -14,9 +14,10 @@ import (
 
 // plantMarkedCell creates a cell directory under cellsRoot whose managed Go
 // cache root is marked and recorded — the state a sweep can discover — and
-// returns its policy. ownerDir is the directory the root's trust domain binds
-// to: ordinarily the cell directory itself; the orphan-reap tests bind the
-// root to ANOTHER directory (one the sweep can remove) instead.
+// returns its policy. cellName may nest (team/demo). ownerDir is the directory
+// the root's trust domain binds to: ordinarily the cell directory itself; the
+// orphan-reap tests bind the root to ANOTHER directory (one the sweep can
+// remove) instead.
 func plantMarkedCell(t *testing.T, cellsRoot, cellName, ownerDir string, budget int64) cellcache.Policy {
 	t.Helper()
 	canonCells, err := filepath.EvalSymlinks(cellsRoot)
@@ -25,6 +26,11 @@ func plantMarkedCell(t *testing.T, cellsRoot, cellName, ownerDir string, budget 
 	}
 	cell := filepath.Join(canonCells, cellName)
 	if err := os.MkdirAll(cell, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Discovery defines a cell the way cellctl does: a directory holding a
+	// cell.env. Its content is the launcher's concern, not the sweep's.
+	if err := os.WriteFile(filepath.Join(cell, "cell.env"), []byte("# fixture cell\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if ownerDir == "" {
@@ -307,5 +313,58 @@ func TestPruneCacheFlagRefusals(t *testing.T) {
 		if !strings.Contains(errout, "has no effect") && !strings.Contains(errout, "which --no-cache skips") {
 			t.Fatalf("%v refused without naming the inert knob:\n%s", args, errout)
 		}
+	}
+}
+
+// A nested cell (team/demo) is a supported cell name; its default marked root
+// lives at <cells-root>/team/demo/go-cache and the sweep must reach it.
+func TestPruneCachePassNestedCell(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	cells := withCellsRoot(t)
+	p := plantMarkedCell(t, cells, filepath.Join("team", "demo"), "", 1)
+	cacheMaterial(t, p, "build/result", 100)
+
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "cache-reclaimed 1") {
+		t.Fatalf("the nested cell's pressure was not reclaimed:\n%s", errout)
+	}
+	if _, err := os.Stat(filepath.Join(p.Root, "build", "result")); !os.IsNotExist(err) {
+		t.Fatal("the nested cell's over-budget cache survived the sweep", err)
+	}
+}
+
+// An invalid candidate is could-not-check for THAT cell and nothing else: the
+// sweep names it and still reaches every later candidate.
+func TestPruneCachePassContinuesPastInvalidCandidate(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	cells := withCellsRoot(t)
+	bad := plantMarkedCell(t, cells, "bad", "", 1<<30)
+	// A linked report is outside the root's custody: the read must refuse it.
+	if err := os.Remove(bad.ReportPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/dev/null", bad.ReportPath()); err != nil {
+		t.Fatal(err)
+	}
+	good := plantMarkedCell(t, cells, "good", "", 1)
+	cacheMaterial(t, good, "build/result", 100)
+
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "could-not-check") || !strings.Contains(errout, "bad") {
+		t.Fatalf("the invalid candidate was not surfaced:\n%s", errout)
+	}
+	if !strings.Contains(errout, "cache-reclaimed 1") {
+		t.Fatalf("the valid cell behind the invalid one was not checked:\n%s", errout)
+	}
+	if _, err := os.Stat(filepath.Join(good.Root, "build", "result")); !os.IsNotExist(err) {
+		t.Fatal("the valid cell's over-budget cache survived the sweep", err)
 	}
 }

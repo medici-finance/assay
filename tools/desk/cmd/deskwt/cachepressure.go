@@ -15,13 +15,18 @@ package main
 // byte-budget or free-space pressure, never while a consumer holds a lease,
 // never a warm purge; this pass adds the cadence and nothing else.
 //
-// Discovery is by the MARKER, not by cell.env: a candidate is
-// `<cell>/go-cache` for a direct child of the cells root (the same
-// enumeration `cellctl ls` uses), and cellcache.LoadMarkedPolicy accepts it
-// only when the ownership marker and the root's own recorded policy agree.
-// The policy the sweep enforces is read back from the root's report — the
-// one the cell's launches actually run under — never re-derived from a second
-// source, and never invented: a marked root with no readable report is
+// Discovery is by the MARKER, not by cell.env's cache keys: a candidate is
+// `<cell>/go-cache` for every directory under the cells root that carries a
+// cell.env — cells nest (`team/demo`), and namespaces are descended into but
+// a cell's own subtree never is — and cellcache.LoadMarkedPolicy accepts it
+// only when the path boundary holds and the ownership marker and the root's
+// own recorded policy agree. Enforcement then goes through
+// cellcache.CheckRecorded, which re-reads the recorded policy under the
+// root's own lock in the same transaction as the check: a policy read here,
+// before the lock, would be written back over a newer one a launch recorded
+// in between. The policy the sweep enforces is therefore always the one the
+// cell's launches actually run under — never re-derived from a second source,
+// and never invented: a marked root with no readable report is
 // could-not-check, not "default budget". A custom CELL_GO_CACHE_ROOT outside
 // the cells root is out of the sweep's sight by construction; `cellctl cache
 // <cell> clean` remains its instrument.
@@ -44,6 +49,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -126,28 +132,25 @@ func sweepCellCaches(cellsRoot string, dryRun bool, reapedPaths []string) (cache
 		orphans[cellcache.DomainFor(rt)] = rt
 	}
 
-	entries, err := os.ReadDir(cellsRoot)
-	if err != nil {
-		if !os.IsNotExist(err) {
+	// A missing cells root is a machine with no cells — a legitimate state,
+	// checked silently. An UNREADABLE one blinds the pass: say so.
+	if st, err := os.Stat(cellsRoot); err != nil || !st.IsDir() {
+		if err != nil && !os.IsNotExist(err) {
 			warns = append(warns, "could-not-check: cells root "+cellsRoot+" is unreadable — no cache root was pressure-checked: "+errText(err))
 		}
 		return res, warns
 	}
-	for _, en := range entries {
-		st, serr := os.Stat(filepath.Join(cellsRoot, en.Name()))
-		if serr != nil || !st.IsDir() {
-			continue
-		}
+	for _, cell := range discoverCells(cellsRoot, &warns) {
 		// Canonicalize the cell directory first, exactly as cellcache.Resolve
 		// does when it builds the default root, so the recorded policy's root
 		// comparison is canonical-to-canonical.
-		cell, cerr := filepath.EvalSymlinks(filepath.Join(cellsRoot, en.Name()))
+		canonical, cerr := filepath.EvalSymlinks(cell)
 		if cerr != nil {
 			continue
 		}
-		p, lerr := cellcache.LoadMarkedPolicy(filepath.Join(cell, "go-cache"))
+		p, lerr := cellcache.LoadMarkedPolicy(filepath.Join(canonical, "go-cache"))
 		if lerr != nil {
-			warns = append(warns, "could-not-check: cache root of cell "+en.Name()+": "+errText(lerr))
+			warns = append(warns, "could-not-check: cache root of cell "+cellNameOf(cellsRoot, cell)+": "+errText(lerr))
 			continue
 		}
 		if p == nil {
@@ -176,7 +179,10 @@ func sweepCellCaches(cellsRoot string, dryRun bool, reapedPaths []string) (cache
 		}
 
 		res.checked++
-		rep, cerr := cellcache.Check(*p, dryRun)
+		// CheckRecorded re-reads the recorded policy under the root's lock and
+		// enforces THAT one: an advisory policy read here, before the lock,
+		// would be written back over a policy a launch recorded in between.
+		rep, cerr := cellcache.CheckRecorded(p.Root, dryRun)
 		if cerr == nil {
 			// checked-clean: within policy. Silent.
 		} else if rep.Outcome == "storage-deferred" {
@@ -198,7 +204,7 @@ func sweepCellCaches(cellsRoot string, dryRun bool, reapedPaths []string) (cache
 			if reason == "" {
 				reason = errText(cerr)
 			}
-			warns = append(warns, "could-not-check: cache root of cell "+en.Name()+": "+reason)
+			warns = append(warns, "could-not-check: cache root of cell "+cellNameOf(cellsRoot, cell)+": "+reason)
 		}
 		if rep.Reclaimed > 0 {
 			res.reclaimed++
@@ -207,6 +213,57 @@ func sweepCellCaches(cellsRoot string, dryRun bool, reapedPaths []string) (cache
 	}
 	sort.Strings(res.reaped)
 	return res, warns
+}
+
+// discoverCells walks the cells root for cell directories — any directory,
+// at any depth, holding a cell.env (cells nest: team/demo). A directory that
+// is a cell is probed and never descended into: its worktrees and caches are
+// not other cells, and descending would walk whole checkouts. A symlinked
+// directory is probed as a cell (cellctl loads symlinked cells) but never
+// descended into, so a link cycle cannot loop the walk. The cells root itself
+// is never a cell, exactly as cellNameLocal refuses ".".
+func discoverCells(cellsRoot string, warns *[]string) []string {
+	var cells []string
+	werr := filepath.WalkDir(cellsRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// One unreadable directory must not blind the rest of the sweep.
+			*warns = append(*warns, "could-not-check: cannot read "+path+" under the cells root: "+errText(err))
+			return filepath.SkipDir
+		}
+		if path == cellsRoot {
+			return nil
+		}
+		// WalkDir's IsDir is the Lstat answer, so a symlinked directory arrives
+		// here through the symlink arm: probed as a cell (Stat follows the
+		// link, as cellctl's loader does) but never descended into, so a link
+		// cycle cannot loop the walk.
+		if !d.IsDir() && d.Type()&os.ModeSymlink == 0 {
+			return nil
+		}
+		fi, serr := os.Stat(filepath.Join(path, "cell.env"))
+		isCell := serr == nil && !fi.IsDir()
+		if isCell {
+			cells = append(cells, path)
+		}
+		if d.IsDir() && !isCell {
+			return nil // a namespace: descend
+		}
+		return filepath.SkipDir
+	})
+	if werr != nil {
+		*warns = append(*warns, "could-not-check: cells root "+cellsRoot+" could not be walked: "+errText(werr))
+	}
+	sort.Strings(cells)
+	return cells
+}
+
+// cellNameOf renders the cell's name — its path under the cells root — for a
+// warning line, falling back to the full path when the relation fails.
+func cellNameOf(cellsRoot, cell string) string {
+	if rel, err := filepath.Rel(cellsRoot, cell); err == nil {
+		return rel
+	}
+	return cell
 }
 
 // renderCacheDetail prints what the noise floor allows a sweep to say per
