@@ -1,0 +1,2 @@
+### Added
+- Author linked implementation briefs for pinned all-module golangci-lint and complementary gosec/govulncheck checks, including scanner failure controls and proof of deployed CI.
