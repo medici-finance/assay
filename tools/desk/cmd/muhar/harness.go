@@ -148,6 +148,17 @@ type Harness struct {
 	// mutation, so a narrowed suite that cannot fail breaks the run. nil runs
 	// Test in full for every mutation — the historical behaviour.
 	Selector Selector
+	// SchemaTest, when set, turns on mutant schemata (schemata.go): it runs the
+	// suite against the tree at root with the go command reading overlay and
+	// the schemata selector set to selector; true == suite FAILED. Nil keeps
+	// every mutation on the classic rebuild-per-mutant path.
+	SchemaTest func(root, overlay, selector string) bool
+	// SchemaBuild, when set, compiles the packages in dirs under the overlay
+	// with every compiler error reported, returning the output and whether the
+	// build was clean; schemata uses it to drop mutants that do not compile.
+	SchemaBuild func(root, overlay string, dirs []string) (out string, clean bool)
+	// Log receives progress notes (never verdicts); nil discards them.
+	Log io.Writer
 }
 
 // Report is the outcome of a whole run.
@@ -315,8 +326,10 @@ func (h *Harness) Run() Report {
 			return rep
 		}
 		// The instrument is proven. Now every NotCaught is a real finding.
-		for _, m := range h.Mutations {
-			res, err := h.runOne(h.Root, m)
+		_, st := h.schemataSetup(h.Root)
+		defer st.cleanup()
+		for i, m := range h.Mutations {
+			res, err := h.runMutation(h.Root, st, i)
 			rep.Results = append(rep.Results, MutationResult{Mutation: m, Result: res, Err: err})
 		}
 		return rep
@@ -355,6 +368,10 @@ func (h *Harness) runParallel(jobs int) Report {
 		return rep
 	}
 
+	// Schemata is planned once, in the first copy; every other worker builds
+	// the same plan in its own copy and proves its own baseline green first.
+	plan, first := h.schemataSetup(roots[0])
+
 	// Results are indexed by spec position, never appended, so the report is
 	// byte-identical to a sequential run whatever order the workers finish in.
 	rep.Results = make([]MutationResult, len(h.Mutations))
@@ -362,14 +379,19 @@ func (h *Harness) runParallel(jobs int) Report {
 	var wg sync.WaitGroup
 	for w := 0; w < jobs; w++ {
 		wg.Add(1)
-		go func(root string) {
+		go func(w int, root string) {
 			defer wg.Done()
+			st := first
+			if w > 0 {
+				st = h.schemataFor(root, plan)
+			}
+			defer st.cleanup()
 			for i := range next {
 				m := h.Mutations[i]
-				res, err := h.runOne(root, m)
+				res, err := h.runMutation(root, st, i)
 				rep.Results[i] = MutationResult{Mutation: m, Result: res, Err: err}
 			}
-		}(roots[w])
+		}(w, roots[w])
 	}
 	for i := range h.Mutations {
 		next <- i

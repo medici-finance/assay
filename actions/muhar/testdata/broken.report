@@ -1,0 +1,2 @@
+HARNESS BROKEN — run discarded.
+  baseline suite is RED on pristine source — cannot distinguish a caught mutation from a pre-existing failure; discard the run

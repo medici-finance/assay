@@ -22,6 +22,9 @@ func (f *fakeSelector) Prepare(string) error { return f.prepErr }
 func (f *fakeSelector) For(m Mutation, _ []byte) Selection {
 	return f.by[m.Name]
 }
+func (f *fakeSelector) Narrows(m Mutation, _ []byte) bool {
+	return f.by[m.Name].Skip || f.by[m.Name].Test != nil
+}
 
 // changedHarness: the full suite is red whenever core.txt differs from src, so
 // every planted mutation is Caught without selection.

@@ -53,7 +53,8 @@
 //	  "select": {"always": ["TestReadsSource"]}, // optional; -select only
 //	  "mutations": [
 //	    {"name": "breaker-active check", "file": "...", "old": "...", "new": "..."}
-//	  ]
+//	  ],
+//	  "schemata": true                    // optional; build eligible mutants once per worker (schemata.go)
 //	}
 //
 // Exit codes:
@@ -71,6 +72,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -84,6 +86,11 @@ type spec struct {
 	Mutations []Mutation `json:"mutations"`
 	// Select configures -select; it has no effect without the flag.
 	Select *selectSpec `json:"select,omitempty"`
+	// Schemata opts this spec into mutant schemata (#2635). Off unless set:
+	// schemata assumes the suite never cross-checks the running code against
+	// its source on disk or against a child that drops the environment (see
+	// schemata.go), so a spec turns it on only after a parity run on its suite.
+	Schemata bool `json:"schemata,omitempty"`
 }
 
 // parseShard parses a -shard value of the form "i/n": n total shards, this
@@ -172,6 +179,23 @@ func envWithGOCACHE(env []string, dir string) []string {
 		}
 	}
 	return append(out, "GOCACHE="+dir)
+}
+
+// envWithout returns env minus every entry for the named variables.
+func envWithout(env []string, names ...string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		keep := true
+		for _, n := range names {
+			if strings.HasPrefix(e, n+"=") {
+				keep = false
+			}
+		}
+		if keep {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // muhar does NOT call deskkit.Guard(): it is a local diagnostic that makes no
@@ -299,6 +323,53 @@ func main() {
 			c.Stderr = os.Stderr
 			return c.Run() != nil // non-zero exit == narrowed suite failed == caught
 		})
+	}
+	// Mutant schemata (#2635), for a spec that opts in: eligible mutants share
+	// one build per worker and are picked per run by an environment selector,
+	// instead of each one recompiling its package. Only a suite run that goes
+	// RED is taken from it (see schemata.go); every other verdict still comes
+	// from the classic run.
+	if s.Schemata && !schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
+		fmt.Fprintln(os.Stderr, "muhar: schemata: the spec asks for it, but needs a go test -count=1 suite, no -overlay of its own and a TMPDIR without spaces; every mutation rebuilds the suite")
+	}
+	if s.Schemata && schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
+		h.Log = os.Stderr
+		h.SchemaTest = func(root, overlay, selector string) bool {
+			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design
+			if root != "" {
+				cmd.Dir = root
+			}
+			env := envWithGOCACHE(os.Environ(), gocache)
+			cmd.Env = append(envWithout(env, "GOFLAGS", schemaEnv),
+				"GOFLAGS="+schemaGoflags(os.Getenv("GOFLAGS"), overlay),
+				schemaEnv+"="+selector)
+			cmd.Stdout = os.Stderr
+			cmd.Stderr = os.Stderr
+			return cmd.Run() != nil
+		}
+		h.SchemaBuild = func(root, overlay string, dirs []string) (string, bool) {
+			// -e: report every compile error, so one probe finds every mutant
+			// that does not compile. One package per build, its output written
+			// beside the overlay, never into the tree.
+			env := envWithGOCACHE(os.Environ(), gocache)
+			env = append(envWithout(env, "GOFLAGS"), "GOFLAGS="+schemaGoflags(os.Getenv("GOFLAGS"), overlay))
+			var all strings.Builder
+			clean := true
+			for i, d := range dirs {
+				out := filepath.Join(filepath.Dir(overlay), fmt.Sprintf("probe-%d.out", i))
+				cmd := exec.Command("go", "build", "-gcflags=-e", "-o", out, d)
+				if root != "" {
+					cmd.Dir = root
+				}
+				cmd.Env = env
+				b, err := cmd.CombinedOutput()
+				all.Write(b)
+				if err != nil {
+					clean = false
+				}
+			}
+			return all.String(), clean
+		}
 	}
 	if n > 1 {
 		// The tree to clone is the one the mutations and the suite command

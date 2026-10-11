@@ -90,6 +90,27 @@ type Selection struct {
 type Selector interface {
 	Prepare(root string) error
 	For(m Mutation, orig []byte) Selection
+	// Narrows reports, without logging, whether For would run m against less
+	// than the full command (a Skip or a narrowed suite).
+	Narrows(m Mutation, orig []byte) bool
+}
+
+// selectNarrows is the rule for -select with "schemata": true (#2653): a
+// mutant whose suite -select narrows never goes through schemata; it runs the
+// classic way, against its narrowed suite. Schemata runs the spec's FULL
+// command, so a schemata CAUGHT would bypass the narrowing, and its own
+// assumption (no suite cross-checks two views of the code) would then stack on
+// selection's. A mutant -select runs in full keeps schemata exactly as
+// without -select. Unreadable source counts as narrowed, so runOne reports it.
+func (h *Harness) selectNarrows(root string, m Mutation) bool {
+	if h.Selector == nil {
+		return false
+	}
+	orig, err := os.ReadFile(resolve(root, m.File))
+	if err != nil {
+		return true
+	}
+	return h.Selector.Narrows(m, orig)
 }
 
 // goTestCmd is a spec `test` command that selection can model: `go test` with
@@ -767,6 +788,12 @@ func (cs *coverSelector) decide(m Mutation, orig []byte) decision {
 		return decision{skip: true}
 	}
 	return decision{args: cs.narrowedArgs(picked), covering: covering, picked: len(picked)}
+}
+
+// Narrows implements Selector: true when For would skip m or narrow its suite.
+func (cs *coverSelector) Narrows(m Mutation, orig []byte) bool {
+	d := cs.decide(m, orig)
+	return d.skip || (d.args != nil && cs.proven[setKey(d.args)])
 }
 
 // For decides m's suite. orig is the pristine content of m's file.
