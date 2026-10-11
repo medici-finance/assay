@@ -49,18 +49,30 @@ Replace `<tag>` with a tag from the
 `v1.0.39`), and `linux-amd64` with your platform. Swap
 `releases/download/<tag>` for `releases/latest/download` to take whatever the
 newest release is. Pinning a tag is the supported way to consume this
-repository; `latest` moves.
+repository; `latest` moves. This one-liner does not verify the download. The
+recipe below does, and it is the one to use in scripts.
 
-To check the archive against the release's `checksums.txt` before you extract
-it:
+To extract `muhar` only if the archive matches the release's `checksums.txt`:
 
 ```sh
 TAG=v1.0.39 P=linux-amd64
-curl -fsSLO https://github.com/medici-finance/assay/releases/download/$TAG/desk-tools-$P.tar.gz
-curl -fsSL  https://github.com/medici-finance/assay/releases/download/$TAG/checksums.txt \
-  | grep " desk-tools-$P.tar.gz\$" | sha256sum -c -     # macOS: shasum -a 256 -c -
-tar -xzf desk-tools-$P.tar.gz ./muhar
+B=https://github.com/medici-finance/assay/releases/download/$TAG
+curl -fsSLO "$B/desk-tools-$P.tar.gz" &&
+  line=$(curl -fsSL "$B/checksums.txt" | grep " desk-tools-$P.tar.gz\$") &&
+  printf '%s\n' "$line" | sha256sum -c - &&
+  tar -xzf "desk-tools-$P.tar.gz" ./muhar
 ```
+
+On macOS without `sha256sum`, use `shasum -a 256 -c -`. Each step runs only if
+the one before it succeeded. A failed download, a missing `checksums.txt` line
+(the `grep` exits 1), or a hash mismatch stops the chain before `tar`, so
+nothing is extracted. It does not use `set -e`, so it is safe to paste into an
+interactive shell.
+
+This catches a corrupt or truncated download. It does not catch a replaced
+release, because `checksums.txt` comes from the same release as the archive,
+and releases carry no signature or provenance attestation. To pin a binary,
+record its sha256 yourself the first time and check against that.
 
 On Windows the archive member is `./muhar.exe`. `muhar` runs the test command
 with `sh -c`, so it needs a POSIX `sh` on `PATH` there.
@@ -359,13 +371,21 @@ After each mutation the original bytes are written back, whatever the verdict.
   and the control run in the first copy, which also proves the copy builds
   before any verdict depends on it. `muhar` never makes more copies than there
   are mutations. Copies are deleted when the run ends.
+- **One mutation or none means an in-place run.** The worker count is capped
+  at the number of mutations selected for this run (after `-shard`). When
+  that count is 1 or 0, `muhar` runs in place in your own tree, exactly as
+  with `-j 1`, whatever `-j` says. For example, `-j 0 -shard 1/3` on a
+  three-mutation spec runs in place. The stderr line below is still printed in
+  that case and names copies that are never made. Treat such a run like
+  `-j 1`.
 - `-j 0` means one worker per CPU, **capped at 2**. Each worker holds a full
   copy of the tree, so memory grows with the number of workers. An explicit
   `-j N` is used as given. A negative value exits 1.
 - The verdicts, their order and the report text are the same for every `-j`;
   only the wall time changes. `muhar` prints
   `muhar: N mutations in flight, one isolated copy of <dir> per worker` to
-  stderr when it runs in parallel.
+  stderr whenever the resolved `-j` is greater than 1, including the in-place
+  case above.
 - The copy includes everything under the directory (including `.git`).
   Symlinks are recreated as symlinks; sockets and devices are skipped.
 - **Go `replace` directives.** A `replace X => ../../sibling` in a copied
@@ -436,7 +456,7 @@ report is only the two `HARNESS BROKEN` lines.
 | `CAUGHT` | The mutation was proven on disk and the test command exited non-zero. | Nothing: the behaviour is tested. |
 | `NOT_CAUGHT` | The mutation was proven on disk and the test command exited 0. | A real finding. Add a test that fails with this edit in place, then re-run. |
 | `COULD_NOT_MUTATE` | The edit could not be planted or proven, so the suite was not run. The reason is printed in brackets. | Fix the spec (usually `old` no longer matches the code). This is **not** a pass: that behaviour was not checked. |
-| `HARNESS BROKEN` | The baseline was red, the control was not caught, or a `-j` copy could not be made. | Fix the suite, the control or the environment. Ignore everything else about this run. |
+| `HARNESS BROKEN` | The baseline was red, the control could not be planted, the control was not caught, or a `-j` copy could not be made. | Fix the suite, the control or the environment. Ignore everything else about this run. |
 
 ## Exit codes
 
@@ -482,12 +502,16 @@ from `tools/desk` with no `root`, so their `file` paths are relative to
   deletes it at the end, so mutant builds do not pile up in your normal Go
   build cache. `GOMODCACHE` is left alone. A Go suite therefore compiles its
   dependencies from scratch on the first (baseline) run.
-- With `-j 1` the mutations are written into your own tree and restored after
-  each one. Commit or stash your work first, so `git status` after a run shows
+- With `-j 1`, and with any `-j` when the run has one mutation or none (see
+  [Parallel runs](#parallel-runs--j)), the mutations are written into your own
+  tree and restored after each one. Commit or stash your work first, so `git status` after a run shows
   anything left behind.
 - `muhar` makes no network calls and writes nothing outside the tree under test
   and its temporary directories. Whatever your test command does is up to the
   test command.
+- **A spec is code.** Its `test` field runs with `sh -c` with `muhar`'s
+  environment. Treat a `mutations.json` like a script. In CI, do not run a
+  spec from an untrusted fork's pull request in a job that has secrets.
 
 ### Interrupting a run
 
@@ -495,9 +519,12 @@ When `muhar` receives SIGINT or SIGTERM, it deletes its temporary build cache
 and exits `130` straight away. With `-j 1`, a mutation that is in place at that
 moment is **not** restored: the mutant stays in your working tree. After
 interrupting a sequential run, check `git status` (or `git diff`) and restore
-the file. With `-j` > 1 the mutants live in the temporary copies, so your tree
-is not touched, but the copies themselves (`muhar-<n>-*` directories under the
-system temporary directory) are left behind; delete them. (Tracked as
+the file. The same applies to a run with one mutation or none, whatever `-j`
+says, because that run is in place too (see
+[Parallel runs](#parallel-runs--j)). Otherwise, with `-j` > 1 the mutants live
+in the temporary copies, so your tree is not touched. The copies themselves
+(`muhar-<n>-*` directories under the system temporary directory) are left
+behind; delete them. (Tracked as
 [#2646](https://github.com/medici-finance/assay/issues/2646).)
 
 ## See also
