@@ -601,3 +601,67 @@ be a fail is a fail at any round.
 this clause does not touch it: `main` moved under unchanged code, the description was edited,
 a check result at the current head, a could-not-check gap, an undeclared decision.
 **Clauses 2, 5, 7, 8 and 15 bind in every round.**
+
+## 21. Coverage contract — every register class accounted for, silence is not accounting
+
+<!-- lane:correctness:begin -->
+The clauses above govern findings you RAISED. This one governs the classes you never
+considered: a review that reads a diff as a small refactor may never ask what happens to the
+caller two packages over, whether a write is atomic mid-failure, or whether a loop tolerates
+duplicate input — and its APPROVE reads exactly like one that did examine them. Correctness
+review therefore carries a coverage contract: a fixed register of bug classes, and every
+class in it ends the round ACCOUNTED FOR in the verdict body, as an `## Coverage` section at
+its end (the verdict-format reference carries the block's shape). Silence is not accounting.
+
+The register, lower-case kebab ids:
+
+| class | owes an answer on |
+|---|---|
+| `spec-intent` | the diff matches the change's stated invariant; extra behavior and dead code are findings |
+| `callers-blast-radius` | every caller of a changed symbol, including verbs, tests, jobs and workflow callers |
+| `algorithm-edges` | empty, one, duplicate, overflow, unicode, unordered input, idempotent replay |
+| `concurrency` | shared mutable state, missing synchronization, double-check, lost updates, duplicate jobs |
+| `error-paths-rollback` | mid-write failure, atomic replace, swallowed errors, reversibility |
+| `api-contract` | breaking change to a CLI flag, verb schema, JSON field or HTTP shape; versioning |
+| `persistence-migrations` | schema expand-then-contract, backfill, dual-write drift, source of truth |
+| `resource-lifecycle` | handles, files, servers, timers, processes closed on failure; no leaks |
+| `time-ordering` | wall vs monotonic clocks, timezone, TTL/expiry, replay semantics |
+| `observability-signals` | a failure in this change can be reconstructed from what it emits (secret-free-logging itself is the security lane's, not this register's) |
+| `tests-evidence` | a check that fails if the new branch is wrong; no generated theater |
+| `operability-ship` | feature flag, config, rollback path; who acts when it fails |
+| `ui-a11y` | keyboard, labels, contrast — ONLY when the diff touches UI surfaces; `n/a` otherwise is the norm (injection into the new surface, XSS included, is the security lane's) |
+| `structure-ownership` | the owning module is named; a new pattern with one implementation is a finding |
+
+The project layer may append classes for its stack and may never remove a base class — the
+same layer boundary every other neutral body here uses. Every class ends the round in
+exactly one of four line shapes, one grammar — class first, state second, colon, detail.
+`checked-clean` and `could-not-check` are the methodology's existing checked/unchecked states
+(common clauses C4) applied per class; `n/a` is the one new line shape:
+
+| state | line in the verdict body's Coverage block |
+|---|---|
+| `finding` | `class — finding <id>` — the finding that raised it, cited by id (clause 14) |
+| `checked-clean` | `class — checked-clean: <what was examined>` — the class applied, was examined, and is sound |
+| `n/a` | `class — n/a: <one-sentence reason>` — the class genuinely does not apply to this diff |
+| `could-not-check` | `class — could-not-check: <what was missing>` — not honestly n/a-able, and not checked |
+
+The accounting covers the round's stated scope (clause 19): a `Scope: DELTA` round accounts
+for the classes the delta range's paths can touch — the assignment carries the head range,
+not a path list, and the paths are derived from it; a `Scope: FULL PASS` accounts for the
+whole register. A delta that grows a path into a class the scope did not name is clause 19's
+wrong-stated-scope case: full pass, say so.
+
+An examined-and-sound class is `checked-clean`, never `n/a` — conflating the two is
+precisely the leak this contract exists to close. The refusal rule is the whole point of the
+contract: **a class that cannot be honestly `n/a`'d and was not checked is
+`could-not-check`, never a silent APPROVE** (clause 5). The register carries no security
+classes — trust/authz, secrets and PII, injection are the security lane's, and the two
+verdicts stay separate artifacts (clause 12).
+<!-- lane:correctness:end -->
+<!-- lane:security:begin -->
+**Not run in the security lane.** The coverage contract and its class register are the
+correctness lane's, and a security verdict carries no Coverage block. Record the pass as
+"not run in this lane, owned by the correctness lane" if your verdict mentions it —
+could-not-check, never checked-clean (clause 5). A register class you do observe being
+violated is still yours to post, as an ordinary clause-13 finding.
+<!-- lane:security:end -->

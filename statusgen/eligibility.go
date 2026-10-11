@@ -4,13 +4,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
-// eligibility.go — the eligibility evaluator (graph-execution/01): `gates:`
-// and `feathers:` become GATING, with an explainable reason, instead of the
-// "reserved, not gating" no-op checkBriefV2Semantics (briefv2.go) left them
-// at. See docs/dependency-graph-design.md §3.6 for the semantics executed
-// here.
+// eligibility.go — the statusgen ADAPTER for the eligibility evaluator
+// (graph-execution/01). The evaluation itself — `gates:` and `feathers:`
+// becoming GATING with an explainable reason (docs/dependency-graph-design.md
+// §3.6) — lives in the statusgen/evaluation package since statusgen/15; this
+// file only observes the tree (streams, the graph-repos registry, sibling
+// checkouts), maps those observations onto the library's immutable input
+// types, and hands them over. It holds no second implementation of any verdict.
 //
 // The evaluator is the SINGLE deterministic verdict every consumer reads:
 // Next-up (eligibleBase, nextup.go), the drive frontier (briefFrontierState,
@@ -26,123 +30,103 @@ import (
 // reads (stale-issue alarms etc.), never this evaluator, which must produce
 // its verdicts "from the tree alone" (brief-01 Context, fact 4).
 
-// EligibilityState is the three-state resolution of one edge
-// (docs/three-state-instrument-rule.md): could-not-check is reported, never
-// collapsed into satisfied or unsatisfied.
-type EligibilityState string
-
-const (
-	StateSatisfied     EligibilityState = "satisfied"
-	StateUnsatisfied   EligibilityState = "unsatisfied"
-	StateCouldNotCheck EligibilityState = "could-not-check"
+// The wire and verdict types are the library's: one definition, the CLI and
+// every other consumer read the same values.
+type (
+	EligibilityState   = evaluation.EligibilityState
+	EligibilityVerdict = evaluation.EligibilityVerdict
+	EdgeVerdict        = evaluation.EdgeVerdict
+	Eligibility        = evaluation.Eligibility
 )
 
-// EligibilityVerdict is the three-way dispatch verdict for one brief.
-type EligibilityVerdict string
-
 const (
-	// VerdictEligible: no holds at all — nothing stands between this brief and
-	// dispatch (from the graph's point of view; the caller's own status/claim/
-	// wave rules still apply on top).
-	VerdictEligible EligibilityVerdict = "eligible"
-	// VerdictHeld: at least one gates: edge (or depends: entry) is unsatisfied
-	// or could-not-check. HELD is exclusion from Next-up.
-	VerdictHeld EligibilityVerdict = "held"
-	// VerdictEligibleWithNotice: no holds, but at least one feathers: edge is
-	// unsatisfied or could-not-check. Offered, rendered with its notice.
-	VerdictEligibleWithNotice EligibilityVerdict = "eligible-with-notice"
+	StateSatisfied     = evaluation.StateSatisfied
+	StateUnsatisfied   = evaluation.StateUnsatisfied
+	StateCouldNotCheck = evaluation.StateCouldNotCheck
+
+	VerdictEligible           = evaluation.VerdictEligible
+	VerdictHeld               = evaluation.VerdictHeld
+	VerdictEligibleWithNotice = evaluation.VerdictEligibleWithNotice
 )
 
-// EdgeVerdict is one resolved gates:/feathers:/depends: edge — its ref, its
-// declared type, its reason (verbatim from the gates: entry; "" for a bare
-// depends: hold and for a build-dep feather scalar), and the resolved state.
-type EdgeVerdict struct {
-	Ref    string           `json:"ref"`
-	Type   string           `json:"type"`
-	Reason string           `json:"reason,omitempty"`
-	State  EligibilityState `json:"state"`
-	// Why is the could-not-check explanation (registry/checkout/forge detail).
-	// Deliberately excluded from --eligibility --json — Task item 1's shape is
-	// exactly {ref,type,reason,state} — but read by the --lint NOTICE emitter
-	// (eligibilityCouldNotCheckNotices) so a hold caused by a registry or
-	// checkout gap names WHY, not just THAT.
-	Why string `json:"-"`
+// evaluationStreams maps the loaded streams onto the library's input types.
+// humanGatedVerifyPassed (the evidence reading) stays here; the library
+// receives only its boolean result.
+func evaluationStreams(streams []*Stream) []evaluation.Stream {
+	out := make([]evaluation.Stream, 0, len(streams))
+	for _, s := range streams {
+		es := evaluation.Stream{Name: s.Name, Briefs: make([]evaluation.Brief, 0, len(s.Briefs))}
+		for _, b := range s.Briefs {
+			es.Briefs = append(es.Briefs, evaluation.Brief{
+				Num:                   b.Num,
+				Status:                b.Status,
+				Depends:               b.Depends,
+				Gates:                 evaluationEdges(b.Gates),
+				Feathers:              evaluationEdges(b.Feathers),
+				HumanGatePassRecorded: humanGatedVerifyPassed(b),
+			})
+		}
+		out = append(out, es)
+	}
+	return out
 }
 
-// Eligibility is the evaluator's full verdict for one brief.
-type Eligibility struct {
-	ID      string             `json:"id"` // "<stream>/<NN>"
-	Verdict EligibilityVerdict `json:"verdict"`
-	Holds   []EdgeVerdict      `json:"holds,omitempty"`
-	Notices []EdgeVerdict      `json:"notices,omitempty"`
+func evaluationEdges(edges []GraphEdge) []evaluation.Edge {
+	var out []evaluation.Edge
+	for _, e := range edges {
+		out = append(out, evaluation.Edge{Ref: e.Ref, Type: e.Type, Reason: e.Reason})
+	}
+	return out
+}
+
+// evaluationRegistry maps the loaded registry (nil = absent) onto the library.
+func evaluationRegistry(reg *graphRepos) *evaluation.Registry {
+	if reg == nil {
+		return nil
+	}
+	out := &evaluation.Registry{Aliases: map[string]evaluation.RegistryAlias{}}
+	for name, a := range reg.Aliases {
+		out.Aliases[name] = evaluation.RegistryAlias{Repo: a.Repo, Unpublished: a.Unpublished}
+	}
+	return out
+}
+
+// siblingLookup observes the checkout of a published alias's repository next
+// to root (a directory named after the repo's basename, e.g.
+// "medici-finance/assay" -> "assay"). This is the filesystem half of
+// cross-repo resolution; the verdict reasoning is the library's.
+func siblingLookup(root string) evaluation.SiblingLookup {
+	return func(repo string) evaluation.Sibling {
+		name := repo
+		if i := strings.LastIndexByte(name, '/'); i >= 0 {
+			name = name[i+1:]
+		}
+		absRoot, err := filepath.Abs(root)
+		if err != nil {
+			absRoot = root
+		}
+		siblingRoot := filepath.Join(filepath.Dir(absRoot), name)
+		if fi, err := os.Stat(siblingRoot); err != nil || !fi.IsDir() {
+			return evaluation.Sibling{Where: siblingRoot}
+		}
+		streams, _, err := loadStreams(siblingRoot)
+		if err != nil {
+			return evaluation.Sibling{Found: true, Where: siblingRoot, ReadError: err.Error()}
+		}
+		return evaluation.Sibling{Found: true, Where: siblingRoot, Streams: evaluationStreams(streams)}
+	}
 }
 
 // evaluateEligibility computes the eligibility verdict of every brief across
-// streams (not just todo ones — a done brief's verdict is inert but still
-// reported, so a caller need not special-case status before indexing the
-// map). reg is the loaded docs/streams/graph-repos.yaml registry for THIS
-// root (nil when absent — every gates:/feathers: edge on any brief in
-// streams is then could-not-check by construction, since a cross-repo alias
-// cannot resolve without it; an in-repo ref still resolves against streams
-// alone). root anchors any sibling-checkout resolution a cross-repo ref
-// needs.
-//
-// Rules (brief-01 Task item 1), in order:
-//   - a gates: entry whose target is not done/verified → unsatisfied → HELD
-//   - a gates: entry that cannot be resolved (unpublished alias, absent
-//     sibling checkout, forge-backed target) → could-not-check → HELD
-//   - a feathers: entry that is unsatisfied or could-not-check → NOTICE only
-//     (verdict eligible-with-notice), never a hold
-//   - an unsatisfied depends: entry is reported as a hold with type
-//     build-dep, so one output explains every reason a brief is not offered;
-//     a depends: target is satisfied at done/verified, or when it is
-//     gate:human at implemented with a recorded pass (targetSatisfies) — the
-//     latter never satisfies a gates: entry
-//   - eligible only when holds is empty
+// streams by observing reg (the loaded docs/streams/graph-repos.yaml registry
+// for THIS root; nil when absent) and any sibling checkout next to root, then
+// asking evaluation.EvaluateEligibility. The rules are documented there.
 func evaluateEligibility(streams []*Stream, reg *graphRepos, root string) map[string]Eligibility {
-	out := map[string]Eligibility{}
-	for _, s := range streams {
-		for _, b := range s.Briefs {
-			id := s.Name + "/" + b.Num
-			e := Eligibility{ID: id}
-			for _, dep := range b.Depends {
-				if !depIsSatisfied(streams, dep) {
-					e.Holds = append(e.Holds, EdgeVerdict{
-						Ref:    dep,
-						Type:   "build-dep",
-						State:  StateUnsatisfied,
-						Reason: "depends: target is not done/verified (nor gate:human at implemented with a recorded pass)",
-					})
-				}
-			}
-			for _, edge := range b.Gates {
-				state, why := resolveGraphEdge(edge.Ref, streams, reg, root)
-				if state != StateSatisfied {
-					e.Holds = append(e.Holds, EdgeVerdict{
-						Ref: edge.Ref, Type: edge.Type, Reason: edge.Reason, State: state, Why: why,
-					})
-				}
-			}
-			for _, edge := range b.Feathers {
-				state, why := resolveGraphEdge(edge.Ref, streams, reg, root)
-				if state != StateSatisfied {
-					e.Notices = append(e.Notices, EdgeVerdict{
-						Ref: edge.Ref, Type: edge.Type, Reason: edge.Reason, State: state, Why: why,
-					})
-				}
-			}
-			switch {
-			case len(e.Holds) > 0:
-				e.Verdict = VerdictHeld
-			case len(e.Notices) > 0:
-				e.Verdict = VerdictEligibleWithNotice
-			default:
-				e.Verdict = VerdictEligible
-			}
-			out[id] = e
-		}
-	}
-	return out
+	return evaluation.EvaluateEligibility(evaluation.EligibilityInput{
+		Streams:  evaluationStreams(streams),
+		Registry: evaluationRegistry(reg),
+		Siblings: siblingLookup(root),
+	})
 }
 
 // eligibilityForStreams is the convenience entry point every in-tree consumer
@@ -170,103 +154,4 @@ func eligibilityForStreams(streams []*Stream) map[string]Eligibility {
 		}
 	}
 	return out
-}
-
-// resolveGraphEdge resolves one gates:/feathers: ref to its state, using the
-// §3.3 grammar forms already recognized in briefv2.go (refInRepoBriefRe
-// etc). It never touches the network or a forge.
-func resolveGraphEdge(ref string, streams []*Stream, reg *graphRepos, root string) (EligibilityState, string) {
-	switch {
-	case refInRepoBriefRe.MatchString(ref):
-		return resolveInRepoBriefRef(ref, streams)
-	case refInRepoIssueRe.MatchString(ref):
-		return StateCouldNotCheck, "forge-backed gate " + ref + " — the evaluator reads the tree only, never the forge"
-	case refCrossRepoIssueRe.MatchString(ref):
-		return StateCouldNotCheck, "forge-backed cross-repo gate " + ref + " — the evaluator reads the tree only, never the forge"
-	case refCrossRepoBriefRe.MatchString(ref):
-		i := strings.IndexByte(ref, ':')
-		alias, target := ref[:i], ref[i+1:]
-		return resolveCrossRepoBriefRef(alias, target, reg, root)
-	case refCrossCellBriefRe.MatchString(ref):
-		return StateCouldNotCheck, "cross-cell reference " + ref + " — no cross-cell resolution exists in this evaluator"
-	default:
-		return StateCouldNotCheck, "ref " + ref + " does not match a recognized §3.3 reference form"
-	}
-}
-
-// resolveInRepoBriefRef resolves a `<stream>/<NN>` gates:/feathers: ref
-// against the in-hand streams. A ref that cannot be found (unknown stream or
-// brief number) is could-not-check, never a silent unsatisfied — the target
-// may simply not have been loaded into this run's scope.
-//
-// It asks targetSatisfies with dependsEdge=false: a gate:human target at
-// `implemented` with a recorded pass satisfies a depends: edge
-// (depIsSatisfied) but NEVER a gates:/feathers: edge, which still waits for
-// verified/done.
-func resolveInRepoBriefRef(ref string, streams []*Stream) (EligibilityState, string) {
-	parts := strings.SplitN(ref, "/", 2)
-	if len(parts) != 2 {
-		return StateCouldNotCheck, "malformed in-repo ref " + ref
-	}
-	for _, s := range streams {
-		if s.Name != parts[0] {
-			continue
-		}
-		for _, b := range s.Briefs {
-			if b.Num == parts[1] {
-				if targetSatisfies(b, false) {
-					return StateSatisfied, ""
-				}
-				if humanGatedVerifyPassed(b) {
-					return StateUnsatisfied, "brief " + ref + " is gate:human at implemented with a recorded pass — that satisfies depends: edges only, never gates:/feathers:"
-				}
-				return StateUnsatisfied, ""
-			}
-		}
-	}
-	return StateCouldNotCheck, "brief " + ref + " not found in this tree"
-}
-
-// resolveCrossRepoBriefRef resolves an `<alias>:<stream>/<NN>` ref. An
-// unpublished (or unregistered) alias is could-not-check by design
-// (docs/dependency-graph-design.md §3.3): the target repo is deliberately
-// withheld from this tree, and the evaluator never treats "cannot look" as
-// "looked and found satisfied". A published alias resolves against a SIBLING
-// CHECKOUT next to root (a directory named after the target repo's basename,
-// e.g. "medici-finance/assay" -> "assay"); an absent sibling checkout is the
-// same could-not-check class as an unpublished alias (brief-01 Context, fact
-// 4: "the same holds when the sibling checkout an alias resolves to is
-// absent").
-func resolveCrossRepoBriefRef(alias, target string, reg *graphRepos, root string) (EligibilityState, string) {
-	if reg == nil {
-		return StateCouldNotCheck, "no docs/streams/graph-repos.yaml registry — alias " + alias + " cannot be resolved"
-	}
-	entry, ok := reg.Aliases[alias]
-	if !ok {
-		return StateCouldNotCheck, "alias " + alias + " is not in docs/streams/graph-repos.yaml"
-	}
-	if entry.Unpublished || entry.Repo == "" {
-		return StateCouldNotCheck, "alias " + alias + " is unpublished — its target repo is not resolvable from this tree"
-	}
-	siblingName := entry.Repo
-	if i := strings.LastIndexByte(siblingName, '/'); i >= 0 {
-		siblingName = siblingName[i+1:]
-	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		absRoot = root
-	}
-	siblingRoot := filepath.Join(filepath.Dir(absRoot), siblingName)
-	if fi, err := os.Stat(siblingRoot); err != nil || !fi.IsDir() {
-		return StateCouldNotCheck, "sibling checkout for " + entry.Repo + " not found at " + siblingRoot
-	}
-	siblingStreams, _, err := loadStreams(siblingRoot)
-	if err != nil {
-		return StateCouldNotCheck, "sibling checkout for " + entry.Repo + " at " + siblingRoot + " could not be read: " + err.Error()
-	}
-	state, why := resolveInRepoBriefRef(target, siblingStreams)
-	if state == StateCouldNotCheck {
-		return StateCouldNotCheck, "in the sibling checkout for " + entry.Repo + ": " + why
-	}
-	return state, why
 }
