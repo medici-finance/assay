@@ -27,7 +27,8 @@ Gremlins never decides that on its own. That is why the sweep files no issues.
 
 ## What a run does
 
-1. **Install and verify.** It installs `github.com/go-gremlins/gremlins@v0.6.0` with the
+1. **Install and verify.** The pin is `gremlins.sum`, one go.sum line: module, version and
+   `h1:` sum. It installs `github.com/go-gremlins/gremlins@v0.6.0` with the
    checksum database forced on: `GOPROXY`, `GOSUMDB` and `GOFLAGS` are pinned, and the
    `GONOSUMDB`/`GOPRIVATE`/`GOINSECURE` family is cleared. It never installs `@latest`.
    Then it checks the binary's build info (`go version -m`) for that module, version and

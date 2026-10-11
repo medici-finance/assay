@@ -100,9 +100,10 @@ exec "$real_go" "\$@"
 EOF
 chmod +x "$goshim/go"
 good_info="$work/info-good"
-printf '%s: go1.25.0\n\tpath\tgithub.com/go-gremlins/gremlins/cmd/gremlins\n\tmod\tgithub.com/go-gremlins/gremlins\tv0.6.0\th1:3G2ROO0I3q4bb5bxElQIUITTuEbl1iOfVYFqunGwrJI=\n' "$stub/gremlins" >"$good_info"
+read -r pin_mod pin_ver pin_h1 <"$here/gremlins.sum"
+printf '%s: go1.25.0\n\tpath\t%s/cmd/gremlins\n\tmod\t%s\t%s\t%s\n' "$stub/gremlins" "$pin_mod" "$pin_mod" "$pin_ver" "$pin_h1" >"$good_info"
 bad_info="$work/info-bad"
-sed 's/h1:3G2R/h1:XXXX/' "$good_info" >"$bad_info"
+sed 's/h1:..../h1:XXXX/' "$good_info" >"$bad_info"
 
 sweep() { # sweep NAME BUILDINFO ARGS... -> sets rc, writes $work/NAME.out
 	local name="$1" info="$2"
@@ -158,6 +159,21 @@ sweep f "$good_info" pkg/ok
 [ "$rc" = 2 ] || fail "leftover exit $rc, want 2"
 rmdir "$root/gremlins-old"
 pass "disposable-checkout check"
+
+# 7. a pin file that is not one go.sum line for Gremlins refuses before any install.
+alt="$work/alt/tools"
+mkdir -p "$alt/gremlins"
+cp "$here/run.sh" "$alt/gremlins/run.sh"
+ln -s "$here/../desk" "$alt/desk"
+printf 'github.com/example/other v0.6.0 h1:AAAA=\n' >"$alt/gremlins/gremlins.sum"
+rc=0
+env PATH="$goshim:$PATH" BUILDINFO="$good_info" STUB_CALLS="$work/g.calls" \
+	bash "$alt/gremlins/run.sh" --root "$root" --gremlins "$stub/gremlins" -o "$work/g" pkg/ok \
+	>"$work/g.out" 2>&1 || rc=$?
+[ "$rc" = 2 ] || fail "bad pin file exit $rc, want 2"
+grep -q 'not one go.sum line' "$work/g.out" || fail "bad pin file not named"
+[ -e "$work/g.calls" ] && fail "gremlins ran despite a bad pin file"
+pass "pin file shape"
 
 if [ "$fails" -gt 0 ]; then
 	echo "$fails failure(s)" >&2

@@ -17,12 +17,18 @@
 #               [--gremlins BIN] [PKG[:SECONDS] ...]
 set -euo pipefail
 
-GREMLINS_VERSION="v0.6.0"
-GREMLINS_MOD="github.com/go-gremlins/gremlins"
-# The module hash sum.golang.org records for that version. go install verifies
-# the download against the checksum database; this second check proves the
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The pin: gremlins.sum holds one go.sum line, `<module> <version> h1:<sum>`, with
+# the module hash sum.golang.org records for that version. go install verifies the
+# download against the checksum database; the build-info check below proves the
 # binary that runs was built from exactly that module.
-GREMLINS_H1="h1:3G2ROO0I3q4bb5bxElQIUITTuEbl1iOfVYFqunGwrJI="
+GREMLINS_MOD="" GREMLINS_VERSION="" GREMLINS_H1=""
+read -r GREMLINS_MOD GREMLINS_VERSION GREMLINS_H1 _ <"$here/gremlins.sum" || true
+case "$GREMLINS_MOD $GREMLINS_VERSION $GREMLINS_H1" in
+github.com/go-gremlins/gremlins\ v*\ h1:*) ;;
+*) echo "gremlins/run.sh: $here/gremlins.sum is not one go.sum line for github.com/go-gremlins/gremlins" >&2; exit 2 ;;
+esac
 
 # The muhar-spec packages, relative to tools/desk. A ":SECONDS" suffix overrides
 # the budget: deskkit's suite takes minutes per run, so it gets more.
@@ -47,7 +53,6 @@ MUTATORS=(
 	--invert-negatives=false
 )
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 out="" budget=600 workers=2 day="" root="" gremlins=""
 pkgs=()
 
