@@ -39,10 +39,6 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
-      # The architecture check reads statusgen/evaluation (the moved owner of the
-      # eligibility and coverage meanings) against its own ceilings and
-      # allow-lists; a change there must re-run the board on its own commit.
-      - "tools/desk/internal/arch/**"
       - ".github/workflows/assay-statusgen.yml"
       # The reconcile job's run: texts below are what statusgen's job tests
       # execute, so a change to this file's staged copy runs those tests too.
@@ -62,7 +58,6 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
-      - "tools/desk/internal/arch/**"
       - ".github/workflows/assay-statusgen.yml"
   # Hourly board reconcile (derived-board/04). Scheduled workflows run only from
   # the default branch, so the reconcile job always executes main's copy of this

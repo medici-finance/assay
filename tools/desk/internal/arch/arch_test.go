@@ -105,7 +105,7 @@ func TestOneImplementationPerMeaning(t *testing.T) {
 }
 
 // evaluationIDs are the semantic-index rows whose owner moved into the statusgen
-// evaluation library (statusgen/15). statusgen is a separate module, so its markers are
+// evaluation library (the evaluation-extraction brief). statusgen is a separate module, so its markers are
 // read from the repository root like tools/desk's, and only these rows are held to the
 // owner half here; the module's other rows keep their could-not-check owner half.
 var evaluationIDs = []string{"S-eligibility", "S-evidence-coverage"}
@@ -135,7 +135,7 @@ func subCeilings(all map[string]int, ids []string) map[string]int {
 // TestEvaluationOwnerIsLibrary: the eligibility and evidence-coverage meanings are
 // implemented once, in the owner the semantic index names inside statusgen/evaluation, and
 // the ceilings in markers.txt are not raised to make room for a second copy
-// (R-one-implementation, statusgen/15).
+// (R-one-implementation, the evaluation-extraction brief).
 func TestEvaluationOwnerIsLibrary(t *testing.T) {
 	modRoot := moduleRoot(t)
 	repo, ok := repoRoot(modRoot)
