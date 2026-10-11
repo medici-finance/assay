@@ -79,13 +79,15 @@ def environment(cache, toolchain, network=False):
     # Do not inherit workspace, proxy bypasses, auto-toolchain or injected compiler flags.
     temporary = cache / 'tmp'
     temporary.mkdir(parents=True, exist_ok=True)
+    # GOPROXY=off still permits direct sumdb access; retain signature checks at a local-only URL.
+    sumdb = 'sum.golang.org' if network else 'sum.golang.org ' + (cache / 'offline-sumdb').resolve().as_uri()
     env = dict(os.environ)
     for name in ['GOROOT', 'GOFLAGS', 'GOOS', 'GOARCH', 'GOPRIVATE', 'GONOPROXY',
                  'GONOSUMDB', 'GOTOOLDIR', 'GCCGO', 'CC', 'CXX']:
         env.pop(name, None)
     env.update(GOTOOLCHAIN='local', GOENV='off', GOWORK='off', CGO_ENABLED='0',
                GOPROXY='https://proxy.golang.org' if network else 'off',
-               GOSUMDB='sum.golang.org', GOVCS='*:off', GONOSUMDB='', GOPRIVATE='',
+               GOSUMDB=sumdb, GOVCS='*:off', GONOSUMDB='', GOPRIVATE='',
                TMPDIR=str(temporary), GOPATH=str(cache / 'gopath'), GOMODCACHE=str(cache / 'modules'),
                GOCACHE=str(cache / 'build'), GOLANGCI_LINT_CACHE=str(cache / 'lint-cache'),
                PATH=str(toolchain / 'bin') + os.pathsep + os.environ['PATH'])

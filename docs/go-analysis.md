@@ -29,7 +29,11 @@ the [human workflow runsheet](runsheets/go-analysis-ci-hunk.md) applies the loca
 The lint command is offline: `GOPROXY=off`, `GOVCS=*:off`, `GOTOOLCHAIN=local`,
 `GOENV=off`, `GOWORK=off`, cgo disabled and no inherited Go flags. Missing modules,
 packages, tools or valid output fail. It never installs a missing tool or silently
-changes its version. Acquisition prepares the module cache separately and does not
+changes its version. Checksum signatures remain required: the offline sumdb URL is
+a cache-owned file URL, so a checksum cache miss fails locally instead of Go
+falling back to a remote database. A local proxy-trap fixture proves zero attempted
+transport on that miss. Acquisition uses the normal authenticated sumdb.
+Acquisition prepares the module cache separately and does not
 run project tests or generators.
 
 ## Pins and source-build qualification

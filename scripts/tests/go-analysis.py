@@ -2,6 +2,8 @@
 """Observed negative controls, including a real admitted upstream analyzer."""
 import copy
 import importlib.util
+import http.server
+import threading
 import json
 import os
 from pathlib import Path
@@ -158,6 +160,51 @@ class Harness(unittest.TestCase):
         self.assertEqual(env['GOTOOLCHAIN'], 'local')
         self.assertEqual(env['GOWORK'], 'off')
         self.assertEqual(env['GOVCS'], '*:off')
+        self.assertEqual(env['GOSUMDB'], 'sum.golang.org ' + (self.root / 'offline-sumdb').as_uri())
+        self.assertEqual(r.environment(self.root, self.root, network=True)['GOSUMDB'], 'sum.golang.org')
+
+    # regression: F-go-analysis-offline-sumdb
+    def test_sumdb_cache_miss(self):
+        prepared = Path(os.environ.get('GO_ANALYSIS_TEST_CACHE', str(OWNER / '.go-analysis')))
+        available = prepared / 'modules/cache/download/golang.org/x/mod/@v'
+        archive = sorted(available.glob('*.zip'))[0]
+        version = archive.name[:-4]
+        cache = self.root / 'isolated-cache'
+        target = cache / 'modules/cache/download/golang.org/x/mod/@v'
+        target.mkdir(parents=True)
+        for suffix in ['.zip', '.mod', '.info']:
+            shutil.copyfile(available / (version + suffix), target / (version + suffix))
+        fixture = self.module('cache-miss')
+        attempts = []
+
+        class Trap(http.server.BaseHTTPRequestHandler):
+            def do_CONNECT(self):
+                attempts.append(self.path)
+                self.send_error(502, 'offline control intercepted transport')
+
+            def log_message(self, *_args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Trap)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            env = r.environment(cache, prepared / 'analysis_go/go')
+            proxy = 'http://127.0.0.1:' + str(server.server_port)
+            env.update(HTTPS_PROXY=proxy, HTTP_PROXY=proxy, ALL_PROXY=proxy,
+                       https_proxy=proxy, http_proxy=proxy, all_proxy=proxy, NO_PROXY='', no_proxy='')
+            result = subprocess.run([str(prepared / 'analysis_go/go/bin/go'), 'mod', 'download',
+                                     '-json', 'golang.org/x/mod@' + version], cwd=fixture, env=env,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=25)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(attempts, [], 'offline checksum cache miss attempted transport')
+            self.assertTrue(json.loads(result.stdout)['Error'])
+            self.assertFalse((target / (version + '.ziphash')).exists())
+            print('REAL checksum cache miss: local failure, zero transport attempts', flush=True)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
     # regression: F-go-analysis-propagation
     def test_scan_failures(self):
