@@ -136,7 +136,7 @@
     {
       "name": "brief section-heading change accepted (the Evidence section's edge moves)",
       "file": "evidenceshape.go",
-      "old": "if strings.HasPrefix(strings.TrimSpace(d.text), \"## \") {",
+      "old": "if isSectionHeading(d.text) {",
       "new": "if false {"
     },
     {
@@ -228,6 +228,102 @@
       "file": "autoflip.go",
       "old": "if g.evidence, _ = evidenceOnlyReason(g.shape); g.evidence {",
       "new": "if g.evidence, _ = evidenceOnlyReason(g.shape); g.evidence || loginInSet(rev.Logins, g.shape.Author) {"
+    },
+    {
+      "name": "brief addition above `## Evidence` accepted (lower bound of the addition range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside := d.pos >= first && d.pos < end",
+      "new": "inside := d.pos < end"
+    },
+    {
+      "name": "brief addition at or below the next heading accepted (upper bound of the addition range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside := d.pos >= first && d.pos < end",
+      "new": "inside := d.pos >= first"
+    },
+    {
+      "name": "brief deletion anywhere accepted (deletion range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside = d.pos >= first && d.pos <= end // a deletion sits before line pos",
+      "new": "inside = true"
+    },
+    {
+      "name": "brief deletion above `## Evidence` accepted (lower bound of the deletion range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside = d.pos >= first && d.pos <= end // a deletion sits before line pos",
+      "new": "inside = d.pos <= end"
+    },
+    {
+      "name": "brief deletion below the next heading accepted (upper bound of the deletion range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside = d.pos >= first && d.pos <= end // a deletion sits before line pos",
+      "new": "inside = d.pos >= first"
+    },
+    {
+      "name": "Evidence section end one line too far (the next heading's line counts as Evidence)",
+      "file": "evidenceshape.go",
+      "old": "return offset + start + 1, offset + stop + 1, \"\"",
+      "new": "return offset + start + 1, offset + stop + 2, \"\""
+    },
+    {
+      "name": "frontmatter offset dropped (body line numbers read as file line numbers)",
+      "file": "evidenceshape.go",
+      "old": "return offset + start + 1, offset + stop + 1, \"\"",
+      "new": "return start + 1, stop + 1, \"\""
+    },
+    {
+      "name": "PRE-FIX whole-file scan (a `## Evidence` line inside the frontmatter is read as the section: SEC-2456-1)",
+      "file": "evidenceshape.go",
+      "old": "_, body, err := splitFrontmatter(content)",
+      "new": "body, err := content, error(nil)"
+    },
+    {
+      "name": "brief with no `## Evidence` section read as all Evidence",
+      "file": "evidenceshape.go",
+      "old": "return 0, 0, \"has no `## Evidence` section\"",
+      "new": "return 1, 1 << 30, \"\""
+    },
+    {
+      "name": "indented section heading not treated as a heading by the classifier",
+      "file": "evidenceshape.go",
+      "old": "if isSectionHeading(d.text) {",
+      "new": "if strings.HasPrefix(d.text, \"## \") {"
+    },
+    {
+      "name": "README row of a different cell count accepted",
+      "file": "evidenceshape.go",
+      "old": "len(oc) != len(nc) || ",
+      "new": ""
+    },
+    {
+      "name": "non-canonical changed path accepted (a `..` or backslashed path steers the prefix tests)",
+      "file": "evidenceshape.go",
+      "old": "if !isCanonicalRepoPath(f) {",
+      "new": "if false {"
+    },
+    {
+      "name": "legacy verify-outcome log not recognised (status-only shape loses its outcome log)",
+      "file": "evidenceshape.go",
+      "old": "m, err := pathpkg.Match(\"docs/streams/\"+verifyOutcomesGlob, p)",
+      "new": "m, err := false, error(nil)"
+    },
+    {
+      "name": "verify-written path in the PR's diff counts toward files: overlap",
+      "file": "deliveryfiles.go",
+      "old": "\t\tif evaluation.IsVerifyWrittenPath(p) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "stuck-flip roll-up lists gate:model rows at any status",
+      "file": "stuckflips.go",
+      "old": "if br.Gate != \"model\" || br.Status != \"verified\" {",
+      "new": "if br.Gate != \"model\" {"
+    },
+    {
+      "name": "PLANTED parser-side divergence (the defect class: the brief parser decides the section's end on its own, past the next heading)",
+      "file": "brieffile.go",
+      "old": "\tstart, end, ok := evidenceSectionSpan(lines)\n\tif !ok {\n\t\treturn \"\"\n\t}\n\treturn strings.Join(lines[start:end], \"\\n\")",
+      "new": "\tstart, end, ok := evidenceSectionSpan(lines)\n\tif !ok {\n\t\treturn \"\"\n\t}\n\tif end < len(lines) {\n\t\tend++\n\t}\n\treturn strings.Join(lines[start:end], \"\\n\")"
     }
   ]
 }

@@ -13,7 +13,7 @@ conditions:
 - the brief's coverage is `released`;
 - the reviewer App APPROVED the **delivering PR** at that PR's merged head.
 
-When neither of those happens, the brief stays at `verified`, and the roll-up
+When either does not hold, the brief stays at `verified`, and the roll-up
 lists it:
 
 ```
@@ -21,7 +21,7 @@ lists it:
 
 | Brief | Title | Waiting | Flip result |
 |---|---|---|---|
-| [s/07](docs/streams/s/README.md) | … | 3d | REFUSED or COULD-NOT-CHECK — `statusgen --auto-flip-model --dry-run` names which and why |
+| [s/07](docs/streams/s/README.md) | … | 3d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 ```
 
 The table covers every gate:model brief at `verified`, across every stream,
@@ -31,7 +31,8 @@ the status history log. It shows `—` when the log has no record of the
 transition.
 
 The table is rendered offline from the board files, so it does not say which of
-the two results the flip reached. The flip's own output says that, one line per
+the two results the flip reached. A brief that reached `verified` since the
+last flip run is listed the same way until the next run judges it. The flip's own output says that, one line per
 brief with its reason:
 
 ```
@@ -55,13 +56,18 @@ statusgen --root . --auto-flip-model --dry-run
 - **By diff shape, not by author.** A PR whose diff only changes verification
   records is never the delivering PR, and no approval is asked of it. That
   covers:
-  - lines inside a brief's `## Evidence` section;
+  - lines inside a brief's `## Evidence` section, located exactly as the brief
+    parser locates it (the body after the frontmatter), never a section
+    heading;
   - a stream README's Status, Verified or Reviewed cells, rewritten in place;
   - a verify-outcome record;
   - `STATUS.md`.
 
-  If the forge did not report the PR's patch, or the head content could not be
-  read, the PR stays an ordinary candidate, and its own approval is required.
+  If the forge did not report the PR's patch, the head content could not be
+  read, or a changed path is not in canonical form, the PR stays an ordinary
+  candidate, and its own approval is required. Who authored the PR is not
+  read; the default branch's own review rule is what governs a PR of this
+  shape reaching `main`.
 - **By `files:` overlap.** When the brief declares `files:`, the delivering PR
   must touch one of those paths. A PR that credits the brief but touches none of
   them is not chosen, though it still needs its own approval. Entries that name
@@ -82,3 +88,7 @@ hiding a stuck row behind a green run. Other exit codes:
   earlier behaviour.
 
 `--check` does not imply `--dry-run`. Add `--dry-run` to report without writing.
+
+The statusgen workflow does not pass `--check` yet, and it reports any non-zero
+exit from the flip step as a misconfiguration. Until it passes `--check` and
+tells exit 2 from exit 1, the roll-up table is where a stuck row shows.

@@ -25,7 +25,14 @@ package main
 //     Status, Verified and Reviewed cells differ;
 //   - a brief file (docs/streams/<stream>/brief-*.md) whose every changed line
 //     sits inside its `## Evidence` section at the PR's head, none of them a
-//     `## ` heading (which would move the section's edge).
+//     `## ` heading (which would move the section's edge). The section is
+//     located exactly as the brief parser locates it (splitFrontmatter, then
+//     evidenceSectionSpan over the body), so a line the parser does not read as
+//     Evidence — a frontmatter line, say — is never classified as Evidence.
+//
+// Every changed path must already be canonical (forward slashes, no `.` or
+// `..` element, no doubled slash); a path the classifier would have to
+// normalise first is not Evidence-only.
 //
 // Anything the forge did not report is NOT Evidence-only: a path with no patch
 // (GitHub omits one for a binary or very large diff), a README or brief whose
@@ -34,7 +41,10 @@ package main
 // asking for an approval, never toward skipping one.
 //
 // The classifier takes no identity. TestEvidenceShapeNeverReadsIdentity holds
-// it, and candidateGate, to that: neither may consult who authored a PR.
+// it, and candidateGate, to that: neither may consult who authored a PR. The
+// flip therefore no longer checks who authored an Evidence-shaped PR: what
+// stands between such a PR and main is the default branch's own review rule,
+// the same control that admits any other change.
 
 import (
 	"fmt"
@@ -57,11 +67,22 @@ func evidenceOnlyReason(shape prShape) (ok bool, why string) {
 		return false, fmt.Sprintf("it renames %s", strings.Join(shape.RenamedFrom, ", "))
 	}
 	for _, f := range shape.Files {
-		if why := evidenceOnlyPathProblem(shape, pathpkg.Clean(strings.ReplaceAll(f, "\\", "/"))); why != "" {
+		if !isCanonicalRepoPath(f) {
+			return false, fmt.Sprintf("it changes %q, which is not a canonical repository path", f)
+		}
+		if why := evidenceOnlyPathProblem(shape, f); why != "" {
 			return false, why
 		}
 	}
 	return true, ""
+}
+
+// isCanonicalRepoPath reports whether p is in the form the forge reports a
+// path: forward slashes only, and unchanged by path.Clean (no `.` or `..`
+// element, no doubled or trailing slash). The classifier refuses anything else
+// rather than normalising it: a prefix test on an unclean path can be steered.
+func isCanonicalRepoPath(p string) bool {
+	return !strings.Contains(p, "\\") && pathpkg.Clean(p) == p
 }
 
 // evidenceOnlyPathProblem returns "" when changed path p is Evidence-shaped in
@@ -192,35 +213,20 @@ func parsePatchChanges(patch string) ([]diffChange, error) {
 }
 
 // briefEvidenceOnlyProblem: every changed line must sit inside the head's
-// `## Evidence` section (the extractEvidence boundaries: after the first line
-// that reads `## Evidence`, before the next `## ` line), and none may itself be
-// a `## ` line.
+// `## Evidence` section, as briefEvidenceLines locates it, and none may itself
+// be a `## ` heading.
 func briefEvidenceOnlyProblem(p, patch, head string) string {
 	changes, err := parsePatchChanges(patch)
 	if err != nil {
 		return fmt.Sprintf("its patch for %s could not be read (%v)", p, err)
 	}
-	lines := strings.Split(head, "\n")
-	first, end := -1, len(lines)+1 // 1-based: content lines first..end-1
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if first < 0 {
-			if t == "## Evidence" {
-				first = i + 2
-			}
-			continue
-		}
-		if strings.HasPrefix(t, "## ") {
-			end = i + 1
-			break
-		}
-	}
-	if first < 0 {
-		return fmt.Sprintf("%s has no `## Evidence` section at the PR's head", p)
+	first, end, why := briefEvidenceLines(head)
+	if why != "" {
+		return fmt.Sprintf("%s %s at the PR's head", p, why)
 	}
 	for _, c := range changes {
 		for _, d := range append(append([]diffLine(nil), c.del...), c.add...) {
-			if strings.HasPrefix(strings.TrimSpace(d.text), "## ") {
+			if isSectionHeading(d.text) {
 				return fmt.Sprintf("it changes the section heading %q in %s", strings.TrimSpace(d.text), p)
 			}
 			inside := d.pos >= first && d.pos < end
@@ -233,6 +239,29 @@ func briefEvidenceOnlyProblem(p, patch, head string) string {
 		}
 	}
 	return ""
+}
+
+// briefEvidenceLines returns the 1-based line range of a brief's `## Evidence`
+// content in the whole file: lines first..end-1, end being the next section
+// heading's line (or one past the last line). It splits the frontmatter with
+// splitFrontmatter and finds the section with evidenceSectionSpan, the two
+// calls the brief parser makes, and offsets the body's lines back to file
+// lines. A brief the parser would read no Evidence section from — no
+// frontmatter, an unterminated one, or no `## Evidence` heading in the body —
+// yields a why and no range.
+func briefEvidenceLines(head string) (first, end int, why string) {
+	content := strings.ReplaceAll(head, "\r\n", "\n")
+	_, body, err := splitFrontmatter(content)
+	if err != nil {
+		return 0, 0, fmt.Sprintf("has no frontmatter the brief parser can split (%v), so it reads no `## Evidence` section from it", err)
+	}
+	start, stop, ok := evidenceSectionSpan(strings.Split(body, "\n"))
+	if !ok {
+		return 0, 0, "has no `## Evidence` section"
+	}
+	// The body is the file's lines after the closing fence: offset lines precede it.
+	offset := strings.Count(content, "\n") - strings.Count(body, "\n")
+	return offset + start + 1, offset + stop + 1, ""
 }
 
 // readmeStatusOnlyProblem: every change must rewrite briefs-table rows in place
@@ -248,6 +277,9 @@ func readmeStatusOnlyProblem(p, patch, head string) string {
 	if cols == nil {
 		return fmt.Sprintf("%s has no briefs table at the PR's head", p)
 	}
+	// Status and Verified are what a verify landing moves; Reviewed is free
+	// because the close-verify landing stamps it too. The model flip reads none
+	// of the three to decide a delivery: they are board bookkeeping.
 	free := map[int]bool{}
 	for _, name := range []string{"status", "verified", "reviewed"} {
 		if j, ok := cols[name]; ok {

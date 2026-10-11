@@ -594,6 +594,18 @@ var afReadmeHead = strings.Join([]string{
 // afReadmeStatusPatch moves row 50's status and Verified cells only.
 const afReadmeStatusPatch = "@@ -6 +6 @@\n-| 50 | [walk](brief-50-walk.md) | implemented | — | — |\n+| 50 | [walk](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n"
 
+// afBriefHeadFMEvidence is afBriefHead with a frontmatter block scalar whose
+// content line reads `## Evidence` (line 4). The brief parser never reads
+// frontmatter as body, so its Evidence section is still the body's
+// (content lines 17-21 here); a scan of the whole file would anchor on line 4
+// and read lines 5-12, frontmatter included, as Evidence.
+var afBriefHeadFMEvidence = strings.Join([]string{
+	"---", "brief: af/50", "notes: |", "  ## Evidence", "gate: model", "---", "", "# Brief 50", "", // 1-9
+	"## Verify", "", "| # | Command | Expect |", "|---|---|---|", "| 1 | `true` | exit 0 |", "", // 10-15
+	"## Evidence", "", "| # | Result |", "|---|---|", "| 1 | pass |", "", // 16-21
+	"## Review", "Gate: model", "", // 22-24
+}, "\n")
+
 // evidenceOnlyShape is a verify Evidence PR by diff shape: the brief's
 // `## Evidence` section, the README row's status cells and a verify-outcome
 // record. It names af/50 in a `Brief:` trailer, so before verify-reset/07 it
@@ -635,11 +647,13 @@ func TestAutoflipIgnoresEvidenceOnlyPR(t *testing.T) {
 		return decideWalkRev(t, src, ghReviewer(afReviewer))
 	}
 	statusOnly := prShape{Author: "some-human", Files: []string{"STATUS.md"}, Patches: map[string]string{"STATUS.md": "@@ -1 +1 @@\n-a\n+b\n"}}
+	legacyOutcomeLog := prShape{Author: "some-human", Files: []string{"docs/streams/verify-outcomes-2026-09.jsonl"}}
 	for name, ev := range map[string]prShape{
 		"evidence-only, human author":    evidenceOnlyShape("some-human"),
 		"evidence-only, verifier author": evidenceOnlyShape(afVerifier),
 		"evidence-only, no author read":  evidenceOnlyShape(""),
 		"status-only":                    statusOnly,
+		"legacy outcome log":             legacyOutcomeLog,
 	} {
 		t.Run(name, func(t *testing.T) {
 			got := run(t, ev)
@@ -665,6 +679,52 @@ func TestAutoflipIgnoresEvidenceOnlyPR(t *testing.T) {
 		}),
 		"brief hunk deletes the Review heading": edit(func(s *prShape) {
 			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -18,3 +18,2 @@\n \n-## Review\n Gate: model\n"
+		}),
+		// SEC-2456-2 / F-shape-bounds-unpinned: each bound alone, with no
+		// replacement for the other half of a change to cover for it.
+		// afBriefHead's Evidence content is lines 14-18; `## Review` is line 19.
+		"brief pure addition above the section": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -10,0 +11 @@\n+| 1 | `true` | exit 0 |\n"
+		}),
+		"brief pure addition below the next heading": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -19,0 +20 @@\n+Gate: model\n"
+		}),
+		"brief pure deletion above the section": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -12 +11,0 @@\n-| 2 | `false` | exit 0 |\n"
+		}),
+		"brief pure deletion below the next heading": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -21 +20,0 @@\n-Owner: someone\n"
+		}),
+		"brief pure deletion directly under the next heading": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -20 +19,0 @@\n-Owner: someone\n"
+		}),
+		"brief deletes an indented heading inside the section": edit(func(s *prShape) {
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -18 +17,0 @@\n-  ## Notes\n"
+		}),
+		"brief with no Evidence section at its head": edit(func(s *prShape) {
+			s.Heads["docs/streams/af/brief-50-walk.md"] = strings.Replace(afBriefHead, "## Evidence", "## Results", 1)
+		}),
+		"brief with no frontmatter at its head": edit(func(s *prShape) {
+			s.Heads["docs/streams/af/brief-50-walk.md"] = strings.Replace(afBriefHead, "---\nbrief: af/50\n---\n", "\n\n\n", 1)
+		}),
+		// SEC-2456-1: a `## Evidence` line inside the frontmatter is not the
+		// section to the brief parser; a whole-file scan would read line 5,
+		// `gate:`, as Evidence.
+		"brief frontmatter edit under a frontmatter `## Evidence` line": edit(func(s *prShape) {
+			s.Heads["docs/streams/af/brief-50-walk.md"] = afBriefHeadFMEvidence
+			s.Patches["docs/streams/af/brief-50-walk.md"] = "@@ -5 +5 @@\n-gate: human\n+gate: model\n"
+		}),
+		"README shortens a row": edit(func(s *prShape) {
+			s.Heads["docs/streams/af/README.md"] = strings.Replace(afReadmeHead, "| 2026-09-06 verifier | — |", "| 2026-09-06 verifier |", 1)
+			s.Patches["docs/streams/af/README.md"] = "@@ -6 +6 @@\n-| 50 | [walk](brief-50-walk.md) | implemented | — | — |\n+| 50 | [walk](brief-50-walk.md) | verified | 2026-09-06 verifier |\n"
+		}),
+		// Advisory A1: a path is classified as the forge reported it, never
+		// normalised first. This one starts with the outcome-records prefix.
+		"non-canonical path": edit(func(s *prShape) {
+			s.Files = append(s.Files, "docs/streams/verify-outcomes/../../statusgen/autoflip.go")
+		}),
+		"backslashed path": edit(func(s *prShape) {
+			s.Files = append(s.Files, "docs/streams/verify-outcomes/af\\..\\..\\..\\statusgen\\autoflip.go")
 		}),
 		"README edits a brief title": edit(func(s *prShape) {
 			s.Patches["docs/streams/af/README.md"] = "@@ -6 +6 @@\n-| 50 | [old](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n+| 50 | [walk](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n"
@@ -978,5 +1038,86 @@ func TestEvidenceShapeGuardCatchesPlant(t *testing.T) {
 	empty := t.TempDir()
 	if p, err := scanIdentityReads(empty); err != nil || len(p) != 1 || !strings.Contains(p[0], "wrong place") {
 		t.Errorf("an empty scan must fail loud; got %v (err %v)", p, err)
+	}
+}
+
+// TestEvidenceShapeParserSpan — SEC-2456-1. The classifier's Evidence range is
+// the brief parser's: for every head, the file lines it names are exactly what
+// extractEvidence returns from the parsed body. The frontmatter fixture is one
+// where a whole-file scan and the parser disagree, and the classifier follows
+// the parser.
+func TestEvidenceShapeParserSpan(t *testing.T) {
+	crlf := strings.ReplaceAll(afBriefHead, "\n", "\r\n")
+	for name, head := range map[string]string{"plain": afBriefHead, "frontmatter `## Evidence`": afBriefHeadFMEvidence, "CRLF": crlf} {
+		t.Run(name, func(t *testing.T) {
+			first, end, why := briefEvidenceLines(head)
+			if why != "" {
+				t.Fatalf("no range: %s", why)
+			}
+			content := strings.ReplaceAll(head, "\r\n", "\n")
+			_, body, err := splitFrontmatter(content)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(content, "\n")
+			if got, want := strings.Join(lines[first-1:end-1], "\n"), extractEvidence(body); got != want {
+				t.Fatalf("classifier range %d..%d reads %q; the parser's Evidence section is %q", first, end-1, got, want)
+			}
+		})
+	}
+	// The fixture really diverges: a whole-file scan anchors inside the frontmatter.
+	lines := strings.Split(afBriefHeadFMEvidence, "\n")
+	s, e, ok := evidenceSectionSpan(lines)
+	if !ok || s+1 != 5 || e+1 != 10 {
+		t.Fatalf("whole-file scan of the fixture: want lines 5..9, got %d..%d (ok=%v) — the fixture no longer diverges", s+1, e, ok)
+	}
+	if first, end, _ := briefEvidenceLines(afBriefHeadFMEvidence); first != 17 || end != 22 {
+		t.Fatalf("parser-located range: want lines 17..21, got %d..%d", first, end-1)
+	}
+	for name, head := range map[string]string{
+		"no frontmatter":           strings.Replace(afBriefHead, "---\nbrief: af/50\n---\n", "", 1),
+		"unterminated frontmatter": strings.Replace(afBriefHead, "brief: af/50\n---\n", "brief: af/50\n", 1),
+		"no Evidence in the body":  strings.Replace(afBriefHeadFMEvidence, "\n## Evidence\n", "\n## Results\n", 1),
+	} {
+		if _, _, why := briefEvidenceLines(head); why == "" {
+			t.Errorf("%s: want no Evidence range, got one", name)
+		}
+	}
+}
+
+// TestAutoflipOverlapSkipsBoard — F-unpinned-siblings. A declared
+// directory that contains board files does not make a board-only PR the
+// delivering PR: a verify-written path in the diff never counts as overlap.
+func TestAutoflipOverlapSkipsBoard(t *testing.T) {
+	b := briefFiles{entries: []string{"docs/"}, declared: true}.forRepo("medici-finance/assay")
+	if len(b.entries) != 1 || b.entries[0] != "docs/" {
+		t.Fatalf("want entries [docs/]; got %+v", b)
+	}
+	for _, p := range []string{"docs/streams/af/brief-50-walk.md", "docs/streams/af/README.md", "docs/streams/verify-outcomes-2026-09.jsonl"} {
+		if b.overlaps(prShape{Files: []string{p}}) {
+			t.Errorf("%s is verify-written: it must not count as files: overlap", p)
+		}
+	}
+	if !b.overlaps(prShape{Files: []string{"docs/streams/af/README.md", "docs/guide.md"}}) {
+		t.Errorf("docs/guide.md is under the declared docs/: want overlap")
+	}
+}
+
+// TestAutoflipStuckRowsVerified — F-unpinned-siblings. The roll-up lists a
+// gate:model brief only while it sits at `verified`.
+func TestAutoflipStuckRowsVerified(t *testing.T) {
+	s := &Stream{Name: "af", Briefs: []Brief{
+		{Num: "01", Title: "one", Gate: "model", Status: "implemented"},
+		{Num: "02", Title: "two", Gate: "model", Status: "verified"},
+		{Num: "03", Title: "three", Gate: "model", Status: "done"},
+	}}
+	got := strings.Join(stuckFlipLines([]*Stream{s}, nil), "\n")
+	if !strings.Contains(got, "[af/02]") || !strings.Contains(got, "Stuck auto-flips (1)") {
+		t.Fatalf("want exactly af/02 listed; got:\n%s", got)
+	}
+	for _, b := range []string{"[af/01]", "[af/03]"} {
+		if strings.Contains(got, b) {
+			t.Errorf("%s is not at `verified`; it is no stuck auto-flip row:\n%s", b, got)
+		}
 	}
 }

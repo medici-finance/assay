@@ -7,8 +7,9 @@ package main
 // gate:model briefs whose README row is `verified`, and moves each one it can
 // prove to `done`. Any such row still on the board was therefore REFUSED or
 // COULD-NOT-CHECK by the last flip run (or no run has happened since it
-// reached `verified`). The roll-up names each one. It carries no forge
-// verdict: STATUS.md is rendered offline and byte-compared by --check, so the
+// reached `verified`). The roll-up names each one, and says no more than
+// that: a row that reached `verified` since the last flip run reads the same
+// until the next run judges it. It carries no forge verdict: STATUS.md is rendered offline and byte-compared by --check, so the
 // reason lives in the flip's own output, which `--auto-flip-model --dry-run`
 // prints and `--auto-flip-model --check` fails on (exit 2).
 
@@ -28,7 +29,7 @@ func stuckFlipLines(streams []*Stream, ages map[string]string) []string {
 			if age == "" {
 				age = "—"
 			}
-			rows = append(rows, fmt.Sprintf("| [%s/%s](docs/streams/%s/README.md) | %s | %s | REFUSED or COULD-NOT-CHECK — `statusgen --auto-flip-model --dry-run` names which and why |",
+			rows = append(rows, fmt.Sprintf("| [%s/%s](docs/streams/%s/README.md) | %s | %s | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |",
 				s.Name, br.Num, s.Name, br.Title, age))
 		}
 	}
