@@ -1,10 +1,10 @@
 # Building the vision report
 
-The narrative source is [README.md](README.md). The PDF uses that text and the seven committed SVG figures as sharp vectors; GitHub uses their matching PNG exports. It does not fetch network data or regenerate capability status.
+The narrative source is [README.md](README.md). The PDF uses that text and six of the seven committed SVG figures as sharp vectors: figure 02 on the cover and in chapter 2, and figures 03 to 07 in their chapters. Figure 01 is the README's opening image and appears only in the GitHub rendering; the PDF cover takes its place. GitHub uses the matching PNG exports of all seven. The builder does not fetch network data or regenerate capability status.
 
 ## PDF
 
-Use Python 3 with ReportLab installed, then run from the repository root:
+Use Python 3 with ReportLab installed. The ReportLab version that produced the committed PDF was not recorded; the script uses only long-standing platypus, canvas and colour APIs. Run it from any directory, since it resolves its input and output paths from its own location:
 
 ```sh
 python3 docs/vision/build_pdf.py

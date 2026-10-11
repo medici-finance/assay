@@ -7,7 +7,6 @@ import re
 import math
 import xml.etree.ElementTree as ET
 
-import reportlab
 from reportlab import rl_config
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
@@ -22,8 +21,8 @@ from reportlab.platypus import (
 from reportlab.platypus.tableofcontents import TableOfContents
 
 HERE = Path(__file__).resolve().parent
-# Keep image streams in ordinary Flate encoding for public artifact scanners.
-# ReportLab's ASCII85 wrapper is unnecessary here and harder to inspect.
+# Turn off ReportLab's ASCII85 stream wrapper. With page compression also off
+# (VisionDoc below), every content stream stays plain text for public inspection.
 rl_config.useA85 = 0
 ROOT = HERE.parent.parent
 SNAPSHOT = "afa97c523701abdc65ce9afce1e73485c0b9ebc7"
@@ -67,6 +66,18 @@ STYLES = {
                           leading=16, textColor=INK, spaceBefore=8,
                           leftIndent=0, firstLineIndent=0),
 }
+
+
+# The figures use only six-digit hex colours and these names. Anything else in a
+# stroke or fill fails the build rather than reaching the library's colour parser.
+HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{6}")
+NAMED_COLOURS = {"white", "black"}
+
+
+def svg_colour(value):
+    if value not in NAMED_COLOURS and not HEX_COLOUR.fullmatch(value):
+        raise ValueError("Unsupported SVG colour: " + value)
+    return colors.toColor(value)
 
 
 def slug(text):
@@ -177,9 +188,9 @@ class SVGFigure(Flowable):
             c.setLineWidth(float(a.get("stroke-width", 1)))
             c.setDash([float(v) for v in a.get("stroke-dasharray", "").split(",") if v])
             if stroke != "none":
-                c.setStrokeColor(colors.toColor(stroke))
+                c.setStrokeColor(svg_colour(stroke))
             if fill != "none":
-                c.setFillColor(colors.toColor(fill))
+                c.setFillColor(svg_colour(fill))
             if tag == "rect":
                 x, y, w, h = [float(a.get(k, 0)) for k in ("x", "y", "width", "height")]
                 c.roundRect(x, y, w, h, float(a.get("rx", 0)),
@@ -360,7 +371,7 @@ def build():
     story.append(KeepTogether(publication_notes))
     destination = HERE / "assay-vision.pdf"
     VisionDoc(destination).multiBuild(story)
-    print(f"Built {destination.name} from README.md and seven committed figures.")
+    print(f"Built {destination.name} from README.md and committed figures 02 to 07.")
 
 
 if __name__ == "__main__":
