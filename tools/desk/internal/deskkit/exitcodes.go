@@ -91,6 +91,10 @@ type DeskError struct {
 	// child's own verdict passes through here while Code stays this tool's verdict about
 	// what that means. Zero when no child process was involved.
 	ExitStatus int
+	// ReadClass, when set, classifies a shared-read refusal (forgeread.Class): a truncated
+	// walk is a different could-not-check from an unreadable repository. Empty otherwise;
+	// read it with ReadClassOf.
+	ReadClass string
 }
 
 func (e *DeskError) Error() string {
@@ -232,4 +236,13 @@ func codeIs(err error, code int) bool {
 		return de.Code == code
 	}
 	return false
+}
+
+// ReadClassOf returns the shared-read class a refusal carries, or "" when err carries none.
+func ReadClassOf(err error) string {
+	var de *DeskError
+	if errors.As(err, &de) {
+		return de.ReadClass
+	}
+	return ""
 }

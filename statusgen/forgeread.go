@@ -3,10 +3,17 @@ package main
 // forgeread.go — statusgen's forge reads, on the desk-tools seam.
 //
 // THE BOUNDARY THIS KEEPS. statusgen is its own Go module and does not import deskkit. That is
-// deliberate and it stays: the seam is reached by RUNNING the desk-tools read verb (`deskread`)
-// and parsing its JSON, not by linking a package. What leaves is the forge dependency — the
-// hand-rolled CLI shell-outs, each with its own argv, its own error handling and its own idea of
-// what a failure means.
+// deliberate and it stays: every ONLINE forge read is reached by RUNNING the desk-tools read verb
+// (`deskread`) and parsing its JSON, not by linking a package. What leaves is the forge dependency
+// — the hand-rolled CLI shell-outs, each with its own argv, its own error handling and its own
+// idea of what a failure means.
+//
+// WHAT IS LINKED. The one thing statusgen links is the ROOT package of the forgeread module: the
+// shared issue/unavailable types, the envelope parser (fail-closed on an unknown schema, every
+// requested repo exactly once) and the offline and frozen-result readers. That package imports no
+// subpackage, no net/http and no os/exec, so linking it adds no way to reach a forge and no
+// credential. The authenticated adapters live below it and are linked by desk-tools alone; a
+// statusgen import of any of them is a counted failure (forgeread_sdk_test.go, the guard row).
 //
 // THE DEFAULT IS OFFLINE, AND THAT IS THE WHOLE SAFETY ARGUMENT. `forgeReader` is a three-state
 // instrument by construction: every method answers with the data it read AND the repos it could
@@ -21,19 +28,22 @@ package main
 // the slow lint it replaced.
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/forgeread"
 )
 
 // deskreadSchema is the envelope version this build understands. An envelope declaring anything
 // else is REFUSED rather than best-effort parsed — the same fail-closed direction parseBriefFile
 // takes on an unrecognised brief schema, and for the same reason: a pinned consumer that
 // silently mis-reads a newer contract produces confident wrong answers.
-const deskreadSchema = 1
+const deskreadSchema = forgeread.EnvelopeSchema
 
 // forgeIssue is one open issue, in the fields statusgen's checks actually consume. It is
 // deliberately NOT a copy of any forge's own issue shape: the verb has already reduced both
@@ -75,27 +85,64 @@ type forgeReader interface {
 
 // --- the offline default --------------------------------------------------------------------
 
-// offlineReader answers could-not-check for everything and touches nothing: no process start, no
-// network, no file. It is the DEFAULT reader, which is what makes the offline lint safe by
-// construction rather than by remembering to check a flag at each call site.
-type offlineReader struct {
-	// why is rendered into every unavailable entry so the could-not-check names its own cause
-	// rather than being an unexplained absence.
-	why string
+// sdkReader adapts a forgeread.Reader (the SDK's offline or frozen-result reader) to statusgen's
+// forgeReader seam, converting the shared types to statusgen's own. It is the ONLY direct-library
+// path: those readers start no process and make no request, which is why linking them is safe.
+type sdkReader struct {
+	r forgeread.Reader
 }
 
-func newOfflineReader() offlineReader {
-	return offlineReader{why: "statusgen ran offline — forge reads are opt-in (--forge); no forge read was attempted"}
-}
-
-func (o offlineReader) OpenIssues(repos []string) (map[string][]forgeIssue, []forgeUnavailable, error) {
-	un := make([]forgeUnavailable, 0, len(repos))
-	for _, r := range repos {
-		un = append(un, forgeUnavailable{Repo: r, Reason: o.why})
+func (s sdkReader) OpenIssues(repos []string) (map[string][]forgeIssue, []forgeUnavailable, error) {
+	res, err := s.r.OpenIssues(context.Background(), repos)
+	if err != nil {
+		return nil, nil, err
 	}
-	// An EMPTY map, never a map of empty slices: a repo with no entry is a repo not read, and
-	// there must be no shape in which an unread repo also carries a (zero-length) answer.
-	return map[string][]forgeIssue{}, un, nil
+	data, un := fromSDKResult(res)
+	return data, un, nil
+}
+
+// fromSDKResult converts the shared three-state Result to statusgen's types. An unavailable
+// repo gets no data entry, and a read repo keeps its (possibly empty) slice.
+func fromSDKResult(res forgeread.Result) (map[string][]forgeIssue, []forgeUnavailable) {
+	data := map[string][]forgeIssue{}
+	for repo, issues := range res.Issues {
+		out := make([]forgeIssue, 0, len(issues))
+		for _, is := range issues {
+			// No labels is nil on every path (the wire omits an empty list), so the same issue
+			// compares equal whether it arrived through the library or through the verb.
+			var labels []string
+			if len(is.Labels) > 0 {
+				labels = is.Labels
+			}
+			out = append(out, forgeIssue{
+				Number: is.Number, Title: is.Title, State: is.State,
+				Author: is.AuthorLogin, Labels: labels, URL: is.URL,
+				// A stamp that will not parse leaves CreatedAt zero, and the stale computation
+				// already skips a record with no credible age rather than bucketing it at the
+				// epoch — so a bad stamp degrades to "not aged", never to "infinitely old".
+				CreatedAt: is.Created(),
+			})
+		}
+		data[repo] = out
+	}
+	un := make([]forgeUnavailable, 0, len(res.Unavailable))
+	for _, u := range res.Unavailable {
+		un = append(un, forgeUnavailable{Repo: u.Repo, Reason: u.Reason})
+	}
+	return data, un
+}
+
+// newOfflineReader is the DEFAULT reader: the SDK's offline reader, which reports every repo as
+// could-not-check and starts nothing. The reason names the opt-in, so the absence explains itself.
+func newOfflineReader() forgeReader {
+	return sdkReader{r: forgeread.OfflineReader{
+		Why: "statusgen ran offline — forge reads are opt-in (--forge); no forge read was attempted"}}
+}
+
+// newFrozenReader answers from an already-obtained Result (a recorded snapshot): no read, and a
+// repo the snapshot does not cover is unavailable, never empty.
+func newFrozenReader(res forgeread.Result) forgeReader {
+	return sdkReader{r: forgeread.NewFrozenReader(res)}
 }
 
 // --- the desk-tools-backed reader -----------------------------------------------------------
@@ -113,30 +160,6 @@ type deskreadReader struct {
 
 func newDeskreadReader() deskreadReader {
 	return deskreadReader{bin: "deskread", timeout: 90 * time.Second}
-}
-
-// deskreadEnvelope mirrors the verb's JSON contract. Only the fields statusgen consumes are
-// declared; an envelope carrying more is not an error, which is what lets the verb add an
-// omitempty field without breaking a pinned consumer.
-type deskreadEnvelope struct {
-	Schema int    `json:"schema"`
-	Kind   string `json:"kind"`
-	Repos  []struct {
-		Repo   string `json:"repo"`
-		Issues []struct {
-			Number      int      `json:"number"`
-			Title       string   `json:"title"`
-			State       string   `json:"state"`
-			AuthorLogin string   `json:"authorLogin"`
-			Labels      []string `json:"labels"`
-			CreatedAt   string   `json:"createdAt"`
-			URL         string   `json:"url"`
-		} `json:"issues"`
-	} `json:"repos"`
-	Partial []struct {
-		Repo   string `json:"repo"`
-		Reason string `json:"reason"`
-	} `json:"partial"`
 }
 
 func (d deskreadReader) OpenIssues(repos []string) (map[string][]forgeIssue, []forgeUnavailable, error) {
@@ -163,64 +186,17 @@ func (d deskreadReader) OpenIssues(repos []string) (map[string][]forgeIssue, []f
 		return map[string][]forgeIssue{}, un, nil
 	}
 
-	var env deskreadEnvelope
-	if jerr := json.Unmarshal(out, &env); jerr != nil {
-		return nil, nil, fmt.Errorf("parsing the %s envelope: %w", d.bin, jerr)
-	}
-	if env.Schema != deskreadSchema {
-		// REFUSE rather than guess. A pinned statusgen that best-effort parses a contract it
-		// was not built against is exactly how a silent wrong answer ships.
-		return nil, nil, fmt.Errorf("%s answered envelope schema %d, this build understands %d — "+
-			"upgrade statusgen rather than reading a contract it was not built against",
-			d.bin, env.Schema, deskreadSchema)
-	}
-
-	data := map[string][]forgeIssue{}
-	for _, r := range env.Repos {
-		issues := make([]forgeIssue, 0, len(r.Issues))
-		for _, is := range r.Issues {
-			fi := forgeIssue{
-				Number: is.Number, Title: is.Title, State: is.State,
-				Author: is.AuthorLogin, Labels: is.Labels, URL: is.URL,
-			}
-			if is.CreatedAt != "" {
-				// A stamp that will not parse leaves CreatedAt zero, and the stale computation
-				// already skips a record with no credible age rather than bucketing it at the
-				// epoch — so a bad stamp degrades to "not aged", never to "infinitely old".
-				if t, terr := time.Parse(time.RFC3339, is.CreatedAt); terr == nil {
-					fi.CreatedAt = t
-				}
-			}
-			issues = append(issues, fi)
+	res, perr := forgeread.ParseIssuesEnvelope(out, repos)
+	if perr != nil {
+		if errors.Is(perr, forgeread.ErrUnsupportedSchema) {
+			// REFUSE rather than guess. A pinned statusgen that best-effort parses a contract it
+			// was not built against is exactly how a silent wrong answer ships.
+			return nil, nil, fmt.Errorf("%s answered an envelope this build does not understand (%v) — "+
+				"upgrade statusgen rather than reading a contract it was not built against", d.bin, perr)
 		}
-		data[r.Repo] = issues
+		return nil, nil, fmt.Errorf("parsing the %s envelope: %w", d.bin, perr)
 	}
-	un := make([]forgeUnavailable, 0, len(env.Partial))
-	for _, p := range env.Partial {
-		un = append(un, forgeUnavailable{Repo: p.Repo, Reason: p.Reason})
-	}
-
-	// Belt and braces: any repo the caller asked for that the envelope mentioned in NEITHER list
-	// is could-not-check, not an empty answer. A verb that silently dropped a repo must not read
-	// as that repo having nothing.
-	seen := map[string]bool{}
-	for r := range data {
-		seen[r] = true
-	}
-	for _, u := range un {
-		seen[u.Repo] = true
-	}
-	var missing []string
-	for _, r := range repos {
-		if !seen[r] {
-			missing = append(missing, r)
-		}
-	}
-	sort.Strings(missing)
-	for _, r := range missing {
-		un = append(un, forgeUnavailable{Repo: r,
-			Reason: fmt.Sprintf("%s returned no result and no reason for this repo", d.bin)})
-	}
+	data, un := fromSDKResult(res)
 	return data, un, nil
 }
 

@@ -41,7 +41,7 @@ findings-register state machine.
 | 14 | [`--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule)](brief-14-vacuous-gotest-run-lint.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 43420f7ecd74 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1659 @ f0355f1b57794105b59a1408522a44c7de59eb93) |
 | 15 | [Extract canonical eligibility and coverage evaluation API](brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md) | 1 | L | todo | — | — |
 | 16 | [Hold an issue out of dispatch when a non-human removed its excluded label: both scanners hold the placeholder, the issue board holds the un-briefed row](brief-16-label-removal-hold.md) | 1 | L | todo | — | — |
-| 17 | [`--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not)](brief-17-risk-high-label-gate.md) | 1 | S | todo | — | — |
+| 17 | [`--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not)](brief-17-risk-high-label-gate.md) | 1 | S | implemented | — | — |
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
