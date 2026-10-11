@@ -1269,6 +1269,24 @@
       "state": "pending"
     },
     {
+      "executable": "muhar-action.sh",
+      "path": "actions/muhar/muhar-action.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "composite GitHub Action (actions/muhar); run by its action.yml at the consumer's pinned ref",
+      "consumers": [
+        "actions/muhar/action.yml",
+        "actions/muhar/README.md",
+        "actions/muhar/muhar-action.test.sh",
+        "tools/desk/cmd/muhar/action_test.go"
+      ],
+      "parser": "bash subcommand positional; inputs as environment variables",
+      "complexity": "simple",
+      "basis": "220 lines at 7c94cb98919f",
+      "owner": "desktools-v2/44",
+      "state": "pending"
+    },
+    {
       "executable": "opmetrics",
       "path": "tools/desk/cmd/opmetrics",
       "kind": "go",
