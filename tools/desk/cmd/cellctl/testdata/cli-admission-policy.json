@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "roles": {"worker-desk": {"provider": "anthropic", "tier": "mid"}},
+  "providers": {"anthropic": {"harness": "claude", "tiers": {
+    "top": {"model": "claude-fable-5-1", "effort": "high", "supported_efforts": ["high"]},
+    "strong": {"model": "claude-fable-5-1", "effort": "high", "supported_efforts": ["high"]},
+    "mid": {"model": "claude-sonnet-5", "effort": "high", "supported_efforts": ["high"]},
+    "fast": {"model": "claude-sonnet-5", "effort": "high", "supported_efforts": ["high"]}
+  }}}
+}

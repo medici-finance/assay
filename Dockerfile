@@ -60,6 +60,9 @@ WORKDIR /src
 
 # Warm the module cache first so source edits don't re-download deps. The desk
 # module is stdlib-only (no go.sum); statusgen pulls one dependency (yaml.v3).
+# The forgeread module is a sibling both modules resolve through a `replace ../forgeread`
+# (stdlib-only, so it adds nothing to download); it must be present before either builds.
+COPY forgeread/ ./forgeread/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download

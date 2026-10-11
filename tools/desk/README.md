@@ -30,7 +30,7 @@ it on day one.
 | `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
-| `scanloop` | `plan` (read-only queue print), `run` (one drain pass) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) | yes (`run`) |
+| `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
 | `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine`. `--records <thread.json>` additionally derives the PERSISTENT REVIEW-FINDING ledger for one PR (`review-finding/v1`; `deskkit.DeriveLedger`): outstanding findings, per-class rounds against the existing cap, the single arbiter packet, and every could-not-check — so finding IDs and round counts survive a replacement agent | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
 | `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
@@ -376,6 +376,22 @@ At runtime the tools read/write, under `~/.config/assay/`:
   whatever the ledger's size. An absent ledger says so and exits 0; an unreadable one is
   exit 6; a malformed line is printed with a note naming `deskaudit recover`, never
   dropped.
+- `ci-checks.jsonl` (+ `ci-checks.jsonl.<YYYY-MM-DD>` segments, `ci-checks.lock`) — **CI
+  check history**. One line per FINISHED check run or terminal commit
+  status (`success`/`failure`/`error`) that a desk tool read: repo, head SHA, PR when the
+  read carried one, kind, name, attempt (the forge run id, or the creation/start stamp),
+  conclusion, timestamps and duration — never check output, URLs, or who posted it. It is
+  written by the single Forge decorator from the `ChecksAtHead` / `ListOpenChanges` /
+  `ReviewQueueSnapshot` results the tools already fetch, so it costs **no extra forge
+  request**; recording is best-effort (a failed write, a lock held past 2 s, or a recorder
+  panic drops the batch with one stderr line; after one lock timeout the process stops
+  recording) and never changes the read's result. It
+  rotates daily like the audit log; no tool deletes a segment (retention is yours), and no
+  desk decision reads it — it is local operational state for later analysis, never
+  committed. `deskkit.LoadCIChecks` reads every segment, de-duplicated on (repo, head SHA,
+  kind, name, attempt, conclusion). A check name is whatever the check's poster supplied:
+  unauthenticated, sanitize before display. Schema: [`ci-check-v1`](internal/deskkit/ci-check-v1.md);
+  fail-first: `muhar -spec internal/deskkit/cicheckhistory-mutations.json`.
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing
   `result=disabled`. Its first line is shown as the reason.
