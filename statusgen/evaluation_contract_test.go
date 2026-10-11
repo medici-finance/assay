@@ -339,6 +339,27 @@ func TestEvaluationUncertainEvidenceHolds(t *testing.T) {
 		t.Errorf("bound-observe-evidence-holds: expected an unresolved claim, got %+v", cov.Claims)
 	}
 
+	// A passing witness at the item's own revision is still not credited when
+	// the Verify row cannot be read as it stood at that revision: the pass may
+	// answer a different question than the row asks today.
+	exact := evaluation.CoverageInput{
+		Revision: "aaaaaaaaaaaa",
+		Briefs: []evaluation.BriefObservation{{
+			ID:         "s/01",
+			BriefRel:   "docs/streams/s/brief-01.md",
+			VerifyRows: []evaluation.VerifyRow{{ID: "1", Command: "true", Expect: "exit 0"}},
+			Witnesses: map[string][]evaluation.Witness{"1": {
+				{Command: "true", State: evaluation.StatePass, Tree: "aaaaaaaaaaaa"},
+			}},
+		}},
+	}
+	if c := evaluation.EvaluateCoverage(exact, &memRepo{unreadable: true})["s/01"]; c.Released || c.Claims[0].Result != evaluation.ResultCouldNotCheck {
+		t.Errorf("a pass whose row cannot be read at the witness revision was credited: %+v", c)
+	}
+	if c := evaluation.EvaluateCoverage(exact, &memRepo{})["s/01"]; !c.Released || c.Claims[0].Result != evaluation.ResultPass {
+		t.Errorf("control: the same pass with a readable row did not release: %+v", c)
+	}
+
 	// The known states are distinct: a witness at the item's revision passes,
 	// and a binding that names nothing is ignored (the rows alone decide).
 	for _, name := range []string{"witness-at-head-passes", "binding-to-unknown-pattern-is-ignored", "binding-to-unknown-node-is-ignored"} {
@@ -556,6 +577,9 @@ func keys(m map[string]listedPackage) []string {
 // recorded so a test can see exactly what the evaluator asked.
 type memRepo struct {
 	calls []string
+	// unreadable makes the historical Verify row unreadable at any revision
+	// (the brief or the row did not exist there, or there is no history).
+	unreadable bool
 }
 
 func (m *memRepo) note(s string) { m.calls = append(m.calls, s) }
@@ -592,6 +616,9 @@ func (m *memRepo) ObjectAt(rev, p string) (string, bool) { m.note("ObjectAt"); r
 func (m *memRepo) RootPrefix() (string, bool)            { m.note("RootPrefix"); return "", true }
 func (m *memRepo) VerifyExpectAt(rev, rel, row string) (string, bool) {
 	m.note("VerifyExpectAt")
+	if m.unreadable {
+		return "", false
+	}
 	return "exit 0", true
 }
 func (m *memRepo) DeclaredFilesAt(rev, rel string) ([]string, bool, bool) {

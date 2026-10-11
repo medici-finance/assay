@@ -1,0 +1,5 @@
+### Added
+- `statusgen/evaluation` is a new importable Go package that owns the canonical eligibility and evidence-coverage rules. `EvaluateEligibility` and `EvaluateCoverage` take immutable observations (streams, a registry, sibling checkouts; briefs, witnesses and a read-only history port) and return the same typed verdicts and reasons the CLI reports, with no environment, clock, network, process or filesystem access of their own. Eligibility grants no admission and coverage publishes nothing. An evaluator version and policy digest name the rules that produced a verdict. A module outside this repository can build against it from a pinned version with the workspace off.
+
+### Changed
+- `statusgen --eligibility`, `--coverage`, the Next-up board and the drive frontier now read their verdicts through that package instead of package-main copies; command flags, exit codes and JSON output are unchanged, and a frozen set of scenarios compares the library and the CLI on identical inputs. The semantic-owner index points the eligibility meaning at the library and adds a row for evidence coverage, and the architecture check holds both to a single implementation.

@@ -154,8 +154,6 @@ var (
 // in.Streams (not just todo ones — a done brief's verdict is inert but still
 // reported, so a caller need not special-case status before indexing the map).
 //
-// semantic: S-eligibility
-//
 // Rules (brief-01 Task item 1), in order:
 //   - a gates: entry whose target is not done/verified → unsatisfied → HELD
 //   - a gates: entry that cannot be resolved (unpublished alias, absent
@@ -168,6 +166,8 @@ var (
 //     gate:human at implemented with a recorded pass (TargetSatisfies) — the
 //     latter never satisfies a gates: entry
 //   - eligible only when holds is empty
+//
+// semantic: S-eligibility
 func EvaluateEligibility(in EligibilityInput) map[string]Eligibility {
 	out := map[string]Eligibility{}
 	for _, s := range in.Streams {

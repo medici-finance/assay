@@ -22,7 +22,7 @@ runtime containment. Taxonomy membership describes components and grants no auth
 | Meaning | Canonical implementation / planned interface | Consumers and restrictions |
 |---|---|---|
 | Forge facts and completeness | Existing forge adapters; narrow `forgeread` API, forge-neutral/36 | `deskread`, statusgen's reader adapter. No generic query, raw token getter or write API on the consumer interface. |
-| Eligibility and evidence coverage | `statusgen/evaluation`, statusgen/15 | statusgen commands, workflow bindings, projection producers. Explicit observations in; deterministic verdicts out. No admission, identity, capacity or claim authority. |
+| Eligibility and evidence coverage | `statusgen/evaluation` (canonical owner since statusgen/15): `EvaluateEligibility`, `EvaluateCoverage` | statusgen commands, workflow bindings, projection producers. Explicit observations in; deterministic verdicts out. No admission, identity, capacity or claim authority. |
 | Stream-view wire schema | Existing `statusgen/streamview` | Producers and authorized readers pin the contract; no policy or serving behavior in this package. |
 | Workflow progression | `workflow` store/controller, graph-execution/19 and /21 | Calls evaluation and loop-admin APIs; process exit is not work acceptance. |
 | Process supervision | `loopadmin`, graph-execution/26 | Standing desks and workflow stages; no dependency on workflow store, no effect credentials. |
@@ -67,7 +67,7 @@ map, not a competing register. Module placement is not a new semantic owner.
 | Ruling and sign-off reads | forge-neutral/35 | /18 and its existing controls; reads go through deskread, no independent credentials. |
 | Scan and CI path coverage of the extracted module | forge-neutral/36 | Lands with the extraction: forge-CLI scan, ambient-token rule and workflow path filter cover `forgeread/`. |
 | Further read kinds in the SDK | not yet briefed | Each authenticated adapter moved into the SDK is a /36-class extraction under a human gate. |
-| Canonical evaluation extraction | statusgen/15 (new) | Offline extraction from existing code; no dependency on fact-reader migration or workflow store. |
+| Canonical evaluation extraction | statusgen/15 | Offline extraction from existing code; no dependency on fact-reader migration or workflow store. |
 | Durable bindings | graph-execution/19 | Consumes statusgen/15; no second extraction or copied evaluator. |
 | Hold no-forge-CLI / no-ambient behavior | desktools-v2/08 | After /18 AND /35; permit the narrow SDK's offline and frozen packages only; keep the manifest check that statusgen names nothing under `tools/desk`. |
 | CLI parsing | desktools-v2/16, /18 and remaining CLI briefs | Continue independently; no change to semantic or authority contracts. |
@@ -82,3 +82,50 @@ implemented briefs keep their evidence and scope; changes land as follow-ups.
 The first blockers are concrete: statusgen's implementation is `package main`, its evaluator
 loads files, and the forge implementation is behind `tools/desk/internal`. Extract those
 specific seams; `deskkit` stays internal, and nothing waits for a cell taxonomy registry.
+
+## The evaluation library (statusgen/15)
+
+`statusgen/evaluation` is the canonical owner of the eligibility and evidence-coverage
+meanings (semantic-index rows `S-eligibility` and `S-evidence-coverage` in
+`docs/contracts.md`). It is part of the statusgen module's public API surface; the module is
+`github.com/medici-finance/assay/statusgen`.
+
+**API.** `EvaluateEligibility(EligibilityInput)` takes the streams and their briefs, an optional
+graph-repos registry and a sibling-checkout lookup, and returns one verdict per brief: eligible,
+eligible-with-notice or held, each hold carrying its edge, its state (unsatisfied or
+could-not-check) and the reason. `EvaluateCoverage(CoverageInput, Repo)` takes each brief's
+Verify rows and recorded witnesses, optional pattern bindings and dependency manifests, and a
+read-only `Repo` port for history questions, and returns one verdict per claim (pass, fail,
+missing, wrong-revision, error or could-not-check) plus whether the brief is released. The
+types are plain immutable values. The library never reads the environment or the clock,
+opens a file or network connection, starts a process or holds a credential; its import graph
+is held to the standard library's text, collection and hashing packages by a test that also
+walks transitive imports. A nil `Repo` means no repository, and every question that needs
+one answers cannot-tell rather than passing.
+
+**What a verdict does not grant.** Eligibility grants no admission, identity, capacity or
+claim authority; coverage publishes nothing and flips no status. Both only report. Missing,
+wrong-revision, stale and unresolved evidence hold, and each of those states stays distinct
+from a known no-binding or a known pass, so a consumer can tell "nothing owed" from "could not
+tell".
+
+**Migration.** statusgen's own commands are adapters: they observe the tree (streams, the
+registry, sibling checkouts, evidence rows, a git-backed `Repo` with replacement objects
+disabled), map the observations onto the library's inputs and render the library's verdicts.
+The package-main evaluators were removed in the same change, so there is one implementation;
+`--eligibility`, `--coverage`, Next-up and the drive frontier read it, and command flags, exit
+codes and JSON envelopes are unchanged. graph-execution/19 consumes this package rather than
+extracting a second evaluator.
+
+**Provenance.** `evaluation.CurrentIdentity()` reports the evaluator version
+(`statusgen-evaluation/1`) and a policy digest over the rule constants the verdicts depend on. The same
+input yields the same verdicts under the same identity, and a change to a policy constant changes the digest, and a change to rule
+behavior bumps the version, so a recorded verdict can be tied to what produced it.
+
+**Pin and release.** Consumers pin the statusgen module at a version and resolve it with
+`GOWORK=off`. The module manifest names nothing under `tools/desk` and carries no replace;
+`deskkit` stays internal. A contract test qualifies external consumption: a throwaway module
+outside this repository builds and exercises both entry points against a local file module
+proxy, with the workspace off, no relative replace and every network proxy pointed at a dead
+address, and a second consumer that expects an API the module does not offer fails to build.
+This is packaging qualification only; it cuts no release and contacts no provider.
