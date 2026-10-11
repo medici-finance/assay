@@ -97,8 +97,14 @@ trap cleanup EXIT
 # --- install and verify the pinned Gremlins --------------------------------
 if [ -z "$gremlins" ]; then
 	echo "installing ${GREMLINS_MOD}@${GREMLINS_VERSION}"
-	# Every variable that could skip or redirect checksum verification is reset.
-	env GOBIN="$out/bin" GOTOOLCHAIN=local GOFLAGS=-mod=mod \
+	# Checksum verification cannot be skipped or redirected:
+	# - GOENV=off: go ignores the `go env -w` file, so an empty value below really
+	#   is empty (cmd/go reads an empty variable as unset and falls back to that file).
+	# - The GONOSUMDB/GOPRIVATE family is cleared; GOPROXY and GOSUMDB are pinned.
+	# - GOMODCACHE is fresh: go never re-hashes a module already extracted in a
+	#   shared cache, so a persistent runner's cache cannot stand in for the download.
+	env GOENV=off GOBIN="$out/bin" GOTOOLCHAIN=local GOFLAGS="-mod=mod -modcacherw" \
+		GOMODCACHE="$gotmp/modcache" \
 		GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org \
 		GONOSUMDB= GONOSUMCHECK= GOPRIVATE= GONOPROXY= GOINSECURE= \
 		go install "${GREMLINS_MOD}/cmd/gremlins@${GREMLINS_VERSION}" || die "install failed"

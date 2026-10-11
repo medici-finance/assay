@@ -96,6 +96,7 @@ mkdir -p "$goshim"
 cat >"$goshim/go" <<EOF
 #!/usr/bin/env bash
 if [ "\$1" = version ] && [ "\$2" = -m ]; then cat "\$BUILDINFO"; exit 0; fi
+if [ "\$1" = install ]; then env >"\${INSTALL_ENV:?}"; exit 1; fi
 exec "$real_go" "\$@"
 EOF
 chmod +x "$goshim/go"
@@ -174,6 +175,20 @@ env PATH="$goshim:$PATH" BUILDINFO="$good_info" STUB_CALLS="$work/g.calls" \
 grep -q 'not one go.sum line' "$work/g.out" || fail "bad pin file not named"
 [ -e "$work/g.calls" ] && fail "gremlins ran despite a bad pin file"
 pass "pin file shape"
+
+# 8. the install ignores the go env file and the shared module cache. The shim
+# records the install's environment and fails it, so nothing is downloaded.
+rc=0
+env PATH="$goshim:$PATH" BUILDINFO="$good_info" INSTALL_ENV="$work/h.env" \
+	GOPRIVATE=github.com/go-gremlins GOMODCACHE="$work/shared-cache" \
+	bash "$here/run.sh" --root "$root" -o "$work/h" pkg/ok >"$work/h.out" 2>&1 || rc=$?
+[ "$rc" = 2 ] || fail "failed install exit $rc, want 2"
+grep -q 'install failed' "$work/h.out" || fail "failed install not named"
+grep -qx 'GOENV=off' "$work/h.env" || fail "install reads the go env file"
+grep -qx 'GOPRIVATE=' "$work/h.env" || fail "install keeps GOPRIVATE"
+grep -qx 'GOSUMDB=sum.golang.org' "$work/h.env" || fail "install does not pin GOSUMDB"
+grep -q '^GOMODCACHE=.*/gremlins-gotmp\.[^/]*/modcache$' "$work/h.env" || fail "install uses the shared module cache"
+pass "install environment"
 
 if [ "$fails" -gt 0 ]; then
 	echo "$fails failure(s)" >&2
