@@ -324,6 +324,12 @@
       "file": "brieffile.go",
       "old": "\tstart, end, ok := evidenceSectionSpan(lines)\n\tif !ok {\n\t\treturn \"\"\n\t}\n\treturn strings.Join(lines[start:end], \"\\n\")",
       "new": "\tstart, end, ok := evidenceSectionSpan(lines)\n\tif !ok {\n\t\treturn \"\"\n\t}\n\tif end < len(lines) {\n\t\tend++\n\t}\n\treturn strings.Join(lines[start:end], \"\\n\")"
+    },
+    {
+      "name": "backslashed changed path accepted (the backslash half of the canonical-path check dropped)",
+      "file": "evidenceshape.go",
+      "old": "return !strings.Contains(p, \"\\\\\") && pathpkg.Clean(p) == p",
+      "new": "return pathpkg.Clean(p) == p"
     }
   ]
 }

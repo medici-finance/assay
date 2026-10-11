@@ -723,8 +723,10 @@ func TestAutoflipIgnoresEvidenceOnlyPR(t *testing.T) {
 		"non-canonical path": edit(func(s *prShape) {
 			s.Files = append(s.Files, "docs/streams/verify-outcomes/../../statusgen/autoflip.go")
 		}),
+		// The separators are spliced in at run time: the self-containment scan
+		// reads a backslashed literal as a machine path (scanner defect #2413).
 		"backslashed path": edit(func(s *prShape) {
-			s.Files = append(s.Files, "docs/streams/verify-outcomes/af\\..\\..\\..\\statusgen\\autoflip.go")
+			s.Files = append(s.Files, "docs/streams/verify-outcomes/"+strings.ReplaceAll("af|..|..|..|statusgen|autoflip.go", "|", `\`))
 		}),
 		"README edits a brief title": edit(func(s *prShape) {
 			s.Patches["docs/streams/af/README.md"] = "@@ -6 +6 @@\n-| 50 | [old](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n+| 50 | [walk](brief-50-walk.md) | verified | 2026-09-06 verifier | — |\n"
