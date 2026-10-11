@@ -280,6 +280,12 @@ var UnresolvedArgv = []Allowance{
 		Reason: "the preflight probe seam; the argv comes from deskkit's preflight probe table, not from a caller.",
 	},
 	{
+		Key: "cmd/muhar/selection.go::coverSelector.Prepare::<unresolved>",
+		Reason: "runs the Go test binaries muhar -select just built with `go test -c -cover -o` into its own " +
+			"temp dir (two sites: `-test.list`, then one `-test.run ^Name$ -test.coverprofile` per test). " +
+			"argv[0] is that freshly built path, never a forge CLI; the build itself is a constant `go`.",
+	},
+	{
 		Key:    "cmd/verifyloop/durable.go::newGitDurable::<unresolved>",
 		Reason: "git-only durable-state helper; its callers pass git argvs.",
 	},
