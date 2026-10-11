@@ -12,7 +12,8 @@ import (
 // Tests for the held scan's read scope (#1894, heldscope.go). Each case runs
 // through runHeldScanCases, so the verify-gate card / autoflip read
 // (verifyPassHeldContradiction) and the human done close
-// (closeVerifyHeldRefusal) must agree on it.
+// (closeVerifyHeldRefusal) must agree on it. `statusgen verifyflip` is a
+// fourth consumer: it calls closeVerifyHeldRefusal, so it reads the same scope.
 
 const scopeHdr = "| # | Command | Expect | Observed | Date | Runner |\n" +
 	"|---|---------|--------|----------|------|--------|\n"
