@@ -134,7 +134,10 @@ design-fit:
    Pinning a scanner does not freeze advisories: explicitly configure the database source and
    record retrieval/snapshot time and content identity. The default local invocation uses prepared
    module/database caches without network: explicit file-database URL, module-proxy access off
-   and automatic toolchain download disabled. Do not rely on scanner defaults. `security --allow-downloads` permits fetching current
+   and automatic toolchain download disabled. Expose `--database` for an explicit file URL;
+   prepare `.cache/go-analysis/vulndb` (untracked) during the opted-in database refresh and
+   pass that URL to govulncheck. Reject remote database URLs without --allow-downloads.
+   Do not rely on scanner defaults. `security --allow-downloads` permits fetching current
    data from printed configured targets in CI; it does not allow production/credential access.
    Failed, malformed or unavailable database reads, missing tools, package-load errors, empty
    coverage and analyzer crashes fail closed. Preserve previous reports only as historical data,
@@ -145,13 +148,17 @@ design-fit:
    Prove raw text-mode failure, then structured ratchet failure/pass with real govulncheck;
    accepted existing debt passes while a new advisory against unchanged code fails.
    Test scope broadening, expiry, resolved-then-reintroduced findings and baseline tampering. A stubbed exit-code
-   test alone is insufficient. Add module-load/database failure controls and an integration case
+   test alone is insufficient. In an isolated network-denied fixture, prove the prepared-cache
+   run succeeds and missing caches fail without attempting downloads; inspect attempted
+   transport requests rather than inferring no network from a green exit.
+   Add module-load/database failure controls and an integration case
    where the first scanner/module has a scan error or new finding and later ones succeed;
    the aggregate must still fail. Accepted debt must never swallow an execution failure.
    Keep vulnerable fixture sources/manifests as templates outside shipped-module discovery and
    use temporary copies. No external vulnerable service or executable exploit is needed.
 5. Document coverage, debt and deltas in the operational guide and Go engineering policy;
-   replace the earlier text-mode-only deployment guidance with this verified ratchet contract.
+   replace the earlier text-mode-only deployment guidance with this verified ratchet contract
+   and replace the retired #2535 / desk-tools/32 delivery pointers with desk-tools/34–35.
    Fixes are incremental. Extend the shared scan report
    with vulnerability/database/reachability fields and publish it on green and red scans.
    Prepare exact workflow diff in `docs/runsheets/go-security-ci-hunk.md` (planned) for a `go-security`
@@ -197,11 +204,11 @@ an actual scheduled run, so verification can remain pending until that event occ
 | 1 | check +dereference | `bash scripts/go-analysis.sh acquire --allow-downloads` | exit 0; both exact tools, bundled gosec version and admitted checksum evidence recorded. |
 | 2 | check +mutation | `bash scripts/tests/go-analysis.sh security` | exit 0 only after real scanner and finding-level ratchet controls, including new disclosure on unchanged code, expiry, baseline inflation and database/load/crash/aggregation failures. Print cases and nonzero count; swallowing a scanner failure makes the suite fail. |
 | 3 | check +flow | `bash scripts/go-analysis.sh security --allow-downloads` | exit 0 only for complete current-database scans with no unaccepted new/worsened findings; accepted debt remains reported; evidence names database identity/time, tools, flags and any reviewed exceptions. |
-| 4 | check +mutation | `bash scripts/go-analysis.sh security` | With the prepared cache, exit 0 and no network; missing database/cache produces nonzero with an explicit error, proven separately by row 2. Offline success never claims current online data. |
+| 4 | check +flow | `GOPROXY=off GOTOOLCHAIN=local bash scripts/go-analysis.sh security --database "file://$(pwd)/.cache/go-analysis/vulndb"` | With the prepared cache, exit 0 and report records the explicit file database and its snapshot age. Row 2 separately proves no network attempts and missing-cache refusal under denied transport. Offline success never claims current online data. |
 | 5 | check +neighbour | `bash scripts/tests/go-analysis.sh lint && bash scripts/go-analysis.sh lint && statusgen --root . --lint && statusgen --root . --consumers --brief desk-tools/35` | exit 0; correctness coverage survives, consumers match the implementation diff. |
 | 6 | gate:model +flow | `gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | After human workflow application, record exact-head successful go-security job and logs proving both scanners, current database and all-module coverage. Repeat on merged main; no skipped job accepted. |
 | 7 | gate:model +dereference | `gh run list --repo medici-finance/assay --workflow ci.yml --event schedule --branch main --limit 10 --json databaseId,headSha,createdAt,conclusion` | Record a real scheduled run after the implementation merge; inspect that run's go-security logs for both scanners and fresh database access. Earlier runs do not satisfy this row. Do not dispatch a workflow to manufacture scheduled evidence. |
-| 8 | check +flow +mutation | `cd qualgen && go test -count=1 ./...` | Includes a non-vacuous scanner-report → miner ingest → Store → rendered report fixture: accepted debt passes CI but remains visible; new findings fail CI and appear in report; complete repair shrinks debt. Failed/partial/stale/wrong-head input cannot render zero or clear findings; repeated import does not double-count. Preserve single-writer and existing metric tests. |
+| 8 | check +flow +mutation | `cd qualgen && go test -count=1 -timeout 600s ./...` | Includes a non-vacuous scanner-report → miner ingest → Store → rendered report fixture: accepted debt passes CI but remains visible; new findings fail CI and appear in report; complete repair shrinks debt. Failed/partial/stale/wrong-head input cannot render zero or clear findings; repeated import does not double-count. Preserve single-writer and existing metric tests. |
 | 9 | gate:model +flow | `gh run list --repo medici-finance/assay --workflow assay-qualgen.yml --branch main --limit 10 --json databaseId,headSha,createdAt,conclusion` | On merged main, inspect a quality-report run after implementation and its bound scanner artifact(s): source SHA/run identity and debt/delta/coverage match emitted data and the generated report. A green CI badge alone is insufficient; record red/scheduled artifact delivery evidence too. |
 
 ## Pre-mortem

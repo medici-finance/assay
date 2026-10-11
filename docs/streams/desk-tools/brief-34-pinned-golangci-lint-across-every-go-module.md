@@ -76,6 +76,9 @@ design-fit:
 - [golangci-lint configuration](https://golangci-lint.run/docs/configuration/) and
   [installation guidance](https://golangci-lint.run/docs/welcome/install/) for the pinned release.
 
+The policy's historical #2535 / desk-tools/32 delivery pointers are superseded by these
+two briefs; desk-tools/35 owns updating those pointers alongside the analysis policy.
+
 ## Ground rules
 
 - Follow the dependency-risk and release-age procedure before installing tools. No floating versions.
@@ -174,15 +177,20 @@ formats; do not build an analyzer or a generic policy engine.
 Rows 1–3 fail against the authoring baseline because the runner/config do not exist. Observe
 real pre/post outcomes during implementation; do not pre-fill Evidence from that prediction.
 Rows 6–7 run only after the human workflow commit; row 7 is repeated on merged main.
+For row 6, refresh origin/main, record its resolved SHA as VERIFY_BASE, and run before
+merge. Inspect every listed commit's workflow patch and verify its forge attribution;
+author metadata alone is not proof of the authenticated pusher. A main-only workflow
+change must produce no branch commit and cannot satisfy this row. Empty history or
+unverifiable attribution is could-not-check, not a pass.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check +dereference | `bash scripts/go-analysis.sh acquire --allow-downloads` | exit 0; exact admitted version/toolchain and checksum evidence, no unverified fallback. |
 | 2 | check +mutation | `bash scripts/tests/go-analysis.sh lint` | exit 0 only after every discovery, checksum and failure-propagation control and real analyzer red/green pair ran; print individual cases and nonzero case count. Also prove accepted legacy debt passes; new/worsened/reintroduced findings fail; fixing one cannot hide another; line shifts preserve identity; baseline expansion, malformed reports and incomplete scans fail; a resolved item cannot retain its allowance. |
 | 3 | check +flow | `bash scripts/go-analysis.sh lint` | exit 0; all discovered modules and declared configurations complete, counts reconcile with tracked manifests; existing debt remains visible and only new/worsened findings or scan/ratchet failures block. JSON totals and dispositions match the gate. |
-| 4 | check +neighbour | `cd tools/desk && GOOS=windows GOARCH=amd64 go vet ./... && GOOS=darwin GOARCH=arm64 go vet ./... && go test -count=1 ./internal/deskkit/ ./cmd/deskdispatch/` | exit 0; existing vet and representative suites remain green. |
+| 4 | check +neighbour | `cd tools/desk && GOOS=windows GOARCH=amd64 go vet ./... && GOOS=darwin GOARCH=arm64 go vet ./... && go test -count=1 -timeout 300s ./internal/deskkit/ ./cmd/deskdispatch/` | exit 0; existing vet and representative suites remain green. |
 | 5 | check | `statusgen --root . --lint && statusgen --root . --consumers --brief desk-tools/34` | exit 0; routes match the implementation diff; update this brief's own future routes as sites land. |
-| 6 | check +dereference | `git diff --check && git diff --name-only 2c45dba9b..HEAD -- .github/workflows/ci.yml && gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | human workflow commit exists; record run ID at this exact head, then inspect its go-lint steps/logs. Worker-authored commits contain no workflow diff. Missing run is could-not-check, not pass. |
+| 6 | check +dereference | `git diff --check && test -n "${VERIFY_BASE:?set to the recorded current main SHA}" && git log --format='%H %an %ae' "$VERIFY_BASE..HEAD" -- .github/workflows/ci.yml && gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | Branch-only history identifies the human-applied workflow commit(s), their authors and patches; no worker-authored workflow changes. Confirm forge attribution, then record run ID at this exact head and inspect its go-lint steps/logs. Missing run is could-not-check, not pass. |
 | 7 | gate:model +flow | `gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | On merged main, record actual run ID, successful go-lint job, pin acquisition and per-module/configuration logs. Match job commands to rows 1–3; a different job or head is insufficient. |
 
 ## Pre-mortem
