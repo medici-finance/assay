@@ -400,11 +400,12 @@ func runGoldenCase(t *testing.T, bin string, c goldenCase) []cliRun {
 // names fragments instead: stdoutHas replaces the stdout-must-match rule, and stderrHas replaces
 // the exact-stderr rule (the roster echo is in it, and is world-specific).
 type deliberateDiff struct {
-	code      int
-	stderr    string
-	why       string
-	stdoutHas []string
-	stderrHas []string
+	code          int
+	stderrReplace []string
+	stderr        string
+	why           string
+	stdoutHas     []string
+	stderrHas     []string
 }
 
 const (
@@ -422,6 +423,10 @@ func unknownCmd(name string) string {
 func shapeErr(msg string) string { return "cellctl: " + msg + "\nRun 'cellctl --help' for usage.\n" }
 
 var deliberateDiffs = map[string]deliberateDiff{
+	// Maintenance adds wipe to cache diagnostics; all other transcript bytes stay identical.
+	"cache-enabled/0": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
+	"cache-enabled/1": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
+	"cache-enabled/2": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
 	"version-flag/0":  {code: 0, stderr: "", why: whyNoEcho},
 	"version-verb/0":  {code: 0, stderr: "", why: whyNoEcho},
 	"unknown-verb/0":  {code: 3, stderr: "cellctl: unknown command \"frobnicate\" for \"cellctl\"\nRun 'cellctl --help' for usage.\n", why: whyParseText},
@@ -489,6 +494,9 @@ func diffHolds(d deliberateDiff, got, old cliRun) bool {
 				return false
 			}
 		}
+	}
+	if d.stderrReplace != nil {
+		return got.Stderr == strings.ReplaceAll(old.Stderr, d.stderrReplace[0], d.stderrReplace[1])
 	}
 	if d.stderrHas == nil {
 		return got.Stderr == d.stderr

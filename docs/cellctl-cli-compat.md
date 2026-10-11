@@ -210,3 +210,13 @@ nothing that ran before runs less.
 Nothing in this migration changes who may do what, which credentials a launched window sees, or
 what reaches a forge. The decision recorded for the migration concerns only the operator-visible
 differences above.
+
+## Maintenance commands
+
+`cache-enabled/0`, `cache-enabled/1` and `cache-enabled/2` preserve their refusal
+exit codes, roster echo and empty stdout. Their usage diagnostic adds `wipe` to
+`status|clean|wipe|recover`, reflecting the new supported cache action. The parity
+test requires every other byte of those recorded diagnostics to stay identical.
+
+`reset` and `comms init` are additional commands. The contained `comms-reader`
+entrypoint consumes an opaque argv. See [cell maintenance](cellctl-maintenance.md).

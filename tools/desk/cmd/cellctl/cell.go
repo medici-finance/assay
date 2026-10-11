@@ -586,6 +586,16 @@ func loadCell(name string) *Cell {
 	if c.Repo == "" {
 		die("cell.env: CELL_REPO (the checkout roles worktree from) is not set")
 	}
+	if err := holdMaintenanceAdmission(c); err != nil {
+		die("cell maintenance: %v", err)
+	}
+	if maintenanceCommand != "reset" && maintenanceCommand != "show" && maintenanceCommand != "status" && maintenanceCommand != "check" {
+		if _, err := os.Lstat(filepath.Join(c.Dir, ".reset-in-progress")); err == nil {
+			die("cell %s is being reset; finish or retry cellctl reset %s before launching work", c.Name, c.Name)
+		} else if !os.IsNotExist(err) {
+			die("reset state unreadable: %v", err)
+		}
+	}
 	return c
 }
 

@@ -1,0 +1,185 @@
+//go:build darwin || linux
+
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
+)
+
+func resetFixtureGit(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "core.hooksPath=/dev/null"}, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fixture git %v: %v %s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+func resetFixtureRepo(t *testing.T, base, name string) string {
+	t.Helper()
+	root := filepath.Join(base, name)
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	resetFixtureGit(t, root, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(root, "tracked"), []byte("original\n"), 0600)
+	resetFixtureGit(t, root, "add", "tracked")
+	resetFixtureGit(t, root, "commit", "-qm", "fixture")
+	remote := filepath.Join(base, name+"-remote")
+	resetFixtureGit(t, base, "clone", "-q", "--bare", root, remote)
+	resetFixtureGit(t, root, "remote", "add", "origin", remote)
+	resetFixtureGit(t, root, "fetch", "-q", "origin")
+	return root
+}
+func TestResetSoftAndHard(t *testing.T) {
+	for _, hard := range []bool{false, true} {
+		t.Run(map[bool]string{false: "soft", true: "hard"}[hard], func(t *testing.T) {
+			c, cfg, _ := commsFixture(t)
+			base := t.TempDir()
+			roots := []string{resetFixtureRepo(t, base, "one"), resetFixtureRepo(t, base, "two")}
+			c.Repo = roots[0]
+			c.Env.Put("CELL_ROOTS", "example/one="+roots[0]+",example/two="+roots[1])
+			c.Env.Put("CELL_GO_CACHE", "on")
+			c.Env.Put("CELL_GO_CACHE_MIN_FREE", "0")
+			os.MkdirAll(cfg.QueueDir, 0700)
+			message := filepath.Join(cfg.QueueDir, "queued")
+			os.WriteFile(message, []byte("keep"), 0600)
+			for i, root := range roots {
+				name := []string{"one", "two"}[i]
+				wt := filepath.Join(c.Dir, "worktrees", name)
+				resetFixtureGit(t, root, "worktree", "add", "-q", "-b", "worker", wt, "main")
+				resetFixtureGit(t, root, "worktree", "lock", wt)
+				resetFixtureGit(t, root, "branch", "keep-local")
+				os.WriteFile(filepath.Join(root, "tracked"), []byte("dirty\n"), 0600)
+				os.WriteFile(filepath.Join(root, "untracked"), []byte("dirty"), 0600)
+			}
+			residue := filepath.Join(c.Dir, "worktrees", "unregistered", "residue")
+			os.MkdirAll(filepath.Dir(residue), 0700)
+			os.WriteFile(residue, []byte("disposable"), 0600)
+			foreign := filepath.Join(base, "foreign-worktree")
+			resetFixtureGit(t, roots[0], "worktree", "add", "-q", "-b", "foreign", foreign, "main")
+			policy, err := cellcache.Resolve(c.Dir, c.Env.Get)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = cellcache.Check(*policy, false); err != nil {
+				t.Fatal(err)
+			}
+			os.WriteFile(filepath.Join(policy.Root, "build", "disposable"), []byte("cache"), 0600)
+			p, err := c.planReset(hard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = c.resetCell(p); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = os.Stat(residue); !os.IsNotExist(err) {
+				t.Fatal("unregistered worktree residue retained")
+			}
+			for _, root := range roots {
+				if _, err = os.Stat(filepath.Join(c.Dir, "worktrees", filepath.Base(root))); !os.IsNotExist(err) {
+					t.Fatal("cell worktree retained", err)
+				}
+				branches := resetFixtureGit(t, root, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+				if hard && branches != "main" {
+					t.Fatalf("hard branches %q", branches)
+				}
+				if !hard && !strings.Contains(branches, "keep-local") {
+					t.Fatal("soft lost branch")
+				}
+				b, _ := os.ReadFile(filepath.Join(root, "tracked"))
+				if hard && string(b) != "original\n" {
+					t.Fatal("hard didn't refresh checkout")
+				}
+				if !hard && string(b) != "dirty\n" {
+					t.Fatal("soft modified primary checkout")
+				}
+			}
+			if _, err = os.Stat(foreign); hard && !os.IsNotExist(err) || !hard && err != nil {
+				t.Fatal("foreign worktree scope", err)
+			}
+			if _, err = os.Stat(message); hard && !os.IsNotExist(err) || !hard && err != nil {
+				t.Fatal("message scope", err)
+			}
+			if _, err = os.Stat(filepath.Join(policy.Root, "build", "disposable")); !os.IsNotExist(err) {
+				t.Fatal("cache retained")
+			}
+			for _, key := range cfg.SigningKeys {
+				if _, err = os.Stat(key); err != nil {
+					t.Fatal("key lost", err)
+				}
+			}
+			if _, err = os.Stat(filepath.Join(c.Dir, ".reset-in-progress")); !os.IsNotExist(err) {
+				t.Fatal("successful reset left marker")
+			}
+		})
+	}
+}
+func TestResetPrefetchFailurePreservesWork(t *testing.T) {
+	c, _, _ := commsFixture(t)
+	base := t.TempDir()
+	root := resetFixtureRepo(t, base, "one")
+	c.Repo = root
+	c.Env.Put("CELL_ROOTS", "example/one="+root)
+	resetFixtureGit(t, root, "remote", "set-url", "origin", filepath.Join(base, "missing"))
+	wt := filepath.Join(c.Dir, "worktrees", "keep")
+	resetFixtureGit(t, root, "worktree", "add", "-q", "-b", "keep", wt, "main")
+	p, err := c.planReset(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = c.resetCell(p); err == nil {
+		t.Fatal("failed fetch accepted")
+	}
+	if _, err = os.Stat(wt); err != nil {
+		t.Fatal("worktree removed before failed fetch")
+	}
+}
+func TestResetPlanRefusesConfigInsideWorktree(t *testing.T) {
+	base := t.TempDir()
+	root := resetFixtureRepo(t, base, "one")
+	c := &Cell{Name: "fixture", Dir: filepath.Join(root, "cell"), Repo: root, Env: envWith(map[string]string{"CELL_ROOTS": "example/one=" + root})}
+	os.Mkdir(c.Dir, 0700)
+	if _, err := c.planReset(true); err == nil {
+		t.Fatal("hard accepts nested cell")
+	}
+}
+
+func TestResetDryRunAndAdmission(t *testing.T) {
+	f := newCLIWorld(t, "")
+	resetFixtureGit(t, f.repoDir, "symbolic-ref", "HEAD", "refs/heads/main")
+	os.WriteFile(filepath.Join(f.repoDir, "tracked"), []byte("fixture"), 0600)
+	resetFixtureGit(t, f.repoDir, "add", "tracked")
+	resetFixtureGit(t, f.repoDir, "commit", "-qm", "fixture")
+	before := snapshotTree(t, f.root)
+	r := f.run(t, []string{"DRY_RUN=1"}, "reset", "example", "--hard")
+	if r.Code != 0 {
+		t.Fatalf("dry reset: %+v", r)
+	}
+	if after := snapshotTree(t, f.root); after != before {
+		t.Fatal("dry reset mutated fixture")
+	}
+	c := &Cell{Name: "example", Dir: f.cellDir, Env: envWith(map[string]string{})}
+	maintenanceCommand = "up"
+	defer func() { maintenanceCommand = ""; releaseMaintenanceAdmissions() }()
+	if err := holdMaintenanceAdmission(c); err != nil {
+		t.Fatal(err)
+	}
+	if l, err := acquireCellLock(c, ".reset.lock"); err == nil {
+		l.Close()
+		t.Fatal("reset entered while launch held admission")
+	}
+	releaseMaintenanceAdmissions()
+	l, err := acquireCellLock(c, ".reset.lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Close()
+}
