@@ -38,12 +38,6 @@
       "new": "if e.Outcome == \"never\" && e.Verb != \"reconcile\" {"
     },
     {
-      "name": "a release counts as done on the adapter's acknowledgment alone",
-      "file": "runtimeresource.go",
-      "old": "if r, ok := resolved[e.ID]; ok && r.ObservedState == \"absent\" {",
-      "new": "if e.Outcome == \"succeeded\" {"
-    },
-    {
       "name": "the TTL never elapses",
       "file": "runtimeresource.go",
       "old": "asOf.After(ttlEnd)",
@@ -62,22 +56,304 @@
       "new": "for _, v := range runtimeAdapterRequiredVerbs[:0] {"
     },
     {
-      "name": "provisioned is accepted with no receipt showing the resource present",
-      "file": "runtimeresource.go",
-      "old": "case \"provisioned\":\n\t\tif !established {",
-      "new": "case \"provisioned\":\n\t\tif false {"
-    },
-    {
       "name": "a claim need not rotate the agent credential",
       "file": "runtimeresource.go",
       "old": "if !rrHasRotation(d.Rotations, e.ID, \"\") {",
       "new": "if false {"
     },
     {
+      "name": "a release counts as done on the adapter's acknowledgment alone",
+      "file": "runtimeresource.go",
+      "old": "if !rrReleaseReconciledAbsent(d, e) {",
+      "new": "if false {"
+    },
+    {
+      "name": "provisioned is accepted with no receipt showing the resource present",
+      "file": "runtimeresource.go",
+      "old": "case !dv.everPresent:\n\t\t\tadd(ruleRRStateUnsupported, \"state is provisioned",
+      "new": "case false:\n\t\t\tadd(ruleRRStateUnsupported, \"state is provisioned"
+    },
+    {
       "name": "the agent credential may outlive the resource",
       "file": "runtimeresource.go",
-      "old": "d.CredLife > d.TTL",
-      "new": "d.CredLife > 100*d.TTL"
+      "old": "d.CredLife.D > d.TTL.D",
+      "new": "d.CredLife.D > 100*d.TTL.D"
+    },
+    {
+      "name": "a ttl or lifetime the rules cannot evaluate is ignored",
+      "file": "runtimeresource.go",
+      "old": "if f.v.Set && !f.v.OK {",
+      "new": "if false {"
+    },
+    {
+      "name": "a retain-until the rules cannot evaluate is ignored",
+      "file": "runtimeresource.go",
+      "old": "if d.RetainUntil.Set && !d.RetainUntil.OK {",
+      "new": "if false {"
+    },
+    {
+      "name": "a requested-at the rules cannot evaluate is ignored",
+      "file": "runtimeresource.go",
+      "old": "if e.RequestedAt.Set && !e.RequestedAt.OK {",
+      "new": "if false {"
+    },
+    {
+      "name": "an observed-at the rules cannot evaluate is ignored",
+      "file": "runtimeresource.go",
+      "old": "if e.ObservedAt.Set && !e.ObservedAt.OK {",
+      "new": "if false {"
+    },
+    {
+      "name": "a receipt may be dated after the as-of instant",
+      "file": "runtimeresource.go",
+      "old": "if e.ObservedAt.OK && e.ObservedAt.At.After(asOf) {",
+      "new": "if false {"
+    },
+    {
+      "name": "a receipt may be dated before its effect was requested",
+      "file": "runtimeresource.go",
+      "old": "if e.ObservedAt.OK && e.RequestedAt.OK && e.ObservedAt.At.Before(e.RequestedAt.At) {",
+      "new": "if false {"
+    },
+    {
+      "name": "the registry accepts unknown top-level keys",
+      "file": "runtimeresource.go",
+      "old": "if err := rrRefuseUnknownKeys(\"adapter registry\", data, runtimeRegistryTopKeys); err != nil {",
+      "new": "if err := error(nil); err != nil {"
+    },
+    {
+      "name": "the registry accepts unknown adapter keys (a misspelt max_ttl)",
+      "file": "runtimeresource.go",
+      "old": "if err := rrRefuseUnknownKeys(fmt.Sprintf(\"adapters[%d]\", i), m, runtimeRegistryAdapterKeys); err != nil {",
+      "new": "if err := error(nil); err != nil {"
+    },
+    {
+      "name": "a file's second YAML document rides along unchecked",
+      "file": "runtimeresource.go",
+      "old": "if err := dec.Decode(&second); !errors.Is(err, io.EOF) {",
+      "new": "if err := dec.Decode(&second); false && !errors.Is(err, io.EOF) {"
+    },
+    {
+      "name": "the directory scan reads only .yaml",
+      "file": "runtimeresource.go",
+      "old": "if e.IsDir() || !rrIsYAMLName(e.Name()) {",
+      "new": "if e.IsDir() || filepath.Ext(e.Name()) != \".yaml\" {"
+    },
+    {
+      "name": "the directory scan does not descend into subdirectories",
+      "file": "runtimeresource.go",
+      "old": "if e.IsDir() || !rrIsYAMLName(e.Name()) {",
+      "new": "if e.IsDir() && p != arg {\n\t\t\t\treturn filepath.SkipDir\n\t\t\t}\n\t\t\tif e.IsDir() || !rrIsYAMLName(e.Name()) {"
+    },
+    {
+      "name": "an agent may release a resource a human has claimed",
+      "file": "runtimeresource.go",
+      "old": "if ownedBefore && !isOwnerPrincipal(e.Principal) && e.Principal != \"control-plane\" {",
+      "new": "if false && ownedBefore {"
+    },
+    {
+      "name": "the registry's schema marker is not checked",
+      "file": "runtimeresource.go",
+      "old": "if marker, _ := data[\"schema\"].(string); marker != runtimeAdaptersSchemaMarker {",
+      "new": "if marker, _ := data[\"schema\"].(string); false && marker != runtimeAdaptersSchemaMarker {"
+    },
+    {
+      "name": "a registry with no adapters is accepted",
+      "file": "runtimeresource.go",
+      "old": "if len(list) == 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "a registry item that is not a mapping is accepted",
+      "file": "runtimeresource.go",
+      "old": "if !ok {\n\t\t\treturn nil, fmt.Errorf(\"adapters[%d]: not a mapping\", i)",
+      "new": "if false {\n\t\t\treturn nil, fmt.Errorf(\"adapters[%d]: not a mapping\", i)"
+    },
+    {
+      "name": "a malformed adapter id is accepted",
+      "file": "runtimeresource.go",
+      "old": "if !runtimeIDRe.MatchString(id) {",
+      "new": "if false {"
+    },
+    {
+      "name": "an adapter id registered twice is accepted",
+      "file": "runtimeresource.go",
+      "old": "if _, dup := out[id]; dup {",
+      "new": "if _, dup := out[id]; false && dup {"
+    },
+    {
+      "name": "an unknown adapter class is accepted",
+      "file": "runtimeresource.go",
+      "old": "if !knownClass[c] {",
+      "new": "if false {"
+    },
+    {
+      "name": "an adapter with no classes is accepted",
+      "file": "runtimeresource.go",
+      "old": "if len(a.Classes) == 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "an unknown adapter verb is accepted",
+      "file": "runtimeresource.go",
+      "old": "if !knownVerb[v] {",
+      "new": "if false {"
+    },
+    {
+      "name": "an unreadable max-ttl is read as no ceiling",
+      "file": "runtimeresource.go",
+      "old": "if !ok {\n\t\t\t\treturn nil, fmt.Errorf(\"adapter %q: max-ttl",
+      "new": "if false {\n\t\t\t\treturn nil, fmt.Errorf(\"adapter %q: max-ttl"
+    },
+    {
+      "name": "a record's schema marker is not checked",
+      "file": "runtimeresource.go",
+      "old": "if marker, _ := data[\"schema\"].(string); marker != runtimeResourceSchemaMarker {",
+      "new": "if marker, _ := data[\"schema\"].(string); false && marker != runtimeResourceSchemaMarker {"
+    },
+    {
+      "name": "a record that is not a mapping is read as an empty one",
+      "file": "runtimeresource.go",
+      "old": "if !ok {\n\t\treturn patternStateCouldNot, []string{fmt.Sprintf(\"%s: the document is not a mapping\", path)}",
+      "new": "if false {\n\t\treturn patternStateCouldNot, []string{fmt.Sprintf(\"%s: the document is not a mapping\", path)}"
+    },
+    {
+      "name": "a repeated effect id is accepted",
+      "file": "runtimeresource.go",
+      "old": "if _, dup := pos[e.ID]; dup {",
+      "new": "if _, dup := pos[e.ID]; false && dup {"
+    },
+    {
+      "name": "a reconcile that names no effect is accepted",
+      "file": "runtimeresource.go",
+      "old": "if e.Reconciles == \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "a reconcile may name a later effect",
+      "file": "runtimeresource.go",
+      "old": "} else if j, ok := pos[e.Reconciles]; !ok || j >= e.Index {",
+      "new": "} else if j, ok := pos[e.Reconciles]; false && (!ok || j >= e.Index) {"
+    },
+    {
+      "name": "an effect may be issued while another is pending",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRUnreconciledEffect, \"effect %q (%q) was issued while",
+      "new": "_ = fmt.Sprint(ruleRRUnreconciledEffect, \"effect %q (%q) was issued while"
+    },
+    {
+      "name": "state claimed needs no ownership block",
+      "file": "runtimeresource.go",
+      "old": "if d.State == \"claimed\" && !d.HasOwner {",
+      "new": "if false {"
+    },
+    {
+      "name": "ownership needs no backing claim",
+      "file": "runtimeresource.go",
+      "old": "if d.HasOwner && !claimPrincipals[d.OwnerPrinc] {",
+      "new": "if false {"
+    },
+    {
+      "name": "requested is accepted with the resource observed present",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is requested but a receipt shows",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is requested but a receipt shows"
+    },
+    {
+      "name": "requested is accepted after the create failed",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is requested but a create failed",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is requested but a create failed"
+    },
+    {
+      "name": "provisioned is accepted after the latest receipt observed absent",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is provisioned but the latest",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is provisioned but the latest"
+    },
+    {
+      "name": "claimed is accepted with no succeeded claim",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is claimed but the receipts show no established",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is claimed but the receipts show no established"
+    },
+    {
+      "name": "claimed is accepted after the latest receipt observed absent",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is claimed but the latest",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is claimed but the latest"
+    },
+    {
+      "name": "expired is accepted for a resource never present",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is expired but no receipt",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is expired but no receipt"
+    },
+    {
+      "name": "expired is accepted after a reconciled release",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is expired but a release was already",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is expired but a release was already"
+    },
+    {
+      "name": "released is accepted after the resource came back",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is released but a receipt after",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is released but a receipt after"
+    },
+    {
+      "name": "released is accepted with no reconciled release",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRUnreconciledRelease, \"state is released but no release",
+      "new": "_ = fmt.Sprint(ruleRRUnreconciledRelease, \"state is released but no release"
+    },
+    {
+      "name": "failed is accepted with the resource observed present",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is failed but a receipt shows",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is failed but a receipt shows"
+    },
+    {
+      "name": "failed is accepted with no failed create",
+      "file": "runtimeresource.go",
+      "old": "add(ruleRRStateUnsupported, \"state is failed but no create",
+      "new": "_ = fmt.Sprint(ruleRRStateUnsupported, \"state is failed but no create"
+    },
+    {
+      "name": "a later absent observation does not end the resource",
+      "file": "runtimeresource.go",
+      "old": "case \"absent\":\n\t\t\tdv.present = false",
+      "new": "case \"absent\":"
+    },
+    {
+      "name": "a resource present again after a release still reads released",
+      "file": "runtimeresource.go",
+      "old": "dv.released, dv.createFailed = false, false",
+      "new": "dv.createFailed = false"
+    },
+    {
+      "name": "a claim carries over into a new lifetime",
+      "file": "runtimeresource.go",
+      "old": "dv.lifetimeStart, dv.claimed = at, false",
+      "new": "dv.lifetimeStart = at"
+    },
+    {
+      "name": "a failed create does not make the record failed",
+      "file": "runtimeresource.go",
+      "old": "if e.Outcome == \"failed\" && !dv.present {",
+      "new": "if false {"
+    },
+    {
+      "name": "a lost create reconciled absent does not make the record failed",
+      "file": "runtimeresource.go",
+      "old": "case \"create\":\n\t\t\t\t\tdv.createFailed = true",
+      "new": "case \"create\":"
+    },
+    {
+      "name": "a release's own receipt is read as an observation",
+      "file": "runtimeresource.go",
+      "old": "\t\tcase \"release\":\n\t\t\t// An acknowledgment, not an observation",
+      "new": "\t\tcase \"release\":\n\t\t\tif e.HasReceipt {\n\t\t\t\tobserve(e.ObservedState, e.ObservedAt.At)\n\t\t\t}\n\t\t\t// An acknowledgment, not an observation"
     }
   ]
 }

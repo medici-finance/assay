@@ -159,6 +159,23 @@ var lintRuleRegistry = []LintRule{
 	{rulePatternRiskInputMissing, "a pattern's `risk-input` omits one of the four risk-class verdicts (low/standard/elevated/human) — an instance of that risk class has no declared mandatory gates", StatusFatal},
 	{rulePatternEffectTargetUnowned, "a non-effect-kind pattern node declares an effect whose target is not among its own outputs — a node claiming a consequence outside its own declared output boundary", StatusFatal},
 
+	// Runtime resource record lint (sdlc/24, runtimeresource.go,
+	// docs/runtime-adapters.md). Enforced by the separate `statusgen
+	// runtime-resource --lint` subcommand (like `patterns`, never part of the
+	// board `--lint`); all eleven fatal — each makes `runtime-resource --lint`
+	// exit 1.
+	{ruleRRSchemaViolation, "a runtime resource record that breaks runtime-resource-v1's shape, repeats an effect id, or carries a ttl, lifetime or timestamp the rules cannot evaluate", StatusFatal},
+	{ruleRRUnknownAdapter, "a runtime resource record whose adapter is not in the adapter registry, is not registered for the record's class, or does not implement a verb the record uses", StatusFatal},
+	{ruleRRTTLExceedsBound, "a runtime resource requested for longer than its adapter's registered max-ttl", StatusFatal},
+	{ruleRRExpired, "an unclaimed runtime resource past its ttl, or a claimed one past its retention, still recorded as live", StatusFatal},
+	{ruleRRClaimWithoutPrincipal, "a runtime resource claim (or a release of a claimed resource) not authorized by a human or organization principal, or ownership no succeeded claim backs", StatusFatal},
+	{ruleRRUnreconciledRelease, "a runtime resource release counted done with no later reconcile receipt observing the resource absent", StatusFatal},
+	{ruleRRUnreconciledEffect, "a runtime resource effect with outcome unknown left unreconciled, or another effect issued while one is pending", StatusFatal},
+	{ruleRRReceiptMissing, "a runtime resource effect recorded succeeded with no adapter receipt", StatusFatal},
+	{ruleRRStateUnsupported, "a runtime resource record whose state is not the one its receipts support, read in order (the latest authoritative observation wins), or whose receipt time is outside its effect's window", StatusFatal},
+	{ruleRRCredentialNotRotated, "a runtime resource claim with no recorded rotation of the agent credential, or a release with no recorded revocation", StatusFatal},
+	{ruleRRCredentialOutlivesTTL, "a runtime resource whose agent credential lifetime exceeds the resource's ttl", StatusFatal},
+
 	// Authoring conventions the lint does NOT check — the third status, stated so
 	// the block's non-coverage is itself visible (spec §3 D6).
 	{"consumers-flow-verify-row", "that a shared-value brief's Verify table carries at least one row exercising the cross-component flow end-to-end — a judgement call no lint decides", StatusNotEnforced},
