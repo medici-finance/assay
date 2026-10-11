@@ -98,7 +98,7 @@ authorizing the implementation that produces that proof.
 
 ## Operating research incorporated in this revision
 
-The proposal now includes resumable resource retirement, bounded repository maintenance, durable feedback reevaluation, observable execution guards, governed learned context and separate cockpit states. These extend existing domain owners and R1–R8; implementation and activation remain separate. A follow-up operating revision adds allocation records at creation, class-aware detached-review retirement, forge-state branch eligibility, a supervised maintenance cadence with per-OS keep-alive profiles, lifecycle policy hooks, and the matching preservation obligations and qualification cases.
+The proposal now includes resumable resource retirement, bounded repository maintenance, durable feedback reevaluation, observable execution guards, governed learned context and separate cockpit states. These extend existing domain owners and R1–R8; implementation and activation remain separate. A follow-up operating revision adds allocation records at creation, class-aware detached-review retirement, forge-state branch eligibility, an explicit lock lifecycle, a supervised maintenance cadence with per-OS keep-alive profiles, lifecycle policy hooks, and the matching preservation obligations and qualification cases.
 
 Public research inputs, inspected 10 October 2026:
 

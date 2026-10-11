@@ -81,7 +81,8 @@ Add these cases to the existing runtime suite; they are future executable obliga
 | Maintenance overlaps foreground work or loses its process | Store ownership, actual Git compatibility and retained objects remain correct; interrupted work is diagnosable and safely resumable. |
 | Review attempt completes after a crash-delayed teardown | The detached review head retires on its recorded class plus completed owning attempt; no pushed/merged proof is required or attempted, and a missing allocation record holds visibly. |
 | Worktree created outside an allocation verb | Held with a visible classification reason; no age, prefix or cleanliness check retires it; classification precedes any removal. |
-| Branch is idle past its threshold while its change record is open, or merged and not reverted | The open record holds the branch; the merged-and-not-reverted record with complete evidence retires it without an ancestry proof. |
+| Branch is idle past its threshold while its change record is open, or merged and not reverted | The open record holds the branch; the merged-and-not-reverted record with its owning attempt complete and required evidence retained retires it without an ancestry proof, provided the local tip is the merged head or its ancestor. |
+| Local branch tip advanced past its merged change head, or the revert state cannot be determined | Held as unpublished or ambiguous work; the merged record never retires commits the merged head does not contain, and an undeterminable revert state holds. |
 | Stamped lock whose session beacon stopped updating, and an unstamped lock past its fallback window | The dead-session lock retires only on recorded evidence; an unreadable beacon or missing stamp holds rather than guesses. |
 | Boot sweep, interval supervisor and manual sweep overlap | The maintenance singleton serializes them; no resource is removed twice and a recent sweep is skipped rather than nested. |
 
