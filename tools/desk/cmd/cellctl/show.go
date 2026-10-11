@@ -51,7 +51,7 @@ func cmdShow(cell string, args []string) {
 		die("show: --cockpit must be one of %s, got '%s'", joinPipe(cockpitValues), cockpitFlag)
 	}
 
-	// showLine: source is flag > cell.env line > default.
+	// showLine: source is flag > cell.env line > machine-wide defaults file > default.
 	showLine := func(key, flag, eff string) {
 		src := "default"
 		switch {
@@ -60,6 +60,8 @@ func cmdShow(cell string, args []string) {
 		default:
 			if _, ok := envFileValue(envfile, key); ok {
 				src = "cell.env"
+			} else if c.Env.Source(key) == layerDefaults {
+				src = cellDefaultsFile
 			}
 		}
 		fmt.Printf("[show] %s=%s (%s)\n", key, eff, src)
@@ -75,12 +77,19 @@ func cmdShow(cell string, args []string) {
 	// answers "would a desk booted from this cell turn the dispatch gate on" the same way a
 	// DRY_RUN boot would. "on" is what deskLaunch composes; anything else is identical absence
 	// to the deskdispatch consumer.
-	if v, ok := envFileValue(envfile, deskkit.EnvRepairAdmission); ok {
+	// The machine-wide defaults file can carry it too, and a launch composes it from there just
+	// the same, so that source is named rather than left out.
+	v, inCellEnv := envFileValue(envfile, deskkit.EnvRepairAdmission)
+	src := "cell.env"
+	if !inCellEnv && c.Env.Source(deskkit.EnvRepairAdmission) == layerDefaults {
+		v, src = c.Env.Get(deskkit.EnvRepairAdmission), cellDefaultsFile
+	}
+	if inCellEnv || src == cellDefaultsFile {
 		composed := "not composed — off/unset behaves identically to the deskdispatch gate"
 		if strings.TrimSpace(v) == "on" {
 			composed = "composed into every desk launch"
 		}
-		fmt.Printf("[show] %s=%s (cell.env; %s)\n", deskkit.EnvRepairAdmission, v, composed)
+		fmt.Printf("[show] %s=%s (%s; %s)\n", deskkit.EnvRepairAdmission, v, src, composed)
 	}
 	showLine("CELL_KIND", c.KindOverride, c.Kind)
 	want, _ := c.cockpitWant(cockpitFlag)
@@ -153,6 +162,8 @@ func cmdShow(cell string, args []string) {
 			src = "default: " + rm.Src
 		} else if _, ok := envFileValue(envfile, rm.Src); ok {
 			src = "cell.env " + rm.Src
+		} else if c.Env.Source(rm.Src) == layerDefaults {
+			src = cellDefaultsFile + " " + rm.Src
 		} else {
 			src = "default: " + rm.Src
 		}

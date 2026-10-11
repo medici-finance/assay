@@ -269,6 +269,20 @@ const (
 // verdict unchanged rather than inventing a sixth segment.
 func lastVerifyVerdict(evidence string) string {
 	verdict := verdictNone
+	walkVerdictLines(evidence, func(_ string, v string) {
+		if v != verdictNone {
+			verdict = v
+		}
+	})
+	return verdict
+}
+
+// walkVerdictLines visits every Evidence line lastVerifyVerdict reads, in
+// order: fenced code blocks and blockquote lines skipped, struck-through spans
+// removed. v is the line's last verdict token, or verdictNone. One walker, so
+// a reader that needs WHERE the live verdict sits (the awaiting board's
+// livePassDate) applies the same quotation rules as the verdict itself.
+func walkVerdictLines(evidence string, visit func(line, v string)) {
 	inFence := false
 	for _, line := range strings.Split(evidence, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -280,15 +294,16 @@ func lastVerifyVerdict(evidence string) string {
 			continue
 		}
 		line = strikethroughRe.ReplaceAllString(line, "")
+		v := verdictNone
 		for _, m := range verifyVerdictRe.FindAllStringSubmatch(line, -1) {
 			if m[1] == "PASS" {
-				verdict = verdictPass
+				v = verdictPass
 			} else {
-				verdict = verdictFail
+				v = verdictFail
 			}
 		}
+		visit(line, v)
 	}
-	return verdict
 }
 
 // strikethroughRe matches a struck-through span — a retracted or superseded

@@ -132,6 +132,42 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: rowScopeSHA,\n\t})",
       "new": "\t\tStartBranch: base,\n\t\tAppendOnly:  appendOnly,\n\t\tAllowShrink: allowShrink,\n\t\tExpectedSHA: \"\",\n\t})"
+    },
+    {
+      "name": "disarm the statusgen PROBLEM-diff pre-flight (a landing that introduces a PROBLEM is written anyway)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif len(introduced) > 0 {",
+      "new": "\tif false && len(introduced) > 0 {"
+    },
+    {
+      "name": "the pre-flight stages the worktree's own bytes instead of the bytes to commit (the after-run lints an unchanged tree, so no landing is ever refused)",
+      "file": "cmd/deskevidence/lintdiff.go",
+      "old": "\tif werr := os.WriteFile(abs, newContent, 0o644); werr != nil {",
+      "new": "\tif werr := os.WriteFile(abs, origContent, 0o644); werr != nil {"
+    },
+    {
+      "name": "drop the nil-forge refusal in admission (a landing that reaches admission with no forge hands nil on, and the shared reader resolves a forge of its own outside the landing's mint)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif fg == nil {\n\t\treturn deskkit.VerifierReceipt{}, deskkit.Refused(",
+      "new": "\tif false && fg == nil {\n\t\treturn deskkit.VerifierReceipt{}, deskkit.Refused("
+    },
+    {
+      "name": "admission is handed no forge instead of the landing's own (admission and the write no longer share one forge under one minted token)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "receipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)",
+      "new": "receipt, aerr := admitVerifierEvidence(root, repoSlug, target, nil, ac)"
+    },
+    {
+      "name": "the mint moves back below forge resolution and admission (the original #2458 order: admission's forge read meets the custody step's empty-token refusal, and every landing, --dry-run included, refuses)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n",
+      "new": "\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n"
+    },
+    {
+      "name": "mint above the command-line refusals (a call refused on its arguments alone spends a token mint — on GitLab, a credential rotation)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tac.repo = repoSlug\n",
+      "new": "\tac.repo = repoSlug\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn merr\n\t}\n"
     }
   ]
 }

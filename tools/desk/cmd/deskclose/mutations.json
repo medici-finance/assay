@@ -186,6 +186,36 @@
       "file": "cmd/deskclose/verbs.go",
       "old": "func rowModes() []string { return []string{modeDuplicate, modeSuperseded, modeReviewRequest} }",
       "new": "func rowModes() []string {\n\treturn []string{modeDuplicate, modeSuperseded, modeReviewRequest, modeSelfWithdraw}\n}"
+    },
+    {
+      "name": "disarm the close postcondition (a close the re-read shows still OPEN is reported as success — the silent no-op)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "\tif after.closed() {",
+      "new": "\tif true || after.closed() {"
+    },
+    {
+      "name": "drop the repair-issue filing (a close that did not take fails only in this run's output, visible to nobody else)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "\t\tmsg += \" (\" + fileRepairIssue(a, nt) + \")\"",
+      "new": "\t\t_ = nt"
+    },
+    {
+      "name": "drop the meter gate in front of the repair-issue filing (an issue create the outward-write budget never refuses)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "\tif err := allowWrite(nt.repo, nt.n); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "stop recording the repair-issue filing's audit line (an issue create the meter, which counts audit lines, never charges)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "\t\ta.log(result, s)\n",
+      "new": "\t\t_ = result\n"
+    },
+    {
+      "name": "send the repair title verbatim as the dedupe query (search syntax a verbatim-forwarding backend reads as literal words, so the dedupe never hits)",
+      "file": "cmd/deskclose/postcondition.go",
+      "old": "Query: searchTokens(title)",
+      "new": "Query: title"
     }
   ]
 }

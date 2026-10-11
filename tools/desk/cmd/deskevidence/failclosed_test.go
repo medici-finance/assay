@@ -61,11 +61,12 @@ func TestNoParallelTestsInPackage(t *testing.T) {
 // custody guards enforce that, and both were previously unexercised because setupFake stubs the
 // mint as always-succeed. These drive each guard directly.
 
-// TestMintFailureAbortsBeforeForge exercises the mint-failure abort in cmdEvidence
-// (`if merr := mintTokenFn(repoSlug); merr != nil { return merr }`). The mint is deliberately
-// placed after the cheap/stateless refusals and BEFORE the forge is resolved, so a mint failure
-// must propagate that error and never reach the forge — a doomed call must not act as any
-// identity. Fail-first: with the mint forced to fail, the forge must record ZERO hits.
+// TestMintFailureAbortsBeforeForge exercises the mint-failure abort in admitLanding
+// (`if merr := mintTokenFn(repoSlug); merr != nil { ... }`). The mint is deliberately placed
+// after the refusals that need only the command line and BEFORE the forge is resolved and
+// admission reads through it, so a mint failure must propagate that error and never reach the
+// forge — a doomed call must not act as any identity. Fail-first: with the mint forced to fail,
+// the forge must record ZERO hits.
 func TestMintFailureAbortsBeforeForge(t *testing.T) {
 	f, _ := setupFake(t)
 
