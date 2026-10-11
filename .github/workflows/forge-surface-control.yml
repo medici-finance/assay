@@ -39,8 +39,14 @@ name: forge-surface-control
 # tree the scan never re-read, which is the same class of false green the ban
 # exists to prevent.
 #
+# THE SHARED READER MODULE (forge-neutral/36). forgeread/ is the importable fact reader statusgen
+# and desk-tools both link. It is held to the same closed-surface rules: the ban counter treats
+# it as its own tree and FAILS on any site (below), the ambient-token rule walks it with no
+# permit, the composition desk-tools hands its adapters is shown to refuse a repository outside
+# the credential's scope, and statusgen is shown not to import anything below the module root.
+#
 # SCOPE — the whole tools/desk tree plus the stream registers the shape check
-# dereferences against. A trigger narrower than what a control READS makes the
+# dereferences against, and the forgeread module. A trigger narrower than what a control READS makes the
 # control advisory rather than enforced, so the paths filter covers both.
 #
 # WHERE THIS RUNS — the self-hosted runner `medici-builder-public`, matching
@@ -54,12 +60,14 @@ on:
   pull_request:
     paths:
       - "tools/desk/**"
+      - "forgeread/**"
       - "docs/streams/**/inventory.md"
       - ".github/workflows/forge-surface-control.yml"
   push:
     branches: [main]
     paths:
       - "tools/desk/**"
+      - "forgeread/**"
       - "docs/streams/**/inventory.md"
       - ".github/workflows/forge-surface-control.yml"
 
@@ -105,11 +113,22 @@ jobs:
           go test ./internal/forgeban/ -count=1 -v
           go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout|TestForgeNoPassthrough|TestForgeSingleConstructionSite' -count=1 -v
 
+      # The shared reader module's own tests, then the desk-tools halves of its controls (the
+      # ambient-token rule over forgeread/, and the lower-layer scope check on the composition),
+      # then statusgen's halves (the import-path guard and the authority boundary).
+      - name: Shared reader module + its desk-tools and statusgen controls
+        run: |
+          set -euo pipefail
+          (cd forgeread && GOWORK=off go test ./... -count=1)
+          (cd tools/desk && go test ./internal/deskkit/ -run 'TestAmbientTokenGuardCoversForgeread|TestSharedReadLowerScope|TestNoAmbientEnvTokenRead' -count=1 -v)
+          (cd tools/desk && go test ./cmd/deskread/ -run 'TestDeskreadMatchesSharedObservations' -count=1 -v)
+          (cd statusgen && GOWORK=off go test . -run 'TestReaderSDK|TestStatusgenImportsNoFacadeBelowRoot' -count=1 -v)
+
       # desktools-v2/02 — the v2 seam contract's ban-lint (docs/streams/desktools-v2/
       # seam-contract.md). A portable grep counter, not a Go test: it covers what the three
       # Go-level checks above cannot reach — shell/skill scripts and statusgen/** (a separate
-      # module the forgeban register does not scope to). ADVISORY/counting mode: always exits
-      # 0. It flips to failing only once a migration has driven its count to zero
-      # (desktools-v2/08 for the statusgen half).
-      - name: Forge reach-around counter (forge-ban, advisory)
+      # module the forgeban register does not scope to). The desk and statusgen columns are
+      # ADVISORY/counting: they never fail. The forgeread column is the exception — the script
+      # exits non-zero when `forgeread sites:` is above zero, which reddens this job.
+      - name: Forge reach-around counter (forge-ban; forgeread column fails)
         run: sh tools/desk/scripts/forge-ban.sh
