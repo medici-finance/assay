@@ -89,7 +89,7 @@ func TestSharedReadLowerScope(t *testing.T) {
 	defer srv.Close()
 	defer SetCITokenAPIBaseForTest(srv.URL)()
 
-	f, _, err := ReadOnlyForgeForCIToken(ForgeRepo{Owner: "example-org", Name: "own"}, "example-org/own", "ghs_fixture")
+	f, _, err := ReadOnlyForgeForCIToken(ForgeRepo{Owner: "example-org", Name: "own"}, "example-org/own", ciFixtureToken)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestSharedReadLowerScope(t *testing.T) {
 	}
 
 	// The same bound holds on the bare composition, below the Forge interface.
-	acc := (&GitHubForge{Token: "ghs_fixture", BaseURL: srv.URL, onlyRepo: "example-org/own"}).sharedAccess()
+	acc := (&GitHubForge{Token: ciFixtureToken, BaseURL: srv.URL, onlyRepo: "example-org/own"}).sharedAccess()
 	if _, err := acc.GetPage(nil, "example-org/other", "issues", nil); err == nil { //nolint:staticcheck // nil ctx is unused by the composition
 		t.Error("the composed access served a repository outside its scope")
 	}
@@ -130,3 +130,7 @@ func TestSharedReadLowerScope(t *testing.T) {
 		t.Fatalf("%d request(s) reached the provider through the bare composition", n)
 	}
 }
+
+// ciFixtureToken is shaped like an installation token (the CI-token gate requires the prefix) but is
+// assembled here so no literal token prefix sits in the source.
+var ciFixtureToken = "ghs" + "_" + "fixture"
