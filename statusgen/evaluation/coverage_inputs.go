@@ -1,4 +1,4 @@
-package main
+package evaluation
 
 // coverage_inputs.go — what a Verify row's witness DEPENDS ON (#2026 cause 2).
 //
@@ -67,7 +67,7 @@ package main
 //     toplevel. A coverage root below the toplevel leaves where a row ran
 //     ambiguous (a name there, sub/README.md, can shadow a tracked toplevel
 //     README.md, which the presence check would accept), so every derived
-//     scope widens there (coverageRootPrefix).
+//     scope widens there (rootPrefix).
 //   - TWO NAMES, ONE FILE. A tree that tracks two names a case- or
 //     normalisation-insensitive checkout opens as one file (README.md and
 //     readme.md, or ss.md and ß.md under full case folding) leaves only one
@@ -92,9 +92,7 @@ import (
 	pathpkg "path"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
-	"sync"
 	"unicode/utf8"
 )
 
@@ -208,11 +206,11 @@ func quotedTextOK(q string) error {
 
 // deriveRowInputs returns the repo paths Verify row r's command can read, or
 // an error (wrapping errUnderivable) saying why they cannot be established.
-func deriveRowInputs(r verifyRow) (rowInputs, error) {
-	if r.Shell != "" && r.Shell != rowShellSh {
+func deriveRowInputs(r VerifyRow) (rowInputs, error) {
+	if r.Shell != "" && r.Shell != ShellSh {
 		return rowInputs{}, underivable("the row runs under %s, whose grammar is not read here", r.Shell)
 	}
-	words, err := lexRow(unescapePipes(r.Command))
+	words, err := lexRow(UnescapePipes(r.Command))
 	if err != nil {
 		return rowInputs{}, err
 	}
@@ -475,7 +473,7 @@ func commandReads(c []string, reader bool) ([]string, error) {
 // production shape), the row's derived inputs: a derivable row's witness
 // speaks for exactly what its command reads; an underivable one keeps the
 // conservative scope and says why. A supplied manifest keeps its own rules.
-func (sc witnessScope) forVerifyRow(r verifyRow) witnessScope {
+func (sc witnessScope) forVerifyRow(r VerifyRow) witnessScope {
 	out := sc.forRow(r.ID)
 	if sc.manifest != nil {
 		return out
@@ -497,7 +495,7 @@ func (sc witnessScope) forVerifyRow(r verifyRow) witnessScope {
 // link or submodule, or covers the brief's own file or a file verify and regen
 // write. why is non-empty when the trees themselves cannot be read: the caller
 // then resolves could-not-check.
-func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScope, why string) {
+func (sc witnessScope) derivedAtBase(x *evalCtx, base, target string) (eff witnessScope, why string) {
 	eff = sc
 	eff.inputs = append([]string(nil), sc.inputs...)
 	have := map[string]bool{}
@@ -530,8 +528,8 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 	// operands are relative to root. They agree only when root IS the
 	// toplevel, so anywhere else the derived scope widens (see this file's
 	// header, "WHERE THE ROW RAN").
-	prefix, err := coverageRootPrefix(root)
-	if err != nil {
+	prefix, ok := x.rootPrefix()
+	if !ok {
 		return sc, "where the coverage root sits in its repository could not be read (git rev-parse --show-prefix failed), so the directory the row's paths are relative to cannot be established"
 	}
 	if prefix != "" {
@@ -546,8 +544,8 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 		}
 	}
 	for _, rev := range []string{base, target} {
-		entries, err := treeModesAt(root, rev)
-		if err != nil {
+		entries, ok := x.treeModes(rev)
+		if !ok {
 			return sc, fmt.Sprintf("the tree at %s could not be listed (git ls-tree failed), so what the row reads cannot be established", rev)
 		}
 		// Every derived input (never the `.gitattributes` added above) must be
@@ -566,7 +564,7 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 		for _, p := range sc.inputs {
 			found := false
 			for _, e := range entries {
-				if inputCovers(p, e.path) || ((e.mode == "120000" || e.mode == "160000") && strings.HasPrefix(p, e.path+"/")) {
+				if inputCovers(p, e.Path) || ((e.Mode == "120000" || e.Mode == "160000") && strings.HasPrefix(p, e.Path+"/")) {
 					found = true
 					break
 				}
@@ -577,15 +575,15 @@ func (sc witnessScope) derivedAtBase(root, base, target string) (eff witnessScop
 		}
 		for _, e := range entries {
 			for _, p := range sc.inputs {
-				covered := inputCovers(p, e.path)
-				if (e.mode == "120000" || e.mode == "160000") && (covered || strings.HasPrefix(p, e.path+"/")) {
-					return widen(fmt.Sprintf("the row reads %s through the symbolic link or submodule %s, whose target its path does not establish", p, e.path)), ""
+				covered := inputCovers(p, e.Path)
+				if (e.Mode == "120000" || e.Mode == "160000") && (covered || strings.HasPrefix(p, e.Path+"/")) {
+					return widen(fmt.Sprintf("the row reads %s through the symbolic link or submodule %s, whose target its path does not establish", p, e.Path)), ""
 				}
-				if covered && (e.path == sc.briefRel || isVerifyWrittenPath(e.path)) {
-					return widen(fmt.Sprintf("the row reads %s, which verify and regen write with every Evidence update", e.path)), ""
+				if covered && (e.Path == sc.briefRel || isVerifyWrittenPath(e.Path)) {
+					return widen(fmt.Sprintf("the row reads %s, which verify and regen write with every Evidence update", e.Path)), ""
 				}
-				if !covered && foldCovers(p, e.path) {
-					return widen(fmt.Sprintf("the row reads %s, and %s tree also tracks %s, which a case- or normalisation-insensitive checkout opens as the same file, so which of the two the row read is not established", p, which, e.path)), ""
+				if !covered && foldCovers(p, e.Path) {
+					return widen(fmt.Sprintf("the row reads %s, and %s tree also tracks %s, which a case- or normalisation-insensitive checkout opens as the same file, so which of the two the row read is not established", p, which, e.Path)), ""
 				}
 			}
 		}
@@ -657,182 +655,4 @@ func isASCII(s string) bool {
 		}
 	}
 	return true
-}
-
-var (
-	rootPrefixMu    sync.Mutex
-	rootPrefixCache = map[string]string{}
-)
-
-// coverageRootPrefix is root's path below its repository's toplevel, as `git
-// rev-parse --show-prefix` prints it ("" when root IS the toplevel, "sub/"
-// below it). An error is returned, never "", when git cannot say.
-func coverageRootPrefix(root string) (string, error) {
-	rootPrefixMu.Lock()
-	got, ok := rootPrefixCache[root]
-	rootPrefixMu.Unlock()
-	if ok {
-		return got, nil
-	}
-	out, err := coverageGit(root, "rev-parse", "--show-prefix").Output()
-	if err != nil {
-		return "", err
-	}
-	prefix := strings.TrimSpace(string(out))
-	rootPrefixMu.Lock()
-	rootPrefixCache[root] = prefix
-	rootPrefixMu.Unlock()
-	return prefix, nil
-}
-
-// treeMode is one `git ls-tree -r` entry: its mode and path.
-type treeMode struct{ mode, path string }
-
-var (
-	treeModesMu    sync.Mutex
-	treeModesCache = map[string][]treeMode{}
-)
-
-// treeModesAt lists every entry of rev's tree with its mode (`git ls-tree -r
-// -z --full-tree`), so a symbolic link (120000) or submodule (160000) on an
-// input's path is seen. An error is returned, never an empty listing, when git
-// cannot read the tree.
-func treeModesAt(root, rev string) ([]treeMode, error) {
-	key := root + "\x00" + rev
-	treeModesMu.Lock()
-	got, ok := treeModesCache[key]
-	treeModesMu.Unlock()
-	if ok {
-		return got, nil
-	}
-	out, err := coverageGit(root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev).Output()
-	if err != nil {
-		return nil, err
-	}
-	var entries []treeMode
-	for _, e := range splitNUL(out) {
-		meta, name, found := strings.Cut(e, "\t")
-		f := strings.Fields(meta)
-		if !found || len(f) != 3 {
-			return nil, fmt.Errorf("unparseable ls-tree entry %q", e)
-		}
-		entries = append(entries, treeMode{mode: f[0], path: name})
-	}
-	treeModesMu.Lock()
-	treeModesCache[key] = entries
-	treeModesMu.Unlock()
-	return entries, nil
-}
-
-// maxLandingCandidates bounds witnessLanded's search. A witness further from
-// the item's revision than this is could-not-check, never assumed landed.
-var maxLandingCandidates = 1000
-
-// witnessLanded is #2026 cause 1's landing check, judged by TREES, never by
-// ancestry: a witness at commit w is honoured at the item's revision t only
-// when some commit on t's history since their merge base(s) — the base itself
-// when w is on t's history, or the squash commit when w's branch was squash-
-// merged — has a tree identical to w's outside docs/streams/** and STATUS.md.
-// A witness whose branch never landed as it was tested (it was squash-merged
-// onto a main that had moved, or never merged) is a mismatch. why is set when
-// the search cannot be completed (a shallow clone, a git failure, more than
-// maxLandingCandidates commits to compare): the caller resolves could-not-check.
-// A completed search is cached per (root, w, t, bound): many rows share one
-// witness commit, and an unlanded one costs up to the bound's worth of diffs.
-func witnessLanded(root, w, t string) (landedAt string, landed bool, why string) {
-	key := root + "\x00" + w + "\x00" + t + "\x00" + strconv.Itoa(maxLandingCandidates)
-	landedMu.Lock()
-	got, ok := landedCache[key]
-	landedMu.Unlock()
-	if ok {
-		return got.at, got.landed, ""
-	}
-	landedAt, landed, why = searchLanded(root, w, t)
-	if why == "" {
-		landedMu.Lock()
-		landedCache[key] = landedResult{landedAt, landed}
-		landedMu.Unlock()
-	}
-	return landedAt, landed, why
-}
-
-type landedResult struct {
-	at     string
-	landed bool
-}
-
-var (
-	landedMu    sync.Mutex
-	landedCache = map[string]landedResult{}
-)
-
-// searchLanded is witnessLanded's uncached search.
-func searchLanded(root, w, t string) (landedAt string, landed bool, why string) {
-	if why := shallowCloneWhy(root); why != "" {
-		return "", false, why
-	}
-	out, err := coverageGit(root, "merge-base", "--all", "--end-of-options", w, t).Output()
-	if err != nil {
-		return "", false, "the witness's commit and the item's revision could not be related (git merge-base --all failed)"
-	}
-	bases := strings.Fields(string(out))
-	if len(bases) == 0 {
-		return "", false, "git merge-base --all named no common ancestor"
-	}
-	// The merge bases and t need no search: compare them first, so a witness on
-	// the item's own history (its merge base is the witness itself) lands
-	// however many commits followed it. Only the search for a squash commit
-	// between them is bounded.
-	if at, ok, why := landedAmong(root, w, append(append([]string(nil), bases...), t)); ok || why != "" {
-		return at, ok, why
-	}
-	revArgs := []string{"rev-list", "--max-count=" + strconv.Itoa(maxLandingCandidates+1), "--end-of-options", t}
-	for _, b := range bases {
-		revArgs = append(revArgs, "^"+b)
-	}
-	out, err = coverageGit(root, revArgs...).Output()
-	if err != nil {
-		return "", false, "the commits between the witness and the item's revision could not be listed (git rev-list failed)"
-	}
-	more := strings.Fields(string(out))
-	if len(more) > maxLandingCandidates {
-		return "", false, fmt.Sprintf("more than %d commits lie between the witness's merge base and the item's revision, past the bound this search compares", maxLandingCandidates)
-	}
-	return landedAmong(root, w, more)
-}
-
-// landedAmong reports the first of candidates whose tree is identical to w's
-// outside docs/streams/** and STATUS.md; why is set when git cannot compare.
-func landedAmong(root, w string, candidates []string) (landedAt string, landed bool, why string) {
-	for _, c := range candidates {
-		d, err := coverageGit(root, "diff", "--name-only", "--no-renames", "-z", "--end-of-options", w, c, "--").Output()
-		if err != nil {
-			return "", false, "the witness's tree could not be compared with " + c + " (git diff failed)"
-		}
-		same := true
-		for _, p := range splitNUL(d) {
-			if !isBoardBookkeepingPath(p) {
-				same = false
-				break
-			}
-		}
-		if same {
-			return c, true, ""
-		}
-	}
-	return "", false, ""
-}
-
-// shallowCloneWhy is non-empty when root is a shallow clone (or that cannot be
-// read): its history is cut, so neither the merge base nor the landing search
-// can be trusted, and the claim is could-not-check.
-func shallowCloneWhy(root string) string {
-	out, err := coverageGit(root, "rev-parse", "--is-shallow-repository").Output()
-	if err != nil {
-		return "whether this clone is shallow could not be read (git rev-parse failed)"
-	}
-	if strings.TrimSpace(string(out)) != "false" {
-		return "this clone is shallow, so the history between the witness and the item's revision cannot all be read; fetch the full history"
-	}
-	return ""
 }
