@@ -55,6 +55,34 @@ it"). Any other exit-5 refusal that names no scan rule — a malformed typed fin
 one — is the body author's to fix, like a schema refusal. **Exit 5 is NEVER a fallback trigger** —
 fall back only on exit 3 (disabled) / 6 (unverifiable).
 
+## Coverage — the correctness verdict's per-class accounting block
+
+A correctness verdict body ENDS with an `## Coverage` section: one line per class in the
+correctness class register. The register's home is the dispatched review kit's `review-prompt`
+reference, never this file; each line is exactly one of three shapes:
+
+```
+<class> — finding <finding-id>
+<class> — n/a: <one-sentence reason>
+<class> — could-not-check: <what was missing>
+```
+
+A class the round's stated scope cannot touch gets the `n/a` line with its reason; a class
+that could not be honestly `n/a`'d and was not checked gets `could-not-check`, never a silent
+pass — silence is not accounting, and a class with no line is a gap in the accounting, not an
+answer. The accounting covers the stated scope: a delta round accounts for the classes the
+scope's paths can touch; a full pass accounts for every class in the register. A security
+verdict carries no Coverage block — the register is the correctness lane's, and the two
+verdicts stay separate artifacts.
+
+The block is small by construction: all 14 classes at one line each run well under 1 KiB, so
+the 16 KiB body cap is never a reason to trim it — cut prose elsewhere, never accounting.
+
+`deskpost` neither requires nor refuses the block today. It rides the body as plain lines
+under the schema above, and a body without it passes that schema exactly as before; whether
+deskpost should refuse a correctness body carrying no Coverage block is a separate, later
+ruling — this contract is doctrine, not a gate.
+
 ## When your ONLY finding is a red required check
 
 A `request-changes` whose sole blocker is a required CHECK is a special case, because that
