@@ -713,7 +713,7 @@ func TestEvaluationIdentityStable(t *testing.T) {
 
 // ---- external consumer -------------------------------------------------------
 
-const consumerMain = `package main
+const evalConsumerMain = `package main
 
 import (
 	"encoding/json"
@@ -785,14 +785,17 @@ func main() {
 // moduleZip packs the statusgen module the way a release would publish it:
 // the manifest, the checksums and every non-test Go file, under the module
 // path and version prefix.
-func moduleZip(t *testing.T, modulePath, version string) []byte {
+func moduleZip(t *testing.T, root, modulePath, version string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	prefix := modulePath + "@" + version + "/"
-	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if rel, rerr := filepath.Rel(root, path); rerr == nil {
+			path = rel
 		}
 		if info.IsDir() {
 			if path == "testdata" || strings.HasPrefix(path, ".") && path != "." {
@@ -810,7 +813,7 @@ func moduleZip(t *testing.T, modulePath, version string) []byte {
 		if err != nil {
 			return err
 		}
-		f, err := os.Open(path)
+		f, err := os.Open(filepath.Join(root, path))
 		if err != nil {
 			return err
 		}
@@ -860,14 +863,21 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 	const modulePath = "github.com/medici-finance/assay/statusgen"
 	const version = "v0.0.0-20261011000000-000000000000"
 
-	// The statusgen manifest names nothing under tools/desk, carries no
-	// replace, and so can be resolved by any consumer.
+	// The statusgen manifest names nothing under tools/desk, and any replace
+	// is a relative sibling-module path (a dependency's replace directives are
+	// ignored by a consumer, which resolves that module from its own sources;
+	// the proxy below serves the sibling the way a published release would).
 	manifest, err := os.ReadFile("go.mod")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(manifest), "tools/desk") || strings.Contains(string(manifest), "replace") {
-		t.Fatalf("the statusgen manifest must name nothing under tools/desk and carry no replace:\n%s", manifest)
+	if strings.Contains(string(manifest), "tools/desk") {
+		t.Fatalf("the statusgen manifest must name nothing under tools/desk:\n%s", manifest)
+	}
+	for _, line := range strings.Split(string(manifest), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "replace") && !strings.Contains(line, "=> ../") {
+			t.Fatalf("the only replace statusgen may carry is a relative sibling module:\n%s", line)
+		}
 	}
 
 	proxy := t.TempDir()
@@ -879,9 +889,31 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 		"list":            []byte(version + "\n"),
 		version + ".info": []byte(`{"Version":"` + version + `","Time":"2026-10-11T00:00:00Z"}`),
 		version + ".mod":  manifest,
-		version + ".zip":  moduleZip(t, modulePath, version),
+		version + ".zip":  moduleZip(t, ".", modulePath, version),
 	} {
 		if err := os.WriteFile(filepath.Join(modDir, name), content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The in-repository sibling module the manifest requires, served at the
+	// version the manifest names, as a release of it would be.
+	const siblingPath = "github.com/medici-finance/assay/forgeread"
+	const siblingVersion = "v0.0.0-00010101000000-000000000000"
+	siblingDir := filepath.Join(proxy, filepath.FromSlash(siblingPath), "@v")
+	if err := os.MkdirAll(siblingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	siblingMod, err := os.ReadFile(filepath.Join("..", "forgeread", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string][]byte{
+		"list":                   []byte(siblingVersion + "\n"),
+		siblingVersion + ".info": []byte(`{"Version":"` + siblingVersion + `","Time":"2026-10-11T00:00:00Z"}`),
+		siblingVersion + ".mod":  siblingMod,
+		siblingVersion + ".zip":  moduleZip(t, filepath.Join("..", "forgeread"), siblingPath, siblingVersion),
+	} {
+		if err := os.WriteFile(filepath.Join(siblingDir, name), content, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -944,7 +976,7 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(consumer, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := runIn(consumer, consumerMain, "run", ".")
+	got, err := runIn(consumer, evalConsumerMain, "run", ".")
 	if err != nil {
 		t.Fatalf("the external consumer failed to build or run:\n%s", got)
 	}
