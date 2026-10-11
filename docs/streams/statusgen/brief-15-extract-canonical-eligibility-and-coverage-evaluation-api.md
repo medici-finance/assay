@@ -109,6 +109,24 @@ workspace (row 4). API ergonomics and L scope remain review judgments.
 ## Evidence
 
 <!-- Non-implementer records merged revision, commands, results and retained red controls. -->
+<!-- Non-implementer records merged revision, commands, results and retained red controls. -->
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationLibraryCLIParity$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationLibraryCLIParity " "$result")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (forge-identity) |
+| 2 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationUncertainEvidenceHolds$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationUncertainEvidenceHolds " "$result")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (forge-identity) |
+| 3 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationPureDependencyBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationPureDependencyBoundary " "$result")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (forge-identity) |
+| 4 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationExternalConsumer$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationExternalConsumer " "$result")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (forge-identity) |
+Verification-Attestation: medici-finance/assay#2663 run=bcd98070405617fdef9d2fa5bdca93f6d74d161132d0211adaa7ab6889f1809c source=18d752a4c9318e27bcfd49fa44f9cfb62923b691 brief=docs/streams/statusgen/brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md model=gpt-6.1-sol tier=any
+
+
+**VERIFY: BLOCKED** — all four required check:ci rows were not run; the witness executor returned exit 2 because the network-off sandbox is unavailable on this Darwin host. No implementation failure was observed. Status remains implemented.
+
+Environment blocker: [assay#2665](https://github.com/medici-finance/assay/issues/2665). Wake: an operator provides a supported Linux verifier with the required network-off sandbox and records an explicit recheck.
+
+RISK-VALUE: DERIVED — TreeSHALen = 12 @ statusgen/evaluation/coverage_api.go:22 — the behavior-preserving extraction must retain the existing 12-character witness tokens (pre-extraction statusgen/verifyrun.go:150); graph-execution/03 records that format, and the revision-token floor already used it. This static derivation does not clear the blocked execution rows.
+
+Risk metadata is explicitly all no and gate is model. Full diff-wide literal enumeration and remaining derivations are incomplete in this blocked pass; no PASS or sign-off is claimed.
 
 ## Review
 
