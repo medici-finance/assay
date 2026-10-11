@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -230,6 +231,11 @@ func (r coverageRepo) DeclaredFilesAt(rev, briefRel string) ([]string, bool, boo
 		return nil, false, false
 	}
 	entries, found := extractContextDeclaredEntriesRaw(body)
+	// Historical entries are normalized the way the current tree's are, so a
+	// backslash-spelled entry compares equal on both sides.
+	for i, e := range entries {
+		entries[i] = filepath.ToSlash(e)
+	}
 	return entries, found, true
 }
 

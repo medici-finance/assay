@@ -155,9 +155,14 @@ input yields the same verdicts under the same identity, and a change to a policy
 behavior bumps the version, so a recorded verdict can be tied to what produced it.
 
 **Pin and release.** Consumers pin the statusgen module at a version and resolve it with
-`GOWORK=off`. The module manifest names nothing under `tools/desk` and carries no replace;
-`deskkit` stays internal. A contract test qualifies external consumption: a throwaway module
-outside this repository builds and exercises both entry points against a local file module
-proxy, with the workspace off, no relative replace and every network proxy pointed at a dead
-address, and a second consumer that expects an API the module does not offer fails to build.
+`GOWORK=off`. The module manifest names nothing under `tools/desk`; `deskkit` stays internal.
+The manifest carries one relative `replace`, for the in-repository sibling module `forgeread`
+(the fact reader); a consumer ignores a dependency's `replace`, so an external pin must also
+resolve `forgeread` at the version the manifest requires, which is currently a placeholder
+pseudo-version that no published proxy serves. Resolving that placeholder is a gap for external
+pinning until the sibling is released; it is tracked as a follow-up and is not hidden by the
+test. A contract test qualifies the packaging: a throwaway module outside this repository builds
+and exercises both entry points against a local file module proxy that serves both modules, with
+the workspace off, no replace in the consumer and every network proxy pointed at a dead address,
+and a second consumer that expects an API the module does not offer fails to build.
 This is packaging qualification only; it cuts no release and contacts no provider.

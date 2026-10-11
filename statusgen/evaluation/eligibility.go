@@ -122,8 +122,8 @@ type Sibling struct {
 }
 
 // SiblingLookup returns the observation for a published repo (as the registry
-// names it, e.g. "owner/name"). It is called lazily, once per distinct
-// resolution that needs it. A nil lookup observes no sibling at all.
+// names it, e.g. "owner/name"). It is called lazily, once for each
+// cross-repo edge that needs it (the library does not cache; the observer may). A nil lookup observes no sibling at all.
 type SiblingLookup func(repo string) Sibling
 
 // EligibilityInput is everything EvaluateEligibility reads.

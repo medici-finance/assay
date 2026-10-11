@@ -580,7 +580,7 @@ func classifyRevisionDetail(x *evalCtx, scope witnessScope, witnessTree, target 
 // (round-2 F2, round-3 F2/F6). See this file's header ("THE REVISION
 // COMPARISON IS OFFLINE").
 type witnessScope struct {
-	briefRel string   // the brief file's path relative to the repository root, slash-separated ("" = none)
+	briefRel string   // the brief file's path relative to the statusgen root, slash-separated ("" = none)
 	declared []string // the brief's `files:` entries (normalized) plus, per row, its source dependencies; nil = none
 	// manifest is the brief's work-input dependency manifest (nil = none
 	// supplied). deps are its entries that apply to the row being resolved
