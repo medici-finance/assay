@@ -45,7 +45,7 @@ func TestLandVerb_OneExitPerItem(t *testing.T) {
 	t.Setenv("DESK_LOOP", "intake-desk")
 	base := []string{"--item", "medici-finance/assay#77", "--artifact", "medici-finance/assay#901", "--tier", "strong"}
 	land := func(extra ...string) error {
-		return cmdLand(append(append([]string(nil), base...), extra...), &strings.Builder{})
+		return cmdLand(append(append([]string(nil), base...), extra...), os.Getenv("DESK_LOOP"), &strings.Builder{})
 	}
 
 	ok := t.Run("first land writes one record and one audit line", func(t *testing.T) {
@@ -124,7 +124,7 @@ func TestLandVerb_ClosedSetAccepted(t *testing.T) {
 			isolatedDeskHome(t)
 			t.Setenv("DESK_LOOP", role)
 			err := cmdLand([]string{"--item", "medici-finance/assay#" + string(rune('1'+i)), "--exit", "bug",
-				"--artifact", "#5", "--tier", "any"}, &strings.Builder{})
+				"--artifact", "#5", "--tier", "any"}, role, &strings.Builder{})
 			if role == "driver" {
 				if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 					t.Fatalf("DESK_LOOP=driver was accepted: %v", err)

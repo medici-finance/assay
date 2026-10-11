@@ -308,38 +308,31 @@ func decodeRecord(t *testing.T, line string) (IntakeExitRecord, map[string]any) 
 	return r, m
 }
 
-// TestDrainPass_WritesExitRecords is the flow: an offline pass over a fixture inbound file (one new
-// issue, one update) writes one mechanical record per batch member, then `land` on the parked
-// update writes the judgment record, and no line carries a title, an author or a body.
+// TestDrainPass_WritesExitRecords is the flow, through two real passes: pass 1 drains #170 and #171
+// as NEW issues and writes one mechanical record per batch member; pass 2 sees #171 again as an
+// UPDATE (its placeholder now exists), parks it, and prints the land command for that event; `land`
+// with the printed --opened writes the judgment record beside #171's earlier mechanical one. No line
+// carries a title, an author or a body.
+//
+// regression: C-update-judgment-unrecordable — keyed on the item alone, the pass-2 judgment was
+// refused because #171 had already left by placeholder in pass 1.
 func TestDrainPass_WritesExitRecords(t *testing.T) {
 	stateDir := isolatedDeskHome(t)
 	t.Setenv("DESK_LOOP", "intake-desk")
-
-	g := newFakeGit()
-	loop := batchLoop(t,
-		"INBOUND: medici-finance/assay#170 2026-08-24T11:50:00Z\n"+
-			"INBOUND: medici-finance/assay#171 2026-08-24T11:51:00Z\n", g)
 	const author = "shared-agent" // a trusted fixture login: it must never reach a record
-	loop.Probe = probeReturning(author, time.Time{}, nil, true, nil)
-	dir := filepath.Join(loop.Root, deskkit.ScanDir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "issue-171.md"), []byte("---\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 
+	// Pass 1: both issues are new.
+	loop1 := batchLoop(t,
+		"INBOUND: medici-finance/assay#170 2026-08-24T11:50:00Z\n"+
+			"INBOUND: medici-finance/assay#171 2026-08-24T11:51:00Z\n", newFakeGit())
+	loop1.Probe = probeReturning(author, time.Time{}, nil, true, nil)
 	var sb strings.Builder
-	if err := drainPass(passConfig(t), loop, &sb); err != nil {
-		t.Fatalf("pass errored: %v\n%s", err, sb.String())
+	if err := drainPass(passConfig(t), loop1, &sb); err != nil {
+		t.Fatalf("pass 1 errored: %v\n%s", err, sb.String())
 	}
-	if got := loop.Parked(); len(got) != 1 || got[0] != "medici-finance/assay#171" {
-		t.Fatalf("parked = %v, want the update parked for judgment", got)
-	}
-
 	lines := readRecordLines(t, stateDir)
-	if len(lines) != 1 {
-		t.Fatalf("after the pass the record file has %d lines, want 1 (one per batch member):\n%s",
+	if len(lines) != 2 {
+		t.Fatalf("after pass 1 the record file has %d lines, want 2 (one per batch member):\n%s",
 			len(lines), strings.Join(lines, "\n"))
 	}
 	mech, _ := decodeRecord(t, lines[0])
@@ -349,21 +342,59 @@ func TestDrainPass_WritesExitRecords(t *testing.T) {
 		mech.TriagerRole != LoopName || mech.Opened != "2026-08-24T11:50:00Z" {
 		t.Fatalf("mechanical record = %+v", mech)
 	}
+	if first, _ := decodeRecord(t, lines[1]); first.Item != "medici-finance/assay#171" || first.Exit != ExitPlaceholder {
+		t.Fatalf("pass 1 record for #171 = %+v", first)
+	}
+
+	// Pass 2: #171 comes in again, now with its placeholder present, so it is an update.
+	loop2 := batchLoop(t, "INBOUND: medici-finance/assay#171 2026-08-24T11:55:00Z\n", newFakeGit())
+	loop2.Probe = probeReturning(author, time.Time{}, nil, true, nil)
+	dir := filepath.Join(loop2.Root, deskkit.ScanDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "issue-171.md"), []byte("---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sb.Reset()
+	if err := drainPass(passConfig(t), loop2, &sb); err != nil {
+		t.Fatalf("pass 2 errored: %v\n%s", err, sb.String())
+	}
+	if got := loop2.Parked(); len(got) != 1 || got[0] != "medici-finance/assay#171" {
+		t.Fatalf("parked = %v, want the update parked for judgment", got)
+	}
+	renderPassReport(&sb, loop2)
+	const hint = "scanloop land --item medici-finance/assay#171 --opened 2026-08-24T11:55:00Z --kind update"
+	if !strings.Contains(sb.String(), hint) {
+		t.Fatalf("the EMITTED report does not print the land command for this event (%q):\n%s", hint, sb.String())
+	}
+	if n := len(readRecordLines(t, stateDir)); n != 2 {
+		t.Fatalf("pass 2 wrote a record for a parked item: %d lines", n)
+	}
 
 	var out strings.Builder
-	err := cmdLand([]string{"--item", "medici-finance/assay#171", "--exit", "needs-decision",
-		"--artifact", "medici-finance/assay#901", "--tier", "strong", "--kind", "update"}, &out)
+	err := cmdLand([]string{"--item", "medici-finance/assay#171", "--opened", "2026-08-24T11:55:00Z",
+		"--exit", "needs-decision", "--artifact", "medici-finance/assay#901", "--tier", "strong", "--kind", "update"},
+		"intake-desk", &out)
 	if err != nil {
 		t.Fatalf("land on the parked update: %v", err)
 	}
 	lines = readRecordLines(t, stateDir)
-	if len(lines) != 2 {
-		t.Fatalf("after land the record file has %d lines, want 2", len(lines))
+	if len(lines) != 3 {
+		t.Fatalf("after land the record file has %d lines, want 3", len(lines))
 	}
-	judged, _ := decodeRecord(t, lines[1])
+	judged, _ := decodeRecord(t, lines[2])
 	if judged.Item != "medici-finance/assay#171" || judged.DecidedBy != decidedJudgment ||
-		judged.TriagerTier != tierStrong || judged.Exit != ExitNeedsDecision || judged.TriagerRole != "intake-desk" {
+		judged.TriagerTier != tierStrong || judged.Exit != ExitNeedsDecision || judged.TriagerRole != "intake-desk" ||
+		judged.Opened != "2026-08-24T11:55:00Z" {
 		t.Fatalf("judgment record = %+v", judged)
+	}
+
+	// The same event cannot leave twice: a different exit for the pass-2 event is refused.
+	err = cmdLand([]string{"--item", "medici-finance/assay#171", "--opened", "2026-08-24T11:55:00Z",
+		"--exit", "bug", "--artifact", "#902", "--tier", "strong"}, "intake-desk", &out)
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused || len(readRecordLines(t, stateDir)) != 3 {
+		t.Fatalf("a second exit for the same event was not refused cleanly: %v", err)
 	}
 
 	wantKeys := jsonKeys(IntakeExitRecord{})

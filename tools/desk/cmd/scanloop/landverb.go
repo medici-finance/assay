@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -21,11 +20,12 @@ import (
 // landNow is the clock seam for the verb.
 var landNow = func() time.Time { return time.Now().UTC() }
 
-// landRole resolves the record's triager_role from $DESK_LOOP: the canonical name of the running
-// loop, and only if that name is in the closed role set. A login-shaped value, or any name the loop
-// registry does not know, is refused, never written.
-func landRole() (string, error) {
-	raw := strings.TrimSpace(os.Getenv("DESK_LOOP"))
+// landRole resolves the record's triager_role from the loop the SESSION declared in $DESK_LOOP
+// (raw is read before the drain's own default fills the variable in): the canonical name of the
+// running loop, and only if that name is in the closed role set. An unset value, a login-shaped
+// value, or any name the loop registry does not know, is refused, never written.
+func landRole(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
 	canonical, known := deskkit.CanonicalLoopName(raw)
 	if !known || canonical == "driver" || !memberOf(canonical, intakeExitRoles) {
 		return "", deskkit.Refused("scanloop land: $DESK_LOOP is not a canonical desk loop name in the closed role set (" +
@@ -35,7 +35,23 @@ func landRole() (string, error) {
 	return canonical, nil
 }
 
-func cmdLand(args []string, w io.Writer) error {
+// landOpened parses --opened, the inbound event's time as the drain's EMITTED line printed it. It is
+// half of the per-event key (item + opened): an issue that came in once as a new issue and again as
+// an update is two events, and each leaves by its own exit. Empty stays empty (the event's time is
+// unknown); anything that does not parse as RFC 3339 is refused.
+func landOpened(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return "", deskkit.Refused("scanloop land: --opened does not parse as an RFC 3339 time; got " + clipValue(raw, 40))
+	}
+	return t.UTC().Format(time.RFC3339), nil
+}
+
+func cmdLand(args []string, declaredLoop string, w io.Writer) error {
 	fs := flag.NewFlagSet("land", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	item := fs.String("item", "", "the parked item, owner/repo#N")
@@ -45,20 +61,26 @@ func cmdLand(args []string, w io.Writer) error {
 	detail := fs.String("detail", "", "rejected | watching (exit rejected-watching only)")
 	kind := fs.String("kind", "", "the classifier reason the item was parked with")
 	dispatchRef := fs.String("dispatch-ref", "", "the dispatch_ref join key, when known")
+	openedFlag := fs.String("opened", "", "the inbound event's time, RFC 3339, as the EMITTED line printed it")
 	if err := fs.Parse(args); err != nil {
-		return deskkit.Refused("scanloop land: bad flags: " + err.Error())
+		return deskkit.Refused("scanloop land: bad flags: " + clipValue(err.Error(), 80))
 	}
 	if fs.NArg() != 0 {
-		return deskkit.Refused("scanloop land: unexpected arguments: " + strings.Join(fs.Args(), " "))
+		return deskkit.Refused("scanloop land: unexpected arguments: " + clipValue(strings.Join(fs.Args(), " "), 80))
 	}
 
-	role, err := landRole()
+	role, err := landRole(declaredLoop)
 	if err != nil {
 		return err
 	}
 	// The same reconciliation Land uses. The drain parked this item UNROUTED; the verb's exit is
 	// the routing result, and "unrouted" itself is refused.
 	exit, err := ExitOf(ExitUnrouted, Exit(strings.TrimSpace(*exitName)))
+	if err != nil {
+		return err
+	}
+
+	opened, err := landOpened(*openedFlag)
 	if err != nil {
 		return err
 	}
@@ -76,6 +98,7 @@ func cmdLand(args []string, w io.Writer) error {
 		TriagerRole: role,
 		TriagerTier: strings.TrimSpace(*tier),
 		Triaged:     landNow().UTC().Format(time.RFC3339),
+		Opened:      opened,
 		Kind:        strings.TrimSpace(*kind),
 		SessionTag:  recordSessionTag(),
 		DispatchRef: strings.TrimSpace(*dispatchRef),

@@ -172,6 +172,16 @@ func (s *ScanLoop) Parked() []string {
 	return out
 }
 
+// ParkedEvent returns what the EMITTED report prints for a parked item: the classifier reason it
+// was parked with and the inbound event's time. That time is half of the intake-exit record's key
+// (item + opened), so the session passes it to `land --opened` to record the exit for THIS event.
+func (s *ScanLoop) ParkedEvent(id string) (kind string, opened time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.meta[id]
+	return m.Kind, m.Opened
+}
+
 // exited is the set the leak check runs against: everything queued MINUS what was emitted for
 // routing and minus what a live claim elsewhere took. An item still awaiting a routing decision has
 // not leaked — it has not finished — and calling it a leak would make the leak check cry wolf until
@@ -523,6 +533,10 @@ func (s *ScanLoop) Land(r loopengine.Result) error {
 	if err != nil {
 		return err
 	}
+	// Record failures are collected, never returned from inside the loop: by the time Land runs the
+	// lane's outward write has happened, so every member still gets its ledger entry and its audit
+	// `land` line, and the failures are reported together once the batch is landed.
+	var recordErrs []error
 	for _, member := range members {
 		rec := ExitRecord{
 			ItemID:   member,
@@ -538,18 +552,19 @@ func (s *ScanLoop) Land(r loopengine.Result) error {
 			fmt.Fprintf(s.emit(), "[dry-run] exit-ledger: %s -> %s (%s)\n", rec.ItemID, rec.Exit, rec.Lane)
 			continue
 		}
-		// The structured intake-exit-v1 record, beside (not instead of) the audit line. A write
-		// failure or a refusal is returned, the same rule auditExit follows.
-		xr := landRecord(member, exit, outcome.Lane, rec.Artifact, r.Item.Payload["detail"], r.Item.ExecTier,
-			metas[member], s.now())
-		if _, err := appendExitRecord(xr, nil); err != nil {
-			return err
-		}
 		if err := auditExit("scanloop", rec); err != nil {
 			return err
 		}
+		// The structured intake-exit-v1 record comes AFTER the audit line and never gates it: a
+		// refused or unwritable record costs that member its record, not its audit line, and costs
+		// the other members nothing.
+		xr := landRecord(member, exit, outcome.Lane, rec.Artifact, r.Item.Payload["detail"], r.Item.ExecTier,
+			metas[member], s.now())
+		if _, err := appendExitRecord(xr, nil); err != nil {
+			recordErrs = append(recordErrs, err)
+		}
 	}
-	return nil
+	return recordFailures(recordErrs)
 }
 
 // OnIdle is the next poll. The monitor is the refresh — SelectQueue runs a fresh cycle every time —

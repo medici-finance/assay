@@ -70,6 +70,10 @@ var (
 	// intakeIssueRe is the `issue #NN` scoped-to form (and a `decision-issue` value, which may
 	// also be the bare number).
 	intakeIssueRe = regexp.MustCompile(`^(?i:issue\s*)?#?([1-9][0-9]*)$`)
+	// intakeItemRe is the only `item` the export writes: an intake entry id, `I-<slug>`. The id is
+	// copied from the committed register, so an entry whose id is anything else (a login, prose)
+	// is counted `unmapped` rather than exported.
+	intakeItemRe = regexp.MustCompile(`^I-[A-Za-z0-9][A-Za-z0-9-]*$`)
 )
 
 func inClosedSet(v string, set []string) bool {
@@ -200,7 +204,7 @@ func buildIntakeExits(entries []intakeEntry, repo string) ([]intakeExitRecord, i
 			continue
 		}
 		exit, detail, artifact, ok := mapIntakeExit(e)
-		if !ok {
+		if !ok || !intakeItemRe.MatchString(strings.TrimSpace(e.ID)) {
 			sum.Unmapped++
 			continue
 		}

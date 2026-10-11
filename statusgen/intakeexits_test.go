@@ -302,3 +302,24 @@ func TestIntakeExitSchema_MatchesDoc(t *testing.T) {
 		t.Errorf("closed role set differs from the schema document\n writer: %v\n    doc: %v", a, b)
 	}
 }
+
+// TestIntakeExits_ItemMustBeIntakeID — the export's `item` is an `I-<slug>` id or the entry is not
+// exported: an id copied from the committed register that is anything else is counted unmapped.
+//
+// regression: security note 3 on medici-finance/assay#2424 — the export copied the entry id into
+// `item` unchecked, so a login-shaped or prose id reached a record the schema says never carries one.
+func TestIntakeExits_ItemMustBeIntakeID(t *testing.T) {
+	for _, id := range []string{"alice-dev", "I-", "I-has space", "I-ok-but-trailing!"} {
+		t.Run(id, func(t *testing.T) {
+			root := intakeRoot(t, map[string]string{"e.md": intakeFile("\""+id+"\"", "2026-08-24", "watching", stampOK)})
+			recs, sum, _ := exportIntakeExits(t, root)
+			if len(recs) != 0 || sum != (intakeExitSummary{Unmapped: 1}) {
+				t.Fatalf("id %q: %d records, summary %+v; want none exported and one unmapped", id, len(recs), sum)
+			}
+		})
+	}
+	root := intakeRoot(t, map[string]string{"e.md": intakeFile("I-good-1", "2026-08-24", "watching", stampOK)})
+	if recs, sum, _ := exportIntakeExits(t, root); len(recs) != 1 || sum != (intakeExitSummary{Stamped: 1}) {
+		t.Fatalf("a well-formed id was not exported: %d records, %+v", len(recs), sum)
+	}
+}

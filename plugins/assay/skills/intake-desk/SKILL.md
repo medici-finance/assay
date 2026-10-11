@@ -234,12 +234,19 @@ every lane step without running it; `--offline --inbound <file>` opens no networ
 **Exit records.** Every exit `run` lands is also appended as a `decided_by: mechanical` record to
 `<state dir>/intake-exits.jsonl` (`--dry-run` writes none). A JUDGMENT item is parked, never
 landed by the drain: **after routing a parked item, record its exit** with
-`scanloop land --item <owner/repo#N> --exit <code slug> --artifact <typed ref> --tier any|strong`
-(plus `--detail rejected|watching` for `rejected-watching`, `--kind <reason>` as the drain parked
-it, and `--dispatch-ref <ref>` when known). Run it from the desk window, so `$DESK_LOOP` names the
-running loop — the record's role. The artifact is a typed ref (`<stream>/<NN>`, `owner/repo#N`,
-`#N`, `F-<slug>`), never prose. One exit per item: the same exit again is a no-op, a different one is
-refused (exit 5).
+the `record it:` command the drain's EMITTED report prints for that item —
+`scanloop land --item <owner/repo#N> --opened <time> --kind <reason> --exit <code slug> --artifact <typed ref> --tier any|strong`
+(plus `--detail rejected|watching` for `rejected-watching`, and `--dispatch-ref <ref>` when known).
+Run it from the desk window, so `$DESK_LOOP` names the running loop — the record's role; an
+undeclared loop is refused. The artifact is a typed ref (`<stream>/<NN>`, `owner/repo#N`, `#N`,
+`F-<slug>`), never prose. **One exit per inbound event** (item + `--opened`): an issue that already
+left once as a new issue and is now parked as an update is a second event, so an earlier record for
+the item does not block this one. The same exit for the same event again is a no-op; a different
+one is refused (exit 5) and the first recorded exit stands. **On a refusal or a could-not-check**
+(exit 6, an unreadable record file): do not edit `intake-exits.jsonl` by hand and do not re-run with
+a different `--opened` to get past it; file an issue against the desk tooling naming the item and
+the message. A drain pass that exits 5 or 6 naming intake-exit records has still landed and audited
+every exit — only the named records are missing; file the same issue.
 
 **Standing-doctrine pointer.** A successor scan-transcription lane (ruling R-7) would have an
 `issues`-event workflow commit the placeholder delta for trusted-author issues. Until R-7 signs and

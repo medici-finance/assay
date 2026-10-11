@@ -334,12 +334,23 @@ func readExitRecords(path string) ([]IntakeExitRecord, error) {
 	return out, nil
 }
 
+// sameEvent reports whether two records decide the same inbound EVENT: the same item (compared
+// case-insensitively, because the forge resolves owner and repo names without regard to case) and
+// the same `opened` time. One issue can come in the front door more than once: a new issue lands a
+// mechanical exit, and a later update to it is parked for judgment as a separate event with its own
+// exit. Keying on the item alone made that judgment unrecordable.
+func sameEvent(a, b IntakeExitRecord) bool {
+	return strings.EqualFold(a.Item, b.Item) && a.Opened == b.Opened
+}
+
 // appendExitRecord validates r and appends it as one line, holding the audit lock across the
-// read-check-append. It holds one exit per item across sessions: the same item with the same exit
-// is a no-op (wrote=false), the same item with a DIFFERENT exit is refused and the file is left
-// unchanged. A write failure is returned, never swallowed. afterWrite, when non-nil, runs under the
-// same lock only after a line was written (the land verb writes its audit line there).
-func appendExitRecord(r IntakeExitRecord, afterWrite func() error) (wrote bool, err error) {
+// read-check-append. It holds one exit per inbound EVENT (sameEvent) across sessions: the same event
+// with the same exit is a no-op (wrote=false), the same event with a DIFFERENT exit is refused and
+// the file is left unchanged. A write failure is returned, never swallowed. beforeWrite, when
+// non-nil, runs under the same lock after those checks pass and BEFORE the record line is written;
+// if it fails, nothing is written. The land verb writes its audit line there, so a record never
+// exists without its audit line and a retry after a failed audit write is not a silent no-op.
+func appendExitRecord(r IntakeExitRecord, beforeWrite func() error) (wrote bool, err error) {
 	if err := r.Validate(); err != nil {
 		return false, err
 	}
@@ -354,14 +365,20 @@ func appendExitRecord(r IntakeExitRecord, afterWrite func() error) (wrote bool, 
 			return err
 		}
 		for _, prev := range existing {
-			if prev.Item != r.Item {
+			if !sameEvent(prev, r) {
 				continue
 			}
 			if prev.Exit == r.Exit {
 				return nil
 			}
-			return deskkit.Refused(fmt.Sprintf("%s already left by %s; refusing to also record %s. "+
-				"One inbound item leaves by exactly one exit.", r.Item, prev.Exit, r.Exit))
+			return deskkit.Refused(fmt.Sprintf("%s (opened %s) already left by %s; refusing to also record %s. "+
+				"One inbound event leaves by exactly one exit; the first recorded exit stands.",
+				r.Item, firstNonEmpty(r.Opened, "unknown"), clipValue(string(prev.Exit), 32), r.Exit))
+		}
+		if beforeWrite != nil {
+			if err := beforeWrite(); err != nil {
+				return err
+			}
 		}
 		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
@@ -375,12 +392,32 @@ func appendExitRecord(r IntakeExitRecord, afterWrite func() error) (wrote bool, 
 			return deskkit.Unverifiable("cannot close "+intakeExitsFile, err)
 		}
 		wrote = true
-		if afterWrite != nil {
-			return afterWrite()
-		}
 		return nil
 	})
 	return wrote, err
+}
+
+// recordFailures folds the record errors of one Land call into one error. Every member's exit was
+// already landed in the ledger and the audit log when these were collected, so the message says
+// so; the exit code is the most severe of them: could-not-check (6) over refused (5).
+func recordFailures(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	msgs := make([]string, 0, len(errs))
+	unverifiable := false
+	for _, e := range errs {
+		msgs = append(msgs, e.Error())
+		if !deskkit.IsRefused(e) {
+			unverifiable = true
+		}
+	}
+	msg := fmt.Sprintf("every exit in this batch was landed and audited, but %d intake-exit record(s) were not written "+
+		"to %s: %s", len(errs), intakeExitsFile, strings.Join(msgs, "; "))
+	if unverifiable {
+		return deskkit.Unverifiable(msg, errors.Join(errs...))
+	}
+	return deskkit.RefusedWithCause(msg, errors.Join(errs...))
 }
 
 // memberMeta is what Land needs about one inbound item to write its record. It is captured when
