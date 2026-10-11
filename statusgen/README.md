@@ -226,6 +226,11 @@ computed by the same function that writes, so the two cannot disagree. Each row
 carries `id`, `readme`, `from`, `to`, `witness`, and the whole table line before and
 after the edit (`rowBefore`, `rowAfter`). `wouldApply` is `[]` when nothing would be
 written; it is absent only when `--backfill` was not given or `--apply` was.
+Both forms take one whole-run admission decision: when `--apply` on the same run
+would refuse and write nothing (exit 3 — the raw pull list, the PR read, or any
+fold read in `unread` could not be made), the read-only form lists no row
+(`wouldApply` is `[]`), reports the reason as `wouldRefuse`, and says
+could-not-check on stderr — it never lists a row the writer would refuse.
 
 `--apply` WITHOUT `--backfill` is trailer-only: it writes only rows witnessed by a
 merged PR's trailer, never a branch or body match — the mode the scheduled

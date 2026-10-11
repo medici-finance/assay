@@ -1009,3 +1009,122 @@ func TestFoldBackfillWritesWitnessed(t *testing.T) {
 	wantCell(t, cells, "fx/04", "unknown", "a passing run with no merge on record")
 	wantCell(t, cells, "fx/05", "unknown", "an open trailer PR and a passing run")
 }
+
+// previewParity runs the read-only `--backfill` form and then the --apply form
+// on one tree and returns both. It pins the shared contract: the preview never
+// writes, and it lists exactly what --apply wrote (nothing, when --apply
+// refused) and carries the refusal --apply exited 3 on.
+func previewParity(t *testing.T, root string) (dry reconcileResult, wetCode int, wet reconcileResult) {
+	t.Helper()
+	readme := filepath.Join(root, "docs", "streams", "fx", "README.md")
+	before, _ := os.ReadFile(readme)
+	code, dry, e := foldRun(t, root, "--backfill")
+	if code != reconcileOK {
+		t.Fatalf("read-only --backfill exit %d; stderr:\n%s", code, e)
+	}
+	if after, _ := os.ReadFile(readme); string(after) != string(before) {
+		t.Fatalf("the read-only form wrote to the tree")
+	}
+	if dry.WouldApply == nil {
+		t.Fatalf("the read-only form must report wouldApply")
+	}
+	wetCode, wet, _ = foldRun(t, root, "--backfill", "--apply")
+	switch {
+	case wetCode == reconcileCouldNotCheck:
+		if after, _ := os.ReadFile(readme); string(after) != string(before) {
+			t.Errorf("--apply exited %d but wrote to the tree", wetCode)
+		}
+		if len(*dry.WouldApply) != 0 || len(dry.Held) != 0 || dry.WouldRefuse == "" {
+			t.Errorf("--apply refused (exit 3); the preview must list no row and carry the refusal, got wouldApply=%+v held=%+v wouldRefuse=%q",
+				*dry.WouldApply, dry.Held, dry.WouldRefuse)
+		}
+	case wetCode == reconcileOK:
+		if dry.WouldRefuse != "" {
+			t.Errorf("--apply wrote, but the preview says it would refuse: %q", dry.WouldRefuse)
+		}
+		if len(*dry.WouldApply) != len(wet.Applied) {
+			t.Errorf("wouldApply %+v differs from applied %+v", *dry.WouldApply, wet.Applied)
+		}
+	default:
+		t.Fatalf("--apply exit %d", wetCode)
+	}
+	return dry, wetCode, wet
+}
+
+// TestFoldPreviewRefusalParity is C10: one eligible todo row (fx/01, merged
+// trailer PR, no Evidence) beside an UNRELATED unread fold input (fx/03's
+// issues read fails). --apply refuses the whole run; the read-only form must
+// say so rather than list fx/01. The control run, with the issues read
+// working, shows fx/01 is a row both forms take.
+// regression: #2472
+func TestFoldPreviewRefusalParity(t *testing.T) {
+	briefs := []foldFixtureBrief{
+		{num: "01", id: "fx/01", gate: "model"},
+		{num: "03", id: "fx/03", gate: "model", issues: []int{7}},
+	}
+	rows := map[string][3]string{"01": {"todo", "—", "—"}, "03": {"todo", "—", "—"}}
+
+	ctl := writeFoldFixture(t, briefs, rows)
+	foldServer(t, foldStdPulls()[:1], foldIssues())
+	dry, code, wet := previewParity(t, ctl)
+	if code != reconcileOK || len(wet.Applied) != 1 || wet.Applied[0].ID != "fx/01" ||
+		len(*dry.WouldApply) != 1 || (*dry.WouldApply)[0].ID != "fx/01" {
+		t.Fatalf("fixture drift: with every read made, both forms must take fx/01; exit %d wouldApply=%+v applied=%+v",
+			code, *dry.WouldApply, wet.Applied)
+	}
+
+	root := writeFoldFixture(t, briefs, rows)
+	foldServer(t, foldStdPulls()[:1], nil)
+	dry, code, _ = previewParity(t, root)
+	if code != reconcileCouldNotCheck {
+		t.Fatalf("--apply exit %d, want %d with a fold read unread", code, reconcileCouldNotCheck)
+	}
+	if !strings.Contains(dry.WouldRefuse, "fold read") {
+		t.Errorf("wouldRefuse = %q, want the failed fold read named", dry.WouldRefuse)
+	}
+}
+
+// TestFoldPreviewPullsRefusal is C10's other half: the PR read succeeds but
+// the backfill's raw pull list read fails. --apply refuses (the backfill
+// witness set is unread); the read-only form must not list the trailer row.
+// regression: #2472
+func TestFoldPreviewPullsRefusal(t *testing.T) {
+	root := writeFoldFixture(t,
+		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model"}},
+		map[string][3]string{"01": {"todo", "—", "—"}})
+	foldServer(t, nil, foldIssues())
+	pulls, _ := json.Marshal(foldStdPulls()[:1])
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/issues"):
+			_, _ = w.Write([]byte(`[]`))
+		case strings.Contains(r.URL.Path, "/pulls"):
+			if r.URL.Query().Get("page") != "" && r.URL.Query().Get("page") != "1" {
+				_, _ = w.Write([]byte(`[]`))
+				return
+			}
+			// Per run: the trailer read (ListPRs) is served, the backfill's
+			// own pull list read fails.
+			calls++
+			if calls%2 == 0 {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write(pulls)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	reconcileGHClient = func(token string) *ghClient {
+		return &ghClient{doer: srv.Client(), base: srv.URL, token: token}
+	}
+	dry, code, _ := previewParity(t, root)
+	if code != reconcileCouldNotCheck {
+		t.Fatalf("--apply exit %d, want %d with the raw pull list unread", code, reconcileCouldNotCheck)
+	}
+	if !strings.Contains(dry.WouldRefuse, "raw pull list") {
+		t.Errorf("wouldRefuse = %q, want the unread pull list named", dry.WouldRefuse)
+	}
+}

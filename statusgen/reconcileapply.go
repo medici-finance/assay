@@ -50,6 +50,11 @@ package main
 // changes between them, the lint hold included: both forms evaluate it the same
 // way, against the edited README held in memory, so wouldApply never lists a row
 // --apply would hold and the hold never writes to disk to decide.
+//
+// The whole-run admission decision is shared too (#2472 C10): an unread input
+// that makes --apply refuse every row (reconcileWriteRefusal in reconcile.go)
+// makes the read-only form list none and report the refusal as wouldRefuse,
+// so wouldApply never lists a row --apply refuses with exit 3.
 
 import (
 	"fmt"

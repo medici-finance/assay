@@ -100,8 +100,8 @@
     {
       "name": "--apply refuses on unread",
       "file": "reconcile.go",
-      "old": "if *apply && len(unread) > 0 {",
-      "new": "if false && len(unread) > 0 {"
+      "old": "case len(unread) > 0:",
+      "new": "case false:"
     },
     {
       "name": "C7 apply writes witnessed rows",
@@ -198,6 +198,18 @@
       "file": "reconcilebackfill.go",
       "old": "if c.Cell == \"verified\" && b.Gate == \"model\" {",
       "new": "if false {"
+    },
+    {
+      "name": "C10 preview ignores the shared refusal (lists rows --apply refuses)",
+      "file": "reconcile.go",
+      "old": "if refusal != \"\" {\n\t\t\t// Only the read-only",
+      "new": "if false {\n\t\t\t// Only the read-only"
+    },
+    {
+      "name": "C10 admission drops the unread raw pull list",
+      "file": "reconcile.go",
+      "old": "case pullsUnread != \"\":",
+      "new": "case false:"
     }
   ]
 }

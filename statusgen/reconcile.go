@@ -49,7 +49,12 @@ type reconcileResult struct {
 	Briefs     []BriefCell   `json:"briefs"`
 	Applied    []appliedRow  `json:"applied,omitempty"`
 	WouldApply *[]appliedRow `json:"wouldApply,omitempty"`
-	Held       []heldRow     `json:"held,omitempty"`
+	// WouldRefuse is set on the read-only form when --apply on the same run
+	// would refuse to write anything (exit 3): the reason, from the same
+	// whole-run admission decision (reconcileWriteRefusal). WouldApply is then
+	// `[]` — the rows --apply would write — and Held is empty.
+	WouldRefuse string    `json:"wouldRefuse,omitempty"`
+	Held        []heldRow `json:"held,omitempty"`
 	// Unread lists every fold read that could not be made this run (a failed
 	// or truncated forge read, a provenance or version read that failed). The
 	// briefs it touches derive `unknown`; --apply refuses while it is non-empty.
@@ -141,6 +146,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	cells := DeriveLifecycle(in)
 
 	var lookup handSaidLookup
+	pullsUnread := ""
 	if *backfill {
 		lookup = func(stream, num string) (string, string, bool) {
 			return handSaidBeforeGeneration(*root, stream, num)
@@ -152,32 +158,25 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 			pulls, pullsLookedAt, reason = client.fetchAllPulls(*repo)
 			if !pullsLookedAt {
 				fmt.Fprintf(stderr, "reconcile --backfill: could-not-check the raw pull list: %s\n", reason)
-				if *apply {
-					// The backfill witness set is unread: writing the trailer half
-					// alone would pass for a complete backfill run.
-					return reconcileCouldNotCheck
-				}
+				pullsUnread = reason
 			}
 		}
 		cells = applyReconcileBackfill(cells, in, pulls, pullsLookedAt, lookup)
 	}
 
-	if *apply && !in.LookedAt {
-		// Nothing was read, so nothing can be written — and the exit must say
-		// so: a scheduled writer exiting 0 here reads as "board current".
-		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %s; nothing written\n", in.Reason)
-		return reconcileCouldNotCheck
-	}
-	if *apply && len(unread) > 0 {
-		// A fold read failed: the cells it touches are `unknown`, and a write
-		// from a partial read would pass for a complete one.
-		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %d fold read(s) failed (see `unread`); nothing written\n", len(unread))
+	// The whole-run admission decision, shared by both forms (#2472 C10):
+	// --apply refuses on it, and the read-only form reports the same refusal
+	// instead of rows, so `wouldApply` never lists a row the writer refuses.
+	refusal := reconcileWriteRefusal(in, pullsUnread, unread)
+	if *apply && refusal != "" {
+		fmt.Fprintf(stderr, "reconcile --apply: could-not-check — %s; nothing written\n", refusal)
 		return reconcileCouldNotCheck
 	}
 
 	var applied []appliedRow
 	var wouldApply *[]appliedRow
 	var held []heldRow
+	wouldRefuse := ""
 	if *backfill || *apply {
 		// One decision path for both forms (reconcileWrites), lint hold
 		// included: --apply writes the rows (trailer-only without --backfill);
@@ -186,7 +185,12 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		// (reconcile is commonly run from a subdirectory), so the rows land on
 		// the same docs/streams tree the briefs above were enumerated from.
 		rows := []appliedRow{}
-		if boardRoot, found := findBoardRoot(*root); found {
+		if refusal != "" {
+			// Only the read-only form reaches here (--apply returned above):
+			// --apply would write nothing, so neither is a row listed.
+			wouldRefuse = refusal
+			fmt.Fprintf(stderr, "reconcile --backfill (read-only): could-not-check — %s; --apply would exit %d and write nothing\n", refusal, reconcileCouldNotCheck)
+		} else if boardRoot, found := findBoardRoot(*root); found {
 			var werr error
 			if rows, held, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {
 				label := "reconcile --backfill (read-only)"
@@ -208,14 +212,15 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 
 	res := reconcileResult{
-		Repo:       *repo,
-		LookedAt:   in.LookedAt,
-		Reason:     in.Reason,
-		Briefs:     cells,
-		Applied:    applied,
-		WouldApply: wouldApply,
-		Held:       held,
-		Unread:     unread,
+		Repo:        *repo,
+		LookedAt:    in.LookedAt,
+		Reason:      in.Reason,
+		Briefs:      cells,
+		Applied:     applied,
+		WouldApply:  wouldApply,
+		WouldRefuse: wouldRefuse,
+		Held:        held,
+		Unread:      unread,
 	}
 
 	if *report {
@@ -239,6 +244,28 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	}
 	printReconcileTable(stdout, res)
 	return reconcileOK
+}
+
+// reconcileWriteRefusal is the whole-run admission decision: why no row may be
+// written this run, or "" when the writer may proceed. --apply exits 3 on it;
+// the read-only form reports it as wouldRefuse with no rows. Each refusal is a
+// read that could not be made, and a write from it would pass for a complete
+// run:
+//   - the raw pull list (the --backfill witness set) was not read — writing the
+//     trailer half alone would pass for a complete backfill;
+//   - the PR read did not happen — a scheduled writer exiting 0 here reads as
+//     "board current";
+//   - a fold read failed — the cells it touches are `unknown`.
+func reconcileWriteRefusal(in LifecycleInput, pullsUnread string, unread []string) string {
+	switch {
+	case pullsUnread != "":
+		return "the raw pull list could not be read (" + pullsUnread + ")"
+	case !in.LookedAt:
+		return in.Reason
+	case len(unread) > 0:
+		return fmt.Sprintf("%d fold read(s) failed (see `unread`)", len(unread))
+	}
+	return ""
 }
 
 // reconcileBriefIdents enumerates every brief on the board and returns its
@@ -314,6 +341,9 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 	}
 	for _, b := range res.Briefs {
 		fmt.Fprintf(w, "  %-40s %-12s %s\n", b.ID, b.Cell, reconcileDetail(b))
+	}
+	if res.WouldRefuse != "" {
+		fmt.Fprintf(w, "reconcile --backfill (read-only): --apply would refuse — %s; it would write nothing\n", res.WouldRefuse)
 	}
 	if res.WouldApply != nil && len(*res.WouldApply) > 0 {
 		fmt.Fprintf(w, "reconcile --backfill (read-only): --apply would write %d row(s)\n", len(*res.WouldApply))
