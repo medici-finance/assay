@@ -202,7 +202,7 @@ func resolveOverrideWho(osUser string, cfg Config) string {
 		login = l
 	} else if l, ok := cfg.HumanLogins[lower]; ok && validRosterLogin(l, cfg) {
 		login = l
-	} else if _, ok := cfg.Humans[lower]; ok {
+	} else if validRosterLogin(lower, cfg) {
 		login = lower
 	}
 	if login == "" {

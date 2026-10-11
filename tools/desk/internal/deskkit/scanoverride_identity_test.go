@@ -62,11 +62,14 @@ func TestResolveOverrideWho(t *testing.T) {
 	// A resolved value that is NOT a trusted human of the roster is never printed
 	// as resolved, whichever map it arrived through — the loader validates arm 1,
 	// and this guard re-validates at resolution for any Config built by another
-	// path.
+	// path. The last case is arm 3 itself: an OS account NAMED like a login that is
+	// in BOTH the human set and the App set (a pathological but loadable roster)
+	// must fall back, because the guard's App-slug exclusion applies to every arm.
 	for _, cfg := range []Config{
 		{OSUserLogins: map[string]string{"acct": "off-roster"}, Humans: map[string]int64{"ada": 2001}},
 		{HumanLogins: map[string]string{"acct": "off-roster"}, Humans: map[string]int64{"ada": 2001}},
 		{OSUserLogins: map[string]string{"acct": "ada"}, Humans: map[string]int64{"ada": 2001}, Bots: map[string]int64{"ada": 3001}},
+		{Humans: map[string]int64{"acct": 2001}, Bots: map[string]int64{"acct": 3001}},
 	} {
 		if got := resolveOverrideWho("acct", cfg); got != "os:acct" {
 			t.Errorf("a non-roster-human value resolved as %q — only the marked fallback may answer for it", got)
@@ -157,17 +160,21 @@ func TestOSUserLoginMapMalformedDegradesNotRefuses(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		raw  string
+		// alsoHuman lists the target login in ASSAY_TRUSTED_LOGINS too, so the
+		// !inHumans half of the membership check CANNOT refuse the entry and only
+		// the App-slug half (inBots) can — that half is exercised by nothing else.
+		alsoHuman bool
 	}{
-		{"no separator", "laptop-acct"},
-		{"empty OS account", ":ada"},
-		{"empty login", "laptop-acct:"},
-		{"a bot-shaped login", "laptop-acct:some-bot"},
-		{"an OS account mapped twice", "laptop-acct:ada,laptop-acct:shared-agent"},
-		{"one bad entry poisons the whole map, never a partial one", "laptop-acct:ada,broken"},
-		{"a configured App slug with NO affix (looksLikeBot cannot see it)", "laptop-acct:helios"},
-		{"a login the roster does not carry", "laptop-acct:not-on-roster"},
-		{"a value imitating the marked fallback", "laptop-acct:os:someone-else"},
-		{"a value carrying the session separator", "laptop-acct:ada/forged-session"},
+		{"no separator", "laptop-acct", false},
+		{"empty OS account", ":ada", false},
+		{"empty login", "laptop-acct:", false},
+		{"a bot-shaped login", "laptop-acct:some-bot", false},
+		{"an OS account mapped twice", "laptop-acct:ada,laptop-acct:shared-agent", false},
+		{"one bad entry poisons the whole map, never a partial one", "laptop-acct:ada,broken", false},
+		{"a configured App slug with NO affix, refused by the App-slug half alone", "laptop-acct:helios", true},
+		{"a login the roster does not carry", "laptop-acct:not-on-roster", false},
+		{"a value imitating the marked fallback", "laptop-acct:os:someone-else", false},
+		{"a value carrying the session separator", "laptop-acct:ada/forged-session", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := goldenRoster()
@@ -176,6 +183,9 @@ func TestOSUserLoginMapMalformedDegradesNotRefuses(t *testing.T) {
 			// the gap the coupling vector's rejectedRosters case records for the
 			// bless parser's inBotSet arm.
 			r[EnvTrustedBotSlugs] = r[EnvTrustedBotSlugs] + ",helios:9001"
+			if tc.alsoHuman {
+				r[EnvTrustedLogins] = r[EnvTrustedLogins] + ",helios:9001"
+			}
 			r[EnvOSUserLoginMap] = tc.raw
 			withRoster(t, r)
 
