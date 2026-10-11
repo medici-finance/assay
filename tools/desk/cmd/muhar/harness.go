@@ -141,6 +141,13 @@ type Harness struct {
 	// returns its root plus a cleanup. It is only consulted when Jobs > 1;
 	// when it is nil the sweep falls back to running in place.
 	Workspace func(id int) (root string, cleanup func(), err error)
+
+	// Selector, when set, narrows each mutation's suite to the tests that can
+	// catch it (selection.go). It is prepared on the pristine tree once the
+	// baseline is green, and the positive control runs UNDER it like every
+	// mutation, so a narrowed suite that cannot fail breaks the run. nil runs
+	// Test in full for every mutation — the historical behaviour.
+	Selector Selector
 }
 
 // Report is the outcome of a whole run.
@@ -216,7 +223,21 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 		return CouldNotMutate, fmt.Errorf("mutation %q: post-write verify failed — file is byte-identical to the original", m.Name)
 	}
 
-	if h.Test(root) {
+	test := h.Test
+	if h.Selector != nil {
+		// Decided only AFTER the edit is proven on disk, so a selection can
+		// never stand in for the could-not-mutate state. A Skip is NotCaught,
+		// never Caught: selection removes tests, so it can only turn a caught
+		// mutation into NOT CAUGHT, never a survivor green.
+		sel := h.Selector.For(m, orig)
+		if sel.Skip {
+			return NotCaught, nil
+		}
+		if sel.Test != nil {
+			test = sel.Test
+		}
+	}
+	if test(root) {
 		return Caught, nil
 	}
 	return NotCaught, nil
@@ -237,6 +258,17 @@ func (h *Harness) preflight(root string) Report {
 		return rep
 	}
 	rep.BaselineGreen = true
+
+	// Selection's coverage pass needs the green pristine tree the baseline
+	// just proved. It failing is a broken harness, never a fall-back to "every
+	// mutant uncovered".
+	if h.Selector != nil {
+		if err := h.Selector.Prepare(root); err != nil {
+			rep.Broken = true
+			rep.BrokenReason = fmt.Sprintf("test selection could not be prepared (%v); discard the run", err)
+			return rep
+		}
+	}
 
 	// (3) Positive control: a mutation the suite MUST catch. If it is not
 	// caught, the harness is not mutating (or the suite cannot see the source)
