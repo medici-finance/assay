@@ -58,7 +58,11 @@ func goldenCases() []goldenCase {
 		{name: "missing-cell", steps: []goldenStep{st("desk"), st("show"), st("status"), st("up"), st("down"), st("set"), st("cadence")}},
 		{name: "unknown-cell", steps: []goldenStep{st("show", "nope"), st("status", "nope"), stEnv(dry, "desk", "nope", "worker-desk")}},
 		{name: "status", steps: []goldenStep{st("status", "example"), st("status", "scrub")}},
-		{name: "deskd-needs-attended", steps: []goldenStep{st("deskd", "example")}},
+		{name: "deskd-needs-attended", steps: []goldenStep{
+			st("deskd", "example"),
+			st("--cells-root", "<ROOT>/cells", "deskd", "example"),
+			st("--cells-root", "relative", "deskd", "example"),
+		}},
 		{name: "show", steps: []goldenStep{
 			st("show", "example"),
 			st("show", "example", "--model", "opus"),

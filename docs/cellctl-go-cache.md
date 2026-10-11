@@ -142,3 +142,23 @@ path replacement, check uncertain custody and typed dispatch recovery, and build
 an import-free Go package twice with different HOME values. Toolchain downloads
 and proxy access are disabled. Reproducible mutants live in
 `tools/desk/internal/cellcache/mutations.json`.
+
+## Dispatch destination volumes
+
+On macOS and Linux, `deskdispatch` also checks the item checkout (`--root`) and
+its process temporary directory before any forge read, claim, or worktree creation.
+These destinations may be on different filesystems from the managed cache. They
+inherit the managed cache minimum-free-space floor. Set `DESK_MIN_FREE_BYTES` in
+the dispatch process environment to select a separate nonnegative byte floor,
+including for dispatches without managed Go caches. With neither setting present,
+existing admission behavior is unchanged; `0` disables these destination checks.
+The cache's own budget and floor remain governed by its existing policy.
+
+Each checked destination emits a `storage-volume` JSON report with the configured
+floor, available bytes, path, dry-run state, and admission outcome. Insufficient
+space or an unreadable measurement returns exit 6 (`storage-deferred`) before
+claiming work. Free space and retry the same item. Dry-run performs the same
+read-only measurements and reports the hold. This is a point-in-time admission
+check, not a storage reservation or active-task quota; other writers can consume
+space after admission. It does not measure arbitrary custom output destinations.
+An explicit nonzero floor on an unsupported platform fails closed.

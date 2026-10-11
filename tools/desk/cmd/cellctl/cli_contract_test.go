@@ -656,13 +656,14 @@ func TestCLIAdmissionBoundary(t *testing.T) {
 		in   deskInputs // the same request with the parser bypassed
 		role string
 		pol  bool
+		want string // the intended domain refusal, not an earlier fixture failure
 	}
 	cases := []refusal{
-		{"the-desk-opus", []string{"--model", "opus"}, deskInputs{Model: "opus"}, "the-desk", false},
-		{"unknown-harness", []string{"--harness", "bogus"}, deskInputs{Harness: "bogus"}, "worker-desk", false},
-		{"unknown-cockpit", []string{"--cockpit", "bogus"}, deskInputs{Cockpit: "bogus"}, "worker-desk", false},
-		{"persist-nothing", []string{"--set"}, deskInputs{Persist: true}, "worker-desk", false},
-		{"persist-with-policy", []string{"--set", "--model", "x"}, deskInputs{Persist: true, Model: "x"}, "worker-desk", true},
+		{"the-desk-opus", []string{"--model", "opus"}, deskInputs{Model: "opus"}, "the-desk", false, "an Opus pin is refused"},
+		{"unknown-harness", []string{"--harness", "bogus"}, deskInputs{Harness: "bogus"}, "worker-desk", false, "--harness must be"},
+		{"unknown-cockpit", []string{"--cockpit", "bogus"}, deskInputs{Cockpit: "bogus"}, "worker-desk", false, "--cockpit must be"},
+		{"persist-nothing", []string{"--set"}, deskInputs{Persist: true}, "worker-desk", false, "--set needs"},
+		{"persist-with-policy", []string{"--set", "--model", "x"}, deskInputs{Persist: true, Model: "x"}, "worker-desk", true, "--set with a model policy is ambiguous"},
 	}
 	for _, c := range cases {
 		c := c
@@ -674,7 +675,7 @@ func TestCLIAdmissionBoundary(t *testing.T) {
 			before := string(readFileOrEmpty(envFile))
 			args := append([]string{"desk", "example", c.role}, c.args...)
 			r := w.run(t, []string{"DRY_RUN=1"}, args...)
-			if r.Code != 3 {
+			if r.Code != 3 || !strings.Contains(r.Stderr, c.want) {
 				t.Errorf("through the tree: exit %d, want 3\n%s%s", r.Code, r.Stdout, r.Stderr)
 			}
 			if strings.Contains(r.Stdout, "[dry-run] cell=") {
@@ -685,10 +686,17 @@ func TestCLIAdmissionBoundary(t *testing.T) {
 			t.Setenv("DRY_RUN", "1")
 			t.Setenv("PATH", w.binDir+":"+os.Getenv("PATH"))
 			t.Setenv("HOME", w.cellDir)
+			// Supply the same valid config directory as the binary fixture so an
+			// earlier path refusal cannot masquerade as domain admission.
+			in := c.in
+			in.CfgIn = w.cfgDir
 			var got int
-			captureStdout(t, func() { got = dieRun(func() { cmdDesk(loadCell("example"), c.role, c.in) }) })
-			if got != 3 {
-				t.Errorf("parser bypassed: exit %d, want 3 (the refusal must live below the adapter)", got)
+			var stderr string
+			captureStdout(t, func() {
+				stderr = captureStderr(t, func() { got = dieRun(func() { cmdDesk(loadCell("example"), c.role, in) }) })
+			})
+			if got != 3 || !strings.Contains(stderr, c.want) {
+				t.Errorf("parser bypassed: exit %d, want 3 with %q (the refusal must live below the adapter)\n%s", got, c.want, stderr)
 			}
 			if after := string(readFileOrEmpty(envFile)); after != before {
 				t.Errorf("a refused request changed cell.env:\n%s", after)
@@ -739,4 +747,20 @@ func TestCLIAdmissionBoundary(t *testing.T) {
 			}
 		}
 	})
+}
+
+// The main-side custody repair defers deskd's roster read until cmdDeskd has
+// entered the selected cell's environment. Refusals before then read no roster.
+func TestCLIDeskdDefersRosterToCellCustody(t *testing.T) {
+	w := newCLIWorld(t, "")
+	for _, args := range [][]string{
+		{"deskd", "example"},
+		{"--cells-root", w.cellsRoot, "deskd", "example"},
+		{"--cells-root", "relative", "deskd", "example"},
+	} {
+		r := w.run(t, nil, args...)
+		if r.Code != 3 || r.Stdout != "" || strings.Contains(r.Stderr, echoFragment) {
+			t.Errorf("%v: want refusal before roster read; code=%d stdout=%q stderr=%q", args, r.Code, r.Stdout, r.Stderr)
+		}
+	}
 }

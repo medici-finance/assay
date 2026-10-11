@@ -302,9 +302,13 @@ func buildSnapshot(claims []claimRecord, obsSource statusObsSource, resSource re
 		if derr != nil {
 			return StatusSnapshot{}, false, deskkit.Unverifiable("claim "+c.Key+": dispatchedAt "+c.DispatchedAt+" is not RFC3339", derr)
 		}
-		co, oerr := obsSource(c)
-		if oerr != nil {
-			return StatusSnapshot{}, false, oerr
+		co := claimObs{blindReason: claimInventoryBlind(c, now)}
+		if co.blindReason == "" {
+			var oerr error
+			co, oerr = obsSource(c)
+			if oerr != nil {
+				return StatusSnapshot{}, false, oerr
+			}
 		}
 
 		state := c.State

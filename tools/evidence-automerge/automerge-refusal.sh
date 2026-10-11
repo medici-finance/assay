@@ -220,7 +220,7 @@ PY
     exit 1
   fi
 
-  echo "::warning::auto-merge not enabled on PR ${PR}: the request was refused as 'unstable status' and the only failing check is this workflow's own '${SELF_CHECK}'. That is self-inflicted and self-clearing — this run greens that check, and the next pull-request or review event enables auto-merge. Benign; see #586."
+  echo "::warning::auto-merge not enabled on PR ${PR}: the request was refused as 'unstable status' and the only failing check is this workflow's own '${SELF_CHECK}'. That is self-inflicted and self-clearing — this run greens that check, and the next scheduled poll retries enabling auto-merge. Benign; see #586."
   exit 0
 fi
 

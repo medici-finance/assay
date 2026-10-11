@@ -263,6 +263,7 @@ var envKeyOtherReads = map[string]envOtherRead{
 	`IsSet("max-bytes")@scratch.go:cmdScratch`: {why: "whether --max-bytes was given; a flag name"},
 
 	// ── not configuration ──
+	"os.LookupEnv(key)@helper_custody.go:enterDeskCustody":     {why: "saves the composed HOME, USERPROFILE, ASSAY_CONFIG_HOME, DESK_LOOP, DESK_SESSION and DESK_ROOTS only to restore the caller after scoped cell custody; no deployment configuration is chosen from these reads"},
 	"Get(p.TokenEnv)@provider.go:providerCredential":           {why: "the credential variable a provider's TOKEN_ENV names: the operator's own variable, read from the layered environment (process environment, defaults file, cell.env) like any other key"},
 	"Get(pt)@show.go:cmdShow":                                  {why: "the same credential variable, read only to say set or unset"},
 	"Get(tokenVar)@check.go:cmdCheck":                          {why: "the same credential variable, checked for presence"},

@@ -31,8 +31,11 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   requires the guard to name it.
 - **A relative selector** (`--cells-root <relative>`) is refused before anything else, on every
   line, help and version included: the roster echo, then
-  `cellctl: --cells-root requires an absolute registry path and a command`, exit 3, as before. It
-  is the one help-shaped line that reads the roster, and the selector is never applied.
+  `cellctl: --cells-root requires an absolute registry path and a command`, exit 3, as before.
+  `deskd` is the exception inherited from main's custody repair: it prints this refusal without
+  reading the operator roster. The selector is never applied. On successful execution, `deskd`
+  reads and echoes the roster only after entering the selected cell's custody; other executing
+  commands still echo in the command tree's pre-run hook.
 - **An empty verb word, `-h` or `--help` in the verb's place** prints the usage, exit 0, and runs
   nothing, whatever follows (`-h --bogus`, `--help up <cell>`), as before.
 - **Raw entrypoints.** `model-policy`, `cache-run`, `container-run` and `defaults` (four;

@@ -1,5 +1,5 @@
 {
-  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv|TestScratchRunFlagsBeforeVerb|TestCLILegacyShapeRefusals|TestCLILegacyShapeAccepted|TestCLILegacyWordsRestored|TestCLIEveryVerbDeclaresItsPositionals|TestCLIOpaqueArgvVerbResolvedLikeTheParser|TestCLIWholeLineScans|TestKindScanRefusesUnknown)$' ./cmd/cellctl/ ./internal/cli/",
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIDeskdDefersRosterToCellCustody|TestCLIConfigFlow|TestCLILegacyForms|TestCLIConfigLaunch|TestCLIAdmissionBoundary|TestScratchRunArgvBoundary|TestArgvVerbsKeepTheirArgv|TestScratchRunFlagsBeforeVerb|TestCLILegacyShapeRefusals|TestCLILegacyShapeAccepted|TestCLILegacyWordsRestored|TestCLIEveryVerbDeclaresItsPositionals|TestCLIOpaqueArgvVerbResolvedLikeTheParser|TestCLIWholeLineScans|TestKindScanRefusesUnknown)$' ./cmd/cellctl/ ./internal/cli/",
   "control": {
     "name": "CONTROL — a parse failure exits with the wrong code (usage exit 3 becomes 4)",
     "file": "cmd/cellctl/cobra.go",
@@ -216,6 +216,18 @@
       "file": "cmd/cellctl/shape.go",
       "old": "\tif verb == \"new\" {\n",
       "new": "\tif false && verb == \"new\" {\n"
+    },
+    {
+      "name": "deskd echoes the operator roster before entering cell custody",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if cmd.Name() != \"deskd\" {",
+      "new": "if true {"
+    },
+    {
+      "name": "relative selector echoes the operator roster before deskd refusal",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "if rest := commandArgs(args); len(rest) == 0 || rest[0] != \"deskd\" {",
+      "new": "if true {"
     }
   ]
 }

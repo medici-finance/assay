@@ -137,9 +137,12 @@ func runTree(args []string) (code int) {
 		}
 	}()
 	// The legacy parser refused a relative selector first, on every line (help and version
-	// included), after the roster echo; it still does, in the same order and words.
+	// included), after the roster echo. As on current main, deskd defers all roster reads
+	// until it enters the cell's custody, so its selector refusal skips that echo.
 	if len(args) >= 2 && args[0] == "--cells-root" && !filepath.IsAbs(args[1]) {
-		echoRoster()
+		if rest := commandArgs(args); len(rest) == 0 || rest[0] != "deskd" {
+			echoRoster()
+		}
 		die("--cells-root requires an absolute registry path and a command")
 	}
 	// The pre-migration command-line shape, checked before anything parses or echoes.
@@ -451,7 +454,10 @@ func buildRoot() *cobra.Command {
 		if cmd.Annotations[noEcho] == "1" {
 			return nil
 		}
-		echoRoster()
+		// deskd echoes only after entering the selected cell's custody, in cmdDeskd.
+		if cmd.Name() != "deskd" {
+			echoRoster()
+		}
 		if f := cmd.Flag("cells-root"); f != nil && f.Changed {
 			selectCellsRoot(f.Value.String())
 		}

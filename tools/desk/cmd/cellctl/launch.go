@@ -66,7 +66,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		// An existing tree is MERGED up to the fetched main, or the boot stops — never left
 		// behind with a notice (#1157).
 		c.mergeRoleWorktree(wt, sha)
-	} else if dwt, ok := c.worktreeViaDeskwt(role); ok {
+	} else if dwt, ok := c.worktreeViaDeskwt(role, session); ok {
 		_ = os.Remove(wt)
 		if lerr := os.Symlink(dwt, wt); lerr != nil {
 			die("desk: could not link %s -> %s: %v", wt, dwt, lerr)
