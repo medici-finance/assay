@@ -396,3 +396,58 @@ func TestPruneCachePassSymlinkDoesNotHideLaterCells(t *testing.T) {
 		t.Fatal("the nested cell's over-budget cache survived the sweep", err)
 	}
 }
+
+// A symlinked cells root is a form cellctl's loader accepts (its cell check
+// follows links). WalkDir would walk the link alone and find no cells, so the
+// sweep canonicalizes the root first; the descendant no-follow boundary is
+// unchanged.
+func TestPruneCachePassSymlinkedCellsRoot(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	cells := withCellsRoot(t)
+	p := plantMarkedCell(t, cells, filepath.Join("team", "demo"), "", 1)
+	cacheMaterial(t, p, "build/result", 100)
+	link := filepath.Join(t.TempDir(), "cells-link")
+	if err := os.Symlink(cells, link); err != nil {
+		t.Fatal(err)
+	}
+
+	rc, errout := runCapErr(t, []string{"prune", "--cells-root", link})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "cache-reclaimed 1") {
+		t.Fatalf("the linked cells root was not swept:\n%s", errout)
+	}
+	if _, err := os.Stat(filepath.Join(p.Root, "build", "result")); !os.IsNotExist(err) {
+		t.Fatal("the linked root's over-budget cache survived the sweep", err)
+	}
+}
+
+// A relative CELLS_ROOT is another accepted form: the sweep absolutizes it
+// before discovery, or the recorded-policy root comparison could never hold
+// and no cache would be checked.
+func TestPruneCachePassRelativeCellsRoot(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	base := t.TempDir()
+	t.Chdir(base)
+	t.Setenv("CELLS_ROOT", "cells")
+	cells := filepath.Join(base, "cells")
+	if err := os.MkdirAll(cells, 0700); err != nil {
+		t.Fatal(err)
+	}
+	p := plantMarkedCell(t, cells, "demo", "", 1)
+	cacheMaterial(t, p, "build/result", 100)
+
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "cache-reclaimed 1") {
+		t.Fatalf("the relative cells root was not swept:\n%s", errout)
+	}
+	if _, err := os.Stat(filepath.Join(p.Root, "build", "result")); !os.IsNotExist(err) {
+		t.Fatal("the relative root's over-budget cache survived the sweep", err)
+	}
+}

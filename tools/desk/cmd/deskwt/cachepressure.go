@@ -124,6 +124,18 @@ func sweepCellCaches(cellsRoot string, dryRun bool, reapedPaths []string) (cache
 		return res, warns
 	}
 
+	// Canonicalize the configured root before anything walks it: WalkDir does
+	// not follow a symlinked ROOT (the walk would visit the link alone and find
+	// no cells), and a relative root would leave candidates uncomparable with
+	// the absolute recorded policy roots. A root that does not exist keeps its
+	// absolute form; the missing-root case below handles it.
+	if abs, err := filepath.Abs(cellsRoot); err == nil {
+		cellsRoot = abs
+	}
+	if canon, err := filepath.EvalSymlinks(cellsRoot); err == nil {
+		cellsRoot = canon
+	}
+
 	// The orphan set, keyed by trust domain: the domain is a one-way hash of
 	// the canonical cell directory, so "this root belongs to that reaped
 	// directory" is a question only the same derivation can answer.

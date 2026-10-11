@@ -126,6 +126,12 @@
       "file": "cmd/deskwt/cachepressure.go",
       "old": "\t\t\treturn nil\n\t\t}\n\t\tfi, serr := os.Stat(filepath.Join(path, \"cell.env\"))",
       "new": "\t\t\treturn filepath.SkipDir\n\t\t}\n\t\tfi, serr := os.Stat(filepath.Join(path, \"cell.env\"))"
+    },
+    {
+      "name": "the configured cells root is walked uncanonicalized (a linked or relative root sweeps nothing)",
+      "file": "cmd/deskwt/cachepressure.go",
+      "old": "\tif abs, err := filepath.Abs(cellsRoot); err == nil {\n\t\tcellsRoot = abs\n\t}\n\tif canon, err := filepath.EvalSymlinks(cellsRoot); err == nil {\n\t\tcellsRoot = canon\n\t}",
+      "new": "\t// root canonicalization omitted"
     }
   ]
 }
