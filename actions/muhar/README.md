@@ -26,6 +26,7 @@ action's logic and the muhar binary it runs.
 | **Exit 2 — HARNESS BROKEN** (red baseline, or the positive control was not caught) | **always fails, exit 2, "harness broken — not clean"** | `harness-broken` |
 | Exit 1 — usage, spec or IO error | fails | `error` |
 | Any other exit (e.g. 130 on a signal) | fails with that exit code | `error` |
+| A bad input or a failed build, before muhar runs | fails | `error` |
 
 Exit 2 is never a pass. No input turns it off: a broken harness means none of the
 run's verdicts can be trusted, so "nothing was NOT CAUGHT" says nothing.
@@ -36,23 +37,30 @@ forever.
 
 With several specs, every spec runs; one broken spec makes the whole step exit 2.
 
+muhar also exits 2 when it rejects a flag before any baseline runs. The action still
+treats that as "harness broken — not clean" (exit 2), but its error then says muhar
+printed no HARNESS BROKEN report and points at muhar's stderr instead of at the baseline.
+
 ## Inputs
 
 | Input | Default | Meaning |
 |---|---|---|
 | `spec` | (required) | Spec path(s), one per line, relative to `working-directory`. Blank lines and `#` lines are skipped. |
 | `working-directory` | `.` | Where muhar runs. |
-| `jobs` | `1` | muhar `-j`: mutations in flight at once. `0` sizes to the CPU count (capped by muhar). |
+| `jobs` | `1` | muhar `-j`: mutations in flight at once, `0` to `9999`. `0` sizes to the CPU count (capped by muhar). |
 | `shard` | empty | muhar `-shard i/n` (0-based) for a matrix leg. Empty runs the whole spec. |
 | `fail-on-not-caught` | `true` | `false` reports NOT CAUGHT as a warning instead of failing. |
 | `fail-on-could-not-mutate` | `true` | `false` reports could-not-mutate as a warning instead of failing. |
 | `setup-go` | `true` | Install Go with `actions/setup-go` (pinned by SHA inside this action). Set `false` when the runner already has the Go your suite needs on `PATH` — for example a self-hosted runner without access to the Go download CDN. |
-| `go-version` | empty | Go version for `actions/setup-go`. Empty uses the version in this repository's `tools/desk/go.mod`, the toolchain muhar is built with. |
+| `go-version` | empty | Go version for `actions/setup-go`. Empty uses the version in this action's own `tools/desk/go.mod` (at the commit you pinned), the toolchain muhar is built with. |
 | `muhar-version` | empty | **Reserved, not implemented.** Meant for installing a pinned muhar release binary instead of building from source. Any non-empty value fails the step with "installing a release binary is not implemented yet". |
 
 muhar builds with Go; your test command (the spec's `test`) runs with whatever is on
 `PATH`. If your suite needs a different Go than muhar's, set `go-version` to yours (muhar
 builds with any recent Go) or set up your own toolchain and pass `setup-go: false`.
+
+**Runners.** The action's steps run under `bash`. It is exercised on Linux and macOS
+runners; Windows runners are untested.
 
 ## Outputs
 
@@ -92,7 +100,8 @@ the source being mutated all come from the PR head. So:
 
 Each spec gets a section in the job summary with muhar's full report — the baseline and
 positive-control line, every per-mutant verdict, and the `Totals:` line — followed by a
-table of every spec's result. A sharded run is labelled **Partial sweep**: its Totals
+table of every spec's result. When muhar exits non-zero, the section also carries the
+last 40 lines of its stderr, where muhar writes why it stopped. A sharded run is labelled **Partial sweep**: its Totals
 cover only that shard's share.
 
 ## Example workflows

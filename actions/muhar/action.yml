@@ -66,8 +66,10 @@ outputs:
     description: Mutations that could not be planted, summed over every spec. Empty when any spec's run had no trustworthy verdict.
     value: ${{ steps.run.outputs.could-not-mutate }}
   result:
-    description: One of clean, not-caught, could-not-mutate, harness-broken, error.
-    value: ${{ steps.run.outputs.result }}
+    description: >-
+      One of clean, not-caught, could-not-mutate, harness-broken, error. Never empty:
+      a step that failed before muhar ran (a bad input, a failed build) reads error.
+    value: ${{ steps.run.outputs.result || 'error' }}
 
 runs:
   using: composite

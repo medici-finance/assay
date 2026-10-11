@@ -2,8 +2,9 @@
 # muhar-action.test.sh — offline suite for muhar-action.sh (the logic behind action.yml).
 #
 # No network, no Go toolchain, no real muhar: a stub `muhar` replays a committed
-# fixture report (testdata/<name>.report) and exit code (testdata/<name>.rc), chosen by
-# the spec's file name, and records the arguments it was given. What it proves:
+# fixture report (testdata/<name>.report), stderr (testdata/<name>.stderr, when present)
+# and exit code (testdata/<name>.rc), chosen by the spec's file name, and records the
+# arguments it was given. What it proves:
 #
 #   exit 0      a clean report passes, publishes caught / not-caught / could-not-mutate
 #               and writes every verdict line and the Totals line to the job summary
@@ -11,14 +12,18 @@
 #               fail-on-not-caught is false
 #   could-not-mutate  fails by default; passes when fail-on-could-not-mutate is false
 #   exit 2      always fails with exit 2, worded "harness broken — not clean", publishes
-#               no counts, and stays failed with both fail-on inputs false
-#   exit 1      usage/spec error fails; any other exit is passed through
+#               no counts, and stays failed with both fail-on inputs false; an exit 2
+#               with no HARNESS BROKEN report (a rejected flag) says so
+#   exit 1      usage/spec error fails, with muhar's stderr in the summary; any other
+#               exit is passed through
 #   partial shard     -shard and -j reach muhar, and the summary says the sweep is partial
 #   parsing     only an unindented Totals line counts (a mutation NAMED like one does
 #               not), and a report with no Totals line or two of them is could-not-check
 #   several specs     counts are summed; one broken spec fails the whole step
-#   inputs      bad jobs / shard / boolean values and an empty spec list are refused,
-#               and a non-empty muhar-version refuses (release install not implemented)
+#   inputs      bad jobs / shard / boolean values and an empty spec list are refused
+#               with result=error, and a non-empty muhar-version refuses (release
+#               install not implemented)
+#   action.yml  the result output falls back to error when the step failed early
 #
 # Run: bash actions/muhar/muhar-action.test.sh  — prints "muhar-action.test.sh: OK".
 # The asserts are single-quoted on purpose: check() evals them at assert time.
@@ -50,6 +55,7 @@ while [ $# -gt 0 ]; do
 done
 name=$(basename "$spec" .json)
 cat "$MUHAR_FIXTURES/$name.report"
+[ -f "$MUHAR_FIXTURES/$name.stderr" ] && cat "$MUHAR_FIXTURES/$name.stderr" >&2
 exit "$(cat "$MUHAR_FIXTURES/$name.rc")"
 STUB
 chmod +x "$stub"
@@ -86,6 +92,7 @@ check "result output is clean" 'out_is "result=clean"'
 check "the run under test gets no GITHUB_ENV / GITHUB_PATH / GITHUB_STATE" '[ ! -e "$tmp/clean.env" ] && [ ! -e "$tmp/clean.path" ] && [ ! -e "$tmp/clean.state" ]'
 check "summary carries the Totals line" 'has "$sum" "Totals: 3 caught, 0 NOT CAUGHT, 0 could-not-mutate."'
 check "summary carries each verdict line" 'has "$sum" "CAUGHT           fee cap"'
+check "a healthy run's summary carries no stderr section" '! has "$sum" "muhar stderr"'
 check "spec and -j reach muhar" '[ "$(head -4 "$args" | tr "\n" " ")" = "-spec specs/clean.json -j 1 " ]'
 check "no -shard when shard is empty" '! has "$args" "-shard"'
 check "full sweep is not called partial" '! has "$sum" "Partial sweep"'
@@ -119,14 +126,21 @@ check "summary carries muhar's own reason" 'has "$sum" "baseline suite is RED on
 check "no counts published for a broken run" '! grep -qE "^(not-)?caught=|^could-not-mutate=" "$outf"'
 check "the run under test cannot write the action's outputs or summary" '! has "$outf" "FORGED" && ! has "$sum" "FORGED"'
 check "result output is harness-broken" 'out_is "result=harness-broken"'
+check "a broken run's error names the baseline" 'has "$log" "The baseline was red or the positive control was not caught"'
 run_case broken_lax "specs/broken.json" MUHAR_FAIL_ON_NOT_CAUGHT=false MUHAR_FAIL_ON_COULD_NOT_MUTATE=false
 check "exit 2 fails even with both fail-on inputs false" '[ "$rc" -eq 2 ]'
+run_case flagreject "specs/flagreject.json"
+check "exit 2 with no HARNESS BROKEN report still exits 2" '[ "$rc" -eq 2 ] && out_is "result=harness-broken"'
+check "and says muhar printed no HARNESS BROKEN report" 'has "$log" "without a HARNESS BROKEN report" && ! has "$log" "The baseline was red"'
+check "and its summary carries muhar's stderr" 'has "$sum" "muhar stderr (last 40 lines)" && has "$sum" "for flag -j: parse error"'
 
 echo "== other muhar exits"
 run_case usage "specs/usage.json"
 check "muhar exit 1 fails the step" '[ "$rc" -eq 1 ]'
 check "exit 1 is named a usage or spec error" 'has "$log" "usage, spec or IO error"'
 check "no counts for exit 1" '! grep -qE "^(not-)?caught=|^could-not-mutate=" "$outf"'
+check "exit 1's summary carries muhar's stderr, HTML-escaped" 'has "$sum" "muhar stderr (last 40 lines)" && has "$sum" "unexpected end of JSON input &lt;in specs/usage.json&gt;"'
+check "muhar's stderr still reaches the log" 'has "$log" "muhar: parse spec: unexpected end of JSON input"'
 run_case signal "specs/signal.json"
 check "an unexpected muhar exit is passed through" '[ "$rc" -eq 130 ]'
 
@@ -162,7 +176,10 @@ check "every spec still ran" '[ "$(grep -c -- "^-spec$" "$args")" -eq 3 ]'
 
 echo "== input validation"
 run_case badjobs "specs/clean.json" MUHAR_JOBS=two
-check "non-integer jobs is refused" '[ "$rc" -eq 1 ] && has "$log" "jobs must be a non-negative integer" && [ ! -s "$args" ]'
+check "non-integer jobs is refused" '[ "$rc" -eq 1 ] && has "$log" "jobs must be an integer from 0 to 9999" && [ ! -s "$args" ]'
+check "a refused input still sets result=error" 'out_is "result=error"'
+run_case hugejobs "specs/clean.json" MUHAR_JOBS=99999999999999999999
+check "a jobs value muhar's flag would reject is refused up front" '[ "$rc" -eq 1 ] && has "$log" "jobs must be an integer from 0 to 9999" && [ ! -s "$args" ] && out_is "result=error"'
 run_case badshard "specs/clean.json" MUHAR_SHARD=1of3
 check "malformed shard is refused" '[ "$rc" -eq 1 ] && has "$log" "shard must be empty or" && [ ! -s "$args" ]'
 run_case badbool "specs/clean.json" MUHAR_FAIL_ON_NOT_CAUGHT=yes
@@ -170,7 +187,7 @@ check "non-boolean fail-on-not-caught is refused" '[ "$rc" -eq 1 ] && has "$log"
 run_case nospec "  "
 check "an empty spec list is refused" '[ "$rc" -eq 1 ] && has "$log" "no spec given"'
 run_case nobin "specs/clean.json" MUHAR_BIN="$tmp/absent"
-check "a missing muhar binary is could-not-check" '[ "$rc" -eq 1 ] && has "$log" "could-not-check: muhar binary"'
+check "a missing muhar binary is could-not-check" '[ "$rc" -eq 1 ] && has "$log" "could-not-check: muhar binary" && out_is "result=error"'
 
 echo "== install"
 ilog="$tmp/install.log"
@@ -180,6 +197,10 @@ check "muhar-version refuses: release install not implemented" '[ "$irc" -eq 1 ]
 env MUHAR_VERSION= MUHAR_ACTION_PATH="$tmp/nowhere" RUNNER_TEMP="$tmp" bash "$script" install >"$ilog" 2>&1
 irc=$?
 check "install outside its own checkout is could-not-check" '[ "$irc" -eq 1 ] && has "$ilog" "could-not-check: muhar source not found"'
+
+echo "== action.yml"
+want_result="value: \${{ steps.run.outputs.result || 'error' }}"
+check "result output reads error when the step failed before run set it" 'grep -qF -- "$want_result" "$here/action.yml"'
 
 if [ "$fails" -ne 0 ]; then
 	echo "muhar-action.test.sh: $fails FAILED"

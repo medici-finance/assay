@@ -38,7 +38,13 @@ set -uo pipefail
 # indented, so a mutation whose NAME looks like a Totals line never matches.
 TOTALS_RE='^Totals: ([0-9]+) caught, ([0-9]+) NOT CAUGHT, ([0-9]+) could-not-mutate\.$'
 
-die() { printf '::error::%s\n' "$(escape_cmd "$*")"; exit 1; }
+# die fails the step. Under `run` it first sets result=error, so the result output is
+# one of its five values on every path that reaches the script.
+die() {
+	printf '::error::%s\n' "$(escape_cmd "$*")"
+	[ "${MUHAR_ACTION_MODE:-}" = run ] && output result error
+	exit 1
+}
 
 # escape_cmd makes a value safe inside a workflow command (::error::...).
 escape_cmd() {
@@ -90,9 +96,10 @@ cmd_install() {
 	command -v go >/dev/null 2>&1 || die "could-not-check: no Go toolchain on PATH. Keep setup-go: true, or install Go in an earlier step."
 	bindir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/muhar-action-bin"
 	mkdir -p "$bindir" || die "cannot create $bindir"
-	# GOFLAGS is pinned for this build only: a caller's own value (say -mod=vendor, set
-	# for its suite) must not change how muhar's committed go.mod/go.sum build.
-	(cd "$src" && GOFLAGS=-mod=readonly go build -trimpath -o "$bindir/muhar" ./cmd/muhar) || die "go build ./cmd/muhar failed in $src"
+	# GOFLAGS and GOWORK are pinned for this build only: a caller's own values (say
+	# -mod=vendor, set for its suite) must not change how muhar's committed go.mod/go.sum
+	# build.
+	(cd "$src" && GOFLAGS=-mod=readonly GOWORK=off go build -trimpath -o "$bindir/muhar" ./cmd/muhar) || die "go build ./cmd/muhar failed in $src"
 	echo "muhar built at $bindir/muhar"
 	output muhar-bin "$bindir/muhar"
 }
@@ -100,11 +107,12 @@ cmd_install() {
 is_bool() { [ "$1" = true ] || [ "$1" = false ]; }
 
 cmd_run() {
+	MUHAR_ACTION_MODE=run
 	local bin=${MUHAR_BIN:-} workdir=${MUHAR_WORKDIR:-.} jobs=${MUHAR_JOBS:-1} shard=${MUHAR_SHARD:-}
 	local fail_nc=${MUHAR_FAIL_ON_NOT_CAUGHT:-true} fail_cnm=${MUHAR_FAIL_ON_COULD_NOT_MUTATE:-true}
 
 	[ -n "$bin" ] && [ -x "$bin" ] || die "could-not-check: muhar binary '$bin' is not executable — did the install step run?"
-	[[ $jobs =~ ^[0-9]+$ ]] || die "jobs must be a non-negative integer (0 = one per CPU, capped by muhar), got '$jobs'"
+	[[ $jobs =~ ^[0-9]{1,4}$ ]] || die "jobs must be an integer from 0 to 9999 (0 = one per CPU, capped by muhar), got '$jobs'"
 	[ -z "$shard" ] || [[ $shard =~ ^[0-9]+/[0-9]+$ ]] || die "shard must be empty or 'i/n' (0-based shard i of n), got '$shard'"
 	is_bool "$fail_nc" || die "fail-on-not-caught must be true or false, got '$fail_nc'"
 	is_bool "$fail_cnm" || die "fail-on-could-not-mutate must be true or false, got '$fail_cnm'"
@@ -132,16 +140,18 @@ cmd_run() {
 	fi
 	for spec in "${specs[@]}"; do
 		i=$((i + 1))
-		out="$tmp/report.$i"
-		local args=(-spec "$spec" -j "$jobs")
+		out="$tmp/report.$i" err="$tmp/stderr.$i"
+		local why args=(-spec "$spec" -j "$jobs")
 		[ -n "$shard" ] && args+=(-shard "$shard")
 		echo "::group::muhar $(escape_cmd "$spec")"
 		# The spec's test command is the suite under test and inherits muhar's
 		# environment. Withhold the workflow file commands from it, so nothing it runs
 		# can write this action's outputs or summary, or set env/PATH for later steps.
+		# stdout (the report) goes to $out; stderr (suite chatter, muhar's own errors)
+		# streams to the log and is kept in $err for the summary of a failed run.
 		(cd "$workdir" && env -u GITHUB_OUTPUT -u GITHUB_ENV -u GITHUB_PATH -u GITHUB_STATE -u GITHUB_STEP_SUMMARY \
-			"$bin" "${args[@]}") >"$out"
-		rc=$?
+			"$bin" "${args[@]}") 2>&1 >"$out" | tee "$err" >&2
+		rc=${PIPESTATUS[0]}
 		cat "$out"
 		echo "::endgroup::"
 
@@ -161,7 +171,12 @@ cmd_run() {
 		2)
 			status="harness broken — not clean"
 			broken=1
-			printf '::error::%s\n' "$(escape_cmd "muhar: harness broken — not clean ($spec). The baseline was red or the positive control was not caught, so this run carries no trustworthy verdict.")"
+			if grep -q '^HARNESS BROKEN' "$out"; then
+				why="The baseline was red or the positive control was not caught, so this run carries no trustworthy verdict."
+			else
+				why="muhar exited 2 without a HARNESS BROKEN report (a flag it rejected, or an error before the baseline ran — see its stderr), so this run carries no verdict."
+			fi
+			printf '::error::%s\n' "$(escape_cmd "muhar: harness broken — not clean ($spec). $why")"
 			;;
 		1)
 			status="usage or spec error (exit 1)"
@@ -178,6 +193,9 @@ cmd_run() {
 
 		rows+=("| <code>$(printf '%s' "$spec" | escape_html)</code> | $status | $c | $n | $m |")
 		summary "### <code>$(printf '%s' "$spec" | escape_html)</code> — $status" "" "<pre>" "$(escape_html <"$out")" "</pre>" ""
+		if [ "$rc" -ne 0 ] && [ -s "$err" ]; then
+			summary "<details><summary>muhar stderr (last 40 lines)</summary>" "" "<pre>" "$(tail -n 40 "$err" | escape_html)" "</pre>" "</details>" ""
+		fi
 	done
 
 	summary "| Spec | Result | caught | NOT CAUGHT | could-not-mutate |" "|---|---|---|---|---|" "${rows[@]}" ""
