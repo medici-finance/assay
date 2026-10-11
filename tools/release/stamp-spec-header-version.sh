@@ -30,14 +30,17 @@
 # convention as check-spec-header-version.sh.
 #
 # EXIT CODES   0 stamped (or already stamped) · 2 usage or could-not-check
-# (malformed tag, unreadable file, missing line, no token, read-back failed).
+# (malformed tag, unreadable file, missing line, no token, write failed,
+# read-back failed).
 #
 # No network, no git, no toolchain beyond bash + grep + awk. Unit-tested
 # offline by stamp-spec-header-version.test.sh.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHECK="${CHECK_IMPL:-$here/check-spec-header-version.sh}"
+# Fixed path, no override: the read-back is the proof, so it is never
+# redirectable from the environment.
+CHECK="$here/check-spec-header-version.sh"
 
 version_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
 marker='Describes reference implementation:'
@@ -88,7 +91,10 @@ if ! awk -v marker="$marker" -v tag="$tag" '
   rm -f "$tmp"
   cnc "rewriting the header line in $file"
 fi
-mv "$tmp" "$file"
+if ! mv "$tmp" "$file"; then
+  rm -f "$tmp"
+  cnc "replacing $file with the stamped copy"
+fi
 
 # Read back — the stamp is only done when the proof would pass.
 if ! bash "$CHECK" "$tag" "$file"; then
