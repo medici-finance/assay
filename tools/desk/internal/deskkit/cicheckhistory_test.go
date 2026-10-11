@@ -711,3 +711,374 @@ func TestSetCICheckRecording(t *testing.T) {
 		t.Errorf("recording restored, %d line(s) written, want 1", n)
 	}
 }
+
+// --- review round 1 (findings B1, A1-A5, S1-S5 on the change that added this file) ----------
+
+// ciWriteLive writes raw content as the live file, creating the state dir.
+func ciWriteLive(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ciChecksFile), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ciLine renders one valid record line for a run with the given id (no trailing newline).
+func ciLine(t *testing.T, id string) string {
+	t.Helper()
+	rec, ok := ciRunRecord(ciBase(ciTestRepo, ciTestSHA, 0, time.Now()), id, "seed", "completed",
+		"success", "2026-10-08T08:00:00Z", "2026-10-08T08:00:05Z")
+	if !ok {
+		t.Fatal("seed record not built")
+	}
+	b, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestCIConclusionFlipKept — one forge object whose terminal state changes under the same
+// attempt (a GitLab pipeline retried inside the same pipeline; a run rewritten under one id)
+// keeps each distinct conclusion, in-process and across processes, on write and on read.
+//
+// regression: #2423
+func TestCIConclusionFlipKept(t *testing.T) {
+	dir, _ := ciSetup(t)
+	at := func(conc string) *ChecksAtHead {
+		return &ChecksAtHead{
+			CheckRuns: []CheckRun{ciRun("101", "build", "completed", conc, "2026-10-08T10:00:00Z", "2026-10-08T10:01:00Z")},
+			Statuses:  []StatusContext{{Context: "pipeline", State: conc, CreatedAt: "2026-10-08T10:00:00Z"}},
+		}
+	}
+	inner := &ciFake{checks: at("failure")}
+	f := OutboundChecked(inner, "worker-desk")
+	read := func() {
+		t.Helper()
+		if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read()
+	inner.checks = at("success")
+	read() // same process
+	ciResetProcessState()
+	read() // fresh process, same success: deduped against the live file
+	inner.checks = at("failure")
+	read() // back to the first conclusion: deduped, first occurrence wins
+
+	recs := ciDiskLines(t, dir)
+	if len(recs) != 4 {
+		t.Fatalf("lines on disk = %d, want 4 (failure then success for the run and the status): %+v", len(recs), recs)
+	}
+	got, err := LoadCIChecks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq := map[string][]string{}
+	for _, r := range got {
+		seq[r.Kind] = append(seq[r.Kind], r.Conclusion)
+	}
+	for _, kind := range []string{CICheckKindRun, CICheckKindStatus} {
+		if !reflect.DeepEqual(seq[kind], []string{"failure", "success"}) {
+			t.Errorf("%s conclusions loaded = %v, want [failure success]", kind, seq[kind])
+		}
+	}
+}
+
+// TestCILockTimeoutLatches — after one lock timeout the process stops recording, so a stuck
+// holder costs one bounded wait per process, not one per read.
+//
+// regression: #2423
+func TestCILockTimeoutLatches(t *testing.T) {
+	dir, warns := ciSetup(t)
+	ciLockWait = 100 * time.Millisecond
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lf, err := os.OpenFile(filepath.Join(dir, ciChecksLock), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := TryLockExclusive(lf); err != nil {
+		t.Fatalf("take the lock: %v", err)
+	}
+	inner := &ciFake{checks: &ChecksAtHead{CheckRuns: []CheckRun{
+		ciRun("101", "build", "completed", "success", "2026-10-08T10:00:00Z", "2026-10-08T10:01:00Z")}}}
+	f := OutboundChecked(inner, "worker-desk")
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	_ = UnlockFile(lf)
+	_ = lf.Close()
+
+	// The lock is free now, but this process already gave up: nothing is written.
+	inner.checks = &ChecksAtHead{CheckRuns: []CheckRun{
+		ciRun("102", "build", "completed", "success", "2026-10-08T10:02:00Z", "2026-10-08T10:03:00Z")}}
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ciChecksFile)); !os.IsNotExist(err) {
+		t.Errorf("recording continued after a lock timeout in the same process (stat err %v): %+v", err, ciDiskLines(t, dir))
+	}
+	if len(*warns) != 1 {
+		t.Errorf("want exactly one warning, got %q", *warns)
+	}
+	// A fresh process records again.
+	ciResetProcessState()
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(ciDiskLines(t, dir)); n != 1 {
+		t.Errorf("a fresh process wrote %d line(s), want 1", n)
+	}
+}
+
+// TestCITornTailRepaired — a live file left without a final newline (a partial write) does
+// not swallow the next batch's first record.
+//
+// regression: #2423
+func TestCITornTailRepaired(t *testing.T) {
+	dir, warns := ciSetup(t)
+	ciWriteLive(t, dir, ciLine(t, "900")+"\n"+`{"schema":"ci-check-v1","name":"tor`)
+	f := OutboundChecked(&ciFake{checks: &ChecksAtHead{CheckRuns: []CheckRun{
+		ciRun("101", "build", "completed", "success", "2026-10-08T10:00:00Z", "2026-10-08T10:01:00Z")}}}, "worker-desk")
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadCIChecks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Errorf("LoadCIChecks = %d records, want 2 (the seed and the new run): %+v", len(got), got)
+	}
+	if len(*warns) != 0 {
+		t.Errorf("unexpected warning: %q", *warns)
+	}
+}
+
+// TestCIOverlongLineSkipped — a line over the scan cap is skipped on read (the writer keeps
+// recording, LoadCIChecks keeps loading), and the writer never produces one.
+//
+// regression: #2423
+func TestCIOverlongLineSkipped(t *testing.T) {
+	dir, warns := ciSetup(t)
+	ciWriteLive(t, dir, strings.Repeat("x", (1<<20)+16)+"\n"+ciLine(t, "900")+"\n")
+	long := strings.Repeat("n", 70_000)
+	f := OutboundChecked(&ciFake{checks: &ChecksAtHead{CheckRuns: []CheckRun{
+		ciRun("101", "build", "completed", "success", "2026-10-08T10:00:00Z", "2026-10-08T10:01:00Z"),
+		ciRun("102", long, "completed", "success", "2026-10-08T10:00:00Z", "2026-10-08T10:01:00Z"),
+	}}}, "worker-desk")
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	if len(*warns) != 0 {
+		t.Errorf("an over-long line on disk stopped the writer: %q", *warns)
+	}
+	got, err := LoadCIChecks()
+	if err != nil {
+		t.Fatalf("LoadCIChecks failed on an over-long line: %v", err)
+	}
+	var names []string
+	for _, r := range got {
+		if len(r.Name) > 64 {
+			names = append(names, fmt.Sprintf("<%d chars>", len(r.Name)))
+			continue
+		}
+		names = append(names, r.Name)
+	}
+	if !reflect.DeepEqual(names, []string{"seed", "build"}) {
+		t.Errorf("loaded names = %v, want [seed build] (the over-long record is never written)", names)
+	}
+}
+
+// TestCIWarningOmitsPath — the once-per-process warning names a file, never a directory path.
+//
+// regression: #2423
+func TestCIWarningOmitsPath(t *testing.T) {
+	_, warns := ciSetup(t)
+	ciUnwritable(t)
+	f := OutboundChecked(&ciFake{checks: &ChecksAtHead{CheckRuns: []CheckRun{
+		ciRun("101", "build", "completed", "success", "", "")}}}, "worker-desk")
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	if len(*warns) != 1 {
+		t.Fatalf("want one warning, got %q", *warns)
+	}
+	root := filepath.Dir(filepath.Dir(dirOverride)) // the test's temp dir
+	if strings.Contains((*warns)[0], root) || strings.Contains((*warns)[0], string(filepath.Separator)) {
+		t.Errorf("warning carries a path: %q", (*warns)[0])
+	}
+}
+
+// TestCILiveFileHardened — the live file is only ever a regular file of mode 0600: a symlink
+// at its path is refused (nothing is written through it), and a wider mode is tightened.
+//
+// regression: #2423
+func TestCILiveFileHardened(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes and symlinks")
+	}
+	run := &ChecksAtHead{CheckRuns: []CheckRun{ciRun("101", "build", "completed", "success", "", "")}}
+
+	t.Run("symlink refused", func(t *testing.T) {
+		dir, warns := ciSetup(t)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(t.TempDir(), "elsewhere")
+		if err := os.WriteFile(target, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(dir, ciChecksFile)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := OutboundChecked(&ciFake{checks: run}, "worker-desk").ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+			t.Fatal(err)
+		}
+		if b, _ := os.ReadFile(target); len(b) != 0 {
+			t.Errorf("the recorder wrote through a symlink: %q", b)
+		}
+		if len(*warns) != 1 {
+			t.Errorf("want one warning, got %q", *warns)
+		}
+	})
+
+	t.Run("wide mode tightened", func(t *testing.T) {
+		dir, _ := ciSetup(t)
+		ciWriteLive(t, dir, "")
+		if err := os.Chmod(filepath.Join(dir, ciChecksFile), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := OutboundChecked(&ciFake{checks: run}, "worker-desk").ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+			t.Fatal(err)
+		}
+		fi, err := os.Stat(filepath.Join(dir, ciChecksFile))
+		if err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("live file mode = %v (err %v), want 0600", fi.Mode().Perm(), err)
+		}
+		if lf, err := os.Stat(filepath.Join(dir, ciChecksLock)); err != nil || lf.Mode().Perm() != 0o600 {
+			t.Errorf("lock file mode = %v (err %v), want 0600", lf.Mode().Perm(), err)
+		}
+	})
+}
+
+// TestCIRecordGuards — the keyless and SHA-less guards, one by one.
+//
+// regression: #2423
+func TestCIRecordGuards(t *testing.T) {
+	base := ciBase(ciTestRepo, ciTestSHA, 0, time.Now())
+	if _, ok := ciStatusRecord(base, "ctx", "success", ""); ok {
+		t.Error("a status with no created_at was recorded")
+	}
+	if _, ok := ciStatusRecord(base, "", "success", "2026-10-08T10:00:00Z"); ok {
+		t.Error("a status with no context was recorded")
+	}
+	if _, ok := ciRunRecord(base, "101", "", "completed", "success", "", ""); ok {
+		t.Error("a run with no name was recorded")
+	}
+	if _, ok := ciRunRecord(base, "", "build", "completed", "success", "", ""); ok {
+		t.Error("a run with neither an id nor a start stamp was recorded")
+	}
+	now := time.Now()
+	checks := &ChecksAtHead{CheckRuns: []CheckRun{ciRun("101", "build", "completed", "success", "", "")}}
+	if got := ciRecordsFromChecks(ciTestRepo, "", checks, now); len(got) != 0 {
+		t.Errorf("a ChecksAtHead read with no SHA was recorded: %+v", got)
+	}
+	oc := OpenChange{Number: 1, Rollup: []RollupNode{{Typename: "CheckRun", ID: "101", Name: "build", Status: "COMPLETED", Conclusion: "SUCCESS"}}}
+	if got := ciRecordsFromRollup(ciTestRepo, oc, now); len(got) != 0 {
+		t.Errorf("a rollup with no head SHA was recorded: %+v", got)
+	}
+}
+
+// TestCILoadSegmentsAndForeign — LoadCIChecks reads rotated segments, oldest first, and skips
+// a line carrying another schema tag.
+//
+// regression: #2423
+func TestCILoadSegmentsAndForeign(t *testing.T) {
+	dir, _ := ciSetup(t)
+	ciWriteLive(t, dir, `{"schema":"other-v1","repo":"acme/widgets","head_sha":"x","kind":"check-run","name":"n","attempt":"1","conclusion":"success"}`+"\n"+ciLine(t, "903")+"\n")
+	for name, id := range map[string]string{"ci-checks.jsonl.2026-10-02": "902", "ci-checks.jsonl.2026-10-01": "901"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(ciLine(t, id)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := LoadCIChecks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, r := range got {
+		ids = append(ids, r.Attempt)
+	}
+	if !reflect.DeepEqual(ids, []string{"901", "902", "903"}) {
+		t.Errorf("loaded attempts = %v, want [901 902 903] (segments oldest first, then live; foreign line skipped)", ids)
+	}
+}
+
+// TestCIRotationKeepsSegment — a rotation whose target name is taken writes a .N segment and
+// never overwrites the existing one.
+//
+// regression: #2423
+func TestCIRotationKeepsSegment(t *testing.T) {
+	dir, _ := ciSetup(t)
+	yesterday := time.Now().Add(-36 * time.Hour)
+	seg := filepath.Join(dir, ciChecksFile+"."+yesterday.UTC().Format("2006-01-02"))
+	ciWriteLive(t, dir, ciLine(t, "902")+"\n")
+	if err := os.WriteFile(seg, []byte(ciLine(t, "901")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(dir, ciChecksFile), yesterday, yesterday); err != nil {
+		t.Fatal(err)
+	}
+	f := OutboundChecked(&ciFake{checks: &ChecksAtHead{CheckRuns: []CheckRun{
+		ciRun("101", "build", "completed", "success", "", "")}}}, "worker-desk")
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(seg); err != nil || !strings.Contains(string(b), `"attempt":"901"`) {
+		t.Errorf("the existing segment was overwritten or lost: %q (err %v)", b, err)
+	}
+	if b, err := os.ReadFile(seg + ".1"); err != nil || !strings.Contains(string(b), `"attempt":"902"`) {
+		t.Errorf("the rotated live file is not at %s.1: %q (err %v)", filepath.Base(seg), b, err)
+	}
+	if got, err := LoadCIChecks(); err != nil || len(got) != 3 {
+		t.Errorf("LoadCIChecks = %d records (err %v), want 3", len(got), err)
+	}
+}
+
+// TestCIUnreadLiveNotSeen — a batch dropped because the live file could not be read leaves
+// its keys unmarked, so a later read in the same process records them.
+//
+// regression: #2423
+func TestCIUnreadLiveNotSeen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory read semantics")
+	}
+	dir, warns := ciSetup(t)
+	live := filepath.Join(dir, ciChecksFile)
+	if err := os.MkdirAll(live, 0o700); err != nil { // a directory where the file belongs
+		t.Fatal(err)
+	}
+	f := OutboundChecked(&ciFake{checks: &ChecksAtHead{CheckRuns: []CheckRun{
+		ciRun("101", "build", "completed", "success", "", "")}}}, "worker-desk")
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	if len(*warns) != 1 {
+		t.Fatalf("want one warning for the unreadable live file, got %q", *warns)
+	}
+	if err := os.Remove(live); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.ChecksAtHead(ciTestRepo, ciTestSHA); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(ciDiskLines(t, dir)); n != 1 {
+		t.Errorf("lines on disk = %d, want 1 — the failed batch's key was marked seen", n)
+	}
+}

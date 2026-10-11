@@ -384,11 +384,13 @@ At runtime the tools read/write, under `~/.config/assay/`:
   written by the single Forge decorator from the `ChecksAtHead` / `ListOpenChanges` /
   `ReviewQueueSnapshot` results the tools already fetch, so it costs **no extra forge
   request**; recording is best-effort (a failed write, a lock held past 2 s, or a recorder
-  panic drops the batch with one stderr line) and never changes the read's result. It
+  panic drops the batch with one stderr line; after one lock timeout the process stops
+  recording) and never changes the read's result. It
   rotates daily like the audit log; no tool deletes a segment (retention is yours), and no
   desk decision reads it — it is local operational state for later analysis, never
   committed. `deskkit.LoadCIChecks` reads every segment, de-duplicated on (repo, head SHA,
-  kind, name, attempt). Schema: [`ci-check-v1`](internal/deskkit/ci-check-v1.md);
+  kind, name, attempt, conclusion). A check name is whatever the check's poster supplied:
+  unauthenticated, sanitize before display. Schema: [`ci-check-v1`](internal/deskkit/ci-check-v1.md);
   fail-first: `muhar -spec internal/deskkit/cicheckhistory-mutations.json`.
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing

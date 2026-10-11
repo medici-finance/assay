@@ -16,7 +16,8 @@ package deskkit
 //   - it runs only after the inner read succeeded, and the decorator returns the inner
 //     result and error unchanged whatever the recorder does;
 //   - a failed write, a lock held past ciLockWait or a panic is dropped (one stderr line per
-//     process) and never reaches the caller.
+//     process) and never reaches the caller; after one lock timeout the process stops
+//     recording, so a stuck lock holder costs one bounded wait per process, not one per read.
 //
 // The record type has no field for check output, title, summary, annotations, log text,
 // URLs, the actor or app that posted a check, or any session transcript — names and
@@ -29,9 +30,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -50,6 +54,14 @@ const (
 
 	ciChecksFile = "ci-checks.jsonl"
 	ciChecksLock = "ci-checks.lock"
+
+	// ciMaxWriteLine bounds one serialized record. A record over it (only an absurdly long
+	// check name can get there) is not written, so the writer never produces a line the
+	// reader would have to skip.
+	ciMaxWriteLine = 64 << 10
+	// ciMaxReadLine bounds one line on read. A longer line (a corrupted or foreign file) is
+	// skipped like any other unparseable line — never an error for the whole history.
+	ciMaxReadLine = 1 << 20
 )
 
 // CICheckRecord is one line of ci-checks.jsonl. The field list is the whole schema: adding a
@@ -74,10 +86,15 @@ type CICheckRecord struct {
 	DurationS *int `json:"duration_s,omitempty"`
 }
 
-// ciKey is the dedupe key (repo, head_sha, kind, name, attempt). The unit separator cannot
-// occur in any of the five fields as the forges render them.
+// ciKey is the dedupe key (repo, head_sha, kind, name, attempt, conclusion). The conclusion
+// is part of it because an attempt identifies the forge's OBJECT, not one terminal result of
+// it: a GitLab pipeline retried inside the same pipeline keeps its creation stamp while its
+// state goes failure -> success, and keying without the conclusion would dedupe the retry's
+// result away. Each distinct terminal conclusion of one attempt is kept once (first
+// occurrence wins). The unit separator joins the fields; the last two are forge-assigned or a
+// closed vocabulary, so a name carrying the separator cannot alias another record's key.
 func (r CICheckRecord) ciKey() string {
-	return strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name, r.Attempt}, "\x1f")
+	return strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name, r.Attempt, r.Conclusion}, "\x1f")
 }
 
 // Test hooks in the dirOverride mould: production never sets them and they are not wired to
@@ -90,11 +107,17 @@ var (
 )
 
 var (
-	ciMu       sync.Mutex
-	ciSeen     = map[string]map[string]struct{}{} // live file path -> keys this process wrote or saw on disk
-	ciWarned   bool
+	ciMu     sync.Mutex
+	ciSeen   = map[string]map[string]struct{}{} // live file path -> keys this process wrote or saw on disk
+	ciWarned bool
+	// ciGaveUp latches after one lock timeout: the process records nothing more, so a stuck
+	// holder costs at most one ciLockWait per process.
+	ciGaveUp   bool
 	ciWarnSink = func(msg string) { fmt.Fprintln(os.Stderr, msg) }
 )
+
+// errCILockTimeout is the lock wait running out; recordCIBestEffort latches ciGaveUp on it.
+var errCILockTimeout = errors.New("lock held too long")
 
 // SetCICheckRecording turns the CI-check recorder on or off and returns a function that
 // restores the previous setting. It is a TEST HOOK for packages outside deskkit (a cmd
@@ -119,6 +142,7 @@ func ciResetProcessState() {
 	defer ciMu.Unlock()
 	ciSeen = map[string]map[string]struct{}{}
 	ciWarned = false
+	ciGaveUp = false
 }
 
 func ciWarnOnce(reason string) {
@@ -135,7 +159,25 @@ func ciWarnOnce(reason string) {
 func ciEnabled() bool {
 	ciMu.Lock()
 	defer ciMu.Unlock()
-	return ciRecorderEnabled
+	return ciRecorderEnabled && !ciGaveUp
+}
+
+// ciErrText renders a recorder error for the stderr warning with every filesystem path cut
+// to its base name, so the warning never carries the state directory's absolute path.
+func ciErrText(err error) string {
+	msg := err.Error()
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		var pe *fs.PathError
+		if errors.As(e, &pe) && pe.Path != "" {
+			msg = strings.ReplaceAll(msg, pe.Path, filepath.Base(pe.Path))
+		}
+		var le *os.LinkError
+		if errors.As(e, &le) {
+			msg = strings.ReplaceAll(msg, le.Old, filepath.Base(le.Old))
+			msg = strings.ReplaceAll(msg, le.New, filepath.Base(le.New))
+		}
+	}
+	return msg
 }
 
 // ciDurationS returns the run's wall time in whole seconds, or nil when either stamp is
@@ -176,8 +218,11 @@ func ciRunRecord(base CICheckRecord, id, name, status, conclusion, started, comp
 
 // ciStatusRecord builds the record for one commit status, or ok=false when it is not a
 // terminal state (success | failure | error) with a creation stamp to key the attempt on.
-// GitHub's combined-status read returns the latest status per context, so CreatedAt is the
-// only per-execution handle a status has.
+// The stamp identifies the forge's status OBJECT, not one execution: on GitHub a new state is
+// a new status with its own stamp, but the GitLab backend publishes the head pipeline as one
+// status whose stamp is the pipeline's, unchanged when a job inside it is retried. A retry
+// that changes the conclusion is still kept, because the conclusion is part of the dedupe key
+// (ciKey); a retry that ends in a conclusion already recorded for that stamp is not.
 func ciStatusRecord(base CICheckRecord, context, state, created string) (CICheckRecord, bool) {
 	st := strings.ToLower(state)
 	if context == "" || created == "" || (st != "success" && st != "failure" && st != "error") {
@@ -268,7 +313,12 @@ func recordCIBestEffort(build func(now time.Time) []CICheckRecord) {
 		return
 	}
 	if err := recordCIChecks(recs); err != nil {
-		ciWarnOnce(err.Error())
+		if errors.Is(err, errCILockTimeout) {
+			ciMu.Lock()
+			ciGaveUp = true
+			ciMu.Unlock()
+		}
+		ciWarnOnce(ciErrText(err))
 	}
 }
 
@@ -349,25 +399,69 @@ func recordCIChecks(recs []CICheckRecord) error {
 		if merr != nil {
 			return fmt.Errorf("cannot encode a record: %w", merr)
 		}
+		if len(b)+1 > ciMaxWriteLine {
+			continue // never write a line the reader would have to skip
+		}
 		buf.Write(b)
 		buf.WriteByte('\n')
 	}
 	if buf.Len() > 0 {
-		f, oerr := os.OpenFile(live, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-		if oerr != nil {
-			return fmt.Errorf("cannot open %s: %w", ciChecksFile, oerr)
-		}
-		_, werr := f.Write(buf.Bytes())
-		cerr := f.Close()
-		if werr != nil {
-			return fmt.Errorf("cannot append to %s: %w", ciChecksFile, werr)
-		}
-		if cerr != nil {
-			return fmt.Errorf("cannot close %s: %w", ciChecksFile, cerr)
+		if err := ciAppend(live, buf.Bytes()); err != nil {
+			return err
 		}
 	}
 	ciMarkSeen(live, known)
 	return nil
+}
+
+// ciAppend appends data to the live file. The file must be a regular file (a symlink or any
+// other kind at its path is refused, never followed) and is kept at mode 0600 (a wider mode
+// found on it is tightened). When the file does not end in a newline — a partial write cut
+// the last batch short — a newline is written first, so the torn fragment stays one skipped
+// line and does not swallow this batch's first record.
+func ciAppend(live string, data []byte) error {
+	if fi, err := os.Lstat(live); err == nil && !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file (mode %s); not written", ciChecksFile, fi.Mode().Type())
+	}
+	f, err := os.OpenFile(live, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	if err != nil {
+		return fmt.Errorf("cannot open %s: %w", ciChecksFile, err)
+	}
+	werr := ciAppendTo(f, data)
+	cerr := f.Close()
+	if werr != nil {
+		return fmt.Errorf("cannot append to %s: %w", ciChecksFile, werr)
+	}
+	if cerr != nil {
+		return fmt.Errorf("cannot close %s: %w", ciChecksFile, cerr)
+	}
+	return nil
+}
+
+func ciAppendTo(f *os.File, data []byte) error {
+	fi, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("not a regular file (mode %s)", fi.Mode().Type())
+	}
+	if perm := fi.Mode().Perm(); perm&0o077 != 0 && runtime.GOOS != "windows" {
+		if err := f.Chmod(perm &^ 0o077); err != nil {
+			return err
+		}
+	}
+	if size := fi.Size(); size > 0 {
+		last := make([]byte, 1)
+		if _, err := f.ReadAt(last, size-1); err != nil {
+			return err
+		}
+		if last[0] != '\n' {
+			data = append([]byte{'\n'}, data...)
+		}
+	}
+	_, err = f.Write(data)
+	return err
 }
 
 // ciLock takes ci-checks.lock, waiting at most ciLockWait. It is its own lock, never the
@@ -389,7 +483,7 @@ func ciLock(dir string) (unlock func(), err error) {
 		}
 		if !time.Now().Before(deadline) {
 			_ = lf.Close()
-			return nil, fmt.Errorf("lock held longer than %s", ciLockWait)
+			return nil, fmt.Errorf("%w (longer than %s); recording stops for this process", errCILockTimeout, ciLockWait)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -419,7 +513,9 @@ func ciRotateIfDue(dir string, now time.Time) {
 	_ = os.Rename(path, target)
 }
 
-// ciScan calls fn for every parseable ci-check-v1 line of path; a missing file is empty.
+// ciScan calls fn for every parseable ci-check-v1 line of path; a missing file is empty. A
+// torn, foreign or over-long (ciMaxReadLine) line is skipped, never fatal; only an I/O error
+// fails the scan.
 func ciScan(path string, fn func(CICheckRecord)) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -429,20 +525,47 @@ func ciScan(path string, fn func(CICheckRecord)) error {
 		return err
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	for sc.Scan() {
-		line := bytes.TrimSpace(sc.Bytes())
-		if len(line) == 0 {
+	rd := bufio.NewReaderSize(f, 64*1024)
+	for {
+		raw, rerr := ciNextLine(rd, ciMaxReadLine)
+		if line := bytes.TrimSpace(raw); len(line) > 0 {
+			var r CICheckRecord
+			if json.Unmarshal(line, &r) == nil && r.Schema == CICheckSchema {
+				fn(r)
+			}
+		}
+		if rerr == io.EOF {
+			return nil
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
+}
+
+// ciNextLine returns the next line of rd (its newline included), or nil when the line is
+// longer than max — the rest of an over-long line is read and discarded, so the next call
+// starts on the following line. The error is nil, io.EOF at the end, or a read error.
+func ciNextLine(rd *bufio.Reader, max int) ([]byte, error) {
+	var line []byte
+	over := false
+	for {
+		frag, err := rd.ReadSlice('\n')
+		if !over {
+			if len(line)+len(frag) > max {
+				over, line = true, nil
+			} else {
+				line = append(line, frag...)
+			}
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
 			continue
 		}
-		var r CICheckRecord
-		if json.Unmarshal(line, &r) != nil || r.Schema != CICheckSchema {
-			continue // a torn or foreign line is skipped, never fatal
+		if over {
+			return nil, err
 		}
-		fn(r)
+		return line, err
 	}
-	return sc.Err()
 }
 
 func ciReadKeys(path string) (map[string]struct{}, error) {
@@ -454,9 +577,10 @@ func ciReadKeys(path string) (map[string]struct{}, error) {
 }
 
 // LoadCIChecks reads every ci-checks segment, oldest first, then the live file, and returns
-// the records de-duplicated on (repo, head_sha, kind, name, attempt) — first occurrence wins —
-// so a cross-day or cross-process duplicate on disk never reaches an analysis. A malformed
-// line is skipped. A missing state directory is an empty history.
+// the records de-duplicated on (repo, head_sha, kind, name, attempt, conclusion) — first
+// occurrence wins — so a cross-day or cross-process duplicate on disk never reaches an
+// analysis. A malformed or over-long line is skipped. A missing state directory is an empty
+// history.
 func LoadCIChecks() ([]CICheckRecord, error) {
 	dir, err := deskDir()
 	if err != nil {

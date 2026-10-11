@@ -26,8 +26,15 @@ commit status, taken from reads the tools already make — it costs no extra for
   `ListOpenChanges` and `ReviewQueueSnapshot` reads hand their already-fetched results to the
   recorder after the read succeeds. The recorder makes no forge call.
 - **Best-effort.** A write failure, a lock held longer than 2 s, or a panic inside the recorder
-  drops that batch with one stderr line per process. The read's result and error are returned
-  unchanged either way.
+  drops that batch with one stderr line per process. After one lock timeout the process records
+  nothing more, so a stuck lock holder costs one 2 s wait per process, not one per read. The
+  warning names files by their base name only, never the state directory's path. The read's
+  result and error are returned unchanged either way.
+- **The live file is a regular file, mode `0600`.** A symlink or any other kind of file at its
+  path is refused (the batch is dropped, nothing is written through it), and a wider mode found
+  on it is tightened to `0600` before the append. If the file does not end in a newline (a
+  partial write cut the last batch short), the next batch starts with one, so the torn fragment
+  stays a single skipped line.
 
 ## Fields (`schema: "ci-check-v1"`)
 
@@ -55,13 +62,23 @@ One JSON object per line. These fields, and no others:
   from the GraphQL rollup's `databaseId` — both rendered by the same function, so the two reads of
   one run agree). A re-run of the same named check is a new id, and so a new attempt. When the
   forge served no id: `t:<started_at>`.
-- **status:** `t:<created_at>`. A forge's combined-status read returns only the latest status per
-  context, so the creation stamp is the only per-execution handle a status has.
+- **status:** `t:<created_at>`. The stamp identifies the forge's status OBJECT, not one execution.
+  On GitHub a new state is posted as a new status with its own stamp, so the two coincide. The
+  GitLab backend publishes the head pipeline as one status named `pipeline` whose stamp is the
+  pipeline's own, and a job retried inside that pipeline does not change it: the pipeline's
+  `failure` and its later `success` share one attempt. They are still two records, because the
+  conclusion is part of the dedupe key (below). The individual GitLab jobs, read through
+  `ChecksAtHead`, are check runs with their own ids, so each retried job is a new attempt.
 - An entry with no usable key (no id and no stamp) is **not recorded**.
 
 ### Dedupe key
 
-`(repo, head_sha, kind, name, attempt)`. Deduplication happens twice:
+`(repo, head_sha, kind, name, attempt, conclusion)`. Each distinct terminal conclusion of one
+attempt is kept once, first occurrence wins: an attempt whose result changed (a retried GitLab
+pipeline, a run whose conclusion the forge rewrote under the same id) carries one record per
+conclusion, in the order first seen. The limit: a result that returns to a conclusion already
+recorded for that attempt (`failure`, `success`, `failure`) is not recorded a second time.
+Deduplication happens twice:
 
 1. **On write.** The writer skips a key this process already wrote, and a key already present in
    the live file (read under the lock — another process may have written it).
@@ -75,6 +92,12 @@ A check run is recorded only when its status is `completed`; a status only when 
 `success`, `failure` or `error`. Queued, in-progress, pending and expected entries are skipped:
 recording one would claim the key before the real result arrived and dedupe the result away. The
 GitLab backend's could-not-check rollup sentinel is skipped too.
+
+### Over-long lines
+
+The writer never appends a line longer than 64 KiB; a record that would exceed it (only an
+absurd check name can) is not written. The reader skips any line longer than 1 MiB, like any
+other unparseable line, so one corrupted line never stops recording or fails `LoadCIChecks`.
 
 ## Retention
 
@@ -94,8 +117,13 @@ The record type has no field for any of the following, so none of it can be writ
 - the actor or app that posted the check or status;
 - any session transcript.
 
-There is no per-person field at all. Names and conclusions only. A check name is the repository's
-own CI configuration, already visible to anyone who can read the pull request.
+There is no per-person field at all. Names and conclusions only.
+
+**A name is unauthenticated.** A check name or status context is whatever the poster of that
+check run or status supplied, on any open pull-request head the tools read, contributors'
+heads included, and the record carries no author or trust field. A consumer must not treat a
+name as proof of which check produced a result, and must sanitize a name before printing it:
+control characters are escaped on disk by the JSON encoding and come back raw when decoded.
 
 ## Joining
 

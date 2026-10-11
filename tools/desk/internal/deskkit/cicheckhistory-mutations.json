@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/deskflip/ -count=1 -timeout 300s -run 'TestCICheck|TestCIRollup|TestCIDuration|TestCISegments|TestSetCICheck|TestFlip_LeavesCICheckRecords'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskflip/ -count=1 -timeout 300s -run 'TestCI|TestSetCICheck|TestFlip_LeavesCICheckRecords'",
   "control": {
     "name": "CONTROL — the recorder never runs (the whole feature: every read is thrown away, as before)",
     "file": "internal/deskkit/cicheckhistory.go",
@@ -46,8 +46,8 @@
     {
       "name": "row 3 — the attempt key ignores the run id, so a re-run collapses into the first attempt",
       "file": "internal/deskkit/cicheckhistory.go",
-      "old": "\treturn strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name, r.Attempt}, \"\\x1f\")",
-      "new": "\treturn strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name}, \"\\x1f\")"
+      "old": "\treturn strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name, r.Attempt, r.Conclusion}, \"\\x1f\")",
+      "new": "\treturn strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name, r.Conclusion}, \"\\x1f\")"
     },
     {
       "name": "row 4 — recording adds a forge read (the decorator reads the checks a second time)",
@@ -90,6 +90,108 @@
       "file": "internal/deskkit/cicheckhistory.go",
       "old": "\tDurationS *int `json:\"duration_s,omitempty\"`",
       "new": "\tDurationS  *int   `json:\"duration_s,omitempty\"`\n\tDetailsURL string `json:\"details_url,omitempty\"`"
+    },
+    {
+      "name": "review B1 — the dedupe key drops the conclusion, so a retried GitLab pipeline (one creation stamp) keeps only its first terminal result",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\treturn strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name, r.Attempt, r.Conclusion}, \"\\x1f\")",
+      "new": "\treturn strings.Join([]string{r.Repo, r.HeadSHA, r.Kind, r.Name, r.Attempt}, \"\\x1f\")"
+    },
+    {
+      "name": "review A1/S2 — a lock timeout is not latched, so every later read waits the full bound again",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\t\tciGaveUp = true\n",
+      "new": "\t\t\tciGaveUp = false\n"
+    },
+    {
+      "name": "review A2 — a torn tail is not repaired, so the next batch's first record joins the fragment and is lost",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\tif last[0] != '\\n' {",
+      "new": "\t\tif false && last[0] != '\\n' {"
+    },
+    {
+      "name": "review A3/S1 — an over-long line on disk fails the scan, stopping the writer and LoadCIChecks",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\t\t\tover, line = true, nil",
+      "new": "\t\t\t\treturn nil, bufio.ErrTooLong"
+    },
+    {
+      "name": "review S1 — the writer appends a record over the line cap",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\tif len(b)+1 > ciMaxWriteLine {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "review S5 — the warning carries the raw error with the absolute state-directory path",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\tciWarnOnce(ciErrText(err))",
+      "new": "\t\tciWarnOnce(err.Error())"
+    },
+    {
+      "name": "review S4 — a symlink at the live path is followed and written through",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "if fi, err := os.Lstat(live); err == nil && !fi.Mode().IsRegular() {",
+      "new": "if fi, err := os.Lstat(live); err == nil && false && !fi.Mode().IsRegular() {"
+    },
+    {
+      "name": "review S4 — a wider mode on the live file is left as found",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "if perm := fi.Mode().Perm(); perm&0o077 != 0 &&",
+      "new": "if perm := fi.Mode().Perm(); false && perm&0o077 != 0 &&"
+    },
+    {
+      "name": "review A5 — the lock file is created 0644",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "lf, err := os.OpenFile(filepath.Join(dir, ciChecksLock), os.O_CREATE|os.O_RDWR, 0o600)",
+      "new": "lf, err := os.OpenFile(filepath.Join(dir, ciChecksLock), os.O_CREATE|os.O_RDWR, 0o644)"
+    },
+    {
+      "name": "review A5 — a status with no created_at is recorded",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "if context == \"\" || created == \"\" ||",
+      "new": "if context == \"\" ||"
+    },
+    {
+      "name": "review A5 — a run with no name is recorded",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "if name == \"\" || strings.ToLower(status) != \"completed\" {",
+      "new": "if strings.ToLower(status) != \"completed\" {"
+    },
+    {
+      "name": "review A5 — a rollup with no head SHA is recorded",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\tif oc.HeadSHA == \"\" {\n\t\treturn nil\n\t}",
+      "new": "\tif false {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "review A5 — a ChecksAtHead read with no SHA is recorded",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\tif c == nil || sha == \"\" {",
+      "new": "\tif c == nil {"
+    },
+    {
+      "name": "review A5 — a line carrying a foreign schema tag is accepted on read",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "json.Unmarshal(line, &r) == nil && r.Schema == CICheckSchema",
+      "new": "json.Unmarshal(line, &r) == nil"
+    },
+    {
+      "name": "review A5 — LoadCIChecks ignores rotated segments",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\t\tpaths = append(paths, filepath.Join(dir, s))\n",
+      "new": "\t\t_ = s\n"
+    },
+    {
+      "name": "review A5 — a rotation target that already exists is overwritten",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "if _, serr := os.Stat(target); os.IsNotExist(serr) {",
+      "new": "if _, serr := os.Stat(target); os.IsNotExist(serr) || true {"
+    },
+    {
+      "name": "review A5 — keys are marked seen when the live-file read fails, so the dropped batch is never retried",
+      "file": "internal/deskkit/cicheckhistory.go",
+      "old": "\tonDisk, err := ciReadKeys(live)\n\tif err != nil {\n\t\treturn err\n\t}",
+      "new": "\tonDisk, err := ciReadKeys(live)\n\tif err != nil {\n\t\tciMarkSeen(live, []string{fresh[0].ciKey()})\n\t\treturn err\n\t}"
     }
   ]
 }

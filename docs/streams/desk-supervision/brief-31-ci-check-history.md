@@ -40,7 +40,7 @@ consumers:
   - "tools/desk/README.md (a short 'CI check history' paragraph linking the schema): fixed-here (a Runtime state bullet)"
   - "docs/records-and-retention.md (lists the new record): follow-up desk-supervision/35"
   - "tools/desk/cmd/deskflip, deskboard, deskpost, deskautolane, deskmonitor, deskroster, deskdisposition (the CI readers): out-of-scope (they read through the Forge that ResolveForge returns, so they gain recording without a code change; their returned values are unchanged — Verify row 5 proves it)"
-  - "tools/desk/internal/deskkit/forge_gitlab.go: out-of-scope (its ChecksAtHead and rollup already populate the fields the record needs; a GitLab CheckRun with no ID falls back to the timestamp attempt key defined in Task 2)"
+  - "tools/desk/internal/deskkit/forge_gitlab.go: out-of-scope (its ChecksAtHead and rollup already populate the fields the record needs; a GitLab CheckRun with no ID falls back to the timestamp attempt key defined in Task 2; its head-pipeline status keeps the pipeline's creation stamp across a retry, which the conclusion in the dedupe key covers — see ci-check-v1.md, Attempt key)"
   - "statusgen/autonomy.go (shells out to `gh pr view --json statusCheckRollup` over merged PRs): out-of-scope (a separate binary outside the desk Forge seam, reading a retrospective window; adding a second writer there would split the record — deferred to an unauthored follow-up if its window proves useful)"
 ---
 
@@ -64,7 +64,7 @@ facts:
   rollup on `ListOpenChanges` / `ReviewQueueSnapshot` — deskboard (`board.go:207`, `:282`), deskmonitor (`pr.go:100`), deskroster (`roster.go:304`), deskdisposition (`verbs.go:257`).
 - Shapes: `ChecksAtHead` (`forge.go:388`) carries `Statuses []StatusContext` (`forge.go:343`: State, Context, CreatedAt) AND `CheckRuns []CheckRun` (`forge.go:355`: ID, Name, Status, Conclusion, StartedAt, CompletedAt). `RollupNode` (`forge.go:724`) unions both (Typename `CheckRun` | `StatusContext`) and today has NO ID; `OpenChange` (`forge.go:744`) carries Number and HeadSHA for the rollup.
 - A commit-status gate (any CI that posts a commit status rather than a check run — e.g. a required external scanner) arrives ONLY as a `StatusContext`; a record that keeps check runs alone misses it.
-- `CheckRun.ID` is per EXECUTION: a re-run of the same named check is a new ID (`forge.go:356-364`). GitHub's combined-status endpoint returns the latest status per context, so for a status the only per-execution handle is `CreatedAt`.
+- `CheckRun.ID` is per EXECUTION: a re-run of the same named check is a new ID (`forge.go:356-364`). GitHub's combined-status endpoint returns the latest status per context, so for a status the only handle is `CreatedAt` — and it identifies the status OBJECT, not one execution: GitLab's head-pipeline status keeps the pipeline's stamp when a job inside it is retried, so the dedupe key also carries the conclusion (review finding B1).
 - Local state dir: `deskDir()` (`tools/desk/internal/deskkit/killswitch.go:65`) = `~/.config/assay/` (or the test override); the audit log is `audit.jsonl` there with daily rotation `rotateIfNeeded` (`audit.go:172`) and `segmentPattern` (`audit.go:101`) matching only `audit.jsonl.<date>` — a new `ci-checks.jsonl` cannot be swept into audit segments.
 - `dispatch_ref` as defined by desk-supervision/28 is NOT known at a CI read; this record joins by `repo` + `head_sha` (+ `pr` when the read carried one).
 - single-point-of-failure: the decorator override — if a future change returns a Forge that bypasses `OutboundChecked`, recording silently stops. Backed by `TestForgeSingleConstructionSite` (an independent static test of the construction site) and by Verify row 6 (a real tool run must leave records).
@@ -81,7 +81,7 @@ facts:
    omitted when the read carried no PR), `kind` (`check-run` | `status`), `name` (check name or
    status context), `attempt`, `conclusion` (lowercased forge value), `started_at`,
    `completed_at` (RFC3339 or omitted), `duration_s` (int, check-run only, omitted when either
-   stamp is missing). State the dedupe key `(repo, head_sha, kind, name, attempt)`, the
+   stamp is missing). State the dedupe key `(repo, head_sha, kind, name, attempt, conclusion)`, the
    never-collected list (step 6), retention (step 5) and that it is local operational state, never
    committed.
 2. **Attempt key.** check-run: `CheckRun.ID` / `RollupNode.ID` when non-empty, else
