@@ -52,8 +52,14 @@
     {
       "name": "omit dispatch storage gate",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "if err := storageAdmission(o.dryRun); err != nil {",
-      "new": "if err := storageAdmission(o.dryRun); false && err != nil {"
+      "old": "if err := storageAdmission(o.dryRun, o.root); err != nil {",
+      "new": "if err := storageAdmission(o.dryRun, o.root); false && err != nil {"
+    },
+    {
+      "name": "omit destination-volume floor",
+      "file": "cmd/deskdispatch/storage.go",
+      "old": "if free < floor {",
+      "new": "if false && free < floor {"
     },
     {
       "name": "lose process custody",
