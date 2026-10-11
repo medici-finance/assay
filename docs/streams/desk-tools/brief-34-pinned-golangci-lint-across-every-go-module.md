@@ -11,15 +11,18 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-11 by statusgen newbrief
 sources:
+  - "Maintainer direction 2026-10-11: ratchet lint/vulnerability checks over existing debt rather than rewrite old code wholesale; feed findings into qualgen reporting."
   - "docs/go-engineering.md — merged library and security-tooling policy, PR #2620"
   - "https://github.com/medici-finance/assay/pull/2535 — closed unmerged; replacement scope uses new IDs rather than claiming that desk-tools/32 landed"
   - "freshness-checked 2026-10-11 @ 2c45dba9b535 — fresh main, 21 tracked go.mod files, no root .golangci.yml or golangci/gosec/govulncheck job in ci.yml"
 exec-tier: strong
 exec-tier-why: "Cross-artifact correctness: tool pins, module/build coverage, exit propagation, fixtures and actual workflow execution must agree."
 consumers:
+  - "tools/go-analysis/baseline.json: follow-up desk-tools/34 (reviewed debt records)"
+  - "docs/go-analysis-report-v1.md: follow-up desk-tools/34 (scan artifact contract)"
   - ".golangci.yml: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
   - "scripts/go-analysis.sh: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
   - "scripts/tests/go-analysis.sh: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
@@ -34,7 +37,7 @@ consumers:
 
 ## Context
 
-files: `.golangci.yml` (planned), `scripts/go-analysis.sh` (planned), `scripts/tests/go-analysis.sh` (planned),
+files: `tools/go-analysis/baseline.json` (planned), `docs/go-analysis-report-v1.md` (planned), `.golangci.yml` (planned), `scripts/go-analysis.sh` (planned), `scripts/tests/go-analysis.sh` (planned),
 `scripts/tests/testdata/go-analysis/` (planned), `tools/go-analysis/pins.env` (planned), `docs/go-analysis.md` (planned),
 `docs/runsheets/go-analysis-ci-hunk.md` (planned), `changelog/go-analysis-lint.md` (planned); Go source files only
 where the measured lint finding requires a small mechanical fix. The human also edits
@@ -97,17 +100,17 @@ design-fit:
    fall back to an unverified download. Prove acquisition in CI before declaring this delivered.
 2. Add `.golangci.yml` (planned) in the selected v2 schema: explicit errcheck, staticcheck, unused and
    govet; no enable-all. Turn off broad default exclusions except documented generated-code
-   handling. Measure every module before fixes, record per-module/per-linter counts, fix small
-   mechanical findings only. A structural finding needs linked follow-up and a narrow, dated,
-   reasoned exception; never a directory-wide exclusion. All nolint directives need a named
-   linter and explanation, including the three existing bare ones. Do not make baseline changes
-   that weaken a security control without its human gate.
+   handling. Measure every module at a fixed main SHA before fixes and commit a reviewed
+   finding-level debt baseline, not a cleanup of all legacy findings. Require an explanation for
+   new or changed nolint directives; inventory pre-existing bare directives as debt rather than
+   mass-editing them. Use the ratchet contract below; small fixes are optional, not a rollout gate.
+   Baseline admission never overrides an already enforced vet/test/security control.
 3. Implement the shared interface below. Discover tracked manifests once per invocation, use each
    containing directory as cwd and the one root config. Cover supported build configurations:
    Linux amd64 plus the existing desk Windows amd64 and Darwin arm64 surface; document any
    additional supported module/build-tag combinations found at pickup. Report every attempted
    module/configuration and final counts; unsupported analysis is blocked, never silently green.
-   Test inclusion is explicit and enabled for correctness lint. Preserve nonzero results even
+   Test inclusion is explicit and enabled for correctness lint. Preserve scan errors and ratchet regressions even
    when later modules pass; no `|| true` or success-only reporting pipeline.
 4. Add harness controls: zero modules, newly added tracked module, module path with spaces,
    bad pin/checksum, missing analyzer, and failing first/middle/last module all fail correctly.
@@ -118,7 +121,7 @@ design-fit:
 5. Document commands, versions, coverage, exclusions and evidence in `docs/go-analysis.md` (planned).
    Prepare the exact CI diff and apply command in `docs/runsheets/go-analysis-ci-hunk.md` (planned):
    job `go-lint`, existing push/PR events and permissions, verified acquisition, runner tests,
-   then all-module lint. The human applies it on this implementation branch AFTER the worker's
+   then all-module ratcheted lint and publication of its JSON report even on a failed gate. The human applies it on this implementation branch AFTER the worker's
    final commit and BEFORE merge. Re-read the combined diff and wait for that job's actual run;
    neither a runsheet nor a green local command proves deployed CI. Add the changelog fragment.
 
@@ -130,9 +133,41 @@ verified tools and prepared module caches; it must not silently install or upgra
 `bash scripts/tests/go-analysis.sh lint` exercises the harness and real negative controls.
 Run from the repository root with the documented pinned toolchain/cache environment. The
 script discovers the root, quotes paths and stops on a missing/empty discovery result.
-Exit zero means every expected analysis completed cleanly; scan, acquisition and coverage
-errors are nonzero and distinguishable in the report. The security extension reuses this
+Exit zero means complete coverage with no new/worsened findings beyond accepted debt; it does
+not mean zero findings. Scan, acquisition, malformed-output and coverage errors remain nonzero. The security extension reuses this
 owner, pin file and discovery contract rather than adding another runner.
+
+## Ratchet and report contract
+
+Establish `tools/go-analysis/baseline.json` (planned) from a full scan of one recorded main
+commit with pinned tools/configuration. Review the initial debt once. Each record identifies
+an actual finding: analyzer/rule, module/build configuration, relative path and stable symbol
+or normalized source anchor, plus first-seen, owner and linked remediation work. Do not match
+by counts, line number alone, directory, linter name alone or a broad diagnostic regex.
+
+Normal PRs may remove debt records and may fix one old issue without touching unrelated debt.
+New findings, new occurrences, worsened findings and reintroductions of a removed finding fail.
+Line-only movement must not create false new debt; ambiguous identity changes fail for review
+rather than silently match. Adding a defect while fixing another must fail even if total counts
+fall. Removing a baseline entry is permanent for ordinary PRs: absence after a complete scan
+requires deleting its allowance in that fix, preventing later reintroduction under a stale entry.
+Compare against the trusted target-branch baseline as well as the PR's baseline: no self-approved
+expansion or automatic rebaseline in CI. A separate reviewed migration can admit a changed tool,
+rule set, fingerprint schema or exception; record before/after counts and reasons and never
+silently reset history. Existing security gates are unaffected.
+
+Full scans remain mandatory, not just changed-line lint. Preserve raw tool output and emit a
+versioned machine-readable report (schema in `docs/go-analysis-report-v1.md` (planned)) with
+repo/commit/run identity, scan time, tool versions/config hash, baseline digest/revision,
+module/configuration coverage and state, findings and their identities, new/worsened/existing/
+resolved dispositions, and gate result. Include exception/review metadata and reasons for
+unavailable coverage. Resolved is valid only after a complete comparable scan. A failed scan
+cannot clear debt or be represented as zero findings. Report emission must run on analyzer
+failure and retain the original failing exit; failed publication is visible, not success.
+
+This is qualgen's input, not another dashboard or scanner. The dependent brief owns ingestion,
+trend storage and rendering. Keep the comparison/adapter thin and reuse upstream output
+formats; do not build an analyzer or a generic policy engine.
 
 ## Verify
 
@@ -143,8 +178,8 @@ Rows 6–7 run only after the human workflow commit; row 7 is repeated on merged
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check +dereference | `bash scripts/go-analysis.sh acquire --allow-downloads` | exit 0; exact admitted version/toolchain and checksum evidence, no unverified fallback. |
-| 2 | check +mutation | `bash scripts/tests/go-analysis.sh lint` | exit 0 only after every discovery, checksum and failure-propagation control and real analyzer red/green pair ran; print individual cases and nonzero case count. Removing module discovery or swallowing one exit makes this row fail. |
-| 3 | check +flow | `bash scripts/go-analysis.sh lint` | exit 0; all discovered modules and declared configurations complete, counts reconcile with tracked manifests and no unaccounted findings. |
+| 2 | check +mutation | `bash scripts/tests/go-analysis.sh lint` | exit 0 only after every discovery, checksum and failure-propagation control and real analyzer red/green pair ran; print individual cases and nonzero case count. Also prove accepted legacy debt passes; new/worsened/reintroduced findings fail; fixing one cannot hide another; line shifts preserve identity; baseline expansion, malformed reports and incomplete scans fail; a resolved item cannot retain its allowance. |
+| 3 | check +flow | `bash scripts/go-analysis.sh lint` | exit 0; all discovered modules and declared configurations complete, counts reconcile with tracked manifests; existing debt remains visible and only new/worsened findings or scan/ratchet failures block. JSON totals and dispositions match the gate. |
 | 4 | check +neighbour | `cd tools/desk && GOOS=windows GOARCH=amd64 go vet ./... && GOOS=darwin GOARCH=arm64 go vet ./... && go test -count=1 ./internal/deskkit/ ./cmd/deskdispatch/` | exit 0; existing vet and representative suites remain green. |
 | 5 | check | `statusgen --root . --lint && statusgen --root . --consumers --brief desk-tools/34` | exit 0; routes match the implementation diff; update this brief's own future routes as sites land. |
 | 6 | check +dereference | `git diff --check && git diff --name-only 2c45dba9b..HEAD -- .github/workflows/ci.yml && gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | human workflow commit exists; record run ID at this exact head, then inspect its go-lint steps/logs. Worker-authored commits contain no workflow diff. Missing run is could-not-check, not pass. |
@@ -152,7 +187,7 @@ Rows 6–7 run only after the human workflow commit; row 7 is repeated on merged
 
 ## Pre-mortem
 
-Skipped new module or swallowed failure → row 2; plausible but wrong pin → rows 1–2;
+Count-only ratchet or baseline inflation → row 2; skipped new module or swallowed failure → row 2; plausible but wrong pin → rows 1–2;
 local-only delivery or inaccessible artifact host → rows 6–7; baseline suppression hides real
 code defects → row 3 plus review of each exception. Adequacy of exceptions stays review-only.
 
@@ -166,4 +201,4 @@ code defects → row 3 plus review of each exception. Adequacy of exceptions sta
 Gate: model; all four risk answers are no because this adds development checks and changes no
 production data, customer behavior or credential scope. The workflow application still requires
 the human's permitted identity. Judge real analyzer discrimination, complete coverage, narrow
-exceptions, pin provenance, unchanged security controls and actual CI execution, not file presence.
+ratchet identity/monotonicity, pin provenance, unchanged security controls and actual CI execution, not file presence.

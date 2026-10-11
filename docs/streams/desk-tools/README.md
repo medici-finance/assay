@@ -212,7 +212,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
 | 31 | [The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, checked-clean, n/a with a reason, or could-not-check)](brief-31-correctness-lane-coverage-contract.md) | 1 | M | implemented | — | — |
 | 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | todo | — | — |
-| 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | M | todo | — | — |
+| 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -228,7 +228,8 @@ of risk-path briefs ahead of 03, the verdict payload/row-classes ahead of 04) is
 work already landed outside this stream; see each brief's Dependencies note.
 
 The Go analysis rollout is **desk-tools/34 → desk-tools/35**: first land verified tool
-acquisition, discovery and correctness lint; then reuse that runner for gosec/govulncheck.
+acquisition, discovery and correctness lint; then reuse that runner for gosec/govulncheck and qualgen reporting. Both gates ratchet over
+reviewed finding-level debt; old code is not subject to a wholesale cleanup before rollout.
 The first step is proving the pinned acquisition route works on CI's runner, whose documented
 network constraints rule out assuming a GitHub release-asset download. Each implementation
 includes a human-applied workflow commit; a local pass does not satisfy deployed CI evidence.
