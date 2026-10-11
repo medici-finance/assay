@@ -239,7 +239,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 33 | [Forge reads for statusgen's remaining sites — four operations and their result fields, each consumed by a deskread kind](brief-33-forge-reads-for-statusgen-s-remaining-sites.md) | 1 | L | implemented | — | — |
 | 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | implemented | — | — |
 | 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
-| 36 | [Importable fact reader SDK and first shared read](brief-36-importable-fact-reader-sdk-and-first-shared-read.md) | 1 | L | todo | — | — |
+| 36 | [Importable fact reader SDK and first shared read](brief-36-importable-fact-reader-sdk-and-first-shared-read.md) | 1 | L | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
