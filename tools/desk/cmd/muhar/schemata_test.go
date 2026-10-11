@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -231,6 +232,38 @@ func TestSchemaBaselineRedIsClassic(t *testing.T) {
 func TestSchemaControlMissIsClassic(t *testing.T) {
 	h := guardFixture(t)
 	h.SchemaTest = func(_, _, sel string) bool { return sel != schemaNone && sel != schemaControl }
+	wantAllClassic(t, h.Run())
+}
+
+// Two halves that are each green at the baseline can be red together, so
+// narrow must prove the union before it trusts it. Here the baseline is red
+// only when one build holds both f0's and f8's mutated bodies, which the
+// bisection puts in different halves.
+func TestSchemaUnionBaselineRedIsClassic(t *testing.T) {
+	h := guardFixture(t)
+	both := func(overlay string) bool {
+		raw, err := os.ReadFile(overlay)
+		if err != nil {
+			return false
+		}
+		var o struct{ Replace map[string]string }
+		if json.Unmarshal(raw, &o) != nil {
+			return false
+		}
+		for _, copyPath := range o.Replace {
+			b, _ := os.ReadFile(copyPath)
+			if strings.Contains(string(b), "return 10007") && strings.Contains(string(b), "return 10087") {
+				return true
+			}
+		}
+		return false
+	}
+	h.SchemaTest = func(_, overlay, sel string) bool {
+		if both(overlay) {
+			return true // red whatever is selected, the baseline included
+		}
+		return sel == schemaControl
+	}
 	wantAllClassic(t, h.Run())
 }
 

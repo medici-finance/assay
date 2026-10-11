@@ -5025,7 +5025,7 @@ CAUGHT (`TestSchemataIsOptIn` pins the classic verdict for exactly that suite). 
 depend on closure names, inlining or allocation counts can do the same. Turn it on for a
 spec only after a classic-vs-schemata run of that spec gives identical reports, and re-check
 when the suite gains such a test. `internal/deskkit/mutations.json` is the one spec opted in
-(parity recorded on #2635). Everything else — the baseline, the control, ineligible mutants,
+(parity recorded on #2653). Everything else — the baseline, the control, ineligible mutants,
 `-shard`, `-j` — runs as before, the report on stdout keeps its shape, and schemata notes
 go to stderr.
 
