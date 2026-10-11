@@ -47,7 +47,7 @@ func holdMaintenanceAdmission(c *Cell) error {
 	return nil
 }
 func waitResetAdmission(c *Cell) (*os.File, error) {
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		f, err := acquireCellLock(c, ".reset.lock")
 		if err == nil {

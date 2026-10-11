@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
@@ -181,6 +183,9 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 	if err != nil {
 		return err
 	}
+	if err = c.requestResetStop(); err != nil {
+		return err
+	}
 	scope := cellstop.Scope{Cell: c.Name, Directory: c.Dir, Roots: c.Env.Get("CELL_ROOTS"), CacheRoot: policy.Root}
 	scope.Worktrees = append(scope.Worktrees, plan.WorktreeDirectory)
 	if plan.Hard {
@@ -229,6 +234,11 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 			continue
 		}
 		l, e := cellcadence.Acquire(dir)
+		deadline := time.Now().Add(10 * time.Second)
+		for errors.Is(e, cellcadence.ErrBusy) && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+			l, e = cellcadence.Acquire(dir)
+		}
 		if e != nil {
 			return fmt.Errorf("reset lease %s: %w", role, e)
 		}
@@ -457,4 +467,33 @@ func (c *Cell) readResetCommsSurface() (*commsSurface, error) {
 		return nil, err
 	}
 	return c.readCommsSurface()
+}
+
+// Idle supervisors have no attributed child to signal. Stop their clocks before
+// sweeping orphan consumers, and let their original leases close normally.
+func (c *Cell) requestResetStop() error {
+	dirs := []string{c.commsDir()}
+	for _, role := range knownRoles {
+		dirs = append(dirs, c.cadenceDir(role))
+	}
+	for _, dir := range dirs {
+		if _, err := os.Lstat(dir); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if err := privateCommsDir(dir); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(filepath.Join(dir, "STOP"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil && !os.IsExist(err) {
+			return err
+		}
+		if f != nil {
+			if err = f.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

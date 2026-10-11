@@ -23,11 +23,15 @@ import (
 // Two independent session contexts use shipped client, gateway, drain and reader
 // binaries. Only the model response is a deterministic offline fixture.
 func TestTwoSessionsCommsHelloRoundTrip(t *testing.T) {
-	root, err := os.MkdirTemp("/private/tmp", "ch-")
+	root, err := os.MkdirTemp("", "ch-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bin := filepath.Join(root, "bin")
 	os.Mkdir(bin, 0700)
 	module, err := filepath.Abs("../..")

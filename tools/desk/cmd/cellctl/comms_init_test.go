@@ -14,11 +14,15 @@ import (
 )
 
 func TestCommsInitNativePrivateAndIdempotent(t *testing.T) {
-	dir, err := os.MkdirTemp("/private/tmp", "ci-")
+	dir, err := os.MkdirTemp("", "ci-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
+	dir, err = filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	os.Mkdir(filepath.Join(dir, ".codex"), 0700)
 	os.WriteFile(filepath.Join(dir, ".codex", "auth.json"), []byte("{\"fixture\":true}\n"), 0600)
 	bin := filepath.Join(dir, "bin")

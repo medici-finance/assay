@@ -3,13 +3,16 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
+	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 )
 
 func resetFixtureGit(t *testing.T, root string, args ...string) string {
@@ -182,4 +185,48 @@ func TestResetDryRunAndAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.Close()
+}
+
+func TestResetStopsIdleCadenceOwner(t *testing.T) {
+	c, _, _ := commsFixture(t)
+	base := t.TempDir()
+	root := resetFixtureRepo(t, base, "one")
+	c.Repo = root
+	c.Env.Put("CELL_ROOTS", "example/one="+root)
+	l, err := cellcadence.Acquire(c.cadenceDir("worker-desk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		err := l.Run(ctx, cellcadence.Config{Cell: c.Name, Role: "worker-desk", Interval: time.Hour, Budget: time.Minute, Heartbeat: 20 * time.Millisecond, Guard: func() error { return c.cadenceGuard("worker-desk") }}, func(context.Context) cellcadence.Result {
+			close(started)
+			return cellcadence.Result{Outcome: "noop", Summary: "fixture noop"}
+		})
+		l.Close()
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cadence fixture did not start")
+	}
+	p, err := c.planReset(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = c.resetCell(p); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("idle cadence owner survived reset")
+	}
+	if _, err := cellcadence.Read(c.cadenceDir("worker-desk")); err != cellcadence.ErrNoState {
+		t.Fatal("cadence state retained", err)
+	}
 }
