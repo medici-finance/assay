@@ -55,6 +55,75 @@ manifests or pinned tool definitions, never floating `@latest` in builds.
 | Tests and value diffs | `testing`, `httptest`, `t.TempDir`, fuzzing; [go-cmp](https://github.com/google/go-cmp) for structural diffs | Stdlib first for test control, go-cmp selected for rich value comparisons. Do not build another reflection-based comparison library. Production equality and admission never depend on go-cmp. |
 | Git and forge protocols | Existing gitcore and admitted forge adapters over their qualified upstream packages | Preserve the current go-git, go-gh and GitLab SDK owners. Readers, credentials, compare-and-delete and bounded native-Git exceptions need their existing qualification; do not add a new Git/forge client because an API looks convenient. |
 
+## Additional library choices
+
+These decisions extend the catalogue for common capabilities. They select defaults where a
+need exists; they do not install dependencies or authorize rewriting existing owners.
+
+| Capability | Choice and rationale |
+|---|---|
+| Bounded in-memory caches | Select [golang-lru/v2](https://github.com/hashicorp/golang-lru) when needed. Prefer its typed API over building eviction machinery. Define size, freshness and invalidation; eviction must never lose authoritative claims, idempotency records or recovery state. No cache is added by this policy. |
+| Bidirectional WebSockets | Select [coder/websocket](https://github.com/coder/websocket) when needed. Keep polling or SSE for simpler one-way updates. Require origin/auth checks, message limits, cancellation and backpressure; reconnect does not authorize replaying a mutation. Do not introduce both this and Gorilla for the same service. |
+| Semantic-version validation/comparison | Select [golang.org/x/mod/semver](https://pkg.go.dev/golang.org/x/mod/semver) for new Go-style version contracts. It requires a `v` prefix and is not a general constraint-range solver. Validate before comparing; retain existing external-tool output parsers until compatibility is proven. A range-solving need requires a separate selection, not a homemade parser. |
+| Prometheus scrape endpoints | Keep OpenTelemetry as the instrumentation API. Use its [Prometheus exporter](https://opentelemetry.io/docs/languages/go/exporters/#prometheus) when scraping is required; do not instrument each operation twice through a parallel direct-client stack. An existing direct Prometheus integration needs a coordinated migration, not blind replacement. |
+| Non-HTTP backoff | Keep the selected HTTP retry mechanism and existing loopengine policy. [cenkalti/backoff](https://github.com/cenkalti/backoff) is a candidate only for a demonstrated non-HTTP scheduling gap. Its timer does not decide whether an operation is safe to repeat; unknown mutation outcomes still require reconciliation. |
+| Deterministic concurrency/time tests | On Go 1.25+, evaluate [testing/synctest](https://pkg.go.dev/testing/synctest) before adding a clock/mock framework for in-process tests. It does not virtualize external I/O. Keep testing and go-cmp for test control and comparisons. |
+
+Do not add zerolog, Gorilla mux, json-iterator, pkg/errors, go-multierror or an atomic wrapper
+as competing defaults where slog, net/http/chi, encoding/json, errors.Is/As/Join and typed
+sync/atomic satisfy the contract. Additional stack traces, performance or concurrency
+semantics need concrete evidence, not package popularity. Testify is not selected as a
+second assertion convention. Embedded stores are not selected as an alternative authority
+to the planned PostgreSQL core.
+
+## Go analysis and security tooling
+
+Select three complementary checks. Tool versions are pinned and admitted at implementation;
+these rows do not claim the checks are installed or running in CI.
+
+| Check | Selected tool | What it covers |
+|---|---|---|
+| General correctness | [golangci-lint](https://golangci-lint.run/docs/linters/) | The errcheck, staticcheck, unused and govet baseline owned by [PR #2535](https://github.com/medici-finance/assay/pull/2535), which authors desk-tools/32. |
+| Security-oriented source analysis | [gosec](https://github.com/securego/gosec), through golangci-lint's [gosec integration](https://golangci-lint.run/docs/linters/configuration/#gosec) | Suspicious source patterns such as unsafe subprocess/SQL construction, weak crypto and insecure transport. Triage findings; neither a warning nor a clean scan proves exploitability or its absence. Use the version bundled in the admitted golangci-lint release, not an independently floating second installation. |
+| Known vulnerable code | [govulncheck](https://go.dev/doc/security/vuln/) | Go vulnerability-database checks with source call-graph reachability, including dependencies and stdlib/toolchain exposure. It complements gosec; it does not discover unknown application authorization or business-logic flaws. |
+
+Keep #2535 open: it owns all-module discovery, correctness baseline measurement/remediation,
+pinned acquisition and the exact human-applied CI hunk. This policy does not subsume its
+brief or verification. The security implementation must checkpoint that owner's work and
+extend the shared runner/config after its baseline, without silently expanding the active
+brief. Until that implementation and its workflow land, gosec and govulncheck remain
+selected, not deployed. The rollout must deliver:
+
+- Discover every tracked `go.mod`, run from each module directory and report coverage per
+  module; reuse desk-tools/32's discovery rather than maintain another list. Record Go
+  version, build tags, GOOS/GOARCH and test inclusion. Cover supported build configurations;
+  one Linux scan does not certify Windows-only code. Unscannable modules are failures or
+  explicitly blocked work, never silently skipped passes.
+- Pin tool versions and verify acquired artifacts. For gosec, record the bundled analyzer
+  version/rules and measure the initial results. Fix findings or record narrowly scoped,
+  reviewed exceptions with rule/path, reason, owner, linked work and review date. No blanket
+  exclusions or security-policy weakening to get green; existing human gates still apply.
+- Run govulncheck in text mode for the failing gate. Its [structured output modes](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck)
+  can return zero despite findings: uploading JSON/SARIF is not enforcement. If structured
+  output becomes the gate, first prove its result evaluator rejects reachable findings.
+  Keep per-module failures through any loop or report pipeline; do not use `|| true` or
+  `continue-on-error`. Record database source/freshness; database, package-loading and
+  execution failures cannot count as clean. Updates to vulnerability data are expected,
+  even while the tool itself is pinned.
+- Run on PRs and periodically against main, since vulnerabilities can be disclosed without
+  a code change. Explicitly configure database/dependency-network access; local offline
+  scans need a prepared database and module cache, otherwise report could-not-check.
+  This does not grant production access or credentials to untrusted PR code.
+- Prove the checks discriminate: a controlled insecure-code fixture fails gosec and passes
+  after repair; a separate vulnerable-dependency fixture fails the govulncheck gate and
+  passes after upgrade; scan errors fail rather than disappear. Keep fixtures out of shipped
+  modules. Record observed outcomes and prove the merged-main workflow actually runs both.
+  Prepare exact workflow changes through the same human-applied runsheet route as #2535.
+
+Existing secret/leak checks, tests and independent security review remain. CodeQL may add
+interprocedural coverage later, but adding another platform is not required for this initial
+Go baseline; no existing CodeQL control is removed by this choice.
+
 ## Common behavior
 
 - CLI syntax, configuration resolution and exit behavior have one home in the
@@ -79,7 +148,9 @@ procedure: record publisher/source, exact version and release date, permissions 
 persistence in an issue; cite it from the PR. Preserve its minimum release-age and driver
 blessing rule. Also check licence compatibility, maintenance/security status, Go/platform
 support and transitive cost. A catalogue entry is not that version-specific assessment.
-Adding a direct import of an indirect dependency still needs explicit manifest ownership.
+Promoting an indirect dependency to direct and upgrading an existing dependency use the
+same issue-based assessment; cite the prior assessment and record the changed version or
+usage rather than treating graph presence as approval.
 This policy installs nothing and changes no credential or network permission.
 
 Keep one implementation owner and align compatible versions across consuming modules.

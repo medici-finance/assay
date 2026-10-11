@@ -222,8 +222,9 @@ reliably caught an inverted or false desk claim.
 - Climb the reuse ladder and stop at the first rung that satisfies the item: (1) does this
   need to exist at all — except that the item's own declared scope outranks this rung, a
   briefed deliverable is never re-litigated as YAGNI; (2) is it already in this repo;
-  (3) is it in the standard library; (4) is it in an existing dependency; (5) evaluate
-  the project's selected library, or established OSS when no choice exists; (6) only then
+  (3) is it in the standard library; (4) is it in an existing dependency consistent with
+  the project catalogue; (5) evaluate the project's selected library, or established OSS
+  when no choice exists; (6) only then
   write a custom implementation, with a concrete reason the earlier options do not fit.
   Read the project's contributor/engineering guidance and library catalogue before choosing.
   Reuse its selected package and adapter for the capability; do not add a competing library
@@ -233,9 +234,9 @@ reliably caught an inverted or false desk claim.
   SAFETY FLOOR: never cut validation, error handling,
   security, or accessibility — and never trim a Verify row to shrink a diff. A Verify row,
   its Evidence, and every process artifact are not code to minimize.
-- Evaluating or selecting a package never authorizes installing it. Before adding a NEW
-  dependency, plugin or MCP server (to a manifest, a lockfile, the harness or the agent
-  environment), file an issue carrying a
+- Evaluating or selecting a package never authorizes installing it. Before adding or
+  upgrading a dependency, plugin or MCP server, or promoting an indirect dependency to
+  direct (in a manifest, a lockfile, the harness or the agent environment), file an issue carrying a
   risk summary: source (publisher, repo, exact version, release date), permissions (network,
   filesystem, credentials or scopes it reads), and persistence (hooks, background processes,
   auto-update, files written outside its own directory). The PR cites that issue; no issue,
