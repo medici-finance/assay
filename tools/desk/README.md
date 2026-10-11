@@ -5000,6 +5000,23 @@ mutations`) so a shard's partial report is never mistaken for a complete sweep; 
 owns running all n shards. A malformed `-shard` (index out of range, zero shards,
 non-integers) is a refusal, never a silent fall-back to the full or empty set.
 
+**Mutant schemata, and why one build per worker does not change a verdict (#2635).** Most
+of a classic mutant's cost is compiling and vetting the mutated package, not running its
+tests. When the spec's `test` is a `go test … -count=1` command, `muhar` compiles every
+eligible mutant into **one** build per worker: a `-overlay` tree (the real files are never
+touched) in which each mutated function starts with `if <selector> == "<id>" { <mutated
+body> }`, the selector read from `MUHAR_SCHEMATA_MUTANT`, and `//line` directives keep every
+file, line and function name what the classic mutated file would report. A mutant then
+costs a link and a test run. A mutant is eligible only when its edit sits inside one
+function body and leaves the declarations alone (no labels, no `:=` redeclaring a
+parameter or result); mutants that do not compile together are found by one `go build
+-gcflags=-e` probe and dropped; the schemata baseline (no mutant selected) must be green,
+and an eligible positive control must be CAUGHT through it, or the run is classic. The schemata
+verdict is trusted for **CAUGHT only**: a mutant the schemata run does not catch is re-run
+the classic way, so every NOT CAUGHT on the report is a classic verdict. Everything else —
+the baseline, the control, ineligible mutants, `-shard`, `-j` — runs exactly as before,
+and the report on stdout is byte-for-byte the same shape; schemata notes go to stderr.
+
 `muhar` does **not** call `deskkit.Guard()`: it is a local diagnostic that makes no
 outward writes (no GitHub, no shared-state mutation — it edits a source file and restores
 it in the same run), so the C-6 kill switch and outward-write rate limit do not apply, the

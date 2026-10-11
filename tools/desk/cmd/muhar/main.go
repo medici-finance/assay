@@ -59,6 +59,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -158,6 +159,23 @@ func envWithGOCACHE(env []string, dir string) []string {
 		}
 	}
 	return append(out, "GOCACHE="+dir)
+}
+
+// envWithout returns env minus every entry for the named variables.
+func envWithout(env []string, names ...string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		keep := true
+		for _, n := range names {
+			if strings.HasPrefix(e, n+"=") {
+				keep = false
+			}
+		}
+		if keep {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // muhar does NOT call deskkit.Guard(): it is a local diagnostic that makes no
@@ -264,6 +282,49 @@ func main() {
 			// Non-zero exit == suite failed == mutation caught.
 			return cmd.Run() != nil
 		},
+	}
+	// Mutant schemata (#2635): eligible mutants share one build per worker and
+	// are picked per run by an environment selector, instead of each one
+	// recompiling its package. Only a suite run that goes RED is taken from it
+	// (see schemata.go); every other verdict still comes from the classic run.
+	if schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
+		h.Log = os.Stderr
+		h.SchemaTest = func(root, overlay, selector string) bool {
+			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design
+			if root != "" {
+				cmd.Dir = root
+			}
+			env := envWithGOCACHE(os.Environ(), gocache)
+			cmd.Env = append(envWithout(env, "GOFLAGS", schemaEnv),
+				"GOFLAGS="+schemaGoflags(os.Getenv("GOFLAGS"), overlay),
+				schemaEnv+"="+selector)
+			cmd.Stdout = os.Stderr
+			cmd.Stderr = os.Stderr
+			return cmd.Run() != nil
+		}
+		h.SchemaBuild = func(root, overlay string, dirs []string) (string, bool) {
+			// -e: report every compile error, so one probe finds every mutant
+			// that does not compile. One package per build, its output written
+			// beside the overlay, never into the tree.
+			env := envWithGOCACHE(os.Environ(), gocache)
+			env = append(envWithout(env, "GOFLAGS"), "GOFLAGS="+schemaGoflags(os.Getenv("GOFLAGS"), overlay))
+			var all strings.Builder
+			clean := true
+			for i, d := range dirs {
+				out := filepath.Join(filepath.Dir(overlay), fmt.Sprintf("probe-%d.out", i))
+				cmd := exec.Command("go", "build", "-gcflags=-e", "-o", out, d)
+				if root != "" {
+					cmd.Dir = root
+				}
+				cmd.Env = env
+				b, err := cmd.CombinedOutput()
+				all.Write(b)
+				if err != nil {
+					clean = false
+				}
+			}
+			return all.String(), clean
+		}
 	}
 	if n > 1 {
 		// The tree to clone is the one the mutations and the suite command
