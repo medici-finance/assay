@@ -831,7 +831,7 @@ func ReadOnlyForgeForCIToken(repo ForgeRepo, jobRepo, token string) (Forge, Forg
 			"only; %s resolves to %s", repo.Slug(), res.Kind))
 	}
 	base := GitHubBaseURLOrDefault(ciTokenAPIBase)
-	return ReadOnly(OutboundChecked(&GitHubForge{Token: token, BaseURL: base}, "ci-workflow-token")), res, nil
+	return ReadOnly(OutboundChecked(&GitHubForge{Token: token, BaseURL: base, onlyRepo: jobRepo}, "ci-workflow-token")), res, nil
 }
 
 // ForgeKindFor resolves WHICH forge serves repo — the kind and the provenance of the

@@ -7,8 +7,9 @@ module's offline and frozen packages; every online forge read stays on the read 
 stays internal, and no credential moves into a process that has none today. The forge-seam
 direction of 2026-09-14 (statusgen reaches the seam by running the read verb, never by linking
 a package; see the desktools-v2 spec header) is amended in that part only. forge-neutral/36
-becomes eligible for pick-up and keeps its own human gate; the ruling is not its sign-off. This
-document describes upcoming work, not a claim that the SDKs or extractions exist.
+becomes eligible for pick-up and keeps its own human gate; the ruling is not its sign-off. The
+first slice, the `forgeread` module, is described under "The first shared read" below; the
+other rows describe upcoming work, not a claim that those SDKs or extractions exist.
 
 Shared behavior has one canonical implementation exposed through versioned libraries or
 SDKs. Consumers link it directly where compatible with their authority and deployment.
@@ -57,6 +58,37 @@ map, not a competing register. Module placement is not a new semantic owner.
 - Pin module versions, keep release/build resolution working with `GOWORK=off`, and exercise
   an external consumer from a local module proxy with no workspace or relative replace.
   This is packaging qualification, not permission to cut a release or contact providers.
+
+## The first shared read: `forgeread`
+
+`forgeread/` is its own Go module (`github.com/medici-finance/assay/forgeread`, stdlib only, no
+`go.work` at the repository root) holding the first shared fact read, the open issues of an
+explicit repository set.
+
+| Piece | What it is | Who links it |
+|---|---|---|
+| Root package `forgeread` | The `Reader` interface (`OpenIssues(ctx, repos)`), the `Issue` / `Result` / `Unavailable` types, the three-state envelope parser (`ParseIssuesEnvelope`, fail-closed on an unknown schema or kind), `Reconcile` (every requested repository appears exactly once, as data or as unavailable) and the offline and frozen-result readers. It imports no subpackage, no `net/http` and no `os/exec`; its whole dependency closure is checked. | statusgen and desk-tools. Offline and frozen inputs only. |
+| `forgeread/adapters` and `adapters/github`, `adapters/gitlab` | The provider-specific pagination and mapping for open issues, written against an `Access` interface that serves one page of an already-admitted repository. They hold no credential, resolve no host and read no environment. | desk-tools only (`deskkit` composes them over its own authenticated transport). A statusgen import of anything below the module root is a counted failure. |
+
+How the two paths meet: `deskread issues` and the in-process SDK run the same adapters over the
+same observations, so a repository is "known empty", "unavailable", "truncated" (the provider
+kept paginating past the walk ceiling; no partial list is returned) or "unsupported schema"
+(a refusal, not an answer) identically on both. Credential resolution, host and repository
+validation and the CI-token read-only profile stay in `deskkit`; the composition it hands the
+adapter refuses any repository other than the one its credential was admitted for, before a
+request is built. statusgen's online reads still run the `deskread` verb; its default reader is
+the SDK's offline reader.
+
+Two versions, separately. The Go API version is `forgeread.APIVersion` (semantic versioning of
+the exported Go surface; a module release is tagged `forgeread/vX.Y.Z`). The JSON envelope
+version is `forgeread.EnvelopeSchema` and moves only by a deliberate, announced change: an older
+consumer refuses a newer schema rather than best-effort reading it. An additive wire field (the
+optional `class` on an unavailable entry) does not move the schema number.
+
+Controls: `tools/desk/scripts/forge-ban.sh` counts `forgeread/` as its own tree and fails on any
+site; the ambient-token-read rule walks it with no permit; the path filters of the
+`forge-surface-control` and statusgen workflows are to list `forgeread/**` (workflow files are
+promoted by a maintainer; the prepared files are in `ci/staged-workflows/`).
 
 ## Routing and sequence
 

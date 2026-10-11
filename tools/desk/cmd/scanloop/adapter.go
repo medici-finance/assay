@@ -76,6 +76,9 @@ type ScanLoop struct {
 	// batch — one whole-scope scan covering every new inbound issue this pass — while the ledger is
 	// still keyed on the inbound items, because it is those that have to leave by an exit.
 	members map[string][]string
+	// meta holds, per INBOUND item, what its intake-exit-v1 record needs (classifier reason,
+	// admission state, inbound time). Never a title, body or author.
+	meta map[string]memberMeta
 	// passBranch is computed ONCE per pass. It used to be derived per item from a minute-granular
 	// clock, which meant two items in one pass produced the SAME branch name: the second
 	// `worktree add -b` failed, the failure surfaced as a dispatch error, and the item was then
@@ -169,6 +172,16 @@ func (s *ScanLoop) Parked() []string {
 	return out
 }
 
+// ParkedEvent returns what the EMITTED report prints for a parked item: the classifier reason it
+// was parked with and the inbound event's time. That time is half of the intake-exit record's key
+// (item + opened), so the session passes it to `land --opened` to record the exit for THIS event.
+func (s *ScanLoop) ParkedEvent(id string) (kind string, opened time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.meta[id]
+	return m.Kind, m.Opened
+}
+
 // exited is the set the leak check runs against: everything queued MINUS what was emitted for
 // routing and minus what a live claim elsewhere took. An item still awaiting a routing decision has
 // not leaked — it has not finished — and calling it a leak would make the leak check cry wolf until
@@ -236,6 +249,7 @@ func (s *ScanLoop) SelectQueue() ([]loopengine.Item, error) {
 	var batch []Admission
 	var queued []string
 	members := map[string][]string{}
+	meta := map[string]memberMeta{}
 
 	for _, a := range adm {
 		if !a.Admitted() {
@@ -244,6 +258,7 @@ func (s *ScanLoop) SelectQueue() ([]loopengine.Item, error) {
 		id := a.Item.ID()
 		queued = append(queued, id)
 		lane, kind := s.classify(a)
+		meta[id] = memberMeta{Kind: kind, Trust: string(a.State), Opened: a.Item.UpdatedAt}
 		if lane == LaneScanCarrierPR {
 			batch = append(batch, a)
 			continue
@@ -270,6 +285,7 @@ func (s *ScanLoop) SelectQueue() ([]loopengine.Item, error) {
 	s.admissions = adm
 	s.queued = queued
 	s.members = members
+	s.meta = meta
 	s.mu.Unlock()
 	return items, nil
 }
@@ -307,24 +323,34 @@ func (s *ScanLoop) classify(a Admission) (LaneName, string) {
 	// scan target under a repo-stemmed name. What is NOT ordinary is the scan target itself being
 	// unwritable, and that is a property of the pass, not of the item.
 	if strings.TrimSpace(s.ScanTarget) == "" {
-		return LaneRouting, "no-scan-target"
+		return LaneRouting, kindNoScanTarget
 	}
 	if !deskkit.IsAllowedRepo(s.ScanTarget) {
-		return LaneRouting, "scan-target-outside-write-boundary"
+		return LaneRouting, kindOutsideBoundary
 	}
 	known, knownErr := HasPlaceholder(s.Root, a.Item.Repo, a.Item.Number)
 	switch {
 	case knownErr != nil:
 		// Could not read local state. The bounded direction is JUDGMENT: emit it for a model tier
 		// rather than let a mechanical lane act on state it could not read.
-		return LaneRouting, "unreadable-placeholder-state"
+		return LaneRouting, kindUnreadableState
 	case known:
 		// An item we already have state for is an UPDATE — a comment, a resumed worker, an answered
 		// decision. What it means is a judgment, never a computation.
-		return LaneRouting, "update"
+		return LaneRouting, kindUpdate
 	}
-	return LaneScanCarrierPR, "new-issue"
+	return LaneScanCarrierPR, kindNewIssue
 }
+
+// The reasons classify returns. They are also the closed `kind` vocabulary of the intake-exit-v1
+// record (exitrecord.go), so a new reason has to be added to classifierKinds as well.
+const (
+	kindNewIssue        = "new-issue"
+	kindUpdate          = "update"
+	kindUnreadableState = "unreadable-placeholder-state"
+	kindNoScanTarget    = "no-scan-target"
+	kindOutsideBoundary = "scan-target-outside-write-boundary"
+)
 
 // judgmentItem renders one admitted event that a model tier must route.
 func (s *ScanLoop) judgmentItem(a Admission, kind string) loopengine.Item {
@@ -497,12 +523,20 @@ func (s *ScanLoop) Land(r loopengine.Result) error {
 	s.mu.Lock()
 	outcome := s.outcomes[r.Item.ID]
 	members := s.membersOf(r.Item.ID)
+	metas := make(map[string]memberMeta, len(members))
+	for _, m := range members {
+		metas[m] = s.meta[m]
+	}
 	s.mu.Unlock()
 
 	exit, err := ExitOf(outcome.Exit, resultExit(r))
 	if err != nil {
 		return err
 	}
+	// Record failures are collected, never returned from inside the loop: by the time Land runs the
+	// lane's outward write has happened, so every member still gets its ledger entry and its audit
+	// `land` line, and the failures are reported together once the batch is landed.
+	var recordErrs []error
 	for _, member := range members {
 		rec := ExitRecord{
 			ItemID:   member,
@@ -521,8 +555,16 @@ func (s *ScanLoop) Land(r loopengine.Result) error {
 		if err := auditExit("scanloop", rec); err != nil {
 			return err
 		}
+		// The structured intake-exit-v1 record comes AFTER the audit line and never gates it: a
+		// refused or unwritable record costs that member its record, not its audit line, and costs
+		// the other members nothing.
+		xr := landRecord(member, exit, outcome.Lane, rec.Artifact, r.Item.Payload["detail"], r.Item.ExecTier,
+			metas[member], s.now())
+		if _, err := appendExitRecord(xr, nil); err != nil {
+			recordErrs = append(recordErrs, err)
+		}
 	}
-	return nil
+	return recordFailures(recordErrs)
 }
 
 // OnIdle is the next poll. The monitor is the refresh — SelectQueue runs a fresh cycle every time —
