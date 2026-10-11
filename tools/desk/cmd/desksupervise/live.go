@@ -95,7 +95,12 @@ func claimPage(refs []*plumbing.Reference, repo string, now time.Time, limit int
 		if state != "dispatched" {
 			continue
 		}
-		claims = append(claims, claimRecord{Key: key, Item: key, Repo: repo, Owner: owner, Branch: branch, Tier: "cheap", State: state, DispatchedAt: payload.When.UTC().Format(time.RFC3339), Ref: ref.Name().String(), Version: ref.Hash().String()})
+		claim := claimRecord{Key: key, Item: key, Repo: repo, Owner: owner, Branch: branch, Tier: "cheap", State: state, DispatchedAt: payload.When.UTC().Format(time.RFC3339), Ref: ref.Name().String(), Version: ref.Hash().String()}
+		if target, err := decodeClaimTarget(key, repo); err == nil {
+			claim.Item, claim.PR = target.item, target.pr
+		}
+		// Unknown forms stay visible and are held blind by live reconciliation.
+		claims = append(claims, claim)
 	}
 	return claims, next, nil
 }

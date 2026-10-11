@@ -64,6 +64,13 @@ interval, wraps after the final page, and marks page-only snapshots incomplete. 
 page for inspection without deleting refs. Release compares the exact assessed object
 id on the server; a replacement holder is preserved. No age-only reaper is added.
 
+Live reconciliation decodes repository-bound claim keys: <repo>--<stream>--<NN>
+reads stream/NN from its board; <repo>--pr-<N> (including review lanes) reads that PR;
+<repo>--issue-<N> reads that ordinary issue. PR/issue claims have no board axis.
+Only the configured repository alias and basename are accepted. Unknown key forms,
+unconfigured prefixes, unreadable boards and unreadable forge items remain BLIND.
+A brief key carries no associated PR number; its holder and board are checked.
+
 Reconciliation runs FIRST, before the liveness classification: for every dispatched claim it
 joins three reads (the current claim holder, the item's board row on origin/main, and the PR's
 forge state — cheapest first, short-circuit on the first ineligible) and, for an INELIGIBLE

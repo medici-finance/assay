@@ -48,6 +48,36 @@
       "file": "cmd/desksupervise/run.go",
       "old": "snapshot := snapshotFromSweep(all, pol, now)",
       "new": "snapshot := snapshotFromSweep(results, pol, now)"
+    },
+    {
+      "name": "lose decoded item metadata",
+      "file": "cmd/desksupervise/live.go",
+      "old": "claim.Item, claim.PR = target.item, target.pr",
+      "new": "claim.Item, claim.PR = key, 0; _ = target"
+    },
+    {
+      "name": "force nonbrief claims through board",
+      "file": "cmd/desksupervise/reconcile.go",
+      "old": "if target.pr > 0 || target.issue > 0 {",
+      "new": "if false && (target.pr > 0 || target.issue > 0) {"
+    },
+    {
+      "name": "bypass genuine brief board read",
+      "file": "cmd/desksupervise/reconcile.go",
+      "old": "BoardRow: liveBoardRowReader(root), PR: prRead,",
+      "new": "BoardRow: func(string, string) (loopengine.Status, error) { return \"in-progress\", nil }, PR: prRead,"
+    },
+    {
+      "name": "accept foreign claim prefix",
+      "file": "cmd/desksupervise/claimitem.go",
+      "old": "[]string{deskkit.RepoShortLabel(repo), basename}",
+      "new": "[]string{deskkit.RepoShortLabel(repo), basename, \"foreign\"}"
+    },
+    {
+      "name": "accept PR response for ordinary issue",
+      "file": "cmd/desksupervise/claimitem.go",
+      "old": " || issue.IsPullRequest",
+      "new": ""
     }
   ]
 }
