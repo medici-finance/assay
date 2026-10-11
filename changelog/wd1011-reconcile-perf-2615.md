@@ -1,0 +1,3 @@
+### Fixed
+- `statusgen reconcile --backfill` is fast again on large boards. The lint hold checked each witnessed row by re-running every status-keyed lint rule over the whole board, so a run that moved 117 rows made 118 whole-board passes. It now makes one baseline pass, and each later move re-derives every rule's output from the moved row's stream only. The verdicts are unchanged: parity tests compare every row, hold and written tree against the old whole-board path, and the package tests check every move against a whole-board evaluation.
+- The reconcile lint hold prints progress to stderr every 25 witnessed cells, plus a final line with the elapsed time. `--json` stdout is unchanged.

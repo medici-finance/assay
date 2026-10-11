@@ -104,7 +104,11 @@ type lintEnv struct {
 	streams  []*Stream
 	edge     []*Stream
 	findings []Finding
-	baseline []string // status-keyed PROBLEMs of the board as currently written; nil until first needed
+	baseline []string // status-keyed PROBLEMs of the board as currently written; valid once ready
+	ready    bool
+	opts     holdOptions
+	stats    *holdStats
+	states   []holdRuleState // per registered rule; nil entries are evaluated over the whole board (reconcileholdinc.go)
 }
 
 // loadLintEnv loads root the way run() does before its per-stream checks.
@@ -115,7 +119,8 @@ func loadLintEnv(root string) (*lintEnv, error) {
 	}
 	attachPlaceholders(streams)
 	archived, _ := loadArchivedStreams(root) // an unreadable archive only narrows edge resolution; run() treats it as a NOTICE too
-	return &lintEnv{root: root, streams: streams, edge: edgeResolutionUniverse(streams, archived), findings: findings}, nil
+	return &lintEnv{root: root, streams: streams, edge: edgeResolutionUniverse(streams, archived), findings: findings,
+		opts: holdOptions{crossCheck: holdCrossCheck}}, nil
 }
 
 // statusKeyedLintRule is one lint rule run() applies whose verdict can change
@@ -123,23 +128,27 @@ func loadLintEnv(root string) (*lintEnv, error) {
 type statusKeyedLintRule struct {
 	name     string // the run() callee, as TestStatusKeyedLintRulesRegistered matches it
 	problems func(e *lintEnv) []string
+	// incremental is the rule's per-move form (reconcileholdinc.go): how a row
+	// move's effect on it is derived without re-running it over the whole board.
+	// nil evaluates the rule over the whole board on every move.
+	incremental holdIncremental
 }
 
 // statusKeyedLintRules lists every Status-keyed PROBLEM producer run() calls,
 // each invoked exactly as run() invokes it.
 var statusKeyedLintRules = []statusKeyedLintRule{
-	{"checkScoped", func(e *lintEnv) []string { p, _ := checkScoped(e.streams, e.edge, e.findings); return p }},
-	{"checkBriefFiles", func(e *lintEnv) []string { p, _ := checkBriefFiles(e.streams, e.edge); return p }},
-	{"checkPlaceholderFiles", func(e *lintEnv) []string { p, _ := checkPlaceholderFiles(e.streams); return p }},
-	{"checkArchivedPlaceholders", func(e *lintEnv) []string { p, _ := checkArchivedPlaceholders(e.streams); return p }},
-	{"designGateProblems", func(e *lintEnv) []string { return designGateProblems(e.root, e.streams) }},
-	{"deployTransitionProblems", func(e *lintEnv) []string { return deployTransitionProblems(e.root, e.streams) }},
-	{"attributionProblems", func(e *lintEnv) []string { p, _ := attributionProblems(e.streams); return p }},
-	{"verifyRowClassProblems", func(e *lintEnv) []string { return verifyRowClassProblems(e.streams) }},
-	{"danglingSatisfiesProblems", func(e *lintEnv) []string { return danglingSatisfiesProblems(e.root, e.streams) }},
+	{"checkScoped", func(e *lintEnv) []string { p, _ := checkScoped(e.streams, e.edge, e.findings); return p }, streamLocal},
+	{"checkBriefFiles", func(e *lintEnv) []string { p, _ := checkBriefFiles(e.streams, e.edge); return p }, streamLocal},
+	{"checkPlaceholderFiles", func(e *lintEnv) []string { p, _ := checkPlaceholderFiles(e.streams); return p }, statusInvariant},
+	{"checkArchivedPlaceholders", func(e *lintEnv) []string { p, _ := checkArchivedPlaceholders(e.streams); return p }, streamLocal},
+	{"designGateProblems", func(e *lintEnv) []string { return designGateProblems(e.root, e.streams) }, designGateIncremental},
+	{"deployTransitionProblems", func(e *lintEnv) []string { return deployTransitionProblems(e.root, e.streams) }, deployIncremental},
+	{"attributionProblems", func(e *lintEnv) []string { p, _ := attributionProblems(e.streams); return p }, attributionIncremental},
+	{"verifyRowClassProblems", func(e *lintEnv) []string { return verifyRowClassProblems(e.streams) }, streamLocal},
+	{"danglingSatisfiesProblems", func(e *lintEnv) []string { return danglingSatisfiesProblems(e.root, e.streams) }, statusInvariant},
 	// Reads the tree itself (it re-renders each drive-snapshot region from disk),
 	// which is why a move is evaluated with the README already written.
-	{"driveRegionLintProblems", func(e *lintEnv) []string { p, _ := driveRegionLintProblems(e.root, nowFunc()); return p }},
+	{"driveRegionLintProblems", func(e *lintEnv) []string { p, _ := driveRegionLintProblems(e.root, nowFunc()); return p }, driveIncremental},
 }
 
 // statusKeyedNotRows names run() callees the registry completeness test sees
@@ -148,6 +157,8 @@ var statusKeyedNotRows = map[string]string{
 	"requirementRegisterProblems": "reads a requirement-register entry's own status field, never a brief row",
 }
 
+// problems evaluates every registered rule over the whole board, in registry
+// order — the hold's reference answer. Not counted in holdStats.
 func (e *lintEnv) problems() []string {
 	var out []string
 	for _, r := range statusKeyedLintRules {
@@ -156,20 +167,78 @@ func (e *lintEnv) problems() []string {
 	return out
 }
 
+// initHold evaluates the board as currently written: once per rule, through
+// the rule's incremental form when it has one and the board allows it.
+func (e *lintEnv) initHold() error {
+	e.ready = true
+	e.states = make([]holdRuleState, len(statusKeyedLintRules))
+	incremental := !e.opts.reference && incrementalEligible(e.streams)
+	var base []string
+	for i, r := range statusKeyedLintRules {
+		var out []string
+		if incremental && r.incremental != nil {
+			out, e.states[i] = r.incremental(e, r)
+		} else {
+			out = e.fullEval(r)
+		}
+		base = append(base, out...)
+	}
+	e.baseline = base
+	if e.opts.crossCheck {
+		if full := e.problems(); !equalStrings(full, base) {
+			return fmt.Errorf("lint hold self-check: incremental evaluation diverged from the whole-board lint on the board as written:\nincremental: %q\nwhole-board: %q", base, full)
+		}
+	}
+	return nil
+}
+
+// afterMove returns each rule's output on the board with m applied.
+func (e *lintEnv) afterMove(m *holdMove) [][]string {
+	outs := make([][]string, len(statusKeyedLintRules))
+	for i, r := range statusKeyedLintRules {
+		if st := e.states[i]; st != nil {
+			if out, ok := st.after(m); ok {
+				outs[i] = out
+				continue
+			}
+		}
+		outs[i] = e.fullEval(r)
+	}
+	return outs
+}
+
+func (e *lintEnv) settleMove(m *holdMove, kept bool, outs [][]string) {
+	for i, st := range e.states {
+		if st != nil {
+			var out []string
+			if outs != nil {
+				out = outs[i]
+			}
+			st.settle(m, kept, out)
+		}
+	}
+}
+
 // findRow returns the loaded brief row for stream/num, keyed by the stream's
 // directory name (the same key briefStreamNum yields and the README path uses).
 func (e *lintEnv) findRow(stream, num string) *Brief {
-	for _, s := range e.streams {
+	_, row := e.findRowAt(stream, num)
+	return row
+}
+
+// findRowAt is findRow with the index of the row's stream in e.streams.
+func (e *lintEnv) findRowAt(stream, num string) (int, *Brief) {
+	for si, s := range e.streams {
 		if filepath.Base(s.Dir) != stream && s.Name != stream {
 			continue
 		}
 		for i := range s.Briefs {
 			if s.Briefs[i].Num == num {
-				return &s.Briefs[i]
+				return si, &s.Briefs[i]
 			}
 		}
 	}
-	return nil
+	return -1, nil
 }
 
 // transitionProblems is the pure, in-memory evaluation: the PROBLEM lines
@@ -189,22 +258,46 @@ func (e *lintEnv) transitionProblems(stream, num, to string) (added []string, fo
 // and the staged README, so later rows are judged against the board as it
 // would be written); otherwise both are restored to their exact prior state.
 func (e *lintEnv) tryMove(stream, num, to string, stage func() (undo func() error, err error), keepIfClean bool) (added []string, found bool, err error) {
-	row := e.findRow(stream, num)
+	si, row := e.findRowAt(stream, num)
 	if row == nil {
 		return nil, false, nil
 	}
-	if e.baseline == nil {
-		e.baseline = e.problems()
+	if !e.ready {
+		if err := e.initHold(); err != nil {
+			return nil, true, err
+		}
+	}
+	if e.stats != nil {
+		e.stats.Moves++
 	}
 	prev := row.Status
+	m := &holdMove{si: si, row: row, key: stream, num: num, prev: prev, to: to, staged: stage != nil}
+	for _, st := range e.states {
+		if st != nil {
+			st.before(m)
+		}
+	}
 	undo := func() error { return nil }
 	if stage != nil {
 		if undo, err = stage(); err != nil {
+			e.settleMove(m, false, nil)
 			return nil, true, err
 		}
 	}
 	row.Status = to
-	after := e.problems()
+	outs := e.afterMove(m)
+	var after []string
+	for _, o := range outs {
+		after = append(after, o...)
+	}
+	if e.opts.crossCheck {
+		if full := e.problems(); !equalStrings(full, after) {
+			row.Status = prev
+			e.settleMove(m, false, outs)
+			_ = undo()
+			return nil, true, fmt.Errorf("lint hold self-check: incremental evaluation diverged from the whole-board lint for %s/%s -> %s:\nincremental: %q\nwhole-board: %q", stream, num, to, after, full)
+		}
+	}
 	seen := map[string]int{}
 	for _, p := range e.baseline {
 		seen[p]++
@@ -218,9 +311,11 @@ func (e *lintEnv) tryMove(stream, num, to string, stage func() (undo func() erro
 	}
 	if len(added) == 0 && keepIfClean {
 		e.baseline = after
+		e.settleMove(m, true, outs)
 		return nil, true, nil
 	}
 	row.Status = prev
+	e.settleMove(m, false, outs)
 	if uerr := undo(); uerr != nil {
 		return added, true, fmt.Errorf("restoring %s/%s after a held move: %w", stream, num, uerr)
 	}

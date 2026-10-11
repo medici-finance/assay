@@ -634,7 +634,8 @@ The register, lower-case kebab ids:
 
 The project layer may append classes for its stack and may never remove a base class — the
 same layer boundary every other neutral body here uses. Every class ends the round in
-exactly one of four line shapes, one grammar — class first, state second, colon, detail.
+exactly one of four line shapes, one grammar — class first, state second, colon
+before the detail, except the finding shape.
 `checked-clean` and `could-not-check` are the methodology's existing checked/unchecked states
 (common clauses C4) applied per class; `n/a` is the one new line shape:
 
@@ -654,9 +655,10 @@ wrong-stated-scope case: full pass, say so.
 An examined-and-sound class is `checked-clean`, never `n/a` — conflating the two is
 precisely the leak this contract exists to close. The refusal rule is the whole point of the
 contract: **a class that cannot be honestly `n/a`'d and was not checked is
-`could-not-check`, never a silent APPROVE** (clause 5). The register carries no security
-classes — trust/authz, secrets and PII, injection are the security lane's, and the two
-verdicts stay separate artifacts (clause 12).
+`could-not-check`, never a silent APPROVE** (clause 5). A could-not-check line is
+disclosure: an APPROVE stands unless it rests on that class. The register carries no
+security classes — trust/authz, secrets and PII, injection are the security lane's, and
+the two verdicts stay separate artifacts (clause 12).
 <!-- lane:correctness:end -->
 <!-- lane:security:begin -->
 **Not run in the security lane.** The coverage contract and its class register are the

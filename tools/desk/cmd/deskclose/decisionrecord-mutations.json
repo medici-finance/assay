@@ -1,0 +1,107 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskclose/ -count=1 -timeout 300s -run 'TestParseRulingPick|TestComposeDecision|TestValidateDecisionRecord|TestAppendDecisionRecord|TestDecisionRecordWireKeys|TestTriageRecord|TestTriageHumanDecided'",
+  "control": {
+    "name": "CONTROL — an outbound refusal of the record block fails the close (no prose-only fallback)",
+    "file": "cmd/deskclose/triage.go",
+    "old": "\tif err != nil && record != nil && outboundRefused(err) {",
+    "new": "\tif false && err != nil && record != nil && outboundRefused(err) {"
+  },
+  "mutations": [
+    {
+      "name": "C-4 — any comment-post failure earns the prose-only retry (a failed write that may have landed is posted again and the issue closes)",
+      "file": "cmd/deskclose/triage.go",
+      "old": "\tif err != nil && record != nil && outboundRefused(err) {",
+      "new": "\tif err != nil && record != nil {"
+    },
+    {
+      "name": "C-4 — a separate answer-only relay's edit time is not checked",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tif relayIdx >= 0 && relayIdx != anchorIdx {",
+      "new": "\tif false && relayIdx >= 0 && relayIdx != anchorIdx {"
+    },
+    {
+      "name": "SEC-3 — a minimized App comment can be an ask or a relay",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tif c.Minimized || c.Author.ID == 0 {",
+      "new": "\tif c.Author.ID == 0 {"
+    },
+    {
+      "name": "SEC-6 — an App comment with no account id is trusted on its login alone",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tif c.Minimized || c.Author.ID == 0 {",
+      "new": "\tif c.Minimized {"
+    },
+    {
+      "name": "C-3 — a trusted human (not App-shaped) restating options becomes the anchor",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tif !strings.HasSuffix(l, \"[bot]\") && !strings.HasPrefix(l, \"app/\") {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "C-3 — a ruling carrying a question mark still records a definite pick",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tif strings.Contains(all, \"?\") || rulingNegatesRe.MatchString(all) {",
+      "new": "\tif rulingNegatesRe.MatchString(all) {"
+    },
+    {
+      "name": "C-3 — a refusal, hold or qualifier word still records a definite pick",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tif strings.Contains(all, \"?\") || rulingNegatesRe.MatchString(all) {",
+      "new": "\tif strings.Contains(all, \"?\") {"
+    },
+    {
+      "name": "C-3 — the validator accepts a malformed option id",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\t\tif !decOptionIDRe.MatchString(o.ID) || ids[o.ID] {",
+      "new": "\t\tif ids[o.ID] {"
+    },
+    {
+      "name": "C-3 — the validator accepts a duplicate option id",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\t\tif !decOptionIDRe.MatchString(o.ID) || ids[o.ID] {",
+      "new": "\t\tif !decOptionIDRe.MatchString(o.ID) {"
+    },
+    {
+      "name": "C-3 — the validator accepts an option digest that is not sha256 hex",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\t\tif !decSHA256Re.MatchString(o.TextSHA256) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "C-3 — the validator accepts a ruling digest that is not sha256 hex",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tif !decSHA256Re.MatchString(r.RulingSHA256) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "SEC-2 — the validator accepts an edited record with a definite pick",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\t\tif r.Picked != DecisionPickUnparsed || r.Recommended != DecisionRecommendedNone {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "SEC-1 — the validator accepts a brief outside the brief-id grammar",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tcase r.Brief != \"\" && !decBriefIDRe.MatchString(r.Brief):",
+      "new": "\tcase false:"
+    },
+    {
+      "name": "SEC-2 — a ruling edited after it was posted is not checked",
+      "file": "internal/deskkit/decisionrecord.go",
+      "old": "\tafter(ruling.UpdatedAt, ruled)\n",
+      "new": "\t_ = ruling.UpdatedAt\n"
+    },
+    {
+      "name": "C-3 — an unreadable thread still composes a record",
+      "file": "cmd/deskclose/decisionrecord.go",
+      "old": "\tif err != nil {\n\t\treturn nil, \"decision-record: unrecorded (comment thread unreadable)\"",
+      "new": "\tif false && err != nil {\n\t\treturn nil, \"decision-record: unrecorded (comment thread unreadable)\""
+    },
+    {
+      "name": "C-3 — the ruling's id is not passed to compose (the thread after the ruling counts as before it)",
+      "file": "cmd/deskclose/decisionrecord.go",
+      "old": "\trul := deskkit.Comment{DatabaseID: ruling.ID, Body:",
+      "new": "\trul := deskkit.Comment{DatabaseID: 0, Body:"
+    }
+  ]
+}

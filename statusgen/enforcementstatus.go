@@ -112,6 +112,7 @@ var lintRuleRegistry = []LintRule{
 	// Verify-row shape lint (verifyrows.go) — all advisory (unfailable notices).
 	{ruleERELiteralPipe, "a `\\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind", StatusAdvisory},
 	{ruleGrepZeroCount, "a `grep -c` whose pass bar is satisfied by a zero count measures nothing", StatusAdvisory},
+	{ruleGrepPipeZeroCount, "a grep feeding a later pipeline stage under a zero-count Expect fails on its own success path under pipefail (grep exits 1 on no match), and passes on exit status alone when a match is present", StatusAdvisory},
 	{ruleExitSwallowed, "a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail", StatusAdvisory},
 	{ruleRE2LiteralPipe, "a `\\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation", StatusAdvisory},
 	{ruleMetavar, "an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written", StatusAdvisory},
