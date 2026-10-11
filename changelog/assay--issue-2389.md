@@ -1,2 +1,0 @@
-### Fixed
-- The forge-neutral/33 brief's Verify table can now be witnessed after merge: rows 17 and 19 name the implementation commit and the brief's authoring base instead of a merge-base that resolves to HEAD on merged main, row 19 asserts on the `consumers` summary line rather than exit 0 alone, the unwitnessable GitLab live row is withdrawn into a note, row 4's name counts are corrected, and the origin of the 25-page GitLab ceilings is stated beside the constants.
