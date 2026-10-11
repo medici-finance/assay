@@ -692,6 +692,13 @@ paragraph's typo bullet still describes for an **unrecognised** key name: a stra
 `ASSAY_*` key still collapses the whole roster today (that bullet is unchanged), but a
 **recognised** extension key's own bad VALUE no longer does.
 
+`ASSAY_OS_USER_LOGIN_MAP` carries comma-separated `osuser:login` entries binding an OS
+account name to the roster login the scan-override audit row names (the desk tools'
+`OverrideIdentity`). The login half must be a trusted human of the same roster — one
+present in `ASSAY_TRUSTED_LOGINS`, never a configured App slug; anything else invalidates
+the key. An OS account name containing a list separator (space, comma, semicolon) cannot
+be expressed and always lands on the audit row's marked `os:<username>` fallback.
+
 #### Failure mode 2 — a PARTIAL roster looks like a normal board, not an empty one
 
 An absent roster fails loudly: a `REFUSED` line in the echo, and repo-scoped *acting* commands

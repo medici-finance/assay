@@ -180,6 +180,14 @@ func osUsername() string {
 //     for a roster login, and an empty OS username (the platform could not say) stays the
 //     long-standing "unknown".
 //
+// RESOLVED MEANS ROSTER-VALIDATED. A mapped login is printed only when it is a trusted
+// human of THIS roster (in cfg.Humans, not in cfg.Bots) — the loader enforces that for
+// arm 1, and the validRosterLogin guard re-enforces it here for every arm, so a value
+// arriving through a config built by any other path cannot be printed as resolved either.
+// A resolved row whose login differs from the account the platform reported carries the
+// observed account along — `<login>(os:<account>)` — because the audit log's location
+// stops implying the account once logs are collected centrally.
+//
 // All map keys are lowercased at load and the lookup lowercases the account name, so case
 // never decides attribution; the FALLBACK keeps the platform's own spelling for fidelity.
 // Nil maps (an unconfigured or refused roster) are the ordinary fallback path, not an
@@ -189,16 +197,35 @@ func resolveOverrideWho(osUser string, cfg Config) string {
 		return "unknown"
 	}
 	lower := strings.ToLower(osUser)
-	if login, ok := cfg.OSUserLogins[lower]; ok && login != "" {
+	login := ""
+	if l, ok := cfg.OSUserLogins[lower]; ok && validRosterLogin(l, cfg) {
+		login = l
+	} else if l, ok := cfg.HumanLogins[lower]; ok && validRosterLogin(l, cfg) {
+		login = l
+	} else if _, ok := cfg.Humans[lower]; ok {
+		login = lower
+	}
+	if login == "" {
+		return "os:" + osUser
+	}
+	if login == lower {
 		return login
 	}
-	if login, ok := cfg.HumanLogins[lower]; ok && login != "" {
-		return login
+	return login + "(os:" + osUser + ")"
+}
+
+// validRosterLogin reports whether l names a trusted HUMAN of this roster — present in
+// cfg.Humans and absent from cfg.Bots. The audit row's resolved form makes an
+// accountability claim, so the value must be one the roster itself stands behind; a
+// configured App slug (affix-less ones defeat looksLikeBot, as the coupling vectors
+// record) or an off-roster string never qualifies.
+func validRosterLogin(l string, cfg Config) bool {
+	if l == "" {
+		return false
 	}
-	if _, ok := cfg.Humans[lower]; ok {
-		return lower
-	}
-	return "os:" + osUser
+	_, inHumans := cfg.Humans[l]
+	_, inBots := cfg.Bots[l]
+	return inHumans && !inBots
 }
 
 // impersonationMarker is the fragment of impersonationRefusal's message that identifies it.

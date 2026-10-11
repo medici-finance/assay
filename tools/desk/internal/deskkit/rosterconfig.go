@@ -101,6 +101,12 @@ const (
 	// account like a per-laptop login rendered as itself instead of the login the
 	// house answers for. This key closes that gap explicitly.
 	//
+	// The login half must name a trusted HUMAN of the same roster (in
+	// ASSAY_TRUSTED_LOGINS, never a configured App slug) — an off-roster value
+	// printed unmarked would read as resolved when nothing resolved it. An OS
+	// account name containing a LIST SEPARATOR (space, comma, semicolon) cannot be
+	// expressed here at all and always lands on the marked fallback.
+	//
 	// It is an EXTENSION key, never a trust one: it labels a forensic audit row and
 	// authorises nothing, so a malformed value is recorded against this one key
 	// (Config.Ext) and the map reads as EMPTY — the identity falls back to a
@@ -1626,6 +1632,15 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// fell back. Empty is exactly the unset behaviour (resolveOverrideWho's
 	// clearly-marked OS-username fallback), and the audit write is never blocked
 	// either way.
+	//
+	// The login half must name a TRUSTED HUMAN of this same roster — in cfg.Humans
+	// and not in cfg.Bots, both of which parseConfig has already filled above. That
+	// single membership rule subsumes every shape check: a bot/App login (affixed
+	// or not — looksLikeBot cannot see an affix-less configured App slug), a typo'd
+	// or off-roster login, and a value carrying ':' or '/' (which could imitate the
+	// marked fallback or forge the session half of the row) are all refused by it.
+	// The audit row exists to name the accountable roster identity; printing an
+	// UNVALIDATED value as if it were resolved is the failure this rule closes.
 	cfg.OSUserLogins = map[string]string{}
 	var osUserMapIssue extAccumulator
 	for _, entry := range splitList(vals[EnvOSUserLoginMap]) {
@@ -1636,16 +1651,19 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			osUserMapIssue.bad("%s: cannot parse entry %q — expected osuser:login", EnvOSUserLoginMap, entry)
 			continue
 		}
-		if looksLikeBot(login) {
-			osUserMapIssue.bad("%s: entry %q maps to a bot/App/shared-agent login %q. The override audit "+
-				"row exists to name the accountable HUMAN identity — mapping an OS account to a bot "+
-				"login would attribute a human bypass to the shared-agent identity the roster exists "+
-				"to distinguish it from. Refusing the entry", EnvOSUserLoginMap, entry, login)
-			continue
-		}
 		if _, dup := cfg.OSUserLogins[osuser]; dup {
 			osUserMapIssue.bad("%s: OS account %q is mapped more than once — an ambiguous attribution "+
 				"must not resolve by parse order", EnvOSUserLoginMap, osuser)
+			continue
+		}
+		_, inHumans := cfg.Humans[login]
+		_, inBots := cfg.Bots[login]
+		if !inHumans || inBots {
+			osUserMapIssue.bad("%s: entry %q maps to %q, which is not a trusted-human login in this "+
+				"roster (%s) or is a configured App slug (%s). The override audit row names the "+
+				"accountable HUMAN roster identity — an off-roster value printed unmarked would read "+
+				"as resolved when nothing resolved it. Refusing the entry",
+				EnvOSUserLoginMap, entry, login, EnvTrustedLogins, EnvTrustedBotSlugs)
 			continue
 		}
 		cfg.OSUserLogins[osuser] = login
