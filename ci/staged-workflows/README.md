@@ -69,7 +69,7 @@ reviewable artifact, not a run.
   code no muhar spec covers are listed as candidate guards with file:line. The job fails
   only when the sweep itself broke (install or pin check, a Gremlins failure, a package red
   in the mutant copy layout, or no evidence at all). Daily cron at 03:43 UTC plus
-  `workflow_dispatch`, `contents: read`, one concurrency group, about 80 runner-minutes a
+  `workflow_dispatch`, `contents: read`, one concurrency group, an estimated 60 to 80 runner-minutes a
   day on the 2-CPU public runner. See `tools/gremlins/README.md`. **Staged, not live** —
   a maintainer promotes it:
   ```

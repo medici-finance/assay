@@ -85,6 +85,7 @@ done
 mkdir -p "$out/bin"
 out="$(cd "$out" && pwd)"
 gotmp="$(mktemp -d "${TMPDIR:-/tmp}/gremlins-gotmp.XXXXXX")"
+# shellcheck disable=SC2329 # invoked by the EXIT trap
 cleanup() { rm -rf "$root"/gremlins-* "$gotmp"; }
 trap cleanup EXIT
 
@@ -136,9 +137,9 @@ for spec in "${pkgs[@]}"; do
 	# 2. Plan: today's slice of files, so the run fits the budget.
 	rc=0
 	"$out/bin/gremlintriage" plan -dry-run "$dir/dry.json" -log "$dir/dry.log" \
-		-budget "$b" -workers "$workers" -day "$day" >"$dir/plan.txt" 2>>"$dir/dry.log" || rc=$?
+		-budget "$b" -workers "$workers" -day "$day" >"$dir/plan.txt" 2>"$dir/plan.log" || rc=$?
 	if [ "$rc" -ne 0 ]; then
-		record "$pkg" dry-run-failed "$(wall)" "$rc" - "$dir/dry.log" -
+		record "$pkg" dry-run-failed "$(wall)" "$rc" - "$dir/plan.log" -
 		continue
 	fi
 	{ read -r planline; IFS= read -r exclude || exclude=""; } <"$dir/plan.txt"

@@ -102,7 +102,7 @@ reused.
 
 Outputs in `-o`:
 
-- per package: `<pkg>/{dry.json,dry.log,plan.txt,probe.log,report.json,run.log}`
+- per package: `<pkg>/{dry.json,dry.log,plan.txt,plan.log,probe.log,report.json,run.log}`
 - `manifest.tsv`: one row per package with state, wall seconds, exit code and bin
 - `summary.md`: the Markdown summary
 - `triage.json`: schema `gremlins-triage/v1`
@@ -126,6 +126,27 @@ staged workflow allows 110 minutes.
 `internal/deskkit` is the outlier. One run of its suite takes minutes, so only a handful of
 its roughly 5,600 runnable mutants fit in a day. For deskkit, Gremlins is a slow sample;
 muhar's targeted `-run` per entry is the right tool there.
+
+### Measured (2026-10-11)
+
+These are local runs with `GOMAXPROCS=2` to approximate the 2-CPU runner. Wall time
+covers the dry run, the copy probe and the run.
+
+| Package | Bin | Wall | Killed | Lived | Not covered | Candidates |
+|---|---|---|---|---|---|---|
+| `internal/deskkit` | 27/139 (partial) | 1890 s | 10 | 2 | 0 | 2 |
+| `cmd/deskmerge` | 4/7 | 211 s | 22 | 0 | 14 | 0 |
+| `internal/loopengine` | 2/2 | 258 s | 82 | 42 | 35 | 37 |
+| `cmd/deskclose` | 2/2 | 360 s | 142 | 0 | 1 | 0 |
+| `cmd/reviewloop` | 1/1 | 243 s | 65 | 0 | 27 | 0 |
+| `cmd/desksourceguard` | 1/1 | 104 s | 12 | 8 | 3 | 8 |
+
+That is about 51 minutes in total. deskkit alone is about 31 of them, and it is
+budget-bound. The rest finished well inside their budgets.
+
+The capacity estimate (one coverage run per mutant) is conservative. deskmerge's bin of 22
+mutants finished in under four minutes, so its 7-day rotation could be shortened once
+runner timings are in.
 
 ## Tests
 
