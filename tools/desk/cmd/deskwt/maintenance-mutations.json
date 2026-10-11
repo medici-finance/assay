@@ -78,6 +78,24 @@
       "file": "cmd/deskwt/maintenance.go",
       "old": "if r.Failed() || r.Stderr != \"\" {\n\t\t\treturn r.Fail",
       "new": "if r.Failed() {\n\t\t\treturn r.Fail"
+    },
+    {
+      "name": "preflight must refuse before recording an attempt",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if e := maintenanceCheckHooks(ctx, *repo); e != nil {\n\t\treturn e\n\t}\n\tif *apply {",
+      "new": "if *apply {"
+    },
+    {
+      "name": "task preconditions must be rechecked after inventory",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if e := maintenanceCheckHooks(ctx, *repo); e != nil {\n\t\t\treturn e\n\t\t}\n\t\tr :=",
+      "new": "r :="
+    },
+    {
+      "name": "ambiguous disabled display prefix must not authorize apply",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if !r.Failed() && r.Stderr == \"\" && r.Stdout != \"\" {",
+      "new": "if strings.HasPrefix(r.Stdout, \"disabled\\t\") { return nil }; if !r.Failed() && r.Stderr == \"\" && r.Stdout != \"\" {"
     }
   ]
 }

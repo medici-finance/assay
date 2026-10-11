@@ -166,7 +166,7 @@ func TestMaintenanceWarningHelper(t *testing.T) {
 }
 
 func TestMaintenanceWarningsFailClosed(t *testing.T) {
-	for _, task := range []string{"rev-parse", "for-each-ref", "worktree", "count-objects", "config", "config-match", "pack-refs", "commit-graph"} {
+	for _, task := range []string{"rev-parse", "for-each-ref", "worktree", "count-objects", "config", "config-match", "hook", "pack-refs", "commit-graph"} {
 		t.Run(task, func(t *testing.T) {
 			work, calls := maintenanceFixture(t)
 			if task == "config-match" {

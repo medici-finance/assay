@@ -2564,6 +2564,16 @@ are no borrowers. Loose-object/incremental-pack reclamation and a managed borrow
 remain follow-up work. Branch/worktree retirement stays in `deskwt prune`, claims in their
 claim protocol, and remote-tracking refresh in the sanctioned transport.
 
+Maintenance requires native `git hook list` support. Before the attempt stamp and again
+before each index task, it inventories the relevant ref-transaction event using Git's
+effective configuration. Any listed entry holds maintenance; hooks and their configuration
+are preserved. Unrelated events do not hold it. Disabled entries are conservatively held
+because Git's display can be ambiguous with configured names. Unsupported inventory,
+missing or unreadable hook directories, broken hook paths, and unexpected output fail closed.
+The common-directory lock coordinates maintenance callers, not external configuration
+editors: configuration must remain stable during a run. Rechecks narrow the race window
+but do not provide an atomic security boundary against concurrent configuration changes.
+
 The targeted regression audit is reproducible with
 `go -C tools/desk run ./cmd/muhar -j 2 -spec cmd/deskwt/maintenance-mutations.json`.
 It requires local loopback for the HTTP transport-denial fixture and symlink support for

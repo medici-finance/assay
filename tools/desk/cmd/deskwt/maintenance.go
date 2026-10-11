@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,6 +65,46 @@ func maintenanceRead(ctx context.Context, dir string, args ...string) (string, e
 		return "", r.Fail(deskkit.ExitUnverifiable, "maintenance inventory: git %s", strings.Join(args, " "))
 	}
 	return r.Stdout, nil
+}
+
+// maintenanceCheckHooks uses Git's effective configuration, including global and
+// worktree settings. Never interpret list display prefixes as proof a hook is disabled:
+// configured names can contain the same bytes. Refuse every listed relevant entry.
+func maintenanceCheckHooks(ctx context.Context, dir string) error {
+	hookDir, err := maintenanceRead(ctx, dir, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(hookDir)
+	if err != nil {
+		return deskkit.Unverifiable("read maintenance hook directory", err)
+	}
+	_, readErr := f.ReadDir(1)
+	closeErr := f.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return deskkit.Unverifiable("read maintenance hook directory", readErr)
+	}
+	if closeErr != nil {
+		return deskkit.Unverifiable("close maintenance hook directory", closeErr)
+	}
+	path := filepath.Join(hookDir, "reference-transaction")
+	if _, err := os.Lstat(path); err == nil {
+		if _, err := os.Stat(path); err != nil {
+			return deskkit.Unverifiable("resolve maintenance hook", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return deskkit.Unverifiable("inspect maintenance hook", err)
+	}
+	r := maintenanceGit(ctx, dir, "hook", "list", "-z", "reference-transaction")
+	// This is the sole accepted no-hook outcome on a Git version with native inventory.
+	// Unsupported commands, missing configuration, extra warnings and empty success fail closed.
+	if r.ExitCode == 1 && r.Stdout == "" && r.Stderr == "warning: no hooks found for event 'reference-transaction'" {
+		return nil
+	}
+	if !r.Failed() && r.Stderr == "" && r.Stdout != "" {
+		return deskkit.Refused("repository maintenance requires no configured hooks for its ref transaction; hooks were preserved")
+	}
+	return r.Fail(deskkit.ExitUnverifiable, "verify maintenance hook inventory (native git hook list required)")
 }
 
 func inventoryMaintenance(ctx context.Context, dir string) (*maintenanceInventory, error) {
@@ -199,6 +240,9 @@ func cmdMaintain(args []string) (err error) {
 			err = e
 		}
 	}()
+	if e := maintenanceCheckHooks(ctx, *repo); e != nil {
+		return e
+	}
 	if *apply {
 		lock, status, e := maintenanceLock(common, *interval)
 		if e != nil {
@@ -227,6 +271,11 @@ func cmdMaintain(args []string) (err error) {
 		{"-c", "core.commitGraph=true", "-c", "commitGraph.changedPaths=false", "commit-graph", "write", "--reachable", "--split", "--no-progress", "--max-new-filters=0"},
 	} {
 		if e := deskkit.Guard(); e != nil {
+			return e
+		}
+		// Recheck immediately before each task. The cooperative maintenance lock does
+		// not serialize external configuration edits; this is not an atomic sandbox.
+		if e := maintenanceCheckHooks(ctx, *repo); e != nil {
 			return e
 		}
 		r := maintenanceGit(ctx, *repo, argv...)
