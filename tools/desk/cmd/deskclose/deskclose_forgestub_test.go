@@ -388,6 +388,10 @@ func (s *stubRemote) PostCommentTyped(fr deskkit.ForgeRepo, n int, kind deskkit.
 	if kind != deskkit.TargetIssue && kind != deskkit.TargetChange {
 		return nil, deskkit.Refused(fmt.Sprintf("refused: unknown target kind %q", string(kind)))
 	}
+	s.postAttempts++
+	if s.failPost[fmt.Sprintf("%s#%d", fr.Slug(), n)] {
+		return nil, fmt.Errorf("stub: forge returned 502 posting a comment on %s#%d", fr.Slug(), n)
+	}
 	s.typedComments = append(s.typedComments, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
 	return s.PostComment(fr, n, body)
 }

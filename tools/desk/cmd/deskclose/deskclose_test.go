@@ -110,6 +110,13 @@ type stubRemote struct {
 	bodyEditUnknown bool
 	threadReads     map[string]int
 	threadFailFrom  map[string]int
+
+	// failPost makes PostCommentTyped on an item (keyed "repo#N") fail as a forge error, not an
+	// outbound refusal, after it is attempted. postAttempts counts every attempt, failed or
+	// not, so a test can tell one post from a retried one: a failed write may still have
+	// landed, so a second attempt is a second comment, not a repair.
+	failPost     map[string]bool
+	postAttempts int
 }
 
 func newStub(t *testing.T) *stubRemote {
@@ -125,6 +132,7 @@ func newStub(t *testing.T) *stubRemote {
 		bodyEdited:     map[string]string{},
 		threadReads:    map[string]int{},
 		threadFailFrom: map[string]int{},
+		failPost:       map[string]bool{},
 	}
 }
 

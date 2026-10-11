@@ -425,6 +425,28 @@ func TestTriageRecordBlockRefusedStillCloses(t *testing.T) {
 	}
 }
 
+// regression: medici-finance/assay#2426 (C-4) — only an outbound refusal earns the prose-only
+// retry. A comment post that fails any other way may have landed, so it is attempted once and
+// stops the close, exactly as before the record existed.
+func TestTriageRecordPostFailNoRetry(t *testing.T) {
+	s, rul, home := recWorld(t, recT0)
+	s.failPost[fmt.Sprintf("%s#%d", testRepo, triageIssue)] = true
+	url := plantAtComment(s, triageIssue, "7751", blessLogin, blessID, "User", recT1, "B")
+	code, out := recClose(t, rul, url)
+	if code == deskkit.ExitOK {
+		t.Fatalf("a failed pre-close comment must stop the close, got exit 0\n%s", out)
+	}
+	if s.postAttempts != 1 {
+		t.Fatalf("want exactly one post attempt, got %d", s.postAttempts)
+	}
+	if n := s.closes(); n != 0 {
+		t.Fatalf("want no close after a failed comment post, got %d", n)
+	}
+	if _, err := os.Stat(recLocalPath(home)); !os.IsNotExist(err) {
+		t.Fatalf("a local line was written: %v", err)
+	}
+}
+
 // regression: medici-finance/assay#2426 (thread re-read) — a thread that cannot be re-read
 // for the record leaves the record unwritten and the close standing.
 func TestTriageRecordThreadUnreadable(t *testing.T) {

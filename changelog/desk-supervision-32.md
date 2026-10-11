@@ -5,8 +5,7 @@
   - the recommended id;
   - the picked id, or `ambiguous` / `unparsed`;
   - the ruler, always the role `driver`;
-  - how long the decision waited, from the issue's opening and from the ask.
-
+  - how long the decision waited, from the issue's opening and from the ask;
   - whether any text it was read from was edited after the ruling (`edit_state`). An edited
     record carries no pick and no recommendation.
 
@@ -15,8 +14,9 @@
   option is recorded as `unparsed`. Two copies are written as the same bytes: a hidden block
   in the close comment, and a line of `~/.config/assay/decision-records.jsonl`. The record
   never stops the close. An invalid record is skipped. A block the outbound check refuses is
-  dropped, and the comment is posted without it. A failed local write is named in the audit
-  line.
+  dropped, and the comment is posted without it. A comment write that fails for any other
+  reason is not retried and still stops the close, as before. A failed local write is named in
+  the audit line.
 - `deskkit.Issue` carries the forge's `CreatedAt` on both backends.
 
 ### Changed

@@ -259,6 +259,11 @@ func TestComposeDecisionEditState(t *testing.T) {
 	relay := edited(decComment(50, decAppLogin, decAppID, "2026-10-01T09:00:00Z", decRelayOpts+"\nAnswer: A\n"), before)
 	direct := edited(decComment(90, fixtureBlessLogin, fixtureBlessID, ruledAt, "B"), ruledAt)
 	ratify := edited(decComment(90, fixtureBlessLogin, fixtureBlessID, ruledAt, "ratified"), ruledAt)
+	// C-4: an anchor ask and a SEPARATE answer-only relay, so the relay's own edit time is
+	// the only one that can mark the record edited. C is C under both letterings, so the
+	// unedited control resolves to a definite pick.
+	ask := edited(decComment(49, decAppLogin, decAppID, "2026-10-01T08:00:00Z", decRelayOpts), before)
+	answer := edited(decComment(51, decAppLogin, decAppID, "2026-10-01T09:30:00Z", "Ruling relayed.\nAnswer: C\n"), before)
 	cases := []struct {
 		name          string
 		thread        []Comment
@@ -278,6 +283,8 @@ func TestComposeDecisionEditState(t *testing.T) {
 		{"relay edited after", []Comment{edited(relay, after), ratify}, "", true, DecisionEditEdited, DecisionPickUnparsed},
 		{"relay update time missing", []Comment{edited(relay, ""), ratify}, "", true, DecisionEditUnverifiable, "A"},
 		{"edit after beats unknown", []Comment{edited(relay, ""), ratify}, after, true, DecisionEditEdited, DecisionPickUnparsed},
+		{"separate relay unedited", []Comment{ask, answer, ratify}, "", true, DecisionEditUnedited, "C"},
+		{"separate relay edited after", []Comment{ask, edited(answer, after), ratify}, "", true, DecisionEditEdited, DecisionPickUnparsed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
