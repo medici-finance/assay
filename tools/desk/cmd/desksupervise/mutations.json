@@ -1,0 +1,83 @@
+{
+  "test": "go test ./cmd/desksupervise -run 'TestClaim|TestReclaim|TestReconcileReleased|TestStatusInventory|TestPageSnapshot' -count=1 -timeout=60s",
+  "control": {
+    "name": "CONTROL \u2014 a rejected release is reported successful",
+    "file": "cmd/desksupervise/actions.go",
+    "old": "if result != gitcore.RefUpdateApplied {",
+    "new": "if false && result != gitcore.RefUpdateApplied {"
+  },
+  "mutations": [
+    {
+      "name": "lose assessed claim version",
+      "file": "cmd/desksupervise/actions.go",
+      "old": "Old: plumbing.NewHash(claim.Version)",
+      "new": "Old: plumbing.ZeroHash"
+    },
+    {
+      "name": "remove claim payload page bound",
+      "file": "cmd/desksupervise/live.go",
+      "old": "selected = selected[:limit]",
+      "new": "// page bound omitted"
+    },
+    {
+      "name": "accept unattributable owner",
+      "file": "cmd/desksupervise/live.go",
+      "old": "if c.Owner == \"unknown\" {",
+      "new": "if false && c.Owner == \"unknown\" {"
+    },
+    {
+      "name": "accept future claim clock",
+      "file": "cmd/desksupervise/live.go",
+      "old": "err == nil && at.After(now)",
+      "new": "false && err == nil && at.After(now)"
+    },
+    {
+      "name": "delete already released claim",
+      "file": "cmd/desksupervise/reconcile.go",
+      "old": "if verdict.Terminal() && verdict.Reason != \"claim-released\" {",
+      "new": "if verdict.Terminal() {"
+    },
+    {
+      "name": "probe uncertain status claim",
+      "file": "cmd/desksupervise/status.go",
+      "old": "if co.blindReason == \"\" {",
+      "new": "if true {"
+    },
+    {
+      "name": "omit reconciled claims from run snapshot",
+      "file": "cmd/desksupervise/run.go",
+      "old": "snapshot := snapshotFromSweep(all, pol, now)",
+      "new": "snapshot := snapshotFromSweep(results, pol, now)"
+    },
+    {
+      "name": "lose decoded item metadata",
+      "file": "cmd/desksupervise/live.go",
+      "old": "claim.Item, claim.PR = target.item, target.pr",
+      "new": "claim.Item, claim.PR = key, 0; _ = target"
+    },
+    {
+      "name": "force nonbrief claims through board",
+      "file": "cmd/desksupervise/reconcile.go",
+      "old": "if target.pr > 0 || target.issue > 0 {",
+      "new": "if false && (target.pr > 0 || target.issue > 0) {"
+    },
+    {
+      "name": "bypass genuine brief board read",
+      "file": "cmd/desksupervise/reconcile.go",
+      "old": "BoardRow: liveBoardRowReader(root), PR: prRead,",
+      "new": "BoardRow: func(string, string) (loopengine.Status, error) { return \"in-progress\", nil }, PR: prRead,"
+    },
+    {
+      "name": "accept foreign claim prefix",
+      "file": "cmd/desksupervise/claimitem.go",
+      "old": "[]string{deskkit.RepoShortLabel(repo), basename}",
+      "new": "[]string{deskkit.RepoShortLabel(repo), basename, \"foreign\"}"
+    },
+    {
+      "name": "accept PR response for ordinary issue",
+      "file": "cmd/desksupervise/claimitem.go",
+      "old": " || issue.IsPullRequest",
+      "new": ""
+    }
+  ]
+}

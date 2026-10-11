@@ -208,6 +208,12 @@ func cmdPrune(args []string) (err error) {
 		noBranches:        *noBranches,
 		branchesOnly:      *branchesOnly,
 	}
+	// Reaping needs the named lock as ownership evidence. Reclaiming it first
+	// loses that proof in a live sweep while dry-run retains it. Refuse before
+	// constructing the guard, taking the singleton, or mutating bookkeeping.
+	if opts.reclaimStaleLocks && opts.reapDeadSessions {
+		return deskkit.Refused("refused: run --reap-dead-sessions without --reclaim-stale-locks to preserve named owner evidence")
+	}
 	// The split flags are contradictory together, and the opt-in WORKTREE arms under
 	// --branches-only would be silently inert — the exact shape of failure this tool
 	// refuses everywhere else (see --lock-ttl below). Say so instead of accepting a knob
