@@ -1,0 +1,112 @@
+name: muhar mutation gate
+description: >-
+  Run muhar, the proven-landed mutation-testing harness, over one or more mutation
+  specs. Exit 2 (harness broken) always fails the step; NOT CAUGHT and
+  could-not-mutate fail it unless you opt out. Verdicts and the Totals line go to
+  the job summary. Pin this action by full commit SHA.
+
+inputs:
+  spec:
+    description: >-
+      Path(s) to muhar mutation spec JSON files, one per line, relative to
+      working-directory. Blank lines and lines starting with # are skipped.
+    required: true
+  working-directory:
+    description: Directory muhar runs in; spec paths and a spec's relative root resolve here.
+    required: false
+    default: "."
+  jobs:
+    description: muhar -j — mutations in flight at once. 1 is sequential; 0 sizes to the CPU count, capped by muhar.
+    required: false
+    default: "1"
+  shard:
+    description: >-
+      muhar -shard "i/n" (0-based shard i of n) for matrix legs. Empty runs the whole
+      spec. Each shard's Totals cover only its own share; run all n shards.
+    required: false
+    default: ""
+  fail-on-not-caught:
+    description: When "true", any NOT CAUGHT mutation fails the step. When "false", it is a warning.
+    required: false
+    default: "true"
+  fail-on-could-not-mutate:
+    description: >-
+      When "true", any could-not-mutate mutation fails the step: those guards were
+      never tested, so the run is not clean. When "false", it is a warning.
+    required: false
+    default: "true"
+  setup-go:
+    description: >-
+      When "true", install Go with actions/setup-go before building muhar. Set
+      "false" when the runner already has the Go toolchain your suite needs on PATH.
+    required: false
+    default: "true"
+  go-version:
+    description: >-
+      Go version for actions/setup-go. Empty uses the version in this action's own
+      tools/desk/go.mod (the toolchain muhar is built and tested with).
+    required: false
+    default: ""
+  muhar-version:
+    description: >-
+      Reserved for installing a pinned muhar release binary. NOT IMPLEMENTED: any
+      non-empty value fails the step. Leave empty; muhar is built from source at the
+      ref this action is pinned to.
+    required: false
+    default: ""
+
+outputs:
+  caught:
+    description: Mutations CAUGHT, summed over every spec. Empty when any spec's run had no trustworthy verdict.
+    value: ${{ steps.run.outputs.caught }}
+  not-caught:
+    description: Mutations NOT CAUGHT, summed over every spec. Empty when any spec's run had no trustworthy verdict.
+    value: ${{ steps.run.outputs.not-caught }}
+  could-not-mutate:
+    description: Mutations that could not be planted, summed over every spec. Empty when any spec's run had no trustworthy verdict.
+    value: ${{ steps.run.outputs.could-not-mutate }}
+  result:
+    description: One of clean, not-caught, could-not-mutate, harness-broken, error.
+    value: ${{ steps.run.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    - name: Locate muhar's go.mod
+      id: locate
+      shell: bash
+      run: echo "gomod=${GITHUB_ACTION_PATH}/../../tools/desk/go.mod" >> "$GITHUB_OUTPUT"
+
+    - name: Set up Go (version from muhar's go.mod)
+      if: inputs.setup-go == 'true' && inputs.go-version == ''
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: ${{ steps.locate.outputs.gomod }}
+        cache: false
+
+    - name: Set up Go (requested version)
+      if: inputs.setup-go == 'true' && inputs.go-version != ''
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+
+    - name: Build muhar at the action's ref
+      id: install
+      shell: bash
+      env:
+        MUHAR_VERSION: ${{ inputs.muhar-version }}
+      run: bash "${GITHUB_ACTION_PATH}/muhar-action.sh" install
+
+    - name: Run muhar
+      id: run
+      shell: bash
+      env:
+        MUHAR_BIN: ${{ steps.install.outputs.muhar-bin }}
+        MUHAR_SPECS: ${{ inputs.spec }}
+        MUHAR_WORKDIR: ${{ inputs.working-directory }}
+        MUHAR_JOBS: ${{ inputs.jobs }}
+        MUHAR_SHARD: ${{ inputs.shard }}
+        MUHAR_FAIL_ON_NOT_CAUGHT: ${{ inputs.fail-on-not-caught }}
+        MUHAR_FAIL_ON_COULD_NOT_MUTATE: ${{ inputs.fail-on-could-not-mutate }}
+      run: bash "${GITHUB_ACTION_PATH}/muhar-action.sh" run
