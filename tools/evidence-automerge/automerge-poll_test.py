@@ -92,8 +92,17 @@ class PollTests(unittest.TestCase):
                 if "secrets.BOARD_APP_PRIVATE_KEY" in job:
                     self.assertIn("    environment: board-writer\n", job, path.name)
                     count += 1
-        self.assertEqual(count, 6)
-        self.assertNotIn("  reconcile:\n", (workflows / "assay-statusgen.yml").read_text())
+        self.assertEqual(count, 7)
+        # The seventh key holder is statusgen's hourly reconcile job (derived-board/04).
+        # Pin what makes it acceptable: schedule-only, this repository only, the
+        # board-writer environment, and an App token narrowed to contents and
+        # pull-requests write and nothing else.
+        statusgen = (workflows / "assay-statusgen.yml").read_text()
+        reconcile = re.split(r"^  [\w-]+:\n", statusgen.split("\n  reconcile:\n", 1)[1], maxsplit=1, flags=re.M)[0]
+        self.assertTrue(reconcile.startswith("    environment: board-writer\n"), reconcile[:200])
+        self.assertIn("    if: ${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}\n", reconcile)
+        self.assertEqual(sorted(re.findall(r"^\s+permission-[\w-]+: \w+$", reconcile, re.M)),
+                         ["          permission-contents: write", "          permission-pull-requests: write"])
         poll = (workflows / "evidence-automerge.yml").read_text()
         self.assertEqual(poll, WORKFLOW.read_text())
         self.assertNotIn("  pull_request:", poll)

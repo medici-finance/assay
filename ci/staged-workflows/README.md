@@ -53,15 +53,16 @@ reviewable artifact, not a run.
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
   live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
   build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
-- `forge-surface-control.yml` — staged twin of the live forge-surface job adding `forgeread/**` to
+- `forge-surface-control.yml` — twin of the live forge-surface job, which carries `forgeread/**` in
   both path filters (`pull_request` and `push`) and a step running the shared fact reader's
   controls (the module's tests, the ambient-token rule over `forgeread/`, the lower-layer scope
-  check, statusgen's import-path guard), and noting that `forge-ban.sh` now exits non-zero on a
-  `forgeread` site. **Staged, not live** — a maintainer promotes it
-  (`cp ci/staged-workflows/forge-surface-control.yml .github/workflows/forge-surface-control.yml`)
-  in a maintainer-credentialled commit, together with the `assay-statusgen.yml` staged change
-  (`forgeread/**` path filters, and the base-tree archive that now carries the sibling module,
-  without which the corroboration guard cannot build a base that already has `forgeread/`).
+  check, statusgen's import-path guard), and notes that `forge-ban.sh` exits non-zero on a
+  `forgeread` site. **Already live** — a maintainer promoted it, and the manifest declares it
+  `identical`. The same maintainer commit applied the forgeread part of the `assay-statusgen.yml`
+  staged change to the live file: the `forgeread/**` path filters, and the base-tree archive that
+  carries the sibling module, without which the corroboration guard cannot build a base that
+  already has `forgeread/`. The rest of that staged change (the hourly `reconcile` job and the
+  board-writer Environment) was promoted with it, as described below.
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
   `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
   (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set
@@ -162,27 +163,18 @@ reviewable artifact, not a run.
   in a rig that plants hooks, a push address and URL rewrites, and checks that a list of
   edits to the job each turns a named test red, and the workflow-level wiring the job
   depends on (the hourly cron, the scheduled runs' concurrency group, the lint step's test
-  selection and its `paths:` entries) is pinned the same way; once promoted, the board
-  workflow's PR lint job runs those tests (before promotion no pull-request check runs
-  them). Two outcomes to expect: a reconcile PR a maintainer closed is not reopened, and
+  selection and its `paths:` entries) is pinned the same way, and the board workflow's
+  PR lint job runs those tests. Two outcomes to expect: a reconcile PR a maintainer closed is not reopened, and
   the next tick that makes a new commit (main moved, or another row changed) opens a
   fresh draft PR from the same branch; and a tick whose push lands but whose PR call
   fails exits red with the branch pushed and no PR, and a tick that finds the branch
   already carrying its result publishes nothing, so the missing PR is opened only by
   the next tick that makes a new commit. The same file holds every job that mints the App token to that
   isolation, except `regen` and `model-autoflip`, which are live today without it and
-  are listed as exempt (the list may only shrink). The job never pushes the default branch, and scheduled runs sit in their own concurrency
-  group so they cannot displace a pending push regen. **Staged, not live** — classified
-  by its `assay-statusgen.yml.pending` companion, not the manifest, so the drift guard
-  excludes it from the parity check until promotion. Promote with
-  `cp ci/staged-workflows/assay-statusgen.yml .github/workflows/assay-statusgen.yml`
-  (a copy, because the live file stays in place; re-base the staged copy on the live
-  file first if either changed since). In the same change, delete
-  `assay-statusgen.yml.pending` and declare the file `identical` in
-  `declared-changes.json`: the job tests read the staged copy, so without the parity
-  check an edit made straight to the live file would leave them green. The
-  board-writer App also needs
-  `Pull requests: write` for the PR step.
+  are listed as exempt (the list may only shrink). The job never pushes the default branch, and scheduled runs sit in their own concurrency group so they cannot displace a pending push regen. **Already live** — a maintainer
+  promoted it, and the manifest declares it `identical`: the job tests read the staged
+  copy, so the parity check is what keeps an edit made straight to the live file from
+  leaving them green. The board-writer App needs `Pull requests: write` for the PR step.
 
 ### `windows-ci-leg.yml` status
 
