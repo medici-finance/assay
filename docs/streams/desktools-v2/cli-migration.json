@@ -2122,14 +2122,34 @@
       "path": "tools/release/check-spec-header-version.sh",
       "kind": "script",
       "module": "bash",
-      "release": "repo tooling; operator-invoked",
+      "release": "repo tooling; operator-invoked, and run by the staged release.yml change",
       "consumers": [
-        "none in-repo (operator-invoked)"
+        "tools/release/stamp-spec-header-version.sh",
+        "tools/release/release.yml.patch",
+        "tools/release/release.yml.proposed",
+        "tools/release/README.md"
       ],
       "parser": "bash positional arguments",
       "complexity": "simple",
       "basis": "74 lines at 3ad1ad83c871",
       "owner": "desktools-v2/52",
+      "state": "pending"
+    },
+    {
+      "executable": "stamp-spec-header-version.sh",
+      "path": "tools/release/stamp-spec-header-version.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by the staged release.yml change",
+      "consumers": [
+        "tools/release/release.yml.patch",
+        "tools/release/release.yml.proposed",
+        "tools/release/README.md"
+      ],
+      "parser": "bash positional arguments",
+      "complexity": "simple",
+      "basis": "104 lines at 53e432b36c75",
+      "owner": "desktools-v2/47",
       "state": "pending"
     },
     {

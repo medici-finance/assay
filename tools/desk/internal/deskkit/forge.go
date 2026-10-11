@@ -329,6 +329,12 @@ type Issue struct {
 	// statusgen's decision-gate anchor (forge-neutral brief 18). omitzero keeps every issue read that
 	// predates this field byte-identical in the golden corpus.
 	ClosedBy Account `json:",omitzero"`
+	// CreatedAt is the issue's creation time (RFC3339) as the forge reports it, EMPTY where the
+	// read did not report one — could-not-check, never a guess. Consumer: cmd/deskclose's
+	// human-decided lane, whose human-decision-v1 record measures how long a decision waited
+	// from the issue's opening. omitempty keeps every issue read that
+	// predates this field byte-identical in the golden corpus.
+	CreatedAt string `json:",omitempty"`
 }
 
 // Review is one review/approval on a change (GitHub review ↔ GitLab MR approval). CommitID
