@@ -3795,6 +3795,55 @@ a stronger authority than a reviewer's confirmation. The design note (`supersede
 in the desk-tools planning stream) carries the flow, the pros/cons and the brief-level semantics;
 the mutation sweep is `cmd/deskclose/mutations.json`.
 
+### The human-decided triage close writes a decision record
+
+`deskclose triage --disposition human-decided --decision <ruling permalink> --tracker <ref>`
+closes a ruled decision issue. It authorizes only on the ruling comment on that issue, after
+verifying that its author is the blessing authority. It also writes one `human-decision-v1`
+record. The record holds:
+
+- the offered option ids, each with the sha256 of the option's text;
+- the recommended id;
+- the picked id, or `ambiguous` / `unparsed`;
+- `ruler: driver`;
+- the issue-opened, ask, ruling and recording times, with the two latencies in seconds;
+- `edit_state`: whether the body, a relay it read or the ruling was edited after the ruling
+  (`edited` records no pick and no recommendation; `unverifiable` when the forge did not say).
+
+It never holds option or ruling text, and never a login or account id the tool reads. Its one
+free-form field, `brief`, is copied from the issue body's marker and held to the
+`<stream>/<NN>` grammar, which bounds its shape, not its meaning. A ruling a person could read as
+anything other than one option is `unparsed`. The record is written twice, as the same JSON
+bytes:
+
+| Copy | Where | When |
+|---|---|---|
+| forge | a `<!-- human-decision-v1 {…} -->` block appended to the close comment | rides the comment write, before the close |
+| local | one line of `~/.config/assay/decision-records.jsonl` (0600, append-only, never through a symlink) | after the close is confirmed |
+
+The record never stops the close:
+
+- An invalid record is not written. The audit line says `decision-record: invalid (<field>)`.
+- If the outbound check refuses the comment with the block, the comment is posted without it
+  and the local line is the only copy. The audit line says `decision-record: local only (…)`.
+- A thread that cannot be re-read writes no record. The audit line says
+  `decision-record: unrecorded (…)`.
+- A failed local append leaves the forge copy standing. The audit line and stderr say
+  `decision-record: local-unwritten`.
+- `--dry-run` prints the block and writes nothing.
+
+A comment write that fails for any other reason fails the close as it would with no record;
+it is attempted once and never retried without the block.
+A re-run after a failed close writes a second record for the same ruling. The record's
+guards are pinned by `go run ./cmd/muhar -spec cmd/deskclose/decisionrecord-mutations.json`.
+
+The not-planned triage lane and every other lane write no record.
+
+The Options parse is `deskkit.ParseDecisionOptions`, shared with `deskinbox`. The schema,
+the pick rules (anchor, lettering, `ambiguous`), the visibility and authenticity rules, and
+the never-recorded list are in the `human-decision-v1` schema doc, which lives in the planning
+stream that specified the record.
+
 ### Two identity+structure lanes — no artifact cited, because nothing of anyone else's is closed
 
 Every ruled lane above authorizes on a FETCHED HUMAN ARTIFACT because it closes OTHER
