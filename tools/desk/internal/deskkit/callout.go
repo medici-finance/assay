@@ -63,6 +63,12 @@ type Callout struct {
 	Path string
 	// Timeout bounds one invocation. Zero means DefaultCalloutTimeout.
 	Timeout time.Duration
+	// Env, when NON-NIL, is the callout's ENTIRE environment ("KEY=value" entries): it
+	// gets exactly these and nothing from the caller. Nil keeps the historical behaviour —
+	// the callout inherits the caller's whole environment. A caller whose process may hold
+	// a minted credential and whose callout is third-party passes a non-nil Env (an empty
+	// non-nil slice means an empty environment).
+	Env []string
 }
 
 // CalloutResult is what a completed callout said.
@@ -72,6 +78,10 @@ type CalloutResult struct {
 	// Stderr is its standard error, trimmed — surfaced so a caller can put the
 	// adopter's own diagnostic into its refusal message instead of a generic one.
 	Stderr string
+	// Truncated is true when the callout wrote more to stdout than maxCalloutOutput and
+	// Stdout is therefore only its first maxCalloutOutput bytes. A caller whose answer is
+	// one short line treats it as no answer; the other callers ignore it, as before.
+	Truncated bool
 }
 
 // Run invokes the callout with stdin on its standard input and args as its
@@ -118,8 +128,12 @@ func (c Callout) Run(stdin string, args ...string) (CalloutResult, error) {
 
 	cmd := exec.CommandContext(ctx, c.Path, args...)
 	cmd.Stdin = strings.NewReader(stdin)
+	if c.Env != nil {
+		cmd.Env = c.Env
+	}
 	var out, errb bytes.Buffer
-	cmd.Stdout = &limitedWriter{w: &out, n: maxCalloutOutput}
+	outLimit := &limitedWriter{w: &out, n: maxCalloutOutput}
+	cmd.Stdout = outLimit
 	cmd.Stderr = &limitedWriter{w: &errb, n: maxCalloutOutput}
 	// WaitDelay is what makes the timeout REAL, and it is not optional here.
 	//
@@ -140,6 +154,8 @@ func (c Callout) Run(stdin string, args ...string) (CalloutResult, error) {
 	res := CalloutResult{
 		Stdout: strings.TrimSpace(out.String()),
 		Stderr: strings.TrimSpace(errb.String()),
+
+		Truncated: outLimit.dropped,
 	}
 	// The timeout is reported as a timeout, not as the generic "signal: killed"
 	// exec surfaces when the context kills the child — a caller putting the reason
@@ -323,15 +339,22 @@ func calloutDirNotWritable(dir string) error {
 type limitedWriter struct {
 	w *bytes.Buffer
 	n int
+	// dropped records that bytes were discarded, so a caller can tell a short answer from
+	// the first n bytes of a long one.
+	dropped bool
 }
 
 func (l *limitedWriter) Write(p []byte) (int, error) {
 	if l.n <= 0 {
+		if len(p) > 0 {
+			l.dropped = true
+		}
 		return len(p), nil
 	}
 	if len(p) > l.n {
 		l.w.Write(p[:l.n])
 		l.n = 0
+		l.dropped = true
 		return len(p), nil
 	}
 	l.w.Write(p)

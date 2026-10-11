@@ -45,8 +45,7 @@ func Resolve(cell string, get func(string) string) (*Policy, error) {
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256([]byte(canonical))
-	p := &Policy{Root: filepath.Join(canonical, "go-cache"), Domain: hex.EncodeToString(sum[:]), Budget: 8 << 30, Floor: 10 << 30}
+	p := &Policy{Root: filepath.Join(canonical, "go-cache"), Domain: DomainFor(canonical), Budget: 8 << 30, Floor: 10 << 30}
 	if v := get("CELL_GO_CACHE_ROOT"); v != "" {
 		p.Root = v
 	}
@@ -78,7 +77,6 @@ func (p Policy) Validate() error {
 	}
 	return validatePath(p.Root)
 }
-
 func (p Policy) Env() []string {
 	b, _ := json.Marshal(p)
 	return []string{EnvPolicy + "=" + string(b), "GOCACHE=" + filepath.Join(p.Root, "build"), "GOMODCACHE=" + filepath.Join(p.Root, "mod"), "GOPATH=" + filepath.Join(p.Root, "gopath")}

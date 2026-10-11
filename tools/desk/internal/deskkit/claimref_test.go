@@ -431,3 +431,37 @@ func TestReviewClaimFamilyHelpers(t *testing.T) {
 		t.Errorf("a read error = %v, want ClaimLivenessUnknown", got)
 	}
 }
+
+// TestReviewClaimKeyIsSecurity holds the lane-of-a-key rule both of its readers call: a
+// `security` segment, in any letter case, among the `--`-separated parts after the last
+// `--pr-<N>`. The lane is read from the key's name and from nothing else.
+func TestReviewClaimKeyIsSecurity(t *testing.T) {
+	for _, tc := range []struct {
+		key  string
+		pr   int
+		want bool
+	}{
+		{"tracker--pr-1", 1, false},
+		{"tracker--pr-1--security", 1, true},
+		{"tracker--pr-1--Security", 1, true},
+		{"tracker--pr-1--SECURITY", 1, true},
+		{"tracker--pr-1--r2--security", 1, true},
+		{"tracker--pr-1--security--r2", 1, true},
+		{"tracker--pr-1--r2", 1, false},
+		{"tracker--pr-1--correctness", 1, false},
+		{"tracker--pr-1--insecurity", 1, false},
+		{"tracker--pr-1--security-notes", 1, false},
+		{"security--pr-1", 1, false},           // the label is not the lane
+		{"tracker--pr-10--security", 1, false}, // another change's key
+		{"tracker--security", 1, false},
+		{"something-else", 1, false},
+		{"", 1, false},
+		// A security review keyed without the segment reads as the correctness lane: the
+		// rule is a naming convention, and this row is what that costs.
+		{"tracker--pr-1--sec", 1, false},
+	} {
+		if got := ReviewClaimKeyIsSecurity(tc.key, tc.pr); got != tc.want {
+			t.Errorf("ReviewClaimKeyIsSecurity(%q, %d) = %v, want %v", tc.key, tc.pr, got, tc.want)
+		}
+	}
+}

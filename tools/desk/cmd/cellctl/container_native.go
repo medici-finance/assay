@@ -161,7 +161,8 @@ func (c *Cell) nativeConsole(key string) (string, string) {
 // executes it directly and no shell (the operator's default-shell included) parses a value.
 func (c *Cell) nativeConsoleArgv(p *cellcontainer.Plan, role string) []string {
 	// The runner gets the same cell root even when the tmux server was started elsewhere.
-	return []string{"env", "CELLS_ROOT=" + filepath.Dir(c.Dir), selfPath(), "container-run", c.Name, role, p.Harness, p.Model}
+	root, name := c.reenter()
+	return []string{"env", "CELLS_ROOT=" + root, selfPath(), "container-run", name, role, p.Harness, p.Model}
 }
 func (c *Cell) nativeContainerUp(p *cellcontainer.Plan, role string) {
 	if !onPath("tmux") {

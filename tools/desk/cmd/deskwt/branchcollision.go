@@ -179,7 +179,9 @@ func reclaimStaleBranch(dir, br, base string) (string, error) {
 
 	// Proven: no worktree holds it, and it carries nothing cmp does not. Compare-and-delete
 	// against the sha the proof was taken on — a branch that moved in between is left alone.
-	if _, derr := runGit(dir, "update-ref", "-d", ref, sha); derr != nil {
+	// --no-deref: a hand-planted refs/heads SYMREF must be deleted as itself (or refused),
+	// never dereferenced into deleting its TARGET — update-ref -d dereferences by default.
+	if _, derr := runGit(dir, "update-ref", "-d", "--no-deref", ref, sha); derr != nil {
 		return "", deskkit.Unverifiable("branch "+br+" is a stale leftover (0 commits ahead of "+cmp+
 			", checked out in no worktree) but deleting its ref failed — it may have moved since the check", derr)
 	}

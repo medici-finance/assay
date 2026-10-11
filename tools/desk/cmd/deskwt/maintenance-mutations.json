@@ -1,0 +1,107 @@
+{
+  "test": "go test ./cmd/deskwt -run '^TestMaintenance' -count=1 -timeout 30s",
+  "control": {
+    "name": "plan must not execute index tasks",
+    "file": "cmd/deskwt/maintenance.go",
+    "old": "if !*apply {",
+    "new": "if false && !*apply {"
+  },
+  "mutations": [
+    {
+      "name": "held repository lock must prevent concurrent maintenance",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if err = deskkit.TryLockExclusive(f); err != nil {",
+      "new": "if err = error(nil); err != nil {"
+    },
+    {
+      "name": "attempt cadence must coalesce repeat work",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if age < interval {",
+      "new": "if false && age < interval {"
+    },
+    {
+      "name": "ambient Git redirection must be scrubbed",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if !strings.HasPrefix(strings.ToUpper(strings.SplitN(v, \"=\", 2)[0]), \"GIT_\") {",
+      "new": "if true {"
+    },
+    {
+      "name": "unreadable inventory must prevent mutation",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "refs, err := maintenanceRead(ctx, dir, \"for-each-ref\", \"--format=%(refname)\")\n\tif err != nil {\n\t\treturn nil, err\n\t}",
+      "new": "refs, err := maintenanceRead(ctx, dir, \"for-each-ref\", \"--format=%(refname)\")\n\tif err != nil {\n\t\treturn inv, nil\n\t}"
+    },
+    {
+      "name": "lock open must refuse symlinks",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "openMaintenanceLock(filepath.Join(common, \"assay-maintenance.lock\"))",
+      "new": "os.OpenFile(filepath.Join(common, \"assay-maintenance.lock\"), os.O_CREATE|os.O_RDWR, 0600)"
+    },
+    {
+      "name": "requested one-second budget must not become five seconds",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "context.WithTimeout(context.Background(), *timeout)",
+      "new": "context.WithTimeout(context.Background(), 5*time.Second)"
+    },
+    {
+      "name": "protocol allowlist must override per-protocol configuration",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "\"GIT_ALLOW_PROTOCOL=\", ",
+      "new": ""
+    },
+    {
+      "name": "immediate expiry and pruning must not enter the task set",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "{\"pack-refs\", \"--all\"},",
+      "new": "{\"reflog\", \"expire\", \"--expire=now\", \"--all\"},\n\t\t{\"prune\", \"--expire=now\"},\n\t\t{\"pack-refs\", \"--all\"},"
+    },
+    {
+      "name": "valid two-component stash ref must remain maintainable",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "len(p) < 2 || p[0] != \"refs\"",
+      "new": "len(p) < 3 || p[0] != \"refs\""
+    },
+    {
+      "name": "inventory stderr must not be discarded on successful exit",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if r.Failed() || r.Stderr != \"\" {\n\t\treturn \"\", r.Fail",
+      "new": "if r.Failed() {\n\t\treturn \"\", r.Fail"
+    },
+    {
+      "name": "retention warnings must not be accepted as no matching config",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if (retention.Failed() && retention.ExitCode != 1) || retention.Stderr != \"\" {",
+      "new": "if retention.Failed() && retention.ExitCode != 1 {"
+    },
+    {
+      "name": "write warnings must prevent reporting completed",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if r.Failed() || r.Stderr != \"\" {\n\t\t\treturn r.Fail",
+      "new": "if r.Failed() {\n\t\t\treturn r.Fail"
+    },
+    {
+      "name": "preflight must refuse before recording an attempt",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if e := maintenanceCheckHooks(ctx, *repo); e != nil {\n\t\treturn e\n\t}\n\tif *apply {",
+      "new": "if *apply {"
+    },
+    {
+      "name": "task preconditions must be rechecked after inventory",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if e := maintenanceCheckHooks(ctx, *repo); e != nil {\n\t\t\treturn e\n\t\t}\n\t\tr :=",
+      "new": "r :="
+    },
+    {
+      "name": "ambiguous disabled display prefix must not authorize apply",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "if !r.Failed() && r.Stderr == \"\" && r.Stdout != \"\" {",
+      "new": "if strings.HasPrefix(r.Stdout, \"disabled\\t\") { return nil }; if !r.Failed() && r.Stderr == \"\" && r.Stdout != \"\" {"
+    },
+    {
+      "name": "directory inspection must not perform an untyped blocking open",
+      "file": "cmd/deskwt/maintenance.go",
+      "old": "openMaintenanceDirectory(hookDir)",
+      "new": "os.Open(hookDir)"
+    }
+  ]
+}

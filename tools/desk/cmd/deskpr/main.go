@@ -98,9 +98,10 @@ not report, is refused), and the push destination must already hold that branch 
 head commit the forge reports. The checkout is admitted by lineage: HEAD must be the PR's
 current head commit or a descendant of it (a pure fast-forward; merge, never rebase), and a
 PR head already contained in the default branch is refused. The default branch is never a
-destination. With --pr N the offline publish-identity stage judges the whole range from the
-default branch (the PR's head is unknown until the forge is read), so a PR whose head
-already carries another identity's commits is refused there. deskreply keeps its own
+destination. With --pr N the publish-identity gate judges only the commits the push adds
+beyond the head the forge reports, once that head is shown to be an ancestor of HEAD and
+what the destination holds; --pr N --check cannot read that head, so it judges the whole
+range from the default branch (--branch <head-branch> --check narrows it offline). deskreply keeps its own
 checkout-must-be-the-PR's rule. There is
 no ready/close/merge verb, and no verb can pass --force to git. Preconditions are
 re-verified in-tool; on any state it cannot positively verify it refuses.
@@ -276,7 +277,9 @@ func run(args []string) int {
 		return deskkit.ExitOK
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		// Through the seam (os.Stderr in production) so a test can read the verb's own
+		// terminal error — the text a house.callout refusal must keep the callout's words out of.
+		fmt.Fprintln(deskprStderr, err.Error())
 	}
 	return deskkit.ExitCodeOf(err)
 }

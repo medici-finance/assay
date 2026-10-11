@@ -1922,3 +1922,55 @@ func TestUnblockRequiresBlessID(t *testing.T) {
 		t.Error("the bless login carrying id 0 must NOT un-block (fail closed without numeric id)")
 	}
 }
+
+// regression: statusgen/17 — a risk:high label on the issue at first write derives
+// gate: human; risk:med does not; derive-once is left alone.
+func TestScanRiskHighPlaceholderGate(t *testing.T) {
+	// Issue 404 already has a placeholder reading gate: model (the late-scored case).
+	streams, root := scanFixtureRepo(t, map[string]string{
+		"issue-404.md": placeholderFile("alpha", 404, "risk:high", "gate: model"),
+	})
+	data := map[string][]ghIssue{
+		scanHomeRepo(): {
+			{Number: 401, Title: "plain bug one", Labels: lbl("bug", "risk:high")},
+			{Number: 402, Title: "plain bug two", Labels: lbl("bug", "risk:med")},
+			{Number: 403, Title: "plain bug three", Labels: lbl("security")},
+			{Number: 404, Title: "plain bug four", Labels: lbl("risk:high")},
+		},
+	}
+	plans, _, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	if len(plans) != 3 {
+		t.Fatalf("expected 3 plans (404 already has a placeholder), got %d: %+v", len(plans), plans)
+	}
+	outDir := t.TempDir()
+	for _, tc := range []struct {
+		issue int
+		want  string
+	}{{401, "human"}, {402, "model"}, {403, "human"}} {
+		p := findPlan(plans, scanHomeRepo(), tc.issue)
+		if p == nil {
+			t.Fatalf("issue %d not planned", tc.issue)
+		}
+		if !strings.Contains(p.Content, "gate: "+tc.want+"\n") {
+			t.Errorf("issue %d content should carry gate: %s:\n%s", tc.issue, tc.want, p.Content)
+		}
+		ph, ok, err := parsePlaceholderFile(writeTemp(t, outDir, filepath.Base(p.Path), p.Content))
+		if err != nil || !ok || ph.Gate != tc.want {
+			t.Errorf("issue %d read back gate %q (ok=%v err=%v), want %q", tc.issue, ph.Gate, ok, err, tc.want)
+		}
+	}
+	if findPlan(plans, scanHomeRepo(), 404) != nil {
+		t.Error("issue 404 has an existing placeholder — the scanner must not re-plan it")
+	}
+	ph404, ok, err := parsePlaceholderFile(filepath.Join(root, "docs/streams/alpha", "issue-404.md"))
+	if err != nil || !ok || ph404.Gate != "model" {
+		t.Errorf("existing gate: model placeholder must stay model, got ok=%v err=%v gate=%q", ok, err, ph404.Gate)
+	}
+
+	// A gate-less file with a stored risk:high label reads human (parser fallback).
+	noGate := writeTemp(t, outDir, "issue-405.md", placeholderFile("alpha", 405, "risk:high"))
+	ph405, ok, err := parsePlaceholderFile(noGate)
+	if err != nil || !ok || ph405.Gate != "human" {
+		t.Errorf("gate-less risk:high file should read human, got ok=%v err=%v gate=%q", ok, err, ph405.Gate)
+	}
+}

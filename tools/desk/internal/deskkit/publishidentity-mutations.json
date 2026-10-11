@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'PubRange|PubClass|PubIdentity|PublishIdentity|DefaultPublishCommits|UpdateCheckAcceptsMixedPR|UpdatePushesMixedPR|UpdateRefusesNewForeign|UpdateLiveHeadOverrulesRef|UpdateNoLiveHeadFailsClosed|CreateJudgesWholeRange'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'PubRange|PubClass|PubIdentity|PublishIdentity|DefaultPublishCommits|UpdateCheckAcceptsMixedPR|UpdatePushesMixedPR|UpdateRefusesNewForeign|UpdateLiveHeadOverrulesRef|UpdateNoLiveHeadFailsClosed|CreateJudgesWholeRange|UpdatePR|UpdateDivergedLive|UpdateNoTrackRefWide'",
   "control": {
     "name": "CONTROL — the gate stops checking authors at all (any identity is published)",
     "file": "internal/deskkit/publishidentity.go",
@@ -72,6 +72,36 @@
       "file": "cmd/deskevidence/github.go",
       "old": "RemoteTip: \"\", Role: \"verifier\",",
       "new": "RemoteTip: \"refs/remotes/origin/\" + base, Role: \"verifier\","
+    },
+    {
+      "name": "update --pr runs the offline whole-range stage on a real run (the #2432 refusal returns)",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif *prNum == 0 || *check {",
+      "new": "\tif true || *prNum == 0 || *check {"
+    },
+    {
+      "name": "update --pr --check skips the offline stage (a check with no live head judges nothing)",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif *prNum == 0 || *check {",
+      "new": "\tif *prNum == 0 {"
+    },
+    {
+      "name": "update skips the offline stage on the default path too (an absent tracking ref is no longer refused offline)",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif *prNum == 0 || *check {",
+      "new": "\tif *check {"
+    },
+    {
+      "name": "the update --pr --check refusal loses its offline --branch hint",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\t\t\t\treturn prCheckWideNote(ierr)",
+      "new": "\t\t\t\treturn ierr"
+    },
+    {
+      "name": "update --pr drops the destination-holds-head check (a forge head the remote does not hold anchors the range)",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\t\tif rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); rerr != nil {",
+      "new": "\t\tif rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); false && rerr != nil {"
     }
   ]
 }
