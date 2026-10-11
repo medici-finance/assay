@@ -824,25 +824,6 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		if rerr != nil {
 			return res, rerr
 		}
-		if len(reclaimed) > 0 && !opts.dryRun {
-			second, sErr := bookkeepingPrune(dir, false)
-			if sErr != nil {
-				return res, deskkit.Unverifiable("git worktree prune (bookkeeping, after lock reclaim) failed", sErr)
-			}
-			res.bookkept += second
-			// The reclaim changed the state both views were read from: locks it retired
-			// are gone, and the prune above may have dropped newly-droppable entries.
-			// Re-read so the candidate loop judges the registration as it STANDS, never
-			// iterating a path the prune just dropped or holding a tree by a retired lock.
-			roots, lerr = guard.worktreeRoots(dir)
-			if lerr != nil {
-				return res, lerr
-			}
-			locked, lkErr = guard.lockedWorktrees(dir)
-			if lkErr != nil {
-				return res, lkErr
-			}
-		}
 	}
 
 	// Step A1, phase 2 — ACT on the judgements. The lock rule is absolute: this pass has
@@ -863,6 +844,28 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	res.skips = append(res.skips, staleHeld...)
 	res.warns = append(res.warns, staleWarns...)
 	staleSet := staleRegSet(staleVerdicts)
+
+	// Clear husks behind their rollback boundary before any later bookkeeping or
+	// inventory read can fail. A failed clear has restored its lock by this point.
+	if len(res.reclaimed) > 0 && !opts.dryRun {
+		second, sErr := bookkeepingPrune(dir, false)
+		if sErr != nil {
+			return res, deskkit.Unverifiable("git worktree prune (bookkeeping, after lock reclaim) failed", sErr)
+		}
+		res.bookkept += second
+		// The reclaim changed the state both views were read from: locks it retired
+		// are gone, and the prune above may have dropped newly-droppable entries.
+		// Re-read so the candidate loop judges the registration as it STANDS, never
+		// iterating a path the prune just dropped or holding a tree by a retired lock.
+		roots, lerr = guard.worktreeRoots(dir)
+		if lerr != nil {
+			return res, lerr
+		}
+		locked, lkErr = guard.lockedWorktrees(dir)
+		if lkErr != nil {
+			return res, lkErr
+		}
+	}
 
 	// The sweep's clock, read once: the fresh-worktree safety window's age test.
 	sweepNow := time.Now()

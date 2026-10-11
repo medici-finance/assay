@@ -373,7 +373,18 @@ func reclaimStaleLocksMode(guard *pathGuard, dir, cwd string, ttl time.Duration,
 
 	after, aerr := guard.lockedWorktrees(dir)
 	if aerr != nil {
-		return nil, warns, aerr
+		// The unlocks already happened. An unreadable verification is not permission
+		// to leave these entries less protected or to forget their original reasons.
+		// Restore every successfully unlocked candidate before returning the error.
+		var rollback []string
+		for _, c := range candidates {
+			if _, err := runGit(dir, "worktree", "lock", "--reason", c.reason, c.path); err != nil {
+				rollback = append(rollback, "lock could not be restored on "+c.path+": "+errText(err))
+			} else {
+				rollback = append(rollback, "lock restored on "+c.path+" with the original reason")
+			}
+		}
+		return nil, warns, deskkit.Unverifiable("lock reclaim verification failed; "+strings.Join(rollback, "; "), aerr)
 	}
 	var done []reclaimEntry
 	for _, c := range candidates {

@@ -13,6 +13,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,6 +41,7 @@ func ageWorktreeAdmin(t *testing.T, work, target string) {
 // forever, so the residue grew without bound. A pristine at-tip tree old enough to be no
 // session's just-created workspace is removed (and deregistered), exactly as
 // merged-below-tip trees already were.
+// regression: #2660
 func TestPruneRemovesPristineDetachedAtMainTip(t *testing.T) {
 	work := newRepo(t)
 	calls := withEnv(t, work)
@@ -70,6 +72,7 @@ func TestPruneRemovesPristineDetachedAtMainTip(t *testing.T) {
 // A pristine BRANCHED worktree at the tip is the same lossless shape (a `deskwt add` the
 // session never wrote into): it too drains once it is old enough, rather than waiting for
 // the mainline to move past it.
+// regression: #2660
 func TestPruneRemovesPristineBranchedAtMainTip(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -94,6 +97,7 @@ func TestPruneRemovesPristineBranchedAtMainTip(t *testing.T) {
 // the verifier/reviewer shape — is indistinguishable from reclaim residue by content
 // alone. A tree whose admin entry is younger than the safety window (the roster's
 // one-hour freshness window) is HELD as too fresh; only an aged one drains.
+// regression: #2660
 func TestPruneHoldsFreshPristineAtTipWithinSafetyWindow(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -118,6 +122,7 @@ func TestPruneHoldsFreshPristineAtTipWithinSafetyWindow(t *testing.T) {
 
 // A dirty detached-at-main worktree is HELD: aged past the safety window, so ONLY the
 // untracked-inclusive content gate can be what holds it.
+// regression: #2660
 func TestPruneHoldsDirtyDetachedAtMainTip(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -143,6 +148,7 @@ func TestPruneHoldsDirtyDetachedAtMainTip(t *testing.T) {
 // An at-tip tree carrying git-IGNORED payload (no tracked or untracked changes) is HELD:
 // the ignored file exists nowhere but this directory, so removing the tree is not
 // lossless. Aged past the safety window, so ONLY the ignored-payload gate can hold it.
+// regression: #2660
 func TestPruneHoldsAtTipTreeWithIgnoredPayload(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -177,6 +183,7 @@ func TestPruneHoldsAtTipTreeWithIgnoredPayload(t *testing.T) {
 // A LOCKED pristine detached-at-main worktree is HELD unconditionally: the lock gate runs
 // ahead of every content gate, so even the drainable shape stays put while a session
 // claims it.
+// regression: #2660
 func TestPruneHoldsLockedDetachedAtMainTip(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -210,6 +217,7 @@ func TestPruneHoldsLockedDetachedAtMainTip(t *testing.T) {
 // bookkeeping prune drops the UNLOCKED shape; the sweep's contract is the outcome —
 // registration gone, directory intact, and never reported as a content-gate hold —
 // whichever bookkeeping step performs it.
+// regression: #2660
 func TestPruneClearsStaleRegistrationMissingGitFile(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -244,6 +252,7 @@ func TestPruneClearsStaleRegistrationMissingGitFile(t *testing.T) {
 // A locked husk stays registered AND locked, and is reported held with the reason named.
 // (Review finding S1: unlocking is --reclaim-stale-locks' opt-in, gated on judgeLock's
 // proven-staleness evidence — never a default-sweep act.)
+// regression: #2660
 func TestPruneHoldsLockedStaleRegistrationByDefault(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -280,6 +289,7 @@ func TestPruneHoldsLockedStaleRegistrationByDefault(t *testing.T) {
 // With --reclaim-stale-locks and a lock PROVEN stale (the named session has no roster
 // beacon), the husk drains: the reclaim pass (the one place unlocks may happen) retires
 // the lock and the registration is cleared — the directory still left on disk.
+// regression: #2660
 func TestPruneClearsStaleRegistrationAfterProvenStaleReclaim(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -310,6 +320,7 @@ func TestPruneClearsStaleRegistrationAfterProvenStaleReclaim(t *testing.T) {
 // git's own in-flight `worktree add` holds the new worktree's lock with the reason
 // "initializing". That lock is NEVER retired — not by the age fallback, not by any sweep
 // arm: retiring it mid-add would race git itself.
+// regression: #2660
 func TestPruneNeverRetiresInitializingLock(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -344,6 +355,7 @@ func TestPruneNeverRetiresInitializingLock(t *testing.T) {
 //
 // A stale registration OUTSIDE the sanctioned prefixes is none of the sweep's business:
 // never unlocked, never deregistered, whatever its state.
+// regression: #2660
 func TestPruneStaleRegOutOfPrefixUntouched(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -390,6 +402,7 @@ func TestPruneStaleRegOutOfPrefixUntouched(t *testing.T) {
 // whose commit is not on the remote mainline is HELD — clearing it would strand
 // possibly-unpushed work — even across --reclaim-stale-locks: the reclaim pass must not
 // unlock what the content gate holds (the post-reclaim bookkeeping prune would drop it).
+// regression: #2660
 func TestPruneHoldsStaleRegWithUnpushedDetachedHead(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -438,6 +451,7 @@ func TestPruneHoldsStaleRegWithUnpushedDetachedHead(t *testing.T) {
 // A husk whose admin HEAD points at a BRANCH loses nothing when its registration is
 // cleared: the branch ref holds the commits. This one is cleared once its lock is proven
 // stale.
+// regression: #2660
 func TestPruneClearsBranchPointingStaleRegistration(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -473,6 +487,7 @@ func TestPruneClearsBranchPointingStaleRegistration(t *testing.T) {
 // no deregistration, .git/worktrees byte-identical. The husk here is UNLOCKED (a locked
 // one is not clearable at all — the default sweep never retires a lock, and a dry run
 // reports would-reclaims without performing them).
+// regression: #2660
 func TestPruneDryRunReportsStaleRegistrationWithoutClearing(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -501,6 +516,7 @@ func TestPruneDryRunReportsStaleRegistrationWithoutClearing(t *testing.T) {
 
 // A stale registration must not ALSO be reported as a candidate-loop hold: the sweep
 // accounts for every registered path exactly once, whether the verdict was clear or hold.
+// regression: #2660
 func TestPruneStaleRegistrationNotDoubleReported(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -535,6 +551,7 @@ func TestPruneStaleRegistrationNotDoubleReported(t *testing.T) {
 //
 // The re-lock mechanism, unit-level: an entry the reclaim pass unlocked this sweep gets
 // its lock back with the EXACT original reason when the clear fails.
+// regression: #2660
 func TestRelockReclaimedHusksRestoresOriginalReason(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -566,6 +583,7 @@ func TestRelockReclaimedHusksRestoresOriginalReason(t *testing.T) {
 // registered, the sweep does not count it cleared AND attempts the re-lock of the lock
 // the reclaim pass retired — and SAYS which way the re-lock went, never leaving the
 // state silent.
+// regression: #2660
 func TestPruneRelocksHuskWhenClearFails(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -605,4 +623,91 @@ func TestPruneRelocksHuskWhenClearFails(t *testing.T) {
 		!(strings.Contains(errout, "its lock was restored") || strings.Contains(errout, "lock could not be restored")) {
 		t.Fatalf("expected a named re-lock outcome for the failed clear; got:\n%s", errout)
 	}
+}
+
+// Failed destructive commands and failed verification must preserve the original
+// lock, including failures before the stale-registration clearing pass begins.
+// regression: #2660
+func TestPruneHuskRollback(t *testing.T) {
+	for _, failure := range []string{"prune", "unlock-verification"} {
+		t.Run(failure, func(t *testing.T) {
+			work := newRepo(t)
+			withEnv(t, work)
+			target := addWorktree(t, "rollback-husk")
+			reason := "worker-desk live session (deskwt role-init session=dead-rollback)"
+			mustGit(t, work, "worktree", "lock", "--reason", reason, target)
+			if err := os.Remove(filepath.Join(target, ".git")); err != nil {
+				t.Fatal(err)
+			}
+			plantBeacon(t, "someone-else", time.Now())
+			inner := execCommand
+			unlocked, injected := false, false
+			execCommand = func(name string, args ...string) *exec.Cmd {
+				if name == "git" && len(args) >= 2 && args[0] == "worktree" {
+					if args[1] == "unlock" {
+						unlocked = true
+					}
+					if unlocked && !injected &&
+						((failure == "prune" && args[1] == "prune") ||
+							(failure == "unlock-verification" && args[1] == "list")) {
+						injected = true
+						return inner("git", "fixture-injected-failure")
+					}
+				}
+				return inner(name, args...)
+			}
+			t.Cleanup(func() { execCommand = inner })
+			rc, errout := runCapErr(t, []string{"prune", "--reclaim-stale-locks", "--no-cache"})
+			if !injected || !unlocked {
+				t.Fatal("positive control: failure did not occur after unlocking")
+			}
+			list := mustGit(t, work, "worktree", "list", "--porcelain")
+			if !strings.Contains(list, target) || !strings.Contains(list, "locked "+reason) {
+				t.Fatalf("failed %s left husk unprotected (rc=%d):\n%s\n%s", failure, rc, list, errout)
+			}
+			if !strings.Contains(errout, "restored") || strings.Contains(errout, "stale-registrations-cleared 1") {
+				t.Fatalf("rollback not reported accurately: %s", errout)
+			}
+			assertExists(t, target)
+		})
+	}
+}
+
+// A second caller, the ordinary lock-reclaim helper, must roll back an intact
+// worktree too. This does not enter the stale-registration clearing path.
+// regression: #2660
+func TestReclaimVerifyRollback(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	target := addWorktree(t, "rollback-intact")
+	reason := "operator lock"
+	mustGit(t, work, "worktree", "lock", "--reason", reason, target)
+	guard, err := newPathGuard(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := execCommand
+	unlocked, injected := false, false
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) >= 2 && args[0] == "worktree" {
+			if args[1] == "unlock" {
+				unlocked = true
+			}
+			if unlocked && !injected && args[1] == "list" {
+				injected = true
+				return inner("git", "fixture-injected-failure")
+			}
+		}
+		return inner(name, args...)
+	}
+	t.Cleanup(func() { execCommand = inner })
+	done, _, err := reclaimStaleLocks(guard, work, resolvePath(work), time.Nanosecond)
+	if !injected || err == nil || len(done) != 0 {
+		t.Fatalf("unverifiable reclaim reported as success: injected=%v done=%v err=%v", injected, done, err)
+	}
+	list := mustGit(t, work, "worktree", "list", "--porcelain")
+	if !strings.Contains(list, "locked "+reason) || !strings.Contains(err.Error(), "restored") {
+		t.Fatalf("intact worktree lock not restored: %s; %v", list, err)
+	}
+	assertExists(t, filepath.Join(target, ".git"))
 }
