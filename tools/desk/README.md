@@ -3810,8 +3810,9 @@ record. The record holds:
 - `edit_state`: whether the body, a relay it read or the ruling was edited after the ruling
   (`edited` records no pick and no recommendation; `unverifiable` when the forge did not say).
 
-It never holds option or ruling text, and never a login or account id. Its one free-form
-field, `brief`, is held to the `<stream>/<NN>` grammar. A ruling a person could read as
+It never holds option or ruling text, and never a login or account id the tool reads. Its one
+free-form field, `brief`, is copied from the issue body's marker and held to the
+`<stream>/<NN>` grammar, which bounds its shape, not its meaning. A ruling a person could read as
 anything other than one option is `unparsed`. The record is written twice, as the same JSON
 bytes:
 

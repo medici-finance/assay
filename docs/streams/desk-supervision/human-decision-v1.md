@@ -210,8 +210,10 @@ carries:
 
 - any option text, even though the options are recorded by digest;
 - the ruling text, or the text of any other comment;
-- any login or account id, of the ruler, the desk App, a relay author or anyone else
-  (`ruler` is the role `driver`);
+- any login or account id the tool reads, of the ruler, the desk App, a relay author or
+  anyone else (`ruler` is the role `driver`). The one exception is not the tool's: `brief` is
+  copied from the issue body's own marker, and a login-shaped stream word in that marker
+  passes the grammar;
 - any per-person aggregate. Analysis groups by decision class, brief or stream. The records
   are never a target for ranking the driver, the desk or any agent;
 - any model name.
@@ -249,7 +251,9 @@ The outbound check scans the whole comment body, block included. If it refuses t
 the lane posts the comment without it, and the local line is the only copy (see "Where it
 lives"). The forge copy therefore never carries anything the outbound check refuses.
 
-The record holds no dispatch reference, no option or ruling text and no login.
+The record holds no dispatch reference and no option or ruling text. It holds no login the
+tool reads; only a body author's `brief` marker can put a login-shaped word in the record, and
+that marker is already on the same thread.
 
 ## Authenticity
 
@@ -275,5 +279,9 @@ set back to 0600 on each append. Each line is one short `O_APPEND` write; there 
   gives a record that cannot say whether the body or a relay changed after the ruling.
 - A body anchor's options and recommended mark are the body author's. The record does not
   check who wrote the body.
+- The edit check covers only the comments the record was read from. If a newer trusted ask is
+  edited after the ruling so that it no longer states options, or a newer relay loses its
+  `Answer:` line, the anchor or relay shifts to an older, unedited comment, and the record
+  reads `unedited`. A deleted comment is equally invisible to the check.
 - The pick reading is conservative, not complete. A ruling in a form the grammar does not
   know is `unparsed` even when a person would read one option from it.
