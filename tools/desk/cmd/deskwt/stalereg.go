@@ -30,7 +30,8 @@ package main
 //     and not touched.
 //   - CONTENT (phase 1): the admin dir's HEAD is the one git record that survives the
 //     loss of the worktree's .git file, and clearing the registration deletes it. A
-//     branch-pointing HEAD loses nothing (the branch ref holds the commits). A DETACHED
+//     branch-pointing HEAD must name a valid branch that resolves to a commit. Missing,
+//     invalid or unreadable branch targets hold the registration and its lock. A DETACHED
 //     HEAD must be proven reachable from refs/remotes/origin/main via the sweep's
 //     ancestor set — otherwise clearing would strand possibly-unpushed commits, and the
 //     husk is HELD with that reason. Anything unreadable or unclassifiable is held as
@@ -52,10 +53,11 @@ package main
 // Fail-closed, as everywhere in this tool: any stat that errors for a reason other than
 // "not there" leaves the entry alone; a prune failure or a still-registered verification
 // is a named warning and never counts as cleared; and an entry this pass attempted after
-// the reclaim pass retired its lock is RE-LOCKED with its original reason if the clear
-// fails, so a failed sweep never leaves a tree less protected than it found it.
+// the reclaim pass retired its lock is re-locked, if possible, with its original reason. If restoration fails, the sweep reports could-not-check and stops before
+// any later pruning; the surviving registration is left for operator recovery.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -76,8 +78,8 @@ type staleRegEntry struct {
 }
 
 // staleRegVerdict is phase 1's judgement for one in-scope stale registration:
-// holdReason == "" means the CONTENT gate passes (clearing the registration can strand
-// no commit); anything else is the hold reason the sweep reports.
+// holdReason == "" means the CONTENT gate proves the HEAD target is retained by a
+// resolving branch or the remote mainline; anything else is the reported hold reason.
 type staleRegVerdict struct {
 	entry staleRegEntry
 	// holdReason is the CONTENT hold only. The lock question is phase 2's, because it
@@ -123,7 +125,7 @@ func judgeStaleRegistrations(guard *pathGuard, sc *sweepCtx, cwd string, roots [
 		if aerr != nil {
 			v.holdReason = "could-not-check: " + errText(aerr)
 		} else {
-			v.holdReason = staleRegContentHold(sc, admin)
+			v.holdReason = staleRegContentHold(sc, guard.sharedCheckout, admin)
 		}
 		out = append(out, v)
 	}
@@ -131,23 +133,31 @@ func judgeStaleRegistrations(guard *pathGuard, sc *sweepCtx, cwd string, roots [
 }
 
 // staleRegContentHold reads the husk's admin HEAD and returns "" when clearing the
-// registration can strand no commit, else the hold reason.
+// HEAD target is retained by a resolving branch or the remote mainline, else a hold.
 //
-// A branch-pointing HEAD ("ref: refs/heads/...") loses nothing: the branch ref — in the
-// shared git dir, not the admin dir — holds the commits, and the local-branch GC only
+// A branch-pointing HEAD ("ref: refs/heads/...") must positively resolve to a commit:
+// syntax alone does not prove the branch exists. The branch lives in the shared git
+// dir, not the admin dir, and the local-branch GC only
 // ever deletes a branch proven on the mainline. A DETACHED HEAD is the admin dir's only
 // ref to its commit, so clearing is allowed only when that commit is in the sweep's
 // mainline ancestor set — already on the remote, so nothing is lost. Anything else
 // (unreadable, unparseable, an ancestor set the sweep could not build) is a
 // could-not-check hold.
-func staleRegContentHold(sc *sweepCtx, admin string) string {
+func staleRegContentHold(sc *sweepCtx, dir, admin string) string {
 	raw, rerr := os.ReadFile(filepath.Join(admin, "HEAD"))
 	if rerr != nil {
 		return "could-not-check: cannot read the admin entry's HEAD: " + errText(rerr)
 	}
 	head := strings.TrimSpace(string(raw))
 	if strings.HasPrefix(head, "ref: refs/heads/") {
-		return "" // branch-pointing: the branch ref holds the commits
+		ref := strings.TrimPrefix(head, "ref: ")
+		if _, err := runGit(dir, "check-ref-format", ref); err != nil {
+			return "could-not-check: invalid admin HEAD branch: " + errText(err)
+		}
+		if _, err := runGit(dir, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}"); err != nil {
+			return "could-not-check: admin HEAD branch does not resolve to a commit: " + errText(err)
+		}
+		return "" // the valid branch target positively resolves to an existing commit
 	}
 	if !isFullSHA(head) {
 		return "could-not-check: the admin entry's HEAD is neither a branch ref nor a commit id"
@@ -186,9 +196,9 @@ func isFullSHA(s string) bool {
 //
 // The clear itself is one repo-wide `git worktree prune` plus a POSITIVE verification
 // listing. If the clear fails for an entry the reclaim pass unlocked this sweep, the
-// entry is RE-LOCKED with its original reason: a failed sweep never leaves a husk less
-// protected than it found it. Under --dry-run it reports and touches nothing.
-func clearStaleRegistrations(guard *pathGuard, dir string, verdicts []staleRegVerdict, reclaimed map[string]string, dryRun bool) (cleared []staleRegEntry, held []skipEntry, warns []string) {
+// pass attempts to re-lock the entry with its original reason. A restoration error
+// stops the caller before any later prune. Under --dry-run it reports and touches nothing.
+func clearStaleRegistrations(guard *pathGuard, dir string, verdicts []staleRegVerdict, reclaimed map[string]string, dryRun bool) (cleared []staleRegEntry, held []skipEntry, warns []string, err error) {
 	var toClear []staleRegEntry
 	for _, v := range verdicts {
 		e := v.entry
@@ -209,16 +219,17 @@ func clearStaleRegistrations(guard *pathGuard, dir string, verdicts []staleRegVe
 		toClear = append(toClear, e)
 	}
 	if len(toClear) == 0 {
-		return nil, held, nil
+		return nil, held, nil, nil
 	}
 	if dryRun {
-		return toClear, held, nil
+		return toClear, held, nil, nil
 	}
 
 	if _, perr := runGit(dir, "worktree", "prune"); perr != nil {
 		warns = append(warns, "git worktree prune failed while clearing stale registrations: "+errText(perr))
-		warns = append(warns, relockReclaimedHusks(guard, dir, toClear, reclaimed)...)
-		return nil, held, warns
+		restored, err := relockReclaimedHusks(guard, dir, toClear, reclaimed)
+		warns = append(warns, restored...)
+		return nil, held, warns, err
 	}
 
 	// POSITIVE verification, batched: one listing for the whole pass, and only the paths
@@ -228,8 +239,9 @@ func clearStaleRegistrations(guard *pathGuard, dir string, verdicts []staleRegVe
 		for _, e := range toClear {
 			warns = append(warns, "stale registration "+e.path+": deregistration unverifiable after prune: "+errText(lerr))
 		}
-		warns = append(warns, relockReclaimedHusks(guard, dir, toClear, reclaimed)...)
-		return nil, held, warns
+		restored, err := relockReclaimedHusks(guard, dir, toClear, reclaimed)
+		warns = append(warns, restored...)
+		return nil, held, warns, err
 	}
 	var failed []staleRegEntry
 	for _, e := range toClear {
@@ -241,28 +253,32 @@ func clearStaleRegistrations(guard *pathGuard, dir string, verdicts []staleRegVe
 		cleared = append(cleared, e)
 	}
 	if len(failed) > 0 {
-		warns = append(warns, relockReclaimedHusks(guard, dir, failed, reclaimed)...)
+		restored, restoreErr := relockReclaimedHusks(guard, dir, failed, reclaimed)
+		warns = append(warns, restored...)
+		err = restoreErr
 	}
-	return cleared, held, warns
+	return cleared, held, warns, err
 }
 
 // relockReclaimedHusks restores the original lock on each entry whose lock the reclaim
-// pass retired this sweep but whose clearing FAILED — the N2 guarantee that a failed
-// sweep leaves no husk less protected than it found it. Entries the sweep found unlocked
-// have nothing to restore. Each re-lock is reported, and a re-lock failure doubly so.
-func relockReclaimedHusks(guard *pathGuard, dir string, entries []staleRegEntry, reclaimed map[string]string) (warns []string) {
+// pass retired this sweep but whose clearing FAILED. Entries found unlocked have
+// nothing to restore. Failed restoration is an error: the caller must stop subsequent
+// pruning and leave the surviving registration for operator recovery.
+func relockReclaimedHusks(guard *pathGuard, dir string, entries []staleRegEntry, reclaimed map[string]string) (warns []string, err error) {
 	for _, e := range entries {
 		reason, wasReclaimed := reclaimed[e.path]
 		if !wasReclaimed {
 			continue
 		}
 		if _, lerr := runGit(dir, "worktree", "lock", "--reason", reason, e.path); lerr != nil {
-			warns = append(warns, "stale registration "+e.path+" survived the clearing AND its reclaimed lock could not be restored: "+errText(lerr))
+			failure := deskkit.Unverifiable("stale registration "+e.path+" lock could not be restored; stopping before further pruning", lerr)
+			warns = append(warns, failure.Error())
+			err = errors.Join(err, failure)
 			continue
 		}
 		warns = append(warns, "stale registration "+e.path+" survived the clearing; its lock was restored with the original reason")
 	}
-	return warns
+	return warns, err
 }
 
 // staleRegHeldLocked is phase 1's output projected onto the reclaim pass's input: the

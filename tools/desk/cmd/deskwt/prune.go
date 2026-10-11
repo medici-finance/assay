@@ -39,8 +39,8 @@ type pruneResult struct {
 	// staleRegs are the registrations the STALE-REGISTRATION pass cleared (stalereg.go):
 	// worktree directory present but its .git gitdir file gone. Clearing deletes the
 	// admin dir (.git/worktrees/<id>/), so it happens only behind the pass's three gates:
-	// the scope gates every arm enforces, an admin-HEAD proof that no commit is stranded
-	// (branch-pointing, or on the remote mainline), and — for a locked husk — a lock the
+	// the scope gates every arm enforces, an admin-HEAD proof that its target remains retained
+	// (a positively resolving branch, or on the remote mainline), and — for a locked husk — a lock the
 	// reclaim pass retired THIS sweep. The directory is always left on disk, untouched.
 	staleRegs []staleRegEntry
 
@@ -120,7 +120,7 @@ type pruneOpts struct {
 //	  a lock makes `git worktree prune` keep forever. It runs the same scope gates as
 //	  every other arm (never the shared checkout, never the current worktree, never
 //	  outside the sanctioned prefixes), and clears a registration only when its admin
-//	  HEAD proves no commit is stranded (branch-pointing, or a detached commit already
+//	  HEAD target is retained (a positively resolving branch, or a detached commit already
 //	  on refs/remotes/origin/main) AND it is not locked — the default sweep never
 //	  retires a lock; a locked husk clears only when --reclaim-stale-locks has proven
 //	  the lock stale this sweep. The directory is always left on disk, untouched. Each
@@ -832,17 +832,26 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	// lock that proves nothing, or git's own in-flight "initializing" add lock — it is
 	// HELD with the reason named. The clear is one repo-wide prune plus a positive
 	// verification listing; an entry that survives it after its lock was reclaimed is
-	// re-locked with its original reason. Cleared AND held entries are skipped by the
+	// re-locked with its original reason; failed restoration stops the sweep.
+	// Cleared AND held entries are skipped by the
 	// candidate loop below (their trees cannot be opened; every gate there would only
 	// fail closed into a misleading reason).
 	reclaimedLocks := make(map[string]string, len(res.reclaimed))
 	for _, r := range res.reclaimed {
 		reclaimedLocks[r.path] = r.reason
 	}
-	staleCleared, staleHeld, staleWarns := clearStaleRegistrations(guard, dir, staleVerdicts, reclaimedLocks, opts.dryRun)
+	staleCleared, staleHeld, staleWarns, staleErr := clearStaleRegistrations(guard, dir, staleVerdicts, reclaimedLocks, opts.dryRun)
 	res.staleRegs = staleCleared
 	res.skips = append(res.skips, staleHeld...)
 	res.warns = append(res.warns, staleWarns...)
+	if staleErr != nil {
+		return res, staleErr
+	}
+	for _, held := range staleHeld {
+		if _, isLocked := locked[held.path]; isLocked {
+			res.lockedHeld++
+		}
+	}
 	staleSet := staleRegSet(staleVerdicts)
 
 	// Clear husks behind their rollback boundary before any later bookkeeping or

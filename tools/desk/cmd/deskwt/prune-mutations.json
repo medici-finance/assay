@@ -137,7 +137,7 @@
       "name": "the fresh-worktree guard holds an at-tip tree without ever checking its content (pristine reclaim residue is immortal again — the defect this change fixes)",
       "file": "cmd/deskwt/prune.go",
       "old": "\t\t\tif anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}",
-      "new": "\t\t\tif true {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}"
+      "new": "\t\t\tif true || anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}"
     },
     {
       "name": "the fresh-worktree guard's content check is dropped (an at-tip tree with untracked new source is deleted — the hole the guard exists to close)",
@@ -149,7 +149,7 @@
       "name": "a cleared stale registration ALSO goes through the candidate loop (reported twice, and as a misleading unverifiable hold)",
       "file": "cmd/deskwt/prune.go",
       "old": "\t\tif staleSet[rt] {\n\t\t\tcontinue\n\t\t}",
-      "new": "\t\tif false {\n\t\t\tcontinue\n\t\t}"
+      "new": "\t\tif false && staleSet[rt] {\n\t\t\tcontinue\n\t\t}"
     },
     {
       "name": "the stale-registration pass's LOCK rule is dropped (a locked husk is cleared by the default sweep — the lock's whole protection is gone)",
@@ -202,8 +202,14 @@
     {
       "name": "a failed clear never re-locks (the husk is left registered and UNLOCKED — less protected than the sweep found it)",
       "file": "cmd/deskwt/stalereg.go",
-      "old": "\tif len(failed) > 0 {\n\t\twarns = append(warns, relockReclaimedHusks(guard, dir, failed, reclaimed)...)\n\t}",
-      "new": "\tif false {\n\t\twarns = append(warns, relockReclaimedHusks(guard, dir, failed, reclaimed)...)\n\t}"
+      "old": "\tif len(failed) > 0 {\n\t\trestored, restoreErr := relockReclaimedHusks(guard, dir, failed, reclaimed)\n\t\twarns = append(warns, restored...)\n\t\terr = restoreErr\n\t}",
+      "new": "\tif false && len(failed) > 0 {\n\t\trestored, restoreErr := relockReclaimedHusks(guard, dir, failed, reclaimed)\n\t\twarns = append(warns, restored...)\n\t\terr = restoreErr\n\t}"
+    },
+    {
+      "name": "failed restoration is ignored and later pruning can discard the surviving husk",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\tif staleErr != nil {\n\t\treturn res, staleErr\n\t}",
+      "new": "\tif false && staleErr != nil {\n\t\treturn res, staleErr\n\t}"
     }
   ]
 }

@@ -2446,15 +2446,16 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      (`.git/worktrees/<id>/` — HEAD, index, reflog), so it happens only behind three
      gates: the **scope gates** every arm enforces (never the shared checkout, never the
      current worktree, never outside the sanctioned prefixes); a **content proof** read
-     from the admin dir's HEAD — branch-pointing (the branch ref holds the commits) or a
+     from the admin dir's HEAD — a valid branch target that positively resolves to a commit, or a
      detached commit already on `refs/remotes/origin/main`, else HELD (clearing would
      strand possibly-unpushed commits), and a content-held husk is also excluded from the
      lock-reclaim pass so the post-reclaim prune cannot drop it; and the **lock rule** —
      the default sweep NEVER retires a lock, so a locked husk clears only when
      `--reclaim-stale-locks` has proven its lock stale this same sweep (git's own
      in-flight `"initializing"` add lock is never retired by any arm). A husk whose clear
-     fails after its lock was reclaimed is re-locked with its original reason. The
-     directory is always left on disk, untouched.
+     fails after its lock was reclaimed is re-locked with its original reason. If restoration
+     fails, the sweep stops before later pruning and reports the failure, leaving the
+     surviving registration for operator recovery. The directory is always left on disk, untouched.
   3. **Step A2 (opt-in, `--reclaim-stale-locks`):** the lock lifecycle — see below.
   4. **Step B (safe gate):** walk the registered worktrees under the sanctioned prefixes and
      remove — via the exact same safe primitive as `remove` — ONLY those it can prove safe:

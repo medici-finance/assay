@@ -132,8 +132,8 @@ stale registrations whose directory survives but whose .git gitdir file is gone 
 ` + "`git worktree remove`" + ` refuses and a lock makes ` + "`git worktree prune`" + ` keep forever). It
 clears the REGISTRATION only — the directory is left on disk — and only behind three
 gates: the scope gates every arm enforces (never the shared checkout, the current
-worktree, or outside the sanctioned prefixes), an admin-HEAD proof that clearing strands
-no commit (branch-pointing, or a detached commit already on refs/remotes/origin/main),
+worktree, or outside the sanctioned prefixes), an admin-HEAD target retained by a branch that positively resolves to a commit,
+or by a detached commit already on refs/remotes/origin/main,
 and the lock rule — the default sweep never retires a lock, so a locked husk clears only
 when --reclaim-stale-locks has proven its lock stale this sweep. Then it removes
 ONLY worktrees it can prove safe: tracked-clean AND fully merged into origin/main. An

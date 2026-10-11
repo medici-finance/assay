@@ -278,6 +278,9 @@ func TestPruneHoldsLockedStaleRegistrationByDefault(t *testing.T) {
 	// prune keeping the locked entry (which would leave the registration intact but
 	// report nothing). A sweep that dropped the rule would print the phase-2 warning
 	// instead; both assertions together make that regression visible.
+	if !strings.Contains(errout, "locked-held 1") {
+		t.Fatalf("locked hold missing from counter: %s", errout)
+	}
 	if !strings.Contains(errout, "the default sweep never retires a lock") {
 		t.Fatalf("the lock-rule hold reason is missing; got:\n%s", errout)
 	}
@@ -561,10 +564,10 @@ func TestRelockReclaimedHusksRestoresOriginalReason(t *testing.T) {
 		t.Fatalf("newPathGuard: %v", err)
 	}
 	reason := "worker-desk live session (deskwt role-init session=dead-9)"
-	warns := relockReclaimedHusks(guard, work,
+	warns, restoreErr := relockReclaimedHusks(guard, work,
 		[]staleRegEntry{{path: resolvePath(target)}},
 		map[string]string{resolvePath(target): reason})
-	if len(warns) != 1 || !strings.Contains(warns[0], "restored") {
+	if restoreErr != nil || len(warns) != 1 || !strings.Contains(warns[0], "restored") {
 		t.Fatalf("expected one restored-lock warning; got: %v", warns)
 	}
 	list := mustGit(t, work, "worktree", "list", "--porcelain")
@@ -572,9 +575,9 @@ func TestRelockReclaimedHusksRestoresOriginalReason(t *testing.T) {
 		t.Fatalf("lock not restored with the original reason:\n%s", list)
 	}
 	// An entry the sweep found UNLOCKED (never reclaimed) has nothing to restore.
-	warns = relockReclaimedHusks(guard, work,
+	warns, restoreErr = relockReclaimedHusks(guard, work,
 		[]staleRegEntry{{path: resolvePath(target)}}, nil)
-	if len(warns) != 0 {
+	if restoreErr != nil || len(warns) != 0 {
 		t.Fatalf("an un-reclaimed entry must not be re-locked; got: %v", warns)
 	}
 }
@@ -610,11 +613,8 @@ func TestPruneRelocksHuskWhenClearFails(t *testing.T) {
 	t.Cleanup(func() { worktreePathsFn = orig })
 
 	rc, errout := runCapErr(t, []string{"prune", "--reclaim-stale-locks"})
-	if rc != deskkit.ExitOK {
-		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
-	}
-	if !strings.Contains(errout, "still registered after prune (not counted as cleared)") {
-		t.Fatalf("expected the not-cleared warning; got:\n%s", errout)
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("prune rc = %d, want 6; stderr:\n%s", rc, errout)
 	}
 	// The re-lock was attempted; the sweep must SAY which way it went. (On a modern git
 	// the post-reclaim bookkeeping prune has already dropped the entry, so the re-lock
@@ -710,4 +710,75 @@ func TestReclaimVerifyRollback(t *testing.T) {
 		t.Fatalf("intact worktree lock not restored: %s; %v", list, err)
 	}
 	assertExists(t, filepath.Join(target, ".git"))
+}
+
+// regression: #2660
+func TestPruneMissingBranchHeld(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	target := addWorktree(t, "missing-branch")
+	writeFile(t, filepath.Join(target, "unique.txt"), "unique work\n")
+	mustGit(t, target, "add", "unique.txt")
+	mustGit(t, target, "commit", "-m", "unique unpushed work")
+	sha := mustGit(t, target, "rev-parse", "HEAD")
+	mustGit(t, work, "worktree", "lock", "--reason", "session=dead-missing", target)
+	mustGit(t, work, "update-ref", "-d", "refs/heads/missing-branch")
+	if err := os.Remove(filepath.Join(target, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	plantBeacon(t, "someone-else", time.Now())
+	if strings.Contains(mustGit(t, work, "fsck", "--unreachable"), sha) {
+		t.Fatal("positive control: admin reflog does not retain commit")
+	}
+	rc, out := runCapErr(t, []string{"prune", "--reclaim-stale-locks", "--no-cache", "--no-branches"})
+	list := mustGit(t, work, "worktree", "list", "--porcelain")
+	if rc != 0 || !strings.Contains(list, target) || !strings.Contains(list, "locked session=dead-missing") {
+		t.Fatalf("missing branch was not held with its lock: rc=%d\n%s\n%s", rc, list, out)
+	}
+	if strings.Contains(mustGit(t, work, "fsck", "--unreachable"), sha) {
+		t.Fatal("commit lost reflog retention")
+	}
+}
+
+// regression: #2660
+func TestPruneRollbackFailureStops(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	target := addWorktree(t, "rollback-fails")
+	mustGit(t, work, "worktree", "lock", "--reason", "session=dead-rollback", target)
+	if err := os.Remove(filepath.Join(target, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	plantBeacon(t, "someone-else", time.Now())
+	inner := execCommand
+	unlocked, failedPrune, failedLock := false, false, false
+	laterPrunes := 0
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		if name == "git" && len(args) >= 2 && args[0] == "worktree" {
+			if args[1] == "unlock" {
+				unlocked = true
+			}
+			if unlocked && args[1] == "prune" {
+				if !failedPrune {
+					failedPrune = true
+					return inner("git", "fixture-injected-failure")
+				}
+				laterPrunes++
+			}
+			if failedPrune && args[1] == "lock" {
+				failedLock = true
+				return inner("git", "fixture-injected-failure")
+			}
+		}
+		return inner(name, args...)
+	}
+	t.Cleanup(func() { execCommand = inner })
+	rc, out := runCapErr(t, []string{"prune", "--reclaim-stale-locks", "--no-cache", "--no-branches"})
+	if !unlocked || !failedPrune || !failedLock {
+		t.Fatal("positive control: double failure not reached")
+	}
+	list := mustGit(t, work, "worktree", "list", "--porcelain")
+	if rc != deskkit.ExitUnverifiable || laterPrunes != 0 || !strings.Contains(list, target) || !strings.Contains(out, "lock could not be restored") {
+		t.Fatalf("failed rollback did not stop sweep: rc=%d later_prunes=%d\n%s\n%s", rc, laterPrunes, list, out)
+	}
 }
