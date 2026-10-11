@@ -146,6 +146,7 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 	claimed := rrFixture(t, "good-claimed-released.yaml")
 	failedRec := rrFixture(t, "good-failed.yaml")
 	requested := rrFixture(t, "good-requested.yaml")
+	recreated := rrFixture(t, "bad-released-recreated.yaml")
 	// claimedLive is the claimed fixture before its release: a live claim.
 	claimedLive := strings.Replace(strings.Split(claimed, "  - id: eff-0003\n")[0], "state: released", "state: claimed", 1)
 	ownershipBlock := "ownership:\n  principal: human:reviewer-a\n  claimed-at: \"2026-01-01T00:30:00Z\"\n  retain-until: \"2026-01-08T00:00:00Z\"\n"
@@ -206,6 +207,18 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 		{"agent bypasses the control plane", valid, "via: control-plane", "via: direct", ruleRRSchemaViolation, "provisioning.via"},
 		{"durable credential handed to agent", valid, "durable-custody: control-plane", "durable-custody: agent", ruleRRSchemaViolation, "durable-custody"},
 		{"unbounded resource (no quota)", valid, "quota:\n  - dimension: storage-mb\n    limit: 512\n  - dimension: compute-minutes\n    limit: 60\n", "quota: []\n", ruleRRSchemaViolation, "quota"},
+		// regression: claimed-at and rotation times were never read, so an
+		// impossible instant in either passed clean.
+		{"claimed-at in month 13", claimed, "claimed-at: \"2026-01-01T00:30:00Z\"", "claimed-at: \"2026-13-01T00:30:00Z\"", ruleRRSchemaViolation, `ownership.claimed-at "2026-13-01T00:30:00Z" is not a real RFC3339 instant`},
+		{"rotation at on Feb 30", claimed, "action: rotated\n      at: \"2026-01-01T00:30:01Z\"", "action: rotated\n      at: \"2026-02-30T00:30:01Z\"", ruleRRSchemaViolation, `rotation after effect "eff-0002": at "2026-02-30T00:30:01Z" is not a real RFC3339 instant`},
+		// regression: ownership from a released lifetime backed a re-created
+		// resource that nobody had claimed.
+		{"re-created with stale ownership", recreated, "state: released", "state: provisioned", ruleRRClaimWithoutPrincipal, `ownership names "human:reviewer-a" but no succeeded claim effect by that principal in the resource's current lifetime`},
+		// regression: a non-mapping effect item kept its raw list index, and the
+		// ordered rules indexed past the end of the effect list and panicked.
+		{"effect items that are not mappings", claimed, "effects:\n", "effects:\n  - just-a-string\n  - another\n", ruleRRSchemaViolation, "effects[0]: wrong type (want object, got string)"},
+		// regression: list order was trusted over the effects' own request times.
+		{"effects listed out of issue order", valid, "requested-at: \"2026-01-01T01:00:00Z\"", "requested-at: \"2025-12-31T23:59:00Z\"", ruleRRStateUnsupported, `effect "eff-0002": requested at 2025-12-31T23:59:00Z, before the effect listed ahead of it ("eff-0001", 2026-01-01T00:00:00Z)`},
 	}
 	dir := t.TempDir()
 	for i, c := range cases {
@@ -245,8 +258,25 @@ func rrLineHas(lines []string, rule, msg string) bool {
 func TestRuntimeResourceContractOrd(t *testing.T) {
 	recreated := rrFixture(t, "bad-released-recreated.yaml")
 	lostAck := rrFixture(t, "good-lost-ack.yaml")
+	// The re-created resource is a new, unclaimed lifetime: the ownership block
+	// from the released one does not describe it.
+	stale := "ownership:\n  principal: human:reviewer-a\n  claimed-at: \"2026-01-01T00:30:00Z\"\n  retain-until: \"2026-01-08T00:00:00Z\"\n"
+	if !strings.Contains(recreated, stale) {
+		t.Fatal("anchor ownership block not found")
+	}
+	unclaimed := strings.Replace(recreated, stale, "", 1)
+	// regression: release protection from the released lifetime refused the
+	// agent's release of the unclaimed resource that replaced it.
+	agentRelease := "  - id: eff-0006\n    verb: release\n    idempotency-key: run-0003/release-again\n    requested-at: \"2026-01-01T01:50:00Z\"\n    outcome: succeeded\n    principal: agent:worker-2\n    receipt:\n      adapter-ref: mock://snapshot/rr-claimed-01\n      observed-at: \"2026-01-01T01:50:01Z\"\n      observed-state: absent\n" +
+		"  - id: eff-0007\n    verb: reconcile\n    idempotency-key: run-0003/reconcile-eff-0006\n    requested-at: \"2026-01-01T01:55:00Z\"\n    outcome: succeeded\n    principal: control-plane\n    reconciles: eff-0006\n    receipt:\n      adapter-ref: mock://snapshot/rr-claimed-01\n      observed-at: \"2026-01-01T01:55:01Z\"\n      observed-state: absent\n"
+	revokedAgain := "      at: \"2026-01-01T01:30:01Z\"\n"
+	if !strings.Contains(unclaimed, revokedAgain) {
+		t.Fatal("anchor revocation rotation not found")
+	}
+	releasedAgain := strings.Replace(unclaimed, revokedAgain, revokedAgain+"    - after: eff-0006\n      action: revoked\n      at: \"2026-01-01T01:50:02Z\"\n", 1) + agentRelease
 	cases := []struct{ name, base, old, new string }{
-		{"re-created after release", recreated, "state: released", "state: provisioned"},
+		{"re-created after release", unclaimed, "state: released", "state: provisioned"},
+		{"agent releases the re-created resource", releasedAgain, "state: released", "state: released"},
 		{"lost create reconciled absent", strings.Replace(lostAck, "      observed-state: present", "      observed-state: absent", 1), "state: provisioned", "state: failed"},
 	}
 	dir := t.TempDir()

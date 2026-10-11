@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestRuntimeResourceContract' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestRuntimeResourceContract($|Rules|Ord|Ack|Reg|File|Tag|CLI|Vocabulary)' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — every record reports checked-failed",
     "file": "runtimeresource.go",
@@ -354,6 +354,48 @@
       "file": "runtimeresource.go",
       "old": "\t\tcase \"release\":\n\t\t\t// An acknowledgment, not an observation",
       "new": "\t\tcase \"release\":\n\t\t\tif e.HasReceipt {\n\t\t\t\tobserve(e.ObservedState, e.ObservedAt.At)\n\t\t\t}\n\t\t\t// An acknowledgment, not an observation"
+    },
+    {
+      "name": "ownership.claimed-at is never checked for a real instant",
+      "file": "runtimeresource.go",
+      "old": "if d.ClaimedAt.Set && !d.ClaimedAt.OK {",
+      "new": "if false && d.ClaimedAt.Set {"
+    },
+    {
+      "name": "a rotation's at is never checked for a real instant",
+      "file": "runtimeresource.go",
+      "old": "if r.At.Set && !r.At.OK {",
+      "new": "if false && r.At.Set {"
+    },
+    {
+      "name": "effects listed out of issue order are accepted",
+      "file": "runtimeresource.go",
+      "old": "if e.RequestedAt.OK && prev.RequestedAt.OK && e.RequestedAt.At.Before(prev.RequestedAt.At) {",
+      "new": "if false && e.RequestedAt.OK && prev.RequestedAt.OK {"
+    },
+    {
+      "name": "a non-mapping effect item keeps its raw list index",
+      "file": "runtimeresource.go",
+      "old": "\tfor _, e := range effects {\n\t\tm, ok := e.(map[string]any)\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n\t\tvar eff runtimeEffect\n\t\teff.Index = len(d.Effects)",
+      "new": "\tfor i, e := range effects {\n\t\tm, ok := e.(map[string]any)\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n\t\tvar eff runtimeEffect\n\t\teff.Index = i"
+    },
+    {
+      "name": "an observation of present after an absence does not begin a new lifetime",
+      "file": "runtimeresource.go",
+      "old": "dv.lifetimeStart, dv.claimed = at, false\n\t\t\t\tcur++",
+      "new": "dv.lifetimeStart, dv.claimed = at, false"
+    },
+    {
+      "name": "claims from an ended lifetime still back the ownership block",
+      "file": "runtimeresource.go",
+      "old": "claimPrincipals, ownedBefore = map[string]bool{}, false",
+      "new": "ownedBefore = false"
+    },
+    {
+      "name": "release protection from an ended lifetime still binds",
+      "file": "runtimeresource.go",
+      "old": "claimPrincipals, ownedBefore = map[string]bool{}, false",
+      "new": "claimPrincipals = map[string]bool{}"
     }
   ]
 }

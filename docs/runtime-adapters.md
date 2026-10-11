@@ -90,9 +90,15 @@ only a later reconcile says the resource is gone (Recovery rule 4). So:
 
 - A resource observed `present` and later observed `absent` is no longer `provisioned` or
   `claimed`, whatever the earlier receipt said.
+- Any authoritative `absent` observation ends the resource's current **lifetime**, and the
+  next `present` observation begins a new one. This holds whatever the absence followed:
+  a reconciled release, a lost create, or an `inspect` that found nothing. A record whose
+  resource is briefly absent and then present again is therefore on a new lifetime.
 - A resource observed `present` again after a reconciled release is live again, and the
   record MUST NOT say `released`. Its TTL counts from the observation that brought it
-  back, and a claim from before the release does not carry over to it.
+  back. Nothing about ownership carries over from an earlier lifetime: a claim made before
+  the release does not make the new resource claimed, cannot back its `ownership` block,
+  and does not protect it from an agent's release (see "Ownership authority").
 - A `requested` record whose create already failed, or was reconciled `absent`, is
   `failed`; it cannot fall back to waiting for a create.
 - A reconcile of a `claim` whose answer was lost shows only that the resource is present.
@@ -165,9 +171,15 @@ Each `effects[]` entry carries the following fields:
 
 Every bound the rules read MUST be one they can evaluate. A `ttl` or credential `lifetime`
 is a positive integer of at most five digits and one unit, so no accepted value can
-overflow. A timestamp MUST name a real instant: a value that has the right shape but no
-real date, such as month 13 or 30 February, is a schema violation. A bound the validator
-cannot read is never treated as a bound that holds.
+overflow. Every timestamp in the record MUST name a real instant: each effect's
+`requested-at`, each receipt's `observed-at`, `ownership.claimed-at` and
+`ownership.retain-until`, and the `at` of every credential rotation. A value that has the
+right shape but no real date, such as month 13 or 30 February, is a schema violation. A
+bound the validator cannot read is never treated as a bound that holds.
+
+The effects are listed in the order they were issued, and every ordered rule reads that
+list. An effect whose `requested-at` is earlier than that of the effect listed before it
+contradicts the order, and the record fails as `runtime-resource-state-unsupported`.
 
 A record file holds exactly one YAML document. A file with a second document is
 `could-not-check`, because only the first would be checked.
@@ -192,11 +204,15 @@ existed before the call, and nothing to reconcile against when the call's answer
 promote it into something longer-lived, or to pay for it. Only a `human:` or `org:`
 principal MAY hold it. An agent MUST NOT claim. A `claim` effect authorized by an `agent:`
 principal, or by no principal, fails validation regardless of its outcome. So does an
-`ownership` block that no succeeded claim by the same principal backs.
+`ownership` block that no succeeded claim by the same principal, in the resource's current
+lifetime, backs.
 
 Once a principal has claimed a resource, an agent cannot end it either. A `release` after a
-succeeded claim MUST be authorized by a `human:` or `org:` principal or by `control-plane`;
-a release authorized by an `agent:` principal, or by no principal, fails validation.
+succeeded claim in the same lifetime MUST be authorized by a `human:` or `org:` principal or
+by `control-plane`; a release authorized by an `agent:` principal, or by no principal,
+fails validation. The protection is per lifetime: a resource observed absent and then
+present again is a new, unclaimed resource until someone claims it, and an agent may
+release it.
 
 The split matters because the dangerous moment is the moment a resource stops being
 ephemeral. An agent that could claim could turn a scratch branch into a standing database
@@ -354,7 +370,7 @@ A directory argument is walked whole, subdirectories included, and every `*.yaml
 | `runtime-resource-unreconciled-effect` | an `unknown` effect has no resolving reconcile, an effect was issued while one was unresolved, or a reconcile names no earlier effect |
 | `runtime-resource-unreconciled-release` | a succeeded release has no reconcile observing `absent`, or the record says `released` without one |
 | `runtime-resource-receipt-missing` | a succeeded effect carries no receipt |
-| `runtime-resource-state-unsupported` | the recorded state is not the one the receipts support, read in order so the latest authoritative observation wins; or a receipt is dated after the check instant or before its effect was requested |
+| `runtime-resource-state-unsupported` | the recorded state is not the one the receipts support, read in order so the latest authoritative observation wins; a receipt is dated after the check instant or before its effect was requested; or an effect was requested before the effect listed ahead of it |
 | `runtime-resource-credential-not-rotated` | a succeeded claim has no recorded rotation or revocation, or a release no recorded revocation |
 | `runtime-resource-credential-outlives-ttl` | the agent credential's lifetime exceeds the resource's TTL |
 

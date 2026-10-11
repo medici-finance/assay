@@ -421,6 +421,7 @@ type runtimeEffect struct {
 type runtimeRotation struct {
 	After  string
 	Action string
+	At     runtimeTimeField
 }
 
 // runtimeTimeField is a timestamp the rules read. Set says the key was present;
@@ -451,6 +452,7 @@ type runtimeResourceDoc struct {
 	CredLife    runtimeDurationField
 	HasOwner    bool
 	OwnerPrinc  string
+	ClaimedAt   runtimeTimeField
 	RetainUntil runtimeTimeField
 	Rotations   []runtimeRotation
 	Effects     []runtimeEffect
@@ -484,7 +486,10 @@ func rrReadDuration(m map[string]any, key string) runtimeDurationField {
 
 // parseRuntimeResource resolves the generic decoded map defensively: a missing
 // or mistyped field becomes a zero value, which the schema pass has already
-// reported, so the rules below never panic on a malformed record.
+// reported, so the rules below never panic on a malformed record. An effect item
+// that is not a mapping is dropped, so an effect's Index is its position in
+// d.Effects, never its raw list position: every rule that indexes d.Effects by
+// it reads the slice it was taken from.
 func parseRuntimeResource(data map[string]any) runtimeResourceDoc {
 	var d runtimeResourceDoc
 	d.ID, _ = data["id"].(string)
@@ -503,23 +508,24 @@ func parseRuntimeResource(data map[string]any) runtimeResourceDoc {
 			if rm, ok := r.(map[string]any); ok {
 				after, _ := rm["after"].(string)
 				action, _ := rm["action"].(string)
-				d.Rotations = append(d.Rotations, runtimeRotation{After: after, Action: action})
+				d.Rotations = append(d.Rotations, runtimeRotation{After: after, Action: action, At: rrReadTime(rm, "at")})
 			}
 		}
 	}
 	if o, ok := data["ownership"].(map[string]any); ok {
 		d.HasOwner = true
 		d.OwnerPrinc, _ = o["principal"].(string)
+		d.ClaimedAt = rrReadTime(o, "claimed-at")
 		d.RetainUntil = rrReadTime(o, "retain-until")
 	}
 	effects, _ := data["effects"].([]any)
-	for i, e := range effects {
+	for _, e := range effects {
 		m, ok := e.(map[string]any)
 		if !ok {
 			continue
 		}
 		var eff runtimeEffect
-		eff.Index = i
+		eff.Index = len(d.Effects)
 		eff.ID, _ = m["id"].(string)
 		eff.Verb, _ = m["verb"].(string)
 		eff.Outcome, _ = m["outcome"].(string)
@@ -548,6 +554,11 @@ type runtimeDerived struct {
 	released      bool      // the latest authoritative observation is a reconciled release observing absent
 	everReleased  bool      // some release was reconciled to absent
 	createFailed  bool      // a create failed, or was reconciled absent, and nothing since observed it present
+	// lifetime[i] numbers the lifetime in force once effect i is read: 0 before
+	// any observation of present, and one more each time an observation of
+	// present follows an absence. Rule 6 scopes ownership to it, so a claim and
+	// its release protection end with the lifetime they were made in.
+	lifetime []int
 }
 
 // deriveRuntimeState folds the effects in order. The authoritative observations
@@ -557,7 +568,8 @@ type runtimeDerived struct {
 // later reconcile says the resource is gone (docs/runtime-adapters.md, Recovery
 // rule 4).
 func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived {
-	var dv runtimeDerived
+	dv := runtimeDerived{lifetime: make([]int, len(d.Effects))}
+	cur := 0
 	observe := func(state string, at time.Time) {
 		switch state {
 		case "present":
@@ -565,6 +577,7 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 				// A new lifetime: its TTL counts from here, and a claim from an
 				// earlier lifetime does not carry over.
 				dv.lifetimeStart, dv.claimed = at, false
+				cur++
 			}
 			dv.present, dv.everPresent = true, true
 			dv.released, dv.createFailed = false, false
@@ -572,11 +585,12 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 			dv.present = false
 		}
 	}
-	for _, e := range d.Effects {
+	for i, e := range d.Effects {
 		switch e.Verb {
 		case "reconcile":
 			j, ok := pos[e.Reconciles]
 			if !ok || j >= e.Index || e.Outcome != "succeeded" || !e.HasReceipt {
+				dv.lifetime[i] = cur
 				continue
 			}
 			observe(e.ObservedState, e.ObservedAt.At)
@@ -609,6 +623,7 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 				observe(e.ObservedState, e.ObservedAt.At)
 			}
 		}
+		dv.lifetime[i] = cur
 	}
 	return dv
 }
@@ -636,9 +651,27 @@ func checkRuntimeResourceRules(path string, d runtimeResourceDoc, adapters map[s
 	if d.RetainUntil.Set && !d.RetainUntil.OK {
 		add(ruleRRSchemaViolation, "ownership.retain-until %q is not a real RFC3339 instant — a retention that cannot be read is a violation, never one that holds", d.RetainUntil.Raw)
 	}
+	if d.ClaimedAt.Set && !d.ClaimedAt.OK {
+		add(ruleRRSchemaViolation, "ownership.claimed-at %q is not a real RFC3339 instant", d.ClaimedAt.Raw)
+	}
+	for _, r := range d.Rotations {
+		if r.At.Set && !r.At.OK {
+			add(ruleRRSchemaViolation, "rotation after effect %q: at %q is not a real RFC3339 instant", r.After, r.At.Raw)
+		}
+	}
+	// Effects are listed in the order they were issued; every ordered rule
+	// below reads the list, so a list whose request times run backwards is
+	// one whose order cannot be trusted.
+	var prev runtimeEffect
 	for _, e := range d.Effects {
 		if e.RequestedAt.Set && !e.RequestedAt.OK {
 			add(ruleRRSchemaViolation, "effect %q: requested-at %q is not a real RFC3339 instant", e.ID, e.RequestedAt.Raw)
+		}
+		if e.RequestedAt.OK && prev.RequestedAt.OK && e.RequestedAt.At.Before(prev.RequestedAt.At) {
+			add(ruleRRStateUnsupported, "effect %q: requested at %s, before the effect listed ahead of it (%q, %s) — effects are listed in the order they were issued", e.ID, e.RequestedAt.At.Format(time.RFC3339), prev.ID, prev.RequestedAt.At.Format(time.RFC3339))
+		}
+		if e.RequestedAt.OK {
+			prev = e
 		}
 		if e.ObservedAt.Set && !e.ObservedAt.OK {
 			add(ruleRRSchemaViolation, "effect %q: receipt observed-at %q is not a real RFC3339 instant — a receipt time that cannot be read cannot anchor a ttl", e.ID, e.ObservedAt.Raw)
@@ -739,10 +772,19 @@ func checkRuntimeResourceRules(path string, d runtimeResourceDoc, adapters map[s
 	}
 
 	// 6. Ownership: only a human or organization principal claims, and once one
-	// owns the resource, an agent cannot end it either.
+	// owns the resource, an agent cannot end it either. Ownership belongs to one
+	// lifetime: a resource observed absent and then present again is a new
+	// resource, unclaimed until a claim in that lifetime, so both the release
+	// protection and the claims backing the ownership block reset at the
+	// boundary.
 	var claimPrincipals = map[string]bool{}
 	ownedBefore := false
-	for _, e := range d.Effects {
+	gen := 0
+	for i, e := range d.Effects {
+		if dv.lifetime[i] != gen {
+			gen = dv.lifetime[i]
+			claimPrincipals, ownedBefore = map[string]bool{}, false
+		}
 		switch e.Verb {
 		case "claim":
 			if !isOwnerPrincipal(e.Principal) {
@@ -763,7 +805,7 @@ func checkRuntimeResourceRules(path string, d runtimeResourceDoc, adapters map[s
 		add(ruleRRClaimWithoutPrincipal, "state is claimed but no ownership block names the principal holding the resource")
 	}
 	if d.HasOwner && !claimPrincipals[d.OwnerPrinc] {
-		add(ruleRRClaimWithoutPrincipal, "ownership names %q but no succeeded claim effect by that principal backs it", d.OwnerPrinc)
+		add(ruleRRClaimWithoutPrincipal, "ownership names %q but no succeeded claim effect by that principal in the resource's current lifetime backs it", d.OwnerPrinc)
 	}
 
 	// 7. A claim rotates, a release revokes, the agent credential — recorded.
