@@ -145,12 +145,20 @@ reliably caught an inverted or false desk claim.
 - Climb the reuse ladder and stop at the first rung that satisfies the item: (1) does this
   need to exist at all — except that the item's own declared scope outranks this rung, a
   briefed deliverable is never re-litigated as YAGNI; (2) is it already in this repo;
-  (3) is it in the standard library; (4) is it in an existing dependency; (5) only then
-  write it, as the minimal diff. SAFETY FLOOR: never cut validation, error handling,
+  (3) is it in the standard library; (4) is it in an existing dependency; (5) evaluate
+  the project's selected library, or established OSS when no choice exists; (6) only then
+  write a custom implementation, with a concrete reason the earlier options do not fit.
+  Read the project's contributor/engineering guidance and library catalogue before choosing.
+  Reuse its selected package and adapter for the capability; do not add a competing library
+  or bespoke infrastructure just because it looks small. Record the capability, options
+  considered, evidence of the mismatch, and the exception's owner/migration consequence in
+  the PR. A catalogue is project-specific, not permission to copy another project's stack.
+  SAFETY FLOOR: never cut validation, error handling,
   security, or accessibility — and never trim a Verify row to shrink a diff. A Verify row,
   its Evidence, and every process artifact are not code to minimize.
-- Rung (4) never means a NEW dependency, plugin or MCP server by default. Before adding one
-  (to a manifest, a lockfile, the harness or the agent environment), file an issue carrying a
+- Evaluating or selecting a package never authorizes installing it. Before adding a NEW
+  dependency, plugin or MCP server (to a manifest, a lockfile, the harness or the agent
+  environment), file an issue carrying a
   risk summary: source (publisher, repo, exact version, release date), permissions (network,
   filesystem, credentials or scopes it reads), and persistence (hooks, background processes,
   auto-update, files written outside its own directory). The PR cites that issue; no issue,
