@@ -279,18 +279,9 @@ func main() {
 			}
 			srcRoot = wd
 		}
-		h.Workspace = func(id int) (string, func(), error) {
-			dir, err := os.MkdirTemp("", fmt.Sprintf("muhar-%d-", id))
-			if err != nil {
-				return "", nil, err
-			}
-			cleanup := func() { _ = os.RemoveAll(dir) }
-			if err := copyTree(srcRoot, dir); err != nil {
-				cleanup()
-				return "", nil, err
-			}
-			return dir, cleanup, nil
-		}
+		// Each copy keeps its go.mod's relative replace targets resolvable
+		// (#2550): see copyModuleTree.
+		h.Workspace = newWorkspace(srcRoot)
 		fmt.Fprintf(os.Stderr, "muhar: %d mutations in flight, one isolated copy of %s per worker\n", n, srcRoot)
 	}
 
