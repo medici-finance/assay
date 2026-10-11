@@ -185,6 +185,12 @@ surfaces order *worth the attention* ahead of *cheap to do*, not by urgency-then
   above: create idempotently before first use on a repo.
 - **Judgment recorded, not computed.** The triple is the triage session's own call, made where
   the judgment already happens — no model scores it in CI and no inferential sensor derives it.
+- **`risk:high` gates the placeholder, at first write only.** A `risk:high` label that is on the
+  issue when the issue scanner first writes its placeholder derives `gate: human` on it; `risk:med`
+  and `risk:low` do not. The scanner does not wait for triage and derives the gate once, so a label
+  set after the placeholder exists does not change its gate. When you score an item `risk:high` and
+  its placeholder already reads `gate: model`, label the issue `help wanted` and comment, naming the
+  placeholder file, that human:<name> must set `gate: human` in it by hand.
 - **Every exit, forward-only.** All five tracked exits (and the intake lane's four) take a
   triple; scoring is forward-only — the corpus accretes from now, existing items are not
   back-labelled, so an unscored older item is expected, never a defect.

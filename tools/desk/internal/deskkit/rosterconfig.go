@@ -93,6 +93,26 @@ const (
 	// EnvHumanLoginMap carries the human-name→login map, comma-separated
 	// `name:login`.
 	EnvHumanLoginMap = "ASSAY_HUMAN_LOGIN_MAP"
+	// EnvOSUserLoginMap carries the OS-ACCOUNT→login map, comma-separated
+	// `osuser:login`. Its ONLY consumer is the scan-override audit identity
+	// (scanoverride.go's OverrideIdentity): the override row exists to name the
+	// accountable ROSTER identity, and the OS account name a process runs under is
+	// not a key in ASSAY_HUMAN_LOGIN_MAP (which maps the human's NAME), so a machine
+	// account like a per-laptop login rendered as itself instead of the login the
+	// house answers for. This key closes that gap explicitly.
+	//
+	// The login half must name a trusted HUMAN of the same roster (in
+	// ASSAY_TRUSTED_LOGINS, never a configured App slug) — an off-roster value
+	// printed unmarked would read as resolved when nothing resolved it. An OS
+	// account name containing a LIST SEPARATOR (space, comma, semicolon) cannot be
+	// expressed here at all and always lands on the marked fallback.
+	//
+	// It is an EXTENSION key, never a trust one: it labels a forensic audit row and
+	// authorises nothing, so a malformed value is recorded against this one key
+	// (Config.Ext) and the map reads as EMPTY — the identity falls back to a
+	// clearly-marked OS-username form — rather than refusing the whole roster.
+	// Unset is a complete configuration: every OS account resolves by the fallback.
+	EnvOSUserLoginMap = "ASSAY_OS_USER_LOGIN_MAP"
 	// EnvRiskPathTriggersExtra carries ADDITIONAL risk-path triggers,
 	// comma-separated. It is ADDITIVE-ONLY: it unions onto the compiled sets and
 	// there is no value syntax that drops a compiled entry. The name is
@@ -555,6 +575,10 @@ func knownRosterKeys() []string {
 	return []string{
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
+		// EnvOSUserLoginMap (ASSAY_OS_USER_LOGIN_MAP) is CONSUMED here, by
+		// scanoverride.go's OverrideIdentity alone; statusgen recognises it only.
+		// Bound to statusgen's scanKnownRosterKeys by the shared key list.
+		EnvOSUserLoginMap,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
 		EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema,
 		EnvStampTrustedLogins,
@@ -736,7 +760,14 @@ type Config struct {
 
 	Repos       map[string]repoPolicy
 	HumanLogins map[string]string
-	RiskExtra   []string
+	// OSUserLogins maps a LOWERCASED OS account name to the roster login the
+	// scan-override audit identity resolves to (ASSAY_OS_USER_LOGIN_MAP). Empty
+	// when unset OR when the value was malformed — an audit-identity label
+	// degrades to its clearly-marked fallback, it never refuses the roster and
+	// never blocks the audit write. Read through resolveOverrideWho
+	// (scanoverride.go), never directly.
+	OSUserLogins map[string]string
+	RiskExtra    []string
 
 	// RiskCallout is the configured risk-classification callout path
 	// (EnvRiskCallout), empty when unset. Empty means pattern classification only
@@ -927,6 +958,11 @@ var extKeyNames = map[string]string{
 	EnvRepoForges:         "repo-forges",
 	EnvChannelDriftTarget: "channel-drift-target",
 	EnvHomeRepo:           "home-repo",
+	// ASSAY_OS_USER_LOGIN_MAP labels a forensic audit row and authorises nothing,
+	// so it is an extension key: a malformed value empties the map (the identity
+	// falls back to its clearly-marked OS-username form) and is recorded here,
+	// never a whole-roster refusal.
+	EnvOSUserLoginMap: "os-user-login-map",
 }
 
 // ExtKeyName resolves an ASSAY_-namespace extension variable to the canonical
@@ -1102,7 +1138,7 @@ func LoadConfig(class ToolClass) Config {
 func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 	keys := []string{
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
-		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
+		EnvAllowedRepos, EnvHumanLoginMap, EnvOSUserLoginMap, EnvRiskPathTriggersExtra,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
 		EnvOutboundCallout, EnvOutboundCalloutRequired, EnvOutboundCalloutTimeout,
 		EnvContributorLedger, EnvRosterSchema, EnvStampTrustedLogins,
@@ -1587,6 +1623,56 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		cfg.HumanLogins[name] = login
 	}
 
+	// --- OS-account → login map (ASSAY_OS_USER_LOGIN_MAP), an EXTENSION key ---
+	// Feeds ONLY the scan-override audit identity. A MALFORMED entry does not refuse
+	// the configuration: it is recorded on cfg.Ext as ExtInvalid and the whole map
+	// resets to empty — never a PARTIAL map of only the entries that happened to
+	// parse — because a half-applied attribution table is worse than none: the rows
+	// it did resolve would read as authoritative while the dropped ones silently
+	// fell back. Empty is exactly the unset behaviour (resolveOverrideWho's
+	// clearly-marked OS-username fallback), and the audit write is never blocked
+	// either way.
+	//
+	// The login half must name a TRUSTED HUMAN of this same roster — in cfg.Humans
+	// and not in cfg.Bots, both of which parseConfig has already filled above. That
+	// single membership rule subsumes every shape check: a bot/App login (affixed
+	// or not — looksLikeBot cannot see an affix-less configured App slug), a typo'd
+	// or off-roster login, and a value carrying ':' or '/' (which could imitate the
+	// marked fallback or forge the session half of the row) are all refused by it.
+	// The audit row exists to name the accountable roster identity; printing an
+	// UNVALIDATED value as if it were resolved is the failure this rule closes.
+	cfg.OSUserLogins = map[string]string{}
+	var osUserMapIssue extAccumulator
+	for _, entry := range splitList(vals[EnvOSUserLoginMap]) {
+		osuser, login, found := strings.Cut(entry, ":")
+		osuser = strings.ToLower(strings.TrimSpace(osuser))
+		login = strings.ToLower(strings.TrimSpace(login))
+		if !found || osuser == "" || login == "" {
+			osUserMapIssue.bad("%s: cannot parse entry %q — expected osuser:login", EnvOSUserLoginMap, entry)
+			continue
+		}
+		if _, dup := cfg.OSUserLogins[osuser]; dup {
+			osUserMapIssue.bad("%s: OS account %q is mapped more than once — an ambiguous attribution "+
+				"must not resolve by parse order", EnvOSUserLoginMap, osuser)
+			continue
+		}
+		_, inHumans := cfg.Humans[login]
+		_, inBots := cfg.Bots[login]
+		if !inHumans || inBots {
+			osUserMapIssue.bad("%s: entry %q maps to %q, which is not a trusted-human login in this "+
+				"roster (%s) or is a configured App slug (%s). The override audit row names the "+
+				"accountable HUMAN roster identity — an off-roster value printed unmarked would read "+
+				"as resolved when nothing resolved it. Refusing the entry",
+				EnvOSUserLoginMap, entry, login, EnvTrustedLogins, EnvTrustedBotSlugs)
+			continue
+		}
+		cfg.OSUserLogins[osuser] = login
+	}
+	if osUserMapIssue.invalid {
+		cfg.OSUserLogins = map[string]string{}
+	}
+	recordExt(&cfg, EnvOSUserLoginMap, vals[EnvOSUserLoginMap], osUserMapIssue)
+
 	// --- risk-path triggers, ADDITIVE ONLY ---
 	// Unset is NOT an error and NOT a refusal: the compiled set is a complete
 	// configuration on its own, and there is no value syntax that drops a
@@ -2013,6 +2099,14 @@ func (c Config) EffectiveConfigLines() []string {
 		humanMap = append(humanMap, n+"="+l)
 	}
 	sort.Strings(humanMap)
+	// The OS-account→login map renders the same way. It decides WHO an override
+	// audit row names, so a misattributing edit must be visible in the run echo,
+	// not only in the rows it already mislabelled.
+	osUserMap := make([]string, 0, len(c.OSUserLogins))
+	for u, l := range c.OSUserLogins {
+		osUserMap = append(osUserMap, u+"="+l)
+	}
+	sort.Strings(osUserMap)
 	// REPO ALIASES render one `repo=short:product` token per configured repo,
 	// sorted. Like every other line here the FULL set is shown, not a count: a
 	// grouping override lives in repository settings, so the run is the only place
@@ -2104,6 +2198,7 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", EnvAllowedRepos, reposStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvScanRepos, strings.Join(c.ScanRepos, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvHumanLoginMap, strings.Join(humanMap, ",")),
+		fmt.Sprintf("assay-config: %s=%s", EnvOSUserLoginMap, strings.Join(osUserMap, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvRiskPathTriggersExtra, strings.Join(c.RiskExtra, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvRiskCallout, riskCalloutStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvRepoAliases, strings.Join(aliases, ",")),
