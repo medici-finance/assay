@@ -72,15 +72,48 @@ func TestRootsValid(t *testing.T) {
 	}
 }
 
-func TestPrescanKindOverrideRefusesUnknown(t *testing.T) {
-	if got := prescanKindOverride([]string{"--model", "x", "--kind", "house"}); got != "house" {
-		t.Errorf("prescanKindOverride = %q, want house", got)
+// regression: #2391 (a separate --kind after a bare `--` kinded the cell)
+func TestKindScanRefusesUnknown(t *testing.T) {
+	desk, _, err := buildRoot().Find([]string{"desk"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := prescanKindOverride([]string{"--model", "x"}); got != "" {
-		t.Errorf("prescanKindOverride with no --kind = %q, want empty", got)
+	for _, tc := range []struct {
+		words []string
+		want  string
+	}{
+		{[]string{"x", "--model", "y", "--kind", "house"}, "house"},
+		{[]string{"x", "--model", "--kind", "house"}, "house"},
+		{[]string{"x", "--kind=scrubbed", "--kind", "house"}, "scrubbed"},
+		{[]string{"x", "--kind", "house", "--kind"}, "house"},
+		{[]string{"x", "--kind", "house", "--kind", "bogus"}, "house"},
+		{[]string{"x", "--model", "y"}, ""},
+		// --kind=<k> kinds only as a flag word: as another flag's value, or after `--`, it is
+		// that flag's value or a positional, as the old pre-scan (separate word only) left it.
+		{[]string{"x", "--model", "--kind=house"}, ""},
+		{[]string{"x", "--provider", "--kind=house"}, ""},
+		{[]string{"x", "--", "--kind=house"}, ""},
+		{[]string{"x", "--model", "--kind=bogus"}, ""},
+		{[]string{"x", "--model", "y", "--kind=house"}, "house"},
+		{[]string{"x", "--set", "--kind=house"}, "house"},
+		// Neither spelling kinds the cell after a bare `--` that ends the flags: the words after it
+		// are operands. Ahead of it the separate --kind is read as before, and a `--` that is a
+		// flag's value ends nothing.
+		{[]string{"x", "--", "--kind", "house"}, ""},
+		{[]string{"x", "--model", "y", "--", "--kind", "house"}, ""},
+		{[]string{"x", "--set", "--", "--kind", "house"}, ""},
+		{[]string{"x", "--help=false", "--", "y", "--kind", "house"}, ""},
+		{[]string{"x", "--kind", "house", "--", "--kind", "scrubbed"}, "house"},
+		{[]string{"x", "--model", "--", "--kind", "house"}, "house"},
+	} {
+		if got := kindScan(desk, tc.words); got != tc.want {
+			t.Errorf("kindScan(%q) = %q, want %q", tc.words, got, tc.want)
+		}
 	}
-	assertDies(t, "unknown kind", func() { prescanKindOverride([]string{"--kind", "nope"}) })
-	assertDies(t, "missing value", func() { prescanKindOverride([]string{"--kind"}) })
+	assertDies(t, "unknown kind", func() { kindScan(desk, []string{"x", "--kind", "nope"}) })
+	assertDies(t, "empty kind", func() { kindScan(desk, []string{"x", "--kind", ""}) })
+	assertDies(t, "empty = kind", func() { kindScan(desk, []string{"x", "--kind="}) })
+	assertDies(t, "missing value", func() { kindScan(desk, []string{"x", "--model", "--kind"}) })
 }
 
 // assertDies runs fn and fails unless it raised the package's exit panic. die() writes to

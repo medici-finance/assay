@@ -90,6 +90,11 @@ func withEnv(t *testing.T, work string) *[][]string {
 	plantFixtureRoster(t, fixtureHome)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test")
+	// prune's cache pressure pass discovers marked cache roots under the cells root. Pin
+	// it to a fixture path (no cells) so a test run on a machine that exports CELLS_ROOT
+	// can never enumerate — let alone pressure-check — the operator's real cell caches.
+	t.Setenv("CELLS_ROOT", filepath.Join(fixtureHome, "no-cells-here"))
+	t.Setenv("XDG_DATA_HOME", "")
 
 	oldwd := getwd
 	getwd = func() (string, error) { return work, nil }

@@ -33,27 +33,19 @@ name: evidence-automerge
 # keep opening and keep waiting for a human merge; nothing else changes. That is
 # deliberate — a lane whose revocation needs a ruleset edit is not revocable.
 #
-# WHY NOT `pull_request_target`: this workflow reads a PR's metadata and never
-# checks the PR tree out, so it needs none of the elevated context
-# `pull_request_target` grants — and that event would run with repository
-# secrets in scope of a branch this workflow does not control. NO CODE FROM THE
-# PULL REQUEST IS EVER FETCHED OR EXECUTED. The single `actions/checkout` below
-# takes the DEFAULT BRANCH — already-reviewed, already-merged content, at the
-# same trust level as this file — and only the one directory holding the
-# decision script; it never resolves the pull request's head, its merge ref, or
-# `github.sha`, and it persists no credential.
+# Credential access belongs to a default-branch poll, never a PR/review run.
+# The discovery job reads all open PR pages with a read-only token. Eligible
+# verifier PRs are re-read before the existing file/draft guards and App mint.
+# No PR code is fetched or executed; the decision script comes from the exact
+# main commit that started this run. A manual run on another ref is skipped.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  pull_request_review:
-    types: [submitted]
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
 
-# One evaluation per PR at a time. A review landing on the same second as a push
-# would otherwise run two enable-auto-merge calls concurrently; the second is
-# harmless but the log reads as a mystery. Never cancel: a cancelled run leaves
-# an eligible PR un-enabled and waiting on a click nobody knows is needed.
+# Serialize polls without cancelling a pending App write.
 concurrency:
-  group: evidence-automerge-${{ github.event.pull_request.number }}
+  group: evidence-automerge-main
   cancel-in-progress: false
 
 # Least privilege. The default token READS the PR and its file list; it has no
@@ -65,7 +57,78 @@ permissions:
   pull-requests: read
 
 jobs:
+  discover:
+    if: github.ref == 'refs/heads/main'
+    runs-on: medici-builder-public
+    outputs:
+      matrix: ${{ steps.candidates.outputs.matrix }}
+      eligible: ${{ steps.candidates.outputs.eligible }}
+    steps:
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+
+      - name: Find ready verifier PRs on main
+        id: candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVIDENCE_AUTHOR: assay-verifier-app[bot]
+        run: |
+          set -euo pipefail
+          # --slurp retains every paginated response; a failed read fails the
+          # job rather than certifying an incomplete list as idle.
+          gh api --paginate --slurp "repos/${REPO}/pulls?state=open&base=main&per_page=100" > "${RUNNER_TEMP}/open-prs.json"
+          python3 - "${RUNNER_TEMP}/open-prs.json" "$EVIDENCE_AUTHOR" <<'PY'
+          import json, os, sys
+          pages = json.load(open(sys.argv[1]))
+          if not isinstance(pages, list) or not all(isinstance(page, list) for page in pages):
+              raise SystemExit("could-not-check: invalid paginated PR response")
+          candidates = {}
+          for page in pages:
+              for pr in page:
+                  if not isinstance(pr, dict):
+                      raise SystemExit("could-not-check: invalid PR metadata")
+                  if pr.get("user", {}).get("login") != sys.argv[2]:
+                      continue
+                  if pr.get("draft") is not False or pr.get("state") != "open" or pr.get("base", {}).get("ref") != "main":
+                      continue
+                  number, node = pr.get("number"), pr.get("node_id")
+                  if type(number) is not int or number < 1 or not isinstance(node, str) or not node:
+                      raise SystemExit("could-not-check: eligible PR has invalid identity")
+                  candidate = {"number": number, "node_id": node}
+                  if number in candidates and candidates[number] != candidate:
+                      raise SystemExit("could-not-check: conflicting PR identities")
+                  candidates[number] = candidate
+          if len(candidates) > 256:
+              raise SystemExit("could-not-check: more candidates than the Actions matrix limit")
+          matrix = {"include": list(candidates.values())}
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write("matrix=" + json.dumps(matrix, separators=(",", ":")) + "\n")
+              out.write("eligible=" + ("true" if candidates else "false") + "\n")
+          print("ready verifier PRs:", len(candidates))
+          PY
+
   enable:
+    needs: discover
+    if: github.ref == 'refs/heads/main' && needs.discover.outputs.eligible == 'true'
+    environment: board-writer
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     runs-on: medici-builder-public
     steps:
       # The self-hosted runner image does not ship the gh CLI. Install a pinned,
@@ -91,7 +154,7 @@ jobs:
 
       # Every guard is evaluated HERE, in one step, and every outcome is exit 0
       # with a reason printed. A PR that is not an Evidence PR is the normal
-      # case, not a failure — this workflow fires on every PR in the repo and
+      # case, not a failure — the poll evaluates candidate PRs and
       # must be silent on all but its own. Only an infrastructure fault (the
       # file list could not be read) fails the job: a file list that could not be
       # read is could-not-check, and could-not-check must never be treated as
@@ -104,9 +167,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          PR: ${{ matrix.number }}
+          PR_NODE_ID: ${{ matrix.node_id }}
           # The one identity whose Evidence PRs this lane covers. It is the
           # verify desk's App — no other author, bot or human, is eligible.
           #
@@ -129,6 +191,23 @@ jobs:
           # the output false. A later true line overrides it (last write wins
           # for a repeated key in $GITHUB_OUTPUT).
           echo "eligible=false" >> "$GITHUB_OUTPUT"
+
+          # Discovery may have queued this job before the PR changed. Re-read
+          # current metadata; a closed, retargeted or different PR is skipped.
+          if ! gh api "repos/${REPO}/pulls/${PR}" \
+              --jq '[.user.login, (.draft | tostring), .state, .base.ref, .node_id] | @tsv' > "${RUNNER_TEMP}/evidence-pr.tsv"; then
+            echo "::error::could-not-check: current metadata for PR ${PR} could not be read"
+            exit 1
+          fi
+          IFS=$'\t' read -r PR_AUTHOR PR_DRAFT PR_STATE PR_BASE CURRENT_NODE_ID < "${RUNNER_TEMP}/evidence-pr.tsv"
+          if [ -z "$PR_AUTHOR" ] || { [ "$PR_DRAFT" != "true" ] && [ "$PR_DRAFT" != "false" ]; } || [ -z "$PR_STATE" ] || [ -z "$PR_BASE" ] || [ -z "$CURRENT_NODE_ID" ]; then
+            echo "::error::could-not-check: incomplete current metadata for PR ${PR}"
+            exit 1
+          fi
+          if [ "$PR_STATE" != "open" ] || [ "$PR_BASE" != "main" ] || [ "$CURRENT_NODE_ID" != "$PR_NODE_ID" ]; then
+            echo "PR ${PR} is no longer an open candidate targeting main — skipping"
+            exit 0
+          fi
 
           # ─── SHARED BLOCK: "is this a verify-desk Evidence PR?" ───────────────
           # Kept BYTE-IDENTICAL with the block of the same name in the other
@@ -230,7 +309,7 @@ jobs:
         if: steps.guard.outputs.eligible == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.sha }}
           persist-credentials: false
           sparse-checkout: tools/evidence-automerge
 
@@ -244,8 +323,8 @@ jobs:
         if: steps.guard.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
-          PR: ${{ github.event.pull_request.number }}
+          PR_NODE_ID: ${{ matrix.node_id }}
+          PR: ${{ matrix.number }}
           REPO: ${{ github.repository }}
           # The name of the check run THIS workflow publishes. `github.job` is
           # the job key (`enable`), which is the check-run name for a job that

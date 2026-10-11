@@ -361,3 +361,183 @@ func TestLockTTLAcceptedWithReapOptIn(t *testing.T) {
 		t.Fatalf("--lock-ttl alone rc = %d, want %d (refused as inert); stderr:\n%s", rc, deskkit.ExitRefused, errout)
 	}
 }
+
+// Squashing preserves the patch in main but not the review commit's ancestry.
+// The existing opt-in reaper should accept the same remote proof as remove.
+func TestReapDetachedSquashReview(t *testing.T) {
+	for _, variant := range []string{"safe", "dry-run", "combined-gc", "combined-gc-dry-run", "reclaim", "reclaim-dry-run", "no-opt-in", "live", "unlocked", "anonymous-lock", "evidence", "ignored-evidence", "ignored-whitespace", "unpushed", "remote-gone"} {
+		t.Run(variant, func(t *testing.T) {
+			work := newRepo(t)
+			calls := withEnv(t, work)
+			target, branch := openPRWorktree(t, work, "squashreview")
+			head := mustGit(t, target, "rev-parse", "HEAD")
+			mustGit(t, target, "checkout", "--detach", head)
+			mustGit(t, work, "merge", "--squash", branch)
+			mustGit(t, work, "commit", "-m", "squashed change")
+			mustGit(t, work, "push", "origin", "main")
+			mustGit(t, work, "fetch", "origin")
+			if got := mustGit(t, work, "rev-list", "refs/remotes/origin/main"); strings.Contains(got, head) {
+				t.Fatal("fixture is not a squash", got)
+			}
+			lockAs(t, work, target, "review-finished")
+			plantBeacon(t, "review-finished", time.Now().Add(-6*time.Hour))
+			args := []string{"prune", "--reap-dead-sessions", "--no-branches"}
+			switch variant {
+			case "dry-run":
+				args = append(args, "--dry-run")
+			case "combined-gc":
+				args = []string{"prune", "--reap-dead-sessions"}
+			case "combined-gc-dry-run":
+				args = []string{"prune", "--reap-dead-sessions", "--dry-run"}
+			case "reclaim", "reclaim-dry-run":
+				args = append(args, "--reclaim-stale-locks")
+				if variant == "reclaim-dry-run" {
+					args = append(args, "--dry-run")
+				}
+			case "no-opt-in":
+				args = []string{"prune", "--no-branches"}
+			case "live":
+				plantBeacon(t, "review-finished", time.Now())
+			case "unlocked":
+				mustGit(t, work, "worktree", "unlock", target)
+			case "anonymous-lock":
+				mustGit(t, work, "worktree", "unlock", target)
+				mustGit(t, work, "worktree", "lock", "--reason", "anonymous", target)
+				args = append(args, "--lock-ttl", "1ns")
+			case "evidence":
+				writeFile(t, filepath.Join(target, "review-evidence.txt"), "retain verdict evidence")
+			case "ignored-evidence":
+				writeFile(t, filepath.Join(work, ".git", "info", "exclude"), "review-evidence.txt\n")
+				writeFile(t, filepath.Join(target, "review-evidence.txt"), "ignored verdict evidence")
+			case "ignored-whitespace":
+				writeFile(t, filepath.Join(work, ".git", "info", "exclude"), "*\n")
+				writeFile(t, filepath.Join(target, "   "), "ignored verdict evidence")
+			case "unpushed":
+				writeFile(t, filepath.Join(target, "local.txt"), "unpublished work")
+				mustGit(t, target, "add", "local.txt")
+				mustGit(t, target, "commit", "-m", "local review work")
+			case "remote-gone":
+				mustGit(t, work, "update-ref", "-d", "refs/remotes/origin/"+branch)
+			}
+			resetCalls(calls)
+			rc, out := runCapErr(t, args)
+			if variant == "reclaim" || variant == "reclaim-dry-run" {
+				if rc != deskkit.ExitRefused || !strings.Contains(out, "run --reap-dead-sessions without --reclaim-stale-locks") {
+					t.Fatalf("combined options must refuse before mutation: rc=%d: %s", rc, out)
+				}
+				if got := gitCalls(*calls); len(got) != 0 {
+					t.Fatalf("refused options reached Git: %v", got)
+				}
+				assertExists(t, target)
+				if list := mustGit(t, work, "worktree", "list", "--porcelain"); !strings.Contains(list, "session=review-finished") {
+					t.Fatal("refusal lost ownership evidence", list)
+				}
+				if !localBranchExists(t, work, branch) {
+					t.Fatal("refusal removed branch")
+				}
+				return
+			}
+			if rc != deskkit.ExitOK {
+				t.Fatalf("rc=%d: %s", rc, out)
+			}
+			_, err := os.Stat(target)
+			if variant == "safe" || variant == "combined-gc" {
+				if !os.IsNotExist(err) {
+					t.Fatal("squashed review held", out, err)
+				}
+				if !strings.Contains(out, "detached HEAD is reachable from remote-tracking ref") {
+					t.Fatal("missing preservation proof", out)
+				}
+			} else if err != nil {
+				t.Fatal("protected review removed", variant, out, err)
+			}
+			// The detached reap itself deletes no branch. Default final branch GC
+			// independently collects the squash-equivalent implementation branch.
+			if got := localBranchExists(t, work, branch); got != (variant != "combined-gc") {
+				t.Fatalf("implementation branch exists=%v for %s: %s", got, variant, out)
+			}
+			if variant == "combined-gc" || variant == "combined-gc-dry-run" {
+				if !strings.Contains(out, "branches-gc 1 (merged 0, cherry-clean 1)") {
+					t.Fatal("missing branch-GC proof", out)
+				}
+			}
+		})
+	}
+}
+
+func TestIgnoredReviewFilesIgnoresInheritedGitRouting(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	target, _ := openPRWorktree(t, work, "ignored-routing")
+	writeFile(t, filepath.Join(work, ".git", "info", "exclude"), "review-evidence.txt\n")
+	writeFile(t, filepath.Join(target, "review-evidence.txt"), "required evidence")
+	foreign := newRepo(t)
+	t.Setenv("GIT_DIR", filepath.Join(foreign, ".git"))
+	t.Setenv("GIT_WORK_TREE", foreign)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(foreign, ".git", "index"))
+	wrong, err := runGit(target, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
+	if err != nil || wrong != "" {
+		t.Fatalf("fixture did not redirect the ordinary Git read: %q %v", wrong, err)
+	}
+	got, err := ignoredReviewFiles(target)
+	if err != nil || !strings.Contains(got, "review-evidence.txt\x00") {
+		t.Fatalf("candidate evidence hidden by inherited routing: %q %v", got, err)
+	}
+}
+
+func TestReapDetachedReviewPreservesSubmodule(t *testing.T) {
+	for _, variant := range []string{"clean", "tracked", "untracked", "ignored", "uninitialized"} {
+		t.Run(variant, func(t *testing.T) {
+			work := newRepo(t)
+			withEnv(t, work)
+			module := newRepo(t)
+			writeFile(t, filepath.Join(module, "tracked.txt"), "committed\n")
+			mustGit(t, module, "add", "tracked.txt")
+			mustGit(t, module, "commit", "-m", "module content")
+			target, branch := openPRWorktree(t, work, "nested-review")
+			mustGit(t, target, "-c", "protocol.file.allow=always", "submodule", "add", module, "module")
+			mustGit(t, target, "commit", "-m", "add module")
+			mustGit(t, target, "push", "origin", branch)
+			head := mustGit(t, target, "rev-parse", "HEAD")
+			mustGit(t, target, "checkout", "--detach", head)
+			mustGit(t, work, "merge", "--squash", branch)
+			mustGit(t, work, "commit", "-m", "squashed change")
+			mustGit(t, work, "push", "origin", "main")
+			mustGit(t, work, "fetch", "origin")
+			if _, err := runGit(target, "merge-base", "--is-ancestor", head, "refs/remotes/origin/main"); err == nil {
+				t.Fatal("fixture review is on main")
+			}
+			lockAs(t, work, target, "review-finished")
+			plantBeacon(t, "review-finished", time.Now().Add(-6*time.Hour))
+			var evidence string
+			switch variant {
+			case "tracked":
+				evidence = filepath.Join(target, "module", "tracked.txt")
+			case "untracked", "ignored":
+				evidence = filepath.Join(target, "module", "evidence.txt")
+				if variant == "ignored" {
+					mustGit(t, target, "-C", "module", "config", "core.excludesFile", filepath.Join(module, "exclude"))
+					writeFile(t, filepath.Join(module, "exclude"), "evidence.txt\n")
+				}
+			case "uninitialized":
+				mustGit(t, target, "submodule", "deinit", "module")
+			}
+			if evidence != "" {
+				writeFile(t, evidence, "preserve local evidence\n")
+			}
+			rc, out := runCapErr(t, []string{"prune", "--reap-dead-sessions", "--no-branches"})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("rc=%d: %s", rc, out)
+			}
+			if _, err := os.Stat(target); err != nil {
+				t.Fatalf("review requiring separate preservation was removed: %v", err)
+			}
+			if evidence != "" {
+				got, err := os.ReadFile(evidence)
+				if err != nil || string(got) != "preserve local evidence\n" {
+					t.Fatalf("evidence changed: %q %v", got, err)
+				}
+			}
+		})
+	}
+}
