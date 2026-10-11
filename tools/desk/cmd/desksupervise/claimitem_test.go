@@ -66,7 +66,8 @@ func TestClaimPayloadProductionReaderSelection(t *testing.T) {
 		{key: "repo--missing-stream--03", item: "missing-stream/03", blind: true},
 	} {
 		t.Run(fmt.Sprintf("%s-closed%t", tc.key, tc.closed), func(t *testing.T) {
-			ref := plumbing.NewHashReference(plumbing.ReferenceName(deskkit.DispatchClaimActiveRefsPrefix+tc.key), plumbing.NewHash("1111111111111111111111111111111111111111"))
+			refName := deskkit.DispatchClaimActiveRefsPrefix + tc.key
+			ref := plumbing.NewHashReference(plumbing.ReferenceName(refName), plumbing.NewHash("1111111111111111111111111111111111111111"))
 			claims, _, err := claimPage([]*plumbing.Reference{ref}, "org/repo", now, 50, "", func(plumbing.Hash) (gitcore.TagPayload, error) {
 				return gitcore.TagPayload{Message: "dispatch-claim " + tc.key + " owner=worker state=dispatched branch=topic", When: now.Add(-time.Minute)}, nil
 			})
