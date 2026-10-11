@@ -212,12 +212,6 @@
       "new": "declared: bf.DeclaredPathsFound}"
     },
     {
-      "name": "forRepo drops the read mark of a declared files: list",
-      "file": "deliveryfiles.go",
-      "old": "out := briefFiles{declared: true, read: b.read}",
-      "new": "out := briefFiles{declared: true}"
-    },
-    {
       "name": "--check does not fail on a stuck candidate (the hidden green run)",
       "file": "autoflip.go",
       "old": "\t\tif r.Outcome != flipDone {\n\t\t\tstuck++",

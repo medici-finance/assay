@@ -55,6 +55,8 @@ func briefFilesOf(bf *BriefFile) briefFiles {
 // name a path here (evaluation.DeclaredEntrySupported) is dropped and remembered. A
 // verify-written path (STATUS.md, a stream README, a brief file, a
 // verify-outcome record) is dropped too: touching it never delivers a brief.
+// It runs after decideModelFlip's read guard, so its result carries no read
+// mark: nothing past that guard consults it.
 func (b briefFiles) forRepo(repo string) briefFiles {
 	if !b.declared {
 		return b
@@ -63,7 +65,7 @@ func (b briefFiles) forRepo(repo string) briefFiles {
 	if i := strings.LastIndex(name, "/"); i >= 0 {
 		name = name[i+1:]
 	}
-	out := briefFiles{declared: true, read: b.read}
+	out := briefFiles{declared: true}
 	for _, d := range evaluation.DeclaredEntries(b.entries) {
 		e := d
 		if name != "" {
