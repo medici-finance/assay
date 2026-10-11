@@ -83,8 +83,11 @@ an ANSWER to that class. The reviewer's next move is exactly one of:
    the desk to file (review-prompt clause 20's existing reviewer-named hand-off form, the
    one at review-prompt.md:589 on main), quoting the disposition and the finding, when the
    reviewer believes the disposition is wrong in a way that matters (safety-consequence, a
-   control weakened, a spec violated). ONE hand-off, never a fresh finding round; the
-   derivation and filing stay the desk's, never the reviewer's own packet.
+   control weakened, a spec violated). ONE hand-off, never a fresh finding round. The
+   hand-off changes nothing about blocking: Escalate files the human packet WITHOUT
+   touching the finding's blocking status — on the security lane the verdict stays `fail`
+   while the hand-off is pending; Escalate adds the packet, it never replaces the block.
+   The derivation and filing stay the desk's, never the reviewer's own packet.
 
 A re-statement round is neither. A disposition is not re-opened by a later reviewer round
 absent NEW evidence that the disposed concern materially regressed — a code change alone is
@@ -95,13 +98,21 @@ not new evidence about the disposition, though it can be new evidence about the 
 - **Applies to an EXPLICIT disposition.** Silence, a bare "done" with no answer to the
   finding, or a fix attempt that does not address the finding is not a disposition — the
   ordinary rules (inadequate-fix reply, round cap) govern those.
-- **Never for safety-consequence findings.** A disposition on a safety-consequence finding
-  escalates, full stop; it is never accepted by the reviewer alone.
+- **Never for safety-consequence findings, and never for the security lane.** A
+  disposition on a safety-consequence finding escalates, full stop; it is never accepted by
+  the reviewer alone. And the security lane, or any finding in the `security` or
+  `public-surface / leak` class, never takes the Accept move at all: a finding that would
+  fail stays a fail at every round, whatever the disposition — mirroring the existing rule
+  that the cap never changes a security verdict. Only a recorded human ruling clears it.
+  Without this boundary the reviewed party — routinely the worker role App — could clear
+  the independent security lane's own finding in words.
 - **The disposition is the author's (or a trusted human maintainer's), not a third
   party's.** A comment from an untrusted or unblessed login blesses nothing (trust gate);
-  a disposition carries authority from the change's author identity — and where the author
-  is a role App, a trusted human maintainer's disposition on the same finding carries the
-  same finality. Nobody else's does.
+  a disposition carries authority from the change's author identity — where the author is
+  a role App, a trusted human maintainer's disposition on the same finding carries the same
+  finality — and only when that identity passes the same trust gate as any other actionable
+  comment: this repo is public, PRs arrive from untrusted outside authors, and an untrusted
+  author's disposition is not a disposition at all; the ordinary rules govern.
 - **Nothing here changes the flip gates.** A resolved class still needs the checks, the
   security lane, and the merge-time re-check; disposition finality governs the reviewer's
   argument, not the pipeline's gates. An accept at an unchanged head does NOT post a
@@ -118,8 +129,11 @@ emitted to every dispatched class (workers and verifiers too), and the rule's tw
 moves are the reviewer's alone. One home, no second copy, no pointer needed.
 The clause states the rule, the two legal moves, the resolution-evidence shape
 (`resolved-by-author-disposition` + the disposition's words + its head), the
-safety-consequence carve-out, the explicit-only boundary, and the no-reopen rule with its
-new-evidence exception.
+safety-consequence carve-out, the security-lane boundary (the clause carries the sentence
+`never takes the Accept move` for the security lane and the security / public-surface /
+leak classes, only a recorded human ruling clearing a fail) and the hand-off-changes-nothing
+rule, the explicit-only and trust-gated disposition boundary, and the no-reopen rule with
+its new-evidence exception.
 
 **Task 2 — the skill paragraph.** One neutral paragraph in the pr-review-desk skill's
 reviewer's bar stating the rule and pointing at the clause's home.
@@ -142,6 +156,7 @@ once the Task lands. Row 4 passes today and must still pass. Run from the repo r
 | 2 | check | `grep -rq 're-statement round is neither' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | prints `ok`: the clause's own sentence for the illegal third move is present in its home (a phrase the clause introduces — `safety-consequence` and `restate` both already exist in the reference today, so neither can discriminate; alternations are written as repeated `-e`, never a `\|` BRE inside a cell). FAILS today: the phrase appears 0 times. |
 | 3 | check | `grep -q 'disposition' plugins/assay/skills/pr-review-desk/SKILL.md && echo ok` | prints `ok`: the skill's reviewer's bar carries the rule's paragraph. FAILS today: the word appears 0 times in the skill. |
 | 4 | check +neighbour | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt33-sg" . && "${TMPDIR:-/tmp}/dt33-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && cd ../tools/skillslint && go run . --root ../.. > /dev/null 2>&1 && echo ok` | prints `ok`: tree lints clean, skillslint passes. The changelog fragment is deliberately NOT tested — the release workflow clears `changelog/` at aggregation. Passes today and must still pass. |
+| 5 | check | `grep -rq 'never takes the Accept move' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | prints `ok`: the security-lane boundary sentence the clause must carry (S1's fix) is present in its home. FAILS today: the phrase appears 0 times in the reference. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
@@ -153,7 +168,9 @@ once the Task lands. Row 4 passes today and must still pass. Run from the repo r
 ## Review
 Gate: model (from frontmatter). The reviewer answers, in the verdict: (1) is the rule
 scoped to EXPLICIT dispositions only, with silence and bare "done" left to the ordinary
-rules? (2) does the safety-consequence carve-out escalate always, accept never? (3) does
+rules? (2) does the safety-consequence carve-out escalate always, accept never — and does
+  the security lane (and every security / public-surface / leak class) never take the Accept
+  move, with Escalate changing nothing about blocking? (3) does
 the clause sit in exactly ONE home with the other file pointing at it, not duplicated?
 (4) is the new-evidence exception stated narrowly enough that a code change alone cannot
 reopen a disposed class? (5) does nothing here touch the flip gates or the worker-side
