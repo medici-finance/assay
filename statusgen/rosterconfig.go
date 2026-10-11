@@ -108,6 +108,16 @@ const (
 	scanEnvTrustedBotSlugs = "ASSAY_TRUSTED_BOT_SLUGS"
 	scanEnvAllowedRepos    = "ASSAY_ALLOWED_REPOS"
 	scanEnvHumanLoginMap   = "ASSAY_HUMAN_LOGIN_MAP"
+	// scanEnvOSUserLoginMap (ASSAY_OS_USER_LOGIN_MAP) is DESK-only: it maps an OS
+	// account name to the roster login the desk tools' scan-override audit identity
+	// resolves to (deskkit scanoverride.go's OverrideIdentity). statusgen has no
+	// override-audit surface and never consumes it — but the two binaries share one
+	// roster.env, and an unknown key in the ASSAY_ namespace REFUSES the whole
+	// configuration (parseConfig), so it must be RECOGNISED here or a roster
+	// configuring the desk audit identity would collapse every statusgen trust
+	// decision. Recognised and otherwise ignored. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvOSUserLoginMap.
+	scanEnvOSUserLoginMap = "ASSAY_OS_USER_LOGIN_MAP"
 	// scanEnvFormerHumanLoginMap carries the FORMER-humans map: name:login entries
 	// for humans who WERE confirmed at some past point but have since left the
 	// roster. Same format and bot-shape validation as ASSAY_HUMAN_LOGIN_MAP. It is
@@ -473,6 +483,10 @@ func scanKnownRosterKeys() []string {
 		scanEnvRiskPathTriggersExtra,
 		scanEnvRepoAliases, scanEnvReleaseRepo, scanEnvWriteguardCallout,
 		scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
+		// DESK-only, recognised-not-applied (the scan-override audit identity): the
+		// OS-account→login map deskkit's OverrideIdentity consumes — see its
+		// declaration above.
+		scanEnvOSUserLoginMap,
 		// DESK-only, recognised-not-applied (desktools-v2/11): the outbound-write check's
 		// house callout — see their declarations above.
 		scanEnvOutboundCallout, scanEnvOutboundCalloutRequired, scanEnvOutboundCalloutTimeout,

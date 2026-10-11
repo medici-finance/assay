@@ -388,6 +388,7 @@ func TestEffectiveConfigIsEchoed(t *testing.T) {
 			"one/a:ci:private,two/b:no-ci:public",
 			"one/a:ci:private,two/b:no-ci:public,three/c:ci:private"},
 		{"humanLoginMap", EnvHumanLoginMap, "ada:ada-gh", "ada:ada-gh,bo:bo-gh"},
+		{"osUserLoginMap", EnvOSUserLoginMap, "laptop-acct:ada", "laptop-acct:ada,desk-acct:shared-agent"},
 		{"riskPathExtra", EnvRiskPathTriggersExtra, "infra/", "infra/,secrets/"},
 	}
 	for _, s := range surfaces {
