@@ -10,7 +10,7 @@ then calls `merge_clean.run()` with the normal workflow token, not the
 board-writer App token that bypasses main's rulesets.
 
 The helper re-reads the PR, all changed-file and review pages, and its check
-rollup. It requires both reviewer-App lanes at the current head, GitHub's
+check suites. It requires both reviewer-App lanes at the current head, GitHub's
 APPROVED/CLEAN/MERGEABLE state, successful leak-sweep and completed non-failing
 checks. It refuses drafts, another author/base/repository, generated views,
 non-docs files and renamed source files. The REST merge specifies the inspected
@@ -41,3 +41,17 @@ the normal maintainer process. Scheduled main runs then use the merged workflow.
 current-head review lanes, paginated files, pending/failing checks, changed-head
 and server-refusal cases. The existing live build-test regression entrypoint
 runs this suite. The shell classifier and real-step suites run alongside it.
+
+The completion adapter reads GitHub's `LATEST` checks within each check suite
+and uses suite creation time across ordinary runs of the same workflow and App.
+It never compares job completion with another attempt's start. Duplicate rerun
+suites or missing ordering metadata retain all reports; any unresolved or failed
+report withholds completion. Suite counts and pagination are reconciled.
+
+Review markers and declaration parsing are checked against the canonical desk
+readers by the live Go regression floor. Both distinct lane artifacts must grant
+at the current head, and standing blockers remain effective. Candidate metadata,
+files, reviews and checks are read again immediately before the expected-head
+write. These are snapshots: GitHub's merge endpoint atomically binds the head and
+enforces repository protection, not arbitrary review-body predicates added after
+that last read.

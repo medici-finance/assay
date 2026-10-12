@@ -269,21 +269,25 @@ class CleanMergeTests(unittest.TestCase):
         self.head = "a" * 40
         self.metadata = {"node_id": "PR_example", "user": {"login": "assay-verifier-app[bot]", "type": "Bot"},
                          "head": {"sha": self.head, "repo": {"full_name": "example/project"}},
-                         "state": "open", "draft": False, "base": {"ref": "main"}}
+                         "state": "open", "draft": False, "base": {"ref": "main"}, "body": "", "labels": [], "changed_files": 1}
         self.view = {"id": "PR_example", "headRefOid": self.head, "state": "OPEN", "isDraft": False,
                      "baseRefName": "main", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
                      "reviewDecision": "APPROVED", "statusCheckRollup": [
                          {"__typename": "StatusContext", "context": "leak-sweep", "state": "SUCCESS", "createdAt": "2026-10-12T00:00:00Z"},
                          {"__typename": "CheckRun", "name": "test", "workflowName": "ci", "status": "COMPLETED",
-                          "conclusion": "SUCCESS", "completedAt": "2026-10-12T00:00:00Z"}]}
+                          "conclusion": "SUCCESS", "completedAt": "2026-10-12T00:00:00Z",
+                          "id": "check-1", "appId": "app-1", "workflowId": "workflow-1", "runAttempt": 1,
+                          "checkSuiteId": "suite-1", "checkSuiteCreatedAt": "2026-10-12T00:00:00Z"}]}
         self.files = [[{"filename": "docs/streams/example/brief-01.md", "status": "modified"}]]
+        self.review_counter = 0
         self.reviews = [[self.review("Security-Review: pass", "COMMENTED"), self.review("Verdict: approve", "APPROVED")]]
         self.calls = []
         self.merge_result = {"merged": True}
         self.pr_number = "1"
 
     def review(self, body, state, stamp="2026-10-12T00:00:00Z"):
-        return {"commit_id": self.head, "user": {"login": "assay-reviewer-app[bot]", "type": "Bot"},
+        self.review_counter += 1
+        return {"id": self.review_counter, "commit_id": self.head, "user": {"login": "assay-reviewer-app[bot]", "type": "Bot"},
                 "submitted_at": stamp, "body": body, "state": state}
 
     def call(self, args, body=None):
@@ -292,6 +296,8 @@ class CleanMergeTests(unittest.TestCase):
             self.assertEqual(args, ["api", "--method", "PUT", "repos/example/project/pulls/" + self.pr_number + "/merge", "--input", "-"])
             self.assertEqual(body, {"sha": self.head, "merge_method": "merge"})
             return self.merge_result
+        if args[:2] == ["api", "graphql"]:
+            return self.check_response()
         if args[:2] == ["pr", "view"]:
             return self.view
         if args[-1].endswith("/files?per_page=100"):
@@ -299,6 +305,23 @@ class CleanMergeTests(unittest.TestCase):
         if args[-1].endswith("/reviews?per_page=100"):
             return self.reviews
         return self.metadata
+
+    def check_response(self):
+        suites, statuses = {}, []
+        for c in self.view["statusCheckRollup"]:
+            if c["__typename"] == "StatusContext":
+                statuses.append(c)
+                continue
+            sid = c.get("checkSuiteId", "suite-1")
+            suite = suites.setdefault(sid, {"id": sid, "createdAt": c.get("checkSuiteCreatedAt", "2026-10-12T00:00:00Z"),
+                "app": {"id": c.get("appId", "app-1")}, "workflowRun": {"runAttempt": c.get("runAttempt", 1),
+                "workflow": {"id": c.get("workflowId", c["workflowName"]), "name": c["workflowName"]}},
+                "checkRuns": {"totalCount": 0, "pageInfo": {"hasNextPage": False}, "nodes": []}})
+            suite["checkRuns"]["nodes"].append(dict(c, id=sid+"-"+c["name"]))
+            suite["checkRuns"]["totalCount"] += 1
+        return {"data": {"repository": {"object": {"oid": self.head, "status": {"contexts": statuses},
+            "checkSuites": {"totalCount": len(suites), "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": list(suites.values())}}}}}
 
     def run_merge(self):
         with patch.dict(os.environ, REPO="example/project", PR=self.pr_number, PR_NODE_ID=self.metadata["node_id"]):
@@ -377,6 +400,7 @@ class CleanMergeTests(unittest.TestCase):
                 self.assertEqual(self.writes(), [])
 
     def test_clean_merge_requires_docs_scope_on_every_page(self):
+        self.metadata["changed_files"] = 2
         for file in ({"filename": "tools/run.sh"}, {"filename": "docs/streams/FINDINGS.md"},
                      {"filename": "docs/streams/INTAKE.md"}, {"filename": "docs/streams/../run.sh"},
                      {"filename": "docs/streams/example/x.md", "status": "renamed", "previous_filename": "tools/run.sh"}):
@@ -401,17 +425,119 @@ class CleanMergeTests(unittest.TestCase):
         self.assertEqual(self.writes(), [])
 
     def test_clean_merge_superseded_checks_do_not_hide_other_workflows(self):
-        old = dict(self.view["statusCheckRollup"][1], conclusion="CANCELLED", completedAt="2026-10-11T00:00:00Z")
+        old = dict(self.view["statusCheckRollup"][1], conclusion="CANCELLED", completedAt="2026-10-11T00:00:00Z",
+                   checkSuiteCreatedAt="2026-10-11T00:00:00Z", checkSuiteId="suite-old")
         self.view["statusCheckRollup"].append(old)
         reduced = self.impl.latest_run_per_check(self.view["statusCheckRollup"])
         self.assertEqual(len(reduced), 2)
         self.assertTrue(all(entry.get("conclusion") != "CANCELLED" for entry in reduced))
         self.assertEqual(self.run_merge(), 0)
-        other = dict(old, workflowName="other", completedAt="2026-10-12T01:00:00Z")
+        other = dict(old, workflowName="other", workflowId="other", checkSuiteId="suite-other",
+                     checkSuiteCreatedAt="2026-10-12T01:00:00Z", completedAt="2026-10-12T01:00:00Z")
         self.view["statusCheckRollup"].append(other)
         self.calls.clear()
         self.assertEqual(self.run_merge(), 0)
         self.assertEqual(self.writes(), [])
+
+    def test_completion_preserves_current_attempt(self):
+        old = dict(self.view["statusCheckRollup"][1], startedAt="2026-10-12T00:00:00Z",
+                   completedAt="2026-10-12T00:10:00Z", checkSuiteCreatedAt="2026-10-12T00:00:00Z",
+                   checkSuiteId="suite-1", workflowId="workflow-1", appId="app-1", runAttempt=1)
+        for state, conclusion in (("IN_PROGRESS", ""), ("COMPLETED", "FAILURE")):
+            newer = dict(old, status=state, conclusion=conclusion, startedAt="2026-10-12T00:09:00Z",
+                         completedAt="2026-10-12T00:09:30Z" if conclusion else "",
+                         checkSuiteCreatedAt="2026-10-12T00:08:00Z", checkSuiteId="suite-2")
+            self.assertFalse(self.impl.checks_green([self.view["statusCheckRollup"][0], old, newer]))
+
+    def test_completion_requires_unambiguous_current_clearance(self):
+        security = self.review("Security-Review: pass", "COMMENTED")
+        correctness = self.review("Verdict: approve", "APPROVED")
+        cases = [
+            [self.review("```text\nSecurity-Review: pass\n```", "COMMENTED"), correctness],
+            [self.review("> Security-Review: pass", "COMMENTED"), correctness],
+            [self.review("Security-Review: pass\nVerdict: approve", "APPROVED")],
+            [self.review("Security-Review: pass\nUndeclared-desk-decision: pending", "COMMENTED"), correctness],
+            [security, correctness, self.review("**Security-Review: fail**", "CHANGES_REQUESTED", "2026-10-12T01:00:00Z"),
+             self.review("Verdict: approve", "APPROVED", "2026-10-12T02:00:00Z")],
+        ]
+        for reviews in cases:
+            with self.subTest(reviews=reviews):
+                self.assertFalse(self.impl.reviewed(reviews, self.head))
+
+    def test_completion_holds_uncertain_attempts(self):
+        base = self.view["statusCheckRollup"][1]
+        for changes in ({"checkSuiteCreatedAt": ""}, {"checkSuiteCreatedAt": base["checkSuiteCreatedAt"]},
+                        {"runAttempt": 2}, {"checkSuiteCreatedAt": "not-a-date"}):
+            bad = dict(base, conclusion="FAILURE", checkSuiteId="other-suite", **changes)
+            self.assertFalse(self.impl.checks_green([self.view["statusCheckRollup"][0], base, bad]))
+
+    def test_completion_declaration_holds_clear_only_in_their_lane(self):
+        base = self.reviews[0]
+        hold = self.review("Undeclared-desk-decision: pending", "COMMENTED", "2026-10-12T01:00:00Z")
+        security = self.review("Security-Review: pass", "COMMENTED", "2026-10-12T02:00:00Z")
+        self.assertFalse(self.impl.reviewed(base + [hold, security], self.head))
+        note = self.review("Follow-up", "COMMENTED", "2026-10-12T03:00:00Z")
+        self.assertFalse(self.impl.reviewed(base + [hold, security, note], self.head))
+        clearance = self.review("Verdict: approve", "APPROVED", "2026-10-12T04:00:00Z")
+        self.assertTrue(self.impl.reviewed(base + [hold, security, note, clearance], self.head))
+        rejected = self.review("Verdict: request-changes", "CHANGES_REQUESTED", "2026-10-12T03:00:00Z")
+        self.assertFalse(self.impl.reviewed(base + [rejected, clearance], self.head))
+
+    def test_completion_reconciles_check_provenance_and_pagination(self):
+        response = self.check_response()
+        for mutate in (lambda x: x["data"]["repository"]["object"].update(oid="b" * 40),
+                       lambda x: x["data"]["repository"]["object"]["checkSuites"].update(totalCount=99),
+                       lambda x: x["data"]["repository"]["object"]["checkSuites"]["nodes"][0]["checkRuns"]["pageInfo"].update(hasNextPage=True)):
+            import copy
+            bad = copy.deepcopy(response)
+            mutate(bad)
+            with self.assertRaises(ValueError):
+                self.impl.read_checks(lambda args: bad, "example/project", self.head)
+        import copy
+        first, last = copy.deepcopy(response), copy.deepcopy(response)
+        first["data"]["repository"]["object"]["checkSuites"].update(nodes=[], pageInfo={"hasNextPage": True, "endCursor": "next"})
+        pages = iter([first, last])
+        self.assertTrue(self.impl.checks_green(self.impl.read_checks(lambda args: next(pages), "example/project", self.head)))
+
+    def test_completion_requires_consistent_declaration_metadata(self):
+        block = "## Desk-decided\n<!-- desk-r3-decision v1 -->\n1. decision: chosen\n   alternative: other\n   cost: small\n"
+        self.assertTrue(self.impl.reviewed(self.reviews[0], self.head, block, ["desk-decided"]))
+        self.assertFalse(self.impl.reviewed(self.reviews[0], self.head, block, []))
+        self.assertFalse(self.impl.reviewed(self.reviews[0], self.head, "", ["desk-decided"]))
+        self.assertFalse(self.impl.reviewed(self.reviews[0], self.head, block.replace("   cost: small", ""), ["desk-decided"]))
+
+    def test_completion_requires_distinct_review_artifact_ids(self):
+        reviews = [dict(r) for r in self.reviews[0]]
+        reviews[1]["id"] = reviews[0]["id"]
+        with self.assertRaises(ValueError):
+            self.impl.reviewed(reviews, self.head)
+        reviews[1].pop("id")
+        with self.assertRaises(ValueError):
+            self.impl.reviewed(reviews, self.head)
+
+    def test_completion_rechecks_readiness_before_the_write(self):
+        for event in ("review", "check", "head", "declaration"):
+            with self.subTest(event=event):
+                self.setUp()
+                reads = {"review": 0, "check": 0, "metadata": 0}
+                def interleaved(args, body=None):
+                    if args[-1].endswith("/reviews?per_page=100"):
+                        reads["review"] += 1
+                        if event == "review" and reads["review"] == 2:
+                            self.reviews[0].append(self.review("Security-Review: fail", "CHANGES_REQUESTED", "2026-10-12T01:00:00Z"))
+                    if args[:2] == ["api", "graphql"]:
+                        reads["check"] += 1
+                        if event == "check" and reads["check"] == 2:
+                            self.view["statusCheckRollup"][1].update(status="IN_PROGRESS", conclusion="")
+                    if args == ["api", "repos/example/project/pulls/1"]:
+                        reads["metadata"] += 1
+                        if reads["metadata"] == 2:
+                            if event == "head": self.metadata["head"]["sha"] = "b" * 40
+                            if event == "declaration": self.metadata["labels"] = [{"name": "desk-decided"}]
+                    return self.call(args, body)
+                with patch.dict(os.environ, REPO="example/project", PR="1", PR_NODE_ID="PR_example"):
+                    self.assertEqual(self.impl.run(interleaved), 0)
+                self.assertEqual(self.writes(), [])
 
     def test_clean_merge_read_errors_and_server_refusal_fail_closed(self):
         with patch.dict(os.environ, REPO="example/project", PR="1", PR_NODE_ID="PR_example"):
@@ -440,7 +566,7 @@ class CleanMergeTests(unittest.TestCase):
             with self.subTest(head_changed=head_changed), tempfile.TemporaryDirectory() as directory:
                 tmp = Path(directory)
                 fixture = {"metadata": self.metadata, "view": self.view, "files": self.files,
-                           "reviews": self.reviews, "head_changed": head_changed}
+                           "reviews": self.reviews, "checks": self.check_response(), "head_changed": head_changed}
                 (tmp / "fixture").write_text(json.dumps(fixture))
                 (tmp / "step").write_text(step("Complete clean Evidence merge"))
                 (tmp / "gh").write_text(r'''#!/usr/bin/env python3
@@ -462,6 +588,8 @@ elif args[:2] == ["pr", "view"]:
     print(json.dumps(data["view"]))
 elif args[-1].endswith("/files?per_page=100"):
     print(json.dumps(data["files"]))
+elif args[:2] == ["api", "graphql"]:
+    print(json.dumps(data["checks"]))
 elif args[-1].endswith("/reviews?per_page=100"):
     print(json.dumps(data["reviews"]))
 elif args == ["api", "repos/example/project/pulls/1"]:
