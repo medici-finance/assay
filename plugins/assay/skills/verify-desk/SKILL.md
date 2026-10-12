@@ -422,9 +422,13 @@ the Evidence, execution witnesses, Status `verified` (or `done`), and dated Veri
 landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
 refresh only the brief in the verifier home from the target branch
 (`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
-Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA;
-never check out, pull or merge in the home, because moving its detached HEAD refuses
-admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
+Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
+The writer binds that commit to this run's landed Evidence, while deriving deliverable input
+hashes from the admission's Source commit, which is the tree the verifier actually observed.
+The brief input still hashes its landed Evidence bytes. A repair that lands between observation
+and Evidence therefore wakes the failure instead of being recorded as an unchanged failure.
+Supplied input-change receipts must describe the same admitted inputs. Never check out, pull or merge in
+the home, because moving its detached HEAD refuses admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
 row's lifecycle cells, which the row-scoped landing already put on the target branch. Admission
 refuses any other change to it (another row, prose, or this row's authoring cells), and before
 execution it refuses any change at all. `deskevidence --root <home>` checks the closure and compares

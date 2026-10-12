@@ -14,6 +14,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -93,7 +94,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// verify-wake-v1 receipt the planner can hold it on. The receipt changes the record's
 	// bytes, so its name is re-derived — same stream directory, same brief number, which
 	// keeps the admission above bound to this brief.
-	derived, derr := outcomeReceiptFn(rec.Raw, root, fg, fr, branch)
+	derived, derr := outcomeReceiptFn(rec.Raw, root, fg, fr, branch, receipt.Binding.Source)
 	if derr != nil {
 		return derr
 	}
@@ -150,6 +151,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
 	}
 	if err := outcomeEvidenceBindingFn(root, fg, fr, branch, receipt, outcome.SHA); err != nil {
+		return err
+	}
+	if err := outcomeObservationBindingFn(root, fg, fr, branch, receipt, outcome); err != nil {
 		return err
 	}
 
@@ -320,12 +324,12 @@ func draftChangeLabel(pr *deskkit.PullRef) string {
 var outcomeReceiptFn = deriveOutcomeReceipt
 
 // deriveOutcomeReceipt returns raw with its receipt (deskkit.BuildOutcomeRecord): the declared
-// inputs are read from the LOCAL checkout at root at the record's own sha, and the brief's own
+// inputs are read from the LOCAL checkout at the admitted observation Source, and the brief's own
 // revision from the brief as it lands on branch. A pass record passes through. A non-pass record
 // that already carries a verify-wake-v1 receipt passes through unchanged only when that receipt
 // is complete (deskkit.CheckSuppliedReceipt; validateReceipt then runs its three checks); an
 // incomplete one is refused, naming the field, and never lands.
-func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string) ([]byte, error) {
+func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch, observedSource string) ([]byte, error) {
 	var wr deskkit.WakeReceipt
 	if err := json.Unmarshal(raw, &wr); err != nil {
 		return nil, deskkit.Refused("refused: invalid --outcome-record JSON: " + err.Error())
@@ -354,7 +358,15 @@ func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.
 	if rerr != nil {
 		return nil, deskkit.Unverifiable("cannot read "+briefPath+" on "+branch+" to hash the receipt's brief revision", rerr)
 	}
-	tree, terr := newGitOutcomeTree(root, wr.SHA)
+	if len(observedSource) != 40 {
+		return nil, deskkit.Refused("refused: outcome receipt needs its admitted observation commit")
+	}
+	if _, err := hex.DecodeString(observedSource); err != nil {
+		return nil, deskkit.Refused("refused: outcome observation revision is not a full commit SHA")
+	}
+	// The record SHA identifies landed Evidence. Deliverable hashes describe
+	// the separately admitted observation, even when repairs landed in between.
+	tree, terr := newGitOutcomeTree(root, observedSource)
 	if terr != nil {
 		return nil, terr
 	}

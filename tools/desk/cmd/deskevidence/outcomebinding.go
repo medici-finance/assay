@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
+	"maps"
 	"regexp"
 	"strings"
 
@@ -10,6 +12,7 @@ import (
 )
 
 var outcomeEvidenceBindingFn = validateOutcomeEvidenceBinding
+var outcomeObservationBindingFn = validateOutcomeObservationBinding
 
 // An outcome may hold future verification work. Admission alone does not prove
 // that this run's Evidence landed: its earlier write may have been refused.
@@ -70,4 +73,34 @@ func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.Fo
 		}
 	}
 	return deskkit.Refused("refused: outcome record has no landed Evidence for the current admitted run; land the Evidence successfully before writing its outcome")
+}
+
+// Supplied receipts must obey the same observed-input contract as derived ones.
+// Keep the Evidence commit binding and landed brief hash, while preventing a
+// later repair from being substituted for the admitted observation's inputs.
+func validateOutcomeObservationBinding(root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string, receipt deskkit.VerifierReceipt, outcome deskkit.WakeReceipt) error {
+	if !outcome.IsFailedOrBlocked() || outcome.WakePredicate != deskkit.WakeRelevantInputChanged {
+		return nil
+	}
+	observed := outcome
+	observed.Schema = "" // rederive even a caller-supplied complete receipt
+	raw, err := json.Marshal(observed)
+	if err != nil {
+		return err
+	}
+	expected, err := deriveOutcomeReceipt(raw, root, fg, fr, branch, receipt.Binding.Source)
+	if err != nil {
+		return err
+	}
+	var binding deskkit.WakeReceipt
+	if err := json.Unmarshal(expected, &binding); err != nil {
+		return err
+	}
+	// Retain the supplied tool-version contract; the new binding concerns
+	// observed deliverables and the Evidence brief, not a tool upgrade.
+	binding.Inputs["tool"] = outcome.ToolVersion
+	if !maps.Equal(outcome.Inputs, binding.Inputs) {
+		return deskkit.Refused("refused: outcome receipt inputs do not describe the admitted observation and landed Evidence")
+	}
+	return nil
 }

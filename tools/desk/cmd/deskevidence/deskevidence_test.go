@@ -230,6 +230,11 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Helper()
 	// General writer tests isolate this independent gate. The outcome-binding
 	// suite restores the captured production implementation and drives run().
+	oldObservationBinding := outcomeObservationBindingFn
+	outcomeObservationBindingFn = func(string, deskkit.Forge, deskkit.ForgeRepo, string, deskkit.VerifierReceipt, deskkit.WakeReceipt) error {
+		return nil
+	}
+	t.Cleanup(func() { outcomeObservationBindingFn = oldObservationBinding })
 	oldEvidenceBinding := outcomeEvidenceBindingFn
 	outcomeEvidenceBindingFn = func(string, deskkit.Forge, deskkit.ForgeRepo, string, deskkit.VerifierReceipt, string) error {
 		return nil
@@ -265,7 +270,7 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	// verify-reset/03: the receipt derivation reads git history at the record's sha, which
 	// the plain-directory test roots do not have; outcomereceipt_test.go restores the real one.
 	oldReceipt := outcomeReceiptFn
-	outcomeReceiptFn = func(raw []byte, _ string, _ deskkit.Forge, _ deskkit.ForgeRepo, _ string) ([]byte, error) {
+	outcomeReceiptFn = func(raw []byte, _ string, _ deskkit.Forge, _ deskkit.ForgeRepo, _, _ string) ([]byte, error) {
 		return raw, nil
 	}
 	t.Cleanup(func() { outcomeReceiptFn = oldReceipt })

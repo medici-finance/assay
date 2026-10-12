@@ -5,8 +5,10 @@ carries a wake receipt (`wake_schema: verify-wake-v1`). `deskevidence --outcome-
 derives the receipt when it lands the record:
 
 - `inputs` holds one `file:<path>` key per path in the brief's `## Context` `files:` list that
-  exists at the record's sha. A listed directory contributes every file under it. The keys
-  also include the brief itself, hashed as it lands, and the tool version.
+  exists at the admitted observation's Source commit. A listed directory contributes every
+  file under it. The keys also include the brief itself, hashed as its Evidence lands, and
+  the tool version. The record's `sha` names that Evidence commit, which may follow a repair;
+  hashes of the observed deliverables ensure that repair wakes the failed work.
 - `blocker_kind` and `blocker_ref` come from the caller and are required. `blocker_ref` must be
   a reference: `#N`, `<owner>/<repo>#N`, or an issue, pull-request or CI-run URL. A
   placeholder such as `to file` is refused with exit 5. A run URL is accepted, but a run has
@@ -18,7 +20,9 @@ A record that already carries a `verify-wake-v1` receipt is validated as written
 derived again. It lands only when the receipt is complete: a `receipt_id`, a `blocker_kind`
 and a `wake_predicate` from their closed sets, a reference `blocker_ref`, and the field its
 predicate needs (`inputs`, `deadline` or `recheck_reason`). Otherwise it is refused with exit
-5, naming the field, and nothing lands.
+5, naming the field, and nothing lands. For an input-change receipt, supplied input hashes
+must also match the admitted Source and landed Evidence brief. Deadline and explicit-action
+predicates retain their existing contracts.
 
 `verifyloop plan` then decides, per brief, whether its latest record is worth another run. It
 makes two independent reads, and each one can return could-not-check:
