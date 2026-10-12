@@ -22,7 +22,7 @@ unblocks: []
 effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
-issues: ["2688"]
+issues: [2688]
 schema: brief-v2
 authored: 2026-10-11 by a house authoring session at the driver's direction (ruling recorded on assay#2688)
 sources:
