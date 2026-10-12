@@ -28,16 +28,12 @@ board-writer bypass credential.
 
 ## Activation
 
-The change to `ci/staged-workflows/evidence-automerge.yml` is pending maintainer
-promotion; the live workflow is unchanged in this PR. After review, a maintainer
-copies the staged file to `.github/workflows/evidence-automerge.yml` and restores
-its `declared-changes.json` mode to `identical` in the same commit. This grants
+The staged and live workflow copies are identical. The maintainer promotion grants
 only the main-only enable job the workflow-token write permissions needed for
 protected merges. It changes no App permissions or ruleset bypass.
 
-Until promotion, a clean refusal only emits the output: the old live workflow
-has no completion step. No direct merge is silently activated by the helper
-landing alone.
+The completion step becomes live after this PR is reviewed again and merged by
+the normal maintainer process. Scheduled main runs then use the merged workflow.
 
 ## Offline checks
 
