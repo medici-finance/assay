@@ -74,7 +74,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// attestation for another brief refuses here. The refusals above need only the record's
 	// own bytes, so a record they refuse never mints; everything below reads or writes the
 	// forge and runs only for an admitted landing.
-	fg, fr, _, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, ac)
+	fg, fr, receipt, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, ac)
 	if aerr != nil {
 		return aerr
 	}
@@ -141,6 +141,16 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: " + targetRepoPath + " already exists on " + branch +
 			" with DIFFERENT bytes — verify-outcome records are immutable; a correction is a new record " +
 			"(a fresh ts/digest), never an edit of an existing one")
+	}
+	// A refused Evidence append must not be followed by a receipt that makes
+	// the next verifier pass hold unsupported results. Idempotent existing
+	// records returned above; every NEW record needs this run's landed Evidence.
+	var outcome deskkit.WakeReceipt
+	if err := json.Unmarshal(commitContent, &outcome); err != nil {
+		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
+	}
+	if err := outcomeEvidenceBindingFn(root, fg, fr, branch, receipt, outcome.SHA); err != nil {
+		return err
 	}
 
 	// A brand-new file: scan it whole (no base to diff against).

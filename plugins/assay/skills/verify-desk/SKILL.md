@@ -167,6 +167,15 @@ never create a new run to evade the missing receipt. Do not change identity to r
 
 ## The loop
 
+0. **Sweep existing Evidence PRs before fresh verification dispatch.** Across every configured
+   repository, read this desk's authored open Evidence PRs, their current heads, real review-lane
+   verdicts, checks and mergeability. Apply the ownership table under **PR-based Evidence landing**.
+   A blocking verdict at the current head is this desk's repair work: assign a verifier correction
+   on the SAME branch/PR, fix and push, then hand the new head back for review. Do not leave that
+   work behind merely because `verifyloop plan` is empty or a receipt holds the brief. A correction
+   that needs new verification gets fresh independent dispatch/admission; never replay an old
+   receipt or relabel an old run. Review/ready/merge ownership remains unchanged.
+
 1. **`verifyloop plan --root <repo>`** from `$WT`: the deterministic scheduler prints the Awaiting
    queue, each item's tier, and the exact dispatch instruction (or human-route note). It spawns nothing
    and writes nothing. **Do not hand-compute the queue** — the plan IS the worklist.
@@ -200,6 +209,7 @@ never create a new run to evade the missing receipt. Do not change identity to r
    **Stand-down checklist — printed before any wrap-up, never satisfied by a summary line:**
    ```
    stand-down: fresh sweep run this turn (verifyloop plan, exit 0, printed queue)?   yes/no
+   stand-down: Evidence PR rework swept; owned blockers assigned or filed?             yes/no
    stand-down: dispatchable queue EMPTY on that sweep (every configured root)?         yes/no
    stand-down: in-flight verifiers all landed or surfaced as open waits?                yes/no
    stand-down: hand-off artifact written on the driver surface (§Liveness contract)?    yes/no
@@ -256,6 +266,15 @@ Since #882, `deskevidence --outcome-record` REFUSES (exit 5, naming the field) a
 breaks any of these three rules — writer-side enforcement of what was, until then, a review-time
 catch. The three rules above are unchanged; get them right at write time and the writer's own
 gate never fires.
+
+**An outcome never substitutes for refused Evidence.** Land the brief's Evidence first and check
+that write's actual exit/result. If it is refused or could-not-check, file the landing failure and
+do not publish an outcome for it. A new outcome must name the full Evidence commit SHA, and the
+target branch and that commit must carry this admitted run's exact Verification-Attestation line
+inside Evidence. The writer checks both copies before publishing the record. Refresh the brief
+from the successfully landed branch before deriving its input hashes; an older Evidence block or
+receipt from a previous run does not satisfy this check. An existing identical record remains an
+idempotent no-op.
 
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a

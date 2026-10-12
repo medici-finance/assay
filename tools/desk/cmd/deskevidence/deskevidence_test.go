@@ -228,6 +228,13 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 // stdout/stderr.
 func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Helper()
+	// General writer tests isolate this independent gate. The outcome-binding
+	// suite restores the captured production implementation and drives run().
+	oldEvidenceBinding := outcomeEvidenceBindingFn
+	outcomeEvidenceBindingFn = func(string, deskkit.Forge, deskkit.ForgeRepo, string, deskkit.VerifierReceipt, string) error {
+		return nil
+	}
+	t.Cleanup(func() { outcomeEvidenceBindingFn = oldEvidenceBinding })
 	oldAdmission := verifierEvidenceAdmissionFn
 	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
 		return deskkit.VerifierReceipt{}, nil
