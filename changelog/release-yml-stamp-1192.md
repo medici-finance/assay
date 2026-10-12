@@ -1,2 +1,0 @@
-### Changed
-- The release workflow now keeps `spec/brief-v1.md`'s `Describes reference implementation:` header on the tag being cut (#1192). A dispatched release stamps the header with `tools/release/stamp-spec-header-version.sh`, proves it with `check-spec-header-version.sh`, and commits the stamp before tagging. A pushed tag whose tree names another version is refused before the approval gate. The post-cut changelog roll bumps the header to the next patch version beside the plugin manifest bump.
