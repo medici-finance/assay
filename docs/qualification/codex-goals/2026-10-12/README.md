@@ -118,6 +118,20 @@ Native tool arguments, results and their time/turn metadata are not paraphrased.
 The manifest counts omitted lines by reason; nested reasoning omissions remain
 visible in their original event records.
 
+Native `input_text.text` values that themselves encode JSON are represented as
+`{"encoding":"json","value":…}` objects. This removes one redundant serialization
+layer; it is an extraction representation, not the native RPC schema. The
+manifest lists every transformed source line and output index. In particular,
+source line 26 now exposes the role-stub command output as a structured value.
+No event, decoded field value, identifier alias or chronological position changes.
+
+The validator reverses this transformation and requires the SHA-256 of the entire
+reconstructed JSONL to equal the [previously published artifact at
+f99f3e4f](https://github.com/medici-finance/assay/blob/f99f3e4f76388852e6f797ace830c167a6fc2111/docs/qualification/codex-goals/2026-10-12/bootstrap-tools-native.jsonl).
+Thus the equivalence check covers all 57 records, not only the changed payloads,
+and can be checked against an independently accessible prior public revision.
+The original raw-log hashes and omission accounting remain unchanged.
+
 Run `python3 validate.py` in this directory for hash, chronology, bootstrap,
 readback, control and extraction-accounting assertions. It validates retained
 artifacts only; it does not start Codex, contact services, or manufacture a new
@@ -130,4 +144,7 @@ Fixture tests separately cover host argv, explicit ticks, launcher routing, Clau
 invariance and the eight regression mutations. It does not qualify a deployed
 interactive cockpit/TUI, image-owned container entrypoint, permanent service,
 process restart, or timer. Native Goal continuation is not a durable scheduler.
-Independent reviewers still decide whether S1 and F-codex-goal-acceptance are closed.
+Reviews [5494842031](https://github.com/medici-finance/assay/pull/2697#pullrequestreview-5494842031)
+and [5494861116](https://github.com/medici-finance/assay/pull/2697#pullrequestreview-5494861116)
+accepted this native evidence and resolved S1 and F-codex-goal-acceptance. Their
+remaining validator-routing findings are separate from native qualification.

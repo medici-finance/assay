@@ -1,5 +1,5 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "sources": [
     {
       "originalBasename": "bootstrap-probe.log",
@@ -86,7 +86,7 @@
       "originalBasename": "close-gap-rollout-0.jsonl",
       "originalSha256": "0d74964e4683a0542d548d05412f76e223ce032751940e3cb1b9c8c9c453cb26",
       "artifact": "bootstrap-tools-native.jsonl",
-      "artifactSha256": "ef06aa4e0195daa79985951870deac3c5f3e930944a6f7e15b72f7aef4693f90",
+      "artifactSha256": "12ad1236ff4def7add340e5e642215198866ea4e8fdaf54a94e401c96fcfcf56",
       "sourceLines": 57,
       "omittedLines": {
         "rollout session_meta/metadata (outside tool/turn extract)": 1,
@@ -120,5 +120,45 @@
       "artifact": "bootstrap-tools-driver.py.txt",
       "sha256": "18cfe7d808e29c1e053f8a3d584eb4423ff4d6eadc6ad254d8543f792c3ff909"
     }
-  ]
+  ],
+  "structuredToolText": {
+    "artifact": "bootstrap-tools-native.jsonl",
+    "previousPublicRevision": "f99f3e4f76388852e6f797ace830c167a6fc2111",
+    "previousPublicSha256": "ef06aa4e0195daa79985951870deac3c5f3e930944a6f7e15b72f7aef4693f90",
+    "locations": [
+      {
+        "sourceLine": 15,
+        "outputIndex": 1
+      },
+      {
+        "sourceLine": 19,
+        "outputIndex": 1
+      },
+      {
+        "sourceLine": 19,
+        "outputIndex": 2
+      },
+      {
+        "sourceLine": 26,
+        "outputIndex": 1
+      },
+      {
+        "sourceLine": 31,
+        "outputIndex": 1
+      },
+      {
+        "sourceLine": 48,
+        "outputIndex": 1
+      },
+      {
+        "sourceLine": 48,
+        "outputIndex": 2
+      },
+      {
+        "sourceLine": 48,
+        "outputIndex": 3
+      }
+    ],
+    "inverse": "Replace each marked input_text.text object with json.dumps(text.value, separators=(comma, colon)), using Python default ensure_ascii=True; serialize each JSONL row with separators=(comma, colon), ensure_ascii=False, followed by LF."
+  }
 }

@@ -50,6 +50,26 @@ for driver in manifest['drivers']:
 bootstrap = (ROOT / 'generated-bootstrap.txt').read_text()
 assert sha(bootstrap.encode()) == manifest['bootstrapSha256']
 
+# Reconstruct the previously public artifact, not a private raw-log claim.
+# Every event and payload must survive removal of the redundant JSON string layer.
+normalization = manifest['structuredToolText']
+restored = read(normalization['artifact'])
+locations = []
+for row in restored:
+    payload = row.get('native', {}).get('payload', {})
+    if payload.get('type') != 'custom_tool_call_output':
+        continue
+    for index, item in enumerate(payload['output']):
+        if item.get('type') == 'input_text' and isinstance(item.get('text'), dict):
+            text = item['text']
+            assert set(text) == {'encoding', 'value'} and text['encoding'] == 'json'
+            item['text'] = json.dumps(text['value'], separators=(',', ':'))
+            locations.append({'sourceLine': row['sourceLine'], 'outputIndex': index})
+assert locations == normalization['locations']
+restored_bytes = ''.join(json.dumps(r, separators=(',', ':'), ensure_ascii=False) + '\n'
+                         for r in restored).encode()
+assert sha(restored_bytes) == normalization['previousPublicSha256']
+
 for name in ['original-bootstrap.jsonl', 'bootstrap-tools-rpc.jsonl']:
     rows = read(name)
     starts = clients(rows, 'turn/start')
@@ -93,8 +113,9 @@ assert 'tools.update_goal({status:"paused"})' in calls[4]['input']
 assert 'tools.get_goal({})' in calls[4]['input']
 
 def tool_values(call):
-    return [json.loads(v['text']) for v in outputs[call['call_id']]['output']
-            if v.get('type') == 'input_text' and v['text'].startswith('{')]
+    return [v['text']['value'] for v in outputs[call['call_id']]['output']
+            if v.get('type') == 'input_text' and isinstance(v.get('text'), dict)
+            and v['text']['encoding'] == 'json']
 assert tool_values(calls[0])[0]['goal'] is None
 active = tool_values(create)
 assert len(active) == 2
