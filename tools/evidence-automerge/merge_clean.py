@@ -11,6 +11,10 @@ import subprocess
 from datetime import datetime
 
 
+# Unicode White_Space used by Go strings.TrimSpace; Python also strips
+# four ASCII separators which are content in the canonical declaration reader.
+GO_SPACE = " \t\n\v\f\r\x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+
 FIELDS = "id,headRefOid,state,isDraft,baseRefName,mergeable,mergeStateStatus,reviewDecision"
 
 
@@ -52,7 +56,10 @@ def marker_values(body, pattern, skip_fenced=False):
                               and line[j].isascii() and line[j].isalnum())
             return "" if remove else match[0]
         normalized = re.sub(r"[*_`]+", unwrap, line)
-        match = re.fullmatch(pattern, normalized, re.I)
+        # Go simple-folding of ASCII letters includes long-s and Kelvin K,
+        # but not Python IGNORECASE's extra dotted/dotless-I matches.
+        folded = normalized.translate({0x017f: ord("s"), 0x212a: ord("k")})
+        match = re.fullmatch(pattern, folded, re.I | re.ASCII)
         if match:
             values.append(match[1] if match.lastindex else normalized)
     return values
@@ -67,7 +74,7 @@ def declaration_clear(body, labels):
         if delimiter:
             fenced = not fenced
         if not delimiter and not fenced:
-            if section is None and line.strip() == "## Desk-decided":
+            if section is None and line.strip(GO_SPACE) == "## Desk-decided":
                 section = []
                 continue
             if section is not None and re.match(r"^#{1,6}[ \t]", line):
@@ -89,11 +96,12 @@ def declaration_clear(body, labels):
         return False
     for i, item in enumerate(items):
         chunk = text[item.start():items[i + 1].start() if i + 1 < len(items) else len(text)]
-        if not item[1].strip():
+        if not item[1].strip(GO_SPACE):
             return False
         for field in ("alternative", "cost"):
-            value = re.search(r"(?im)^[ \t]*" + field + r":[ \t]*(.*)$", chunk)
-            if not value or not value[1].strip():
+            value = re.search(r"(?im)^[ \t]*" + field + r":[ \t]*(.*)$",
+                              chunk.translate({0x017f: ord("s"), 0x212a: ord("k")}), re.ASCII)
+            if not value or not value[1].strip(GO_SPACE):
                 return False
     return True
 

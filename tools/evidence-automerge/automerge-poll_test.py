@@ -488,6 +488,21 @@ class CleanMergeTests(unittest.TestCase):
                 self.assertEqual(self.run_merge(), 0)
                 self.assertEqual(self.writes(), [])
 
+    def test_completion_preserves_canonical_unicode_rules(self):
+        for letter in ("\u0130", "\u0131"):
+            with self.subTest(letter=letter):
+                self.calls = []
+                self.reviews = [[self.review("Security-Review: pass".replace("i", letter), "COMMENTED"),
+                                 self.review("Verdict: approve", "APPROVED")]]
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+        self.calls = []
+        self.reviews = [[self.review("Security-Review: pass", "COMMENTED"), self.review("Verdict: approve", "APPROVED")]]
+        self.metadata["labels"] = [{"name": "desk-decided"}]
+        self.metadata["body"] = "\u001c## Desk-decided\n<!-- desk-r3-decision v1 -->\n1. decision: chosen\n alternative: other\n cost: small\n"
+        self.assertEqual(self.run_merge(), 0)
+        self.assertEqual(self.writes(), [])
+
     def test_completion_holds_uncertain_attempts(self):
         base = self.view["statusCheckRollup"][1]
         for changes in ({"checkSuiteCreatedAt": ""}, {"checkSuiteCreatedAt": base["checkSuiteCreatedAt"]},

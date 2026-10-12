@@ -55,7 +55,7 @@ func TestEvidenceCompletionCanonicalReaders(t *testing.T) {
 	bodies := []string{"Security-Review: pass", "Security-Review: fail", "Verdict: approve", "Verdict: request-changes", "Undeclared-desk-decision: pending", "ordinary note"}
 	var cases []map[string]any
 	for _, body := range bodies {
-		for _, form := range []string{body, "**" + body + "**", "`" + body + "`", "> " + body, "* " + body, "```text\n" + body + "\n```", "~~~\n" + body + "\n~~~", "| " + body + " |", strings.ReplaceAll(body, "pass", "pa*ss")} {
+		for _, form := range []string{body, "**" + body + "**", "`" + body + "`", "> " + body, "* " + body, "```text\n" + body + "\n```", "~~~\n" + body + "\n~~~", "| " + body + " |", strings.ReplaceAll(body, "pass", "pa*ss"), strings.ToUpper(body), strings.ReplaceAll(body, "i", "\u0131"), strings.ReplaceAll(body, "i", "\u0130"), strings.ReplaceAll(body, "s", "\u017f")} {
 			cases = append(cases, map[string]any{"body": form, "pass": deskkit.HasSecurityReviewPass(form), "fail": deskkit.HasSecurityReviewFail(form), "correctness": deskkit.CorrectnessNoteState(form), "hold": len(deskkit.UndeclaredDeskDecisionLines(form)) > 0})
 		}
 	}
@@ -68,7 +68,7 @@ func TestEvidenceCompletionCanonicalReaders(t *testing.T) {
 	}
 	block := deskkit.RenderDecidedBlock([]deskkit.DecidedItem{{Decision: "chosen", Alternative: "other", Cost: "small"}})
 	var declarations []map[string]any
-	for _, body := range []string{"", block, strings.ReplaceAll(block, "   cost: small", ""), "## Desk-decided\nmissing marker", "```text\n" + block + "\n```", block + "```text\n2. decision: missing fields\n```\n", "## Desk-decided\n```text\n<!-- desk-r3-decision v1 -->\n1. decision: chosen\n alternative: other\n cost: small\n```\n"} {
+	for _, body := range []string{"", block, strings.ReplaceAll(block, "   cost: small", ""), "## Desk-decided\nmissing marker", "```text\n" + block + "\n```", block + "```text\n2. decision: missing fields\n```\n", "\u001c" + block, strings.ReplaceAll(block, "alternative", "alternat\u0131ve"), strings.ReplaceAll(block, "cost", "co\u017ft"), "## Desk-decided\n```text\n<!-- desk-r3-decision v1 -->\n1. decision: chosen\n alternative: other\n cost: small\n```\n"} {
 		for _, labels := range [][]string{nil, {"desk-decided"}} {
 			declarations = append(declarations, map[string]any{"body": body, "labels": labels, "clear": deskkit.DeskDecidedRefusal(1, labels, body, nil, "assay-reviewer-app[bot]", "head") == ""})
 		}
@@ -87,7 +87,7 @@ import merge_clean as m
 for case in json.load(sys.stdin)["markers"]:
  body=case["body"]
  values=m.marker_values(body,r"Verdict:[ \t]*(approve|request-changes)",True)
- actual={"pass":bool(m.marker_values(body,r"Security-Review:[ \t]*pass",True)),"fail":bool(m.marker_values(body,r"Security-Review:[ \t]*fail")),"hold":bool(m.marker_values(body,r"Undeclared-desk-decision:[ \t]*(.+)")),"correctness":"CHANGES_REQUESTED" if m.marker_values(body,r"Verdict:[ \t]*request-changes") else "APPROVED" if "approve" in values else ""}
+ actual={"pass":bool(m.marker_values(body,r"Security-Review:[ \t]*pass",True)),"fail":bool(m.marker_values(body,r"Security-Review:[ \t]*fail")),"hold":bool(m.marker_values(body,r"Undeclared-desk-decision:[ \t]*(.+)")),"correctness":"CHANGES_REQUESTED" if m.marker_values(body,r"Verdict:[ \t]*request-changes") else "APPROVED" if any(value.lower()=="approve" for value in values) else ""}
  for key,value in actual.items():
   assert value==case[key],(body,key,value,case[key])
 `
