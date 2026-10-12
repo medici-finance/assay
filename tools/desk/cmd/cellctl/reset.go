@@ -541,17 +541,13 @@ func (c *Cell) resetRetainedPaths(cfg *deskCommsConfig, cacheRoot string) ([]str
 		return nil, err
 	}
 	paths = append(paths, filepath.Join(codexHome, "auth.json"))
-	for _, source := range []struct{ key, fallback, root string }{
-		{"CELL_MODEL_POLICY", "", c.Dir},
-		{"CELL_PROVIDER_DEFAULTS", "providers.json", cellsRoot(c.Env)},
-		{"CELL_PROVIDER_OVERRIDES", "providers.json", c.Dir},
-	} {
-		if source.fallback == "" && c.Env.Get(source.key) == "" {
-			continue
-		}
-		path, _ := configuredPath(c.Env, source.key, source.fallback, source.root)
+	if c.Env.Get("CELL_MODEL_POLICY") != "" {
+		path, _ := configuredPath(c.Env, "CELL_MODEL_POLICY", "", c.Dir)
 		paths = append(paths, path)
 	}
+	providers, _ := configuredPath(c.Env, "CELL_PROVIDER_DEFAULTS", "providers.json", cellsRoot(c.Env))
+	overrides, _ := configuredPath(c.Env, "CELL_PROVIDER_OVERRIDES", "providers.json", c.Dir)
+	paths = append(paths, providers, overrides)
 	if cfg != nil {
 		paths = append(paths, cfg.TrustStore, cfg.ClaudeConfigDir)
 		paths = append(paths, mapValues(cfg.SigningKeys)...)

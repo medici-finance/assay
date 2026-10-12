@@ -271,6 +271,11 @@ func TestResetPreservesSharedFetchLock(t *testing.T) {
 			if _, err := c.preflightReset(plan); err == nil {
 				t.Fatal("reset accepts unknown shared fetch-lock owner")
 			}
+			if hard {
+				if err := resetFetchMain(plan.Repositories[0]); err == nil {
+					t.Fatal("prefetch entered a peer's shared lock")
+				}
+			}
 			if b, err := os.ReadFile(sentinel); err != nil || string(b) != "peer" {
 				t.Fatal("shared fetch lock changed", err)
 			}
