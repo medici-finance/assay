@@ -124,7 +124,8 @@ fi
 # Runtime event metadata and the complete immutable Git diff must both qualify.
 # This is separate from the workflow's existing Evidence classification and the
 # maintainer label; an unreadable event/diff simply leaves the gate in force.
-if python3 "$here/reconcile.py"; then
+# Isolated Python excludes the PR checkout and PYTHONPATH from module lookup.
+if python3 -I -c 'import runpy, sys; sys.exit(runpy.run_path(sys.argv[1])["check"]())' "$here/reconcile.py"; then
   exit 0
 fi
 

@@ -106,6 +106,12 @@ class ReconcileGate(unittest.TestCase):
         self.check(1)
 
     # regression: #2686
+    def test_repository_module_cannot_replace_classifier_import(self):
+        self.write('json.py', 'raise SystemExit(0)\n')
+        self.head = self.commit()
+        self.check(1)
+
+    # regression: #2686
     def test_metadata_not_a_branch_or_author_waiver(self):
         for section, key, value in [('user', 'login', 'assay-worker-app[bot]'),
                                     ('user', 'type', 'User'), ('user', 'id', 1),

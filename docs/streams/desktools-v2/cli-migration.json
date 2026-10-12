@@ -7,6 +7,21 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "class": "library",
+      "pattern": "tools/changelog/reconcile.py",
+      "reason": "internal classification library loaded by the existing check.sh entrypoint; no shebang, main guard, argument parser or independent operator command (#2686)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/changelog/reconcile_test.py",
+      "reason": "offline real-Git changelog classification fixtures run by build-test through the desk regression package; not an operator entrypoint (#2686)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/changelog/reconcile_mutation.py",
+      "reason": "offline developer guard controls using disposable classifier copies; not an installed operator command (#2686)"
+    },
+    {
       "class": "test",
       "pattern": "**/*.test.sh",
       "reason": "test suite for a script; CI runs it, it is never an operator entrypoint"

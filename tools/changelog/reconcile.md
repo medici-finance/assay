@@ -8,7 +8,9 @@ identity and branch custody, then compares immutable Git trees and erases only
 recognized Status cells for comparison. This does not validate the truth of a
 status, grant a merge permission, or bypass the board's other checks.
 
-`check.sh` reads the classifier after the absolute Unreleased guard. It uses
+`check.sh` loads the classifier library by its exact adjacent path after the
+absolute Unreleased guard. The library has no independent operator entrypoint;
+the CLI inventory records it and the two offline test scripts by exact path. It uses
 `GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH` and `GITHUB_REPOSITORY`, supplied by the
 Actions runner, plus the same explicit `BASE_SHA` and `HEAD_SHA` the existing
 workflow already passes. Neither the active `.github/workflows/changelog-check.yml`

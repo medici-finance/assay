@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Recognize the narrow, non-notable board reconciliation class, offline.
 
 Metadata comes from the runner's pull_request event, never commit authors, PR
@@ -10,7 +9,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 
 BEGIN = '<!-- statusgen:briefs:begin -->'
 END = '<!-- statusgen:briefs:end -->'
@@ -97,15 +95,16 @@ def classify():
     return True
 
 
-if __name__ == '__main__':
+def check():
+    """Return the classification exit status to the owning check.sh entrypoint."""
     try:
         accepted = classify()
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
         print('board reconciliation: could-not-check — normal changelog requirement retained ('
               + type(error).__name__ + ')')
-        sys.exit(1)
+        return 1
     if accepted:
         print('PASS: board reconciliation — trusted same-repository Status-cell-only diff; no release-note fragment required.')
     else:
         print('board reconciliation: not a qualifying Status-cell-only PR; normal changelog requirement retained.')
-    sys.exit(0 if accepted else 1)
+    return 0 if accepted else 1
