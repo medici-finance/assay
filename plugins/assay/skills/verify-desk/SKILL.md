@@ -425,8 +425,11 @@ refresh only the brief in the verifier home from the target branch
 Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
 The writer binds that commit to this run's landed Evidence, while deriving deliverable input
 hashes from the admission's Source commit, which is the tree the verifier actually observed.
-The brief input still hashes its landed Evidence bytes. A repair that lands between observation
-and Evidence therefore wakes the failure instead of being recorded as an unchanged failure.
+The brief input still hashes its landed Evidence bytes. An existing-file content repair between observation and Evidence therefore wakes the failure.
+If the declared paths, path kinds or directory file membership change between Source and
+Evidence, the outcome writer requires fresh independent verification on the current target
+branch. Re-dispatch and rerun the Verify table before retrying the outcome; never add hashes
+for files the old run did not observe, or treat a refused record as landed.
 Supplied input-change receipts must describe the same admitted inputs. Never check out, pull or merge in
 the home, because moving its detached HEAD refuses admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
 row's lifecycle cells, which the row-scoped landing already put on the target branch. Admission

@@ -8,7 +8,11 @@ derives the receipt when it lands the record:
   exists at the admitted observation's Source commit. A listed directory contributes every
   file under it. The keys also include the brief itself, hashed as its Evidence lands, and
   the tool version. The record's `sha` names that Evidence commit, which may follow a repair;
-  hashes of the observed deliverables ensure that repair wakes the failed work.
+  hashes of observed content ensure an existing-file content repair wakes the failed work.
+  A change to declared paths, path kinds or a declared directory's file membership between
+  Source and Evidence requires fresh independent dispatch and verification at the current
+  target branch before recording an outcome. The old run cannot provide hashes for new files;
+  existing input-coverage checks remain enforced.
 - `blocker_kind` and `blocker_ref` come from the caller and are required. `blocker_ref` must be
   a reference: `#N`, `<owner>/<repo>#N`, or an issue, pull-request or CI-run URL. A
   placeholder such as `to file` is refused with exit 5. A run URL is accepted, but a run has

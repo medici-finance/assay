@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"maps"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -82,6 +84,9 @@ func validateOutcomeObservationBinding(root string, fg deskkit.Forge, fr deskkit
 	if !outcome.IsFailedOrBlocked() || outcome.WakePredicate != deskkit.WakeRelevantInputChanged {
 		return nil
 	}
+	if err := validateOutcomeInputShape(root, receipt, outcome.SHA); err != nil {
+		return err
+	}
 	observed := outcome
 	observed.Schema = "" // rederive even a caller-supplied complete receipt
 	raw, err := json.Marshal(observed)
@@ -101,6 +106,77 @@ func validateOutcomeObservationBinding(root string, fg deskkit.Forge, fr deskkit
 	binding.Inputs["tool"] = outcome.ToolVersion
 	if !maps.Equal(outcome.Inputs, binding.Inputs) {
 		return deskkit.Refused("refused: outcome receipt inputs do not describe the admitted observation and landed Evidence")
+	}
+	return nil
+}
+
+// The existing receipt hashes present files, not absence or directory membership.
+// Changed membership/kinds need a new admission instead of a stale failure hold.
+func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evidenceSHA string) error {
+	source, err := newGitOutcomeTree(root, receipt.Binding.Source)
+	if err != nil {
+		return err
+	}
+	evidence, err := newGitOutcomeTree(root, evidenceSHA)
+	if err != nil {
+		return err
+	}
+	sourceBrief, err := source.ReadFile(receipt.Binding.Brief)
+	if err != nil {
+		return deskkit.Unverifiable("cannot read observed input declarations", err)
+	}
+	evidenceBrief, err := evidence.ReadFile(receipt.Binding.Brief)
+	if err != nil {
+		return deskkit.Unverifiable("cannot read Evidence input declarations", err)
+	}
+	paths := func(content []byte) []string {
+		unique := map[string]bool{}
+		for _, decl := range deskkit.BriefDeclaredFiles(string(content)) {
+			if p := strings.TrimSuffix(decl, "/"); p != "" {
+				unique[p] = true
+			}
+		}
+		var result []string
+		for p := range unique {
+			result = append(result, p)
+		}
+		sort.Strings(result)
+		return result
+	}
+	declared := paths(sourceBrief)
+	changed := func() error {
+		return deskkit.Refused("refused: declared deliverables changed shape between admitted Source and Evidence; fresh independent verification on the current target branch is required before recording an outcome")
+	}
+	if !slices.Equal(declared, paths(evidenceBrief)) {
+		return changed()
+	}
+	for _, p := range declared {
+		before, err := source.PathKind(p)
+		if err != nil {
+			return deskkit.Unverifiable("cannot read observed input kind", err)
+		}
+		after, err := evidence.PathKind(p)
+		if err != nil {
+			return deskkit.Unverifiable("cannot read Evidence input kind", err)
+		}
+		if before != after {
+			return changed()
+		}
+		if before == "tree" {
+			oldFiles, err := source.ListFiles(p)
+			if err != nil {
+				return deskkit.Unverifiable("cannot read observed directory inputs", err)
+			}
+			newFiles, err := evidence.ListFiles(p)
+			if err != nil {
+				return deskkit.Unverifiable("cannot read Evidence directory inputs", err)
+			}
+			sort.Strings(oldFiles)
+			sort.Strings(newFiles)
+			if !slices.Equal(oldFiles, newFiles) {
+				return changed()
+			}
+		}
 	}
 	return nil
 }

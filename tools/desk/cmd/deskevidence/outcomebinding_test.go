@@ -237,6 +237,70 @@ func TestOutcomeObservationSurvivesRepairBeforeEvidence(t *testing.T) {
 	}
 }
 
+// Membership and path-kind changes need a fresh observation: absent or removed
+// files cannot be represented as observed content hashes in the existing receipt.
+func TestOutcomeInputShapeChangeRequiresFreshVerification(t *testing.T) {
+	for _, mode := range []string{"planned-addition", "directory-addition", "file-removal", "directory-removal", "kind-change"} {
+		t.Run(mode, func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			outcomeEvidenceBindingFn = productionOutcomeEvidenceBinding
+			outcomeObservationBindingFn = productionOutcomeObservationBinding
+			outcomeReceiptFn = deriveOutcomeReceipt
+			forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+				return deskkit.OutboundChecked(issueForge{f}, "verifier"), deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+			}
+			root, source := receiptGitRoot(t)
+			base, err := os.ReadFile(filepath.Join(root, receiptBriefPath))
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt := deskkit.VerifierReceipt{Issue: 77, Binding: deskkit.VerifierBinding{Repo: "example-org/tracker", Brief: receiptBriefPath, Source: source, Run: strings.Repeat("a", 64), Model: "gpt-6-astra", Tier: "strong", PlanSHA256: planDigest(strings.TrimSpace(strings.SplitN(string(base), "\n## Evidence\n", 2)[0]))}}
+			verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) { return receipt, nil }
+			switch mode {
+			case "planned-addition":
+				rvWriteAndAdd(t, root, "foo/planned.go", "package foo\n")
+			case "directory-addition":
+				rvWriteAndAdd(t, root, "foo/pkg/new.go", "package pkg\n")
+			case "file-removal":
+				rvGitIn(t, root, "rm", "foo/bar.go")
+			case "directory-removal":
+				rvGitIn(t, root, "rm", "foo/pkg/a.go")
+			case "kind-change":
+				rvGitIn(t, root, "rm", "foo/bar.go")
+				rvWriteAndAdd(t, root, "foo/bar.go/new.go", "package foo\n")
+			}
+			rvGitIn(t, root, "commit", "-qm", "repair changes declared inputs")
+			landed := string(base) + "\n| 1 | command | 1 | observed failure |\n" + receipt.EvidenceBinding() + "\n"
+			rvWriteAndAdd(t, root, receiptBriefPath, landed)
+			rvGitIn(t, root, "commit", "-qm", "Evidence")
+			evidence := rvGitIn(t, root, "rev-parse", "HEAD")
+			f.setFile(receiptBriefPath, landed)
+			raw := fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":0,"rows_total":1,"sha":%q,"blocker_kind":"implementation","blocker_ref":"#7"}`, evidence)
+			file := writeRepoFile(t, "record.json", raw)
+			code := run([]string{"example-org/tracker", "main", "--outcome-record", file, "--root", root})
+			if code != deskkit.ExitRefused || len(f.writes) != 0 || len(f.changes) != 0 || !strings.Contains(errBuf.String(), "fresh independent verification") {
+				t.Fatalf("shape change did not require new admission: code=%d writes=%d stderr=%s", code, len(f.writes), errBuf.String())
+			}
+			// Model a new independent admission at the repaired tree and its own
+			// Evidence landing. The new observation can publish a backed record.
+			fresh := receipt
+			fresh.Binding.Source, fresh.Binding.Run = evidence, strings.Repeat("b", 64)
+			verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) { return fresh, nil }
+			newLanded := landed + "\n" + fresh.EvidenceBinding() + "\n"
+			rvWriteAndAdd(t, root, receiptBriefPath, newLanded)
+			rvGitIn(t, root, "commit", "-qm", "fresh run Evidence")
+			newSHA := rvGitIn(t, root, "rev-parse", "HEAD")
+			f.setFile(receiptBriefPath, newLanded)
+			newRaw := strings.ReplaceAll(strings.ReplaceAll(raw, evidence, newSHA), "2026-10-12T00:00:00Z", "2026-10-12T00:01:00Z")
+			newFile := writeRepoFile(t, "fresh-record.json", newRaw)
+			errBuf.Reset()
+			if code := run([]string{"example-org/tracker", "main", "--outcome-record", newFile, "--root", root}); code != 0 || len(f.writes) != 1 {
+				t.Fatalf("fresh observation refused: code=%d writes=%d stderr=%s", code, len(f.writes), errBuf.String())
+			}
+		})
+	}
+}
+
 type outcomeWakeInputs map[string]string
 
 func (m outcomeWakeInputs) Revision(key string) (string, bool)  { v, ok := m[key]; return v, ok }
