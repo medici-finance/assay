@@ -2437,18 +2437,45 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      are already gone (pure bookkeeping, no working tree touched). Unconditional within the
      worktree arms: no flag turns it on or off there. (`--branches-only` runs the branch GC
      alone, skipping every worktree arm including this one.)
-  2. **Step A2 (opt-in, `--reclaim-stale-locks`):** the lock lifecycle — see below.
-  3. **Step B (safe gate):** walk the registered worktrees under the sanctioned prefixes and
+  2. **Step A1 (always safe):** the **stale-registration sweep** — handles admin entries
+     whose worktree directory still EXISTS but whose `.git` gitdir file is GONE (a partial
+     delete). `git worktree remove` refuses the shape ("validation failed … does not
+     exist") and a lock makes `git worktree prune` keep it forever, so without this pass
+     the registration is immortal: it still counts as a branch holder, and every content
+     gate in Step B fails closed on it sweep after sweep. Clearing deletes the admin dir
+     (`.git/worktrees/<id>/` — HEAD, index, reflog), so it happens only behind three
+     gates: the **scope gates** every arm enforces (never the shared checkout, never the
+     current worktree, never outside the sanctioned prefixes); a **content proof** read
+     from the admin dir's HEAD — a valid branch target that positively resolves to a commit, or a
+     detached commit already on `refs/remotes/origin/main`, else HELD (clearing would
+     strand possibly-unpushed commits), and a content-held husk is also excluded from the
+     lock-reclaim pass so the post-reclaim prune cannot drop it; and the **lock rule** —
+     the default sweep NEVER retires a lock, so a locked husk clears only when
+     `--reclaim-stale-locks` has proven its lock stale this same sweep (git's own
+     in-flight `"initializing"` add lock is never retired by any arm). A husk whose clear
+     fails after its lock was reclaimed is re-locked with its original reason. If restoration
+     fails, the sweep stops before later pruning and reports the failure, leaving the
+     surviving registration for operator recovery. The directory is always left on disk, untouched.
+  3. **Step A2 (opt-in, `--reclaim-stale-locks`):** the lock lifecycle — see below.
+  4. **Step B (safe gate):** walk the registered worktrees under the sanctioned prefixes and
      remove — via the exact same safe primitive as `remove` — ONLY those it can prove safe:
      **not** the shared checkout, **not** the current worktree, **tracked-clean**, AND
      **fully merged into `origin/main`** (`git merge-base --is-ancestor HEAD origin/main`; a
      detached HEAD that is an ancestor also qualifies). The merge check is the
      **active-worker guard** — an UNMERGED branch (an open PR still in flight) is never an
-     ancestor of `origin/main`, so it is LEFT untouched. Dirty / unpushed / unmerged / the
+     ancestor of `origin/main`, so it is LEFT untouched. A worktree whose HEAD **is** the
+     `origin/main` tip (zero landed commits — the fresh-worktree case, and the shape a
+     reclaim-by-detach leaves behind) must additionally pass three at-tip gates: **old
+     enough** to be no session's just-created workspace (the fresh-worktree safety window —
+     `deskwt add` never locks what it creates, so a new pristine tree is otherwise
+     indistinguishable from residue), **nothing uncommitted or untracked** (the
+     untracked-INCLUSIVE status), and **no git-ignored payload** (ignored files exist in no
+     commit). An at-tip tree passing all three drains; any other is LEFT with the reason
+     named. Dirty / unpushed / unmerged / the
      current worktree / out-of-prefix are all LEFT and reported as skipped with a reason. No
      `--force`. `--repo <path>` targets a repo without a session cwd (used by the multi-repo
      sweep script). Exit `0` ok/noop · `3` disabled · `5` refused · `6` unverifiable.
-  4. **Step C (default ON — `--no-branches` skips it, `--branches-only` runs it alone):**
+  5. **Step C (default ON — `--no-branches` skips it, `--branches-only` runs it alone):**
      the **local-branch GC**. Worktrees have this sweep and remote branches have the
      forge's delete-on-merge, but the LOCAL branch a finished worktree leaves behind has
      neither, and they accumulate without bound. Step C deletes a local branch ONLY when
@@ -2464,7 +2491,7 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      compare-and-delete against the proven sha (`git update-ref -d <ref> <sha>`), never a
      force verb. Live sweeps print per-class counts only; `--dry-run` prints the
      per-branch COLLECT plan and deletes nothing.
-  5. **Step D (default ON — `--no-cache` skips it; `--cells-root` re-points it):** the
+  6. **Step D (default ON — `--no-cache` skips it; `--cells-root` re-points it):** the
      **cell-cache pressure pass**. A cell's managed Go cache (see
      `docs/cellctl-go-cache.md`) is otherwise pressure-checked only at launch admission
      and dispatch, so a long-lived cell can sit over its byte budget — or the filesystem
@@ -2480,7 +2507,9 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
 
 Every sweep prints one summary line with four counts — **pruned** (bookkeeping entries
 dropped), **removed**, **held** (with **locked-held** broken out), and **locks-reclaimed** —
-plus, when the branch GC ran, **branches-gc** (split into its **merged** and
+plus **stale-registrations-cleared** when the Step A1 pass cleared any (each cleared entry
+also prints its own line — the registration is dropped, the directory left on disk) and,
+when the branch GC ran, **branches-gc** (split into its **merged** and
 **cherry-clean** proof classes) and **branches-held** — so an operator can tell a repo
 that is draining from one that is stuck, and on which gate. The cache pass adds its counts
 (**cache-checked** / **cache-reclaimed** / **cache-deferred** / **cache-orphans-reaped**)

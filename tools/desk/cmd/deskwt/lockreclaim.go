@@ -65,6 +65,13 @@ const (
 	// reason without it names no session and is judged by --lock-ttl alone.
 	lockSessionKey = "session="
 
+	// gitInitLockReason is the lock reason git itself sets on a worktree it is creating:
+	// `git worktree add` locks the new worktree "initializing" and unlocks it when the
+	// checkout completes. That lock is NEVER retired by any sweep arm — a sweep that
+	// unlocked it would race git's own in-flight add, and a crashed add's leftover is the
+	// operator's to inspect, never the sweep's to judge by age.
+	gitInitLockReason = "initializing"
+
 	// beaconFreshWindow is how recently a session's roster beacon must have been re-stamped
 	// for its lock to count as LIVE. It matches the roster's own zombie threshold (a session
 	// that registered work and then stopped reporting for an hour is treated as gone
@@ -185,7 +192,16 @@ func readSessionBeacon(rosterDir, session string, now time.Time) (beaconEvidence
 // judgeLock is the whole staleness decision, kept pure (no git, no clock) so the heuristics
 // can be tested directly. haveMtime=false means git kept no readable timestamp for this lock,
 // so the TTL test cannot fire — a missing timestamp is not an old one.
+//
+// One reason is exempt from EVERY test: git's own "initializing", which `git worktree add`
+// sets on a worktree it is creating and clears when the checkout completes. It names no
+// session and ages like any other lock, but it is not a desk lock at all — it is git's
+// in-flight marker, and a sweep that retired it would race the add (or judge a crashed
+// add's leftover, which is the operator's call, never the sweep's).
 func judgeLock(reason string, lockMtime time.Time, haveMtime bool, ttl time.Duration, rosterDir string, now time.Time) lockVerdict {
+	if strings.TrimSpace(reason) == gitInitLockReason {
+		return lockVerdict{false, `git's in-flight "initializing" add lock — never retired`}
+	}
 	if sess := sessionFromLockReason(reason); sess != "" {
 		switch ev, upd := readSessionBeacon(rosterDir, sess, now); ev {
 		case beaconFresh:
@@ -271,7 +287,7 @@ func (g *pathGuard) lockFileMtimes() map[string]time.Time {
 // that are genuinely gone are counted, so the reported count can never overstate what
 // happened (git reporting success is not the same as the lock being gone).
 func reclaimStaleLocks(guard *pathGuard, dir, cwd string, ttl time.Duration) ([]reclaimEntry, []string, error) {
-	return reclaimStaleLocksMode(guard, dir, cwd, ttl, false)
+	return reclaimStaleLocksMode(guard, dir, cwd, ttl, false, nil)
 }
 
 // reclaimStaleLocksMode is reclaimStaleLocks with a REPORT-ONLY arm. With dryRun set it
@@ -287,7 +303,13 @@ func reclaimStaleLocks(guard *pathGuard, dir, cwd string, ttl time.Duration) ([]
 // The post-unlock re-read that makes the non-dry path never overstate what happened is
 // skipped in the dry arm for the same reason it exists: there is nothing to re-read, and
 // reporting a would-be unlock as VERIFIED would be the overstatement it guards against.
-func reclaimStaleLocksMode(guard *pathGuard, dir, cwd string, ttl time.Duration, dryRun bool) ([]reclaimEntry, []string, error) {
+//
+// except names worktrees whose locks must NOT be retired however stale they judge: the
+// stale-registration pass's content gate (stalereg.go) holds a husk whose admin HEAD is
+// detached and not on the mainline, and an unlock here would feed exactly those to the
+// post-reclaim bookkeeping prune, which drops what that gate held. The exclusion is keyed
+// by the same resolved paths the lock map carries.
+func reclaimStaleLocksMode(guard *pathGuard, dir, cwd string, ttl time.Duration, dryRun bool, except map[string]bool) ([]reclaimEntry, []string, error) {
 	locked, err := guard.lockedWorktrees(dir)
 	if err != nil {
 		return nil, nil, err
@@ -320,6 +342,12 @@ func reclaimStaleLocksMode(guard *pathGuard, dir, cwd string, ttl time.Duration,
 		if rt == guard.sharedCheckout || rt == cwd || !guard.allowed(rt) {
 			continue
 		}
+		// A content-held stale registration keeps its lock however stale the lock judges:
+		// unlocking it would hand the husk to the post-reclaim bookkeeping prune, which
+		// drops the registration (and, for a detached HEAD, the last ref to its commits).
+		if except[rt] {
+			continue
+		}
 		reason := locked[rt]
 		mt, haveMtime := mtimes[rt]
 		v := judgeLock(reason, mt, haveMtime, ttl, rosterDir, now)
@@ -345,7 +373,18 @@ func reclaimStaleLocksMode(guard *pathGuard, dir, cwd string, ttl time.Duration,
 
 	after, aerr := guard.lockedWorktrees(dir)
 	if aerr != nil {
-		return nil, warns, aerr
+		// The unlocks already happened. An unreadable verification is not permission
+		// to leave these entries less protected or to forget their original reasons.
+		// Restore every successfully unlocked candidate before returning the error.
+		var rollback []string
+		for _, c := range candidates {
+			if _, err := runGit(dir, "worktree", "lock", "--reason", c.reason, c.path); err != nil {
+				rollback = append(rollback, "lock could not be restored on "+c.path+": "+errText(err))
+			} else {
+				rollback = append(rollback, "lock restored on "+c.path+" with the original reason")
+			}
+		}
+		return nil, warns, deskkit.Unverifiable("lock reclaim verification failed; "+strings.Join(rollback, "; "), aerr)
 	}
 	var done []reclaimEntry
 	for _, c := range candidates {

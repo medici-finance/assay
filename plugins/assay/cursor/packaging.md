@@ -45,6 +45,7 @@ intake-desk
 pdfingest
 pr-review-desk
 pr-shepherd
+session-coach
 system-demo
 the-desk
 upgrade-assay
