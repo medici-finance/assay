@@ -1,6 +1,7 @@
 {
   "evidence-automerge.yml": {
-    "mode": "identical"
+    "mode": "pending",
+    "reason": "Clean Evidence PR completion with the non-bypass workflow token; pending maintainer promotion. See tools/evidence-automerge/README.md."
   },
   "gremlins-daily.yml": {
     "mode": "pending",

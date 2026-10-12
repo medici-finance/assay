@@ -6,8 +6,13 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+import importlib.util
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / "ci/staged-workflows/evidence-automerge.yml"
@@ -104,7 +109,9 @@ class PollTests(unittest.TestCase):
         self.assertEqual(sorted(re.findall(r"^\s+permission-[\w-]+: \w+$", reconcile, re.M)),
                          ["          permission-contents: write", "          permission-pull-requests: write"])
         poll = (workflows / "evidence-automerge.yml").read_text()
-        self.assertEqual(poll, WORKFLOW.read_text())
+        # These fixtures project the existing board-writer migration, not an
+        # unrelated pending workflow proposal. Staged proposals are tested below.
+        self.assertEqual(poll, (ROOT / ".github/workflows/evidence-automerge.yml").read_text())
         self.assertNotIn("  pull_request:", poll)
         self.assertNotIn("  pull_request_review:", poll)
         self.assertIn("          ref: ${{ github.sha }}\n", poll)
@@ -228,6 +235,224 @@ class PollTests(unittest.TestCase):
             end = text.index('          # ─── END SHARED BLOCK', start)
             return text[start:end]
         self.assertEqual(block(WORKFLOW), block(ROOT / ".github/workflows/changelog-check.yml"))
+
+
+class CleanMergeTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("merge_clean", ROOT / "tools/evidence-automerge/merge_clean.py")
+        self.impl = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.impl)
+        self.head = "a" * 40
+        self.metadata = {"node_id": "PR_example", "user": {"login": "assay-verifier-app[bot]", "type": "Bot"},
+                         "head": {"sha": self.head, "repo": {"full_name": "example/project"}},
+                         "state": "open", "draft": False, "base": {"ref": "main"}}
+        self.view = {"id": "PR_example", "headRefOid": self.head, "state": "OPEN", "isDraft": False,
+                     "baseRefName": "main", "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+                     "reviewDecision": "APPROVED", "statusCheckRollup": [
+                         {"__typename": "StatusContext", "context": "leak-sweep", "state": "SUCCESS", "createdAt": "2026-10-12T00:00:00Z"},
+                         {"__typename": "CheckRun", "name": "test", "workflowName": "ci", "status": "COMPLETED",
+                          "conclusion": "SUCCESS", "completedAt": "2026-10-12T00:00:00Z"}]}
+        self.files = [[{"filename": "docs/streams/example/brief-01.md", "status": "modified"}]]
+        self.reviews = [[self.review("Security-Review: pass", "COMMENTED"), self.review("Verdict: approve", "APPROVED")]]
+        self.calls = []
+        self.merge_result = {"merged": True}
+        self.pr_number = "1"
+
+    def review(self, body, state, stamp="2026-10-12T00:00:00Z"):
+        return {"commit_id": self.head, "user": {"login": "assay-reviewer-app[bot]", "type": "Bot"},
+                "submitted_at": stamp, "body": body, "state": state}
+
+    def call(self, args, body=None):
+        self.calls.append((args, body))
+        if args[:2] == ["api", "--method"]:
+            self.assertEqual(args, ["api", "--method", "PUT", "repos/example/project/pulls/" + self.pr_number + "/merge", "--input", "-"])
+            self.assertEqual(body, {"sha": self.head, "merge_method": "merge"})
+            return self.merge_result
+        if args[:2] == ["pr", "view"]:
+            return self.view
+        if args[-1].endswith("/files?per_page=100"):
+            return self.files
+        if args[-1].endswith("/reviews?per_page=100"):
+            return self.reviews
+        return self.metadata
+
+    def run_merge(self):
+        with patch.dict(os.environ, REPO="example/project", PR=self.pr_number, PR_NODE_ID=self.metadata["node_id"]):
+            return self.impl.run(self.call)
+
+    def writes(self):
+        return [call for call in self.calls if call[1] is not None]
+
+    def test_clean_merge_completes_at_exact_reviewed_head(self):
+        self.assertEqual(self.run_merge(), 0)
+        self.assertEqual(len(self.writes()), 1)
+
+    def test_clean_merge_second_candidate_uses_its_own_identity(self):
+        self.pr_number = "2685"
+        self.metadata["node_id"] = self.view["id"] = "PR_second"
+        self.assertEqual(self.run_merge(), 0)
+        self.assertEqual(len(self.writes()), 1)
+
+    def test_clean_refusal_signals_completion(self):
+        impl = Path(os.environ.get("REFUSAL_IMPL", str(ROOT / "tools/evidence-automerge/automerge-refusal.sh")))
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            (tmp / "answer").write_text("gh: Pull request Pull request is in clean status")
+            env = dict(os.environ, MUTATION_RC="1", MUTATION_OUT=str(tmp / "answer"),
+                       SELF_CHECK="enable", PR="2627", GITHUB_OUTPUT=str(tmp / "output"))
+            result = subprocess.run(["bash", str(impl)], env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((tmp / "output").exists(), "clean refusal discarded: no completion signal")
+            self.assertEqual((tmp / "output").read_text(), "clean=true\n")
+
+    def test_clean_merge_rechecks_candidate_state(self):
+        for target, key, value in (("metadata", "draft", True), ("metadata", "state", "closed"),
+                                   ("metadata", "node_id", "PR_other"), ("view", "isDraft", True),
+                                   ("view", "headRefOid", "b" * 40), ("view", "baseRefName", "other"),
+                                   ("view", "reviewDecision", "CHANGES_REQUESTED"),
+                                   ("view", "mergeStateStatus", "BLOCKED"), ("view", "mergeable", "UNKNOWN")):
+            with self.subTest(target=target, key=key):
+                obj = getattr(self, target)
+                old = obj[key]
+                obj[key] = value
+                self.calls.clear()
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+                obj[key] = old
+        for key, value in (("user", {"login": "other", "type": "Bot"}),
+                           ("user", {"login": "assay-verifier-app[bot]", "type": "User"}),
+                           ("base", {"ref": "other"}),
+                           ("head", {"sha": self.head, "repo": {"full_name": "other/project"}})):
+            with self.subTest(key=key, value=value):
+                old = self.metadata[key]
+                self.metadata[key] = value
+                self.calls.clear()
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+                self.metadata[key] = old
+
+    def test_clean_merge_requires_both_current_head_review_lanes(self):
+        cases = [[], [self.review("Verdict: approve", "APPROVED")],
+                 [self.review("Security-Review: pass", "COMMENTED")],
+                 [self.review("Security-Review: fail", "COMMENTED"), self.review("Verdict: approve", "APPROVED")],
+                 [self.review("Security-Review: pass", "COMMENTED"), self.review("Verdict: request-changes", "CHANGES_REQUESTED")]]
+        stale = self.review("Verdict: approve", "APPROVED")
+        stale["commit_id"] = "b" * 40
+        cases.append([self.review("Security-Review: pass", "COMMENTED"), stale])
+        cases.append(self.reviews[0] + [self.review("Security-Review: fail", "COMMENTED", "2026-10-12T01:00:00Z")])
+        dismissed = self.review("Verdict: approve", "DISMISSED", "2026-10-12T01:00:00Z")
+        cases.append(self.reviews[0] + [dismissed])
+        impostor = self.review("Verdict: approve", "APPROVED")
+        impostor["user"]["login"] = "other[bot]"
+        cases.append([self.review("Security-Review: pass", "COMMENTED"), impostor])
+        for reviews in cases:
+            with self.subTest(reviews=reviews):
+                self.reviews = [reviews]
+                self.calls.clear()
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+
+    def test_clean_merge_requires_docs_scope_on_every_page(self):
+        for file in ({"filename": "tools/run.sh"}, {"filename": "docs/streams/FINDINGS.md"},
+                     {"filename": "docs/streams/INTAKE.md"}, {"filename": "docs/streams/../run.sh"},
+                     {"filename": "docs/streams/example/x.md", "status": "renamed", "previous_filename": "tools/run.sh"}):
+            with self.subTest(file=file):
+                self.files = [[{"filename": "docs/streams/example/brief-01.md"}], [file]]
+                self.calls.clear()
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+
+    def test_clean_merge_holds_on_bad_or_pending_checks(self):
+        original = json.loads(json.dumps(self.view["statusCheckRollup"]))
+        for status, conclusion in (("COMPLETED", "FAILURE"), ("IN_PROGRESS", None), ("QUEUED", None), ("COMPLETED", "CANCELLED")):
+            with self.subTest(status=status, conclusion=conclusion):
+                self.view["statusCheckRollup"] = json.loads(json.dumps(original))
+                self.view["statusCheckRollup"][1].update(status=status, conclusion=conclusion)
+                self.calls.clear()
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+        self.view["statusCheckRollup"] = original[1:]
+        self.calls.clear()
+        self.assertEqual(self.run_merge(), 0)
+        self.assertEqual(self.writes(), [])
+
+    def test_clean_merge_superseded_checks_do_not_hide_other_workflows(self):
+        old = dict(self.view["statusCheckRollup"][1], conclusion="CANCELLED", completedAt="2026-10-11T00:00:00Z")
+        self.view["statusCheckRollup"].append(old)
+        reduced = self.impl.latest_run_per_check(self.view["statusCheckRollup"])
+        self.assertEqual(len(reduced), 2)
+        self.assertTrue(all(entry.get("conclusion") != "CANCELLED" for entry in reduced))
+        self.assertEqual(self.run_merge(), 0)
+        other = dict(old, workflowName="other", completedAt="2026-10-12T01:00:00Z")
+        self.view["statusCheckRollup"].append(other)
+        self.calls.clear()
+        self.assertEqual(self.run_merge(), 0)
+        self.assertEqual(self.writes(), [])
+
+    def test_clean_merge_read_errors_and_server_refusal_fail_closed(self):
+        with patch.dict(os.environ, REPO="example/project", PR="1", PR_NODE_ID="PR_example"):
+            self.assertEqual(self.impl.run(lambda *args: (_ for _ in ()).throw(RuntimeError("read refused"))), 1)
+        self.assertEqual(self.writes(), [])
+        self.files = {"not": "pages"}
+        self.assertEqual(self.run_merge(), 1)
+        self.assertEqual(self.writes(), [])
+        self.files = [[{"filename": "docs/streams/example/brief-01.md"}]]
+        self.merge_result = {"merged": False, "message": "head or protection changed"}
+        self.assertEqual(self.run_merge(), 1)
+
+    def test_clean_merge_wiring(self):
+        text = WORKFLOW.read_text()
+        enable = text.split("\n  enable:\n", 1)[1]
+        self.assertIn("    permissions:\n      contents: write\n      pull-requests: write\n", enable)
+        self.assertIn("        id: request\n", enable)
+        merge = enable.split("      - name: Complete clean Evidence merge\n", 1)[1]
+        self.assertIn("steps.guard.outputs.eligible == 'true' && steps.request.outputs.clean == 'true'", merge)
+        self.assertIn("          GH_TOKEN: ${{ github.token }}\n", merge)
+        self.assertNotIn("steps.app-token.outputs.token", merge)
+        self.assertIn("merge_clean.run()", merge)
+
+    def test_real_completion_step_uses_protected_token_and_head(self):
+        for head_changed in (False, True):
+            with self.subTest(head_changed=head_changed), tempfile.TemporaryDirectory() as directory:
+                tmp = Path(directory)
+                fixture = {"metadata": self.metadata, "view": self.view, "files": self.files,
+                           "reviews": self.reviews, "head_changed": head_changed}
+                (tmp / "fixture").write_text(json.dumps(fixture))
+                (tmp / "step").write_text(step("Complete clean Evidence merge"))
+                (tmp / "gh").write_text(r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+assert os.environ["GH_TOKEN"] == "workflow-token", "bypass token reached direct merge"
+data = json.loads(Path(os.environ["MERGE_FIXTURE"]).read_text())
+args = sys.argv[1:]
+if args[:2] == ["api", "--method"]:
+    body = json.load(sys.stdin)
+    assert args == ["api", "--method", "PUT", "repos/example/project/pulls/1/merge", "--input", "-"]
+    assert body == {"sha": data["metadata"]["head"]["sha"], "merge_method": "merge"}
+    Path(os.environ["MERGE_ATTEMPT"]).write_text(json.dumps(body))
+    if data["head_changed"]:
+        print("head changed: merge rejected", file=sys.stderr)
+        raise SystemExit(1)
+    print(json.dumps({"merged": True}))
+elif args[:2] == ["pr", "view"]:
+    print(json.dumps(data["view"]))
+elif args[-1].endswith("/files?per_page=100"):
+    print(json.dumps(data["files"]))
+elif args[-1].endswith("/reviews?per_page=100"):
+    print(json.dumps(data["reviews"]))
+elif args == ["api", "repos/example/project/pulls/1"]:
+    print(json.dumps(data["metadata"]))
+else:
+    raise SystemExit("unexpected API call")
+''')
+                (tmp / "gh").chmod(0o700)
+                env = dict(os.environ, PATH=str(tmp) + os.pathsep + os.environ["PATH"],
+                           GH_TOKEN="workflow-token", REPO="example/project", PR="1", PR_NODE_ID="PR_example",
+                           MERGE_FIXTURE=str(tmp / "fixture"), MERGE_ATTEMPT=str(tmp / "attempt"))
+                result = subprocess.run(["bash", "-e", str(tmp / "step")], env=env, cwd=ROOT,
+                                        text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 1 if head_changed else 0, result.stdout + result.stderr)
+                self.assertEqual(json.loads((tmp / "attempt").read_text())["sha"], self.head)
 
 
 if __name__ == "__main__":
