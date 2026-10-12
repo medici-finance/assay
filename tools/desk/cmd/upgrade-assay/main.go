@@ -81,7 +81,7 @@
 //	10 refused: a local write to .assay-versions failed (a filesystem refusal in
 //	            the adopter's own repo — not an artifacts-availability problem)
 //
-// APPLY ORDER — migrations first, re-pin last. apply() runs the in-span migrations
+// APPLY ORDER — migrations first, optional Cursor placement next, re-pin last. apply() runs the in-span migrations
 // BEFORE advancing the version marker in .assay-versions, and re-pins only once they
 // all succeed. This keeps a mid-migration failure recoverable: the marker stays at
 // `from`, so a re-run re-selects and retries the outstanding migrations (they are
@@ -103,6 +103,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cursorbundle"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"gopkg.in/yaml.v3"
 )
@@ -127,6 +128,7 @@ const usage = `upgrade-assay — move an adopter to latest-stable or a named umb
 usage:
   upgrade-assay --root <adopter-repo> [--to vX.Y.Z] [--dry-run] [--releases <dir>]
                 [--fetch] [--release-home <owner/repo>]
+                [--harness cursor] [--forge github|gitlab] [--check]
   upgrade-assay --version
 
 verbs:
@@ -142,6 +144,14 @@ compositions:      <releases>/<vX.Y.Z>.yaml when authored; else DERIVED from the
 
   A per-artifact tag (e.g. statusgen/v0.13.0) is NOT a target: the verb moves the
   whole umbrella, never one artifact. Bare umbrella versions only.
+
+Cursor:           --harness cursor verifies the selected release's bundle digest,
+                   internal version and closed manifest, then previews/applies
+                   managed files. Unrelated Cursor files and AGENTS.md outside
+                   Assay bindings are preserved. Local modifications refuse.
+                   --check is read-only and exits 1 for placement/marker drift.
+                   Legacy releases without a bundle refuse; no floating source
+                   is substituted. Integrity is checked, not build provenance.
 
 exit: 0 ok/dry-run/already-at · 5 inconsistent · 6 undetermined ·
       7 not-a-bare-umbrella · 8 no-such-release · 9 artifacts-unavailable ·
@@ -170,6 +180,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		home     = fs.String("release-home", deskkit.DefaultReleaseHome, "release home <owner>/<repo> whose checksums.txt derives a composition")
 		fetch    = fs.Bool("fetch", false, "allow fetching checksums.txt / latest from the release home (default: local files only)")
 		version  = fs.Bool("version", false, "print version and exit")
+		harness  = fs.String("harness", "", "cursor to upgrade generated Cursor placement alongside the selected umbrella")
+		forge    = fs.String("forge", "github", "Cursor bindings transport: github or gitlab")
+		check    = fs.Bool("check", false, "read-only selected-version Cursor placement check; requires --harness cursor")
 	)
 	fs.Usage = func() { fmt.Fprintln(stderr, usage) }
 	if err := fs.Parse(args); err != nil {
@@ -181,6 +194,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "upgrade-assay sourceSHA=%s builtAt=%s releaseTag=%s\n",
 			sha, built, deskkit.ReleaseTagOrDev())
 		return exitOK
+	}
+
+	if (*harness != "" && *harness != "cursor") || (*check && *harness != "cursor") || (*check && *dryRun) || (*harness == "cursor" && *forge != "github" && *forge != "gitlab") {
+		fmt.Fprintln(stderr, "upgrade-assay: choose --harness cursor with --forge github|gitlab and at most one of --dry-run or --check")
+		return exitWrongVersionKind
 	}
 
 	relDir := *releases
@@ -276,7 +294,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	from := marker.Umbrella
 
 	// ── 5. Idempotent no-op: already at the target.
-	if from == target {
+	if from == target && *harness != "cursor" {
 		fmt.Fprintf(stdout, "upgrade-assay: already at %s — nothing to do (no migrations re-run, nothing re-pinned).\n", target)
 		return exitOK
 	}
@@ -296,6 +314,45 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if toComp.Origin != "" {
 		fmt.Fprintf(stdout, "target composition derived from %s\n", toComp.Origin)
+	}
+
+	var cursorPlan *cursorbundle.Plan
+	if *harness == "cursor" {
+		if toComp.Umbrella != target {
+			fmt.Fprintln(stderr, "upgrade-assay: selected Cursor composition version mismatch")
+			return exitArtifactsGone
+		}
+		bundle, cleanup, err := cursorbundle.Acquire(src, toComp)
+		if err != nil {
+			fmt.Fprintln(stderr, "upgrade-assay: refusing Cursor upgrade:", err)
+			return exitArtifactsGone
+		}
+		defer cleanup()
+		opts := cursorbundle.Options{BundleDir: bundle, RepoRoot: *root, Forge: *forge}
+		if *check {
+			findings, err := cursorbundle.Check(opts)
+			if err != nil {
+				fmt.Fprintln(stderr, "upgrade-assay: could-not-check Cursor placement:", err)
+				return exitArtifactsGone
+			}
+			for _, finding := range findings {
+				fmt.Fprintln(stdout, finding)
+			}
+			if from != target {
+				fmt.Fprintf(stdout, "umbrella marker differs: %s, selected %s\n", from, target)
+			}
+			if len(findings) > 0 || from != target {
+				return 1
+			}
+			fmt.Fprintf(stdout, "Cursor placement and umbrella marker match %s (integrity verified; provenance not asserted)\n", target)
+			return exitOK
+		}
+		cursorPlan, err = cursorbundle.Prepare(opts)
+		if err != nil {
+			fmt.Fprintln(stderr, "upgrade-assay: refusing Cursor update before migration:", err)
+			return exitArtifactsGone
+		}
+		fmt.Fprintf(stdout, "Cursor bundle %s: published SHA-256, internal version and closed manifest verified (integrity, not provenance)\n", target)
 	}
 
 	// Direction: forward (from < target) runs migrations; a move to an OLDER umbrella
@@ -330,17 +387,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *dryRun {
-		return dryRunReport(stdout, *root, from, target, forward, deltas, selected)
+		if cursorPlan != nil {
+			cursorPlan.Report(stdout)
+		}
+		return dryRunReport(stdout, *root, from, target, forward, deltas, selected, cursorPlan != nil)
 	}
-	return apply(stdout, stderr, *root, relDir, from, target, forward, deltas, selected, toComp)
+	return apply(stdout, stderr, *root, relDir, from, target, forward, deltas, selected, toComp, cursorPlan)
 }
 
 // dryRunReport prints exactly what an apply would do and writes NOTHING. The literal
 // tokens "would run" and "release note" appear here so an adopter previews both the
 // migrations and the notes for the span before consenting.
-func dryRunReport(stdout io.Writer, root, from, target string, forward bool, deltas []delta, selected []deskkit.Migration) int {
+func dryRunReport(stdout io.Writer, root, from, target string, forward bool, deltas []delta, selected []deskkit.Migration, cursor bool) int {
 	fmt.Fprintf(stdout, "upgrade-assay: DRY-RUN — would move umbrella %s -> %s (writing nothing).\n", from, target)
-	if !forward {
+	if !forward && from != target {
 		fmt.Fprintf(stdout, "note: %s is BELOW the current %s — this would re-point and re-resolve, which is NOT a rollback; forward migrations are not reversed.\n", target, from)
 	}
 	printDeltas(stdout, deltas)
@@ -359,7 +419,9 @@ func dryRunReport(stdout io.Writer, root, from, target string, forward bool, del
 	}
 
 	printReleaseNotes(stdout, from, target, selected)
-	printReresolve(stdout, target)
+	if !cursor {
+		printReresolve(stdout, target)
+	}
 	return exitOK
 }
 
@@ -375,9 +437,9 @@ func dryRunReport(stdout io.Writer, root, from, target string, forward bool, del
 // read `from == target` and take the "already at … nothing to do" no-op, stranding
 // the half-done migration permanently. That is the "corrupts state rather than
 // failing" outcome this command exists to avoid.
-func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward bool, deltas []delta, selected []deskkit.Migration, toComp deskkit.Composition) int {
+func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward bool, deltas []delta, selected []deskkit.Migration, toComp deskkit.Composition, cursorPlan *cursorbundle.Plan) int {
 	fmt.Fprintf(stdout, "upgrade-assay: moving umbrella %s -> %s.\n", from, target)
-	if !forward {
+	if !forward && from != target {
 		fmt.Fprintf(stdout, "note: %s is BELOW the current %s — re-pointing and re-resolving, which is NOT a rollback; forward migrations are not reversed.\n", target, from)
 	}
 	printDeltas(stdout, deltas)
@@ -399,6 +461,13 @@ func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward 
 		}
 	}
 
+	if cursorPlan != nil {
+		if err := cursorPlan.Apply(stdout); err != nil {
+			fmt.Fprintf(stderr, "upgrade-assay: Cursor placement failed; umbrella marker remains %s: %v\n", from, err)
+			return exitLocalWriteFailed
+		}
+	}
+
 	// ── Re-pin LAST — advance the version marker only now that the migrations have
 	// all committed.
 	if err := repin(root, relDir, target, toComp, stderr); err != nil {
@@ -408,7 +477,9 @@ func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward 
 	fmt.Fprintf(stdout, "re-pinned %s to umbrella %s and its artifact tags.\n", deskkit.AssayVersionsFile, target)
 
 	printReleaseNotes(stdout, from, target, selected)
-	printReresolve(stdout, target)
+	if cursorPlan == nil {
+		printReresolve(stdout, target)
+	}
 	return exitOK
 }
 

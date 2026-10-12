@@ -12,7 +12,11 @@ into the bundle unaccounted-for.
 Cursor is **lighter than Codex**: Cursor reads `SKILL.md` skills, `AGENTS.md`, and
 `.cursor/rules/*.mdc` directly from the repo tree (HP/12 §2.10 `install-mechanism`), so
 there is no per-harness plugin manifest — the packaging IS the instruction files. The
-one generated artifact is `cursor/assay.mdc` (the Cursor-native resident-rules rule).
+canonical generated rule is `cursor/assay.mdc` (the Cursor-native resident-rules rule).
+`deskinstall --harness cursor` derives the repository/adopter runtime tree and its
+ownership inventory from this roster. Skill support files ship alongside SKILL.md;
+canonical `component.yaml` declarations stay in the source tree. Versioned release
+archives carry the exact runtime source set plus a closed integrity manifest.
 Cursor **also** reads the shared Codex `AGENTS.md` fragment (`../codex/AGENTS-assay.md`)
 natively (HP/12 §2.1), so the adopt flow offers either resident-rules channel.
 

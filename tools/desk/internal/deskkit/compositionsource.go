@@ -53,6 +53,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -66,6 +67,10 @@ const DefaultReleaseHome = "medici-finance/assay"
 
 // ChecksumsAsset is the release asset the composition is derived from.
 const ChecksumsAsset = "checksums.txt"
+
+// CursorBundleAsset is a non-platform payload; it contributes integrity data,
+// not a binary component that every adopter must pin.
+const CursorBundleAsset = "cursor-bundle.tar.gz"
 
 // ChecksumsFileName is the local name a materialised checksums.txt takes under a
 // releases dir: `<umbrella>.checksums.txt`, with `/` mapped to `-` exactly as the
@@ -153,6 +158,10 @@ func ParseChecksums(umbrellaTag string, raw []byte) (Composition, error) {
 				"checksums for %s: asset %q listed twice", umbrellaTag, asset), nil)
 		}
 		seen[asset] = true
+		if asset == CursorBundleAsset {
+			c.AssetSHA256[asset] = digest
+			continue
+		}
 		component := ComponentOf(asset)
 		if component == asset {
 			continue // not a <component>-<os>-<arch> asset: not a pinnable artifact
@@ -339,4 +348,31 @@ func (s CompositionSource) LatestReleaseTag() (string, bool, error) {
 		return "", false, Unverifiable("latest-release answer from "+url+" carries no tag_name", err)
 	}
 	return body.TagName, true, nil
+}
+
+// CursorBundle reads the already-selected release's payload. A materialized
+// file wins even when broken; absence never selects a different version.
+func (s CompositionSource) CursorBundle(umbrellaTag string) ([]byte, error) {
+	if valid, _ := regexp.MatchString(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`, umbrellaTag); !valid {
+		return nil, Unverifiable("invalid Cursor bundle umbrella version", nil)
+	}
+	local := filepath.Join(s.ReleasesDir, umbrellaTag+"."+CursorBundleAsset)
+	if info, err := os.Stat(local); err == nil {
+		if !info.Mode().IsRegular() || info.Size() > 16<<20 {
+			return nil, Unverifiable("invalid or oversized materialized Cursor bundle", nil)
+		}
+		return os.ReadFile(local)
+	} else if !os.IsNotExist(err) {
+		return nil, Unverifiable("cannot read materialized Cursor bundle", err)
+	}
+	if s.Fetch == nil {
+		return nil, Unverifiable("Cursor bundle unavailable locally; materialize releases/<version>.cursor-bundle.tar.gz or explicitly allow --fetch", nil)
+	}
+	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", s.home(), umbrellaTag, CursorBundleAsset)
+	s.announce(url)
+	raw, err := s.Fetch(url)
+	if err != nil {
+		return nil, Unverifiable("could not acquire the selected release Cursor bundle", err)
+	}
+	return raw, nil
 }

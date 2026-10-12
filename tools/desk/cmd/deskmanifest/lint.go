@@ -166,7 +166,20 @@ func lintReport(root string, showActivation bool) (string, int) {
 	if exErr != nil {
 		return fmt.Sprintf("could-not-check: %v\n", exErr), exitCouldNotCheck
 	}
-	state := computeActivation(root, manifests, providers)
+	bindings, bindErr := loadBindings(root, providers, exclusiveKeys)
+	if bindErr != nil {
+		return fmt.Sprintf("could-not-check: %v\n", bindErr), exitCouldNotCheck
+	}
+	state := computeActivation(root, manifests, providers, bindings)
+	for key, selected := range bindings {
+		if st := state[selected]; st == nil || !st.active {
+			reason := "not discovered"
+			if st != nil {
+				reason = st.reason
+			}
+			problems = append(problems, fmt.Sprintf("binding %s selected provider %s is INACTIVE: %s", key, selected, reason))
+		}
+	}
 	problems = append(problems, checkExclusive(providers, state, exclusiveKeys)...)
 
 	sort.Strings(problems)
@@ -384,7 +397,7 @@ type activationState struct {
 // marker exists under root — this is how the harness adapters answer "the
 // presence of exactly one adapter's installed shape selects the binding"
 // (§9) before there is a record to consult.
-func computeActivation(root string, ms []*manifest, providers map[string][]provider) map[string]*activationState {
+func computeActivation(root string, ms []*manifest, providers map[string][]provider, bindings map[string]string) map[string]*activationState {
 	state := make(map[string]*activationState, len(ms))
 	for _, m := range ms {
 		state[m.Component] = &activationState{active: true}
@@ -396,6 +409,15 @@ func computeActivation(root string, ms []*manifest, providers map[string][]provi
 			}
 			if !fileExists(filepath.Join(root, pe.Evidence)) {
 				state[m.Component] = &activationState{active: false, reason: fmt.Sprintf("installed-shape marker %s absent", pe.Evidence)}
+			}
+		}
+	}
+	// Selection can deactivate a competing provider; it can never activate one
+	// whose evidence or required dependencies are absent.
+	for key, selected := range bindings {
+		for _, p := range providers[key] {
+			if p.component != selected {
+				state[p.component] = &activationState{active: false, reason: fmt.Sprintf("declaration binding %s selects %s", key, selected)}
 			}
 		}
 	}
