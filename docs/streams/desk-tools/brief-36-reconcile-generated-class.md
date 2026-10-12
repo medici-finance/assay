@@ -110,7 +110,7 @@ passes today and must still pass. Run from the repo root.
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | prints `ok`: the R-8 enactment line cites the ruling. FAILS today: #2688 is referenced nowhere in rulings.md. |
-| 2 | check (mechanism A) | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | prints `ok`: the lane config carries the narrow title match. FAILS today: no membership entry exists. If mechanism B was chosen, this row is not applicable — say so in Evidence with the B reason. |
+| 2 | check | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | prints `ok` (mechanism A only): the lane config carries the narrow title match. FAILS today: no membership entry exists. If mechanism B was chosen, this row is not applicable — say so in Evidence with the B reason. |
 | 3 | check +flow | READ FROM THE FORGE after the first scheduled reconcile tick following this brief's merge: the reconcile PR either does not exist (B: direct-CI landing on main) or exists merged by the reviewer App via deskautolane (A) with no dispatched reviewer verdict and no authorization-needed label. | The ruling's caught-by: the class stops consuming a reviewer slot and a human gate. Could-not-check at authoring: no post-landing tick has run. |
 | 4 | check +neighbour | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt36-sg" . && "${TMPDIR:-/tmp}/dt36-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && echo ok` | prints `ok`: the tree lints clean. Passes today and must still pass. |
 
