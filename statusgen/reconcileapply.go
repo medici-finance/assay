@@ -4,9 +4,10 @@ package main
 // (derived-board/07 follow-on; trailer-only mode and the lint hold,
 // derived-board/04).
 //
-// `reconcile --backfill [--report]` (reconcile.go, reconcilebackfill.go) is
-// READ-ONLY: it derives a cell and can write a drift REPORT, but nothing
-// writes the derived value back into a stream README's Status column — a
+// `reconcile --backfill [--report]` without --apply (reconcile.go,
+// reconcilebackfill.go) derives a cell and writes a drift report only with
+// --report. It writes no stream README: nothing writes the derived value
+// back into a stream README's Status column — a
 // confirmed wiring gap (a downstream regen workflow expected --backfill to
 // flip stale board rows and it never does). --apply closes exactly that gap,
 // under conditions narrow enough to stay safe unattended:
