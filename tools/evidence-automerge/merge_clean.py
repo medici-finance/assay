@@ -32,7 +32,7 @@ def marker_values(body, pattern, skip_fenced=False):
     # Same delimiter/emphasis rules as deskkit/verdictmarker.go; the Go
     # regression exercises this adapter against the canonical readers.
     values, fenced = [], False
-    for line in body.splitlines():
+    for line in body.split("\n"):
         if re.match(r"^[ \t]*(```|~~~)", line):
             fenced = not fenced
             continue
@@ -59,18 +59,20 @@ def marker_values(body, pattern, skip_fenced=False):
 
 
 def declaration_clear(body, labels):
+    # Fences affect section headings only. Keep the raw section contents:
+    # the canonical declaration parser reads every numbered item in it.
     section, fenced = None, False
-    for line in body.splitlines():
-        if re.match(r"^[ \t]*(```|~~~)", line):
+    for line in body.split("\n"):
+        delimiter = bool(re.match(r"^[ \t]*(```|~~~)", line))
+        if delimiter:
             fenced = not fenced
-            continue
-        if fenced:
-            continue
-        if section is None and line.strip() == "## Desk-decided":
-            section = []
-        elif section is not None:
-            if re.match(r"^#{1,6}[ \t]", line):
+        if not delimiter and not fenced:
+            if section is None and line.strip() == "## Desk-decided":
+                section = []
+                continue
+            if section is not None and re.match(r"^#{1,6}[ \t]", line):
                 break
+        if section is not None:
             section.append(line)
     labelled = any(label.lower() == "desk-decided" for label in labels)
     if labelled != (section is not None):
@@ -125,8 +127,12 @@ def reviewed(reviews, head, body="", labels=()):
         sec_fail = bool(marker_values(text, r"Security-Review:[ \t]*fail"))
         cor_grant = marker_values(text, r"Verdict:[ \t]*(approve|request-changes)", True)
         cor_block = bool(marker_values(text, r"Verdict:[ \t]*request-changes"))
-        sec_lane = sec_pass or sec_fail
-        mixed = sec_lane and bool(cor_grant)
+        # Artifact kinds read both fence directions. A quoted grant is not
+        # authority, and a fenced other-lane verdict cannot hide a block or
+        # make a dual-kind artifact count as either required grant.
+        sec_lane = bool(marker_values(text, r"Security-Review:[ \t]*(pass|fail)"))
+        cor_kind = marker_values(text, r"Verdict:[ \t]*(approve|request-changes)")
+        mixed = sec_lane and bool(cor_kind)
         lane = "security" if sec_lane else "correctness"
         if current:
             if marker_values(text, r"Undeclared-desk-decision:[ \t]*(.+)"):

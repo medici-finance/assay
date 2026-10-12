@@ -464,6 +464,30 @@ class CleanMergeTests(unittest.TestCase):
             with self.subTest(reviews=reviews):
                 self.assertFalse(self.impl.reviewed(reviews, self.head))
 
+    def test_completion_preserves_canonical_line_boundaries(self):
+        for separator in ("\v", "\f", "\r", "\x85", "\u2028", "\u2029"):
+            with self.subTest(separator=repr(separator)):
+                self.calls = []
+                self.reviews = [[self.review("ordinary prefix" + separator + "Security-Review: pass", "COMMENTED"),
+                                 self.review("Verdict: approve", "APPROVED")]]
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+
+    def test_completion_withholds_mixed_fenced_verdict_artifacts(self):
+        for body in ("Security-Review: pass\n```text\nVerdict: request-changes\n```",
+                     "Security-Review: pass\n```text\nVerdict: approve\n```",
+                     "Verdict: approve\n```text\nSecurity-Review: pass\n```"):
+            with self.subTest(body=body):
+                self.calls = []
+                self.reviews = [[self.review("Security-Review: pass", "COMMENTED"), self.review("Verdict: approve", "APPROVED"), self.review(body, "APPROVED", "2026-10-12T01:00:00Z")]]
+                # A mixed artifact cannot contribute grants; an embedded block
+                # still withholds completion even after another lane approves.
+                if "request-changes" not in body:
+                    self.reviews = [[self.review(body, "APPROVED"),
+                                     self.review("Security-Review: pass" if body.startswith("Verdict:") else "Verdict: approve", "APPROVED")]]
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+
     def test_completion_holds_uncertain_attempts(self):
         base = self.view["statusCheckRollup"][1]
         for changes in ({"checkSuiteCreatedAt": ""}, {"checkSuiteCreatedAt": base["checkSuiteCreatedAt"]},

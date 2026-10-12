@@ -59,9 +59,16 @@ func TestEvidenceCompletionCanonicalReaders(t *testing.T) {
 			cases = append(cases, map[string]any{"body": form, "pass": deskkit.HasSecurityReviewPass(form), "fail": deskkit.HasSecurityReviewFail(form), "correctness": deskkit.CorrectnessNoteState(form), "hold": len(deskkit.UndeclaredDeskDecisionLines(form)) > 0})
 		}
 	}
+	// Non-newline separators remain content in the canonical readers.
+	for _, separator := range []string{"\v", "\f", "\r", "\u0085", "\u2028", "\u2029"} {
+		for _, body := range bodies {
+			form := "ordinary prefix" + separator + body
+			cases = append(cases, map[string]any{"body": form, "pass": deskkit.HasSecurityReviewPass(form), "fail": deskkit.HasSecurityReviewFail(form), "correctness": deskkit.CorrectnessNoteState(form), "hold": len(deskkit.UndeclaredDeskDecisionLines(form)) > 0})
+		}
+	}
 	block := deskkit.RenderDecidedBlock([]deskkit.DecidedItem{{Decision: "chosen", Alternative: "other", Cost: "small"}})
 	var declarations []map[string]any
-	for _, body := range []string{"", block, strings.ReplaceAll(block, "   cost: small", ""), "## Desk-decided\nmissing marker", "```text\n" + block + "\n```"} {
+	for _, body := range []string{"", block, strings.ReplaceAll(block, "   cost: small", ""), "## Desk-decided\nmissing marker", "```text\n" + block + "\n```", block + "```text\n2. decision: missing fields\n```\n", "## Desk-decided\n```text\n<!-- desk-r3-decision v1 -->\n1. decision: chosen\n alternative: other\n cost: small\n```\n"} {
 		for _, labels := range [][]string{nil, {"desk-decided"}} {
 			declarations = append(declarations, map[string]any{"body": body, "labels": labels, "clear": deskkit.DeskDecidedRefusal(1, labels, body, nil, "assay-reviewer-app[bot]", "head") == ""})
 		}
