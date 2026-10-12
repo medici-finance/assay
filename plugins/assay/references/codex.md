@@ -41,6 +41,9 @@ On **codex-cli 0.162.1**, native Goals can continue an active objective after an
 ordinary final response. An isolated native app-server qualification on 2026-10-12
 observed Goal creation/readback, an automatic next turn, and human steering that
 paused the Goal. This is engine evidence, not qualification of a deployed cockpit.
+The [retained primary transcripts](../../../docs/qualification/codex-goals/2026-10-12/README.md)
+include the generated bootstrap, native tool arguments/readbacks, continuation,
+steering, admission controls, cleanup and explicit logging limits.
 
 `cellctl` requests the standing objective before invoking a Codex desk: `get_goal`,
 `create_goal` only if absent with no token budget, then `get_goal` readback. A

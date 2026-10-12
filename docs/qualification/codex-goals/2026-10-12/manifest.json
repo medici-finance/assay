@@ -1,0 +1,124 @@
+{
+  "formatVersion": 1,
+  "sources": [
+    {
+      "originalBasename": "bootstrap-probe.log",
+      "originalSha256": "a33602edfb3ba5897d783d269ae00eec01a9121b8d5f41bb6275859a92744d9d",
+      "artifact": "original-bootstrap.jsonl",
+      "artifactSha256": "33723975591dd51f2b8719c735df319d19a0ae7eec6423ab2dc802ddefd7bdba",
+      "sourceLines": 278,
+      "omittedLines": {
+        "runtime stderr diagnostic": 1,
+        "notification remoteControl/status/changed (complete relevant payloads retained)": 1,
+        "notification account/updated (complete relevant payloads retained)": 1,
+        "notification mcpServer/startupStatus/updated (complete relevant payloads retained)": 3,
+        "notification skills/changed (complete relevant payloads retained)": 1,
+        "notification item/agentMessage/delta (complete relevant payloads retained)": 194,
+        "notification thread/tokenUsage/updated (complete relevant payloads retained)": 9,
+        "notification account/rateLimits/updated (complete relevant payloads retained)": 9
+      }
+    },
+    {
+      "originalBasename": "native-probe.log",
+      "originalSha256": "16e9f4fc837115ae221a77a7f58cf4ef360e36769541f5994668730a9d2a7d4c",
+      "artifact": "engine-control.jsonl",
+      "artifactSha256": "ce245adbdfcf0d9967462fef9aaeaac7c7e707044faa7a64f82d6eb1bcacf357",
+      "sourceLines": 219,
+      "omittedLines": {
+        "runtime stderr diagnostic": 1,
+        "notification remoteControl/status/changed (complete relevant payloads retained)": 1,
+        "notification account/updated (complete relevant payloads retained)": 1,
+        "notification mcpServer/startupStatus/updated (complete relevant payloads retained)": 3,
+        "notification item/agentMessage/delta (complete relevant payloads retained)": 131,
+        "notification thread/tokenUsage/updated (complete relevant payloads retained)": 10,
+        "notification account/rateLimits/updated (complete relevant payloads retained)": 10
+      }
+    },
+    {
+      "originalBasename": "native-disabled-final.log",
+      "originalSha256": "54197ba044c3f6983c19dcdb383a7a62aaae0ebc92e50af035e9df3b72485f5a",
+      "artifact": "goals-disabled.jsonl",
+      "artifactSha256": "2f27ac3c4c416a41d6a5147cb1677695c78d4578f487f837dc39f2456baa3554",
+      "sourceLines": 116,
+      "omittedLines": {
+        "runtime stderr diagnostic": 1,
+        "notification remoteControl/status/changed (complete relevant payloads retained)": 1,
+        "notification account/updated (complete relevant payloads retained)": 1,
+        "notification mcpServer/startupStatus/updated (complete relevant payloads retained)": 2,
+        "notification item/agentMessage/delta (complete relevant payloads retained)": 74,
+        "notification thread/tokenUsage/updated (complete relevant payloads retained)": 3,
+        "notification account/rateLimits/updated (complete relevant payloads retained)": 3
+      }
+    },
+    {
+      "originalBasename": "native-paused.log",
+      "originalSha256": "7b16a30f63a07040c09cfd4161590129f95de9e1bef0269749cc7f9a2fd40c5a",
+      "artifact": "existing-paused.jsonl",
+      "artifactSha256": "8ffba42bd55bafb5133932726948d3385c33d6cc5a6b101ed91f8070fcf012a3",
+      "sourceLines": 145,
+      "omittedLines": {
+        "runtime stderr diagnostic": 1,
+        "notification remoteControl/status/changed (complete relevant payloads retained)": 1,
+        "notification account/updated (complete relevant payloads retained)": 1,
+        "notification mcpServer/startupStatus/updated (complete relevant payloads retained)": 3,
+        "notification item/agentMessage/delta (complete relevant payloads retained)": 102,
+        "notification thread/tokenUsage/updated (complete relevant payloads retained)": 2,
+        "notification account/rateLimits/updated (complete relevant payloads retained)": 2
+      }
+    },
+    {
+      "originalBasename": "close-gap-probe.log",
+      "originalSha256": "c0a3cb0a448a6c0fdcd60472ebadb56daa2bd612244df343439483795d8cfb1f",
+      "artifact": "bootstrap-tools-rpc.jsonl",
+      "artifactSha256": "9fcd62493caf54653e24dbaf80ef0f07b6a58f3fa8650c4fbf151566ac0cc11e",
+      "sourceLines": 261,
+      "omittedLines": {
+        "runtime stderr diagnostic": 2,
+        "notification remoteControl/status/changed (complete relevant payloads retained)": 1,
+        "notification account/updated (complete relevant payloads retained)": 1,
+        "notification mcpServer/startupStatus/updated (complete relevant payloads retained)": 2,
+        "notification item/agentMessage/delta (complete relevant payloads retained)": 178,
+        "notification thread/tokenUsage/updated (complete relevant payloads retained)": 7,
+        "notification account/rateLimits/updated (complete relevant payloads retained)": 7
+      }
+    },
+    {
+      "originalBasename": "close-gap-rollout-0.jsonl",
+      "originalSha256": "0d74964e4683a0542d548d05412f76e223ce032751940e3cb1b9c8c9c453cb26",
+      "artifact": "bootstrap-tools-native.jsonl",
+      "artifactSha256": "ef06aa4e0195daa79985951870deac3c5f3e930944a6f7e15b72f7aef4693f90",
+      "sourceLines": 57,
+      "omittedLines": {
+        "rollout session_meta/metadata (outside tool/turn extract)": 1,
+        "rollout response_item/message (outside tool/turn extract)": 13,
+        "rollout world_state/metadata (outside tool/turn extract)": 1,
+        "rollout turn_context/metadata (outside tool/turn extract)": 2,
+        "rollout event_msg/item_completed (outside tool/turn extract)": 10,
+        "rollout token_usage_record/metadata (outside tool/turn extract)": 7,
+        "rollout event_msg/token_count (outside tool/turn extract)": 7,
+        "rollout event_msg/thread_settings_applied (outside tool/turn extract)": 1,
+        "rollout event_msg/thread_goal_updated (outside tool/turn extract)": 1
+      }
+    }
+  ],
+  "bootstrapSha256": "4fc5ec0854e693f024d9fcbbf0f084aff57c12bc8833718234e2de03386239be",
+  "opaqueAliasCount": 74,
+  "drivers": [
+    {
+      "artifact": "original-bootstrap-driver.py.txt",
+      "sha256": "a04de608fd66bb0049eb2214554685396324cdeda50b1f5418ec5cd067c47670"
+    },
+    {
+      "artifact": "engine-control-driver.py.txt",
+      "sha256": "ef4da35c4f6ac5291ec38f7d33fb7227d2a79db163c05aa0f66800878769322e"
+    },
+    {
+      "artifact": "admission-driver.py.txt",
+      "sha256": "bcf28cc495a6ed8b3d593353b55790a5384ddc83c7d5b1dcee66a2ded1fc958f"
+    },
+    {
+      "artifact": "bootstrap-tools-driver.py.txt",
+      "sha256": "18cfe7d808e29c1e053f8a3d584eb4423ff4d6eadc6ad254d8543f792c3ff909"
+    }
+  ]
+}
