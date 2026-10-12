@@ -1,2 +1,2 @@
 ### Fixed
-- Generated board-reconcile pull requests include a changelog fragment, keeping routine reconciliation compatible with the required changelog check.
+- The changelog gate recognizes trusted board reconciliation limited to generated Status-cell updates, without requiring release notes for routine state recording.

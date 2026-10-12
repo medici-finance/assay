@@ -9,7 +9,7 @@
 # was a standing merge-conflict generator, and CHANGELOG.md is written only by
 # the release workflow (which aggregates the fragments).
 #
-# THREE OUTCOMES, decided cheaply from the diff (no semantic classifier):
+# THREE OUTCOMES, decided from the diff and trusted PR metadata:
 #   REFUSE  — the PR adds a bullet under `## Unreleased` in CHANGELOG.md
 #             (deprecation guard; absolute — checked first, a skip label does
 #             not excuse it).
@@ -49,6 +49,10 @@
 #               would pass — is treated as UNSET, so the script half may merge
 #               before the workflow half that supplies it and every existing
 #               outcome stays byte-identical until it does.
+#   GITHUB_EVENT_NAME / GITHUB_EVENT_PATH / GITHUB_REPOSITORY
+#               Runner-provided PR metadata, consumed by reconcile.py for the
+#               narrow board-reconciliation exception. Absent or unreadable
+#               metadata leaves the ordinary requirement in force.
 #   CHANGELOG_AGG  path to aggregate.py (default: alongside this script)
 #
 # THE PROXY PATH (fork PRs). A fragment must be added by the PR itself — except
@@ -114,6 +118,14 @@ if [ -n "$added" ]; then
   echo "Refused — added under '## Unreleased':"
   printf '%s\n' "$added"
   exit 1
+fi
+
+# Board reconciliation records existing delivery state, not a release highlight.
+# Runtime event metadata and the complete immutable Git diff must both qualify.
+# This is separate from the workflow's existing Evidence classification and the
+# maintainer label; an unreadable event/diff simply leaves the gate in force.
+if python3 "$here/reconcile.py"; then
+  exit 0
 fi
 
 # 2) SKIP label — the escape hatch for a genuinely non-notable PR. Always printed
