@@ -421,7 +421,8 @@ computable from prose). On PASS write the same row's shape with `"outcome":"veri
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
 landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
 refresh only the brief in the verifier home from the target branch
-(`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`);
+(`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
+Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA;
 never check out, pull or merge in the home, because moving its detached HEAD refuses
 admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
 row's lifecycle cells, which the row-scoped landing already put on the target branch. Admission
@@ -435,7 +436,7 @@ recording is unchanged. Records are immutable — a correction is a NEW record (
 edit of one already landed.
 
 ```
-{"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<merged-head-sha>"}
+{"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<full-evidence-commit-sha>"}
 ```
 
 **A failed/blocked verify also creates a durable REPAIR OBLIGATION** (`repair-obligation-v1`;
