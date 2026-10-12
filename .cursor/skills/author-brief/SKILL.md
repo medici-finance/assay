@@ -265,7 +265,7 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    title, `needs-decision` label, composed body, and a hidden `<!-- needs-decision: <stream>/<NN> -->`
    marker that dedupes, so a brief that ever had one never gets a second — and the
    `<decision-issue filer>` your repo's instructions file names is what actually files it. (Same shape
-   as `human:<name>`: a capability the adopting repo binds, because filing is tracker-specific.)
+   as `human:<name>`: a capability the adopting repo binds, because filing depends on the tracker.)
    Record the resulting number back in the brief's `decision-issue:` frontmatter field; `statusgen
    --lint` NOTICEs a gate:human brief in flight without one. WHEN it files is a per-brief judgement
    you record as `decision-trigger:` (see the template): ask *"could the reader pick an option from
