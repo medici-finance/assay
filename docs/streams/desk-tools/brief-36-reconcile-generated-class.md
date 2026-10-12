@@ -38,7 +38,7 @@ exec-tier-why: >-
   deskautolane itself reads it, not by prose.
 consumers:
   - "the auto-approve lane's membership config (wherever deskautolane reads opted-in areas — the worker locates it and cites the exact file here at implementation): fixed-here (the board-reconcile PR class: match on title `chore(board): reconcile` + author app/assay-board-writer, scoped to nothing broader)"
-  - "docs/streams/issue-flow/rulings.md: fixed-here (the R-8 sign-off/enactment line for this area, citing #2688)"
+  - "docs/streams/issue-flow/rulings.md (planned, NEW — the register does not exist on main today; the implementation CREATES it under either mechanism, because the ruled record needs a repo home either way): fixed-here (the R-8 enactment line for this area, citing #2688 in its ratified form; under mechanism A the Sign-off line completes per the lane's own discipline, under B it records the conversion and ships EMPTY — inert)"
   - "the reconcile workflow / ruleset: fixed-here ONLY if mechanism B (direct-CI) is chosen — a human runsheet carries any .github/workflows/ or ruleset change (the worker App lacks the workflows scope); under mechanism A no workflow file changes"
   - "docs/runsheets/reconcile-lane-hunk.md (planned): fixed-here under mechanism B (the exact workflow/ruleset diff + one-line apply command)"
 version: 1
@@ -109,8 +109,8 @@ passes today and must still pass. Run from the repo root.
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | prints `ok`: the R-8 enactment line cites the ruling. FAILS today: #2688 is referenced nowhere in rulings.md. |
-| 2 | check | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | prints `ok` (mechanism A only): the lane config carries the narrow title match. FAILS today: no membership entry exists. If mechanism B was chosen, this row is not applicable — say so in Evidence with the B reason. |
+| 1 | check | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | prints `ok`: the register the implementation CREATES carries the R-8 enactment line citing the ruling. FAILS today: the register does not exist (grep exits 2 on the missing file — the fail-state is the absent artifact, stated as such). |
+| 2 | check | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | prints `ok` (mechanism A only; under B record not-applicable with the reason): the lane config carries the title match — AND the PR body demonstrates the REAL admission predicate against the installed deskautolane: the exact-title + exact-author case ADMITS, and the two negatives (same title, different author; near-miss title, correct author) each REFUSE, quoting the verb's own output. A bare title grep passes on an unused or mis-authored entry and proves nothing — round 1 demonstrated exactly that false pass. |
 | 3 | check +flow | READ FROM THE FORGE after the first scheduled reconcile tick following this brief's merge: the reconcile PR either does not exist (B: direct-CI landing on main) or exists merged by the reviewer App via deskautolane (A) with no dispatched reviewer verdict and no authorization-needed label. | The ruling's caught-by: the class stops consuming a reviewer slot and a human gate. Could-not-check at authoring: no post-landing tick has run. |
 | 4 | check +neighbour | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt36-sg" . && "${TMPDIR:-/tmp}/dt36-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && echo ok` | prints `ok`: the tree lints clean. Passes today and must still pass. |
 
