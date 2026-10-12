@@ -77,7 +77,7 @@ func TestResetRetainsCredentialsBeforeCleanup(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = c.preflightReset(plan); err == nil {
+			if _, err = c.preflightReset(plan); err == nil || !strings.Contains(err.Error(), "retained") {
 				t.Fatal("preflight accepted a retained credential/configuration in disposable storage")
 			}
 			if b, err := os.ReadFile(credential); err != nil || string(b) != "nonsecret fixture\n" {
@@ -278,6 +278,37 @@ func TestResetPreservesSharedFetchLock(t *testing.T) {
 			}
 			if b, err := os.ReadFile(sentinel); err != nil || string(b) != "peer" {
 				t.Fatal("shared fetch lock changed", err)
+			}
+		})
+	}
+}
+
+func TestResetMarkerDoesNotOverwriteCredential(t *testing.T) {
+	for _, name := range []string{".reset-in-progress", ".reset-owner.lock", ".reset.lock"} {
+		t.Run(name, func(t *testing.T) {
+			c, cfg, manifest := commsFixture(t)
+			if err := os.MkdirAll(c.Dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			root := resetFixtureRepo(t, t.TempDir(), "repo")
+			c.Repo = root
+			c.Env.Put("CELL_ROOTS", "example/repo="+root)
+			key := filepath.Join(c.Dir, name)
+			if err := os.WriteFile(key, []byte("nonsecret signing fixture\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg.SigningKeys["worker-desk"] = key
+			writeCommsFixture(t, manifest, cfg)
+			plan, err := c.planReset(false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = c.resetCell(plan)
+			if err == nil || !strings.Contains(err.Error(), "retained") {
+				t.Error("reset accepted credential at maintenance control", err)
+			}
+			if b, err := os.ReadFile(key); err != nil || string(b) != "nonsecret signing fixture\n" {
+				t.Fatal("reset overwrote or removed credential before preflight", err)
 			}
 		})
 	}

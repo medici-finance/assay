@@ -39,7 +39,9 @@ Preflight inventories the selected signing keys, trust store, manifests, provide
 configuration and login stores, including the actual source of the native reader's
 auth link. It rejects overlap with every cleanup root or file: disposable cache
 directories, removed worktrees, hard-reset repositories, discarded queue storage
-and service-state files. Credentials in those locations must be moved before reset.
+and service-state files. It also rejects credentials at reset's own marker/lock
+paths, before creating any maintenance controls. Credentials in those locations
+must be moved before reset.
 
 Unix cache/reset support initially covers macOS and Linux. Unsupported platforms
 refuse before mutation. Existing owner, no-link and single-filesystem cache checks

@@ -161,6 +161,12 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		return fmt.Errorf("reset currently requires macOS or Linux")
 	}
+	stage = "preflight"
+	cfg, err := c.preflightReset(plan)
+	if err != nil {
+		return err
+	}
+	stage = "ownership"
 	lock, err := acquireCellLock(c, ".reset-owner.lock")
 	if err != nil {
 		return fmt.Errorf("reset ownership: %w", err)
@@ -182,11 +188,6 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 			err = os.Remove(marker)
 		}
 	}()
-	stage = "preflight"
-	cfg, err := c.preflightReset(plan)
-	if err != nil {
-		return err
-	}
 	// All fetches must succeed before any repository is destructively changed.
 	if plan.Hard {
 		stage = "prefetch"
@@ -459,6 +460,7 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 		}
 	}
 	discard := []string{filepath.Join(policy.Root, "build"), filepath.Join(policy.Root, "mod"), plan.WorktreeDirectory,
+		filepath.Join(c.Dir, ".reset-in-progress"), filepath.Join(c.Dir, ".reset-owner.lock"), filepath.Join(c.Dir, ".reset.lock"),
 		filepath.Join(c.Dir, "run", "lock.d"), filepath.Join(c.commsLaunchDir(), "surface.json"), filepath.Join(c.herdrDir(), "workspace.json")}
 	for _, wt := range plan.Worktrees {
 		discard = append(discard, wt.Path)
@@ -487,7 +489,7 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 		}
 		for _, path := range retained {
 			if pathInside(path, root) || pathInside(path, resolved) {
-				return nil, fmt.Errorf("reset would discard retained configuration or credentials in %s", root)
+				return nil, fmt.Errorf("reset cleanup/control path overlaps retained configuration or credentials: %s", root)
 			}
 		}
 	}
