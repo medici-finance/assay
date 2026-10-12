@@ -1,0 +1,1 @@
+- Work in progress for #2701: synchronize generated Cursor bundles and verified version upgrades, provide one complete local build entry point, and keep generated artifacts stable across platforms.
