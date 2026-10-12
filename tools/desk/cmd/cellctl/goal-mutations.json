@@ -48,6 +48,12 @@
       "file": "cmd/cellctl/codex_environment.go",
       "old": "preserve its objective, status, budget, and usage",
       "new": "replace its objective and budget"
+    },
+    {
+      "name": "plant a second implicit default at the up caller",
+      "file": "cmd/cellctl/up.go",
+      "old": "o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)",
+      "new": "o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)\n\t\tif harness == \"codex\" && cadence == \"\" { o.roleCadence[role] = resolveCadence(c.Kind, \"5m\", budget) }"
     }
   ]
 }
