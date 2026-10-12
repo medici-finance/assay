@@ -905,7 +905,8 @@ func commsCmd() *cobra.Command {
 		Use:   "comms <cell> init|check|run|recover",
 		Short: "initialize, check, run or recover a cell's interim comms service",
 		Long: "Initialize: cellctl comms <cell> init [--model <pin>] [--repo owner/repo]. Creates private keys and a contained\n" +
-			"Codex reader using an existing auth.json login. Configuration and signing keys survive both reset modes.\n\n" +
+			"Codex reader using an existing auth.json login. Both reset modes preserve configuration, keys and login stores;\n" +
+			"retained paths overlapping cleanup storage refuse preflight.\n\n" +
 			"Set the manifest: cellctl set <cell> CELL_COMMS_CONFIG=<absolute-path>. `up` opens one configured interim\n" +
 			"service window; `down` stops it. `recover` needs --confirm-stopped. See docs/cellctl-comms.md.",
 		Annotations: map[string]string{leadingArgsKey: "2"},

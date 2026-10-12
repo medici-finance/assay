@@ -120,6 +120,15 @@ func resetGit(root string, args ...string) error {
 	return nil
 }
 
+func resetFetchMain(repo resetRepo) error {
+	lock := filepath.Join(repo.Common, "cellctl-fetch.lock")
+	if err := os.Mkdir(lock, 0700); err != nil {
+		return fmt.Errorf("reset cannot acquire shared repository fetch lock: %w", err)
+	}
+	defer os.Remove(lock) // Only the directory this invocation created.
+	return resetGit(repo.Root, "fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main")
+}
+
 func acquireCellLock(c *Cell, name string) (*os.File, error) {
 	path := filepath.Join(c.Dir, name)
 	if _, err := os.Lstat(path); err == nil {
@@ -143,6 +152,12 @@ func acquireCellLock(c *Cell, name string) (*os.File, error) {
 // Reset stages quiescence before data removal. Its marker blocks new cellctl
 // launches; held custody locks stay on their original inodes until released.
 func (c *Cell) resetCell(plan resetPlan) (err error) {
+	stage, quiescence := "ownership", "not established"
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("stage=%s; quiescence=%s: %w", stage, quiescence, err)
+		}
+	}()
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		return fmt.Errorf("reset currently requires macOS or Linux")
 	}
@@ -167,14 +182,16 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 			err = os.Remove(marker)
 		}
 	}()
+	stage = "preflight"
 	cfg, err := c.preflightReset(plan)
 	if err != nil {
 		return err
 	}
 	// All fetches must succeed before any repository is destructively changed.
 	if plan.Hard {
+		stage = "prefetch"
 		for _, repo := range plan.Repositories {
-			if err = resetGit(repo.Root, "fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"); err != nil {
+			if err = resetFetchMain(repo); err != nil {
 				return fmt.Errorf("hard reset prefetch: %w", err)
 			}
 		}
@@ -183,6 +200,7 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 	if err != nil {
 		return err
 	}
+	stage = "stop"
 	if err = c.requestResetStop(); err != nil {
 		return err
 	}
@@ -199,6 +217,7 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 	if err = cellstop.Stop(context.Background(), scope); err != nil {
 		return fmt.Errorf("reset stop: %w", err)
 	}
+	stage = "admission"
 	admission, e := waitResetAdmission(c)
 	if e != nil {
 		return e
@@ -206,6 +225,7 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 	defer func() { deskkit.UnlockFile(admission); admission.Close() }()
 	// The recorded comms/cockpit owner knows how to close its own surface. A
 	// free lease makes stale checkpoint recovery safe after the process sweep.
+	stage = "cockpit"
 	if surface, e := c.readResetCommsSurface(); e != nil {
 		return e
 	} else if surface != nil {
@@ -225,6 +245,7 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 			l.Close()
 		}
 	}()
+	stage = "service leases"
 	for _, role := range append(append([]string{}, knownRoles...), "comms") {
 		dir := filepath.Join(c.Dir, "run", "cadence", role)
 		if role == "comms" {
@@ -249,6 +270,8 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 			}
 		}
 	}
+	quiescence = "established"
+	stage = "cache"
 	if _, e := os.Stat(policy.Root); e == nil {
 		if e = cellcache.Recover(*policy, true); e != nil {
 			return e
@@ -259,6 +282,7 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 	} else if !os.IsNotExist(e) {
 		return e
 	}
+	stage = "repositories and worktrees"
 	for _, repo := range plan.Repositories {
 		for _, wt := range repo.Worktrees[1:] {
 			if plan.Hard || pathInside(wt.Path, filepath.Join(c.Dir, "worktrees")) {
@@ -267,17 +291,14 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 				}
 			}
 		}
-		if e := os.RemoveAll(filepath.Join(repo.Common, "cellctl-fetch.lock")); e != nil {
-			return e
-		}
 		if plan.Hard {
-			if e := resetGit(repo.Root, "checkout", "--force", "-B", "main", "origin/main"); e != nil {
+			if e := resetGit(repo.Root, "checkout", "--force", "-B", "main", "refs/remotes/origin/main"); e != nil {
 				return e
 			}
 			if e := resetGit(repo.Root, "clean", "-ffdx"); e != nil {
 				return e
 			}
-			branches, e := gitOut(repo.Root, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+			branches, e := gitOut(repo.Root, "for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads/")
 			if e != nil {
 				return e
 			}
@@ -305,14 +326,10 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 	} else if !os.IsNotExist(e) {
 		return e
 	}
+	stage = "comms"
 	if plan.Hard {
 		var e error
 		if cfg != nil {
-			for _, key := range append([]string{cfg.TrustStore, c.Env.Get("CELL_COMMS_CONFIG")}, mapValues(cfg.SigningKeys)...) {
-				if pathInside(key, cfg.QueueDir) {
-					return fmt.Errorf("queue directory contains retained configuration or credentials")
-				}
-			}
 			if _, e = os.Stat(cfg.QueueDir); e == nil {
 				if e = privateCommsDir(cfg.QueueDir); e != nil {
 					return e
@@ -377,7 +394,7 @@ func cmdReset(cell string, hard bool) {
 		return
 	}
 	if err = c.resetCell(plan); err != nil {
-		die("reset: %v; cell remains stopped; rerun reset after resolving the error", err)
+		die("reset: %v; resolve the error and rerun reset; inspect cell status before restarting", err)
 	}
 	fmt.Printf("[reset] %s complete (hard=%t); configuration and keys preserved\n", cell, hard)
 }
@@ -399,13 +416,21 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 	} else if !os.IsNotExist(e) {
 		return nil, e
 	}
-	retained := []string{c.Dir, policy.Root}
+	for _, repo := range plan.Repositories {
+		if _, err := os.Lstat(filepath.Join(repo.Common, "cellctl-fetch.lock")); err == nil {
+			return nil, fmt.Errorf("reset refuses an existing shared repository fetch lock; wait for its owner or reconcile it separately")
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	retained, err := c.resetRetainedPaths(cfg, policy.Root)
+	if err != nil {
+		return nil, err
+	}
 	if cfg != nil {
-		retained = append(retained, c.Env.Get("CELL_COMMS_CONFIG"), cfg.TrustStore)
 		if !plan.Hard {
 			retained = append(retained, cfg.QueueDir)
 		}
-		retained = append(retained, mapValues(cfg.SigningKeys)...)
 		if _, err = os.Lstat(cfg.QueueDir); err == nil {
 			if err = privateCommsDir(cfg.QueueDir); err != nil {
 				return nil, err
@@ -420,21 +445,9 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 		} else if !os.IsNotExist(e) {
 			return nil, e
 		}
-		if plan.Hard {
-			for _, path := range retained {
-				if pathInside(path, cfg.QueueDir) {
-					return nil, fmt.Errorf("queue contains retained cell configuration or credentials")
-				}
-			}
-		}
 	}
 	if plan.Hard {
 		for _, repo := range plan.Repositories {
-			for _, path := range retained {
-				if pathInside(path, repo.Root) {
-					return nil, fmt.Errorf("hard reset would discard retained configuration in %s", repo.Root)
-				}
-			}
 			for _, other := range plan.Repositories {
 				if repo.Root != other.Root && pathInside(other.Root, repo.Root) {
 					return nil, fmt.Errorf("hard reset requires non-nested repository roots")
@@ -445,19 +458,141 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 			}
 		}
 	}
-	for _, path := range retained {
-		if pathInside(path, plan.WorktreeDirectory) {
-			return nil, fmt.Errorf("cell worktree root contains retained configuration")
+	discard := []string{filepath.Join(policy.Root, "build"), filepath.Join(policy.Root, "mod"), plan.WorktreeDirectory,
+		filepath.Join(c.Dir, "run", "lock.d"), filepath.Join(c.commsLaunchDir(), "surface.json"), filepath.Join(c.herdrDir(), "workspace.json")}
+	for _, wt := range plan.Worktrees {
+		discard = append(discard, wt.Path)
+	}
+	for _, repo := range plan.Repositories {
+		if plan.Hard {
+			discard = append(discard, repo.Root)
 		}
 	}
-	for _, wt := range plan.Worktrees {
+	if plan.Hard && cfg != nil {
+		discard = append(discard, cfg.QueueDir)
+	}
+	for _, role := range append(append([]string{}, knownRoles...), "comms") {
+		dir := c.cadenceDir(role)
+		if role == "comms" {
+			dir = c.commsDir()
+		}
+		for _, name := range []string{"checkpoint.json", "STOP", "owner-mode"} {
+			discard = append(discard, filepath.Join(dir, name))
+		}
+	}
+	for _, root := range discard {
+		resolved, err := resetResolvedPath(root)
+		if err != nil {
+			return nil, err
+		}
 		for _, path := range retained {
-			if pathInside(path, wt.Path) {
-				return nil, fmt.Errorf("worktree removal would discard retained cell configuration")
+			if pathInside(path, root) || pathInside(path, resolved) {
+				return nil, fmt.Errorf("reset would discard retained configuration or credentials in %s", root)
 			}
 		}
 	}
 	return cfg, nil
+}
+
+// Keep both the link entry and its actual source. Missing optional configuration
+// is resolved through its nearest existing ancestor; unusable links fail closed.
+func resetResolvedPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	var tail []string
+	for {
+		if _, err := os.Lstat(abs); err == nil {
+			resolved, err := filepath.EvalSymlinks(abs)
+			if err != nil {
+				return "", fmt.Errorf("reset resolve retained/storage path: %w", err)
+			}
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved, nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		tail = append(tail, filepath.Base(abs))
+		parent := filepath.Dir(abs)
+		if parent == abs {
+			return "", fmt.Errorf("reset cannot resolve storage path")
+		}
+		abs = parent
+	}
+}
+
+func (c *Cell) resetRetainedPaths(cfg *deskCommsConfig, cacheRoot string) ([]string, error) {
+	paths := []string{c.Dir, cacheRoot, c.Home, c.Config, c.DefaultsPath, c.CellsCfg, filepath.Join(c.Dir, "cell.env"), c.Env.Get("CELL_COMMS_CONFIG")}
+	if c.Home != "" {
+		paths = append(paths, filepath.Join(c.Home, ".codex", "auth.json"))
+	}
+	for _, resolve := range []func(string, *Env) (string, error){codexHomeFor, claudeConfigDirFor, configHomeFor, ghConfigDirFor} {
+		path, err := resolve(runtime.GOOS, c.Env)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	codexHome, err := codexHomeFor(runtime.GOOS, c.Env)
+	if err != nil {
+		return nil, err
+	}
+	paths = append(paths, filepath.Join(codexHome, "auth.json"))
+	for _, source := range []struct{ key, fallback, root string }{
+		{"CELL_MODEL_POLICY", "", c.Dir},
+		{"CELL_PROVIDER_DEFAULTS", "providers.json", cellsRoot(c.Env)},
+		{"CELL_PROVIDER_OVERRIDES", "providers.json", c.Dir},
+	} {
+		if source.fallback == "" && c.Env.Get(source.key) == "" {
+			continue
+		}
+		path, _ := configuredPath(c.Env, source.key, source.fallback, source.root)
+		paths = append(paths, path)
+	}
+	if cfg != nil {
+		paths = append(paths, cfg.TrustStore, cfg.ClaudeConfigDir)
+		paths = append(paths, mapValues(cfg.SigningKeys)...)
+		var reader struct {
+			Cmd []string `json:"cmd"`
+		}
+		if err := json.Unmarshal(cfg.Decider, &reader); err != nil {
+			return nil, err
+		}
+		if len(reader.Cmd) > 1 && reader.Cmd[1] == "comms-reader" {
+			for i := 2; i < len(reader.Cmd); i++ {
+				home := ""
+				if reader.Cmd[i] == "--home" && i+1 < len(reader.Cmd) {
+					i++
+					home = reader.Cmd[i]
+				}
+				if strings.HasPrefix(reader.Cmd[i], "--home=") {
+					home = strings.TrimPrefix(reader.Cmd[i], "--home=")
+				}
+				if home != "" {
+					paths = append(paths, home, filepath.Join(home, "auth.json"))
+				}
+			}
+		}
+	}
+	var retained []string
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return nil, err
+		}
+		resolved, err := resetResolvedPath(abs)
+		if err != nil {
+			return nil, err
+		}
+		retained = append(retained, abs, resolved)
+	}
+	return retained, nil
 }
 
 func (c *Cell) readResetCommsSurface() (*commsSurface, error) {

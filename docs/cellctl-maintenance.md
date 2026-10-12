@@ -27,13 +27,27 @@ Before deleting data, reset establishes maintenance exclusion, preflights paths
 and Git registrations, stops attributable consumers (including detached children),
 and verifies the owned leases are free. A live lock is never "fixed" by unlinking
 its inode. Process identity and cell attribution are checked before signalling;
-unrelated cells are excluded. Partial failures report the failing stage and leave
-the cell stopped; failed admission never licenses deletion outside planned roots.
+unrelated cells are excluded. Failures report the stage and whether process
+quiescence was established. A failed preflight or prefetch can leave existing
+consumers running. Once installed, the maintenance marker blocks new launches until
+reset completes successfully. Failed
+admission never licenses deletion outside planned roots. Shared repository fetch
+locks are never reclaimed by reset: an existing lock refuses preflight, and hard
+prefetch owns a newly created lock only for its fetch transaction.
+
+Preflight inventories the selected signing keys, trust store, manifests, provider
+configuration and login stores, including the actual source of the native reader's
+auth link. It rejects overlap with every cleanup root or file: disposable cache
+directories, removed worktrees, hard-reset repositories, discarded queue storage
+and service-state files. Credentials in those locations must be moved before reset.
 
 Unix cache/reset support initially covers macOS and Linux. Unsupported platforms
 refuse before mutation. Existing owner, no-link and single-filesystem cache checks
 remain in force. The cache lock wait must accommodate full measurements and cleanup
-transactions, rather than timing out before one normal scan finishes.
+transactions, rather than timing out before one normal scan finishes. The selected
+default is 60 seconds; the alternative was the previous 5-second wait, which refused
+normal full-cache scans. This is a reversible constant with no migration or stored
+state: restoring 5 seconds shortens contention waits and restores those scan refusals.
 
 Comms init defaults to the configured Codex fast-tier model/effort and a native
 contained reader shipped in cellctl. It uses a private reader config with a link to the existing Codex auth.json login, no copied

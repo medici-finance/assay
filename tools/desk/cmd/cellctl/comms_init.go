@@ -161,9 +161,9 @@ func (c *Cell) initComms(o commsInitOptions) error {
 		if err != nil {
 			return err
 		}
-		home := c.Env.Get("CODEX_HOME")
-		if home == "" {
-			home = filepath.Join(hostHome(c.Env), ".codex")
+		home, err := codexHomeFor(runtime.GOOS, c.Env)
+		if err != nil {
+			return err
 		}
 		authSource = filepath.Join(home, "auth.json")
 		if err := privateCommsFile(authSource); err != nil {

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,80 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 )
+
+func TestResetRetainsCredentialsBeforeCleanup(t *testing.T) {
+	for _, placement := range []string{"cache-build-key", "cache-mod-key", "soft-login", "hard-login", "reader-link", "queue-login", "queue-reader-link", "queue-claude", "hard-provider"} {
+		t.Run(placement, func(t *testing.T) {
+			c, cfg, manifest := commsFixture(t)
+			if err := os.MkdirAll(c.Dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			base := t.TempDir()
+			root := resetFixtureRepo(t, base, "repo")
+			c.Repo = root
+			c.Env.Put("CELL_ROOTS", "example/repo="+root)
+			hard := strings.HasPrefix(placement, "hard-") || strings.HasPrefix(placement, "queue-")
+			var credential string
+			switch placement {
+			case "cache-build-key", "cache-mod-key":
+				policy, err := c.maintenanceCachePolicy()
+				if err != nil {
+					t.Fatal(err)
+				}
+				kind := strings.TrimSuffix(strings.TrimPrefix(placement, "cache-"), "-key")
+				credential = filepath.Join(policy.Root, kind, "signing.key")
+				cfg.SigningKeys["worker-desk"] = credential
+			case "soft-login", "reader-link":
+				wt := filepath.Join(c.Dir, "worktrees", "login")
+				resetFixtureGit(t, root, "worktree", "add", "-q", "-b", "login", wt, "main")
+				credential = filepath.Join(wt, "codex", "auth.json")
+			case "hard-login":
+				credential = filepath.Join(root, "codex", "auth.json")
+			case "queue-login", "queue-reader-link":
+				credential = filepath.Join(cfg.QueueDir, "codex", "auth.json")
+			case "queue-claude":
+				credential = filepath.Join(cfg.QueueDir, "claude", "credentials.json")
+				cfg.ClaudeConfigDir = filepath.Dir(credential)
+			case "hard-provider":
+				credential = filepath.Join(root, "providers.json")
+				c.Env.Put("CELL_PROVIDER_DEFAULTS", credential)
+			}
+			if err := os.MkdirAll(filepath.Dir(credential), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(credential, []byte("nonsecret fixture\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasSuffix(placement, "login") {
+				c.Env.Put("CODEX_HOME", filepath.Dir(credential))
+			}
+			if strings.HasSuffix(placement, "reader-link") {
+				readerHome := filepath.Join(c.Dir, "comms", "selected-reader")
+				if err := os.MkdirAll(readerHome, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(credential, filepath.Join(readerHome, "auth.json")); err != nil {
+					t.Fatal(err)
+				}
+				cfg.Decider, _ = json.Marshal(map[string]any{"cmd": []string{"cellctl", "comms-reader", "--home", readerHome}, "model": "fixture", "pin": "1", "isolate": true, "contained": true})
+			}
+			writeCommsFixture(t, manifest, cfg)
+			plan, err := c.planReset(hard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = c.preflightReset(plan); err == nil {
+				t.Fatal("preflight accepted a retained credential/configuration in disposable storage")
+			}
+			if b, err := os.ReadFile(credential); err != nil || string(b) != "nonsecret fixture\n" {
+				t.Fatal("preflight changed retained fixture", err)
+			}
+			if _, err := os.Stat(filepath.Join(c.cadenceDir("worker-desk"), "STOP")); !os.IsNotExist(err) {
+				t.Fatal("preflight stopped service before refusing layout", err)
+			}
+		})
+	}
+}
 
 func resetFixtureGit(t *testing.T, root string, args ...string) string {
 	t.Helper()
@@ -75,7 +150,12 @@ func TestResetSoftAndHard(t *testing.T) {
 			if _, err = cellcache.Check(*policy, false); err != nil {
 				t.Fatal(err)
 			}
-			os.WriteFile(filepath.Join(policy.Root, "build", "disposable"), []byte("cache"), 0600)
+			if err := os.MkdirAll(filepath.Join(policy.Root, "build"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(policy.Root, "build", "disposable"), []byte("cache"), 0600); err != nil {
+				t.Fatal(err)
+			}
 			p, err := c.planReset(hard)
 			if err != nil {
 				t.Fatal(err)
@@ -141,8 +221,60 @@ func TestResetPrefetchFailurePreservesWork(t *testing.T) {
 	if err = c.resetCell(p); err == nil {
 		t.Fatal("failed fetch accepted")
 	}
+	if !strings.Contains(err.Error(), "stage=prefetch") || !strings.Contains(err.Error(), "quiescence=not established") {
+		t.Fatal("prefetch failure claims a stopped cell", err)
+	}
 	if _, err = os.Stat(wt); err != nil {
 		t.Fatal("worktree removed before failed fetch")
+	}
+}
+
+func TestResetHardUsesUnambiguousRemoteRef(t *testing.T) {
+	c, _, _ := commsFixture(t)
+	if err := os.MkdirAll(c.Dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	root := resetFixtureRepo(t, t.TempDir(), "repo")
+	c.Repo = root
+	c.Env.Put("CELL_ROOTS", "example/repo="+root)
+	resetFixtureGit(t, root, "checkout", "-qb", "origin/main")
+	os.WriteFile(filepath.Join(root, "tracked"), []byte("shadow branch\n"), 0600)
+	resetFixtureGit(t, root, "commit", "-qam", "shadow remote name")
+	plan, err := c.planReset(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.resetCell(plan); err != nil {
+		t.Fatal(err)
+	}
+	if got := resetFixtureGit(t, root, "rev-parse", "HEAD"); got != resetFixtureGit(t, root, "rev-parse", "refs/remotes/origin/main") {
+		t.Fatal("reset selected shadow branch")
+	}
+}
+
+func TestResetPreservesSharedFetchLock(t *testing.T) {
+	for _, hard := range []bool{false, true} {
+		t.Run(map[bool]string{false: "soft", true: "hard"}[hard], func(t *testing.T) {
+			c, _, _ := commsFixture(t)
+			os.MkdirAll(c.Dir, 0700)
+			root := resetFixtureRepo(t, t.TempDir(), "repo")
+			c.Repo = root
+			c.Env.Put("CELL_ROOTS", "example/repo="+root)
+			lock := filepath.Join(root, ".git", "cellctl-fetch.lock")
+			os.Mkdir(lock, 0700)
+			sentinel := filepath.Join(lock, "peer-owner")
+			os.WriteFile(sentinel, []byte("peer"), 0600)
+			plan, err := c.planReset(hard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.preflightReset(plan); err == nil {
+				t.Fatal("reset accepts unknown shared fetch-lock owner")
+			}
+			if b, err := os.ReadFile(sentinel); err != nil || string(b) != "peer" {
+				t.Fatal("shared fetch lock changed", err)
+			}
+		})
 	}
 }
 func TestResetPlanRefusesConfigInsideWorktree(t *testing.T) {
