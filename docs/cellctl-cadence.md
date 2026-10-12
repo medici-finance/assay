@@ -8,7 +8,7 @@ starts a bounded role pass, waits for completion, then waits the configured inte
 Herdr and Orca supply the terminal. Codex and Cursor supply the agent pass.
 
 ```sh
-cellctl up house --cockpit herdr --harness codex
+cellctl up house --cockpit herdr --harness codex --cadence 5m --tick-budget 20m
 cellctl up example --cockpit orca --harness cursor --cadence 30m --tick-budget 20m
 ```
 
@@ -27,14 +27,31 @@ cellctl set house CELL_CADENCE=30m CELL_TICK_BUDGET=20m
 cellctl cadence house status
 ```
 
-House desks whose resolved harness is Codex default to a five-minute interval and the
-existing 20-minute pass budget. This applies to `desk` and each role opened by `up`,
-including harnesses selected by model policy. Claude, Cursor and non-house cells keep
-their existing defaults. Explicit `--cadence` / `CELL_CADENCE` values take precedence;
-`--cadence off` or saved `CELL_CADENCE=off` selects an interactive Codex session.
-`--tick-budget` / `CELL_TICK_BUDGET` overrides the budget independently for a defaulted
-Codex cadence. Defaults are resolved at launch and are not written to cell.env.
-Already-running interactive sessions retain their execution mode until restarted.
+Codex desks default to an interactive terminal session. This applies after harness
+policy resolution to direct `desk` launches and each role opened by `up`.
+Before invoking the role, the bootstrap requests native `get_goal`, creates the
+standing objective only when no Goal exists, and reads it back. Only a matching,
+active readback admits the standing role. Existing objectives, usage, budgets and
+paused state are preserved; a mismatch or unavailable Goal tools leaves the session
+waiting for user direction with a could-not-check report. No token budget is added.
+
+Native Goals continue authorized work after ordinary final responses and completed
+batches while the terminal remains interactive. An empty queue does not complete the
+standing objective. `/goal` inspects it; `/goal pause` and `/goal clear` retain user
+control. Blocking conditions, interruption and native continuation limits can stop
+progress: this is not a durable polling clock or a permanent-service guarantee.
+
+Explicit `--cadence` / `CELL_CADENCE` durations select the existing headless supervisor;
+`--cadence off` or saved `CELL_CADENCE=off` explicitly selects interactive mode.
+A tick budget requires an explicit cadence; `off` ignores a saved budget. Codex tick
+launches disable native Goals and never receive the standing bootstrap. Claude and
+Cursor keep their existing behavior. Defaults do not rewrite cell.env or change
+already-running sessions.
+
+The same bootstrap covers host and scrubbed Codex desk argv. Native container cells
+run an independently pinned image entrypoint with its own paused/handoff contract;
+cellctl does not construct that image's Codex prompt, so this change does not establish
+a Goal inside those images. Smoke checks and non-desk commands remain unchanged.
 
 A budget includes the role's exit reserve;
 its minimum is 61 seconds and default is 20 minutes. Choose a budget that also fits
@@ -53,8 +70,8 @@ cellctl up house --cockpit herdr --harness codex --cadence 5m --tick-budget 20m
 cellctl cadence house status
 ```
 
-The explicit cadence also works on older installations where Codex cadence is opt-in.
-After installing this default, the `--cadence` and `--tick-budget` flags may be omitted.
+Keep the explicit cadence flag when choosing repeated headless passes. Omitting it
+selects the interactive default unless cell.env saves a duration.
 `supervisor=active` identifies a cadence owner; `supervisor=interactive` does not.
 If status instead reports `unfinished`, follow the recovery procedure below only after
 confirming the old harness and all children have stopped. Do not delete locks or

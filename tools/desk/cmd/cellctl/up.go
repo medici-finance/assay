@@ -26,6 +26,7 @@ type upOverrides struct {
 	Cadence     string
 	TickBudget  string
 	roleCadence map[string]*cadenceOptions // resolved per role, including mixed-harness policies
+	roleHarness map[string]string
 	// Cockpit is the cockpit `up` RESOLVED (never `auto`), threaded onto every window so each
 	// exports the same ASSAY_COCKPIT as the surface it was opened in — even when `up --cockpit`
 	// overrode cell.env for this run only.
@@ -102,7 +103,13 @@ func (c *Cell) roleCmdIn(sh paneShell, self, role, cfg string, o upOverrides) st
 	}
 	out := sh.invoke(sh.quote(self))
 	root, name := c.reenter()
-	if cadence != nil || o.Cadence != "" {
+	harness := o.Harness
+	if resolved, ok := o.roleHarness[role]; ok {
+		harness = resolved
+	} else if harness == "" {
+		harness = c.Harness
+	}
+	if cadence != nil || o.Cadence != "" || harness == "codex" {
 		out += " --cells-root " + sh.quote(root)
 	}
 	out += " desk " + sh.quote(name) + " " + sh.quote(role)
@@ -335,8 +342,9 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		}
 	}
 	// Resolve the cadence with each role's actual harness, not the cell-wide fallback.
-	// In a mixed policy, defaulting Codex must not schedule the Claude roles too.
+	// No harness implies a schedule; an explicit cadence retains its per-role route.
 	o.roleCadence = make(map[string]*cadenceOptions, len(roles))
+	o.roleHarness = make(map[string]string, len(roles))
 	for _, role := range roles {
 		harness := effectiveHarness
 		if _, err := c.deskCommsEnv(role, nil); err != nil {
@@ -359,6 +367,7 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		} else if rc != nil && automate != "" {
 			die("up: --automate cannot apply the role context declared for %s; use live desk windows", role)
 		}
+		o.roleHarness[role] = harness
 		o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)
 		if automate != "" && (o.roleCadence[role] != nil || harness != "claude") {
 			die("up: --automate cannot preserve this cell launch; use --cadence with cockpit terminals")

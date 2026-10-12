@@ -1801,11 +1801,12 @@ cells, whose launch is delegated to the operator's own launcher.
 
 ## Host desk cadence
 
-Codex house desks default to repeated bounded passes owned by Go cellctl, with a
-five-minute interval and 20-minute pass budget. `--cadence off` selects interactive
-mode; explicit intervals and budgets override the defaults. Other harnesses retain
-their existing defaults; Orca/Cursor can opt in with `--cadence`. See [Host desk cadence](cellctl-cadence.md) for setup, status,
-stop/recovery and process-lifetime limits.
+Codex desks default to interactive sessions whose bootstrap establishes and reads back
+a native standing Goal before invoking the role. Existing Goals and user pause/clear
+authority are preserved. Explicit `--cadence <duration>` selects repeated bounded
+headless passes; `--cadence off` explicitly selects interactive mode. Claude and Cursor
+retain their existing behavior. See [Host desk cadence](cellctl-cadence.md) for Goal
+admission, container-image limits, cadence setup, status and stop/recovery.
 
 ### Configured comms startup
 
