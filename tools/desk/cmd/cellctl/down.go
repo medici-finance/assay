@@ -131,31 +131,10 @@ func herdrTabIDForLabel(label string) string {
 }
 
 func (c *Cell) downHerdr() {
-	roles := c.upRoles(false)
-	if !helpHas("close", "herdr", "tab") {
-		fmt.Println("[cell] this herdr build advertises no 'tab close' — close these tabs by hand:")
-		for _, r := range append([]string{"cell"}, roles...) {
-			fmt.Printf("  %s-%s\n", c.Name, r)
-		}
-		return
+	if err := c.closeHerdrWorkspace(); err != nil {
+		die("herdr workspace: %v", err)
 	}
-	// The oracle reads `${FIRST_NAME:-cell}` here, and `down` never calls first_window — so
-	// FIRST_NAME is unset on this path and the label is always `<cell>-cell`. Spelled as the
-	// literal it always is, rather than as a variable that is never set.
-	labels := []string{c.Name + "-cell"}
-	for _, r := range roles {
-		labels = append(labels, c.Name+"-"+r)
-	}
-	total, closed := 0, 0
-	for _, label := range labels {
-		total++
-		if tid := herdrTabIDForLabel(label); tid != "" {
-			if exec.Command("herdr", "tab", "close", tid).Run() == nil {
-				closed++
-			}
-		}
-	}
-	fmt.Printf("[cell] herdr: closed %d/%d tabs ('herdr tab list' → tab_id by label → 'herdr tab close <tab_id>')\n", closed, total)
+	fmt.Printf("[cell] herdr: closed %s workspace\n", c.Name)
 }
 
 func (c *Cell) downOrca() {

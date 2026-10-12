@@ -169,7 +169,7 @@ func TestCLILegacyWordsRestored(t *testing.T) {
 	}
 	cadenceUnexpected := want{3, "cellctl: cadence: unexpected arguments"}
 	commsUsage := want{3, "cellctl: comms <cell> check|run|recover --confirm-stopped"}
-	cacheUsage := want{3, "cellctl: cache <cell> status|clean|recover --confirm-stopped (status is dry-run)"}
+	cacheUsage := want{3, "cellctl: cache <cell> status|clean|wipe|recover --confirm-stopped (status is dry-run)"}
 	before := snapshotTree(t, w.root)
 	for _, tc := range []struct {
 		args []string

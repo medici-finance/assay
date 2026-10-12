@@ -78,7 +78,7 @@ func main() {
 		return "example-org/tracker"
 	}
 	switch {
-	case has("worker"):
+	case has("worker"), has("verifier"):
 		// desktoken worker [--repo <slug>]: mirror the REAL desktoken default — owner is
 		// parsed from --repo when present, else defaults to "example-org" (the bug #562/
 		// #565 fixed was deskreply/deskpr never passing --repo, so this always resolved

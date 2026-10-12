@@ -174,6 +174,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		}
 		argv = append(argv, "--sandbox", "danger-full-access", "-C", wt, "-m", model,
 			codexRolePrompt(role, runtime.GOOS, bash))
+		if c.Cadence == nil {
+			argv[len(argv)-1] = codexStandingPrompt(role, argv[len(argv)-1])
+		}
 	} else if harness == "cursor" {
 		if err := c.prepareCursorWorkspace(role, wt); err != nil {
 			die("cursor workspace: %v", err)

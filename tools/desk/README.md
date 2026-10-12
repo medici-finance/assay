@@ -944,8 +944,12 @@ Boundaries mirror the push-transport gate's:
   only widens the range. Under `update --pr N` the head branch is unknown offline, so a real
   run skips the offline stage and is judged once, at the live stage — after the head is
   shown to be an ancestor of HEAD and to be what the push destination holds (#2432); `--pr N
-  --check` judges the whole range and says how to narrow it. `create` offers no tip (no PR head exists yet), and `deskevidence`
-  offers none (its base already is the branch it writes). Every caller's tip choice is pinned
+  --check` judges the whole range and says how to narrow it. A live `create` confirms the
+  destination branch directly through its credentialed push endpoint, excludes only that
+  confirmed history, and pins the existing ref during its plain push. An absent branch
+  keeps the whole range; unreadable or divergent state refuses. `create --check` judges
+  the whole range and explicitly reports that it cannot confirm the remote head.
+  `deskevidence` offers no tip (its base already is the branch it writes). Every caller's tip choice is pinned
   by `TestPubIdentityCallersTip`; the fail-first evidence is
   `internal/deskkit/publishidentity-mutations.json`.
 - **`deskevidence` commits as the verifier App via the Contents API**, so its own landing is
@@ -4381,6 +4385,13 @@ each landing turned every sibling Evidence PR touching that path CONFLICTING. In
 `docs/streams/verify-outcomes/<stream>/<NN>-<YYYYMMDDTHHMMSSZ>-<digest12>.json`), and commits a
 NEW file there. Two concurrent landings only ever pick the same path when they carry
 byte-identical content — the same outcome — and two identical adds merge cleanly with no driver.
+
+**Evidence/run binding.** Every new record must name the full Evidence commit SHA. The
+brief at that commit and on the target branch must be identical, preserve the admitted
+plan, and carry this admitted run's exact `Verification-Attestation` line inside Evidence.
+An older run, a stamp in a code example, or a refused Evidence write cannot back an outcome.
+Missing/mismatched Evidence is refused before the record write; unreadable Evidence is
+could-not-check. Existing byte-identical records remain idempotent no-ops.
 
 Records are **immutable**: an existing path with identical bytes is a noop; an existing path with
 different bytes is refused (exit 5) — a correction is a NEW record (a fresh `ts`, hence a fresh

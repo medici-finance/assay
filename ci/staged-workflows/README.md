@@ -38,7 +38,9 @@ reviewable artifact, not a run.
   this one is **already live**: it was promoted, and the copy in this directory is kept
   as the reviewable edit surface, because no App may push a `.github/workflows/*`
   file. The board-writer Environment/poll migration is included in the live
-  file, and the manifest enforces byte parity with this copy. Every change to that lane
+  file. This copy includes protected completion for already-clean Evidence PRs
+  and is identical to the live workflow; see `tools/evidence-automerge/README.md`.
+  Every change to that lane
   therefore lands here first, and a maintainer re-promotes it by copying the file over the
   live one (`cp ci/staged-workflows/evidence-automerge.yml .github/workflows/evidence-automerge.yml`)
   in a separate maintainer-credentialled commit. Until that copy lands, the merged change

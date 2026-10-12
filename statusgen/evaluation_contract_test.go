@@ -830,38 +830,17 @@ func moduleZip(t *testing.T, root, modulePath, version string) []byte {
 	return buf.Bytes()
 }
 
-func copyCachedModule(t *testing.T, modCache, proxy, modulePath string) {
-	t.Helper()
-	src := filepath.Join(modCache, "cache", "download", filepath.FromSlash(modulePath), "@v")
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		t.Fatalf("the module cache lacks %s (needed offline): %v", modulePath, err)
-	}
-	dst := filepath.Join(proxy, filepath.FromSlash(modulePath), "@v")
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		n := e.Name()
-		if strings.HasSuffix(n, ".lock") || strings.HasSuffix(n, ".ziphash") {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(src, n))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dst, n), b, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
 // regression: statusgen/15 — a module outside this repository consumes both
 // entry points through a pinned module version, with the workspace off, no
 // relative replace and no network: a local file proxy is the only source.
+// regression: #2692 — no ambient module cache is needed to seed that proxy.
 func TestEvaluationExternalConsumer(t *testing.T) {
 	const modulePath = "github.com/medici-finance/assay/statusgen"
 	const version = "v0.0.0-20261011000000-000000000000"
+	// An explicitly empty parent cache also catches another fixture helper
+	// accidentally reintroducing a dependency on the caller's cache.
+	t.Setenv("GOMODCACHE", t.TempDir())
+	t.Setenv("GOPROXY", "off")
 
 	// The statusgen manifest names nothing under tools/desk, and any replace
 	// is a relative sibling-module path (a dependency's replace directives are
@@ -917,23 +896,19 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	outBytes, err := exec.Command("go", "env", "GOMODCACHE").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	hostCache := strings.TrimSpace(string(outBytes))
-	copyCachedModule(t, hostCache, proxy, "golang.org/x/sys")
-	copyCachedModule(t, hostCache, proxy, "gopkg.in/yaml.v3")
-	// yaml.v3's own requirement.
-	copyCachedModule(t, hostCache, proxy, "gopkg.in/check.v1")
+	// The evaluation package imports only the standard library. Serve the
+	// modules under test, never ambient cached dependencies of the statusgen
+	// CLI. TestMain isolates HOME, and normal test builds need not download
+	// dependencies used only by a dependency's tests.
 
-	env := func(consumer string) []string {
+	env := func(consumer, source string) []string {
 		return append(os.Environ(),
 			"GOWORK=off",
-			"GOFLAGS=-mod=mod",
-			"GOPROXY=file://"+filepath.ToSlash(proxy),
+			"GOFLAGS=-mod=mod -modcacherw",
+			"GOPROXY=file://"+filepath.ToSlash(source),
 			"GOSUMDB=off",
 			"GONOSUMDB=*",
+			"GOPRIVATE=", "GONOPROXY=none",
 			"GOTOOLCHAIN=local",
 			"GOMODCACHE="+filepath.Join(consumer, ".modcache"),
 			"GOCACHE="+filepath.Join(consumer, ".gocache"),
@@ -941,7 +916,7 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 			"HTTP_PROXY=http://127.0.0.1:1", "HTTPS_PROXY=http://127.0.0.1:1", "NO_PROXY=",
 		)
 	}
-	runIn := func(dir string, extraMain string, args ...string) (string, error) {
+	runIn := func(dir, source, extraMain string, args ...string) (string, error) {
 		if extraMain != "" {
 			if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(extraMain), 0o644); err != nil {
 				t.Fatal(err)
@@ -949,7 +924,7 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 		}
 		cmd := exec.Command("go", args...)
 		cmd.Dir = dir
-		cmd.Env = env(dir)
+		cmd.Env = env(dir, source)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		err := cmd.Run()
@@ -960,15 +935,6 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 	}
 
 	consumer := t.TempDir()
-	// The module cache is read-only on disk; make it removable again.
-	t.Cleanup(func() {
-		_ = filepath.Walk(consumer, func(p string, info os.FileInfo, err error) error {
-			if err == nil && info.IsDir() {
-				_ = os.Chmod(p, 0o755)
-			}
-			return nil
-		})
-	})
 	gomod := "module example.test/consumer\n\ngo 1.25.0\n\nrequire " + modulePath + " " + version + "\n"
 	if strings.Contains(gomod, "replace") {
 		t.Fatal("the consumer manifest must not replace the module")
@@ -976,7 +942,7 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(consumer, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := runIn(consumer, evalConsumerMain, "run", ".")
+	got, err := runIn(consumer, proxy, evalConsumerMain, "run", ".")
 	if err != nil {
 		t.Fatalf("the external consumer failed to build or run:\n%s", got)
 	}
@@ -1013,8 +979,28 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 		t.Errorf("resolution wrote a replace into the consumer manifest:\n%s", after)
 	}
 
+	// Fresh consumers must fail when their pinned publication is unavailable,
+	// even after this test has built a consumer successfully. Neither a warm
+	// parent cache nor another served version can satisfy the missing pin.
+	for _, tc := range []struct{ name, source, pin string }{
+		{"missing module", t.TempDir(), version},
+		{"missing version", proxy, "v0.0.0-20261011000000-000000000001"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			mod := strings.Replace(gomod, version, tc.pin, 1)
+			if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out, err := runIn(dir, tc.source, evalConsumerMain, "run", ".")
+			if err == nil || !strings.Contains(out, tc.pin) || !strings.Contains(out, "reading file://") {
+				t.Fatalf("missing publication must fail at the file proxy: err=%v\n%s", err, out)
+			}
+		})
+	}
+
 	// An expectation of an API the module does not offer fails to build.
-	if out, err := runIn(consumer, unsupportedConsumerMain, "build", "-o", filepath.Join(consumer, "unsupported"), "."); err == nil {
+	if out, err := runIn(consumer, proxy, unsupportedConsumerMain, "build", "-o", filepath.Join(consumer, "unsupported"), "."); err == nil {
 		t.Errorf("a consumer expecting an unsupported API built:\n%s", out)
 	} else if !strings.Contains(out, "undefined: evaluation.Admit") {
 		t.Errorf("the unsupported-API build failed for another reason:\n%s", out)
