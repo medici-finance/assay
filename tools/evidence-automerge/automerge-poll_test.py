@@ -82,14 +82,13 @@ class PollTests(unittest.TestCase):
             result = subprocess.run(["git", "apply", str(patch)], cwd=tmp,
                                     text=True, capture_output=True, timeout=10)
             if result.returncode != 0:
-                # After maintainer activation the source files already contain
-                # the patch. Prove that exact state instead of applying twice.
-                reverse = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)], cwd=tmp,
-                                         text=True, capture_output=True, timeout=10)
-                self.assertEqual(reverse.returncode, 0, result.stderr + reverse.stderr)
+                # A later reviewed job can change historical patch context.
+                # Prove every live security pin below instead of requiring a
+                # one-time migration patch to reverse forever.
+                self.assert_projected_workflows(workflows)
             self.assert_projected_workflows(workflows)
 
-    def assert_projected_workflows(self, workflows):
+    def assert_projected_workflows(self, workflows, expected_poll=None):
         count = 0
         for path in workflows.glob("*.yml"):
             jobs = re.split(r"^  [\w-]+:\n", path.read_text().split("\njobs:\n", 1)[1], flags=re.M)[1:]
@@ -111,12 +110,37 @@ class PollTests(unittest.TestCase):
         poll = (workflows / "evidence-automerge.yml").read_text()
         # These fixtures project the existing board-writer migration, not an
         # unrelated pending workflow proposal. Staged proposals are tested below.
-        self.assertEqual(poll, (ROOT / ".github/workflows/evidence-automerge.yml").read_text())
+        self.assertEqual(poll, expected_poll or (ROOT / ".github/workflows/evidence-automerge.yml").read_text())
+        self.assertEqual(re.findall(r"^\s+EVIDENCE_AUTHOR: (.+)$", poll, re.M),
+                         ["assay-verifier-app[bot]", "assay-verifier-app[bot]"])
+        self.assertIn("permissions:\n  contents: read\n  pull-requests: read\n", poll.split("\njobs:\n", 1)[0])
+        enable = poll.split("\n  enable:\n", 1)[1]
+        self.assertIn("    needs: discover\n", enable)
+        self.assertIn("    if: github.ref == 'refs/heads/main' && needs.discover.outputs.eligible == 'true'\n", enable)
         self.assertNotIn("  pull_request:", poll)
         self.assertNotIn("  pull_request_review:", poll)
         self.assertIn("          ref: ${{ github.sha }}\n", poll)
         self.assertIn("    if: github.ref == 'refs/heads/main'\n", poll)
         self.assertIn("github.ref == 'refs/heads/main'", (workflows / "release.yml").read_text().split("  changelog-roll:\n", 1)[1])
+
+    def test_proposed_activation_preserves_all_security_pins(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workflows = Path(directory)
+            for name in ("assay-statusgen.yml", "assay-qualgen.yml", "verify-gate-close.yml", "release.yml", "evidence-automerge.yml"):
+                shutil.copyfile(ROOT / ".github/workflows" / name, workflows / name)
+            shutil.copyfile(WORKFLOW, workflows / "evidence-automerge.yml")
+            self.assert_projected_workflows(workflows, WORKFLOW.read_text())
+            # A matching staged/live edit must still fail the independently
+            # pinned author and main-only gates, not merely the parity check.
+            path = workflows / "evidence-automerge.yml"
+            original = path.read_text()
+            for before, after in (("EVIDENCE_AUTHOR: assay-verifier-app[bot]", "EVIDENCE_AUTHOR: another-author"),
+                                  ("github.ref == 'refs/heads/main' &&", "github.ref != 'refs/heads/main' &&")):
+                changed = original.replace(before, after)
+                path.write_text(changed)
+                with self.assertRaises(AssertionError):
+                    self.assert_projected_workflows(workflows, changed)
+            path.write_text(original)
 
     def test_environment_and_parity_pins_reject_mutations(self):
         names = ("assay-statusgen.yml", "assay-qualgen.yml", "verify-gate-close.yml",

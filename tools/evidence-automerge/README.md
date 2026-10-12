@@ -18,6 +18,14 @@ head SHA and merge method `merge`. GitHub independently enforces branch
 protection at the write; a changed head or a newly unsatisfied requirement is
 not bypassed. Read failures and rejected writes fail the job.
 
+A workflow-token merge does not trigger push or pull-request-closed workflows
+([GitHub token event rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)).
+The merged Evidence is immediately available on main, but the push-only board
+regeneration and model-path flips wait for a subsequent independent main push.
+The hourly reconcile only updates stream README tables through its own PR; it
+does not replace those push-only jobs. This tradeoff avoids merging with the
+board-writer bypass credential.
+
 ## Activation
 
 The change to `ci/staged-workflows/evidence-automerge.yml` is pending maintainer
