@@ -118,16 +118,17 @@ ARG TARGETARCH=amd64
 # Pinned toolchain versions, each with the sha256 of its linux tarball for both
 # architectures the image builds for. Every value comes from the vendor's own
 # published checksums (see containers/README.md, "Pins and checksums").
-#   GO_VERSION  — matches `go 1.25.0` in tools/desk/go.mod (and statusgen/go.mod).
+#   GO_VERSION  — at or above `go 1.27.0` in tools/desk/go.mod (statusgen/go.mod
+#                 declares 1.25.0).
 #                 Checksums: https://go.dev/dl/?mode=json&include=all
 #   GH_VERSION  — pinned gh CLI release.
 #                 Checksums: the release's gh_<version>_checksums.txt
 #   NODE_VERSION — Node LTS; the runtime the interactive agent CLI installs onto.
 #                 Checksums: https://nodejs.org/dist/v<version>/SHASUMS256.txt
 #                 (signed by the Node release keys: SHASUMS256.txt.asc)
-ARG GO_VERSION=1.25.0
-ARG GO_SHA256_AMD64=2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613
-ARG GO_SHA256_ARM64=05de75d6994a2783699815ee553bd5a9327d8b79991de36e38b66862782f54ae
+ARG GO_VERSION=1.27.2
+ARG GO_SHA256_AMD64=ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5
+ARG GO_SHA256_ARM64=94f3e30b8e374bc285e7dadc11e0865726b9bc6e85b841ccceaabc0214c6b7c8
 ARG GH_VERSION=2.63.2
 ARG GH_SHA256_AMD64=912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00
 ARG GH_SHA256_ARM64=0f31e2a8549c64b5c1679f0b99ce5e0dac7c91da9e86f6246adb8805b0f0b4bb
