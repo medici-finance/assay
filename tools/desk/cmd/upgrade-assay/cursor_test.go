@@ -26,6 +26,9 @@ func cursorRelease(t *testing.T, version string, skill ...string) []byte {
 	if len(skill) > 0 {
 		files["skills/adopt/SKILL.md"] = skill[0]
 	}
+	if len(skill) > 1 {
+		files["skills/adopt/support.bin"] = skill[1]
+	}
 	for name, body := range files {
 		p := filepath.Join(bundle, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -160,12 +163,12 @@ func TestCursorFetchOptIn(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, "releases", "v0.13.0."+cursorbundle.AssetName)); err != nil {
 		t.Fatal(err)
 	}
-	old := fetchFunc
-	t.Cleanup(func() { fetchFunc = old })
+	old := cursorFetchFunc
+	t.Cleanup(func() { cursorFetchFunc = old })
 	calls := 0
 	var stdout, stderr bytes.Buffer
 	url := "https://github.com/medici-finance/assay/releases/download/v0.13.0/" + cursorbundle.AssetName
-	fetchFunc = func(got string) ([]byte, error) {
+	cursorFetchFunc = func(got string) ([]byte, error) {
 		calls++
 		if got != url {
 			t.Fatalf("wrong selected release URL %s", got)

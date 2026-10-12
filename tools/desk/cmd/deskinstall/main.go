@@ -359,6 +359,7 @@ func runVersionedHarness(harness, forge, repo, bundle, release, releases, home, 
 		src := deskkit.CompositionSource{ReleasesDir: releases, ReleaseHome: home, Announce: stderr}
 		if fetch {
 			src.Fetch = deskkit.HTTPFetch
+			src.CursorFetch = deskkit.HTTPFetchCursorBundle
 		}
 		if !validRelease(release) {
 			fmt.Fprintln(stderr, "deskinstall: --release requires strict vX.Y.Z")

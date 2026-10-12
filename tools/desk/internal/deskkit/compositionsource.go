@@ -72,6 +72,9 @@ const ChecksumsAsset = "checksums.txt"
 // not a binary component that every adopter must pin.
 const CursorBundleAsset = "cursor-bundle.tar.gz"
 
+// CursorBundleMaxBytes bounds local files, HTTP bodies, and archive verification.
+const CursorBundleMaxBytes = 16 << 20
+
 // ChecksumsFileName is the local name a materialised checksums.txt takes under a
 // releases dir: `<umbrella>.checksums.txt`, with `/` mapped to `-` exactly as the
 // manifest name is (LoadComposition).
@@ -101,6 +104,16 @@ var ErrNotFound = errors.New("not found")
 // external tool. A 404 is reported as ErrNotFound so the caller can tell "no such
 // release asset" from "could not reach the release home".
 func HTTPFetch(url string) ([]byte, error) {
+	return httpFetchBounded(url, 1<<20)
+}
+
+// HTTPFetchCursorBundle admits the archive size supported by the verifier while
+// metadata keeps its smaller bound. Neither reader returns successful truncation.
+func HTTPFetchCursorBundle(url string) ([]byte, error) {
+	return httpFetchBounded(url, CursorBundleMaxBytes)
+}
+
+func httpFetchBounded(url string, limit int64) ([]byte, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -113,7 +126,14 @@ func HTTPFetch(url string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: status %s", url, resp.Status)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > limit {
+		return nil, fmt.Errorf("GET %s: response exceeds %d-byte limit", url, limit)
+	}
+	return raw, nil
 }
 
 // ParseChecksums derives umbrellaTag's composition from the bytes of its
@@ -197,6 +217,9 @@ type CompositionSource struct {
 	ReleasesDir string
 	ReleaseHome string
 	Fetch       Fetcher
+	// CursorFetch separately opts into archive acquisition with its larger bound.
+	// nil remains offline even if metadata fetching is enabled.
+	CursorFetch Fetcher
 	// Announce receives one `fetching <url>` line immediately BEFORE every Fetch
 	// call, regardless of its outcome. nil means os.Stderr. It is never silenced:
 	// an operator must be able to see every remote the tool contacted.
@@ -358,19 +381,19 @@ func (s CompositionSource) CursorBundle(umbrellaTag string) ([]byte, error) {
 	}
 	local := filepath.Join(s.ReleasesDir, umbrellaTag+"."+CursorBundleAsset)
 	if info, err := os.Stat(local); err == nil {
-		if !info.Mode().IsRegular() || info.Size() > 16<<20 {
+		if !info.Mode().IsRegular() || info.Size() > CursorBundleMaxBytes {
 			return nil, Unverifiable("invalid or oversized materialized Cursor bundle", nil)
 		}
 		return os.ReadFile(local)
 	} else if !os.IsNotExist(err) {
 		return nil, Unverifiable("cannot read materialized Cursor bundle", err)
 	}
-	if s.Fetch == nil {
+	if s.CursorFetch == nil {
 		return nil, Unverifiable("Cursor bundle unavailable locally; materialize releases/<version>.cursor-bundle.tar.gz or explicitly allow --fetch", nil)
 	}
 	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", s.home(), umbrellaTag, CursorBundleAsset)
 	s.announce(url)
-	raw, err := s.Fetch(url)
+	raw, err := s.CursorFetch(url)
 	if err != nil {
 		return nil, Unverifiable("could not acquire the selected release Cursor bundle", err)
 	}

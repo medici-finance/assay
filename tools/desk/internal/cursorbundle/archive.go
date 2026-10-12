@@ -16,10 +16,12 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 const AssetName = "cursor-bundle.tar.gz"
-const MaxArchiveBytes = 16 << 20
+const MaxArchiveBytes = deskkit.CursorBundleMaxBytes
 const maxExpandedBytes = 64 << 20
 
 var versionPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)

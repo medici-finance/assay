@@ -208,6 +208,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	src := deskkit.CompositionSource{ReleasesDir: relDir, ReleaseHome: *home, Announce: stderr}
 	if *fetch {
 		src.Fetch = fetchFunc
+		src.CursorFetch = cursorFetchFunc
 	}
 
 	// ── 1. Target KIND — checked BEFORE the marker, so a per-artifact tag or a
@@ -574,6 +575,7 @@ func discoverPublished(src deskkit.CompositionSource) (map[string]bool, error) {
 // fetchFunc is the release-home fetcher; a package variable so tests swap in an
 // offline fake and the binary never needs the network under test.
 var fetchFunc deskkit.Fetcher = deskkit.HTTPFetch
+var cursorFetchFunc deskkit.Fetcher = deskkit.HTTPFetchCursorBundle
 
 func latestOf(published map[string]bool) (string, bool) {
 	var best string
