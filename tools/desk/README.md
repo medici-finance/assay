@@ -4386,6 +4386,13 @@ each landing turned every sibling Evidence PR touching that path CONFLICTING. In
 NEW file there. Two concurrent landings only ever pick the same path when they carry
 byte-identical content — the same outcome — and two identical adds merge cleanly with no driver.
 
+**Evidence/run binding.** Every new record must name the full Evidence commit SHA. The
+brief at that commit and on the target branch must be identical, preserve the admitted
+plan, and carry this admitted run's exact `Verification-Attestation` line inside Evidence.
+An older run, a stamp in a code example, or a refused Evidence write cannot back an outcome.
+Missing/mismatched Evidence is refused before the record write; unreadable Evidence is
+could-not-check. Existing byte-identical records remain idempotent no-ops.
+
 Records are **immutable**: an existing path with identical bytes is a noop; an existing path with
 different bytes is refused (exit 5) — a correction is a NEW record (a fresh `ts`, hence a fresh
 digest and path), never an edit of an existing one. The verified-outcome closure gates

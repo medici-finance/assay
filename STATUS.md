@@ -89,7 +89,7 @@ _Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: c483681 2026-10-12T13:10:19-05:00_
+_last regen: 4e95d5b 2026-10-12T14:26:29-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -110,7 +110,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: c483681 2026-10-12T13:10:19-05:00_
+_last regen: 4e95d5b 2026-10-12T14:26:29-05:00_
 
 **Progress:** 16/71 brief items done.
 
