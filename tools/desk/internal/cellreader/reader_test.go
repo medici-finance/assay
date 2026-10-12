@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/tools/desk/internal/cachequiet"
 	"io"
 	"os"
 	"strings"
@@ -19,6 +20,7 @@ func TestMain(m *testing.M) {
 		fixtureNative()
 		os.Exit(0)
 	}
+	cachequiet.Isolate()
 	os.Exit(m.Run())
 }
 func fixtureNative() {

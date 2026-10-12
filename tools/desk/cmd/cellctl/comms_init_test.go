@@ -31,7 +31,7 @@ func TestCommsInitNativePrivateAndIdempotent(t *testing.T) {
 		os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\necho 'codex-cli fixture-version'\n"), 0700)
 	}
 	t.Setenv("PATH", bin+":/usr/bin:/bin")
-	c := &Cell{Name: "fixture", Ref: "fixture", Kind: "house", Dir: dir, Env: envWith(map[string]string{"HOME": dir, "CELLS_ROOT": dir, "CELL": "fixture", "CELL_KIND": "house", "CELL_REPO_SLUG": "example/repo", "ROLES": strings.Join(knownRoles, " ")})}
+	c := &Cell{Name: "fixture", Ref: "fixture", Kind: "house", Dir: dir, Env: envWith(map[string]string{"DESK_TOOLS_BIN": bin, "HOME": dir, "CELLS_ROOT": dir, "CELL": "fixture", "CELL_KIND": "house", "CELL_REPO_SLUG": "example/repo", "ROLES": strings.Join(knownRoles, " ")})}
 	os.WriteFile(filepath.Join(dir, "cell.env"), []byte("CELL=fixture\nCELL_KIND=house\n"), 0600)
 	opts := commsInitOptions{Model: "fixture-model", Effort: "low"}
 	c.Env.Put("DRY_RUN", "1")
