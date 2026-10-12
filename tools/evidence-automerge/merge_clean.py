@@ -81,7 +81,8 @@ def declaration_clear(body, labels):
                 break
         if section is not None:
             section.append(line)
-    labelled = any(label.lower() == "desk-decided" for label in labels)
+    labelled = any(label.translate({0x017f: ord("s"), 0x212a: ord("k")}).lower() == "desk-decided"
+                   for label in labels)
     if labelled != (section is not None):
         return False
     if section is None:

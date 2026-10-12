@@ -69,7 +69,7 @@ func TestEvidenceCompletionCanonicalReaders(t *testing.T) {
 	block := deskkit.RenderDecidedBlock([]deskkit.DecidedItem{{Decision: "chosen", Alternative: "other", Cost: "small"}})
 	var declarations []map[string]any
 	for _, body := range []string{"", block, strings.ReplaceAll(block, "   cost: small", ""), "## Desk-decided\nmissing marker", "```text\n" + block + "\n```", block + "```text\n2. decision: missing fields\n```\n", "\u001c" + block, strings.ReplaceAll(block, "alternative", "alternat\u0131ve"), strings.ReplaceAll(block, "cost", "co\u017ft"), "## Desk-decided\n```text\n<!-- desk-r3-decision v1 -->\n1. decision: chosen\n alternative: other\n cost: small\n```\n"} {
-		for _, labels := range [][]string{nil, {"desk-decided"}} {
+		for _, labels := range [][]string{nil, {"desk-decided"}, {"DESK-DECIDED"}, {"de\u017fk-decided"}, {"des\u212a-decided"}} {
 			declarations = append(declarations, map[string]any{"body": body, "labels": labels, "clear": deskkit.DeskDecidedRefusal(1, labels, body, nil, "assay-reviewer-app[bot]", "head") == ""})
 		}
 	}

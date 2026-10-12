@@ -514,6 +514,14 @@ class CleanMergeTests(unittest.TestCase):
                 self.assertEqual(self.run_merge(), 0)
                 self.assertEqual(self.writes(), [])
 
+    def test_completion_honors_canonical_folded_declaration_labels(self):
+        for label in ("desk-decided", "DESK-DECIDED", "de\u017fk-decided", "des\u212a-decided"):
+            with self.subTest(label=label):
+                self.calls = []
+                self.metadata["labels"] = [{"name": label}]
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+
     def test_completion_holds_uncertain_attempts(self):
         base = self.view["statusCheckRollup"][1]
         for changes in ({"checkSuiteCreatedAt": ""}, {"checkSuiteCreatedAt": base["checkSuiteCreatedAt"]},
