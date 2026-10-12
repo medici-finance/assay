@@ -1,0 +1,1 @@
+- desk-tools/36 authored: the scheduled board reconcile's PR class becomes generated output per the driver's ruling on #2688 — auto-approve lane (default) or direct-CI single-writer; the class's own guards untouched.
