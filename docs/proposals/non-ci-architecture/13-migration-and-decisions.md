@@ -85,6 +85,8 @@ The follow-up source baseline is public Assay `b78b495be` (10 October 2026), whi
 | [#2512](https://github.com/medici-finance/assay/pull/2512) | Reuse alternate pack readers within a repository opening; preserve the repeated-index-work regression when changing readers. |
 | [#2516](https://github.com/medici-finance/assay/pull/2516) | Preserve coordinated, bounded offline ref/index maintenance; do not describe it as object-pack consolidation or automatic reclamation. |
 
+The same operating experience exposes gaps the merged repairs do not close; these become obligations for the replacement rather than defects filed against the current tools. Review-dispatch worktrees accumulate when an owning review completes without a teardown step, because topology proofs are inapplicable to fetch-only heads. Resources created outside allocation verbs remain unclassified and are therefore held indefinitely. Locks without a recorded owning session outlive their sessions. Branch retirement cannot be proven from ancestry alone after squash merges whose remote refs were deleted. The [retirement and maintenance contracts](14-storage-forge-graph.md) answer each through allocation records, class-aware eligibility, forge-state inputs and lock lifecycles; implement and preserve those semantics together with the fail-closed holds above.
+
 Map each selected old fixture to its replacement under the existing regression-ledger contract. Keep supported-path fixes shipping while the replacement is developed; do not close an implementation obligation on the strength of this proposal.
 
 ## Handover and rollback are state migrations

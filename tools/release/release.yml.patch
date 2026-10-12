@@ -1,28 +1,22 @@
 diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
-index f987ec3f..52f75b7f 100644
+index 7922363dc..267470762 100644
 --- a/.github/workflows/release.yml
 +++ b/.github/workflows/release.yml
-@@ -374,6 +374,27 @@ jobs:
+@@ -394,6 +394,21 @@ jobs:
              bash plugins/assay/scripts/stamp-plugin-version.sh gate --tag "$TAG" --prev "$prev"
            fi
-
-+      # SPEC HEADER VERSION GATE (assay#1192) — the last open item of brief-13's
-+      # task list (brief-13, cited on assay#1192's own tracker entry).
-+      # spec/brief-v1.md's `Describes reference implementation:` line names a
-+      # `statusgen` version by hand; #302 (2026-09-02) did a one-time freshen
-+      # (v0.8.0 -> v0.22.0, per brief-13's own drift-class `facts:`) but added
-+      # no mechanical floor, so the header drifted silently again — it still
-+      # read v0.22.0 while the released umbrella tag had moved dozens of
-+      # releases ahead by the time #1192 was filed. This refuses to cut a tag
-+      # whose spec header names any OTHER version, so the header edit has to
-+      # land in the same PR that bumps the release rather than a later,
-+      # forgettable one. Cheap and dependency-free, same as the
-+      # manifest-version gate above, so it lives in THIS job rather than
-+      # behind the full test matrix. Logic lives in
-+      # tools/release/check-spec-header-version.sh, unit-tested offline by
-+      # tools/release/check-spec-header-version.test.sh (same split as
-+      # tools/changelog/check.sh + check_test.sh).
-+      - name: Release gate — refuse a stale spec/brief-v1.md reference-implementation version
+ 
++      # SPEC HEADER VERSION GATE (#1192) — tag-push path only. The ruling on
++      # #1192 (option a, `stamp`) has the release write the tag being cut into
++      # spec/brief-v1.md's `Describes reference implementation:` header, the
++      # same way it stamps the plugin manifest; check-spec-header-version.sh
++      # is the proof the stamp ran. A pushed tag can never be re-pointed, so on
++      # that path the tagged tree must already carry the tag — refuse it HERE,
++      # before the human approval, exactly as the manifest gate above does. On
++      # the dispatch path the tree is not stamped yet (`release` stamps it
++      # before tagging), so the proof runs there, right after the stamp.
++      - name: Release gate — refuse a pushed tag whose spec/brief-v1.md header names another version
++        if: github.event_name == 'push'
 +        env:
 +          TAG: ${{ needs.resolve.outputs.tag }}
 +        run: bash tools/release/check-spec-header-version.sh "$TAG"
@@ -30,3 +24,76 @@ index f987ec3f..52f75b7f 100644
    # The publish path's own test gate. ci.yml build/vets every module at PR time,
    # but a tag can be cut from any commit, so re-run the suite here. No `if:` on
    # this job, on purpose: it runs on tag push, on dispatch, and on dry_run — a
+@@ -1048,6 +1063,49 @@ jobs:
+           git commit -q -m "release: stamp the plugin manifest to ${RELEASE_TAG#v} [skip-status-regen]"
+           echo "stamped plugin version ${RELEASE_TAG#v} in $(git rev-parse --short HEAD) (parent $(git rev-parse --short HEAD~1)); the tag is cut from this commit."
+ 
++      # SPEC HEADER STAMP (#1192, ruling: option a, `stamp`). The tree the tag is
++      # cut from must name the tag in spec/brief-v1.md's `Describes reference
++      # implementation:` header. Same shape as the plugin manifest stamp above:
++      #
++      # DISPATCH: stamp the header (tools/release/stamp-spec-header-version.sh),
++      # prove it (tools/release/check-spec-header-version.sh), and COMMIT it
++      # locally, so the tag below lands on that commit. In the steady state
++      # this is a no-op: the post-cut roll leaves the default branch's header
++      # on the next patch version, so a dispatch of exactly that version finds
++      # it already stamped and commits nothing. A dry run stamps and commits
++      # locally too; nothing is pushed.
++      #
++      # TAG PUSH: the tag can never be re-pointed, so this is the CHECK alone
++      # (the guard job already refused a stale header before the approval;
++      # this re-proves it on the tree that is built).
++      #
++      # BEFORE the builds, so what is built is the tree that is tagged.
++      - name: Stamp the spec/brief-v1.md reference-implementation header to the release tag
++        env:
++          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
++          EVENT: ${{ github.event_name }}
++        run: |
++          set -euo pipefail
++          spec=spec/brief-v1.md
++          if [ "$EVENT" = push ]; then
++            if ! bash tools/release/check-spec-header-version.sh "$RELEASE_TAG" "$spec"; then
++              echo "::error::the tree at ${RELEASE_TAG} does not name ${RELEASE_TAG} in ${spec}'s header. A pushed tag cannot be re-pointed: stamp it by PR (bash tools/release/stamp-spec-header-version.sh <vX.Y.Z>) and cut the NEXT patch version — or dispatch the release, which stamps for you."
++              exit 1
++            fi
++            exit 0
++          fi
++          bash tools/release/stamp-spec-header-version.sh "$RELEASE_TAG" "$spec"
++          bash tools/release/check-spec-header-version.sh "$RELEASE_TAG" "$spec"
++          if git diff --quiet -- "$spec"; then
++            echo "${spec} already names ${RELEASE_TAG}; nothing to commit — the tag is cut from $(git rev-parse --short HEAD) as-is."
++            exit 0
++          fi
++          git config user.name  "github-actions[bot]"
++          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
++          git add -- "$spec"
++          git commit -q -m "release: stamp the spec/brief-v1.md header to ${RELEASE_TAG} [skip-status-regen]"
++          echo "stamped ${spec} to ${RELEASE_TAG} in $(git rev-parse --short HEAD) (parent $(git rev-parse --short HEAD~1)); the tag is cut from this commit."
++
+       # -X main.statusgenVersion stamps the release tag into the binary so
+       # `statusgen --version` can be compared against a consumer's
+       # `.assay-versions` pin. Without it every build answers "dev" and a stale
+@@ -1669,6 +1727,22 @@ jobs:
+             else
+               echo "plugin manifest already at ${cur} (above ${cut}) — leaving the pending bump in place."
+             fi
++            # POST-CUT SPEC HEADER BUMP (#1192), in the same commit and under the
++            # same floor rule as the manifest bump above: leave the default
++            # branch's spec/brief-v1.md header on the next patch version, so the
++            # next dispatch of that version finds it already stamped; a header a
++            # human already moved ABOVE the cut is left alone. A header the stamp
++            # cannot read or rewrite fails the roll (the stamp exits 2) rather
++            # than rolling past it.
++            spec=spec/brief-v1.md
++            hdr=$(grep -m1 -F 'Describes reference implementation:' "$spec" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
++            if [ -z "$hdr" ] || [ "$(printf '%s\n%s\n' "${hdr#v}" "$cut" | sort -V | tail -1)" = "$cut" ]; then
++              bash tools/release/stamp-spec-header-version.sh "$next" "$spec"
++              git add -- "$spec"
++              bump="${bump} and stamp the spec header to ${next}"
++            else
++              echo "spec header already at ${hdr} (above ${cut}) — leaving the pending bump in place."
++            fi
+ 
+             if git diff --cached --quiet; then
+               echo "Nothing staged — CHANGELOG.md unchanged, no fragments to clear, manifest already bumped."

@@ -50,12 +50,18 @@ package main
 // changes between them, the lint hold included: both forms evaluate it the same
 // way, against the edited README held in memory, so wouldApply never lists a row
 // --apply would hold and the hold never writes to disk to decide.
+//
+// The whole-run admission decision is shared too (#2472 C10): an unread input
+// that makes --apply refuse every row (reconcileWriteRefusal in reconcile.go)
+// makes the read-only form list none and report the refusal as wouldRefuse,
+// so wouldApply never lists a row --apply refuses with exit 3.
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // appliedRow is one stream-README Status cell reconcile --apply actually
@@ -76,13 +82,27 @@ type appliedRow struct {
 }
 
 // witnessedImplemented reports whether c is a real PR-backed `implemented`
-// witness eligible for --apply: the normal trailer fold or the declared
-// backfill branch/body match. A witness-sourced verified/done cell, a
-// blocked/none cell, and the backfill's no-PR hand-said `unknown` shape are
-// all excluded by construction — none of them is Cell=="implemented" with
-// Source in {"pr","backfill"}.
+// witness eligible for --apply: the normal trailer fold, the declared
+// backfill branch/body match, or a witness-sourced cell (verified, done, or
+// a demoted unknown) whose base is a merged PR on record (MergedPR) — the
+// verify overlay sits on top of that merge and does not remove it. A
+// blocked/none cell, a witness-sourced cell with no merged PR, and the
+// backfill's no-PR hand-said `unknown` shape are all excluded by
+// construction.
 func witnessedImplemented(c BriefCell) bool {
+	if c.Source == "witness" {
+		return c.MergedPR != ""
+	}
 	return c.Cell == "implemented" && (c.Source == "pr" || c.Source == "backfill")
+}
+
+// applyWitness is the PR witness an --apply row names: the merged PR the
+// write rests on, never the verify overlay's text.
+func applyWitness(c BriefCell) string {
+	if c.MergedPR != "" {
+		return c.MergedPR
+	}
+	return c.Witness
 }
 
 // applyReconcileWrites writes the derived `implemented` cell back into each
@@ -120,14 +140,42 @@ func planReconcileWrites(root string, cells []BriefCell) ([]appliedRow, []heldRo
 // The writer never produces a tree its own lint step rejects, and never weakens
 // or skips that lint to get there.
 func reconcileWrites(root string, cells []BriefCell, write bool) (rows []appliedRow, held []heldRow, err error) {
+	return reconcileWritesWith(root, cells, write, holdOptions{crossCheck: holdCrossCheck})
+}
+
+// holdProgressEvery is how many witnessed cells pass between progress lines.
+const holdProgressEvery = 25
+
+// reconcileWritesWith is reconcileWrites with the hold's options: its work
+// counters, the whole-board reference path the parity tests compare against,
+// the incremental self-check, and the progress writer (#2615).
+func reconcileWritesWith(root string, cells []BriefCell, write bool, opts holdOptions) (rows []appliedRow, held []heldRow, err error) {
 	defer beginGitReadSession()()
 	staged := newReadmeStage()
 	defer staged.clear()
 	var env *lintEnv
 	overlay := map[string]string{}
+	witnessed := 0
+	for _, c := range cells {
+		if witnessedImplemented(c) {
+			witnessed++
+		}
+	}
+	start, seen := time.Now(), 0
+	if opts.progress != nil {
+		defer func() {
+			fmt.Fprintf(opts.progress, "reconcile: lint hold: %d witnessed cell(s) checked, %d row(s) admitted, %d held (%s)\n",
+				seen, len(rows), len(held), time.Since(start).Round(time.Millisecond))
+		}()
+	}
 	for _, c := range cells {
 		if !witnessedImplemented(c) {
 			continue
+		}
+		seen++
+		if opts.progress != nil && seen%holdProgressEvery == 0 && seen < witnessed {
+			fmt.Fprintf(opts.progress, "reconcile: lint hold: at witnessed cell %d/%d, %d admitted, %d held so far (%s)\n",
+				seen, witnessed, len(rows), len(held), time.Since(start).Round(time.Millisecond))
 		}
 		stream, num, ok := briefStreamNum(c.ID)
 		if !ok {
@@ -153,6 +201,7 @@ func reconcileWrites(root string, cells []BriefCell, write bool) (rows []applied
 			if env, err = loadLintEnv(root); err != nil {
 				return rows, held, fmt.Errorf("loading the board for the lint hold: %w", err)
 			}
+			env.opts, env.stats = opts, opts.stats
 		}
 		added, found, merr := env.tryMove(stream, num, "implemented", func() (func() error, error) {
 			return staged.put(path, edit.content), nil
@@ -164,7 +213,7 @@ func reconcileWrites(root string, cells []BriefCell, write bool) (rows []applied
 			added = []string{couldNotCheckRow(c.ID)}
 		}
 		if len(added) > 0 {
-			held = append(held, heldRow{ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: c.Witness, Problems: added})
+			held = append(held, heldRow{ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: applyWitness(c), Problems: added})
 			continue
 		}
 		if write {
@@ -175,7 +224,7 @@ func reconcileWrites(root string, cells []BriefCell, write bool) (rows []applied
 			overlay[path] = edit.content
 		}
 		rows = append(rows, appliedRow{
-			ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: c.Witness,
+			ID: c.ID, From: edit.from, To: "implemented", Path: path, Witness: applyWitness(c),
 			RowBefore: edit.rowBefore, RowAfter: edit.rowAfter,
 		})
 	}

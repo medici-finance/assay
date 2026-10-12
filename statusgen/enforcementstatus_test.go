@@ -120,7 +120,7 @@ func TestEnforcementStatusRegistryCoversVerifyRowRules(t *testing.T) {
 	for _, tag := range []string{
 		ruleERELiteralPipe, ruleGrepZeroCount, ruleExitSwallowed, ruleRE2LiteralPipe,
 		ruleMetavar, ruleGoRunExit, ruleBREAlternation, ruleShreddedCell,
-		ruleMovingRef, rulePortability, ruleGoTestRunVacuous,
+		ruleMovingRef, rulePortability, ruleGoTestRunVacuous, ruleGrepPipeZeroCount,
 		ruleProseLedCommand, ruleCmdMarkerAmbiguous, ruleCmdMarkerOverrides, ruleCmdMarkerNotHonoured, ruleCmdMarkerVacuous,
 	} {
 		if !registered[tag] {
