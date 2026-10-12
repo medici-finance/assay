@@ -132,6 +132,15 @@ Thus the equivalence check covers all 57 records, not only the changed payloads,
 and can be checked against an independently accessible prior public revision.
 The original raw-log hashes and omission accounting remain unchanged.
 
+Fifteen symbolic runtime-home and rollout-path values across the five RPC
+artifacts are also represented as `{"root":"probe-root","relative":"…"}`. The
+relative value is unchanged. This keeps the already-redacted root explicit
+without making its suffix look like an absolute machine path. The manifest lists
+every location (source line followed by JSON field/index components). The
+validator reconstructs each entire prior public artifact and checks its hash at
+the same f99f3e4f revision. Neither this path representation nor structured tool
+text claims to be the raw RPC schema; both are reversible public extracts.
+
 Run `python3 validate.py` in this directory for hash, chronology, bootstrap,
 readback, control and extraction-accounting assertions. It validates retained
 artifacts only; it does not start Codex, contact services, or manufacture a new

@@ -5,7 +5,7 @@
       "originalBasename": "bootstrap-probe.log",
       "originalSha256": "a33602edfb3ba5897d783d269ae00eec01a9121b8d5f41bb6275859a92744d9d",
       "artifact": "original-bootstrap.jsonl",
-      "artifactSha256": "33723975591dd51f2b8719c735df319d19a0ae7eec6423ab2dc802ddefd7bdba",
+      "artifactSha256": "fbf234edb6d681dc36f056e4b0099285a75fc36a78a1f2f48fbd1f73db3231c9",
       "sourceLines": 278,
       "omittedLines": {
         "runtime stderr diagnostic": 1,
@@ -22,7 +22,7 @@
       "originalBasename": "native-probe.log",
       "originalSha256": "16e9f4fc837115ae221a77a7f58cf4ef360e36769541f5994668730a9d2a7d4c",
       "artifact": "engine-control.jsonl",
-      "artifactSha256": "ce245adbdfcf0d9967462fef9aaeaac7c7e707044faa7a64f82d6eb1bcacf357",
+      "artifactSha256": "698c40e23b440b47c36f284c0858c25745aa84a0b4caa8b41985996a41eccc04",
       "sourceLines": 219,
       "omittedLines": {
         "runtime stderr diagnostic": 1,
@@ -38,7 +38,7 @@
       "originalBasename": "native-disabled-final.log",
       "originalSha256": "54197ba044c3f6983c19dcdb383a7a62aaae0ebc92e50af035e9df3b72485f5a",
       "artifact": "goals-disabled.jsonl",
-      "artifactSha256": "2f27ac3c4c416a41d6a5147cb1677695c78d4578f487f837dc39f2456baa3554",
+      "artifactSha256": "bc73be720af76446ec71b95dc80724ebf0a0c2a2af1bb45e7413745a7fef9540",
       "sourceLines": 116,
       "omittedLines": {
         "runtime stderr diagnostic": 1,
@@ -54,7 +54,7 @@
       "originalBasename": "native-paused.log",
       "originalSha256": "7b16a30f63a07040c09cfd4161590129f95de9e1bef0269749cc7f9a2fd40c5a",
       "artifact": "existing-paused.jsonl",
-      "artifactSha256": "8ffba42bd55bafb5133932726948d3385c33d6cc5a6b101ed91f8070fcf012a3",
+      "artifactSha256": "513eeedf468f7fcb100ba2462a8f7ea0de7dd562c341f6c5ccd13d123d863cda",
       "sourceLines": 145,
       "omittedLines": {
         "runtime stderr diagnostic": 1,
@@ -70,7 +70,7 @@
       "originalBasename": "close-gap-probe.log",
       "originalSha256": "c0a3cb0a448a6c0fdcd60472ebadb56daa2bd612244df343439483795d8cfb1f",
       "artifact": "bootstrap-tools-rpc.jsonl",
-      "artifactSha256": "9fcd62493caf54653e24dbaf80ef0f07b6a58f3fa8650c4fbf151566ac0cc11e",
+      "artifactSha256": "510bf7770ccbe64c3af22bc9809592b3b7e5dc3319113f54ffa4245ad6ea9565",
       "sourceLines": 261,
       "omittedLines": {
         "runtime stderr diagnostic": 2,
@@ -160,5 +160,142 @@
       }
     ],
     "inverse": "Replace each marked input_text.text object with json.dumps(text.value, separators=(comma, colon)), using Python default ensure_ascii=True; serialize each JSONL row with separators=(comma, colon), ensure_ascii=False, followed by LF."
-  }
+  },
+  "structuredProbePaths": [
+    {
+      "artifact": "bootstrap-tools-rpc.jsonl",
+      "previousPublicRevision": "f99f3e4f76388852e6f797ace830c167a6fc2111",
+      "previousPublicSha256": "9fcd62493caf54653e24dbaf80ef0f07b6a58f3fa8650c4fbf151566ac0cc11e",
+      "locations": [
+        [
+          4,
+          "payload",
+          "result",
+          "codexHome"
+        ],
+        [
+          10,
+          "payload",
+          "result",
+          "thread",
+          "path"
+        ],
+        [
+          12,
+          "payload",
+          "params",
+          "thread",
+          "path"
+        ]
+      ]
+    },
+    {
+      "artifact": "engine-control.jsonl",
+      "previousPublicRevision": "f99f3e4f76388852e6f797ace830c167a6fc2111",
+      "previousPublicSha256": "ce245adbdfcf0d9967462fef9aaeaac7c7e707044faa7a64f82d6eb1bcacf357",
+      "locations": [
+        [
+          3,
+          "payload",
+          "result",
+          "codexHome"
+        ],
+        [
+          7,
+          "payload",
+          "result",
+          "thread",
+          "path"
+        ],
+        [
+          10,
+          "payload",
+          "params",
+          "thread",
+          "path"
+        ]
+      ]
+    },
+    {
+      "artifact": "existing-paused.jsonl",
+      "previousPublicRevision": "f99f3e4f76388852e6f797ace830c167a6fc2111",
+      "previousPublicSha256": "8ffba42bd55bafb5133932726948d3385c33d6cc5a6b101ed91f8070fcf012a3",
+      "locations": [
+        [
+          3,
+          "payload",
+          "result",
+          "codexHome"
+        ],
+        [
+          7,
+          "payload",
+          "result",
+          "thread",
+          "path"
+        ],
+        [
+          9,
+          "payload",
+          "params",
+          "thread",
+          "path"
+        ]
+      ]
+    },
+    {
+      "artifact": "goals-disabled.jsonl",
+      "previousPublicRevision": "f99f3e4f76388852e6f797ace830c167a6fc2111",
+      "previousPublicSha256": "2f27ac3c4c416a41d6a5147cb1677695c78d4578f487f837dc39f2456baa3554",
+      "locations": [
+        [
+          3,
+          "payload",
+          "result",
+          "codexHome"
+        ],
+        [
+          7,
+          "payload",
+          "result",
+          "thread",
+          "path"
+        ],
+        [
+          9,
+          "payload",
+          "params",
+          "thread",
+          "path"
+        ]
+      ]
+    },
+    {
+      "artifact": "original-bootstrap.jsonl",
+      "previousPublicRevision": "f99f3e4f76388852e6f797ace830c167a6fc2111",
+      "previousPublicSha256": "33723975591dd51f2b8719c735df319d19a0ae7eec6423ab2dc802ddefd7bdba",
+      "locations": [
+        [
+          3,
+          "payload",
+          "result",
+          "codexHome"
+        ],
+        [
+          7,
+          "payload",
+          "result",
+          "thread",
+          "path"
+        ],
+        [
+          10,
+          "payload",
+          "params",
+          "thread",
+          "path"
+        ]
+      ]
+    }
+  ]
 }

@@ -70,6 +70,27 @@ restored_bytes = ''.join(json.dumps(r, separators=(',', ':'), ensure_ascii=False
                          for r in restored).encode()
 assert sha(restored_bytes) == normalization['previousPublicSha256']
 
+# Placeholder root/relative values keep paths visibly symbolic rather than
+# embedding a machine-looking suffix. Reversal covers each entire public file.
+for transform in manifest['structuredProbePaths']:
+    locations = []
+    def restore_paths(value, location):
+        if isinstance(value, dict):
+            if set(value) == {'root', 'relative'} and value['root'] == 'probe-root':
+                assert isinstance(value['relative'], str)
+                locations.append(location)
+                return '<' + value['root'] + '>/' + value['relative']
+            return {k: restore_paths(v, location + [k]) for k, v in value.items()}
+        if isinstance(value, list):
+            return [restore_paths(v, location + [i]) for i, v in enumerate(value)]
+        return value
+    restored = [restore_paths(row, [i + 1])
+                for i, row in enumerate(read(transform['artifact']))]
+    assert locations == transform['locations']
+    reconstructed = ''.join(json.dumps(row, separators=(',', ':'), ensure_ascii=False) + '\n'
+                            for row in restored).encode()
+    assert sha(reconstructed) == transform['previousPublicSha256']
+
 for name in ['original-bootstrap.jsonl', 'bootstrap-tools-rpc.jsonl']:
     rows = read(name)
     starts = clients(rows, 'turn/start')
