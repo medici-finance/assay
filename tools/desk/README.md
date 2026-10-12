@@ -944,8 +944,12 @@ Boundaries mirror the push-transport gate's:
   only widens the range. Under `update --pr N` the head branch is unknown offline, so a real
   run skips the offline stage and is judged once, at the live stage — after the head is
   shown to be an ancestor of HEAD and to be what the push destination holds (#2432); `--pr N
-  --check` judges the whole range and says how to narrow it. `create` offers no tip (no PR head exists yet), and `deskevidence`
-  offers none (its base already is the branch it writes). Every caller's tip choice is pinned
+  --check` judges the whole range and says how to narrow it. A live `create` confirms the
+  destination branch directly through its credentialed push endpoint, excludes only that
+  confirmed history, and pins the existing ref during its plain push. An absent branch
+  keeps the whole range; unreadable or divergent state refuses. `create --check` judges
+  the whole range and explicitly reports that it cannot confirm the remote head.
+  `deskevidence` offers no tip (its base already is the branch it writes). Every caller's tip choice is pinned
   by `TestPubIdentityCallersTip`; the fail-first evidence is
   `internal/deskkit/publishidentity-mutations.json`.
 - **`deskevidence` commits as the verifier App via the Contents API**, so its own landing is

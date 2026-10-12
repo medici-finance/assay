@@ -237,20 +237,14 @@ func cmdCreate(args []string) (err error) {
 		return terr
 	}
 
-	// PUBLISH-identity gate (#1490 lane B). Refuse before the push if any commit the push
-	// would publish (refs/remotes/origin/<base>..HEAD) is authored or committed by an
-	// identity other than this session role's bound bot. A worktree that acquired a stale
-	// `user.*` — from a shared checkout, a manual `git worktree add`, an editor's git —
-	// would otherwise publish commits attributed to the wrong actor; the provisioning fixes
-	// stop new such worktrees, this stops the publish from any route. Local (git + roster),
-	// so it runs before the token mint and is part of --check.
-	//
-	// create offers NO remote tip (#1967): it opens a NEW change, so there is no forge-held
-	// PR head to anchor a narrower range on, and the forge surface has no branch-head read to
-	// confirm a local remote-tracking ref against. The whole range the new PR introduces is
-	// judged — the fail-closed choice. update, which has a PR head, narrows.
-	if ierr := publishIdentityGate(facts.dir, *base, ""); ierr != nil {
-		return ierr
+	// Offline checking cannot establish what the destination already holds. Keep the
+	// conservative whole-range check, but explain why a published commit may refuse.
+	// A real run checks against the destination immediately before its push below.
+	if *check {
+		fmt.Fprintln(deskprStderr, "publish-identity: remote branch head was not checked (offline); judging the whole base-to-HEAD range. A real create confirms the destination before checking new commits.")
+		if ierr := publishIdentityGate(facts.dir, *base, ""); ierr != nil {
+			return ierr
+		}
 	}
 
 	// seatbelt: scan title, branch, and the diff-vs-default before any push.
@@ -294,13 +288,13 @@ func cmdCreate(args []string) (err error) {
 	// It mints no token, opens no connection, and pushes nothing: a real `create` run
 	// past this point can still fail on remote state (an existing open PR, a red rate
 	// limit, a non-authorized public repo), which --check never claims to have checked.
-	// The publish-identity gate (#1490) ran above with the rest of the local gates.
+	// The conservative offline publish-identity gate ran above; live destination proof remains unchecked.
 	if *check {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): an existing open PR on this branch, " +
-			"the outward-write rate limit, and the public-repo authorization gate.")
+			"the outward-write rate limit, the public-repo authorization gate, and the publish-identity range against the live destination branch.")
 		return nil
 	}
 
@@ -365,10 +359,14 @@ func cmdCreate(args []string) (err error) {
 
 	// Plain push, in-process (push.go): the refspec is built here with no "+" and no Force,
 	// so a push that would need force is refused by the protocol; no caller flag reaches it.
-	if pushErr := pushFn(pushSpec{
+	spec, prepErr := prepareCreatePush(pushSpec{
 		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
 		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch, setUpstream: true,
-	}); pushErr != nil {
+	}, *base)
+	if prepErr != nil {
+		return prepErr
+	}
+	if pushErr := pushFn(spec); pushErr != nil {
 		return pushErr
 	}
 

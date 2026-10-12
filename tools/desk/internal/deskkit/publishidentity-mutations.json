@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'PubRange|PubClass|PubIdentity|PublishIdentity|DefaultPublishCommits|UpdateCheckAcceptsMixedPR|UpdatePushesMixedPR|UpdateRefusesNewForeign|UpdateLiveHeadOverrulesRef|UpdateNoLiveHeadFailsClosed|CreateJudgesWholeRange|UpdatePR|UpdateDivergedLive|UpdateNoTrackRefWide'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'PubRange|PubClass|PubIdentity|PublishIdentity|DefaultPublishCommits|UpdateCheckAcceptsMixedPR|UpdatePushesMixedPR|UpdateRefusesNewForeign|UpdateLiveHeadOverrulesRef|UpdateNoLiveHeadFailsClosed|CreateJudgesWholeRange|CreateEvidenceOffline|UpdatePR|UpdateDivergedLive|UpdateNoTrackRefWide'",
   "control": {
     "name": "CONTROL — the gate stops checking authors at all (any identity is published)",
     "file": "internal/deskkit/publishidentity.go",
@@ -62,7 +62,7 @@
       "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, remoteTrackingTip(facts.branch)); ierr != nil {"
     },
     {
-      "name": "create narrows on an unconfirmed local tracking ref",
+      "name": "offline create narrows on an unconfirmed local tracking ref",
       "file": "cmd/deskpr/deskpr.go",
       "old": "\tif ierr := publishIdentityGate(facts.dir, *base, \"\"); ierr != nil {",
       "new": "\tif ierr := publishIdentityGate(facts.dir, *base, remoteTrackingTip(facts.branch)); ierr != nil {"

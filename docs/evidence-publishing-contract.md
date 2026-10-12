@@ -1,36 +1,45 @@
 # Publishing an existing Evidence branch
 
-Status: implementation scope; acceptance checks pending.
-
 `deskevidence` can create commits through the forge Contents API. On GitHub these
-commits carry the verifier App as author and GitHub as committer. Opening a draft
-PR with `deskpr create` currently judges the whole base-to-HEAD range, including
-these already-published commits, and refuses their committer identity.
+commits carry the verifier App as author and GitHub as committer. `deskpr create`
+can open their first draft PR without reauthoring those already-published objects.
 
-The implementation must let a sanctioned Evidence branch become a draft PR while
-preserving its commit objects and the publishing identity guard. It must establish
-what the destination actually holds before excluding already-published commits.
-A local tracking ref alone is not proof of the current remote branch head.
+Before the push, create lists the exact destination branch through the same
+credentialed canonical endpoint used by its in-process push. It checks only
+`HEAD ^refs/remotes/origin/<base> ^<confirmed-tip>`. A local tracking ref or a PR
+lookup is never the evidence for that tip. A confirmed absent branch means the
+whole base-to-HEAD range is new and must pass the identity check.
 
-New commits introduced by a push must still satisfy the acting role's author and
-committer rules. A forge-looking email alone must never exempt an ordinary local
-commit. Missing, unreadable, mismatched, or divergent remote state must fail closed.
-No identity override, raw-push fallback, reauthoring, or force push is in scope.
+For an existing branch, an unreadable or unfetched head, a divergent history, or
+an invalid branch response refuses. The proof binds the destination URL, branch,
+and source commit. The push requires the existing remote ref to remain at the
+confirmed tip, including when the remote rewinds after checking. It remains a
+plain fast-forward push; this precondition grants no force capability.
 
-Acceptance checks:
+Every new commit still needs the acting role's exact author and committer identity.
+An ordinary unpublished commit with a provider-looking address is not exempt.
+Existing forge-merge rules are unchanged. No override, reauthoring, or raw-push
+fallback is added.
 
-- A branch containing only confirmed remote Contents API commits can open a draft
-  PR without changing those commits.
-- A valid new role-authored commit above that branch is checked and can publish.
-- A new commit with a foreign author or committer is rejected before a write.
-- An unpublished ordinary commit using a forge committer address is rejected.
-- Wrong-repository, wrong-branch, stale, divergent, and unreadable remote-head
-  evidence cannot silently suppress the identity check.
-- Offline `--check` describes any remote-dependent proof it cannot establish.
-- The same defect class is checked at sibling publishing call sites, with each
-  sibling either covered by the change or explicitly scoped out with evidence.
+`create --check` opens no connection, conservatively checks the whole range, and
+reports that the remote branch head was not checked. It can therefore refuse a
+branch that a real create admits after confirming its published history.
 
-Regression tests should reproduce the original refusal, include a second instance
-of the same range error, and retain the existing negative identity cases.
+## Sibling paths and regression evidence
+
+- `deskpr update` already narrows against the live PR head; its offline estimate
+  and named-PR destination checks remain unchanged. Existing mixed-author,
+  stale-tracking-ref and foreign-commit tests cover this sibling.
+- `deskevidence` checks the worktree from which it derives witness attribution;
+  its base is already its landing branch. It does not publish a worktree branch
+  through `deskpr create`, and continues offering no remote-tip exclusion.
+- The existing caller inventory and planted second-call-site control cover every
+  publish-identity caller. The create proof is now recorded in that inventory.
+
+`tools/desk/cmd/deskpr/evidencepublish_test.go` covers unchanged provider-committed
+history, new role commits, foreign author/committer identities, stale local refs,
+wrong repository/branch, unreadable/divergent/unfetched state, proof mismatches,
+and a remote rewind from the pre-push hook. Its reproducible negative mutations
+are in `tools/desk/cmd/deskpr/evidence-mutations.json`.
 
 Related range contract: <https://github.com/medici-finance/assay/issues/1967>.
