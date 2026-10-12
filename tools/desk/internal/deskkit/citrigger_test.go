@@ -221,6 +221,14 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test:   "tools/desk/internal/regression/changelog_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/changelog"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor executes the real-Git changelog and board classification suites",
+		},
+		{
 			test:   "tools/desk/internal/regression/evidenceautomerge_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
 			prJob: floorJob, pushJob: floorJob,
@@ -2446,6 +2454,7 @@ runs:
 // TestRegressionCIEntrypoints checks the published workflow directly. The
 // legacy house registry test intentionally skips without tools.yml; these
 // public entries must not inherit that skip.
+// regression: #2686
 func TestRegressionCIEntrypoints(t *testing.T) {
 	count := 0
 	for _, e := range ciCrossModuleRegistry() {
@@ -2475,8 +2484,8 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 			}
 		}
 	}
-	if count != 3 {
-		t.Fatalf("floor has %d CI registry entries, want 3 (manifest, shell and Evidence suites)", count)
+	if count != 4 {
+		t.Fatalf("floor has %d CI registry entries, want 4 (manifest, shell, Evidence and changelog suites)", count)
 	}
 }
 

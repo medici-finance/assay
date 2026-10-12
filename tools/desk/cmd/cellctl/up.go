@@ -527,11 +527,11 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 	if !helpHas("list", "herdr", "workspace") {
 		die("herdr is the resolved cockpit but this build's 'herdr workspace --help' advertises no 'list' — cannot tell whether a herdr window is already open to host the role tabs; re-run with --cockpit tmux")
 	}
-	newWsID, newDefaultTab := "", ""
-	if herdrWindowID() == "" {
-		newWsID, newDefaultTab = c.herdrStartWindow(c.Name + "-" + firstName)
-		fmt.Println("[cell] no herdr window was open — started one")
+	w, err := c.ensureHerdrWorkspace()
+	if err != nil {
+		die("herdr workspace: %v", err)
 	}
+	newWsID, newDefaultTab := w.ID, w.DefaultTab
 	c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
 	for _, role := range roles {
 		c.herdrWindow(c.Name+"-"+role, c.paneRoleCmd(role, cfg, o), newWsID)
@@ -541,56 +541,12 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 	// workspace holds the cell's own labelled tabs too. Closing it any earlier (before the
 	// workspace holds a second tab) closes the whole workspace with it.
 	if newDefaultTab != "" {
-		_ = exec.Command("herdr", "tab", "close", newDefaultTab).Run()
+		if err := c.dropHerdrDefault(w); err != nil {
+			die("Herdr default tab: %v", err)
+		}
 	}
 	fmt.Printf("[cell] %s up in herdr: %s-%s +%s (config=%s)\n", c.Name, c.Name, firstName, strings.Join(roles, " "), cfg)
 	fmt.Printf("[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down %s\n", c.Name)
-}
-
-func herdrWindowID() string {
-	out, err := exec.Command("herdr", "workspace", "list").Output()
-	if err != nil {
-		return ""
-	}
-	var d struct {
-		Result struct {
-			Workspaces []struct {
-				WorkspaceID string `json:"workspace_id"`
-			} `json:"workspaces"`
-		} `json:"result"`
-	}
-	if json.Unmarshal(out, &d) != nil || len(d.Result.Workspaces) == 0 {
-		return ""
-	}
-	return d.Result.Workspaces[0].WorkspaceID
-}
-
-// herdrStartWindow brings up a herdr window (a "workspace") when none was open — the same
-// create-if-absent shape as the tmux arm's `has-session || new-session`. It FAILS CLOSED,
-// naming herdr and the exact command tried, rather than leaving the tabs nowhere to land.
-func (c *Cell) herdrStartWindow(label string) (wsID, defaultTab string) {
-	if !helpHas("create", "herdr", "workspace") {
-		die("herdr is the resolved cockpit but no herdr window is open and this build's 'herdr workspace --help' advertises no 'create' — nothing can bring one up to host the role tabs (tried: herdr workspace create --label %s); re-run with --cockpit tmux", label)
-	}
-	out, err := exec.Command("herdr", "workspace", "create", "--label", label).CombinedOutput()
-	if err != nil {
-		die("herdr is the resolved cockpit but no herdr window is open and 'herdr workspace create --label %s' failed to bring one up: %s; re-run with --cockpit tmux", label, strings.TrimSpace(string(out)))
-	}
-	var d struct {
-		Result struct {
-			Workspace struct {
-				WorkspaceID string `json:"workspace_id"`
-			} `json:"workspace"`
-			Tab struct {
-				TabID string `json:"tab_id"`
-			} `json:"tab"`
-		} `json:"result"`
-	}
-	_ = json.Unmarshal(out, &d)
-	if d.Result.Workspace.WorkspaceID == "" {
-		die("herdr is the resolved cockpit but 'herdr workspace create --label %s' did not return a workspace_id — nothing can host the role tabs: %s; re-run with --cockpit tmux", label, strings.TrimSpace(string(out)))
-	}
-	return d.Result.Workspace.WorkspaceID, d.Result.Tab.TabID
 }
 
 func (c *Cell) herdrWindow(label, cmd, wsID string) {
