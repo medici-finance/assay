@@ -313,6 +313,90 @@ func TestResetMarkerDoesNotOverwriteCredential(t *testing.T) {
 		})
 	}
 }
+
+func TestResetRetentionUsesFilesystemIdentity(t *testing.T) {
+	c, cfg, manifest := commsFixture(t)
+	if err := os.MkdirAll(c.Dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	root := resetFixtureRepo(t, t.TempDir(), "repo")
+	c.Repo = root
+	c.Env.Put("CELL_ROOTS", "example/repo="+root)
+	policy, err := c.maintenanceCachePolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cellcache.Check(*policy, false); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(policy.Root, "build", "signing.key")
+	if err := os.MkdirAll(filepath.Dir(key), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(key, []byte("nonsecret identity fixture\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	aliasRoot := filepath.Join(filepath.Dir(policy.Root), strings.ToUpper(filepath.Base(policy.Root)))
+	alias := filepath.Join(aliasRoot, "build", "signing.key")
+	actualInfo, err := os.Stat(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasInfo, err := os.Stat(alias)
+	if os.IsNotExist(err) {
+		// A case-sensitive volume has a distinct directory, so an unconditional
+		// case-folded pathname comparison would incorrectly refuse safe storage.
+		if err := os.MkdirAll(filepath.Dir(alias), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(alias, []byte("nonsecret separate fixture\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		aliasInfo, err = os.Stat(alias)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := os.SameFile(actualInfo, aliasInfo)
+	cfg.SigningKeys["worker-desk"] = alias
+	writeCommsFixture(t, manifest, cfg)
+	plan, err := c.planReset(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.preflightReset(plan)
+	if same && (err == nil || !strings.Contains(err.Error(), "retained")) {
+		t.Fatal("preflight accepts a filesystem-equivalent credential in cleanup storage", err)
+	}
+	if !same && err != nil {
+		t.Fatal("preflight rejects distinct case-sensitive storage", err)
+	}
+	t.Logf("filesystem alias identifies same file: %t", same)
+	if after, err := os.Stat(key); err != nil || !os.SameFile(actualInfo, after) {
+		t.Fatal("preflight modified cache fixture", err)
+	}
+}
+
+func TestResetStorageIdentityFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	loop := filepath.Join(dir, "loop")
+	if err := os.Symlink("loop", loop); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resetStorageContains(filepath.Join(dir, "outside"), loop); err == nil {
+		t.Fatal("unknown cleanup identity accepted")
+	}
+	if _, err := resetStorageContains(loop, filepath.Join(dir, "root")); err != nil {
+		t.Fatal("absent cleanup root refused", err)
+	}
+	root := filepath.Join(dir, "root")
+	if err := os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resetStorageContains(loop, root); err == nil {
+		t.Fatal("unknown retained identity accepted")
+	}
+}
 func TestResetPlanRefusesConfigInsideWorktree(t *testing.T) {
 	base := t.TempDir()
 	root := resetFixtureRepo(t, base, "one")

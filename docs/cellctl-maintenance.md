@@ -42,6 +42,9 @@ directories, removed worktrees, hard-reset repositories, discarded queue storage
 and service-state files. It also rejects credentials at reset's own marker/lock
 paths, before creating any maintenance controls. Credentials in those locations
 must be moved before reset.
+Equivalent filesystem paths cannot bypass retention checks: existing entries and
+ancestors are compared by filesystem identity. Uncertain identity lookups refuse
+reset; distinct entries on a case-sensitive filesystem remain distinct.
 
 Unix cache/reset support initially covers macOS and Linux. Unsupported platforms
 refuse before mutation. Existing owner, no-link and single-filesystem cache checks

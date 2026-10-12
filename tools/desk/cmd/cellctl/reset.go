@@ -488,12 +488,46 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 			return nil, err
 		}
 		for _, path := range retained {
-			if pathInside(path, root) || pathInside(path, resolved) {
+			inside, err := resetStorageContains(path, resolved)
+			if err != nil {
+				return nil, err
+			}
+			if pathInside(path, root) || inside {
 				return nil, fmt.Errorf("reset cleanup/control path overlaps retained configuration or credentials: %s", root)
 			}
 		}
 	}
 	return cfg, nil
+}
+
+// Filesystem identity handles equivalent spellings without folding names on a
+// case-sensitive volume. Compare the retained entry and each actual ancestor to
+// the cleanup root; optional absent paths still get the lexical containment check.
+func resetStorageContains(path, root string) (bool, error) {
+	if pathInside(path, root) {
+		return true, nil
+	}
+	rootInfo, err := os.Stat(root)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reset cannot establish cleanup identity: %w", err)
+	}
+	for {
+		info, err := os.Stat(path)
+		if err == nil && os.SameFile(info, rootInfo) {
+			return true, nil
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return false, fmt.Errorf("reset cannot establish retained-path identity: %w", err)
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return false, nil
+		}
+		path = parent
+	}
 }
 
 // Keep both the link entry and its actual source. Missing optional configuration
