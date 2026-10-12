@@ -8,15 +8,19 @@ IDE agent the **secondary** end-user surface. Harness tool names are legal here 
 is this file's whole purpose — and illegal in a skill body (`tools/harnesslint bodies`
 enforces it).
 
-## Install — copy, do not marketplace
+## Install and upgrade — versioned bundle or explicit source
 
 Cursor has **no** `/plugin marketplace add` / `/plugin install` path. That is Claude Code.
 The authoritative install steps — the one-command `deskinstall --harness cursor` (`windows-port/07`)
 and the five manual steps it automates — live in
 [`docs/adopting-assay.md`](../../../docs/adopting-assay.md) § **Running Assay on Cursor**
-(`windows-port/09`); this file does not carry a second copy. In short: copy skills + references as
-siblings, bindings arrive via `AGENTS.md`/`.cursor/rules`, desk binaries go on `PATH`, and
-`harnessgen cursor` output is optional.
+(`windows-port/09`); this file does not carry a second copy. Versioned placement verifies
+the selected release's bundle; `upgrade-assay --harness cursor` previews, applies, and
+checks it through the existing version resolver. Skills and references are siblings,
+bindings arrive via `AGENTS.md`/`.cursor/rules`, and desk binaries go on `PATH`.
+Legacy releases without the asset refuse the versioned route; explicit local source
+placement remains available. Edit canonical `plugins/assay`, then regenerate the
+managed `.cursor` copies; do not edit generated copies.
 
 The in-editor agent is a supported install surface. Headless `cursor-agent` is the
 smoke/automation surface (HP/13); blocked live smoke does not mean "do not copy skills."

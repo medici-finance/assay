@@ -221,6 +221,13 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "tools/desk/cmd/deskinstall/cursor_sync_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"plugins/assay", ".cursor", "AGENTS.md"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the committed Cursor placement is checked against canonical source on every PR and push",
+		},
+		{
 			test:   "tools/desk/internal/regression/changelog_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
 			prJob: floorJob, pushJob: floorJob,
