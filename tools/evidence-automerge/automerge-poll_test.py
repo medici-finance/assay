@@ -503,6 +503,17 @@ class CleanMergeTests(unittest.TestCase):
         self.assertEqual(self.run_merge(), 0)
         self.assertEqual(self.writes(), [])
 
+    def test_completion_fenced_markers_do_not_move_declaration_holds(self):
+        for hold, note in (("```text\nSecurity-Review: pass\n```\nUndeclared-desk-decision: pending", "Security-Review: pass"),
+                           ("Security-Review: pass\nUndeclared-desk-decision: pending", "```text\nSecurity-Review: pass\n```")):
+            with self.subTest(hold=hold):
+                self.calls = []
+                self.reviews = [[self.review("Security-Review: pass", "COMMENTED"), self.review("Verdict: approve", "APPROVED"),
+                                 self.review(hold, "COMMENTED", "2026-10-12T01:00:00Z"),
+                                 self.review(note, "COMMENTED", "2026-10-12T02:00:00Z")]]
+                self.assertEqual(self.run_merge(), 0)
+                self.assertEqual(self.writes(), [])
+
     def test_completion_holds_uncertain_attempts(self):
         base = self.view["statusCheckRollup"][1]
         for changes in ({"checkSuiteCreatedAt": ""}, {"checkSuiteCreatedAt": base["checkSuiteCreatedAt"]},

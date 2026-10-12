@@ -73,7 +73,33 @@ func TestEvidenceCompletionCanonicalReaders(t *testing.T) {
 			declarations = append(declarations, map[string]any{"body": body, "labels": labels, "clear": deskkit.DeskDecidedRefusal(1, labels, body, nil, "assay-reviewer-app[bot]", "head") == ""})
 		}
 	}
-	raw, err := json.Marshal(map[string]any{"markers": cases, "declarations": declarations})
+	head := strings.Repeat("a", 40)
+	var timelines []map[string]any
+	for _, securityHold := range []bool{false, true} {
+		for _, clear := range []bool{false, true} {
+			hold := "```text\nSecurity-Review: pass\n```\nUndeclared-desk-decision: pending"
+			note, state := "Security-Review: pass", "COMMENTED"
+			if securityHold {
+				hold = "Security-Review: pass\nUndeclared-desk-decision: pending"
+				note = "```text\nSecurity-Review: pass\n```"
+			}
+			if clear {
+				if securityHold {
+					note = "Security-Review: pass"
+				} else {
+					note, state = "Verdict: approve", "APPROVED"
+				}
+			}
+			reviews := []deskkit.DeskDecidedReview{
+				{Login: "assay-reviewer-app[bot]", State: "COMMENTED", CommitID: head, Body: "Security-Review: pass"},
+				{Login: "assay-reviewer-app[bot]", State: "APPROVED", CommitID: head, Body: "Verdict: approve"},
+				{Login: "assay-reviewer-app[bot]", State: "COMMENTED", CommitID: head, Body: hold},
+				{Login: "assay-reviewer-app[bot]", State: state, CommitID: head, Body: note},
+			}
+			timelines = append(timelines, map[string]any{"reviews": reviews, "head": head, "clear": deskkit.DeskDecidedRefusal(1, nil, "", reviews, "assay-reviewer-app[bot]", head) == ""})
+		}
+	}
+	raw, err := json.Marshal(map[string]any{"markers": cases, "declarations": declarations, "timelines": timelines})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +125,14 @@ import merge_clean as m
 for case in json.load(sys.stdin)["declarations"]:
  assert m.declaration_clear(case["body"],case["labels"] or [])==case["clear"],case
 `
-	for _, script := range []string{program, declarationProgram} {
+	timelineProgram := `import json,sys
+sys.path.insert(0,sys.argv[1])
+import merge_clean as m
+for case in json.load(sys.stdin)["timelines"]:
+ reviews=[{"id":i+1,"user":{"login":r["Login"],"type":"Bot"},"state":r["State"],"commit_id":r["CommitID"],"body":r["Body"],"submitted_at":"2026-10-12T00:00:00Z"} for i,r in enumerate(case["reviews"])]
+ assert m.reviewed(reviews,case["head"])==case["clear"],case
+`
+	for _, script := range []string{program, declarationProgram, timelineProgram} {
 		ctx, cancel := context.WithTimeout(context.Background(), shellBudget)
 		cmd := exec.CommandContext(ctx, "python3", "-B", "-c", script, filepath.Join(root, "tools/evidence-automerge"))
 		cmd.Stdin = bytes.NewReader(raw)

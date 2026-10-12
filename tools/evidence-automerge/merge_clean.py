@@ -141,11 +141,14 @@ def reviewed(reviews, head, body="", labels=()):
         sec_lane = bool(marker_values(text, r"Security-Review:[ \t]*(pass|fail)"))
         cor_kind = marker_values(text, r"Verdict:[ \t]*(approve|request-changes)")
         mixed = sec_lane and bool(cor_kind)
-        lane = "security" if sec_lane else "correctness"
+        # Declaration holds use the canonical grant/fail lane discriminator,
+        # separately from the stricter dual-kind artifact check above.
+        hold_security_lane = sec_pass or sec_fail
+        lane = "security" if hold_security_lane else "correctness"
         if current:
             if marker_values(text, r"Undeclared-desk-decision:[ \t]*(.+)"):
                 holds[lane] = True
-            elif sec_lane or state in ("APPROVED", "CHANGES_REQUESTED"):
+            elif hold_security_lane or state in ("APPROVED", "CHANGES_REQUESTED"):
                 holds[lane] = False
         if sec_fail:
             security = False  # retractions survive a head move and every state
