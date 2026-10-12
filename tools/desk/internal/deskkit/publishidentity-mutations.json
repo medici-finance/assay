@@ -16,8 +16,8 @@
     {
       "name": "fail-open: drop the is-ancestor check (a force-moved or diverged remote tip shrinks the range)",
       "file": "internal/deskkit/publishidentity.go",
-      "old": "\"--is-ancestor\", sha, \"HEAD\"); aerr != nil {",
-      "new": "\"--is-ancestor\", sha, \"HEAD\"); false && aerr != nil {"
+      "old": "\"--is-ancestor\", sha, source); aerr != nil {",
+      "new": "\"--is-ancestor\", sha, source); false && aerr != nil {"
     },
     {
       "name": "fail-open: drop the spelling check (HEAD, a local branch or revision syntax can name the pushed commit)",
@@ -52,20 +52,20 @@
     {
       "name": "update drops the LIVE stage (a stale-ahead tracking ref decides what is pushed)",
       "file": "cmd/deskpr/deskpr.go",
-      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); ierr != nil {",
-      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); false && ierr != nil {"
+      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); false && ierr != nil {"
     },
     {
       "name": "update's live stage anchors on the local tracking ref instead of the forge's PR head",
       "file": "cmd/deskpr/deskpr.go",
-      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); ierr != nil {",
-      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, remoteTrackingTip(facts.branch)); ierr != nil {"
+      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, remoteTrackingTip(facts.branch), facts.head); ierr != nil {"
     },
     {
       "name": "offline create narrows on an unconfirmed local tracking ref",
       "file": "cmd/deskpr/deskpr.go",
-      "old": "\tif ierr := publishIdentityGate(facts.dir, *base, \"\"); ierr != nil {",
-      "new": "\tif ierr := publishIdentityGate(facts.dir, *base, remoteTrackingTip(facts.branch)); ierr != nil {"
+      "old": "\tif ierr := publishIdentityGate(facts.dir, *base, \"\", facts.head); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, *base, remoteTrackingTip(facts.branch), facts.head); ierr != nil {"
     },
     {
       "name": "deskevidence starts offering a remote tip (an unreviewed second instance of the class)",

@@ -242,7 +242,7 @@ func cmdCreate(args []string) (err error) {
 	// A real run checks against the destination immediately before its push below.
 	if *check {
 		fmt.Fprintln(deskprStderr, "publish-identity: remote branch head was not checked (offline); judging the whole base-to-HEAD range. A real create confirms the destination before checking new commits.")
-		if ierr := publishIdentityGate(facts.dir, *base, ""); ierr != nil {
+		if ierr := publishIdentityGate(facts.dir, *base, "", facts.head); ierr != nil {
 			return ierr
 		}
 	}
@@ -592,7 +592,7 @@ func cmdUpdate(args []string) (err error) {
 		offlineTip = "" // head ref unknown offline: judge the whole range, fail closed
 	}
 	if *prNum == 0 || *check {
-		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip); ierr != nil {
+		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip, facts.head); ierr != nil {
 			if *prNum > 0 {
 				return prCheckWideNote(ierr)
 			}
@@ -723,7 +723,7 @@ func cmdUpdate(args []string) (err error) {
 	// authority on what the remote branch holds. Re-judge against it before anything is
 	// pushed. A head the forge did not report, one not fetched here, or one this branch does
 	// not descend from (a force-moved PR head) falls back to the whole range — fail closed.
-	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); ierr != nil {
+	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); ierr != nil {
 		return ierr
 	}
 
@@ -754,6 +754,7 @@ func cmdUpdate(args []string) (err error) {
 	spec := pushSpec{
 		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
 		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch,
+		checkedSource: facts.head,
 	}
 	if override {
 		// Explicit refspec: HEAD onto the PR's head branch. The worktree's own branch has a

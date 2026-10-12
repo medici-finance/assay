@@ -48,6 +48,10 @@ func prepareCreatePush(s pushSpec, base string) (pushSpec, error) {
 	if err != nil {
 		return s, deskkit.Unverifiable("cannot resolve the source for publish-identity", err)
 	}
+	current, err := repo.Resolve("HEAD")
+	if err != nil || current != head {
+		return s, deskkit.Refused("refused: push source differs from the worktree HEAD; re-run from the source branch")
+	}
 	// Existing branches must be fast-forwardable. An unreadable or divergent tip
 	// is not evidence for excluding commits, even if the wide range would pass.
 	if tip != "" {
@@ -56,7 +60,7 @@ func prepareCreatePush(s pushSpec, base string) (pushSpec, error) {
 			return s, deskkit.Refused(fmt.Sprintf("refused: cannot prove HEAD descends from destination %s at %s; fetch and merge before retrying", ref, shortSHA(tip)))
 		}
 	}
-	if err := publishIdentityGate(s.dir, base, tip); err != nil {
+	if err := publishIdentityGate(s.dir, base, tip, head.String()); err != nil {
 		return s, err
 	}
 	s.proof = &publishProof{destination: dest, url: endpoint.URL, ref: ref, head: head.String(), tip: tip}

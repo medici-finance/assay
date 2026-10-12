@@ -44,8 +44,9 @@ type pushSpec struct {
 	// setUpstream also records the pushed branch as srcRef's upstream (branch.<b>.remote and
 	// branch.<b>.merge) — what `git push -u` did on create. Only meaningful when srcRef is a
 	// refs/heads/ branch.
-	setUpstream bool
-	proof       *publishProof // present when create has checked the live destination
+	setUpstream   bool
+	checkedSource string        // update carries the immutable hash its identity gate checked
+	proof         *publishProof // present when create has checked the live destination
 }
 
 // pushFn is the push seam. Production binds pushBranch; a test that needs to observe or fail
@@ -79,6 +80,9 @@ func pushBranch(s pushSpec) error {
 	hash, rerr := repo.Resolve(s.srcRef)
 	if rerr != nil {
 		return deskkit.Unverifiable("cannot resolve "+s.srcRef, rerr)
+	}
+	if s.checkedSource != "" && s.checkedSource != hash.String() {
+		return deskkit.Refused("refused: push source changed after publish-identity checking; re-run")
 	}
 	dstRef := "refs/heads/" + s.dstBranch
 	var required []string

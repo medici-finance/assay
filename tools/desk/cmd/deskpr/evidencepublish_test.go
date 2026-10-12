@@ -206,3 +206,65 @@ func TestCreateProofRemoteAhead(t *testing.T) {
 		t.Fatal("destination ahead of HEAD admitted")
 	}
 }
+
+// regression: #1967
+func TestCreateProofSnapshot(t *testing.T) {
+	for _, when := range []string{"before preparation", "during identity check"} {
+		t.Run(when, func(t *testing.T) {
+			work, calls, remote := evidenceFixture(t)
+			addCommitAs(t, work, "Assay Issue Loop", prIssueLoopEmail, "unchecked.txt")
+			spec := branchSpec(work)
+			moveHead := func() { mustGit(t, work, "checkout", "--detach", remote) }
+			if when == "before preparation" {
+				moveHead()
+			} else {
+				checked := publishIdentityGateFn
+				publishIdentityGateFn = func(in deskkit.PublishIdentityInput) error {
+					moveHead()
+					return checked(in)
+				}
+			}
+			if _, err := prepareCreatePush(spec, "main"); err == nil {
+				t.Fatal("source differing from the identity snapshot admitted")
+			}
+			if anyPush(*calls) || curForge.created != nil {
+				t.Fatal("snapshot mismatch caused publication")
+			}
+		})
+	}
+}
+
+// regression: #1967
+func TestCreateProofHeadMismatch(t *testing.T) {
+	work, _, remote := evidenceFixture(t)
+	addCommitAs(t, work, "Assay Worker", prWorkerEmail, "source.txt")
+	spec := branchSpec(work)
+	mustGit(t, work, "checkout", "--detach", remote)
+	if _, err := prepareCreatePush(spec, "main"); err == nil || !strings.Contains(err.Error(), "differs from") {
+		t.Fatalf("correct-role source mismatching HEAD was not refused: %v", err)
+	}
+}
+
+// regression: #1967
+func TestUpdateSourceSnapshot(t *testing.T) {
+	work, _, remote := mixedPRFixture(t)
+	t.Setenv("FAKEGH_PR_OID", remote)
+	addTwoWorkerCommits(t, work)
+	checked := publishIdentityGateFn
+	checks := 0
+	publishIdentityGateFn = func(in deskkit.PublishIdentityInput) error {
+		checks++
+		err := checked(in)
+		if checks == 2 && err == nil {
+			// The live stage checked its snapshot; a concurrent local commit
+			// must not replace it between the gate and the sibling push.
+			addCommitAs(t, work, "Assay Issue Loop", prIssueLoopEmail, "late.txt")
+		}
+		return err
+	}
+	var rc int
+	stderr := captureStderr(t, func() { rc = run([]string{"update"}) })
+	if checks != 2 || rc != deskkit.ExitRefused || !strings.Contains(stderr, "source changed after") {
+		t.Fatalf("update snapshot binding checks=%d rc=%d: %s", checks, rc, stderr)
+	}
+}

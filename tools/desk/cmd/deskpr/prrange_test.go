@@ -133,7 +133,7 @@ func TestUpdatePRCheckWide(t *testing.T) {
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("update --pr 42 --check with the head unknown offline rc = %d, want 5 (whole range)\n%s", rc, stderr)
 	}
-	for _, want := range []string{"Range judged: refs/remotes/origin/main..HEAD", "--branch"} {
+	for _, want := range []string{"Range judged: refs/remotes/origin/main.." + mustGit(t, work, "rev-parse", "HEAD")[:12], "--branch"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("the --check refusal does not say %q:\n%s", want, stderr)
 		}
