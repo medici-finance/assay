@@ -1,2 +1,2 @@
-### Added
-- Document the release-build timing baseline and validation plan for cache reuse, source/version changes and artifact inventories.
+### Changed
+- Batch desk-tools command builds per target and optionally reuse isolated Go caches from verified prior release-job artifacts, with cold fallback and recorded local performance measurements.
