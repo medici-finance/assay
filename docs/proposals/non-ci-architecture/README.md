@@ -21,6 +21,7 @@ Verification is the first end-to-end test.
 | [Delivery sequence](16-delivery-sequence.md) | Focused implementation packages, dependencies and retirement obligations |
 | [Shared context graph](17-context-substrate.md) | Cell classification, composition, source ownership, snapshot/query and visibility contracts |
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
+| [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Requested direction and proposed mechanisms
@@ -95,6 +96,23 @@ Dispatchable briefs, named implementers, estimates and applied amendments are
 still required. This PR neither closes existing work nor claims quantified savings.
 Runtime proof gates activation; it must not become a circular prerequisite to
 authorizing the implementation that produces that proof.
+
+## Progressive adoption and oversight amendment
+
+The [12 October amendment](19-progressive-adoption-and-oversight.md) extends the same
+semantic owners with independently usable Inspect/Assist entry paths and scoped human
+involvement. Offline contracts do not require the running PostgreSQL cell. Managed
+execution keeps its custody, transaction, fencing and activation boundaries.
+
+Adoption journey, oversight policy, credential topology and deployment qualification
+are independent choices. Presets expand into explicit requirements; evidence depth,
+action authority and notification preferences remain distinct. AssayScore measures
+outcomes and can inform tuning recommendations; it never enacts a grant.
+
+The delivery sequence now includes the smaller product lane beside R1–R8. This is a
+draft architectural delta, not released settings, an implemented installer or an
+approved change to current lifecycle/authority. Existing records and source accounts
+remain preserved. Architecture, implementation and activation approval stay separate.
 
 ## Operating research incorporated in this revision
 

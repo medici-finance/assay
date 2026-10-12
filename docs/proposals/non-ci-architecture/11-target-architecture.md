@@ -46,6 +46,20 @@ flowchart TB
 
 The diagram shows logical responsibilities; the provider-read arrow uses an authorized adapter, never ambient credentials. It does not put every box in a daemon. A planning graph is read-side context; it cannot authorize a runtime action.
 
+## Progressive deployment and human involvement
+
+The running cell is the deployment unit for managed coordination and effects. Pure
+work/policy/evidence capabilities also have an independently usable offline consumer
+shape for inspection and advisory tasks; it does not deploy a controller, obtain
+publication authority or maintain leases. The [adoption amendment](19-progressive-adoption-and-oversight.md)
+defines the selected dependency closure and qualification of both shapes.
+
+Human-involvement policy extends the work/evidence/decision owners, with the same
+explainable evaluation consumed by CLI, API, controller and effect boundary. Role
+identity, runtime isolation, oversight level and installation scope are distinct;
+fewer Apps or quieter notifications cannot establish greater assurance or authority.
+The cockpit exposes effective policy, evidence provenance and next required act.
+
 ## One semantic owner for each domain
 
 | Domain | Meaning owned here | Boundaries |
