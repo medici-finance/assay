@@ -122,6 +122,25 @@ Use semantic ownership as the consolidation boundary. Existing stream names may 
 
 Public product briefs belong here. Each adopter maintains its own deployment overlay and local plan amendments. Public implementation must not require access to an adopter's private corpus. Reconcile public contract changes and their applicable local overlays together through exact revision references, without publishing private identifiers or counts.
 
+## Progressive adoption is a separate product lane
+
+The [adoption/oversight delta](19-progressive-adoption-and-oversight.md) adds qualified
+offline inspection and advisory single-task use beside the managed verifier program.
+Reuse the shared domain owners and current installation/pin contracts. A selected
+small path does not require every desk, register, report pack, database or cockpit.
+No current governed completion condition or role authority changes implicitly.
+
+Inventory installed configuration, selected capabilities, effective oversight policy,
+policy/subject versions and user-authored artifacts during upgrade. Preview new
+requirements; preserve useful smaller operation while an upgrade is held. Reconcile
+active attempts/checkpoints and pending decisions before changing their requirements.
+Do not infer old approval from a new preset or historical evidence from a badge.
+
+Managed effects still require the complete repository handover, credential/minting
+inventory and fresh authority rules above. Smaller packaging cannot weaken those
+rules or admit another writer. Apply actual owner/consumer brief amendments and
+version/pin changes only after the applicable source contract is approved.
+
 ## Decisions already available and still needed
 
 The requested design inputs are one host with isolated cells, command breaks where helpful, coordinated reconciliation of unfinished plans, and a public service/cockpit. PostgreSQL coordinates in-flight work; useful reconstruction may lose explicitly classified transient data and repeat safe work. Git retains canonical intent and published evidence for this phase. The active verifier may publish through its governed role-bound path.

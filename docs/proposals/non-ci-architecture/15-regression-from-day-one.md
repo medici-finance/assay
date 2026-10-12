@@ -116,3 +116,23 @@ Before the first code substitution, run and retain results for the selected sour
 At minimum, select the runner/conformance packages and the statusgen cases `TestCoverageCouldNotCheckIsNotPass`, `TestCoverageAdviceCannotSupplyWitness`, `TestCoverageAcceptanceDigestChanged`, `TestEligibilityCouldNotCheckHolds`, `TestOfflineReaderNeverAnswersEmpty` and `TestGraphJSONLDeterministic`. Preserve the behavioral cases when extracting package-main helpers. A fake runner passing conformance does not prove production isolation, PostgreSQL reconstruction or publication fencing.
 
 The architecture PR validates document consistency and publication scope. Its checks are not the implementation regression floor. Each delivery PR records its actual selected tests, implementation identity, positive case and relevant failing control.
+
+## Progressive adoption and oversight qualification
+
+Use the [adoption acceptance corpus](19-progressive-adoption-and-oversight.md#adoption-acceptance-and-architecture-qualification)
+through actual producer and consumer boundaries. Add these obligations to the owning
+regression ledger; no new test or public interface is claimed by this document.
+
+| Boundary | Required failing control / positive case |
+|---|---|
+| Offline consumer and installation | Cold fixture inspection without ambient home/credentials/database/source checkout; interrupted setup preserves authored files and a bad pin holds |
+| Evidence and assurance | A passing self-check substituted for an independent witness fails; unchanged canonical facts agree through offline and managed consumers |
+| Policy and effects | Worker-controlled preset/env cannot raise authority; protected scope remains held under a low-touch preference, even with a permissive fake provider |
+| Human decision and recovery | Expired/changed batch subject and reconstructed unknown consumption cannot authorize; unrelated still-valid tuples retain only their actual grant |
+| Sampling and attention | Reroll/split evasion fails; eligible/sample/unknown denominators remain visible; quiet hours or exhausted attention budget do not answer a gate |
+| Measurement and tuning | Incomplete score or reduced detection cannot enact a grant; human minutes, required-check coverage and independently sampled defects remain counter-metrics |
+
+Qualification reports actual selected policy/contract/implementation revisions and
+capability evidence. A schema-valid preset or a higher score is not a passing runtime
+case. Measure first useful outcome and independent repeat use, including support and
+repair effort. Read-only release acceptance is independent of managed writer activation.
