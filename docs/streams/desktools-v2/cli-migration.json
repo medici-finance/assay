@@ -7,6 +7,11 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "class": "test",
+      "pattern": "docs/qualification/codex-goals/2026-10-12/validate.py",
+      "reason": "offline assertions over retained native Goal qualification artifacts for issue #2696; invoked by readers of that evidence index, never installed or released as an operator CLI"
+    },
+    {
       "class": "library",
       "pattern": "tools/evidence-automerge/merge_clean.py",
       "reason": "internal protected-merge helper called by the main-only Evidence workflow; no shebang, main guard, argument parser or independent operator command"
