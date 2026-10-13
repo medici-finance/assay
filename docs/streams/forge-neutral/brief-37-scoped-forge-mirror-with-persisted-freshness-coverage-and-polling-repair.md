@@ -99,9 +99,8 @@ the store's own constraint that refuses a watermark advance whose scan record is
 (row 7, with the library check bypassed), and every query answer carrying its coverage state, so a
 consumer that ignores the watermark still sees `partial` or `unavailable` (rows 4 and 6).
 On the read side, the one control is the query-time admission check in `forgeread/mirror`. Behind it,
-the store binds every scope to the admission it was read under and filters every query on that
-binding, so a query under another admission returns no rows even with the library check bypassed
-(row 15).
+the store independently enforces Task 1's same admission relation and returns an explicit
+permission refusal, not a successful empty result, even with the library check bypassed (row 15).
 
 Read first: `docs/proposals/non-ci-architecture/14-storage-forge-graph.md` §"Reuse and expand the
 existing forge-mirror work", `forgeread/README.md`, `docs/library-first.md`,
@@ -162,9 +161,12 @@ Default if no answer: none. The mirror stays unactivated and the brief stays hel
 - `forgeread` stays a module with no dependencies: no `require` or `replace` in `forgeread/go.mod`,
   and no import of a statusgen or `workflow` package. Mappings onto graph-execution/28 records belong
   to the `workflow` module (rows 17 and 19).
-- The mirror store is per cell. Every stored scope is bound to the admission it was read under, and
-  no caller outside that admission reads its rows (row 15). Sharing a mirror across cells needs
-  matching access scopes and explicit ownership, and is a separate brief.
+- The mirror store is per cell, partitioned by admission. Desks share rows only within the same
+  composition-derived admission; distinct credential installations do not share an admission just
+  because both cover a repository. Each has its own scope, rows, coverage and refresh ownership.
+  No caller outside a scope's bound admission reads its rows or receives a complete-empty answer
+  for that scope (row 15). Sharing a mirror across cells needs matching access scopes and explicit
+  ownership, and is a separate brief.
 - If graph-execution/19's R2 amendment has not landed, or its store has no migration and test
   harness for an added table, stop and report NEEDS_CONTEXT. Do not build a second store.
 - Stop at `implemented`; an independent verifier owns verified and done.
@@ -181,12 +183,21 @@ Default if no answer: none. The mirror stays unactivated and the brief stays hel
    `pull-request` or `merge-request`, number); an issue is (repository, number). graph-execution/28
    defines work and candidate identity, not change identity, and `forgeread` does not import it.
    Each scope is also bound to the admission it was read under: an opaque admission ID that
-   composition supplies with the access (the cell and credential installation that admitted the
-   repository). Every query names the caller's admission. The mirror answers a scope's rows only when
-   a composition-supplied authorizer confirms, at query time, that the caller's admission covers the
-   repository. Otherwise it answers `unavailable: permission` with no rows. The store applies the
-   same binding as a query predicate, so a query never returns rows admitted under another admission,
-   even with the library check bypassed.
+   trusted composition derives from the authenticated caller's cell and credential installation.
+   The stored scope key includes this admission ID as well as the repository and record kind.
+   Query admission is derived by that same trusted composition, never accepted from request input;
+   an admission ID is a binding, not a bearer credential.
+   Both the library and the store enforce the same fail-closed relation: the caller has a valid
+   composition-derived admission, its ID equals the scope's bound admission ID, and the supplied
+   authorizer confirms current repository coverage at query time. Missing, invalid, nonmatching
+   or no-longer-authorized admission answers `unavailable: permission` with no rows, even if the
+   stored scope is complete. Repository coverage alone never substitutes for identity equality.
+   The library refuses before querying scope data; the store independently checks the relation
+   using the trusted query context and authorizer, includes admission equality in its data
+   predicate, and returns a typed permission refusal when the relation fails. It must not turn a
+   filtered-out scope into a successful empty result or return that scope's complete coverage.
+   A complete-empty answer is valid only after admission succeeds and the admitted scope itself
+   contains no matching records. Row 15 exercises each layer with the other bypassed.
 2. **Coverage and freshness.** Per scope, persist: coverage state (`never-read`, `complete`,
    `partial`, `unavailable` with a reason class: `permission`, `transport`, `rate-limited`,
    `truncated`), last attempted time, last complete time (the completeness watermark), provider
@@ -196,7 +207,8 @@ Default if no answer: none. The mirror stays unactivated and the brief stays hel
    the module that links both `forgeread` and `statusgen`; `forgeread/mirror` exports the coverage
    states and imports nothing from statusgen. Every query answer carries its scope's coverage,
    last complete time, observed revision and stale flag. A query over a scope that is not complete
-   never answers a bare empty list.
+   never answers a bare empty list. Task 1's admission refusal overrides stored completeness;
+   only an admitted query can expose the stored coverage.
 3. **Reads.** Add exactly two operations, `ChangesUpdatedSince` and `IssuesUpdatedSince`, for both
    providers in `forgeread/adapters/{github,gitlab}`. Each lists records updated at or after a bound,
    ordered by update time, walks every page up to a ceiling and returns `Incomplete` at the ceiling,
@@ -205,8 +217,8 @@ Default if no answer: none. The mirror stays unactivated and the brief stays hel
    answering not-modified or a page with its new validator. Where the provider or endpoint gives no
    validator, the read happens in full and the scan records `conditional: unsupported`. Inventory
    rows and the surface test's want list gain exactly the two names.
-4. **Refresh planner and polling repair.** One ingestion owner per admitted scope. The first read
-   enumerates every page. Each incremental poll reads from the last observed-up-to time minus a
+4. **Refresh planner and polling repair.** One ingestion owner per (admission ID, repository,
+   record kind) scope. The first read enumerates every page. Each incremental poll reads from the last observed-up-to time minus a
    declared overlap window. A periodic bounded full inventory reconciles closures, transfers and
    removals. Absence from a partial or failed scan is never deletion. Absence from a complete
    inventory marks the record `not-in-inventory`, which is distinct from closed. A failed or partial
@@ -232,7 +244,9 @@ Default if no answer: none. The mirror stays unactivated and the brief stays hel
 8. **Composition and floor.** `tools/desk/internal/deskkit/mirrorsource.go` (planned) implements the mirror's
    source over the already-admitted access deskkit composes; it refuses a repository outside the
    credential's scope before any request. It supplies the admission ID with each access, and the
-   query-time authorizer over the same admitted repository set. Add one frozen case to
+   query-time authorizer over the same admitted repository set to both library and store. Query
+   composition derives the admission from the authenticated caller; a request-supplied ID cannot
+   select another admission (row 9). Add one frozen case to
    graph-execution/29's regression
    inventory: a partial mirror coverage assesses as could-not-check, never pass. Update
    `forgeread/README.md` and add the changelog fragment.
@@ -253,13 +267,13 @@ provider transports only.
 | 6 | check:ci +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorRefreshCoalescesNoStorm$" ./mirror/ > "$result" && grep -F -- "--- PASS: TestMirrorRefreshCoalescesNoStorm " "$result")` | exit 0; named PASS. 50 concurrent refresh requests for one scope cause exactly one provider read. With the provider down, every caller receives stale with `unavailable: transport`, and the fake records no second scan inside the backoff. **Mutation**: remove coalescing, and the recorded read count exceeds 1 and the test fails |
 | 7 | check:ci +flow +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorStoreConformancePostgres$" ./store/... > "$result" && grep -F -- "--- PASS: TestMirrorStoreConformancePostgres " "$result")` | exit 0; named PASS (a skip for a missing harness prints no PASS and fails the row). `mirrortest` passes against real PostgreSQL in graph-execution/19's disposable harness: restart keeps rows and watermarks, and dropping the mirror tables and rebuilding yields `never-read` everywhere. With the library check bypassed, the store refuses a watermark advance on an incomplete scan record. **Mutation**: remove the store constraint, and the bypassed advance commits and the test fails |
 | 8 | check:ci +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorConditionalRefresh$" ./... > "$result" && grep -F -- "--- PASS: TestMirrorConditionalRefresh " "$result")` | exit 0; named PASS. A not-modified answer refreshes only that scope's last-complete time, with rows unchanged. A source without validators reads in full and records `conditional: unsupported`. A not-modified answer to a partial earlier scan does not promote it to complete. **Mutation**: let not-modified promote a partial scope, and the test fails |
-| 9 | check:ci +flow +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorSourceLowerScope$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestMirrorSourceLowerScope " "$result")` | exit 0; named PASS. With the mirror's scope check bypassed, the composed source refuses a repository outside the credential's scope before any request (zero requests recorded at the fake), and an in-scope control repository reads. Both provider fixtures give the same mirror records through the adapters and through deskkit's delegating methods. **Mutation**: remove the composition's scope check, and the request reaches the fake and the test fails |
+| 9 | check:ci +flow +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorSourceLowerScope$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestMirrorSourceLowerScope " "$result")` | exit 0; named PASS. With the mirror's scope check bypassed, the composed source refuses a repository outside the credential's scope before any request (zero requests recorded at the fake), and an in-scope control repository reads. Both provider fixtures give the same mirror records through the adapters and through deskkit's delegating methods. The real query composition receives authenticated B plus request input claiming A; it supplies B to the mirror and returns permission refusal for A's scope, while authenticated A is a positive control. **Mutation**: pass the request-supplied admission through instead of deriving it from the authenticated caller, and B reads A's rows and the test fails. **Mutation**: remove the composition's scope check, and the request reaches the fake and the test fails |
 | 10 | check +dereference +mutation | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"([^"]*/)?forgeread/[^"]+"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: statusgen links no subpackage of `forgeread`, `mirror` included, so this brief does not rebind forge-neutral/18. It is forge-neutral/36 row 10, unchanged. **Mutation**: a planted statusgen import of `.../forgeread/mirror` counts `1` |
 | 11 | check +dereference +mutation | `test -d forgeread/mirror && (cd forgeread && GOWORK=off go list -deps ./mirror > "${TMPDIR:-/tmp}/b37-r11.out") && { grep -x -F -e net/http -e os/exec -e database/sql "${TMPDIR:-/tmp}/b37-r11.out" \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: the mirror library's dependency closure has no HTTP client, no process launch and no database driver. Transport and persistence enter only through the source and the store. A missing package prints nothing and fails the row (it fails at authoring). **Mutation**: a mirror file importing `net/http` counts `1` |
 | 12 | check:ci +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestForgeSurfaceUnchangedByDeskread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestForgeSurfaceUnchangedByDeskread " "$result" && GOWORK=off go test -count=1 -v -run "^TestForgeGitlabCoverage$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestForgeGitlabCoverage " "$result" && GOWORK=off go test -count=1 -v -run "^TestAmbientTokenGuardCoversForgeread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestAmbientTokenGuardCoversForgeread " "$result")` | exit 0: the surface want list and the GitLab inventory reconcile with exactly the two new operations, and the ambient-token rule finds no forge-token read in `forgeread/`, `mirror` included. That rule recognises only six forge-token variable names; row 18 covers every other environment read. **Mutation**: add a third operation without an inventory row, and `TestForgeGitlabCoverage` fails. **Mutation**: a mirror file reading `GH_TOKEN` from the environment produces a finding, and `TestAmbientTokenGuardCoversForgeread` fails |
 | 13 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRegressionFloorOldNewAgree$" . > "$out" && grep -F -- "--- PASS: TestRegressionFloorOldNewAgree " "$out" && grep -rlF 'mirror-partial-is-could-not-check' testdata/regressionfloor/)` | exit 0: graph-execution/29's floor passes with the added frozen case, which names the mirror-partial case file. **Mutation**: make the case expect pass for partial coverage, and the floor fails |
 | 14 | check:ci +dereference | `statusgen --consumers --root .` | exit 0: the diff-aware consumers gate corroborates every routing token against the implementing branch's diff (each `follow-up forge-neutral/37` self-reference is satisfied by this brief's own changes and flips to `fixed-here` at implementation) |
-| 15 | check:ci +flow +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorQueryAdmissionScope$" ./mirror/... > "$result" && grep -F -- "--- PASS: TestMirrorQueryAdmissionScope " "$result")` | exit 0; named PASS. A scope is read under admission A. A query under admission B, whose authorizer does not cover the repository, answers `unavailable: permission` with zero rows, never a bare empty list. With the library authorizer bypassed, the reference store's admission predicate still returns no row to B. After A's coverage is withdrawn, A's next query also answers `unavailable: permission`, because the check runs at query time. The case is part of `mirrortest`, so it also runs against PostgreSQL under row 7. **Mutation**: drop the admission predicate from the store query with the library check bypassed, and B receives A's rows and the test fails. **Mutation**: cache the authorizer's answer at read time, and A still reads after losing coverage and the test fails |
+| 15 | check:ci +flow +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorQueryAdmissionScope$" ./mirror/... > "$result" && grep -F -- "--- PASS: TestMirrorQueryAdmissionScope " "$result")` | exit 0; named PASS. A complete scope under admission A contains a canary row; currently authorized A reads it as a positive control. Missing or invalid admission, uncovered B, and **covered-but-different B** each answer `unavailable: permission` with zero rows, never complete-empty. The library refuses before any scope-data query (spy call count zero). With the library check bypassed, the store independently returns the same typed permission refusal for those cases, not just a filtered empty list; with a permissive store double, the library still refuses. After A's coverage is withdrawn, its next query is refused in each layer. Only authorized A querying a genuinely empty scope may receive complete-empty. This production-path case is part of `mirrortest`, including PostgreSQL under row 7. **Mutation**: remove library admission equality while retaining coverage; covered B reaches the store and the zero-call assertion fails. **Mutation**: turn the store's nonmatching-admission refusal into a successful empty result; the bypass case fails on coverage/reason even though zero rows remain. **Mutation**: drop the store admission predicate with the library bypassed; B receives A's canary and the test fails. **Mutation**: cache authorization at ingestion; A still reads after withdrawal and the test fails |
 | 16 | check:ci +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorPermissionLossRetention$" ./mirror/... > "$result" && grep -F -- "--- PASS: TestMirrorPermissionLossRetention " "$result")` | exit 0; named PASS. **Decision-conditional**: the worker implements only after the human decision is recorded, and the edit that records it deletes the unchosen option's sentence and mutation from this cell. Option 1 (stale, access-checked history): after confirmed permission loss every prior row remains, marked stale and permission-lost, served only with that coverage and only through row 15's query-time admission check; rows past the configured history window are gone. Option 2 (purge to tombstones): after confirmed permission loss, a scan of every stored field of the scope finds none of the fixture's private canary strings (titles, bodies, labels, review text), while identities, the coverage gap and the loss time remain. The case is part of `mirrortest`, so it also runs against PostgreSQL under row 7. **Mutation (option 1)**: serve stale rows without the admission check, and the test fails. **Mutation (option 2)**: make the purge a no-op, and a canary is found and the test fails |
 | 17 | check +mutation | `test -f forgeread/go.mod && { grep -n -w -e require -e replace forgeread/go.mod \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: `forgeread` keeps no module dependency, so no subpackage can import `statusgen/domain` or a `workflow` package, and no forgeread-to-statusgen require cycle can form. The graph-execution/28 mapping stays in `workflow`. Passes at authoring as an invariant guard. **Mutation**: a planted `require github.com/medici-finance/assay/statusgen v0.0.0` line counts `1` |
 | 18 | check +mutation | `test -d forgeread/mirror && { grep -rn -F --include='*.go' --exclude='*_test.go' -e '"os"' -e '"syscall"' forgeread/mirror \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: no shipped `mirror` file imports `os` or `syscall` under any import name, so nothing in it can call `os.Getenv`, `os.LookupEnv`, `os.Environ` or `syscall.Getenv`, whatever variable it names. Row 12's ambient-token rule recognises only six forge-token variable names; this row covers every other name. Build-constrained files are included, because the row reads source text rather than one platform's build list. A missing package prints nothing and fails the row (it fails at authoring). **Mutation**: a mirror file importing `os`, aliased or not, to read any variable counts `1` |
@@ -275,7 +289,8 @@ shared source reads another repository's scope (row 9). statusgen starts linking
 /18's credential limit erodes (row 10). The library grows its own transport or driver (row 11). New
 reads slip past the frozen inventory, or a forge token is read from the environment (row 12). Mirror uncertainty rounds to
 pass at assessment (row 13). A reader admitted for one repository reads rows admitted under another
-admission (row 15). The chosen retention option is left unimplemented (row 16). `forgeread` gains a
+admission, or a covered but different admission receives complete-empty (row 15). Request input
+impersonates an admission instead of composition deriving it (row 9). The chosen retention option is left unimplemented (row 16). `forgeread` gains a
 dependency on statusgen and a module cycle forms (row 17). A mirror file reads configuration or a
 secret from the environment under a name the ambient-token rule does not know (row 18). Partial
 coverage maps to a present fact (row 19). Retention of private content after access loss remains the
