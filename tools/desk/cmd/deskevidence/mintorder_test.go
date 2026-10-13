@@ -374,13 +374,13 @@ func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
 				resolved = deskkit.OutboundChecked(f, "verifier")
 				return resolved, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 			}
-			verifierEvidenceAdmissionFn = func(_, _, _ string, fg deskkit.Forge) (deskkit.VerifierReceipt, error) {
+			verifierEvidenceAdmissionFn = func(_, _, target string, fg deskkit.Forge) (deskkit.VerifierReceipt, error) {
 				steps = append(steps, "admission")
 				admitted = fg
 				if len(f.hits) != 0 {
 					t.Errorf("the landing reached the forge before admission: %v", f.hits)
 				}
-				return deskkit.VerifierReceipt{}, nil
+				return stubAdmittedReceipt(target), nil
 			}
 			root := rootWithFile(t, "docs/streams/x/brief.md", "# Brief\n\n## Evidence\n| 1 | fixture | 0 | ok |\n")
 			writeFixtureFile(t, filepath.Join(root, "record.json"), rec)
