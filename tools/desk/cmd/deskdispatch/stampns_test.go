@@ -89,7 +89,7 @@ func TestDispatchStampKeepsReview(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
-	s.replies = happyReplies("/private/tmp/worker-home")
+	s.replies = happyReplies(t.TempDir())
 	gh := installGHStamp(t)
 	plantReviewPair(t, gh)
 
