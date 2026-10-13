@@ -6,6 +6,7 @@ package main
 // at step 4 of the writer's step order (see cmdOutcomeRecordWrite).
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -120,6 +121,13 @@ func dereferencePR(fg deskkit.Forge, fr deskkit.ForgeRepo, kind deskkit.ForgeKin
 	got, err := fg.GetPullRequest(er, pr.Number)
 	if err != nil {
 		if deskkit.IsForgeNotFound(err) {
+			// A 404 on another repository is ambiguous: GitHub answers it for a private
+			// repository the register's token cannot read, the same as for a missing change.
+			// Only the register's own repository (which the token demonstrably reads) can
+			// refuse "does not exist"; anywhere else it is could-not-check.
+			if !strings.EqualFold(pr.Repo, fr.Slug()) {
+				return joinEntry{}, deskkit.Unverifiable("could-not-check: cannot read "+at+" — the forge answered not found, which for a repository other than the register means the change is missing or the register's token cannot read it", err)
+			}
 			return joinEntry{}, deskkit.Refused("refused: " + at + " does not exist on the forge (exists)")
 		}
 		return joinEntry{}, deskkit.Unverifiable("could-not-check: cannot read "+at, err)
@@ -141,12 +149,12 @@ func dereferencePR(fg deskkit.Forge, fr deskkit.ForgeRepo, kind deskkit.ForgeKin
 		return joinEntry{}, deskkit.Refused("refused: " + at + " merge_sha " + pr.MergeSHA + " is not the change's merge commit (merge commit)")
 	}
 	cr, _ := entryForgeRepo(canon)
-	def, derr := fg.RepoDefaultBranch(cr)
 	switch kind {
 	case deskkit.ForgeGitLab:
 		// CompareRefs is deferred on GitLab: the writer instead requires the change to have
 		// merged into the repository's default branch no later than the record's ts. Weaker than
 		// ancestry — it does not show the record's sha contains the merge commit.
+		def, derr := fg.RepoDefaultBranch(cr)
 		if derr != nil {
 			return joinEntry{}, deskkit.Unverifiable("could-not-check: cannot read the default branch of "+canon, derr)
 		}
@@ -172,6 +180,9 @@ func dereferencePR(fg deskkit.Forge, fr deskkit.ForgeRepo, kind deskkit.ForgeKin
 				return joinEntry{}, deskkit.Refused("refused: sha is empty — " + at + " is checked as an ancestor of the record's sha")
 			}
 		} else {
+			// Only a cross-repo entry needs the default branch; a same-repo entry is
+			// checked against the record's sha and makes no extra forge read.
+			def, derr := fg.RepoDefaultBranch(cr)
 			if derr != nil {
 				return joinEntry{}, deskkit.Unverifiable("could-not-check: cannot read the default branch of "+canon, derr)
 			}
@@ -245,7 +256,19 @@ func redactOutcomeRecord(raw []byte, in deskkit.JoinInput, f joinFacts) ([]byte,
 			fields["dispatch_ref_sha256"] = b
 		}
 	}
-	return json.Marshal(fields)
+	return marshalNoHTMLEscape(fields)
+}
+
+// marshalNoHTMLEscape encodes v as compact JSON without escaping <, > and & in strings, so a
+// rewritten record keeps its submitted string bytes. Object keys are still emitted in sorted order.
+func marshalNoHTMLEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // prsChange reports whether redaction would rewrite any prs entry: a different (canonical)

@@ -108,6 +108,10 @@ func TestParseJoinInput(t *testing.T) {
 		`{"rows_total":1,"rows_passed":0,"row_results":[{"row":1,"result":"pass"}]}`:           "row_results",
 		`{"rows_total":1,"row_results":[{"row":1,"result":"green"}]}`:                          "result",
 	}
+	// The entry cap is applied before any entry is parsed: an oversized list of malformed
+	// entries is refused for its size, not for its first bad entry.
+	oversized := `{"prs":[` + strings.TrimSuffix(strings.Repeat(`{"repo":"x"},`, 65), ",") + `]}`
+	bad[oversized] = "more than 64"
 	for raw, frag := range bad {
 		_, err := ParseJoinInput([]byte(raw))
 		if err == nil {

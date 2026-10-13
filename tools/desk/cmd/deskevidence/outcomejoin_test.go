@@ -213,6 +213,35 @@ func TestOutcomeRecord_PRsDereference(t *testing.T) {
 		code, msg = jland(t, jrec(t, map[string]any{"prs": []any{jpr(jOtherRepo, 9, jMerge)}, "ts": "2026-10-06T14:21:00Z"}))
 		wantRefused(t, "behind default tip", code, msg, "ancestor")
 	})
+	t.Run("cross_repo_not_found_exit_6", func(t *testing.T) {
+		// GitHub answers 404 for a private repository the register's token cannot read, so a
+		// 404 on another repository is could-not-check, never "does not exist".
+		f, _ := joinFake(t)
+		code, msg := jland(t, jrec(t, map[string]any{"prs": []any{jpr(jOtherRepo, 7, jMerge)}}))
+		if code != deskkit.ExitUnverifiable {
+			t.Errorf("exit = %d, want %d (stderr %q)", code, deskkit.ExitUnverifiable, msg)
+		}
+		if strings.Contains(msg, "does not exist") || !strings.Contains(msg, "prs[0]") {
+			t.Errorf("cross-repo 404 must be could-not-check naming the entry: %q", msg)
+		}
+		wantNothingWritten(t, "cross-repo 404", f)
+		// The same 404 on the register's own repository stays a refusal (not_found_refused),
+		// whatever the letter case of the entry's repository.
+		f2, _ := joinFake(t)
+		f2.prs = map[string]*deskkit.PullRequest{}
+		code, msg = jland(t, jrec(t, map[string]any{"prs": []any{jpr(strings.ToUpper(jRegister), 7, jMerge)}}))
+		wantRefused(t, "own-repo 404, other case", code, msg, "exists")
+	})
+	t.Run("same_repo_makes_no_default_branch_read", func(t *testing.T) {
+		f, _ := joinFake(t)
+		code, msg := jland(t, jrec(t, nil))
+		if code != deskkit.ExitOK {
+			t.Fatalf("exit = %d (stderr %q)", code, msg)
+		}
+		if got := strings.Join(f.joinReads, "|"); strings.Contains(got, "RepoDefaultBranch "+jRegister) {
+			t.Errorf("a same-repo GitHub entry is checked against the record sha and needs no default-branch read: %s", got)
+		}
+	})
 	t.Run("forge_error_exit_6", func(t *testing.T) {
 		f, _ := joinFake(t)
 		f.prErr = errors.New("503 unavailable")
@@ -788,4 +817,23 @@ func TestOutcomeRecord_RunMetadata(t *testing.T) {
 		_, _ = f, g
 		landed(t, g)
 	})
+}
+
+// A rewritten record keeps the submitted string bytes: <, > and & are not HTML-escaped.
+func TestRedactOutcomeRecord_NoHTMLEscape(t *testing.T) {
+	raw := []byte(`{"blocker_ref":"a<b>&c","dispatch_ref":"assay--x--1@20261006T141502Z.3fa9c01b7d2e"}`)
+	in, err := deskkit.ParseJoinInput(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := redactOutcomeRecord(raw, in, joinFacts{Private: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `"a<b>&c"`) || strings.Contains(string(out), "\\u003c") || strings.Contains(string(out), "\\u0026") {
+		t.Errorf("redaction re-escaped string bytes: %s", out)
+	}
+	if strings.Contains(string(out), "\n") {
+		t.Errorf("redaction left a trailing newline: %q", out)
+	}
 }

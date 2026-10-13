@@ -91,7 +91,10 @@ to the run that produced it: `prs` (or an explicit `prs: []` with `prs_unknown_r
   `merge_sha`, and that commit is in the record's history — and refuses (exit 5) the first entry
   that fails one of those checks, each with its own refusal. A forge read that cannot be made
   (error, a merged change with no merge commit reported, an unparseable change URL, a token that
-  cannot read the repository) is could-not-check (exit 6), never a pass. `dispatch_ref` is only
+  cannot read the repository) is could-not-check (exit 6), never a pass. GitHub answers 404 for a
+  private repository the token cannot read, so a not-found answer for an entry whose repository is
+  not the register is could-not-check (exit 6), not "does not exist"; only a not-found answer in the
+  register's own repository is the exit-5 refusal. `dispatch_ref` is only
   shape-checked.
 - **"Ancestry" by forge.** On GitHub, a change in the register's own repository must have its merge
   commit as an ancestor of the record's `sha`; a change in another repository, an ancestor of that
@@ -116,8 +119,14 @@ to the run that produced it: `prs` (or an explicit `prs: []` with `prs_unknown_r
     `public`; every other entry becomes `{withheld: sha256("<repo>#<number>@<merge_sha>")}`, and
     `dispatch_ref` is dropped and not hashed.
 
-  Redaction runs before the outbound content scan, so a record that names a private repository is
-  rewritten, not refused. Caveat: the register's visibility is read at write time only. A private
+  Redaction runs before the outbound content scan, so a private repository named in `prs` or
+  `dispatch_ref` is rewritten, not refused. Only those two fields are rewritten: a private name in
+  any other free-text field (for example `blocker_ref`) is not, and the outbound content scan or the
+  public-repo gate refuses the record instead. A private register keeps every `prs` entry in clear,
+  on the assumption that the register's audience may see every repository the verifier delivered to.
+  A rewritten record is re-encoded compactly with its object keys in sorted order and without HTML
+  escaping of `<`, `>` and `&`, so its bytes may differ from the submitted ones in key order and whitespace; a record
+  with nothing to rewrite lands byte for byte. Caveat: the register's visibility is read at write time only. A private
   register later made public carries its earlier records in its git history, with the clear `prs`
   and the `dispatch_ref_sha256` digest.
 - **Target tie.** Redaction must not move a record: the brief and `ts` of the written record equal

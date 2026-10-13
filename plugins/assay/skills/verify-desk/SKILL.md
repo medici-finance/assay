@@ -278,8 +278,10 @@ delivered the brief, as `{repo, number, merge_sha}`; or an explicit `prs: []` wi
 `row_results` (`{row, result}` for ALL rows; `pass` / `fail` / `could-not-run` / `deferred`) and
 `dispatch_ref` (`<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 hex>`, copied from your dispatch; it stays
 self-reported). The writer reads each `prs` entry back from the forge (exists, merged, merge commit,
-in the record's history) and refuses one that fails; a forge it cannot read is could-not-check, not
-a pass. Never write `withheld` or `dispatch_ref_sha256` yourself: the writer produces them when it
+reachable as `verify-wake-v1.md` specifies: a same-repo GitHub change in the record's `sha` history, a
+change in another repository in that repository's default branch, a GitLab change merged into its
+default branch by the record's `ts`) and refuses one that fails; a forge it cannot read, including a
+not-found answer for a repository other than the register, is could-not-check, not a pass. Never write `withheld` or `dispatch_ref_sha256` yourself: the writer produces them when it
 redacts the record for the register it lands in, and refuses them as input. A record that repeats a
 key, or spells one in a different letter case, is refused. Field details: the `verify-wake-v1.md`
 reference.

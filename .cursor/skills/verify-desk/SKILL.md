@@ -268,6 +268,25 @@ breaks any of these three rules — writer-side enforcement of what was, until t
 catch. The three rules above are unchanged; get them right at write time and the writer's own
 gate never fires.
 
+A `verify-fail` or `blocked` outcome record MUST carry a complete receipt: the writer REFUSES (exit 5)
+one without it, naming the first missing field (`wake_schema`, `receipt_id`, `blocker_kind`,
+`wake_predicate`, then the predicate's own input). Every record that claims
+`wake_schema: "verify-wake-v1"` also carries the run's join keys: `prs` (the merged changes that
+delivered the brief, as `{repo, number, merge_sha}`; or an explicit `prs: []` with
+`prs_unknown_reason: "no-pr-delivery"` when nothing was delivered), `verifier_tier` (`any` or
+`strong`, equal to your admitted tier; never a model name), `started` and `finished` (RFC3339 UTC,
+`started <= finished <= ts`), plus the existing `rows_passed` / `rows_total`. Optionally add
+`row_results` (`{row, result}` for ALL rows; `pass` / `fail` / `could-not-run` / `deferred`) and
+`dispatch_ref` (`<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 hex>`, copied from your dispatch; it stays
+self-reported). The writer reads each `prs` entry back from the forge (exists, merged, merge commit,
+reachable as `verify-wake-v1.md` specifies: a same-repo GitHub change in the record's `sha` history, a
+change in another repository in that repository's default branch, a GitLab change merged into its
+default branch by the record's `ts`) and refuses one that fails; a forge it cannot read, including a
+not-found answer for a repository other than the register, is could-not-check, not a pass. Never write `withheld` or `dispatch_ref_sha256` yourself: the writer produces them when it
+redacts the record for the register it lands in, and refuses them as input. A record that repeats a
+key, or spells one in a different letter case, is refused. Field details: the `verify-wake-v1.md`
+reference.
+
 **An outcome never substitutes for refused Evidence.** Land the brief's Evidence first and check
 that write's actual exit/result. If it is refused or could-not-check, file the landing failure and
 do not publish an outcome for it. A new outcome must name the full Evidence commit SHA, and the

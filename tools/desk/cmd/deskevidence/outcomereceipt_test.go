@@ -76,6 +76,8 @@ func TestDeriveReceiptFromGit(t *testing.T) {
 func TestOutcomeWriteLandsReceipt(t *testing.T) {
 	f, errBuf := setupFake(t)
 	outcomeReceiptFn = deriveOutcomeReceipt
+	// setupFake stubs the receipt validator; restore the real one so run() is covered end to end.
+	receiptValidateFn = validateReceipt
 	forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		return deskkit.OutboundChecked(issueForge{f}, "verifier"), deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}

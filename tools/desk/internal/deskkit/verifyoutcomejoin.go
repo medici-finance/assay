@@ -166,15 +166,15 @@ func ParseJoinInput(raw []byte) (JoinInput, error) {
 		if err := json.Unmarshal(v, &entries); err != nil || entries == nil {
 			return in, Refused("refused: prs must be a JSON list of {repo, number, merge_sha}")
 		}
+		if len(entries) > 64 {
+			return in, Refused("refused: prs lists more than 64 entries")
+		}
 		for i, e := range entries {
 			pr, err := parsePREntry(i, e)
 			if err != nil {
 				return in, err
 			}
 			in.PRs = append(in.PRs, pr)
-		}
-		if len(entries) > 64 {
-			return in, Refused("refused: prs lists more than 64 entries")
 		}
 	}
 	if v, has := in.Fields["prs_unknown_reason"]; has {
