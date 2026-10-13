@@ -213,7 +213,7 @@ func lastLines(s string, n int) string {
 var deskwtLookPath = exec.LookPath
 var deskwtCommand = exec.Command
 
-func (c *Cell) worktreeViaDeskwt(role string) (string, bool) {
+func (c *Cell) worktreeViaDeskwt(role, session string) (string, bool) {
 	if c.Env.GetOr("CELLCTL_DESKWT", deskwtDefault) != "1" {
 		return "", false
 	}
@@ -222,11 +222,13 @@ func (c *Cell) worktreeViaDeskwt(role string) (string, bool) {
 	}
 	help := deskwtCommand("deskwt", "role-init", "--help")
 	help.Dir = c.Repo
+	help.Env = c.deskHelperEnv(help.Environ(), role, session)
 	if out, err := help.CombinedOutput(); err != nil {
 		die("desk: installed deskwt cannot initialize the role: %v — %s; boot STOPPED", err, strings.TrimSpace(string(out)))
 	}
-	cmd := deskwtCommand("deskwt", "role-init", role)
+	cmd := deskwtCommand("deskwt", "role-init", role, "--session", session)
 	cmd.Dir = c.Repo
+	cmd.Env = c.deskHelperEnv(cmd.Environ(), role, session)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

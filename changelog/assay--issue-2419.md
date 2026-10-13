@@ -1,0 +1,2 @@
+### Fixed
+- The `verifyloop verdict --unsigned-out` host contract now says what the fence must supply (H6): the composer runs the desk activation check, so a checkout with no usable roster exits 6 with no payload and no digest. The fence gets its own `HOME` holding a roster copy at `.config/assay/roster.env` and no verifier key, and the host never mounts its config home to get past that exit. A new test runs the built binary to pin both the refusal and the roster-only success, and Verify row 7 of desk-tools/29 no longer depends on the runner's roster.

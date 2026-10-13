@@ -1,0 +1,16 @@
+package example
+
+import (
+    "os"
+    "strings"
+    "regexp"
+)
+
+func Check() bool {
+    os.Chdir(".")
+    _ = regexp.MustCompile("[")
+    os.Chdir("/") //nolint:errcheck
+    return strings.HasPrefix("x", "")
+}
+
+func unusedFunction() {}

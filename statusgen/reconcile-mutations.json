@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'WouldApply|ApplyReconcile|WriteStatusCell|HoldParity|HoldTreeRule|ApplyThenLint' -count=1 -timeout 300s",
+  "test": "go test . -run 'WouldApply|ReportRunNotCalled|HeldLabel|ApplyReconcile|WriteStatusCell|HoldParity|HoldTreeRule|ApplyThenLint|HoldPasses|HoldCrossCheck' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the Status write puts a different token than the one asked for",
     "file": "reconcileapply.go",
@@ -34,8 +34,8 @@
     {
       "name": "the verb's read-only run takes the write path",
       "file": "reconcile.go",
-      "old": "if rows, held, werr = reconcileWrites(boardRoot, cells, *apply); werr != nil {",
-      "new": "if rows, held, werr = reconcileWrites(boardRoot, cells, true); werr != nil {"
+      "old": "if rows, held, werr = reconcileWritesWith(boardRoot, cells, *apply, opts); werr != nil {",
+      "new": "if rows, held, werr = reconcileWritesWith(boardRoot, cells, true, opts); werr != nil {"
     },
     {
       "name": "a read-only run that found nothing reports null instead of an empty list",
@@ -64,8 +64,68 @@
     {
       "name": "the verb drops held rows from its result",
       "file": "reconcile.go",
-      "old": "\t\tHeld:       held,",
-      "new": "\t\tHeld:       nil,"
+      "old": "\t\tHeld:        held,",
+      "new": "\t\tHeld:        nil,"
+    },
+    {
+      "name": "wouldApply is emitted by a run that could not look (offline, a failed fetch, no board)",
+      "file": "reconcile.go",
+      "old": "} else if refusal == \"\" && found {",
+      "new": "} else {"
+    },
+    {
+      "name": "a --report run that wrote the drift report still calls itself read-only",
+      "file": "reconcile.go",
+      "old": "if res.reportWrote {",
+      "new": "if false {"
+    },
+    {
+      "name": "the held label is chosen from wouldApply's presence, not the run's mode",
+      "file": "reconcile.go",
+      "old": "if !res.applyRun {",
+      "new": "if res.WouldApply != nil {"
+    },
+    {
+      "name": "a stream-local rule keeps its pre-move output for the moved stream (the move is judged against a stale board)",
+      "file": "reconcileholdinc.go",
+      "old": "st.post = st.r.problems(st.e.streamEnv(m.si))",
+      "new": "st.post = st.pre"
+    },
+    {
+      "name": "the design gate keeps the moved stream's pre-move block",
+      "file": "reconcileholdinc.go",
+      "old": "st.next = designGateStreamProblems(st.e.streams[m.si], st.known)",
+      "new": "st.next = st.parts[m.si]"
+    },
+    {
+      "name": "the deploy rule is never re-evaluated, even for a stream a DEPLOY record names",
+      "file": "reconcileholdinc.go",
+      "old": "return named[e.streams[m.si].Name]",
+      "new": "return false"
+    },
+    {
+      "name": "the drive render's board does not mirror the move (the region is judged on the unmoved board)",
+      "file": "reconcileholdinc.go",
+      "old": "row.Status = m.to",
+      "new": "_ = m.to"
+    },
+    {
+      "name": "the hold never takes the incremental path (whole-board passes per row again)",
+      "file": "reconcilehold.go",
+      "old": "incremental := !e.opts.reference && incrementalEligible(e.streams)",
+      "new": "incremental := false"
+    },
+    {
+      "name": "the per-move self-check never fires",
+      "file": "reconcilehold.go",
+      "old": "!equalStrings(full, after)",
+      "new": "false"
+    },
+    {
+      "name": "the drive mirror counts placeholder rows as README rows",
+      "file": "reconcileholdinc.go",
+      "old": "n := len(s.Briefs) - len(s.Placeholders)",
+      "new": "n := len(s.Briefs)"
     }
   ]
 }

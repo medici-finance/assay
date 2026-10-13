@@ -1,0 +1,48 @@
+{
+  "kind": "issues",
+  "partial": [
+    {
+      "reason": "could-not-check: GET /projects/example-org%2Fdown/issues — HTTP 503: forge API GET /projects/example-org%2Fdown/issues returned HTTP 503: failed to parse unknown error format: fixture failure",
+      "repo": "example-org/down"
+    },
+    {
+      "class": "truncated",
+      "reason": "could-not-check: example-org/loop still reports more open issues after 25 pages of 100 (the open-issue page ceiling) — refusing to hand back a PARTIAL open-issue set, because a consumer reads an issue's absence from this list as evidence about it and would act on issues that are still open",
+      "repo": "example-org/loop"
+    }
+  ],
+  "repos": [
+    {
+      "issues": [
+        {
+          "authorId": 11,
+          "authorLogin": "alice",
+          "createdAt": "2026-01-02T03:04:05Z",
+          "labels": [
+            "bug",
+            "p1"
+          ],
+          "number": 7,
+          "state": "open",
+          "title": "first open",
+          "url": "https://forge.example/example-org/full/-/issues/7"
+        },
+        {
+          "authorId": 13,
+          "authorLogin": "carol",
+          "createdAt": "2026-02-01T00:00:00Z",
+          "number": 9,
+          "state": "open",
+          "title": "second page",
+          "url": "https://forge.example/example-org/full/-/issues/9"
+        }
+      ],
+      "repo": "example-org/full"
+    },
+    {
+      "issues": [],
+      "repo": "example-org/empty"
+    }
+  ],
+  "schema": 1
+}

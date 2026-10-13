@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"gopkg.in/yaml.v3"
 )
 
@@ -77,19 +78,15 @@ func validEdgeTypeList() string {
 // lookup; a uuid is an identity, not a reference.
 var uuidV4Re = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
-// Reference-grammar (§3.3) recognizers. The grammar is hierarchical and
-// elision-based; each form below is one legal shape a ref may take.
+// Reference-grammar (§3.3) recognizers. The definitions live with the
+// evaluator (statusgen/evaluation) so the lint and the verdicts can never
+// disagree about what a legal ref is; these names stay for the callers here.
 var (
-	// <stream>/<NN>  — in-repo brief (the existing brief-v1 form).
-	refInRepoBriefRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*/[0-9]+[a-z]?$`)
-	// <alias>:<stream>/<NN>  — cross-repo brief.
-	refCrossRepoBriefRe = regexp.MustCompile(`^[a-z0-9]+:[a-z0-9][a-z0-9-]*/[0-9]+[a-z]?$`)
-	// <cell>:<alias>:<stream>/<NN>  — cross-cell brief (reserved form).
-	refCrossCellBriefRe = regexp.MustCompile(`^[a-z0-9]+:[a-z0-9]+:[a-z0-9][a-z0-9-]*/[0-9]+[a-z]?$`)
-	// #<issue>  — in-repo issue.
-	refInRepoIssueRe = regexp.MustCompile(`^#[0-9]+$`)
-	// <alias>#<issue>  — cross-repo issue.
-	refCrossRepoIssueRe = regexp.MustCompile(`^[a-z0-9]+#[0-9]+$`)
+	refInRepoBriefRe    = evaluation.RefInRepoBriefRe
+	refCrossRepoBriefRe = evaluation.RefCrossRepoBriefRe
+	refCrossCellBriefRe = evaluation.RefCrossCellBriefRe
+	refInRepoIssueRe    = evaluation.RefInRepoIssueRe
+	refCrossRepoIssueRe = evaluation.RefCrossRepoIssueRe
 )
 
 // graphRepos is the parsed docs/streams/graph-repos.yaml alias registry

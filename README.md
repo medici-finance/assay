@@ -38,6 +38,30 @@ The board is derived from agent-authored artifacts, checked by the linter and re
 | [tools/desk/](tools/desk/) | The desk tooling, a Go submodule (`github.com/medici-finance/assay/tools/desk`). Importing one of its packages from another module? See [how to pin it](docs/consuming-the-desk-go-module.md) — a bare repo tag does not resolve. |
 | [Dockerfile](Dockerfile) | Builds one combined Linux image with the desk-tools suite + `statusgen` on PATH, published to GHCR. See [docs/docker.md](docs/docker.md). |
 
+## Building and generated Cursor files
+
+`make build-all` compiles every tracked Go module and emits every desk executable
+under `tools/desk/dist/`. On Windows, use
+`pwsh -File scripts/build-windows.ps1 build-all`; the target discovers the same
+tracked `go.mod` files. Neither target installs tools.
+
+This repository consumes its canonical `plugins/assay` through generated `.cursor`
+skills, references, rules, and the bounded `AGENTS.md` bindings. After changing the
+canonical bundle, run from `tools/desk`:
+
+```sh
+go run ./cmd/deskinstall --harness cursor --bundle ../../plugins/assay --repo ../.. --forge github
+go run ./cmd/deskinstall --harness cursor --bundle ../../plugins/assay --repo ../.. --forge github --check
+```
+
+Run the relevant `tools/harnessgen` generator first when changing its canonical
+inputs. CI checks the committed Cursor tree without regenerating it, and runs
+harnessgen tests on a fresh Windows checkout with explicit LF attributes.
+Release stamping refreshes the derived placement after canonical version stamps.
+Canonical `component.yaml` declarations are excluded from runtime skill copies;
+they retain one component owner in the source tree.
+See [the Cursor install/upgrade contract](docs/adopting-assay.md#running-assay-on-cursor--a-second-first-class-harness).
+
 ## Container image
 
 The desk-tools suite and `statusgen` are published together as a combined

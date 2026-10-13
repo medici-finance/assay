@@ -50,8 +50,9 @@ func chRow(t *testing.T, root, num string) *Brief {
 // Evidence is worded: a loose-form PASS marker or no marker at all does not
 // switch the HELD read off (the row's `verified` status is the pass claim), and
 // a prose mention of a future PASS does not answer a strict FAIL. ch/12 pins
-// that a hold a later run resolved still refuses until it is struck through or
-// routed (supersession is not inferred); ch/11 in the control is its twin.
+// that a hold a later run resolved UNDER THE SAME ENTRY still refuses until it
+// is struck through or routed (supersession is inferred only between `### `
+// entries, #1894 — never inside one); ch/11 in the control is its twin.
 func TestCloseVerifyVerifiedRefusesContradiction(t *testing.T) {
 	tests := []struct {
 		name  string

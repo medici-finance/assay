@@ -2,6 +2,10 @@
   "evidence-automerge.yml": {
     "mode": "identical"
   },
+  "gremlins-daily.yml": {
+    "mode": "pending",
+    "reason": "New Gremlins daily discovery sweep; pending maintainer activation (README Contents)."
+  },
   "loopadmin.yml": {
     "mode": "pending",
     "reason": "New loopadmin test workflow; pending maintainer activation (README Contents)."
@@ -18,6 +22,18 @@
     "mode": "identical"
   },
   "winparity.yml": {
+    "mode": "identical"
+  },
+  "assay-qualgen.yml": {
+    "mode": "identical"
+  },
+  "verify-gate-close.yml": {
+    "mode": "identical"
+  },
+  "forge-surface-control.yml": {
+    "mode": "identical"
+  },
+  "assay-statusgen.yml": {
     "mode": "identical"
   }
 }
