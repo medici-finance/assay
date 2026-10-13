@@ -32,7 +32,7 @@ why: >-
   that runs the harness on the host inside an environment it fully composes — nothing from the
   parent shell leaks in — plus the three verbs the bridge had to invent (`smoke`, `status`, the
   session lock) retires the reason the bridge exists.
-version: 2
+version: 1
 id: de019175-8488-4b78-a2f9-f7d804e44220
 exec-tier: strong
 exec-tier-why: (a) the env-composition and lock designs are fixed here but the codex/claude one-shot probe shapes must be verified against the installed CLIs at pickup; (c) an env leak that survives the tests is exactly the fault class this kind exists to close
@@ -234,7 +234,7 @@ wired house-style even when the launch env is right.
 | 11 | `d=$(mktemp -d); mkdir -p "$d/x"; printf 'CELL_KIND=scrubbed\nCELL_REPO=%s\nCELL_REPO_SLUG=example-org/example-repo\nCELL_HARNESS=codex\n' "$PWD" > "$d/x/cell.env"; b="$(mktemp -d)/cellctl"; (cd tools/desk && go build -o "$b" ./cmd/cellctl); CELLS_ROOT="$d" "$b" check x; test $? -eq 1` | exit 0 — a bare scrubbed cell.env with an empty home is LOADED (no exit-3 die) and `check` reports MISS rows and exits 1. Red on a launcher without the `scrubbed` kind: `check` exits 3 (`is not a known kind`), so the `test` fails. Red on the merge-base: `tools/desk/cmd/cellctl` does not exist yet, so `go build` fails, running `"$b"` exits 127 and the `test` fails | check +dereference |
 | 12 | `for k in HOME ZDOTDIR PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS; do grep -qF "\| $k \|" docs/cellctl.md \|\| { echo "missing env row: $k"; exit 1; }; done` | exit 0 — the docs env table (first column the bare variable name) carries a row per exported variable. Red on the merge-base: exits 1 at `ZDOTDIR` | check |
 | 13 | `grep -c '^## Scrubbed cells' docs/cellctl.md` | exit 0; prints `1` | check |
-| 14 | `M=58a019271393631e2f57b7b7a94887082d2618a6 && statusgen --consumers --root . --brief desk-containers/09 --base "$M^1"` | exit 0 — every `consumers:` routing above is corroborated or deferred by the diff. Pinned to PR #1263's squash-merge commit M, parent `M^1` as the base, so the diff is the implementing change and not the empty `merge-base origin/main HEAD..HEAD` range (which is HEAD on merged main, so a pass there checks nothing). `--brief` scopes the run to this brief: the unscoped window also judges other briefs' claims. Non-vacuity: the summary line reads `1 corroborated, 0 disproved, 3 unchecked`, never `no brief files in the diff` | check:ci |
+| 14 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | exit 0 — every `consumers:` routing above is corroborated or deferred by the diff | check:ci |
 | 15 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-home-mode` | exit 0; a cell whose `home/.config/assay` is mode 0755 → `check` prints a `MISS` naming `0700` and exits 1; the same cell at 0700 → `ok` — the directory holding the PEMs carries its own custody row, not only the 0600 file row. Red on the merge-base: `--case check-home-mode` is unknown to the suite (exit 2) | check:ci +mutation |
 
 ## Definition of Done
