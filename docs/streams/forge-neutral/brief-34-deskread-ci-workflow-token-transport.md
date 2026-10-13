@@ -44,11 +44,12 @@ decision-trigger: creation
 decision-issue: 2315
 issues: [2315]
 schema: brief-v2
-version: 3
+version: 4
 outcome: none
 id: a6651bd7-de82-48d4-b80e-38c7d6663222
 authored: 2026-10-06 by forge-neutral authoring session (the #2253 ruling); revised 2026-10-06 for the correctness and security reviews of #2314
 sources:
+  - "medici-finance/assay#2475: row 14 now checks the immutable implementation landing medici-finance/assay#2377 against its first parent; row 16 and source-inventory corrections remain pending in this draft"
   - "#2253 comment 6013956713: the question this brief answers. statusgen's CI-only modes (`--corroborate`, `--auto-flip-model`, the transcribe lanes) read under the workflow's job token, `deskread` reads only under a minted App role, so moving those reads onto `deskread` needs a decision about which credential CI reads under"
   - "#2253 comment 6014345604: the driver's ruling on #2253, option (a). `deskread` gains an explicit, opt-in transport that authenticates with the CI workflow token, for read-only kinds only, so the CI-only modes can move their `gh` reads onto it. The ruling asks for this as its own gated brief"
   - "#2315: the decision issue that puts this brief's exact shape to the human"
@@ -465,6 +466,8 @@ states that its repository and run id are copied from the environment and are no
 
 ## Verify (executable — no prose-only DoD items)
 
+Definition revision 4 repairs row 14 after medici-finance/assay#2475. Prior Evidence does not attest this revised command; a fresh admitted verification run is required.
+
 The Class column uses the stream's convention:
 - `check:ci` runs in CI.
 - `check` is a local or grep-level assertion.
@@ -514,7 +517,7 @@ Test names are this brief's planned deliverables:
 | 11 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestNoAmbientEnvTokenRead$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r11a.out" 2>&1 && grep -F -e '--- PASS: TestNoAmbientEnvTokenRead' "${TMPDIR:-/tmp}/b34-r11a.out" && go test ./internal/deskkit/ -run '^TestForgeSingleConstructionSite$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r11b.out" 2>&1 && grep -F -e '--- PASS: TestForgeSingleConstructionSite' "${TMPDIR:-/tmp}/b34-r11b.out" && go test ./internal/deskkit/ -run '^TestForgeSurfaceUnchangedByDeskread$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r11c.out" 2>&1 && grep -F -e '--- PASS: TestForgeSurfaceUnchangedByDeskread' "${TMPDIR:-/tmp}/b34-r11c.out" && go test ./internal/deskkit/ -run '^TestOutboundForgeWrapsEveryWriteMethod$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r11d.out" 2>&1 && grep -F -e '--- PASS: TestOutboundForgeWrapsEveryWriteMethod' "${TMPDIR:-/tmp}/b34-r11d.out"` | exit 0, each `--- PASS:` line printed. The guards pass with the new constructor and permit, and the `Forge` surface is unchanged |
 | 12 | check | `grep -n -E 'ambientTokenReadCeiling = 5' tools/desk/internal/deskkit/ambienttoken_guard_test.go && grep -c -F '"DESKREAD_CI_WORKFLOW_TOKEN"' tools/desk/internal/deskkit/ambienttoken_guard_test.go` | exit 0; the ceiling line prints, and the count is at least 1 (the variable is in the guarded set) |
 | 13 | check +dereference | `awk '/^  [A-Za-z0-9_-]+:[ \t]*$/{j=""; p=0} /^  (corroborate\|model-autoflip):$/{j=$1} j && /^    permissions:/{p=1; next} p && /^      [a-z-]+:/{print j, $0; next} p && !/^      /{p=0}' .github/workflows/assay-statusgen.yml > "${TMPDIR:-/tmp}/b34-r13.out" && grep -q '^corroborate: ' "${TMPDIR:-/tmp}/b34-r13.out" && grep -q '^model-autoflip: ' "${TMPDIR:-/tmp}/b34-r13.out" && ! grep -v ': read$' "${TMPDIR:-/tmp}/b34-r13.out"` | exit 0: each of the two jobs prints at least one permission line (so a renamed job key fails the row instead of passing it vacuously), and every printed line ends in `read`. Every job header clears the job variable, so a job with no `permissions:` block of its own prints nothing and fails the row, instead of being credited with a later job's block. Portable awk: same output under BSD awk and GNU awk. This proves the server-side layer for this repository's two jobs only; adopter jobs are 18's (see `consumers:`). Run at the implementing head; this brief does not change the file |
-| 14 | check | `git fetch -q origin main && git diff --name-only "$(git merge-base FETCH_HEAD HEAD)" HEAD -- statusgen .github/workflows \| wc -l` | prints `0` (against a freshly fetched `main`, so a stale local remote cannot report `0`) |
+| 14 | check | `git merge-base --is-ancestor 1e4fead60abd3482356446a22a54041186d4311f HEAD && b34_changed=$(git diff --name-only 3960ba2b76a60daa10ddcec19541ae76c0d91209 1e4fead60abd3482356446a22a54041186d4311f -- statusgen .github/workflows) && test -z "$b34_changed"` | exit 0: the implementation landing is an ancestor of the admitted source, and its own parent-to-landing diff changes neither `statusgen` nor `.github/workflows`. Missing history or a failed diff fails the row; later main commits cannot turn this comparison into `HEAD..HEAD` |
 | 15 | check:ci | `cd statusgen && go build -o "${TMPDIR:-/tmp}/b34-statusgen" . && cd .. && "${TMPDIR:-/tmp}/b34-statusgen" --root . --lint` | exit 0, `LINT: PASS` |
 | 16 | check:ci | `git fetch -q origin main && "${TMPDIR:-/tmp}/b34-statusgen" --root . --consumers --brief forge-neutral/34 --base "$(git merge-base FETCH_HEAD HEAD)"` | exit 0; no routing claim disproved by the diff |
 | 17 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskread/ -run '^TestCITransportToolClass$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r17.out" 2>&1 && grep -F -e '--- PASS: TestCITransportToolClass' "${TMPDIR:-/tmp}/b34-r17.out"` | exit 0, `--- PASS:` printed. `toolClassFor` returns `ClassCI` for flag plus `GITHUB_ACTIONS=true`, and `ClassWrite` for flag without CI, CI without flag, and neither. **Negative path**: the CI-without-flag case keeps the custody path file-only. Mutation M6 turns it red |
