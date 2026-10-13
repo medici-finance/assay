@@ -443,6 +443,8 @@ OUT=$(cd "$rd" && INBOUND_MONITOR_STATE_DIR="$TMPROOT/of-st-bad" PATH="$w:$PATH"
 ERR=$(cat "$w/stderr")
 check "$([[ "$RC" -eq 1 ]] && contains "$OUT" "MONITOR-DEGRADED: invalid repo" && echo 0 || echo 1)" \
   "an unparseable origin prints MONITOR-DEGRADED on stdout and exits 1" "rc=$RC stdout: ${OUT:-<empty>}"
+check "$([[ "$OUT" == "MONITOR-DEGRADED: invalid repo 'https://example.com:8443/o/r' (expected owner/name)" ]] && echo 0 || echo 1)" \
+  "credential-stripped display is exact on both Bash versions" "stdout: $OUT"
 check "$(contains "$OUT$ERR" "s3cretpw" && echo 1 || echo 0)" \
   "the origin's credential never appears on stdout or stderr" "stdout: $OUT stderr: $ERR"
 rd="$TMPROOT/of-repo-none"; mkdir -p "$rd"; git -C "$rd" init -q 2>/dev/null

@@ -302,6 +302,8 @@ if want origin-degraded; then
   check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "an unparseable origin exits 1" "got $RC"
   check "$(printf '%s\n' "$OUT" | grep -q '^MONITOR-DEGRADED: invalid repo' && echo 0 || echo 1)" \
     "stdout carries a MONITOR-DEGRADED line (what the watch filter matches)" "stdout: ${OUT:-<empty>}"
+  check "$([[ "$OUT" == "MONITOR-DEGRADED: invalid repo 'https://example.com:8443/o/r' (expected owner/name)" ]] && echo 0 || echo 1)" \
+  "credential-stripped display is exact on both Bash versions" "stdout: $OUT"
   check "$(contains "$OUT$ERR" "s3cretpw" && echo 1 || echo 0)" \
     "the origin's credential never appears on stdout or stderr" "stdout: $OUT stderr: $ERR"
   check "$([[ ! -s "$w/calls.log" ]] && echo 0 || echo 1)" "no gh call was made" "calls: $(cat "$w/calls.log")"

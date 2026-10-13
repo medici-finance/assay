@@ -1,0 +1,53 @@
+{
+  "test": "go test ./cmd/deskmonitor -run '^TestOriginParity$' -count=1 -timeout 60s",
+  "control": {
+    "name": "origin resolution suppressed",
+    "file": "cmd/deskmonitor/state.go",
+    "old": "u := strings.TrimRight(string(out), \"\\r\\n\")",
+    "new": "u := strings.TrimRight(string(out), \"\\r\\n\"); u = \"\""
+  },
+  "mutations": [
+    {
+      "name": "userinfo shown again",
+      "file": "cmd/deskmonitor/state.go",
+      "old": "func originDisplay(u string) string {",
+      "new": "func originDisplay(u string) string { return u;"
+    },
+    {
+      "name": "arbitrary scheme accepted",
+      "file": "cmd/deskmonitor/state.go",
+      "old": "(https|http|git|ssh|git\\+ssh)://",
+      "new": "([A-Za-z][A-Za-z0-9+.-]*)://"
+    },
+    {
+      "name": "arbitrary host accepted",
+      "file": "cmd/deskmonitor/state.go",
+      "old": "github\\.com(:[0-9]+)?",
+      "new": "[^/@:]+(:[0-9]+)?"
+    },
+    {
+      "name": "pr missing repo refusal silent",
+      "file": "cmd/deskmonitor/pr.go",
+      "old": "\t\t_, _ = fmt.Fprintln(stdout, \"MONITOR-DEGRADED: no repos to query (no repo args, no ./.assay/repos.txt, and no usable git origin remote)\")\n",
+      "new": ""
+    },
+    {
+      "name": "pr invalid repo refusal silent",
+      "file": "cmd/deskmonitor/pr.go",
+      "old": "\t\t_, _ = fmt.Fprintf(stdout, \"MONITOR-DEGRADED: %s\\n\", diagnostic(err))\n",
+      "new": ""
+    },
+    {
+      "name": "inbound missing repo refusal silent",
+      "file": "cmd/deskmonitor/inbound.go",
+      "old": "\t\t_, _ = fmt.Fprintln(stdout, \"MONITOR-DEGRADED: no repos to query (no repo args, no ./.assay/repos.txt, and no usable git origin remote)\")\n",
+      "new": ""
+    },
+    {
+      "name": "inbound invalid repo refusal silent",
+      "file": "cmd/deskmonitor/inbound.go",
+      "old": "\t\t_, _ = fmt.Fprintf(stdout, \"MONITOR-DEGRADED: %s\\n\", diagnostic(err))\n",
+      "new": ""
+    }
+  ]
+}

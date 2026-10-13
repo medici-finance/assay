@@ -236,6 +236,13 @@ for url in "https://github.com/o/r.git" "https://github.com:443/o/r.git" "https:
     "origin '$url' resolves to o/r and is queried" "rc=$rc argv=$(cat "$w/argv.log" 2>/dev/null) stderr=$(cat "$w/err")"
 done
 
+# regression: #2724
+w="$TMPROOT/origin-display"
+make_gh "$w" 0 '[]' ""
+run_case "$w" 'https://user:pw@example.com/o/r'
+check "$([[ "$RC" -eq 1 && "$ERR" == "assay-inbox: invalid repo 'https://example.com/o/r' (expected owner/name)" && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "invalid repo display strips userinfo before refusal without a forge read" "rc=$RC stderr=$ERR"
+
 # ---------------------------------------------------------------- F4 --------
 echo "F4 — the fetched url must actually be emitted"
 
@@ -1453,6 +1460,13 @@ check "$(contains "$OUT" "== cell alpha" && contains "$OUT" "== cell beta" && ec
 blocks=$(printf '%s\n' "$OUT" | grep -c '^== ' || true)
 check "$([[ "$blocks" -eq 3 ]] && echo 0 || echo 1)" \
   "one fleet block plus one block per cell (got $blocks, want 3)" "blocks: $blocks"
+# regression: #2724 — second display consumer, outside repo validation.
+git -C "$w/alpha" init -q
+git -C "$w/alpha" remote add origin 'https://user:pw@example.com/o/r.git'
+run_case "$w" --flow --root "$w/alpha" --root "$w/beta"
+check "$([[ "$RC" -eq 0 ]] && contains "$OUT" "== cell https://example.com/o/r" && ! contains "$OUT$ERR" "user:pw" && echo 0 || echo 1)" \
+  "cell name uses the same stripped display for a non-GitHub origin" "rc=$RC stdout=$OUT stderr=$ERR"
+
 # A single cell needs no per-cell repetition of the fleet row.
 run_case "$TMPROOT/fl1" --flow --root "$TMPROOT/fl1/alpha"
 blocks=$(printf '%s\n' "$OUT" | grep -c '^== ' || true)

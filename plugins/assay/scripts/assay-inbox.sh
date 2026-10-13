@@ -229,15 +229,15 @@ if [[ -n "$FLOW_SINCE" && ! "$FLOW_SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; th
 fi
 
 # origin_to_slug <url> -- reduce a GitHub remote URL to owner/name. Handles every
-# form `git remote get-url origin` yields for github.com: https/http/git/ssh with
+# supported github.com form: https/http/git/ssh/git+ssh with
 # an optional user[:password]@ and an optional :port, the scp-style
 # git@github.com:owner/name, a trailing slash and a trailing .git. A URL it does
 # not recognise passes through unchanged so the owner/name validator rejects it
 # loudly (never a silent skip). Pure bash regex: bash 3.2 safe.
 origin_to_slug() {
   local u="$1" p
-  if [[ "$u" =~ ^[A-Za-z][A-Za-z0-9+.-]*://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$ ]]; then
-    p="${BASH_REMATCH[3]}"
+  if [[ "$u" =~ ^(https|http|git|ssh|git\+ssh)://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$ ]]; then
+    p="${BASH_REMATCH[4]}"
   elif [[ "$u" =~ ^([^/@:]*@)?github\.com:(.*)$ ]]; then
     p="${BASH_REMATCH[2]}"
   else
@@ -246,6 +246,17 @@ origin_to_slug() {
   while [[ "$p" == */ ]]; do p="${p%/}"; done
   p="${p%.git}"
   printf '%s\n' "$p"
+}
+
+# Display only: remove userinfo even when a malformed URL failed parsing. Keep
+# the scheme and suffix after the last @; no escaped replacement (bash 3.2).
+origin_display() {
+  local u="$1" prefix=""
+  if [[ "$u" == *@* ]]; then
+    if [[ "$u" =~ ^([A-Za-z][A-Za-z0-9+.-]*://) ]]; then prefix="${BASH_REMATCH[1]}"; fi
+    u="$prefix${u##*@}"
+  fi
+  printf '%s' "$u"
 }
 
 resolve_repos() {
@@ -309,7 +320,7 @@ cell_name_for() {
   local url
   url=$(git -C "$1" remote get-url origin 2>/dev/null || true)
   if [[ -n "$url" ]]; then
-    printf '%s' "$(origin_to_slug "$url")"
+    origin_display "$(origin_to_slug "$url")"
     return
   fi
   basename "$(cd "$1" 2>/dev/null && pwd || printf '%s' "$1")"
@@ -486,7 +497,7 @@ fi
 # The charset is GitHub's own owner/name alphabet.
 for _repo in ${REPOS[@]+"${REPOS[@]}"}; do
   if [[ ! "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-    echo "assay-inbox: invalid repo '$_repo' (expected owner/name)" >&2
+    echo "assay-inbox: invalid repo '$(origin_display "$_repo")' (expected owner/name)" >&2
     exit 1
   fi
 done
