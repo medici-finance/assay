@@ -332,7 +332,7 @@ Summary:
 - The landed Linux witness still audits 4/4 under `--check`, but it predates changes to the code these tests compile. A Linux network-off witness at this revision is owed.
 - The only open routed question, #1897, is about a reversible knob.
 
-**VERIFY: PASS** — 4/4 rows pass by hand at 251e9473928e; the fresh hermetic witness could-not-run (darwin, no `unshare --net`); repairLeaseTTL = 45m is still NAMED, NOT DERIVED, held on medici-finance/assay#1897 (open) under the desk's 2026-10-02 landing ruling.
+VERIFY: BLOCKED — held on medici-finance/assay#1897 (open): repairLeaseTTL = 45m is still NAMED, NOT DERIVED, under the desk's 2026-10-02 landing ruling. By hand, all 4 rows pass at 251e9473928e. The fresh hermetic witness could-not-run (darwin, no `unshare --net`), so a Linux network-off witness at this revision is still owed. Status stays implemented.
 
 ## Review
 
