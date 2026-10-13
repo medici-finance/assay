@@ -21,6 +21,10 @@ mutations = [
     ("pending", "dispatch.go", 'coordinator runs deskdispatch --stamp-only', 'coordinator runs obsolete-command', "TestPendingStampCommand"),
     # Plant an otherwise-successful child process in the bounded path. The recorder
     # must reject it even though the resulting stamp is completely correct.
+    # #2760: an authoring stamp written into the review pair, and a reader scoped to both
+    # pairs at once. Either one lets a late stamp replace the other lane's attestation.
+    ("shared-namespace", "dispatch.go", 'return deskkit.StampAuthored\n}', 'return deskkit.StampDispatch\n}', "TestWorkerStampKeepsReviewPair|TestDispatchStampKeepsReview|TestBothStampsCoexist"),
+    ("unscoped-reader", "../../internal/deskkit/modelstamp.go", 'return strings.HasPrefix(name, k.ModelPrefix()) || strings.HasPrefix(name, k.TierPrefix())', 'return strings.Contains(name, "-model:") || strings.Contains(name, "-tier:")', "TestWorkerStampKeepsReviewPair|TestBothStampsCoexist"),
     ("extra-child", "stamponly.go", 'line, e := stepStamp(o, o.repo)', 'runCmd(".", "deskwt", "add", "unwanted")\n\tline, e := stepStamp(o, o.repo)', "TestStampOnlyRoundTrip|TestStampOnlyReview"),
 ]
 for name, filename, before, after, tests in mutations:

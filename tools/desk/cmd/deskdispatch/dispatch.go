@@ -804,7 +804,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// but its INPUT is a caller flag: discovering a malformed slug at step 5 would mean
 	// discovering it with the claim held and the worktree built.
 	if strings.TrimSpace(o.model) != "" {
-		if _, err := deskkit.ModelStampLabels(o.model, o.tier); err != nil {
+		if _, err := stampKindForKit(o.kit).Labels(o.model, o.tier); err != nil {
 			return plan, deskkit.Refused(fmt.Sprintf("step %s: %v", stepModelStamp, err))
 		}
 	}
@@ -1658,7 +1658,8 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	// claim existed; this re-derives the labels from the same inputs. An error here would
 	// mean the two calls disagreed, which is a defect rather than a caller mistake — so it
 	// is UNVERIFIABLE, not a refusal, and it names the contradiction.
-	labels, err := deskkit.ModelStampLabels(o.model, o.tier)
+	stampKind := stampKindForKit(o.kit)
+	labels, err := stampKind.Labels(o.model, o.tier)
 	if err != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: the model stamp validated before the claim was taken but will not build now (%v) — "+
@@ -1756,7 +1757,9 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
-	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
+	// Only labels of THIS kit's pair are read, removed or verified: an authoring re-stamp
+	// never removes a review session's dispatched-* pair, and the reverse (#2760).
+	stale := stampKind.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
 	if o.dryRun {
 		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s); nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge), nil
 	}
@@ -1767,7 +1770,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 		return fmt.Sprintf("OK: verified %s already standing on %s#%d under accepted stamp authority (%s) — an identical stamp is a no-op, nothing was written",
 			strings.Join(labels, " + "), repo, o.pr, forge), nil
 	}
-	if err := deskkit.ApplyVerifiedModelStamp(fg, fr, o.pr, deskkit.TargetChange, labels, deskkit.IsStampAuthorityLogin); err != nil {
+	if err := deskkit.ApplyVerifiedStamp(fg, fr, o.pr, deskkit.TargetChange, stampKind, labels, deskkit.IsStampAuthorityLogin); err != nil {
 		return "", err
 	}
 	// BOTH events are reported. A silent removal is a label disappearing from a PR with no
@@ -1778,6 +1781,11 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 		restamped = fmt.Sprintf(" (RE-STAMPED: removed %s — a conflicting, stale, or foreign-applied "+
 			"stamp the floor cannot read — before applying the intended stamp, since adding over a "+
 			"present label is a no-op)", strings.Join(stale, " + "))
+	}
+	if stampKind == deskkit.StampAuthored {
+		return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App — the authoring attestation; "+
+			"no dispatched-* label was read or written, and the capability floor does not read this pair (%s)%s",
+			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
 	}
 	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
 		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
@@ -1898,6 +1906,17 @@ func stampRoleForKit(kit string) string {
 		return deskkit.ReviewDispatcherRole
 	}
 	return deskkit.DispatcherRole
+}
+
+// stampKindForKit picks the label pair a kit's stamp is written to (#2760). The review kit
+// writes dispatched-*, the session attestation the floor reads. Every other kit stamps the
+// session that AUTHORS the change, so it writes authored-* and never touches dispatched-*.
+// When both used dispatched-*, whichever stamp ran later replaced the other.
+func stampKindForKit(kit string) deskkit.StampKind {
+	if reviewKit(kit) {
+		return deskkit.StampDispatch
+	}
+	return deskkit.StampAuthored
 }
 
 // tokenPathForMessage renders the token file path for a step report or refusal. The PATH is

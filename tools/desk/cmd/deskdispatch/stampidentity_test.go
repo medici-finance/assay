@@ -266,8 +266,8 @@ func TestStampAppliedAsDispatcherApp(t *testing.T) {
 				c.repo, allowedRepo)
 		}
 	}
-	model := deskkit.DispatchedModelPrefix + "example-model-1"
-	tier := deskkit.DispatchedTierPrefix + "strong"
+	model := deskkit.AuthoredModelPrefix + "example-model-1"
+	tier := deskkit.AuthoredTierPrefix + "strong"
 	if !gh.applied(model) {
 		t.Errorf("the model half was not applied to the PR: %+v", gh.requests)
 	}
@@ -412,8 +412,8 @@ func TestStampReplacesAForeignAppliedStamp(t *testing.T) {
 	_, root := s.install(t)
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
-	model := deskkit.DispatchedModelPrefix + "example-model-1"
-	tier := deskkit.DispatchedTierPrefix + "strong"
+	model := deskkit.AuthoredModelPrefix + "example-model-1"
+	tier := deskkit.AuthoredTierPrefix + "strong"
 	gh := installGHStamp(t)
 	gh.labels = []string{model, tier}
 	gh.timeline = []ghStampEvt{labeled(model, "some-other-login"), labeled(tier, "some-other-login")}
@@ -447,8 +447,8 @@ func TestStampReplacesAForeignAppliedStamp(t *testing.T) {
 }
 
 // THE PRESENT-BUT-UNREADABLE DEADLOCK. An earlier run of the DISPATCHER itself left a stale
-// dispatched-model half, so the PR carries two model slugs — a conflicting stamp the floor
-// reads as unreadable and refuses. Both halves the re-dispatch wants are already standing
+// authored-model half (a worker-kit stamp writes the authored pair, #2760), so the PR
+// carries two model slugs — a conflicting stamp the reader treats as unreadable. Both halves the re-dispatch wants are already standing
 // under the dispatcher, so clearing only FOREIGN labels removes nothing and the conflict
 // survives: re-dispatch reports OK while every verdict on the PR keeps refusing. The re-stamp
 // must therefore drop the stale slug the dispatcher itself left, not just foreign labels.
@@ -458,9 +458,9 @@ func TestStampClearsADispatcherAppliedConflictingStamp(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
 	d := dispatcherAppLogin(t)
-	model := deskkit.DispatchedModelPrefix + "example-model-1"
-	staleModel := deskkit.DispatchedModelPrefix + "example-model-2"
-	tier := deskkit.DispatchedTierPrefix + "strong"
+	model := deskkit.AuthoredModelPrefix + "example-model-1"
+	staleModel := deskkit.AuthoredModelPrefix + "example-model-2"
+	tier := deskkit.AuthoredTierPrefix + "strong"
 	gh := installGHStamp(t)
 	gh.labels = []string{model, staleModel, tier}
 	gh.timeline = []ghStampEvt{labeled(model, d), labeled(staleModel, d), labeled(tier, d)}
@@ -491,8 +491,8 @@ func TestStampLeavesItsOwnStampAlone(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
 	d := dispatcherAppLogin(t)
-	model := deskkit.DispatchedModelPrefix + "example-model-1"
-	tier := deskkit.DispatchedTierPrefix + "strong"
+	model := deskkit.AuthoredModelPrefix + "example-model-1"
+	tier := deskkit.AuthoredTierPrefix + "strong"
 	gh := installGHStamp(t)
 	gh.labels = []string{model, tier}
 	gh.timeline = []ghStampEvt{labeled(model, d), labeled(tier, d)}
@@ -515,8 +515,8 @@ func TestStampDoesNotRemoveAnAlreadyRepairedStamp(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
 	d := dispatcherAppLogin(t)
-	model := deskkit.DispatchedModelPrefix + "example-model-1"
-	tier := deskkit.DispatchedTierPrefix + "strong"
+	model := deskkit.AuthoredModelPrefix + "example-model-1"
+	tier := deskkit.AuthoredTierPrefix + "strong"
 	gh := installGHStamp(t)
 	gh.labels = []string{model, tier}
 	gh.timeline = []ghStampEvt{
@@ -562,7 +562,7 @@ func TestStampRefusesWhenTheHistoryReadFails(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
 	gh := installGHStamp(t)
-	gh.labels = []string{deskkit.DispatchedModelPrefix + "example-model-1"}
+	gh.labels = []string{deskkit.AuthoredModelPrefix + "example-model-1"}
 	gh.failTL = true
 
 	rc := run(stampArgs(t, root))

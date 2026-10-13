@@ -99,6 +99,10 @@ no model is inferred from existing labels. The original kit selects the same dis
 role as ordinary dispatch. The session role must match it and be roster-bound; the worker
 cannot self-attest. No item key, claim, worktree, roster registration, hook, queue label or
 prompt is involved. This does not launch an agent or renew review-claim authority.
+The worker kits (the default) write the authoring pair, authored-model:<slug> +
+authored-tier:<tier>, and never read, remove or write a dispatched-* label; --kit review
+writes the dispatched-* pair and never touches authored-*. The capability floor reads
+dispatched-* only, so an authoring stamp does not satisfy a review floor.
 
 The shared model vocabulary is open: gpt-6-astra and gpt-6.1-sol round-trip unchanged.
 gpt-6-1-sol is also a valid opaque slug, not an alias for gpt-6.1-sol. Use the identifier
@@ -178,9 +182,13 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       credential (GH_TOKEN in its environment, from the same resolution
                       the claim uses), never the ambient login; with none it refuses.
   5 model-stamp       computes and validates the dispatcher's attestation labels
-                      (dispatched-model:<slug>, dispatched-tier:<tier>) and applies them
-                      when --pr is known. The stamp attests what the DISPATCHER launched;
-                      a self-applied stamp is worthless by design.
+                      and applies them when --pr is known: a --kit review dispatch
+                      writes dispatched-model:<slug> + dispatched-tier:<tier> (the
+                      review-session attestation the floor reads); every other kit
+                      writes authored-model:<slug> + authored-tier:<tier> and never
+                      touches dispatched-*, so neither stamp overwrites the other.
+                      The stamp attests what the DISPATCHER launched; a self-applied
+                      stamp is worthless by design.
   6 queue-label       on a --kit review dispatch with --pr known, applies the review-lane
                       queue label authorization-needed to the change through the resolved
                       forge (idempotent create+apply under the reviewer role's own

@@ -5470,6 +5470,14 @@ claim, allocates no worktree, invokes no lifecycle hook, registers no roster ent
 launches no worker. It does not revive a released review claim. `--model` and `--tier`
 are explicit, never inferred from an old stamp or a model-name lookup.
 
+**Two label pairs (#2760).** A worker kit (the default) writes the AUTHORING pair,
+`authored-model:<slug>` + `authored-tier:<tier>`: which model the coordinator launched to
+write the change. `--kit review` writes `dispatched-model:<slug>` + `dispatched-tier:<tier>`:
+the review session's attestation. Each stamp reads, removes and verifies only its own pair,
+so neither overwrites the other. Before the split both wrote `dispatched-*`, and whichever
+ran later replaced the other. A full worker dispatch with `--pr` writes the authoring pair
+too.
+
 The model slug vocabulary remains open. `gpt-6-astra` and `gpt-6.1-sol` are preserved;
 `gpt-6-1-sol` is a distinct accepted literal, not an alias. Use the exact harness selection.
 Existing label normalization (lowercase and trim) remains shared with ordinary dispatch.
@@ -5478,15 +5486,16 @@ The existing stamp step owns both modes: absent stamps are applied, an identical
 pair is a verified no-op, and partial/conflicting/foreign/unattributed stamps are repaired
 from the supplied selection through `ReStampRemovals`. A failed label or timeline read
 returns unverifiable before mutation. Writes are followed by label and timeline readback;
-only the exact pair accepted by `AttestedModelStampOf` produces an applied-and-verified
-receipt. Failed or unobserved writes return exit 6; retry with the same selection after
+only the exact pair accepted by the applier-aware reader for that kit's pair
+(`AttestedModelStampOf` for `dispatched-*`) produces an applied-and-verified receipt. Failed or unobserved writes return exit 6; retry with the same selection after
 investigating the failure. No receipt claims execution surveillance or invented provenance.
 `--dry-run` prints the read-derived plan without mutation or audit append.
 
 Real invocations record `verb=stamp-only` in the standard desk audit log, including the
 repo, PR, requested model/tier/kit and the verified result or refusal. The downstream
-capability floor (including review posting and ready-flip) and auto-lane reader retain
-their existing shared applier-aware semantics. Legacy `deskrestamp` remains the separate,
+capability floor (including review posting and ready-flip) and auto-lane reader still read
+`dispatched-*` only, with their existing applier-aware semantics. They never read
+`authored-*`, so an authoring stamp does not satisfy a review floor. Legacy `deskrestamp` remains the separate,
 cutoff-gated migration that preserves existing content; its provenance rules are unchanged.
 
 **Verifier pre-work admission.** A verifier has no result yet and needs no PR to start.
