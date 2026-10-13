@@ -596,7 +596,7 @@ func TestAutoflipRefusesHeldPass(t *testing.T) {
 		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
 		"| 2 | `go test ./missing/...` | — | could-not-check: package removed | 2026-07-08 | fixture-verifier |\n"
 
-	got := decideModelFlip(root, s, path, "af/01", heldEvidence, src, ghReviewer(afReviewer))
+	got := decideModelFlip(root, s, path, "af/01", heldEvidence, briefFilesOf(&BriefFile{}), src, ghReviewer(afReviewer))
 	if got.Outcome == flipDone {
 		t.Fatalf("PASS + could-not-check on a non-deferred row must be refused, got flipDone (%s)", got.Reason)
 	}
@@ -613,7 +613,7 @@ func TestAutoflipRefusesHeldPass(t *testing.T) {
 		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
 		"| 2 | `go test ./missing/...` | — | could-not-check: deferred to follow-up brief verify-integrity/05 | 2026-07-08 | fixture-verifier |\n"
 
-	got2 := decideModelFlip(root, s, path, "af/01", deferredEvidence, src, ghReviewer(afReviewer))
+	got2 := decideModelFlip(root, s, path, "af/01", deferredEvidence, briefFilesOf(&BriefFile{}), src, ghReviewer(afReviewer))
 	if got2.Outcome != flipDone {
 		t.Fatalf("the same row deferred to a NAMED follow-up (routing phrase + reference) must flip once the App approval corroborates it, got %v (%s)", got2.Outcome, got2.Reason)
 	}
@@ -630,7 +630,7 @@ func TestAutoflipRefusesHeldPass(t *testing.T) {
 		"| 1 | `go vet ./...` | 0 | ok | 2026-07-08 | fixture-verifier |\n" +
 		"| 2 | `go test ./missing/...` | — | could-not-check: this was NOT deferred to anyone, still broken | 2026-07-08 | fixture-verifier |\n"
 
-	got3 := decideModelFlip(root, s, path, "af/01", negatedEvidence, src, ghReviewer(afReviewer))
+	got3 := decideModelFlip(root, s, path, "af/01", negatedEvidence, briefFilesOf(&BriefFile{}), src, ghReviewer(afReviewer))
 	if got3.Outcome == flipDone {
 		t.Fatalf("a negated/unreferenced \"deferred\" must NOT suppress the could-not-check contradiction — the gate must fail closed, got flipDone (%s)", got3.Reason)
 	}
@@ -933,7 +933,7 @@ func decideWalk(t *testing.T, src *fakeFlipSource) modelFlipResult {
 	t.Helper()
 	root, streams := loadAFStreams(t)
 	s := streams[0]
-	return decideModelFlip(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", src, ghReviewer(afReviewer))
+	return decideModelFlip(root, s, filepath.Join(s.Dir, "brief-50-walk.md"), "af/50", "", briefFilesOf(&BriefFile{}), src, ghReviewer(afReviewer))
 }
 
 // approvedAt is a merged PR state with the reviewer App APPROVED at head.

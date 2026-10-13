@@ -16,6 +16,10 @@ import (
 // always follows the reopen with a close in the SAME invocation — on a surface (the
 // verify-gate sign-off card) the desk cannot unilaterally complete a sign-off on
 // regardless, because the repository's verify-gate close workflow reopens any bot close.
+//
+// One further write exists, and only on a failure path: when a verified close's re-read shows
+// the item still open, postcondition.go files ONE repair issue (deduped by title) so the
+// close that did not take is visible beyond this run's output.
 
 // decisionLabels are the labels that put an item on a human's decision queue.
 //
@@ -41,6 +45,9 @@ type item struct {
 	Body   string
 	Labels []string
 	IsPR   bool
+	// CreatedAt is the issue's creation time as the forge reports it (empty when unreported);
+	// the human-decided lane's decision record measures latency from it.
+	CreatedAt string
 }
 
 func (i item) isPR() bool   { return i.IsPR }
@@ -87,6 +94,8 @@ func fetchItem(repo string, n int, kind deskkit.TargetKind) (item, error) {
 		Body:   iss.Body,
 		Labels: append([]string(nil), iss.Labels...),
 		IsPR:   iss.IsPullRequest,
+
+		CreatedAt: iss.CreatedAt,
 	}, nil
 }
 
@@ -244,17 +253,7 @@ func closeItem(repo string, n int, kind deskkit.TargetKind, reason string, verif
 	}
 	// The close is READ BACK: a non-error return is not proof the state changed. A read that
 	// fails is could-not-check (the close is unconfirmed either way); a read that shows the
-	// item still open is a close that did not take, and either is exit 6 rather than success.
-	after, rerr := fetchItem(repo, n, kind)
-	if rerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"could-not-check: %s#%d was asked to close but its state could not be read back — the close is unconfirmed",
-			repo, n), rerr)
-	}
-	if !after.closed() {
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"%s#%d still reads state %q after the close call — the state change did not take",
-			repo, n, deskkit.StripControl(after.State)), nil)
-	}
-	return nil
+	// item still open is a close that did not take — exit 6 plus a filed repair issue, never
+	// success. postcondition.go owns the assertion.
+	return assertClosedPostcondition(repo, n, kind)
 }

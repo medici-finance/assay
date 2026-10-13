@@ -492,6 +492,9 @@ type reviewInfo struct {
 	CommitID    string `json:"commit_id"`
 	Body        string `json:"body"`
 	SubmittedAt string `json:"submitted_at"`
+	// HTMLURL is the forge's own link to the review, when the listing carries one. It is
+	// only ever shown (finish's result line); nothing is decided on it.
+	HTMLURL string `json:"html_url,omitempty"`
 }
 
 type combinedStatus struct {

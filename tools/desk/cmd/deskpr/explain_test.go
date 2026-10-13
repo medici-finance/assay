@@ -10,15 +10,16 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// captureStderr swaps os.Stderr for a pipe while fn runs and returns what fn wrote to it.
+// captureStderr swaps os.Stderr — and the deskprStderr seam, which run() writes its terminal
+// error through — for a pipe while fn runs and returns what fn wrote to either.
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
-	old := os.Stderr
+	old, oldSeam := os.Stderr, deskprStderr
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	os.Stderr = w
+	os.Stderr, deskprStderr = w, w
 	done := make(chan string, 1)
 	go func() {
 		var b strings.Builder
@@ -27,7 +28,7 @@ func captureStderr(t *testing.T, fn func()) string {
 	}()
 	fn()
 	_ = w.Close()
-	os.Stderr = old
+	os.Stderr, deskprStderr = old, oldSeam
 	return <-done
 }
 

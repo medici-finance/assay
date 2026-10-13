@@ -7,23 +7,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
 
 // cmdDown tears the session (and this cell's deskd) down. What `up` opened in a non-tmux cockpit
 // is closed where that cockpit offers a verb for it, and NAMED for you to close by hand where it
 // does not — never left unsaid.
-func cmdDown(cell string, args []string) {
+func cmdDown(cell string, v *cli.Values, extra []string, given bool) {
 	c := loadCell(cell)
 
 	if c.Kind == "container" {
-		if len(args) > 0 {
+		if given {
 			die("container down does not accept host cockpit or deskd flags")
 		}
 		c.containerRun("down")
 		return
 	}
 	if c.Kind == "scrubbed" {
-		if len(args) > 0 {
+		if given {
 			die("scrubbed down does not accept host cockpit or deskd flags")
 		}
 		sockpath := filepath.Join(c.Dir, "run", "tmux.sock")
@@ -40,21 +42,12 @@ func cmdDown(cell string, args []string) {
 		return
 	}
 
-	keep := false
-	cockpitFlag := ""
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; a {
-		case "--keep-deskd":
-			keep = true
-		case "--cockpit":
-			cockpitFlag = needFlagValue(args, &i, "--cockpit needs a value (auto|tmux|herdr|orca)")
-		default:
-			if strings.HasPrefix(a, "--") {
-				die("down: unknown flag %s", a)
-			}
-			die("down: unexpected argument '%s'", a)
-		}
+	if len(extra) > 0 {
+		die("down: unexpected argument '%s'", extra[0])
 	}
+	keep := v.Bool("keep-deskd")
+	needValue(v, "cockpit", "--cockpit needs a value (auto|tmux|herdr|orca)")
+	cockpitFlag := v.String("cockpit")
 	if c.Env.Get("DRY_RUN") == "1" {
 		fmt.Println("[dry-run] down: would stop comms and role supervisors, then close owned cockpit surfaces")
 		return
@@ -138,31 +131,10 @@ func herdrTabIDForLabel(label string) string {
 }
 
 func (c *Cell) downHerdr() {
-	roles := c.upRoles(false)
-	if !helpHas("close", "herdr", "tab") {
-		fmt.Println("[cell] this herdr build advertises no 'tab close' — close these tabs by hand:")
-		for _, r := range append([]string{"cell"}, roles...) {
-			fmt.Printf("  %s-%s\n", c.Name, r)
-		}
-		return
+	if err := c.closeHerdrWorkspace(); err != nil {
+		die("herdr workspace: %v", err)
 	}
-	// The oracle reads `${FIRST_NAME:-cell}` here, and `down` never calls first_window — so
-	// FIRST_NAME is unset on this path and the label is always `<cell>-cell`. Spelled as the
-	// literal it always is, rather than as a variable that is never set.
-	labels := []string{c.Name + "-cell"}
-	for _, r := range roles {
-		labels = append(labels, c.Name+"-"+r)
-	}
-	total, closed := 0, 0
-	for _, label := range labels {
-		total++
-		if tid := herdrTabIDForLabel(label); tid != "" {
-			if exec.Command("herdr", "tab", "close", tid).Run() == nil {
-				closed++
-			}
-		}
-	}
-	fmt.Printf("[cell] herdr: closed %d/%d tabs ('herdr tab list' → tab_id by label → 'herdr tab close <tab_id>')\n", closed, total)
+	fmt.Printf("[cell] herdr: closed %s workspace\n", c.Name)
 }
 
 func (c *Cell) downOrca() {

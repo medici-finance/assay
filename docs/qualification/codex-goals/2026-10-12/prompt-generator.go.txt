@@ -1,0 +1,23 @@
+package main
+import "fmt"
+func codexRolePrompt(role, goos, bash string) string {
+	prompt := fmt.Sprintf("Invoke the %q skill now.", "assay:"+role)
+	if goos != "windows" {
+		prompt += fmt.Sprintf("\nFor every exec_command call, explicitly set shell=%q and login=false. Use Bash syntax; do not use the account's default zsh, source shell startup files, or omit the shell override. Pass this command-shell requirement to every subagent.", bash)
+	} else {
+		prompt += "\nUse the native Windows command shell with profile loading disabled; do not require Bash, zsh, or WSL."
+	}
+	prompt += "\nEvery deskdispatch that will post a model-attested result must include --model with the actual selected worker model. Check the dispatch receipt for a successful model stamp before spending work on that dispatch; a skipped stamp is not a successful review admission."
+	return prompt
+}
+
+func codexStandingPrompt(role, prompt string) string {
+	objective := fmt.Sprintf("Run assay:%s as a standing desk: keep handling its authorized queue across turns until the user stops, pauses, or changes this assignment.", role)
+	return fmt.Sprintf(`Before invoking the desk skill, establish its native Codex Goal. The user explicitly requests this standing objective: %q
+Call get_goal first. Only if no Goal exists, call create_goal with that exact objective and omit token_budget, then call get_goal again. Verify the returned objective and active status; report the actual readback, not a promise to continue. If a Goal already exists, preserve its objective, status, budget, and usage: do not replace, reset, resume, or reactivate it. Continue this bootstrap only if the existing Goal is active and has the exact requested objective; otherwise report the existing state and wait for user direction before starting the desk.
+If native Goal tools are unavailable, creation fails, or readback cannot confirm the active objective, report could-not-check: standing Goal not established, and wait for user direction. Do not substitute a prose promise or a headless loop.
+Once verified, invoke the skill below. A completed batch, ordinary final response, or empty queue does not complete this standing objective. Continue authorized desk work across native Goal turns, using the skill's idle and stop rules. Human steering, pause/clear, stop flags, approvals, and protected-action boundaries remain authoritative; do not resume or recreate a Goal after the user pauses or clears it. Native continuation is not a durable timer or a guarantee of permanent service.
+%s`, objective, prompt)
+}
+
+func main(){fmt.Print(codexStandingPrompt("worker-desk",codexRolePrompt("worker-desk","darwin","/opt/homebrew/bin/bash")))}

@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -15,24 +19,6 @@ import (
 // suppression is testable without a real forge or a real deskfile binary; production wires
 // the two functions at the bottom of this file.
 //
-// # Why DeleteRef, not deskkit.ReleaseMatching
-//
-// The brief's own fact section says the reclaim "frees the claim through
-// deskkit.ReleaseMatching (compare-and-delete under the claims lock)" — that IS what
-// liveness.go's own internal reclaimForLiveness does, but reclaimForLiveness reclaims
-// against cfg.ClaimsDir, the LOCAL flock-backed claims directory (internal/deskkit/claim.go).
-// A dispatch claim has not lived there since 2026-08-13 (cmd/deskclaim/main.go's own SCOPE
-// NOTE: "the dispatch kind no longer belongs here... now the forge ref under the claim
-// namespace"), and cmd/fanoutloop/land.go's forgeDispatchSink — the one other place
-// in this tree that releases a dispatch claim — releases it through
-// deskkit.Forge.DeleteRef(repo, deskkit.ClaimRefPath(key)), never through ReleaseMatching. Since the
-// claims desksupervise's Task exists to reclaim ARE dispatch claims (the brief's own
-// motivating scenario is a wedged WORKER's dispatch), this file follows land.go's
-// established, currently-correct path rather than the brief's fact citation, which
-// describes a DIFFERENT (pre-2026-08-13 / non-dispatch-kind) claim mechanism. See the PR
-// body's Context section for this note quoted in full — clause 7 ("verify before you apply
-// a correction") binds this disagreement, not silence.
-
 // reclaimFunc releases one claim so it becomes re-dispatchable. Production deletes the
 // forge ref; a test injects a recording fake.
 type reclaimFunc func(claim claimRecord) error
@@ -56,35 +42,28 @@ func doArmRunStop(claim claimRecord, reason string) error {
 	return deskkit.ArmRunStop(claim.Key, reason)
 }
 
-// doReclaim is the production reclaimFunc: obtain the forge that serves the claim's repo
-// through deskkit.ForgeFor (the single construction site, which resolves the forge and reads
-// the resolved role's already-minted token from custody) and delete the `dispatch/<key>` ref
-// through deskkit.Forge, exactly as cmd/fanoutloop/land.go's forgeDispatchSink does. A ref
-// already gone (404/422 — refAlreadyGone's condition in land.go) is a no-op, not a failure:
-// the claim is not held either way.
+// doReclaim deletes only the immutable claim version whose holder and activity
+// were assessed. Both terminal reconciliation and liveness reclaim use this path.
 func doReclaim(claim claimRecord) error {
-	owner, name, ok := strings.Cut(claim.Repo, "/")
-	if !ok || owner == "" || name == "" {
-		return fmt.Errorf("reclaim %s: repo %q is not owner/name", claim.Key, claim.Repo)
+	opts, err := claimListOpts(claim.Repo)
+	if err != nil {
+		return err
 	}
-	role, _, rerr := deskkit.SessionTokenRole("desksupervise")
-	if rerr != nil {
-		return fmt.Errorf("reclaim %s: cannot resolve a token role: %w", claim.Key, rerr)
+	return reclaimVersion(claim, opts, gitcore.PushRefUpdate)
+}
+func reclaimVersion(claim claimRecord, opts gitcore.ListOpts, push func(context.Context, gitcore.RefUpdate) (gitcore.RefUpdateResult, error)) error {
+	expected := deskkit.DispatchClaimActiveRefsPrefix + claim.Key
+	if claim.Key == "" || strings.Contains(claim.Key, "/") || claim.Ref != expected || len(claim.Version) != 40 || !plumbing.IsHash(claim.Version) || plumbing.NewHash(claim.Version) == plumbing.ZeroHash {
+		return fmt.Errorf("reclaim %s: missing or invalid assessed claim version; held", claim.Key)
 	}
-	repo := deskkit.ForgeRepo{Owner: owner, Name: name}
-	forge, ferr := deskkit.ForgeFor(repo, role)
-	if ferr != nil {
-		return fmt.Errorf("reclaim %s: cannot resolve a forge for %s: %w", claim.Key, claim.Repo, ferr)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	result, err := push(ctx, gitcore.RefUpdate{URL: opts.URL, Auth: opts.Auth, Ref: plumbing.ReferenceName(claim.Ref), Old: plumbing.NewHash(claim.Version), New: plumbing.ZeroHash})
+	if err != nil {
+		return fmt.Errorf("reclaim %s: could not conditionally release: %w", claim.Key, err)
 	}
-	ref, rerr := deskkit.ClaimRefPath(claim.Key)
-	if rerr != nil {
-		return fmt.Errorf("reclaim %s: %w", claim.Key, rerr)
-	}
-	if err := forge.DeleteRef(repo, ref); err != nil {
-		if deskkit.IsForgeNotFound(err) {
-			return nil
-		}
-		return fmt.Errorf("reclaim %s: DeleteRef refs/%s in %s: %w", claim.Key, ref, claim.Repo, err)
+	if result != gitcore.RefUpdateApplied {
+		return &loopengine.BlindError{Source: "claim-release", Err: fmt.Errorf("reclaim %s: claim changed or release refused; held for reassessment", claim.Key)}
 	}
 	return nil
 }

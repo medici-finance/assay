@@ -115,6 +115,13 @@ func (g *glReviewFake) SetMergeHold(_ deskkit.ForgeRepo, _ int, in deskkit.Merge
 // GitLab twin of setupFake, minus the GitHub fake server (the forge backend never touches it).
 func setupGitLabReview(t *testing.T, f *glReviewFake) *bytes.Buffer {
 	t.Helper()
+	return setupGitLabForge(t, f)
+}
+
+// setupGitLabForge is setupGitLabReview for any fake Forge — a test that needs the reviews
+// read or the hold to answer differently wraps glReviewFake and hands the wrapper in here.
+func setupGitLabForge(t *testing.T, f deskkit.Forge) *bytes.Buffer {
+	t.Helper()
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)

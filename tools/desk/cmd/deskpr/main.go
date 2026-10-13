@@ -65,13 +65,17 @@ verdict at that head without the line.
 Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the
 push-transport gate — and stops BEFORE minting a token or opening any connection: exit 0
 only when every local gate passed, a failing gate returns its own refusal with its own
-exit code, so --check is a gate run early, never a preview that can disagree with the real
+exit code, so --check proves local gates only; remote-dependent checks still run on the real
 write path. It mints no token and opens no connection. A category it cannot decide
 offline (chiefly a bare #N reference, which needs a number from the forge to compare
 against) is reported as NOT CHECKED, by name, rather than passing silently — update's
 --check cannot check the trailer (it lives on the EXISTING PR's forge-held body) and
 edit's cannot check trailer-immutability or the self-containment scan's bare-#N hint (both
 need the existing PR's body/number); each names what it skipped.
+
+A live create confirms the destination branch through its credentialed push endpoint,
+checks only commits beyond its confirmed tip, and pins that tip during the plain push.
+create --check cannot confirm it: it judges the whole range and reports that limit.
 
 deskpr create is draft-only by construction: it can only open a DRAFT PR on a
 non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on the
@@ -277,7 +281,9 @@ func run(args []string) int {
 		return deskkit.ExitOK
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		// Through the seam (os.Stderr in production) so a test can read the verb's own
+		// terminal error — the text a house.callout refusal must keep the callout's words out of.
+		fmt.Fprintln(deskprStderr, err.Error())
 	}
 	return deskkit.ExitCodeOf(err)
 }

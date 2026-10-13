@@ -1,0 +1,4 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           quorum floor
+  CAUGHT           settlement window
+Totals: 2 caught, 0 NOT CAUGHT, 0 could-not-mutate.

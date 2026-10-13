@@ -1133,6 +1133,8 @@ func applyVerdictDelta(d verdictDelta) (int, error) {
 //	   primary-checkout root
 //	3  FLOOD: more than the cl.9 threshold of unconsumed verdict issues — nothing is
 //	   written; the workflow files one triage issue
+//	1  error, including POSTCONDITION FAILED: the apply returned without error but a
+//	   re-read does not show the Evidence/flip it owed (assertVerdictApplied)
 //
 // dryRun is the CI-testable "--check" surface: it derives and reports the would-be
 // delta and the per-verdict refusal log without touching the filesystem.
@@ -1246,9 +1248,15 @@ func runTranscribeVerdict(root string, dryRun bool, pubkeyPath string,
 		return 0
 	}
 
-	touched, aerr := applyVerdictDelta(delta)
+	touched, aerr := applyVerdictDeltaFn(delta)
 	if aerr != nil {
 		fmt.Fprintln(os.Stderr, "statusgen --transcribe-verdict:", aerr)
+		return 1
+	}
+	// Emits-and-asserts (transcribeverdict_postcondition.go): re-read what the apply
+	// wrote and prove it landed where the board reads it BEFORE reporting success.
+	if perr := assertVerdictApplied(root, delta, touched); perr != nil {
+		fmt.Fprintln(os.Stderr, "statusgen --transcribe-verdict: POSTCONDITION FAILED —", perr)
 		return 1
 	}
 	fmt.Printf("transcribe-verdict: applied — %d file(s) touched (%d Evidence append(s), %d flip(s))\n",

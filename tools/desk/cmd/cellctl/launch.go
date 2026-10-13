@@ -66,7 +66,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		// An existing tree is MERGED up to the fetched main, or the boot stops — never left
 		// behind with a notice (#1157).
 		c.mergeRoleWorktree(wt, sha)
-	} else if dwt, ok := c.worktreeViaDeskwt(role); ok {
+	} else if dwt, ok := c.worktreeViaDeskwt(role, session); ok {
 		_ = os.Remove(wt)
 		if lerr := os.Symlink(dwt, wt); lerr != nil {
 			die("desk: could not link %s -> %s: %v", wt, dwt, lerr)
@@ -175,6 +175,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		}
 		argv = append(argv, "--sandbox", "danger-full-access", "-C", wt, "-m", model,
 			codexRolePrompt(role, runtime.GOOS, bash))
+		if c.Cadence == nil {
+			argv[len(argv)-1] = codexStandingPrompt(role, argv[len(argv)-1])
+		}
 	} else if harness == "cursor" {
 		if err := c.prepareCursorWorkspace(role, wt); err != nil {
 			die("cursor workspace: %v", err)
@@ -194,7 +197,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		// session stops re-reading an ever-growing prefix every turn (cached-input spend against
 		// provider rate windows; 1M-context models never trip it otherwise). Neutral for
 		// 200K-context models, which compact there anyway. A cell overrides it via cell.env.
-		env = envSet(env, "CLAUDE_CODE_AUTO_COMPACT_WINDOW", c.Env.GetOr("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "200000"))
+		env = envSet(env, "CLAUDE_CODE_AUTO_COMPACT_WINDOW", c.Env.GetOr("CLAUDE_CODE_AUTO_COMPACT_WINDOW", autoCompactWindowDefault))
 		if provider != "" {
 			// An inherited API key wins over the auth token and silently routes to Anthropic,
 			// so it is UNSET first; then the model plus the three tier aliases are pinned to a
@@ -229,12 +232,16 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 			// pinned IDs plus the PreModelSwitch / PreToolUse(Agent|Task) hooks that call back
 			// into this binary, so neither a mid-session switch nor a child agent can reach a
 			// model the launch-time resolution would have refused.
-			settings, err := policyClaudeSettings(selfPath(), c.Dir, policyRes)
+			cellsRoot, _ := c.reenter()
+			settings, err := policyClaudeSettings(selfPath(), cellsRoot, c.Dir, policyRes)
 			if err != nil {
 				die("model policy: cannot build --settings: %v", err)
 			}
 			argv = []string{"claude", "--effort", policyRes.Effort, "--settings", settings, "--name", session, "--model", model, "/assay:" + role}
 		}
+		// CELL_ROLE_CONTEXT (#2438): the role's own starting context, added to whichever argv the
+		// lines above composed. Unchanged when the cell declares nothing for this role.
+		argv = c.roleContextArgv(role, argv)
 	}
 	if c.Cadence != nil {
 		c.runCadencedHarness(role, harness, argv, env, wt)

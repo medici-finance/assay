@@ -117,7 +117,7 @@ type ComposedEnv struct {
 // PATH — the shim prefix and the resolved harness dir are never overridden.
 func (c *Cell) scrubbedComposeEnv(role, harness, session string) ComposedEnv {
 	harnessDir := scrubbedHarnessPath(harness)
-	tail := "/usr/bin:/bin:/usr/sbin:/sbin"
+	tail := scrubbedPathTail
 	if v := c.Env.Get("CELL_PATH"); v != "" {
 		tail = v
 	}

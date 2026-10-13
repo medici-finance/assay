@@ -394,6 +394,21 @@ jobs:
             bash plugins/assay/scripts/stamp-plugin-version.sh gate --tag "$TAG" --prev "$prev"
           fi
 
+      # SPEC HEADER VERSION GATE (#1192) — tag-push path only. The ruling on
+      # #1192 (option a, `stamp`) has the release write the tag being cut into
+      # spec/brief-v1.md's `Describes reference implementation:` header, the
+      # same way it stamps the plugin manifest; check-spec-header-version.sh
+      # is the proof the stamp ran. A pushed tag can never be re-pointed, so on
+      # that path the tagged tree must already carry the tag — refuse it HERE,
+      # before the human approval, exactly as the manifest gate above does. On
+      # the dispatch path the tree is not stamped yet (`release` stamps it
+      # before tagging), so the proof runs there, right after the stamp.
+      - name: Release gate — refuse a pushed tag whose spec/brief-v1.md header names another version
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: bash tools/release/check-spec-header-version.sh "$TAG"
+
   # The publish path's own test gate. ci.yml build/vets every module at PR time,
   # but a tag can be cut from any commit, so re-run the suite here. No `if:` on
   # this job, on purpose: it runs on tag push, on dispatch, and on dry_run — a
@@ -762,7 +777,7 @@ jobs:
       # but produced nothing fail loudly rather than ship a quietly smaller pack.
       - name: Upload captured mutation reports (tool-validation pack)
         if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}
           path: ${{ runner.temp }}/tv-reports/
@@ -1035,9 +1050,13 @@ jobs:
             && go run . codex    --check --root ../.. \
             && go run . cursor   --check --root ../.. )
           if [ "$EVENT" = push ]; then
+            ( cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check )
             exit 0
           fi
+          ( cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay )
+          ( cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check )
           mapfile -t stamped < <(bash "$stamp" paths)
+          stamped+=(AGENTS.md .cursor)
           if git diff --quiet -- "${stamped[@]}"; then
             echo "tree already carries plugin version ${RELEASE_TAG#v}; nothing to commit — the tag is cut from $(git rev-parse --short HEAD) as-is."
             exit 0
@@ -1047,6 +1066,49 @@ jobs:
           git add -- "${stamped[@]}"
           git commit -q -m "release: stamp the plugin manifest to ${RELEASE_TAG#v} [skip-status-regen]"
           echo "stamped plugin version ${RELEASE_TAG#v} in $(git rev-parse --short HEAD) (parent $(git rev-parse --short HEAD~1)); the tag is cut from this commit."
+
+      # SPEC HEADER STAMP (#1192, ruling: option a, `stamp`). The tree the tag is
+      # cut from must name the tag in spec/brief-v1.md's `Describes reference
+      # implementation:` header. Same shape as the plugin manifest stamp above:
+      #
+      # DISPATCH: stamp the header (tools/release/stamp-spec-header-version.sh),
+      # prove it (tools/release/check-spec-header-version.sh), and COMMIT it
+      # locally, so the tag below lands on that commit. In the steady state
+      # this is a no-op: the post-cut roll leaves the default branch's header
+      # on the next patch version, so a dispatch of exactly that version finds
+      # it already stamped and commits nothing. A dry run stamps and commits
+      # locally too; nothing is pushed.
+      #
+      # TAG PUSH: the tag can never be re-pointed, so this is the CHECK alone
+      # (the guard job already refused a stale header before the approval;
+      # this re-proves it on the tree that is built).
+      #
+      # BEFORE the builds, so what is built is the tree that is tagged.
+      - name: Stamp the spec/brief-v1.md reference-implementation header to the release tag
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          spec=spec/brief-v1.md
+          if [ "$EVENT" = push ]; then
+            if ! bash tools/release/check-spec-header-version.sh "$RELEASE_TAG" "$spec"; then
+              echo "::error::the tree at ${RELEASE_TAG} does not name ${RELEASE_TAG} in ${spec}'s header. A pushed tag cannot be re-pointed: stamp it by PR (bash tools/release/stamp-spec-header-version.sh <vX.Y.Z>) and cut the NEXT patch version — or dispatch the release, which stamps for you."
+              exit 1
+            fi
+            exit 0
+          fi
+          bash tools/release/stamp-spec-header-version.sh "$RELEASE_TAG" "$spec"
+          bash tools/release/check-spec-header-version.sh "$RELEASE_TAG" "$spec"
+          if git diff --quiet -- "$spec"; then
+            echo "${spec} already names ${RELEASE_TAG}; nothing to commit — the tag is cut from $(git rev-parse --short HEAD) as-is."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$spec"
+          git commit -q -m "release: stamp the spec/brief-v1.md header to ${RELEASE_TAG} [skip-status-regen]"
+          echo "stamped ${spec} to ${RELEASE_TAG} in $(git rev-parse --short HEAD) (parent $(git rev-parse --short HEAD~1)); the tag is cut from this commit."
 
       # -X main.statusgenVersion stamps the release tag into the binary so
       # `statusgen --version` can be compared against a consumer's
@@ -1163,6 +1225,14 @@ jobs:
       # One checksums.txt covers every asset on the umbrella release — the five
       # statusgen binaries, the five qualgen binaries, and the five desk-tools
       # per-platform tarballs. Consumers pin each line by sha256 in .assay-versions.
+      - name: Build versioned Cursor source bundle
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          go run ./cmd/deskinstall --harness cursor --bundle ../../plugins/assay --release "$RELEASE_TAG" --pack ../../cursor-bundle.tar.gz
+
       - name: Generate checksums
         run: |
           set -euo pipefail
@@ -1181,7 +1251,8 @@ jobs:
             desk-tools-darwin-amd64.tar.gz \
             desk-tools-linux-amd64.tar.gz \
             desk-tools-windows-amd64.tar.gz \
-            desk-tools-windows-arm64.tar.gz > checksums.txt
+            desk-tools-windows-arm64.tar.gz \
+            cursor-bundle.tar.gz > checksums.txt
           cat checksums.txt
 
       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
@@ -1189,7 +1260,7 @@ jobs:
       # merged into one directory. merge-multiple flattens every tv-reports-*
       # artifact into ${RUNNER_TEMP}/tv-reports.
       - name: Download captured mutation reports (tool-validation pack)
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: tv-reports-*
           path: ${{ runner.temp }}/tv-reports
@@ -1339,7 +1410,7 @@ jobs:
             # and claims no signature or attestation the pipeline does not
             # perform. The authorizer rides in via env: and is read by the
             # helper below exactly like RELEASE_TAG and DESK_IMAGE_REF.
-            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256.\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact; the pipeline carries no signature or provenance attestation, and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n  * cursor-bundle.tar.gz (versioned Cursor source payload; SHA-256 integrity, not provenance)\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256.\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact; the pipeline carries no signature or provenance attestation, and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then
@@ -1384,7 +1455,7 @@ jobs:
                    desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
                    desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz \
                    "tool-validation-${RELEASE_TAG}.md" "tool-validation-${RELEASE_TAG}.json" \
-                   checksums.txt; do
+                   cursor-bundle.tar.gz checksums.txt; do
             # Fail loudly if this name is already published — never swap the bytes.
             existing_id=$(NAME="$f" ASSETS_JSON="$assets_json" python3 -c 'import os,json; d=json.load(open(os.environ["ASSETS_JSON"])) if os.path.exists(os.environ["ASSETS_JSON"]) else []; d=d if isinstance(d,list) else []; print(next((str(a.get("id","")) for a in d if a.get("name")==os.environ["NAME"]), ""))' 2>/dev/null || true)
             if [ -n "${existing_id:-}" ]; then
@@ -1443,8 +1514,10 @@ jobs:
   # `needs: release` — the roll only ever narrates a release that actually
   # published. Same dispatch+non-dry-run condition the steps carried before.
   changelog-roll:
+    environment: board-writer
     needs: [resolve, release]
-    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+    # The run ref, not a checkout ref, authorizes access to the App key.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.dry_run
     runs-on: medici-builder-release
     # contents:read only. The WRITE is the board-writer App token minted below —
     # the same split assay-statusgen.yml's regen and model-autoflip jobs use.
@@ -1464,12 +1537,33 @@ jobs:
           # Same requirement, same reason as the release job's checkout.
           fetch-depth: 0
 
+      - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Pinned
+          # to GO_VERSION above; bump both together — a GO_VERSION change without
+          # a matching digest fails this step CLOSED rather than trusting the
+          # fetch.
+          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified
+          # toolchain there would shadow the system go/sha256sum/curl/git for
+          # every later step of this run.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+
       # The roll commit lands on the PR-only default branch, which the default
       # GITHUB_TOKEN cannot do (GH013: PR-required + leak-sweep-required). It
       # commits under the SAME identity that already writes STATUS.md straight
       # to main: the assay-board-writer App, whose ruleset bypass covers exactly
       # this class of generated-file write. App perms: contents:write on THIS
-      # repo only; key held as repo Actions secrets (BOARD_APP_*).
+      # repo only; key held in the main-only board-writer Environment (BOARD_APP_*).
       - name: Mint assay-board-writer App token (changelog roll)
         id: roll-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -1661,11 +1755,30 @@ jobs:
             bump=""
             if [ "$(printf '%s\n%s\n' "$cur" "$cut" | sort -V | tail -1)" = "$cut" ]; then
               bash "$stamp" stamp "$next"
+              ( cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay )
+              ( cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check )
               mapfile -t stamped < <(bash "$stamp" paths)
+              stamped+=(AGENTS.md .cursor)
               git add -- "${stamped[@]}"
               bump=" and stamp the plugin manifest to ${next#v}"
             else
               echo "plugin manifest already at ${cur} (above ${cut}) — leaving the pending bump in place."
+            fi
+            # POST-CUT SPEC HEADER BUMP (#1192), in the same commit and under the
+            # same floor rule as the manifest bump above: leave the default
+            # branch's spec/brief-v1.md header on the next patch version, so the
+            # next dispatch of that version finds it already stamped; a header a
+            # human already moved ABOVE the cut is left alone. A header the stamp
+            # cannot read or rewrite fails the roll (the stamp exits 2) rather
+            # than rolling past it.
+            spec=spec/brief-v1.md
+            hdr=$(grep -m1 -F 'Describes reference implementation:' "$spec" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+            if [ -z "$hdr" ] || [ "$(printf '%s\n%s\n' "${hdr#v}" "$cut" | sort -V | tail -1)" = "$cut" ]; then
+              bash tools/release/stamp-spec-header-version.sh "$next" "$spec"
+              git add -- "$spec"
+              bump="${bump} and stamp the spec header to ${next}"
+            else
+              echo "spec header already at ${hdr} (above ${cut}) — leaving the pending bump in place."
             fi
 
             if git diff --cached --quiet; then

@@ -1,0 +1,803 @@
+{
+  "eligibility": {
+    "absent-sibling-checkout": [
+      {
+        "id": "alpha/02",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "app:beta/01",
+            "type": "ordering-gate",
+            "reason": "sibling absent",
+            "state": "could-not-check",
+            "why": "sibling checkout for example-org/example-app not found at \u003ctmp\u003e/example-app"
+          }
+        ]
+      }
+    ],
+    "alias-not-in-registry": [
+      {
+        "id": "alpha/02",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "ghost:beta/01",
+            "type": "ordering-gate",
+            "reason": "unknown alias",
+            "state": "could-not-check",
+            "why": "alias ghost is not in docs/streams/graph-repos.yaml"
+          }
+        ]
+      }
+    ],
+    "cross-cell-and-bad-ref": [
+      {
+        "id": "alpha/02",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "cellx:app:beta/01",
+            "type": "ordering-gate",
+            "reason": "cross cell",
+            "state": "could-not-check",
+            "why": "cross-cell reference cellx:app:beta/01 — no cross-cell resolution exists in this evaluator"
+          }
+        ]
+      }
+    ],
+    "depends-human-gated-implemented": [
+      {
+        "id": "alpha/01",
+        "verdict": "eligible"
+      },
+      {
+        "id": "alpha/02",
+        "verdict": "eligible"
+      },
+      {
+        "id": "alpha/03",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "alpha/01",
+            "type": "ordering-gate",
+            "reason": "gate edge stays unsatisfied",
+            "state": "unsatisfied",
+            "why": "brief alpha/01 is gate:human at implemented with a recorded pass — that satisfies depends: edges only, never gates:/feathers:"
+          }
+        ]
+      },
+      {
+        "id": "alpha/04",
+        "verdict": "eligible"
+      },
+      {
+        "id": "alpha/05",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "alpha/04",
+            "type": "build-dep",
+            "reason": "depends: target is not done/verified (nor gate:human at implemented with a recorded pass)",
+            "state": "unsatisfied"
+          }
+        ]
+      },
+      {
+        "id": "alpha/06",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "alpha/99",
+            "type": "build-dep",
+            "reason": "depends: target is not done/verified (nor gate:human at implemented with a recorded pass)",
+            "state": "unsatisfied"
+          }
+        ]
+      }
+    ],
+    "forge-backed-gates": [
+      {
+        "id": "alpha/02",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "#12",
+            "type": "ordering-gate",
+            "reason": "issue",
+            "state": "could-not-check",
+            "why": "forge-backed gate #12 — the evaluator reads the tree only, never the forge"
+          },
+          {
+            "ref": "app#34",
+            "type": "ordering-gate",
+            "reason": "cross-repo issue",
+            "state": "could-not-check",
+            "why": "forge-backed cross-repo gate app#34 — the evaluator reads the tree only, never the forge"
+          }
+        ]
+      }
+    ],
+    "in-repo-done-gate": [
+      {
+        "id": "alpha/01",
+        "verdict": "eligible"
+      },
+      {
+        "id": "alpha/02",
+        "verdict": "eligible"
+      }
+    ],
+    "in-repo-todo-gate": [
+      {
+        "id": "alpha/01",
+        "verdict": "eligible"
+      },
+      {
+        "id": "alpha/02",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "alpha/01",
+            "type": "ordering-gate",
+            "reason": "01 first",
+            "state": "unsatisfied"
+          }
+        ]
+      }
+    ],
+    "no-registry-cross-repo": [
+      {
+        "id": "alpha/02",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "app:beta/01",
+            "type": "ordering-gate",
+            "reason": "cross repo",
+            "state": "could-not-check",
+            "why": "no docs/streams/graph-repos.yaml registry — alias app cannot be resolved"
+          }
+        ]
+      }
+    ],
+    "sibling-satisfied-and-missing": [
+      {
+        "id": "alpha/02",
+        "verdict": "eligible"
+      },
+      {
+        "id": "alpha/03",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "app:beta/02",
+            "type": "ordering-gate",
+            "reason": "unsatisfied",
+            "state": "unsatisfied"
+          }
+        ]
+      },
+      {
+        "id": "alpha/04",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "app:beta/07",
+            "type": "ordering-gate",
+            "reason": "absent in sibling",
+            "state": "could-not-check",
+            "why": "in the sibling checkout for example-org/example-app: brief beta/07 not found in this tree"
+          }
+        ]
+      }
+    ],
+    "unpublished-alias-gate-and-feather": [
+      {
+        "id": "alpha/02",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "unpub:beta/01",
+            "type": "ordering-gate",
+            "reason": "withheld",
+            "state": "could-not-check",
+            "why": "alias unpub is unpublished — its target repo is not resolvable from this tree"
+          }
+        ]
+      },
+      {
+        "id": "alpha/03",
+        "verdict": "eligible-with-notice",
+        "notices": [
+          {
+            "ref": "unpub:beta/01",
+            "type": "build-dep",
+            "state": "could-not-check",
+            "why": "alias unpub is unpublished — its target repo is not resolvable from this tree"
+          }
+        ]
+      }
+    ],
+    "unresolved-in-repo-gate": [
+      {
+        "id": "alpha/02",
+        "verdict": "held",
+        "holds": [
+          {
+            "ref": "alpha/09",
+            "type": "ordering-gate",
+            "reason": "no such brief",
+            "state": "could-not-check",
+            "why": "brief alpha/09 not found in this tree"
+          }
+        ]
+      }
+    ]
+  },
+  "coverage": {
+    "binding-to-unknown-node-is-ignored": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          }
+        ]
+      }
+    ],
+    "binding-to-unknown-pattern-is-ignored": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          }
+        ]
+      }
+    ],
+    "board-bookkeeping-still-releases": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness ran at \u003cc1\u003e and is reused at \u003cc2\u003e: no path outside docs/streams/** and STATUS.md differs between the witness's tree and the item's (no dependency manifest, and the row's inputs cannot be derived from its command (the command reads no repository path), so that whole surface is the input); the witness's tree landed at \u003cc1\u003e; the receipt keeps revision \u003cc1\u003e"
+          }
+        ]
+      }
+    ],
+    "bound-join-with-flow-row": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          }
+        ]
+      }
+    ],
+    "bound-join-without-flow-row": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          },
+          {
+            "claim": "integration-check",
+            "kind": "command",
+            "result": "missing",
+            "released": false,
+            "reason": "[coverage-join-missing-integration-check] the pattern's join node requires at least one Verify row classed `+flow` — individually passing rows do not release the join"
+          }
+        ]
+      }
+    ],
+    "bound-observe-evidence-holds": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          },
+          {
+            "claim": "claim-observe",
+            "kind": "observe",
+            "result": "could-not-check",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "observe source \"prometheus:error-rate\" not corroborated by this run — no reader is wired for it yet"
+          }
+        ]
+      }
+    ],
+    "bound-observe-without-source": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          },
+          {
+            "claim": "claim-observe",
+            "kind": "observe",
+            "result": "could-not-check",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "observe evidence declares no `source` to read the signal from"
+          }
+        ]
+      }
+    ],
+    "bound-review-evidence-holds": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          },
+          {
+            "claim": "claim-review",
+            "kind": "review",
+            "result": "could-not-check",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "review-kind pattern evidence \"claim-review\" is not corroborated by a binding mechanism yet (graph-execution/09)"
+          }
+        ]
+      }
+    ],
+    "command-changed-after-witness": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: false",
+            "kind": "command",
+            "result": "error",
+            "released": false,
+            "reason": "the witness records a different command than the Verify row now carries — its acceptance definition changed after it was run, so the recorded result proves nothing about the row as it stands today"
+          }
+        ]
+      }
+    ],
+    "complete-manifest-licenses-reuse": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness ran at \u003cc1\u003e and is reused at \u003cc2\u003e: applicability derived from a complete dependency manifest: none of src/impl.go differs between the witness's tree and the item's; the witness's tree landed at \u003cc1\u003e; the receipt keeps revision \u003cc1\u003e"
+          }
+        ]
+      }
+    ],
+    "declared-file-changed-wrong-revision": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "wrong-revision",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "witness ran at revision \u003cc1\u003e, the item's revision is \u003cc2\u003e; src/impl.go differs between the witness's tree and the item's and the witness speaks for it (no dependency manifest, and the row's inputs cannot be derived from its command (the command reads no repository path), so the witness speaks for every path outside docs/streams/** and STATUS.md), so the old result cannot release the new revision"
+          }
+        ]
+      }
+    ],
+    "declared-files-without-manifest-conservative": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "wrong-revision",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "witness ran at revision \u003cc1\u003e, the item's revision is \u003cc2\u003e; src/unrelated.txt differs between the witness's tree and the item's and the witness speaks for it (no dependency manifest, and the row's inputs cannot be derived from its command (the command reads no repository path), so the witness speaks for every path outside docs/streams/** and STATUS.md), so the old result cannot release the new revision"
+          }
+        ]
+      }
+    ],
+    "derived-input-changed-wrong-revision": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: cat data/in.txt",
+            "kind": "command",
+            "result": "wrong-revision",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "witness ran at revision \u003cc1\u003e, the item's revision is \u003cc2\u003e; data/in.txt differs between the witness's tree and the item's and the witness speaks for it (the row's command reads only .gitattributes, data/.gitattributes, data/in.txt (derived from its text)), so the old result cannot release the new revision"
+          }
+        ]
+      }
+    ],
+    "derived-input-unrelated-change-reuses": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: cat data/in.txt",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness ran at \u003cc1\u003e and is reused at \u003cc2\u003e: none of the paths the row's command reads (.gitattributes, data/.gitattributes, data/in.txt; derived from its text) differs between the witness's tree and the item's; the witness's tree landed at \u003cc1\u003e; the receipt keeps revision \u003cc1\u003e"
+          }
+        ]
+      }
+    ],
+    "dirty-witness-at-matching-head": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e+dirty",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          }
+        ]
+      }
+    ],
+    "dirty-witness-expect-changed": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "error",
+            "revision": "\u003cc1\u003e+dirty",
+            "released": false,
+            "reason": "the row's Expect text changed after the witness ran — its acceptance definition changed, so the recorded result proves nothing about the row as it stands today"
+          }
+        ]
+      }
+    ],
+    "environment-dependency-changed": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "wrong-revision",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "the environment dependency \"toolchain\" changed since the witness ran at \u003cc1\u003e; the claim is held until it is revalidated at \u003cc2\u003e, and the old receipt keeps its revision"
+          }
+        ]
+      }
+    ],
+    "environment-dependency-current-unknown": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "could-not-check",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "the environment dependency \"toolchain\" could not be fingerprinted (no recorded or current value) — a pass is never credited while a dependency of the claim is unknown"
+          }
+        ]
+      }
+    ],
+    "evidence-commit-reuses-witness": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness ran at \u003cc1\u003e and is reused at \u003cc2\u003e: no path outside docs/streams/** and STATUS.md differs between the witness's tree and the item's (no dependency manifest, and the row's inputs cannot be derived from its command (the command reads no repository path), so that whole surface is the input); the witness's tree landed at \u003cc1\u003e; the receipt keeps revision \u003cc1\u003e"
+          }
+        ]
+      }
+    ],
+    "expect-changed-after-witness": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "error",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "the row's Expect text changed after the witness ran — its acceptance definition changed, so the recorded result proves nothing about the row as it stands today"
+          }
+        ]
+      }
+    ],
+    "incomplete-manifest-stays-conservative": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "wrong-revision",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "witness ran at revision \u003cc1\u003e, the item's revision is \u003cc2\u003e; src/helper.go differs between the witness's tree and the item's and the witness speaks for it (the dependency manifest is incomplete, so the witness speaks for every path outside docs/streams/** and STATUS.md), so the old result cannot release the new revision"
+          }
+        ]
+      }
+    ],
+    "missing-witness": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "missing",
+            "released": false,
+            "reason": "no execution witness in Evidence — run `statusgen verifyrun --brief \u003cpath\u003e`"
+          }
+        ]
+      }
+    ],
+    "no-verify-rows-held": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "mandatory claims",
+            "kind": "command",
+            "result": "missing",
+            "released": false,
+            "reason": "brief declares no Verify rows and binds no pattern node — nothing to release against"
+          }
+        ]
+      }
+    ],
+    "other-path-changed-wrong-revision": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "wrong-revision",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "witness ran at revision \u003cc1\u003e, the item's revision is \u003cc2\u003e; src/other.txt differs between the witness's tree and the item's and the witness speaks for it (no dependency manifest, and the row's inputs cannot be derived from its command (the command reads no repository path), so the witness speaks for every path outside docs/streams/** and STATUS.md), so the old result cannot release the new revision"
+          }
+        ]
+      }
+    ],
+    "policy-dependency-changed": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "wrong-revision",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "the policy dependency policy/writer-auth.yaml changed since the witness ran at \u003cc1\u003e; the claim is held until it is revalidated at \u003cc2\u003e, and the old receipt keeps its revision"
+          }
+        ]
+      }
+    ],
+    "policy-dependency-unchanged": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness ran at \u003cc1\u003e and is reused at \u003cc2\u003e: applicability derived from a complete dependency manifest: none of src/impl.go differs between the witness's tree and the item's; the witness's tree landed at \u003cc1\u003e; 1 policy, build or environment fingerprint(s) unchanged; the receipt keeps revision \u003cc1\u003e"
+          }
+        ]
+      }
+    ],
+    "two-rows-one-held": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          },
+          {
+            "claim": "Verify row #2: echo ok",
+            "kind": "command",
+            "result": "missing",
+            "released": false,
+            "reason": "no execution witness in Evidence — run `statusgen verifyrun --brief \u003cpath\u003e`"
+          }
+        ]
+      }
+    ],
+    "witness-at-head-passes": [
+      {
+        "brief": "cov/01",
+        "released": true,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "pass",
+            "revision": "\u003cc1\u003e",
+            "released": true,
+            "reason": "witness matches the row and passed"
+          }
+        ]
+      }
+    ],
+    "witness-commit-absent-from-clone": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "could-not-check",
+            "revision": "0123456789ab",
+            "released": false,
+            "reason": "the witness ran at 0123456789ab and cannot be reused at the item's revision \u003cc1\u003e: the witness's commit 0123456789ab is not in this clone, or is an ambiguous abbreviation (a squash merge discards the branch commit a witness names; fetch it, e.g. the pull request's head ref), so the tree the check ran against cannot be compared — a passing result is never credited while its dependencies cannot be established"
+          }
+        ]
+      }
+    ],
+    "witness-could-not-run": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "could-not-check",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "the witness records could-not-run — the row produced no verdict"
+          }
+        ]
+      }
+    ],
+    "witness-records-failure": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "fail",
+            "revision": "\u003cc1\u003e",
+            "released": false,
+            "reason": "the witness records a failure"
+          }
+        ]
+      }
+    ],
+    "witness-token-too-short": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "could-not-check",
+            "revision": "abc",
+            "released": false,
+            "reason": "the witness's revision could not be corroborated against the item's revision (witness=abc, item=\u003cc1\u003e) — a passing result is never credited without knowing which revision it ran at"
+          }
+        ]
+      }
+    ],
+    "witness-without-git-history": [
+      {
+        "brief": "cov/01",
+        "released": false,
+        "claims": [
+          {
+            "claim": "Verify row #1: true",
+            "kind": "command",
+            "result": "could-not-check",
+            "revision": "0123456789ab",
+            "released": false,
+            "reason": "the witness's revision could not be corroborated against the item's revision (witness=0123456789ab, item=(none recorded)) — a passing result is never credited without knowing which revision it ran at"
+          }
+        ]
+      }
+    ]
+  }
+}

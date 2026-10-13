@@ -258,6 +258,22 @@ Each entry is a file under `docs/streams/intake/`, rendering into the generated 
 Disposition: new | watching | scoped → <stream> | rejected — <why> | decision-needed → issue #NN
 ```
 
+The `scoped →` target may also name a finding (`scoped → F-<slug>`); the disposition grammar is
+otherwise unchanged.
+
+A per-entry file MAY carry a **triage stamp** — three optional frontmatter keys, set in the same
+commit that moves the entry out of `new` (forward-only: an entry triaged before the stamp existed
+is not backfilled):
+
+| Key | Value | A conforming linter MUST report a PROBLEM when |
+|---|---|---|
+| `triaged` | a date (`YYYY-MM-DD`) or an RFC3339 timestamp | the value parses as neither |
+| `triaged-by` | one member of the closed role set: `the-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`, `intake-desk`, `driver` | the value is not a member. Membership is checked against the list, never a pattern, so a person's login is always a PROBLEM. The PROBLEM quotes the value only up to the longest member's length |
+| `triager-tier` | `any` or `strong` | the value is anything else, such as a vendor model name |
+
+An absent key is legal. The register is committed to git, which is why no key may carry a person's
+login.
+
 ### 5.3 Rules
 
 - `id` MUST be a slug-form ID per section 3.4.
@@ -271,6 +287,30 @@ Disposition: new | watching | scoped → <stream> | rejected — <why> | decisio
   report intake debt that does not exist.
 - Withdrawal: keep the file, set `Disposition: rejected — <why>`, and explain in the
   body. The file MUST NOT be deleted.
+
+### 5.4 Exit mapping
+
+Every triaged entry maps to exactly one of the intake desk's five tracked exits, and
+`statusgen --intake-exits --json` exports one `intake-exit-v1` record per entry that maps AND
+carries a complete, valid stamp (section 5.2). The record schema lives in
+[`intake-exit-v1.md`](./intake-exit-v1.md).
+
+| Disposition | Exit | `artifact` | `detail` |
+|---|---|---|---|
+| `scoped → <stream>` or `scoped → <stream>/<NN>` | `placeholder` | the stream or brief | |
+| `scoped → issue #NN` | `bug` | `#NN` | |
+| `scoped → F-<slug>` | `finding` | `F-<slug>` | |
+| `decision-needed` (with `decision-issue: NN`) | `needs-decision` | `#NN` | |
+| `watching` | `rejected-watching` | | `watching` |
+| `rejected — <why>` | `rejected-watching` | | `rejected` |
+| legacy `adopted` (target a stream or brief) | `placeholder` | the stream or brief | |
+
+An entry whose disposition does not map (for example `decision-needed` with no `decision-issue`, a
+`scoped` target that is none of the forms above, or a value outside the vocabulary) is counted as
+`unmapped`, never guessed. An entry that maps but has no complete stamp is counted as `unstamped`.
+The export's last line is the summary `{"stamped": N, "unstamped": M, "unmapped": K}`. When neither
+the per-entry directory nor the `INTAKE.md` view exists, the export is could-not-check (exit 6), never
+an empty export.
 
 ## 6. REQUIREMENTS register
 
@@ -420,6 +460,28 @@ brief means the board says the work landed, not that the tool re-ran the accepta
 These checks reach a consumer only on an `.assay-versions` statusgen pin bump, which is why
 they land advisory: an un-bumped adopter is unaffected, and a bumped one gets NOTICEs, not a
 red gate, over a corpus authored before the register existed.
+
+### 6.6 Source-obligation mappings that reference requirements
+
+A requirement may be the target of a **source-obligation mapping** (`project-obligations-v1.md`):
+a versioned record tying one clause of a permitted source revision to one or more existing
+`REQ-<slug>` ids for a project profile. The mapping REFERENCES requirements and never adds a
+lifecycle, status or meaning to one; this register stays the only owner of what a requirement is.
+
+The link contract a consumer of this register MUST honour:
+
+- An in-repo reference dereferences against this register, read three-state. An id no entry
+  defines does not resolve, and a requirement whose status is `withdrawn` (section 3.3) does not
+  satisfy a mapping. The reference is never silently dropped.
+- A cross-repo `<alias>:REQ-<slug>` names a register the offline reader cannot see. It is
+  could-not-check and holds the mapping; it is never treated as resolved or as absent.
+- An absent register is a valid empty register, so every in-repo reference fails to resolve. An
+  unreadable one is an error, never an empty one (section 6.3).
+- Because the register is append-only, a mapping bound to a requirement id stays resolvable for
+  the life of the repository, and a withdrawal is visible as a tombstone, not a disappearance.
+
+These are rules about the consumer. They change no field in section 6.2 and no linter check in
+section 9.2.
 
 ## 7. DECISIONS register
 
@@ -680,6 +742,11 @@ A conforming linter MUST:
     (section 7, `brief-v1.md` §3.2) that does not match the `DR-<slug>` grammar or
     dereferences to no record — subject to the grandfathering and three-state rules the
     design-approval gate carries (`lifecycle-v1.md` §4.4).
+
+A conforming consumer of the REQUIREMENTS register that dereferences requirement ids on behalf
+of another record (section 6.6) MUST resolve them three-state and MUST NOT treat an unknown,
+withdrawn or unreadable reference as satisfied. This is a rule on the consumer, not an
+additional linter check.
 
 A conforming linter MUST NOT claim sequence-contiguity or gap detection (section 3.2),
 and MUST NOT let a `satisfies:` citation or a REQUIREMENTS entry change an exit code on

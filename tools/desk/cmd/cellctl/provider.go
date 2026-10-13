@@ -36,9 +36,12 @@ func providerPreset(name, suffix string) string {
 }
 
 // providerValue is the EFFECTIVE value (cell.env/env line, else the preset, else empty) and
-// where it came from (`cell.env`, `preset`, `unset`).
+// where it came from (`cell.env`, `defaults.env`, `preset`, `unset`).
 func (c *Cell) providerValue(name, suffix string) (string, string) {
 	if v := c.Env.Get(providerVar(name, suffix)); v != "" {
+		if c.Env.Source(providerVar(name, suffix)) == layerDefaults {
+			return v, cellDefaultsFile
+		}
 		return v, "cell.env"
 	}
 	if v := providerPreset(name, suffix); v != "" {

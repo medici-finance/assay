@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/project-obligations-v1.json",
+  "title": "project-obligations-v1",
+  "description": "Machine-readable shape of the project-obligations-v1 input document (spec/project-obligations-v1.md): versioned source revisions, obligation mappings that reference existing REQ ids, and applicability decisions whose acceptance is a LINK to an existing DECISIONS record. This schema is DESCRIPTIVE of per-value shape only; the cross-field rules (subject-digest recomputation, the decision record carrying the digest, trusted corroboration, reviewer distinct from preparer, revision lineage, REQ dereference, permitted-use gating of text) live in the spec and are enforced by statusgen/projectobligations.go, not expressible as per-value constraints.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "sources", "mappings", "decisions"],
+  "properties": {
+    "schema": { "const": "project-obligations-v1" },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "mappings": { "type": "array", "items": { "$ref": "#/$defs/mapping" } },
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "dateOrUnknown": { "type": "string", "pattern": "^(unknown|[0-9]{4}-[0-9]{2}-[0-9]{2})$" },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "useValue": { "enum": ["permitted", "denied", "unknown"] },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "issuer", "locator", "revision", "published", "effective", "capturedAt", "use"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^SRC-[a-z0-9][a-z0-9-]{3,38}[a-z0-9]$" },
+        "kind": { "enum": ["standard", "regulation", "contract", "policy", "other"] },
+        "issuer": { "type": "string", "minLength": 1 },
+        "locator": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "published": { "$ref": "#/$defs/dateOrUnknown" },
+        "effective": { "$ref": "#/$defs/dateOrUnknown" },
+        "capturedAt": { "$ref": "#/$defs/date" },
+        "contentDigest": { "$ref": "#/$defs/digest" },
+        "predecessor": { "type": "string" },
+        "use": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["storage", "ai"],
+          "properties": {
+            "accessRef": { "type": "string" },
+            "storage": { "$ref": "#/$defs/useValue" },
+            "ai": { "$ref": "#/$defs/useValue" }
+          }
+        },
+        "text": { "type": "string" }
+      }
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision", "source", "clause", "paraphrase", "reqs", "profile", "owner"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^MAP-[a-z0-9][a-z0-9-]{3,38}[a-z0-9]$" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "source": { "$ref": "#/$defs/ref" },
+        "clause": { "type": "string", "minLength": 1 },
+        "paraphrase": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "reqs": { "type": "array", "items": { "type": "string" } },
+        "profile": { "$ref": "#/$defs/ref" },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "entity": { "type": "string" },
+            "activity": { "type": "string" },
+            "jurisdiction": { "type": "string" }
+          }
+        },
+        "controls": { "type": "array", "items": { "type": "string" } },
+        "owner": { "type": "string", "minLength": 1 },
+        "supersedes": { "type": "string" }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionId", "subjectDigest", "disposition", "corroborationRef", "reviewRef"],
+      "properties": {
+        "decisionId": { "type": "string", "pattern": "^DR-" },
+        "subjectDigest": { "$ref": "#/$defs/digest" },
+        "disposition": { "type": "string", "minLength": 1 },
+        "corroborationRef": { "type": "string" },
+        "reviewRef": { "type": "string" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mappingId", "mappingRevision", "source", "profile", "outcome", "scope", "effectiveFrom", "decidedAt", "proposedBy", "reviewer"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^APD-[a-z0-9][a-z0-9-]{3,38}[a-z0-9]$" },
+        "mappingId": { "type": "string" },
+        "mappingRevision": { "type": "integer", "minimum": 1 },
+        "source": { "$ref": "#/$defs/ref" },
+        "profile": { "$ref": "#/$defs/ref" },
+        "outcome": { "enum": ["applicable", "not-applicable", "unresolved"] },
+        "reason": { "type": "string" },
+        "scope": { "type": "string", "minLength": 1 },
+        "effectiveFrom": { "$ref": "#/$defs/date" },
+        "effectiveTo": { "$ref": "#/$defs/date" },
+        "decidedAt": { "$ref": "#/$defs/date" },
+        "proposedBy": { "type": "string", "minLength": 1 },
+        "reviewer": { "type": "string", "minLength": 1 },
+        "supersedes": { "type": "string" },
+        "acceptance": { "$ref": "#/$defs/acceptance" }
+      }
+    }
+  }
+}

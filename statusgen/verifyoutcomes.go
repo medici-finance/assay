@@ -33,7 +33,6 @@ import (
 // This file is that read side. It does not implement rotation itself — no writer in this
 // repo splits the file yet — it only makes sure a reader that wants "every verify-outcome row
 // on record" never has to special-case a rotation once one exists.
-const verifyOutcomesGlob = "verify-outcomes*.jsonl"
 
 // verifyOutcomesShardPaths returns the sorted, de-duplicated absolute paths of every
 // verify-outcomes shard directly under <root>/docs/streams: the canonical unsharded file
