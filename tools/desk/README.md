@@ -1283,7 +1283,10 @@ every few minutes. Before #2421 every sweep re-read every open PR in full, so th
 per-sweep cost grew with the open-PR count (measured on a fake forge: 15 charged calls at
 5 PRs, 105 at 50, on EVERY sweep of an unchanged board) and a busy board exhausted the
 quota. Now a repeat sweep of an unchanged board costs a constant handful of charged calls
-(the same fake forge: 1 charged call at 5 PRs and at 50).
+for PRs by trusted authors (the same fake forge, all PRs by one trusted author: 1 charged
+call at 5 PRs and at 50). Each open PR by an untrusted author still costs one uncached
+GraphQL trust-blessing read per sweep, so that part of the cost grows with the number of
+such PRs.
 
 **Conditional reads (every deskboard verb).** deskboard — and only deskboard; no other
 tool's transport changes — installs a transport on the resolved GitHub backend. A GET whose
