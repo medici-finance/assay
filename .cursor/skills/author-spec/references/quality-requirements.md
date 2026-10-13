@@ -66,6 +66,26 @@ Examples of useful questions, not default requirements:
 - If a batch corpus and rule count grow independently, does runtime stay within the agreed
   budget while outputs and refusal behaviour remain equivalent?
 
+## Anti-patterns to challenge
+
+Use these as counterexamples during review, not another required checklist. Report the
+specific consequence and repair the requirement or evidence plan; a matching phrase alone
+is not a defect. These are review heuristics synthesized from the sources below.
+
+| Anti-pattern | Warning sign and corrective question |
+| --- | --- |
+| Adjectives instead of acceptance | Fast, scalable, secure or easy to maintain without a scenario. Under what conditions would a reviewer reject the result? |
+| Unsupported precision | A copied percentile, availability target or zero-failure promise with no stakeholder need, boundary or measurement window. Where did it come from, what does it cost, and is it a constraint, proposal or unknown? |
+| Mechanism presented as the requirement | Use caching, microservices, retries or a particular algorithm without the outcome it serves. What simpler alternative meets the need, and what freshness, failure or maintenance cost does this mechanism add? Preserve genuinely binding technology constraints with their source. |
+| Happy-path-only quality | A tiny clean corpus, warm cache or healthy dependency is the entire evidence plan. Which plausible large, skewed, cold, concurrent or failing case could overturn the conclusion? Select relevant cases rather than every imaginable extreme. |
+| Measuring the wrong boundary | A fast inner loop stands in for end-to-end completion; an average hides unacceptable tails; a test excludes setup, network or operator work that users pay for. What is the actual acceptance boundary and which population or window does the measure cover? |
+| Improving a number by dropping an obligation | Faster processing skips inputs; a cache serves unacceptable stale data; fewer logs remove required diagnosis. Which correctness, coverage, privacy and recovery properties must remain true in the same evaluation? |
+| Every quality is top priority | Maximum speed, availability, privacy, flexibility and minimum cost are promised together. Which scenarios drive the design, where do they conflict, and who can accept the tradeoff? Binding constraints are not silently negotiable. |
+| Quality deferred without an owner | Optimize later, add monitoring later or handle recovery later, while architecture-dependent work proceeds. What can safely wait, who owns the evidence, and what decision must precede implementation? |
+| Local proof claimed as system proof | Component tests pass, therefore system recovery, isolation or accessibility is asserted. What integration, fault or user-level evidence exercises the promised boundary? |
+| More machinery mistaken for better quality | Add a layer, framework, guard or configuration option without retiring a failure mechanism or showing a concrete need. What new coupling, state, operational work and removal obligation are being introduced? |
+| Document completeness mistaken for design readiness | Every heading is filled but targets contradict, evidence is unavailable or nobody owns a decision. Which unresolved question could change the design? Preserve approved content and record gaps instead of inventing certainty. |
+
 ## Source basis
 
 Research consulted 2026-10-13. This reference adapts ideas; it does not reproduce a standard
@@ -80,6 +100,9 @@ or require adopters to implement any framework in full.
 - [arc42, Quality Requirements](https://docs.arc42.org/section-10/): capture concrete usage
   and change scenarios and reuse already stated quality goals. This motivates proportional
   detail rather than mandatory headings.
+- [SEI, Quality Attribute Workshops (2003)](https://www.sei.cmu.edu/documents/716/2003_005_001_14249.pdf):
+  vague quality needs require refinement, and quality attributes can compete; this informs
+  the anti-pattern prompts on untestable goals and unresolved tradeoffs.
 - [Google SRE, Implementing SLOs](https://sre.google/workbook/implementing-slos/): user-relevant
   indicators extend beyond availability and latency to freshness, correctness and durability;
   the measurement definition matters alongside the objective.
