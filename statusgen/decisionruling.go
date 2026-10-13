@@ -223,9 +223,10 @@ func rulingStampResult(s stamp, o rulingOutcome) corroborateResult {
 // resolveRuling is the testable core. It resolves rec's ruling link through c and
 // returns the outcome. prRepo is the repository the record lives in; humanLogins
 // is the human-login map (name → login, names lowercase); citingBriefs are the
-// "<stream>/<NN>" ids of briefs whose `design:` cites rec.ID. It reads nothing
+// "<stream>/<NN>" ids of briefs whose `design:` cites rec.ID; repoAliases are the
+// short names the consumer's registry declares for prRepo (repoAliasesFor). It reads nothing
 // global and fails CLOSED in every direction: a pass needs every condition.
-func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLogins map[string]string, citingBriefs []string) rulingOutcome {
+func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLogins map[string]string, citingBriefs, repoAliases []string) rulingOutcome {
 	out := rulingOutcome{Present: true, Names: rec.Names}
 	refuse := func(r rulingReason, format string, a ...any) rulingOutcome {
 		out.Reason = r
@@ -368,7 +369,7 @@ func resolveRuling(c *ghClient, prRepo string, rec decisionRecordStamp, humanLog
 	if len(iss.PullRequest) > 0 && string(iss.PullRequest) != "null" {
 		return refuse(rulingUnrelatedIssue, "%s#%d is a pull request, not a decision issue", link.Repo, link.Issue)
 	}
-	if !issueRulesOnRecord(iss.Body, rec.ID, link.Repo, citingBriefs) {
+	if !issueRulesOnRecord(iss.Body, rec.ID, link.Repo, repoAliases, citingBriefs) {
 		return refuse(rulingUnrelatedIssue, "%s#%d carries no decision-gate marker for %s or for a brief whose design: cites it — the comment is not on this record's decision issue", link.Repo, link.Issue, rec.ID)
 	}
 
@@ -426,8 +427,9 @@ func commentNamesRecord(text, recordID string) bool {
 // for the record: either the record's own id (`<!-- decision-gate: DR-<slug> -->`)
 // or a brief that cites it via `design:`, in either brief-id form — the canonical
 // "<stream>/<NN>" or the colon work-item form ending "<repo>:<stream>:<NN>". The
-// colon form must name the record's own repository when it names one.
-func issueRulesOnRecord(body, recordID, repo string, citingBriefs []string) bool {
+// colon form must name the record's own repository when it names one: by its
+// name, or by an alias the consumer's registry declares for it (repoAliases).
+func issueRulesOnRecord(body, recordID, repo string, repoAliases, citingBriefs []string) bool {
 	repoName := repo
 	if i := strings.LastIndex(repo, "/"); i >= 0 {
 		repoName = repo[i+1:]
@@ -441,7 +443,7 @@ func issueRulesOnRecord(body, recordID, repo string, citingBriefs []string) bool
 		if !ok {
 			continue
 		}
-		if parts := strings.Split(id, ":"); len(parts) >= 3 && !strings.EqualFold(parts[len(parts)-3], repoName) {
+		if parts := strings.Split(id, ":"); len(parts) >= 3 && !namesRepo(parts[len(parts)-3], repoName, repoAliases) {
 			continue // a colon-form id naming another repository
 		}
 		for _, b := range citingBriefs {
@@ -452,6 +454,41 @@ func issueRulesOnRecord(body, recordID, repo string, citingBriefs []string) bool
 		}
 	}
 	return false
+}
+
+// namesRepo reports whether a colon-form marker's repository segment names the
+// record's repository: its literal name, or one of its registry aliases. The
+// single comparison point for that segment, so the name and alias spellings can
+// never be checked by two different rules.
+func namesRepo(seg, repoName string, repoAliases []string) bool {
+	if strings.EqualFold(seg, repoName) {
+		return true
+	}
+	for _, a := range repoAliases {
+		if a != "" && strings.EqualFold(seg, a) {
+			return true
+		}
+	}
+	return false
+}
+
+// repoAliasesFor returns the aliases the registry reg declares for repo
+// ("owner/repo"): every published entry whose repo is that repository, plus the
+// registry's `self:` alias (this tree lives in the record's repository, so its own
+// alias names it even when the entry is unpublished). A nil registry yields none.
+// Sorted, so two runs agree.
+func repoAliasesFor(reg *graphRepos, repo string) []string {
+	if reg == nil {
+		return nil
+	}
+	var out []string
+	for alias, e := range reg.Aliases {
+		if alias == reg.Self || (!e.Unpublished && e.Repo != "" && strings.EqualFold(e.Repo, repo)) {
+			out = append(out, alias)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // normBriefNum drops leading zeros so "05" and "5" compare equal.
@@ -619,13 +656,21 @@ func decisionCitingBriefs(root, id string) []string {
 // resolveDecisionRulings is the runner glue: one outcome per touched record.
 func resolveDecisionRulings(c *ghClient, root, repo string, recs []decisionRecordStamp, humanLogins map[string]string) rulingOutcomes {
 	out := rulingOutcomes{}
+	// The consumer's alias registry (the one citation-alias-resolution reads) lets a
+	// colon-form marker name the repository by an alias. An unreadable registry is a
+	// could-not-check: say so, and fall back to the literal name only (fail closed).
+	reg, _, rerr := loadGraphRepos(root)
+	if rerr != nil {
+		fmt.Fprintf(os.Stderr, "statusgen --corroborate: could-not-check: alias registry unreadable, decision-gate markers are matched by repository name only: %v\n", rerr)
+	}
+	aliases := repoAliasesFor(reg, repo)
 	for _, r := range recs {
 		// Name the forge target BEFORE first contact, so an operator sees what is
 		// about to be read, not only the verdict afterwards.
 		if r.LoadErr == "" && strings.TrimSpace(r.Ruling) != "" {
 			fmt.Fprintf(os.Stderr, "statusgen --corroborate: resolving ruling link %s for %s\n", strings.TrimSpace(r.Ruling), r.File)
 		}
-		out[r.File] = resolveRuling(c, repo, r, humanLogins, decisionCitingBriefs(root, r.ID))
+		out[r.File] = resolveRuling(c, repo, r, humanLogins, decisionCitingBriefs(root, r.ID), aliases)
 	}
 	return out
 }
