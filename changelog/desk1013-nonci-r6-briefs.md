@@ -1,0 +1,2 @@
+### Added
+- forge-neutral briefs 37 and 38 author the non-CI forge mirror (R6). Brief 37 covers a scoped change, issue and review mirror with persisted freshness and coverage, conditional refresh and polling repair. Brief 38 covers an authenticated, disabled-by-default event adapter, comment and check observations, and generation-bound reevaluation demand. Both are human-gated and depend on graph-execution/28, /29 and /19. Neither rebinds forge-neutral/18.

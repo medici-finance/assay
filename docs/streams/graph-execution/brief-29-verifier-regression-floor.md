@@ -4,7 +4,7 @@ title: Old and new regression floor for the verifier domain contracts
 why: "Replacing the verifier must not quietly lose behaviour that already protects us: unavailable evidence is not a pass, advice cannot stand in for a witness, offline reads never answer empty. A pinned inventory run against both the old and new code makes any lost case or unreviewed difference fail before the old path is retired."
 wave: 3
 depends: ["graph-execution/28"]
-unblocks: []
+unblocks: ["forge-neutral/37", "forge-neutral/38"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

@@ -240,6 +240,8 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | implemented | — | — |
 | 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
 | 36 | [Importable fact reader SDK and first shared read](brief-36-importable-fact-reader-sdk-and-first-shared-read.md) | 1 | L | implemented | — | — |
+| 37 | [Scoped forge mirror with persisted freshness, coverage and polling repair](brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md) | 4 | L | todo | — | — |
+| 38 | [Forge event adapter, feedback observations and durable reevaluation demand](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md) | 5 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -518,6 +520,18 @@ every other brief here, so they interleave with the numbers above rather than re
 
 One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 32`, with 31 beside 32.
 
+**Forge mirror (non-CI R6, briefs 37–38)**: waves are derived from `depends:` on graph-execution
+briefs, so the numbers interleave with those above:
+
+- **Wave 4** — `forge-neutral/37` (scoped mirror, persisted freshness and coverage, conditional
+  refresh, polling repair; human-gated; depends on graph-execution/28, /29 and /19, and on the
+  implemented forge-neutral/33 and /36 and the verified desktools-v2/09 it builds on).
+- **Wave 5** — `forge-neutral/38` (authenticated event adapter, feedback observations and durable
+  reevaluation demand; human-gated; depends on 37 and on graph-execution/28, /29, /19 and /04).
+
+One-line path: `{graph-execution/28 → 29, graph-execution/19} → 37 → 38`, toward R7 once R7 has
+briefs.
+
 ## Shared conventions the briefs inherit
 
 - **Refusal, never fallback.** Every forge-touching path that cannot be served on the
@@ -542,3 +556,27 @@ not its sign-off. It blocks nothing. /18 keeps its dependencies and its `deskrea
 every online read, and /35 retains its control-specific human gate. Final no-forge-CLI
 enforcement in desktools-v2/08 waits for both /18 and /35.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.
+
+## Forge mirror (non-CI R6) — 2026-10-13
+
+The maintainer ratified the whole non-CI target on medici-finance/assay#2500 (23f655f5d). The
+step-3 manifest (`docs/proposals/non-ci-architecture/20-amendment-manifest.md`, landed in
+medici-finance/assay#2739) gives R6, the forge mirror and shared observations, to this stream as
+new briefs. `forge-neutral/37` and `forge-neutral/38` are those briefs. Approval activates nothing;
+activation stays gated per `docs/proposals/non-ci-architecture/16-delivery-sequence.md`.
+
+- **R1 and R2 edges.** Both depend on graph-execution/28 and /29 (R1) and on graph-execution/19,
+  the store the R2 follow-up amends to PostgreSQL coordination. 38 also depends on
+  graph-execution/04 for the intent and outbox handoff R2 amends. Neither brief builds a store,
+  a demand table or an outbox of its own. Each stops with NEEDS_CONTEXT if the R2 amendment it
+  needs has not landed.
+- **forge-neutral/18 is not rebound.** /18 stays in progress with its Task, Verify, sites,
+  dependencies and `deskread` transport unchanged. Each new brief states this in a dated note
+  and pins it with a Verify row that keeps statusgen off every `forgeread` subpackage.
+- **Toward R7.** R7 has no owner yet, so 37 and 38 name no R7 brief in `unblocks:` (the lint
+  refuses an edge to a brief that does not exist). Each carries a dated note naming what R7
+  consumes. When R7's briefs are authored, their `depends:` add the inverse edge here.
+- **Frozen surface.** 37 adds exactly two read operations to the frozen inventory on both
+  backends. Their consuming call site is the mirror source composition, not a verb, and 37's
+  human review covers that. 38 adds no operation.
+
