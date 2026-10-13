@@ -1,0 +1,4 @@
+### Added
+- Context handoff contract v1: `spec/context-handoff-v1.md`, `schemas/context-handoff-v1.json` and `schemas/amendment-manifest-v1.json` define the seven records a spec author hands a brief author when a change moves the plan, and the amendment manifest bound to them by digest.
+- `statusgen/contexthandoff`, a pure package that strictly decodes, validates and canonicalizes handoffs and manifests: an amend obligation with no bound patch or follow-up fails, a discovery receipt without stated coverage fails, a draft or proposed target is never approved, and every brief reference resolves to `<cell>:<repo>:<stream>:<NN>`.
+- Synthetic positive and negative fixtures under `statusgen/testdata/contexthandoff/`, checked against both the schemas and the decoder so the two layers cannot drift; the semantic index gains its `S-context-handoff` owner row.
