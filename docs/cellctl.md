@@ -1,5 +1,17 @@
 # `cellctl` — running one Assay cell on a laptop
 
+## Reset path containment
+
+A reset plan must compare filesystem locations consistently when deciding whether
+cell configuration is inside a repository or a worktree belongs to the cell.
+Spelling a location through a symbolic link must not change that decision.
+Paths that cannot be resolved safely must produce an explicit refusal rather
+than an assumption that the location is outside the protected tree.
+
+Issue #2718 tracks the implementation gap in these comparisons. Regression
+coverage should construct symbolic links explicitly, exercise planning against
+temporary repositories, and leave real cells and repositories untouched.
+
 For opt-in stable Go caches and disk budgets, see [Managed Go caches](cellctl-go-cache.md).
 
 `topology.yaml` (see `docs/adopting-assay.md` §5) says what a **cell** *is*: one lead plus its agent
