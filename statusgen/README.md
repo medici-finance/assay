@@ -175,15 +175,85 @@ statusgen reconcile --root . --repo medici-finance/assay --json
 statusgen reconcile --root . --offline --json
 ```
 
-It is the **only verb that reads the network**, and only read-only REST endpoints
-(`GET /pulls`, `GET /pulls/{n}/reviews`) — never GraphQL. The token comes from
-`--token-file` or `GITHUB_TOKEN`. Every fetch is three-state: a failure is
+It is the **only verb that reads the network**, and its own network layer uses only
+read-only REST endpoints (`GET /pulls`, `GET /issues`) — never GraphQL. The token
+comes from `--token-file` or `GITHUB_TOKEN`. Every fetch is three-state: a failure is
 `lookedAt: false` with the HTTP status as the reason, never an empty board that
-reads like "nothing found". The verify-witness / approval-at-head fold that lifts a
-cell to `verified`/`done` is the pure engine in `lifecycle.go`; the demotions
+reads like "nothing found". The verify-witness / approval fold that lifts a cell to
+`verified`/`done` is the pure engine in `lifecycle.go`; online runs wire its inputs
+from real reads (`reconcilefold.go`, shared with `regen`'s drift comparator so the
+two derive identically), each by the rule the state's own writer already obeys —
+the fold owns no rule of its own:
+
+- **`verified`** — the brief's latest strict `**VERIFY: PASS**` run (the reader
+  `statusgen verifyflip` uses), refused by an unrouted HELD row or a FAIL as `closeVerify`
+  refuses it, audited by the `verifyrun --check` closure path, with the PASS lines
+  committed by the roster's verifier (not the implementer), the brief version read
+  from the brief as it stood at the run's sha, and the evidence-coverage verdict.
+  A `**VERIFY: BLOCKED**` run is not a PASS.
+- **`done`, gate:model** — the auto-flip decision (`decideModelFlip`): the PR that
+  delivered the brief, the roster-bound reviewer App, its approval at that PR's
+  merged head. Its PR reads go through the `gh` CLI under the caller's own `gh`
+  credential, as `--auto-flip-model` does (including that owner's one GraphQL read
+  of a PR body's last edit); with no `gh` access the decision is could-not-check.
+- **`done`, gate:human** — the README Reviewed cell's `human:<name>` stamp, read by
+  the anchored stamp reader the human-stamp guard uses; on-behalf-of relays, a bare
+  `human:`, and a substring such as `superhuman:` never count.
+- **`blocked`** — one paged open-issues read (PR entries dropped) mapped onto each
+  brief's `issues:` list.
+
+A read that could not be made never renders as a state: a failed or capped
+open-issues read makes each brief with linked issues `unknown`, and a verified/done
+decision that could not be made is `unknown` with the reason, whatever the PR
+base (a `todo` or `in-progress` base included). The table prints that reason per
+cell. Every such read is disclosed on stderr and in the JSON's `unread` list, and
+`--apply` refuses (exit 3, nothing written) while any is present — one undecidable
+brief holds the write for the whole board, by design: a scheduled writer then
+writes nothing rather than a partial board. A passing witness with no merged PR on
+record is `unknown` too — the fold cannot settle that contradiction; under
+`--backfill` a branch/body-matched merged PR is that merge, and the cell is
+re-derived over it by the same overlay a trailer merge gets. The demotions
 (a reverted merge, a red witness, a dismissed approval, a stale-version witness)
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
+
+`--backfill --apply` writes a witnessed `todo`/`in-progress` → `implemented`
+Status cell (a trailer or branch/body-matched merged PR on record, with or without
+a verify witness over it) back into the stream README and lists the rows it wrote under
+`applied`. `--backfill` WITHOUT `--apply` is the read-only form: it writes no stream
+README — and nothing else either, unless `--report` is also given, which writes
+`docs/streams/board-drift-<date>.md` in that run too (its table output then says so
+instead of calling the run read-only). It lists, under `wouldApply`, the rows
+`--apply` would write on the same tree — computed by the same function that
+writes, so the two cannot disagree (per README path string: two stream names
+differing only in letter case reach one file on a case-insensitive filesystem).
+Each row carries `id`, `readme`, `from`, `to`, `witness`, and the whole table line before and
+after the edit (`rowBefore`, `rowAfter`).
+Both forms take one whole-run admission decision: when `--apply` on the same run
+would refuse and write nothing (exit 3 — the raw pull list, the PR read, or any
+fold read in `unread` could not be made), the read-only form lists no row,
+reports the reason as `wouldRefuse`, and says could-not-check on stderr — it
+never lists a row the writer would refuse. `wouldApply` is present only when the
+run looked — no such refusal, and a `docs/streams` board was found — so `[]`
+means "looked and found nothing". It is absent when the run could not look
+(`--offline`, no `--repo`, an HTTP error or refused connection, a failed fold
+read, a `--root` with no board), when `--backfill` was not given, and when
+`--apply` was. Read it together with `lookedAt` and `wouldRefuse`, never alone:
+an absent `wouldApply` is not zero rows.
+
+`--apply` WITHOUT `--backfill` is trailer-only: it writes only rows witnessed by a
+merged PR's trailer, never a branch or body match — the mode the scheduled
+reconcile job runs. Either way, a row whose move would add a lint PROBLEM (a
+risk-gated brief with no design record, say) is held: listed under `held` with the
+PROBLEM it would cause, never written. The read-only form reports the same `held`
+rows, decided the same way with nothing written. When the pulls cannot be read,
+`--apply` exits 3 and writes nothing.
+
+```bash
+# Read-only: which board rows would --apply promote? No stream README is written
+# (add --report and the drift report file is written too).
+statusgen reconcile --backfill --root . --repo medici-finance/assay --token-file "$TOKEN_FILE" --json
+```
 
 ### `brief` — resolve an item key to its file, frontmatter and board row
 

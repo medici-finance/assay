@@ -25,8 +25,8 @@ func mustWrite(t *testing.T, path, content string) {
 }
 
 // cursorFixtureBundle builds a temp plugins/assay-shaped tree: a coverage
-// roster (packaged names + optional exclusions), a SKILL.md + component.yaml
-// for every name in packaged and diskOnly (to prove whole-directory copy,
+// roster (packaged names + optional exclusions), SKILL.md, component.yaml and support.txt
+// for every name in packaged and diskOnly (to prove runtime asset copy,
 // not just SKILL.md), a references/*.md set (unless omitReferences), the
 // shared AGENTS.md fragment, and (unless omitRule) a cursor/assay.mdc rule.
 // Returns the bundle root.
@@ -54,6 +54,7 @@ func cursorFixtureBundle(t *testing.T, packaged, diskOnly []string, excluded map
 	for _, name := range allDisk {
 		mustWrite(t, filepath.Join(bundle, "skills", name, "SKILL.md"), "---\nname: "+name+"\n---\nfixture skill "+name+"\n")
 		mustWrite(t, filepath.Join(bundle, "skills", name, "component.yaml"), "id: "+name+"\n")
+		mustWrite(t, filepath.Join(bundle, "skills", name, "support.txt"), "runtime support for "+name+"\n")
 	}
 
 	if !omitReferences {
@@ -97,7 +98,8 @@ func treeSnapshot(t *testing.T, root string) map[string]string {
 
 // TestHarnessCursorPlaces — Verify row 3. Every packaged name in the roster
 // lands at .cursor/skills/<name>/SKILL.md, and no other name does; the whole
-// skill directory (not just SKILL.md) is copied.
+// runtime skill directory (not just SKILL.md) is copied. Canonical component
+// metadata is deliberately excluded; TestCursorCanonicalMetadata owns that contract.
 func TestHarnessCursorPlaces(t *testing.T) {
 	packaged := []string{"adopt", "install", "worker-desk"}
 	bundle := cursorFixtureBundle(t, packaged, nil, nil, false, false)
@@ -111,8 +113,8 @@ func TestHarnessCursorPlaces(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(repo, ".cursor", "skills", name, "SKILL.md")); err != nil {
 			t.Errorf("expected .cursor/skills/%s/SKILL.md: %v", name, err)
 		}
-		if _, err := os.Stat(filepath.Join(repo, ".cursor", "skills", name, "component.yaml")); err != nil {
-			t.Errorf("expected component.yaml alongside SKILL.md for %s (whole-dir copy): %v", name, err)
+		if _, err := os.Stat(filepath.Join(repo, ".cursor", "skills", name, "support.txt")); err != nil {
+			t.Errorf("expected support.txt alongside SKILL.md for %s (runtime asset copy): %v", name, err)
 		}
 	}
 

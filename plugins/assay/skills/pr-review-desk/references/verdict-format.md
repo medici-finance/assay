@@ -55,6 +55,39 @@ it"). Any other exit-5 refusal that names no scan rule — a malformed typed fin
 one — is the body author's to fix, like a schema refusal. **Exit 5 is NEVER a fallback trigger** —
 fall back only on exit 3 (disabled) / 6 (unverifiable).
 
+## Coverage — the correctness verdict's per-class accounting block
+
+A correctness verdict body ENDS with an `## Coverage` section: one line per class in the
+correctness class register. The register's home is the dispatched review kit's `review-prompt`
+reference, never this file; each line is exactly one of four shapes, one grammar — class
+first, state second, colon before the detail, except the finding shape:
+
+```
+<class> — finding <finding-id>
+<class> — checked-clean: <what was examined>
+<class> — n/a: <one-sentence reason>
+<class> — could-not-check: <what was missing>
+```
+
+A class that applied, was examined, and is sound is `checked-clean`; a class that genuinely
+does not apply to this diff is `n/a` with its one-sentence reason — the two must never share
+a state, and an examined-and-sound class written as `n/a` is precisely the leak this
+contract exists to close. A class that could not be honestly `n/a`'d and was not checked is
+`could-not-check`, never a silent pass; silence is not accounting, and a class with no line
+is a gap in the accounting, not an answer. A could-not-check line is disclosure: an APPROVE
+stands unless it rests on that class. The accounting covers the stated scope: a delta
+round accounts for the classes the delta range's paths can touch; a full pass accounts for
+every class in the register. A security verdict carries no Coverage block — the register is
+the correctness lane's, and the two verdicts stay separate artifacts.
+
+The block is small by construction: all 14 classes at one line each are a small fraction of
+the 16 KiB body cap — cut prose elsewhere, never accounting.
+
+`deskpost` neither requires nor refuses the block today. It rides the body as plain lines
+under the schema above, and a body without it passes that schema exactly as before; whether
+deskpost should refuse a correctness body carrying no Coverage block is a separate, later
+ruling — this contract is doctrine, not a gate.
+
 ## When your ONLY finding is a red required check
 
 A `request-changes` whose sole blocker is a required CHECK is a special case, because that

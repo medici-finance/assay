@@ -1,0 +1,118 @@
+<!-- GENERATED from plugins/assay/references/cursor.md by deskinstall --harness cursor. Do not edit. -->
+# Cursor — capability bindings
+
+How each neutral-core capability (named in the skill bodies as `capability:<name>`)
+is realised on **Cursor**. Target set is **both surfaces, headless-first** (human:<name>,
+2026-08-26): the headless `cursor-agent` CLI is the **primary** surface (best fit to
+the desk/automation model and the isolation/evidence/review-gate floor), the in-editor
+IDE agent the **secondary** end-user surface. Harness tool names are legal here — that
+is this file's whole purpose — and illegal in a skill body (`tools/harnesslint bodies`
+enforces it).
+
+## Install and upgrade — versioned bundle or explicit source
+
+Cursor has **no** `/plugin marketplace add` / `/plugin install` path. That is Claude Code.
+The authoritative install steps — the one-command `deskinstall --harness cursor` (`windows-port/07`)
+and the five manual steps it automates — live in
+[`docs/adopting-assay.md`](../../../docs/adopting-assay.md) § **Running Assay on Cursor**
+(`windows-port/09`); this file does not carry a second copy. Versioned placement verifies
+the selected release's bundle; `upgrade-assay --harness cursor` previews, applies, and
+checks it through the existing version resolver. Skills and references are siblings,
+bindings arrive via `AGENTS.md`/`.cursor/rules`, and desk binaries go on `PATH`.
+Legacy releases without the asset refuse the versioned route; explicit local source
+placement remains available. Edit canonical `plugins/assay`, then regenerate the
+managed `.cursor` copies; do not edit generated copies.
+
+The in-editor agent is a supported install surface. Headless `cursor-agent` is the
+smoke/automation surface (HP/13); blocked live smoke does not mean "do not copy skills."
+
+Every mechanism and degradation cell below cites the measured Cursor capability matrix
+(HP/12, documentary + public-docs sweep, 2026-08-26 — **no live Cursor environment**;
+the rows a live install must settle stay flagged `[needs: live-install confirmation]`).
+
+Source of the capability set: the closed vocabulary block in
+[`../../../docs/streams/harness-portability/README.md`](../../../docs/streams/harness-portability/README.md).
+
+## The non-negotiable floor
+
+Three guarantees **never degrade** on any harness (stream README §3; ruling C):
+**isolation**, **evidence-not-claims**, and **the review gates**. Where Cursor
+cannot provide the underlying capability, the affected skill **refuses** rather
+than dropping the guarantee. Only *convenience* gaps (no parallel dispatch, no
+reliable background notification) may degrade — explicitly, and in-session.
+
+## Why Cursor is lighter than Codex
+
+Cursor's 2026 convergence (native `AGENTS.md`, the same `SKILL.md` open standard,
+hooks, MCP, background agents in isolated git worktrees) makes it a *smaller* lift than
+Codex. Cursor's capability matrix has **zero `absent` rows** (HP/12 §3) — where Codex
+CLI's `workspace-isolation` was `absent` and forced `worker-desk` to refuse, Cursor's
+background agents run in isolated git worktrees natively. So more skills `run` here.
+
+## Capability → mechanism
+
+| Capability | Cursor mechanism (HP/12 §) |
+|---|---|
+| `capability:dispatch-worker` | IDE: in-session subagents + **cloud background agents in isolated git worktrees** (Firecracker microVMs, ~8 parallel) (§2.5). Headless (`cursor-agent -p`): scriptable invocation; whether parallel headless dispatch reaches the ~8-agent worktree model is `[needs: live-install confirmation]` (§2.5). **Where headless parallel dispatch is not confirmed**, the convenience-degradation floor applies: the fan-out runs **serially, one item at a time, stating the degradation**. |
+| `capability:message-agent` | Follow-up messages to a background/subagent in the IDE; headless follow-up via `cursor-agent` session continuation (`--resume`) — present, durability across process restarts is `partial`/unconfirmed (§2.6). Prefer re-dispatch fresh when durability matters. |
+| `capability:isolate-workspace` | IDE: cloud background agents run in **isolated git worktrees** natively (§2.9 `supported`) — the isolation Codex CLI lacked. Headless: `cursor-agent` inherits the shell's git, so the skill runs `git worktree add` itself as on Claude Code; whether the default headless permission posture permits that ref-write unprompted (§2.8) — and whether the background-worktree isolation is reachable from the adopter's own flow — is `[needs: live-install confirmation]` (§2.9). **If reachable, isolation runs; if the sandbox blocks the worktree ref-write, the no-isolation floor applies and the affected skill refuses rather than implement in the shared checkout.** |
+| `capability:invoke-skill` | `SKILL.md` discovery from `.cursor/skills/` and `.agents/skills/` — the **same `SKILL.md` open standard** (agentskills.io, Cursor v2.4) Assay's plugin already uses (§2.2 `supported`); frontmatter `name` + `description`, progressive disclosure. Description-driven auto-trigger is documented; whether headless `cursor-agent` fires it with IDE ergonomics is `[needs: live-install confirmation]` (§2.3) — **invoke-by-name is the floor** where auto-trigger is unconfirmed (parity of availability, not of trigger ergonomics). |
+| `capability:session-notifications` | Headless: `cursor-agent -p --output-format json\|stream-json` returns a structured completion signal the caller reads directly (§2.7 `supported`). IDE: `stop`/`subagentStop` hook events + in-app agent-complete signals (§2.7 `supported`). Judge liveness by these signals and elapsed time, never by an empty output file. |
+| `capability:stop-worker` | IDE: stop a background/subagent from the agent list; headless: terminate the `cursor-agent` child process driving the run (§2.5/§2.6). Whether a headless parallel worker is individually addressable for a targeted stop is `[needs: live-install confirmation]` (§2.5) — where it is not, the per-run stop reaches its worker as the cooperative STOP.run.<key> flag alone (Guard refuses that run's next desk verb), the convenience floor stated in-session; the flag layer is never degraded. |
+| `capability:durable-monitor` | **No confirmed durable cross-turn wake signal.** The §2.7 completion signals are per-turn, not a re-arming poll, and `cursor-agent` session continuation (`--resume`) has `partial`/unconfirmed durability across process restarts (§2.6) — so there is no verified re-arming monitor that survives a session restart. A durable wake-signal is a **convenience**, not one of the three never-degrade guarantees (isolation / evidence / gates) → the convenience floor applies: the capability **degrades** unless a live install confirms a durable poll (`[needs: live-install confirmation]`, §2.6/§2.7). The skill falls back to the **event-driven + fixed-cadence board sweep** (the same backstop Claude Code pairs with its Monitor — the fixed-cadence sweep is the real liveness safeguard, the durable monitor only ever best-effort) and **states the gap in-session**. The durable liveness home is the always-on observability service, not the harness. |
+| `capability:cadence-tick` | **No confirmed in-session recurring prompt (§2.6/§2.7): the tick comes from OUTSIDE the session.** Neither the IDE agent nor headless `cursor-agent` is confirmed to re-prompt a standing session on a clock (`[needs: live-install confirmation]`), so a standing window cannot arm this capability itself. The binding is the **cell launcher's interval / an outer scheduler** — a cron or container job that invokes the role in tick mode every cadence interval (`cursor-agent -p … --tick`, or `ASSAY_TICK=1` in the job's environment; the trigger, bounded pass and summary line are [`tick-contract.md`](./tick-contract.md)), where each fire IS one "fresh sweep → drain → one quiet line" pass. The cadence and the prompt are the role body's, unchanged. A standing window with no such outer schedule reports `cadence-tick: could-not-check — no in-session scheduler` at boot and FILES it, exactly as the role's boot step says — it never runs keystroke-driven in silence. This is the fixed-cadence sweep the `durable-monitor` row already falls back to; it is a **convenience** (never one of the three never-degrade guarantees), so the capability **degrades** to the outer schedule, stated in-session, unless a live install confirms a native scheduled prompt. |
+
+**Resident-rules channel** (not one of the five dispatch capabilities, but the
+load-bearing delivery mechanism): Cursor reads **`AGENTS.md` natively** and
+`.cursor/rules/*.mdc` (§2.1 `supported`). Two native channels: the portable
+`AGENTS.md` fragment (**shared** with the Codex path — Cursor reads AGENTS.md
+natively) OR the generated `.cursor/rules` always-apply rule (`harnessgen cursor`).
+Assay's only hook is a session-start resident-rules injection, which Cursor does
+**not** need — the rules arrive through `AGENTS.md`/`.cursor/rules`, not a hook, so the
+headless hook-drop caveat (§2.4) is a watch-item for future hook use, never a current
+blocker. (The shared `AGENTS.md` fragment and the generated `.cursor/rules` rule are
+produced by `tools/harnessgen`, which arrives with the tool de-house follow-on.)
+
+## Degradation — per skill (Cursor, both surfaces, headless-first)
+
+Reproduced from the ruled matrix (ruling C floor). Cursor carries **fewer
+degradations than Codex** because isolation is native on the IDE surface and the one
+`refuses` risk is a headless-permission live-confirm, not a measured `absent`.
+
+| Skill | Cursor |
+|---|---|
+| `adopt` | **runs** — needs only `resident-rules-channel` §2.1, `skills-discovery` §2.2, `install-mechanism` §2.10, all `supported`; no dispatch/isolation/gate surface. |
+| `ask-decision` | **runs** — interactive decision text; its one write (filing or commenting the decision issue) is a `gh` write → permission-posture precondition (§2.8), else it composes the decision text and states the write is blocked. No dispatch/isolation/gate surface. |
+| `author-brief` | **runs** — pure authoring/planning text; touches no dispatch, no isolation, no gate. |
+| `author-spec` | **runs** — specification authoring and review; uses available source-reading and editing tools. |
+| `cut-release` | **runs** — preconditions, dry-run reading, checksum harvest and re-pin authoring are reads plus local edits; its one write (re-pin draft PRs) is a `gh` write → permission-posture precondition (§2.8), stated in-session rather than half-run. Neither release-workflow run is the session's act, the dry run included: both wait at the release environment's human approval and record their dispatcher as the authorizer, so both dispatches and both approvals are handed to the driver via `human-runsheet` on every harness. The session itself touches no dispatch/isolation/gate surface. |
+| `dailies` | **runs** — report generation is sequential CLI work; any report fan-out **degrades: runs serially with an explicit in-session statement** if headless parallel dispatch is unconfirmed (§2.5); dispatch is a convenience here, not a safety guarantee. |
+| `human-runsheet` | **runs** — writes one file (`RUNSHEET.md`) to the session's own scratch home; a local text write needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
+| `install` | **runs** — the turnkey install verb; needs `resident-rules-channel` §2.1, `skills-discovery` §2.2 and `install-mechanism` §2.10, all `supported`. Its scaffold write and pinned-binary acquisition need a write-capable, network-permitted posture → permission-posture preconditions (§2.8), stated in-session rather than half-run. It opens draft PRs only and escalates every human-gated step; no dispatch/isolation/gate surface. |
+| `intake-desk` | **runs** — triage/classification is interactive text plus `gh` reads/writes; `gh` write verbs need the adopter's permission posture to allow them (§2.8) — a config precondition, not a gate degradation. |
+| `market-intelligence` | **runs** — research + reads; no dispatch/isolation/gate needs. |
+| `pdfingest` | **runs** — local PDF ingestion, no dispatch/isolation/gate surface; the default posture allows local reads. Any outbound fetch or external-binary call is a permission-posture precondition (§2.8) → the skill states the blocked fetch in-session rather than silently skipping it. |
+| `pr-review-desk` | **runs** — the review **verdict** is text and is never degraded; posting the review and the draft→ready flip need `gh` writes → permission-posture precondition (§2.8). The review gate is upheld or the skill refuses; it never silently degrades. |
+| `pr-shepherd` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), which is the one capability this skill treats as a floor. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) it **runs**; if the sandbox blocks that ref-write it **refuses rather than drive the PR from the shared checkout**. Its watch loop needs no durable poll — the body states the periodic `gh pr view` read as the primary form and `capability:durable-monitor` only as an alternative, so the §2.6/§2.7 gap **degrades to the stated poll**, not to blindness. Discovery-mode fan-out (one shepherd per PR) **degrades: serial, one PR at a time, stated in-session** where headless parallel dispatch is unconfirmed (§2.5). Gates are unchanged: it never flips, merges or closes, and the security-gate carve-out is a refusal, never a degradation. *(Derived from this file's own capability rows plus the skill's declared needs — not a separate live measurement.)* |
+| `session-coach` | **runs** — reads the session's own record (transcript, tool calls, subagent transcripts) and writes one coaching note outside any repository; no `gh`, no dispatch, no isolation and no gate authority. Where the note's location is one the permission posture does not let it write (§2.8), that is a permission-posture precondition stated in-session — the note is never written into the repository instead. A piece of the record the session cannot read is marked as such in the note, per the body. No dispatch/isolation/gate surface.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
+| `system-demo` | **runs** — authoring a storyboard and, when requested, a local static player is text/local-file work; it writes only within the session's own workspace, needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
+| `the-desk` | **runs** — coordination; its worker fan-out **degrades: serial with an in-session statement** if headless parallel dispatch is unconfirmed (§2.5); the review/merge gate is unchanged (the human merges). Isolation of dispatched implementers is delegated to `worker-desk` (below). |
+| `upgrade-assay` | **runs** — the dry-run-first order is the skill's own invariant and is never degraded; the apply step writes the tree and version pins → needs a write-capable posture, and where the posture blocks the write it states BLOCKED rather than half-applying (§2.8). No dispatch/isolation/gate surface beyond that. |
+| `verify-desk` | **runs** — executes the Verify table and records **real command evidence** (`evidence-not-claims` intact); `gh` writes need the permission posture (§2.8). The evidence guarantee is never degraded. |
+| `worker-desk` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), so the pool isolates each implementer as the floor requires. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) so the skill can create its own isolated worktree (as on Claude Code), it **runs**; if the sandbox blocks that ref-write, per the no-isolation→refuse floor it **refuses rather than implement in the shared checkout** (the outcome Codex CLI hit). Dispatch gap → **degrades: the pool runs serially, one brief at a time, with an explicit in-session statement**. Isolation is never silently degraded. |
+
+**Floor check** — isolation: `worker-desk` **runs** on the IDE surface (native worktrees)
+and, headless, either runs or **refuses** when it cannot isolate (never degrades).
+Evidence: `verify-desk` **runs** with real evidence (never degraded). Review gates:
+`pr-review-desk` / `the-desk` uphold the gate, merge stays human (never degraded).
+Dispatch (a convenience) degrades to serial-with-statement in `worker-desk`, `the-desk`,
+and `dailies` fan-out only where headless parallel dispatch is unconfirmed — the one
+permitted degradation, always stated.
+
+## Freshness
+
+This binding is behavioural fact about a live harness, measured documentarily on
+2026-08-26 with no live environment. It is registered in `freshness.yaml`
+(harness-portability/12) so it expires on a clock, and the
+`[needs: live-install confirmation]` rows are re-measured once a Cursor environment
+exists (the live smoke is the stream's external head, human:<name>'s).

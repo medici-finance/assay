@@ -15,7 +15,7 @@ why: >-
   re-derive a stored gate is open and tracked in #2405.
 wave: 1
 depends: []
-unblocks: []
+unblocks: ["statusgen/18"]
 effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -31,8 +31,8 @@ sources:
   - "plugins/assay/skills/intake-desk/SKILL.md §'The judgment half', item 1 — the scan lane writes the placeholder and leaves triage to the session, so the placeholder can exist before the `risk:` label does"
   - "freshness-checked 2026-10-08 @ 82caf63b2 (origin/main) — `riskGateLabels` is `funds`, `security`; no Go file reads a `risk:` issue label; no open PR touches `statusgen/placeholder.go`"
 consumers:
-  - "statusgen/placeholder.go: follow-up statusgen/17 (this brief; one entry in the base label set and its comment)"
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up statusgen/17 (this brief; the scored-triage section gains one bullet: what `risk:high` does at first write, and what a triage session does when the placeholder came first)"
+  - "statusgen/placeholder.go: fixed-here statusgen/17 (this brief; one entry in the base label set and its comment)"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here statusgen/17 (this brief; the scored-triage section gains one bullet: what `risk:high` does at first write, and what a triage session does when the placeholder came first)"
 ---
 
 # Brief 17 — `risk:high` label derives the human gate on a placeholder
@@ -229,6 +229,176 @@ on the implementing branch before merge; its Expect says what it does on merged 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
+<!-- appended at implementation time by a NON-implementer: one row per Verify item
+     (command, exit code, output line(s) or hash, date, runner). -->
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && GOWORK=off go build ./... && GOWORK=off go vet ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestPlaceholderGateRiskHighLabel$' -v . > "${TMPDIR:-/tmp}/sg17-r2.out" 2>&1 && grep -F -e '--- PASS: TestPlaceholderGateRiskHighLabel' "${TMPDIR:-/tmp}/sg17-r2.out"` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestPlaceholderGateRiskHighSurvivesExtension$' -v . > "${TMPDIR:-/tmp}/sg17-r3.out" 2>&1 && grep -F -e '--- PASS: TestPlaceholderGateRiskHighSurvivesExtension' "${TMPDIR:-/tmp}/sg17-r3.out"` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestDerivePlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg17-r4a.out" 2>&1 && grep -F -e '--- PASS: TestDerivePlaceholderGate' "${TMPDIR:-/tmp}/sg17-r4a.out" && GOWORK=off go test -count=1 -timeout 300s -run '^TestPlaceholderGateFromConfigRiskExtra$' -v . > "${TMPDIR:-/tmp}/sg17-r4b.out" 2>&1 && grep -F -e '--- PASS: TestPlaceholderGateFromConfigRiskExtra' "${TMPDIR:-/tmp}/sg17-r4b.out" && GOWORK=off go test -count=1 -timeout 300s -run '^TestRiskGateVocabularyExtension$' -v . > "${TMPDIR:-/tmp}/sg17-r4c.out" 2>&1 && grep -F -e '--- PASS: TestRiskGateVocabularyExtension' "${TMPDIR:-/tmp}/sg17-r4c.out"` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && GOWORK=off go test -count=1 -timeout 300s -run '^TestScanRiskHighPlaceholderGate$' -v . > "${TMPDIR:-/tmp}/sg17-r5.out" 2>&1 && grep -F -e '--- PASS: TestScanRiskHighPlaceholderGate' "${TMPDIR:-/tmp}/sg17-r5.out"` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && GOWORK=off go test -count=1 -timeout 600s .` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -q -F -e '"risk:high"' statusgen/placeholder.go && awk '/^## /{f=/^## Scored triage/} f{$1=$1; printf "%s ", $0}' plugins/assay/skills/intake-desk/SKILL.md > "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e 'first writes its placeholder derives .gate: human.' "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e '.risk:med. and .risk:low. do not' "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e 'does not change its gate' "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e 'already reads .gate: model., label the issue .help wanted.' "${TMPDIR:-/tmp}/sg17-r7.txt" && grep -q -e 'must set .gate: human. in it by hand' "${TMPDIR:-/tmp}/sg17-r7.txt"` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/skillslint && go build -o "${TMPDIR:-/tmp}/sg17-skl" . && "${TMPDIR:-/tmp}/sg17-skl" --root ../..` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `! grep -q -e '[:] follow-up statusgen/17' docs/streams/statusgen/brief-17-risk-high-label-gate.md && cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg17c" . && cd .. && "${TMPDIR:-/tmp}/sg17c" --root . --consumers --brief statusgen/17 --base "$(git merge-base refs/remotes/origin/main HEAD)" > "${TMPDIR:-/tmp}/sg17-r9.out" 2>&1 && grep -q -F -e 'summary: 2 corroborated, 0 disproved, 0 unchecked' "${TMPDIR:-/tmp}/sg17-r9.out"` | fail exit=2 | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `awk '/^func TestDerivePlaceholderGate\(/,/^}/ {print} /^func TestPlaceholderGateFromConfigRiskExtra\(/,/^}/ {print} /^func TestRiskGateVocabularyExtension\(/,/^}/ {print} /^func TestParsePlaceholderFileValid\(/,/^}/ {print} /^func TestPlaceholderNextUpFirstClass\(/,/^}/ {print}' statusgen/placeholder_test.go > "${TMPDIR:-/tmp}/sg17-r10.txt" && awk '/^func TestScanIssuesPlan\(/,/^}/ {print} /^func TestScanIssuesEmittedFilesRoundTrip\(/,/^}/ {print}' statusgen/scanissues_test.go >> "${TMPDIR:-/tmp}/sg17-r10.txt" && test "$(git hash-object "${TMPDIR:-/tmp}/sg17-r10.txt")" = 60bbdc98a3e2fd04a4acc263c251c3c61f95ee6a` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-11 | assay-verifier-app[bot] @ 18d752a4c931 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#2664 run=9ee14495fcc5ac71483d7446dead01a9565f0b347fb65fcdbe101fade4601b47 source=18d752a4c9318e27bcfd49fa44f9cfb62923b691 brief=docs/streams/statusgen/brief-17-risk-high-label-gate.md model=gpt-6.1-sol tier=any
+
+
+
+**VERIFY: BLOCKED** — no implementation failure is established. The required execution witness returned exit 2. Rows 1–8 and 10 were explicitly unrun because the required Linux network-off sandbox is unavailable on darwin; no unsandboxed substitute or mutation was run. Row 9 executed and returned exit 2: its consumer instrument reported COULD-NOT-CHECK because the merged brief is absent from the diff against HEAD, exactly the limitation described in its Expect cell. Its redirected diagnostic is: “no entry was corroborated and none was disproved.” The witness's fail exit=2 classification is preserved above; it is not rounded up to a pass.
+
+Environment blocker: [assay#2665](https://github.com/medici-finance/assay/issues/2665). The operator must provide a supported Linux fenced verifier; a fresh independent admission must preserve check:ci network-off enforcement. The post-merge row 9 delivering-diff requirement must also be discharged without moving an admitted home's detached source. Status stays implemented; parent owns the Evidence lane and claim release.
+
+Grounding preceded the delivering diff and tests: only an exact trimmed, case-insensitive highest-risk label present at first write adds human authority; lower risk labels and title-only text stay model, existing explicit gates stay explicit, and vocabulary reloads must preserve the base label. This pass asserts no dynamic result for those requirements.
+
+RISK-VALUE: DERIVED — riskGateLabels added entry = "risk:high" @ statusgen/placeholder.go:89 — the brief records the driver ruling that only the highest triage label forces human sign-off; exact-label ownership preserves title-only and lower-score behavior.
+
+RISK-VALUE: DERIVED — first-write gate = "human" @ plugins/assay/skills/intake-desk/SKILL.md:191 — Task 6 explicitly pins this authority for a risk:high label present at first write, while stored explicit gates remain authoritative.
+
+RISK-VALUE: DERIVED — late-scored escalation label = "help wanted" @ plugins/assay/skills/intake-desk/SKILL.md:194 — Task 6 requires a human hand-edit request when a risk:high issue already has gate:model; no model or scanner may rewrite the stored gate under this brief.
+
+Independent brief-grounded static sub-verifications covered four authority-bearing clusters: rows 2–3 (label/reload), rows 4 and 10 (regression/pin), row 5 (scan flow), and row 7 (late triage). Each returned execution could-not-check without running the unavailable check:ci executor or a substitute; static source coverage matched its assigned requirements. Row 2 mutations and row 10 byte-hash verification remain explicitly unrun. These static readings add no execution pass.
+
+Risk ranking: the new production human-authority binding and late-triage human handoff rank first, because a wrong value could let risky work pass a model gate before any correction. The label inclusion and handoff derive from the recorded driver ruling and Task 6, independently of passing tests. Fixture IDs 401–405, expected plan count 3, the neutral extension word settlement, test titles, expectation strings, assertion diagnostics and file names rank last: editing/re-running tests fully reverses them; none moves funds or production identity. The seven protected regression functions and pinned hash are inherited requirements, not a new authority or newly selected number; their dynamic tests and byte-hash check remain unrun.
+
+<details>
+<summary>Conservative literal enumeration over the complete delivering diff</summary>
+
+Literal enumeration covers every added Go literal on changed lines and every introduced backticked policy token across all seven paths of delivering diff 69ca08c699a1fec7d76dace08859578d262b4ec0^..69ca08c699a1fec7d76dace08859578d262b4ec0. Existing funds/security on the replaced production list are conservatively included. Fixture and diagnostic literals rank last; they do not authorize any irreversible act.
+
+- feat-statusgen-17.md.L2.literal1 = `statusgen --scan-issues` @ changelog/feat-statusgen-17.md:2
+- feat-statusgen-17.md.L2.literal2 = `gate: human` @ changelog/feat-statusgen-17.md:2
+- feat-statusgen-17.md.L2.literal3 = `risk:high` @ changelog/feat-statusgen-17.md:2
+- feat-statusgen-17.md.L2.literal4 = `risk:med` @ changelog/feat-statusgen-17.md:2
+- feat-statusgen-17.md.L2.literal5 = `risk:low` @ changelog/feat-statusgen-17.md:2
+- README.md.L44.literal1 = `--scan-issues` @ docs/streams/statusgen/README.md:44
+- README.md.L44.literal2 = `risk:high` @ docs/streams/statusgen/README.md:44
+- README.md.L44.literal3 = `gate: human` @ docs/streams/statusgen/README.md:44
+- README.md.L44.literal4 = `risk:med` @ docs/streams/statusgen/README.md:44
+- brief-17-risk-high-label-gate.md.L35.literal1 = `risk:high` @ docs/streams/statusgen/brief-17-risk-high-label-gate.md:35
+- SKILL.md.L188.literal1 = `risk:high` @ plugins/assay/skills/intake-desk/SKILL.md:188
+- SKILL.md.L188.literal2 = `risk:high` @ plugins/assay/skills/intake-desk/SKILL.md:188
+- SKILL.md.L189.literal1 = `gate: human` @ plugins/assay/skills/intake-desk/SKILL.md:189
+- SKILL.md.L189.literal2 = `risk:med` @ plugins/assay/skills/intake-desk/SKILL.md:189
+- SKILL.md.L190.literal1 = `risk:low` @ plugins/assay/skills/intake-desk/SKILL.md:190
+- SKILL.md.L191.literal1 = `risk:high` @ plugins/assay/skills/intake-desk/SKILL.md:191
+- SKILL.md.L192.literal1 = `gate: model` @ plugins/assay/skills/intake-desk/SKILL.md:192
+- SKILL.md.L192.literal2 = `help wanted` @ plugins/assay/skills/intake-desk/SKILL.md:192
+- SKILL.md.L193.literal1 = `gate: human` @ plugins/assay/skills/intake-desk/SKILL.md:193
+- placeholder.go.L89.literal1 = "funds" @ statusgen/placeholder.go:89
+- placeholder.go.L89.literal2 = "security" @ statusgen/placeholder.go:89
+- placeholder.go.L89.literal3 = "risk:high" @ statusgen/placeholder.go:89
+- placeholder_test.go.L355.literal1 = "risk:high label" @ statusgen/placeholder_test.go:355
+- placeholder_test.go.L355.literal2 = "bug" @ statusgen/placeholder_test.go:355
+- placeholder_test.go.L355.literal3 = "risk:high" @ statusgen/placeholder_test.go:355
+- placeholder_test.go.L355.literal4 = "frontend keydown bubbles to card" @ statusgen/placeholder_test.go:355
+- placeholder_test.go.L355.literal5 = "human" @ statusgen/placeholder_test.go:355
+- placeholder_test.go.L356.literal1 = "upper-case label is lower-cased" @ statusgen/placeholder_test.go:356
+- placeholder_test.go.L356.literal2 = "Risk:High" @ statusgen/placeholder_test.go:356
+- placeholder_test.go.L356.literal3 = "" @ statusgen/placeholder_test.go:356
+- placeholder_test.go.L356.literal4 = "human" @ statusgen/placeholder_test.go:356
+- placeholder_test.go.L357.literal1 = "padded label is trimmed" @ statusgen/placeholder_test.go:357
+- placeholder_test.go.L357.literal2 = " risk:high " @ statusgen/placeholder_test.go:357
+- placeholder_test.go.L357.literal3 = "" @ statusgen/placeholder_test.go:357
+- placeholder_test.go.L357.literal4 = "human" @ statusgen/placeholder_test.go:357
+- placeholder_test.go.L358.literal1 = "risk:med does not gate" @ statusgen/placeholder_test.go:358
+- placeholder_test.go.L358.literal2 = "bug" @ statusgen/placeholder_test.go:358
+- placeholder_test.go.L358.literal3 = "risk:med" @ statusgen/placeholder_test.go:358
+- placeholder_test.go.L358.literal4 = "frontend keydown bubbles to card" @ statusgen/placeholder_test.go:358
+- placeholder_test.go.L358.literal5 = "model" @ statusgen/placeholder_test.go:358
+- placeholder_test.go.L359.literal1 = "risk:low does not gate" @ statusgen/placeholder_test.go:359
+- placeholder_test.go.L359.literal2 = "risk:low" @ statusgen/placeholder_test.go:359
+- placeholder_test.go.L359.literal3 = "" @ statusgen/placeholder_test.go:359
+- placeholder_test.go.L359.literal4 = "model" @ statusgen/placeholder_test.go:359
+- placeholder_test.go.L360.literal1 = "med and low together do not gate" @ statusgen/placeholder_test.go:360
+- placeholder_test.go.L360.literal2 = "risk:med" @ statusgen/placeholder_test.go:360
+- placeholder_test.go.L360.literal3 = "risk:low" @ statusgen/placeholder_test.go:360
+- placeholder_test.go.L360.literal4 = "" @ statusgen/placeholder_test.go:360
+- placeholder_test.go.L360.literal5 = "model" @ statusgen/placeholder_test.go:360
+- placeholder_test.go.L361.literal1 = "risk:higher is not a prefix match" @ statusgen/placeholder_test.go:361
+- placeholder_test.go.L361.literal2 = "risk:higher" @ statusgen/placeholder_test.go:361
+- placeholder_test.go.L361.literal3 = "" @ statusgen/placeholder_test.go:361
+- placeholder_test.go.L361.literal4 = "model" @ statusgen/placeholder_test.go:361
+- placeholder_test.go.L362.literal1 = "bare risk label does not gate" @ statusgen/placeholder_test.go:362
+- placeholder_test.go.L362.literal2 = "risk" @ statusgen/placeholder_test.go:362
+- placeholder_test.go.L362.literal3 = "" @ statusgen/placeholder_test.go:362
+- placeholder_test.go.L362.literal4 = "model" @ statusgen/placeholder_test.go:362
+- placeholder_test.go.L363.literal1 = "title text alone does not gate" @ statusgen/placeholder_test.go:363
+- placeholder_test.go.L363.literal2 = "bug" @ statusgen/placeholder_test.go:363
+- placeholder_test.go.L363.literal3 = "raise to risk:high after triage" @ statusgen/placeholder_test.go:363
+- placeholder_test.go.L363.literal4 = "model" @ statusgen/placeholder_test.go:363
+- placeholder_test.go.L364.literal1 = "existing label still gates beside risk:med" @ statusgen/placeholder_test.go:364
+- placeholder_test.go.L364.literal2 = "risk:med" @ statusgen/placeholder_test.go:364
+- placeholder_test.go.L364.literal3 = "security" @ statusgen/placeholder_test.go:364
+- placeholder_test.go.L364.literal4 = "" @ statusgen/placeholder_test.go:364
+- placeholder_test.go.L364.literal5 = "human" @ statusgen/placeholder_test.go:364
+- placeholder_test.go.L365.literal1 = "bare auth label gates through the keyword stage" @ statusgen/placeholder_test.go:365
+- placeholder_test.go.L365.literal2 = "auth" @ statusgen/placeholder_test.go:365
+- placeholder_test.go.L365.literal3 = "" @ statusgen/placeholder_test.go:365
+- placeholder_test.go.L365.literal4 = "human" @ statusgen/placeholder_test.go:365
+- placeholder_test.go.L370.literal1 = "derivePlaceholderGate(%v, %q) = %q, want %q" @ statusgen/placeholder_test.go:370
+- placeholder_test.go.L386.literal1 = "risk:high" @ statusgen/placeholder_test.go:386
+- placeholder_test.go.L386.literal2 = "" @ statusgen/placeholder_test.go:386
+- placeholder_test.go.L386.literal3 = "human" @ statusgen/placeholder_test.go:386
+- placeholder_test.go.L387.literal1 = "%s: risk:high must gate human, got %q" @ statusgen/placeholder_test.go:387
+- placeholder_test.go.L389.literal1 = "risk:med" @ statusgen/placeholder_test.go:389
+- placeholder_test.go.L389.literal2 = "" @ statusgen/placeholder_test.go:389
+- placeholder_test.go.L389.literal3 = "model" @ statusgen/placeholder_test.go:389
+- placeholder_test.go.L390.literal1 = "%s: risk:med must stay model, got %q" @ statusgen/placeholder_test.go:390
+- placeholder_test.go.L393.literal1 = "settlement" @ statusgen/placeholder_test.go:393
+- placeholder_test.go.L393.literal2 = "settlement" @ statusgen/placeholder_test.go:393
+- placeholder_test.go.L394.literal1 = "with a deployment extension" @ statusgen/placeholder_test.go:394
+- placeholder_test.go.L396.literal1 = "with the extension cleared" @ statusgen/placeholder_test.go:396
+- scanissues_test.go.L1931.literal1 = "issue-404.md" @ statusgen/scanissues_test.go:1931
+- scanissues_test.go.L1931.literal2 = "alpha" @ statusgen/scanissues_test.go:1931
+- scanissues_test.go.L1931.literal3 = 404 @ statusgen/scanissues_test.go:1931
+- scanissues_test.go.L1931.literal4 = "risk:high" @ statusgen/scanissues_test.go:1931
+- scanissues_test.go.L1931.literal5 = "gate: model" @ statusgen/scanissues_test.go:1931
+- scanissues_test.go.L1935.literal1 = 401 @ statusgen/scanissues_test.go:1935
+- scanissues_test.go.L1935.literal2 = "plain bug one" @ statusgen/scanissues_test.go:1935
+- scanissues_test.go.L1935.literal3 = "bug" @ statusgen/scanissues_test.go:1935
+- scanissues_test.go.L1935.literal4 = "risk:high" @ statusgen/scanissues_test.go:1935
+- scanissues_test.go.L1936.literal1 = 402 @ statusgen/scanissues_test.go:1936
+- scanissues_test.go.L1936.literal2 = "plain bug two" @ statusgen/scanissues_test.go:1936
+- scanissues_test.go.L1936.literal3 = "bug" @ statusgen/scanissues_test.go:1936
+- scanissues_test.go.L1936.literal4 = "risk:med" @ statusgen/scanissues_test.go:1936
+- scanissues_test.go.L1937.literal1 = 403 @ statusgen/scanissues_test.go:1937
+- scanissues_test.go.L1937.literal2 = "plain bug three" @ statusgen/scanissues_test.go:1937
+- scanissues_test.go.L1937.literal3 = "security" @ statusgen/scanissues_test.go:1937
+- scanissues_test.go.L1938.literal1 = 404 @ statusgen/scanissues_test.go:1938
+- scanissues_test.go.L1938.literal2 = "plain bug four" @ statusgen/scanissues_test.go:1938
+- scanissues_test.go.L1938.literal3 = "risk:high" @ statusgen/scanissues_test.go:1938
+- scanissues_test.go.L1941.literal1 = "" @ statusgen/scanissues_test.go:1941
+- scanissues_test.go.L1942.literal1 = 3 @ statusgen/scanissues_test.go:1942
+- scanissues_test.go.L1943.literal1 = "expected 3 plans (404 already has a placeholder), got %d: %+v" @ statusgen/scanissues_test.go:1943
+- scanissues_test.go.L1949.literal1 = 401 @ statusgen/scanissues_test.go:1949
+- scanissues_test.go.L1949.literal2 = "human" @ statusgen/scanissues_test.go:1949
+- scanissues_test.go.L1949.literal3 = 402 @ statusgen/scanissues_test.go:1949
+- scanissues_test.go.L1949.literal4 = "model" @ statusgen/scanissues_test.go:1949
+- scanissues_test.go.L1949.literal5 = 403 @ statusgen/scanissues_test.go:1949
+- scanissues_test.go.L1949.literal6 = "human" @ statusgen/scanissues_test.go:1949
+- scanissues_test.go.L1952.literal1 = "issue %d not planned" @ statusgen/scanissues_test.go:1952
+- scanissues_test.go.L1954.literal1 = "gate: " @ statusgen/scanissues_test.go:1954
+- scanissues_test.go.L1954.literal2 = "\n" @ statusgen/scanissues_test.go:1954
+- scanissues_test.go.L1955.literal1 = "issue %d content should carry gate: %s:\n%s" @ statusgen/scanissues_test.go:1955
+- scanissues_test.go.L1959.literal1 = "issue %d read back gate %q (ok=%v err=%v), want %q" @ statusgen/scanissues_test.go:1959
+- scanissues_test.go.L1962.literal1 = 404 @ statusgen/scanissues_test.go:1962
+- scanissues_test.go.L1963.literal1 = "issue 404 has an existing placeholder — the scanner must not re-plan it" @ statusgen/scanissues_test.go:1963
+- scanissues_test.go.L1965.literal1 = "docs/streams/alpha" @ statusgen/scanissues_test.go:1965
+- scanissues_test.go.L1965.literal2 = "issue-404.md" @ statusgen/scanissues_test.go:1965
+- scanissues_test.go.L1966.literal1 = "model" @ statusgen/scanissues_test.go:1966
+- scanissues_test.go.L1967.literal1 = "existing gate: model placeholder must stay model, got ok=%v err=%v gate=%q" @ statusgen/scanissues_test.go:1967
+- scanissues_test.go.L1971.literal1 = "issue-405.md" @ statusgen/scanissues_test.go:1971
+- scanissues_test.go.L1971.literal2 = "alpha" @ statusgen/scanissues_test.go:1971
+- scanissues_test.go.L1971.literal3 = 405 @ statusgen/scanissues_test.go:1971
+- scanissues_test.go.L1971.literal4 = "risk:high" @ statusgen/scanissues_test.go:1971
+- scanissues_test.go.L1973.literal1 = "human" @ statusgen/scanissues_test.go:1973
+- scanissues_test.go.L1974.literal1 = "gate-less risk:high file should read human, got ok=%v err=%v gate=%q" @ statusgen/scanissues_test.go:1974
+
+</details>
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.

@@ -1,0 +1,71 @@
+{
+  "test": "go test ./cmd/deskdispatch ./internal/deskkit -run '^(TestReviewKitObligations|TestReviewKitClauseHeadings|TestReviewKitCutRemoves|TestReviewKitMarkersAgree|TestSecurityStretches|TestSecurityLaneNames|TestReviewLaneForClaim|TestReviewKitForLane|TestMalformedReviewKit|TestDispatchedReviewPrompt|TestPacketClause|TestBatchingClause|TestReviewKitCutSizes|TestEveryTierLaneSet)' -count=1 -timeout 120s",
+  "control": {
+    "name": "emit every lane's stretches on every cut",
+    "file": "cmd/deskdispatch/reviewlane.go",
+    "old": "if open != \"\" && open != keep {",
+    "new": "if false {"
+  },
+  "mutations": [
+    {
+      "name": "drop clause 16's read-only and changed-lines sentence",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "copy): you are read-only and never execute PR content. Scope the read to the CHANGED LINES of\nthe triggering files only, target model",
+      "new": "copy), target model"
+    },
+    {
+      "name": "drop clause 4's Departures paragraph",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "**Departures.** From a current-main checkout, never the PR's, run `cd tools/desk && go test ./internal/testledger/\n-run TestReportTestLedger -v -args -base=<merge-base sha> -head=<PR head sha>` (full commit ids). Of each\nline ask: is what it pinned still pinned, and by which test; is the `Retires-test:` reason it shows\nsound; Verify rows re-pointed? An unjustified departure, trailed or not, is a `test-evidence` finding.\n\n",
+      "new": ""
+    },
+    {
+      "name": "fold the claim key's case before matching it to a lane",
+      "file": "cmd/deskdispatch/reviewlane.go",
+      "old": "deskkit.DispatchClaimActiveRefsPrefix + strings.TrimSpace(claimKey)",
+      "new": "deskkit.DispatchClaimActiveRefsPrefix + strings.ToLower(strings.TrimSpace(claimKey))"
+    },
+    {
+      "name": "skip the lane-marker check before the claim",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "if err := checkReviewKitLanes(kit); err != nil {",
+      "new": "if err := checkReviewKitLanes(kit); false && err != nil {"
+    },
+    {
+      "name": "leave the cut untrimmed at a seam",
+      "file": "cmd/deskdispatch/reviewlane.go",
+      "old": "text := strings.TrimSpace(strings.Join(out, \"\\n\"))",
+      "new": "text := strings.Join(out, \"\\n\")"
+    },
+    {
+      "name": "emit the security stand-in notes on the whole kit",
+      "file": "cmd/deskdispatch/reviewlane.go",
+      "old": "if open != \"\" && open != keep {",
+      "new": "if lane != \"\" && open != \"\" && open != keep {"
+    },
+    {
+      "name": "give the lane-unknown dispatch the security cut",
+      "file": "cmd/deskdispatch/reviewlane.go",
+      "old": "keep = deskkit.LaneCorrectness.Name",
+      "new": "keep = deskkit.LaneSecurity.Name"
+    },
+    {
+      "name": "read a bare PR key as the security lane",
+      "file": "cmd/deskdispatch/reviewlane.go",
+      "old": "case family, family + \"--\" + deskkit.LaneCorrectness.Name:\n\t\t\treturn deskkit.LaneCorrectness.Name",
+      "new": "case family, family + \"--\" + deskkit.LaneCorrectness.Name:\n\t\t\treturn deskkit.LaneSecurity.Name"
+    },
+    {
+      "name": "a tier whose lane set has no correctness lane",
+      "file": "internal/deskkit/reviewlanes.go",
+      "old": "TierMaintainer:  {LaneCorrectness, LaneSecurity},",
+      "new": "TierMaintainer:  {LaneSecurity},"
+    },
+    {
+      "name": "take clause 3's bound on a design-fit finding off the security lane",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "<!-- lane:security:end -->\n\n**Bounds on a `design-fit` finding, on every lane.** It names an `S-` row, an `R-` row or the\ncounter delta.",
+      "new": "<!-- lane:security:end -->\n\n<!-- lane:correctness:begin -->\n**Bounds on a `design-fit` finding, on every lane.** It names an `S-` row, an `R-` row or the\ncounter delta.\n<!-- lane:correctness:end -->\n"
+    }
+  ]
+}

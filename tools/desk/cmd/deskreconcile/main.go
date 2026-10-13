@@ -1,8 +1,8 @@
 // Command deskreconcile is the desk-side board-reconcile writer.
 //
-// It runs `statusgen reconcile --backfill --apply` — the ONLY writer of a stream README's
-// Status cell — from a verb the desk/worker App can run, and carries the result as exactly
-// ONE draft PR on the fixed branch board/reconcile. That removes the workflow dependency
+// It runs `statusgen reconcile --backfill --apply` — the command that flips a stream README's
+// Status cell to implemented — from a verb the desk/worker App can run, and carries the
+// result as exactly ONE draft PR on the fixed branch board/reconcile. That removes the workflow dependency
 // the scheduled-reconcile job #1175 is blocked on: no App may push
 // the `.github/workflows/assay-statusgen.yml` change that would schedule the reconcile, so
 // this does the same job outside CI.
@@ -35,8 +35,8 @@ USAGE:
   deskreconcile --version
 
 It fetches origin/main of the target checkout into an ISOLATED worktree, runs
-` + "`statusgen reconcile --backfill --apply`" + ` (the only writer of a stream README Status cell:
-todo|in-progress -> implemented, real merged-PR witness only), and — when a stream README
+` + "`statusgen reconcile --backfill --apply`" + ` (the command that flips a stream README Status
+cell todo|in-progress -> implemented, real merged-PR witness only), and — when a stream README
 changed — commits ONLY those README files as ONE commit (chore(board): reconcile <date>)
 on the fixed branch board/reconcile, then opens or UPDATES exactly one draft PR titled
 "chore(board): reconcile". It never opens a second PR, and it changes nothing when there is

@@ -1,0 +1,134 @@
+name: forge-surface-control
+# The CI-GATING half of the closed forge surface — the control that makes
+# "desk tools reach a forge only through the enumerated interface" a checked
+# fact instead of a convention.
+#
+# WHAT THIS RUNS. Three source-level controls under tools/desk:
+#
+#   - THE SHELL-EXEC BAN (internal/forgeban + deskkit's TestNoForgeCLIShellout).
+#     Two independent detection layers over every shipped Go file under
+#     tools/desk: an os/exec launch-site walk resolved through each file's own
+#     import set, and a position-aware literal scan that catches the wrapper,
+#     method-value and slice-splat launches the first cannot resolve. An exec
+#     site whose argv[0] is not a compile-time constant is reported as
+#     could-not-check and carried in its own ledger — never rounded to clean.
+#   - THE NO-PASSTHROUGH SHAPE CHECK (deskkit's TestForgeNoPassthrough). The
+#     interface carries no generic method and no caller-supplied endpoint
+#     argument, and NEITHER BACKEND exports a method outside the frozen surface.
+#     That last clause is the one a source scan cannot reach: an exported
+#     raw-request helper is a passthrough no callsite grep would see.
+#   - THE REGISTER RATCHET (forgeban's own tests). The permit list may not grow
+#     without an in-tree edit, may not keep a row that matches no call site, and
+#     may not shrink without the ceiling coming down with it.
+#   - THE SINGLE CONSTRUCTION SITE (deskkit's TestForgeSingleConstructionSite).
+#     An AST walk over every shipped Go file under tools/desk asserting that a
+#     `GitHubForge{}` / `GitLabForge{}` literal appears in exactly one file,
+#     forgeresolve.go. This is the third layer of the same closed surface: the
+#     ban and the shape check constrain how a backend may be REACHED, this one
+#     constrains where a backend may be BUILT. Without it the surface is
+#     bypassed by constructing a backend inline — a caller that skips the
+#     resolver skips its auth, base-URL and repo-to-forge mapping too.
+#
+# WHY A DEDICATED JOB, in the same shape and for the same reason as
+# leaksweep-control.yml: ci.yml deliberately runs `go build` + `go vet` only and
+# skips `go test`, so a control proven by `go test` executes NOWHERE unless a job
+# runs it explicitly. A control that never runs is a comment. This job runs
+# exactly the invocations these controls are designed for, and nothing else.
+#
+# -count=1 is load-bearing: a cached `--- PASS:` would replay at exit 0 against a
+# tree the scan never re-read, which is the same class of false green the ban
+# exists to prevent.
+#
+# THE SHARED READER MODULE (forge-neutral/36). forgeread/ is the importable fact reader statusgen
+# and desk-tools both link. It is held to the same closed-surface rules: the ban counter treats
+# it as its own tree and FAILS on any site (below), the ambient-token rule walks it with no
+# permit, the composition desk-tools hands its adapters is shown to refuse a repository outside
+# the credential's scope, and statusgen is shown not to import anything below the module root.
+#
+# SCOPE — the whole tools/desk tree plus the stream registers the shape check
+# dereferences against, and the forgeread module. A trigger narrower than what a control READS makes the
+# control advisory rather than enforced, so the paths filter covers both.
+#
+# WHERE THIS RUNS — the self-hosted runner `medici-builder-public`, matching
+# ci.yml and leaksweep-control.yml. That runner does NOT reach GitHub's
+# release-asset CDN, so the Go toolchain is hand-installed from go.dev/dl
+# (→ dl.google.com) rather than via actions/setup-go; the runner DOES reach the
+# Go module proxy, so the build fetches deps normally.
+
+on:
+  merge_group:
+  pull_request:
+    paths:
+      - "tools/desk/**"
+      - "forgeread/**"
+      - "docs/streams/**/inventory.md"
+      - ".github/workflows/forge-surface-control.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/desk/**"
+      - "forgeread/**"
+      - "docs/streams/**/inventory.md"
+      - ".github/workflows/forge-surface-control.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forge-surface-control-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  forge-surface:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Go toolchain — hand-installed from go.dev/dl (→ dl.google.com), NOT
+      # actions/setup-go, for the same reason ci.yml documents: the runner does
+      # not reach GitHub's release-asset CDN.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # The ban, the shape check and the construction-site check, from their home
+      # module. An unregistered forge-CLI invocation, an unregistered unresolved
+      # exec site, a stale register row, a generic method on the interface, an
+      # exported method outside the frozen surface, or a backend literal built
+      # outside forgeresolve.go each fail the test and redden the job.
+      - name: Shell-exec ban + no-passthrough shape check + single construction site
+        run: |
+          set -euo pipefail
+          go version
+          cd tools/desk
+          go test ./internal/forgeban/ -count=1 -v
+          go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout|TestForgeNoPassthrough|TestForgeSingleConstructionSite' -count=1 -v
+
+      # The shared reader module's own tests, then the desk-tools halves of its controls (the
+      # ambient-token rule over forgeread/, and the lower-layer scope check on the composition),
+      # then statusgen's halves (the import-path guard and the authority boundary).
+      - name: Shared reader module + its desk-tools and statusgen controls
+        run: |
+          set -euo pipefail
+          (cd forgeread && GOWORK=off go test ./... -count=1)
+          (cd tools/desk && go test ./internal/deskkit/ -run 'TestAmbientTokenGuardCoversForgeread|TestSharedReadLowerScope|TestNoAmbientEnvTokenRead' -count=1 -v)
+          (cd tools/desk && go test ./cmd/deskread/ -run 'TestDeskreadMatchesSharedObservations' -count=1 -v)
+          (cd statusgen && GOWORK=off go test . -run 'TestReaderSDK|TestStatusgenImportsNoFacadeBelowRoot' -count=1 -v)
+
+      # desktools-v2/02 — the v2 seam contract's ban-lint (docs/streams/desktools-v2/
+      # seam-contract.md). A portable grep counter, not a Go test: it covers what the three
+      # Go-level checks above cannot reach — shell/skill scripts and statusgen/** (a separate
+      # module the forgeban register does not scope to). The desk and statusgen columns are
+      # ADVISORY/counting: they never fail. The forgeread column is the exception — the script
+      # exits non-zero when `forgeread sites:` is above zero, which reddens this job.
+      - name: Forge reach-around counter (forge-ban; forgeread column fails)
+        run: sh tools/desk/scripts/forge-ban.sh

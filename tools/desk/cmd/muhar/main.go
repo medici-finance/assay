@@ -41,7 +41,8 @@
 //	  },
 //	  "mutations": [
 //	    {"name": "breaker-active check", "file": "...", "old": "...", "new": "..."}
-//	  ]
+//	  ],
+//	  "schemata": true                    // optional; build eligible mutants once per worker (schemata.go)
 //	}
 //
 // Exit codes:
@@ -58,9 +59,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 type spec struct {
@@ -68,6 +72,11 @@ type spec struct {
 	Test      string     `json:"test"`
 	Control   Mutation   `json:"control"`
 	Mutations []Mutation `json:"mutations"`
+	// Schemata opts this spec into mutant schemata (#2635). Off unless set:
+	// schemata assumes the suite never cross-checks the running code against
+	// its source on disk or against a child that drops the environment (see
+	// schemata.go), so a spec turns it on only after a parity run on its suite.
+	Schemata bool `json:"schemata,omitempty"`
 }
 
 // parseShard parses a -shard value of the form "i/n": n total shards, this
@@ -143,6 +152,38 @@ func resolveJobs(requested, numCPU int) int {
 	return maxAutoJobs
 }
 
+// envWithGOCACHE returns env with GOCACHE pinned to dir, overriding any
+// inherited value: the quarantine only holds if the suite's build artifacts
+// land in the throwaway per-run cache even when the environment already names
+// a GOCACHE. GOMODCACHE is never touched — module downloads are immutable and
+// shared-safe, and re-downloading them would cost network per run.
+func envWithGOCACHE(env []string, dir string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, e := range env {
+		if !strings.HasPrefix(e, "GOCACHE=") {
+			out = append(out, e)
+		}
+	}
+	return append(out, "GOCACHE="+dir)
+}
+
+// envWithout returns env minus every entry for the named variables.
+func envWithout(env []string, names ...string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		keep := true
+		for _, n := range names {
+			if strings.HasPrefix(e, n+"=") {
+				keep = false
+			}
+		}
+		if keep {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // muhar does NOT call deskkit.Guard(): it is a local diagnostic that makes no
 // outward writes (no GitHub, no shared-state mutation — it edits a source file
 // and restores it within the same run), so the kill switch and outward-write
@@ -201,6 +242,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Quarantine the Go build cache for this run. Every mutant is a unique
+	// source tree, so each suite run injects hundreds of never-reused entries
+	// into whatever GOCACHE the suite command inherits; in a long-lived cell
+	// that cache grows without bound (Go's own 5-day trim horizon is a
+	// compile-time constant, not a knob). One throwaway cache for the WHOLE
+	// run — mutants of one package share most build artifacts, so per-run
+	// keeps the intra-run speedup — removed when the run ends, whatever the
+	// exit path. os.Exit skips defers, so the Broken exit below removes it
+	// explicitly; the defer covers a normal return.
+	gocache, err := os.MkdirTemp("", "assay-mutant-gocache-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "muhar: create per-run GOCACHE: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = os.RemoveAll(gocache) }()
+	// An interrupt mid-run must not strand the cache either.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		_ = os.RemoveAll(gocache)
+		os.Exit(130)
+	}()
+
 	h := &Harness{
 		Root:      s.Root,
 		Control:   s.Control,
@@ -217,11 +282,59 @@ func main() {
 			if root != "" {
 				cmd.Dir = root
 			}
+			cmd.Env = envWithGOCACHE(os.Environ(), gocache)
 			cmd.Stdout = os.Stderr // suite chatter goes to stderr; report to stdout
 			cmd.Stderr = os.Stderr
 			// Non-zero exit == suite failed == mutation caught.
 			return cmd.Run() != nil
 		},
+	}
+	// Mutant schemata (#2635), for a spec that opts in: eligible mutants share
+	// one build per worker and are picked per run by an environment selector,
+	// instead of each one recompiling its package. Only a suite run that goes
+	// RED is taken from it (see schemata.go); every other verdict still comes
+	// from the classic run.
+	if s.Schemata && !schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
+		fmt.Fprintln(os.Stderr, "muhar: schemata: the spec asks for it, but needs a go test -count=1 suite, no -overlay of its own and a TMPDIR without spaces; every mutation rebuilds the suite")
+	}
+	if s.Schemata && schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
+		h.Log = os.Stderr
+		h.SchemaTest = func(root, overlay, selector string) bool {
+			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design
+			if root != "" {
+				cmd.Dir = root
+			}
+			env := envWithGOCACHE(os.Environ(), gocache)
+			cmd.Env = append(envWithout(env, "GOFLAGS", schemaEnv),
+				"GOFLAGS="+schemaGoflags(os.Getenv("GOFLAGS"), overlay),
+				schemaEnv+"="+selector)
+			cmd.Stdout = os.Stderr
+			cmd.Stderr = os.Stderr
+			return cmd.Run() != nil
+		}
+		h.SchemaBuild = func(root, overlay string, dirs []string) (string, bool) {
+			// -e: report every compile error, so one probe finds every mutant
+			// that does not compile. One package per build, its output written
+			// beside the overlay, never into the tree.
+			env := envWithGOCACHE(os.Environ(), gocache)
+			env = append(envWithout(env, "GOFLAGS"), "GOFLAGS="+schemaGoflags(os.Getenv("GOFLAGS"), overlay))
+			var all strings.Builder
+			clean := true
+			for i, d := range dirs {
+				out := filepath.Join(filepath.Dir(overlay), fmt.Sprintf("probe-%d.out", i))
+				cmd := exec.Command("go", "build", "-gcflags=-e", "-o", out, d)
+				if root != "" {
+					cmd.Dir = root
+				}
+				cmd.Env = env
+				b, err := cmd.CombinedOutput()
+				all.Write(b)
+				if err != nil {
+					clean = false
+				}
+			}
+			return all.String(), clean
+		}
 	}
 	if n > 1 {
 		// The tree to clone is the one the mutations and the suite command
@@ -231,28 +344,21 @@ func main() {
 		if srcRoot == "" {
 			wd, err := os.Getwd()
 			if err != nil {
+				_ = os.RemoveAll(gocache) // os.Exit skips the deferred cleanup
 				fmt.Fprintf(os.Stderr, "muhar: cwd: %v\n", err)
 				os.Exit(1)
 			}
 			srcRoot = wd
 		}
-		h.Workspace = func(id int) (string, func(), error) {
-			dir, err := os.MkdirTemp("", fmt.Sprintf("muhar-%d-", id))
-			if err != nil {
-				return "", nil, err
-			}
-			cleanup := func() { _ = os.RemoveAll(dir) }
-			if err := copyTree(srcRoot, dir); err != nil {
-				cleanup()
-				return "", nil, err
-			}
-			return dir, cleanup, nil
-		}
+		// Each copy keeps its go.mod's relative replace targets resolvable
+		// (#2550): see copyModuleTree.
+		h.Workspace = newWorkspace(srcRoot)
 		fmt.Fprintf(os.Stderr, "muhar: %d mutations in flight, one isolated copy of %s per worker\n", n, srcRoot)
 	}
 
 	rep := h.Run()
 	fmt.Print(rep.Summary())
+	_ = os.RemoveAll(gocache) // os.Exit skips the deferred cleanup
 	if rep.Broken {
 		os.Exit(2)
 	}

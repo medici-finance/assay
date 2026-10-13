@@ -157,6 +157,7 @@ var AllowedInvocations = []Allowance{
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
+	{Key: "cmd/cellctl/comms_init.go::Cell.initComms::<unresolved>", Reason: "The Codex executable resolved from PATH is hashed and queried with --version to pin the contained reader. It is a local harness version probe, not a forge CLI; no inference or authentication command is invoked."},
 	{
 		Key: "internal/deskkit/layaadvisor.go::LayaAdvisor.Predict::<unresolved>",
 		Reason: "runs an explicitly approved operator-selected local inference executable, never wired into " +

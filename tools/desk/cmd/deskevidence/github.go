@@ -23,8 +23,8 @@ import (
 // and never falls back to an ambient CLI identity.
 
 // ghToken holds the verifier App installation token minted for the target repo. deskevidence
-// ALWAYS mints it before any forge call, so every read and every write is performed as the
-// verifier App.
+// ALWAYS mints it before any forge call — pre-work admission's read of the attestation record
+// included (admitLanding) — so every read and every write is performed as the verifier App.
 //
 // An EMPTY value is a HARD REFUSAL, never a fallback (custody minter below). With no minted
 // token the write would land as whatever identity the ambient credential holds — the exact
@@ -93,7 +93,8 @@ var productionPublishIdentityGateFn = publishIdentityGateFn
 // own landing is correctly attributed; this gate is the defence-in-depth layer over the
 // worktree it reads and derives witness attribution FROM — the verifier worktree #1490
 // flags, whose stale `user.*` is the fault the whole class is about. deskevidence always
-// acts as the verifier, so the role is fixed.
+// acts as the verifier, so the role is fixed. No worktree branch is pushed here;
+// the shared gate snapshots HEAD once for this witness-only check.
 func publishIdentityGate(dir, base string) error {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."

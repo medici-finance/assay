@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/**'
       - 'ci/staged-workflows/**'
+      - 'ci/board-writer-migration/**'
       - 'tools/ci-load/activation/**'
       - 'tools/evidence-automerge/**'
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - '.github/workflows/**'
       - 'ci/staged-workflows/**'
+      - 'ci/board-writer-migration/**'
       - 'tools/ci-load/activation/**'
       - 'tools/evidence-automerge/**'
 permissions:
@@ -28,3 +30,5 @@ jobs:
         run: bash tools/evidence-automerge/automerge-refusal_test.sh
       - name: Test errexit capture and workflow class guard
         run: bash tools/evidence-automerge/automerge-step_test.sh
+      - name: Test poll discovery, eligibility and Environment migration
+        run: python3 tools/evidence-automerge/automerge-poll_test.py

@@ -1,87 +1,94 @@
-# Staged release-workflow gate — activation prerequisite (assay#1192)
+# Release-time spec header stamp — staged workflow change (assay#1192)
 
 `spec/brief-v1.md`'s `Describes reference implementation:` line names a
-`statusgen` version by hand. `#302` (2026-09-02) did a one-time freshen but
-added no mechanical floor, so the header drifted silently again — it still
-read `v0.22.0` while the released umbrella tag had moved dozens of releases
-ahead by the time `#1192` was filed. This is the still-missing second half of
-brief-13's Task 4 (brief-13, cited on `#1192`'s own tracker entry): "a
-release-time check ... that the spec header matches the version being cut."
+`statusgen` version. Edited by hand, it drifted: `#302` freshened it once, and
+it drifted again (`v0.22.0`, then `v1.0.12`) while releases moved on. This is
+the second half of brief-13's Task 4: "a release-time check ... that the spec
+header matches the version being cut."
 
-## What's live on this branch, no activation needed
+**Ruling (option a, `stamp`).** The maintainer chose on `#1192` that the
+release writes the tag being cut into the header, the same way it already
+stamps the plugin manifest, and `check-spec-header-version.sh` stays as the
+proof that the stamp ran. The header therefore means "this spec shipped with
+release X". It does not mean someone re-read the spec against X; the spec text
+is kept honest by `TestBriefV1SchemaCoverage` and `statusgen conform`.
 
-- `spec/brief-v1.md` — the header freshened to the actual current release
-  (verified against `gh release list`, not assumed from the issue text).
-- `tools/release/check-spec-header-version.sh` — the check itself: compares
-  the header's `statusgen` version token to the tag being cut, three-state
-  (0 match / 1 mismatch / 2 could-not-check on an unreadable file, missing
-  line, or unparseable token).
-- `tools/release/check-spec-header-version.test.sh` — its offline unit test
-  (8 cases: match, mismatch, header-ahead-of-tag, missing header line,
-  unparseable token, missing file, malformed tag argument, default file-path
-  resolution). Run it directly: `bash tools/release/check-spec-header-version.test.sh`.
+## What is in this directory
 
-## What's staged here, awaiting activation
+- `stamp-spec-header-version.sh <vX.Y.Z> [spec-file]` — the stamp. Rewrites
+  the first `vX.Y.Z` token on the first `Describes reference implementation:`
+  line to the tag, leaves every other byte alone, and reads the result back
+  through the check. Idempotent (a header already at the tag is not
+  rewritten). Fails closed with exit 2, writing nothing, on a malformed tag,
+  an unreadable file, a missing header line, or a header line with no token.
+- `check-spec-header-version.sh <vX.Y.Z> [spec-file]` — the proof. Exit 0 on a
+  match, 1 on a mismatch, 2 when it cannot check.
+- `stamp-spec-header-version.test.sh` and `check-spec-header-version.test.sh` —
+  offline suites, bash + grep + awk only. Run them directly:
 
-One new step in `.github/workflows/release.yml`'s `guard` job — "Release gate
-— refuse a stale spec/brief-v1.md reference-implementation version" — is
-**staged, not committed live**. The identity that authored it (the worker-desk
-App) **cannot push under `.github/workflows/`**: GitHub rejected the push with
+  ```
+  bash tools/release/stamp-spec-header-version.test.sh
+  bash tools/release/check-spec-header-version.test.sh
+  ```
+
+- `release.yml.patch` — the exact delta to `.github/workflows/release.yml`.
+- `release.yml.proposed` — the whole intended `release.yml` (the patch applied
+  to the live file as it stood at staging, plus a banner). Kept for review;
+  apply the patch, not this file.
+
+Both scripts default `spec-file` to `spec/brief-v1.md` relative to the working
+directory; the workflow runs them from the repo root.
+
+## What the staged change does
+
+It mirrors the plugin manifest stamp step by step, in three places:
+
+1. **`guard` job, tag-push path only.** A pushed tag can never be re-pointed,
+   so the tagged tree must already name the tag. The check refuses a stale
+   header here, before the human approval, next to the plugin manifest gate.
+2. **`release` job, right after "Stamp the plugin manifest version to the
+   release tag".** On dispatch: stamp the header, run the check, and commit
+   the change locally as `github-actions[bot]`, so the tag lands on that
+   commit. On a tag push: the check alone. On a dry run: stamp and commit
+   locally, push nothing — the same as the manifest stamp.
+3. **`changelog-roll` job, beside the post-cut plugin manifest bump.** Leaves
+   the default branch's header on the next patch version (the same floor rule:
+   a header a human already moved above the cut is left alone), in the same
+   commit. A dispatch of exactly that version then finds the header already
+   stamped and commits nothing, so in the steady state the tag lands on the
+   default branch's own commit.
+
+Nothing else in `release.yml` changes.
+
+## Maintainer apply step
+
+No App identity edits `.github/workflows/` (the server refuses a workflow
+write without the `workflows` permission), so a maintainer applies the change
+by hand, from the repository root on an up-to-date `main`:
 
 ```
-! [remote rejected]   feat/issue-1192 -> feat/issue-1192 (refusing to allow a
-GitHub App to create or update workflow `.github/workflows/release.yml`
-without `workflows` permission)
-```
-
-This is the **established** staging path in this repo — `tools/changelog/`
-carries the same shape (`release.yml.patch` + `release.yml.proposed` +
-activation instructions in its own README) for the same server-side
-workflows-scope block, and is reused here rather than inventing a second
-convention.
-
-Per the house no-evasion rule, a workflows-scope push block is a STOP signal,
-not an obstacle to route around — this directory is that stop, made
-reviewable.
-
-## Activating the gate
-
-A **workflows-capable identity** (a human, or an App/token carrying the
-`workflows` permission) applies the staged change with either:
-
-```
+git apply --check tools/release/release.yml.patch   # must print nothing
 git apply tools/release/release.yml.patch
+bash tools/release/stamp-spec-header-version.test.sh
+bash tools/release/check-spec-header-version.test.sh
 ```
 
-or by copying `tools/release/release.yml.proposed` verbatim over
-`.github/workflows/release.yml`, dropping its leading `⚠️ STAGED …` banner
-block down to the `# ---` rule (the `.proposed` file is the full intended
-content; the `.patch` is the exact delta from the currently-live file — both
-were verified byte-identical against each other before this PR was opened).
+Commit `.github/workflows/release.yml` by PR. If `git apply --check` refuses,
+the live file has moved since staging: apply the three additions by hand from
+`release.yml.patch` (each is self-contained and anchored next to the matching
+plugin manifest step), not by copying `release.yml.proposed` over the live
+file, which would revert whatever moved.
 
-> **The whole-file route is stale.** The live `release.yml` has changed since
-> this was staged (cellctl is now the Go port stamped via `-ldflags`, the bash
-> script's packaging step is gone, release-authorizer traceability was added),
-> so copying `release.yml.proposed` over it would revert those changes. Use
-> `git apply tools/release/release.yml.patch`, which still applies cleanly and
-> carries only the one new step.
+The header on `main` already names the latest published release, so the first
+dispatched release after the apply commits a one-line stamp to the tag being
+cut, and the roll moves `main` onto the next patch from then on.
 
-The change adds exactly one step to the `guard` job, next to the existing
-`plugins/assay` manifest-version gate:
+## After the next release
 
-```yaml
-      - name: Release gate — refuse a stale spec/brief-v1.md reference-implementation version
-        env:
-          TAG: ${{ needs.resolve.outputs.tag }}
-        run: bash tools/release/check-spec-header-version.sh "$TAG"
+The release's tag names its own version in `spec/brief-v1.md`:
+
+```
+git show <tag>:spec/brief-v1.md | grep 'Describes reference implementation'
 ```
 
-No other line of `release.yml` changes — the tag-cut, guard-against-moving-a-
-tag, build, test-matrix, publish and changelog-roll logic are untouched.
-
-## Verifying the fail-first / pass evidence without activation
-
-The check script and its test are independently runnable — see the PR body's
-`## Fail-first` section for the actual pre-fix (stale header, exit 1) and
-post-fix (freshened header, exit 0) runs against the real
-`spec/brief-v1.md`, plus the full 8-case test suite.
+Once that holds, `#1192` can close, citing the ruling.

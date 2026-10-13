@@ -67,7 +67,7 @@ if [[ -z "$have" ]]; then
 fi
 
 if [[ "$have" != "$tag" ]]; then
-  echo "FAIL $file names statusgen $have, but this release is cutting $tag — update the 'Describes reference implementation:' line in $file to $tag before releasing (brief-13 task 4, assay#1192)" >&2
+  echo "FAIL $file names statusgen $have, but this release is cutting $tag — run tools/release/stamp-spec-header-version.sh $tag (the release does this on dispatch), or update the 'Describes reference implementation:' line in $file to $tag, before releasing (brief-13 task 4, assay#1192)" >&2
   exit 1
 fi
 
