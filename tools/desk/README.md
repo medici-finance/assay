@@ -202,7 +202,11 @@ your own PR** — it compares the branch checked out in this worktree against th
 branch and refuses with exit 5 otherwise, so it is not a way to comment on someone else's
 work. And `deskpost comment` posts under the reviewer App identity
 (`assay-reviewer-app[bot]`), not yours; it offers no worker identity, which is precisely
-why `deskreply` exists.
+why `deskreply` exists. For a coordinator's observation on an existing issue, use
+`deskfile attach -R <owner/repo> --to <issue-number> --body-file F --kind issue`:
+that path uses the desk App. Do not use the reviewer-bound comment verb as a substitute
+for the caller's role identity. Issue #2202 tracks making this distinction explicit
+in the command's admission checks.
 
 Every write verb runs `deskkit.BodyCheck` over what you are about to post — titles,
 branch name, body, and for `deskpr create` the diff against the default branch. A hit is
