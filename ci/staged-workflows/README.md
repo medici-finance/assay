@@ -193,9 +193,10 @@ reviewable artifact, not a run.
   leaving them green. The conversion to this shape is serialized in
   `docs/runsheets/reconcile-lane-hunk.diff` (desk-tools/36, assay#2688) with its
   receipts on that thread; until the driver applies it, the staged and live job still
-  opens the `board/reconcile` draft PR under the standing rules. The board-writer App
-  needs `Contents: write` for the push; its `Pull requests: write` grant went with
-  the PR step the conversion removes.
+  opens the `board/reconcile` draft PR under the standing rules. Once applied, the
+  board-writer App needs `Contents: write` for the push and its `Pull requests: write`
+  grant is no longer used (the conversion removes the PR step); keep that grant until
+  the apply lands, because the live job's token mint still requests it.
 
 ### `windows-ci-leg.yml` status
 

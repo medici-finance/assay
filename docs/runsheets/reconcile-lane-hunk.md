@@ -14,13 +14,13 @@ delivery PR's body carries the mechanism reason.
 Then commit and push from the maintainer credential (workflow paths require it):
 
 ```sh
-git add .github/workflows/assay-statusgen.yml ci/staged-workflows/assay-statusgen.yml statusgen/reconcilejob_test.go
+git add .github/workflows/assay-statusgen.yml ci/staged-workflows/assay-statusgen.yml statusgen/reconcilejob_test.go changelog/<slug>.md
 git commit -m "ci(board): land the reconcile direct-CI conversion (desk-tools/36, assay#2688 option b apply)"
 git push
 ```
 
 If the apply lands as a direct commit on main rather than through a pull request,
-add a `changelog/` fragment in the same commit: the fragment check reads PR diffs,
+write the `changelog/<slug>.md` fragment named in the `git add` line above, in the same commit: the fragment check reads PR diffs,
 so a direct apply does not trip it (this note is the follow-up the assembly record
 names).
 
@@ -43,7 +43,7 @@ names).
   pristine-checkout apply round-trip with the suite re-run green; `gofmt`/`go vet`
   clean; live/staged twin `cmp` clean) — and, on this delivery branch:
   `git apply --check docs/runsheets/reconcile-lane-hunk.diff` exits 0 at head
-  `2220f0033`.
+  `956afcfb1`, which carries the `.diff` file.
 
 ## Status: serialized and carried — the remaining act is the driver's apply
 
