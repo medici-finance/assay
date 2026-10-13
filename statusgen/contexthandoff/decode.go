@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -59,14 +60,18 @@ func RuleOf(err error) string {
 	return ""
 }
 
+// Whitespace is an explicit union of Unicode White_Space and ECMA-262
+// whitespace (which also includes BOM), shared with the published schemas.
+const whitespace = "\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+
 var (
-	revisionRe     = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
-	digestRe       = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	nameRe         = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
-	locatorRe      = regexp.MustCompile(`^\S+$`)
-	textRe         = regexp.MustCompile(`\S`)
-	timestampRe    = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`)
-	deliveryPathRe = regexp.MustCompile(`^[^\s/]\S*$`)
+	revisionRe  = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+	digestRe    = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	nameRe      = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+	locatorRe   = regexp.MustCompile("^[^" + whitespace + "]+$")
+	textRe      = regexp.MustCompile("[^" + whitespace + "]")
+	timestampRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`)
+	schemeRe    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 )
 
 // parseStrict reads exactly one JSON value into a generic tree (objects are
@@ -517,7 +522,7 @@ func (r *reader) discovery(v any, p string) Discovery {
 	clean := r.err == nil
 	cm := r.object(m["coverage"], cp, "state", "enumerated", "unavailable")
 	if clean && r.err != nil && r.err.Rule == RuleMissingField {
-		// A coverage that omits its enumerated or unavailable list has not
+		// A coverage that omits its state or either accounting list has not
 		// stated its gaps.
 		r.err.Rule = RuleCoverage
 	}
@@ -691,7 +696,7 @@ func (r *reader) entry(v any, p string) Entry {
 		Obligation:      r.str(m, p, "obligation", nameRe, "name"),
 		Brief:           r.qid(m, p, "brief"),
 		Action:          r.enum(m, p, "action", actions...),
-		DeliveryPaths:   r.strArray(m, p, "delivery_paths", 1, deliveryPathRe, "repo-relative path"),
+		DeliveryPaths:   r.deliveryPaths(m, p),
 		ContractVersion: r.optStr(m, p, "contract_version", locatorRe, "locator"),
 		Depends:         r.qidArray(m, p, "depends"),
 		TestCommands:    r.strArray(m, p, "test_commands", 0, textRe, "non-blank text"),
@@ -722,7 +727,7 @@ func (r *reader) binding(v any, p string) Binding {
 		return Binding{}
 	}
 	var b Binding
-	if pv := bm["patch"]; pv != nil {
+	if pv, present := bm["patch"]; present {
 		pm, ok := pv.(map[string]any)
 		if !ok {
 			r.fail(RuleAmendUnbound, p+".patch", "patch is %s, not a base revision and patch digest", kindOf(pv))
@@ -737,7 +742,11 @@ func (r *reader) binding(v any, p string) Binding {
 			Digest:       r.bindingStr(pm["digest"], p+".patch.digest"),
 		}
 	}
-	if fv := bm["follow_up"]; fv != nil {
+	if fv, present := bm["follow_up"]; present {
+		if fv == nil {
+			r.fail(RuleAmendUnbound, p+".follow_up", "follow-up must be a brief reference, not null")
+			return Binding{}
+		}
 		s := r.bindingStr(fv, p+".follow_up")
 		if s != "" {
 			s = r.qidValue(fv, p+".follow_up")
@@ -776,4 +785,35 @@ func firstUnknown(m map[string]any, keys ...string) string {
 	}
 	sort.Strings(unknown)
 	return unknown[0]
+}
+
+// deliveryPaths checks only lexical record data. Filesystem confinement (for
+// example, symlinks) remains the responsibility of the eventual writer.
+func (r *reader) deliveryPaths(m map[string]any, p string) []string {
+	paths := r.strArray(m, p, "delivery_paths", 1, locatorRe, "repo-relative path")
+	for i, path := range paths {
+		if !isDeliveryPath(path) {
+			r.fail(RuleBadValue, idx(p+".delivery_paths", i), "%q is not a repo-relative path", path)
+		}
+	}
+	return paths
+}
+
+func isDeliveryPath(path string) bool {
+	if path == "" || strings.HasPrefix(path, "/") || strings.HasPrefix(path, "~") ||
+		strings.Contains(path, "\\") || schemeRe.MatchString(path) {
+		return false
+	}
+	for _, segment := range strings.Split(path, "/") {
+		if segment == ".." {
+			return false
+		}
+	}
+	for _, c := range path {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f || c == 0x061c || c == 0x200e || c == 0x200f ||
+			c >= 0x202a && c <= 0x202e || c >= 0x2066 && c <= 0x2069 {
+			return false
+		}
+	}
+	return true
 }

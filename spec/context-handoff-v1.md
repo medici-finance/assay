@@ -24,7 +24,10 @@ so a missing amendment fails a check instead of slipping through review.
 | A draft or proposed target is distinct from an approved one; an approval names the revision it approves. | That the approval reference is genuine. The record carries the reference; trust is checked where the reference is read. |
 | A canonical digest that is stable across field order, whitespace, string escaping and elided-versus-full brief references. | Semantic preservation. A digest proves which inputs were used, not that a difference does not matter. |
 
-Record content is data, never instructions to the reader of the record.
+Record content is data, never instructions to the reader of the record. Consumers never
+execute `test_commands` from a record; executable checks come from a reviewed brief's Verify
+table. Renderers escape control and bidi characters and markup in all free text and locators
+before displaying them (statusgen/21).
 
 ## 2. Qualified brief IDs
 
@@ -62,7 +65,9 @@ the seven records below as `target`, `discovery`, `impacts`, `amendments`, `hist
 Shared value shapes: `revision` is 7 to 64 lower-case hex characters; `digest` is
 `sha256:<64 lower-case hex>`; `name` is `[a-z0-9][a-z0-9._-]*`; `locator` is a non-empty string
 with no whitespace (a repo-relative path, an anchor or a URL); `text` is a string with at least
-one non-space character; `timestamp` is UTC `YYYY-MM-DDTHH:MM:SSZ`. A `patch` is
+one non-whitespace character. Both use the explicit union of Unicode White_Space and
+ECMA-262 whitespace (including U+0085 and U+FEFF), rather than a regex engine's `\s` shorthand;
+`timestamp` is UTC `YYYY-MM-DDTHH:MM:SSZ`. A `patch` is
 `{base_revision, digest}`: the revision the patch was made against and the digest of the patch.
 
 ### 3.1 Target and intent (`target`)
@@ -138,7 +143,7 @@ digest, §6) and `entries`. Each `entry` binds one amendment obligation:
 | `obligation` | The amendment obligation's `id`; exactly one entry per obligation. |
 | `brief` | The owning brief (qualified ID); equal to the obligation's `subject`. |
 | `action` | Equal to the obligation's `action`. |
-| `delivery_paths` | At least one repo-relative path the amendment delivers to. |
+| `delivery_paths` | At least one repo-relative path the amendment delivers to: no leading `/` or `~`, `..` segment, backslash, drive-letter or URL-scheme prefix, whitespace, C0/C1 control, or bidi formatting control (U+061C, U+200E–U+200F, U+202A–U+202E, U+2066–U+2069). |
 | `contract_version` | The contract version the amendment targets, or `null`. |
 | `depends` | Qualified IDs the amendment depends on. |
 | `test_commands` | The commands that check the amended brief. |
@@ -146,14 +151,21 @@ digest, §6) and `entries`. Each `entry` binds one amendment obligation:
 | `effort` | `S`, `M` or `L`. |
 | `binding` | Exactly one of `{"patch": {base_revision, digest}}` (a bound patch) or `{"follow_up": <qualified ID>}` (an explicit follow-up brief that will carry it). |
 
+Paths are literal slash-separated names, never URLs, percent-decoded strings or shell
+expressions. These are lexical constraints; a writer must also confine filesystem resolution
+(including symlinks) to its authorized repository before writing. This pure package opens no path.
+
 An obligation with no bound patch and no follow-up is refused (`amend-unbound`), whichever way the
 binding is missing: absent, `null`, `{}`, a `null` or empty patch, a patch without its base
-revision or digest, an empty follow-up, or both at once. This is the check the contract exists
+revision or digest, an empty follow-up, or both keys at once (including a null sibling). This is the check the contract exists
 for: a row saying "amend" is not a completed amendment.
 
 ## 5. Rules
 
-The decoder applies these in order and reports the first refusal, as `{rule, path, message}`.
+The decoder reports the first refusal it reaches, as `{rule, path, message}`. The groups below
+are not a precedence order: qualified IDs are checked during the strict read, and unresolved
+impacts are checked before active work. Inputs with several defects need not report the first
+numbered group.
 
 1. **Strict read.** The input is one UTF-8 JSON value with no trailing data (`malformed`), no
    repeated key in any object (`duplicate-key`), no undefined field (`unknown-field`), every
@@ -164,8 +176,8 @@ The decoder applies these in order and reports the first refusal, as `{rule, pat
 3. **Approval.** An approved target has an approval, a draft or proposed one has none, and the
    approval's revision equals the target's revision. An approval without a recorded revision is
    refused (`approval`).
-4. **Coverage.** A receipt without a stated coverage, or a coverage without its `enumerated` or
-   `unavailable` list, is refused, never defaulted to complete. Every included source appears
+4. **Coverage.** A receipt without a stated coverage, or a coverage without its `state`, `enumerated` or
+   `unavailable` field, is refused, never defaulted to complete. Every included source appears
    exactly once across `enumerated` and `unavailable`; an excluded or unknown source appears in
    neither; an enumerated source has a revision; `complete` coverage lists nothing unavailable
    and no truncated query. Source ids are unique (`duplicate-id`). Otherwise `coverage`.
@@ -219,6 +231,12 @@ The digest is `sha256:` followed by the lower-case hex SHA-256 of the canonical 
 that differ only in key order, whitespace, string escaping or elided-versus-full references have
 the same digest; any changed value changes it. The input bytes are never hashed. The manifest's
 `handoff` field is the handoff's digest, so a manifest binds one exact handoff.
+
+Code-built records must be serialized and successfully passed through `DecodeHandoff` or
+`DecodeManifest` before canonicalizing or digesting. `Canonical` and `Digest` do not validate
+or normalize nil containers. The producer in statusgen/20 must initialize required empty arrays
+and maps as `[]` and `{}` and exercise that decode round trip; producer construction helpers and
+an input-size/depth limit at the file adapter remain statusgen/20 responsibilities.
 
 ## 7. Layering
 

@@ -23,7 +23,7 @@ var schemaKeywords = map[string]bool{
 	"required": true, "properties": true, "additionalProperties": true,
 	"items": true, "minItems": true, "maxItems": true,
 	"pattern": true, "$ref": true, "$defs": true,
-	"oneOf": true, "allOf": true, "if": true, "then": true, "else": true,
+	"not": true, "oneOf": true, "allOf": true, "if": true, "then": true, "else": true,
 }
 
 type testSchema struct {
@@ -81,7 +81,7 @@ func (s *testSchema) checkKeywords(node any, at string) error {
 					return err
 				}
 			}
-		case "items", "additionalProperties", "if", "then", "else":
+		case "items", "additionalProperties", "if", "then", "else", "not":
 			if err := s.checkKeywords(v, at+"/"+k); err != nil {
 				return err
 			}
@@ -252,6 +252,9 @@ func (s *testSchema) validate(v any, node any, at string) error {
 		if p, ok := n["pattern"]; ok && !s.patterns[p.(string)].MatchString(str) {
 			return fmt.Errorf("%s: %q does not match %s", at, str, p)
 		}
+	}
+	if neg, ok := n["not"]; ok && s.validate(v, neg, at) == nil {
+		return fmt.Errorf("%s: matches forbidden schema", at)
 	}
 	if all, ok := n["allOf"]; ok {
 		for _, sub := range all.([]any) {
