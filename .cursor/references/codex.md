@@ -53,6 +53,16 @@ unchanged and awaits user direction. Missing tools or failed readback report
 could-not-check. A completed batch or empty queue does not finish a standing Goal.
 The user retains `/goal`, `/goal pause`, `/goal resume` and `/goal clear` controls.
 
+An inactive Goal stops standing continuation; it does not withdraw permission for
+a separately requested correction. On "correct and resume", do the authorized
+correction within the existing safeguards, then read the Goal again. A conversational
+resume request does not prove the native status changed. If it remains inactive
+and the exposed tools cannot resume it, give the user the exact `/goal resume`
+control. Preserve the objective, budget and usage; require matching active readback
+before restarting the standing desk. Do not ask again for correction permission or
+try an unsupported `update_goal` status. This is launcher guidance, not evidence
+that a native runtime transition was performed or that a model will follow it.
+
 Goals do not supply the fixed-time `cadence-tick` capability or a process-restart
 monitor. Those rows' scheduler and durability limits remain in force. Explicit
 cellctl cadence uses bounded exec passes with Goals disabled. Native continuation
