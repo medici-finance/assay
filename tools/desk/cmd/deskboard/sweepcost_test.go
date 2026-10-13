@@ -39,6 +39,8 @@ type fakePR struct {
 	updated  string
 	reviewed string // the sha the reviewer App's APPROVE landed at
 	ci       string // the check run's conclusion
+	base     string // the base branch; "" reads as main
+	ciExtra  bool   // a second (successful) check run in the rollup
 }
 
 // etagForge is the GitHub stand-in. Charged holds "METHOD path" for every answer that was not
@@ -178,7 +180,13 @@ func (ff *etagForge) serve(w http.ResponseWriter, r *http.Request) {
 		body = map[string]any{"state": "success", "statuses": []any{}, "total_count": 0}
 	case rePullFiles.MatchString(r.URL.Path):
 		n, _ := strconv.Atoi(rePullFiles.FindStringSubmatch(r.URL.Path)[1])
-		body = []any{map[string]any{"filename": fmt.Sprintf("src/file%d.go", n), "status": "modified"}}
+		// The file list is a function of the base: a retargeted PR's diff differs (GitHub
+		// recomputes it against the new base at the same head).
+		name := fmt.Sprintf("src/file%d.go", n)
+		if pr, ok := ff.prLocked(n); ok && pr.base != "" && pr.base != "main" {
+			name = fmt.Sprintf("src/file%d-vs-%s.go", n, pr.base)
+		}
+		body = []any{map[string]any{"filename": name, "status": "modified"}}
 	case rePull.MatchString(r.URL.Path):
 		n, _ := strconv.Atoi(rePull.FindStringSubmatch(r.URL.Path)[1])
 		pr, ok := ff.prLocked(n)
@@ -221,21 +229,31 @@ func (ff *etagForge) prLocked(n int) (fakePR, bool) {
 func (ff *etagForge) snapshotLocked() any {
 	nodes := make([]any, 0, len(ff.prs))
 	for _, p := range ff.prs {
+		base := p.base
+		if base == "" {
+			base = "main"
+		}
+		checks := []any{map[string]any{"__typename": "CheckRun", "databaseId": p.num,
+			"name": "ci", "status": "COMPLETED", "conclusion": p.ci,
+			"startedAt": "2026-10-12T09:40:00Z", "completedAt": "2026-10-12T09:45:00Z"}}
+		if p.ciExtra {
+			checks = append(checks, map[string]any{"__typename": "CheckRun", "databaseId": 10000 + p.num,
+				"name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS",
+				"startedAt": "2026-10-12T09:40:00Z", "completedAt": "2026-10-12T09:46:00Z"})
+		}
 		nodes = append(nodes, map[string]any{
 			"number": p.num, "title": fmt.Sprintf("change %d", p.num), "body": "Issue: #123",
 			"state": "OPEN", "isDraft": false, "createdAt": "2026-10-12T09:30:00Z", "lastEditedAt": nil,
 			"updatedAt": p.updated, "author": map[string]any{"login": "ada", "__typename": "User"},
 			"mergeStateStatus": "CLEAN", "headRefOid": p.head, "headRefName": fmt.Sprintf("feat-%d", p.num),
-			"baseRefName": "main",
+			"baseRefName": base,
 			"reviews": map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": []any{map[string]any{
 				"databaseId": 1000 + p.num, "author": map[string]any{"login": "assay-reviewer-app", "__typename": "Bot", "databaseId": 300000004},
 				"state": "APPROVED", "commit": map[string]any{"oid": p.reviewed}, "body": "Verdict: APPROVE",
 				"submittedAt": time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)}}},
 			"labels": map[string]any{"nodes": []any{}},
 			"commits": map[string]any{"nodes": []any{map[string]any{"commit": map[string]any{"statusCheckRollup": map[string]any{
-				"contexts": map[string]any{"nodes": []any{map[string]any{"__typename": "CheckRun", "databaseId": p.num,
-					"name": "ci", "status": "COMPLETED", "conclusion": p.ci,
-					"startedAt": "2026-10-12T09:40:00Z", "completedAt": "2026-10-12T09:45:00Z"}}}}}}}},
+				"contexts": map[string]any{"nodes": checks}}}}}},
 		})
 	}
 	return map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{"nodes": nodes}}}}
@@ -328,9 +346,47 @@ func TestHeadChangeRereadsOnePR(t *testing.T) {
 	}
 }
 
-// TestCheckFlipNoStaleGreen — the safety direction of the skip: a check that goes red behind
-// an unchanged head is still seen. Green on the base by construction (the base re-reads
-// everything); it pins that the reuse added for #2421 never serves a stale green.
+// regression: #2421
+// TestSkipKeyEveryPart — the per-PR skip reuses a PR's changed-file set only while EVERY part
+// of its key is unchanged. Each subtest moves exactly one part at an unchanged head and
+// asserts that PR — and only that PR — is re-read from the forge. The base case matters most:
+// a retarget at the same head changes the diff GitHub reports, and the reused set feeds the
+// risk-path scan, so a stale set could leave a security-path PR un-risk-classed.
+func TestSkipKeyEveryPart(t *testing.T) {
+	cases := []struct {
+		name  string
+		move  func(p *fakePR)
+		fresh bool // the new file list differs, so the re-read must come back charged (not a 304)
+	}{
+		{"base", func(p *fakePR) { p.base = "release" }, true},
+		{"updatedAt", func(p *fakePR) { p.updated = "2026-10-12T12:00:00Z" }, false},
+		{"rollup", func(p *fakePR) { p.ciExtra = true }, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ff := newEtagForge(t, 5)
+			boardRows(t, ff.sweep(t))
+			ff.edit(func(prs []fakePR) { tc.move(&prs[3]) })
+			res := ff.sweep(t)
+			boardRows(t, res)
+			if got := perPRPaths(res.all); len(got) != 1 || got[0] != 4 {
+				t.Fatalf("after only PR #4's %s moved (head unchanged), the sweep read per-PR endpoints of PRs %v, want exactly [4]\nrequests: %v",
+					tc.name, got, res.all)
+			}
+			if !contains(res.all, "GET /repos/example-org/tracker/pulls/4/files") {
+				t.Fatalf("PR #4's changed files were not re-read after its %s moved; requests: %v", tc.name, res.all)
+			}
+			if tc.fresh && !contains(res.charged, "GET /repos/example-org/tracker/pulls/4/files") {
+				t.Fatalf("PR #4's changed files after a %s change came back unchanged; charged: %v", tc.name, res.charged)
+			}
+		})
+	}
+}
+
+// TestCheckFlipNoStaleGreen — a check that goes red behind an unchanged head is still seen
+// on the board. What it pins is that the check rollup is never cached: it arrives fresh in
+// the uncached GraphQL snapshot every sweep. It does NOT pin the per-PR skip key — no change
+// to the reuse can turn it red; TestSkipKeyEveryPart pins the key's rollup component.
 func TestCheckFlipNoStaleGreen(t *testing.T) {
 	ff := newEtagForge(t, 5)
 	if rows := boardRows(t, ff.sweep(t)); rows[2].Action != actMergeNow {
