@@ -27,13 +27,7 @@
   "assay-qualgen.yml": {
     "mode": "identical"
   },
-  "verify-gate-close.yml": {
-    "mode": "identical"
-  },
   "forge-surface-control.yml": {
-    "mode": "identical"
-  },
-  "assay-statusgen.yml": {
     "mode": "identical"
   }
 }
