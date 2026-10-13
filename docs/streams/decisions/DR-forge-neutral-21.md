@@ -3,7 +3,8 @@ id: DR-forge-neutral-21
 date: "2026-09-23"
 title: "Lift the dispatch-claim store behind one deskkit seam, resolved from the roster with no caller choice and refusal as the only fallback; keep forge-ref only as what an unset key means, for one release window"
 consequence: major
-decided-by: "human:<name>"
+decided-by: "human:ian"
+ruling: "https://github.com/medici-finance/assay/issues/2753#issuecomment-6148115544"
 alternatives:
   - "Approve, but refuse immediately when nothing is configured (no notice period) — ruled out: put to the driver as option 2 on #1552 and not taken; the ruling selected option 1. Under option 2 every existing install would stop at its next upgrade until someone edited its configuration, where the brief keeps today's behaviour for one release window under a NOTICE that names the key, its two valid values and the removal release."
   - "Reject — claims stay on the platform only, and the reviewer keeps repository write — ruled out: put to the driver as option 3 on #1552 and not taken; the ruling selected option 1. The spec this brief implements (`docs/streams/forge-neutral/reviewer-write-boundary.md`) exists because a dispatch claim that can only live on the forge forces every dispatching role, the reviewer included, to hold repository write."
