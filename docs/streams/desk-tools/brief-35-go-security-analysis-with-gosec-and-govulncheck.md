@@ -11,7 +11,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-11 by statusgen newbrief
 sources:
   - "Maintainer direction 2026-10-11: ratchet lint/vulnerability checks over existing debt rather than rewrite old code wholesale; feed findings into qualgen reporting."
@@ -21,6 +21,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "Cross-artifact correctness: tool pins, module/build coverage, exit propagation, fixtures and actual workflow execution must agree."
 consumers:
+  - "actions/go-analysis/: follow-up desk-tools/35 (extend the shared versioned action with security scans and report publication)"
   - "docs/go-engineering.md: follow-up desk-tools/35 (document the ratchet and report adoption)"
   - "qualgen/mine.go: follow-up desk-tools/35 (ingest the scan artifact with the existing miner)"
   - "qualgen/artifacts.go: follow-up desk-tools/35 (append-only scan record family)"
@@ -110,6 +111,17 @@ design-fit:
 - If main or another active worker already owns the scope, checkpoint and reconcile before editing.
 
 ## Task
+
+Reuse the versioned GitHub Action delivered by desk-tools/34 (`actions/go-analysis/`)
+and extend its shared runner for security. Consumer workflows pin immutable Assay
+commits; do not create a separate scanner action or duplicate acquisition logic.
+Before enabling gosec, add the composite action's explicit post-bootstrap migration
+lane: a human-reviewed immutable migration revision, bound to the old/new policy
+contracts and baseline digests with before/after counts, reasons and preserved
+first-observed history. The lint action currently refuses contract changes after
+bootstrap; its bootstrap input is not a migration bypass. Ordinary PRs cannot
+supply their own admission authority or silently reset the baseline. Prove both
+rejection of unapproved migration and acceptance of the exact reviewed transition.
 
 1. Add gosec to the admitted golangci-lint config and record its bundled version and enabled
    rules. Apply the prerequisite finding-level ratchet to an initial measured gosec debt

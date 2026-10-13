@@ -194,6 +194,12 @@ func TestSchemataOneBuildPerWorker(t *testing.T) {
 // test also runs against a muhar that predates a field.
 func runMuharSpec(t *testing.T, bin, work string, sp map[string]any) string {
 	t.Helper()
+	return runMuharSpecArgs(t, bin, work, sp)
+}
+
+// runMuharSpecArgs is runMuharSpec with extra muhar flags (e.g. -select).
+func runMuharSpecArgs(t *testing.T, bin, work string, sp map[string]any, extra ...string) string {
+	t.Helper()
 	raw, err := json.Marshal(sp)
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +208,7 @@ func runMuharSpec(t *testing.T, bin, work string, sp map[string]any) string {
 	if err := os.WriteFile(specPath, raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(bin, "-j", "2", "-spec", specPath)
+	cmd := exec.Command(bin, append([]string{"-j", "2", "-spec", specPath}, extra...)...)
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "GOFLAGS=") {
 			cmd.Env = append(cmd.Env, e)
@@ -298,5 +304,50 @@ func TestSchemataIsOptIn(t *testing.T) {
 	}
 	if !strings.Contains(out, "Totals: 15 caught, 2 NOT CAUGHT, 0 could-not-mutate.") {
 		t.Errorf("Totals line is not the classic one:\n%s", out)
+	}
+}
+
+// -select with "schemata": true runs every mutant whose suite -select narrows
+// the classic way (selectNarrows), so the pair reports byte-for-byte what a
+// classic run reports, even for the Sep mutant schemata misjudges. The
+// source-reading test is on the always-run list, as the -select doc asks of a
+// test that catches mutants without executing them.
+//
+// regression: #2636
+func TestSelectWithSchemataMatchesClassic(t *testing.T) {
+	needGo(t)
+	work := t.TempDir()
+	bin := filepath.Join(work, "muhar")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build muhar: %v\n%s", err, out)
+	}
+	root := filepath.Join(work, "fx")
+	writeFiles(t, root, map[string]string{
+		"go.mod":       "module example.com/fx\n\ngo 1.21\n",
+		"fx.go":        fxSrc,
+		"fx_test.go":   fxTest,
+		"wire.go":      wireSrc,
+		"wire_test.go": wireTest,
+	})
+	ms, _ := fxMutations()
+	ms = append(ms, Mutation{Name: "sep-wire", File: "wire.go", Old: `return ","`, New: `return ";"`})
+	spec := func(schemata bool) map[string]any {
+		return map[string]any{
+			"root":      root,
+			"test":      "go test -count=1 ./...",
+			"control":   Mutation{Name: "control", File: "fx.go", Old: "return 0", New: "return -5"},
+			"mutations": ms,
+			"schemata":  schemata,
+		}
+	}
+	classic := runMuharSpec(t, bin, work, spec(false))
+	sel := spec(true)
+	sel["select"] = map[string]any{"always": []string{"TestDoubleSource"}}
+	paired := runMuharSpecArgs(t, bin, work, sel, "-select")
+	if paired != classic {
+		t.Errorf("-select with schemata differs from classic\n--- classic:\n%s\n--- -select + schemata:\n%s", classic, paired)
+	}
+	if !strings.Contains(paired, "NOT_CAUGHT       sep-wire") {
+		t.Errorf("the Sep mutant survives the classic way but was not reported NOT CAUGHT:\n%s", paired)
 	}
 }

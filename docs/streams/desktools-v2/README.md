@@ -109,6 +109,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 52 | [Port the changelog and release check scripts](brief-52-port-the-changelog-and-release-check-scripts.md) | 3 | M | todo | — | — |
 | 53 | [Port the CI and regression floor scripts](brief-53-port-the-ci-and-regression-floor-scripts.md) | 3 | M | todo | — | — |
 | 54 | [Port the security control scripts](brief-54-port-the-security-control-scripts.md) | 4 | M | todo | — | — |
+| 55 | [Port the go-analysis adapter entrypoints](brief-55-port-the-go-analysis-adapter-entrypoints.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -205,12 +206,12 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.
 - **Wave 2 — /16:** cellctl reference migration, preserving launch/custody behavior while
   making root and nested help work offline without configuration or credentials.
-- **Wave 3 — /18–/28, /30–/53:** the migration children authored by /15, each depending
+- **Wave 3 — /18–/28, /30–/53, /55:** the migration children authored by /15, each depending
   only on /16's reference adapter. One complex entrypoint per child (statusgen, qualgen,
   deskboard, deskdispatch, deskwt, deskfleet, desksupervise, deskapps, deskclose, deskpost,
   deskroster, the GitLab fleet provisioner) or at most five simple ones (guards, custody,
   transport, install, merge authority, writers, loops, comms, metrics, readers, release,
-  admin, standalone modules, lints, plugin scripts, changelog and CI scripts). Human-gated
+  admin, standalone modules, lints, plugin scripts, changelog and CI scripts, the go-analysis adapter). Human-gated
   children: /25–/28, /30–/37, /42, /54 — each carries credentials, refusals or authority.
 - **Wave 4 — /29, /54:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
   it; /54 adds token renewal to the GitLab command /30 creates.

@@ -542,9 +542,12 @@ func flipStamp(date string, m []string) (string, error) {
 
 // flipDateRunnerRows returns (date, runner) for every data row of every table
 // in lines whose header names Date and Runner, and the index of each in lines. Like evidenceVerifierInfo it
-// reads the RIGHTMOST two cells, which survives an unescaped | in a command.
+// reads Date and Runner counted from the RIGHT, which survives an unescaped | in
+// a command; columns the header places to the right of Runner (a fail-first
+// table's Base) are skipped, not read as Runner.
 func flipDateRunnerRows(lines []string) (rows [][2]string, at []int) {
 	inTable := false
+	trail := 0 // header columns to the RIGHT of Runner (a fail-first table's Base)
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if !strings.HasPrefix(line, "|") {
@@ -556,12 +559,15 @@ func flipDateRunnerRows(lines []string) (rows [][2]string, at []int) {
 		}
 		if i+1 < len(lines) && separatorRowRe.MatchString(strings.Trim(strings.TrimSpace(lines[i+1]), "|")) {
 			hasDate, hasRunner := false, false
-			for _, c := range splitRow(line) {
+			hdr := splitRow(line)
+			trail = 0
+			for j, c := range hdr {
 				switch strings.ToLower(strings.TrimSpace(c)) {
 				case "date":
 					hasDate = true
 				case "runner":
 					hasRunner = true
+					trail = len(hdr) - 1 - j
 				}
 			}
 			inTable = hasDate && hasRunner
@@ -572,10 +578,10 @@ func flipDateRunnerRows(lines []string) (rows [][2]string, at []int) {
 			continue
 		}
 		cells := splitRow(line)
-		if len(cells) < 2 {
+		if len(cells) < 2+trail {
 			continue
 		}
-		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2]), strings.TrimSpace(cells[len(cells)-1])})
+		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2-trail]), strings.TrimSpace(cells[len(cells)-1-trail])})
 		at = append(at, i)
 	}
 	return rows, at
