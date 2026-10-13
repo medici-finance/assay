@@ -237,6 +237,7 @@ func TestGlobalCellRegistryKeepsHookDeadline(t *testing.T) {
 }
 
 // Exercise the actual launch entrypoints and policy routing, without starting desks.
+// regression: #2696
 func TestBinaryCodexCadenceDefault(t *testing.T) {
 	f := newPolicyFixture(t, "2.1.278")
 	for _, tc := range []struct {
@@ -244,11 +245,10 @@ func TestBinaryCodexCadenceDefault(t *testing.T) {
 		args       []string
 		want       string
 	}{
-		{"policy-codex", "intake-desk", nil, "interval=5m0s budget=20m0s"},
+		{"policy-codex", "intake-desk", nil, ""},
 		{"policy-claude", "pr-review-desk", nil, ""},
 		{"off", "intake-desk", []string{"--cadence", "off"}, ""},
 		{"override", "intake-desk", []string{"--cadence", "9m", "--tick-budget", "40m"}, "interval=9m0s budget=40m0s"},
-		{"budget-only", "intake-desk", []string{"--tick-budget", "40m"}, "interval=5m0s budget=40m0s"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := f.dryRunDesk(t, tc.role, tc.args...)
@@ -283,6 +283,7 @@ func TestBinaryCodexCadenceDefault(t *testing.T) {
 	}
 }
 
+// regression: #2696
 func TestBinaryUpCadenceFollowsEachPolicyHarness(t *testing.T) {
 	f := newPolicyFixture(t, "2.1.278")
 	for _, name := range []string{"codex", "tmux"} {
@@ -302,12 +303,13 @@ func TestBinaryUpCadenceFollowsEachPolicyHarness(t *testing.T) {
 			}
 			found = true
 			if role == "intake-desk" {
-				for _, want := range []string{"--cadence '5m0s'", "--tick-budget '20m0s'", "--cells-root " + cockpitQuote(f.cellsRoot)} {
+				for _, want := range []string{"--cells-root " + cockpitQuote(f.cellsRoot)} {
 					if !strings.Contains(line, want) {
 						t.Errorf("missing %q: %s", want, line)
 					}
 				}
-			} else if strings.Contains(line, "--cadence") {
+			}
+			if strings.Contains(line, "--cadence") {
 				t.Errorf("changed non-Codex role: %s", line)
 			}
 		}
@@ -317,11 +319,12 @@ func TestBinaryUpCadenceFollowsEachPolicyHarness(t *testing.T) {
 	}
 }
 
+// regression: #2696
 func TestDeskCadenceDefaultsStayScoped(t *testing.T) {
 	for _, kind := range []string{"house", "container", "scrubbed", "k8s"} {
 		for _, harness := range []string{"codex", "claude", "cursor"} {
 			c := resolveDeskCadence(kind, harness, "", "")
-			want := kind == "house" && harness == "codex"
+			want := false
 			if (c != nil) != want {
 				t.Errorf("%s/%s cadence=%+v", kind, harness, c)
 			}
@@ -329,6 +332,7 @@ func TestDeskCadenceDefaultsStayScoped(t *testing.T) {
 	}
 }
 
+// regression: #2696
 func TestBinaryLegacyCodexCadenceDefault(t *testing.T) {
 	f := newPolicyFixture(t, "2.1.278")
 	if err := os.WriteFile(filepath.Join(f.binDir, "herdr"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
@@ -344,7 +348,7 @@ func TestBinaryLegacyCodexCadenceDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := f.dryRunDesk(t, "worker-desk")
-	if r.code != 0 || !strings.Contains(r.stdout, "interval=5m0s budget=20m0s") {
+	if r.code != 0 || strings.Contains(r.stdout, "[cadence]") {
 		t.Fatalf("saved harness: %+v", r)
 	}
 	r = f.dryRunDesk(t, "worker-desk", "--harness", "claude", "--model", "claude-sonnet-4-6")
@@ -356,8 +360,8 @@ func TestBinaryLegacyCodexCadenceDefault(t *testing.T) {
 		t.Fatalf("explicit Codex up: %+v", r)
 	}
 	for _, line := range strings.Split(r.stdout, "\n") {
-		if strings.HasPrefix(line, "[dry-run]") && strings.Contains(line, " desk ") && !strings.Contains(line, "--cadence '5m0s'") {
-			t.Errorf("unscheduled role: %s", line)
+		if strings.HasPrefix(line, "[dry-run]") && strings.Contains(line, " desk ") && strings.Contains(line, "--cadence") {
+			t.Errorf("unexpected headless role: %s", line)
 		}
 	}
 	after, err := os.ReadFile(path)

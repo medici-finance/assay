@@ -10,6 +10,7 @@ package main
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -24,6 +25,28 @@ var (
 	// sessionRoleFn resolves this session's App role, swapped in tests.
 	sessionRoleFn = deskkit.SessionTokenRole
 )
+
+// custodyRole is the App role the custody path resolved this run, recorded for the envelope's
+// identity object. It is set from forgeFor (the one place the role is resolved) so the role
+// resolver is called exactly as often as before the identity record existed.
+var (
+	custodyRoleMu sync.Mutex
+	custodyRoleV  string
+)
+
+func recordCustodyRole(role string) {
+	custodyRoleMu.Lock()
+	custodyRoleV = role
+	custodyRoleMu.Unlock()
+}
+
+func resetCustodyRole() { recordCustodyRole("") }
+
+func custodyRoleSeen() string {
+	custodyRoleMu.Lock()
+	defer custodyRoleMu.Unlock()
+	return custodyRoleV
+}
 
 func init() {
 	deskkit.SetGitHubCustodyMinter(func(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {
@@ -48,9 +71,40 @@ var forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		return nil, fr, deskkit.Unverifiable("cannot resolve the deskread App role to read "+repo+
 			" — the read path authenticates as a minted App token, never an ambient forge-CLI identity", err)
 	}
+	recordCustodyRole(role)
 	f, ferr := deskkit.ForgeFor(fr, role)
 	if ferr != nil {
 		return nil, fr, ferr
+	}
+	return f, fr, nil
+}
+
+// forgeForRun picks the transport for one read: the CI workflow-token constructor when the run
+// settled the opt-in, the custody path otherwise. There is no fallback from the first to the
+// second: a refusal on the CI path is a refusal.
+func forgeForRun(repo string, o readOpts) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	if o.ciT != nil {
+		return ciForgeFor(repo, o.ciT)
+	}
+	return forgeFor(repo)
+}
+
+// ciForgeFor is the one function on the CI path that builds a backend. A repository other than
+// the job's own is not read and is never sent the token (it surfaces as a "partial" entry); for
+// the job's own repository it hands the token to deskkit.ReadOnlyForgeForCIToken, which re-checks
+// the token shape and the repository binding and returns a read-only, outbound-checked backend.
+func ciForgeFor(repo string, ci *ciTransport) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok {
+		return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable("bad repo "+repo, nil)
+	}
+	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+	if !strings.EqualFold(repo, ci.repository) {
+		return nil, fr, deskkit.Unverifiable("the CI workflow-token transport reads only the job's own repository", nil)
+	}
+	f, _, err := deskkit.ReadOnlyForgeForCIToken(fr, ci.repository, ci.token)
+	if err != nil {
+		return nil, fr, err
 	}
 	return f, fr, nil
 }

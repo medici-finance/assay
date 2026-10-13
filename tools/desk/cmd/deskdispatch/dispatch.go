@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -145,7 +147,26 @@ type dispatchOpts struct {
 	// A real dispatch names the path deskwt printed and nothing else — this flag never
 	// reaches one. See validateOperatorWorktree for the fail-closed checks it must pass.
 	worktree string
+	// run carries what the dispatch minted back to cmdDispatch's audit line. A POINTER, because
+	// dispatch() works on copies of the options (resolveBrief returns a new value) and the audit
+	// line is written from the caller's copy. nil on paths that mint nothing (--stamp-only).
+	run *dispatchRun
 }
+
+// dispatchRun is the per-run state a dispatch hands back to its own audit line.
+type dispatchRun struct {
+	// dispatchRef is the dispatch_ref minted after claim-acquire, or ""
+	// when none was minted (a dry run, a dispatch that stopped before the claim, a failed mint).
+	dispatchRef string
+}
+
+// dispatchClock and dispatchEntropy are the production clock and secure entropy source the
+// dispatch_ref is minted from. They are copied onto the dispatch plan (plan.now, plan.entropy)
+// before the claim, so a test fixes both by replacing these package seams.
+var (
+	dispatchClock             = func() time.Time { return time.Now().UTC() }
+	dispatchEntropy io.Reader = rand.Reader
+)
 
 func cmdDispatch(args []string) error {
 	if len(args) > 0 && (args[0] == "--check-verifier" || args[0] == "--attest-verifier") {
@@ -199,6 +220,7 @@ func cmdDispatch(args []string) error {
 		item: item, itemAlias: itemAlias, rework: *rework, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
 		model: *model, branch: *branch, brief: *brief, gateHuman: *gateHuman, pr: *pr,
 		promptFile: *promptFile, quiet: *quiet, dryRun: *dryRun, worktree: *worktree,
+		run: &dispatchRun{},
 	}
 	err := dispatch(o)
 	audit(o, err)
@@ -206,7 +228,7 @@ func cmdDispatch(args []string) error {
 }
 
 func dispatch(o dispatchOpts) error {
-	if err := storageAdmission(o.dryRun); err != nil {
+	if err := storageAdmission(o.dryRun, o.root); err != nil {
 		return err
 	}
 	// --brief is resolved ONCE, first, to the absolute path every later reader uses (resolveBrief):
@@ -227,6 +249,7 @@ func dispatch(o dispatchOpts) error {
 		return err
 	}
 	repo, branch, wtName := plan.repo, plan.branch, plan.wtName
+	plan.now, plan.entropy = dispatchClock, dispatchEntropy
 
 	if o.dryRun {
 		wtBanner := ""
@@ -311,6 +334,18 @@ func dispatch(o dispatchOpts) error {
 	// rather than at merge, and proceeding over it is correct when the overlap is intended.
 	echoWriteOverlap(os.Stderr, o)
 
+	// The review round (#2444), BEFORE the claim: the pre-dispatch gate may HOLD the head
+	// (a refusal — nothing has been claimed or written), and otherwise the lane's scope and
+	// round number are read for the assignment. A read that fails never holds: it yields a
+	// full pass with the round not determined (reviewroundread.go).
+	if reviewKit(o.kit) && o.pr > 0 {
+		round, herr := prepareReviewRound(o, plan, repo)
+		if herr != nil {
+			return herr
+		}
+		plan.round = round
+	}
+
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
 	// must not also be doing. The claim child is handed the DISPATCHING role's credential
 	// before it runs (resolveClaimAuth): the claim is a forge write, and the stamp step's mint
@@ -360,6 +395,14 @@ func dispatch(o dispatchOpts) error {
 	}
 	o.say("%s OK: %s claimed in %s (claim key %s) via %s, store %s, authenticated by %s",
 		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
+	// From here every abort returns through held.settle, which releases the claim (#2355).
+	held := &heldClaim{o: o, tool: plan.claimTool, key: plan.claimKey, repo: repo, auth: auth}
+
+	// dispatch_ref: the per-RUN key, minted right after the claim stands —
+	// the claim key alone names the ITEM, which every re-dispatch, re-review and stale reclaim
+	// reuses. A mint failure (the secure source failing) is a WARNING: the dispatch proceeds with
+	// no ref and never falls back to a weaker source.
+	dispatchRef := mintDispatchRef(o, plan)
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -384,7 +427,7 @@ func dispatch(o dispatchOpts) error {
 		// operator's corrected re-run a second later, is told "already claimed by a LIVE holder",
 		// and a human has to hand-delete the ref. A worktree-create abort that placed a claim and
 		// never released it is the field defect this line closes.
-		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
+		released := held.release()
 		// deskwt's OWN message is forwarded whole (SaidAll: preamble stripped, SCRUBBED —
 		// see runtool.go), because it is the line that names the cause (which branch, which
 		// worktree holds it, what to do). Not toolMessage(wt.stderr): that strips only the
@@ -405,9 +448,9 @@ func dispatch(o dispatchOpts) error {
 		// (the `deskwt add` argv as executed, deskwt's exit status, its stderr whole) is
 		// attached. The verdict is unchanged either way.
 		if exitCodeOf(wt.err) == deskkit.ExitRefused {
-			return wt.run.FailVerbatim(deskkit.ExitRefused, msg)
+			return held.settle(wt.run.FailVerbatim(deskkit.ExitRefused, msg))
 		}
-		return wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg)
+		return held.settle(wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg))
 	}
 	home := firstLine(wt.stdout)
 	// Absoluteness is tested with homeIsAbsolute (filepath.IsAbs under the host-OS seam), not a
@@ -423,11 +466,11 @@ func dispatch(o dispatchOpts) error {
 		// the deskwt-add-failed branch above does — rather than leave a phantom HELD claim that wedges
 		// the item (every corrected re-run told "already claimed by a LIVE holder" until a human
 		// hand-deletes the ref). A refused dispatch must not be a queue suppressor.
-		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
-		return deskkit.Unverifiable(fmt.Sprintf(
+		released := held.release()
+		return held.settle(deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: `deskwt add %s` exited 0 but named no absolute worktree path (%q). The agent's home "+
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
-				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil)
+				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil))
 	}
 	// IDENTITY, worktree-scoped (#1490). The dispatched agent's worktree must commit under its
 	// OWN role's App identity, not the identity the shared checkout carries — otherwise a
@@ -490,6 +533,7 @@ func dispatch(o dispatchOpts) error {
 			"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
 			stepWorktreeCreate, home, ext.run.Said())
 	}
+	recordDispatchRefInWorktree(o, home, dispatchRef)
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
 	// agent's "run"). FATAL failure class: a failure ABORTS the attempt — no prompt is
@@ -500,15 +544,18 @@ func dispatch(o dispatchOpts) error {
 	if _, herr := deskkit.RunHook(deskkit.HookBeforeRun, deskkit.HookEnv{
 		RunKey: plan.claimKey, Worktree: home, Repo: repo, Role: o.kit,
 	}); herr != nil {
-		released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
-		return deskkit.Unverifiable(fmt.Sprintf(
+		released := held.release()
+		return held.settle(deskkit.Unverifiable(fmt.Sprintf(
 			"step before_run: the before_run hook failed, so no prompt is emitted. The claim was %s. Hook: %v",
-			released, herr), herr)
+			released, herr), herr))
 	}
+
+	// The read-ahead packet (packet.go). Never an error: no packet means no `Packet:` line.
+	plan.packetPath = buildPacketFn(o, plan, repo, home)
 
 	prompt, perr := assemblePrompt(o, plan, home)
 	if perr != nil {
-		return perr
+		return held.settle(perr)
 	}
 
 	// 3 — roster registration.
@@ -520,7 +567,7 @@ func dispatch(o dispatchOpts) error {
 	// the ambient login — issue 1146.
 	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionScript, auth)
 	if gerr != nil {
-		return gerr
+		return held.settle(gerr)
 	}
 	o.say("%s %s", stepDecisionGate, gate)
 
@@ -534,12 +581,13 @@ func dispatch(o dispatchOpts) error {
 	}
 	if serr != nil {
 		if o.kit == "verifier" {
-			released := releaseClaim(o, plan.claimTool, auth, plan.claimKey, repo)
-			return deskkit.Unverifiable(fmt.Sprintf("verifier attestation failed; NO prompt emitted. Claim %s; retained worktree %s for recovery (deskdispatch --attest-verifier --root <home>). Reacquire the original claim before launching a recovered run: %v", released, home, serr), serr)
+			released := held.release()
+			return held.settle(deskkit.Unverifiable(fmt.Sprintf("verifier attestation failed; NO prompt emitted. Claim %s; retained worktree %s for recovery (deskdispatch --attest-verifier --root <home>). Reacquire the original claim before launching a recovered run: %v", released, home, serr), serr))
 		}
-		return serr
+		return held.settle(serr)
 	}
 	o.say("%s %s", stepModelStamp, stamp)
+	writeDispatchRecord(o, plan, dispatchRef, stamp)
 
 	// 6 — the review-lane queue label. When a reviewer is dispatched onto a known change,
 	// apply `authorization-needed` forge-neutrally (the resolved forge's idempotent label
@@ -552,7 +600,7 @@ func dispatch(o dispatchOpts) error {
 	o.say("%s %s", stepQueueLabel, stepQueueLabelApply(o, repo))
 
 	// 7 — the prompt.
-	return emitPrompt(o, prompt)
+	return held.settle(emitPrompt(o, prompt))
 }
 
 // dispatchPlan is what validateCallerPreconditions derives once, so no later step
@@ -616,6 +664,10 @@ type dispatchPlan struct {
 	// followUpOf is the MERGED PR a --rework dispatch follows up (0 = not a follow-up). Set by
 	// applyFollowUp, pre-claim, so the worktree branch and the prompt agree.
 	followUpOf int
+	// now and entropy are the clock and the secure entropy source the dispatch_ref is minted
+	// from — fields on the plan so a test can fix both.
+	now     func() time.Time
+	entropy io.Reader
 	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
 	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
 	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
@@ -627,6 +679,14 @@ type dispatchPlan struct {
 	// from the roster — never a flag. Resolved pre-claim, so a store that
 	// cannot be used refuses before any worktree is cut and before any credential is minted.
 	claimStore deskkit.ClaimStoreResolution
+	// packetPath is the absolute path of the read-ahead packet written for this dispatch, or
+	// "" when none was (no provider for the kit, --dry-run, or the build did not succeed).
+	// Set once, after the worktree exists; the prompt carries a `Packet:` line iff it is set.
+	packetPath string
+	// round is the review round this dispatch opens: the lane's scope (full pass or delta)
+	// and its round number, read before the claim. The zero value — every non-review
+	// dispatch, --dry-run, and a run with no forge read wired — states a full pass.
+	round reviewRound
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -701,8 +761,14 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// BOTH kits must be readable now. The common kit is checked here and not only at
 	// assembly time because a binary built without it would otherwise take the claim and
 	// then discover it cannot produce a prompt.
-	if _, err := kitText(o.kit); err != nil {
+	kit, err := kitText(o.kit)
+	if err != nil {
 		return plan, err
+	}
+	if reviewKit(o.kit) {
+		if err := checkReviewKitLanes(kit); err != nil {
+			return plan, err
+		}
 	}
 	if _, err := commonKitText(); err != nil {
 		return plan, err
@@ -1164,6 +1230,56 @@ func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo 
 	}
 	return "released"
 }
+
+// heldClaim is the item claim from the moment stepClaim places it until the dispatch either
+// emits its prompt or aborts. It is the ONE place a post-claim abort releases: every return in
+// dispatch() after the claim goes through settle, so a refusal later in the run (the decision
+// gate, the model stamp, prompt assembly) never leaves the claim HELD for the next attempt to read
+// as a LIVE holder (#2355). TestClaimReleaseChokepoint pins that shape.
+type heldClaim struct {
+	o            dispatchOpts
+	tool, key    string
+	repo, phrase string
+	auth         claimAuth
+}
+
+// release releases the claim once and returns releaseClaim's phrase; later calls return the
+// same phrase without a second release.
+func (h *heldClaim) release() string {
+	if h.phrase == "" {
+		h.phrase = releaseClaim(h.o, h.tool, h.auth, h.key, h.repo)
+	}
+	return h.phrase
+}
+
+// settle passes a nil error through (the dispatch succeeded and the claim is the agent's). A
+// non-nil one releases the claim — unless an abort path already did and named it in its own
+// message — and appends the outcome to the error, keeping its exit code.
+func (h *heldClaim) settle(err error) error {
+	if err == nil || h.phrase != "" {
+		return err
+	}
+	note := fmt.Sprintf(" The dispatch claim %s was %s, so a re-run is not refused behind it.", h.key, h.release())
+	if de, ok := err.(*deskkit.DeskError); ok {
+		cp := *de
+		cp.Msg += note
+		return &cp
+	}
+	// Anything else — a plain error, or a *DeskError wrapped with %w — keeps its whole chain: the
+	// note rides on a wrapper that Unwraps to err, so errors.As still reaches a wrapped DeskError's
+	// Code, Err, RetryAfter and Finding (and ExitCodeOf still reads its Code).
+	return &settledError{err: err, note: note}
+}
+
+// settledError is a post-claim abort's error with the claim-release outcome appended to its
+// message. It adds text only; the cause and everything errors.As can reach through it are err's.
+type settledError struct {
+	err  error
+	note string
+}
+
+func (e *settledError) Error() string { return e.err.Error() + e.note }
+func (e *settledError) Unwrap() error { return e.err }
 
 // claimAuth is the credential hand-off for every claim-tool child this verb starts (acquire,
 // show, release) and, via scriptEnv, for the decision-gate script (issue 1146). Exactly one of
@@ -1795,14 +1911,10 @@ func tokenPathForMessage(path string) string {
 }
 
 // validTier checks the tier against the dispatch-tier vocabulary the stamp reader owns,
-// rather than against a second hand-written list here.
+// through the one normalisation the stamp label and the dispatch record also use.
 func validTier(t string) bool {
-	for _, v := range deskkit.DispatchTiers() {
-		if strings.EqualFold(strings.TrimSpace(t), v) {
-			return true
-		}
-	}
-	return false
+	_, ok := deskkit.CanonicalDispatchTier(t)
+	return ok
 }
 
 // consumerHelper is one consumer script this verb wraps, with its PATH port: the binary the
@@ -2026,6 +2138,11 @@ func audit(o dispatchOpts, err error) {
 	}
 	if o.dryRun {
 		detail = "dry-run item=" + o.item
+	}
+	// The audit log is local state (mode 0600), so the visibility rule lets the ref appear here
+	// in clear — it is how an operator joins this line to the dispatch record.
+	if o.run != nil && o.run.dispatchRef != "" && !o.stampOnly && !o.dryRun {
+		detail += " dispatch_ref=" + o.run.dispatchRef
 	}
 	if err != nil {
 		switch deskkit.ExitCodeOf(err) {

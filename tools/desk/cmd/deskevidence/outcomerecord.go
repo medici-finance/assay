@@ -14,10 +14,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,9 +70,13 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: --outcome-record target failed the path-prefix guard: " + perr.Error())
 	}
 	ac.file = targetRepoPath
-	// Pre-work admission, bound to this record's brief key: the record's target is
-	// derived from its brief, so an attestation for another brief refuses here.
-	if _, aerr := admitVerifierEvidence(root, repoSlug, targetRepoPath, ac); aerr != nil {
+	// Mint, resolve the forge, then pre-work admission through that forge (admitLanding),
+	// bound to this record's brief key: the record's target is derived from its brief, so an
+	// attestation for another brief refuses here. The refusals above need only the record's
+	// own bytes, so a record they refuse never mints; everything below reads or writes the
+	// forge and runs only for an admitted landing.
+	fg, fr, receipt, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, ac)
+	if aerr != nil {
 		return aerr
 	}
 	commitContent := deskkit.CanonicalBytes(rec.Raw)
@@ -82,12 +90,35 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return ierr
 	}
 
-	if merr := mintTokenFn(repoSlug); merr != nil {
-		return merr
+	// verify-reset/03: every verify-fail / blocked record lands with a complete
+	// verify-wake-v1 receipt the planner can hold it on. The receipt changes the record's
+	// bytes, so its name is re-derived — same stream directory, same brief number, which
+	// keeps the admission above bound to this brief.
+	derived, derr := outcomeReceiptFn(rec.Raw, root, fg, fr, branch, receipt.Binding.Source)
+	if derr != nil {
+		return derr
 	}
-	fg, fr, ferr := forgeForFn(owner, name)
-	if ferr != nil {
-		return ferr
+	if !bytes.Equal(derived, rec.Raw) {
+		drec, dperr := deskkit.ParseRecord(derived)
+		if dperr != nil {
+			return deskkit.Refused("refused: derived outcome record: " + dperr.Error())
+		}
+		dpath, dnerr := deskkit.RecordName(drec.Raw)
+		if dnerr != nil {
+			return deskkit.Refused("refused: cannot name the derived outcome record: " + dnerr.Error())
+		}
+		if gerr := deskkit.UnderOutcomeRecordsDir(dpath); gerr != nil {
+			return deskkit.Refused("refused: derived outcome record target failed the path-prefix guard: " + gerr.Error())
+		}
+		if !sameBriefSlot(targetRepoPath, dpath) {
+			return deskkit.Refused("refused: the derived outcome record moved from " + targetRepoPath + " to " + dpath)
+		}
+		rec, targetRepoPath = drec, dpath
+		ac.file = targetRepoPath
+		commitContent = deskkit.CanonicalBytes(rec.Raw)
+		if len(commitContent) > maxBytes {
+			return deskkit.Refused(fmt.Sprintf("refused: outcome record exceeds %d bytes (%d)", maxBytes, len(commitContent)))
+		}
 	}
 
 	remoteExists := false
@@ -111,6 +142,19 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: " + targetRepoPath + " already exists on " + branch +
 			" with DIFFERENT bytes — verify-outcome records are immutable; a correction is a new record " +
 			"(a fresh ts/digest), never an edit of an existing one")
+	}
+	// A refused Evidence append must not be followed by a receipt that makes
+	// the next verifier pass hold unsupported results. Idempotent existing
+	// records returned above; every NEW record needs this run's landed Evidence.
+	var outcome deskkit.WakeReceipt
+	if err := json.Unmarshal(commitContent, &outcome); err != nil {
+		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
+	}
+	if err := outcomeEvidenceBindingFn(root, fg, fr, branch, receipt, outcome.SHA); err != nil {
+		return err
+	}
+	if err := outcomeObservationBindingFn(root, fg, fr, branch, receipt, outcome); err != nil {
+		return err
 	}
 
 	// A brand-new file: scan it whole (no base to diff against).
@@ -273,4 +317,106 @@ func draftChangeLabel(pr *deskkit.PullRef) string {
 		return "draft change " + pr.URL
 	}
 	return "a draft change the forge returned no number for"
+}
+
+// outcomeReceiptFn derives a non-pass record's verify-wake-v1 receipt; a seam so the behavioural
+// suite (plain directories, no git history) can land records without one.
+var outcomeReceiptFn = deriveOutcomeReceipt
+
+// deriveOutcomeReceipt returns raw with its receipt (deskkit.BuildOutcomeRecord): the declared
+// inputs are read from the LOCAL checkout at the admitted observation Source, and the brief's own
+// revision from the brief as it lands on branch. A pass record passes through. A non-pass record
+// that already carries a verify-wake-v1 receipt passes through unchanged only when that receipt
+// is complete (deskkit.CheckSuppliedReceipt; validateReceipt then runs its three checks); an
+// incomplete one is refused, naming the field, and never lands.
+func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch, observedSource string) ([]byte, error) {
+	var wr deskkit.WakeReceipt
+	if err := json.Unmarshal(raw, &wr); err != nil {
+		return nil, deskkit.Refused("refused: invalid --outcome-record JSON: " + err.Error())
+	}
+	if !wr.IsFailedOrBlocked() {
+		return raw, nil
+	}
+	if wr.Schema == deskkit.SchemaWakeV1 {
+		if err := deskkit.CheckSuppliedReceipt(wr); err != nil {
+			return nil, err
+		}
+		return raw, nil
+	}
+	if root == "" {
+		root = "."
+	}
+	stream, num, kerr := deskkit.SplitBriefKey(wr.Brief)
+	if kerr != nil {
+		return nil, deskkit.Refused("refused: brief key " + wr.Brief + " is invalid: " + kerr.Error())
+	}
+	briefPath, perr := localBriefPath(root, stream, num)
+	if perr != nil {
+		return nil, deskkit.Unverifiable("cannot resolve the brief file for "+wr.Brief+" under "+root, perr)
+	}
+	landed, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: briefPath, Ref: branch})
+	if rerr != nil {
+		return nil, deskkit.Unverifiable("cannot read "+briefPath+" on "+branch+" to hash the receipt's brief revision", rerr)
+	}
+	if len(observedSource) != 40 {
+		return nil, deskkit.Refused("refused: outcome receipt needs its admitted observation commit")
+	}
+	if _, err := hex.DecodeString(observedSource); err != nil {
+		return nil, deskkit.Refused("refused: outcome observation revision is not a full commit SHA")
+	}
+	// The record SHA identifies landed Evidence. Deliverable hashes describe
+	// the separately admitted observation, even when repairs landed in between.
+	tree, terr := newGitOutcomeTree(root, observedSource)
+	if terr != nil {
+		return nil, terr
+	}
+	return deskkit.BuildOutcomeRecord(raw, deskkit.OutcomeReceiptInput{
+		BriefPath: briefPath, LandedBrief: landed.Content, ToolVersion: deskkit.ReleaseTagOrDev(),
+		Repo: fr.Slug(),
+	}, tree)
+}
+
+// sameBriefSlot reports whether two record paths share their stream directory and brief number
+// (the "<NN>-" prefix of the file name).
+func sameBriefSlot(a, b string) bool {
+	nn := func(p string) string { n, _, _ := strings.Cut(path.Base(p), "-"); return n }
+	return path.Dir(a) == path.Dir(b) && nn(a) == nn(b)
+}
+
+// gitOutcomeTree is a deskkit.OutcomeTree over the local checkout at root, at one commit.
+type gitOutcomeTree struct{ root, sha string }
+
+func newGitOutcomeTree(root, sha string) (gitOutcomeTree, error) {
+	sha = strings.TrimSpace(sha)
+	if sha == "" || strings.HasPrefix(sha, "-") {
+		return gitOutcomeTree{}, deskkit.Refused("refused: sha " + strconv.Quote(sha) + " is not a commit")
+	}
+	if err := exec.Command("git", "-C", root, "cat-file", "-e", sha+"^{commit}").Run(); err != nil {
+		return gitOutcomeTree{}, deskkit.Unverifiable("could-not-check: commit "+sha+" is not in the local checkout at "+root, err)
+	}
+	return gitOutcomeTree{root: root, sha: sha}, nil
+}
+
+func (g gitOutcomeTree) PathKind(rel string) (string, error) {
+	kind, ok := gitPathKindAt(g.root, g.sha, rel)
+	if !ok {
+		return "", nil // the commit resolves (newGitOutcomeTree), so a miss is an absent path
+	}
+	return kind, nil
+}
+
+func (g gitOutcomeTree) ReadFile(rel string) ([]byte, error) { return gitShowAt(g.root, g.sha, rel) }
+
+func (g gitOutcomeTree) ListFiles(rel string) ([]string, error) {
+	out, err := exec.Command("git", "-C", g.root, "ls-tree", "-r", "--name-only", g.sha, "--", strings.TrimSuffix(rel, "/")+"/").Output()
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			files = append(files, l)
+		}
+	}
+	return files, nil
 }

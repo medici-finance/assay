@@ -1,0 +1,6 @@
+Starting...
+Gathering coverage... done in 6m49.8s
+ NOT COVERED CONDITIONALS_BOUNDARY at b.go:4:11
+
+Shutting down gracefully...
+      KILLED CONDITIONALS_NEGATION at a.go:11:7

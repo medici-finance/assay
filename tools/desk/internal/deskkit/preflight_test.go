@@ -13,6 +13,9 @@ package deskkit
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -454,13 +457,196 @@ func TestPreflightRejectionVocabulary(t *testing.T) {
 		"remote: error: GH006: Protected branch update failed",
 	}
 	for _, r := range rejections {
-		if !rejectionRe.MatchString(r) {
+		if !isRejection(r) {
 			t.Errorf("transport answer %q is NOT read as a rejection — it would report inconclusive", r)
 		}
 	}
 	for _, ok := range []string{"Everything up-to-date", "To github.com:org/repo.git"} {
-		if rejectionRe.MatchString(ok) {
+		if isRejection(ok) {
 			t.Errorf("benign transport output %q is read as a rejection", ok)
+		}
+	}
+}
+
+// TestPreflightRejectionIgnoresAddresses — the defect class: digits that belong to
+// an ADDRESS (a URL's port or path, a host:port in a dial error) are not a status
+// the forge answered. Every shape of address carrying 401/403 beside a non-denial
+// answer must stay inconclusive; the same addresses beside a real denial must still
+// be a rejection. Each case plants the digits at a different position.
+func TestPreflightRejectionIgnoresAddresses(t *testing.T) {
+	addrs := []string{
+		`"http://127.0.0.1:40109/org/repo.git/info/refs?service=git-upload-pack"`,
+		`"http://127.0.0.1:14030/org/repo.git/info/refs"`,
+		`"https://example.test/org/401/repo.git"`,
+		`"https://example.test/org/repo403.git?id=4010"`,
+		`http://[::1]:40300/x`,
+		`127.0.0.1:40309`,
+		`localhost:14013`,
+		`github.com:403`,
+	}
+	for _, a := range addrs {
+		for _, answer := range []string{
+			"unexpected requesting %s status code: 502",
+			"dial tcp %s: connect: connection refused",
+			"Get %s: context deadline exceeded",
+		} {
+			text := fmt.Sprintf(answer, a)
+			if isRejection(text) {
+				t.Errorf("non-denial %q is read as a rejection", text)
+			}
+		}
+		for _, denied := range []string{
+			"unexpected requesting %s status code: 403",
+			"remote: Permission to org/repo.git denied to bot (%s)",
+		} {
+			text := fmt.Sprintf(denied, a)
+			if !isRejection(text) {
+				t.Errorf("denial %q is NOT read as a rejection", text)
+			}
+		}
+	}
+}
+
+// denialBesideAddress are denials whose wording shares a whitespace-delimited token
+// with an address, or whose status sits directly after a colon. Blanking the ADDRESS
+// must leave the wording standing: each is a rejection.
+var denialBesideAddress = []string{
+	`{"message":"Not authorized","documentation_url":"https://docs.example.test/rest"}`,
+	`{"message":"Permission denied","documentation_url":"https://docs.example.test/rest"}`,
+	`{"message":"Forbidden","documentation_url":"https://docs.example.test/rest","status":"403"}`,
+	`<a href="https://sso.example.test/login">Not authorized</a>`,
+	`<a href="https://h.example.test/help">403</a>`,
+	`{"url":"https://h.example.test/o/r.git","error":"permission denied"}`,
+	`https://h.example.test/o/r.git:permission denied`,
+	`https://h.example.test/o/r.git|blocked by policy`,
+	`url=https://h.example.test/o/r.git,status=403`,
+	`error:403`,
+	`status:403`,
+	`HTTP:403`,
+	`code:401`,
+	`Not authorized - see https://docs.example.test/rest`,
+}
+
+// numbersNotStatuses carry 401 or 403 as part of a LONGER number outside any
+// address: a request number, an id, a count. None is a status the forge answered.
+var numbersNotStatuses = []string{
+	`Not Found (request 14030)`,
+	`Not Found (request 14010)`,
+	`Not Found request id 9401`,
+	`Bad Gateway code 4030`,
+	`unexpected status code: 502 (trace 140301)`,
+}
+
+// TestPreflightRejectionDenialBesideAddress — blanking removes the address and
+// nothing else: wording that touches a URL through punctuation is still read.
+func TestPreflightRejectionDenialBesideAddress(t *testing.T) {
+	for _, d := range denialBesideAddress {
+		if !isRejection(d) {
+			t.Errorf("denial %q is NOT read as a rejection: address blanking erased its wording", d)
+		}
+	}
+}
+
+// TestPreflightRejectionWholeNumbers — the status codes are whole tokens: 401/403
+// inside a longer number that is not an address does not read as a denial. This is
+// the row that goes red if the word boundaries around the codes are removed.
+func TestPreflightRejectionWholeNumbers(t *testing.T) {
+	for _, n := range numbersNotStatuses {
+		if isRejection(n) {
+			t.Errorf("non-denial %q is read as a rejection: digits of a longer number matched a status", n)
+		}
+	}
+}
+
+// rejectionReUses lists, as "file:line in <func>", every use of the rejectionRe
+// identifier in src other than its own declaration. A use found by the Go parser
+// cannot be spelled around: an alias, an argument and a parenthesised receiver all
+// surface as identifier uses.
+func rejectionReUses(t *testing.T, name string, src []byte) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, src, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	var uses []string
+	for _, d := range f.Decls {
+		scope := "package scope"
+		var decl ast.Node = d
+		if fn, ok := d.(*ast.FuncDecl); ok {
+			scope = fn.Name.Name
+		}
+		ast.Inspect(decl, func(n ast.Node) bool {
+			if vs, ok := n.(*ast.ValueSpec); ok {
+				for _, id := range vs.Names {
+					if id.Name == "rejectionRe" {
+						// the declaration itself; its initialiser is still walked
+						for _, v := range vs.Values {
+							ast.Inspect(v, func(m ast.Node) bool {
+								if id, ok := m.(*ast.Ident); ok && id.Name == "rejectionRe" {
+									uses = append(uses, fmt.Sprintf("%s:%d in %s", name, fset.Position(id.Pos()).Line, scope))
+								}
+								return true
+							})
+						}
+						return false
+					}
+				}
+			}
+			if id, ok := n.(*ast.Ident); ok && id.Name == "rejectionRe" {
+				uses = append(uses, fmt.Sprintf("%s:%d in %s", name, fset.Position(id.Pos()).Line, scope))
+			}
+			return true
+		})
+	}
+	return uses
+}
+
+// TestPreflightRejectionCallerAllowList — the class guard: rejectionRe is reached
+// from exactly one place, isRejection in preflight.go, which blanks addresses
+// first. It resolves identifier uses with the Go parser, so a direct call, an
+// alias, the regex passed as an argument and a parenthesised receiver are all
+// found. It guards rejectionRe only, not every status matcher in the package.
+func TestPreflightRejectionCallerAllowList(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var uses []string
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		uses = append(uses, rejectionReUses(t, f, b)...)
+	}
+	if len(uses) != 1 || !strings.HasPrefix(uses[0], "preflight.go:") || !strings.HasSuffix(uses[0], " in isRejection") {
+		t.Fatalf("rejectionRe must be used exactly once, inside isRejection (preflight.go); found %v", uses)
+	}
+}
+
+// TestPreflightRejectionGuardPositiveControl — the guard's matcher must still see a
+// planted second site in every shape it claims to catch, so a broken matcher fails
+// here instead of reporting clean.
+func TestPreflightRejectionGuardPositiveControl(t *testing.T) {
+	const allowed = "package p\nvar rejectionRe = regexp.MustCompile(`x`)\nfunc isRejection(s string) bool { return rejectionRe.MatchString(s) }\n"
+	if got := rejectionReUses(t, "ok.go", []byte(allowed)); len(got) != 1 || !strings.HasSuffix(got[0], " in isRejection") {
+		t.Fatalf("the allowed shape is read as %v, want one use in isRejection", got)
+	}
+	for name, src := range map[string]string{
+		"direct":        "package p\nfunc f(s string) bool { return rejectionRe.MatchString(s) }\n",
+		"alias":         "package p\nfunc f(s string) bool { r := rejectionRe; return r.MatchString(s) }\n",
+		"package alias": "package p\nvar zz = rejectionRe\n",
+		"argument":      "package p\nfunc f(s string) bool { return g(rejectionRe, s) }\n",
+		"parenthesised": "package p\nfunc f(s string) bool { return (rejectionRe).MatchString(s) }\n",
+		"split":         "package p\nfunc f(s string) bool { return rejectionRe.\n\tMatchString(s) }\n",
+	} {
+		got := rejectionReUses(t, name+".go", []byte(src))
+		if len(got) != 1 || strings.HasSuffix(got[0], " in isRejection") {
+			t.Errorf("planted %s site is read as %v, want one use outside isRejection", name, got)
 		}
 	}
 }

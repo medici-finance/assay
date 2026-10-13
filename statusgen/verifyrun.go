@@ -144,11 +144,6 @@ const (
 // could-not-run rather than fail.
 const witnessTimeoutDefault = 10 * time.Minute
 
-// treeSHALen is how much of the HEAD SHA a witness records. Longer than git's
-// 7-char default on purpose: this is the field a re-runner uses to fetch the
-// exact tree the output hash belongs to, so collision-resistance beats brevity.
-const treeSHALen = 12
-
 // witnessHeader is the Evidence table header verifyrun writes. The column names
 // are the ones unrun.go's parseEvidenceRows already keys on (`#`, `Date`,
 // `Runner`), so a witness table is read by the existing UNRUN derivation with no
@@ -923,14 +918,6 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	}
 }
 
-// unescapePipes converts a markdown-table-escaped `\|` back into the pipe the
-// author wrote. A Verify cell MUST escape its pipes or the table shreds; the
-// shell must receive the unescaped form or every pipeline in the corpus runs as
-// a literal backslash.
-func unescapePipes(command string) string {
-	return strings.ReplaceAll(command, `\|`, `|`)
-}
-
 // winCmdLine builds the RAW Windows command line for a `cmd.exe` Verify row
 // (issue #1424). argv is the full interpreter argv the dispatcher assembled —
 // the interpreter/prefix tokens followed by the row's own command string as its
@@ -1538,12 +1525,6 @@ func checkWitnesses(verifySection, evidenceSection string) []checkFinding {
 		}
 	}
 	return out
-}
-
-// normalizeCommandText collapses whitespace so a reflowed table cell is not
-// mistaken for an edited command.
-func normalizeCommandText(s string) string {
-	return strings.Join(strings.Fields(s), " ")
 }
 
 // checkExitCode folds per-row findings into the process exit code.

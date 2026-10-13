@@ -33,12 +33,20 @@
 #   - statusgen: statusgen/** (Go) — NOT under `forgeban` today; brought under this ban so
 #                a sibling migration's progress (example-stream/18) is visible as a falling
 #                count (desktools-v2/08 holds the zero once it reaches it).
+#   - forgeread: forgeread/** (Go + shell) — the importable fact-reader module.
+#                Unlike the two trees above this one is a FAILING gate from day one: the library is
+#                the offline/frozen surface plus adapters that take only access their caller admits,
+#                so it may not contain ANY forge reach-around (all six classes a-f, no backend
+#                carve-out, no forge.go carve-out). It is reported as its own `forgeread sites: N`
+#                line and is NOT folded into the reach-around TOTAL, so the recorded desk/statusgen
+#                baseline is unchanged; N > 0 makes this script exit 1.
 # .github/workflows/** is deliberately NOT scanned: its `gh` calls run as standalone CI steps
 # under the workflow's own token, in a different execution context with no Go seam to reach
 # (desktools-v2/01 inventory group H).
 #
-# COUNTING (advisory) MODE: prints the counts and exits 0, always — this is the recorded
-# baseline, not a failure, exactly as desktools-go-git's count-git-exec.sh landed. It flips to
+# COUNTING (advisory) MODE: prints the counts and exits 0 — this is the recorded baseline, not a
+# failure, exactly as desktools-go-git's count-git-exec.sh landed — EXCEPT for the forgeread tree
+# above, whose non-zero count exits 1. The desk and statusgen columns flip to
 # FAILING only after a migration drives N down (desktools-v2/08 for the statusgen half; the
 # desk-tools half in a later, not-yet-authored brief).
 #
@@ -57,6 +65,7 @@ DESK="$ROOT/tools/desk"
 CELLCTL="$ROOT/tools/cellctl"
 SKILLS="$ROOT/plugins/assay"
 STATUSGEN="$ROOT/statusgen"
+FORGEREAD="$ROOT/forgeread"
 
 # The two backends and their test siblings — excluded from every class. Named explicitly
 # (forge_github.go, forge_gitlab.go) so a reader can grep this file for either name and find
@@ -185,6 +194,31 @@ CLASS_F_DESK=$(( $(gitlab_literal "$DESK") + $(gitlab_literal "$CELLCTL") + $(gi
 # statusgen has Go consumers only, matching the scope of the original four classes.
 CLASS_F_STATUSGEN=$(grep -rEn '/api/v4|gitlab\.com' "$STATUSGEN" --include='*.go' 2>/dev/null | grep -v -E "$BACKEND_EXCLUDE" | grep -v '_test\.go:' | wc -l | tr -d ' ')
 
+# ---------- the forgeread tree: every class, no carve-outs, failing ----------
+
+# BACKEND_EXCLUDE is deliberately NOT applied here: nothing in forgeread/ is a Forge backend. The
+# class (a)/(b)/(c)/(d)/(e)/(f) scans below run the same matchers over the module with no
+# exclusion beyond test files (and wholly-commented lines for (a)), so a planted reach-around
+# anywhere under forgeread/ — root, adapters, or a new subpackage — is a counted site.
+fr_scan() {
+  # fr_scan <extended-regex> <grep --include args...> -> count of non-test matching lines
+  re="$1"; shift
+  grep -rEn "$re" "$FORGEREAD" "$@" 2>/dev/null \
+    | grep -v -E '_test\.go:|\.test\.sh:' | wc -l | tr -d ' '
+}
+FR_A_GO=$(grep -rEn "$GH_GO_RE" "$FORGEREAD" --include='*.go' 2>/dev/null \
+  | grep -v -E ':[0-9]+:[[:space:]]*//' | grep -v '_test\.go:' | wc -l | tr -d ' ')
+FR_A_SH=$(grep -rEn "(^|[^A-Za-z0-9_.-])gh (${GH_SUBCMDS})([^A-Za-z0-9_-]|\$)" "$FORGEREAD" --include='*.sh' 2>/dev/null \
+  | grep -v -E '\.test\.sh:' | wc -l | tr -d ' ')
+FR_B=$(find "$FORGEREAD" -type f -name '*.go' \( -name '*forge*' -o -name '*resolve*' \) 2>/dev/null \
+  | grep -v '_test\.go$' | { xargs grep -cE '"origin"' 2>/dev/null || true; } | count_lines)
+FR_C=$(fr_scan '(pullRequest|mergeRequest)\(' --include='*.go')
+FR_D=$(fr_scan 'api\.github\.com' --include='*.go')
+FR_E=$(( $(fr_scan 'exec\.Command\("glab"' --include='*.go') \
+  + $(fr_scan "(^|[^A-Za-z0-9_.-])glab (${GLAB_SUBCMDS})([^A-Za-z0-9_-]|\$)" --include='*.sh') ))
+FR_F=$(fr_scan '/api/v4|gitlab\.com' --include='*.go' --include='*.sh')
+FORGEREAD_TOTAL=$((FR_A_GO + FR_A_SH + FR_B + FR_C + FR_D + FR_E + FR_F))
+
 # ---------- totals ----------
 
 DESK_TOTAL=$((CLASS_A_DESK + CLASS_B_DESK + CLASS_C_DESK + CLASS_D_DESK))
@@ -199,6 +233,7 @@ echo "  class d (api.github.com host literal):      desk=$CLASS_D_DESK statusgen
 echo "class e (glab subprocess): desk=$CLASS_E_DESK statusgen=$CLASS_E_STATUSGEN"
 echo "class f (GitLab API literal): desk=$CLASS_F_DESK statusgen=$CLASS_F_STATUSGEN"
 echo "statusgen sites: $STATUSGEN_TOTAL"
+echo "forgeread sites: $FORGEREAD_TOTAL"
 
 if [ "${1:-}" = "--baseline" ]; then
   BASELINE_FILE="$ROOT/docs/streams/desktools-v2/forge-ban-baseline.txt"
@@ -220,4 +255,10 @@ if [ "${1:-}" = "--baseline" ]; then
   echo "baseline written: $LINE; $LINE13 ($BASELINE_FILE)"
 fi
 
+# The forgeread tree is the one FAILING column: any site in it is a reach-around inside the
+# library whose whole point is to hold none.
+if [ "$FORGEREAD_TOTAL" -gt 0 ]; then
+  echo "forge-ban: $FORGEREAD_TOTAL reach-around site(s) under forgeread/ — that tree must hold none" >&2
+  exit 1
+fi
 exit 0

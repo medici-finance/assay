@@ -944,6 +944,7 @@ func TestRuleFixturesGoRed(t *testing.T) {
 		{"moving-ref", ruleMovingRef, 4},
 		{"portability", rulePortability, 5},
 		{"gotest-run-vacuous", ruleGoTestRunVacuous, 6},
+		{"grep-pipe-zero-count", ruleGrepPipeZeroCount, 6},
 	}
 	for _, tc := range tests {
 		t.Run(tc.dir, func(t *testing.T) {
@@ -989,7 +990,7 @@ func TestRuleTagsAreUnique(t *testing.T) {
 	tags := []string{
 		ruleERELiteralPipe, ruleGrepZeroCount, ruleExitSwallowed, ruleRE2LiteralPipe,
 		ruleMetavar, ruleGoRunExit, ruleBREAlternation, ruleShreddedCell,
-		ruleMovingRef, rulePortability, ruleGoTestRunVacuous,
+		ruleMovingRef, rulePortability, ruleGoTestRunVacuous, ruleGrepPipeZeroCount,
 	}
 	seen := map[string]bool{}
 	for _, tag := range tags {
@@ -1142,5 +1143,55 @@ func TestUnfailableRowNoticesAreDeterministic(t *testing.T) {
 		if got := strings.Join(unfailableRowNotices(streams), "\n"); got != first {
 			t.Fatalf("notice order is not stable across runs:\n%s\n---\n%s", first, got)
 		}
+	}
+}
+
+// TestGrepPipeZeroCount_Shapes pins rule 13 (#1862) directly against
+// rowFindings: the unguarded shapes fire, and the three forms the rule must stay
+// silent on (a leading `!`, the guarded `{ … || … ; } |` form, a `≥ 1` Expect)
+// plus the neighbours it must not claim (no later stage, no grep, `|| true`).
+// regression: #1862
+func TestGrepPipeZeroCount_Shapes(t *testing.T) {
+	tests := []struct {
+		name string
+		row  string
+		want []string
+	}{
+		{"grep into wc, bare 0", "| 1 | `grep -rn 'x' d/ \\| wc -l` | `0` |", []string{"grep-pipe-zero-count row 1"}},
+		{"prints 0", "| 1 | `grep -rn 'x' d/ \\| wc -l` | prints `0` |", []string{"grep-pipe-zero-count row 1"}},
+		{"output is 0", "| 1 | `grep -rn 'x' d/ \\| wc -l` | output is `0` |", []string{"grep-pipe-zero-count row 1"}},
+		{"egrep into tr into wc, after &&", "| 1 | `test -d d && egrep -rn 'x' d/ \\| tr -d ' ' \\| wc -l` | 0 |", []string{"grep-pipe-zero-count row 1"}},
+		{"grep -v as a middle stage", "| 1 | `cat f \\| grep -v k \\| sort \\| wc -l` | output is `0` |", []string{"grep-pipe-zero-count row 1"}},
+		{"git grep", "| 1 | `git grep -n x -- d/ \\| wc -l` | 0 |", []string{"grep-pipe-zero-count row 1"}},
+		{"git -C dir grep", "| 1 | `git -C d grep -n x \\| wc -l` | 0 |", []string{"grep-pipe-zero-count row 1"}},
+		{"guard leaves a second unguarded grep stage", "| 1 | `{ grep -rn x d/ \\|\\| [ $? -eq 1 ]; } \\| grep -v y \\| wc -l` | output is `0` |", []string{"grep-pipe-zero-count row 1"}},
+
+		{"leading ! owns the pipeline status", "| 1 | `! grep -rn x d/ \\| grep -v y` | 0 |", nil},
+		{"guarded brace form", "| 1 | `{ grep -rn x d/ \\|\\| [ $? -eq 1 ]; } \\| wc -l` | output is `0` |", nil},
+		{"guarded git grep", "| 1 | `{ git grep -n x -- d/ \\|\\| [ $? -eq 1 ]; } \\| wc -l` | output is `0` |", nil},
+		{">= 1 Expect", "| 1 | `grep -rn x d/ \\| wc -l` | ≥ 1 |", nil},
+		{"exit-led Expect", "| 1 | `grep -rn x d/ \\| wc -l` | exit 1 with `0` printed |", nil},
+		{"0 then a non-zero exit", "| 1 | `grep -rn x d/ \\| wc -l` | output is `0`, exit 1 |", nil},
+		{"bare 0, exit 1 in prose", "| 1 | `grep -rn x d/ \\| wc -l` | `0` (exit 1 under pipefail) |", nil},
+		{"0 then exit 0 still fires", "| 1 | `grep -rn x d/ \\| wc -l` | output is `0`, exit 0 |", []string{"grep-pipe-zero-count row 1"}},
+		{"no later stage", "| 1 | `grep -q x f` | 0 |", nil},
+		{"no grep ahead of the counter", "| 1 | `ls d/ \\| wc -l` | 0 |", nil},
+		{"grep only as the last stage", "| 1 | `ls d/ \\| grep -q x` | 0 |", nil},
+		{"|| true makes the final pipeline `true`", "| 1 | `grep -rn x d/ \\| wc -l \\|\\| true` | 0 |", nil},
+		{"git subcommand other than grep", "| 1 | `git log --oneline \\| wc -l` | 0 |", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := collect(t, verifySection(tc.row))
+			var filtered []string
+			for _, g := range got {
+				if strings.HasPrefix(g, ruleGrepPipeZeroCount+" ") {
+					filtered = append(filtered, g)
+				}
+			}
+			if strings.Join(filtered, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("row %q\n  got  %v (grep-pipe-zero-count only)\n  want %v", tc.row, filtered, tc.want)
+			}
+		})
 	}
 }

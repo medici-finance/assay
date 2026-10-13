@@ -10,6 +10,11 @@ Use GitHub's **private vulnerability reporting** instead: **Security tab → "Re
 vulnerability"** on this repository. Reports go directly and privately to the maintainers —
 GitHub's standard coordinated-disclosure channel.
 
+Where that channel is unavailable — or for reports from automated scanners — email
+**hello@assay.guide**. That address is also the published contact for this repository's
+enrollment in Anthropic's OSS Scanner (`anthropics/oss-scanner`); scanner reports arrive there
+unvalidated by a human, so treat them as leads, not verdicts.
+
 Please include: the affected file and how to reproduce it, the version you are running
 (tag or commit SHA), the impact scenario where it matters, and — if you have one — a
 suggested fix. You will get an acknowledgement as soon as a maintainer reviews it.

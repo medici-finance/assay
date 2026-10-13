@@ -1,0 +1,155 @@
+{
+  "test": "go test ./internal/testledger/ -count=1 -timeout 180s -run 'TestLedgerFixture|TestTrailerGrammar|TestTrailerCoverage|TestEveryDepartureIsShown|TestRangeProbes'",
+  "control": {
+    "name": "report a deletion under another label",
+    "file": "internal/testledger/ledger.go",
+    "old": "\"retired-untrailed: %s.%s%s deleted in %s\"",
+    "new": "\"retired: %s.%s%s deleted in %s\""
+  },
+  "mutations": [
+    {
+      "name": "pair renames on an ambiguous match (shared tag over-matches)",
+      "file": "internal/testledger/ledger.go",
+      "old": "len(ds) == 1 && len(as) == 1 {",
+      "new": "len(ds) >= 1 && len(as) >= 1 {"
+    },
+    {
+      "name": "never pair by tag",
+      "file": "internal/testledger/ledger.go",
+      "old": "return f.Tag }, \"same tag\"",
+      "new": "return \"\" }, \"same tag\""
+    },
+    {
+      "name": "hash the raw body bytes (comments and layout count)",
+      "file": "internal/testledger/ledger.go",
+      "old": "return hex.EncodeToString(h.Sum(nil))[:16]",
+      "new": "return fmt.Sprintf(\"%x\", sha256.Sum256(body))[:16]"
+    },
+    {
+      "name": "count TestMain as a test",
+      "file": "internal/testledger/ledger.go",
+      "old": "if name == \"TestMain\" {",
+      "new": "if name == \"\" {"
+    },
+    {
+      "name": "read non-test .go files (the decoy counts)",
+      "file": "internal/testledger/ledger.go",
+      "old": "if !strings.HasSuffix(p, \"_test.go\") {",
+      "new": "if !strings.HasSuffix(p, \".go\") {"
+    },
+    {
+      "name": "ignore go test's naming rule (Testhelper counts)",
+      "file": "internal/testledger/ledger.go",
+      "old": "return !unicode.IsLower(r)",
+      "new": "return true"
+    },
+    {
+      "name": "read no tag",
+      "file": "internal/testledger/ledger.go",
+      "old": "strings.CutPrefix(c.Text, TagPrefix)",
+      "new": "strings.CutPrefix(c.Text, \"// regression:: \")"
+    },
+    {
+      "name": "a trailer covers nothing",
+      "file": "internal/testledger/ledger.go",
+      "old": "if x.Test != name || (x.NewName != \"\" && !newName(x.NewName)) {",
+      "new": "if true {"
+    },
+    {
+      "name": "accept a trailer with no reason",
+      "file": "internal/testledger/ledger.go",
+      "old": "if !ok || !isIdent(name) || why == \"\" {",
+      "new": "if !ok || !isIdent(name) {"
+    },
+    {
+      "name": "match a test name inside a longer identifier",
+      "file": "internal/testledger/ledger.go",
+      "old": "if !identRune(before) && !identRune(after) {",
+      "new": "if true {"
+    },
+    {
+      "name": "read rows outside the Verify section",
+      "file": "internal/testledger/ledger.go",
+      "old": "inVerify = strings.HasPrefix(line, \"## Verify\")",
+      "new": "inVerify = true"
+    },
+    {
+      "name": "list Verify rows for trailed deletions only",
+      "file": "internal/testledger/ledger.go",
+      "old": "\t\t}\n\t\taddRows(f.Name)\n",
+      "new": "\t\t\taddRows(f.Name)\n\t\t}\n"
+    },
+    {
+      "name": "read prose after the tag prefix as a tag",
+      "file": "internal/testledger/ledger.go",
+      "old": "if allRefs(line) {",
+      "new": "if true {"
+    },
+    {
+      "name": "accept any F- slug",
+      "file": "internal/testledger/ledger.go",
+      "old": "return isSlug(slug)",
+      "new": "return isSlug(slug) || true"
+    },
+    {
+      "name": "accept an issue number with a leading zero",
+      "file": "internal/testledger/ledger.go",
+      "old": "if s == \"\" || s[0] == '0' {",
+      "new": "if s == \"\" {"
+    },
+    {
+      "name": "accept an issue number that is not digits",
+      "file": "internal/testledger/ledger.go",
+      "old": "return strings.Trim(s, \"0123456789\") == \"\"",
+      "new": "return true"
+    },
+    {
+      "name": "accept a class ref whose number is not a number",
+      "file": "internal/testledger/ledger.go",
+      "old": "return isNumber(n)\n\t}\n\tif slug",
+      "new": "return isNumber(n) || true\n\t}\n\tif slug"
+    },
+    {
+      "name": "a trailed deletion prints nothing",
+      "file": "internal/testledger/ledger.go",
+      "old": "out = append(out, fmt.Sprintf(\"retired-trailed: %s.%s%s deleted in %s%s\", f.Pkg, f.Name, bracket, at(f), by))",
+      "new": "_ = by"
+    },
+    {
+      "name": "a trailed rename prints nothing",
+      "file": "internal/testledger/ledger.go",
+      "old": "out = append(out, fmt.Sprintf(\"renamed-trailed: %s.%s → %s (%s) in %s%s\", rn.Old.Pkg, rn.Old.Name, rn.New.Name, rn.By, at(rn.Old), by))",
+      "new": "_ = by"
+    },
+    {
+      "name": "a rename trailer covers any new name",
+      "file": "internal/testledger/ledger.go",
+      "old": "func(nn string) bool { return nn == rn.New.Name }",
+      "new": "func(nn string) bool { return true }"
+    },
+    {
+      "name": "a rename-form trailer covers a deletion whose new name was not added",
+      "file": "internal/testledger/ledger.go",
+      "old": "return addedIn[f.Pkg+\"\\x00\"+nn] })",
+      "new": "return true })"
+    },
+    {
+      "name": "a dropped tag is not shown",
+      "file": "internal/testledger/ledger.go",
+      "old": "ok && lostRef(f.Tag, h.Tag) {",
+      "new": "ok && false && lostRef(f.Tag, h.Tag) {"
+    },
+    {
+      "name": "only an emptied tag counts as dropped",
+      "file": "internal/testledger/ledger.go",
+      "old": "ok && lostRef(f.Tag, h.Tag) {",
+      "new": "ok && f.Tag != \"\" && h.Tag == \"\" {"
+    },
+    {
+      "name": "a name that is both a directory and a revision reads as the directory",
+      "file": "internal/testledger/ledger_test.go",
+      "old": "case isDir && rev != \"\":",
+      "new": "case false:"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           breaker-active check
+  CAUGHT           quorum floor
+  CAUGHT           fee cap
+Totals: 3 caught, 0 NOT CAUGHT, 0 could-not-mutate.

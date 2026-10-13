@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework|TestBriefThatResolves|TestDeclaredTag|TestUndeclaredRepo|TestUntaggedBrief|TestTagNeverWidens'",
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestCrossRepo|TestDeliverableRepo|TestPhantomPrecondition|TestRework|TestBriefThatResolves|TestDeclaredTag|TestUndeclaredRepo|TestUntaggedBrief|TestTagNeverWidens|TestAuthoringPR'",
   "control": {
     "name": "CONTROL \u2014 drop the HARD FAIL on a deliverable repo that is not --root's origin; the worktree would be cut in the wrong repo. TestCrossRepoMismatchHardFailsBeforeAnything must go red",
     "file": "cmd/deskdispatch/deliverable.go",
@@ -82,8 +82,8 @@
     {
       "name": "a --repo the brief's files: list declares is still hard-failed (the declared-deliverable acceptance is dropped); TestDeclaredTagAdmitsRepo must go red",
       "file": "cmd/deskdispatch/deliverable.go",
-      "old": "\t\tif tag == \"\" {\n\t\t\treturn d, mismatch(d, \"--repo\", r)",
-      "new": "\t\tif true {\n\t\t\treturn d, mismatch(d, \"--repo\", r)"
+      "old": "\t\tcase tag != \"\":\n\t\t\trepo, _ = reg.repoOf(tag)",
+      "new": "\t\tcase false:\n\t\t\trepo, _ = reg.repoOf(tag)"
     },
     {
       "name": "a files: tag overrides an explicit deliverable_repo/homed-in; TestTagNeverWidens/explicit_deliverable_wins must go red",
@@ -144,6 +144,24 @@
       "file": "cmd/deskdispatch/deliverable.go",
       "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
       "new": "\t\t\tcase f[0] == fence[0] && strings.TrimSpace(t[len(f):]) == \"\":"
+    },
+    {
+      "name": "#2355: the authoring-PR acceptance trusts a tracking alias that only defaulted to the registry's own self (any checkout names itself there); TestAuthoringPRStillRefuses must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\treturn o.pr > 0 && d.trackingNamed && d.trackingRepo != \"\" && strings.EqualFold(repo, d.trackingRepo)",
+      "new": "\treturn o.pr > 0 && d.trackingRepo != \"\" && strings.EqualFold(repo, d.trackingRepo)"
+    },
+    {
+      "name": "#2355: the authoring-PR acceptance no longer requires --pr (a fresh dispatch onto the tracking repo passes); TestAuthoringPRStillRefuses must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\treturn o.pr > 0 && d.trackingNamed && d.trackingRepo != \"\" && strings.EqualFold(repo, d.trackingRepo)",
+      "new": "\treturn d.trackingNamed && d.trackingRepo != \"\" && strings.EqualFold(repo, d.trackingRepo)"
+    },
+    {
+      "name": "#2355: an explicit --repo is silently overridden by --root's origin under the authoring-PR acceptance (--repo the deliverable, --root the tracker); TestAuthoringPRStillRefuses must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\tif strings.TrimSpace(o.repo) != \"\" {\n\t\t\treturn d, mismatch(d, \"--root \"+o.root, actual, \"\")",
+      "new": "\t\tif false {\n\t\t\treturn d, mismatch(d, \"--root \"+o.root, actual, \"\")"
     }
   ]
 }

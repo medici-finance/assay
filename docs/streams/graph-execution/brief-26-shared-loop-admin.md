@@ -35,7 +35,7 @@ consumers:
 - 'tools/desk/cmd/cellctl: follow-up graph-execution/26 (this brief; cadence path calls the moved runner; flips to fixed-here when the implementation edits the path)'
 - 'tools/desk/internal/forgeban: follow-up graph-execution/26 (this brief; process-launch audit also scans loopadmin; flips to fixed-here when the implementation edits the path)'
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
-version: 1
+version: 2
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 ---
 
@@ -63,6 +63,14 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 - Offline fixtures/fake providers only in this brief; a concrete adapter does not authorize provider calls.
 - Stop at implemented; independent verification owns verified/done.
 - Preserve one canonical work identity and one claim authority; no credentials in packets or results.
+
+## Library-first amendment — 2026-10-08
+
+Read `docs/library-first.md`. Reuse the declared component library where it shares authority,
+and a typed SDK client where a process boundary enforces authority or isolation. Workflow
+progression, process supervision and effect execution remain distinct; a shared binary or
+library grants no additional role. Preserve the existing independent fence, no-store standing
+mode, process-launch audit and cross-journal recovery tests. No cell taxonomy dependency is added.
 
 ## Task
 

@@ -535,3 +535,25 @@ func TestDiscoverManifests_DuplicateIDDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// regression: #2701
+func TestLintBindingNotRuntimeTrust(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "fixture/worker", []string{"fixture.work"}, []string{"assay.roster.trust"}, nil)
+	if err := os.MkdirAll(filepath.Join(root, "components"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "components", "bindings.yaml"), []byte("schema: 1\nbindings:\n  assay.harness: assay/harness-claude-code\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ms, skipped, err := DiscoverManifests(root)
+	if err != nil || len(skipped) != 0 || len(ms) != 1 {
+		t.Fatalf("discovery changed: %v %v", err, skipped)
+	}
+	for _, trusted := range []bool{false, true} {
+		got := ComputeActivation(ms, nil, trusted)["fixture/worker"]
+		if got.Active != trusted {
+			t.Fatalf("declaration binding changed runtime trust=%v: %+v", trusted, got)
+		}
+	}
+}
