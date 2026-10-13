@@ -567,7 +567,7 @@ RISK-VALUE (the trigger fires on the deskkit security path; no entry is irrevers
 
 Open items still outstanding: #1927 (check-definition, OPEN), #1800 (darwin witness, OPEN), #1281 (OPEN), #1338 is open (its code half is met at c248703b0), and the Task step 8 retirement was not taken (#1802, OPEN; the log, the merge=union line and the union test are still present).
 
-**VERIFY: PASS** — on behaviour: all 15 rows pass by hand at `251e9473928e`. HELD, not advanced: the execution witness proves 1 of 15 on this host (13 check:ci rows could-not-run, #1800), row 10's witness fails on the check-definition defect and row 12 passes only vacuously on merged main, both on medici-finance/assay#1927 (OPEN). Status stays implemented.
+VERIFY: BLOCKED — HELD, not advanced: the execution witness proves 1 of 15 on this host (13 check:ci rows could-not-run, #1800), row 10's witness fails on the check-definition defect and row 12 passes only vacuously on merged main, both on medici-finance/assay#1927 (OPEN). By hand, all 15 rows pass at `251e9473928e`. Status stays implemented.
 
 
 ## Review
