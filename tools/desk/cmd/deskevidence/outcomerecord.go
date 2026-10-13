@@ -14,6 +14,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -26,6 +27,28 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
+
+// checkCompleteRecord holds a verify-wake-v1 record (or a failed/blocked one, which must be one)
+// to "complete": WakeReceipt.Complete() true — refused naming the FIRST failing field, in
+// Complete()'s own order — plus the join keys every new verify-wake-v1 record carries. The
+// existing validateReceipt checks (blocker_ref included) run later, unchanged.
+func checkCompleteRecord(r deskkit.WakeReceipt, join deskkit.JoinInput) error {
+	if field := r.FirstIncompleteField(); field != "" {
+		why := "a " + r.Outcome + " record lands only as a complete " + deskkit.SchemaWakeV1 + " receipt"
+		if field == "wake_schema" {
+			why += " (carrying wake_schema: " + deskkit.SchemaWakeV1 + ")"
+		}
+		return deskkit.Refused("refused: " + field + " — " + why)
+	}
+	if r.Schema == deskkit.SchemaWakeV1 {
+		return deskkit.CheckWakeV1RunFields(join)
+	}
+	return nil
+}
+
+// receiptValidateFn is validateReceipt behind a seam so a test can drive the record-shape gates
+// without staging the brief, git history and forge the three receipt checks read.
+var receiptValidateFn = validateReceipt
 
 // nowFn is the writer's clock, overridable in tests. #1803 SR-1803-2: cmdOutcomeRecordWrite
 // refuses a record whose `ts` is more than deskkit.MaxClockSkew ahead of nowFn() — the same bound
@@ -51,6 +74,20 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if perr != nil {
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + perr.Error())
 	}
+
+	// STEP ORDER — every refusal in steps 1-2 needs only the record's own
+	// bytes, so none of them reads the forge on the record's behalf:
+	//
+	//  1. parse; key uniqueness (a repeated or case-variant key, anywhere); the future-ts check;
+	//     every other input-shape check of the join keys;
+	//  2. mint, forge handle and admission (admitLanding) on the SUBMITTED record's target;
+	//  3. the verifier_tier cross-check against the admitted binding;
+	//  4. the record-driven forge reads (dereference of prs, visibilities), then the redaction;
+	//  5. RecordName on the REDACTED record, the path-prefix guard and the TARGET-TIE check, then
+	//     everything below, all of which see the redacted record.
+	if kerr := deskkit.CheckRecordKeys(rec.Raw); kerr != nil {
+		return kerr
+	}
 	// #1803 SR-1803-2: refuse a record whose ts is more than deskkit.MaxClockSkew ahead of the
 	// writer's own clock, so an unbounded future ts can never land and later shadow every
 	// genuine outcome for its brief under LatestPerBrief's newest-ts comparison.
@@ -58,6 +95,23 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: --outcome-record ts %s is more than %s ahead of now", rec.TS, deskkit.MaxClockSkew))
 	}
+	join, jerr := deskkit.ParseJoinInput(rec.Raw)
+	if jerr != nil {
+		return jerr
+	}
+	var submitted deskkit.WakeReceipt
+	if uerr := json.Unmarshal(rec.Raw, &submitted); uerr != nil {
+		return deskkit.Refused("refused: invalid --outcome-record JSON: " + uerr.Error())
+	}
+	// A record that already claims verify-wake-v1 is complete as submitted, whatever its outcome:
+	// Complete() true (the first failing field named) plus the join keys every new such record
+	// carries. A legacy-shape record is judged again after the receipt derivation below.
+	if submitted.Schema == deskkit.SchemaWakeV1 {
+		if cerr := checkCompleteRecord(submitted, join); cerr != nil {
+			return cerr
+		}
+	}
+	admittedBrief, admittedTS := rec.Brief, rec.TS
 	targetRepoPath, nerr := deskkit.RecordName(rec.Raw)
 	if nerr != nil {
 		return deskkit.Refused("refused: cannot name --outcome-record: " + nerr.Error())
@@ -74,10 +128,43 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// attestation for another brief refuses here. The refusals above need only the record's
 	// own bytes, so a record they refuse never mints; everything below reads or writes the
 	// forge and runs only for an admitted landing.
-	fg, fr, _, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, ac)
+	fg, fr, receipt, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, ac)
 	if aerr != nil {
 		return aerr
 	}
+	if terr := checkRecordTier(receipt, join); terr != nil {
+		return terr
+	}
+	kind, kerr := forgeKindFn(owner, name)
+	if kerr != nil {
+		return kerr
+	}
+	facts, ferr := resolveJoinFacts(fg, fr, kind, join, submitted.SHA, rec.TS)
+	if ferr != nil {
+		return ferr
+	}
+	redacted, rderr := redactOutcomeFn(rec.Raw, join, facts)
+	if rderr != nil {
+		return deskkit.Refused("refused: cannot redact --outcome-record for its register: " + rderr.Error())
+	}
+	if !bytes.Equal(redacted, rec.Raw) {
+		rrec, rperr := deskkit.ParseRecord(redacted)
+		if rperr != nil {
+			return deskkit.Refused("refused: redacted outcome record: " + rperr.Error())
+		}
+		rec = rrec
+	}
+	targetRepoPath, nerr = deskkit.RecordName(rec.Raw)
+	if nerr != nil {
+		return deskkit.Refused("refused: cannot name the redacted --outcome-record: " + nerr.Error())
+	}
+	if perr := deskkit.UnderOutcomeRecordsDir(targetRepoPath); perr != nil {
+		return deskkit.Refused("refused: redacted --outcome-record target failed the path-prefix guard: " + perr.Error())
+	}
+	if terr := tieOutcomeTarget(receipt, admittedBrief, admittedTS, rec, targetRepoPath); terr != nil {
+		return terr
+	}
+	ac.file = targetRepoPath
 	commitContent := deskkit.CanonicalBytes(rec.Raw)
 
 	if len(commitContent) > maxBytes {
@@ -93,7 +180,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// verify-wake-v1 receipt the planner can hold it on. The receipt changes the record's
 	// bytes, so its name is re-derived — same stream directory, same brief number, which
 	// keeps the admission above bound to this brief.
-	derived, derr := outcomeReceiptFn(rec.Raw, root, fg, fr, branch)
+	derived, derr := outcomeReceiptFn(rec.Raw, root, fg, fr, branch, receipt.Binding.Source)
 	if derr != nil {
 		return derr
 	}
@@ -112,11 +199,26 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		if !sameBriefSlot(targetRepoPath, dpath) {
 			return deskkit.Refused("refused: the derived outcome record moved from " + targetRepoPath + " to " + dpath)
 		}
+		if terr := tieOutcomeTarget(receipt, admittedBrief, admittedTS, drec, dpath); terr != nil {
+			return terr
+		}
 		rec, targetRepoPath = drec, dpath
 		ac.file = targetRepoPath
 		commitContent = deskkit.CanonicalBytes(rec.Raw)
 		if len(commitContent) > maxBytes {
 			return deskkit.Refused(fmt.Sprintf("refused: outcome record exceeds %d bytes (%d)", maxBytes, len(commitContent)))
+		}
+	}
+	// The record about to land: a verify-fail / blocked record must by now be a complete
+	// verify-wake-v1 receipt (derived above, or supplied), naming the FIRST failing field
+	// otherwise; a record that now carries the schema also carries the join keys of one.
+	var final deskkit.WakeReceipt
+	if uerr := json.Unmarshal(rec.Raw, &final); uerr != nil {
+		return deskkit.Refused("refused: invalid --outcome-record JSON: " + uerr.Error())
+	}
+	if final.IsFailedOrBlocked() || final.Schema == deskkit.SchemaWakeV1 {
+		if cerr := checkCompleteRecord(final, join); cerr != nil {
+			return cerr
 		}
 	}
 
@@ -141,6 +243,19 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: " + targetRepoPath + " already exists on " + branch +
 			" with DIFFERENT bytes — verify-outcome records are immutable; a correction is a new record " +
 			"(a fresh ts/digest), never an edit of an existing one")
+	}
+	// A refused Evidence append must not be followed by a receipt that makes
+	// the next verifier pass hold unsupported results. Idempotent existing
+	// records returned above; every NEW record needs this run's landed Evidence.
+	var outcome deskkit.WakeReceipt
+	if err := json.Unmarshal(commitContent, &outcome); err != nil {
+		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
+	}
+	if err := outcomeEvidenceBindingFn(root, fg, fr, branch, receipt, outcome.SHA); err != nil {
+		return err
+	}
+	if err := outcomeObservationBindingFn(root, fg, fr, branch, receipt, outcome); err != nil {
+		return err
 	}
 
 	// A brand-new file: scan it whole (no base to diff against).
@@ -191,7 +306,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + jerr.Error())
 	}
 	if wr.Schema == deskkit.SchemaWakeV1 {
-		if verr := validateReceipt(lintRoot, fg, fr, branch, repoSlug, wr); verr != nil {
+		if verr := receiptValidateFn(lintRoot, fg, fr, branch, repoSlug, wr); verr != nil {
 			return verr
 		}
 	}
@@ -310,12 +425,12 @@ func draftChangeLabel(pr *deskkit.PullRef) string {
 var outcomeReceiptFn = deriveOutcomeReceipt
 
 // deriveOutcomeReceipt returns raw with its receipt (deskkit.BuildOutcomeRecord): the declared
-// inputs are read from the LOCAL checkout at root at the record's own sha, and the brief's own
+// inputs are read from the LOCAL checkout at the admitted observation Source, and the brief's own
 // revision from the brief as it lands on branch. A pass record passes through. A non-pass record
 // that already carries a verify-wake-v1 receipt passes through unchanged only when that receipt
 // is complete (deskkit.CheckSuppliedReceipt; validateReceipt then runs its three checks); an
 // incomplete one is refused, naming the field, and never lands.
-func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string) ([]byte, error) {
+func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch, observedSource string) ([]byte, error) {
 	var wr deskkit.WakeReceipt
 	if err := json.Unmarshal(raw, &wr); err != nil {
 		return nil, deskkit.Refused("refused: invalid --outcome-record JSON: " + err.Error())
@@ -344,7 +459,15 @@ func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.
 	if rerr != nil {
 		return nil, deskkit.Unverifiable("cannot read "+briefPath+" on "+branch+" to hash the receipt's brief revision", rerr)
 	}
-	tree, terr := newGitOutcomeTree(root, wr.SHA)
+	if len(observedSource) != 40 {
+		return nil, deskkit.Refused("refused: outcome receipt needs its admitted observation commit")
+	}
+	if _, err := hex.DecodeString(observedSource); err != nil {
+		return nil, deskkit.Refused("refused: outcome observation revision is not a full commit SHA")
+	}
+	// The record SHA identifies landed Evidence. Deliverable hashes describe
+	// the separately admitted observation, even when repairs landed in between.
+	tree, terr := newGitOutcomeTree(root, observedSource)
 	if terr != nil {
 		return nil, terr
 	}

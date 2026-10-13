@@ -1,0 +1,83 @@
+{
+  "test": "go test ./cmd/deskpr ./internal/deskkit -run 'TestCreate(RemoteEvidence|Evidence|Proof)|TestUpdateSourceSnapshot|TestPubSourceSnapshot|TestPubIdentityCallersTip|TestPubClassGuardSeesPlant' -count=1 -timeout 90s",
+  "control": {
+    "name": "identity gate bypassed",
+    "file": "cmd/deskpr/createpublish.go",
+    "old": "if err := publishIdentityGate(s.dir, base, tip, head.String()); err != nil {",
+    "new": "if err := publishIdentityGate(s.dir, base, tip, head.String()); false && err != nil {"
+  },
+  "mutations": [
+    {
+      "name": "live create loses confirmed range",
+      "file": "cmd/deskpr/createpublish.go",
+      "old": "publishIdentityGate(s.dir, base, tip, head.String())",
+      "new": "publishIdentityGate(s.dir, base, \"\", head.String())"
+    },
+    {
+      "name": "local tracking ref hides a new foreign commit",
+      "file": "cmd/deskpr/createpublish.go",
+      "old": "publishIdentityGate(s.dir, base, tip, head.String())",
+      "new": "publishIdentityGate(s.dir, base, remoteTrackingTip(s.dstBranch), head.String())"
+    },
+    {
+      "name": "remote-read failure admitted",
+      "file": "cmd/deskpr/createpublish.go",
+      "old": "if err != nil && !errors.Is(err, transport.ErrEmptyRemoteRepository) {",
+      "new": "if false && err != nil && !errors.Is(err, transport.ErrEmptyRemoteRepository) {"
+    },
+    {
+      "name": "unfetched or divergent destination admitted",
+      "file": "cmd/deskpr/createpublish.go",
+      "old": "if err != nil || !ancestor {",
+      "new": "if false && (err != nil || !ancestor) {"
+    },
+    {
+      "name": "push ignores checked-ref precondition",
+      "file": "internal/gitcore/gitcore.go",
+      "old": "RequireRemoteRefs: requires,",
+      "new": "RequireRemoteRefs: requires[:0],"
+    },
+    {
+      "name": "push reuses proof after source or destination change",
+      "file": "cmd/deskpr/push.go",
+      "old": "if s.proof.destination != dest || s.proof.url != endpoint.URL || s.proof.ref != dstRef || s.proof.head != hash.String() {",
+      "new": "if false && (s.proof.destination != dest || s.proof.url != endpoint.URL || s.proof.ref != dstRef || s.proof.head != hash.String()) {"
+    },
+    {
+      "name": "offline proof limitation omitted",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "remote branch head was not checked (offline)",
+      "new": "offline range"
+    },
+    {
+      "name": "second caller offers an unreviewed exclusion",
+      "file": "cmd/deskevidence/github.go",
+      "old": "RemoteTip: \"\", Role: \"verifier\",",
+      "new": "RemoteTip: \"refs/remotes/origin/\" + base, Role: \"verifier\","
+    },
+    {
+      "name": "identity enumeration follows mutable HEAD",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "args := []string{r.Source, \"^\" + r.Base}",
+      "new": "args := []string{\"HEAD\", \"^\" + r.Base}"
+    },
+    {
+      "name": "create drops immutable source at identity gate",
+      "file": "cmd/deskpr/createpublish.go",
+      "old": "publishIdentityGate(s.dir, base, tip, head.String())",
+      "new": "publishIdentityGate(s.dir, base, tip, \"\")"
+    },
+    {
+      "name": "create admits a source outside current HEAD",
+      "file": "cmd/deskpr/createpublish.go",
+      "old": "if err != nil || current != head {",
+      "new": "if false && (err != nil || current != head) {"
+    },
+    {
+      "name": "update publishes a source changed after its gate",
+      "file": "cmd/deskpr/push.go",
+      "old": "if s.checkedSource != \"\" && s.checkedSource != hash.String() {",
+      "new": "if false && s.checkedSource != \"\" && s.checkedSource != hash.String() {"
+    }
+  ]
+}

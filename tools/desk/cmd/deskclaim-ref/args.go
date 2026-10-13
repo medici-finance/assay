@@ -100,7 +100,7 @@ func dispatchVerb(args []string) int {
 			}
 			return cmdProgress(id, owner, branch)
 		case "release":
-			return cmdRelease(id)
+			return cmdRelease(id, repo)
 		case "steal":
 			return cmdSteal(id, owner, reason)
 		case "show":

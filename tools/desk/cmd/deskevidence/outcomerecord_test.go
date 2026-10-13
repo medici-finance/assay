@@ -12,7 +12,7 @@ import (
 func TestOutcomeRecordWrite(t *testing.T) {
 	t.Run("lands at the path RecordName gives", func(t *testing.T) {
 		f, errBuf := setupFake(t)
-		line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
+		line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
 		want, err := deskkit.RecordName([]byte(line))
 		if err != nil {
 			t.Fatal(err)
@@ -30,7 +30,7 @@ func TestOutcomeRecordWrite(t *testing.T) {
 
 	t.Run("identical re-write is a noop", func(t *testing.T) {
 		f, errBuf := setupFake(t)
-		line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
+		line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
 		name, err := deskkit.RecordName([]byte(line))
 		if err != nil {
 			t.Fatal(err)
@@ -49,7 +49,7 @@ func TestOutcomeRecordWrite(t *testing.T) {
 
 	t.Run("a different-bytes write to an existing record path is refused (records are immutable)", func(t *testing.T) {
 		f, errBuf := setupFake(t)
-		line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002","note":"a"}`
+		line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002","note":"a"}`)
 		name, err := deskkit.RecordName([]byte(line))
 		if err != nil {
 			t.Fatal(err)
@@ -94,7 +94,7 @@ func TestOutcomeRecordWrite(t *testing.T) {
 			t.Fatalf("closure check must NOT run for a verify-fail record (brief %q)", brief)
 			return closureCouldNotErr, "", nil
 		}
-		line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
+		line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
 		recFile := writeRepoFile(t, "record.json", line+"\n")
 
 		code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
@@ -137,7 +137,7 @@ func TestOutcomeRecordWrite(t *testing.T) {
 		defer func() { nowFn = time.Now }()
 
 		withinSkewTS := fixedNow.Add(deskkit.MaxClockSkew - time.Minute).Format(time.RFC3339)
-		line := `{"ts":"` + withinSkewTS + `","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
+		line := completeFail(t, `{"ts":"`+withinSkewTS+`","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
 		recFile := writeRepoFile(t, "record.json", line+"\n")
 
 		code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})

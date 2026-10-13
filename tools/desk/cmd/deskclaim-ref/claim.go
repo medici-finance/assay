@@ -258,12 +258,13 @@ func cmdProgress(id, owner, branch string) int {
 	}
 }
 
-func cmdRelease(id string) int {
+func cmdRelease(id, repo string) int {
 	outcome, existed := store.Remove(id)
 	switch outcome {
 	case deskkit.ClaimWriteApplied:
 		if existed {
 			logf("released %s", id)
+			writeReleasedRecord(id, repo)
 		} else {
 			logf("released %s (no claim — no-op)", id)
 		}
@@ -271,6 +272,27 @@ func cmdRelease(id string) int {
 	default:
 		errf("unverifiable: could not delete %s/%s%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
+	}
+}
+
+// writeReleasedRecord appends the `released` dispatch record after a
+// release that removed an EXISTING claim. dispatch_ref is the cwd worktree's assay.dispatchRef
+// only when it is a well-formed ref minted for THIS claim key — a release run from another
+// checkout, from a worktree of another item, or over a malformed ref gets null and pairs by
+// claim key. Every
+// dispatch-only field is null. Best-effort: a write failure warns on stderr and never changes the
+// release's exit code — the claim is already gone, and that is what the caller asked for.
+func writeReleasedRecord(id, repo string) {
+	rec := deskkit.DispatchRecord{
+		Event:    deskkit.DispatchEventReleased,
+		ClaimKey: id,
+		Repo:     repo,
+	}
+	if ref := deskkit.WorktreeDispatchRef(); deskkit.ValidDispatchRef(id, ref) {
+		rec.DispatchRef = &ref
+	}
+	if err := deskkit.AppendDispatchRecord(&rec); err != nil {
+		errf("WARNING: could not write dispatch record: %v", err)
 	}
 }
 
@@ -330,8 +352,32 @@ func cmdShow(id string) int {
 	if age, ok := ageMinutes(ref.Date); ok {
 		ageStr = strconv.Itoa(age)
 	}
-	logf("HELD %s — %s at=%s age=%sm", id, ref.Msg, ref.Date, ageStr)
+	logf("HELD %s — %s at=%s age=%sm%s", id, ref.Msg, ref.Date, ageStr, preparedNotLaunchedSuffix(ref.Msg, ref.Date))
 	return exitOK
+}
+
+// preparedNotLaunchedSuffix is what `show` and `list` append to a claim that was acquired and
+// never advanced: state=claimed past the claimed TTL. Its dispatcher prepared the dispatch
+// (claim, worktree, prompt) but never reached `progress`, so no agent is known to be running
+// behind the claim. The text goes AFTER age=, so the state=/age=/owner=/branch= readers
+// (desksupervise, deskdispatch) extract the same values with and without it. It is empty for
+// every other claim, so those lines are byte-identical to what they were. An unreadable date
+// yields no marker: a claim this tool cannot age is never reported as stalled.
+//
+// The window is claimedTTL(), the same value `acquire` reclaims at, so the marker and the
+// takeover flip at the same age. It states the age and the window rather than promising a
+// takeover: a claim whose recorded branch is on the remote is a branch-as-claim, which
+// `acquire` keeps whatever its age.
+func preparedNotLaunchedSuffix(msg, date string) string {
+	if fieldOf(msg, "state") != "claimed" {
+		return ""
+	}
+	age, ok := ageMinutes(date)
+	if !ok || age < claimedTTL() {
+		return ""
+	}
+	return fmt.Sprintf(" PREPARED-NOT-LAUNCHED (claimed %dm ago, no progress within the %dm window; "+
+		"the next acquire reclaims it unless its branch is on the remote)", age, claimedTTL())
 }
 
 func cmdList() int {

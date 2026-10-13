@@ -187,11 +187,37 @@ func advancedHandState(state string) bool {
 // touched. pullsLookedAt false (the raw pull fetch itself failed) leaves those
 // rows exactly as the normal fold reported them — a fetch failure is already an
 // honest `unknown`/`todo` upstream, backfill adds no guess on top of a failure.
-func applyReconcileBackfill(cells []BriefCell, pulls []ghPull, pullsLookedAt bool, lookup handSaidLookup) []BriefCell {
+//
+// One more shape is a todo base: a brief with no trailer PR at all whose
+// passing verify witness made the fold render it `unknown` (the run passed but
+// no merge is on record — passingWitnessNoMergeReason). A branch/body match IS
+// the merge that cell lacked, so on a match it is re-derived from that merge
+// by the same overlay a trailer merge gets (overlayWitness): MergedPR names the
+// backfill match, and --apply writes its row as it would the unwitnessed one
+// (witnessedImplemented keys on MergedPR). in is the fold input the cells were
+// derived from. The hand-said fallback applies to a plain todo only.
+func applyReconcileBackfill(cells []BriefCell, in LifecycleInput, pulls []ghPull, pullsLookedAt bool, lookup handSaidLookup) []BriefCell {
+	out, _ := applyReconcileBackfillWith(cells, in, pulls, pullsLookedAt, lookup, nil)
+	return out
+}
+
+// applyReconcileBackfillWith is applyReconcileBackfill with the authoring exemption
+// (briefauthoring.go): a merged pull that only AUTHORED the brief is not a match, so a
+// docs-only briefs-authoring PR can no longer be the witness that flips a row. authoring nil
+// classifies nothing. The second result lists every match left unresolved because a candidate's
+// file list could not be read (the brief stays as the fold left it; --apply refuses on it).
+func applyReconcileBackfillWith(cells []BriefCell, in LifecycleInput, pulls []ghPull, pullsLookedAt bool, lookup handSaidLookup, authoring backfillAuthoring) ([]BriefCell, []string) {
+	var unread []string
+	idents := map[string]BriefIdent{}
+	for _, b := range in.Briefs {
+		idents[b.ID] = b
+	}
 	out := make([]BriefCell, len(cells))
 	copy(out, cells)
 	for i := range out {
-		if out[i].Cell != "todo" || out[i].Source != "pr" {
+		plainTodo := out[i].Cell == "todo" && out[i].Source == "pr"
+		witnessedTodo := passingWitnessNoMerge(out[i], in)
+		if !plainTodo && !witnessedTodo {
 			continue // already witnessed (trailer PR) or not a PR-derived cell — nothing to backfill
 		}
 		stream, num, ok := briefStreamNum(out[i].ID)
@@ -199,15 +225,39 @@ func applyReconcileBackfill(cells []BriefCell, pulls []ghPull, pullsLookedAt boo
 			continue
 		}
 		if pullsLookedAt {
-			if pr, matched := matchBackfillPR(pulls, stream, num); matched {
-				out[i].Cell = "implemented"
-				out[i].Source = "backfill"
-				out[i].Reason = ""
-				out[i].Witness = fmt.Sprintf("PR #%d (merged %s) — backfill: branch/body match, no trailer", pr.Number, shortSHA(pr.MergeCommitSHA))
+			pr, matched, why := matchBackfillPRChecked(pulls, stream, num, authoring)
+			if why != "" {
+				unread = append(unread, why)
+				continue // unresolved, not "no match": the brief stays as the fold left it
+			}
+			if matched {
+				merged := fmt.Sprintf("PR #%d (merged %s) — backfill: branch/body match, no trailer", pr.Number, shortSHA(pr.MergeCommitSHA))
+				c := out[i]
+				c.Cell = "implemented"
+				c.Source = "backfill"
+				c.Reason = ""
+				c.Witness = merged
+				if witnessedTodo {
+					c.MergedPR = merged
+					b, known := idents[c.ID]
+					if !known {
+						b = BriefIdent{ID: c.ID, Version: c.Version}
+					}
+					c = overlayWitness(b, c, in)
+					if c.Cell == "verified" && b.Gate == "model" {
+						// foldApprovals reads the App approval only over a
+						// trailer-merged PR, so for this brief `done` was never
+						// decided: unknown with the reason, not a definite verified.
+						// The row is still written (MergedPR is on record).
+						c.Cell = "unknown"
+						c.Reason = backfillModelDoneUndecided
+					}
+				}
+				out[i] = c
 				continue
 			}
 		}
-		if lookup == nil {
+		if !plainTodo || lookup == nil {
 			continue
 		}
 		state, sha, found := lookup(stream, num)
@@ -219,7 +269,37 @@ func applyReconcileBackfill(cells []BriefCell, pulls []ghPull, pullsLookedAt boo
 		out[i].Reason = fmt.Sprintf("no witness — hand-asserted %s at %s", state, shortSHA(sha))
 		out[i].Witness = fmt.Sprintf("no PR carries a trailer; last hand edit %s", shortSHA(sha))
 	}
-	return out
+	return out, unread
+}
+
+// backfillModelDoneUndecided is the reason a gate:model brief re-derived over a
+// backfill match is `unknown` rather than `verified`.
+const backfillModelDoneUndecided = "verified over a backfill branch/body match, but the App approval is read only over a trailer-merged PR, so done was not decided"
+
+// passingWitnessNoMerge reports whether c is the fold's `unknown` for a brief
+// with a passing verify witness and NO trailer PR on record (neither merged
+// nor open) — the todo-base contradiction a backfill match can settle. It is
+// read from the inputs, not from the reason text: an in-progress base (an open
+// trailer PR) is not a todo and stays as the fold left it. An Undecided brief
+// or a could-not-look run never matches: the first carries no witness entry,
+// or (an approval read) has a merged trailer PR; the second's cells are
+// PR-sourced.
+func passingWitnessNoMerge(c BriefCell, in LifecycleInput) bool {
+	if c.Cell != "unknown" || c.Source != "witness" || c.MergedPR != "" {
+		return false
+	}
+	if w, ok := in.Witnesses[c.ID]; !ok || !w.Passed {
+		return false
+	}
+	key := canonicalBriefKey(c.ID)
+	var prs []PRRecord
+	for _, pr := range in.PRs {
+		if canonicalBriefKey(pr.BriefRef) == key {
+			prs = append(prs, pr)
+		}
+	}
+	merged, open := classifyPRs(prs)
+	return merged == nil && open == nil
 }
 
 // driftRow is one row of the board-drift report: a brief where the hand-said

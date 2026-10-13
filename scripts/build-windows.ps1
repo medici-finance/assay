@@ -54,7 +54,8 @@
     pwsh -File scripts/build-windows.ps1 -ListTargets
 
   Targets (mirrored from the Unix Makefile):
-    desk-build         local unprivileged build of every tools/desk/cmd/* into
+    build-all     Compile every tracked Go module, then build every desk executable.
+  desk-build         local unprivileged build of every tools/desk/cmd/* into
                        tools/desk/dist/ (as <name>.exe). Succeeds with zero cmds.
     desk-install       build (desk-build), then install the built .exe binaries
                        into the per-user install dir (default
@@ -119,6 +120,7 @@ Set-StrictMode -Version Latest
 # the single declared Windows target set; tools/winparity diffs it against the
 # Makefile's `.PHONY` line and reddens on any difference. Keep the two in step.
 $MakefileParityTargets = @(
+    'build-all'
     'desk-build'
     'desk-install'
     'desk-manifest'
@@ -293,6 +295,19 @@ function Invoke-Go {
     }
 }
 
+function Target-BuildAll {
+    $modules = @(& git -C $RepoRoot ls-files -- '*go.mod')
+    if ($LASTEXITCODE -ne 0 -or $modules.Count -eq 0) {
+        throw 'build-all: cannot discover tracked Go modules'
+    }
+    foreach ($module in $modules) {
+        $moduleDir = Split-Path -Parent (Join-Path $RepoRoot $module)
+        Write-Host "build-all: $module"
+        Invoke-Go -WorkDir $moduleDir -GoArgs @('build', './...')
+    }
+    Target-DeskBuild
+}
+
 function Target-DeskBuild {
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
     $cmds = Get-DeskCmds
@@ -439,6 +454,7 @@ function Assert-MakefileParity {
 }
 
 $Dispatch = @{
+    'build-all'         = ${function:Target-BuildAll}
     'desk-build'        = ${function:Target-DeskBuild}
     'desk-install'      = ${function:Target-DeskInstall}
     'desk-manifest'     = ${function:Target-DeskManifest}

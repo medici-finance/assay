@@ -27,6 +27,27 @@ Use a manually assembled packet with explicit coverage and bounded authorization
 to bootstrap the first implementation. The future resolver is not a prerequisite
 to building itself. Nor does an unapproved competing proposal freeze approved work.
 
+## Independently useful adoption lane
+
+Extend the [same owners](19-progressive-adoption-and-oversight.md#delivery-changes-to-the-existing-program)
+with a smaller product lane. These are scoped amendments to existing packages,
+not new allocated briefs or another implementation home:
+
+| Slice | Existing owner/package | Prerequisite and acceptance |
+|---|---|---|
+| Pure adoption/oversight contracts | R1, definitions/policy/evidence; existing install-contract owner | Approved bounded meanings and actual module/import closure; neutral positive/negative fixtures |
+| Inspect and advisory Assist | Offline definition/evidence adapters, existing authoring/CLI surfaces | Selected pure contracts and supported pins; cold-host first value and second task without full runtime |
+| Selected installation and actionable output | Cell-operation/config and projection owners | Versioned dependency closure, preview/resume/no-clobber, identical assurance/hold meanings across consumers |
+| Managed oversight | R1 policy; R2 pending decisions; R3/R4 authority; R5/R7 result flow | Full current runtime/custody/effect qualification; presets cannot bypass organization requirements |
+| Sampling/batch delegation and scale | Existing decision, runtime, effects and operations owners | Separately approved scoped contract, anti-evasion/expiry/recovery cases and required capability evidence |
+
+Read-only and advisory slices need neither R2–R8 nor the complete future-state resolver
+merely to be implemented and qualified. Use the bounded manual context bootstrap.
+Their libraries do not acquire provider effects, standing ownership or SQL runtime
+state. Managed writer integration retains the R1–R8 dependency and activation sequence.
+Notification preferences can precede sampling/authority changes because they preserve
+the pending gate. Never wire an installer, skill or cockpit to an unshipped interface.
+
 ## First verifier implementation packages
 
 | Package | Delivers | Dependencies | Proof required for its claim |
@@ -72,6 +93,8 @@ Move review, worker and intake/coordinator flows through the same contracts in
 separate reviewed slices, ordered by readiness and actual dependency. Add continuing
 operations and richer quality consumers without redefining delivery acceptance.
 Keep urgent fixes on every supported path; route new features to the approved target.
+
+An early continuing-operations slice is **workspace lifecycle completion**: teardown at owning-attempt completion in dispatch; allocation verbs that stamp class and retention for every fleet-created resource, including scratch; class-aware retirement and forge-state eligibility in the sweep; lock-lifecycle retirement; consolidation of repository-local sweepers behind the single maintenance owner; and the supervised maintenance cadence with its per-OS keep-alive profiles. It depends on the approved retirement and maintenance contracts, ships behind explicit flags on current tools where possible, and proves itself through the sustained-work workload retiring disposable resources while held reasons stay explainable.
 
 Each slice carries the old entry points, new contract versions, supported version
 combination, state/evidence mapping, cutover action, rollback limit and removal

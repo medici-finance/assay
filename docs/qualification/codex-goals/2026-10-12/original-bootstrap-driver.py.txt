@@ -1,0 +1,57 @@
+import os,pathlib,tempfile,shutil,subprocess,json,selectors,time,sys
+root=pathlib.Path(tempfile.mkdtemp(prefix='goal-probe-',dir=os.environ['TMPDIR']))
+home=root/'home'; home.mkdir(); work=root/'work';work.mkdir(); ch=home/'.codex';ch.mkdir()
+skill=work/'.agents/skills/worker-desk';skill.mkdir(parents=True)
+(skill/'SKILL.md').write_text('---\nname: assay:worker-desk\ndescription: Local qualification worker desk only.\n---\nThis is an isolated harmless role stub, with no forge or outside services. On each authorized active Goal turn use a command tool to increment counter.txt once (start at 1), report the count in final and end the turn with the standing Goal active. Do not dispatch agents. Human steering and pause take precedence.\n')
+shutil.copyfile(pathlib.Path(os.environ['CODEX_HOME'])/'auth.json',ch/'auth.json');os.chmod(ch/'auth.json',0o600)
+env={k:v for k,v in os.environ.items() if not k.startswith(('DESK_','ASSAY_','CODEX_'))};env.update(HOME=str(home),CODEX_HOME=str(ch),KUBECONFIG='/dev/null')
+p=subprocess.Popen(['codex','app-server','--stdio','--enable','goals'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1,env=env,cwd=work)
+sel=selectors.DefaultSelector();sel.register(p.stdout,selectors.EVENT_READ);sel.register(p.stderr,selectors.EVENT_READ)
+seq=0;thread=None;turn=None;end=time.monotonic()+180;phase='initialize';finals=0;steered=False
+
+def send(method,params):
+ global seq
+ seq+=1;p.stdin.write(json.dumps({'jsonrpc':'2.0','id':seq,'method':method,'params':params})+'\n');p.stdin.flush();print('SEND',seq,method,json.dumps(params),flush=True);return seq
+
+def recv():
+ for key,_ in sel.select(1):
+  line=key.fileobj.readline()
+  if not line:continue
+  if key.fileobj==p.stderr:
+   print('STDERR',line.rstrip(),flush=True);continue
+  try:x=json.loads(line)
+  except ValueError:continue
+  print('RECV',json.dumps(x),flush=True);return x
+ return {}
+try:
+ init=send('initialize',{'clientInfo':{'name':'assay_goal_qualification','version':'1.0'},'capabilities':{'experimentalApi':True}})
+ while time.monotonic()<end:
+  x=recv()
+  if x.get('id')==init and 'result'in x:
+   p.stdin.write('{"jsonrpc":"2.0","method":"initialized"}\n');p.stdin.flush()
+   start=send('thread/start',{'cwd':str(work),'model':'gpt-6-astra','approvalPolicy':'never','sandbox':'workspace-write','config':{'model_reasoning_effort':'high'},'developerInstructions':'This is an isolated qualification with local fake work only. Use native get_goal/create_goal tools when requested. Execute commands with shell=/opt/homebrew/bin/bash and login=false. Do not contact services, dispatch agents, or read outside this workspace. Do not invent a token budget.'});phase='thread'
+  if phase=='thread' and x.get('id')==start and 'result'in x:
+   thread=x['result']['thread']['id'];send('thread/goal/get',{'threadId':thread})
+   send('turn/start',{'threadId':thread,'input':[{'type':'text','text':pathlib.Path(__file__).with_name('generated-bootstrap.txt').read_text(),'text_elements':[]}]});phase='running'
+  if x.get('method')=='turn/started':turn=x['params']['turn']['id']
+  if x.get('method')=='turn/completed':
+   finals+=1;send('thread/goal/get',{'threadId':thread})
+  if phase=='running' and finals>=1 and x.get('method')=='turn/started' and not steered:
+   send('turn/steer',{'threadId':thread,'expectedTurnId':turn,'input':[{'type':'text','text':'Human steering: write steering.txt with STEERING_ACCEPTED, pause this Goal now using the supported native control, then read it back and report paused. Do not increment the counter again.','text_elements':[]}]});steered=True;phase='steering'
+  if phase=='steering' and x.get('method')=='turn/completed':
+   send('thread/goal/get',{'threadId':thread});phase='finish';finish_at=time.monotonic()+3
+  if phase=='finish' and time.monotonic()>finish_at:break
+ print('OBSERVED',json.dumps({'completedTurns':finals,'steeringSent':steered,'files':{f.name:f.read_text() for f in work.iterdir() if f.is_file()}}),flush=True)
+finally:
+ if thread:
+  send('thread/goal/set',{'threadId':thread,'status':'paused','origin':'user'})
+  send('thread/goal/get',{'threadId':thread})
+  send('thread/goal/clear',{'threadId':thread})
+  send('thread/goal/get',{'threadId':thread})
+  until=time.monotonic()+3
+  while time.monotonic()<until:recv()
+ p.terminate()
+ try:p.wait(timeout=5)
+ except subprocess.TimeoutExpired:p.kill();p.wait()
+ shutil.rmtree(root)
+ print('CLEANUP own process terminated; isolated workspace and auth copy removed',flush=True)

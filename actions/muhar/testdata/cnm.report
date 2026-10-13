@@ -1,0 +1,5 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           breaker-active check
+  COULD_NOT_MUTATE generic <T> guard  (mutation "generic <T> guard": Old text not found in lib/a&b.go — edit did not land)
+Totals: 1 caught, 0 NOT CAUGHT, 1 could-not-mutate.
+NOTE: could-not-mutate is NOT a clean gate — those guards were never actually tested.

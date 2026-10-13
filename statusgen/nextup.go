@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 const (
@@ -618,9 +620,10 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 }
 
 // depIsSatisfied checks whether a typed dep "<stream>/<NN>" satisfies a
-// depends: edge — see targetSatisfies(b, true). An unresolvable dep
+// depends: edge — see evaluation.TargetSatisfies(b, true). An unresolvable dep
 // (shouldn't happen — checkRef validates at lint time) returns false, gating
-// the dependent brief.
+// the dependent brief. The target lookup is the only logic kept here; the
+// satisfying predicate is the library's.
 func depIsSatisfied(streams []*Stream, dep string) bool {
 	parts := strings.SplitN(dep, "/", 2)
 	if len(parts) != 2 {
@@ -632,26 +635,13 @@ func depIsSatisfied(streams []*Stream, dep string) bool {
 		}
 		for _, b := range s.Briefs {
 			if b.Num == parts[1] {
-				return targetSatisfies(b, true)
+				return evaluation.TargetSatisfies(evaluation.Brief{
+					Num: b.Num, Status: b.Status, HumanGatePassRecorded: humanGatedVerifyPassed(b),
+				}, true)
 			}
 		}
 	}
 	return false // unresolved dep → not satisfied
-}
-
-// targetSatisfies is the ONE predicate for "does this target brief satisfy an
-// edge pointing at it". done/verified satisfies every edge kind. A depends:
-// edge (dependsEdge=true) is ALSO satisfied by a gate:human target that sits
-// at `implemented` with a recorded passing verify run: the human gate binds
-// approval, not implementation, so a dependent may build on a deliverable that
-// has already passed verification while it waits for sign-off. A gates: or
-// feathers: edge (dependsEdge=false) never takes that branch — an ordering or
-// policy gate still waits for verified/done.
-func targetSatisfies(b Brief, dependsEdge bool) bool {
-	if b.Status == "done" || b.Status == "verified" {
-		return true
-	}
-	return dependsEdge && humanGatedVerifyPassed(b)
 }
 
 // humanGatedVerifyPassed reports a gate:human brief at `implemented` whose

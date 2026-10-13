@@ -37,7 +37,7 @@ func (c *Cell) printPlan(env ComposedEnv, cwd string, argv []string) {
 func harnessArgv(harness, role, model, session, wt string) []string {
 	if harness == "codex" {
 		return []string{"codex", "--sandbox", "danger-full-access", "-C", wt, "-m", model,
-			fmt.Sprintf("Invoke the %q skill now.", "assay:"+role)}
+			codexStandingPrompt(role, fmt.Sprintf("Invoke the %q skill now.", "assay:"+role))}
 	}
 	return []string{"claude", "--name", session, "--model", model, "/assay:" + role}
 }
