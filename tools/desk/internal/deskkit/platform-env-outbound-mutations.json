@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes|NewRefusesBeforeMkdir|LaunchedHouseCheck|ConfigReplayClass|OperatorContextChoke|CodexConfigLaunchOverride)$'",
+  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ -count=1 -timeout 120s -run '^Test(EnvResolution|HomeReadClassGuard|OutboundWindowsMachinePaths|CodexNativeOperatorHomes|NewRefusesBeforeMkdir|LaunchedHouseCheck|ConfigReplayClass|OperatorContextChoke|CodexConfigLaunchOverride|CellOwnedSiblingPatternRoot)$'",
   "control": {
     "name": "Unset-home refusal removed (empty home resolves)",
     "file": "cmd/cellctl/homeresolve.go",
@@ -150,6 +150,18 @@
       "file": "cmd/cellctl/homeresolve.go",
       "old": "\t\tpending = target + string(filepath.Separator) + pending",
       "new": "\t\tpending = filepath.Clean(target) + string(filepath.Separator) + pending"
+    },
+    {
+      "name": "Check-side candidate cleaned lexically before the walk",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\tp, err := absUncleaned(p)\n\tif err != nil {\n\t\treturn true",
+      "new": "\tp, err := filepath.Abs(p)\n\tif err != nil {\n\t\treturn true"
+    },
+    {
+      "name": "Capture-side candidate cleaned lexically before the walk",
+      "file": "cmd/cellctl/homeresolve.go",
+      "old": "\tp, err = absUncleaned(p)",
+      "new": "\tp, err = filepath.Abs(p)"
     },
     {
       "name": "Spent link budget treated as a finished walk",

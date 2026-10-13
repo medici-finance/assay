@@ -147,6 +147,8 @@ func TestLaunchedHouseCheck(t *testing.T) {
 		must(t, os.Symlink(filepath.Join(cellHome, ".config", "sub"), filepath.Join(aliasDir, "y")))
 		dotdotAlias := filepath.Join(aliasDir, "dotdot-alias")
 		must(t, os.Symlink(filepath.Join(aliasDir, "y")+"/../assay", dotdotAlias))
+		// Built by concatenation: filepath.Join would clean the ".." away.
+		dotdotDirect := filepath.Join(aliasDir, "y") + "/../assay"
 		// A chain longer than the walk's link budget fails closed.
 		longChain := cellConfig
 		for i := 0; i <= maxConfigLinks; i++ {
@@ -184,6 +186,8 @@ func TestLaunchedHouseCheck(t *testing.T) {
 			{"alias-trailing-dot", "", false, operatorWith(dotAlias)},
 			{"alias-sep-chain", "", false, operatorWith(sepChain)},
 			{"alias-dotdot", "", false, operatorWith(dotdotAlias)},
+			// A ".." after a link in the candidate itself, not in a stored target.
+			{"dotdot-direct", "", false, operatorWith(dotdotDirect)},
 			{"alias-long-chain", "", false, operatorWith(longChain)},
 			{"in-home-later", inHomeLater, true, operatorWith(inHomeLater)},
 			{"sibling-cell-home", shared, false, map[string]string{"HOME": otherHome, "USERPROFILE": otherHome, "PATH": e.vals["PATH"], "DESK_TOOLS_BIN": f.binDir}},
@@ -227,8 +231,14 @@ func TestLaunchedHouseCheck(t *testing.T) {
 		must(t, err)
 		relAlias := filepath.Join(aliasDir, "rel-alias")
 		must(t, os.Symlink(rel, relAlias))
+		// A ".." after a link in the override itself. The OS resolves y, goes up
+		// to the cell's .config directory, and lands on the cell link: the
+		// candidate must be judged as that path, not as its lexical cleaning.
+		must(t, os.MkdirAll(filepath.Join(cellHome, ".config", "sub"), 0700))
+		must(t, os.Symlink(filepath.Join(cellHome, ".config", "sub"), filepath.Join(aliasDir, "y")))
+		dotdotDirect := filepath.Join(aliasDir, "y") + "/../assay"
 		for _, misdirected := range []bool{true, false} {
-			for name, override := range map[string]string{"absolute": abs, "relative": relAlias} {
+			for name, override := range map[string]string{"absolute": abs, "relative": relAlias, "dotdot-direct": dotdotDirect} {
 				t.Run(name+"-misdirected-"+strconv.FormatBool(misdirected), func(t *testing.T) {
 					if misdirected {
 						misdirect(t)
@@ -242,6 +252,42 @@ func TestLaunchedHouseCheck(t *testing.T) {
 				})
 			}
 		}
+	})
+	// The same ".." spellings, named by the recorded context variable instead
+	// of the override, and an alias of the cell link followed by ".." and the
+	// name of the directory the link points at.
+	t.Run("check-side-dotdot", func(t *testing.T) {
+		aliasDir := t.TempDir()
+		abs := filepath.Join(aliasDir, "abs-alias")
+		must(t, os.Symlink(cellConfig, abs))
+		must(t, os.MkdirAll(filepath.Join(cellHome, ".config", "sub"), 0700))
+		must(t, os.Symlink(filepath.Join(cellHome, ".config", "sub"), filepath.Join(aliasDir, "y")))
+		dotdotDirect := filepath.Join(aliasDir, "y") + "/../assay"
+		t.Run("context-variable", func(t *testing.T) {
+			for _, misdirected := range []bool{true, false} {
+				t.Run("misdirected-"+strconv.FormatBool(misdirected), func(t *testing.T) {
+					if misdirected {
+						misdirect(t)
+					}
+					env := without(values, operatorConfigKey)
+					env[operatorConfigKey] = dotdotDirect
+					out, err := run(env, claude)
+					if err == nil || !strings.Contains(out, "MISS  config home linked") {
+						t.Fatalf("cell link behind a parent element accepted from the context: %v\n%s", err, out)
+					}
+				})
+			}
+		})
+		t.Run("alias-then-parent-and-target-name", func(t *testing.T) {
+			foreign := filepath.Join(t.TempDir(), "foreign-config")
+			misdirectTo(t, foreign)
+			env := without(values, operatorConfigKey)
+			env["ASSAY_CONFIG_HOME"] = abs + "/../" + filepath.Base(foreign)
+			out, err := run(env, claude)
+			if err == nil || !strings.Contains(out, "MISS  config home linked") {
+				t.Fatalf("alias, parent element and target name accepted: %v\n%s", err, out)
+			}
+		})
 	})
 	t.Run("host-misdirected-link", func(t *testing.T) {
 		misdirect(t)

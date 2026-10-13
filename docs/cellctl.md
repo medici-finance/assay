@@ -110,9 +110,11 @@ including an explicit positional override, is preserved for policy rechecks.
 When the composing environment is already cell-scoped, nothing is recorded:
 the context stays unset and the house check refuses, rather than accepting
 whatever the cell link points at. A config candidate is cell-scoped when the
-path, resolved one element at a time as the OS resolves it, passes through a
-cell's config link (whatever the stored spelling of each link: absolute,
-relative, a trailing separator or dot element) or lies inside a cell home,
+path, taken as written and resolved one element at a time as the OS resolves
+it, passes through a cell's config link (whatever the stored spelling of each
+link: absolute, relative, a trailing separator or dot element; and a parent
+element after a link applies to the resolved path, whether it sits in the path
+itself or in a link's stored target) or lies inside a cell home,
 including one that does not exist yet. "A cell" is this cell or any sibling
 under the same cells root. A path that cannot be resolved to the end (too many
 links, an unreadable element) counts as cell-scoped. The house check applies the
@@ -1430,7 +1432,7 @@ processes are not configuration.
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
 | `ASSAY_CONFIG_HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | locate the operator's own config homes — where the desk tools, the GitHub CLI and the harnesses find their credentials |
 | `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
-| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
+| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
 
 Typical uses of the file are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget,
 `CELL_COCKPIT`, `CELL_HARNESS`, and the model keys (`DESK_MODEL_DEFAULT`, the `TIER_MODEL_*`

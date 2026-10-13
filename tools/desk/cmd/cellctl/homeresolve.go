@@ -96,6 +96,10 @@ func operatorConfigHomeFor(goos string, e *Env) (string, error) {
 	return configHomeFor(goos, e)
 }
 
+// The candidate is judged as written, not lexically cleaned: the check later
+// resolves the same string through the OS, and a cleaned copy would drop a ".."
+// that follows a link.
+//
 // Capture before HOME/ASSAY_CONFIG_HOME change. Resolve existing aliases so the
 // stored expectation is a resource path independent of the cell's config link.
 // A missing config stays a missing path: launch composition does not provision
@@ -112,7 +116,7 @@ func captureOperatorConfig(e *Env, cellHome, cellConfig string) (string, error) 
 	if err != nil || e.IsSet(operatorConfigKey) {
 		return p, err
 	}
-	p, err = filepath.Abs(p)
+	p, err = absUncleaned(p)
 	if err != nil {
 		return "", err
 	}
@@ -135,20 +139,30 @@ func captureOperatorConfig(e *Env, cellHome, cellConfig string) (string, error) 
 // one path element at a time, the way the OS resolves it (resolvedPrefix), and
 // every node on the way is compared with each config link by identity. A
 // spelling therefore cannot hide the link: an alias, a relative alias, a target
-// ending in a separator or a dot element, or a ".." after a link. Containment is
+// ending in a separator or a dot element, or a ".." after a link, whether that
+// ".." is in a link's stored target or in p itself (p is walked uncleaned, so
+// the walk judges the very string a later stat resolves). Containment is
 // node identity of an ancestor, not a string prefix, so letter case on a
 // case-insensitive filesystem is irrelevant. A candidate that does not exist yet
 // is judged by its existing prefix. A walk that cannot finish (the link budget
 // is spent, or an element cannot be read) counts as cell-owned: no independent
 // expectation is recorded, and the house check refuses.
 func cellOwnedConfig(p, cellHome, cellConfig string) bool {
-	p, err := filepath.Abs(p)
+	p, err := absUncleaned(p)
 	if err != nil {
 		return true
 	}
 	homes := []string{cellHome}
 	if cellHome != "" {
-		siblings, _ := filepath.Glob(filepath.Join(filepath.Dir(filepath.Dir(cellHome)), "*", "home"))
+		// Listed, not globbed: a cells root whose name carries a pattern
+		// character must still reveal its sibling cells.
+		var siblings []string
+		root := filepath.Dir(filepath.Dir(cellHome))
+		if entries, err := os.ReadDir(root); err == nil {
+			for _, ent := range entries {
+				siblings = append(siblings, filepath.Join(root, ent.Name(), "home"))
+			}
+		}
 		homes = append(homes, siblings...)
 	}
 	var links, roots []os.FileInfo
@@ -184,6 +198,22 @@ func cellOwnedConfig(p, cellHome, cellConfig string) bool {
 			return false
 		}
 	}
+}
+
+// absUncleaned makes p absolute WITHOUT cleaning it. filepath.Abs cleans
+// lexically, which drops a ".." that follows a link before the OS ever applies
+// it to the link's target; the walk and the later stat of the same string would
+// then judge two different paths. A relative p is joined to the working
+// directory by plain concatenation so every element survives for the walk.
+func absUncleaned(p string) (string, error) {
+	if filepath.IsAbs(p) {
+		return p, nil
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return wd + string(filepath.Separator) + p, nil
 }
 
 // maxConfigLinks bounds resolvedPrefix. It is at least the limit any supported

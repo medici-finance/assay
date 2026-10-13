@@ -21,6 +21,9 @@ var operatorContextAllowed = map[string]bool{
 	"homeresolve.go:operatorConfigHomeFor":         true,
 	"homeresolve.go:captureOperatorConfig":         true,
 	"codex_environment.go:codexCommandEnvironment": true,
+	// The registry of environment keys classifies the name (a key defaults.env
+	// refuses); it neither reads nor writes a value.
+	"envkeys.go:buildEnvKeys": true,
 }
 
 func isOperatorKey(n ast.Node) bool {
