@@ -87,7 +87,7 @@ worker and run boundaries differ from a local Codex daemon.
 
 | Backend candidate | Session/execution owner | Initial cellctl disposition |
 | --- | --- | --- |
-| Codex owned app server | Server owns threads and turns; cell owns the server binding | First adapter to qualify, local host first |
+| Codex owned app server | Server owns threads and turns; cell owns the server binding | First daemon adapter to qualify, local host first; existing Claude process-adapter plan remains |
 | Claude CLI / Agent SDK | Owned process hosts a resumable conversation | Retain process adapter; qualify SDK lifecycle before expanding |
 | Claude Remote Control | Serving host executes; vendor connection supplies remote UI | Optional operator attachment, not the admission authority |
 | Cursor local CLI | Existing cellctl process/cadence integration | Retain current behavior |
@@ -366,6 +366,41 @@ Stage A can run offline now. B is new prototype implementation, not an existing
 command. C needs a separately authorized model-backed trial; D/E need explicitly
 selected disposable infrastructure. Do not count schema generation, container startup
 or a mock session as real-harness qualification.
+
+### Required spikes and their decision outputs
+
+These are bounded experiments to resolve design uncertainty, not implementation
+briefs or authorization to activate a service. Apart from the eight existing Stage A
+tests recorded below, **none of these spikes has been executed**. The runtime
+maintainers own the prototypes; an independent verifier checks their retained
+evidence; the human driver owns activation and the consequential decisions in section 7.
+
+Each spike delivers a reproducible fixture, pinned versions, exact commands and
+results, a capability/limitation manifest, and a short decision report. Use synthetic
+repositories and non-secret transcripts. Reports must separate checked-clean,
+checked-failed and could-not-check. Stop at the named decision; do not turn a spike
+into a production implementation or silently add another service/database.
+
+| Spike | Question and bounded experiment | Required evidence and decision |
+| --- | --- | --- |
+| **S1 — Codex server boundary** | Can one owned server preserve two roles' distinct model, command environment, MCP/plugin access and approval settings? Use two synthetic roles, two clients and one pinned server; detach/reattach each and inspect children. Compare with separate servers. | Actual effective settings and served-model records, endpoint/home identity, denied cross-role access, and the same bound session after reconnect. Decide shared-per-cell versus separate-per-policy-domain servers. Any process-wide setting that widens a role rejects sharing. CLI schema presence is insufficient. |
+| **S2 — Mixed-harness candidate handoff** | Can a Cursor worker produce a candidate that a Codex reviewer independently checks through the shared runner contract? Use one planted defect, immutable candidate hash and isolated author/reviewer workspaces. Characterize a Claude process fixture through the same contract; real Claude qualification remains owned by the existing first-adapter brief. | Preserve role, actual harness/model, candidate and attempt identity end to end; the reviewer detects the planted defect. A changed candidate invalidates review currency. Record supported and unsupported operations separately per harness. Decide the minimal adapter/profile extension, including how Cursor joins per-role policy without bypassing its present refusals. |
+| **S3 — Durable controller and supervisor** | Can the existing owners support a celld client/service split? Use disposable PostgreSQL, one cell owner, two fake runners and two clients. Inject a lost Start reply, duplicate invocation/registration, controller restart, unavailable database and backup rollback. | No duplicate accepted launch; unknown survives restart; stale generation/incarnation cannot produce an accepted effect even when bypassing the upper controller. Database failure refuses new admission; rollback starts paused. Decide the required changes to the runner contract, supervisor journal and ownership interfaces. Fake-provider success proves no vendor fencing. |
+| **S4 — Drain, stop and native continuation** | Can real runtime state prove quiescence? Exercise a synthetic Codex Goal with child agents/background commands and a Cursor run, including approval wait, lost cancellation reply and a client disconnect. Test drain during existing work and attempts to refill after completion. | Drain rejects new admission while accepted work finishes; stop confirms the owned execution tree ceased; unrelated sessions survive. Goal objective, budget and usage remain intact and paused/cleared state never revives. Decide D1 and each harness's stop capability. Unconfirmed cancellation stays unknown. Changes to real session Goal state require the driver's explicit trial authorization. |
+| **S5 — Remote registration and attachment** | Does the same ownership contract work on two disposable hosts? Register an operator-bound runner, connect two clients, cut the transport, replay an old registration and restart the runner. | Unauthorized/cross-cell registration is rejected; host identity and owner generation remain bound; reconnect finds the original session; contact loss cannot cause a duplicate on another host. Decide transport, credential provisioning and supported recovery. This does not qualify automatic failover. |
+| **S6 — Kubernetes lifecycle** | Does cluster packaging preserve the qualified contract? In a separately authorized disposable cluster, run one celld owner and two runner pods; delete a runner, exhaust termination grace, restart the controller and test both retained and lost workspace/session volumes. | Ready is not reported before registration and reconciliation; termination receipts distinguish confirmed stop from unknown; replacement cannot revive an old owner or reset budget/drain/Goal state. Retained artifacts identify the exact candidate after replacement; lost state causes a visible hold. Decide the pod/PVC/probe contract and whether a pilot is supportable. No production cluster access or HA claim. |
+
+Run S1 and S3 first; their protocol/ownership decisions constrain the service shape.
+S2 follows S1's runtime characterization and S3's fixture contract. S4 follows S2
+and the applicable native-Goal authority decision. S5 requires S3/S4, and S6 requires
+S5 plus separate cluster-trial authorization. The existing Claude-first adapter brief
+is not replaced by this experimental ordering.
+
+The first useful delivery milestone is **S1–S4 locally**, with a thin client rather
+than a new desktop UI. A failure to preserve role policy or prove scoped stop blocks
+daemon standing-desk adoption. S5/S6 decide remote deployment separately; local
+success must not be reported as a completed cluster design. Record unresolved gaps
+and their owning contracts before estimating the production implementation.
 
 Author checks on 2026-10-13 at the pinned source passed all eight selected existing
 tests: runner `UnknownLaunch`, `LateResultDenied`, `CancelStillRunning`,
