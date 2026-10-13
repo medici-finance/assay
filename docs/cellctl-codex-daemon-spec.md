@@ -1,4 +1,4 @@
-# Cellctl sessions, Codex daemons, and execution hosts
+# Celld: cell sessions, harness runtimes, and execution hosts
 
 **Status:** draft
 **Date:** 2026-10-13
@@ -7,11 +7,14 @@
 
 ## 1. Recommendation and outcome
 
-Make `cellctl` manage **owned sessions on explicit execution hosts**, with terminals
-as attachable views. Use each harness's supported runtime to execute agents; retain
-cellctl's responsibility for role identity, workspaces, admissions, lifecycle and
-evidence. Start with an opt-in Codex app-server adapter. Keep the existing process
-adapter for harnesses or configurations that cannot satisfy the session contract.
+Make `cellctl` the operator client for **owned sessions on explicit execution hosts**,
+with terminals as attachable views. Use `celld` as the proposed service name for the
+existing future architecture's cell API/controller and runtime integration. It is a
+packaging and interface proposal, not a new scheduler or authority owner. Use each
+harness's supported runtime to execute agents; preserve existing role identity,
+workspace, admission, lifecycle and evidence contracts. Qualify an opt-in Codex
+app-server adapter alongside the already planned process adapter; keep legacy
+launch paths until their replacements satisfy the session contract.
 
 A successful integration lets an operator detach a terminal, reconnect from another
 device, see exactly which work still runs where, and drain or stop that work without
@@ -39,6 +42,8 @@ the deployed version and account, not inferred from these pages.
 | [Host desk cadence](cellctl-cadence.md) | Native Goals are the interactive Codex default; explicit headless cadence disables them. The launcher currently does **not** own or mutate native Goals. Paused or cleared Goals must remain so. |
 | [Role context](cellctl-role-context.md) | Operator custody and per-role policy remain requirements. Existing harness-specific checks do not establish daemon equivalence. |
 | [Contained reader](../tools/desk/internal/cellreader/reader.go) | A tools-stripped Codex app-server client already exists, with isolated configuration and rejection of server callbacks. It is not a general desk runtime client. |
+| [Model policy](cellctl-model-policy.md), [cursor.go](../tools/desk/cmd/cellctl/cursor.go) | Policy can route roles to Claude or Codex today. Cursor supports an explicit host launch but refuses `CELL_MODEL_POLICY` and non-house cells. Mixed Cursor/Codex daemon deployment is not established by existing mixed-model configuration. |
+| [loopadmin runner](../loopadmin/runner/adapter.go) | `Capabilities`, `Start`, `Observe`, `Cancel`, and `Reconcile` already form a checked adapter contract. Only a fake adapter and offline conformance kit ship here; a real provider adapter and durable supervisor remain planned. |
 
 Local protocol inspection used CLI **0.162.1**, including
 `codex app-server generate-json-schema --experimental`. Its schema exposes thread
@@ -116,8 +121,8 @@ executor, not merely a missed heartbeat or an expired controller connection.
 | --- | --- |
 | Model execution, conversation history, native tools and native child agents | Harness runtime |
 | Cell/role identity, worktree custody, model policy and dispatch authorization | Existing cellctl/desk policy |
-| Exclusive role ownership, desired admission state, recovery binding | Existing cellcadence ownership record, extended compatibly |
-| Runtime-specific requests, events and status interpretation | Small harness adapter inside the desk Go module |
+| Exclusive role ownership, desired admission state, recovery binding | Existing authority during transition; the approved runtime-coordination owner in the target architecture |
+| Runtime-specific requests, events and status interpretation | Shared `loopadmin` runner contract and qualified adapters; cellctl supplies resolved profiles |
 | Terminal, browser or cockpit attachment | Presentation client; attachment confers no new authority |
 | Placement on another host | Explicit operator-selected execution target; no implicit scheduler |
 
@@ -133,7 +138,11 @@ unfinished owner exists. Existing `down` must report stop evidence before declar
 success. A future `detach` closes only the view. Preserve current command compatibility
 through an explicit runtime mode; do not silently change running cells.
 
-Extend `<cell>/run/cadence/<role>/checkpoint.json` with a versioned runtime binding:
+For a bounded legacy-path qualification, extend the existing
+`<cell>/run/cadence/<role>/checkpoint.json` rather than inventing another local
+registry. The target service stores runtime facts through the planned PostgreSQL
+coordination/journal owners; this local checkpoint is transitional, not a competing
+distributed authority. A versioned runtime binding needs:
 backend, stable host identity, endpoint reference, server incarnation, cell/role,
 ownership generation, root session ID, known child IDs, worktree identity,
 configuration digest, last observation and desired admission state. Keep credentials
@@ -145,16 +154,20 @@ the execution host's single owner through an authenticated transport; copying th
 checkpoint or placing a file lock on shared storage does not create distributed
 ownership. A later multi-controller service needs an explicit fencing design.
 
-Reuse cellcadence leases/checkpoints, cellprocess ownership and existing cockpit
-adapters. Retire terminal liveness as completion evidence for daemon mode. Do not
-add a second job database or copy transcripts into cellctl. Status may cache bounded
+Reuse cellcadence ownership semantics, cellprocess behavior and existing cockpit
+adapters through the planned shared-runner migration. Retire terminal liveness as
+completion evidence for daemon mode. Do not add a second job database or copy
+transcripts into cellctl. Status may cache bounded
 observations, with their age; the runtime remains the source for execution state.
 
 The contained reader's RPC implementation is private and deliberately restrictive.
-Both consumers are in `tools/desk`, so extracting a policy-free codec into an
-`internal` package is possible, but only with tests preserving the reader's callback
-refusal, binary custody and feature restrictions. Otherwise use a small separate
-adapter. Sharing transport code must not share tool authority or the comms socket.
+The target adapter lives across a Go module boundary in `loopadmin`; it cannot import
+`tools/desk/internal/cellreader` or `cellprocess`. The existing plan moves the process
+runner into `loopadmin/process` and expands the launch audit. A reusable protocol
+codec would likewise need an explicit shared package and dependency, with tests
+preserving the reader's callback refusal, binary custody and feature restrictions.
+Otherwise use a small independent wire client behind the shared runner interface.
+Sharing transport code must not share tool authority or the comms socket.
 
 ## 5. Codex integration contract
 
@@ -307,3 +320,118 @@ The human driver owns these consequential decisions:
 
 After review, record rulings through the [spec lifecycle](../spec/lifecycle-v1.md#8-spec-and-scoping-doc-lifecycle).
 Only a separately authorized decomposition should create implementation briefs.
+
+## 8. Distance from today's implementation
+
+The architectural distance is smaller than the operational distance. The intended
+owners already exist in the [future architecture](proposals/non-ci-architecture/11-target-architecture.md):
+a cell API/controller, runtime coordination, isolated runners, separate effect
+executors and human clients. Its initial deployment is one host with isolated cells,
+not an already qualified cluster. No `celld` implementation was found in the inspected
+`tools`, `docs` or `spec` trees at the source pin above.
+
+| Slice | Available now | Remaining work |
+| --- | --- | --- |
+| Role launch and policy | Worktrees, harness argv, role/model resolution and process ownership | One declarative per-role route covering Cursor and qualified remote runtimes; preserve current refusal cases until supported |
+| Invocation contract | `loopadmin/runner` and fake-adapter conformance tests | Actual harness adapters, persistent receipts, session attachment and native background-work semantics |
+| Long-running supervision | Local cellcadence leases and process cleanup | Durable shared supervisor/journal, runtime binding after client exit, authenticated control endpoint |
+| Service and client | Operator CLI and cockpit adapters | Celld API, shared client contract, per-cell authorization and session/event projection |
+| Containers and hosts | Local Docker engine with explicit socket and ownership inspection | Authenticated runner registration, host identity, placement, reconnection and pod lifecycle qualification |
+| Recovery | Local unfinished-owner refusal; runner unknown/cancel contracts | PostgreSQL restart/restore proof, effect-boundary fencing and independently confirmed cross-host stop |
+
+This is a substantial integration increment, not a rename of `cellctl` or one daemon
+flag. A percentage-complete or calendar estimate would be false precision before the
+real-runtime qualification below. A useful local prototype is much nearer than a
+reliable multi-host service. Existing `deskd` is a forge-read/index service launched
+by [deskd.go](../tools/desk/cmd/cellctl/deskd.go); it is not this execution controller.
+
+## 9. Experiment that decides whether this works
+
+Test the smallest complete journey first: one Cursor worker produces a candidate,
+one independent Codex reviewer examines that exact candidate, and an operator can
+detach, reconnect, drain and stop both through the proposed control contract. Use a
+synthetic repository with a planted defect and a local handoff manifest in place of
+forge writes. A candidate hash, author/reviewer identity and actual served model must
+survive the journey. Passing a model prompt alone is insufficient.
+
+| Stage | Environment and experiment | Pass evidence / what it cannot prove |
+| --- | --- | --- |
+| A: current foundations | Run existing runner unknown-launch, stale-generation, cancellation, unsupported-resume and model-fallback controls; run interactive/cadence ownership controls | Named test results establish reusable local contracts. They prove no daemon or remote deployment. |
+| B: service contract | One local celld prototype, disposable PostgreSQL, two separately supervised fake runners and two clients. Inject lost launch replies, duplicate registration, expired ownership and controller restart | One invocation per accepted identity, same session after reconnect, stale owner cannot publish, pause/drain survive restart. Fake runners prove control logic only. |
+| C: real harnesses | Repeat the candidate/review journey with pinned Cursor and Codex versions on one test host, separately provisioned credentials and isolated workspaces | Actual model/session readback, exact candidate review, background-child stop and role separation. Native CLI output/capabilities may reject the proposal; record that rather than simulate parity. |
+| D: remote execution | Move one runner to a disposable second host. Disconnect clients, interrupt the transport, restart the runner agent and attempt duplicate admission | Work remains with its owner; the second client reattaches; network loss becomes unknown and prevents replacement. This proves selected remote paths, not cluster HA. |
+| E: cluster packaging | After separate authorization, repeat in a disposable cluster with pod deletion, termination grace and lost-volume/retained-volume cases | A replacement pod cannot revive stale authority or reset budget/stop state; forced termination is reported accurately. No production cluster is needed. |
+
+Stage A can run offline now. B is new prototype implementation, not an existing
+command. C needs a separately authorized model-backed trial; D/E need explicitly
+selected disposable infrastructure. Do not count schema generation, container startup
+or a mock session as real-harness qualification.
+
+Author checks on 2026-10-13 at the pinned source passed all eight selected existing
+tests: runner `UnknownLaunch`, `LateResultDenied`, `CancelStillRunning`,
+`ResumeUnsupported`, `ModelFallback`, and `BothModesWithoutGraph`; cellcadence
+`InteractiveOwnershipAndCadenceTransition` and `InteractiveUncertainRefusesBothModes`.
+The runner cases use fake adapters. These results establish only Stage A's selected
+foundations, not an implemented celld, a complete qualification suite, or independent
+verification of this proposal.
+
+Retain a machine-readable receipt for each transition: cell/role, invocation and
+attempt, owner incarnation/generation, runtime/session/child IDs, harness version,
+candidate hash, requested versus observed model, observation time, requested action,
+confirmed result and outstanding unknowns. Retain non-secret event transcripts and
+independent filesystem/process observations for cancellation tests. A recorded cancel
+request alone never proves that execution stopped.
+
+Measure service CPU/RSS separately from harness descendants, startup and reattachment
+latency, duplicate launches, stop-confirmation time, outstanding work at drain,
+recovery time and unresolved observations. Establish operational thresholds with the
+owner after a baseline; correctness bars are no duplicate admission, no stale-owner
+effect and no false stopped/drained result in the prescribed cases. If either real
+harness cannot meet a required capability, keep its process path and report partial
+support; do not broaden permissions to make the demonstration pass.
+
+## 10. Consequences for the future architecture
+
+`celld` should be the service packaging of existing domain owners, with `cellctl` and
+the desktop/cockpit as clients. Start with one service owner per logical cell; several
+cells may share a host. A shared ingress may route to those cells without becoming a
+cluster-wide authority holding every role's credentials. A cell is a policy and
+ownership boundary, not a synonym for one pod: a controller and its isolated runner
+pods can belong to the same cell.
+
+Runner registration means authenticated identity/capability/liveness reporting; it
+does not mint permission to claim arbitrary work. The operator provisions a cell
+binding, celld validates it, and a registered runner receives only an admitted,
+profile-bound invocation. Kubernetes may place or restart a pod; it does not decide
+work eligibility, accept a review, fence a provider write or resume a paused Goal.
+
+The [amendment manifest](proposals/non-ci-architecture/20-amendment-manifest.md) and
+existing graph-execution briefs already name the relevant owners:
+
+| Existing owner | Required daemon/service reconciliation |
+| --- | --- |
+| [20: runner contract](streams/graph-execution/brief-20-runner-contract.md) | Extend versioned capabilities for attachment, descendants and native continuation where justified; retain Start/Observe/Cancel/Reconcile and unknown semantics |
+| [26: shared supervisor](streams/graph-execution/brief-26-shared-loop-admin.md) | Bind daemon sessions and registrations to invocation ownership; use its PostgreSQL journal and existing process-runner migration, not a new scheduler |
+| [22: first adapter](streams/graph-execution/brief-22-local-harness-adapter.md) | Currently specifies Claude first. A Codex daemon experiment is an additional qualification lane; it does not silently replace that scope or move Cursor onto an unqualified adapter |
+| [27: standing desk clients](streams/graph-execution/brief-27-standing-desk-loop-admin.md) | Route current desk callers through the shared supervisor while preserving their scheduling and admission semantics |
+| [16: ownership and budgets](streams/graph-execution/brief-16-cell-ownership-budgets.md) | Reuse incarnation/generation, cumulative budget and restoration fencing; registration and heartbeat are not a second authority |
+| [19: durable store](streams/graph-execution/brief-19-durable-instance-store.md), [21: controller](streams/graph-execution/brief-21-controller-host.md) | Keep work state and workflow decisions with their existing owner; session status cannot substitute for evidence or acceptance |
+
+The durable target is PostgreSQL coordination, Git/forge-retained canonical work and
+evidence, and harness-owned conversation state. A vendor session database is not the
+work ledger; the transitional cellcadence checkpoint is not an alternative distributed
+store. Restore follows the existing
+[storage and operator-incarnation contract](proposals/non-ci-architecture/14-storage-forge-graph.md).
+Native harness continuity supplies execution convenience, never restored authority.
+
+Effect credentials remain outside model-working sessions under the target design;
+moving an existing desktop credential arrangement into a pod does not establish that
+boundary. Retain the separate role-bound effect executors and their final admission
+checks. Likewise, the comms gateway carries messages; it must not become a parallel
+launch scheduler or substitute for acknowledged celld operations.
+
+The resulting change is primarily a client/service and runtime-adapter cutover within
+the approved direction. Authenticated multi-host registration, cluster placement and
+automatic recovery expand the currently host-first deployment scope and require their
+own qualification. Update the canonical future-architecture documents and affected
+unfinished briefs together after review; this draft does not amend their authority.
