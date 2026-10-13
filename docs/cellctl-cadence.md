@@ -41,6 +41,14 @@ standing objective. `/goal` inspects it; `/goal pause` and `/goal clear` retain 
 control. Blocking conditions, interruption and native continuation limits can stop
 progress: this is not a durable polling clock or a permanent-service guarantee.
 
+If a user says "correct and resume" while the Goal is inactive, the bootstrap
+instructs the desk to complete the authorized correction under its existing
+safeguards and then read native state again. If the state is still inactive and
+the exposed tools offer no resume operation, it gives the exact `/goal resume`
+control instead of claiming success or asking again for correction permission.
+Matching active readback remains required for standing continuation. The launcher
+does not own or mutate native Goal state.
+
 Explicit `--cadence` / `CELL_CADENCE` durations select the existing headless supervisor;
 `--cadence off` or saved `CELL_CADENCE=off` explicitly selects interactive mode.
 A tick budget requires an explicit cadence; `off` ignores a saved budget. Codex tick

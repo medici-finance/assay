@@ -601,7 +601,7 @@ func AttestedModelStampOf(tl StampTimeline, isDispatcher func(applier string) bo
 // AttestedStampOf is the applier-aware reader for this kind only (see AttestedModelStampOf).
 func (k StampKind) AttestedStampOf(tl StampTimeline, isDispatcher func(applier string) bool) (ModelStamp, ModelState) {
 	if len(k.present(tl.Present)) == 0 {
-		// No dispatched-* label ON THE PR: the applier question does not arise, and the
+		// No label of this kind ON THE PR: the applier question does not arise, and the
 		// content reader will return Unknown. Historical stamp events that were later
 		// removed are deliberately NOT consulted here — a stamp the PR no longer carries is
 		// not an attestation it is making.

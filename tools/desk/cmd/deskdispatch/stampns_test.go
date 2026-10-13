@@ -161,3 +161,19 @@ func TestBothStampsCoexist(t *testing.T) {
 		}
 	}
 }
+
+// regression: #2760
+func TestStampKitKinds(t *testing.T) {
+	for _, tc := range []struct {
+		kit  string
+		want deskkit.StampKind
+	}{
+		{"worker", deskkit.StampAuthored}, {"worker-objective", deskkit.StampAuthored},
+		{"review", deskkit.StampDispatch}, {"verifier", deskkit.StampDispatch},
+		{" ReView ", deskkit.StampDispatch}, {" Verifier ", deskkit.StampDispatch},
+	} {
+		if got := stampKindForKit(tc.kit); got != tc.want {
+			t.Errorf("kit %q: got %v, want %v", tc.kit, got, tc.want)
+		}
+	}
+}

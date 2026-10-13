@@ -600,7 +600,35 @@ func dispatch(o dispatchOpts) error {
 	o.say("%s %s", stepQueueLabel, stepQueueLabelApply(o, repo))
 
 	// 7 — the prompt.
-	return held.settle(emitPrompt(o, prompt))
+	emitErr := emitPrompt(o, prompt)
+	if emitErr == nil {
+		// 8 — say what has NOT happened. This verb prepares a run; it never starts the agent, so
+		// the claim just placed has no progress behind it until the caller launches and advances it.
+		o.notLaunched(plan, repo, home)
+	}
+	return held.settle(emitErr)
+}
+
+// notLaunched prints the closing NOT LAUNCHED line, on stderr and regardless of --quiet (it is
+// a warning, not a step report). A caller that ends its session, misreads this verb as the
+// launch, or errors before launching leaves the claim at state=claimed; the line names the
+// grace window after which another dispatcher reclaims it and spells out both ways forward —
+// launch the agent and advance the claim, or release it — so neither is left to memory.
+func (o dispatchOpts) notLaunched(plan dispatchPlan, repo, home string) {
+	tool := plan.claimReleaseHint
+	if tool == "" {
+		tool = claimScriptRel
+	}
+	branch := plan.branch
+	if branch == "" {
+		branch = "-" // a detached review/verify home has no branch; the claim records "-"
+	}
+	fmt.Fprintf(os.Stderr, "deskdispatch: NOT LAUNCHED: %s is prepared, not running — no agent has been started in %s. "+
+		"The claim %s stays at state=claimed and another dispatcher reclaims it after %dm with no progress "+
+		"(CLAIMED_TTL_MIN, default %dm). Launch the agent with the emitted prompt, then run `%s progress %q --repo %s "+
+		"--branch %s`; or, if it will not be launched, release it with `%s release %q --repo %s`.\n",
+		o.item, home, plan.claimKey, int(claimedClaimTTL.Minutes()), int(claimedClaimTTL.Minutes()),
+		tool, plan.claimKey, repo, branch, tool, plan.claimKey, repo)
 }
 
 // dispatchPlan is what validateCallerPreconditions derives once, so no later step
@@ -1715,18 +1743,18 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	forge := string(res.Kind)
 
 	// RE-STAMP, NOT ADD-ON-TOP. Labels are a SET, so applying a label the PR already carries
-	// is a NO-OP — and a stamp the floor cannot read is exactly the state it refuses.
+	// is a NO-OP — the kind-scoped reader must instead verify a complete, trusted pair.
 	// Re-running this step therefore changed nothing on the PRs that needed it most. A
 	// forge's label history is APPEND-ONLY, so the only repair it offers is to REMOVE the
 	// offending labels and re-apply the intended pair under the dispatcher; that is what the
-	// floor's reader resolves (the actor of the last standing application event), so it is
-	// what this step must do. The set to remove comes from deskkit.ReStampRemovals(labels):
-	// every present dispatched-* label that is not part of the pair being applied (a
+	// kind-scoped reader resolves (the actor of the last standing application event), so it is
+	// what this step must do. The set to remove comes from stampKind.ReStampRemovals:
+	// every present label of this kind that is not part of the pair being applied (a
 	// conflicting, stale, or malformed stamp — INCLUDING one an earlier run of the dispatcher
 	// itself left), plus any half of the pair whose standing application is foreign. Clearing
 	// only the foreign labels (the old ForeignStampLabels set) left a dispatcher-applied
-	// conflicting label standing, so the re-dispatch reported OK while the floor kept
-	// refusing — the present-but-unreadable deadlock this recovery exists to break. Reader
+	// conflicting label standing, so the re-dispatch reported OK while readback kept
+	// failing — the present-but-unreadable deadlock this recovery exists to break. Reader
 	// and writer project the standing-applier resolution from one place — and read it through
 	// the same two enumerated operations (GetPullRequest for the present set, ListLabelEvents
 	// for who applied each) — so they cannot disagree about it.
@@ -1908,12 +1936,13 @@ func stampRoleForKit(kit string) string {
 	return deskkit.DispatcherRole
 }
 
-// stampKindForKit picks the label pair a kit's stamp is written to (#2760). The review kit
-// writes dispatched-*, the session attestation the floor reads. Every other kit stamps the
-// session that AUTHORS the change, so it writes authored-* and never touches dispatched-*.
+// stampKindForKit picks the label pair a kit's stamp is written to (#2760). The review
+// and verifier kits write dispatched-*, the session attestation their readers consume.
+// Worker kits stamp the session that AUTHORS the change, so they write authored-* and
+// never touch dispatched-*. Verifier issue admission retains its separate apply path.
 // When both used dispatched-*, whichever stamp ran later replaced the other.
 func stampKindForKit(kit string) deskkit.StampKind {
-	if reviewKit(kit) {
+	if reviewKit(kit) || verifierKit(kit) {
 		return deskkit.StampDispatch
 	}
 	return deskkit.StampAuthored

@@ -61,3 +61,21 @@ func TestAuthoredRestampSparesReview(t *testing.T) {
 		t.Errorf("the floor's reader was disturbed by an authored label: %+v %v", got, st)
 	}
 }
+
+// regression: #2760
+func TestAuthoredOnlyFloor(t *testing.T) {
+	trusted := func(string) bool { return true }
+	tl := StampTimeline{
+		Present: []string{"authored-model:example-model", "authored-tier:strong"},
+		Events: []LabelEvent{
+			{Name: "authored-model:example-model", AppliedBy: "authority"},
+			{Name: "authored-tier:strong", AppliedBy: "authority"},
+		},
+	}
+	if got := ModelCapabilityFloor(tl, trusted, false, ClaimLivenessUnknown); got.State != ModelUnknown || got.Outcome != FloorNoticeAllow {
+		t.Errorf("authored-only ordinary floor = %+v; want unstamped notice", got)
+	}
+	if got := ModelCapabilityFloorRiskAware(tl, trusted, false, ClaimLivenessUnknown, FloorRiskClassed); got.State != ModelUnknown || got.Outcome != FloorRefuse {
+		t.Errorf("authored-only risk floor = %+v; want unstamped refusal", got)
+	}
+}

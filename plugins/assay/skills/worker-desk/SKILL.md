@@ -146,7 +146,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 
 | # | Source | The instrument that reads it |
 |---|---|---|
-| 1 | Board rows the board SHOWS, per root (the span-capped Next-up selection) | `git -C <root> fetch origin && fanoutloop plan --root <root>` |
+| 1 | Board rows the board SHOWS, per root (the span-capped Next-up selection) | `(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"` (absolute configured root; desk-shell §Authenticated transport) |
 | 2 | Rows **held back** by the 4-per-stream cap, the span cap, or the drive worker floor | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span, K by the drive worker floor) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
@@ -258,7 +258,7 @@ unreadable root in as an empty one.
   root from `refs/remotes/origin/main:STATUS.md` after fetching it — never regenerate in a sibling
   (`--root ../X` **writes**, and `../X` is the shared clone other sessions use). Spell the ref in full
   (bare `origin/main` resolves to a stray local branch of that name where one exists), chain
-  `git fetch origin && …` so a failed fetch short-circuits instead of printing a stale board at rc=0,
+  the authenticated fetch to the read with `&&` so a failed fetch short-circuits instead of printing a stale board at rc=0,
   and fetch **every** root.
 - **Row count is not eligible count** — the 4-per-stream cap holds rows back without tripping the
   overflow line, and no verb surfaces the held rows themselves. `deskboard dispatch` is the reading
@@ -359,7 +359,7 @@ could-not-check, never "no repos".
   item; where it is not, it is filed (§Output contract) and named in the tick's line.
 - The un-briefed-issue sweep (§Un-briefed issues) runs over the same set in the same tick.
 
-**1. Plan, per root.** `git -C <root> fetch origin && fanoutloop plan --root <root>` for every BOARD
+**1. Plan, per root.** `(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"` for every BOARD
 ROOT. `plan` is the SHOWN queue: orphan resumes first, then the board in board order, `issue-<NN>`
 placeholders **included** (only another loop's review-request dispatch tokens are skipped), each item
 carrying its tier and its exact dispatch instruction. It spawns nothing, writes nothing and **touches
@@ -442,7 +442,7 @@ selection to the coordinator desk (`the-desk`), which runs the printed
 `deskdispatch --stamp-only --repo <repo> --pr <N> --model <actual-model> --tier <tier>`
 command with the original kit. Require its applied-and-verified receipt before treating
 the PR's authoring as model-attested. A worker-kit stamp writes the `authored-model:` /
-`authored-tier:` pair, never `dispatched-*`. That pair is the review session's attestation,
+`authored-tier:` pair, never `dispatched-*`. The `dispatched-*` pair is the review session's attestation,
 and it is the only one the capability floor reads. Both this worker-desk and its child are refused by stamp-only;
 a shared `DESK_SESSION` is claim custody, not stamp authority. Never switch identity or
 redispatch a worker just to obtain the stamp.
