@@ -31,10 +31,19 @@ not evidence that a reviewer is currently assigned, and verdict kinds and outcom
 must remain distinct. The audit ledger records completed writes; planning must not
 reparse its complete history separately for each proposed operation.
 
-The current repeated-history lookup and its generic `review` key are tracked in
-[issue #2793](https://github.com/medici-finance/assay/issues/2793). The repair must
-preserve execution-time duplicate-write checks, retain audit history, and validate
-its state queries against the records the posting and dispatch tools actually emit.
+Planning uses only the supplied board observations and performs zero audit-history
+loads ([issue #2793](https://github.com/medici-finance/assay/issues/2793)). Historical
+review verdicts, including legacy generic `review` entries, cannot suppress a new
+review dispatch. Historical `ready` entries cannot suppress a current `FLIP`: a
+still-draft PR needs the retry that `deskpost ready` already permits (#805).
+
+Coalescing suppresses repeated keys within a plan and operations whose head is
+unresolved. It does not reserve a reviewer or authorize a write. Before execution,
+`deskdispatch` must acquire a live reviewer claim; `deskpost` must validate history
+under its outward lock and recheck current forge state and exact write identity.
+Missing, unreadable or corrupt audit history does not change a plan, and still
+retains its existing meaning at those write boundaries. No retained history is
+changed or discarded.
 
 ## Tool reference
 
