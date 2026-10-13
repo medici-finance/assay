@@ -1,10 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,86 +23,48 @@ func planFixture(t *testing.T, count int) []string {
 	return []string{"--actions", writeTemp(t, "a.json", a), "--prs", writeTemp(t, "p.json", `{"prs":[`+strings.Join(prs, ",")+`]}`), "--now", fixedNow}
 }
 
-func historyDir(t *testing.T) string {
-	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	dir, err := deskkit.StateDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	return dir
-}
-
 // regression: #2793
 func TestPlanHistoryIndependent(t *testing.T) {
-	args := planFixture(t, 4)
-	var want strings.Builder
-	historyDir(t)
-	if err := cmdPlan(args, &want); err != nil {
-		t.Fatal(err)
-	}
+	// These records explain why a completed-write predicate is not a dispatch
+	// predicate. Exercise its exact semantics as a positive control, then assert
+	// the board's current operation survives coalescing. The binary dependency
+	// test separately proves that cmdPlan cannot consult global history.
 	for _, result := range []string{"ok", "noop", "dryrun", "refused", "unverifiable"} {
 		for _, verb := range []string{"review", "review:correctness:approve", "review:security:approve", "review:correctness:request-changes", "ready"} {
 			t.Run(result+"/"+verb, func(t *testing.T) {
-				dir := historyDir(t)
-				var data []byte
-				for n := 42; n < 46; n++ {
-					head := "aaaaaaaaaaaabbbbbbbbbbbb"
-					b, err := json.Marshal(deskkit.Entry{Tool: "deskpost", Repo: "example-org/example-repo", PR: &n, HeadSHA: &head, Verb: verb, Result: result, BodyDigest: "different-review-body"})
-					if err != nil {
-						t.Fatal(err)
+				for _, action := range []string{"NEEDS-REVIEW", "RE-REVIEW", "FLIP"} {
+					r := headed(t, action, 42, "aaaaaaaaaaaabbbbbbbbbbbb")
+					entry := deskkit.Entry{Tool: "deskpost", Repo: r.Repo, PR: &r.Number, HeadSHA: &r.Head, Verb: verb, Result: result, BodyDigest: "different-review-body"}
+					entries := []deskkit.Entry{entry}
+					completed := result == "ok" || result == "noop"
+					if got := deskkit.AlreadyDoneIn(entries, r.Repo, r.Number, r.Head, verb); got != completed {
+						t.Fatalf("producer control: exact completed-write match = %v, want %v", got, completed)
 					}
-					data = append(data, append(b, '\n')...)
-				}
-				if err := os.WriteFile(filepath.Join(dir, "audit.jsonl.2026-08-12"), data, 0600); err != nil {
-					t.Fatal(err)
-				}
-				entries, err := deskkit.LoadEntries()
-				if err != nil || len(entries) != 4 {
-					t.Fatalf("invalid producer-shaped fixture: entries=%d err=%v", len(entries), err)
-				}
-				for _, dry := range []bool{false, true} {
-					call := append([]string(nil), args...)
-					if dry {
-						call = append(call, "--dry-run")
+					if got := deskkit.AlreadyDoneIn(entries, r.Repo, r.Number, r.Head, r.Rule.Verb); got != (completed && verb == r.Rule.Verb) {
+						t.Fatalf("producer control: operation key unexpectedly matches %q", verb)
 					}
-					var got strings.Builder
-					if err := cmdPlan(call, &got); err != nil {
-						t.Fatal(err)
-					}
-					if got.String() != want.String() {
-						t.Fatalf("historical %s %s changed the board plan (dry-run=%v)", verb, result, dry)
+					got := Dispatched(Coalesce([]*Board{healthyBoard(t, r)}))
+					if len(got) != 1 || got[0].Key.Verb != r.Rule.Verb {
+						t.Fatalf("current %s operation hidden by historical %s %s", action, verb, result)
 					}
 				}
 			})
 		}
 	}
-	for _, mode := range []string{"missing", "corrupt", "unreadable"} {
-		t.Run(mode, func(t *testing.T) {
-			dir := historyDir(t)
-			path := filepath.Join(dir, "audit.jsonl")
-			switch mode {
-			case "corrupt":
-				if err := os.WriteFile(path, []byte("{broken\n"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			case "unreadable":
-				if err := os.Mkdir(path, 0700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			var got strings.Builder
-			if err := cmdPlan(args, &got); err != nil {
-				t.Fatal(err)
-			}
-			if got.String() != want.String() {
-				t.Fatalf("%s history changed the board plan", mode)
-			}
-		})
+	for _, count := range []int{0, 1, 33} {
+		args := planFixture(t, count)
+		var normal, dry strings.Builder
+		if err := cmdPlan(args, &normal); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmdPlan(append(args, "--dry-run"), &dry); err != nil {
+			t.Fatal(err)
+		}
+		if normal.String() != dry.String() {
+			t.Fatalf("%d keys: dry-run changed plan", count)
+		}
+		if got := strings.Count(normal.String(), "  emit"); got != count {
+			t.Fatalf("%d keys: emitted %d", count, got)
+		}
 	}
 }
