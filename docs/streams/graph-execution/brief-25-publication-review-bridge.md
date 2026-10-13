@@ -3,7 +3,7 @@ brief: assay:assay:graph-execution:25
 title: Exact-candidate publication and independent review evidence bridge
 why: Internal review is useful only if the published commit is the one reviewed and its evidence can cross the existing
   forge gate without granting the worker approval authority.
-wave: 8
+wave: 11
 depends:
 - graph-execution/24
 - graph-execution/04

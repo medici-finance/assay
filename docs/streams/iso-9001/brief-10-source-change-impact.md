@@ -2,7 +2,7 @@
 brief: assay:assay:iso-9001:10
 title: Reassess affected project reviews after source changes
 why: An old review can remain apparently current after its governing source or scope changes. Projects need a bounded impact list and a new applicability decision without erasing what the earlier evidence actually proved.
-wave: 9
+wave: 12
 depends:
 - iso-9001/09
 unblocks:

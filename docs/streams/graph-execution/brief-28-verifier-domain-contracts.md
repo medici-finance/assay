@@ -4,7 +4,7 @@ title: Verifier domain contracts with qualified identities and candidate-bound a
 why: "The planned verifier runtime, its database and its cockpit all need one answer to 'which work item, which candidate, which acceptance, which facts'. Without one pure contract they each invent their own, and a verdict can attach to the wrong candidate or pass on missing facts."
 wave: 2
 depends: ["graph-execution/09"]
-unblocks: ["graph-execution/23", "graph-execution/29"]
+unblocks: ["graph-execution/23", "graph-execution/29", "graph-execution/04", "graph-execution/16", "graph-execution/19", "graph-execution/26"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -28,7 +28,8 @@ consumers:
   - "workflow candidate record (spec/workflow-candidate-v1.md as planned by graph-execution/23): follow-up graph-execution/23"
   - "regression-floor adapters: follow-up graph-execution/29"
   - "statusgen/evaluation: out-of-scope (consumed unchanged through its exported API; statusgen/15 owns it)"
-  - "durable coordination store and runtime controller: out-of-scope (non-CI R2/R5 follow-up briefs consume this contract; see the amendment manifest)"
+  - "durable coordination store (workflow/store): follow-up graph-execution/19 (non-CI R2 amendment, 2026-10-13; keys its records on this contract)"
+  - "runtime controller: out-of-scope (the non-CI R5 follow-up consumes this contract; see the amendment manifest)"
 id: fefddc8e-4cd2-4438-8c26-965b24ffd5dc
 ---
 
