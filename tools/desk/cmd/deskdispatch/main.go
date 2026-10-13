@@ -188,7 +188,8 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       the same queue signal a GitHub PR does. Non-fatal: a label the forge
                       would not accept is a provisioning gap to file, not a failed dispatch.
                       SKIPPED for a worker/verifier dispatch; DEFERRED when no --pr is known.
-  7 prompt-emit       writes the assembled agent prompt to stdout, or to --prompt-file.
+  7 prompt-emit       prints the assembled agent prompt to stdout; with --prompt-file F writes it to the NEW
+                      sibling <F without extension>.emitted.md and prints that path. F itself is never written.
 
 THE PACKET. Between the before_run hook and step 7, a --kit review dispatch with --pr known
 reads the change ONCE and writes one owner-only Markdown file: the change's facts and

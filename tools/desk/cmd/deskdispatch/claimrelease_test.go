@@ -49,9 +49,13 @@ func TestPromptWriteFailReleases(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies(filepath.Join(t.TempDir(), "home"))
 
-	// The destination's parent exists (the pre-claim check passes) but the destination is itself a
-	// directory, so the prompt write — the last step — fails.
-	rc, stderr := runCapturingStderr(t, []string{"item-1", "--root", root, "--prompt-file", t.TempDir()})
+	// The prompt file's parent exists (the pre-claim check passes) but the EMITTED destination is
+	// itself a directory, so the prompt write — the last step — fails.
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	if err := os.Mkdir(emittedPathFor(promptFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rc, stderr := runCapturingStderr(t, []string{"item-1", "--root", root, "--prompt-file", promptFile})
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("rc = %d, want %d:\n%s", rc, deskkit.ExitUnverifiable, stderr)
 	}
