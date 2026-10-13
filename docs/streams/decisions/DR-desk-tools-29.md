@@ -65,8 +65,9 @@ so `verifyloop verdict --unsigned-out` run in a checkout with no usable roster e
 payload and prints no digest. That fails closed (the host contract's H2 reads any other exit as do
 not sign), but the original contract did not say what the fence has to supply. It now does, as H6
 in the brief's Task 9 and in the `verdict` prose in `tools/desk/cmd/verifyloop/main.go`: the
-composing uid gets a fence-private `HOME` whose `.config/assay/roster.env` is a roster copy
-(0600, in a directory owned by that uid and not writable by group or other) and which holds no
+composing uid gets a `HOME` of its own inside the fence whose `.config/assay/roster.env` is a
+roster copy (0600; the file and its directory both owned by that uid, neither writable by group
+or other) and which holds no
 `verifier-app.pem`; `VERIFIER_PEM` and `ASSAY_CONFIG_HOME` stay unset. `ASSAY_CONFIG_HOME` does
 not relocate the roster, and the roster directory is also the default key location, so the host
 must not answer an activation exit 6 by mounting its own config home. The keyless mode is not

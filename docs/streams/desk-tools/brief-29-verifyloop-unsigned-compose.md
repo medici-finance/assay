@@ -352,9 +352,9 @@ Default if no answer: none — blocks until answered.
      `could-not-check: assay/desk-tools inactive — assay.roster.trust unset or malformed`, writes no
      payload and prints no digest; H2 reads that as do not sign. The roster is read from
      `$HOME/.config/assay/roster.env` only (`ASSAY_CONFIG_HOME` moves the App-credential plane, not
-     the roster: `confighome.go`, `rosterconfig.go` `configHomeFile`), as a 0600 file in a directory
-     owned by the composing uid and not writable by group or other. The host therefore gives the
-     composing uid a fence-private `HOME` whose `.config/assay` holds a copy of the roster and nothing
+     the roster: `confighome.go`, `rosterconfig.go` `configHomeFile`), as a 0600 file, the file and its
+     directory both owned by the composing uid and neither writable by group or other. The host
+     therefore gives the composing uid a `HOME` of its own inside the fence whose `.config/assay` holds a copy of the roster and nothing
      else (`ASSAY_BLESS_LOGIN` and `ASSAY_TRUSTED_LOGINS` are enough). That directory is the
      default place the resolver looks for `verifier-app.pem`, and `ASSAY_CONFIG_HOME` and
      `VERIFIER_PEM` are the other two, so the host never mounts its own config home into the fence,

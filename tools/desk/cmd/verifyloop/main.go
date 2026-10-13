@@ -366,10 +366,10 @@ The signature happens afterwards on the key-holding host, under this host contra
       roster it exits 6 ('could-not-check: assay/desk-tools inactive — assay.roster.trust
       unset or malformed'), writes no payload and prints no digest, which H2 reads as do not
       sign. The roster is read from $HOME/.config/assay/roster.env only (ASSAY_CONFIG_HOME does
-      not move it): the host gives the composing uid a fence-private HOME whose .config/assay
-      directory holds a copy of the roster and nothing else (ASSAY_BLESS_LOGIN and
-      ASSAY_TRUSTED_LOGINS suffice), the file mode 0600 and the directory owned by that uid and
-      not writable by group or other. That directory is also a place the verifier key is looked
+      not move it): the host gives the composing uid a HOME of its own inside the fence whose
+      .config/assay directory holds a copy of the roster and nothing else (ASSAY_BLESS_LOGIN and
+      ASSAY_TRUSTED_LOGINS suffice), the file mode 0600, the file and its directory both owned
+      by that uid and neither writable by group or other. That directory is also a place the verifier key is looked
       up, so the host never mounts its own config home, never lets verifier-app.pem exist in
       this HOME or in ASSAY_CONFIG_HOME, and leaves VERIFIER_PEM unset in the fence. On an
       activation exit 6 it fixes the fence's HOME; it does not mount the host's config home.
