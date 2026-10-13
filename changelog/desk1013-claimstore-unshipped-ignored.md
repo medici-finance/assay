@@ -1,0 +1,5 @@
+### Changed
+- A valid `ASSAY_CLAIM_STORE` value naming a store this build does not ship yet (`file` or `service`) no longer stops dispatch with exit 6. `deskdispatch`, `deskclaim-ref` and `deskpost finish` keep using the legacy forge-ref claim store, and every run prints a NOTICE that names the configured store and says it takes effect in the release that ships it. The resolution's provenance records both the configured value and the fallback. Operators can set the key before upgrading.
+- `ASSAY_CLAIM_SINGLE_HOST=yes` is accepted with no effect while the claim store is unset or not shipped.
+- The NOTICE printed when `ASSAY_CLAIM_STORE` is unset now says the keys may be set in the roster now and take effect on upgrade. It no longer tells operators to set a value this build would refuse.
+- Unchanged: a claim store this build ships whose precondition fails still refuses with exit 6 and never falls back to another store, and a malformed value (an unknown store, `forge-ref` set explicitly, a bad per-repo entry, a single-host value other than `yes`) is still refused.

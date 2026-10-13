@@ -867,10 +867,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	}
 
 	// WHERE the claim is kept is the resolver's answer, read from the roster
-	// and never from a flag. A configured store that cannot be used is a refusal HERE — exit 6,
+	// and never from a flag. A shipped store that cannot be used is a refusal HERE — exit 6,
 	// before any child process, any worktree and any credential mint — and is never replaced by
-	// another store. An unset key is the one-window legacy resolution, whose removal NOTICE is
-	// printed on every run.
+	// another store. An unset key, or a valid key naming a store this build does not ship
+	// (medici-finance/assay#2753), is the one-window legacy resolution, whose NOTICE is printed
+	// on every run.
 	store, serr := deskkit.ResolveClaimStore(repo)
 	if serr != nil {
 		return plan, deskkit.Unverifiable(fmt.Sprintf(

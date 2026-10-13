@@ -45,11 +45,61 @@ consumers:
   - "claim readers outside the claim tool: follow-up forge-neutral/22"
   - "removal of the forge store and of the unset-key resolution: follow-up forge-neutral/32"
   - "tools/dispatch-claim.sh in consumer repositories: out-of-scope (the legacy script speaks the forge store only, is reached solely when the Go claim tool is absent, and leaves with that store)"
-version: 1
+version: 2
 id: f354fb2d-860e-474d-8a44-fbebeb942739
 ---
 
 # Brief 21 — Claim store seam and resolver
+
+## Amendment (medici-finance/assay#2753, 2026-10-13, brief stays `implemented`)
+
+**Why.** As landed, `ASSAY_CLAIM_STORE=file` (or `service`) — a VALID value naming a store this
+build does not ship — refused every dispatch with exit 6, and the legacy NOTICE told operators
+to set exactly that value. An operator following the NOTICE stopped their own fleet. A build
+that does not ship a store cannot hold a claim in it, so refusing protects nothing.
+
+**What changes (version 1 → 2).** The issue's fork test was answered with default **a**; the
+maintainer's ratification is pending on medici-finance/assay#2753 and the change merges only
+after it.
+
+- A valid but unshipped store resolves to the legacy forge-ref resolution: exit 0, `Legacy`
+  set, the forge credential needed, a NOTICE naming the configured store and saying it takes
+  effect in the release that ships it, and a provenance string carrying both the configured
+  value and the fallback. This holds whatever `ASSAY_CLAIM_SINGLE_HOST` says.
+- `ASSAY_CLAIM_SINGLE_HOST=yes` is accepted with no effect while the store is unset or
+  unshipped (it appears in provenance only).
+- The unset-key NOTICE now says the keys may be set in the roster now and take effect on
+  upgrade; it no longer tells the operator to set a value the build refuses.
+
+**What does not change.** A store this build SHIPS whose precondition fails still refuses with
+exit 6 and never moves on to another store — that is the invariant rows 3 and 4 guard, and the
+mutation `claimstore-unmet-precondition-falls-through` still turns row 3's shipped subtests RED.
+Malformed values (a bad per-repo form, an unknown value, `forge-ref` set explicitly, a
+`ASSAY_CLAIM_SINGLE_HOST` other than `yes`, a relative `ASSAY_CLAIM_DIR`) still refuse; "ignored"
+covers only a valid value whose store is not shipped. The Evidence section below records
+version 1 and stays as landed.
+
+**The invariant, restated.** Version 1: "a configured store never falls back to another one".
+Version 2: "a configured store **this build ships** never falls back to another one; a valid
+store this build does not ship resolves to what an unset key resolves to". Inside one build
+this cannot split a repo's claims, because the unshipped store has no code that writes a
+claim. Across builds — one process upgraded to the release that ships `file`, another still on
+an older one with the same key set — the old process keeps claiming on the forge while the
+new one claims in the directory. The control for that window is brief 23's mixed-store
+refusal (both directions), which therefore ships in the same release as the `file` store.
+
+**Verify rows changed.** Rows 2, 3, 4 and 6 keep their commands; their Expect text is updated
+below. Rows 11–13 are new.
+
+**Fail-first.** Each new or flipped test was run against the pre-fix sources (the non-test
+files at `efbdb51da`, the brief's version-1 implementation) with the new tests in place:
+
+| Test | Pre-fix result |
+|---|---|
+| row 3's two "not shipped in this build" subtests | FAIL (both) — resolved a refusal, want the legacy resolution |
+| row 11: the single-host no-effect test, the set-now NOTICE test | FAIL (both) |
+| row 12: the dispatcher's unshipped-store test, `file` and `service` | FAIL (both) — `dispatch rc = 6, want 0` |
+| row 13: the claim tool's unshipped-store test, `file` and `service` | FAIL (both) |
 
 ## Context
 files:
@@ -75,7 +125,9 @@ facts:
 - Valid values are `file` and `service`. **`forge-ref` is not a valid value**: set explicitly
   it is refused like any unknown value, printing the two valid ones. The forge store is
   reachable only as the legacy resolution of an **unset** key, for one release window.
-- This brief wires the legacy resolution only. `file` and `service` parse as valid and resolve
+- This brief wires the legacy resolution only. *(Superseded on the refusal by the 2026-10-13
+  amendment above: an unshipped value now resolves to the legacy store under its own NOTICE.)*
+  `file` and `service` parse as valid and resolve
   to a refusal naming the release that ships them ("the release that ships the file store" /
   "… the served store" — not a brief id, which the shipped-corpus guard keeps out of
   `tools/desk`), so a key set early fails loudly.
@@ -138,15 +190,18 @@ Default if no answer: none — blocks until answered.
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `grep -c -F '**Status:** approved' docs/streams/forge-neutral/reviewer-write-boundary.md` | `1` — the spec this brief implements is approved; `0` means STOP, do not start |
-| 2 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStore' -count=1 -timeout 120s -v` | exit 0; subtests: unset → legacy + NOTICE; `forge-ref` explicit → refused printing `file` and `service`; unknown value → refused; `file`/`service` → refused naming the release that ships them (spec V8, release-N half) |
-| 3 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStoreNeverFallsBack' -count=1 -timeout 120s` | exit 0 — an explicit store whose precondition fails is exit 6, and the resolved name is never another store |
-| 4 | check:ci +mutation | the `mutations.json` entry named `claimstore-unmet-precondition-falls-through` | row 3 goes RED |
+| 2 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStore' -count=1 -timeout 120s -v` | exit 0; subtests: unset → legacy + NOTICE; `forge-ref` explicit → refused printing `file` and `service`; unknown value → refused; `file`/`service` (valid, not shipped) → the legacy resolution under a NOTICE naming the configured store and the release that ships it (version 2; spec V8, release-N half) |
+| 3 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestResolveClaimStoreNeverFallsBack' -count=1 -timeout 120s` | exit 0 — an explicit store this build ships whose precondition fails is exit 6, and the resolved name is never another store; a valid store this build does not ship resolves to the legacy store with its NOTICE (version 2) |
+| 4 | check:ci +mutation | the `mutations.json` entry named `claimstore-unmet-precondition-falls-through` | row 3 goes RED — in version 2, its two "shipped but its precondition fails" subtests |
 | 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestClaimStoreConformance' -count=1 -timeout 300s` | exit 0 — the shared table passes for the forge store (spec V1) |
-| 6 | check:ci +flow | `cd tools/desk && go test ./cmd/deskdispatch/ -run 'TestDispatchRefusesBeforeWorktreeOnStoreRefusal' -count=1 -timeout 120s` | exit 0 — zero child processes, no worktree, no token minted |
+| 6 | check:ci +flow | `cd tools/desk && go test ./cmd/deskdispatch/ -run 'TestDispatchRefusesBeforeWorktreeOnStoreRefusal' -count=1 -timeout 120s` | exit 0 — zero child processes, no worktree, no token minted, for every value that does not resolve (version 2: an unshipped `file` / `service` resolves, and row 12 covers it) |
 | 7 | check:ci +neighbour | `cd tools/desk && go test ./cmd/deskclaim-ref/ -count=1 -timeout 300s` | exit 0 — the existing suite passes unchanged (wire format and `show`/`list` parity) |
 | 8 | check:ci | `cd tools/desk && go test ./internal/forgeban/ -count=1 -timeout 300s` | exit 0 |
 | 9 | check +dereference | `cd tools/desk && go build -o /tmp/deskclaim-ref-fn21 ./cmd/deskclaim-ref && /tmp/deskclaim-ref-fn21 --help` and compare with the keys, the two valid values and the removal NOTICE text quoted in `tools/desk/README.md` | every key name, both values and the NOTICE line in the README appear verbatim in the tool's real output |
 | 10 | check | `(cd statusgen && go build -o /tmp/statusgen-fn21 .) && /tmp/statusgen-fn21 --root . --consumers --brief forge-neutral/21` | exit 0 |
+| 11 | check:ci | `cd tools/desk && out=$(go test ./internal/deskkit/ -run '^(TestResolveClaimStoreNeverFallsBack\|TestClaimSingleHostNoEffect\|TestLegacyNoticeSaysSetNow)$' -count=1 -timeout 300s -v 2>&1); rc=$?; n=$(printf '%s\n' "$out" \| grep -cE '^--- PASS: (TestResolveClaimStoreNeverFallsBack\|TestClaimSingleHostNoEffect\|TestLegacyNoticeSaysSetNow) \('); echo "rc=$rc pass=$n"; [ "$rc" -eq 0 ] && [ "$n" -eq 3 ]` | exit 0; prints `rc=0 pass=3` — unshipped → legacy + NOTICE with provenance; `ASSAY_CLAIM_SINGLE_HOST=yes` changes nothing while unset/unshipped; the unset-key NOTICE says set now, takes effect on upgrade (version 2) |
+| 12 | check:ci +flow | `cd tools/desk && out=$(go test ./cmd/deskdispatch/ -run '^TestDispatchUnshippedFallback$' -count=1 -timeout 300s -v 2>&1); rc=$?; n=$(printf '%s\n' "$out" \| grep -c '^--- PASS: TestDispatchUnshippedFallback ('); echo "rc=$rc pass=$n"; [ "$rc" -eq 0 ] && [ "$n" -eq 1 ]` | exit 0; prints `rc=0 pass=1` — `deskdispatch` with `ASSAY_CLAIM_STORE=file` (and `service`) no longer exits 6: the claim is taken through the legacy claim tool, one credential is minted, the step line names `forge-ref (legacy)`, and the unshipped NOTICE is printed (version 2) |
+| 13 | check:ci +neighbour | `cd tools/desk && out=$(go test ./cmd/deskclaim-ref/ -run '^TestClaimToolUnshippedFallback$' -count=1 -timeout 300s -v 2>&1); rc=$?; n=$(printf '%s\n' "$out" \| grep -c '^--- PASS: TestClaimToolUnshippedFallback ('); echo "rc=$rc pass=$n"; [ "$rc" -eq 0 ] && [ "$n" -eq 1 ]` | exit 0; prints `rc=0 pass=1` — the claim tool with an unshipped store acquires on the forge store and prints the NOTICE naming the configured store last (version 2) |
 
 ## Pre-mortem → detection map
 | Failure mode of the work | Caught by |
@@ -157,6 +212,9 @@ Default if no answer: none — blocks until answered.
 | Lifting the interface changes output the readers parse | row 7 |
 | A `--claim-store` flag creeps in "for debugging" | row 2's no-selector subtest; review |
 | An existing install changes behaviour at upgrade | row 2's unset-key subtest |
+| A key set ahead of the upgrade stops dispatch (version 2) | rows 11, 12, 13 |
+| The unshipped fallback widens into a fallback for a SHIPPED store whose precondition fails (version 2) | rows 3, 4 |
+| A malformed value is treated as "unshipped" and silently ignored (version 2) | row 2's malformed-keys subtest |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

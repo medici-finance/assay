@@ -267,9 +267,18 @@ and by every claim reader (T8). No command-line flag selects a store.
 
 Order:
 
-1. `ASSAY_CLAIM_STORE` set → that store. Its preconditions must hold (`file`: the §6 guards;
-   `service`: both service keys set and the service answering) or the resolution
-   **refuses** — it never moves on to another store.
+1. `ASSAY_CLAIM_STORE` set to a store the running build **ships** → that store. Its
+   preconditions must hold (`file`: the §6 guards; `service`: both service keys set and the
+   service answering) or the resolution **refuses** — it never moves on to another store.
+1a. `ASSAY_CLAIM_STORE` set to a **valid** store the running build does **not ship** →
+   the legacy forge-ref resolution of step 2, under a NOTICE naming the configured store and
+   the release that ships it; the provenance records both the configured value and the
+   fallback, and `ASSAY_CLAIM_SINGLE_HOST=yes` is accepted with no effect (amendment,
+   2026-10-13, medici-finance/assay#2753). An operator can set the key before upgrading and
+   it takes effect on the upgrade. This is not a cross-store fallback: a build that does not
+   ship a store cannot write a claim to it, so one build never splits a repo's claims. The
+   window in which two builds of one cell run side by side is the §6 mixed-store refusal's
+   job. A malformed value is still a refusal, never treated as unshipped.
 2. Unset, **release N only** — the one-window legacy resolution: forge-ref, exactly as today,
    with a boot NOTICE on every dispatching role naming `ASSAY_CLAIM_STORE`, the two valid
    values, and the release in which the unset key stops resolving. `forge-ref` cannot be
@@ -282,7 +291,8 @@ plus the single-host declaration for a host cell, `service` for a container cell
 
 Every refusal is exit 6, happens before any worktree is cut, and names the store, the missing
 precondition and the remedy. A store that fails mid-operation is `unverifiable`; there is no
-cross-store fallback anywhere.
+cross-store fallback anywhere — step 1a resolves a store the build cannot use at all to the
+store it would resolve with the key unset, and never replaces a store the build can use.
 
 ## 6. Guards
 
@@ -323,7 +333,10 @@ a live forge claim for the repo refuses (a read; needs no repository write), and
 resolution refuses if the default claims directory holds a live claim for the repo. The claims
 directory, served or not, carries a store marker (cell name, store kind) and a disagreeing
 marker refuses. Stores are never merged and never read in union. In release N+1 the
-forge-side half of this check is deleted with the store.
+forge-side half of this check is deleted with the store. Both directions of this check ship
+in the **same release** as the `file` store, never after it: since §5 step 1a
+(medici-finance/assay#2753, 2026-10-13), a process still on an older build keeps claiming on
+the forge while `ASSAY_CLAIM_STORE=file` is set, and this check is what makes that mix loud.
 
 **Second layer.** None of this replaces the supervisor's staleness reclaim, which frees a
 slot on elapsed time plus no live branch — a different signal in a different component — nor
@@ -341,7 +354,10 @@ under every store.
   behaviour under the removal NOTICE. Nothing forces a switch in N.
 - **Per cell, during the window: a drain, not a merge.** Quiesce dispatch, let live claims
   release or expire, set the key on **every** dispatching process of the cell, resume. The
-  mixed-store refusal makes a half-done change loud instead of silent.
+  mixed-store refusal makes a half-done change loud instead of silent. The key may be set
+  before the upgrade (§5 step 1a): a process on a build that does not ship the store keeps
+  forge-ref under a NOTICE naming the store, so the drain is complete only when **every**
+  dispatching process runs a build that ships it.
 - **Release N+1** (brief 32, its own human gate). Deletes the forge-ref store and the forge-side mixed-store read; an unset
   key is a refusal printing the two valid values. An install that ignored the NOTICE for a
   whole window stops at boot with the remedy in front of it — it does not double-dispatch.
@@ -488,7 +504,7 @@ built with them in view; none is designed here.
 | V5 | A reviewer credential with **no repository write** dispatches a review under `file` and under `service`; the supervisor and the verdict-stamp liveness read see that claim | 22, 23, 24 |
 | V6 | Service down → dispatch exits 6 before any worktree; lost reply → unverifiable, no fallback | 24 |
 | V7 | `file` inside a container → refused naming `service`; `file` on a positively identified network filesystem → resolves with a NOTICE every boot naming the type; undetermined filesystem → resolves with a NOTICE every boot; neither is refused, and with the single-host declaration absent both are still refused on the declaration | 23 |
-| V8 | Release N: unset key → legacy resolution plus the removal NOTICE on every boot, and `forge-ref` as an explicit value is refused. Release N+1: unset key → refused printing the two valid values, no forge-ref code path remains, and the claim readers are unaffected | 21, 32 |
+| V8 | Release N: unset key → legacy resolution plus the removal NOTICE on every boot, a valid value the build does not ship → the same legacy resolution under a NOTICE naming that store (medici-finance/assay#2753), and `forge-ref` as an explicit value is refused. Release N+1: unset key → refused printing the two valid values, no forge-ref code path remains, and the claim readers are unaffected | 21, 32 |
 | V9 | The boot check names the store; a reviewer at repository read is clean under `file` / `service` and refused under the legacy resolution | 25 |
 | V10 | No skill body names a store, a claim namespace, or a per-store grant | 29 |
 | V11 | With the narrowed reviewer credential and plain git, a branch push is **refused by the forge** for lack of write access | 30 |

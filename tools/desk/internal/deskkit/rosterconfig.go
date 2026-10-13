@@ -450,7 +450,9 @@ const (
 	// directly rather than through parseConfig, and is strictly parsed by
 	// parseClaimStoreKeys below: an unknown value — `forge-ref` included — is a refusal
 	// that prints the two valid values. UNSET is the one-window legacy resolution to the
-	// forge-ref store, under a NOTICE naming the release in which it stops resolving.
+	// forge-ref store, under a NOTICE naming the release in which it stops resolving; a VALID
+	// value naming a store this build does not ship is the same legacy resolution, under a
+	// NOTICE naming that store and the release that ships it (medici-finance/assay#2753).
 	// Decides which store holds the fleet's mutual exclusion, so a malformed value is a
 	// refusal of the resolution, never a silent default. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvClaimStore and the coupling vector.

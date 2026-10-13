@@ -6338,16 +6338,30 @@ ones. Resolution order:
 
 1. A claim-store key that cannot be read (an unusable roster file) or does not parse →
    refused. An unreadable key is never treated as unset.
-2. `ASSAY_CLAIM_STORE` set → that store, or a refusal when its preconditions do not hold. It
-   never moves on to another store. In this release `file` and `service` parse as valid but
-   are not shipped yet, so setting either is refused naming the release that ships it (the
-   file store, the served store) — a key set early fails loudly.
-3. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
+2. `ASSAY_CLAIM_STORE` set to a store this build ships → that store, or a refusal when its
+   preconditions do not hold. It never moves on to another store.
+3. `ASSAY_CLAIM_STORE` set to a valid store this build does not ship → the legacy forge-ref
+   store, exactly as for an unset key, under a NOTICE naming the configured store and the
+   release that ships it (amended 2026-10-13, medici-finance/assay#2753). In this release
+   `file` and `service` both parse as valid and are not shipped yet, so an operator can set
+   the key before upgrading and it takes effect on the upgrade. A build that does not ship a
+   store cannot write a claim to it, so this never splits one repo's claims inside one
+   build; across builds during an upgrade, the mixed-store refusal that ships with the
+   `file` store is the guard. `ASSAY_CLAIM_SINGLE_HOST=yes` is accepted and has no effect
+   while the store is unset or unshipped. A malformed value is still refused, never treated
+   as unshipped.
+4. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
    written under the dispatching role's credential), exactly as before, for one release
    window. Every run of `deskclaim-ref` and `deskdispatch` then prints the removal NOTICE:
 
 ```
-NOTICE: ASSAY_CLAIM_STORE is unset, so dispatch claims use the legacy forge-ref store, which needs repository write; an unset ASSAY_CLAIM_STORE stops resolving in release N+1 — set ASSAY_CLAIM_STORE=file or ASSAY_CLAIM_STORE=service in the roster.
+NOTICE: ASSAY_CLAIM_STORE is unset, so dispatch claims use the legacy forge-ref store, which needs repository write; an unset ASSAY_CLAIM_STORE stops resolving in release N+1. ASSAY_CLAIM_STORE=file or ASSAY_CLAIM_STORE=service (with ASSAY_CLAIM_SINGLE_HOST=yes for file) may be set in the roster now: a build that does not ship the named store keeps using forge-ref, and the setting takes effect on upgrade to the release that ships it.
+```
+
+For a set but unshipped value the NOTICE instead reads, for `file`:
+
+```
+NOTICE: ASSAY_CLAIM_STORE=file is set, but this build does not ship the file store, so dispatch claims stay in the legacy forge-ref store, which needs repository write; ASSAY_CLAIM_STORE=file takes effect in the release that ships the file store.
 ```
 
 The release it names is one constant, `deskkit.ClaimStoreLegacyRemovalRelease`; it reads

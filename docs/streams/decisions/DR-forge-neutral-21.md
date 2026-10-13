@@ -38,6 +38,21 @@ the shipped-corpus guard (`TestCorpusHasNoWithheldStreamPaths`) forbids stream b
 resolved to another store — is unchanged; the clause is kept as ruled and this note records the
 wording the merge lands.
 
+**Amendment (2026-10-13, medici-finance/assay#2753 — a change to the third clause, pending the
+maintainer's ratification there).** The third `accepted:` clause says a `file` / `service`
+value set before its store ships resolves to a refusal. Operators setting the key ahead of an
+upgrade were stopped at dispatch with exit 6, though a build that does not ship a store cannot
+hold a claim in it. The amendment: a VALID value naming a store the running build does not ship
+resolves to the legacy forge-ref resolution, under a NOTICE naming the configured store and the
+release that ships it, with provenance recording both the configured value and the fallback;
+`ASSAY_CLAIM_SINGLE_HOST=yes` is accepted with no effect. Unchanged: a store the build ships
+whose preconditions fail still refuses (exit 6) and never moves on to another store; a
+malformed value still refuses; `forge-ref` still cannot be selected. Because an older build now
+keeps claiming on the forge while `ASSAY_CLAIM_STORE=file` is set, the mixed-store refusal of
+forge-neutral/23 must ship in both directions in the same release as the `file` store. The
+clauses above are kept as ruled; this note is not a ruling — the human act is the maintainer's
+ratification on medici-finance/assay#2753 and the merge of the pull request that lands it.
+
 **The decision.** `docs/streams/forge-neutral/brief-21-claim-store-seam-and-resolver.md` lifts
 the claim tool's storage interface into `deskkit` as `ClaimStore`, adds the roster keys
 ASSAY_CLAIM_STORE, ASSAY_CLAIM_DIR and ASSAY_CLAIM_SINGLE_HOST with strict parsing, and adds

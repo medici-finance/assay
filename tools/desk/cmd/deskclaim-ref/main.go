@@ -31,8 +31,10 @@
 //
 // CLAIM STORE. Which store holds the claims is deskkit.ResolveClaimStore's answer, read from the
 // roster (ASSAY_CLAIM_STORE) — no flag selects one. The forge transport above is the forge-ref
-// store: what an UNSET key resolves to for one release window, under a removal NOTICE. A
-// configured store that cannot be used is exit 6 and never falls back to the forge store.
+// store: what an UNSET key resolves to for one release window, under a removal NOTICE, and what a
+// VALID key naming a store this build does not ship resolves to, under a NOTICE naming that store
+// (medici-finance/assay#2753). A shipped store that cannot be used is exit 6 and never falls back
+// to the forge store.
 //
 // VERBS (identical to the script):
 //
@@ -110,10 +112,11 @@ flag selects a store. Roster keys:
   ` + deskkit.EnvClaimDir + `          the ` + deskkit.ClaimStoreFile + ` store's directory (absolute; default <config home>/dispatch-claims)
   ` + deskkit.EnvClaimSingleHost + `  yes — the declaration that this cell dispatches from this host only
 An unknown value — ` + deskkit.ClaimStoreForgeRef + ` included — is refused (exit 6) printing the two valid
-values, and a configured store that cannot be used is refused (exit 6), never replaced by
+values, and a shipped store that cannot be used is refused (exit 6), never replaced by
 another. The ` + deskkit.ClaimStoreFile + ` and ` + deskkit.ClaimStoreService + ` stores are not shipped in this build yet: setting either
-is refused naming the release that ships it. Unset, claims resolve to the legacy ` + deskkit.ClaimStoreForgeRef + `
-store, and every run prints:
+is accepted and ignored until the release that ships it — claims stay in the legacy
+` + deskkit.ClaimStoreForgeRef + ` store and every run prints a NOTICE naming the configured store and that
+release. Unset, claims resolve to the legacy ` + deskkit.ClaimStoreForgeRef + ` store, and every run prints:
   ` + deskkit.ClaimStoreLegacyNotice + `
 
 Exit codes (deskkit contract): 0 ok/acquired · 5 refused (a live holder owns it) ·
