@@ -341,7 +341,8 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   (`docs/verify-row-strength.md`). Never land a closure on it. Exit 2 means a row could not run at
   base, which is could-not-check, not a pass. The lint refuses a new closure whose risk-bearing row
   has no current fail-first witness, is non-discriminating, or names a base that is not the
-  merge-base or an ancestor of it that already holds the brief.
+  merge-base or an ancestor of it that already holds the brief at its current path (for a brief
+  created or renamed on the branch, only the merge-base itself).
   **Side effects run twice.** A live, mutating or end-to-end row is executed once more at base,
   so read each such row for side effects before running fail-first; a row that cannot safely run
   twice is recorded `unproven` with its reason, never skipped silently.
