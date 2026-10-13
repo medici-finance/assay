@@ -63,6 +63,11 @@ func (v *VerifyLoop) dispatchNative(it loopengine.Item, tier loopengine.Tier) (l
 		return nil, fmt.Errorf("native dispatch for %s: %w", it.ID, err)
 	}
 
+	if v.Attest == nil {
+		if err := checkQueuedAssociation(it); err != nil {
+			return nil, err
+		}
+	}
 	mk := v.MakeWorktree
 	if mk == nil {
 		mk = gitDetachedWorktree
@@ -92,6 +97,13 @@ func (v *VerifyLoop) dispatchNative(it loopengine.Item, tier loopengine.Tier) (l
 	receipt, aerr := v.attestRun(it, dir, model)
 	if aerr != nil {
 		return nil, fmt.Errorf("verifier admission failed; retained worktree %s for coordinator recovery before any launch: %w", dir, aerr)
+	}
+	prompt, aerr = admittedVerifierPrompt(it, tier, receipt)
+	if aerr != nil {
+		return nil, aerr
+	}
+	if err := assertNoSharedCheckout(prompt); err != nil {
+		return nil, err
 	}
 	v.rememberRun(it, dir, receipt, cleanup)
 	prompt += "\n" + receipt.EvidenceBinding() + "\nRecheck deskdispatch --check-verifier before Verify rows.\n"
@@ -457,13 +469,20 @@ func gitDetachedWorktree(it loopengine.Item) (string, func(), error) {
 		return "", nil, err
 	}
 	dir := filepath.Join(base, "wt")
+	sourceRoot := it.Payload["source_root"]
+	if sourceRoot == "" {
+		sourceRoot = it.Payload["root"]
+	}
 	cmd := exec.Command("git", "worktree", "add", "--detach", dir, it.TargetSHA)
+	cmd.Dir = sourceRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(base)
 		return "", nil, fmt.Errorf("git worktree add --detach %s %s: %v: %s", dir, it.TargetSHA, err, strings.TrimSpace(string(out)))
 	}
 	cleanup := func() {
-		_ = exec.Command("git", "worktree", "remove", "--force", dir).Run()
+		cmd := exec.Command("git", "worktree", "remove", "--force", dir)
+		cmd.Dir = sourceRoot
+		_ = cmd.Run()
 		_ = os.RemoveAll(base)
 	}
 	return dir, cleanup, nil

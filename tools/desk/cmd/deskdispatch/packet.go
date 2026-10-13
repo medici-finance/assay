@@ -119,6 +119,12 @@ func buildDispatchPacket(o dispatchOpts, plan dispatchPlan, repo, home string) (
 		packetSkipped("no place to write it: " + err.Error())
 		return ""
 	}
+	if plan.verifierBriefRoot != "" {
+		if err := verifierPrivatePromptDestination(dest); err != nil {
+			packetSkipped(err.Error())
+			return ""
+		}
+	}
 	if _, err := packet.AssignmentLine(dest); err != nil {
 		packetSkipped(err.Error())
 		return ""

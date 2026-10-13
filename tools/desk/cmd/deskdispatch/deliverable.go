@@ -518,10 +518,6 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	return d, nil
 }
 
-// filesTagRe reads the `[<alias>]` declaration at the head of one `files:` entry, bare or in its own
-// backticks: "- [alias] ../x/y" or "- `[alias]` `../x/y`". The alias half is the registry grammar.
-var filesTagRe = regexp.MustCompile("^`?\\[([a-z][a-z0-9_-]{0,31})\\]`?(?:\\s|$)")
-
 // briefFilesTags returns the `[alias]` tags on the entries of the brief BODY's first `files:` list —
 // the list grammar the write-scope reader takes (frontmatter skipped; a block list of `- ` entries,
 // indented continuation lines ignored, closed by a blank line or a left-margin line). One deliberate
@@ -529,78 +525,7 @@ var filesTagRe = regexp.MustCompile("^`?\\[([a-z][a-z0-9_-]{0,31})\\]`?(?:\\s|$)
 // illustration, not the brief's list, so it is skipped and the scan goes on to the real list. A tag
 // anywhere else — prose, the frontmatter, a fenced example, after the list — declares nothing. An
 // unclosed fence hides everything after it, so it fails closed.
-func briefFilesTags(text string) []string {
-	lines := strings.Split(text, "\n")
-	start := 0
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		for i := 1; i < len(lines); i++ {
-			if strings.TrimSpace(lines[i]) == "---" {
-				start = i + 1
-				break
-			}
-		}
-	}
-	var tags []string
-	take := func(entry string) {
-		if m := filesTagRe.FindStringSubmatch(strings.TrimSpace(entry)); m != nil {
-			tags = append(tags, m[1])
-		}
-	}
-	fence := "" // the open fence's run of backticks or tildes, "" outside a fenced block
-	for i := start; i < len(lines); i++ {
-		t := strings.TrimSpace(lines[i])
-		if f := fenceRun(t); f != "" {
-			switch {
-			case fence == "":
-				fence = f
-			case f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == "":
-				fence = ""
-			}
-			continue
-		}
-		if fence != "" {
-			continue // inside a fenced example: its files: line is not the brief's list
-		}
-		if !strings.HasPrefix(t, "files:") {
-			continue
-		}
-		if rest := strings.TrimSpace(strings.TrimPrefix(t, "files:")); rest != "" {
-			take(rest) // the inline form: one entry on the files: line itself
-			return tags
-		}
-		for j := i + 1; j < len(lines); j++ {
-			lt := strings.TrimSpace(lines[j])
-			if lt == "" {
-				break
-			}
-			if strings.HasPrefix(lt, "- ") {
-				take(strings.TrimPrefix(lt, "- "))
-				continue
-			}
-			if !strings.HasPrefix(lines[j], " ") && !strings.HasPrefix(lines[j], "\t") {
-				break
-			}
-		}
-		return tags
-	}
-	return nil
-}
-
-// fenceRun returns the leading run of a (trimmed) line that opens or closes a fenced code block —
-// three or more backticks, or three or more tildes — or "" when the line is not a fence line.
-func fenceRun(t string) string {
-	if len(t) < 3 || (t[0] != '`' && t[0] != '~') {
-		return ""
-	}
-	n := 1
-	for n < len(t) && t[n] == t[0] {
-		n++
-	}
-	if n < 3 {
-		return ""
-	}
-	return t[:n]
-}
+func briefFilesTags(text string) []string { return deskkit.BriefFilesTags(text) }
 
 // declaredTagFor returns the alias of a `files:` tag that resolves, through reg, to a PUBLISHED repo
 // equal to repo (case-insensitive) — or "" when no tag declares repo. An unknown or unpublished tag

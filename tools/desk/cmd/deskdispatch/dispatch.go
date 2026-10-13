@@ -550,14 +550,6 @@ func dispatch(o dispatchOpts) error {
 			released, herr), herr))
 	}
 
-	// The read-ahead packet (packet.go). Never an error: no packet means no `Packet:` line.
-	plan.packetPath = buildPacketFn(o, plan, repo, home)
-
-	prompt, perr := assemblePrompt(o, plan, home)
-	if perr != nil {
-		return held.settle(perr)
-	}
-
 	// 3 — roster registration.
 	o.say("%s %s", stepRosterRegister, stepRoster(o, repo))
 
@@ -599,6 +591,26 @@ func dispatch(o dispatchOpts) error {
 	// ensureLabelSwap.
 	o.say("%s %s", stepQueueLabel, stepQueueLabelApply(o, repo))
 
+	// Cross-repository prompts and packets read the SAME isolated tracking tree
+	// bound by the completed attestation, never the dispatcher's shared checkout.
+	if o.kit == "verifier" && plan.dl.crossRepo(o.root) {
+		br, brief, rev, err := deskkit.VerifierBriefLocation(home)
+		if err != nil {
+			return held.settle(err)
+		}
+		plan.verifierBriefRoot, plan.verifierBriefRevision = br, rev
+		o.brief, o.briefShown = filepath.Join(br, brief), filepath.Join(br, brief)
+		if err := verifierPrivatePromptDestination(o.promptFile); err != nil {
+			return held.settle(err)
+		}
+	}
+	// The read-ahead packet is built only after provenance is established.
+	plan.packetPath = buildPacketFn(o, plan, repo, home)
+	prompt, perr := assemblePrompt(o, plan, home)
+	if perr != nil {
+		return held.settle(perr)
+	}
+
 	// 7 — the prompt.
 	emitErr := emitPrompt(o, prompt)
 	if emitErr == nil {
@@ -635,10 +647,11 @@ func (o dispatchOpts) notLaunched(plan dispatchPlan, repo, home string) {
 // re-derives a value the validation was performed against. Re-deriving is how a check and
 // the thing it checked drift apart.
 type dispatchPlan struct {
-	resume *resumeSource
-	repo   string
-	branch string
-	wtName string
+	verifierBriefRoot, verifierBriefRevision string
+	resume                                   *resumeSource
+	repo                                     string
+	branch                                   string
+	wtName                                   string
 	// gateHuman is the EFFECTIVE human-decision gate: the explicit --gate-human flag OR a
 	// --brief whose own frontmatter gates on a human (`gate: human`). Derived once here so
 	// the decision-gate step, its pre-claim precondition (the decision script must exist),
@@ -861,6 +874,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		return plan, err
 	}
 	plan.dl = dl
+	if o.kit == "verifier" && dl.crossRepo(o.root) {
+		if err := verifierPrivatePromptDestination(o.promptFile); err != nil {
+			return plan, err
+		}
+	}
 	var repo string
 	if dl.active {
 		repo = dl.repo
@@ -2146,7 +2164,11 @@ func emitPrompt(o dispatchOpts, prompt string) error {
 		fmt.Println(prompt)
 		return nil
 	}
-	if err := os.WriteFile(o.promptFile, []byte(prompt+"\n"), 0o600); err != nil {
+	write := func() error { return os.WriteFile(o.promptFile, []byte(prompt+"\n"), 0o600) }
+	if o.kit == "verifier" && filepath.IsAbs(o.brief) && !vpWithin(o.root, o.brief) {
+		write = func() error { return writeVerifierPrompt(o.promptFile, []byte(prompt+"\n")) }
+	}
+	if err := write(); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: cannot write the prompt to %s", stepPromptEmit, o.promptFile), err)
 	}

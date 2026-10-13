@@ -226,7 +226,7 @@ func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader des
 			payload["repo"] = r.Repo
 			payload["root"] = root
 		}
-		items = append(items, loopengine.Item{
+		item := loopengine.Item{
 			ID:          id,
 			BriefPath:   br.BriefPath,
 			TargetSHA:   targetSHA,
@@ -236,7 +236,13 @@ func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader des
 			ExecTier:    br.fm.ExecTier,
 			Implementer: br.fm.Implementer,
 			Payload:     payload,
-		})
+		}
+		if associated, err := associateVerifierItem(item, root); err != nil {
+			payload["could_not_check"] = "verifier association: " + err.Error()
+		} else {
+			item = associated
+		}
+		items = append(items, item)
 	}
 	return items, nil
 }

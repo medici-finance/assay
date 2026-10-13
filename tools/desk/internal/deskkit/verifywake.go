@@ -442,8 +442,11 @@ func NewRootRevisionReader(root, toolVersion string) *RootRevisionReader {
 }
 
 const (
-	inputKeyTool       = "tool"
-	inputKeyFilePrefix = "file:"
+	// Repository-qualified immutable source. Older readers fail closed on this
+	// unknown key rather than treating a partial manifest as unchanged.
+	InputKeyRepoSourcePrefix = "repo-source:"
+	inputKeyTool             = "tool"
+	inputKeyFilePrefix       = "file:"
 )
 
 // Revision content-hashes a declared input against the local tree. A "tool" key returns the
@@ -457,6 +460,21 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 			return "", false
 		}
 		return rr.ToolVersion, true
+	case strings.HasPrefix(input, InputKeyRepoSourcePrefix):
+		repo := strings.TrimPrefix(input, InputKeyRepoSourcePrefix)
+		root := RootForRepo(repo)
+		if root == "" || verifierRepoIdentity(root, repo) != nil {
+			return "", false
+		}
+		head, err := verifierGit(root, "rev-parse", "HEAD")
+		if err != nil {
+			return "", false
+		}
+		checkout, err := readVerifierCheckout(root)
+		if err != nil || verifierNoReplacements(root) != nil || verifierNoLocalAttributes(root) != nil || verifierOwnWorkTree(root) != nil || verifierSourceClosure(root, head, checkout, nil) != nil {
+			return "", false
+		}
+		return head, true
 	case strings.HasPrefix(input, inputKeyFilePrefix):
 		rel := strings.TrimPrefix(input, inputKeyFilePrefix)
 		// Contain the read within the root: a key that climbs out is could-not-check, never a

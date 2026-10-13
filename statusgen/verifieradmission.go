@@ -12,7 +12,7 @@ import (
 
 // statusgen is a separate module. Admission delegates to the installed shared
 // reader, never duplicates forge custody or accepts a caller-supplied receipt.
-func verifierAdmission(root, brief string) (string, error) {
+func verifierAdmission(root, brief string) (string, string, error) {
 	required := strings.Contains(strings.ToLower(os.Getenv("DESK_LOOP")), "verify")
 	meta, e := exec.Command("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", "assay-verifier-attestation.json").Output()
 	if e == nil {
@@ -21,7 +21,7 @@ func verifierAdmission(root, brief string) (string, error) {
 		}
 	}
 	if !required {
-		return "", nil
+		return "", brief, nil
 	}
 	out, err := exec.Command("deskdispatch", "--check-verifier", "--root", root, "--brief", brief).Output()
 	if err != nil {
@@ -29,20 +29,37 @@ func verifierAdmission(root, brief string) (string, error) {
 		if exit, ok := err.(*exec.ExitError); ok {
 			detail = strings.TrimSpace(string(exit.Stderr))
 		}
-		return "", fmt.Errorf("pre-work verifier admission failed; no Verify rows executed: %w: %s", err, detail)
+		return "", "", fmt.Errorf("pre-work verifier admission failed; no Verify rows executed: %w: %s", err, detail)
 	}
+	return verifierAdmissionReceipt(out, brief)
+}
+
+func verifierAdmissionReceipt(out []byte, brief string) (string, string, error) {
 	var receipt struct {
-		Issue   int
-		Binding struct{ Run, Repo, Source, Brief, Model, Tier string }
+		Issue     int
+		BriefRoot string
+		Binding   struct {
+			Version                                                           int
+			Run, Repo, Source, SourceRepo, TrackingSource, Brief, Model, Tier string
+		}
 	}
-	if err = json.Unmarshal(out, &receipt); err != nil {
-		return "", fmt.Errorf("unreadable pre-work verifier receipt: %w", err)
+	if err := json.Unmarshal(out, &receipt); err != nil {
+		return "", "", fmt.Errorf("unreadable pre-work verifier receipt: %w", err)
 	}
 	b := receipt.Binding
 	if receipt.Issue <= 0 || b.Run == "" || b.Source == "" || b.Model == "" || b.Tier == "" {
-		return "", fmt.Errorf("incomplete pre-work verifier receipt")
+		return "", "", fmt.Errorf("incomplete pre-work verifier receipt")
 	}
-	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", b.Repo, receipt.Issue, b.Run, b.Source, b.Brief, b.Model, b.Tier), nil
+	if b.Version == 2 {
+		if receipt.BriefRoot == "" || b.Repo == "" || b.SourceRepo == "" || b.TrackingSource == "" || !filepath.IsAbs(receipt.BriefRoot) || !filepath.IsLocal(b.Brief) || filepath.ToSlash(filepath.Clean(b.Brief)) != b.Brief || b.Brief == "." {
+			return "", "", fmt.Errorf("incomplete cross-repository pre-work verifier receipt")
+		}
+		return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source-repo=%s source=%s tracking-source=%s brief=%s model=%s tier=%s", b.Repo, receipt.Issue, b.Run, b.SourceRepo, b.Source, b.TrackingSource, b.Brief, b.Model, b.Tier), filepath.Join(receipt.BriefRoot, b.Brief), nil
+	}
+	if b.Version != 1 {
+		return "", "", fmt.Errorf("unsupported pre-work verifier receipt version")
+	}
+	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", b.Repo, receipt.Issue, b.Run, b.Source, b.Brief, b.Model, b.Tier), brief, nil
 }
 
 // admittedRowEnv is the environment an admitted run's Verify rows execute in.

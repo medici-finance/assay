@@ -1802,7 +1802,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			admissionRoot = repoRootFor(path)
 		}
 		var admissionErr error
-		attestation, admissionErr = verifierAdmission(admissionRoot, path)
+		attestation, path, admissionErr = verifierAdmission(admissionRoot, path)
 		if admissionErr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
