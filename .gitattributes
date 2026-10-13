@@ -9,6 +9,11 @@
 *.md            text eol=lf
 docs/streams/** text eol=lf
 
+# PDFs are binary. An uncompressed PDF has no NUL byte, so git would otherwise class it as
+# text and a core.autocrlf=true checkout (the Git for Windows default) would add carriage
+# returns, breaking its xref byte offsets and stream lengths (docs/vision/assay-vision.pdf).
+*.pdf binary
+
 # Windows-native scripts keep their CRLF endings.
 *.ps1  text eol=crlf
 *.psm1 text eol=crlf

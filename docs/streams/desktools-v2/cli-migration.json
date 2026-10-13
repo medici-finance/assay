@@ -127,6 +127,11 @@
       "reason": "skill-benchmark fixture checks executed by skillbench, not by operators"
     },
     {
+      "class": "fixture",
+      "pattern": "docs/vision/build_pdf.py",
+      "reason": "offline publication builder for the committed vision-report PDF (issue #2489): takes no arguments, is run by hand per docs/vision/BUILD.md when the report changes, is named by no workflow, Makefile or plugin bundle, and is not an Assay operator command"
+    },
+    {
       "class": "library",
       "pattern": "providers/laya/assay_laya/**",
       "reason": "importable Python package: no __main__ guard and no shebang"
