@@ -143,6 +143,18 @@ type gateBrief struct {
 	// conservative reading (gate: human, no ruling), and a change that leaves
 	// one is refused (judgeDecisionGate).
 	Unreadable string
+
+	// rowsArchived / rowsActive: the README rows read for this board id came from
+	// docs/archive / docs/streams.
+	rowsArchived, rowsActive bool
+}
+
+// archivedOpen reports a brief that stands on the board only as a row in an
+// archived stream index, at a status other than done: archived work is
+// completed work (archivecheck.go), and a stream moved there is off the active
+// board (STATUS.md, the stream loader) however open its briefs are.
+func (gb *gateBrief) archivedOpen() bool {
+	return gb.rowsArchived && !gb.rowsActive && strings.ToLower(strings.TrimSpace(gb.Status)) != "done"
 }
 
 // gateScopeKeyPrefix keys an unreadable SCOPE record: a board path whose
@@ -164,6 +176,11 @@ const (
 	gateEntrySymlink                      // a symbolic link (git 120000)
 	gateEntryNested                       // a submodule / nested repository (git 160000, or a directory holding .git)
 	gateEntryOther                        // anything else
+	// gateEntryLinkInert is a symbolic link, in a stream-directory or done/ position,
+	// whose target is demonstrably not a directory (a file, or nothing): the board
+	// reads streams and done/ briefs through directories only, so it reads nothing
+	// through such a link and the link is not a board record.
+	gateEntryLinkInert
 )
 
 func (k gateEntryKind) String() string {
@@ -176,6 +193,8 @@ func (k gateEntryKind) String() string {
 		return "a symbolic link"
 	case gateEntryNested:
 		return "a submodule or nested repository"
+	case gateEntryLinkInert:
+		return "a symbolic link to something that is not a directory"
 	}
 	return "not a plain file"
 }
@@ -259,7 +278,7 @@ func buildGateSnapshot(entries []gateEntry, read func(string) ([]byte, error)) g
 			continue
 		}
 		if m := gateDoneDirRe.FindStringSubmatch(p); m != nil {
-			if !reservedRegisterNames[m[2]] && e.Kind != gateEntryDir && e.Kind != gateEntryFile {
+			if !reservedRegisterNames[m[2]] && e.Kind != gateEntryDir && e.Kind != gateEntryFile && e.Kind != gateEntryLinkInert {
 				gateUnreadableScope(snap, p, e.Kind.String()+" in place of the stream's done/ folder")
 			}
 			continue
@@ -382,9 +401,11 @@ func buildGateSnapshot(entries []gateEntry, read func(string) ([]byte, error)) g
 			gateUnreadableScope(snap, g.readme, fmt.Sprintf("could not be read (%v)", err))
 			continue
 		}
-		body := string(raw)
-		if _, b, ferr := splitFrontmatter(body); ferr == nil {
-			body = b
+		body, onBoard := gateREADMEBoardView(g.tree, raw)
+		if !onBoard {
+			// The board's own loaders skip this index: its rows are not on the
+			// board, whatever the text says, so no brief it lists stands on it.
+			continue
 		}
 		rows, _ := parseBriefTable(body)
 		for _, r := range rows {
@@ -408,6 +429,11 @@ func buildGateSnapshot(entries []gateEntry, read func(string) ([]byte, error)) g
 				// A second row for the board id: judge from the LOWEST status, so
 				// no row can make the brief read as already landed.
 				gb.Status = r.Status
+			}
+			if g.tree == "archive" {
+				gb.rowsArchived = true
+			} else {
+				gb.rowsActive = true
 			}
 			gb.addSpelling(g.name + "/" + r.Num)
 			gb.Records = append(gb.Records, fmt.Sprintf("row %s %s status=%s", g.readme, r.Num, r.Status))
@@ -439,6 +465,109 @@ func buildGateSnapshot(entries []gateEntry, read func(string) ([]byte, error)) g
 		}
 	}
 	return snap
+}
+
+// gateREADMEBoardView reads a stream index the way the board's own loaders do:
+// it returns the text the brief table is read from and whether the board keeps
+// the stream at all. loadStreams skips an active-tree index that fails to parse
+// when it declares itself a register (isSelfDeclaredRegisterREADME), and
+// loadArchivedStreams skips any archived index that fails to parse; a stream the
+// loader skips is not on the board, so the rows its index lists are not either.
+// An active index that fails to parse and is not a register aborts the board's
+// load (the lint fails elsewhere); the hold keeps reading its rows.
+func gateREADMEBoardView(tree string, raw []byte) (body string, onBoard bool) {
+	body = string(raw)
+	fmRaw, b, err := splitFrontmatter(body)
+	if err == nil {
+		body = b
+		var fm frontmatter
+		if err = yaml.Unmarshal([]byte(fmRaw), &fm); err == nil {
+			_, err = parseBriefTable(b)
+		}
+	}
+	if err == nil {
+		return body, true
+	}
+	if tree == "archive" {
+		return body, false
+	}
+	return body, !selfDeclaredRegisterRe.Match(raw)
+}
+
+// gateLinkPosition selects the board paths where a symbolic link is only a
+// board record when it leads to a directory: a stream directory (or what sits
+// where one would) and a stream's done/ folder.
+func gateLinkPosition(p string) bool {
+	return gateStreamDirRe.MatchString(p) || gateDoneDirRe.MatchString(p)
+}
+
+// gateLinkTarget returns the in-repository path a link at p (repo-relative)
+// points to, or ok=false when the target is absolute or leaves the repository —
+// somewhere the hold cannot judge from the tree, so the link is read as leading
+// to a directory.
+func gateLinkTarget(p, target string) (string, bool) {
+	t := filepath.ToSlash(target)
+	if t == "" || strings.HasPrefix(t, "/") || filepath.IsAbs(target) {
+		return "", false
+	}
+	r := path.Clean(path.Join(path.Dir(p), t))
+	if r == ".." || strings.HasPrefix(r, "../") || r == "." {
+		return "", false
+	}
+	return r, true
+}
+
+// diskLinkKind refines a symbolic link at repo-relative p on disk: inert when
+// its in-repository target is not a directory (a file, or dangling), otherwise a
+// link, which the board's readers may follow.
+func diskLinkKind(root, p string) gateEntryKind {
+	target, err := os.Readlink(filepath.Join(root, filepath.FromSlash(p)))
+	if err != nil {
+		return gateEntrySymlink
+	}
+	if _, ok := gateLinkTarget(p, target); !ok {
+		return gateEntrySymlink
+	}
+	if fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(p))); err != nil || !fi.IsDir() {
+		return gateEntryLinkInert
+	}
+	return gateEntrySymlink
+}
+
+// treeLinkKind is diskLinkKind for a link committed at rev: the target is
+// resolved component by component through the tree. A link met on the way, a
+// submodule, or anything the walk cannot read keeps the link a link.
+func treeLinkKind(root, rev, p string) gateEntryKind {
+	blob, err := gitShowObject(root, rev, p)
+	if err != nil {
+		return gateEntrySymlink
+	}
+	target, ok := gateLinkTarget(p, strings.TrimRight(string(blob), "\n"))
+	if !ok {
+		return gateEntrySymlink
+	}
+	comps := strings.Split(target, "/")
+	for i := range comps {
+		cur := strings.Join(comps[:i+1], "/")
+		out, err := exec.Command("git", "-C", root, "ls-tree", "-z", rev, "--", cur).Output()
+		if err != nil {
+			return gateEntrySymlink
+		}
+		meta, name, found := strings.Cut(strings.TrimRight(string(out), "\x00"), "\t")
+		if !found || name != cur {
+			return gateEntryLinkInert // nothing there: the link dangles
+		}
+		mode, _, _ := strings.Cut(meta, " ")
+		switch {
+		case mode == "100644" || mode == "100755":
+			return gateEntryLinkInert // a file, or a file met on the way
+		case mode == "040000":
+			continue
+		default:
+			return gateEntrySymlink // a link or a submodule on the way
+		}
+	}
+	return gateEntrySymlink // the whole path is directories
 }
 
 // gateUnreadableScope records a board path whose records the hold cannot
@@ -572,6 +701,9 @@ func gateSnapshotOnDiskWith(root, overrideRel string, override []byte) gateSnaps
 	var entries []gateEntry
 	add := func(rel string) gateEntryKind {
 		k := diskEntryKind(filepath.Join(root, filepath.FromSlash(rel)))
+		if k == gateEntrySymlink && gateLinkPosition(rel) {
+			k = diskLinkKind(root, rel)
+		}
 		entries = append(entries, gateEntry{Path: rel, Kind: k})
 		return k
 	}
@@ -614,7 +746,9 @@ func gateSnapshotOnDiskWith(root, overrideRel string, override []byte) gateSnaps
 		if overrideRel != "" && rel == overrideRel {
 			return override, nil
 		}
-		return os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		// A README the reconcile hold has staged in memory reads as staged: the
+		// hold judges the board the write WOULD leave, nothing being on disk yet.
+		return readStreamREADME(filepath.Join(root, filepath.FromSlash(rel)))
 	})
 }
 
@@ -668,7 +802,11 @@ func gateSnapshotAtRev(root, rev string) (gateSnapshot, error) {
 				continue
 			}
 			mode, _, _ := strings.Cut(meta, " ")
-			entries = append(entries, gateEntry{Path: p, Kind: gitTreeEntryKind(mode)})
+			k := gitTreeEntryKind(mode)
+			if k == gateEntrySymlink && gateLinkPosition(p) {
+				k = treeLinkKind(root, rev, p)
+			}
+			entries = append(entries, gateEntry{Path: p, Kind: k})
 		}
 	}
 	top, err := exec.Command("git", "-C", root, "ls-tree", "-z", rev, "--", "docs").Output()
@@ -712,6 +850,12 @@ type gateFault struct {
 	// board reads it (gateBrief.Unreadable says why), so nothing about it can
 	// be judged and no recorded ruling can lift it.
 	Unreadable bool
+	// Archived: the change leaves the brief standing only as a row in an
+	// archived stream index at a status other than done (gateBrief.archivedOpen)
+	// where the base did not carry exactly that record: archived work is
+	// completed work, so a brief moved there while still open is off the active
+	// board with its decision still owed. No recorded ruling lifts this refusal.
+	Archived bool
 	// RowGone (with Drop): the dropped brief's board id still has a brief file
 	// after the change, but no README row stands for it.
 	RowGone    bool
@@ -784,6 +928,9 @@ func (f gateFault) what() string {
 			parts = append(parts, fmt.Sprintf("is judged against a base board record the hold could not read the way the board reads it (%s), and no brief after the change stands for it, so what the change does to it cannot be judged", f.Base[0].Unreadable))
 		}
 		return strings.Join(parts, "; and ")
+	}
+	if f.Archived {
+		return fmt.Sprintf("leaves it only as a row in an archived stream index at status %q — archived work is completed work, so a brief whose decision is still owed is off the active board there", f.Head.Status)
 	}
 	if f.Ambiguous {
 		parts = append(parts, fmt.Sprintf("leaves its board id resolving to more than one record (%s), so no single status move can be judged", f.Head.Ambiguous))
@@ -886,10 +1033,28 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 				matched[b] = true // reported here, not again as a drop
 			}
 			faults = append(faults, gateFault{Unreadable: true, Head: h, Base: ms})
-			continue
+			if strings.HasPrefix(h.Key, gateScopeKeyPrefix) {
+				continue // a scope record has no status or row to move
+			}
+			// A brief record is read conservatively (gate: human, no ruling) and
+			// judged below like any other, so a status move beside a record that
+			// stood unreadable at the base is a fault of its own and not hidden
+			// behind the unchanged unreadable one.
 		}
 		if h.Gate != gateHumanValue && !baseHuman {
 			continue // not in scope on either side
+		}
+		if h.archivedOpen() && h.Unreadable == "" {
+			if b := base[h.Key]; b == nil || b.fingerprint() != h.fingerprint() {
+				if b != nil {
+					matched[b] = true // reported here, not again as a drop
+				}
+				faults = append(faults, gateFault{Archived: true, Head: h, Base: ms})
+				continue
+			}
+			// The same archived record stood at the base: nothing about it
+			// changed, so a pin bump turns nothing red. Judged below like any
+			// other brief.
 		}
 		if h.Ambiguous != "" {
 			if b := base[h.Key]; b != nil && b.fingerprint() == h.fingerprint() {
@@ -1048,7 +1213,13 @@ type gateRecordedRuling struct {
 // none does, missing says what the PRIMARY record lacks.
 func offlineRuling(f gateFault) (r gateRecordedRuling, ok bool, missing string) {
 	if f.Unreadable {
-		return r, false, "no recorded ruling can stand for a board record the hold cannot read the way the board reads it — make every stream index, brief file and done/ folder under docs/streams and docs/archive a plain file or directory in the tree (no symbolic link, submodule or nested repository), then make any status move in a change of its own"
+		if strings.HasPrefix(f.primary().Key, gateScopeKeyPrefix) {
+			return r, false, "no recorded ruling can stand for a board path the hold cannot read the way the board reads it, and this hold has no in-band way to lift it: it cannot see what a symbolic link to a directory, a linked stream index, or a submodule or nested repository on the board stands for, so a change that leaves one, replaces it or removes it cannot be judged. That needs a human decision (needs-decision), not another edit. A symbolic link to a file, or to nothing, where a stream directory or done/ folder would be is not a board path and is not refused"
+		}
+		return r, false, "no recorded ruling can stand for a brief file the hold cannot read the way the board reads it — replace the link, submodule or unreadable file with a plain file holding the brief (the hold then reads the base's record as gate: human with no ruling), and make any status move in a change of its own"
+	}
+	if f.Archived {
+		return r, false, "no recorded ruling can stand for archiving a brief that is not done — keep its stream under docs/streams until the brief is done (a stream directory moves to docs/archive only when every gate: human brief in it is done), then archive it in a change of its own"
 	}
 	if f.Ambiguous {
 		return r, false, "no recorded ruling can stand for a board id that resolves to more than one record — give each brief its own board number (and each stream its own name across docs/streams and docs/archive), then make the status move in a change of its own"
@@ -1067,6 +1238,8 @@ func offlineRuling(f gateFault) (r gateRecordedRuling, ok bool, missing string) 
 	}
 	p := f.primary()
 	switch {
+	case p.Unreadable != "":
+		return r, false, fmt.Sprintf("its brief file is a record the hold cannot read the way the board reads it (%s), so no recorded ruling can be read off it — replace it with a plain file first", p.Unreadable)
 	case p.Ambiguous != "":
 		return r, false, fmt.Sprintf("its board id resolves to more than one record (%s), so no single recorded ruling can stand for it — give each brief its own board number first", p.Ambiguous)
 	case p.DecisionIssue == 0:
@@ -1096,8 +1269,12 @@ func (f gateFault) where() string {
 
 // layerOneRefusal renders a fault layer one could not see ruled.
 func layerOneRefusal(f gateFault, missing string) string {
-	return fmt.Sprintf("%s: decision-gate hold (%s): %s is gate: human and this change %s, but %s. %s",
-		f.where(), decisionGateSpecRef, f.primary().Board, f.what(), missing, decisionGateLayerOneScope)
+	subject := f.primary().Board + " is gate: human"
+	if strings.HasPrefix(f.primary().Key, gateScopeKeyPrefix) {
+		subject = f.primary().Board + " is a board path"
+	}
+	return fmt.Sprintf("%s: decision-gate hold (%s): %s and this change %s, but %s. %s",
+		f.where(), decisionGateSpecRef, subject, f.what(), missing, decisionGateLayerOneScope)
 }
 
 // decisionGateHoldProblems is layer one, run by every --lint: the working tree

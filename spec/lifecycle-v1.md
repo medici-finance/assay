@@ -330,7 +330,20 @@ issue has no human ruling, a change that:
    directory in the repository tree (a symbolic link, a submodule or a nested
    repository), or a board file that cannot be read. This is refused whether or not the
    entry itself changed, since what it stands for can change behind it. No recorded
-   ruling lifts this refusal.
+   ruling lifts this refusal. The board is read through directories only, so a symbolic link
+   where a stream directory or a `done/` folder would be, whose target is a file or does not
+   exist, is not a board record and is never refused (it is judged by what it can lead to, not
+   by being a link). A link to a directory, a linked stream index, and a submodule or nested
+   repository are board records the implementation cannot see behind: a change that leaves one,
+   replaces it or removes it cannot be judged, so it has no in-band exit and the refusal says
+   it needs a human decision; only a linked BRIEF file can be repaired in a change, by
+   replacing the link with a plain file (the base then reads it as `gate: human` with no
+   ruling);
+6. leaves a brief standing only as a row in a stream index under `docs/archive` at a status
+   other than `done`, where the base did not carry exactly that record (an **open archive**).
+   Archived work is completed work: moving a stream with an owed decision there takes it off
+   the active board without the brief ever reaching `done`. No recorded ruling lifts this
+   refusal; a brief already archived at the base, unchanged, is not refused.
 
 **One reading rule.** Both sides of a change MUST be read by one rule: the base and the
 change are each listed with what every board path is (plain file, directory, link,
@@ -339,6 +352,16 @@ does is unreadable on both. An unreadable record is never taken as carrying no g
 the base it is judged as `gate: human` with no ruling, and an unreadable base stream
 index, `done/` folder, stream directory or tree that no record after the change stands
 for is refused.
+
+**On the board means what the board's loaders say.** A stream index counts only where the
+generator keeps its stream: an active index that fails to parse and declares itself a register
+(`registers-v1.md` §7), and any archived index that fails to parse, are skipped by the stream
+loaders and are not on the board, so a change that makes an index so, rows untouched, drops
+every `gate: human` brief it listed (item 3). An unparseable active index that is no register
+fails the board's own load; the rows it lists are still read.
+
+A brief that stands as unreadable beside a status move is judged for the move as well: the
+refusal for the record does not stand in for the refusal of the move.
 
 A brief is matched across the base and the change by EITHER its board id
 (`<stream>/<NN>`, any spelling of the number) OR its permanent frontmatter `id:`, and
@@ -360,7 +383,11 @@ from its lowest row status and is `gate: human` if any of its brief files is, ne
 whichever record happens to be read first.
 A row of the same brief already at or past its new status at the base is not a move; a pin bump that
 introduces the hold therefore turns no landed row red, which is this rule's forward-only
-mechanism (section 4.4, "Grandfathering").
+mechanism (section 4.4, "Grandfathering"). It does turn a board red that already holds a
+board record the implementation cannot read (item 5: a link to a directory, a linked stream
+index or brief file, a submodule or nested repository under `docs/streams` or `docs/archive`),
+since item 5 is refused whether or not the entry changed; a board with no such record, including
+one holding a link to a file or to nothing beside its streams, is unaffected.
 
 **What counts as ruled.** The brief records its ruling in its own frontmatter: the
 `decision-issue:` number and a `ruling:` link to the ruling comment on that issue
