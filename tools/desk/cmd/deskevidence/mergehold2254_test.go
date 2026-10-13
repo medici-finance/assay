@@ -51,7 +51,7 @@ func TestEvidenceHoldFailIsLoud(t *testing.T) {
 func TestOutcomeDraftOpensHold(t *testing.T) {
 	f, errBuf := setupFake(t)
 	f.defaultBranch = "main"
-	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
+	line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
 	recFile := writeRepoFile(t, "record.json", line+"\n")
 
 	code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
@@ -70,7 +70,7 @@ func TestOutcomeHoldFailIsLoud(t *testing.T) {
 	f, errBuf := setupFake(t)
 	f.defaultBranch = "main"
 	f.holdErr = errors.New("503 the instance is unavailable")
-	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`
+	line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
 	recFile := writeRepoFile(t, "record.json", line+"\n")
 
 	code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
