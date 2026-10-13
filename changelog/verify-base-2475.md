@@ -1,1 +1,1 @@
-Fix the forge-neutral/34 implementation-scope check to compare the recorded landing with its parent on merged main. The remaining verification-definition corrections are tracked in issue #2475.
+- Repair forge-neutral/34 post-merge verification: pin implementation scope and authoring claims to their historical diffs, build the consumers checker independently, and correct the implementation file inventory.
