@@ -248,6 +248,15 @@ func TestTempRefsDrainAbsent(t *testing.T) {
 	// A symbolic alias must remain held instead of being treated as absent.
 	tmp = seedTemp(t, root, refGit(t, root, "rev-parse", "HEAD^"))
 	refGit(t, root, "symbolic-ref", tmp.Name, "refs/heads/main")
+	gr, err := gitcore.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The reader must distinguish an alias from a malformed direct hash, even
+	// when the cleanup layer independently holds both forms of uncertainty.
+	if hash, exists, err := gr.LocalRefHash(tmp.Name); hash != "" || !exists || err == nil || !strings.Contains(err.Error(), "symbolic") {
+		t.Fatalf("symbolic reader contract: hash=%q exists=%v err=%v", hash, exists, err)
+	}
 	if row, err := tmp.Complete(context.Background()); err == nil || row.State != "held" {
 		t.Fatalf("symbolic completion=%+v,%v", row, err)
 	}
