@@ -27,6 +27,7 @@ var verifyOutcomesChokePointAllowList = map[string]string{
 	"internal/deskkit/verifywake.go":       "the legacy receipt shape's field comments — no file I/O",
 	"internal/deskkit/principal.go":        "prose describing a field's origin — no file I/O",
 	"internal/deskkit/repairobligation.go": "prose analogy to a sibling sidecar — no file I/O",
+	"cmd/deskevidence/decisiongate.go":     "a path-prefix regexp naming the register directories the home-freshness check ignores — matches changed-file names, opens no path",
 	"cmd/deskevidence/deskevidence.go":     "the writer's class guard + isVerifyOutcomesSidecar gating predicate",
 	"cmd/deskevidence/outcome.go":          "an error-message STRING, not a path — no file I/O",
 	"cmd/deskevidence/outcomerecord.go":    "the writer — the --outcome-record landing shape",
