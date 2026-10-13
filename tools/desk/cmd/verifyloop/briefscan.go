@@ -237,10 +237,14 @@ func scanAwaitingIn(r deskkit.RootConfig, homeRepo, targetSHA string, reader des
 			Implementer: br.fm.Implementer,
 			Payload:     payload,
 		}
-		if associated, err := associateVerifierItem(item, root); err != nil {
-			payload["could_not_check"] = "verifier association: " + err.Error()
-		} else {
-			item = associated
+		// Preserve the original unresolved/unreadable reason; there is no brief
+		// association to derive until that earlier could-not-check is resolved.
+		if payload["could_not_check"] == "" {
+			if associated, err := associateVerifierItem(item, root); err != nil {
+				payload["could_not_check"] = "verifier association: " + err.Error()
+			} else {
+				item = associated
+			}
 		}
 		items = append(items, item)
 	}
