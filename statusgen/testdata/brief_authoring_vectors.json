@@ -1,0 +1,553 @@
+{
+ "_comment": "Shared vector for the briefs-authoring exemption (#1502). Read by statusgen (TestAuthoringCoupling, in-module) and by tools/desk/internal/deskkit (TestAuthoringCoupling, cross-module). Do not relax an assertion to green a test; a drift between statusgen/briefauthoring.go and deskkit.BriefAuthoringOnly must turn one half red. Synthetic slugs only.",
+ "cases": [
+  {
+   "why": "authoring PR adds the brief it names",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": true
+  },
+  {
+   "why": "the same PR authored a sibling brief too",
+   "briefID": "example-port/12",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": true
+  },
+  {
+   "why": "colon-form brief id",
+   "briefID": "example-repo:example-port:11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": true
+  },
+  {
+   "why": "mixed-case brief id",
+   "briefID": "Example-Port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": true
+  },
+  {
+   "why": "authoring that also touches another stream's board and brief",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-other/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-other/brief-04-x.md",
+     "status": "modified"
+    }
+   ],
+   "authoringOnly": true
+  },
+  {
+   "why": "docs plus code is a delivery",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "tools/desk/cmd/example/main.go",
+     "status": "modified"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "docs-only delivery that does not add the brief",
+   "briefID": "example-port/02",
+   "files": [
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-02-portability-audit.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/portability-audit.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "author-and-deliver of a docs-only brief",
+   "briefID": "example-port/02",
+   "files": [
+    {
+     "filename": "changelog/example-port-02.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-02-portability-audit.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/portability-audit.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "author-and-deliver of a decision record",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/DR-example.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "a stream file nested below the stream dir",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-x/notes.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "a top-level docs/streams file",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/README.md",
+     "status": "modified"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "a brief-named file with no number",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-draft-notes.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "adds only a different brief",
+   "briefID": "example-port/13",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "brief-110 is not brief-11",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "docs/streams/example-port/brief-110-other.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "brief file under another stream",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "docs/streams/example-other/brief-11-x.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "brief file only modified, not added",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "modified"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "rename of a code file into docs/streams",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-13-notes.md",
+     "previousFilename": "tools/desk/notes.go",
+     "status": "renamed"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "changelog README is not a fragment",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "changelog/README.md",
+     "status": "modified"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "nested changelog path is not a fragment",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "changelog/sub/x.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "non-markdown changelog file",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "changelog/x.sh",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "dot-dot escape out of docs/streams",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/../../tools/x.go",
+     "status": "modified"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "CHANGELOG.md at the root is not a fragment",
+   "briefID": "example-port/11",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    },
+    {
+     "filename": "CHANGELOG.md",
+     "status": "modified"
+    }
+   ],
+   "authoringOnly": false
+  },
+  {
+   "why": "empty file list",
+   "briefID": "example-port/11",
+   "files": [],
+   "authoringOnly": false
+  },
+  {
+   "why": "unparseable brief id",
+   "briefID": "not-a-brief",
+   "files": [
+    {
+     "filename": "changelog/example-port-11-14-briefs.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/README.md",
+     "status": "modified"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-11-portable-pollers.md",
+     "status": "added"
+    },
+    {
+     "filename": "docs/streams/example-port/brief-12-deposix-prose.md",
+     "status": "added"
+    }
+   ],
+   "authoringOnly": false
+  }
+ ]
+}
