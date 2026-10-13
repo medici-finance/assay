@@ -4420,6 +4420,37 @@ bouncing Evidence PRs for:
 An unreadable brief, forge read failure, or any other could-not-check condition in these checks
 is exit 6, never a silent pass.
 
+**Join keys, required receipt and redaction.** A `verify-fail` / `blocked` record must carry a
+complete verify-wake-v1 receipt (the writer names the first missing field: `wake_schema`,
+`receipt_id`, `blocker_kind`, `wake_predicate`, then the predicate's own input), and a record
+claiming `verify-wake-v1` also carries the run's join keys. Details are in the stream's
+`verify-wake-v1.md`; the writer's behavior:
+
+- **Input shape (exit 5, naming the field, no forge read).** `prs` is a list of
+  `{repo, number, merge_sha}` (repo `<owner>/<name>`, a JSON integer number >= 1, a lowercase full
+  object name), or `prs: []` beside `prs_unknown_reason: "no-pr-delivery"`; `verifier_tier` is
+  `any` or `strong` (never a model name); `started <= finished <= ts`; `row_results` covers all
+  `rows_total` rows and its `pass` count equals `rows_passed`; `dispatch_ref` matches
+  `<claim_key>@<YYYYMMDDTHHMMSSZ>.<12 lowercase hex>`. `withheld` and `dispatch_ref_sha256` are
+  never valid input. A record that repeats a key, or spells two keys alike but for letter case,
+  is refused.
+- **Order.** Shape checks run first, then admission on the submitted record's target (a caller
+  that is not admitted triggers no read the record names), then the `verifier_tier` check against
+  the admitted binding, then the record-driven forge reads, then the redaction. The redacted
+  record is re-named and must still be the admitted target (brief and `ts` byte-equal, final path
+  admitted by the receipt) or the landing is refused with nothing written.
+- **Dereference (exit 5 per failure, exit 6 when unreadable).** Each `prs` entry must exist, be
+  merged, have `merge_sha` as its merge commit, and be in the record's history: on GitHub an
+  ancestor of the record's `sha` (same repository) or of the other repository's default-branch tip;
+  on GitLab, merged into the default branch no later than `ts` (a weaker check; the compare read
+  is deferred there). The canonical repository spelling comes from the forge's change URL.
+- **Redaction (every record, before the outbound scan).** From the live visibility of the
+  register: private keeps `prs` in clear and replaces `dispatch_ref` with `dispatch_ref_sha256`;
+  any other register keeps an entry in clear only if its own repository is exactly `public`
+  (else `{withheld: sha256("<repo>#<number>@<merge_sha>")}`) and drops `dispatch_ref`. An
+  unreadable visibility is exit 6. The register's visibility is read at write time only, so a
+  private register made public later still carries its earlier records in git history.
+
 **Class guard.** `deskevidence` refuses (exit 5) ANY write to a file matching
 `docs/streams/*.jsonl` — not just `verify-outcomes.jsonl` — naming #882: a shared appended log is
 exactly the shape whose server-side merge conflicts every sibling PR that touches it

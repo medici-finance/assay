@@ -127,7 +127,7 @@ func TestVerifyFailSidecarRowNeverGated(t *testing.T) {
 		return closureCouldNotErr, "", nil
 	}
 
-	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":2,"rows_total":5,"sha":"0000002"}`
+	line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":2,"rows_total":5,"sha":"0000002"}`)
 	recFile := writeRepoFile(t, "record.json", line+"\n")
 
 	code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile})
