@@ -77,3 +77,13 @@ No product implementation is assigned to an adopter repository by this design.
 Moving an existing plan requires a source-identity/successor mapping, active-work
 reconciliation and reviewed lifecycle changes. This table does not claim that a
 transfer, retirement or implementation has occurred.
+
+## Product binding extension — 13 October 2026
+
+Statusgen/19 retains the initial architecture handoff scope under its existing active claim.
+Statusgen/20 records what its architecture-only discovery covers; it cannot claim product
+alignment without supported product bindings. The [product-intent and portfolio amendment](21-product-intent-and-portfolio.md) routes that
+additive contract/parser/resolver work to statusgen/23 after /20 and product records in /22.
+Statusgen/21 now depends on /23 and cites only the actually shipped extension version.
+Unsupported versions use the explicit manual bootstrap and coverage limits. No installed
+skill cache is edited by this planning change.

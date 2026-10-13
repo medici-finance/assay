@@ -172,3 +172,11 @@ schemas and duplicate IDs, distinct totals, unchanged eligibility under taxonomy
 edits, visibility invariance, coverage gaps, deterministic snapshots and preservation
 after failed refresh. Integration traverses source → resolver → query → consumer
 view. Schema validation alone proves neither isolation nor discovery completeness.
+
+## Product-target and observation references — 13 October 2026
+
+The [product-intent and portfolio amendment](21-product-intent-and-portfolio.md) extends the existing source/identity model with references to
+REQ direction/target revisions, operational subjects, obligations, assessments and allocation
+policy. They inherit qualified identity, visibility-before-traversal, source provenance and
+coverage; they do not create a new graph or authority. Product and architecture target revisions
+are separate. Statusgen/23 owns the handoff extension, statusgen/25 composes read views.

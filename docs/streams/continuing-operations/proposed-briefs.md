@@ -10,6 +10,22 @@ Read [the specification](spec.md) and [stream admission/critical path](README.md
 The effort estimates are ceilings for review, not duration estimates. Split an L-sized
 scope if its reviewed interfaces cannot fit one independently verifiable change.
 
+## Authored-slice disposition — 13 October 2026
+
+The original O-numbers below remain outline IDs. They are not canonical brief numbers.
+The six-brief portfolio lane is described in the [delivery amendment](../../proposals/non-ci-architecture/21-product-intent-and-portfolio.md).
+
+| Outline | Current disposition |
+|---|---|
+| O01 | Bounded subject identity/REQ-reference contract is authored as continuing-operations/01. Its new prerequisite is statusgen/22; do not dispatch the old outline separately. |
+| O03, O05, O06, O10 | Their shared observation-obligation and manual handoff subset is authored as continuing-operations/02. Broader practices, recorded-data adapters, runtime integration and a standing outcomes desk remain unauthored. |
+| O02 | Full portable measurement taxonomy remains an outline. Minimal signal/unit/band/window semantics needed by /02 live in change-impact-v1; reconcile them before extending O02, never create another obligation store. |
+| O07, O08 | Portfolio views go through statusgen/25; product binding authoring through statusgen/21 and /23. Broader Operations UI and impact authoring remain future consumers of the same owners. |
+| O04, O09, O11–O14 | Remain outlines; no runtime activation, universal brief migration or trial approval follows from the new briefs. |
+
+The historical wave table describes the full proposed programme. For the authored subset,
+use the typed dependencies in the actual briefs and the amendment's critical path instead.
+
 ## Dependency waves
 
 Local waves are topological layers, not dates. External graph prerequisites may dominate

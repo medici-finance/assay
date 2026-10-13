@@ -10,6 +10,24 @@ activate a stream. The [delivery outlines](proposed-briefs.md) identify contract
 dependencies and acceptance scenarios. Exact schemas and runnable Verify tables follow
 approval. The [cockpit appendix](cockpit.md) describes consumer views and wireframes.
 
+## Portfolio reconciliation — 13 October 2026
+
+The selected [future architecture](../../proposals/non-ci-architecture/11-target-architecture.md)
+includes persistent product intent and observation after delivery. The
+[contract/delivery amendment](../../proposals/non-ci-architecture/21-product-intent-and-portfolio.md)
+assigns REQUIREMENTS its direction/target/observed references and this owner the operational
+definition and assessment lineage. Neither duplicates the other. Several REQs can reference
+one journey; product ownership does not authorize changing its operational procedure.
+
+Two bounded offline briefs now cover subject identities (/01) and observation obligations
+(/02). They do not approve or implement this whole draft, and the stream remains parked.
+An obligation retains its stable ID, original impact revision, owner, trigger and history
+across `done` and manual-to-practice transfer. Due state, raw evidence, assessments and REQ
+observed summaries are different records. An unresolved exposure trigger is not zero benefit;
+adverse/mixed/inconclusive evidence is retained. Reconcile any `observe:` shorthand with the
+single change-impact contract before authoring machine-readable records. Numerical default
+weights, recurring activation and mandatory impact policy remain separate decisions.
+
 ## 1. Problem and intended result
 
 Assay records finite delivery work well. Finishing a brief does not, on its own, answer

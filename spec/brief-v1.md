@@ -153,6 +153,16 @@ This is a conservation check, not an authorization one: it never licenses loweri
 and a genuinely clean split whose risky work all went to a sibling conserves by keeping the
 child's flags UP, not down.
 
+### Product-target binding planning (13 October 2026)
+
+The [future architecture amendment](../docs/proposals/non-ci-architecture/21-product-intent-and-portfolio.md)
+routes optional `outcome-revision` and versioned context bindings to statusgen/23.
+This note does not add a supported field to the frontmatter contract: parser, schemas,
+version negotiation and all consuming readers must land together. Keep `outcome` and
+`satisfies` grammar unchanged; missing legacy bindings remain explicitly unbound.
+Observation syntax belongs to the continuing-operations impact extension, not a second
+brief lifecycle or a universal observation mandate.
+
 ## 4. Body structure
 
 ### 4.1 Context section

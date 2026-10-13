@@ -121,3 +121,11 @@ The architecture reduces duplicate semantic and runtime owners by design, but ad
 database operation, migration, discovery and qualification work. Net savings remain
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
+
+## Portfolio and drift delivery — 13 October 2026
+
+The [product-intent and portfolio amendment](21-product-intent-and-portfolio.md) supplies a parallel offline lane with six authored briefs:
+statusgen/22–25 and continuing-operations/01–02, plus amendments to statusgen/20–21.
+It preserves statusgen/19's active implementation. The dependencies and remaining parked-stream
+admission are explicit there. This lane does not gate R1–R8, choose an adopter pilot,
+activate a scheduler or add a second database backend. R7 consumes its qualified view API.

@@ -108,3 +108,13 @@ paths follows the installed-consumer inventory, never brief counts.
 
 Adopters make their corresponding local amendments separately; nothing in this manifest edits an
 adopter repository or names private repositories, credentials or deployment details.
+
+## Portfolio/drift follow-through — 13 October 2026
+
+The [product-intent and portfolio amendment](21-product-intent-and-portfolio.md) adds a concrete owner/dependency table and six brief files,
+not just owner rows. Statusgen/19's claimed work is unchanged; /23 extends its reviewed
+result after /20. Statusgen/20–21 amendments are limited to declared coverage and supported
+product-binding consumption. Continuing-operations remains parked pending explicit admission.
+R2 and R6 are already covered by PRs #2750 and #2743; this amendment changes neither.
+R7 must consume statusgen/25 and map independent product/architecture/binding/allocation/
+observation dimensions; its public serving owner and implementation brief remain owed.
