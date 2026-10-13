@@ -240,7 +240,10 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 		// never stand in for the could-not-mutate state. A Skip is NotCaught,
 		// never Caught: skipping cannot produce red. A narrowed run only uses a
 		// set Prepare proved green on pristine source (selection.go states the
-		// safety property and the one case it leaves open).
+		// safety property and the false-CAUGHT residual it leaves open: a dropped test
+		// that sets or clears shared state can steer a selected test into or away
+		// from the mutated code, so a narrowed CAUGHT can be one the full command
+		// survives).
 		sel := h.Selector.For(m, orig)
 		if sel.Skip {
 			return NotCaught, nil

@@ -34,8 +34,11 @@
 // executed the function it lands in, plus the spec's select.always list. It
 // only ever REMOVES tests, and each distinct narrowed set must pass on pristine
 // source first (a red one runs the full command); the control runs under
-// selection too. selection.go states the safety property, the one case it does
-// not close, and what falls back to the full command. Baseline, control, exit
+// selection too. selection.go states the safety property, the residual it does
+// not close (a narrowed run changes which tests precede each selected test, so
+// -select can report CAUGHT for a mutant the full command survives; re-run a
+// parity check against the full sweep whenever the suite or spec changes), and
+// what falls back to the full command. Baseline, control, exit
 // codes, the report and -shard/-j are unchanged. It needs the spec's `test` to
 // be a plain `go test [flags] <packages>` command and refuses anything else.
 //

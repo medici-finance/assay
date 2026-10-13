@@ -24,16 +24,37 @@
 //     also runs the full command.
 //
 // With both, a narrowed run on a mutant is red only because the mutated tree
-// differs from the pristine one. What that still leaves open, stated rather than
-// closed: if the mutation's OWN effect leaks into shared state, and a test that
-// selection dropped would have reset that state before the selected test that
-// reads it, the narrowed run is red where the full run is green (a false
-// CAUGHT). That needs a selected test that executes the mutated function and
-// leaves state behind, a later selected test that reads it, and an unselected
-// test between them that clears it. Closing it in general means confirming
-// every CAUGHT with the full command, which gives back the whole saving; so
-// -select is opt-in, and a gate enables it only after a parity run against the
-// full sweep on that gate's spec.
+// differs from the pristine one, OR because narrowing changed which tests run
+// BEFORE a selected test. That second cause is the residual, stated rather than
+// closed, and it is wider than one shape. Selection removes tests, so any
+// shared state (a package variable, a registry, a lazily set default, a file)
+// that a dropped test SETS or CLEARS can send a selected test through different
+// code than it takes in the full order. Coverage is attributed from each test
+// run alone, so it does not see the full-order path. Two shapes, both
+// reproduced:
+//
+//   - steer INTO the mutant: an unselected test clears state, so the selected
+//     test takes the mutated branch in the narrowed run and not in the full
+//     one. The mutant survives the full command and is CAUGHT here.
+//   - leak: the mutation's own effect leaves state behind that a dropped test
+//     would have reset before a later selected test reads it (three tests).
+//
+// The pristine proof cannot see either, because on pristine source the
+// branches agree. The effect is a false CAUGHT: -select can report CAUGHT for
+// a mutant the full command lets survive, and the gate regex still passes. The
+// opposite direction (a dropped test that would have caught the mutant) is
+// loud. Closing this in general means confirming every CAUGHT with the full
+// command, which gives back most of the saving; so -select is opt-in, and an
+// operator enables it on a gate only after a parity run of -select against the
+// full sweep on that gate's spec AND must re-run that parity whenever the
+// suite or the spec changes, because the run only vouches for the suite as it
+// stood on that day.
+//
+// The coverage pass and the pristine-set proof run up to -j test processes at
+// once in the one pristine tree. A suite that writes fixed paths under its
+// package directory can interfere with itself there; the likely outcomes are a
+// red set (its mutants run the full command) or a coverage-pass error (exit 2),
+// both loud.
 //
 // The other direction is loud by construction: a test that would have caught
 // the mutant but was not selected shows as NOT CAUGHT, which reddens the gate.
@@ -400,7 +421,7 @@ func (cs *coverSelector) Prepare(root string) error {
 		}
 		pi := len(cs.pkgs)
 		bin := filepath.Join(tmp, strconv.Itoa(pi)+".test")
-		build := exec.Command("go", append(append([]string{"test", "-c"}, buildFlags...), "-cover", "-covermode=set",
+		build := exec.Command("go", append(append([]string{"test", "-c"}, buildFlags...), "-cover",
 			"-coverpkg="+strings.Join(coverpkg, ","), "-o", bin, p.ImportPath)...)
 		build.Dir = root
 		build.Env = cs.env
@@ -588,20 +609,25 @@ func setKey(args []string) string { return strings.Join(args, "\x00") }
 // coverFlags carries the spec's own -race, -short and -timeout into the coverage
 // pass, so each test is attributed and run alone under the conditions the
 // narrowed runs use. -count, -v and -failfast do not change what one test
-// executes.
+// executes. The build flags always carry a -covermode: set (only executed or
+// not is read), or atomic when -race is on, because the go command refuses
+// -race with any other mode.
 func (cs *coverSelector) coverFlags() (build, run []string) {
 	timeout := "10m"
+	mode := "set"
 	for _, f := range cs.cmd.flags {
 		name, val, _ := strings.Cut(f, "=")
 		switch "-" + strings.TrimLeft(name, "-") {
 		case "-race":
 			build = append(build, "-race")
+			mode = "atomic"
 		case "-short":
 			run = append(run, "-test.short")
 		case "-timeout":
 			timeout = val
 		}
 	}
+	build = append(build, "-covermode="+mode)
 	return build, append(run, "-test.timeout="+timeout)
 }
 

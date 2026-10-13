@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -510,14 +511,155 @@ func TestCoverFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	build, run := (&coverSelector{cmd: cmd}).coverFlags()
-	if got := strings.Join(build, " "); got != "-race" {
-		t.Fatalf("build flags = %q, want -race", got)
+	if got := strings.Join(build, " "); got != "-race -covermode=atomic" {
+		t.Fatalf("build flags = %q, want -race -covermode=atomic (go refuses -race with any other mode)", got)
 	}
 	if got := strings.Join(run, " "); got != "-test.short -test.timeout=90s" {
 		t.Fatalf("run flags = %q", got)
 	}
 	cmd, _ = parseGoTest("go test -count=1 ./p/")
-	if _, run := (&coverSelector{cmd: cmd}).coverFlags(); strings.Join(run, " ") != "-test.timeout=10m" {
-		t.Fatalf("default run flags = %q", run)
+	build, run = (&coverSelector{cmd: cmd}).coverFlags()
+	if strings.Join(run, " ") != "-test.timeout=10m" || strings.Join(build, " ") != "-covermode=set" {
+		t.Fatalf("default flags: build=%q run=%q", build, run)
+	}
+}
+
+// Every flag on the allowlist must work through the real coverage build and the
+// narrowed runs, alone and all together. A flag the allowlist accepts but the
+// coverage pass cannot carry would break every spec that uses it (the go
+// command refuses -race with -covermode=set), and TestCoverFlags only compares
+// strings. So this builds and runs the coverage pass for each flag and checks
+// the selected report against the full sweep.
+//
+// regression: #2636
+func TestSelectEveryAllowedFlag(t *testing.T) {
+	needGo(t)
+	var flags []string
+	for f := range selectableFlags {
+		flags = append(flags, f)
+	}
+	sort.Strings(flags)
+	variants := map[string]string{
+		"-count": "-count=1", "-timeout": "-timeout 120s", "-v": "-v", "-short": "-short",
+		"-race": "-race", "-failfast": "-failfast",
+	}
+	cases := map[string]string{"all": ""}
+	for _, f := range flags {
+		v, ok := variants[f]
+		if !ok {
+			t.Fatalf("selectableFlags gained %q: add it to this test's variants", f)
+		}
+		cases[f] = v
+		cases["all"] += " " + v
+	}
+	if out, err := exec.Command("go", "env", "CGO_ENABLED").Output(); err != nil || strings.TrimSpace(string(out)) != "1" {
+		delete(cases, "-race")
+		cases["all"] = strings.ReplaceAll(cases["all"], " -race", "")
+	}
+	for name, fl := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFiles(t, root, selModule)
+			s := selSpec()
+			s.Test = "go test " + strings.TrimSpace(fl) + " ./p/"
+			s.Mutations = s.Mutations[:2] // C is caught only by the source-reading test
+			cmd, err := parseGoTest(s.Test)
+			if err != nil {
+				t.Fatal(err)
+			}
+			full := selHarness(t, root, s, nil)
+			if full.Broken {
+				t.Fatalf("full sweep broken: %s", full.BrokenReason)
+			}
+			var log bytes.Buffer
+			sel := selHarness(t, root, s, newCoverSelector(s, cmd, 2, os.Environ(), &log, runGo))
+			if sel.Broken {
+				t.Fatalf("selected sweep broken under %q: %s\n%s", fl, sel.BrokenReason, log.String())
+			}
+			if got, want := sel.Summary(), full.Summary(); got != want {
+				t.Fatalf("flags %q changed the report:\nfull:\n%s\nselected:\n%s", fl, want, got)
+			}
+		})
+	}
+}
+
+// The residual the package comment states, pinned: an unselected predecessor
+// that SETS shared state steers a selected test away from the mutated branch in
+// the full order, while the narrowed run sends it straight through that branch.
+// The full command lets the mutant survive; -select reports it CAUGHT, and the
+// pristine proof cannot see it (both branches agree on pristine source). This
+// test documents a known limit, not a wanted behaviour: if selection ever closes
+// it, this test fails, and the package comment, the -select doc, the changelog
+// and the PR body must be updated with it.
+//
+// regression: #2636
+func TestSelectResidualUnselectedSetterSteers(t *testing.T) {
+	needGo(t)
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"go.mod": "module example.com/steer\n\ngo 1.21\n",
+		"p/p.go": `package p
+
+type Config struct{ N int }
+
+var cfg *Config
+
+func Init() { cfg = &Config{N: 1} }
+
+func Step() int { return cfg.N }
+
+func F(x int) int {
+	if cfg == nil {
+		return x + 1
+	}
+	return x + cfg.N
+}
+
+func H(x int) int { return x * 2 }
+`,
+		"p/p_test.go": `package p
+
+import "testing"
+
+func TestInit(t *testing.T) {
+	Init()
+	if Step() != 1 {
+		t.Fatal("Step")
+	}
+}
+
+func TestF(t *testing.T) {
+	if F(1) != 2 {
+		t.Fatal("F")
+	}
+}
+
+func TestH(t *testing.T) {
+	if H(2) != 4 {
+		t.Fatal("H")
+	}
+}
+`,
+	})
+	s := spec{
+		Test:      "go test ./p/ -count=1",
+		Control:   Mutation{Name: "control", File: "p/p.go", Old: "x * 2", New: "x * 3"},
+		Mutations: []Mutation{{Name: "default-branch", File: "p/p.go", Old: "return x + 1", New: "return x + 2"}},
+	}
+	cmd, err := parseGoTest(s.Test)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := selHarness(t, root, s, nil)
+	if full.Broken || verdicts(full)["default-branch"] != NotCaught {
+		t.Fatalf("full sweep: want healthy with default-branch NOT_CAUGHT (TestInit sets cfg first), got broken=%v %v", full.Broken, verdicts(full))
+	}
+	var log bytes.Buffer
+	sel := selHarness(t, root, s, newCoverSelector(s, cmd, 2, os.Environ(), &log, runGo))
+	if sel.Broken {
+		t.Fatalf("selected sweep broken: %s\n%s", sel.BrokenReason, log.String())
+	}
+	if verdicts(sel)["default-branch"] != Caught {
+		t.Fatalf("the documented residual no longer reproduces (selected %v): selection now closes it, so update the package comment, -select doc, changelog and PR body\n%s", verdicts(sel), log.String())
 	}
 }
