@@ -112,8 +112,11 @@ is present but yields no path, the result is **COULD-NOT-CHECK**, never a findin
 ## Fail-first
 
 `statusgen verifyrun --brief <path> --fail-first` runs each risk-bearing row twice. The first run
-is on the merge-base of HEAD and `origin/main` (or `--base <rev>`), checked out into a temporary
-worktree. The second is the ordinary run at head. The witness table gains a `Base` column:
+is on the base, checked out into a temporary worktree, with the same sandbox and `--ci` mode as the
+head run. The second is the ordinary run at head. The default base is the merge-base of HEAD and
+`origin/main`. `--base <rev>` may name that merge-base or any ancestor of it, and nothing else:
+a branch commit, HEAD or an unknown object is refused. The witness table gains a `Base` column,
+appended to the right of `Runner` (readers of Date and Runner skip it):
 
     base=<sha> red rc=1 · head=<sha>
 
@@ -123,11 +126,21 @@ The base states are:
 - **`green`**: the row passed at base. If it also passes at head, it is **non-discriminating**:
   it passes with or without the change.
 - **`unproven`**: the row could not run at base.
-- **`not-selected`**: the row is not risk-bearing and was not run at base.
+- **`not-selected`**: the row is not risk-bearing, or `--ci` skips it, and it was not run at base.
+
+**After the change has merged**, the merge-base of HEAD and `origin/main` is HEAD itself or a
+commit that already contains the change, so every row is green. The verifier passes
+`--base <the parent of the delivering merge>`. Only the latest witness of a row counts, and it
+must carry the row's current command; a later plain run or an edited command drops the record.
+One parser (`briefVerifyRows`) enumerates the rows for the gate, the risk selection and the
+runner, and a Verify table it cannot place on a closure is a PROBLEM. A live, mutating or
+end-to-end row runs a second time at base, so check it is safe to run twice.
 
 The lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
 a **PROBLEM** when it has no fail-first witness, its witness is `unproven`, its witness is
-non-discriminating, or its witness names a base that is not an ancestor of HEAD. The last case
-covers a red run on some other tree, which proves nothing about this change. A non-risk-bearing row
+non-discriminating, its witness is for an earlier command or has been superseded by a later plain
+run, or its witness names a base that is not the merge-base or an ancestor of it. The last case
+covers a red run on some other tree, or on the branch itself, which proves nothing about this
+change. A non-risk-bearing row
 that is non-discriminating is reported as a NOTICE and never blocks. `verifyrun --fail-first`
 exits 1 when a risk-bearing row is non-discriminating and 2 when one could not run at base.

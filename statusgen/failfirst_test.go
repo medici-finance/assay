@@ -13,23 +13,35 @@ import (
 // runs each risk-bearing row at the merge-base and at head, and the closure
 // gate refuses a post-base closure whose risk-bearing row is non-discriminating
 // (green at base AND at head), has no fail-first witness, or names a base that
-// is not an ancestor of HEAD.
+// is not the merge-base or an ancestor of it.
 
 // ffBrief renders a verified brief with one risk-bearing row (#1, tagged
 // `live`) and one plain row (#2), plus the given Evidence body.
 func ffBrief(evidence string) string {
+	return ffBriefRaw("no",
+		"| # | Command | Expect |\n|---|---------|--------|\n"+
+			"| 1 | `grep -q new flag.txt` | exit 0 (live check) |\n"+
+			"| 2 | `test -f flag.txt` | exit 0 |\n", evidence)
+}
+
+// ffBriefRaw renders the same brief with an arbitrary Verify body and a
+// brief-wide risk answer (every risk key set to it).
+func ffBriefRaw(risk, verify, evidence string) string {
 	return "---\nbrief: ff/01\ntitle: Fail-first fixture\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\n" +
-		"risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nissues: []\nschema: brief-v1\n" +
+		"risk: {regulatory: " + risk + ", customer: no, irreversible: no, sensitive-data: no}\nissues: []\nschema: brief-v1\n" +
 		"authored: 2026-10-08 by fixture\nsources: [\"fixture\"]\n---\n\n# Fail-first fixture\n\n" +
-		"## Verify (executable — no prose-only DoD items)\n" +
-		"| # | Command | Expect |\n|---|---------|--------|\n" +
-		"| 1 | `grep -q new flag.txt` | exit 0 (live check) |\n" +
-		"| 2 | `test -f flag.txt` | exit 0 |\n\n" +
+		"## Verify (executable — no prose-only DoD items)\n" + verify + "\n" +
 		"## Evidence\n\n" + evidence + "\n\n## Review\nGate: model.\n"
 }
 
 // ffStream writes the ff stream (brief 01 verified) under root and loads it.
 func ffStream(t *testing.T, root, evidence string) []*Stream {
+	t.Helper()
+	return ffStreamBrief(t, root, ffBrief(evidence))
+}
+
+// ffStreamBrief writes the ff stream with the given brief-01 text and loads it.
+func ffStreamBrief(t *testing.T, root, brief string) []*Stream {
 	t.Helper()
 	dir := filepath.Join(root, "docs", "streams", "ff")
 	mustMkdirAll(t, dir)
@@ -37,7 +49,7 @@ func ffStream(t *testing.T, root, evidence string) []*Stream {
 		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n"+
 		"|---|-------|------|--------|--------|----------|----------|\n"+
 		"| 01 | [FF](./brief-01-ff.md) | 0 | S | verified | 2026-10-08 | model:x |\n")
-	writeTemp(t, dir, "brief-01-ff.md", ffBrief(evidence))
+	writeTemp(t, dir, "brief-01-ff.md", brief)
 	streams, _, err := loadStreams(root)
 	if err != nil {
 		t.Fatal(err)
@@ -55,12 +67,14 @@ func ffTable(base1, base2 string) string {
 	return witnessTable([]witness{mk("1", "grep -q new flag.txt", base1), mk("2", "test -f flag.txt", base2)})
 }
 
-// withAncestry swaps the base-ancestry probe for the duration of a test.
-func withAncestry(t *testing.T, fn func(root, base string) (bool, string)) {
+// withAncestry swaps the base-ancestry probe and the merge-base resolver for
+// the duration of a test.
+func withAncestry(t *testing.T, fn func(root, base, of string) (bool, string)) {
 	t.Helper()
-	prev := commitIsAncestor
+	prev, prevMB := commitIsAncestor, failFirstMergeBase
 	commitIsAncestor = fn
-	t.Cleanup(func() { commitIsAncestor = prev })
+	failFirstMergeBase = func(string) string { return strings.Repeat("a", 40) }
+	t.Cleanup(func() { commitIsAncestor, failFirstMergeBase = prev, prevMB })
 }
 
 // TestFailFirstNonDiscriminating — Verify row 1. A risk-bearing row green at
@@ -68,7 +82,7 @@ func withAncestry(t *testing.T, fn func(root, base string) (bool, string)) {
 // row; perturb the base so the row reds and the closure is clean.
 func TestFailFirstNonDiscriminating(t *testing.T) {
 	withBase(t, true)
-	withAncestry(t, func(string, string) (bool, string) { return true, "" })
+	withAncestry(t, func(string, string, string) (bool, string) { return true, "" })
 
 	green := failFirstCell("bbbbbbbbbbbb", baseGreen, 0, "aaaaaaaaaaaa")
 	red := failFirstCell("bbbbbbbbbbbb", baseRed, 1, "aaaaaaaaaaaa")
@@ -126,46 +140,197 @@ func gitOutT(t *testing.T, root string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// ffRepo builds a two-commit repo — base (flag.txt "old") then head (flag.txt
-// "new") — plus one dangling commit that is NOT an ancestor of HEAD.
-func ffRepo(t *testing.T) (root, base, head, stray string) {
+// ffRepo builds a three-commit repo — old (flag.txt "old"), base (the merge-base
+// stand-in, flag.txt "old") and head (flag.txt "new") — plus one dangling commit
+// that is NOT an ancestor of HEAD and one commit of the branch between base and
+// head. It stubs the merge-base resolver to return base.
+func ffRepo(t *testing.T) (root, older, base, branch, head, stray string) {
 	t.Helper()
 	root = t.TempDir()
 	gitRun(t, root, "init", "-q")
+	writeTemp(t, root, "other.txt", "x\n")
 	writeTemp(t, root, "flag.txt", "old\n")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "older")
+	older = gitOutT(t, root, "rev-parse", "HEAD")
+	writeTemp(t, root, "other.txt", "y\n")
 	gitRun(t, root, "add", "-A")
 	gitRun(t, root, "commit", "-q", "-m", "base")
 	base = gitOutT(t, root, "rev-parse", "HEAD")
+	writeTemp(t, root, "other.txt", "z\n")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "branch commit")
+	branch = gitOutT(t, root, "rev-parse", "HEAD")
 	writeTemp(t, root, "flag.txt", "new\n")
 	gitRun(t, root, "add", "-A")
 	gitRun(t, root, "commit", "-q", "-m", "head")
 	head = gitOutT(t, root, "rev-parse", "HEAD")
 	tree := gitOutT(t, root, "rev-parse", "HEAD^{tree}")
 	stray = gitOutT(t, root, "commit-tree", tree, "-m", "a sibling tree outside this history")
-	return root, base, head, stray
+	prev := failFirstMergeBase
+	failFirstMergeBase = func(string) string { return base }
+	t.Cleanup(func() { failFirstMergeBase = prev })
+	return root, older, base, branch, head, stray
 }
 
-// TestFailFirstBaseAncestry — Verify row 2. A fail-first witness whose base SHA
-// is not an ancestor of HEAD (a stale sibling tree, or an object this clone does
-// not have) is a PROBLEM "base is not an ancestor" — never a pass.
+// TestFailFirstBaseAncestry — Verify row 2. A fail-first witness is accepted
+// only when its base is the merge-base of HEAD and the default branch or an
+// ancestor of it. HEAD's own commit, a commit of the branch, a sibling tree and
+// an object this clone does not have are each a PROBLEM "base is not the
+// merge-base" — never a pass.
 func TestFailFirstBaseAncestry(t *testing.T) {
 	withBase(t, true)
-	root, base, head, stray := ffRepo(t)
+	root, older, base, branch, head, stray := ffRepo(t)
 	skip := failFirstCell("", baseNotSelected, -1, head[:12])
 
 	for _, c := range []struct {
 		name, base  string
 		wantProblem bool
 	}{
-		{"real merge-base", base[:12], false},
+		{"the merge-base itself", base[:12], false},
+		{"an ancestor of the merge-base (post-merge verify: the delivering change's parent)", older[:12], false},
+		{"HEAD's own commit", head[:12], true},
+		{"a commit of the branch", branch[:12], true},
 		{"sibling tree outside this history", stray[:12], true},
 		{"object this clone does not have", "deadbeefdead", true},
 	} {
 		evidence := ffTable(failFirstCell(c.base, baseRed, 1, head[:12]), skip)
 		problems, _ := failFirstGateChecks(root, ffStream(t, root, evidence))
-		got := containsSub(problems, "base is not an ancestor")
+		got := containsSub(problems, "not the merge-base or an ancestor of it")
 		if got != c.wantProblem {
-			t.Errorf("%s: base %s — ancestry PROBLEM=%v, want %v; problems=%v", c.name, c.base, got, c.wantProblem, problems)
+			t.Errorf("%s: base %s — base PROBLEM=%v, want %v; problems=%v", c.name, c.base, got, c.wantProblem, problems)
+		}
+	}
+}
+
+// TestFailFirstBaseFlagRefusesNonAncestor — the runner refuses at the source
+// what the gate would refuse later: --base HEAD records a red that proves
+// nothing about the change.
+func TestFailFirstBaseFlagRefusesNonAncestor(t *testing.T) {
+	root, older, base, branch, head, _ := ffRepo(t)
+	for _, c := range []struct {
+		name, rev string
+		ok        bool
+	}{{"merge-base", base, true}, {"ancestor of the merge-base", older, true}, {"branch commit", branch, false}, {"HEAD", head, false}} {
+		_, err := failFirstBaseRev(root, c.rev)
+		if (err == nil) != c.ok {
+			t.Errorf("--base %s: err=%v, want ok=%v", c.name, err, c.ok)
+		}
+	}
+}
+
+// TestFailFirstRecordBoundToLatestWitnessAndCommand — a fail-first record made
+// for an earlier command, or followed by a newer ordinary witness, does not
+// satisfy the closure gate; the same record with nothing after it does.
+func TestFailFirstRecordBoundToLatestWitnessAndCommand(t *testing.T) {
+	withBase(t, true)
+	withAncestry(t, func(string, string, string) (bool, string) { return true, "" })
+	red := failFirstCell("bbbbbbbbbbbb", baseRed, 1, "aaaaaaaaaaaa")
+	skip := failFirstCell("", baseNotSelected, -1, "aaaaaaaaaaaa")
+	row := func(id, cmd, base string) witness {
+		return witness{ID: id, Command: cmd, State: statePass, Exit: 0, OutHash: "0123456789ab",
+			Date: "2026-10-08", Runner: "human:fixture", Tree: "aaaaaaaaaaaa", Base: base}
+	}
+	good := ffTable(red, skip)
+
+	root := t.TempDir()
+	if problems, _ := failFirstGateChecks(root, ffStream(t, root, good)); len(problems) != 0 {
+		t.Fatalf("control: a current fail-first record is clean; got %v", problems)
+	}
+
+	// The row's command is replaced by one that always passes; the old red
+	// record stays and a newer ordinary witness for the NEW command follows.
+	rewritten := ffBriefRaw("no",
+		"| # | Command | Expect |\n|---|---------|--------|\n"+
+			"| 1 | `true` | exit 0 (live check) |\n"+
+			"| 2 | `test -f flag.txt` | exit 0 |\n",
+		good+"\n\n"+witnessTable([]witness{row("1", "true", "")}))
+	root = t.TempDir()
+	problems, _ := failFirstGateChecks(root, ffStreamBrief(t, root, rewritten))
+	if !containsSub(problems, "#1") || !containsSub(problems, "no fail-first witness") {
+		t.Fatalf("an old red record behind a newer plain witness must not satisfy the gate; got %v", problems)
+	}
+
+	// The command is replaced and no newer witness exists: the record is for a
+	// command the row no longer holds.
+	stale := ffBriefRaw("no",
+		"| # | Command | Expect |\n|---|---------|--------|\n"+
+			"| 1 | `true` | exit 0 (live check) |\n"+
+			"| 2 | `test -f flag.txt` | exit 0 |\n", good)
+	root = t.TempDir()
+	problems, _ = failFirstGateChecks(root, ffStreamBrief(t, root, stale))
+	if !containsSub(problems, "different command") || !containsSub(problems, "#1") {
+		t.Fatalf("a fail-first record for a replaced command must be a PROBLEM; got %v", problems)
+	}
+
+	// A later fail-first run for the new command is accepted.
+	rerun := ffBriefRaw("no",
+		"| # | Command | Expect |\n|---|---------|--------|\n"+
+			"| 1 | `true` | exit 0 (live check) |\n"+
+			"| 2 | `test -f flag.txt` | exit 0 |\n",
+		good+"\n\n"+witnessTable([]witness{row("1", "true", red), row("2", "test -f flag.txt", skip)}))
+	root = t.TempDir()
+	if problems, _ := failFirstGateChecks(root, ffStreamBrief(t, root, rerun)); len(problems) != 0 {
+		t.Fatalf("a fresh fail-first record for the current command is clean; got %v", problems)
+	}
+}
+
+// TestFailFirstGateSeesEveryRunnerRow — the gate, the risk selection and the
+// runner enumerate Verify rows with ONE parser. A short row (no Expect cell), a
+// table headed `Expected`, and a table the runner cannot place are each held.
+func TestFailFirstGateSeesEveryRunnerRow(t *testing.T) {
+	withBase(t, true)
+	withAncestry(t, func(string, string, string) (bool, string) { return true, "" })
+	red := failFirstCell("bbbbbbbbbbbb", baseRed, 1, "aaaaaaaaaaaa")
+	plain := witnessTable([]witness{
+		{ID: "1", Command: "grep -q new flag.txt", State: statePass, Exit: 0, OutHash: "0123456789ab", Date: "2026-10-08", Runner: "human:fixture", Tree: "aaaaaaaaaaaa", Base: red},
+		{ID: "2", Command: "test -f flag.txt", State: statePass, Exit: 0, OutHash: "0123456789ab", Date: "2026-10-08", Runner: "human:fixture", Tree: "aaaaaaaaaaaa"},
+	})
+
+	for _, c := range []struct{ name, verify string }{
+		{"a short row", "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `grep -q new flag.txt` | exit 0 |\n| 2 | `test -f flag.txt` |\n"},
+		{"a table headed Expected", "| # | Command | Expected |\n|---|---------|----------|\n| 1 | `grep -q new flag.txt` | exit 0 |\n| 2 | `test -f flag.txt` | exit 0 |\n"},
+	} {
+		// Brief-wide risk yes: every row the runner executes is risk-bearing.
+		root := t.TempDir()
+		problems, _ := failFirstGateChecks(root, ffStreamBrief(t, root, ffBriefRaw("yes", c.verify, plain)))
+		if !containsSub(problems, "#2") || !containsSub(problems, "no fail-first witness") {
+			t.Errorf("%s: row 2 is run and witnessed by the runner, so the gate must hold it; got %v", c.name, problems)
+		}
+		rows := briefVerifyRows(extractSectionByPrefix(ffBriefRaw("yes", c.verify, plain), "Verify"))
+		if got := failFirstRiskyIDs(map[string]string{"regulatory": "yes"}, rows); !got["1"] || !got["2"] {
+			t.Errorf("%s: the risk selection must see the runner's rows; got %v", c.name, got)
+		}
+	}
+
+	// A table with no Command column is never run: a PROBLEM, not a skip.
+	unplaced := "| # | Cmd | Expect |\n|---|-----|--------|\n| 1 | `true` | exit 0 |\n"
+	root := t.TempDir()
+	problems, _ := failFirstGateChecks(root, ffStreamBrief(t, root, ffBriefRaw("yes", unplaced, plain)))
+	if !containsSub(problems, "cannot place") {
+		t.Errorf("a Verify table the runner cannot place must be a PROBLEM on a closure; got %v", problems)
+	}
+}
+
+// TestFailFirstReadersSkipTheBaseColumn — a fail-first witness table appends
+// Base to the right of Runner; the readers that take Date and Runner counted
+// from the right (the verify flip and the human close stamp) must still read
+// them, not the runner text as the date and Base as the runner.
+func TestFailFirstReadersSkipTheBaseColumn(t *testing.T) {
+	red := failFirstCell("bbbbbbbbbbbb", baseRed, 1, "aaaaaaaaaaaa")
+	for _, tbl := range []string{ffTable(red, red), ffTable("", "")} {
+		d, r := evidenceVerifierInfo(tbl)
+		if d != "2026-10-08" || !strings.HasPrefix(r, "human:fixture") || strings.Contains(r, "base=") {
+			t.Errorf("evidenceVerifierInfo = (%q, %q), want (2026-10-08, human:fixture...) from:\n%s", d, r, tbl)
+		}
+		rows, _ := flipDateRunnerRows(strings.Split(tbl, "\n"))
+		if len(rows) == 0 {
+			t.Fatalf("flipDateRunnerRows read no rows from:\n%s", tbl)
+		}
+		for _, dr := range rows {
+			if dr[0] != "2026-10-08" || !strings.HasPrefix(dr[1], "human:fixture") || strings.Contains(dr[1], "base=") {
+				t.Errorf("flipDateRunnerRows = %v, want [2026-10-08 human:fixture...]", dr)
+			}
 		}
 	}
 }
@@ -174,14 +339,14 @@ func TestFailFirstBaseAncestry(t *testing.T) {
 // worktree checked out at the base, records red/green per risk-bearing row,
 // leaves non-risk rows not-selected, and removes the worktree afterwards.
 func TestFailFirstRunsAtBase(t *testing.T) {
-	root, base, _, _ := ffRepo(t)
+	root, _, base, _, _, _ := ffRepo(t)
 	rows := []verifyRow{
 		{ID: "1", Command: "grep -q new flag.txt", Expect: "exit 0"},
 		{ID: "2", Command: "test -f flag.txt", Expect: "exit 0"},
 		{ID: "3", Command: "test -f flag.txt", Expect: "exit 0"},
 	}
 	risky := map[string]bool{"1": true, "2": true}
-	got, err := runFailFirstBase(resolveShellPlan(), sandboxUnshare, root, base, rows, risky, time.Minute)
+	got, err := runFailFirstBase(resolveShellPlan(), sandboxUnshare, root, base, rows, risky, time.Minute, false)
 	if err != nil {
 		t.Fatalf("runFailFirstBase: %v", err)
 	}
@@ -196,6 +361,17 @@ func TestFailFirstRunsAtBase(t *testing.T) {
 	}
 	if wt := gitOutT(t, root, "worktree", "list", "--porcelain"); strings.Count(wt, "worktree ") != 1 {
 		t.Errorf("the base worktree must be removed after the run; worktree list:\n%s", wt)
+	}
+
+	// The CI flag reaches the base run: an explicitly-classed env-bound `check`
+	// row that --ci skips at head is skipped at base, never executed there.
+	ciRows := []verifyRow{{ID: "1", Command: "touch ran-at-base.txt", Expect: "exit 0", Class: "check", Classed: true}}
+	got2, err := runFailFirstBase(resolveShellPlan(), sandboxUnshare, root, base, ciRows, map[string]bool{"1": true}, time.Minute, true)
+	if err != nil {
+		t.Fatalf("runFailFirstBase (ci): %v", err)
+	}
+	if got2["1"].State != baseNotSelected {
+		t.Errorf("a row --ci skips at head must not run at base; got %+v", got2["1"])
 	}
 
 	// The rendered row keeps every positional witness cell and adds Base.

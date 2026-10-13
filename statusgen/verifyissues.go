@@ -1046,13 +1046,16 @@ func unroutedHeldLine(evidence string) (bool, string) {
 // Because splitRow splits on an UNESCAPED | (commands often contain an unescaped
 // pipe character, which GFM and splitRow alike read as a real cell delimiter),
 // the column indices from the header may not align with data rows. This function
-// works around that by reading Date and Runner from the RIGHTMOST two cells of
-// each data row: the last cell is Runner (by convention), second-to-last is Date.
+// works around that by reading Date and Runner counted from the RIGHT of each
+// data row: Runner is the last cell (by convention) and Date the one before it,
+// after skipping any columns the header places to the right of Runner (a
+// fail-first witness table's trailing Base).
 // It validates against the header row to confirm the table structure is recognized.
 func evidenceVerifierInfo(evidence string) (date, runner string) {
 	stripped, _ := stripRowComments(evidence)
 	lines := strings.Split(stripped, "\n")
 	tableFound := false
+	trail := 0 // header columns to the RIGHT of Runner (a fail-first table's Base)
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if !strings.HasPrefix(line, "|") {
@@ -1066,12 +1069,15 @@ func evidenceVerifierInfo(evidence string) (date, runner string) {
 		// names Date and Runner columns (anywhere, not at a fixed index).
 		if i+1 < len(lines) && separatorRowRe.MatchString(strings.Trim(strings.TrimSpace(lines[i+1]), "|")) {
 			hasDate, hasRunner := false, false
-			for _, c := range splitRow(line) {
+			hdr := splitRow(line)
+			trail = 0
+			for j, c := range hdr {
 				switch strings.ToLower(strings.TrimSpace(c)) {
 				case "date":
 					hasDate = true
 				case "runner":
 					hasRunner = true
+					trail = len(hdr) - 1 - j
 				}
 			}
 			tableFound = hasDate && hasRunner
@@ -1084,11 +1090,11 @@ func evidenceVerifierInfo(evidence string) (date, runner string) {
 		// Data row: read Date from second-to-last cell, Runner from last cell.
 		// This survives splitRow miscounting when cell content contains |.
 		cells := splitRow(line)
-		if len(cells) < 2 {
+		if len(cells) < 2+trail {
 			continue
 		}
-		d := strings.TrimSpace(cells[len(cells)-2])
-		r := strings.TrimSpace(cells[len(cells)-1])
+		d := strings.TrimSpace(cells[len(cells)-2-trail])
+		r := strings.TrimSpace(cells[len(cells)-1-trail])
 		if d != "" && d != "—" && r != "" {
 			return d, r
 		}

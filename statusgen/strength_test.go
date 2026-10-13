@@ -89,6 +89,7 @@ func TestRule13NoFilesPath(t *testing.T) {
 		{"placeholder entry's directory", []string{"ls changelog/"}, false},
 		{"basename after a cd", []string{"cd plugins/assay/skills/verify-desk && grep -c fail-first SKILL.md"}, false},
 		{"go package wildcard", []string{"go vet ./..."}, false},
+
 		{"unrelated paths only", []string{"grep -c x docs/other.md", "go test ./tools/desk -run TestY"}, true},
 	}
 	for _, c := range cases {
@@ -99,6 +100,17 @@ func TestRule13NoFilesPath(t *testing.T) {
 		if got := msg != ""; got != c.want {
 			t.Errorf("%s: %v — table-touches-no-files fired=%v (%q), want %v", c.name, c.cmds, got, msg, c.want)
 		}
+	}
+	// A row run from a subdirectory names the declared path relative to it.
+	if msg, _ := tableFilesCheck([]string{"go test ./internal/cellprocess -count=1"}, []string{"tools/desk/internal/cellprocess"}, true); msg != "" {
+		t.Errorf("a path relative to the table's working directory must count as referenced; got %q", msg)
+	}
+	if msg, _ := tableFilesCheck([]string{"go test ./internal/other"}, []string{"tools/desk/internal/cellprocess"}, true); msg == "" {
+		t.Error("an unrelated relative path must still fire")
+	}
+	// `files: none — <why>` declares no path, so its prose must not become one.
+	if paths, found := extractContextDeclaredPaths("## Context\nfiles: none — this brief IS the fixture; nothing it names should ever be implemented.\n"); found || len(paths) != 0 {
+		t.Errorf("`files: none — …` must yield no declared path; got %v found=%v", paths, found)
 	}
 	// Unparseable: the label is there but yields no path.
 	if msg, cnc := tableFilesCheck([]string{"grep -c x docs/other.md"}, nil, true); !cnc || msg != "" {

@@ -12,24 +12,29 @@ package main
 // — and a row that is green at base and passes at head is non-discriminating:
 // it would have passed without the change it is meant to prove.
 //
-// SINGLE POINT OF FAILURE, and the layer behind it. The red at base means
-// something only if "base" is this branch's history. A run against a stale
-// sibling tree reds for reasons that have nothing to do with the change. So the
+// SINGLE POINT OF FAILURE, and the layers behind it. The red at base means
+// something only if "base" is the tree WITHOUT this change. A run against a
+// sibling tree, against HEAD's own commit, or against a commit of the branch
+// reds (or greens) for reasons that have nothing to do with the change. So the
 // witness records the base SHA it ran against, and the closure gate
-// (failFirstGateChecks) refuses a fail-first witness whose base is not an
-// ancestor of HEAD. That ancestry question is the one place this package asks
-// git for commit ancestry, and it is NOT a witness-applicability judgement
-// (#2026 forbids judging whether a witness still speaks for a tree by ancestry,
-// because a squash merge breaks ancestry without changing a byte). Here the
-// base is a commit on main, which a squash merge of the branch leaves in
-// main's history, and closures already on main are grandfathered by
-// closedAtBase before this check runs.
+// (failFirstGateChecks) accepts a fail-first witness only when
+//   - its base is the merge-base of HEAD and the default branch, or an ancestor
+//     of that merge-base (so HEAD's own commit and any branch commit are
+//     refused, and a post-merge verifier can pass --base <the delivering
+//     change's parent>); and
+//   - it is the LATEST witness for the row and was run for the row's CURRENT
+//     command (the sibling check checkWitnesses applies the same two rules).
+//
+// The ancestry question lives in failfirst_ancestry.go, the one file in this
+// package that asks git for commit ancestry; it is NOT a witness-applicability
+// judgement (#2026 forbids judging whether a witness still speaks for a tree by
+// ancestry, because a squash merge breaks ancestry without changing a byte).
+// Closures already on main are grandfathered by closedAtBase before it runs.
 
 import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -98,50 +103,81 @@ func failFirstOf(text string) (failFirst, bool) {
 	return f, true
 }
 
-// hexSHARe is an abbreviated-or-full commit id as a witness records it.
-var hexSHARe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
-
-// commitIsAncestor reports whether base names a commit in this clone that is
-// an ancestor of HEAD; why says what failed when it is not. The operand is
-// validated as hex before git sees it, then resolved to a full object id, so
-// no Evidence text reaches git as an option or a revision expression. A
-// package var so tests can stand in for git.
-var commitIsAncestor = func(root, base string) (bool, string) {
-	if !hexSHARe.MatchString(base) {
-		return false, "it is not a commit id"
-	}
-	full, err := gitOut(root, "rev-parse", "--verify", "--quiet", base+"^{commit}")
-	if err != nil || !isObjectID(full) {
-		return false, "it names no commit in this clone"
-	}
-	cmd := exec.Command("git", "-C", root, "merge-base", "--is-ancestor", full, "HEAD")
-	err = cmd.Run()
-	if err == nil {
-		return true, ""
-	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 1 {
-		return false, "it is not in HEAD's history (a sibling or stale tree)"
-	}
-	return false, "the ancestry could not be checked: " + err.Error()
-}
-
 // failFirstRiskyIDs returns the Verify row ids that are risk-bearing: every
 // row when the brief-wide risk block has a `yes`, else the rows whose text
 // carries a risk-bearing|live|mutating|end-to-end tag (unrun.go's definition).
-func failFirstRiskyIDs(risk map[string]string, verify string) map[string]bool {
+// The rows are briefVerifyRows' — the SAME enumeration the runner executes and
+// the closure gate holds, so no row is run and witnessed that this selection
+// never saw.
+func failFirstRiskyIDs(risk map[string]string, rows []verifyRow) map[string]bool {
 	all := anyRiskYes(risk)
 	out := map[string]bool{}
-	for _, it := range parseVerifyItems(verify) {
-		if all || riskBearingRowRe.MatchString(it.Text) {
-			out[it.ID] = true
+	for _, r := range rows {
+		if all || riskBearingRowRe.MatchString(r.RiskText) {
+			out[r.ID] = true
 		}
 	}
 	return out
 }
 
+// verifyUnplacedRows describes what a Verify section holds that verifyRowTable
+// (the runner's enumeration) cannot place: a table whose header names no
+// Command column, and a data row too short to reach the Command cell. Such
+// text is never run and never witnessed, so a closure the branch makes must not
+// pass over it in silence (failFirstGateChecks reports each as a PROBLEM).
+func verifyUnplacedRows(section string) []string {
+	var out []string
+	cmdIdx := -1
+	first := ""
+	flush := func() {
+		if cmdIdx < 0 && first != "" {
+			out = append(out, "a table whose header names no `Command` column ("+truncateRunes(first, 60)+")")
+		}
+		cmdIdx, first = -1, ""
+	}
+	for _, raw := range strings.Split(section, "\n") {
+		line := strings.TrimSpace(raw)
+		if !strings.HasPrefix(line, "|") {
+			flush()
+			continue
+		}
+		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
+			continue
+		}
+		cells := splitRowEscaped(line)
+		if cmdIdx < 0 {
+			if first == "" {
+				first = line
+			}
+			for j, c := range cells {
+				if strings.ToLower(strings.TrimSpace(c)) == "command" {
+					cmdIdx = j
+				}
+			}
+			continue
+		}
+		if cmdIdx >= len(cells) {
+			out = append(out, "a table row with no `Command` cell ("+truncateRunes(line, 60)+")")
+		}
+	}
+	flush()
+	return out
+}
+
+// truncateRunes shortens s to at most n runes, marking the cut.
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
 // failFirstBaseRev resolves the base the fail-first run checks out: the
-// operator's --base revision, or the exact merge-base of HEAD and origin/main.
+// operator's --base revision (the merge-base of HEAD and origin/main, or an
+// ancestor of it: in a post-merge verify the merge-base already holds the
+// change, so the verifier passes the delivering change's parent), or by
+// default the exact merge-base of HEAD and origin/main.
 func failFirstBaseRev(root, rev string) (string, error) {
 	if rev != "" {
 		if strings.HasPrefix(rev, "-") {
@@ -150,6 +186,14 @@ func failFirstBaseRev(root, rev string) (string, error) {
 		full, err := resolveCommit(root, rev)
 		if err != nil || !isObjectID(full) {
 			return "", fmt.Errorf("--base %q names no commit in this clone", rev)
+		}
+		// Refuse here what the closure gate would refuse later: a base that is
+		// neither the merge-base nor an ancestor of it was never "without this
+		// change". Unresolvable merge-base: the gate runs degraded and says so.
+		if mb := failFirstMergeBase(root); mb != "" {
+			if ok, why := commitIsAncestor(root, full, mb); !ok {
+				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
+			}
 		}
 		return full, nil
 	}
@@ -160,9 +204,10 @@ func failFirstBaseRev(root, rev string) (string, error) {
 }
 
 // runFailFirstBase checks base out into a temporary detached worktree, runs
-// the risky rows there under the same sandbox mode as the head run, and removes
-// the worktree. Rows not in risky are recorded not-selected and never run.
-func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyRow, risky map[string]bool, timeout time.Duration) (map[string]failFirst, error) {
+// the risky rows there under the same sandbox mode and the same CI flag as the
+// head run (a row --ci skips at head is skipped at base too, and recorded
+// not-selected), and removes the worktree. Rows not in risky are recorded not-selected and never run.
+func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyRow, risky map[string]bool, timeout time.Duration, ci bool) (map[string]failFirst, error) {
 	short := base
 	if len(short) > treeSHALen {
 		short = short[:treeSHALen]
@@ -191,9 +236,12 @@ func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyR
 	if _, err := gitOut(root, "worktree", "add", "--detach", "--quiet", wt, base); err != nil {
 		return nil, fmt.Errorf("checking out the base %s: %w", short, err)
 	}
-	for _, w := range runWitnessesSandboxed(plan, sandbox, wt, sel, "", "", "", "", timeout, false) {
+	for _, w := range runWitnessesSandboxed(plan, sandbox, wt, sel, "", "", "", "", timeout, ci) {
 		f := failFirst{Base: short, Exit: w.Exit}
 		switch w.State {
+		case stateSkipped:
+			out[w.ID] = failFirst{State: baseNotSelected, Exit: -1}
+			continue
 		case statePass:
 			f.State = baseGreen
 		case stateFail:
@@ -218,7 +266,7 @@ func foldFailFirst(ws []witness, ff map[string]failFirst, risky map[string]bool,
 		}
 		switch {
 		case f.State == baseGreen && w.State == statePass:
-			fmt.Fprintf(stdout, "row %s: non-discriminating — green at base %s and pass at head; it passes with or without the change\n", w.ID, f.Base)
+			fmt.Fprintf(stdout, "row %s: non-discriminating — green at base %s and pass at head; it passes with or without the change (if the change is already merged, pass --base <the parent of the delivering merge>)\n", w.ID, f.Base)
 			if risky[w.ID] && worst == verifyrunExitPass {
 				worst = verifyrunExitFail
 			}

@@ -1220,6 +1220,11 @@ type verifyRow struct {
 	// running the mention can exit 0 (`gh` with no arguments does) and record a
 	// pass for a check that never ran. The value is the NOTICE's reason text.
 	ProseLed string
+	// RiskText is the row's authored Command and Expect cells, unlifted: the
+	// text risk-bearing tagging reads (failFirstRiskyIDs). The lifted Command
+	// above keeps only the code span, which would drop a `live` written in the
+	// prose around it.
+	RiskText string
 }
 
 func briefVerifyRows(verifySection string) []verifyRow {
@@ -1235,7 +1240,7 @@ func briefVerifyRows(verifySection string) []verifyRow {
 		if v := normalizeRowID(r.Num); v != "" {
 			id = v
 		}
-		row := verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations()}
+		row := verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations(), RiskText: strings.TrimSpace(r.Command) + " " + strings.TrimSpace(r.Expect)}
 		if first, why := proseLedCommandWhy(r.Command); why != "" {
 			row.ProseLed = "first span " + strings.ReplaceAll(first, "|", "\\|") + " is " + why
 		}
@@ -1682,10 +1687,13 @@ Flags:
                     a risk-bearing row green at base and passing at head is
                     non-discriminating and folds the exit code to 1. The lint
                     refuses a new closure whose risk-bearing row has no such
-                    witness, is non-discriminating, or names a base that is not
-                    an ancestor of HEAD. Refused with --check and --in-container.
+                    current witness, is non-discriminating, or names a base that
+                    is not the merge-base or an ancestor of it. Refused with
+                    --check and --in-container.
   --base <rev>      the base for --fail-first (default: the exact merge-base of
-                    HEAD and origin/main)
+                    HEAD and origin/main); it may name that merge-base or an
+                    ancestor of it. After the change has merged, pass the
+                    parent of the delivering merge
   --env-file <path> role env-file forwarded to the container as --env-file (the
                     PATH only; its contents are never read or logged). Defaults to
                     the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.
@@ -1878,12 +1886,12 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		if bf, ok, perr := parseBriefFile(path); perr == nil && ok {
 			risk = bf.Risk
 		}
-		riskyIDs = failFirstRiskyIDs(risk, verify)
+		riskyIDs = failFirstRiskyIDs(risk, rows)
 		if len(riskyIDs) == 0 {
 			fmt.Fprintln(stdout, "--fail-first: no risk-bearing row in this table; every row is recorded not-selected at base")
 		}
 		var ferr error
-		ff, ferr = runFailFirstBase(plan, *sandbox, root, base, rows, riskyIDs, *timeout)
+		ff, ferr = runFailFirstBase(plan, *sandbox, root, base, rows, riskyIDs, *timeout, *ci)
 		if ferr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", ferr)
 			return verifyrunExitCouldNot

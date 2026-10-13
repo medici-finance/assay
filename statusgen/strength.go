@@ -396,6 +396,12 @@ func refsDeclared(t string, d declaredPath) bool {
 	if t == d.p || under(d.p, t) || under(t, d.p) {
 		return true
 	}
+	// A row run from a subdirectory (`cd tools/desk && go test ./internal/x`, or a
+	// Verify section that states its working directory) names the path relative
+	// to it: the token is a trailing run of the declared path's segments.
+	if strings.Contains(t, "/") && !strings.HasPrefix(t, "/") && strings.Contains("/"+d.p+"/", "/"+t+"/") {
+		return true
+	}
 	if strings.ContainsAny(t, "*?[") && matchGlob(t, d.p) {
 		return true
 	}
