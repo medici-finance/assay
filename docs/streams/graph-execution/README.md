@@ -108,6 +108,8 @@ or removing any human gate (spec §5 states the divergence).
 | 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 8 | M | todo | — | — |
 | 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 1 | M | todo | — | — |
 | 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 3 | M | todo | — | — |
+| 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | todo | — | — |
+| 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -237,3 +239,20 @@ Dependency waves (including the existing graph/advice branches) are the authorin
 Library-first update: /19 now depends on `statusgen/15` for the existing evaluator API.
 The instance store no longer owns an independent evaluator extraction.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.
+
+## Non-CI architecture reconciliation — 2026-10-13
+
+The maintainer ratified the non-CI verifier target (medici-finance/assay#2500, revision
+23f655f5d); approval activates nothing and each package's activation stays gated by the
+delivery sequence. Package R1 (domain contracts and regression floor) routes here:
+`28` defines qualified identities, fact completeness, candidate/acceptance binding and
+reevaluation generations as one pure contract over the existing evaluator (statusgen/15);
+`29` runs the pinned baseline cases against old and new adapters. Path: 02 verification ->
+09 -> 28 -> 29, and 28 -> 23 (23 now consumes the candidate record instead of defining one).
+The 2026-10-02 routing above stays as the record of that decision. The ratified target places
+runtime coordination in PostgreSQL and keeps SQLite to offline read-only projection, so the
+embedded store of 19 and the journal engine of 26 conflict with it. The R2 follow-up amends
+19, 26, 16 and 04 and this routing; until it lands, starting the store or journal engine
+choice in 19 or 26 needs that amendment first. Owner rows for R1–R8: the
+[amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md).
+Existing completed history is unchanged.

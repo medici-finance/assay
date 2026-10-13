@@ -1,0 +1,133 @@
+---
+brief: assay:assay:statusgen:19
+title: Context handoff contracts and synthetic fixtures
+why: "When a spec changes the plan, the author of the follow-up briefs gets a prose impact list and has to guess what to amend. A versioned, machine-checkable handoff (target, what was searched, what must change, what history must survive) lets a missing amendment fail a check instead of slipping through review."
+wave: 1
+depends: []
+unblocks: ["statusgen/20"]
+effort: M
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+schema: brief-v2
+version: 1
+authored: 2026-10-13 by worker-desk (author-brief), non-CI architecture reconciliation
+sources:
+  - docs/proposals/non-ci-architecture/18-authoring-context-delivery.md — package "Context/plan contracts"
+  - docs/proposals/non-ci-architecture/12-future-state-model.md — handoff records
+  - docs/proposals/non-ci-architecture/16-delivery-sequence.md — step 2
+  - docs/proposals/non-ci-architecture/20-amendment-manifest.md — step-2 owner row
+  - "medici-finance/assay#2500 — maintainer ratification of the whole target @ 23f655f5d (approval activates nothing)"
+  - freshness-checked 2026-10-13 @ a435badbd (origin/main)
+exec-tier: strong
+exec-tier-why: Defines a new shared wire contract that both canonical authoring skills and the resolver consume; versioning and canonical-digest choices are hard to change later.
+domain: complicated
+outcome: none
+consumers:
+  - "statusgen/contexthandoff, spec/context-handoff-v1.md, schemas/context-handoff-v1.json, schemas/amendment-manifest-v1.json, docs/contracts.md: follow-up statusgen/19"
+  - "statusgen context subcommand and resolver: follow-up statusgen/20"
+  - "plugins/assay/skills/author-spec, plugins/assay/skills/author-brief: follow-up statusgen/21"
+  - "docs/proposals/non-ci-architecture/examples/architecture-change-v0.yaml: out-of-scope (proposal illustration, not a production schema; left unchanged)"
+id: ce32913b-bf75-409f-8781-6fe845260a68
+---
+
+# Brief 19 — Context handoff contracts and synthetic fixtures
+
+## Context
+
+files: `spec/context-handoff-v1.md` (planned), `schemas/context-handoff-v1.json` (planned),
+`schemas/amendment-manifest-v1.json` (planned), `statusgen/contexthandoff/` (planned) (new pure package and
+tests), `statusgen/testdata/contexthandoff/` (planned), `docs/contracts.md` (one new owner row),
+`changelog/statusgen-19-context-handoff-contracts.md` (planned).
+
+facts (a435badbd, 2026-10-13):
+- The handoff records named by the ratified target are: target and intent, discovery receipt,
+  impact obligation, amendment obligation, preserved history, active-work binding, and decisions
+  and readiness (doc 12).
+- The proposal's `examples/architecture-change-v0.yaml` (planned) is illustrative only; it is not a
+  production schema and nothing reads it.
+- Schemas live in `schemas/`, prose contracts in `spec/`; semantic owners are registered in
+  `docs/contracts.md` (three-part pattern: spec, schema, fixtures).
+- statusgen already owns the brief parser and the deterministic graph export
+  (`TestGraphJSONLDeterministic`); qualified brief IDs use the `<repo>:<stream>:<NN>` form.
+- No `contexthandoff` package, `context-handoff` spec or schema exists at a435badbd.
+- The name is "context handoff" to stay distinct from graph-execution/09's execution work-input
+  packet, which is a role view of a workflow instance.
+
+layering: records plus pure validation and canonicalization only. Reading files, git or forges is
+statusgen/20's adapter work. Verify 7 enforces the import boundary.
+
+single-point-of-failure: the amendment-obligation check (an "amend" obligation without a bound
+patch fails) — behind it, statusgen/20's patch-to-base check independently refuses a patch that
+does not apply to its recorded base.
+
+design-fit:
+  owner: statusgen/contexthandoff under a new S-context-handoff row in docs/contracts.md
+  contract: context-handoff-v1 and amendment-manifest-v1
+  retires: [prose-only impact lists as the spec-to-brief handoff]
+  weight: "verbs 0, flags 0 in this brief; one importable package and two schemas"
+  why-add: "No existing record carries a discovery receipt or amendment obligation; the brief parser and graph export describe current state, not a proposed change."
+
+## Read first
+
+- `docs/proposals/non-ci-architecture/12-future-state-model.md`,
+  `docs/proposals/non-ci-architecture/17-context-substrate.md`,
+  `docs/proposals/non-ci-architecture/18-authoring-context-delivery.md`.
+- `docs/contracts.md`.
+
+## Ground rules
+
+- Isolated branch; draft PR only. No merge or release.
+- Synthetic, neutral fixtures only; no private repositories, rosters or cell data.
+- Stop at implemented; independent verification owns verified/done.
+
+## Task
+
+1. Write `spec/context-handoff-v1.md` (planned) and `schemas/context-handoff-v1.json` for the seven records
+   above. Every reference uses qualified IDs; a draft or proposed target is a distinct state from
+   an approved one, with the approving revision recorded.
+2. Write `schemas/amendment-manifest-v1.json` (planned): per obligation, the owning brief, delivery paths,
+   contract version, dependencies, test commands, active-work treatment, effort, and the bound
+   patch (base revision and patch digest) or an explicit follow-up reference.
+3. Implement `statusgen/contexthandoff` (planned) (pure): decode with unknown-mandatory-field refusal,
+   validate, and canonicalize to a stable digest. An obligation marked "amend" with no bound patch
+   fails. A discovery receipt without stated coverage (what was enumerated, what was unavailable)
+   fails.
+4. Add positive and negative fixtures and the S-context-handoff owner row; add the changelog
+   fragment.
+
+## Interface contract
+
+statusgen/20 produces and rechecks these records; statusgen/21's skills read and emit them. Both
+consume this package and schema version; neither defines a second shape. Canonical digests are
+stable across field order and whitespace.
+
+## Verify
+
+The named tests are deliverables of this brief and do not exist at a435badbd.
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffAmendWithoutPatchFails$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffAmendWithoutPatchFails " "$out")` | exit 0; named PASS; an "amend" obligation with no bound patch or follow-up reference is refused; mutation: accept an empty patch binding — the test must fail |
+| 2 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffCoverageGapRequired$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffCoverageGapRequired " "$out")` | exit 0; named PASS; a discovery receipt without coverage, or with an unavailable source silently omitted, is refused; mutation: default missing coverage to complete — the test must fail |
+| 3 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffDraftIsNotApproved$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffDraftIsNotApproved " "$out")` | exit 0; named PASS; a draft target cannot satisfy a check that requires an approved target, and approval without a recorded revision is refused; mutation: treat any target as approved — the test must fail |
+| 4 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffCanonicalDigestStable$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffCanonicalDigestStable " "$out")` | exit 0; named PASS; reordered fields give the same digest and a changed value gives a different one; mutation: hash the raw input bytes — the test must fail |
+| 5 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffQualifiedIDsResolve$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffQualifiedIDsResolve " "$out")` | exit 0; named PASS; bare `#N`, path-only and unqualified brief references are refused; mutation: accept a path as a brief identity — the test must fail |
+| 6 | check:ci +dereference +flow | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffSchemaFixtures$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffSchemaFixtures " "$out")` | exit 0; named PASS; each fixture goes through the production decoder and the JSON schema (spec → schema → package), both agree with the fixture's positive/negative label, and every schema record is named in the spec; mutation: drop a required field from the schema only — the test must fail |
+| 7 | check:ci +mutation | `(cd statusgen && name=$(GOWORK=off go list -f '{{.Name}}' ./contexthandoff/) && test "$name" = contexthandoff && bad=$(GOWORK=off go list -f '{{range .Imports}}{{if or (eq . "os") (eq . "os/exec") (eq . "net") (eq . "net/http") (eq . "syscall") (eq . "io/ioutil") (eq . "path/filepath")}}{{.}} {{end}}{{end}}' ./contexthandoff/) && test -z "$bad")` | exit 0; the package exists and imports no filesystem, process or network package; mutation: add an `os` import — the row must fail |
+
+## Pre-mortem
+
+Likely wrong builds: an "amend" row accepted without a patch (row 1, the exact failure this
+contract exists to stop), silent coverage gaps (row 2), drafts treated as approved (row 3),
+unstable digests (row 4), path identities (row 5), schema drift (row 6) and effects in the
+contract package (row 7).
+
+## Evidence
+
+<!-- Independent verifier records command, exit, named result, subject revision, environment and date. No implementation evidence is asserted by this authoring change. -->
+
+## Review
+
+Gate: model (all four risk answers no). The reviewer checks the record set against doc 12 and
+confirms no field carries private content or counts.
