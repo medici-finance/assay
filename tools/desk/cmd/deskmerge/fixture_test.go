@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cachequiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
@@ -29,6 +30,7 @@ import (
 // subprocess left to stub) and deskkit's write meter.
 
 func TestMain(m *testing.M) {
+	cachequiet.Isolate()
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cannot install the fixture roster:", err)

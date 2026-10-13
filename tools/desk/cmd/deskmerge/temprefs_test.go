@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -99,5 +100,46 @@ func assertCleanupKeepsVerdict(t *testing.T, w *world) {
 	}
 	if !strings.Contains(warn.String(), name) || !strings.Contains(warn.String(), "receipt is retained") {
 		t.Fatalf("cleanup failure was silent: %q", warn.String())
+	}
+}
+
+// regression: #2525
+func TestFetchCompletionWarning(t *testing.T) {
+	withScratchTemp(t)
+	w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
+	w.install(t, defaultPR(), false)
+	prev := runGit
+	runGit = func(dir string, args ...string) (string, error) {
+		out, err := prev(dir, args...)
+		if len(args) > 0 && args[0] == "fetch" && err == nil {
+			// Stop only this fixture process after the fetch. Observe still succeeds,
+			// but the real completion guard must refuse before declaring completion.
+			t.Setenv("DESK_TOOLS_DISABLED", "1")
+		}
+		return out, err
+	}
+	var warn bytes.Buffer
+	prevWarn := cleanupWarn
+	cleanupWarn = &warn
+	t.Cleanup(func() { cleanupWarn = prevWarn })
+	base, head, err := fetchState(w.root, testRepo, prInfo{Number: testPR, HeadRefOid: w.headSHA, BaseRefName: "main"})
+	if err != nil || base != w.baseSHA || head != w.headSHA {
+		t.Fatalf("completion changed verdict: %s,%s,%v", base, head, err)
+	}
+	receipts, err := filepath.Glob(filepath.Join(w.root, ".git", "assay-maintenance", "temporary-refs", "*.json"))
+	if err != nil || len(receipts) != 1 {
+		t.Fatalf("receipt custody=%v,%v", receipts, err)
+	}
+	body, err := os.ReadFile(receipts[0])
+	var receipt struct {
+		Complete bool
+		Ref      string
+		Hash     string
+	}
+	if err != nil || json.Unmarshal(body, &receipt) != nil || receipt.Complete || receipt.Hash != w.headSHA {
+		t.Fatalf("completion was not held: %+v,%v", receipt, err)
+	}
+	if strings.Contains(warn.String(), "completed receipt") || !strings.Contains(warn.String(), receipt.Ref) || !strings.Contains(warn.String(), "disabled") || !strings.Contains(warn.String(), "confirmed producer completion") {
+		t.Fatalf("untruthful completion warning: %q", warn.String())
 	}
 }

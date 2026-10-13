@@ -109,7 +109,7 @@ func (t *TempRef) Observe() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h, exists, err := r.LocalRefHash(t.Name)
+	h, exists, err := readTempRef(t.root, r, t.Name)
 	if err != nil {
 		return "", err
 	}
@@ -372,10 +372,10 @@ func cleanTempReceiptLocked(ctx context.Context, root, path string, r tempReceip
 		row.Reason = "could-not-check: repository unreadable"
 		return row, err
 	}
-	hash, exists, err := gr.LocalRefHash(r.Ref)
+	hash, exists, err := readTempRef(root, gr, r.Ref)
 	if err != nil {
-		row.Reason = "could-not-check: reference is unreadable or symbolic"
-		return row, err
+		row.Reason = "could-not-check: reference is unreadable, malformed or symbolic"
+		return row, deskkit.Unverifiable(row.Reason, err)
 	}
 	if !exists {
 		row.State = "absent"
@@ -450,11 +450,18 @@ func cleanTempReceiptLocked(ctx context.Context, root, path string, r tempReceip
 		// every changed or unreadable reference remains held.
 		fresh, openErr := gitcore.Open(root)
 		if openErr == nil {
-			_, exists, readErr := fresh.LocalRefHash(r.Ref)
-			if readErr == nil && !exists {
+			_, exists, readErr := readTempRef(root, fresh, r.Ref)
+			if readErr != nil {
+				row.Reason = "could-not-check: reference after compare-and-delete is unreadable, malformed or symbolic"
+				return row, deskkit.Unverifiable(row.Reason, errors.Join(err, readErr))
+			}
+			if !exists {
 				row.State = "absent"
 				return row, removeReceipt(path)
 			}
+		} else {
+			row.Reason = "could-not-check: repository after compare-and-delete is unreadable"
+			return row, deskkit.Unverifiable(row.Reason, errors.Join(err, openErr))
 		}
 		row.State = "held"
 		row.Reason = "compare-and-delete refused; reference may have moved"
@@ -462,6 +469,31 @@ func cleanTempReceiptLocked(ctx context.Context, root, path string, r tempReceip
 	}
 	row.State = "deleted"
 	return row, removeReceipt(path)
+}
+
+// readTempRef is the shared observation/cleanup reader for owned temporary refs.
+// go-git can report an unopenable loose ref as missing, or malformed text as a
+// zero hash. Neither proves absence. These refs live in the common store; retain
+// custody unless the reader and filesystem both establish absence.
+func readTempRef(root string, gr *gitcore.Repo, name string) (string, bool, error) {
+	hash, exists, err := gr.LocalRefHash(name)
+	if err != nil {
+		return "", exists, err
+	}
+	if exists {
+		if !validRefHash(hash) {
+			return "", true, fmt.Errorf("temporary reference has an invalid object id")
+		}
+		return hash, true, nil
+	}
+	common, err := gitcore.CommonDir(root)
+	if err != nil {
+		return "", false, err
+	}
+	if err := refFileAbsent(common, common, name); err != nil {
+		return "", false, err
+	}
+	return "", false, nil
 }
 
 func removeReceipt(path string) error {
@@ -521,6 +553,9 @@ func tempRefHeld(common string, gr *gitcore.Repo, r tempReceipt) (bool, error) {
 		}
 		head := strings.TrimSpace(string(body))
 		if name, ok := strings.CutPrefix(head, "ref: "); ok {
+			if err := plumbing.ReferenceName(name).Validate(); err != nil {
+				return false, fmt.Errorf("invalid worktree HEAD reference: %w", err)
+			}
 			if name == r.Ref {
 				return true, nil
 			}
@@ -562,7 +597,7 @@ func refFileAbsent(common, gitDir, name string) error {
 	for _, dir := range []string{common, gitDir} {
 		_, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(name)))
 		if err == nil {
-			return fmt.Errorf("worktree HEAD branch %s exists but is unreadable", name)
+			return fmt.Errorf("reference %s exists but is unreadable", name)
 		}
 		if !os.IsNotExist(err) {
 			return err

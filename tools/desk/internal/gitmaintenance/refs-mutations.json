@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/gitmaintenance ./cmd/deskmerge -run 'TestTemp|TestState|TestFetchRefsArePrivate|TestFetchFailureDrainsRefs|TestFetchHookKeepsVerdict|TestFetchNoHookListVerdict' -count=1 -timeout=120s",
+  "test": "go test ./internal/gitmaintenance ./cmd/deskmerge -run 'TestTemp|TestState|TestFetchRefsArePrivate|TestFetchFailureDrainsRefs|TestFetchHookKeepsVerdict|TestFetchNoHookListVerdict|TestFetchCompletionWarning' -count=1 -timeout=120s",
   "control": {
     "name": "CONTROL invert producer completion proof",
     "file": "internal/gitmaintenance/refs.go",
@@ -228,6 +228,42 @@
       "file": "cmd/deskmerge/currency.go",
       "old": "fmt.Fprintf(cleanupWarn,",
       "new": "fmt.Fprintf(io.Discard,"
+    },
+    {
+      "name": "drain unreadable initial destination",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "hash, exists, err := readTempRef(root, gr, r.Ref)",
+      "new": "hash, exists, err := gr.LocalRefHash(r.Ref)"
+    },
+    {
+      "name": "drain unreadable destination after CAS failure",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "_, exists, readErr := readTempRef(root, fresh, r.Ref)",
+      "new": "_, exists, readErr := fresh.LocalRefHash(r.Ref)"
+    },
+    {
+      "name": "accept missing without filesystem proof",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if err := refFileAbsent(common, common, name); err != nil {",
+      "new": "if err := refFileAbsent(common, common, name); false && err != nil {"
+    },
+    {
+      "name": "accept malformed destination hash",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if !validRefHash(hash) {",
+      "new": "if false && !validRefHash(hash) {"
+    },
+    {
+      "name": "accept invalid holder reference name",
+      "file": "internal/gitmaintenance/refs.go",
+      "old": "if err := plumbing.ReferenceName(name).Validate(); err != nil {",
+      "new": "if err := plumbing.ReferenceName(name).Validate(); false && err != nil {"
+    },
+    {
+      "name": "claim completion despite declaration failure",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "its receipt is retained; recovery requires confirmed producer completion",
+      "new": "its completed receipt is retained"
     }
   ]
 }

@@ -23,12 +23,15 @@ func TestDeadlineKillsChildTree(t *testing.T) {
 	}
 	dir := t.TempDir()
 	started, escaped := filepath.Join(dir, "started"), filepath.Join(dir, "escaped")
-	script := "#!/bin/sh\ncase \" $* \" in\n*' pack-refs '*)\n printf started > '" + started + "'\n (sleep 1; printf escaped > '" + escaped + "') &\n wait\n ;;\n*) exec '" + realGit + "' \"$@\" ;;\nesac\n"
+	script := "#!/bin/sh\ncase \" $* \" in\n*' pack-refs '*)\n printf started > '" + started + "'\n (sleep 4; printf escaped > '" + escaped + "') &\n wait\n ;;\n*) exec '" + realGit + "' \"$@\" ;;\nesac\n"
 	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if _, err := Run(context.Background(), repo, Options{Timeout: 400 * time.Millisecond}); err == nil {
+	// Include inventory and durable launch custody in the budget. A subsecond
+	// budget can expire before launch on a loaded host and proves no child cleanup.
+	// The descendant still outlives the entire budget; both witnesses below remain.
+	if _, err := Run(context.Background(), repo, Options{Timeout: 3 * time.Second}); err == nil {
 		t.Fatal("timed-out task reported success")
 	}
 	if _, err := os.Stat(started); err != nil {
@@ -36,7 +39,7 @@ func TestDeadlineKillsChildTree(t *testing.T) {
 	}
 	// The planted descendant writes after the deadline unless the entire process
 	// group is stopped before releasing the common-directory coordinator lock.
-	time.Sleep(1100 * time.Millisecond)
+	time.Sleep(4100 * time.Millisecond)
 	if _, err := os.Stat(escaped); !os.IsNotExist(err) {
 		t.Fatal("descendant escaped deadline and continued after coordinator exit")
 	}

@@ -2588,12 +2588,18 @@ the holder check covers registered heads at that gate. This protocol does not
 synchronize an external actor manually assigning a HEAD to that private ref
 during cleanup. A detached checkout's object remains available because every
 object ID is retained. A worktree on an unborn (fresh or orphan) branch holds no
-object; a branch file that exists but cannot be read stays held as could-not-check.
+object; an invalid branch name or unreadable branch stays held as could-not-check.
+For temporary destinations, a reader reporting no ref is insufficient: cleanup
+also proves filesystem absence before draining the receipt, including after a
+failed compare-and-delete. Unreadable or malformed destinations retain custody.
 
 Producer cleanup is best-effort: deskmerge answers from the base and head SHAs it
 observed before completion, so a hook refusal or missing native `git hook list`
 never changes its verdict. It warns on stderr naming the retained ref, and the
-completed receipt stays for a later `deskwt maintain objects --apply` pass.
+receipt stays. Recovery requires a durable producer completion declaration; if
+that declaration failed, the warning preserves its error and maintenance holds the
+incomplete receipt. A completed receipt is eligible for a later
+`deskwt maintain objects --apply` pass.
 
 Remote-tracking refresh stays a separate, explicit forge operation:
 

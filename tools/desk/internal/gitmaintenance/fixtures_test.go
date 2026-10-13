@@ -13,11 +13,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cachequiet"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // regression: #2513
 func TestMain(m *testing.M) {
+	cachequiet.Isolate()
 	os.Exit(runFixtureMain(m))
 }
 

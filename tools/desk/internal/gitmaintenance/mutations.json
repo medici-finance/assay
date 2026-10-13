@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/gitmaintenance -count=1 -timeout 60s",
+  "test": "go test ./internal/gitmaintenance -count=1 -timeout 180s",
   "control": {
     "name": "invert object-set retention assertion",
     "file": "internal/gitmaintenance/safety_test.go",

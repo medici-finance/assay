@@ -8,7 +8,9 @@ import (
 )
 
 // LocalRefHash reads a direct hash reference without dereferencing a symbolic
-// alias. Missing is distinct from unreadable; a symbolic reference is refused.
+// alias; a symbolic reference is refused. The underlying reader can report an
+// unopenable loose ref as missing, or malformed text as a zero hash. Callers
+// retiring recovery state must validate hashes and independently prove absence.
 func (r *Repo) LocalRefHash(name string) (string, bool, error) {
 	ref, err := r.repo.Reference(plumbing.ReferenceName(name), false)
 	if errors.Is(err, plumbing.ErrReferenceNotFound) {
