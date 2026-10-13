@@ -19,9 +19,11 @@ const dgeLine = "sdlc/18 REFUSED — ruling: comment author is a bot"
 func stubDecisionGateRuns(t *testing.T, before, after []string, seen *[]string) {
 	t.Helper()
 	old := statusgenDecisionGateFn
-	t.Cleanup(func() { statusgenDecisionGateFn = old })
+	oldBase := decisionGateReplacedBaseFn
+	t.Cleanup(func() { statusgenDecisionGateFn = old; decisionGateReplacedBaseFn = oldBase })
+	decisionGateReplacedBaseFn = func(string, string, []byte, bool) (string, error) { return "BASE", nil }
 	calls := 0
-	statusgenDecisionGateFn = func(root string) ([]string, error) {
+	statusgenDecisionGateFn = func(root, _ string) ([]string, error) {
 		calls++
 		if seen != nil {
 			b, _ := os.ReadFile(filepath.Join(root, "docs/streams/x/README.md"))
@@ -31,6 +33,43 @@ func stubDecisionGateRuns(t *testing.T, before, after []string, seen *[]string) 
 			return before, nil
 		}
 		return after, nil
+	}
+}
+
+// TestDecisionGateDiffJudgesAgainstTheReplacedContent: both runs are judged
+// against the base built from the content the write REPLACES (never the
+// worktree's own HEAD), and the "before" run sees that replaced content staged
+// over a worktree that already holds the edit, the "after" run the new content.
+// A worktree carrying the edit (uncommitted or committed locally) must not
+// cancel it out. The worktree file is restored afterwards.
+func TestDecisionGateDiffJudgesAgainstTheReplacedContent(t *testing.T) {
+	const rel = "docs/streams/x/README.md"
+	root := rootWithFile(t, rel, "LOCAL-EDIT\n")
+	oldRun, oldBase := statusgenDecisionGateFn, decisionGateReplacedBaseFn
+	t.Cleanup(func() { statusgenDecisionGateFn = oldRun; decisionGateReplacedBaseFn = oldBase })
+	var builtFrom []string
+	decisionGateReplacedBaseFn = func(_, target string, replaced []byte, exists bool) (string, error) {
+		builtFrom = append(builtFrom, target+"="+string(replaced))
+		return "SYNTHETIC", nil
+	}
+	var runs []string
+	statusgenDecisionGateFn = func(r, base string) ([]string, error) {
+		b, _ := os.ReadFile(filepath.Join(r, rel))
+		runs = append(runs, base+"|"+string(b))
+		return nil, nil
+	}
+	if _, err := decisionGateDiffAt(root, rel, []byte("REPLACED\n"), true, []byte("NEW\n")); err != nil {
+		t.Fatalf("decisionGateDiffAt: %v", err)
+	}
+	if len(builtFrom) != 1 || builtFrom[0] != rel+"=REPLACED\n" {
+		t.Errorf("base built from %v, want the replaced content of %s", builtFrom, rel)
+	}
+	want := []string{"SYNTHETIC|REPLACED\n", "SYNTHETIC|NEW\n"}
+	if len(runs) != 2 || runs[0] != want[0] || runs[1] != want[1] {
+		t.Errorf("statusgen runs (base|staged) = %q, want %q", runs, want)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, rel)); string(b) != "LOCAL-EDIT\n" {
+		t.Errorf("worktree file after the check = %q, want it restored", b)
 	}
 }
 
@@ -49,7 +88,7 @@ func TestDecisionGateDiffIntroducedOnly(t *testing.T) {
 	var seen []string
 	pre := "other/02 REFUSED — no decision issue is recorded"
 	stubDecisionGateRuns(t, []string{pre}, []string{pre, dgeLine}, &seen)
-	got, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("new\n"))
+	got, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"))
 	if err != nil {
 		t.Fatalf("decisionGateDiffAt: %v", err)
 	}
@@ -68,7 +107,7 @@ func TestDecisionGateDiffIntroducedOnly(t *testing.T) {
 func TestDecisionGateDiffRemovesNewFile(t *testing.T) {
 	root := t.TempDir()
 	stubDecisionGateRuns(t, nil, []string{dgeLine}, nil)
-	got, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("new\n"))
+	got, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"))
 	if err != nil || len(got) != 1 {
 		t.Fatalf("got %v, %v; want one introduced line", got, err)
 	}
@@ -82,16 +121,18 @@ func TestDecisionGateDiffRemovesNewFile(t *testing.T) {
 func TestDecisionGateDiffCouldNotCheckPropagates(t *testing.T) {
 	root := rootWithFile(t, "docs/streams/x/README.md", "old\n")
 	old := statusgenDecisionGateFn
-	t.Cleanup(func() { statusgenDecisionGateFn = old })
+	oldBase := decisionGateReplacedBaseFn
+	t.Cleanup(func() { statusgenDecisionGateFn = old; decisionGateReplacedBaseFn = oldBase })
+	decisionGateReplacedBaseFn = func(string, string, []byte, bool) (string, error) { return "BASE", nil }
 	calls := 0
-	statusgenDecisionGateFn = func(string) ([]string, error) {
+	statusgenDecisionGateFn = func(string, string) ([]string, error) {
 		calls++
 		if calls == 2 {
 			return nil, deskkit.Unverifiable("boom", nil)
 		}
 		return nil, nil
 	}
-	_, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("new\n"))
+	_, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"))
 	wantUnverifiable(t, err)
 	if b, _ := os.ReadFile(filepath.Join(root, "docs/streams/x/README.md")); string(b) != "old\n" {
 		t.Fatalf("stage not reverted after could-not-check: %q", b)
@@ -100,7 +141,7 @@ func TestDecisionGateDiffCouldNotCheckPropagates(t *testing.T) {
 
 func TestStatusgenDecisionGateAtNotOnPathIsUnverifiable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	_, err := statusgenDecisionGateAt(t.TempDir())
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
 	wantUnverifiable(t, err)
 }
 
@@ -115,7 +156,7 @@ echo "# decision-gate hold (lifecycle-v1 §4.5)"
 echo "a/01 RULED — ruled by someone (https://example.invalid)"
 echo "`+dgeLine+`"
 exit 1`)
-	got, err := statusgenDecisionGateAt(root)
+	got, err := statusgenDecisionGateAt(root, "HEAD")
 	if err != nil {
 		t.Fatalf("statusgenDecisionGateAt: %v", err)
 	}
@@ -127,7 +168,7 @@ exit 1`)
 func TestStatusgenDecisionGateAtCleanExit(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "no gate: human brief moved, relabelled or dropped — clean"
 exit 0`)
-	got, err := statusgenDecisionGateAt(t.TempDir())
+	got, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got %v, %v; want clean", got, err)
 	}
@@ -138,7 +179,7 @@ exit 0`)
 func TestStatusgenDecisionGateAtOldBinaryIsUnverifiable(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "flag provided but not defined: -decision-gate" >&2
 exit 2`)
-	_, err := statusgenDecisionGateAt(t.TempDir())
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
 	wantUnverifiable(t, err)
 	if !strings.Contains(err.Error(), "predates the decision-gate hold") {
 		t.Fatalf("old-binary error does not name the upgrade: %v", err)
@@ -150,7 +191,7 @@ exit 2`)
 func TestStatusgenDecisionGateAtNoRefusedLineIsUnverifiable(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "statusgen: something broke" >&2
 exit 1`)
-	_, err := statusgenDecisionGateAt(t.TempDir())
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
 	wantUnverifiable(t, err)
 }
 
@@ -160,7 +201,7 @@ exit 1`)
 func TestStatusgenDecisionGateAtWholeChangeIsUnverifiable(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "(board) REFUSED — the base \"HEAD\" does not resolve to a commit"
 exit 1`)
-	_, err := statusgenDecisionGateAt(t.TempDir())
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
 	wantUnverifiable(t, err)
 }
 
@@ -169,7 +210,7 @@ exit 1`)
 func TestDecisionGateLandingRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	var gotRoot, gotTarget string
-	decisionGateDiffFn = func(r, target string, _ []byte) ([]string, error) {
+	decisionGateDiffFn = func(r, target string, _ []byte, _ bool, _ []byte) ([]string, error) {
 		gotRoot, gotTarget = r, target
 		return []string{dgeLine}, nil
 	}
@@ -195,7 +236,7 @@ func TestDecisionGateLandingRefused(t *testing.T) {
 // no write.
 func TestDecisionGateLandingCouldNotCheck(t *testing.T) {
 	f, _ := setupFake(t)
-	decisionGateDiffFn = func(string, string, []byte) ([]string, error) {
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte) ([]string, error) {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH", nil)
 	}
 	evidencePath := "docs/streams/x/brief.md"
@@ -210,13 +251,20 @@ func TestDecisionGateLandingCouldNotCheck(t *testing.T) {
 	}
 }
 
-// TestDecisionGateDiffRealStatusgen builds this repository's statusgen and runs the
-// production shell against a real git fixture: a gate: human brief with no decision
-// issue, its board cell flipped todo → implemented by the staged write. The real
-// tool's REFUSED line comes back as introduced; the flag names and line shape this
-// file parses are proven against the binary, not only a fake script. Skipped under
-// -short (it compiles statusgen).
-func TestDecisionGateDiffRealStatusgen(t *testing.T) {
+// realGateFixture builds this repository's statusgen onto PATH and a real git root
+// holding a gate: human brief with no decision issue, its board cell at todo and
+// committed. board(status) renders the stream README with that cell (wrapped in the
+// generated-table markers when marked). git runs a git command in the root.
+type realGate struct {
+	root, readme string
+	board        func(status string) string
+	git          func(args ...string)
+}
+
+const realGateReadme = "docs/streams/sdlc/README.md"
+
+func realGateFixture(t *testing.T, marked bool) realGate {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("-short: skips compiling statusgen")
 	}
@@ -241,14 +289,14 @@ func TestDecisionGateDiffRealStatusgen(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	const (
-		readme = "docs/streams/sdlc/README.md"
-		brief  = "docs/streams/sdlc/brief-18.md"
-	)
+	const brief = "docs/streams/sdlc/brief-18.md"
 	board := func(status string) string {
-		return "---\nstream: sdlc\nstatus: active\npriority: P1\n---\n\n" +
-			"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n|---|-------|------|--------|--------|----------|----------|\n" +
-			"| 18 | [brief-18](brief-18.md) | 1 | M | " + status + " | — | — |\n\n"
+		table := "| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n|---|-------|------|--------|--------|----------|----------|\n" +
+			"| 18 | [brief-18](brief-18.md) | 1 | M | " + status + " | — | — |\n"
+		if marked {
+			table = tableMarkerBegin + "\n" + table + tableMarkerEnd + "\n"
+		}
+		return "---\nstream: sdlc\nstatus: active\npriority: P1\n---\n\n" + table + "\n"
 	}
 	root := t.TempDir()
 	git := func(args ...string) {
@@ -259,8 +307,8 @@ func TestDecisionGateDiffRealStatusgen(t *testing.T) {
 		}
 	}
 	for rel, content := range map[string]string{
-		readme: board("todo"),
-		brief:  "---\nbrief: sdlc/18\ntitle: Brief 18\nwave: 1\neffort: M\ngate: human\n---\n\n# Brief 18\n",
+		realGateReadme: board("todo"),
+		brief:          "---\nbrief: sdlc/18\ntitle: Brief 18\nwave: 1\neffort: M\ngate: human\n---\n\n# Brief 18\n",
 	} {
 		p := filepath.Join(root, filepath.FromSlash(rel))
 		if merr := os.MkdirAll(filepath.Dir(p), 0o755); merr != nil {
@@ -273,20 +321,123 @@ func TestDecisionGateDiffRealStatusgen(t *testing.T) {
 	git("init", "-q")
 	git("add", "-A")
 	git("commit", "-q", "-m", "base")
+	return realGate{root: root, readme: realGateReadme, board: board, git: git}
+}
 
-	got, err := decisionGateDiffAt(root, readme, []byte(board("implemented")))
+func (g realGate) writeReadme(t *testing.T, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(g.root, filepath.FromSlash(g.readme)), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (g realGate) readReadme(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(g.root, filepath.FromSlash(g.readme)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestDecisionGateDiffRealStatusgen builds this repository's statusgen and runs the
+// production shell against a real git fixture: a gate: human brief with no decision
+// issue, its board cell flipped todo → implemented by the staged write. The real
+// tool's REFUSED line comes back as introduced; the flag names and line shape this
+// file parses are proven against the binary, not only a fake script. Skipped under
+// -short (it compiles statusgen).
+func TestDecisionGateDiffRealStatusgen(t *testing.T) {
+	g := realGateFixture(t, false)
+	got, err := decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("implemented")))
 	if err != nil {
 		t.Fatalf("decisionGateDiffAt against the real statusgen: %v", err)
 	}
 	if len(got) != 1 || !strings.HasPrefix(got[0], "sdlc/18"+decisionGateRefusedMark) {
 		t.Fatalf("introduced = %v, want one sdlc/18 REFUSED line", got)
 	}
-	if b, _ := os.ReadFile(filepath.Join(root, readme)); string(b) != board("todo") {
+	if b := g.readReadme(t); b != g.board("todo") {
 		t.Fatalf("stage not reverted: %q", b)
 	}
 	// The same write with the cell left alone introduces nothing.
-	got, err = decisionGateDiffAt(root, readme, []byte(board("todo")))
+	got, err = decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("todo")))
 	if err != nil || len(got) != 0 {
 		t.Fatalf("unchanged board: got %v, %v; want nothing introduced", got, err)
+	}
+}
+
+// TestDecisionGateDiffWorktreeAlreadyHoldsTheEdit: the documented direct-write flow
+// edits the tracked README in place and then lands it, so the landing worktree
+// already holds the unruled move — uncommitted, or committed locally. The write is
+// judged against the content it REPLACES, so both shapes are refused, each with its
+// matched control (the same shape with the cell left alone) quiet, and the worktree
+// comes back exactly as it was found.
+func TestDecisionGateDiffWorktreeAlreadyHoldsTheEdit(t *testing.T) {
+	for _, shape := range []string{"uncommitted", "committed"} {
+		t.Run(shape, func(t *testing.T) {
+			g := realGateFixture(t, false)
+			g.writeReadme(t, g.board("implemented"))
+			if shape == "committed" {
+				g.git("commit", "-q", "-am", "local edit")
+			}
+			got, err := decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("implemented")))
+			if err != nil {
+				t.Fatalf("decisionGateDiffAt: %v", err)
+			}
+			if len(got) != 1 || !strings.HasPrefix(got[0], "sdlc/18"+decisionGateRefusedMark) {
+				t.Fatalf("introduced = %v, want one sdlc/18 REFUSED line (the worktree already holding the edit must not cancel it)", got)
+			}
+			if b := g.readReadme(t); b != g.board("implemented") {
+				t.Fatalf("worktree not restored: %q", b)
+			}
+			// Control: the landing leaves the cell where the remote has it.
+			got, err = decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("todo")))
+			if err != nil || len(got) != 0 {
+				t.Fatalf("control: got %v, %v; want nothing introduced", got, err)
+			}
+			if b := g.readReadme(t); b != g.board("implemented") {
+				t.Fatalf("worktree not restored after the control: %q", b)
+			}
+		})
+	}
+}
+
+// TestDecisionGateLandingWholeVerbRefusesInPlaceEdit drives the whole verb in
+// direct-write mode with the real statusgen and the real decisionGateDiffAt: the
+// README row is edited in place in the landing worktree, then landed — with and
+// without the generated-table markers (--row). The landing exits 5 and writes
+// nothing; the matched control (the cell untouched) lands.
+func TestDecisionGateLandingWholeVerbRefusesInPlaceEdit(t *testing.T) {
+	for _, marked := range []bool{false, true} {
+		name := "plain table"
+		if marked {
+			name = "marker table with --row"
+		}
+		t.Run(name, func(t *testing.T) {
+			g := realGateFixture(t, marked)
+			f, _ := setupFake(t)
+			decisionGateDiffFn = decisionGateDiffAt
+			f.setFile(g.readme, g.board("todo"))
+			args := []string{"example-org/tracker", "main", "--evidence-file", g.readme, "--root", g.root}
+			if marked {
+				args = append(args, "--row", "18")
+			}
+
+			g.writeReadme(t, g.board("implemented"))
+			if code := run(args); code != deskkit.ExitRefused {
+				t.Fatalf("exit = %d, want %d (an unruled gate: human move edited in place must be refused)", code, deskkit.ExitRefused)
+			}
+			if f.putCalls != 0 {
+				t.Fatalf("refused landing still wrote %d time(s)", f.putCalls)
+			}
+			if d := lastAudit(t).Detail; !strings.Contains(d, "sdlc/18"+decisionGateRefusedMark) {
+				t.Fatalf("audit detail = %q, want the REFUSED line", d)
+			}
+
+			// Control: the in-place edit leaves the cell where the remote has it.
+			g.writeReadme(t, g.board("todo")+"\nA note.\n")
+			if code := run(args); code != deskkit.ExitOK {
+				t.Fatalf("control exit = %d, want %d", code, deskkit.ExitOK)
+			}
+		})
 	}
 }

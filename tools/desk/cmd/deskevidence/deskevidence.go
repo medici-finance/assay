@@ -599,7 +599,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// hold's offline layer (a well-formed ruling: link); this landing rides the Contents
 	// API with no pull request, so the check that reads WHO wrote the linked comment runs
 	// here, on the same staged write (decisiongate.go).
-	gateRefused, gerr := decisionGateDiffFn(lintRoot, targetRepoPath, commitContent)
+	gateRefused, gerr := decisionGateDiffFn(lintRoot, targetRepoPath, remoteContent, remoteExists, commitContent)
 	if gerr != nil {
 		return gerr
 	}

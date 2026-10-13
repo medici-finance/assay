@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,15 +31,34 @@ import (
 // "introduces nothing"; decisiongate_test.go drives decisionGateDiffAt directly.
 var decisionGateDiffFn = decisionGateDiffAt
 
-// statusgenDecisionGateFn is ONE `statusgen --decision-gate` shell, returning the
-// REFUSED lines it printed. Production: statusgenDecisionGateAt.
+// statusgenDecisionGateFn is ONE `statusgen --decision-gate` shell, judging the
+// working tree at root against the commit base and returning the REFUSED lines it
+// printed. Production: statusgenDecisionGateAt.
 var statusgenDecisionGateFn = statusgenDecisionGateAt
 
-// decisionGateDiffAt runs the decision gate on root as it stands, stages newContent
-// at targetRepoPath, runs it again, reverts the stage, and returns the REFUSED lines
-// present only after the stage — what THIS landing would introduce.
-func decisionGateDiffAt(root, targetRepoPath string, newContent []byte) (introduced []string, err error) {
-	before, err := statusgenDecisionGateFn(root)
+// decisionGateReplacedBaseFn builds the commit the landing is judged against: the
+// worktree's HEAD with targetRepoPath holding the content the write REPLACES. A seam
+// so a test can pin what the gate is given; production: replacedBaseCommit.
+var decisionGateReplacedBaseFn = replacedBaseCommit
+
+// decisionGateDiffAt judges one pending write against the content it REPLACES, never
+// against whatever the landing worktree happens to hold.
+//
+// The write replaces the target's content on the remote branch (replaced, present
+// when replacedExists). The landing worktree may already carry the very edit being
+// landed — the documented direct-write flow edits the tracked file in place and then
+// lands it — uncommitted, or even committed locally. Judging "the tree as it stands"
+// against "the tree with the write staged" then compares two copies of the same bytes
+// and introduces nothing, so an unruled gate: human move would land with exit 0.
+//
+// So both runs share one base: the worktree's HEAD with the target replaced by the
+// content the write replaces (a dangling commit; no ref moves). The "before" run
+// stages the replaced content over the target, the "after" run stages newContent, and
+// only the REFUSED lines present after and absent before are this landing's. Lines
+// both runs print come from other, uncommitted edits in the worktree, not from this
+// write. The stage is always reverted.
+func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedExists bool, newContent []byte) (introduced []string, err error) {
+	base, err := decisionGateReplacedBaseFn(root, targetRepoPath, replaced, replacedExists)
 	if err != nil {
 		return nil, err
 	}
@@ -51,9 +71,6 @@ func decisionGateDiffAt(root, targetRepoPath string, newContent []byte) (introdu
 	if merr := os.MkdirAll(filepath.Dir(abs), 0o755); merr != nil {
 		return nil, deskkit.Unverifiable("cannot create local directories under "+root+" to stage the decision-gate check", merr)
 	}
-	if werr := os.WriteFile(abs, newContent, 0o644); werr != nil {
-		return nil, deskkit.Unverifiable("cannot stage the decision-gate check at "+abs, werr)
-	}
 	defer func() {
 		if existed {
 			_ = os.WriteFile(abs, orig, 0o644)
@@ -61,7 +78,22 @@ func decisionGateDiffAt(root, targetRepoPath string, newContent []byte) (introdu
 			_ = os.Remove(abs)
 		}
 	}()
-	after, aerr := statusgenDecisionGateFn(root)
+	// Before: the replaced content in place, the same base.
+	if replacedExists {
+		if werr := os.WriteFile(abs, replaced, 0o644); werr != nil {
+			return nil, deskkit.Unverifiable("cannot stage the decision-gate check at "+abs, werr)
+		}
+	} else if rmerr := os.Remove(abs); rmerr != nil && !os.IsNotExist(rmerr) {
+		return nil, deskkit.Unverifiable("cannot clear "+abs+" to stage the decision-gate check", rmerr)
+	}
+	before, err := statusgenDecisionGateFn(root, base)
+	if err != nil {
+		return nil, err
+	}
+	if werr := os.WriteFile(abs, newContent, 0o644); werr != nil {
+		return nil, deskkit.Unverifiable("cannot stage the decision-gate check at "+abs, werr)
+	}
+	after, aerr := statusgenDecisionGateFn(root, base)
 	if aerr != nil {
 		return nil, aerr
 	}
@@ -80,6 +112,62 @@ func decisionGateDiffAt(root, targetRepoPath string, newContent []byte) (introdu
 	return introduced, nil
 }
 
+// replacedBaseCommit writes (without touching any ref, the index or the worktree) a
+// commit whose tree is root's HEAD tree with targetRepoPath holding replaced — or
+// absent when !replacedExists — and returns its id. It uses a throwaway index file.
+func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedExists bool) (string, error) {
+	fail := func(what string, err error) (string, error) {
+		return "", deskkit.Unverifiable("cannot build the decision-gate base ("+what+") in "+root, err)
+	}
+	tmp, err := os.MkdirTemp("", "deskevidence-gate-index-")
+	if err != nil {
+		return fail("temp dir", err)
+	}
+	defer os.RemoveAll(tmp)
+	env := append(os.Environ(),
+		"GIT_INDEX_FILE="+filepath.Join(tmp, "index"),
+		"GIT_AUTHOR_NAME=deskevidence", "GIT_AUTHOR_EMAIL=deskevidence@invalid",
+		"GIT_COMMITTER_NAME=deskevidence", "GIT_COMMITTER_EMAIL=deskevidence@invalid",
+	)
+	git := func(stdin []byte, args ...string) (string, error) {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = env
+		cmd.Dir = os.TempDir()
+		if stdin != nil {
+			cmd.Stdin = bytes.NewReader(stdin)
+		}
+		out, cerr := cmd.Output()
+		return strings.TrimSpace(string(out)), cerr
+	}
+	head, err := git(nil, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	if err != nil || head == "" {
+		return fail("HEAD does not resolve", err)
+	}
+	if _, err := git(nil, "read-tree", head); err != nil {
+		return fail("read-tree", err)
+	}
+	if replacedExists {
+		blob, err := git(replaced, "hash-object", "-w", "--stdin")
+		if err != nil || blob == "" {
+			return fail("hash-object", err)
+		}
+		if _, err := git(nil, "update-index", "--add", "--cacheinfo", "100644,"+blob+","+targetRepoPath); err != nil {
+			return fail("update-index", err)
+		}
+	} else if _, err := git(nil, "update-index", "--force-remove", "--", targetRepoPath); err != nil {
+		return fail("update-index --force-remove", err)
+	}
+	tree, err := git(nil, "write-tree")
+	if err != nil || tree == "" {
+		return fail("write-tree", err)
+	}
+	commit, err := git([]byte("deskevidence decision-gate base\n"), "commit-tree", tree, "-p", head)
+	if err != nil || commit == "" {
+		return fail("commit-tree", err)
+	}
+	return commit, nil
+}
+
 // decisionGateRefusedMark is the separator statusgen prints between a board id and
 // the reason on a refused line ("<board> REFUSED — <reason>").
 const decisionGateRefusedMark = " REFUSED — "
@@ -89,18 +177,19 @@ const decisionGateRefusedMark = " REFUSED — "
 const decisionGateWholeChange = "(board)" + decisionGateRefusedMark
 
 // statusgenDecisionGateAt shells `statusgen --root <root> --decision-gate
-// --decision-gate-base HEAD` from a neutral working directory: the working tree
-// judged against its own HEAD, i.e. exactly the uncommitted write.
+// --decision-gate-base <base>` from a neutral working directory: the working tree
+// judged against base (decisionGateDiffAt passes the commit that holds the content
+// the write replaces).
 //
 //   - exit 0                     → nothing refused.
 //   - exit 1 with ≥1 REFUSED line → those lines.
 //   - anything else (exit 1 with no REFUSED line, exit 2, an unknown flag from a
 //     statusgen that predates the hold) → could-not-check.
-func statusgenDecisionGateAt(root string) ([]string, error) {
+func statusgenDecisionGateAt(root, base string) ([]string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH — cannot run the decision-gate check (lifecycle-v1 §4.5) on this landing", err)
 	}
-	cmd := exec.Command("statusgen", "--root", root, "--decision-gate", "--decision-gate-base", "HEAD")
+	cmd := exec.Command("statusgen", "--root", root, "--decision-gate", "--decision-gate-base", base)
 	cmd.Dir = os.TempDir()
 	out, cerr := cmd.CombinedOutput()
 	return parseDecisionGateRun(root, string(out), cerr)

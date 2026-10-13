@@ -295,7 +295,7 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
 	oldDecisionGate := decisionGateDiffFn
-	decisionGateDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
 	oldOutcome := outcomeGuardFn
 	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
