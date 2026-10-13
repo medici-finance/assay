@@ -507,7 +507,11 @@ the two verdict verbs (a risk-classed PR needs BOTH at the same head):
                    (#513 / #438).
 
 targets:
-  comment        <number> may be a PULL REQUEST or an ISSUE — GitHub numbers both from one
+  comment        reviewer-role callers only: DESK_LOOP must resolve to reviewer.
+                 Other roles refuse before minting credentials or reaching the forge.
+                 Keep your own loop identity. Use deskfile attach --kind issue for issue
+                 comments under your role, or deskreply for your own PR.
+                 <number> may be a PULL REQUEST or an ISSUE — GitHub numbers both from one
                  per-repo sequence, so the number names exactly one object and deskpost
                  resolves which kind it is against the API before posting (no flag, no
                  guess). Both kinds get the same body checks, trust gate, budget, audit
