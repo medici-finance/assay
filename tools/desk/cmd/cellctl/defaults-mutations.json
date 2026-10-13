@@ -405,9 +405,9 @@
     },
     {
       "name": "`defaults --help` is answered with the usage refusal (TestBinaryCellDefaultsHelp)",
-      "file": "cmd/cellctl/defaults.go",
-      "old": "\tif len(args) == 1 && (args[0] == \"-h\" || args[0] == \"--help\") {",
-      "new": "\tif false && len(args) == 1 && (args[0] == \"-h\" || args[0] == \"--help\") {"
+      "file": "cmd/cellctl/cobra.go",
+      "old": "\tif i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {",
+      "new": "\tif false && i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {"
     }
   ]
 }

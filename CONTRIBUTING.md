@@ -145,6 +145,13 @@ instead, and the check picks it up from there. You are welcome to include your o
 the pull request if you'd like to suggest the wording, but a missing one on a fork pull request
 is not something you need to fix yourself.
 
+## Go implementation choices
+
+Read [Go engineering and library choices](docs/go-engineering.md) before implementing
+shared infrastructure. Use the selected library or existing adapter for the capability;
+evaluate established OSS before writing a custom replacement. Record concrete exceptions
+in the PR and keep version-specific dependency admission separate from catalogue selection.
+
 ## Practical notes
 
 - License: Apache-2.0. By contributing you agree your contribution is licensed the same.

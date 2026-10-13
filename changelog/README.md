@@ -44,6 +44,21 @@ cannot carry a fragment; that case has its own path, "Fragment by proxy" below. 
 leg greens on *either* a fragment *or* that label, and prints the skip in its log
 so it is never silent.
 
+## Automatic board reconciliation
+
+The gate separately recognizes the board-writer App's same-repository
+`board/reconcile` PR into `main`, using the runner's pull-request event bound to
+the exact checked base and head. Its entire Git diff must modify only existing
+regular stream READMEs, and only recognized Status cells inside existing
+canonical generated Briefs tables. All prose, other cells, paths and file modes
+must remain unchanged. This records delivery state rather than a release
+highlight; the check prints its classification without applying a label.
+
+Missing metadata, an unreadable diff or an unsupported table shape retains the
+normal fragment/maintainer-label requirement. This exception grants no merge or
+verification authority. The separate Evidence rule and the absolute direct
+Unreleased-edit refusal remain unchanged.
+
 ## Fragment by proxy (fork PRs)
 
 A pull request from a **fork** cannot always receive a fragment: maintainers

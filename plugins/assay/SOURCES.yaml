@@ -199,6 +199,13 @@ unported:
       Homed in this bundle: it shipped in the public bundle and the in-repo
       shadow copy is retired, so the installed skill is the only one and there
       is no upstream to port from or drift against. Declared here for coverage.
+  - path: skills/session-coach/SKILL.md
+    reason: >-
+      Authored in this repo (desk-skills/07) as the session-review utility
+      skill — it reads a session's own history and writes a three-part
+      coaching note outside any repository. It carries no upstream source
+      block, so there is no drift baseline to hold — declared here so coverage
+      accounts for it rather than reporting it unaccounted.
   - path: skills/upgrade-assay/SKILL.md
     reason: >-
       Authored/homed in this repository as the umbrella-version upgrade verb; it

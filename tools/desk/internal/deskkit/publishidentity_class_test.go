@@ -47,8 +47,9 @@ var publishIdentitySites = map[string]string{
 	"cmd/deskevidence/github.go|publishIdentityGate|direct|-": "the deskevidence wrapper calls its seam",
 
 	// deskpr's callers.
-	`cmd/deskpr/deskpr.go|cmdCreate|call|""`: "create opens a NEW change: no PR head exists to anchor on, and no forge " +
-		"branch-head read exists to confirm a local ref — the whole range is judged",
+	`cmd/deskpr/deskpr.go|cmdCreate|call|""`: "offline create --check judges the whole range; live create uses prepareCreatePush",
+	"cmd/deskpr/createpublish.go|prepareCreatePush|call|tip": "live create lists the exact credentialed push endpoint and branch; " +
+		"the proof binds source and destination, and the push requires the read tip unchanged",
 	"cmd/deskpr/deskpr.go|cmdUpdate|call|offlineTip": "offline/--check stage: remoteTrackingTip(facts.branch), a local " +
 		"estimate used only if it resolves and is an ancestor of HEAD, re-judged by the live stage before any push; " +
 		"under `update --pr N` the PR's head ref is unknown offline, so offlineTip is \"\": a real run skips this stage " +

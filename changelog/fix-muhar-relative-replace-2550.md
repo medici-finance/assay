@@ -1,2 +1,0 @@
-### Fixed
-- `muhar` parallel sweeps (`-j` > 1) no longer discard every run as "baseline RED" when the swept module's `go.mod` carries a relative `replace` pointing outside the copied tree (for example `tools/desk`'s `replace … => ../../forgeread`). Each worker's isolated copy now re-points those filesystem replacements to their absolute location in the source tree; in-tree, versioned and absolute replacements, and fixture `go.mod` files under `testdata/`, are copied unchanged. Mutations still land only in the copy.

@@ -85,6 +85,8 @@ The follow-up source baseline is public Assay `b78b495be` (10 October 2026), whi
 | [#2512](https://github.com/medici-finance/assay/pull/2512) | Reuse alternate pack readers within a repository opening; preserve the repeated-index-work regression when changing readers. |
 | [#2516](https://github.com/medici-finance/assay/pull/2516) | Preserve coordinated, bounded offline ref/index maintenance; do not describe it as object-pack consolidation or automatic reclamation. |
 
+The same operating experience exposes gaps the merged repairs do not close; these become obligations for the replacement rather than defects filed against the current tools. Review-dispatch worktrees accumulate when an owning review completes without a teardown step, because topology proofs are inapplicable to fetch-only heads. Resources created outside allocation verbs remain unclassified and are therefore held indefinitely. Locks without a recorded owning session outlive their sessions. Branch retirement cannot be proven from ancestry alone after squash merges whose remote refs were deleted. The [retirement and maintenance contracts](14-storage-forge-graph.md) answer each through allocation records, class-aware eligibility, forge-state inputs and lock lifecycles; implement and preserve those semantics together with the fail-closed holds above.
+
 Map each selected old fixture to its replacement under the existing regression-ledger contract. Keep supported-path fixes shipping while the replacement is developed; do not close an implementation obligation on the strength of this proposal.
 
 ## Handover and rollback are state migrations
@@ -119,6 +121,25 @@ Use semantic ownership as the consolidation boundary. Existing stream names may 
 | Distribution, skills, configuration, communications and installed consumers | Treat these as real consumers; release/pin and migration notices accompany contract cutovers. |
 
 Public product briefs belong here. Each adopter maintains its own deployment overlay and local plan amendments. Public implementation must not require access to an adopter's private corpus. Reconcile public contract changes and their applicable local overlays together through exact revision references, without publishing private identifiers or counts.
+
+## Progressive adoption is a separate product lane
+
+The [adoption/oversight delta](19-progressive-adoption-and-oversight.md) adds qualified
+offline inspection and advisory single-task use beside the managed verifier program.
+Reuse the shared domain owners and current installation/pin contracts. A selected
+small path does not require every desk, register, report pack, database or cockpit.
+No current governed completion condition or role authority changes implicitly.
+
+Inventory installed configuration, selected capabilities, effective oversight policy,
+policy/subject versions and user-authored artifacts during upgrade. Preview new
+requirements; preserve useful smaller operation while an upgrade is held. Reconcile
+active attempts/checkpoints and pending decisions before changing their requirements.
+Do not infer old approval from a new preset or historical evidence from a badge.
+
+Managed effects still require the complete repository handover, credential/minting
+inventory and fresh authority rules above. Smaller packaging cannot weaken those
+rules or admit another writer. Apply actual owner/consumer brief amendments and
+version/pin changes only after the applicable source contract is approved.
 
 ## Decisions already available and still needed
 

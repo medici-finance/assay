@@ -1,0 +1,89 @@
+{
+  "test": "go test . -run '^(TestEvaluationLibraryCLIParity|TestEvaluationUncertainEvidenceHolds|TestEvaluationPureDependencyBoundary|TestEvaluationExternalConsumer|TestEvaluationOfflineFlow)$' -count=1 -timeout 280s",
+  "control": {
+    "name": "CONTROL \u2014 the eligibility adapter swaps an edge's type and reason (a changed mapping must fail CLI/library parity)",
+    "file": "eligibility.go",
+    "old": "Ref: e.Ref, Type: e.Type, Reason: e.Reason}",
+    "new": "Ref: e.Ref, Type: e.Reason, Reason: e.Type}"
+  },
+  "mutations": [
+    {
+      "name": "parity: the coverage adapter maps every recorded witness state to pass",
+      "file": "coverage.go",
+      "old": "State:   witnessStateOf(er.Text),",
+      "new": "State:   evaluation.StatePass,"
+    },
+    {
+      "name": "parity: the coverage adapter drops the witness command",
+      "file": "coverage.go",
+      "old": "Command: witnessCommandOf(er.Text),",
+      "new": "Command: \"\","
+    },
+    {
+      "name": "parity: the eligibility adapter loses the recorded human-gate pass",
+      "file": "eligibility.go",
+      "old": "HumanGatePassRecorded: humanGatedVerifyPassed(b),",
+      "new": "HumanGatePassRecorded: false,"
+    },
+    {
+      "name": "uncertain evidence: a gate whose target brief cannot be found is treated as satisfied",
+      "file": "evaluation/eligibility.go",
+      "old": "return StateCouldNotCheck, \"brief \" + ref + \" not found in this tree\"",
+      "new": "return StateSatisfied, \"\""
+    },
+    {
+      "name": "uncertain evidence: a forge-backed gate is treated as satisfied",
+      "file": "evaluation/eligibility.go",
+      "old": "return StateCouldNotCheck, \"forge-backed gate \" + ref + \" \u2014 the evaluator reads the tree only, never the forge\"",
+      "new": "return StateSatisfied, \"\""
+    },
+    {
+      "name": "uncertain evidence: a Verify row with no witness is treated as a pass",
+      "file": "evaluation/coverage.go",
+      "old": "return ResultMissing, \"no execution witness in Evidence \u2014 run `statusgen verifyrun --brief <path>`\", \"\"",
+      "new": "return ResultPass, \"\", \"\""
+    },
+    {
+      "name": "uncertain evidence: a witness from another revision is credited",
+      "file": "evaluation/coverage.go",
+      "old": "\t\tcase revisionMismatch:\n\t\t\treason := fmt.Sprintf(\"witness ran at revision",
+      "new": "\t\tcase revisionMismatch:\n\t\t\tif true {\n\t\t\t\treturn ResultPass, \"reused\", wrev\n\t\t\t}\n\t\t\treason := fmt.Sprintf(\"witness ran at revision"
+    },
+    {
+      "name": "uncertain evidence: a row unreadable at the witness's revision is credited",
+      "file": "evaluation/coverage.go",
+      "old": "\t\tif !ok {\n\t\t\treturn ResultCouldNotCheck, fmt.Sprintf(\"the Verify row #%s could not be read",
+      "new": "\t\tif !ok && false {\n\t\t\treturn ResultCouldNotCheck, fmt.Sprintf(\"the Verify row #%s could not be read"
+    },
+    {
+      "name": "boundary: the library imports a process-starting package",
+      "file": "evaluation/coverage_repo.go",
+      "old": "import \"fmt\"",
+      "new": "import (\n\t\"fmt\"\n\t\"os/exec\"\n)\n\nvar _ = exec.Command"
+    },
+    {
+      "name": "boundary: the library imports the environment-reading os package",
+      "file": "evaluation/identity.go",
+      "old": "import (",
+      "new": "import (\n\t_ \"os\""
+    },
+    {
+      "name": "boundary: the checker stops walking at the first package (an indirect import escapes)",
+      "file": "evaluation_contract_test.go",
+      "old": "\t\t\twalk(imp, chain)\n",
+      "new": "\t\t\t_ = chain\n"
+    },
+    {
+      "name": "external consumer: the module offers an admission verdict (eligibility would grant admission)",
+      "file": "evaluation/eligibility.go",
+      "old": "func EvaluateEligibility(in EligibilityInput)",
+      "new": "func Admit(in EligibilityInput) bool { return true }\n\nfunc EvaluateEligibility(in EligibilityInput)"
+    },
+    {
+      "name": "external consumer: the statusgen manifest names a path under the internal tool module",
+      "file": "go.mod",
+      "old": "go 1.25.0\n",
+      "new": "go 1.25.0\n\n// see tools/desk/internal/deskkit\n"
+    }
+  ]
+}

@@ -71,13 +71,31 @@ gate. Additional `assay.roster.ext.<name>` keys follow the same pattern.
 |---|---|---|
 | `assay.harness` | `assay/harness-claude-code`, `assay/harness-codex`, `assay/harness-cursor` | the agent harness the skills and hooks are shaped for, provided with a `flavour` per adapter; exactly one ACTIVE provider at a time (§9). |
 
-`assay.harness` is `exclusive: true` — `deskmanifest lint` (`tools/desk/cmd/deskmanifest/`)
-refuses a tree with more than one ACTIVE provider (§9): "`assay.harness has 2 ACTIVE
-providers: …`". Before this repo's own desired-state record exists (§7, still planned),
-which adapter is ACTIVE is decided by each provider's `evidence` marker — the adopting
-repo's own installed-shape file (`.claude-plugin/marketplace.json` for claude-code, root
-`AGENTS.md` for codex, root `.cursor/rules` for cursor); see the three adapters'
-`components/harness-*/component.yaml`.
+`assay.harness` is `exclusive: true` — `deskmanifest lint` refuses more than one
+ACTIVE provider. Installed-shape evidence remains required (`.claude-plugin/marketplace.json`,
+root `AGENTS.md`, or `.cursor/rules`). When several payloads coexist, optional
+`components/bindings.yaml` explicitly selects a declaration provider:
+
+```yaml
+schema: 1
+bindings:
+  assay.harness: assay/harness-claude-code
+```
+
+Only declared exclusive keys and an unambiguous provider of that key are accepted.
+The selected provider must still satisfy its evidence and required dependencies;
+selection never activates missing functionality. Competitors become INACTIVE before
+dependency propagation. Unknown fields, duplicate keys, extra documents, malformed
+or empty maps, unknown providers, and inactive selections refuse. Without the file,
+the original presence-based exclusivity check applies unchanged.
+
+This file belongs to **declaration lint**, not launcher configuration or the runtime
+roster-key activation engine. It changes neither which harness starts nor trust/role
+permissions. The runtime engine continues its existing minimal manifest/roster
+contract; this is not the full desired-state/reconcile engine proposed in §7.
+This source repository selects its existing Claude declaration while also checking
+generated Cursor payloads and shared bindings. Canonical component declarations
+remain under `plugins/assay`; runtime skill copies omit `component.yaml`.
 
 ## Additions beyond `component-model.md` §3
 
