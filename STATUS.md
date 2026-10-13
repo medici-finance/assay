@@ -21,7 +21,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/35 | 2026-10-13 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/34 | 2026-10-13 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-13 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/53 | 2026-10-13 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/54 | 2026-10-13 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-13 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/34 | 2026-10-13 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/27 | 2026-10-13 |  |
@@ -90,7 +90,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: fcf664b 2026-10-13T07:31:47-05:00_
+_last regen: d7f18f1 2026-10-13T12:33:13Z_
 
 **Progress:** 10/13 brief items done.
 
@@ -111,9 +111,9 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: fcf664b 2026-10-13T07:31:47-05:00_
+_last regen: d7f18f1 2026-10-13T12:33:13Z_
 
-**Progress:** 16/71 brief items done.
+**Progress:** 16/72 brief items done.
 
 **In-flight:**
 
@@ -250,7 +250,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| desktools-v2 | 15 [exec:strong] | verified | 20500 | 39 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
+| desktools-v2 | 15 [exec:strong] | verified | 21000 | 40 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
 | build-less-brittle | 02 [exec:strong] | verified | 6500 | 7 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 05 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
@@ -268,7 +268,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| desktools-v2 | 16 [exec:strong] | implemented | 20000 | 38 | — | verify-desk | triage, then re-bucket | — | — |
+| desktools-v2 | 16 [exec:strong] | implemented | 20500 | 39 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | verify-desk | triage, then re-bucket | — | — |
 | forge-neutral | 34 [exec:strong] | implemented | 3500 | 3 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | verify-desk | triage, then re-bucket | — | — |
@@ -479,7 +479,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 migrate push + retire ambient-credential machinery + preflight transport probe — implemented (wave 4)
 - 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
 
-### desktools-v2 (50 open)
+### desktools-v2 (51 open)
 
 - 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — implemented (wave 3)
 - 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — verified (wave 2)
@@ -531,6 +531,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 52 Port the changelog and release check scripts — todo (wave 3)
 - 53 Port the CI and regression floor scripts — todo (wave 3)
 - 54 Port the security control scripts — todo (wave 4)
+- 55 Port the go-analysis adapter entrypoints — todo (wave 3)
 
 ### forge-gitlab (5 open)
 
@@ -844,4 +845,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**20** active, **0** paused, **6** parked) · **106/387** briefs done · completed initiatives: see `docs/archive/`
+**26** streams (**20** active, **0** paused, **6** parked) · **106/388** briefs done · completed initiatives: see `docs/archive/`

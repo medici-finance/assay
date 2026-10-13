@@ -389,3 +389,21 @@ func TestAuditJournalWritesDecideLine(t *testing.T) {
 		t.Fatalf("context digest not recorded as ArgsDigest")
 	}
 }
+
+func TestReplyJustification(t *testing.T) {
+	cases := []struct {
+		name, reply, answer, want string
+	}{
+		{"leading CLI warning", "Warning: Code Mode is unavailable; tools fail closed.\nclean-send — routine status note\n", "clean-send", "clean-send — routine status note"},
+		{"trailing CLI noise", "Hold-For-Human: names a credential\n\nsession ended\n", "hold-for-human", "Hold-For-Human: names a credential"},
+		{"no answer named falls back to last line", "Warning: x\nI cannot tell\n\n", "", "I cannot tell"},
+		{"answer absent from reply falls back to last line", "first\nsecond", "refuse", "second"},
+		{"control sequences stripped", "noise\n\x1b[31mrefuse\x1b[0m — spoofed\r\n", "refuse", "refuse — spoofed"},
+		{"empty reply", " \n\n", "refuse", ""},
+	}
+	for _, c := range cases {
+		if got := ReplyJustification(c.reply, c.answer); got != c.want {
+			t.Errorf("%s: ReplyJustification = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

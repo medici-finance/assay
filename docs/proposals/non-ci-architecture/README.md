@@ -23,6 +23,7 @@ Verification is the first end-to-end test.
 | [Shared context graph](17-context-substrate.md) | Cell classification, composition, source ownership, snapshot/query and visibility contracts |
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
+| [Amendment manifest](20-amendment-manifest.md) | Owners, paths, dependencies and active-work treatment for the ratified packages; brief patches for R1 and step 2 |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Requested direction and proposed mechanisms
