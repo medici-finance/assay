@@ -22,9 +22,13 @@ type deskInputs struct {
 	Cadence, TickBudget        string // --flag, else the cell's CELL_CADENCE / CELL_TICK_BUDGET
 	CadenceFlag, BudgetFlag    string // only what was given by flag
 	Persist                    bool
+	EndStaleLockHolder         bool // --end-stale-lock-holder: opt in to SIGTERM a proven-stale role-lease holder
 }
 
 const deskUsage = "cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [--harness <claude|codex>] [--kind <k>] [--cockpit <c>] [CLAUDE_CONFIG_DIR]"
+
+// roleLeaseWait bounds how long a launch waits for a sibling holding its role lease.
+const roleLeaseWait = 5 * time.Second
 
 // cmdDesk is the port of `cmd_desk`: one role window, in its own worktree, with the real HOME
 // and the cell's shims — or, on a scrubbed cell, in a fully COMPOSED environment.
@@ -351,7 +355,13 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 
 	c.printCachePolicy()
 	if c.Kind == "house" {
-		lease, err := cellcadence.Acquire(c.cadenceDir(role))
+		// A sibling launch of this role may hold the lease for a moment; wait a little,
+		// then name the holder and say whether it is current. Only an explicit
+		// --end-stale-lock-holder lets a proven-stale own-cell holder be ended.
+		lease, err := cellcadence.AcquireRole(c.cadenceDir(role), cellcadence.RoleLock{
+			Cell: c.Name, Role: role, Wait: roleLeaseWait, EndStale: o.EndStaleLockHolder,
+			OptIn: "--end-stale-lock-holder", Log: os.Stderr,
+		})
 		if err != nil {
 			die("desk: role already owned or cannot lock: %v", err)
 		}

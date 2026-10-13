@@ -8,6 +8,31 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "docs/qualification/codex-goals/2026-10-12/validate.py",
+      "reason": "offline assertions over retained native Goal qualification artifacts for issue #2696; invoked by readers of that evidence index, never installed or released as an operator CLI"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/evidence-automerge/merge_clean.py",
+      "reason": "internal protected-merge helper called by the main-only Evidence workflow; no shebang, main guard, argument parser or independent operator command"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/changelog/reconcile.py",
+      "reason": "internal classification library loaded by the existing check.sh entrypoint; no shebang, main guard, argument parser or independent operator command (#2686)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/changelog/reconcile_test.py",
+      "reason": "offline real-Git changelog classification fixtures run by build-test through the desk regression package; not an operator entrypoint (#2686)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/changelog/reconcile_mutation.py",
+      "reason": "offline developer guard controls using disposable classifier copies; not an installed operator command (#2686)"
+    },
+    {
+      "class": "test",
       "pattern": "**/*.test.sh",
       "reason": "test suite for a script; CI runs it, it is never an operator entrypoint"
     },
@@ -60,6 +85,36 @@
       "class": "test",
       "pattern": "containers/scripts/layer-secret-scan.mutate.sh",
       "reason": "developer mutation runner for the layer-secret-scan fixtures (issue #2256); runs layer-secret-scan.test.sh against mutated copies of the scan, not an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/gremlins/run.sh",
+      "reason": "daily Gremlins mutation discovery sweep (issue #2647); runs the desk packages' tests against mutants in a disposable checkout from a staged CI workflow, not released and not an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/desk/internal/gremlintriage",
+      "reason": "plan and triage helper built and run only by tools/gremlins/run.sh (issue #2647); not released and not an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "actions/go-analysis/test_action.py",
+      "reason": "offline wrapper tests for the go-analysis composite action (desk-tools/34); CI and verifiers run them, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis.py",
+      "reason": "offline ratchet, discovery and real-analyzer negative controls for the pinned go-analysis runner (desk-tools/34); run through scripts/tests/go-analysis.sh, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis.sh",
+      "reason": "launcher for the go-analysis harness (desk-tools/34); CI and verifiers run it, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis-mutations.py",
+      "reason": "developer mutation runner that removes each go-analysis guard from a disposable runner copy and requires its focused test to fail (desk-tools/34); not an operator entrypoint"
     },
     {
       "class": "fixture",
@@ -1269,6 +1324,24 @@
       "state": "pending"
     },
     {
+      "executable": "muhar-action.sh",
+      "path": "actions/muhar/muhar-action.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "composite GitHub Action (actions/muhar); run by its action.yml at the consumer's pinned ref",
+      "consumers": [
+        "actions/muhar/action.yml",
+        "actions/muhar/README.md",
+        "actions/muhar/muhar-action.test.sh",
+        "tools/desk/cmd/muhar/action_test.go"
+      ],
+      "parser": "bash subcommand positional; inputs as environment variables",
+      "complexity": "simple",
+      "basis": "220 lines at 7c94cb98919f",
+      "owner": "desktools-v2/44",
+      "state": "pending"
+    },
+    {
       "executable": "opmetrics",
       "path": "tools/desk/cmd/opmetrics",
       "kind": "go",
@@ -2167,6 +2240,57 @@
       "complexity": "simple",
       "basis": "714 lines at 3ad1ad83c871",
       "owner": "desktools-v2/54",
+      "state": "pending"
+    },
+    {
+      "executable": "run.py",
+      "path": "actions/go-analysis/run.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "composite GitHub Action (actions/go-analysis); run by its action.yml at the consumer's pinned ref",
+      "consumers": [
+        "actions/go-analysis/action.yml",
+        "actions/go-analysis/README.md",
+        "actions/go-analysis/test_action.py"
+      ],
+      "parser": "Python environment variables set by action.yml",
+      "complexity": "simple",
+      "basis": "139 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "go-analysis.sh",
+      "path": "scripts/go-analysis.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked as bash scripts/go-analysis.sh",
+      "consumers": [
+        "docs/go-analysis.md",
+        "actions/go-analysis/action.yml",
+        "actions/go-analysis/run.py"
+      ],
+      "parser": "bash arguments passed through to the runner",
+      "complexity": "simple",
+      "basis": "5 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "runner.py",
+      "path": "tools/go-analysis/runner.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "repo tooling; run by scripts/go-analysis.sh, the go-analysis action and its harness",
+      "consumers": [
+        "scripts/go-analysis.sh",
+        "docs/go-analysis.md",
+        "scripts/tests/go-analysis.py"
+      ],
+      "parser": "Python argparse (acquire, lint)",
+      "complexity": "simple",
+      "basis": "406 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
       "state": "pending"
     }
   ]

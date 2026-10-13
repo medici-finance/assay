@@ -141,6 +141,24 @@ type Harness struct {
 	// returns its root plus a cleanup. It is only consulted when Jobs > 1;
 	// when it is nil the sweep falls back to running in place.
 	Workspace func(id int) (root string, cleanup func(), err error)
+
+	// Selector, when set, narrows each mutation's suite to the tests that can
+	// catch it (selection.go). It is prepared on the pristine tree once the
+	// baseline is green, and the positive control runs UNDER it like every
+	// mutation, so a narrowed suite that cannot fail breaks the run. nil runs
+	// Test in full for every mutation — the historical behaviour.
+	Selector Selector
+	// SchemaTest, when set, turns on mutant schemata (schemata.go): it runs the
+	// suite against the tree at root with the go command reading overlay and
+	// the schemata selector set to selector; true == suite FAILED. Nil keeps
+	// every mutation on the classic rebuild-per-mutant path.
+	SchemaTest func(root, overlay, selector string) bool
+	// SchemaBuild, when set, compiles the packages in dirs under the overlay
+	// with every compiler error reported, returning the output and whether the
+	// build was clean; schemata uses it to drop mutants that do not compile.
+	SchemaBuild func(root, overlay string, dirs []string) (out string, clean bool)
+	// Log receives progress notes (never verdicts); nil discards them.
+	Log io.Writer
 }
 
 // Report is the outcome of a whole run.
@@ -216,7 +234,25 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 		return CouldNotMutate, fmt.Errorf("mutation %q: post-write verify failed — file is byte-identical to the original", m.Name)
 	}
 
-	if h.Test(root) {
+	test := h.Test
+	if h.Selector != nil {
+		// Decided only AFTER the edit is proven on disk, so a selection can
+		// never stand in for the could-not-mutate state. A Skip is NotCaught,
+		// never Caught: skipping cannot produce red. A narrowed run only uses a
+		// set Prepare proved green on pristine source (selection.go states the
+		// safety property and the false-CAUGHT residual it leaves open: a dropped test
+		// that sets or clears shared state can steer a selected test into or away
+		// from the mutated code, so a narrowed CAUGHT can be one the full command
+		// survives).
+		sel := h.Selector.For(m, orig)
+		if sel.Skip {
+			return NotCaught, nil
+		}
+		if sel.Test != nil {
+			test = sel.Test
+		}
+	}
+	if test(root) {
 		return Caught, nil
 	}
 	return NotCaught, nil
@@ -237,6 +273,17 @@ func (h *Harness) preflight(root string) Report {
 		return rep
 	}
 	rep.BaselineGreen = true
+
+	// Selection's coverage pass needs the green pristine tree the baseline
+	// just proved. It failing is a broken harness, never a fall-back to "every
+	// mutant uncovered".
+	if h.Selector != nil {
+		if err := h.Selector.Prepare(root); err != nil {
+			rep.Broken = true
+			rep.BrokenReason = fmt.Sprintf("test selection could not be prepared (%v); discard the run", err)
+			return rep
+		}
+	}
 
 	// (3) Positive control: a mutation the suite MUST catch. If it is not
 	// caught, the harness is not mutating (or the suite cannot see the source)
@@ -282,8 +329,10 @@ func (h *Harness) Run() Report {
 			return rep
 		}
 		// The instrument is proven. Now every NotCaught is a real finding.
-		for _, m := range h.Mutations {
-			res, err := h.runOne(h.Root, m)
+		_, st := h.schemataSetup(h.Root)
+		defer st.cleanup()
+		for i, m := range h.Mutations {
+			res, err := h.runMutation(h.Root, st, i)
 			rep.Results = append(rep.Results, MutationResult{Mutation: m, Result: res, Err: err})
 		}
 		return rep
@@ -322,6 +371,10 @@ func (h *Harness) runParallel(jobs int) Report {
 		return rep
 	}
 
+	// Schemata is planned once, in the first copy; every other worker builds
+	// the same plan in its own copy and proves its own baseline green first.
+	plan, first := h.schemataSetup(roots[0])
+
 	// Results are indexed by spec position, never appended, so the report is
 	// byte-identical to a sequential run whatever order the workers finish in.
 	rep.Results = make([]MutationResult, len(h.Mutations))
@@ -329,14 +382,19 @@ func (h *Harness) runParallel(jobs int) Report {
 	var wg sync.WaitGroup
 	for w := 0; w < jobs; w++ {
 		wg.Add(1)
-		go func(root string) {
+		go func(w int, root string) {
 			defer wg.Done()
+			st := first
+			if w > 0 {
+				st = h.schemataFor(root, plan)
+			}
+			defer st.cleanup()
 			for i := range next {
 				m := h.Mutations[i]
-				res, err := h.runOne(root, m)
+				res, err := h.runMutation(root, st, i)
 				rep.Results[i] = MutationResult{Mutation: m, Result: res, Err: err}
 			}
-		}(roots[w])
+		}(w, roots[w])
 	}
 	for i := range h.Mutations {
 		next <- i

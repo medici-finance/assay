@@ -220,17 +220,26 @@ the repo — reconcile walks up to the board root (the nearest `docs/streams`).
 `--backfill --apply` writes a witnessed `todo`/`in-progress` → `implemented`
 Status cell (a trailer or branch/body-matched merged PR on record, with or without
 a verify witness over it) back into the stream README and lists the rows it wrote under
-`applied`. `--backfill` WITHOUT `--apply` is the read-only form: it writes nothing
-and lists, under `wouldApply`, the rows `--apply` would write on the same tree —
-computed by the same function that writes, so the two cannot disagree. Each row
-carries `id`, `readme`, `from`, `to`, `witness`, and the whole table line before and
-after the edit (`rowBefore`, `rowAfter`). `wouldApply` is `[]` when nothing would be
-written; it is absent only when `--backfill` was not given or `--apply` was.
+`applied`. `--backfill` WITHOUT `--apply` is the read-only form: it writes no stream
+README — and nothing else either, unless `--report` is also given, which writes
+`docs/streams/board-drift-<date>.md` in that run too (its table output then says so
+instead of calling the run read-only). It lists, under `wouldApply`, the rows
+`--apply` would write on the same tree — computed by the same function that
+writes, so the two cannot disagree (per README path string: two stream names
+differing only in letter case reach one file on a case-insensitive filesystem).
+Each row carries `id`, `readme`, `from`, `to`, `witness`, and the whole table line before and
+after the edit (`rowBefore`, `rowAfter`).
 Both forms take one whole-run admission decision: when `--apply` on the same run
 would refuse and write nothing (exit 3 — the raw pull list, the PR read, or any
-fold read in `unread` could not be made), the read-only form lists no row
-(`wouldApply` is `[]`), reports the reason as `wouldRefuse`, and says
-could-not-check on stderr — it never lists a row the writer would refuse.
+fold read in `unread` could not be made), the read-only form lists no row,
+reports the reason as `wouldRefuse`, and says could-not-check on stderr — it
+never lists a row the writer would refuse. `wouldApply` is present only when the
+run looked — no such refusal, and a `docs/streams` board was found — so `[]`
+means "looked and found nothing". It is absent when the run could not look
+(`--offline`, no `--repo`, an HTTP error or refused connection, a failed fold
+read, a `--root` with no board), when `--backfill` was not given, and when
+`--apply` was. Read it together with `lookedAt` and `wouldRefuse`, never alone:
+an absent `wouldApply` is not zero rows.
 
 `--apply` WITHOUT `--backfill` is trailer-only: it writes only rows witnessed by a
 merged PR's trailer, never a branch or body match — the mode the scheduled
@@ -241,7 +250,8 @@ rows, decided the same way with nothing written. When the pulls cannot be read,
 `--apply` exits 3 and writes nothing.
 
 ```bash
-# Read-only: which board rows would --apply promote? No tree write.
+# Read-only: which board rows would --apply promote? No stream README is written
+# (add --report and the drift report file is written too).
 statusgen reconcile --backfill --root . --repo medici-finance/assay --token-file "$TOKEN_FILE" --json
 ```
 

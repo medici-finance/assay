@@ -210,6 +210,18 @@
       "file": "reconcile.go",
       "old": "case pullsUnread != \"\":",
       "new": "case false:"
+    },
+    {
+      "name": "PRE-FIX fold resolver call: the brief's files: is not passed (F-fold-bypasses-files-overlap)",
+      "file": "reconcilefold.go",
+      "old": "decideModelFlip(root, d.stream, d.path, id, d.evidence, d.files, src, rev)",
+      "new": "decideModelFlip(root, d.stream, d.path, id, d.evidence, briefFilesOf(&BriefFile{}), src, rev)"
+    },
+    {
+      "name": "the fold never reads the brief's files: declaration",
+      "file": "reconcilefold.go",
+      "old": "d.files = briefFilesOf(bf)",
+      "new": "_ = briefFilesOf(bf)"
     }
   ]
 }

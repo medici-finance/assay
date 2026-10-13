@@ -1177,19 +1177,18 @@ file it places in `--dest`, and Windows does not let a running `.exe` overwrite 
 Neither route runs in CI today. Both are read from the tree (the bootstrap script, the release
 workflow's asset list, and `deskinstall`'s own install code), not observed on a Windows host.
 
-**2. Place the Cursor harness.** No manual copy of the skills/references tree, no hand-written
-`AGENTS.md` block (`windows-port/07`). Run it **from the assay clone root**: `--bundle` defaults to
-`plugins/assay` relative to the current directory. From anywhere else, pass
-`--bundle <clone>\plugins\assay`.
+**2. Place the Cursor harness.** For a release that publishes the versioned bundle,
+use its exact tag (replace `vX.Y.Z`):
 
 ```powershell
-deskinstall --harness cursor --forge gitlab --repo C:\src\myrepo
+deskinstall --harness cursor --release vX.Y.Z --forge gitlab --repo C:\src\myrepo --fetch --dry-run
+deskinstall --harness cursor --release vX.Y.Z --forge gitlab --repo C:\src\myrepo --fetch
+deskinstall --harness cursor --release vX.Y.Z --forge gitlab --repo C:\src\myrepo --fetch --check
 ```
 
-*What it proves:* `deskinstall --harness cursor --forge gitlab --repo C:\src\myrepo --check` exits
-`0` (clean, nothing left to place). The adopter repo then has `.cursor/skills/`, a sibling
-`references/` tree, and the `AGENTS.md` `assay:bindings` block naming `glab`/`--forge gitlab`, not
-bare `gh`.
+The last command must exit 0. See [the Cursor install contract](#running-assay-on-cursor--a-second-first-class-harness)
+for offline materialization, integrity checks, ownership, upgrades, and the explicit
+source route for legacy releases without a bundle.
 
 **3. Run the turnkey install.** Invoke `assay:install` inside Cursor. It scaffolds
 (`statusgen init`), wires CI, and proves itself (`--lint == 0`, `--version` prints the pinned tag);
@@ -1691,34 +1690,54 @@ automation/smoke surface (brief 13) and is **not** a prerequisite for copying sk
 back here rather than carrying a second copy of the steps (`windows-port/09`) — read that file for
 the capability bindings, this section for the install steps.
 
-**Install — one command (`windows-port/07`).** `deskinstall --harness cursor --forge
-<github|gitlab> --repo <path>` places the skills/references tree and writes the `AGENTS.md`
-bindings in one idempotent, native command — on Windows this is [step 2 of the
-three-command install](#the-three-command-install-cursor--gitlab-channel-e) above; it runs
-identically on macOS/Linux. Run it from the assay clone root, or pass `--bundle
-<clone>/plugins/assay`: `--bundle` defaults to `plugins/assay` relative to the current directory.
-It runs **before** `assay:install`, because it is what places that skill into Cursor. `--check`
-reports drift (missing / extra / content-differs) without writing. This automates steps 1-3 below; step 4 (desk binaries on PATH) is `deskinstall`'s
-existing acquire mode / the [three-command install](#the-three-command-install-cursor--gitlab-channel-e)'s
-step 1; step 5 never blocks either path.
+**Versioned install.** Releases that publish `cursor-bundle.tar.gz` support placement
+without an Assay checkout. Select a published umbrella version explicitly:
 
-**Install (IDE agent) — the manual steps, what the command above actually does:**
+```sh
+deskinstall --harness cursor --release vX.Y.Z --repo <repo> --forge github --fetch --dry-run
+deskinstall --harness cursor --release vX.Y.Z --repo <repo> --forge github --fetch
+deskinstall --harness cursor --release vX.Y.Z --repo <repo> --forge github --fetch --check
+```
 
-1. From this repository's `plugins/assay/skills/` (or the plugin cache on a Claude host), copy the
-   skill directories into the **adopter repo** at `.cursor/skills/` (or `.agents/skills/`).
-2. Copy `plugins/assay/references/*.md` to `.cursor/references/` (or a sibling of `skills/` that
-   keeps the skills' `../../references/*.md` includes resolvable). Copying **only** `skills/`
-   leaves those includes dead.
-3. Bindings stay in the adopter `AGENTS.md` / `CLAUDE.md` stub from `statusgen init`. Optional:
-   `.cursor/rules/*.mdc`. Cursor does **not** run Assay's Claude `SessionStart` hooks; Git-Bash
-   is not required for Cursor resident rules.
-4. Put desk binaries on PATH (Windows: `%LOCALAPPDATA%\Assay\bin`). On GitLab, the desk verbs
-   resolve the forge from the repo (`desktoken` takes `--forge gitlab`); neither `gh` nor `glab` is
-   required (both are optional convenience CLIs), and skill text that says `gh` is GitHub-shaped
-   leftover, not a Cursor requirement.
-5. Generated `harnessgen cursor` / `plugins/assay/cursor/` output is **not** required for the copy
-   path above. If those artifacts are absent from the tree you cloned, do not block the install
-   on them.
+Use `--forge gitlab` for GitLab. Without `--fetch`, materialize the selected release's
+`checksums.txt` as `releases/vX.Y.Z.checksums.txt` and its bundle as
+`releases/vX.Y.Z.cursor-bundle.tar.gz`; `--releases <directory>` changes that location.
+Every network request is opt-in and announces its exact target before contact.
+The selected composition's SHA-256, the internal version, and a closed per-file
+manifest must all match before any adopter file is written. This proves integrity
+against that composition, **not build provenance**. Binary installation remains a
+separate operation with its existing mandatory Sigstore verification.
+
+Legacy releases without the bundle or its digest refuse; there is no fallback to a
+floating checkout. The source route remains available explicitly:
+`deskinstall --harness cursor --bundle <clone>/plugins/assay --repo <repo> --forge github`.
+That route uses local source, without claiming release verification. It permits a
+missing optional rule for older source trees; versioned bundles require the rule.
+Both routes run before `assay:install`, because they place that skill into Cursor.
+
+**Upgrade an existing adopter.** Use the existing version resolver and migration
+runner through `upgrade-assay --root <repo> --harness cursor --to vX.Y.Z --fetch --dry-run`.
+Inspect the plan, then apply the same command without `--dry-run`; finish with
+`--check`. A Cursor upgrade places the verified bundle before advancing
+`.assay-versions` and does not print Claude marketplace commands. `--check` is
+read-only and reports drift with exit 1; unavailable or unverifiable bundles refuse.
+A same-version upgrade still verifies the bundle and checks/repairs missing generated
+files. It never silently overwrites local edits.
+
+**Ownership.** `.cursor/skills/`, sibling `.cursor/references/`, and
+`.cursor/rules/assay.mdc` come from the canonical bundle. Generated text identifies
+its source. `.cursor/assay-managed.json` records owned file hashes; it is generated,
+not an authorization boundary against a writer who can change the repository.
+Sync retires only previously owned, unchanged files no longer in the source set.
+Unrelated files and bytes outside the bounded `AGENTS.md` bindings are preserved.
+Unmanaged collisions, edited owned files, malformed bindings, and symlinked paths
+refuse before placement. Keep repository-specific instructions outside that block.
+The operation is preflighted and retryable, not a cross-file transaction.
+
+**Desk binaries on PATH** are still required (Windows:
+`%LOCALAPPDATA%\Assay\bin`). Cursor does not need Claude's SessionStart hooks or
+Git-Bash for resident rules. Its native `AGENTS.md` and `.cursor/rules` channels
+carry them; `gh`/`glab` remain optional convenience CLIs.
 
 **Isolation** — Cursor's background agents run in isolated git worktrees, so parallel workers
 isolate natively there; on the headless CLI, worker isolation follows the same `git worktree`

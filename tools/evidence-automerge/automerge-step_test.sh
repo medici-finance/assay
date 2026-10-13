@@ -140,7 +140,7 @@ suite() {
   local script="$1" n=0
   expect_case "$script" S1 ok        none  0 'auto-merge requested on PR 1'                  || { fail_rec "S1 accepted"; n=$((n+1)); }
   expect_case "$script" S2 unstable  none  0 'Benign; see #586'                               || { fail_rec "S2 enable-only unstable skips"; n=$((n+1)); }
-  expect_case "$script" S3 clean     none  0 "refused as 'clean status'"                      || { fail_rec "S3 clean status skips"; n=$((n+1)); }
+  expect_case "$script" S3 clean     none  0 'protected clean-merge completion is required'   || { fail_rec "S3 clean status signals completion"; n=$((n+1)); }
   expect_case "$script" S4 perm      none  1 '::error::could not enable auto-merge on PR 1'  || { fail_rec "S4 permission refusal reds with classifier output"; n=$((n+1)); }
   expect_case "$script" S5 unstable  other 1 "failing besides 'enable'"                       || { fail_rec "S5 other check red reds with classifier output"; n=$((n+1)); }
   echo "$n"

@@ -167,6 +167,15 @@ never create a new run to evade the missing receipt. Do not change identity to r
 
 ## The loop
 
+0. **Sweep existing Evidence PRs before fresh verification dispatch.** Across every configured
+   repository, read this desk's authored open Evidence PRs, their current heads, real review-lane
+   verdicts, checks and mergeability. Apply the ownership table under **PR-based Evidence landing**.
+   A blocking verdict at the current head is this desk's repair work: assign a verifier correction
+   on the SAME branch/PR, fix and push, then hand the new head back for review. Do not leave that
+   work behind merely because `verifyloop plan` is empty or a receipt holds the brief. A correction
+   that needs new verification gets fresh independent dispatch/admission; never replay an old
+   receipt or relabel an old run. Review/ready/merge ownership remains unchanged.
+
 1. **`verifyloop plan --root <repo>`** from `$WT`: the deterministic scheduler prints the Awaiting
    queue, each item's tier, and the exact dispatch instruction (or human-route note). It spawns nothing
    and writes nothing. **Do not hand-compute the queue** — the plan IS the worklist.
@@ -200,6 +209,7 @@ never create a new run to evade the missing receipt. Do not change identity to r
    **Stand-down checklist — printed before any wrap-up, never satisfied by a summary line:**
    ```
    stand-down: fresh sweep run this turn (verifyloop plan, exit 0, printed queue)?   yes/no
+   stand-down: Evidence PR rework swept; owned blockers assigned or filed?             yes/no
    stand-down: dispatchable queue EMPTY on that sweep (every configured root)?         yes/no
    stand-down: in-flight verifiers all landed or surfaced as open waits?                yes/no
    stand-down: hand-off artifact written on the driver surface (§Liveness contract)?    yes/no
@@ -257,6 +267,15 @@ breaks any of these three rules — writer-side enforcement of what was, until t
 catch. The three rules above are unchanged; get them right at write time and the writer's own
 gate never fires.
 
+**An outcome never substitutes for refused Evidence.** Land the brief's Evidence first and check
+that write's actual exit/result. If it is refused or could-not-check, file the landing failure and
+do not publish an outcome for it. A new outcome must name the full Evidence commit SHA, and the
+target branch and that commit must carry this admitted run's exact Verification-Attestation line
+inside Evidence. The writer checks both copies before publishing the record. Refresh the brief
+from the successfully landed branch before deriving its input hashes; an older Evidence block or
+receipt from a previous run does not satisfy this check. An existing identical record remains an
+idempotent no-op.
+
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
@@ -290,6 +309,43 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   turns an Evidence row from prose into something a reviewer can re-run and compare.
   A `verified`/`done` closure this branch makes with no witness for a Verify row is a hard lint
   PROBLEM, not the softer per-stream NOTICE the inherited backlog still gets.
+- **Fail-first: a risk-bearing row must red on the base.** When the table has a risk-bearing row
+  (any `risk:` answer `yes`, or a row tagged risk-bearing, live, mutating or end-to-end), run
+  `statusgen verifyrun --brief <path> --fail-first` before landing the Evidence, not the plain
+  run. It checks a base out into a temporary worktree, runs each risk-bearing row there with the
+  same sandbox and `--ci` mode as the head run, then runs the table at head, and the witness
+  gains a `Base` column (`base=<sha> red|green|unproven · head=<sha>`) as its LAST column. A row
+  green at base and at head is **non-discriminating**: it passes with or without the change, so
+  it proves nothing about it.
+  **Name the base.** The default base is the merge-base of HEAD and `origin/main`. In this
+  desk's flow the change is already merged, so the default base already CONTAINS the change and
+  every row would be green. Pass `--base <the parent of the delivering merge>`. Resolve it from
+  the forge, not from memory: `gh pr view <N> --json mergeCommit --jq .mergeCommit.oid` names the
+  delivering commit on main, and `<that oid>^` is the parent, which is the commit before it on
+  main for a squash merge and the first parent for a merge commit. Pass
+  `--base "<oid>^"` after resolving it to an object id with `git rev-parse`.
+  **What the check does not prove.** The runner and the lint accept only the merge-base or an
+  ancestor of it that already holds the brief file at its current path; a base on the branch, HEAD
+  itself, an object this clone does not hold, or a base older than the brief (the root commit, say)
+  is refused. A brief created or renamed on the branch has no such ancestor, so only the merge-base
+  itself is accepted for it. The
+  lint does NOT check WHICH ancestor you chose: any ancestor from the brief's creation up to the
+  merge-base passes. That the base is the tree without this change is your attestation, and the
+  Base cell is self-attested Evidence text like every witness cell. So take the parent of the
+  delivering merge, never a convenient old commit, and if you cannot resolve the delivering
+  change, record the row `unproven` rather than guess. Only the LATEST witness for a row counts,
+  and it must be for the row's current command: a later plain run, or an edited command, drops
+  the fail-first record.
+  Exit 1 means at least one risk-bearing row is non-discriminating. That is a VERIFY: FAIL on the
+  row, not on the code: route it back to the implementer to strengthen the row
+  (`docs/verify-row-strength.md`). Never land a closure on it. Exit 2 means a row could not run at
+  base, which is could-not-check, not a pass. The lint refuses a new closure whose risk-bearing row
+  has no current fail-first witness, is non-discriminating, or names a base that is not the
+  merge-base or an ancestor of it that already holds the brief at its current path (for a brief
+  created or renamed on the branch, only the merge-base itself).
+  **Side effects run twice.** A live, mutating or end-to-end row is executed once more at base,
+  so read each such row for side effects before running fail-first; a row that cannot safely run
+  twice is recorded `unproven` with its reason, never skipped silently.
 - **Tier — the two-stamp model.** The routine drain runs at the **LOCAL SESSION MODEL, never a
   stronger external/paid tier** (human:<name>, 2026-07-15). A risk-clear brief (gate `model`, all
   risk answers `no`) is the normal path and most of the queue, and the local tier is its only
@@ -402,9 +458,17 @@ computable from prose). On PASS write the same row's shape with `"outcome":"veri
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
 landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
 refresh only the brief in the verifier home from the target branch
-(`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`);
-never check out, pull or merge in the home, because moving its detached HEAD refuses
-admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
+(`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
+Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
+The writer binds that commit to this run's landed Evidence, while deriving deliverable input
+hashes from the admission's Source commit, which is the tree the verifier actually observed.
+The brief input still hashes its landed Evidence bytes. An existing-file content repair between observation and Evidence therefore wakes the failure.
+If the declared paths, path kinds or directory file membership change between Source and
+Evidence, the outcome writer requires fresh independent verification on the current target
+branch. Re-dispatch and rerun the Verify table before retrying the outcome; never add hashes
+for files the old run did not observe, or treat a refused record as landed.
+Supplied input-change receipts must describe the same admitted inputs. Never check out, pull or merge in
+the home, because moving its detached HEAD refuses admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
 row's lifecycle cells, which the row-scoped landing already put on the target branch. Admission
 refuses any other change to it (another row, prose, or this row's authoring cells), and before
 execution it refuses any change at all. `deskevidence --root <home>` checks the closure and compares
@@ -416,7 +480,7 @@ recording is unchanged. Records are immutable — a correction is a NEW record (
 edit of one already landed.
 
 ```
-{"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<merged-head-sha>"}
+{"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<full-evidence-commit-sha>"}
 ```
 
 **A failed/blocked verify also creates a durable REPAIR OBLIGATION** (`repair-obligation-v1`;

@@ -544,11 +544,21 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// Inert with no --changed set, exactly like the DAR check.
 	notices = append(notices, verifyScriptDiffNotices(changed)...)
 	// Unfailable Verify rows: a row whose command is structurally
-	// incapable of failing manufactures evidence. NOTICE this phase — the rules
-	// fire on briefs already on main, many of them closed, and rewriting a closed
-	// brief's Verify table to green the gate is the very falsification the check
-	// exists to catch. Flip to a hard problem once the active streams are clean.
-	notices = append(notices, unfailableRowNotices(checkStreams)...)
+	// incapable of failing manufactures evidence. Transition-scoped
+	// (verify-integrity/03): R1–R10 are a PROBLEM on a closure THIS branch makes
+	// and stay a NOTICE on every brief already closed at the merge-base —
+	// rewriting a closed brief's Verify table to green the gate is the very
+	// falsification the check exists to catch. The strength rules R11–R13 are
+	// NOTICEs everywhere (docs/verify-row-strength.md).
+	ufProblems, ufNotices := unfailableRowChecks(root, checkStreams)
+	problems = append(problems, ufProblems...)
+	notices = append(notices, ufNotices...)
+	// Fail-first (verify-integrity/03): a closure THIS branch makes must carry,
+	// for each risk-bearing Verify row, a `verifyrun --fail-first` witness that
+	// reds on the merge-base or an ancestor of it that already holds the brief. See witnessgate.go / failfirst.go.
+	ffProblems, ffNotices := failFirstGateChecks(root, checkStreams)
+	problems = append(problems, ffProblems...)
+	notices = append(notices, ffNotices...)
 	// Portability is advisory; existing POSIX rows remain executable records.
 	notices = append(notices, verifyPortabilityNotices(checkStreams)...)
 	// Missing EXECUTION WITNESS (ground-truth/01, #284): a brief the README
@@ -1524,7 +1534,7 @@ func main() {
 	// The `(default ".")` is spelled out because flag.Var — unlike flag.String —
 	// prints no default in usage output, and the default is unchanged.
 	flag.Var(&roots, "root", `repository root (default "."; repeatable — one STATUS.md per root)`)
-	checkMode := flag.Bool("check", false, "verify STATUS.md is current instead of writing it")
+	checkMode := flag.Bool("check", false, "verify STATUS.md is current instead of writing it; with --auto-flip-model, exit 2 when any candidate is REFUSED or COULD-NOT-CHECK (so a stuck row fails the run visibly)")
 	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
 	forgeMode := flag.Bool("forge", false, "opt in to the forge-backed checks. WITHOUT it statusgen is OFFLINE: it starts no forge process and makes no network call, and every forge-backed check reports could-not-check as itself rather than reading green. WITH it those checks read through the desk-tools `deskread` verb on the forge seam. The default is offline because a check that quietly stopped looking is indistinguishable from one that looked and found nothing")
 	lintAuditMode := flag.Bool("lint-audit", false, "30-day check-firing audit (statusgen/01): sample daily commits, tally per-rule PROBLEM/NOTICE firings, flag COLD (0-firing, un-tested) rules as retirement candidates — read-only, advisory, never retires a rule")
@@ -2033,7 +2043,7 @@ func main() {
 	// stream README rows, and only for gate:model briefs whose merge PR carries
 	// a live App approval at the merged head.
 	if *autoFlipModelMode {
-		os.Exit(runAutoFlipModel(*root, *scanDryRun))
+		os.Exit(runAutoFlipModel(*root, *scanDryRun, *checkMode))
 	}
 	if *alarmsMode {
 		os.Exit(runAlarms(*root))

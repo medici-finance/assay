@@ -30,8 +30,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/go-git/go-git/v5/plumbing/transport"
-
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
@@ -46,7 +44,9 @@ type pushSpec struct {
 	// setUpstream also records the pushed branch as srcRef's upstream (branch.<b>.remote and
 	// branch.<b>.merge) — what `git push -u` did on create. Only meaningful when srcRef is a
 	// refs/heads/ branch.
-	setUpstream bool
+	setUpstream   bool
+	checkedSource string        // update carries the immutable hash its identity gate checked
+	proof         *publishProof // present when create has checked the live destination
 }
 
 // pushFn is the push seam. Production binds pushBranch; a test that needs to observe or fail
@@ -68,34 +68,9 @@ var hookCommand = exec.Command
 // naming s.repo, or a local destination) and refuses anything else rather than trusting that
 // the gate ran.
 func pushBranch(s pushSpec) error {
-	out, err := git(s.dir, "remote", "get-url", "--push", "--all", "origin")
+	dest, endpoint, err := pushEndpoint(s)
 	if err != nil {
-		return deskkit.Unverifiable("cannot resolve origin's push destination", err)
-	}
-	dests := splitURLList(out)
-	if len(dests) != 1 {
-		return deskkit.Refused(fmt.Sprintf("refused: origin resolves to %d push destinations; deskpr pushes to exactly one", len(dests)))
-	}
-	dest := dests[0]
-
-	var url string
-	var auth transport.AuthMethod
-	switch classifyPushDest(dest) {
-	case pushLocal:
-		// No forge, no credential.
-		url = dest
-	case pushHTTPS:
-		slug, perr := parseRepo(dest)
-		if perr != nil || slug != s.repo {
-			return deskkit.Refused("refused: origin's push destination " + redactURL(dest) + " does not name " + s.repo)
-		}
-		ep, eerr := endpointFn(s.repo, s.originURL)
-		if eerr != nil {
-			return eerr
-		}
-		url, auth = ep.Opts.URL, ep.Opts.Auth
-	default:
-		return deskkit.Refused("refused: origin's push destination " + redactURL(dest) + " is not an https URL or a local repository")
+		return err
 	}
 
 	repo, oerr := gitcore.Open(s.dir)
@@ -106,7 +81,19 @@ func pushBranch(s pushSpec) error {
 	if rerr != nil {
 		return deskkit.Unverifiable("cannot resolve "+s.srcRef, rerr)
 	}
+	if s.checkedSource != "" && s.checkedSource != hash.String() {
+		return deskkit.Refused("refused: push source changed after publish-identity checking; re-run")
+	}
 	dstRef := "refs/heads/" + s.dstBranch
+	var required []string
+	if s.proof != nil {
+		if s.proof.destination != dest || s.proof.url != endpoint.URL || s.proof.ref != dstRef || s.proof.head != hash.String() {
+			return deskkit.Refused("refused: push destination or source changed after publish-identity checking; re-run")
+		}
+		if s.proof.tip != "" {
+			required = []string{s.proof.tip + ":" + dstRef}
+		}
+	}
 
 	// The pre-push hook gets the destination git would have handed it — the configured push
 	// URL, not the credentialed endpoint (which carries no userinfo either way).
@@ -120,9 +107,10 @@ func pushBranch(s pushSpec) error {
 	// exactly that commit, fast-forward-checked against the remote's current value — and it
 	// is the same sha the pre-push hook was just shown.
 	if perr := repo.Push(gitcore.PushOpts{
-		URL:      url,
-		RefSpecs: []string{hash.String() + ":" + dstRef},
-		Auth:     auth,
+		URL:               endpoint.URL,
+		RefSpecs:          []string{hash.String() + ":" + dstRef},
+		Auth:              endpoint.Auth,
+		RequireRemoteRefs: required,
 	}); perr != nil {
 		return deskkit.Unverifiable("git push failed", perr)
 	}
@@ -176,4 +164,39 @@ func runPrePushHook(dir, remoteURL, srcRef, srcSHA, dstRef string) error {
 		return deskkit.Unverifiable("git push failed", err)
 	}
 	return nil
+}
+
+// pushEndpoint is the single destination resolver for the proof and the push. A
+// configured host never receives the credential: HTTPS uses the custody endpoint.
+func pushEndpoint(s pushSpec) (string, gitcore.ListOpts, error) {
+	out, err := git(s.dir, "remote", "get-url", "--push", "--all", "origin")
+	if err != nil {
+		return "", gitcore.ListOpts{}, deskkit.Unverifiable("cannot resolve origin's push destination", err)
+	}
+	dests := splitURLList(out)
+	if len(dests) != 1 {
+		return "", gitcore.ListOpts{}, deskkit.Refused(fmt.Sprintf("refused: origin resolves to %d push destinations; deskpr pushes to exactly one", len(dests)))
+	}
+	dest := dests[0]
+
+	var endpoint gitcore.ListOpts
+	switch classifyPushDest(dest) {
+	case pushLocal:
+		// No forge, no credential.
+		endpoint.URL = dest
+	case pushHTTPS:
+		slug, perr := parseRepo(dest)
+		if perr != nil || slug != s.repo {
+			return "", gitcore.ListOpts{}, deskkit.Refused("refused: origin's push destination " + redactURL(dest) + " does not name " + s.repo)
+		}
+		ep, eerr := endpointFn(s.repo, s.originURL)
+		if eerr != nil {
+			return "", gitcore.ListOpts{}, eerr
+		}
+		endpoint = ep.Opts
+	default:
+		return "", gitcore.ListOpts{}, deskkit.Refused("refused: origin's push destination " + redactURL(dest) + " is not an https URL or a local repository")
+	}
+
+	return dest, endpoint, nil
 }

@@ -23,7 +23,7 @@ import (
 // cache-run, container-run) are covered by the legacy-forms and boundary tests.
 var visibleVerbs = []string{
 	"ls", "version", "new", "set", "show", "check", "deskd", "desk", "up", "down",
-	"smoke", "status", "cadence", "scratch", "cache", "comms", "defaults", "providers",
+	"reset", "smoke", "status", "cadence", "scratch", "cache", "comms", "defaults", "providers",
 }
 
 // snapshotTree is a stable fingerprint of every path under dir: name, mode, size and mtime.

@@ -57,6 +57,7 @@ binding ([`cursor.md`](./cursor.md)) that carry the `degrades`/`refuses` cells.
 | `pdfingest` | runs |
 | `pr-review-desk` | runs |
 | `pr-shepherd` | runs |
+| `session-coach` | runs  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
 | `system-demo` | runs |
 | `the-desk` | runs |
 | `upgrade-assay` | runs |

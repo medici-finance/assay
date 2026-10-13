@@ -102,6 +102,7 @@ func legacyWords(words []string, flag string) []string {
 // verbWords are the words after the verb as given (the selector already off): what the verbs
 // that compare exact words read, in place of the parser's positionals.
 var verbWords []string
+var maintenanceCommand string
 
 // rawVerb reports the internal entrypoints whose arguments are an opaque argv, never flags.
 func rawVerb(args []string) bool {
@@ -110,7 +111,7 @@ func rawVerb(args []string) bool {
 		return false
 	}
 	switch a[0] {
-	case "model-policy", "cache-run", "container-run", "defaults":
+	case "model-policy", "cache-run", "container-run", "defaults", "comms-reader":
 		return true
 	}
 	return false
@@ -119,6 +120,8 @@ func rawVerb(args []string) bool {
 // runTree executes one invocation against a fresh tree and returns its exit code. It is the
 // only place that turns the exit panic into a code.
 func runTree(args []string) (code int) {
+	maintenanceCommand = ""
+	defer releaseMaintenanceAdmissions()
 	rawSelector, rawSelected, verbWords, cellsRootSelected = "", false, nil, ""
 	hook := hookVerb(args)
 	defer func() {
@@ -451,6 +454,7 @@ func buildRoot() *cobra.Command {
 	declare(root, cli.Binding{Key: "cells-root", Kind: cli.String, Flag: "cells-root", Persistent: true,
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		maintenanceCommand = cmd.Name()
 		if cmd.Annotations[noEcho] == "1" {
 			return nil
 		}
@@ -471,10 +475,25 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
-		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(),
-		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(),
+		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(),
+		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(),
 	)
 	return root
+}
+
+func commsReaderCmd() *cobra.Command {
+	return &cobra.Command{Use: "comms-reader", Hidden: true, DisableFlagParsing: true, Annotations: map[string]string{noEcho: "1"}, RunE: func(cmd *cobra.Command, args []string) error { cmdCommsReader(args); return nil }}
+}
+
+func resetCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "reset <cell> [--hard]", Short: "stop and reset a cell; hard also refreshes configured repositories", Annotations: map[string]string{leadingArgsKey: "1"}, Args: cobra.ExactArgs(1)}
+	set := declare(cmd, bBool("hard", "discard messages, all linked worktrees and local branches; refresh every CELL_ROOTS repository"))
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		v := resolve(set, nil)
+		cmdReset(args[0], v.Bool("hard"))
+		return nil
+	}
+	return cmd
 }
 
 func versionCmd() *cobra.Command {
@@ -615,11 +634,16 @@ func deskCmd() *cobra.Command {
 			"override given (the model pin, CELL_HARNESS, CELL_PROVIDER, CELL_KIND, CELL_COCKPIT) through the same\n" +
 			"one-backup path `cellctl set` uses; an override not given is never re-written. --kind, --cockpit and\n" +
 			"--provider override cell.env's CELL_KIND, CELL_COCKPIT and CELL_PROVIDER for this run; a --kind the cell\n" +
-			"is not provisioned for is refused naming the missing key.",
+			"is not provisioned for is refused naming the missing key.\n\n" +
+			"When the role lease is busy the refusal names the lock, its holder and whether the holder is current.\n" +
+			"--end-stale-lock-holder lets the launch send SIGTERM (never SIGKILL) to a holder proven to be this cell's\n" +
+			"own cellctl for this role whose role child has exited, wait a bounded time, and re-check the lock. Any\n" +
+			"other holder is reported and left alone.",
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,
 	}
-	set := declare(cmd, launchBindings()...)
+	set := declare(cmd, append(launchBindings(),
+		bBool("end-stale-lock-holder", "end a proven-stale holder of this role's lease (SIGTERM, bounded wait, re-check)"))...)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cellArg(args)
 		if len(args) < 2 || args[1] == "" {
@@ -633,7 +657,9 @@ func deskCmd() *cobra.Command {
 		}
 		v := resolve(set, c)
 		launchNeeds(v)
-		cmdDesk(c, args[1], deskInputsFrom(v, lastBare(args[2:])))
+		in := deskInputsFrom(v, lastBare(args[2:]))
+		in.EndStaleLockHolder = v.Bool("end-stale-lock-holder") // declared on `desk` only, never `up`
+		cmdDesk(c, args[1], in)
 		return nil
 	}
 	return cmd
@@ -859,11 +885,12 @@ func cadenceCmd() *cobra.Command {
 
 func cacheCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cache <cell> status|clean|recover",
+		Use:   "cache <cell> status|clean|wipe|recover",
 		Short: "report or clean a cell's managed Go caches",
 		Long: "Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env or defaults.env; macOS/Linux).\n\n" +
 			"  cellctl cache <cell> status    dry-run JSON; no cleanup\n" +
 			"  cellctl cache <cell> clean     inactive caches, only under pressure\n" +
+			"  cellctl cache <cell> wipe      discard inactive build/module caches regardless of pressure\n" +
 			"  cellctl cache <cell> recover --confirm-stopped\n\n" +
 			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor. Configure CELL_GO_CACHE_ROOT /\n" +
 			"CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE. Recovery requires external proof ALL cache consumers have\n" +
@@ -882,15 +909,24 @@ func cacheCmd() *cobra.Command {
 
 func commsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "comms <cell> check|run|recover",
-		Short: "check, run or recover a cell's interim comms service",
-		Long: "Set the manifest: cellctl set <cell> CELL_COMMS_CONFIG=<absolute-path>. `up` opens one configured interim\n" +
+		Use:   "comms <cell> init|check|run|recover",
+		Short: "initialize, check, run or recover a cell's interim comms service",
+		Long: "Initialize: cellctl comms <cell> init [--model <pin>] [--repo owner/repo]. Creates private keys and a contained\n" +
+			"Codex reader using an existing auth.json login. Both reset modes preserve configuration, keys and login stores;\n" +
+			"retained paths overlapping cleanup storage refuse preflight.\n\n" +
+			"Set the manifest: cellctl set <cell> CELL_COMMS_CONFIG=<absolute-path>. `up` opens one configured interim\n" +
 			"service window; `down` stops it. `recover` needs --confirm-stopped. See docs/cellctl-comms.md.",
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,
 	}
-	declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior gateway, drain and every owned child have stopped"))
+	set := declare(cmd, bBool("confirm-stopped", "recover only: confirm the prior gateway, drain and every owned child have stopped"),
+		bBool("reader-contained", "attest that an external ACP reader has enforced containment"),
+		bStr("reader-cmd", "optional external contained ACP reader as JSON argv"), bStr("reader-pin", "external reader version pin"), bStr("model", "reader model or configured tier (default Codex fast tier)"), bStr("effort", "reader reasoning effort"), bStr("repo", "quarantine issue destination owner/repo"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 2 && args[1] == "init" {
+			cmdCommsInit(args[0], resolve(set, nil))
+			return nil
+		}
 		words := legacyWords(verbWords, "--confirm-stopped")
 		cmdComms(cellArg(words), words[1:])
 		return nil
