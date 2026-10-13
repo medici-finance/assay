@@ -326,8 +326,10 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   main for a squash merge and the first parent for a merge commit. Pass
   `--base "<oid>^"` after resolving it to an object id with `git rev-parse`.
   **What the check does not prove.** The runner and the lint accept only the merge-base or an
-  ancestor of it that already holds the brief file; a base on the branch, HEAD itself, an object
-  this clone does not hold, or a base older than the brief (the root commit, say) is refused. The
+  ancestor of it that already holds the brief file at its current path; a base on the branch, HEAD
+  itself, an object this clone does not hold, or a base older than the brief (the root commit, say)
+  is refused. A brief created or renamed on the branch has no such ancestor, so only the merge-base
+  itself is accepted for it. The
   lint does NOT check WHICH ancestor you chose: any ancestor from the brief's creation up to the
   merge-base passes. That the base is the tree without this change is your attestation, and the
   Base cell is self-attested Evidence text like every witness cell. So take the parent of the

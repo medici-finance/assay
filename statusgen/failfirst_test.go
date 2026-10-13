@@ -74,7 +74,11 @@ func withAncestry(t *testing.T, fn func(root, base, of string) (bool, string)) {
 	prev, prevMB := commitIsAncestor, failFirstMergeBase
 	commitIsAncestor = fn
 	failFirstMergeBase = func(string) string { return strings.Repeat("a", 40) }
-	t.Cleanup(func() { commitIsAncestor, failFirstMergeBase = prev, prevMB })
+	// The brief-held rule is exercised by TestFailFirstBaseMustHoldBrief and
+	// TestFailFirstBriefHeldRealGit; here every tree holds the brief.
+	prevHeld := pathHeldAt
+	pathHeldAt = func(_, _, _ string) bool { return true }
+	t.Cleanup(func() { commitIsAncestor, failFirstMergeBase, pathHeldAt = prev, prevMB, prevHeld })
 }
 
 // TestFailFirstNonDiscriminating — Verify row 1. A risk-bearing row green at
@@ -208,11 +212,13 @@ func TestFailFirstBaseAncestry(t *testing.T) {
 // nothing about the change.
 func TestFailFirstBaseFlagRefusesNonAncestor(t *testing.T) {
 	root, older, base, branch, head, _ := ffRepo(t)
+	withBriefHeld(t, base, older)
+	briefPath := filepath.Join(root, "docs", "streams", "ff", "brief-01-ff.md")
 	for _, c := range []struct {
 		name, rev string
 		ok        bool
 	}{{"merge-base", base, true}, {"ancestor of the merge-base", older, true}, {"branch commit", branch, false}, {"HEAD", head, false}} {
-		_, err := failFirstBaseRev(root, c.rev, "")
+		_, err := failFirstBaseRev(root, c.rev, briefPath)
 		if (err == nil) != c.ok {
 			t.Errorf("--base %s: err=%v, want ok=%v", c.name, err, c.ok)
 		}
@@ -412,7 +418,7 @@ func withBriefHeld(t *testing.T, held ...string) {
 // row reds because the files are missing, not because of any change. A base that
 // does not hold the brief file while the merge-base does is refused by the gate
 // and by the runner; a brief born on the branch (the merge-base lacks it too)
-// asks nothing of the base.
+// accepts only the merge-base itself.
 func TestFailFirstBaseMustHoldBrief(t *testing.T) {
 	withBase(t, true)
 	root, older, base, _, head, _ := ffRepo(t)
@@ -428,17 +434,104 @@ func TestFailFirstBaseMustHoldBrief(t *testing.T) {
 		{"older ancestor predates the brief", []string{base}, older, true},
 		{"older ancestor holds the brief", []string{base, older}, older, false},
 		{"the merge-base holds the brief", []string{base}, base, false},
-		{"brief born on the branch: no ancestor holds it", nil, older, false},
+		{"brief born on the branch: an older ancestor is refused", nil, older, true},
+		{"brief born on the branch: the merge-base itself is the one base accepted", nil, base, false},
 	} {
 		withBriefHeld(t, c.held...)
 		evidence := ffTable(failFirstCell(c.baseRev[:12], baseRed, 1, head[:12]), skip)
 		problems, _ := failFirstGateChecks(root, ffStream(t, root, evidence))
-		if got := containsSub(problems, "predates the brief"); got != c.wantProblem {
+		if got := containsSub(problems, "predates the brief") || containsSub(problems, "cannot be shown to hold the brief"); got != c.wantProblem {
 			t.Errorf("gate, %s: PROBLEM=%v, want %v; problems=%v", c.name, got, c.wantProblem, problems)
 		}
 		_, err := failFirstBaseRev(root, c.baseRev, briefPath)
 		if (err != nil) != c.wantProblem {
 			t.Errorf("runner --base, %s: err=%v, want refusal=%v", c.name, err, c.wantProblem)
+		}
+	}
+}
+
+// TestFailFirstBriefHeldRealGit — the review's three scenarios against a real
+// repository, no stubbed probe: the root commit has no brief, the next commit
+// (the merge-base) adds it, and the branch then (1) leaves it at the same path,
+// (2) renames it, (3) holds a brief created on the branch. With the root commit
+// as base, (1) was always refused; (2) and (3) used to be accepted. Each must be
+// refused now, and the merge-base itself stays accepted in every one.
+func TestFailFirstBriefHeldRealGit(t *testing.T) {
+	const rel = "docs/streams/ff/brief-01-ff.md"
+	const renamed = "docs/streams/ff/brief-02-ff.md"
+	setup := func(t *testing.T, briefAtMergeBase bool) (root, rootCommit, mergeBase string) {
+		t.Helper()
+		root = t.TempDir()
+		gitRun(t, root, "init", "-q")
+		writeTemp(t, root, "flag.txt", "old\n")
+		gitRun(t, root, "add", "-A")
+		gitRun(t, root, "commit", "-q", "-m", "root")
+		rootCommit = gitOutT(t, root, "rev-parse", "HEAD")
+		if briefAtMergeBase {
+			mustMkdirAll(t, filepath.Join(root, "docs", "streams", "ff"))
+			writeTemp(t, filepath.Join(root, "docs", "streams", "ff"), "brief-01-ff.md", "# brief\n")
+		} else {
+			writeTemp(t, root, "other.txt", "x\n")
+		}
+		gitRun(t, root, "add", "-A")
+		gitRun(t, root, "commit", "-q", "-m", "merge-base")
+		mergeBase = gitOutT(t, root, "rev-parse", "HEAD")
+		return root, rootCommit, mergeBase
+	}
+	for _, c := range []struct {
+		name         string
+		briefAtMB    bool
+		onBranch     func(t *testing.T, root string)
+		finalRel     string
+		wantRootBase bool // is the root commit accepted as the base
+	}{
+		{"same path: refused", true, func(t *testing.T, root string) {
+			writeTemp(t, filepath.Join(root, "docs", "streams", "ff"), "brief-01-ff.md", "# brief edited\n")
+		}, rel, false},
+		{"renamed on the branch: refused", true, func(t *testing.T, root string) {
+			gitRun(t, root, "mv", rel, renamed)
+		}, renamed, false},
+		{"created on the branch: refused", false, func(t *testing.T, root string) {
+			mustMkdirAll(t, filepath.Join(root, "docs", "streams", "ff"))
+			writeTemp(t, filepath.Join(root, "docs", "streams", "ff"), "brief-01-ff.md", "# brief\n")
+		}, rel, false},
+	} {
+		root, rootCommit, mergeBase := setup(t, c.briefAtMB)
+		c.onBranch(t, root)
+		gitRun(t, root, "add", "-A")
+		gitRun(t, root, "commit", "-q", "-m", "branch")
+		briefPath := filepath.Join(root, filepath.FromSlash(c.finalRel))
+
+		if why := briefHeldAtBase(root, briefPath, rootCommit, mergeBase); (why == "") != c.wantRootBase {
+			t.Errorf("%s: briefHeldAtBase(root commit) = %q, want accepted=%v", c.name, why, c.wantRootBase)
+		}
+		if why := briefHeldAtBase(root, briefPath, mergeBase, mergeBase); why != "" {
+			t.Errorf("%s: the merge-base itself must stay accepted; got %q", c.name, why)
+		}
+		if why := briefHeldAtBase(root, briefPath, mergeBase[:12], mergeBase); why != "" {
+			t.Errorf("%s: an abbreviated merge-base must stay accepted; got %q", c.name, why)
+		}
+		prev := failFirstMergeBase
+		failFirstMergeBase = func(string) string { return mergeBase }
+		_, err := failFirstBaseRev(root, rootCommit, briefPath)
+		if (err == nil) != c.wantRootBase {
+			t.Errorf("%s: runner --base <root commit>: err=%v, want accepted=%v", c.name, err, c.wantRootBase)
+		}
+		if _, err := failFirstBaseRev(root, mergeBase, briefPath); err != nil {
+			t.Errorf("%s: runner --base <merge-base> must be accepted; got %v", c.name, err)
+		}
+		failFirstMergeBase = prev
+	}
+
+	// Fail closed: a brief path outside the clone, or an empty one, cannot be
+	// resolved, so only the merge-base itself passes.
+	root, rootCommit, mergeBase := setup(t, true)
+	for _, bp := range []string{"", filepath.Join(t.TempDir(), "brief-01-ff.md")} {
+		if why := briefHeldAtBase(root, bp, rootCommit, mergeBase); why == "" {
+			t.Errorf("an unresolvable brief path %q must refuse an ancestor base", bp)
+		}
+		if why := briefHeldAtBase(root, bp, mergeBase, mergeBase); why != "" {
+			t.Errorf("an unresolvable brief path %q still accepts the merge-base itself; got %q", bp, why)
 		}
 	}
 }

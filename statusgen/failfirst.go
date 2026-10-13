@@ -25,7 +25,9 @@ package main
 //   - that base holds the brief file at its current path whenever the
 //     merge-base does (briefHeldAtBase), so a base older than the brief, such
 //     as the repository's root commit, where every row reds for reasons that
-//     have nothing to do with any change, is refused; and
+//     have nothing to do with any change, is refused; when the merge-base does
+//     NOT hold the brief at that path (created or renamed on the branch, or the
+//     path does not resolve) only the merge-base itself is accepted; and
 //   - it is the LATEST witness for the row and was run for the row's CURRENT
 //     command (the sibling check checkWitnesses applies the same two rules).
 //
@@ -276,29 +278,66 @@ func canonicalPath(p string) string {
 // without this change". It returns "" when the base is acceptable and the
 // reason otherwise.
 //
-// The rule is: if the merge-base holds the brief file at its current path, the
-// chosen base must too. When the merge-base does not hold it either, the brief
-// was born on this branch (or the path is outside this clone) and no ancestor
-// could, so nothing is asked of the base.
+// The rule has two arms and no exemption:
+//   - the merge-base holds the brief file at its current path: the chosen base
+//     must hold it too (any ancestor from the brief's creation up to the
+//     merge-base passes);
+//   - the merge-base does NOT hold it there (the brief was created, renamed or
+//     moved on this branch, its path does not resolve under the root, or the
+//     probe failed): no ancestor can be shown to hold the brief, so the only
+//     base accepted is the merge-base itself. The check fails closed.
 //
-// This NARROWS the gap and does not close it: any ancestor from the brief's
-// creation up to the merge-base still passes, and which of them is "without the
-// delivering change" stays the verifier's attestation. A brief renamed since the
-// base is refused; pass a later ancestor.
+// This NARROWS the gap and does not close it: which ancestor between the
+// brief's creation and the merge-base is "without the delivering change" stays
+// the verifier's attestation (medici-finance/assay#2721 owns binding it).
 func briefHeldAtBase(root, briefPath, base, mergeBase string) string {
-	if briefPath == "" || mergeBase == "" {
+	if mergeBase == "" {
 		return ""
 	}
-	absRoot, absBrief := canonicalPath(root), canonicalPath(briefPath)
-	rel, err := filepath.Rel(absRoot, absBrief)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+	rel, resolved := briefRelPath(root, briefPath)
+	if resolved && pathHeldAt(root, mergeBase, rel) {
+		if pathHeldAt(root, base, rel) {
+			return ""
+		}
+		return "the base predates the brief: it does not hold " + rel + ", which the merge-base does, so the Verify rows did not exist on that tree and a red there is not about this change (pass a later ancestor of the merge-base)"
+	}
+	if sameCommit(root, base, mergeBase) {
 		return ""
 	}
-	rel = filepath.ToSlash(rel)
-	if pathHeldAt(root, base, rel) || !pathHeldAt(root, mergeBase, rel) {
-		return ""
+	what := "the brief path does not resolve under this clone"
+	if resolved {
+		what = "the merge-base does not hold " + rel + " (the brief was created, renamed or moved on this branch, or the probe failed)"
 	}
-	return "the base predates the brief: it does not hold " + rel + ", which the merge-base does, so the Verify rows did not exist on that tree and a red there is not about this change (pass a later ancestor of the merge-base)"
+	return "the base cannot be shown to hold the brief: " + what + ", so no ancestor of the merge-base can be shown to hold it and only the merge-base itself is accepted as the base (use the default base)"
+}
+
+// briefRelPath returns the brief's slash path relative to the repository root,
+// and false when it does not resolve to a file inside the root.
+func briefRelPath(root, briefPath string) (string, bool) {
+	if briefPath == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(canonicalPath(root), canonicalPath(briefPath))
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
+}
+
+// sameCommit reports whether rev names the commit mergeBase names. An
+// unresolvable rev is not the same commit (fail closed).
+func sameCommit(root, rev, mergeBase string) bool {
+	if rev == "" || mergeBase == "" {
+		return false
+	}
+	if rev == mergeBase {
+		return true
+	}
+	full, err := resolveCommit(root, rev)
+	if err != nil || !isObjectID(full) {
+		return false
+	}
+	return full == mergeBase
 }
 
 // runFailFirstBase checks base out into a temporary detached worktree, runs

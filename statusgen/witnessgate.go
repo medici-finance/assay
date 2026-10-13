@@ -209,7 +209,9 @@ func failedWitnessRows(findings []checkFinding) []string {
 //     own commit, or a commit of this branch (the SPOF layer: see failfirst.go);
 //   - names a base that predates the brief (the merge-base holds the brief file
 //     at its current path and the base does not), so the Verify rows did not
-//     exist on that tree — a red there is not about this change;
+//     exist on that tree — a red there is not about this change; or, when the
+//     merge-base does not hold the brief at its current path (created or
+//     renamed on the branch), names anything but the merge-base itself;
 //   - is green at base — `non-discriminating`: it passes with or without the
 //     change.
 //
