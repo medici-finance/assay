@@ -10,7 +10,7 @@
     {
       "name": "the --root join becomes a no-op (a repo-relative --evidence-file is read from the process cwd, not the --root checkout — #1709 defeated)",
       "file": "cmd/deskevidence/deskevidence.go",
-      "old": "\t\tlocalReadPath = filepath.Join(*root, evidenceRepoPath)",
+      "old": "\t\t\tlocalReadPath = filepath.Join(evidenceRoot, evidenceRepoPath)",
       "new": "\t\tlocalReadPath = evidenceRepoPath"
     },
     {
