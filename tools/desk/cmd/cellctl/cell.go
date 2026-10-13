@@ -435,7 +435,7 @@ func deskToolsBin(e *Env) string {
 // realConfigHome is the OPERATOR's config home — the one holding the App private keys a k8s or
 // house cell symlinks to. A scrubbed cell never reads it, by construction.
 func realConfigHome(e *Env) string {
-	return mustResolve(configHomeFor(runtime.GOOS, e))
+	return mustResolve(operatorConfigHomeFor(runtime.GOOS, e))
 }
 
 // cellDir is the directory of the cell named name, which must be a name under the cells root
