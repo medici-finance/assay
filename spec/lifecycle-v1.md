@@ -421,9 +421,10 @@ write through when the check could not run. The hold MUST NOT be applied at a pu
 request's ready-flip: decision latency is a queue's main bottleneck, and blocking the flip
 would wedge every PR behind an unruled decision. An evidence landing's check MUST judge the
 board the write lands on, not a stale copy of it: when the landing is judged from a checkout
-that is not the target branch's tip, the landing MUST NOT proceed if the target branch has
-changed any board file (other than the one being written) since that checkout's commit, or
-if that cannot be determined. A PR that delivers a `gate: human` brief
+that is not the target branch's tip, the branch's version of every board file it has
+changed since that checkout's commit (other than the one being written) MUST be what is
+judged, and the landing MUST NOT proceed if those files cannot be read or the set cannot
+be determined or shown complete. The checkout itself is never moved. A PR that delivers a `gate: human` brief
 MAY carry an informational banner naming the decision issue and whether a ruling is
 recorded; the banner blocks nothing.
 

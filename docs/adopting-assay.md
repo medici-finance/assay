@@ -612,10 +612,13 @@ identity* — plan for it before you turn protection on, not after the board sil
 > The check runs on the pull request that carries the status transition. It never runs at a
 > PR's ready-flip: a draft PR that delivers a `gate: human` brief is reviewed and readied as
 > usual, and only the board row's move waits on the ruling. `deskevidence` runs the same
-> `--decision-gate` check before a landing that bypasses pull requests, and `deskpr create`
+> `--decision-gate` check before a landing that bypasses pull requests, judging the board as the
+> target branch holds it (it reads the board files the branch changed since the landing
+> checkout's commit and never moves the checkout), and `deskpr create`
 > prepends a banner naming the decision issue to such a PR's body. The banner informs; it blocks
 > nothing. On **GitLab**, layer two is not scaffolded, so the hold there is the well-formed-link
-> check of layer one alone.
+> check of layer one alone; and because GitLab serves no ref compare, `deskevidence` reports
+> could-not-check (exit 6) on an evidence landing there.
 
 **Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint. Roster: `grep -c 'vars.ASSAY_' …/statusgen.yml` is 5, and the regen job's log shows `role-bindings=` naming your `verifier=` binding rather than `(none bound)` — a `::notice::ASSAY_TRUSTED_BOT_SLUGS is not set` line in that log means the variables are not set yet.
 

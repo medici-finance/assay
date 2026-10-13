@@ -59,8 +59,12 @@ var decisionGateReplacedBaseFn = replacedBaseCommit
 // only the REFUSED lines present after and absent before are this landing's. Lines
 // both runs print come from other, uncommitted edits in the worktree, not from this
 // write. The stage is always reverted.
-func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedExists bool, newContent []byte) (introduced []string, err error) {
-	base, err := decisionGateReplacedBaseFn(root, targetRepoPath, replaced, replacedExists)
+//
+// board is the target branch's version of every board file it changed since the home's
+// commit (decisionGateBranchBoard): applied to the base and to the worktree of both
+// runs, so the judge reads the board the write lands on, not the home's older one.
+func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedExists bool, newContent []byte, board []boardEdit) (introduced []string, err error) {
+	base, err := decisionGateReplacedBaseFn(root, targetRepoPath, replaced, replacedExists, board)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +84,13 @@ func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedEx
 			_ = os.Remove(abs)
 		}
 	}()
+	// The branch's board (every changed file but the target) stands in the worktree for
+	// both runs, as it does in the base, so only this write's own difference is judged.
+	restoreBoard, berr := stageBoardEdits(root, board)
+	if berr != nil {
+		return nil, berr
+	}
+	defer restoreBoard()
 	// Before: the replaced content in place, the same base.
 	if replacedExists {
 		if werr := os.WriteFile(abs, replaced, 0o644); werr != nil {
@@ -117,7 +128,7 @@ func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedEx
 // replacedBaseCommit writes (without touching any ref, the index or the worktree) a
 // commit whose tree is root's HEAD tree with targetRepoPath holding replaced — or
 // absent when !replacedExists — and returns its id. It uses a throwaway index file.
-func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedExists bool) (string, error) {
+func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedExists bool, board []boardEdit) (string, error) {
 	fail := func(what string, err error) (string, error) {
 		return "", deskkit.Unverifiable("cannot build the decision-gate base ("+what+") in "+root, err)
 	}
@@ -159,6 +170,21 @@ func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedEx
 	} else if _, err := git(nil, "update-index", "--force-remove", "--", targetRepoPath); err != nil {
 		return fail("update-index --force-remove", err)
 	}
+	for _, e := range board {
+		if e.Delete {
+			if _, err := git(nil, "update-index", "--force-remove", "--", e.Path); err != nil {
+				return fail("update-index --force-remove "+e.Path, err)
+			}
+			continue
+		}
+		blob, err := git(e.Content, "hash-object", "-w", "--stdin")
+		if err != nil || blob == "" {
+			return fail("hash-object "+e.Path, err)
+		}
+		if _, err := git(nil, "update-index", "--add", "--cacheinfo", "100644,"+blob+","+e.Path); err != nil {
+			return fail("update-index "+e.Path, err)
+		}
+	}
 	tree, err := git(nil, "write-tree")
 	if err != nil || tree == "" {
 		return fail("write-tree", err)
@@ -170,10 +196,20 @@ func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedEx
 	return commit, nil
 }
 
-// decisionGateHomeFreshFn is the seam cmdEvidence calls before the judge. setupFake
-// stubs it to "fresh"; decisiongate_test.go drives decisionGateHomeFresh directly and
-// the whole-verb tests restore the production binding.
-var decisionGateHomeFreshFn = decisionGateHomeFresh
+// boardEdit is one board file the target branch holds differently from the landing
+// home: Content is the branch's bytes, or Delete is true when the branch has no such
+// file. The judge is run on the home's tree with these applied, so it reads the board
+// the write lands on (S-2266-6).
+type boardEdit struct {
+	Path    string
+	Content []byte
+	Delete  bool
+}
+
+// decisionGateBranchBoardFn is the seam cmdEvidence calls before the judge. setupFake
+// stubs it to "no difference"; decisiongate_test.go drives decisionGateBranchBoard
+// directly and the whole-verb tests restore the production binding.
+var decisionGateBranchBoardFn = decisionGateBranchBoard
 
 // decisionGateCompareFileCap is the number of files the forge's compare read serves
 // before it stops listing (GitHub: 300). A listing that reaches it may be truncated.
@@ -188,54 +224,113 @@ var (
 	decisionGateRegisterRe = regexp.MustCompile(`^docs/(streams|archive)/(findings|intake|verify-outcomes)/`)
 )
 
-// decisionGateHomeFresh refuses (could-not-check) when the target branch holds a
-// board change the landing home does not.
+// decisionGateBranchBoard returns the board files the target branch holds differently
+// from the landing home, so the judge can read the board the write lands on.
 //
 // decisionGateDiffAt reads every board record except the write's own target from the
 // landing home: its HEAD for the base, its working tree for the after side. The home
 // is bound to the commit fixed at verifier dispatch, which sits behind the target
-// branch once anything lands there. A brief relabelled gate: human on the branch
-// after dispatch is then invisible to the judge, and an unruled move of it would
-// land. The write lands on the branch (lifecycle-v1 §4.5), so the branch is what it
-// must be judged against; the forge serves no tree read to build that base from, so
-// the check is the other half of the alternative: any board file the branch changed
-// since the home's HEAD, other than the target the write replaces, is could-not-check.
-// Re-run the landing from a home that carries the branch's board.
+// branch once anything lands there (including this verb's own earlier landing of the
+// same brief). A brief relabelled gate: human on the branch after dispatch is then
+// invisible to the judge, and an unruled move of it would land. The write lands on the
+// branch (lifecycle-v1 §4.5), so the branch is what it must be judged against: every
+// board file the branch changed since the home's HEAD, other than the target the write
+// replaces, is read at the branch tip and applied to both sides of the judge. The home
+// is never moved.
 //
-// Fail closed throughout: a home HEAD the forge does not know, a compare that cannot
-// be shown complete, or a forge that serves no compare is could-not-check, never a pass.
-func decisionGateHomeFresh(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branch, targetRepoPath string) error {
+// Fail closed throughout: a home HEAD the forge does not know, a compare that cannot be
+// shown complete (or a forge that serves no compare), or a changed board file that
+// cannot be read at the branch tip is could-not-check, never a pass.
+func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branch, targetRepoPath string) ([]boardEdit, error) {
 	cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
 	cmd.Dir = os.TempDir()
 	out, err := cmd.Output()
 	head := strings.TrimSpace(string(out))
 	if err != nil || head == "" {
-		return deskkit.Unverifiable("cannot resolve the landing home's HEAD in "+root+" to compare it with "+branch+" (decision-gate hold, lifecycle-v1 §4.5)", err)
+		return nil, deskkit.Unverifiable("cannot resolve the landing home's HEAD in "+root+" to compare it with "+branch+" (decision-gate hold, lifecycle-v1 §4.5)", err)
 	}
 	branch = strings.TrimPrefix(branch, "refs/heads/")
 	cmp, err := fg.CompareRefs(fr, head, branch)
 	if err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, fr.Slug()), err)
+		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, fr.Slug()), err)
 	}
 	if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
-		return deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, fr.Slug()), nil)
+		return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, fr.Slug()), nil)
 	}
-	var moved []string
+	isBoard := func(p string) bool {
+		return p != "" && p != targetRepoPath && decisionGateBoardRe.MatchString(p) && !decisionGateRegisterRe.MatchString(p)
+	}
+	var edits []boardEdit
+	seen := map[string]bool{}
 	for _, f := range cmp.Files {
-		for _, p := range []string{f.Filename, f.PreviousFilename} {
-			if p == "" || p == targetRepoPath || !decisionGateBoardRe.MatchString(p) || decisionGateRegisterRe.MatchString(p) {
-				continue
+		if isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {
+			seen[f.PreviousFilename] = true
+			edits = append(edits, boardEdit{Path: f.PreviousFilename, Delete: true})
+		}
+		if !isBoard(f.Filename) || seen[f.Filename] {
+			continue
+		}
+		seen[f.Filename] = true
+		if f.Status == "removed" {
+			edits = append(edits, boardEdit{Path: f.Filename, Delete: true})
+			continue
+		}
+		fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: branch})
+		if rerr != nil {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read %s at %s on %s, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, branch, fr.Slug()), rerr)
+		}
+		if fc == nil || !fc.Exists {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("%s is listed as changed on %s but is absent at its tip, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, branch), nil)
+		}
+		edits = append(edits, boardEdit{Path: f.Filename, Content: fc.Content})
+	}
+	return edits, nil
+}
+
+// stageBoardEdits applies edits to the working tree at root and returns the function
+// that puts every touched file back as it was.
+func stageBoardEdits(root string, edits []boardEdit) (restore func(), err error) {
+	type saved struct {
+		abs     string
+		content []byte
+		existed bool
+	}
+	var undo []saved
+	restore = func() {
+		for i := len(undo) - 1; i >= 0; i-- {
+			u := undo[i]
+			if u.existed {
+				_ = os.WriteFile(u.abs, u.content, 0o644)
+			} else {
+				_ = os.Remove(u.abs)
 			}
-			moved = append(moved, p)
 		}
 	}
-	if len(moved) > 0 {
-		if len(moved) > 5 {
-			moved = append(moved[:5], fmt.Sprintf("… and %d more", len(moved)-5))
+	for _, e := range edits {
+		abs := filepath.Join(root, filepath.FromSlash(e.Path))
+		orig, rerr := os.ReadFile(abs)
+		if rerr != nil && !os.IsNotExist(rerr) {
+			restore()
+			return func() {}, deskkit.Unverifiable("cannot read local "+abs+" to stage the branch's board for the decision-gate check", rerr)
 		}
-		return deskkit.Unverifiable(fmt.Sprintf("%s has changed the board since the landing home's HEAD %s (%s), so the decision-gate check — which reads every board record but the target from the home — could judge a stale board; re-run the landing from a home that carries %s", branch, head, strings.Join(moved, ", "), branch), nil)
+		undo = append(undo, saved{abs: abs, content: orig, existed: rerr == nil})
+		if e.Delete {
+			if rmerr := os.Remove(abs); rmerr != nil && !os.IsNotExist(rmerr) {
+				restore()
+				return func() {}, deskkit.Unverifiable("cannot clear "+abs+" to stage the branch's board for the decision-gate check", rmerr)
+			}
+			continue
+		}
+		if merr := os.MkdirAll(filepath.Dir(abs), 0o755); merr != nil {
+			restore()
+			return func() {}, deskkit.Unverifiable("cannot create local directories under "+root+" to stage the branch's board for the decision-gate check", merr)
+		}
+		if werr := os.WriteFile(abs, e.Content, 0o644); werr != nil {
+			restore()
+			return func() {}, deskkit.Unverifiable("cannot stage the branch's board at "+abs+" for the decision-gate check", werr)
+		}
 	}
-	return nil
+	return restore, nil
 }
 
 // decisionGateRefusedMark is the separator statusgen prints between a board id and

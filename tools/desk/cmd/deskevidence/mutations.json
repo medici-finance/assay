@@ -176,28 +176,52 @@
       "new": "\tif false && len(gateRefused) > 0 {"
     },
     {
-      "name": "landing home freshness not consulted (a brief relabelled gate: human on the target branch after dispatch is invisible to the judge and an unruled move of it lands)",
+      "name": "the branch's board is not consulted (a brief relabelled gate: human on the target branch after dispatch is invisible to the judge and an unruled move of it lands)",
       "file": "cmd/deskevidence/deskevidence.go",
-      "old": "decisionGateHomeFreshFn(fg, fr, lintRoot, branch, targetRepoPath); herr != nil {",
-      "new": "decisionGateHomeFreshFn(fg, fr, lintRoot, branch, targetRepoPath); false && herr != nil {"
+      "old": "commitContent, boardEdits)",
+      "new": "commitContent, boardEdits[:0])"
     },
     {
-      "name": "home freshness ignores every changed file (a board change on the target branch since the home's commit is not seen)",
+      "name": "branch board ignores every changed file (a board change on the target branch since the home's commit is not seen)",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "|| !decisionGateBoardRe.MatchString(p) ||",
-      "new": "|| true ||"
+      "old": "return p != \"\" && p != targetRepoPath && decisionGateBoardRe.MatchString(p) && !decisionGateRegisterRe.MatchString(p)",
+      "new": "return false"
     },
     {
-      "name": "home freshness reads a compare that cannot be shown complete as complete (a truncated file listing hides a board change)",
+      "name": "branch board reads a compare that cannot be shown complete as complete (a truncated file listing hides a board change)",
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {",
       "new": "if cmp == nil {"
     },
     {
-      "name": "home freshness lets a compare error through (an unreadable branch is read as an unchanged board)",
+      "name": "branch board lets a compare error through (an unreadable branch is read as an unchanged board)",
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "cmp, err := fg.CompareRefs(fr, head, branch)\n\tif err != nil {",
       "new": "cmp, err := fg.CompareRefs(fr, head, branch)\n\tif false && err != nil {"
+    },
+    {
+      "name": "branch board lets an unreadable changed file through (a changed board file the judge never sees)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: branch})\n\t\tif rerr != nil {",
+      "new": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: branch})\n\t\tif false && rerr != nil {"
+    },
+    {
+      "name": "branch board reads a removed file as present (a brief the branch deleted still stands for the judge)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if f.Status == \"removed\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "branch board not staged in the judge's worktree (the after run reads the home's older board)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "restoreBoard, berr := stageBoardEdits(root, board)",
+      "new": "restoreBoard, berr := stageBoardEdits(root, nil)"
+    },
+    {
+      "name": "branch board not applied to the judge's base (the before run reads the home's older board)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "for _, e := range board {\n\t\tif e.Delete {\n\t\t\tif _, err := git(nil, \"update-index\"",
+      "new": "for _, e := range board[:0] {\n\t\tif e.Delete {\n\t\t\tif _, err := git(nil, \"update-index\""
     },
     {
       "name": "decision-gate could-not-check swallowed (statusgen missing or too old lets a landing through unchecked)",
@@ -238,7 +262,7 @@
     {
       "name": "decision-gate judged against the worktree's own HEAD, not the content the write replaces (a landing committed locally in place cancels itself and the unruled move lands)",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "\tbase, err := decisionGateReplacedBaseFn(root, targetRepoPath, replaced, replacedExists)\n",
+      "old": "\tbase, err := decisionGateReplacedBaseFn(root, targetRepoPath, replaced, replacedExists, board)\n",
       "new": "\tbase, err := \"HEAD\", error(nil)\n"
     },
     {

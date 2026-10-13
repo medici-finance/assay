@@ -313,11 +313,11 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
 	oldDecisionGate := decisionGateDiffFn
-	decisionGateDiffFn = func(string, string, []byte, bool, []byte) ([]string, error) { return nil, nil }
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
-	oldHomeFresh := decisionGateHomeFreshFn
-	decisionGateHomeFreshFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) error { return nil }
-	t.Cleanup(func() { decisionGateHomeFreshFn = oldHomeFresh })
+	oldBranchBoard := decisionGateBranchBoardFn
+	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
+	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldOutcome := outcomeGuardFn
 	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
 	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
