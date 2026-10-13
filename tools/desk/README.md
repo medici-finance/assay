@@ -137,10 +137,12 @@ assay-config: class=write source=config file … configured=true digest=sha256:<
 The digest is sha256 over the full block, so it moves on any change in either direction. The
 **full block** prints instead whenever any of these holds:
 
-- the run is in CI (`CI=true` or `GITHUB_ACTIONS=true`) — CI history keeps every line;
+- the run is in CI (`CI=true` or `CI=1`, any case, or `GITHUB_ACTIONS=true`) — CI history keeps
+  every line;
 - the roster carries a `REFUSED` or `unrecognised-keys` line — those are never quieter;
-- the digest differs from the last one this config home saw (recorded in
-  `config-echo.state`, beside the roster) — so the first run after a change shows it whole;
+- the digest differs from the last recorded one (in `config-echo.state`, beside the roster) —
+  so the first run after a change shows it whole. Only a default-form run records; a forced, CI
+  or refused run prints the full block without recording;
 - that state file cannot be read or written;
 - `ASSAY_CONFIG_ECHO=full` is set (any value other than `compact` counts as `full`); this forced
   form neither reads nor updates the state file.

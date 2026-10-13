@@ -17,8 +17,10 @@ package deskkit
 //   - ASSAY_CONFIG_ECHO=full is set — or ASSAY_CONFIG_ECHO holds any value other than
 //     "compact": an unrecognised value never makes the echo quieter. This forced form is
 //     exactly the echo before the digest existed: it neither reads nor writes the state file;
-//   - the digest differs from the last one this config home saw, recorded in a small state
-//     file beside the roster — so the first run after ANY change prints in full;
+//   - the digest differs from the last RECORDED digest, kept in a small state file beside the
+//     roster — so the first stateful run after a change prints in full. Only that stateful
+//     path records: a forced, CI or refused run prints in full without recording, so a return
+//     to the recorded configuration after such a run prints compact (its digest still shows);
 //   - that state file cannot be read or cannot be written: a run that cannot prove it has
 //     already shown this configuration shows it.
 //
