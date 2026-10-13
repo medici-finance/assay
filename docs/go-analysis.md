@@ -114,7 +114,8 @@ adding or removing a finding in another function never re-identifies an untouche
 finding, even when the two lines are textually identical. Within one declaration,
 identical lines are told apart by the smallest distinguishing neighborhood, so
 editing next to such a line can conservatively produce a new identity. Blank/comment
-movement preserves ordinary code anchors. Ambiguous identities fail for review. See the [report contract](go-analysis-report-v1.md) for exact fields.
+movement preserves ordinary code anchors. Lines before the first declaration (the
+package clause and the comments and directives above it) form their own scope. Ambiguous identities fail for review. See the [report contract](go-analysis-report-v1.md) for exact fields.
 The baseline does not exempt failures from any already-enforced test, vet or
 security gate. Findings are analyzer observations, not confirmed vulnerabilities.
 
@@ -131,7 +132,7 @@ gate result. Incomplete scans cannot resolve debt or report measured zero.
 Desk-tools/35 consumes this same artifact into qualgen; ingestion, vulnerability
 analysis and historical rendering are not implemented by this correctness change.
 
-The committed harness runs 13 tests and 13 guard mutations, with real upstream
+The committed harness runs 14 tests and 14 guard mutations, with real upstream
 analyzer red/green controls. It proves module discovery, source movement, baseline
 monotonicity, duplicate refusal, policy changes, checksum rejection and failure
 propagation in the first/middle/last scan. The action has its own separate wrapper

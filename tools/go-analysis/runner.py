@@ -228,7 +228,12 @@ def normalize(root, module, conf, issue):
     own = scopes[line - 1][0]
     seg = segments[own]
     at = sum(1 for number, _ in significant[:index] if scopes[number][0] == own)
-    peers = [segments[start] for start in segments if scopes[start][1] == scopes[line - 1][1]]
+    # The preamble (package clause and the comments/directives above the first declaration) has
+    # start -1, which is not a list index; it is its own 'package' scope.
+    def symbol_of(start):
+        return scopes[start][1] if start >= 0 else 'package'
+
+    peers = [segments[start] for start in segments if symbol_of(start) == scopes[line - 1][1]]
     window = None
     for radius in range(0, 65):
         def around(rows, position):

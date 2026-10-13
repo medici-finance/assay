@@ -129,6 +129,24 @@ class Ratchet(unittest.TestCase):
             self.assertEqual(alpha, ident(head + func('Alpha', close) + func('Gamma', close) + func('Beta', close), 'Alpha'))
             self.assertEqual(beta, ident(head + func('Gamma', close) + func('Alpha', close) + func('Beta', close), 'Beta'))
 
+    # regression: F-go-analysis-preamble-anchor
+    def test_preamble_finding(self):
+        # A finding on the package clause or a comment/directive above the first declaration
+        # is a normal finding with a stable identity, never an ambiguous anchor.
+        cases = [
+            ('//nolint:errcheck // legacy whole-file allowance\npackage p\n\nfunc F() int { return 1 }\n', 1),
+            ('//go:build ignore || !ignore\n// +build linux\npackage p\n\nfunc F() int { return 1 }\n', 2),
+            ('package p\n\nfunc F() int { return 1 }\n\nfunc G() int { return 2 }\n', 1),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            for text, line in cases:
+                (root / 'a.go').write_text(text)
+                issue = dict(FromLinter='nolintlint', Text='unused directive', Pos=dict(Filename='a.go', Line=line, Column=1))
+                before = r.normalize(root, '.', 'linux', issue)
+                (root / 'a.go').write_text(text + '\nfunc H() int { return 3 }\n')
+                self.assertEqual(before['id'], r.normalize(root, '.', 'linux', issue)['id'])
+
 
 class Harness(unittest.TestCase):
     def setUp(self):

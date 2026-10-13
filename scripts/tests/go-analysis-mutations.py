@@ -16,6 +16,7 @@ cases = [
     ('regression', "'new' if old is None", "'existing' if old is None", 'Ratchet.test_new_and_worse'),
     ('line', "'anchor': digest(encoded([scopes[line - 1][1], window, prefix]))", "'anchor': digest(encoded([scopes[line - 1][1], window, prefix, line]))", 'Ratchet.test_shifts'),
     ('scope', "scopes = declaration_scopes(lines)", "scopes = [(-1, 'package')] * len(lines)", 'Ratchet.test_sibling_independence'),
+    ('preamble', "return scopes[start][1] if start >= 0 else 'package'", 'return scopes[start][1]', 'Ratchet.test_preamble_finding'),
     ('checksum', 'if digest(target.read_bytes()) != expected:', 'if False:', 'Harness.test_bad_checksum'),
     ('coverage', "found = sorted({str(Path(x).parent) for x in found if x})", "found = sorted({str(Path(x).parent) for x in found if x})[:1]", 'Harness.test_discovery'),
     ('network', "GOPROXY='https://proxy.golang.org' if network else 'off'", "GOPROXY='https://proxy.golang.org'", 'Harness.test_offline'),
