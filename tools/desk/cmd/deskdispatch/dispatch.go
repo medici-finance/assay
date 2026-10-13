@@ -328,6 +328,13 @@ func dispatch(o dispatchOpts) error {
 			stepClaimAcquire, briefIDFromItem(o.item), repo, followUp.pr, branch)
 	}
 
+	// DECISION HOLD — before the claim (briefadmission.go). A fresh worker dispatch of a
+	// human-gated brief whose decision issue is open and unruled is held here, so no claim
+	// cycle or worker slot is spent discovering the open decision after pickup.
+	if err := briefDecisionHold(o, plan, repo); err != nil {
+		return err
+	}
+
 	// Advisory write-scope overlap echo, BEFORE the claim — a coordination hint
 	// the operator sees, then the dispatch PROCEEDS. It never blocks, never gates the claim,
 	// and carries no exit code: a foreseeable merge collision on a shared file is surfaced now
@@ -756,6 +763,10 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			"step %s: --tier %q is outside the tier vocabulary (%s). The tier is an attestation of what was "+
 				"launched, so an unrecognised value must not be recorded as though it meant something.",
 			stepModelStamp, o.tier, strings.Join(deskkit.DispatchTiers(), "|")))
+	}
+	// The brief's own exec-tier against --tier (briefadmission.go): pure, so here, pre-claim.
+	if err := briefTierRefusal(o); err != nil {
+		return plan, err
 	}
 
 	// BOTH kits must be readable now. The common kit is checked here and not only at

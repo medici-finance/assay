@@ -245,7 +245,7 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 		brief := plantRecordBrief(t, root)
 		_ = captureStdout(t, func() {
 			if rc := run([]string{"example-stream/28", "--root", root, "--repo", allowedRepo, "--brief", brief,
-				"--dry-run", "--prompt-file", filepath.Join(t.TempDir(), "p.md")}); rc != deskkit.ExitOK {
+				"--tier", "strong", "--dry-run", "--prompt-file", filepath.Join(t.TempDir(), "p.md")}); rc != deskkit.ExitOK {
 				t.Fatalf("dry-run rc = %d, want 0", rc)
 			}
 		})
