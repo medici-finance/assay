@@ -1,0 +1,59 @@
+{
+  "test": "go test ./cmd/cellctl -count=1 -timeout=90s -run '^(TestGoalHostLaunch|TestGoalCadenceChoices|TestHarnessArgv|TestPrepareTickLaunchPreservesResolvedLaunch|TestBinaryCodexCadenceDefault|TestBinaryUpCadenceFollowsEachPolicyHarness|TestDeskCadenceDefaultsStayScoped|TestBinaryLegacyCodexCadenceDefault)$'",
+  "control": {
+    "name": "invert scrubbed Goal assertion",
+    "file": "cmd/cellctl/plan_test.go",
+    "old": "!strings.Contains(got[len(got)-1], \"Call get_goal first.\")",
+    "new": "strings.Contains(got[len(got)-1], \"Call get_goal first.\")"
+  },
+  "mutations": [
+    {
+      "name": "restore implicit Codex cadence",
+      "file": "cmd/cellctl/cadence.go",
+      "old": "return resolveCadence(kind, interval, budget)",
+      "new": "if kind == \"house\" && harness == \"codex\" && interval == \"\" { interval = \"5m\" }; return resolveCadence(kind, interval, budget)"
+    },
+    {
+      "name": "omit host Goal bootstrap",
+      "file": "cmd/cellctl/launch.go",
+      "old": "if c.Cadence == nil {",
+      "new": "if false {"
+    },
+    {
+      "name": "plant missing bootstrap in scrubbed sibling",
+      "file": "cmd/cellctl/plan.go",
+      "old": "codexStandingPrompt(role, fmt.Sprintf(\"Invoke the %q skill now.\", \"assay:\"+role))",
+      "new": "fmt.Sprintf(\"Invoke the %q skill now.\", \"assay:\"+role)"
+    },
+    {
+      "name": "enable native continuation inside explicit ticks",
+      "file": "cmd/cellctl/launch_tick.go",
+      "old": "\"features.goals=false\"",
+      "new": "\"features.goals=true\""
+    },
+    {
+      "name": "drop resolved Codex registry pin on up",
+      "file": "cmd/cellctl/up.go",
+      "old": "cadence != nil || o.Cadence != \"\" || harness == \"codex\"",
+      "new": "cadence != nil || o.Cadence != \"\""
+    },
+    {
+      "name": "omit native Goal readback",
+      "file": "cmd/cellctl/codex_environment.go",
+      "old": "omit token_budget, then call get_goal again",
+      "new": "omit token_budget"
+    },
+    {
+      "name": "overwrite an existing Goal",
+      "file": "cmd/cellctl/codex_environment.go",
+      "old": "preserve its objective, status, budget, and usage",
+      "new": "replace its objective and budget"
+    },
+    {
+      "name": "plant a second implicit default at the up caller",
+      "file": "cmd/cellctl/up.go",
+      "old": "o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)",
+      "new": "o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)\n\t\tif harness == \"codex\" && cadence == \"\" { o.roleCadence[role] = resolveCadence(c.Kind, \"5m\", budget) }"
+    }
+  ]
+}

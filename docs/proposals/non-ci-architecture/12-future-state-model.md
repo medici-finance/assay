@@ -150,3 +150,20 @@ The packet must return the **current lifecycle and inspected implementation evid
 The [authoring qualification cases](15-regression-from-day-one.md#authoring-and-plan-evolution-qualification) require executable resolver/handoff and amendment checks with positive and failing controls. Repeat source-pinned authoring journeys with held-out cases before broad adoption; preserve discovered extra consumers and scoped unknowns as well as known probes. Retrospective cases must disclose their cutoff and hindsight. A manual diagnostic is not proof of implemented gates or prevention in production.
 
 Measure missed affected consumers, unjustified impact hits, author/reviewer effort, unnecessary brief churn and stale-at-dispatch discoveries. The success claim is fewer unanticipated overlaps at tolerable authoring cost, not maximum graph density. Undeclared relationships remain possible; the graph makes coverage and uncertainty inspectable rather than promising omniscience.
+
+## Adoption and oversight bindings in future-state handoff
+
+The [progressive-adoption amendment](19-progressive-adoption-and-oversight.md) extends
+selected-target/context receipts with the relevant adoption behavior, oversight/
+acceptance contract revisions, operator approval scope, capability/qualification
+inputs and producer/consumer versions. These are references to existing owners,
+not a second catalogue or an authority grant embedded in graph metadata.
+
+Discover installer, policy, evidence, author-skill, offline/served-client and effect
+consumers when a selected preset or requirement changes. A changed checkpoint,
+sampling obligation, required evidence or delegated action requires the existing
+material-change and active-work reconciliation. A pure notification-layout change
+can preserve unaffected conclusions through the current non-intersection assessment.
+Preserve historical Evidence and dated source accounts; changing profiles never
+upgrades old self-checks to independent verification. Unavailable mandatory policy/
+qualification input is a scoped hold, not a claim that the lighter contract applies.

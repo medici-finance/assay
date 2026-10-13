@@ -170,7 +170,8 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	if o.pr <= 0 && strings.TrimSpace(o.model) != "" && !review && !verifier {
 		fmt.Fprintf(&b, "\n## Pending model stamp\n\nAfter opening the draft PR, return its number to the dispatching worker-desk. That desk sends the PR and this exact dispatch model/tier selection to the coordinator desk (the-desk), which runs:\n\n```\ndeskdispatch --stamp-only --repo %s --pr <N> --model %s --tier %s --kit %s\n```\n\nThe model and tier are the original dispatcher's selection, backed by its real dispatch receipt. Both worker-desk and its child worker are refused by this verb; a shared DESK_SESSION is claim custody, not stamp authority. Do not run this command as the worker or change your session identity to apply it. A stamp-only receipt does not renew a review claim.\n", repo, o.model, o.tier, o.kit)
 	}
-	if strings.EqualFold(o.tier, "strong") {
+	// The same normalisation the gate, the stamp label and the record use.
+	if c, _ := deskkit.CanonicalDispatchTier(o.tier); c == "strong" {
 		fmt.Fprintf(&b, "\n%s\n", tierClause)
 	}
 

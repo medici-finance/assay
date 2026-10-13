@@ -72,6 +72,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/medici-finance/assay/forgeread"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -559,27 +560,15 @@ func (r RepoResult) MarshalJSON() ([]byte, error) {
 }
 
 // PartialRepo is one repo that was NOT read, and why. It never carries a data field: there is no
-// shape in which an unread repo also has a (possibly empty) result.
-type PartialRepo struct {
-	Repo   string `json:"repo"`
-	Reason string `json:"reason"`
-}
+// shape in which an unread repo also has a (possibly empty) result. It is the shared forgeread
+// Unavailable, so the verb and every consumer of the envelope agree on one shape; Class is omitted
+// on the wire unless the read established a more specific reason (a truncated walk).
+type PartialRepo = forgeread.Unavailable
 
-// IssueJSON is deskkit.IssueSummary rendered for the wire. It carries the backend-independent fields
-// the interface already serves and adds nothing of its own. ClosedAt and AuthorType are set by
+// IssueJSON is the shared forgeread.Issue: the backend-independent open-issue fields the interface
+// already serves, with the verb's pinned JSON names. ClosedAt and AuthorType are set by
 // `issue-list` only (op 55), and only where the forge reported them.
-type IssueJSON struct {
-	Number      int      `json:"number"`
-	Title       string   `json:"title,omitempty"`
-	State       string   `json:"state"`
-	AuthorLogin string   `json:"authorLogin,omitempty"`
-	AuthorID    int64    `json:"authorId,omitempty"`
-	Labels      []string `json:"labels,omitempty"`
-	CreatedAt   string   `json:"createdAt,omitempty"`
-	URL         string   `json:"url,omitempty"`
-	ClosedAt    string   `json:"closedAt,omitempty"`
-	AuthorType  string   `json:"authorType,omitempty"`
-}
+type IssueJSON = forgeread.Issue
 
 // AccountJSON is one deskkit.Account. An empty Type is could-not-check, never "User"; a zero ID
 // is an account the forge did not report.
@@ -632,7 +621,7 @@ func readSet(kind string, o readOpts) Envelope {
 			defer func() { <-sem }()
 			res, err := readRepo(kind, repo, o)
 			if err != nil {
-				slots[i].part = &PartialRepo{Repo: repo, Reason: err.Error()}
+				slots[i].part = &PartialRepo{Repo: repo, Reason: err.Error(), Class: partialClass(err)}
 				return
 			}
 			slots[i].res = res
@@ -650,6 +639,16 @@ func readSet(kind string, o readOpts) Envelope {
 		}
 	}
 	return env
+}
+
+// partialClass names why a repo was not read, when the read established more than "it failed": a
+// shared-read walk that hit its page ceiling is classed truncated. Everything else keeps the
+// default (empty on the wire, unreadable in the SDK).
+func partialClass(err error) forgeread.Class {
+	if deskkit.ReadClassOf(err) == string(forgeread.ClassTruncated) {
+		return forgeread.ClassTruncated
+	}
+	return ""
 }
 
 // readRepo is ONE enumerated operation per per-repo kind, no client-side filtering that could

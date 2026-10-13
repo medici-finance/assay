@@ -920,8 +920,10 @@ func escapedPipeOutsideBracket(pat string) bool {
 
 // expectsZeroCount reports whether an Expect cell asserts a count of exactly
 // zero. Deliberately narrow: the cell's first token, stripped of markdown, must
-// be exactly "0" ("0", "0 (F-12)", "`0` — forbidden numbers absent"). Anything
-// relational ("≥ 3", "0 or more") is not a zero-count assertion.
+// be exactly "0" ("0", "0 (F-12)", "`0` — forbidden numbers absent"). A cell
+// led by a relation ("≥ 3", "at least 1") is not a zero-count assertion; a cell
+// whose first token is "0" is read as one even when prose follows it, so
+// "0 or more" counts as zero here.
 func expectsZeroCount(expect string) bool {
 	s := strings.TrimSpace(expect)
 	s = strings.NewReplacer("`", "", "*", "", "**", "").Replace(s)
@@ -1830,6 +1832,11 @@ const (
 	// (`cmd: true`, `cmd: :`, `cmd: exit 0`), so the row passes whatever the
 	// tree holds.
 	ruleCmdMarkerVacuous = "cmd-marker-vacuous"
+	// ruleGrepPipeZeroCount — #1862 — a grep that FEEDS a later pipeline stage,
+	// under an Expect of a zero count: the row fails on its own success path under
+	// pipefail (grep exits 1 on no match), and a stray match leaves nothing but
+	// the exit status to decide it.
+	ruleGrepPipeZeroCount = "grep-pipe-zero-count"
 )
 
 // isVacuousCommand reports a marked command that exits 0 without looking at
@@ -2023,5 +2030,116 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		}
 	}
 
+	// Rule 13 (#1862): a grep feeding a later stage, under a zero-count Expect.
+	// An Expect that also declares a non-zero exit (`output is `0`, exit 1`)
+	// already accounts for grep's no-match status under pipefail, so it is
+	// correct as written and stays silent.
+	if stage := grepFeedingLaterStage(toks); stage != "" && expectsZeroOutput(expect) && !declaresNonZeroExit(expect) {
+		add(ruleGrepPipeZeroCount, "pipes `%s` into a later stage and expects a count of `0` — `statusgen verifyrun` runs every row under `bash -o pipefail`, and grep exits 1 when it matches nothing, so on the SUCCESS path (nothing found) the pipeline exits 1 and the row FAILS; when a match IS present grep exits 0 and a bare `0` Expect is not machine-decidable, so the row can pass on exit status alone. Keep the grep but tolerate only its no-match status — `{ %s || [ $? -eq 1 ]; } | wc -l` — and write the Expect as output is `0`; where the searched path could vanish, add a positive leg that proves it exists (`test -n \"$(git ls-tree --name-only HEAD <dir>)\"`). A plain `|| true` also passes the success path but hides a real grep error", stage, stage)
+	}
+
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// Rule 13 — a grep feeding a later stage, under a zero-count Expect (#1862)
+// ---------------------------------------------------------------------------
+
+// expectsZeroOutput reports whether an Expect cell asserts that the row PRINTS
+// a count of zero: a bare `0` (the shape expectsZeroCount already reads), or
+// "prints `0`" / "output is `0`" with the number after the verb. A cell led by
+// a relation ("≥ 1") or by another word ("exit 1 …") is not a zero-count
+// assertion; a cell whose first token is "0" is, even with prose after it
+// ("0 or more"), because expectsZeroCount reads only that first token.
+func expectsZeroOutput(expect string) bool {
+	if expectsZeroCount(expect) {
+		return true
+	}
+	s := strings.NewReplacer("`", "", "*", "", "**", "").Replace(strings.TrimSpace(expect))
+	f := strings.Fields(strings.ToLower(s))
+	if len(f) < 2 {
+		return false
+	}
+	switch strings.TrimRight(f[0], ":") {
+	case "prints", "printed", "output", "outputs":
+	default:
+		return false
+	}
+	i := 1
+	if f[i] == "is" || f[i] == "=" || f[i] == ":" {
+		i++
+	}
+	if i >= len(f) {
+		return false
+	}
+	return strings.TrimRight(f[i], ".,;:") == "0"
+}
+
+// declaresNonZeroExit reports whether verifyrun reads a non-zero required exit
+// code out of the Expect cell, the same way it does when it runs the row.
+func declaresNonZeroExit(expect string) bool {
+	spec := parseExpect(expect)
+	return spec.exitFrom && spec.exitCode != 0
+}
+
+// grepFeedingLaterStage returns the text of a grep stage (`grep`, `egrep`,
+// `fgrep`, `ggrep` or `git grep`) that feeds a later stage of the command's FINAL
+// pipeline, or "" when there is none. The final pipeline is the part after the
+// last `;`, `&&` or `||` — the only part whose status the row reports. It stays
+// silent on a leading `!` (the negation owns the pipeline's status) and on the
+// guarded `{ grep … || [ $? -eq 1 ]; } | wc -l` form: its `;` ends the final
+// pipeline at `} | wc -l`, which carries no grep.
+func grepFeedingLaterStage(toks []shellTok) string {
+	start := 0
+	for i, t := range toks {
+		if t.op && (t.text == ";" || t.text == "&&" || t.text == "||") {
+			start = i + 1
+		}
+	}
+	var stages [][]shellTok
+	var cur []shellTok
+	for _, t := range toks[start:] {
+		if t.op && t.text == "|" {
+			stages = append(stages, cur)
+			cur = nil
+			continue
+		}
+		cur = append(cur, t)
+	}
+	stages = append(stages, cur)
+	if len(stages) < 2 {
+		return ""
+	}
+	for i, st := range stages[:len(stages)-1] {
+		k := 0
+		for k < len(st) && (st[k].text == "{" || st[k].text == "(" || st[k].text == "!") {
+			if st[k].text == "!" && i == 0 {
+				return "" // `! grep … | wc -l` — the negation owns the pipeline status
+			}
+			k++
+		}
+		if k >= len(st) {
+			continue
+		}
+		name := st[k].text
+		if name == "git" {
+			// `git [-C dir] [-c k=v] grep …`: skip global options to the subcommand.
+			j := k + 1
+			for j < len(st) && strings.HasPrefix(st[j].text, "-") {
+				if st[j].text == "-C" || st[j].text == "-c" {
+					j++
+				}
+				j++
+			}
+			if j >= len(st) || st[j].text != "grep" {
+				continue
+			}
+			name = "git grep"
+		}
+		switch name {
+		case "grep", "egrep", "fgrep", "ggrep", "git grep":
+			return name
+		}
+	}
+	return ""
 }

@@ -1,10 +1,10 @@
 {
-  "test": "go test . -run 'AutoFlip|Autoflip|Attribute|ApprovalOnly|ApprovalGuard' -count=1",
+  "test": "go test . -run 'AutoFlip|Autoflip|Attribute|ApprovalOnly|ApprovalGuard|EvidenceShape' -count=1",
   "control": {
-    "name": "CONTROL — Evidence-landing exclusion disabled (the #1838 defect: the verifier's Evidence PR is judged as a delivery candidate and refuses the flip)",
+    "name": "CONTROL — diff-shape exclusion disabled (the #1838 defect: an Evidence-only PR is judged as a delivery candidate and refuses the flip)",
     "file": "autoflip.go",
-    "old": "if shape.Author == \"\" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {",
-    "new": "if true || shape.Author == \"\" || !loginInSet(rev.EvidenceLanders, shape.Author) || len(shape.Files) == 0 {"
+    "old": "g.evidence, _ = evidenceOnlyReason(g.shape)",
+    "new": "g.evidence = false"
   },
   "mutations": [
     {
@@ -12,24 +12,6 @@
       "file": "autoflip.go",
       "old": "hits, err := src.PRsNamingBrief(repo, canonicalBriefKey(res.Brief))",
       "new": "hits, err := []int(nil), error(nil)"
-    },
-    {
-      "name": "Evidence exclusion drops the author half (any docs/streams-only PR escapes its approval)",
-      "file": "autoflip.go",
-      "old": "!loginInSet(rev.EvidenceLanders, shape.Author)",
-      "new": "false"
-    },
-    {
-      "name": "Evidence exclusion drops the docs/streams-only half (a verifier-authored code change escapes its approval)",
-      "file": "autoflip.go",
-      "old": "\t\tif !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {\n\t\t\treturn false",
-      "new": "\t\tif false && !strings.HasPrefix(filepath.ToSlash(f), bulkMigrationDocsPrefix) {\n\t\t\treturn false"
-    },
-    {
-      "name": "Evidence exclusion accepts an empty file list",
-      "file": "autoflip.go",
-      "old": "|| len(shape.Files) == 0 {",
-      "new": "|| false {"
     },
     {
       "name": "guard drops the approval of a later change to the brief file",
@@ -98,16 +80,10 @@
       "new": "case false:\n\t\treturn fmt.Sprintf(\"when its body"
     },
     {
-      "name": "Evidence exclusion ignores a rename's old path (a move into docs/streams/ escapes its approval: A1 on #1868)",
-      "file": "autoflip.go",
-      "old": "append(append([]string(nil), shape.Files...), shape.RenamedFrom...)",
-      "new": "shape.Files"
-    },
-    {
       "name": "file listing drops previous_filename",
       "file": "autoflip.go",
-      "old": "renamedFrom = append(renamedFrom, pair[1])",
-      "new": "_ = pair[1]"
+      "old": "renamedFrom = append(renamedFrom, *entry[1])",
+      "new": "_ = entry[1]"
     },
     {
       "name": "guard STOPS at a pre-delivery change (log order taken as merge order: F2 on #1868)",
@@ -134,10 +110,244 @@
       "new": "if false {"
     },
     {
-      "name": "Evidence landers read from the wrong roster role",
+      "name": "Evidence-only accepts an empty file list",
+      "file": "evidenceshape.go",
+      "old": "if len(shape.Files) == 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "Evidence-only ignores a rename (a move into docs/streams/ escapes its approval: A1 on #1868)",
+      "file": "evidenceshape.go",
+      "old": "if len(shape.RenamedFrom) > 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "Evidence-only accepts any path (a code change escapes its approval)",
+      "file": "evidenceshape.go",
+      "old": "\treturn fmt.Sprintf(\"it changes %s, which is not an Evidence section",
+      "new": "\tif true {\n\t\treturn \"\"\n\t}\n\treturn fmt.Sprintf(\"it changes %s, which is not an Evidence section"
+    },
+    {
+      "name": "brief hunk outside `## Evidence` accepted (a Verify-table edit escapes its approval)",
+      "file": "evidenceshape.go",
+      "old": "\t\t\tif !inside {",
+      "new": "\t\t\tif false && !inside {"
+    },
+    {
+      "name": "brief section-heading change accepted (the Evidence section's edge moves)",
+      "file": "evidenceshape.go",
+      "old": "if isSectionHeading(d.text) {",
+      "new": "if false {"
+    },
+    {
+      "name": "README cell other than Status/Verified/Reviewed accepted",
+      "file": "evidenceshape.go",
+      "old": "if !free[j] && strings.TrimSpace(oc[j]) != strings.TrimSpace(nc[j]) {",
+      "new": "if false && !free[j] {"
+    },
+    {
+      "name": "README added or removed line accepted",
+      "file": "evidenceshape.go",
+      "old": "if len(c.del) != len(c.add) {",
+      "new": "if false {"
+    },
+    {
+      "name": "file listing drops the patch",
       "file": "autoflip.go",
-      "old": "EvidenceLanders: rosterRoleLogins(cfg, \"verifier\")}",
-      "new": "EvidenceLanders: rosterRoleLogins(cfg, \"reviewer\")}"
+      "old": "patches[*entry[0]] = *entry[2]",
+      "new": "_ = entry[2]"
+    },
+    {
+      "name": "files: overlap ignored by the trailer resolver (the newest credited PR wins though it touches none)",
+      "file": "autoflip.go",
+      "old": "\t\tif !c.overlaps {\n\t\t\tcontinue",
+      "new": "\t\tif false {\n\t\t\tcontinue"
+    },
+    {
+      "name": "files: overlap ignored by the history walk",
+      "file": "autoflip.go",
+      "old": "if verdict == candidateCredit && !tr.files.overlaps(g.shape) {",
+      "new": "if false {"
+    },
+    {
+      "name": "no-overlap fallthrough not named as COULD-NOT-CHECK: no PR touches the brief's files",
+      "file": "autoflip.go",
+      "old": "\tif tr.files.declared {\n\t\t// verify-reset/07",
+      "new": "\tif false {\n\t\t// verify-reset/07"
+    },
+    {
+      "name": "every PR overlaps files:",
+      "file": "deliveryfiles.go",
+      "old": "\t\t\tif evaluation.DeclaredEntryMatches(d, p) {",
+      "new": "\t\t\tif true || evaluation.DeclaredEntryMatches(d, p) {"
+    },
+    {
+      "name": "another repo's files: entry kept as a path here",
+      "file": "deliveryfiles.go",
+      "old": "if !evaluation.DeclaredEntrySupported(e) || evaluation.IsVerifyWrittenPath(strings.TrimSuffix(e, \"/\")) {",
+      "new": "if false {"
+    },
+    {
+      "name": "autoFlipModel does not pass the brief's files:",
+      "file": "autoflip.go",
+      "old": "briefFilesOf(bf), src, rev)",
+      "new": "briefFilesOf(&BriefFile{}), src, rev)"
+    },
+    {
+      "name": "PLANTED second caller with a never-read files: declaration (the F-fold-bypasses-files-overlap class: autoFlipModel passes the zero value)",
+      "file": "autoflip.go",
+      "old": "briefFilesOf(bf), src, rev)",
+      "new": "briefFiles{}, src, rev)"
+    },
+    {
+      "name": "a never-read files: declaration falls back to the trailer-only rule (the read guard dropped)",
+      "file": "autoflip.go",
+      "old": "if !bfiles.read {",
+      "new": "if false {"
+    },
+    {
+      "name": "briefFilesOf does not mark the declaration read",
+      "file": "deliveryfiles.go",
+      "old": "declared: bf.DeclaredPathsFound, read: true}",
+      "new": "declared: bf.DeclaredPathsFound}"
+    },
+    {
+      "name": "--check does not fail on a stuck candidate (the hidden green run)",
+      "file": "autoflip.go",
+      "old": "\t\tif r.Outcome != flipDone {\n\t\t\tstuck++",
+      "new": "\t\tif false && r.Outcome != flipDone {\n\t\t\tstuck++"
+    },
+    {
+      "name": "--check overrides a misconfiguration's exit 1",
+      "file": "autoflip.go",
+      "old": "if code != 0 || !check {",
+      "new": "if !check {"
+    },
+    {
+      "name": "stuck-flip roll-up counts gate:human rows",
+      "file": "stuckflips.go",
+      "old": "if br.Gate != \"model\" || br.Status != \"verified\" {",
+      "new": "if br.Status != \"verified\" {"
+    },
+    {
+      "name": "stuck-flip roll-up not rendered",
+      "file": "emit.go",
+      "old": "range stuckFlipLines(streams, ages) {",
+      "new": "range stuckFlipLines(nil, ages) {"
+    },
+    {
+      "name": "PLANTED second identity-keyed exclusion (the defect class: the classifier consults the PR author)",
+      "file": "evidenceshape.go",
+      "old": "if len(shape.Files) == 0 {",
+      "new": "if len(shape.Files) == 0 || shape.Author != \"\" {"
+    },
+    {
+      "name": "PLANTED author-keyed exclusion in candidateGate",
+      "file": "autoflip.go",
+      "old": "if g.evidence, _ = evidenceOnlyReason(g.shape); g.evidence {",
+      "new": "if g.evidence, _ = evidenceOnlyReason(g.shape); g.evidence || loginInSet(rev.Logins, g.shape.Author) {"
+    },
+    {
+      "name": "brief addition above `## Evidence` accepted (lower bound of the addition range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside := d.pos >= first && d.pos < end",
+      "new": "inside := d.pos < end"
+    },
+    {
+      "name": "brief addition at or below the next heading accepted (upper bound of the addition range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside := d.pos >= first && d.pos < end",
+      "new": "inside := d.pos >= first"
+    },
+    {
+      "name": "brief deletion anywhere accepted (deletion range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside = d.pos >= first && d.pos <= end // a deletion sits before line pos",
+      "new": "inside = true"
+    },
+    {
+      "name": "brief deletion above `## Evidence` accepted (lower bound of the deletion range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside = d.pos >= first && d.pos <= end // a deletion sits before line pos",
+      "new": "inside = d.pos <= end"
+    },
+    {
+      "name": "brief deletion below the next heading accepted (upper bound of the deletion range dropped)",
+      "file": "evidenceshape.go",
+      "old": "inside = d.pos >= first && d.pos <= end // a deletion sits before line pos",
+      "new": "inside = d.pos >= first"
+    },
+    {
+      "name": "Evidence section end one line too far (the next heading's line counts as Evidence)",
+      "file": "evidenceshape.go",
+      "old": "return offset + start + 1, offset + stop + 1, \"\"",
+      "new": "return offset + start + 1, offset + stop + 2, \"\""
+    },
+    {
+      "name": "frontmatter offset dropped (body line numbers read as file line numbers)",
+      "file": "evidenceshape.go",
+      "old": "return offset + start + 1, offset + stop + 1, \"\"",
+      "new": "return start + 1, stop + 1, \"\""
+    },
+    {
+      "name": "PRE-FIX whole-file scan (a `## Evidence` line inside the frontmatter is read as the section: SEC-2456-1)",
+      "file": "evidenceshape.go",
+      "old": "_, body, err := splitFrontmatter(content)",
+      "new": "body, err := content, error(nil)"
+    },
+    {
+      "name": "brief with no `## Evidence` section read as all Evidence",
+      "file": "evidenceshape.go",
+      "old": "return 0, 0, \"has no `## Evidence` section\"",
+      "new": "return 1, 1 << 30, \"\""
+    },
+    {
+      "name": "indented section heading not treated as a heading by the classifier",
+      "file": "evidenceshape.go",
+      "old": "if isSectionHeading(d.text) {",
+      "new": "if strings.HasPrefix(d.text, \"## \") {"
+    },
+    {
+      "name": "README row of a different cell count accepted",
+      "file": "evidenceshape.go",
+      "old": "len(oc) != len(nc) || ",
+      "new": ""
+    },
+    {
+      "name": "non-canonical changed path accepted (a `..` or backslashed path steers the prefix tests)",
+      "file": "evidenceshape.go",
+      "old": "if !isCanonicalRepoPath(f) {",
+      "new": "if false {"
+    },
+    {
+      "name": "legacy verify-outcome log not recognised (status-only shape loses its outcome log)",
+      "file": "evidenceshape.go",
+      "old": "m, err := pathpkg.Match(\"docs/streams/\"+verifyOutcomesGlob, p)",
+      "new": "m, err := false, error(nil)"
+    },
+    {
+      "name": "verify-written path in the PR's diff counts toward files: overlap",
+      "file": "deliveryfiles.go",
+      "old": "\t\tif evaluation.IsVerifyWrittenPath(p) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "stuck-flip roll-up lists gate:model rows at any status",
+      "file": "stuckflips.go",
+      "old": "if br.Gate != \"model\" || br.Status != \"verified\" {",
+      "new": "if br.Gate != \"model\" {"
+    },
+    {
+      "name": "PLANTED parser-side divergence (the defect class: the brief parser decides the section's end on its own, past the next heading)",
+      "file": "brieffile.go",
+      "old": "\tstart, end, ok := evidenceSectionSpan(lines)\n\tif !ok {\n\t\treturn \"\"\n\t}\n\treturn strings.Join(lines[start:end], \"\\n\")",
+      "new": "\tstart, end, ok := evidenceSectionSpan(lines)\n\tif !ok {\n\t\treturn \"\"\n\t}\n\tif end < len(lines) {\n\t\tend++\n\t}\n\treturn strings.Join(lines[start:end], \"\\n\")"
+    },
+    {
+      "name": "backslashed changed path accepted (the backslash half of the canonical-path check dropped)",
+      "file": "evidenceshape.go",
+      "old": "return !strings.Contains(p, \"\\\\\") && pathpkg.Clean(p) == p",
+      "new": "return pathpkg.Clean(p) == p"
     }
   ]
 }

@@ -218,6 +218,55 @@ Result: 4 of 5 rows pass. Row 5 still fails as written (exit 2, could-not-check,
 VERIFY: FAIL
 
 Filed: #1915 (row 5 instance not covered by #2300; issuecomment-6029774563)
+### Non-implementer verifier run — 2026-10-12 gpt-6.1-sol
+
+Merged source: 024b15e1c783d4f0694a215e4e32a8f94ce11e91. Fresh non-implementer, dispatcher admission #2683, selected tier any. Host macOS arm64; Go 1.27.1 (module requires 1.25.0), git 2.56.0, statusgen v1.0.39. All authored rows ran unchanged under Bash with pipefail and KUBECONFIG=/dev/null. No source, index, module or tool edits; no independent source-mutation claim is made. Task 5's earlier implementer record was read as an archival record, never as this run's observation.
+
+| # | Command | Expected | Observed | Date and runner |
+|---|---------|----------|----------|-----------------|
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | exit 0; named test PASS line present | exit 0; prints 1 | 2026-10-12 assay-verifier-app[bot] (gpt-6.1-sol) @ 024b15e1c783 |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | exit 0; below-floor fallback and at-floor learned switch | exit 0; prints 1 | 2026-10-12 assay-verifier-app[bot] (gpt-6.1-sol) @ 024b15e1c783 |
+| 3 | `cd qualgen && go build ./riskscore/` | exit 0 | exit 0; no output | 2026-10-12 assay-verifier-app[bot] (gpt-6.1-sol) @ 024b15e1c783 |
+| 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | exit 0; written derivation present | exit 0; no output | 2026-10-12 assay-verifier-app[bot] (gpt-6.1-sol) @ 024b15e1c783 |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | exit 0; no DISPROVED | could-not-check, exit 2; COULD-NOT-CHECK: brief is not in the diff against 024b15e1c783d4f0694a215e4e32a8f94ce11e91; no entry was corroborated and none was disproved | 2026-10-12 assay-verifier-app[bot] (gpt-6.1-sol) @ 024b15e1c783 |
+
+Execution witness: actual statusgen verifyrun --dry-run output below, retained for Evidence landing. Its literal `fail exit=2` row-5 label records the mismatch with Expect exit 0; the command's observed COULD-NOT-CHECK diagnostic means no consumer verdict was obtained. verifyrun itself exited 1. That label is not an observed riskscore defect.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-12 | assay-verifier-app[bot] @ 024b15e1c783 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-12 | assay-verifier-app[bot] @ 024b15e1c783 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd qualgen && go build ./riskscore/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-12 | assay-verifier-app[bot] @ 024b15e1c783 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-12 | assay-verifier-app[bot] @ 024b15e1c783 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | fail exit=2 | sha256:9ece27b27192 | 2026-10-12 | assay-verifier-app[bot] @ 024b15e1c783 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#2683 run=50126dba0b55ca5917ab33aabeba75c1dfa678efb709f4ec38373feeec99c4c8 source=024b15e1c783d4f0694a215e4e32a8f94ce11e91 brief=docs/streams/measured-status/brief-02-mincorpus-derivation.md model=gpt-6.1-sol tier=any
+
+Supplementary diagnostic only: the two unfiltered named tests print their own `--- PASS:` lines and the package reports `ok`. This diagnostic is not a replacement for either authored grep row. No supplemental --base command was used.
+
+Independent derivation: the brief's facts choose an approximately 10-per-predictor multiplier and a 15-feature vector, so the contractual total-row floor is 150. Independently enumerating the production feature list yields ns, nd, nf, entropy, la, ld, lt, ndev, age, nuc, npd, rc, exp, class_agent, class_automation; the numeric Vector has the same 15 columns. DerivedMinCorpus multiplies EventsPerVariable by that feature-name count; DefaultConfig passes it to Train's strict below-floor comparison (learned.go:185), and ScoreChange converts refusal to the heuristic fallback (learned.go:298-307). Thus 149 labeled rows must refuse and 150 must permit training, subject to the existing two-class gate. The new tests inspect the independent Vector length and exercise both Train and ScoreChange.
+
+Literal enumeration and ranking over delivery a11ac41674c09aadb2a940bc7d1edbcd5e4c1402's executable changes, its adjacent derivation comments, changed Verify assertions and named Task deliverables (archival result timestamps, SHAs, issue IDs and commit metadata are provenance, not configuration values):
+
+| Rank | Identifier = literal and source | Consequence and reversibility |
+|---|---|---|
+| 1 | EventsPerVariable = 10 @ qualgen/riskscore/learned.go:46 | Governs graduation of every learned score; wrong setting prolongs heuristics or graduates early. Reversible by edit/redeploy. |
+| 2 | documentedEPV = 10 @ qualgen/riskscore/learned_test.go:328 | Oracle pin; wrong value blesses a wrong multiplier. Reversible test edit. |
+| 2 | documentedFeatureCount = 15, documentedMinCorpus = 150 @ qualgen/riskscore/learned.go:51; documented EPV approximately 10, floor approximately 150, features 15 @ docs/streams/measured-status/brief-02-mincorpus-derivation.md:45 | Comment/contract numeric assertions; recomputed from the vector rather than copied from a green test. |
+| 3 | illustrativeDefectRate = 0.2, illustrativeEvents = 30, illustrativeEPV = two @ qualgen/riskscore/learned.go:56 | Explanatory example only; 0.2 x 150 = 30 and 30 / 15 = 2. No executed threshold. |
+| 3 | replacedMinCorpus = 40 @ delivery a11ac4167 parent qualgen/riskscore/learned.go:47; historicalMinCorpus = 40 @ current qualgen/riskscore/learned.go:70; alternativeMinCorpus = 40 @ docs/streams/measured-status/brief-02-mincorpus-derivation.md:63 | Removed runtime threshold / historical and alternate-task rationale, never this default. |
+| 3 | fixtureSurplus = 5, fixtureSeed = 11 @ qualgen/riskscore/learned_test.go:351; belowFloorOffset = 1 @ :355, :358, :364, :365 | Fixture coverage and deterministic generation; reversible test values. |
+| 3 | fixturePath = "a/x.go" @ qualgen/riskscore/learned_test.go:332 | Creates a feature extraction fixture; reversible test data. |
+| 3 | underCorpusReason = "under-corpus" @ qualgen/riskscore/learned_test.go:357; fallbackReason = "could-not-learn" @ :361 | Exact observation tokens in the flow oracle; reversible assertion text. |
+| 3 | paperAuthority = "Peduzzi et al. 1996" @ qualgen/riskscore/learned.go:40; specAuthority = "§12" @ :41; configAuthority = "§3.2/§11" @ :67 | Adjacent rationale citations, not runtime knobs. |
+| 3 | testSelectors = '^TestMinCorpusDerivedFromFeatureCount$' and '^TestMinCorpusGovernsLearnedSwitch$', testCount = 1, expectedExit = 0 @ docs/streams/measured-status/brief-02-mincorpus-derivation.md:87-88; derivationToken = 'Derivation:' @ :90; consumersBrief = 'assay:assay:measured-status:02', forbiddenOutput = "DISPROVED", expectedExit = 0 @ :91 | Named oracle bindings prevent missing-test vacuity and preserve consumer assertion; row 5 cannot obtain its evidence on merged main. |
+
+FeatureNames' string column bindings and Vector values are unchanged by this delivery and were counted as dependency input. Existing Epochs=400, LearningRate=0.1 and L2=1e-3 are unchanged context, not changed literals. The runtime minimum is computed, not a literal 150; it is not misrepresented as a source literal.
+
+RISK-VALUE: DERIVED — EventsPerVariable = 10 @ qualgen/riskscore/learned.go:46 — the brief explicitly chooses an approximately 10 multiplier; 15 production predictors independently give a contractual total-corpus floor of 150. The [cited Peduzzi study](https://pubmed.ncbi.nlm.nih.gov/8970487/) supports 10 as its observed EPV boundary in that study, not a guarantee that 150 total rows suffice for this model. For a defect fraction p, the implied event count is 150p; true 10-event-per-predictor coverage would require about 150/p total rows (750 at p=0.2). The code explicitly documents this weaker total-row condition; #1171 carries the separate event-floor question. No statistical sufficiency claim is inferred from the passing tests.
+
+RISK-VALUE: DERIVED — documentedEPV = 10 @ qualgen/riskscore/learned_test.go:328 — this is the independently documented contract multiplier; the test obtains count from Vector and checks FeatureNames agrees, avoiding self-confirmation solely through the same production count function.
+
+**VERIFY: BLOCKED** — four authored rows passed; row 5 observed could-not-check (exit 2), not an observed implementation failure. No status advance. Check-definition instance attached to [medici-finance/assay#1915](https://github.com/medici-finance/assay/issues/1915#issuecomment-6115983645). Wake only after the Verify definition or applicable consumers instrument changes to obtain the delivery diff on merged main.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

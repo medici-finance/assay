@@ -39,10 +39,21 @@ LDFLAGS  := -X $(DESK_PKG).SourceSHA=$(SHA) -X $(DESK_PKG).BuiltAt=$(BUILT_AT)
 
 DESK_CMDS := $(wildcard $(DESK_DIR)/cmd/*)
 
-.PHONY: desk-build desk-install desk-manifest desk-hook-install desk-test skillslint guardrail-sync paired-versions
+.PHONY: build-all desk-build desk-install desk-manifest desk-hook-install desk-test skillslint guardrail-sync paired-versions
 
 SKILLSLINT_DIR       := tools/skillslint
 PAIREDVERSIONS_DIR   := tools/pairedversions
+
+## build-all: compile every tracked Go module, then emit every desk executable.
+## Discovery matches CI; no hand-maintained module list can omit a new module.
+build-all:
+	@set -eu; modules="$$(git ls-files -- '*go.mod')"; \
+	[ -n "$$modules" ] || { echo "build-all: no tracked Go modules" >&2; exit 1; }; \
+	printf '%s\n' "$$modules" | while IFS= read -r mod; do \
+		echo "build-all: $${mod%/go.mod}"; \
+		( cd "$$(dirname "$$mod")" && go build ./... ) || exit 1; \
+	done
+	@$(MAKE) --no-print-directory desk-build
 
 ## desk-build: local unprivileged build into tools/desk/dist/
 desk-build:

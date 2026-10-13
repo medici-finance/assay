@@ -236,7 +236,7 @@ func TestDefaultPublishCommitsReadsRange(t *testing.T) {
 	git("add", "feature.txt")
 	git("commit", "-m", "feature work")
 
-	commits, err := defaultPublishCommits(dir, resolvePublishRange(dir, "main", ""))
+	commits, err := defaultPublishCommits(dir, resolvePublishRange(dir, "main", "", "HEAD"))
 	if err != nil {
 		t.Fatalf("defaultPublishCommits: %v", err)
 	}

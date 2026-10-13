@@ -343,3 +343,55 @@ func TestPlaceholderLintGreen(t *testing.T) {
 		t.Fatalf("lint with a placeholder present exited %d, want 0", code)
 	}
 }
+
+// regression: statusgen/17 — the base label set carries the top triage risk label.
+func TestPlaceholderGateRiskHighLabel(t *testing.T) {
+	cases := []struct {
+		name   string
+		labels []string
+		title  string
+		want   string
+	}{
+		{"risk:high label", []string{"bug", "risk:high"}, "frontend keydown bubbles to card", "human"},
+		{"upper-case label is lower-cased", []string{"Risk:High"}, "", "human"},
+		{"padded label is trimmed", []string{" risk:high "}, "", "human"},
+		{"risk:med does not gate", []string{"bug", "risk:med"}, "frontend keydown bubbles to card", "model"},
+		{"risk:low does not gate", []string{"risk:low"}, "", "model"},
+		{"med and low together do not gate", []string{"risk:med", "risk:low"}, "", "model"},
+		{"risk:higher is not a prefix match", []string{"risk:higher"}, "", "model"},
+		{"bare risk label does not gate", []string{"risk"}, "", "model"},
+		{"title text alone does not gate", []string{"bug"}, "raise to risk:high after triage", "model"},
+		{"existing label still gates beside risk:med", []string{"risk:med", "security"}, "", "human"},
+		{"bare auth label gates through the keyword stage", []string{"auth"}, "", "human"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := derivePlaceholderGate(tc.labels, tc.title); got != tc.want {
+				t.Errorf("derivePlaceholderGate(%v, %q) = %q, want %q", tc.labels, tc.title, got, tc.want)
+			}
+		})
+	}
+}
+
+// regression: statusgen/17 — a base entry survives a vocabulary reload.
+func TestPlaceholderGateRiskHighSurvivesExtension(t *testing.T) {
+	labelsSave, keywordsSave := riskGateLabels, riskGateKeywords
+	setSave, reSave := placeholderRiskLabels, placeholderRiskKeywordRe
+	t.Cleanup(func() {
+		riskGateLabels, riskGateKeywords = labelsSave, keywordsSave
+		placeholderRiskLabels, placeholderRiskKeywordRe = setSave, reSave
+	})
+	check := func(stage string) {
+		t.Helper()
+		if got := derivePlaceholderGate([]string{"risk:high"}, ""); got != "human" {
+			t.Errorf("%s: risk:high must gate human, got %q", stage, got)
+		}
+		if got := derivePlaceholderGate([]string{"risk:med"}, ""); got != "model" {
+			t.Errorf("%s: risk:med must stay model, got %q", stage, got)
+		}
+	}
+	registerRiskGateVocabulary([]string{"settlement"}, []string{"settlement"})
+	check("with a deployment extension")
+	registerRiskGateVocabulary(nil, nil)
+	check("with the extension cleared")
+}
