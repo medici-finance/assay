@@ -14,6 +14,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/acp"
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
 	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
+	"github.com/medici-finance/assay/tools/desk/internal/deskfilestub"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -31,8 +32,16 @@ func TestMain(m *testing.M) {
 		runFakeExecutorAgent(mode)
 		os.Exit(0)
 	}
+	// The sweep CLI and the quarantine filer run deskfile from PATH: no test
+	// here may reach the real one.
+	restore, err := deskfilestub.Install()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "deskfilestub: cannot install the deskfile stub: %v\n", err)
+		os.Exit(1)
+	}
 	before, berr := sourceTreeFiles(".")
 	code := gitquiet.Run(m)
+	restore()
 	after, aerr := sourceTreeFiles(".")
 	switch {
 	case berr != nil || aerr != nil:

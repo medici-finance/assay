@@ -19,28 +19,48 @@ import (
 // the real verb.
 const marker = "deskfilestub: a test reached deskfile without installing its own fake"
 
-// Run puts a `deskfile` that refuses every call at the front of PATH, then runs
-// the package's tests. A test that needs a filing to succeed installs its own
-// fake in front of the stub with t.Setenv("PATH", ...).
-func Run(m *testing.M) int {
+// Install puts a `deskfile` that refuses every call at the front of PATH and
+// returns a function that restores PATH and removes the stub. A test that needs
+// a filing to succeed installs its own fake in front of the stub with
+// t.Setenv("PATH", ...).
+func Install() (restore func(), err error) {
 	dir, err := os.MkdirTemp("", "deskfilestub")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "deskfilestub: cannot create the stub directory: %v\n", err)
-		return 1
+		return nil, err
 	}
-	defer os.RemoveAll(dir)
 	name, body := "deskfile", "#!/bin/sh\necho \"refused: "+marker+"\" >&2\nexit 5\n"
 	if runtime.GOOS == "windows" {
 		name, body = "deskfile.bat", "@echo refused: "+marker+" 1>&2\r\n@exit /b 5\r\n"
 	}
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "deskfilestub: cannot write the stub: %v\n", err)
+		_ = os.RemoveAll(dir)
+		return nil, err
+	}
+	old, had := os.LookupEnv("PATH")
+	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+old); err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, err
+	}
+	return func() {
+		if had {
+			_ = os.Setenv("PATH", old)
+		} else {
+			_ = os.Unsetenv("PATH")
+		}
+		_ = os.RemoveAll(dir)
+	}, nil
+}
+
+// Run installs the stub, runs the package's tests, and restores PATH. A
+// package's TestMain calls it in place of m.Run and hands the result to
+// os.Exit.
+func Run(m *testing.M) int {
+	restore, err := Install()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "deskfilestub: cannot install the deskfile stub: %v\n", err)
 		return 1
 	}
-	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
-		fmt.Fprintf(os.Stderr, "deskfilestub: cannot set PATH: %v\n", err)
-		return 1
-	}
+	defer restore()
 	return m.Run()
 }
 

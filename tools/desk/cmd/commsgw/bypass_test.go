@@ -31,6 +31,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/acp"
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
 	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
+	"github.com/medici-finance/assay/tools/desk/internal/deskfilestub"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
 )
@@ -69,7 +70,9 @@ func TestMain(m *testing.M) {
 		runFakeContainedReader(mode)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	// The gateway's quarantine filer runs deskfile from PATH: no test here may
+	// reach the real one.
+	os.Exit(deskfilestub.Run(m))
 }
 
 // runFakeContainedReader implements just enough of the ACP agent side to play
