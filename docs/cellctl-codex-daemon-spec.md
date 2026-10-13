@@ -392,7 +392,8 @@ into a production implementation or silently add another service/database.
 
 Run S1 and S3 first; their protocol/ownership decisions constrain the service shape.
 S2 follows S1's runtime characterization and S3's fixture contract. S4 follows S2
-and the applicable native-Goal authority decision. S5 requires S3/S4, and S6 requires
+and explicit authorization for synthetic Goal changes; its evidence informs the
+production authority decision D1. S5 requires S3/S4, and S6 requires
 S5 plus separate cluster-trial authorization. The existing Claude-first adapter brief
 is not replaced by this experimental ordering.
 
