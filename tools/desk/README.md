@@ -5819,6 +5819,23 @@ Every other mismatch (an undeclared `--repo`, an unknown or unpublished tag, a t
 `files:` list or in a fenced example block, no `--repo` at all) keeps the HARD FAIL. An item that
 declares no alias keeps the path above unchanged.
 
+**`--cross-repo`: a brief homed in one repo, its PR opened in another** (medici-finance/assay#2748).
+The flag is opt-in. The brief resolves to its HOME, the tracking alias that its item-key prefix or
+brief-v2 id names. That alias must be registered, but it may be unpublished in this registry copy.
+`--repo` names the repo the PR opens in. `--repo` must be published under an alias in the registry
+and must be `--root`'s origin. The claim key keeps the tracking alias, and the claim, the mint and
+the worktree all land in `--repo`. The prompt tells the worker to carry the exact trailer line
+`Cross-repo-brief: <alias>:<stream>/<NN>` and no `Brief:` line (see `docs/desk-tools/deskpr.md`).
+The flag is refused (exit 5, before anything durable) in each of these cases:
+- `--repo` is missing;
+- no tracking alias is named;
+- the brief declares `deliverable_repo`/`homed-in`, since an explicit deliverable is never
+  overridden;
+- `--repo` is unregistered;
+- `--repo` is the tracking repo itself.
+
+A `--root` that is not a checkout of `--repo` is still the HARD FAIL.
+
 **The phantom check is a dispatcher precondition.** A fresh worker dispatch is reconciled against
 the deliverable repo's open and merged PRs by `Brief:` trailer before admission, the mint and the
 claim. An OPEN PR refuses (resume it with `--pr`). A MERGED PR refuses as delivered — unless

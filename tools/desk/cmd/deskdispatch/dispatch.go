@@ -139,6 +139,10 @@ type dispatchOpts struct {
 	// When the brief's PR is already MERGED the dispatch becomes a FOLLOW-UP on a new branch
 	// rather than a phantom refusal or a resume (phantom.go).
 	rework bool
+	// crossRepo is --cross-repo (medici-finance/assay#2748): the brief is homed in the tracking
+	// repo its item-key prefix or brief-v2 id names, and its deliverable PR opens in --repo. Without
+	// it, a --repo that differs from the resolved repo stays the HARD FAIL (deliverable.go).
+	crossRepo bool
 	// briefShown is how the prompt spells the specification: the caller's own spelling when the file
 	// sits under --root, else its absolute path (resolveBrief). brief itself is the resolved absolute
 	// path every reader uses.
@@ -196,6 +200,9 @@ func cmdDispatch(args []string) error {
 		"already-existing home worktree instead of the not-yet-known placeholder. Refused on a real dispatch")
 	rework := fs.Bool("rework", false, "the row awaits implementer REWORK (implemented, last verdict FAIL): a MERGED PR "+
 		"for the brief makes this a FOLLOW-UP on a new branch, never a resume (worker kit, no --pr)")
+	crossRepo := fs.Bool("cross-repo", false, "the brief is homed in the tracking repo its item-key prefix or brief-v2 id "+
+		"names, and its deliverable PR opens in --repo (a registered alias, and --root's origin). The PR links the "+
+		"brief with a `Cross-repo-brief: <alias>:<stream>/<NN>` trailer, never `Brief:`")
 	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskdispatch", "dispatch")
 
 	if len(args) == 0 {
@@ -217,7 +224,7 @@ func cmdDispatch(args []string) error {
 
 	itemAlias, item := splitItemAlias(item)
 	o := dispatchOpts{
-		item: item, itemAlias: itemAlias, rework: *rework, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
+		item: item, itemAlias: itemAlias, rework: *rework, crossRepo: *crossRepo, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
 		model: *model, branch: *branch, brief: *brief, gateHuman: *gateHuman, pr: *pr,
 		promptFile: *promptFile, quiet: *quiet, dryRun: *dryRun, worktree: *worktree,
 		run: &dispatchRun{},
@@ -297,7 +304,7 @@ func dispatch(o dispatchOpts) error {
 	// A --rework dispatch whose brief already has a MERGED PR comes back as a FOLLOW-UP: the plan's
 	// branch is moved off the merged branch's name here, still pre-claim, so the worktree, the claim
 	// and the prompt all see the follow-up branch.
-	followUp, err := phantomCheck(o, repo)
+	followUp, err := phantomCheckFor(o, repo, plan.dl)
 	if err != nil {
 		return err
 	}

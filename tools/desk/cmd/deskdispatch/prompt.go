@@ -357,7 +357,17 @@ func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 	b.WriteString("## Open the draft PR in that repo\n\n")
 	fmt.Fprintf(b, "Run `deskpr create` from INSIDE your worktree, so the PR lands against `%s`'s own main. "+
 		"Stop at `implemented`: never set verified/done and never flip a PR ready.\n\n", repo)
-	if plan.dl.crossRepo(o.root) {
+	if plan.dl.crossRepoBrief {
+		// --cross-repo (medici-finance/assay#2748): the brief is homed in the tracking repo and its
+		// PR opens HERE. A `Brief:` line would be read against THIS repo's board, where the brief is
+		// not — so the PR names its home with the one explicit Cross-repo-brief: line instead, and
+		// deskpr runs against this worktree as on any other dispatch.
+		fmt.Fprintf(b, "CROSS-REPO delivery: this brief is homed in %s, not in `%s`. Your `deskpr create` body MUST "+
+			"carry the trailer line `%s` — and NO `Brief:` line, which would be read against `%s`'s own board. The "+
+			"tracking checkout is READ-ONLY for you — never write, commit or branch there — and this PR cannot flip "+
+			"the tracking repo's board row: say in the PR body that the home row is handed back separately.\n\n",
+			trackingLabel(plan.dl), repo, plan.dl.crossRepoTrailer(o.item), repo)
+	} else if plan.dl.crossRepo(o.root) {
 		// CROSS-REPO: the PR lands HERE, but its `Brief:` trailer must resolve against the TRACKING
 		// repo's board, which this worktree does not carry — so deskpr is pointed at the tracking
 		// checkout with --root. That checkout is named as a READ source, never a place to work.
