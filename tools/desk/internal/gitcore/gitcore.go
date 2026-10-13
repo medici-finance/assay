@@ -542,6 +542,8 @@ type PushOpts struct {
 	RefSpecs []string
 	Auth     transport.AuthMethod
 	Force    bool
+	// RequireRemoteRefs pins advertised refs without allowing a forced update.
+	RequireRemoteRefs []string
 }
 
 // Push pushes RefSpecs from the repo to URL, entirely in-process. Force is off unless
@@ -553,14 +555,20 @@ func (r *Repo) Push(opts PushOpts) error {
 	if err != nil {
 		return err
 	}
+	requires, err := buildRefSpecs(opts.RequireRemoteRefs, false)
+	if err != nil {
+		return err
+	}
+
 	remote := git.NewRemote(r.repo.Storer, &config.RemoteConfig{
 		Name: transientRemoteName,
 		URLs: []string{opts.URL},
 	})
 	err = remote.Push(&git.PushOptions{
-		RefSpecs: specs,
-		Auth:     opts.Auth,
-		Force:    opts.Force,
+		RefSpecs:          specs,
+		Auth:              opts.Auth,
+		Force:             opts.Force,
+		RequireRemoteRefs: requires,
 	})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return fmt.Errorf("gitcore: push: %w", err)

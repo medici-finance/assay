@@ -78,6 +78,7 @@ func TestParityMutateInertWithoutTag(t *testing.T) {
 	}
 }
 
+// regression: #2696
 func TestHarnessArgv(t *testing.T) {
 	got := harnessArgv("claude", "the-desk", "fable", "demo-the-desk", "/wt")
 	want := []string{"claude", "--name", "demo-the-desk", "--model", "fable", "/assay:the-desk"}
@@ -86,7 +87,10 @@ func TestHarnessArgv(t *testing.T) {
 	}
 	got = harnessArgv("codex", "worker-desk", "gpt-5.6-terra", "demo-worker-codex", "/wt")
 	want = []string{"codex", "--sandbox", "danger-full-access", "-C", "/wt", "-m", "gpt-5.6-terra",
-		`Invoke the "assay:worker-desk" skill now.`}
+		got[len(got)-1]}
+	if !strings.Contains(got[len(got)-1], "Call get_goal first.") || !strings.Contains(got[len(got)-1], `Invoke the "assay:worker-desk" skill now.`) {
+		t.Fatal("scrubbed launch lost Goal admission or role invocation")
+	}
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Errorf("codex argv = %q, want %q", got, want)
 	}

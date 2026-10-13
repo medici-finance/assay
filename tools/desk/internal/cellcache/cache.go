@@ -36,7 +36,7 @@ type Report struct {
 type manager struct {
 	p    Policy
 	r    *os.Root
-	lock *os.File
+	lock *deskkit.HeldLock
 	dev  uint64
 	// Instance-local seams make unavailable measurements/removal deterministic
 	// in fixtures without mutating globals or touching host caches.
@@ -118,25 +118,21 @@ func open(p Policy, create bool) (*manager, error) {
 		lock.Close()
 		return fail(err)
 	}
-	// Bounded wait for short measurement/cleanup transactions. Busy is unknown,
-	// never permission to proceed without custody.
-	until := time.Now().Add(5 * time.Second)
-	for {
-		err = deskkit.TryLockExclusive(lock)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, deskkit.ErrLockBusy) || time.Now().After(until) {
-			lock.Close()
-			return fail(err)
-		}
-		time.Sleep(10 * time.Millisecond)
+	// Bounded wait, with backoff, for short measurement/cleanup transactions.
+	// Busy is unknown, never permission to proceed without custody; a lasting
+	// busy read names the lock and its holder and says it is retryable.
+	held, err := deskkit.AcquireHeld(r, "lock", lock, deskkit.LockSpec{Name: "cell Go cache", Wait: LockWait, Log: os.Stderr})
+	if err != nil {
+		return fail(err)
 	}
-	m := &manager{p: p, r: r, lock: lock, dev: dev, free: diskFree}
+	m := &manager{p: p, r: r, lock: held, dev: dev, free: diskFree}
 	m.remove = m.removeTree
 	return m, nil
 }
-func (m *manager) close() { deskkit.UnlockFile(m.lock); m.lock.Close(); m.r.Close() }
+func (m *manager) close() { m.lock.Release(); m.r.Close() }
+
+// LockWait bounds how long one cache transaction waits for a sibling's.
+var LockWait = time.Minute
 
 func (m *manager) measure() (Measurement, []string) {
 	v := Measurement{At: time.Now().UTC()}
@@ -217,6 +213,10 @@ func pressure(v Measurement, p Policy) bool {
 	return v.LogicalBytes != nil && v.AvailableBytes != nil && (*v.LogicalBytes > p.Budget || *v.AvailableBytes < p.Floor)
 }
 func (m *manager) check(dry bool) Report {
+	return m.checkMode(dry, false)
+}
+
+func (m *manager) checkMode(dry, wipe bool) Report {
 	r := Report{Schema: schema, Policy: m.p, Filesystem: filesystemName(m.dev), DryRun: dry, Outcome: "checked-clean"}
 	r.Before, r.Failures = m.measure()
 	var err error
@@ -225,7 +225,7 @@ func (m *manager) check(dry bool) Report {
 		r.Failures = append(r.Failures, "active custody: "+err.Error())
 	}
 	removed := false
-	if len(r.Failures) == 0 && pressure(r.Before, m.p) && len(r.SkippedActive) == 0 && !dry {
+	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) == 0 && !dry {
 		// Whole inactive roots only. Consumers are enrolled under this same lock;
 		// no Go clean subprocess can race a build or module reader.
 		for _, name := range []string{"build", "mod"} {
@@ -245,11 +245,22 @@ func (m *manager) check(dry bool) Report {
 	if len(r.Failures) > 0 {
 		r.Outcome = "could-not-check"
 		r.Reason = "partial cache measurement or cleanup; inspect failures"
-	} else if pressure(r.After, m.p) {
+	} else if (wipe && len(r.SkippedActive) > 0) || pressure(r.After, m.p) {
 		r.Outcome = "storage-deferred"
 		r.Reason = fmt.Sprintf("cache uses %d logical bytes (budget %d); filesystem has %d available bytes (floor %d); active consumers %d", *r.After.LogicalBytes, m.p.Budget, *r.After.AvailableBytes, m.p.Floor, len(r.SkippedActive))
 	}
 	return r
+}
+
+// Wipe is explicit disposal, independent of the configured pressure threshold.
+// The same custody lock excludes enrollment and protects live consumers.
+func Wipe(p Policy, dry bool) (Report, error) {
+	m, err := open(p, false)
+	if err != nil {
+		return Report{Schema: schema, Policy: p, Outcome: "could-not-check", Reason: err.Error(), DryRun: dry}, err
+	}
+	defer m.close()
+	return finish(m, m.checkMode(dry, true))
 }
 
 // Go module directories are read-only. Open each verified directory and chmod
