@@ -23,7 +23,8 @@ func TestDispatchEndsWithANotLaunchedLine(t *testing.T) {
 			s := &stub{}
 			_, root := s.install(t)
 			plantScripts(t, root)
-			s.replies = happyReplies("/private/tmp/worker-home")
+			home := filepath.Join(t.TempDir(), "worker-home")
+			s.replies = happyReplies(home)
 
 			args := []string{"example-stream--07", "--root", root, "--kit", "worker", "--tier", "strong",
 				"--prompt-file", filepath.Join(t.TempDir(), "prompt.md")}
@@ -47,12 +48,12 @@ func TestDispatchEndsWithANotLaunchedLine(t *testing.T) {
 				t.Errorf("the NOT LAUNCHED line is not the last thing printed: %q", last)
 			}
 			for _, want := range []string{
-				"example-stream--07",       // names the item
-				"/private/tmp/worker-home", // names where the agent is to run
-				"CLAIMED_TTL_MIN",          // the configurable window
-				"progress",                 // the launch-side step
-				"release",                  // the give-up step
-				"--repo",                   // the commands are complete, not stubs
+				"example-stream--07", // names the item
+				home,                 // names where the agent is to run
+				"CLAIMED_TTL_MIN",    // the configurable window
+				"progress",           // the launch-side step
+				"release",            // the give-up step
+				"--repo",             // the commands are complete, not stubs
 			} {
 				if !strings.Contains(line, want) {
 					t.Errorf("NOT LAUNCHED line does not name %q:\n%s", want, line)
