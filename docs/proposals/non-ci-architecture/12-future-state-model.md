@@ -1,6 +1,6 @@
 # A traversable model of present, future and transition
 
-**Draft proposal, 10 October 2026.** Extend existing graph and consumer-routing capabilities with a common architecture-change model. Approved changes may reconcile affected unfinished plans together, while completed history remains intact. This document changes no live brief or skill; its interface and schema are proposed.
+**Future architecture model; updated 13 October 2026.** Extend existing graph and consumer-routing capabilities with a common architecture-change model. Approved changes may reconcile affected unfinished plans together, while completed history remains intact. This document changes no live brief or skill; its interface and schema are proposed.
 
 ## The missing capability is an architecture change model
 
@@ -26,6 +26,29 @@ The existing semantic-owner register remains the home of ownership declarations.
 Several proposals can coexist. A cell/adopter can target a particular approved revision rather than “latest.” Milestones select coherent subsets of the target. Calendar dates alone do not make a transition valid. Compare **observed ↔ target**, **current target ↔ proposed target**, and **transition ↔ producer/consumer versions** separately.
 
 The target is not a UML diagram pretending to be executable code. It is a small set of consequential contracts and relationships, with narrative design attached. Begin with the verifier slice; expand as changed contracts require it. Do not annotate every function or backfill the entire brief corpus before the first useful query.
+
+## Product-target bindings and drift
+
+The [portfolio and drift responsibilities](11-target-architecture.md#portfolio-directed-improvement-and-drift)
+use these same four views. A REQ's product target condition and an architecture target
+are separate, qualified revisions: a changed product measure need not change a component
+or contract baseline. Both can be bound by the same brief. The exact additive binding
+schema remains to be approved and implemented; existing `outcome:` references stay valid.
+
+Compare an in-flight brief's declared product binding with the approved target. A
+`stale-context` projection identifies a revision mismatch for assessment; it is neither
+a new lifecycle status nor an automatic stop. Reuse discovery receipts and affected-work
+reconciliation, retaining original selection context and appended dispositions. Missing
+bindings remain unbound, and undeclared dependencies remain coverage gaps. An unapproved
+proposal cannot stale an approved binding or veto compatible work.
+
+Product-condition drift, architecture conformance, target-binding mismatch, allocation
+divergence and observation expiry are different questions. Project each from its owning
+records with evidence provenance and explicit unknowns. For example, 2% consumption
+against a 5% portfolio target changes the observed allocation, not the approved target.
+A missing exposure observation leaves the observation window's trigger unresolved; it
+cannot be reported as no customer benefit. These views are target capabilities still
+to build and qualify, not features of the existing graph export.
 
 ## Records and relationships
 

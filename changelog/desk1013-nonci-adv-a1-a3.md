@@ -1,0 +1,2 @@
+### Changed
+- Pre-dispatch fixes to three undispatched non-CI briefs, from the approving review of medici-finance/assay#2739: statusgen/19 now states the four-segment `<cell>:<repo>:<stream>:<NN>` canonical brief ID and its two accepted elisions in its facts, Task 1 and Verify row 5 (graph-execution/28's identity record follows the same form); stale `(planned)` wording is corrected in statusgen/19 and graph-execution/28; graph-execution/23 Task 1 now points at graph-execution/28's candidate and acceptance-binding types, with a dated note.

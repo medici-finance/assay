@@ -281,6 +281,13 @@ and it is not the shared checkout. A verified path also appears on the PLAN bann
 guessed. On a real dispatch --worktree is refused (exit 5): the home is deskwt's to name.
 --quiet suppresses the per-step OK lines; failures and the prompt always print.
 
+A successful dispatch only PREPARES the run (claim, worktree, prompt); it never starts the
+agent. It ends with a NOT LAUNCHED line on stderr (also under --quiet) naming the claim, the
+grace window, and the two ways forward: launch the agent and run the claim tool's progress verb,
+or release the claim. A claim left at state=claimed for CLAIMED_TTL_MIN (default 20m) is
+reclaimed by the next dispatcher, and the claim tool's show and list mark it
+PREPARED-NOT-LAUNCHED.
+
 Exit: 0 dispatch prepared · 3 disabled · 5 refused (live claim holder / caller
 precondition) · 6 unverifiable (a claim or gate whose state could not be established).
 

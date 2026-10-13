@@ -4746,6 +4746,13 @@ paths (the latter via the local-roots allowlist, #215). It claims no more.
 
 ### Authenticated transport — `--as <role>` (fetch and push)
 
+**Repository selection.** Run `deskgit` from the repository whose origin is being
+checked. It accepts neither git's `-C` option nor a repository operand. For a
+worker reading a configured board root, use
+`(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"`,
+where `root` is the inventory's absolute path. Directory selection and fetch must
+succeed before planning; the subshell preserves the caller's working directory.
+
 `--as <role>` supplies a role's App installation token to git from the 0600 token file the
 role already owns, and is the **sanctioned replacement for the inline credential-helper
 recipe** the desk roles used to retype before every push and private-remote refresh (the
