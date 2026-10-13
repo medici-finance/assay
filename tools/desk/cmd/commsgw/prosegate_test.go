@@ -440,3 +440,24 @@ func TestGateBoundWithinClient(t *testing.T) {
 		t.Fatalf("gate consult bound %v exceeds deskkit.DefaultDecideTimeout %v the client deadline is derived from", gate.Timeout, deskkit.DefaultDecideTimeout)
 	}
 }
+
+// A runner CLI can print a warning before the decider's reply. The verdict
+// parse already skips it; the journalled justification must too, or every
+// decision record carries the CLI's warning instead of the decider's reason.
+//
+// regression: #2726
+func TestAdviceSkipsCLIPreamble(t *testing.T) {
+	q, err := NewProseQuestion()
+	if err != nil {
+		t.Fatalf("NewProseQuestion: %v", err)
+	}
+	reply := "Warning: Code Mode is unavailable in this environment; tool calls will fail closed.\n" +
+		"clean-send — routine status note\n"
+	got := adviceFrom(reply, q.Vocabulary())
+	if got.Answer != string(VerdictCleanSend) {
+		t.Fatalf("answer = %q, want %q", got.Answer, VerdictCleanSend)
+	}
+	if want := "clean-send — routine status note"; got.Justification != want {
+		t.Fatalf("justification = %q, want %q", got.Justification, want)
+	}
+}
