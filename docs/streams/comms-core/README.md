@@ -12,7 +12,7 @@ board: generated
 # Reusable communications foundation
 
 Design and extraction work; no implementation or activation claimed. The
-[future-state specification](../../proposals/non-ci-architecture/20-communications.md)
+[future-state specification](../../proposals/non-ci-architecture/21-communications.md)
 owns the target and separates initial compatibility refactors from broker migration.
 
 ## Briefs
@@ -38,8 +38,8 @@ These are code dependencies, not a requirement to await a broker decision or des
 Wave numbers are derived from the existing dependency graph.
 
 The actual first blocker is Go's internal-package boundary and policy coupling:
-internal/comms imports deskkit, and gateway/client implementations live in package main.
-Extract those seams with the old behavior qualified first. Do not publish internal/deskkit.
+internal/comms (laneacl) and internal/commsqueue (quarantine filing) both import deskkit, and gateway/client implementations live in package main.
+Extract those seams with the old behavior qualified first. Keep the quarantine filer (`DeskfileIssueFiler`/`FileDeskIssue`) in tools/desk behind a port the server calls. Do not publish internal/deskkit.
 
 ## Later delivery
 

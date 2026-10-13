@@ -165,9 +165,11 @@ leases, authority grants or another coordination database. Offline output remain
 usable without PostgreSQL; it cannot publish governed evidence. Notification batching
 coalesces presentation only, preserving distinct pending decisions and their subjects.
 
-## Message transport ownership
+## Message transport ownership (proposed; pending approval)
 
-The [communications target](20-communications.md#storage-boundary-and-broker-decision)
+Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
+
+The [communications target](21-communications.md#storage-boundary-and-broker-decision)
 assigns durable message transport to a selected broker. PostgreSQL owns the application
 transaction and its outbox/inbox deduplication bridge, not a competing mailbox engine.
 Broker acceptance, recipient acknowledgment and completed business effect are distinct.

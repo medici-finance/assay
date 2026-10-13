@@ -44,12 +44,18 @@ facts (a435badbd, 2026-10-13):
 - The handoff records named by the ratified target are: target and intent, discovery receipt,
   impact obligation, amendment obligation, preserved history, active-work binding, and decisions
   and readiness (doc 12).
-- The proposal's `examples/architecture-change-v0.yaml` (planned) is illustrative only; it is not a
-  production schema and nothing reads it.
+- The proposal's `docs/proposals/non-ci-architecture/examples/architecture-change-v0.yaml` exists
+  and is illustrative only; it is not a production schema and nothing reads it.
 - Schemas live in `schemas/`, prose contracts in `spec/`; semantic owners are registered in
   `docs/contracts.md` (three-part pattern: spec, schema, fixtures).
 - statusgen already owns the brief parser and the deterministic graph export
-  (`TestGraphJSONLDeterministic`); qualified brief IDs use the `<repo>:<stream>:<NN>` form.
+  (`TestGraphJSONLDeterministic`).
+- A qualified brief ID's canonical form is four segments, `<cell>:<repo>:<stream>:<NN>` (e.g.
+  `assay:assay:statusgen:19`), with the repo segment an alias from `docs/streams/graph-repos.yaml`.
+  References may use exactly two elisions, `<repo>:<stream>:<NN>` and `<stream>:<NN>`, where each
+  omitted prefix means "same as the declaring brief" (`docs/brief-template.md`, the `brief:` field
+  and its notes). The brief-v1 `<stream>/<NN>` form is a migration-window read form, not a
+  qualified ID.
 - No `contexthandoff` package, `context-handoff` spec or schema exists at a435badbd.
 - The name is "context handoff" to stay distinct from graph-execution/09's execution work-input
   packet, which is a role view of a workflow instance.
@@ -84,8 +90,12 @@ design-fit:
 ## Task
 
 1. Write `spec/context-handoff-v1.md` (planned) and `schemas/context-handoff-v1.json` for the seven records
-   above. Every reference uses qualified IDs; a draft or proposed target is a distinct state from
-   an approved one, with the approving revision recorded.
+   above. Every brief reference is a qualified ID: the canonical form is the four-segment
+   `<cell>:<repo>:<stream>:<NN>`; the only accepted elisions are `<repo>:<stream>:<NN>` and
+   `<stream>:<NN>`, each expanded against the declaring record's cell and repo before validation,
+   so validated records and canonical digests always carry the four-segment form. Bare `#N`,
+   path-only and brief-v1 `<stream>/<NN>` references are refused. A draft or proposed target is a
+   distinct state from an approved one, with the approving revision recorded.
 2. Write `schemas/amendment-manifest-v1.json` (planned): per obligation, the owning brief, delivery paths,
    contract version, dependencies, test commands, active-work treatment, effort, and the bound
    patch (base revision and patch digest) or an explicit follow-up reference.
@@ -112,7 +122,7 @@ The named tests are deliverables of this brief and do not exist at a435badbd.
 | 2 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffCoverageGapRequired$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffCoverageGapRequired " "$out")` | exit 0; named PASS; a discovery receipt without coverage, or with an unavailable source silently omitted, is refused; mutation: default missing coverage to complete — the test must fail |
 | 3 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffDraftIsNotApproved$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffDraftIsNotApproved " "$out")` | exit 0; named PASS; a draft target cannot satisfy a check that requires an approved target, and approval without a recorded revision is refused; mutation: treat any target as approved — the test must fail |
 | 4 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffCanonicalDigestStable$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffCanonicalDigestStable " "$out")` | exit 0; named PASS; reordered fields give the same digest and a changed value gives a different one; mutation: hash the raw input bytes — the test must fail |
-| 5 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffQualifiedIDsResolve$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffQualifiedIDsResolve " "$out")` | exit 0; named PASS; bare `#N`, path-only and unqualified brief references are refused; mutation: accept a path as a brief identity — the test must fail |
+| 5 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffQualifiedIDsResolve$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffQualifiedIDsResolve " "$out")` | exit 0; named PASS; a four-segment `<cell>:<repo>:<stream>:<NN>` reference is accepted; the elisions `<repo>:<stream>:<NN>` and `<stream>:<NN>` are accepted and canonicalize to the same four-segment ID and the same digest as the full form; bare `#N`, path-only, brief-v1 `<stream>/<NN>` and other unqualified references are refused; mutation: accept a path as a brief identity, or keep an elided reference unexpanded in the canonical record — the test must fail |
 | 6 | check:ci +dereference +flow | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextHandoffSchemaFixtures$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextHandoffSchemaFixtures " "$out")` | exit 0; named PASS; each fixture goes through the production decoder and the JSON schema (spec → schema → package), both agree with the fixture's positive/negative label, and every schema record is named in the spec; mutation: drop a required field from the schema only — the test must fail |
 | 7 | check:ci +mutation | `(cd statusgen && name=$(GOWORK=off go list -f '{{.Name}}' ./contexthandoff/) && test "$name" = contexthandoff && bad=$(GOWORK=off go list -f '{{range .Imports}}{{if or (eq . "os") (eq . "os/exec") (eq . "net") (eq . "net/http") (eq . "syscall") (eq . "io/ioutil") (eq . "path/filepath")}}{{.}} {{end}}{{end}}' ./contexthandoff/) && test -z "$bad")` | exit 0; the package exists and imports no filesystem, process or network package; mutation: add an `os` import — the row must fail |
 

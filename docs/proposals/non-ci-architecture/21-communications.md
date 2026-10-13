@@ -1,7 +1,10 @@
 # Future-state communications: reusable service, thin clients, broker-owned delivery
 
-**Status: draft specification, 13 October 2026.** This is the communications target
-within the future-state architecture, not a description of deployed behavior. The
+**Status: draft specification, 13 October 2026; proposal pending approval.** This is the communications target
+within the future-state architecture, not a description of deployed behavior. It is not part of
+the R1–R8 packages ratified at revision `23f655f5d` on
+[medici-finance/assay#2500](https://github.com/medici-finance/assay/issues/2500), and the
+[amendment manifest](20-amendment-manifest.md) does not yet carry its edges. The
 requested direction is reusable client/server packages and reconciliation of existing
 unfinished work. Review and approval bind this document's revision; broker selection,
 trust changes and deployment activation are separate decisions. Existing evidence and
@@ -32,7 +35,7 @@ fetched 2026-10-13. These are source observations, not deployment or test-pass c
 | `tools/desk/internal/comms/{envelope,identity,laneacl}.go` | cellmsg-v1 parsing, assertions, fixed Assay vocabulary and lane ACL; laneacl imports deskkit | Separate generic contract from Assay policy; moving the directory alone is insufficient |
 | `tools/desk/cmd/commsgw` | Local listener, A2A inbound, admission checks, mailbox operations and filtering | Service logic is package main; extract before another host can reuse it |
 | `tools/desk/cmd/commsloop` | Drain, routing, mailbox delivery and optional native dispatch | Messaging routing/filtering is reusable; session execution belongs to the existing runtime owner |
-| `tools/desk/internal/commsqueue` | File-backed accepted/held records, mailbox and acknowledgments | Retain as a transition backend; atomic file replacement alone is not a distributed durability guarantee |
+| `tools/desk/internal/commsqueue` | File-backed accepted/held records, mailbox and acknowledgments; `tools/desk/internal/commsqueue/quarantine.go` also files forge issues (`DeskfileIssueFiler` runs `deskfile`; `FileDeskIssue` imports `internal/deskkit`) | Retain the generic file queue as a transition backend; atomic file replacement alone is not a distributed durability guarantee. Keep quarantine filing in `tools/desk` behind a port the server calls; commsqueue→deskkit is a coupling to cut beside laneacl→deskkit |
 | `tools/desk/cmd/deskcomms` and `internal/commstransport` | send/poll/ack and local Unix-socket/Windows-pipe transport | Extract a narrow client; preserve custody and command behavior |
 | `tools/desk/cmd/cellctl/comms*.go`, `docs/cellctl-comms.md` | init/check/run, manifest, service supervision and client environment | Extend this configuration owner; do not invent a parallel operator CLI |
 
@@ -240,7 +243,7 @@ regardless of a successful demo. No live production access is needed for these c
 
 ## Decisions and completion boundary
 
-The driver approves this target and explicit compatibility/authority deltas. The broker
+Approval is requested from the driver for this target and its explicit compatibility/authority deltas; none is recorded here. The broker
 and operational profile remain open until comparative evidence exists. Retain Go for the
 first extraction with the independent `assay/comms` module; defer a separate repository
 and a Rust server until a named consumer justifies them. Prefer existing cellctl commands over a second config executable.

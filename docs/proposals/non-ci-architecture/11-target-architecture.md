@@ -1,6 +1,10 @@
-# A whole-system target for Assay
+# Assay’s future architecture
 
-**Draft proposal, 10 October 2026.** Part of the [public architecture proposal](README.md), not an approved target or deployment authorization. The requested design starts with one host containing multiple isolated cells, permits command breaks where they simplify the design, reconciles affected unfinished plans together, and includes the service and cockpit in public Assay. PostgreSQL coordinates runtime work; recovery should reconstruct useful state while permitting classified transient loss and safe repeated work. See [storage and recovery](14-storage-forge-graph.md).
+**Status: future architecture we are moving towards. Updated 13 October 2026.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
+
+The target starts with one host containing multiple isolated cells, permits command breaks where they simplify the design, reconciles affected unfinished plans together, and includes the service and cockpit in public Assay. PostgreSQL coordinates runtime work; recovery should reconstruct useful state while permitting classified transient loss and safe repeated work. See [storage and recovery](14-storage-forge-graph.md).
+
+The maintainer ratified the whole target at revision `23f655f5d`, packages R1–R8, on [medici-finance/assay#2500](https://github.com/medici-finance/assay/issues/2500). That approval remains revision-bound: it does not imply that the portfolio/drift additions below were included in that earlier revision, or that any runtime has been activated.
 
 ## Design the product around governed operations
 
@@ -15,13 +19,13 @@ flowchart TB
   OP[Host operator: exclusive repo assignment, authority incarnation, cell lifecycle]
   HUMAN[Human cockpit and CLI]
   AGENT[Agent clients and authoring skills]
-  DEF[Reviewed Git definitions: work, architecture, policy references]
+  DEF[Reviewed Git definitions: direction, product targets, work, architecture, policy]
   subgraph CELL[One isolated cell — repeated on the host]
     API[Cell API: authenticated queries and scoped requests]
-    APP[Controller: work, planning, admission, verification, operations]
+    APP[Controller: work, planning, admission, verification, observation]
     CORE[Pure domain contracts and evaluators]
     DB[(PostgreSQL coordination and query projections)]
-    CTX[Derived work and architecture projections]
+    CTX[Derived work, architecture, portfolio and drift views]
     RUN[Disposable role and verification runners]
     EFFECT[Separate role-bound effect executors]
     BLOBS[(Git-retained evidence and execution artifacts)]
@@ -64,13 +68,13 @@ The cockpit exposes effective policy, evidence provenance and next required act.
 
 | Domain | Meaning owned here | Boundaries |
 |---|---|---|
-| Definitions and planning | Work definitions, requirements, architecture targets, contracts, change sets and their revisions | Markdown remains the narrative; structured records make selected relationships traversable. Plans do not assert deployment. |
-| Work and policy | Eligibility, dependency satisfaction, delivery facts, review currency, acceptance obligations and explainable holds | Pure evaluation over explicit observations and policy versions. No token minting, process launch or hidden network reads. |
+| Definitions and planning | Work definitions, persistent product direction, product and architecture targets, requirements, contracts, change sets and their revisions | Markdown remains the narrative; structured records make selected relationships traversable. Plans do not assert deployment. |
+| Work and policy | Eligibility, dependency satisfaction, delivery facts, review currency, acceptance obligations, portfolio policy evaluation and explainable holds | Pure evaluation over explicit observations and policy versions. No token minting, process launch or hidden network reads. |
 | Runtime coordination | Attempts, leases/generations, schedules, cancellations, recovery, bounded budgets and effect intents | A simple desk item need not instantiate a general workflow graph. Both desk and workflow adapters use the same admission and ownership semantics. |
 | Evidence and decisions | Evidence subjects, applicability, independent verification, human decisions, publication receipts and acceptance assessment | Execution success cannot grant acceptance; evidence publication cannot answer a human gate. |
 | Provider effects | Typed external reads/writes, repository coordinates, identity, conditional effects and reconciliation | Credential custody stays outside working sessions. Each effect executor has only its role's authority; no universal credential broker. |
-| Continuing operations and quality | Enduring journeys/practices/workflows, assessment definitions, observations and improvement hypotheses | Delivery verification does not prove operational benefit. qualgen-style measures feed this domain rather than silently changing authorization. |
-| Projection and interaction | Work/architecture/history views, source coverage, freshness, human inbox, terminals and notifications | Same canonical evaluators for every client. Notifications and terminal attachment are not durable ownership. |
+| Continuing operations and quality | Enduring journeys/practices/workflows, assessment definitions, due observations and improvement hypotheses | Delivery verification does not prove operational benefit. qualgen-style measures feed this domain rather than silently changing authorization. |
+| Projection and interaction | Work/architecture/history, portfolio allocation and drift views, source coverage, freshness, human inbox, terminals and notifications | Same canonical evaluators for every client. Notifications and terminal attachment are not durable ownership. |
 | Cell operation | Installation, resolved configuration, secrets references, executor capability, upgrades, recovery and revocation | Operator configuration remains outside evaluated branches; host administration is unavailable to agents. |
 
 The definitions/planning domain owns the [shared discovery and handoff contract](12-future-state-model.md#discovery-and-handoff-contract) used by both author skills: source-universe enumeration, candidate relationship discovery, versioned context receipts and reviewable amendment obligations. Its offline resolver accepts explicit snapshots; authority to approve, dispatch or activate remains with the existing decision and runtime boundaries. Historical source/decision accounts are protected alongside Evidence.
@@ -82,6 +86,106 @@ Keep stable, qualified identities for a cell, repository, work definition and re
 Attempt attribution includes actor, model/provider, role/lane, candidate and source revision. Author and reviewer observations cannot overwrite each other through one mutable PR label. A label may project that record for compatibility; it is not the canonical provenance. The preservation obligations are carried into the [regression plan](15-regression-from-day-one.md).
 
 Review currency binds the candidate actually reviewed, not solely the provider’s current `commit_id` display. The review adapter retains an attributed submission record or validated verdict binding and reports a mismatch/absence as unknown. The evaluator and publisher must share that rule, including already-ready changes, body edits and merges from base. Qualify the reported retargeting sequence before selecting the precise provider binding.
+
+## Portfolio-directed improvement and drift
+
+Portfolio and drift are logical capabilities within these domain owners, not a new
+service, graph database or scheduler. They connect persistent intent to bounded work
+and evidence of what happened afterwards. Features, capabilities and journeys can span
+architectural classifications; classification and investment confer no authority.
+
+**Persistent subjects and targets.** Extend the existing [REQUIREMENTS register](../../../spec/registers-v1.md#6-requirements-register)
+with an accountable human owner, a subject kind, longer-term direction, the next target
+condition and the observed condition. Targets carry a measure, window, confidence and
+unique revision; observations carry source evidence, date and limits. Reference the
+existing [continuing-operations](../../streams/continuing-operations/spec.md) journey or
+workflow identity where applicable, preserving its ownership and assessment lineage.
+The REQ carries product intent; it must not become a second operational assessment store.
+A subject outlives its briefs; streams remain finite coordination of bounded changes.
+
+**Target binding and context drift.** A brief binds the product-target revision it was
+selected to serve, separately from its architecture/contract baseline. Preserve the
+existing `outcome: REQ-<slug>` grammar; an additive `outcome-revision:` is a candidate
+extension for the brief/schema owners, not a supported field claimed by this document.
+Compare declared bindings to approved target revisions through the
+[shared impact and reconciliation model](12-future-state-model.md#product-target-bindings-and-drift).
+A mismatch nominates affected work for a continue, adapt or stop decision at the next
+useful checkpoint; it does not automatically cancel compatible work. Urgent evidence or
+control failures can require earlier action. Retain original bindings and append any
+rebinding with its rationale. Unapproved proposals cannot invalidate approved work.
+
+**Allocation and consumption.** Adopter-owned portfolio policy maps investment buckets
+to subjects with separate targets for agent capacity and human decision capacity,
+a scope/window and a measurement-policy revision. Work and policy evaluates eligibility;
+runtime coordination admits attempts; portfolio views explain those decisions through
+the same API used by CLI, agents and cockpit. They cannot dispatch independently.
+A target allocation of 5% with measured consumption of 2% remains a 5% target with a
+visible divergence. It does not authorize filler work, automatic catch-up or a target
+rewrite. Floors, ceilings and stops apply only under explicit approved policy; required
+approval, evidence and applicable obligations remain constraints.
+
+Attribute agent consumption to stable invocation identity and the pinned runner profile,
+actual model and versioned measurement/weight policy. Active time requires an approved
+telemetry source; launch-to-finish elapsed time is only a labeled proxy. Count retries
+and concurrent invocations once each. Measure human decisions independently using a
+declared unit/window, deduplicated decision identity and one primary bucket; preserve
+unattributed entries. Do not add human decision counts to agent time. Missing usage,
+durations or attribution remain unknown: show known subtotals and coverage, never a
+false complete total or zero. Shares with a zero denominator are undefined.
+
+**Observation after delivery.** Bind intended impact to its signal, evaluation rule,
+exposure trigger/window, evidence source and accountable observation owner. Reconcile
+any concise authoring syntax with continuing-operations' impact contract before machine
+use. Delivery closure transfers a still-due observation obligation to the continuing
+practice; it does not erase it. A bounded manual transition may keep one owned due list
+linked from the REQ until the practice integration is available. Transfer its stable
+identity and history when migrating, without creating a second deadline or assessment.
+Distinguish verified, exposed, used and observed claims; existing delivery lifecycle and
+independent verification remain controlling. Missing exposure is an unresolved trigger,
+not evidence of zero benefit. Supporting, adverse, mixed and inconclusive results remain
+visible, including contradictory evidence.
+
+**Drift views and response.** Show observed versus intended product condition,
+observed versus target architecture, declared work-binding mismatches, allocation versus
+consumption and due/overdue observations as distinct comparisons. Each names its subject,
+baseline/policy revision, evidence window, coverage and responsible decision owner.
+Compute exact mismatches and expiry only where declared inputs suffice; relationship
+discovery, materiality and qualitative interpretation still need investigation. Notify
+under the existing owner-approved policy, consolidating repeated divergence rather than
+creating one human decision per polling tick. Raw observations, interpretations,
+proposed intent and approved intent remain separate records. Drift never silently rewrites
+intent or changes acceptance, runtime authority or a historical completion claim.
+
+## Implemented foundations and work still to build
+
+This bounded source inspection is pinned to public Assay
+[`efbdb51da80746655de640e014d87324f0c2e031`](https://github.com/medici-finance/assay/tree/efbdb51da80746655de640e014d87324f0c2e031)
+(13 October 2026). It is not a release inventory or deployment observation. The earlier
+whole-system inventory remains pinned in the [architecture index](README.md#evidence-and-currentness).
+
+| Capability | Implemented foundation inspected | Still to build or qualify for this target |
+|---|---|---|
+| Requirements and work links | `statusgen/requirements.go` parses REQ entries; `statusgen/costoutcome_test.go` covers outcome validation under brief-v1. | Persistent direction/target/observed extensions, product-target revision bindings and compatible schema/readers. Existing fields do not implement that lifecycle. |
+| Context and drift | `statusgen/graph.go` exports declared work relationships. | Qualified product/architecture target resolution, coverage-aware impact reconciliation and the portfolio/drift views described above. The existing graph is not proof of this integration. |
+| Runner attribution | `loopadmin/runner/request.go`, `result.go` and `usage.go` carry profile, invocation, actual-model and usage records. | Qualified active-time measurement, versioned allocation accounting, deduplication and per-bucket human-decision attribution; runner telemetry alone is not a portfolio ledger. |
+| Continuing observation | The continuing-operations specification supplies design input; it is explicitly a draft. | One durable obligation/assessment chain across delivery closure and practices, exposure/usage evidence, due views and manual-to-runtime migration. |
+| Whole-system runtime and clients | Existing tools and reusable contracts remain migration inputs under their present authority. | Qualify the integrated cell controller, PostgreSQL coordination/recovery, effect boundaries and shared cockpit/API consumers by the delivery and regression plans; this document certifies no deployment. |
+
+These additions amend definitions/planning, context, work/policy, runtime measurement,
+continuing operations and projection consumers. Their owners must reconcile contract
+revisions, schemas, active work and migration obligations before automation. Keep
+existing parsers, selection semantics, claims, verification and historical evidence
+until their reviewed replacements are qualified. A manual trial must expose unsupported
+semantics and coverage; it cannot claim the automated integration exists.
+
+Qualification must demonstrate a changed target with compatible and incompatible work,
+an unapproved rival with no veto, partial bindings with visible coverage, a blocked bucket
+with no forced catch-up, unknown usage without false totals, and an observation obligation
+that survives `done` and transfers exactly once. The [delivery sequence](16-delivery-sequence.md)
+and [regression plan](15-regression-from-day-one.md) remain the homes for implementation
+and proof. No refreshed complexity/churn or deployed-health baseline was collected for
+this documentation revision; proceed with the bounded design update and require current
+source and quality evidence in the affected implementation briefs.
 
 ## State has explicit homes
 
@@ -171,9 +275,11 @@ Preserve separate role authority, operator-only credential custody, pure library
 
 Do not retain every old constraint by inertia, or erase it by implication. The [migration proposal](13-migration-and-decisions.md) names the decisions and affected plans to reconcile. The [future-state model](12-future-state-model.md) makes subsequent amendments discoverable and revision-bound.
 
-## Communications future-state amendment (13 October 2026)
+## Communications future-state amendment (proposed 13 October 2026; pending approval)
 
-The [communications specification](20-communications.md) gives messaging an explicit
+This section is a proposal against the ratified revision `23f655f5d`, not baseline text. It is pending approval and is not yet carried by the amendment manifest.
+
+The [communications specification](21-communications.md) gives messaging an explicit
 reusable client/server boundary. `commsgw` is the standalone service host; `deskd` can
 compose the same service under a qualified custody profile; `deskcomms` is a client
 adapter. Existing cellctl comms operations own operator configuration. A non-Go host

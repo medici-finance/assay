@@ -8,12 +8,13 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
-gate-why: "Cellctl already manages a comms manifest, while gateway and drain parse their own inputs. Shared validation and explicit settings operations prevent those views drifting as service hosts multiply."
+gate-why: "Config set writes operator-owned paths to custody material. A human confirms redaction, atomic replacement and the no-activation boundary before the command ships."
 issues: []
 schema: brief-v2
+outcome: none
 authored: 2026-10-13 by statusgen newbrief
 sources:
-  - "docs/proposals/non-ci-architecture/20-communications.md"
+  - "docs/proposals/non-ci-architecture/21-communications.md"
   - "freshness-checked 2026-10-13 at a435badbd1d245402407acd2a82a6abe5f37f637 after origin/main fetch"
 version: 1
 id: 239bce22-fd9c-4978-afb6-66361945f001
@@ -52,14 +53,14 @@ layering: comms/config for pure schema and resolved values; cellctl for operator
 single-point-of-failure: service admission remains authoritative; client preflight is advisory, and existing transport/custody and effect-boundary controls remain independent checks.
 design-fit:
   owner: comms/config for pure schema and resolved values; cellctl for operator effects
-  contract: docs/proposals/non-ci-architecture/20-communications.md
+  contract: docs/proposals/non-ci-architecture/21-communications.md
   retires: command-local duplicated or unimportable implementation only after callers move
   weight: no additional daemon or broker; narrow public packages and compatibility fixtures
   why-add: reuse the existing implementation across clients/hosts without exporting authority
 
 ## Read first
 
-- [Communications target](../../proposals/non-ci-architecture/20-communications.md).
+- [Communications target](../../proposals/non-ci-architecture/21-communications.md).
 - [Library boundary](../../library-first.md) and [host comms](../../cellctl-comms.md).
 - Existing tests beside the source paths above.
 
@@ -94,8 +95,8 @@ test names below are deliverables, not claims they already exist.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check +flow +dereference | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestCommsConfigFlow$' > /tmp/comms-core-04-flow.log 2>&1 && grep -F -- '--- PASS: TestCommsConfigFlow ' /tmp/comms-core-04-flow.log` | exit 0; named test runs and compares the specified end-to-end and legacy fixtures |
-| 2 | check +flow | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestCommsConfigCustodyAndNoActivation$' > /tmp/comms-core-04-boundary.log 2>&1 && grep -F -- '--- PASS: TestCommsConfigCustodyAndNoActivation ' /tmp/comms-core-04-boundary.log` | exit 0; named test runs; forbidden authority/import/custody paths refuse, including lower-layer bypass cases |
+| 1 | check +flow +dereference | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestCommsConfigFlow$' > ${TMPDIR:-/tmp}/comms-core-04-flow.log 2>&1 && grep -F -- '--- PASS: TestCommsConfigFlow ' ${TMPDIR:-/tmp}/comms-core-04-flow.log` | exit 0; `TestCommsConfigFlow` runs the manifest/environment precedence and explicit-empty fixture matrix through `comms/config` and shows missing, invalid, disabled and unsupported modes as distinct results with provenance; the pure module performs no I/O beyond reading its inputs |
+| 2 | check +flow | `cd tools/desk && GOWORK=off go test -count=1 -v ./cmd/cellctl -run '^TestCommsConfigCustodyAndNoActivation$' > ${TMPDIR:-/tmp}/comms-core-04-boundary.log 2>&1 && grep -F -- '--- PASS: TestCommsConfigCustodyAndNoActivation ' ${TMPDIR:-/tmp}/comms-core-04-boundary.log` | exit 0; the test runs where cellctl owns operator effects: `config set` replaces the file atomically under custody checks, refuses inline key material, argv secrets and unknown keys, and starts, reloads and enables nothing |
 | 3 | check | `(cd comms && GOWORK=off go test -count=1 ./... && cd ../tools/desk && GOWORK=off go test -count=1 ./cmd/cellctl/... ./cmd/commsgw/... ./cmd/commsloop/...)` | exit 0; existing and moved tests pass |
 | 4 | check | `(cd comms && GOWORK=off GOOS=windows go vet ./... && cd ../tools/desk && GOWORK=off GOOS=windows go vet ./cmd/deskcomms ./cmd/commsgw ./cmd/commsloop)` | exit 0; Windows compile/vet only, not a native-runtime witness |
 

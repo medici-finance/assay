@@ -122,9 +122,11 @@ database operation, migration, discovery and qualification work. Net savings rem
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
 
-## Communications extraction and existing-work amendments
+## Communications extraction and existing-work amendments (proposed; pending approval)
 
-The [communications target](20-communications.md) and [comms-core briefs](../../streams/comms-core/README.md)
+Proposal against the ratified revision `23f655f5d`. The R2, R7 and R8 edges below are not in the amendment manifest's rows or dependency path until the proposal is approved and the manifest is reconciled.
+
+The [communications target](21-communications.md) and [comms-core briefs](../../streams/comms-core/README.md)
 add a concrete extraction path: 01 contract/policy → 02 server/file backend → 03 client;
 04 shared configuration follows 02 and desktools-v2/16. Existing desktools-v2/42 now
 depends on 02/03 and remains the sole owner of Cobra migration for the comms commands.

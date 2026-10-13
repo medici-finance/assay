@@ -137,11 +137,13 @@ capability evidence. A schema-valid preset or a higher score is not a passing ru
 case. Measure first useful outcome and independent repeat use, including support and
 repair effort. Read-only release acceptance is independent of managed writer activation.
 
-## Communications regression extension
+## Communications regression extension (proposed; pending approval)
+
+Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
 
 Preserve the commsgw bypass/identity/mailbox suites, commsloop policy/native-dispatch
 suites, deskcomms command/peer-custody suites and cellctl comms manifest/lifecycle
-suites through the [communications extraction](20-communications.md). The initial
+suites through the [communications extraction](21-communications.md). The initial
 proof is behavior parity plus a real external SDK consumer, not distributed delivery.
 The specification's acceptance cases govern later two-cell outages, filter crashes,
 retries, quota/expiry, authority bypass, SQL-outbox handoff and state migration.

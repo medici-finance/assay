@@ -8,12 +8,13 @@ unblocks: ["comms-core/03", "comms-core/04", "desktools-v2/42"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
-gate-why: "A second service host cannot reuse package-main gateway logic. Extract the server and its existing file backend once so standalone and later composed hosts enforce the same rules."
+gate-why: "The extraction moves admission, mailbox custody and drain behavior behind one authoritative path. A human confirms that no persisted-state, identity or activation change is hidden in the move."
 issues: []
 schema: brief-v2
+outcome: none
 authored: 2026-10-13 by statusgen newbrief
 sources:
-  - "docs/proposals/non-ci-architecture/20-communications.md"
+  - "docs/proposals/non-ci-architecture/21-communications.md"
   - "freshness-checked 2026-10-13 at a435badbd1d245402407acd2a82a6abe5f37f637 after origin/main fetch"
 version: 1
 id: ca4dd298-1734-40bd-88cd-63ba5c34f5cf
@@ -47,14 +48,14 @@ files:
 - `changelog/comms-server.md` (planned)
 
 facts:
-- At a435badbd, commsgw owns admission/listeners and commsloop owns drain/routing; commsqueue defines shared file state. Native dispatch and role-bound effects are coupled to the command composition. Refactoring must not enable them.
+- At a435badbd, commsgw owns admission/listeners and commsloop owns drain/routing; commsqueue defines shared file state and also holds a forge-reaching quarantine filer (`tools/desk/internal/commsqueue/quarantine.go`: `DeskfileIssueFiler`, and after #2731 `internal/deskkit`'s `FileDeskIssue`), which is a second coupling beside laneacl→deskkit. Native dispatch and role-bound effects are coupled to the command composition. Refactoring must not enable them.
 - Source snapshot: 2026-10-13, a435badbd1d245402407acd2a82a6abe5f37f637. Refresh code, claims and PRs before dispatch; no implementation is claimed here.
 
 layering: comms/server for message use cases, file backend for transition state; existing runtime owner retains native dispatch.
 single-point-of-failure: service admission remains authoritative; client preflight is advisory, and existing transport/custody and effect-boundary controls remain independent checks.
 design-fit:
   owner: comms/server for message use cases, file backend for transition state; existing runtime owner retains native dispatch
-  contract: docs/proposals/non-ci-architecture/20-communications.md
+  contract: docs/proposals/non-ci-architecture/21-communications.md
   retires: command-local duplicated or unimportable implementation only after callers move
   weight: no additional daemon or broker; narrow public packages and compatibility fixtures
   why-add: reuse the existing implementation across clients/hosts without exporting authority
@@ -64,7 +65,7 @@ in the same change to avoid incompatible queue writers/readers. No broker integr
 
 ## Read first
 
-- [Communications target](../../proposals/non-ci-architecture/20-communications.md).
+- [Communications target](../../proposals/non-ci-architecture/21-communications.md).
 - [Library boundary](../../library-first.md) and [host comms](../../cellctl-comms.md).
 - Existing tests beside the source paths above.
 
@@ -90,7 +91,7 @@ test names below are deliverables, not claims they already exist.
 ## Task
 
 1. Extract Send/Poll/Ack use cases and explicit authentication, authorization, filtering and backend ports. Require policy at construction; never default missing policy to allow. Trusted transport supplies caller identity.
-2. Move the existing queue code behind comms/backend/file without changing persisted state or advertising broker-grade durability. Move messaging filter/drain orchestration into reusable service code; invoke the existing Assay policy adapter. Keep native dispatch and forge effects outside the public library.
+2. Move the generic file-queue code (accepted/held records, mailbox, acknowledgments) behind comms/backend/file without changing persisted state or advertising broker-grade durability. `tools/desk/internal/commsqueue/quarantine.go` is not generic: `DeskfileIssueFiler` shells out to `deskfile`, and `FileDeskIssue` imports `internal/deskkit`. Keep both in `tools/desk` behind a quarantine-filing port that the server calls and the Assay composition satisfies; the public backend must not import them. Move messaging filter/drain orchestration into reusable service code; invoke the existing Assay policy adapter. Keep native dispatch and forge effects outside the public library.
 3. Make commsgw a composition/listener host and commsloop a supervised adapter; preserve local socket/pipe custody, A2A mTLS admission, dedupe, rate limits, stop checks, held records and mailbox ownership. Both listeners must call the same authoritative service path.
 4. Run old persisted-state fixtures through the extracted backend. An independently constructed host fixture must send, filter, poll and acknowledge. Bypass the CLI and mounted listener in negative cases; missing authorizer, forged identity, unauthorized mailbox and filter failure must refuse or hold.
 5. Preserve all native-dispatch safety tests at the Assay boundary. No broker, network forwarding, new identity grants, full-mode enablement or real deskd integration belongs in this extraction. Document public host construction and remaining deployment limits.
@@ -99,10 +100,11 @@ test names below are deliverables, not claims they already exist.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check +flow +dereference | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestServerCompatibilityFlow$' > /tmp/comms-core-02-flow.log 2>&1 && grep -F -- '--- PASS: TestServerCompatibilityFlow ' /tmp/comms-core-02-flow.log` | exit 0; named test runs and compares the specified end-to-end and legacy fixtures |
-| 2 | check +flow | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestServerBypassRefused$' > /tmp/comms-core-02-boundary.log 2>&1 && grep -F -- '--- PASS: TestServerBypassRefused ' /tmp/comms-core-02-boundary.log` | exit 0; named test runs; forbidden authority/import/custody paths refuse, including lower-layer bypass cases |
+| 1 | check +flow +dereference | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestServerCompatibilityFlow$' > ${TMPDIR:-/tmp}/comms-core-02-flow.log 2>&1 && grep -F -- '--- PASS: TestServerCompatibilityFlow ' ${TMPDIR:-/tmp}/comms-core-02-flow.log` | exit 0; `TestServerCompatibilityFlow` replays legacy accepted/held/acked file-state fixtures through `comms/server` over `comms/backend/file`, then an independently constructed host fixture sends, filters, polls and acknowledges with results equal to the legacy ones |
+| 2 | check +flow | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestServerBypassRefused$' > ${TMPDIR:-/tmp}/comms-core-02-boundary.log 2>&1 && grep -F -- '--- PASS: TestServerBypassRefused ' ${TMPDIR:-/tmp}/comms-core-02-boundary.log` | exit 0; `TestServerBypassRefused` calls the service directly (no CLI, no listener): a missing authorizer, forged identity, unauthorized mailbox and a failing filter each refuse or hold |
 | 3 | check | `(cd comms && GOWORK=off go test -count=1 ./... && cd ../tools/desk && GOWORK=off go test -count=1 ./cmd/commsgw/... ./cmd/commsloop/... ./internal/commsqueue/... ./internal/commstransport/...)` | exit 0; existing and moved tests pass |
 | 4 | check | `(cd comms && GOWORK=off GOOS=windows go vet ./... && cd ../tools/desk && GOWORK=off GOOS=windows go vet ./cmd/deskcomms ./cmd/commsgw ./cmd/commsloop)` | exit 0; Windows compile/vet only, not a native-runtime witness |
+| 5 | check +flow | `cd tools/desk && GOWORK=off go test -count=1 -v ./cmd/commsgw -run '^TestGatewayListenersShareServicePath$' > ${TMPDIR:-/tmp}/comms-core-02-mounted.log 2>&1 && grep -F -- '--- PASS: TestGatewayListenersShareServicePath ' ${TMPDIR:-/tmp}/comms-core-02-mounted.log` | exit 0; the test runs in the module that owns the gateway host: the local socket/pipe and A2A listeners both reach the same service path, and the quarantine-filing port is satisfied by the Assay adapter, not by the public module |
 
 ## Pre-mortem
 
