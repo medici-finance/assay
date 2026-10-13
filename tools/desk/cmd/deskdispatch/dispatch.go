@@ -607,7 +607,35 @@ func dispatch(o dispatchOpts) error {
 	o.say("%s %s", stepQueueLabel, stepQueueLabelApply(o, repo))
 
 	// 7 — the prompt.
-	return held.settle(emitPrompt(o, prompt))
+	emitErr := emitPrompt(o, prompt)
+	if emitErr == nil {
+		// 8 — say what has NOT happened. This verb prepares a run; it never starts the agent, so
+		// the claim just placed has no progress behind it until the caller launches and advances it.
+		o.notLaunched(plan, repo, home)
+	}
+	return held.settle(emitErr)
+}
+
+// notLaunched prints the closing NOT LAUNCHED line, on stderr and regardless of --quiet (it is
+// a warning, not a step report). A caller that ends its session, misreads this verb as the
+// launch, or errors before launching leaves the claim at state=claimed; the line names the
+// grace window after which another dispatcher reclaims it and spells out both ways forward —
+// launch the agent and advance the claim, or release it — so neither is left to memory.
+func (o dispatchOpts) notLaunched(plan dispatchPlan, repo, home string) {
+	tool := plan.claimReleaseHint
+	if tool == "" {
+		tool = claimScriptRel
+	}
+	branch := plan.branch
+	if branch == "" {
+		branch = "-" // a detached review/verify home has no branch; the claim records "-"
+	}
+	fmt.Fprintf(os.Stderr, "deskdispatch: NOT LAUNCHED: %s is prepared, not running — no agent has been started in %s. "+
+		"The claim %s stays at state=claimed and another dispatcher reclaims it after %dm with no progress "+
+		"(CLAIMED_TTL_MIN, default %dm). Launch the agent with the emitted prompt, then run `%s progress %q --repo %s "+
+		"--branch %s`; or, if it will not be launched, release it with `%s release %q --repo %s`.\n",
+		o.item, home, plan.claimKey, int(claimedClaimTTL.Minutes()), int(claimedClaimTTL.Minutes()),
+		tool, plan.claimKey, repo, branch, tool, plan.claimKey, repo)
 }
 
 // dispatchPlan is what validateCallerPreconditions derives once, so no later step
