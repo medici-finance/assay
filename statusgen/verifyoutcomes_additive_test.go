@@ -10,6 +10,7 @@ import (
 // (prs, prs_unknown_reason, verifier_tier, started, finished, rows_passed, rows_total,
 // row_results, dispatch_ref, dispatch_ref_sha256) are invisible to this reader: a record
 // carrying every one of them yields the same latest outcome as the same record without them.
+// regression: F-outcome-join-keys
 func TestVerifyOutcomes_AdditiveKeys(t *testing.T) {
 	const base = `{"ts":"2026-10-06T14:20:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0123456789abcdef0123456789abcdef01234567","blocker_kind":"implementation","blocker_ref":"example-org/tracker#7"}`
 	const rich = `{"ts":"2026-10-06T14:20:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0123456789abcdef0123456789abcdef01234567","blocker_kind":"implementation","blocker_ref":"example-org/tracker#7",` +

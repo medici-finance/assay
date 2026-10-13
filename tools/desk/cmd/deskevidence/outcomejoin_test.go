@@ -137,7 +137,8 @@ func landed(t *testing.T, f *fakeForge) string {
 	return string(f.writes[0].Content)
 }
 
-// regression: a verify-fail record landed with no receipt, and the wake keys were optional.
+// a verify-fail record landed with no receipt, and the wake keys were optional.
+// regression: F-outcome-join-keys
 func TestOutcomeRecord_FailWithoutReceipt(t *testing.T) {
 	t.Run("legacy_verify_fail_names_wake_schema", func(t *testing.T) {
 		f, errBuf := setupFake(t)
@@ -160,7 +161,8 @@ func TestOutcomeRecord_FailWithoutReceipt(t *testing.T) {
 	})
 }
 
-// regression: a verify-outcome record named no delivered change, and a stated one was never read back from the forge.
+// a verify-outcome record named no delivered change, and a stated one was never read back from the forge.
+// regression: F-outcome-join-keys
 func TestOutcomeRecord_PRsDereference(t *testing.T) {
 	t.Run("not_found_refused", func(t *testing.T) {
 		f, _ := joinFake(t)
@@ -377,7 +379,8 @@ func TestOutcomeRecord_PRsDereference(t *testing.T) {
 	})
 }
 
-// regression: a verified record under verify-wake-v1 could land without naming what it delivered.
+// a verified record under verify-wake-v1 could land without naming what it delivered.
+// regression: F-outcome-join-keys
 func TestOutcomeRecord_VerifiedRules(t *testing.T) {
 	t.Run("legacy_verified_no_new_requirement", func(t *testing.T) {
 		f, _ := joinFake(t)
@@ -405,7 +408,8 @@ func TestOutcomeRecord_VerifiedRules(t *testing.T) {
 	})
 }
 
-// regression: a record landed in a non-private register named private repositories and the clear dispatch_ref.
+// a record landed in a non-private register named private repositories and the clear dispatch_ref.
+// regression: F-outcome-join-keys
 func TestOutcomeRecord_NonPrivateRedaction(t *testing.T) {
 	hiddenPR := func(f *fakeForge, repo string, n int) {
 		f.prs[repo+"#"+fmt.Sprint(n)] = &deskkit.PullRequest{URL: prURL(strings.ToLower(repo), n), Merged: true, MergeCommitSHA: jMerge, BaseRef: "main", MergedAt: "2026-10-06T10:00:00Z"}
@@ -684,7 +688,8 @@ func TestOutcomeRecord_NonPrivateRedaction(t *testing.T) {
 	})
 }
 
-// regression: the run metadata (tier, window, rows, dispatch_ref) was never shape-checked on a landing.
+// The run metadata (tier, window, rows, dispatch_ref) was never shape-checked on a landing.
+// regression: F-outcome-join-keys
 func TestOutcomeRecord_RunMetadata(t *testing.T) {
 	refuse := func(t *testing.T, name string, line, field string) {
 		t.Helper()
