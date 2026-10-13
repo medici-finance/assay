@@ -23,6 +23,18 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.41 — 2026-10-12
+
+### Fixed
+- Ready Evidence PRs that GitHub considers already mergeable can complete through a protected, head-pinned merge instead of remaining open after a green auto-merge refusal. Workflow activation requires maintainer promotion.
+- Verification outcome records now require successfully landed Evidence from their admitted run, preventing refused Evidence writes from leaving unsupported receipts that hold later verification work.
+
+### Changed
+- Default Codex desk sessions retain interactive steering while continuing their standing assignment through native Goals; explicit noninteractive cadence remains available.
+- Extend the draft non-CI architecture with independently useful inspection/assisted entry paths, selected installation and scoped human oversight. Preserve shared semantic ownership, explicit assurance and existing effect/activation boundaries; no runtime behavior is changed.
+- Generate and check the repository’s Cursor skills, references, rules, and bounded bindings from the canonical Assay bundle. Add Unix and Windows `build-all` targets, fresh-checkout Windows harnessgen coverage, and verified versioned Cursor install/upgrade with preview, drift checks, and preservation of unmanaged content. Legacy releases without a Cursor asset refuse versioned acquisition. (#2701)
+- desk-tools/36 authored: the scheduled board reconcile's PR class becomes generated output per the driver's ruling on #2688 — auto-approve lane (default) or direct-CI single-writer; the class's own guards untouched.
+
 ## v1.0.40 — 2026-10-12
 
 ### Added
