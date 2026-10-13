@@ -132,6 +132,84 @@
       "file": "cmd/deskwt/cachepressure.go",
       "old": "\tif abs, err := filepath.Abs(cellsRoot); err == nil {\n\t\tcellsRoot = abs\n\t}\n\tif canon, err := filepath.EvalSymlinks(cellsRoot); err == nil {\n\t\tcellsRoot = canon\n\t}",
       "new": "\t// root canonicalization omitted"
+    },
+    {
+      "name": "the fresh-worktree guard holds an at-tip tree without ever checking its content (pristine reclaim residue is immortal again — the defect this change fixes)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\t\tif anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}",
+      "new": "\t\t\tif true || anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}"
+    },
+    {
+      "name": "the fresh-worktree guard's content check is dropped (an at-tip tree with untracked new source is deleted — the hole the guard exists to close)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\t\tif anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}",
+      "new": "\t\t\tif false && anyDirty != \"\" {\n\t\t\t\tres.skips = append(res.skips, skipEntry{rt, \"fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)\"})\n\t\t\t\tcontinue\n\t\t\t}"
+    },
+    {
+      "name": "a cleared stale registration ALSO goes through the candidate loop (reported twice, and as a misleading unverifiable hold)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\tif staleSet[rt] {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif false && staleSet[rt] {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "the stale-registration pass's LOCK rule is dropped (a locked husk is cleared by the default sweep — the lock's whole protection is gone)",
+      "file": "cmd/deskwt/stalereg.go",
+      "old": "\t\tif e.wasLocked {\n\t\t\tif _, unlocked := reclaimed[e.path]; !unlocked {",
+      "new": "\t\tif false && e.wasLocked {\n\t\t\tif _, unlocked := reclaimed[e.path]; !unlocked {"
+    },
+    {
+      "name": "the stale-registration pass clears for real under --dry-run (a report deregisters what it was asked to describe)",
+      "file": "cmd/deskwt/stalereg.go",
+      "old": "\tif dryRun {\n\t\treturn toClear, held, nil, nil\n\t}",
+      "new": "\tif false {\n\t\treturn toClear, held, nil, nil\n\t}"
+    },
+    {
+      "name": "the stale-registration pass drops its scope gate (an out-of-prefix registration is deregistered by a sweep that has no business touching it)",
+      "file": "cmd/deskwt/stalereg.go",
+      "old": "\t\tif rt == guard.sharedCheckout || rt == cwd || !guard.allowed(rt) {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif rt == guard.sharedCheckout || rt == cwd {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "the stale-registration pass's content gate inverts (a husk whose detached HEAD is NOT on the mainline is cleared — possibly-unpushed commits stranded)",
+      "file": "cmd/deskwt/stalereg.go",
+      "old": "\tif _, ok := sc.mainAncestors[head]; !ok {\n\t\treturn \"detached HEAD \" + head[:12] + \" is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits\"\n\t}",
+      "new": "\tif _, ok := sc.mainAncestors[head]; ok {\n\t\treturn \"detached HEAD \" + head[:12] + \" is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits\"\n\t}"
+    },
+    {
+      "name": "the lock-reclaim pass unlocks a content-held husk (the post-reclaim bookkeeping prune drops the registration the content gate held)",
+      "file": "cmd/deskwt/lockreclaim.go",
+      "old": "\t\tif except[rt] {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif false {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "git's in-flight \"initializing\" add lock is judged by the age test again (a sweep can retire git's own lock mid-add)",
+      "file": "cmd/deskwt/lockreclaim.go",
+      "old": "\tif strings.TrimSpace(reason) == gitInitLockReason {\n\t\treturn lockVerdict{false, `git's in-flight \"initializing\" add lock — never retired`}\n\t}",
+      "new": "\tif false && strings.TrimSpace(reason) == gitInitLockReason {\n\t\treturn lockVerdict{false, `git's in-flight \"initializing\" add lock — never retired`}\n\t}"
+    },
+    {
+      "name": "the fresh-worktree safety window is dropped (a just-created pristine at-tip tree — the verifier/reviewer shape — is removed mid-session)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\t\tif age < freshWorktreeSafetyWindow {",
+      "new": "\t\t\tif age < 0 {"
+    },
+    {
+      "name": "the ignored-payload gate is dropped (an at-tip tree's git-ignored files — which exist in no commit — are deleted with it)",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\t\tif ignored != \"\" {",
+      "new": "\t\t\tif false && ignored != \"\" {"
+    },
+    {
+      "name": "a failed clear never re-locks (the husk is left registered and UNLOCKED — less protected than the sweep found it)",
+      "file": "cmd/deskwt/stalereg.go",
+      "old": "\tif len(failed) > 0 {\n\t\trestored, restoreErr := relockReclaimedHusks(guard, dir, failed, reclaimed)\n\t\twarns = append(warns, restored...)\n\t\terr = restoreErr\n\t}",
+      "new": "\tif false && len(failed) > 0 {\n\t\trestored, restoreErr := relockReclaimedHusks(guard, dir, failed, reclaimed)\n\t\twarns = append(warns, restored...)\n\t\terr = restoreErr\n\t}"
+    },
+    {
+      "name": "failed restoration is ignored and later pruning can discard the surviving husk",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\tif staleErr != nil {\n\t\treturn res, staleErr\n\t}",
+      "new": "\tif false && staleErr != nil {\n\t\treturn res, staleErr\n\t}"
     }
   ]
 }

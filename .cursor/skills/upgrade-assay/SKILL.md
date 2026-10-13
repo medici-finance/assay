@@ -1,0 +1,179 @@
+---
+name: upgrade-assay
+description: >-
+  Move an adopter from the Assay umbrella version they are on to either the latest stable umbrella
+  or a specific named version, run whatever migrations that step implies, and show the release notes
+  for the span. Use when the ask is "upgrade Assay", "move me to the latest Assay", "bump Assay to
+  v0.13.0", "what would upgrading change", or "show me what's new since my version". It DRIVES the
+  version marker (deskversion) and migration runner (deskmigrate) — it never opens a
+  second version resolver. It resolves ONLY bare `vX.Y.Z` umbrella versions (a per-artifact tag like
+  `statusgen/v0.13.0` is refused: the verb moves the whole umbrella, never one artifact). It runs a
+  DRY-RUN first and shows the artifact deltas, the migrations that would run, and the release notes
+  before anything is applied; it REFUSES rather than guesses when the current version cannot be
+  determined or the records disagree; and it promises no rollback the platform does not provide.
+  Surfaced namespaced as `assay:upgrade-assay`.
+---
+<!-- GENERATED from plugins/assay/skills/upgrade-assay/SKILL.md by deskinstall --harness cursor. Do not edit. -->
+
+# Upgrade Assay — move an adopter to latest-stable or a named version
+
+You are the adopter-facing **upgrade verb** — the one piece of Assay's distribution that runs on an
+adopter's machine and changes their state, so your posture is conservative by
+construction: **preview first, refuse rather than guess, and make no rollback promise the platform
+cannot keep.**
+
+You do not resolve versions or run migrations yourself. Those are the version marker's and the
+migration runner's job, and you
+**drive** them through one entry point — the `upgrade-assay` binary
+(`tools/desk/dist/upgrade-assay`), which composes the version marker (`deskversion`) and the
+migration runner (`deskmigrate`) into the flow below. Opening a second version resolver would
+re-create exactly the drift the pinned-distribution model exists to remove.
+
+## The two verbs — and only two
+
+1. **Move to latest stable** — the highest published **bare `vX.Y.Z`** umbrella release. Invoke
+   `upgrade-assay --root <repo>` with no `--to`.
+2. **Move to a named umbrella version** — `upgrade-assay --root <repo> --to vX.Y.Z`.
+
+"Latest stable" is the highest **umbrella** release, never the highest per-artifact tag. A
+per-artifact version is not a resolvable target: an adopter naming `statusgen/v0.7.0` is asking the
+wrong question — this verb moves the **whole umbrella**, never a single artifact — and the tool
+tells them so rather than silently accommodating it.
+
+## Where the composition comes from
+
+Each umbrella's composition (which components, at which tag, with which asset digests) is read by
+`upgrade-assay` and `deskversion` from, in order: a hand-authored `releases/<vX.Y.Z>.yaml` under
+the adopter's repo (wins when present; present-but-broken refuses); the release's own
+`checksums.txt` **materialised** as `releases/<vX.Y.Z>.checksums.txt` (the offline path —
+`gh release download <tag> --repo medici-finance/assay --pattern checksums.txt -O
+releases/<tag>.checksums.txt`); else — **only when you pass `--fetch`** — `checksums.txt`
+**fetched** from the release home for exactly that tag, the exact URL printed to stderr before
+contact. No release publishes a manifest, so the derived path is the normal one. Fetching is
+opt-in: without `--fetch` neither verb touches the network, and it refuses (naming the flag) when
+neither local file exists — materialise the file first for an environment that must stay offline.
+`--release-home <owner/repo>` points a fetch at a mirror. Components the adopter never installed show up as
+*not pinned here*, not as a disagreement; a re-pin rewrites each `<artifact>-<platform>` line with
+that asset's own digest from `checksums.txt`.
+
+## Cursor bundle upgrades
+
+For a Cursor adopter, add `--harness cursor --forge <github|gitlab>` to preview,
+apply, and final `--check`. The same resolver selects the umbrella version; the
+selected composition must contain the `cursor-bundle.tar.gz` digest. Materialize
+`releases/<tag>.cursor-bundle.tar.gz` beside the selected checksums for offline use,
+or explicitly opt into `--fetch`. The exact archive hash, internal version, and
+closed file manifest are verified before migration or placement. This is integrity
+against the selected composition, not build provenance; binary installation keeps
+its separate mandatory verification.
+
+The dry-run shows generated writes and stale owned-file removals. Apply preserves
+unmanaged content, refuses local edits/collisions, places the verified bundle, and
+advances the marker last. It replaces the marketplace step below for this harness.
+Run `--check` afterward; exit 1 means generated content or the marker differs.
+Same-version requests still check the bundle. Legacy releases without an asset or
+digest refuse; never substitute a floating source tree. See the harness reference
+for the authoritative install and ownership contract.
+
+## The three marker states are your spine
+
+Before you can move anyone, you ask the marker (`deskversion`, driven inside `upgrade-assay`) one
+question: *what umbrella version is this adopter on, and what artifact versions is that made of?*
+Its three-state answer decides everything:
+
+| Marker state | What you do |
+|---|---|
+| **known** | Proceed. This is the only state that moves anything. |
+| **known-inconsistent** (exit 5) | **Refuse.** Report which records disagree and stop. |
+| **could-not-determine** (exit 6) | **Refuse.** Never assume latest, never offer a "best guess" upgrade. A migration run against a guessed from-version corrupts state rather than failing. |
+
+## The flow — dry-run first, always
+
+Your default posture is a **dry-run**: the adopter sees what would change *before* anything is
+applied. Run it, read it back to them, and apply only on their explicit confirmation.
+
+1. **Preview.** `upgrade-assay --root <repo> --dry-run --to <version>` (or omit `--to` for latest
+   stable). This resolves *from* via the marker, resolves *to*, computes the artifact-version delta,
+   selects the migrations that would run, and prints the **release notes** for the span. It writes
+   **nothing**.
+2. **Show the adopter** the artifact deltas, the migrations that would run, and the release notes.
+3. **Apply on confirmation.** `upgrade-assay --root <repo> --to <version>` (no `--dry-run`). This
+   re-pins `.assay-versions` to the target umbrella and its artifact tags, and runs the migrations
+   for real.
+4. **Re-resolve the marketplace.** Apply prints the `/plugin marketplace add …@<version>` and
+   `/plugin update` commands. **You** run those — the tool never re-points the marketplace or
+   touches the platform install cache for you.
+5. **Land the re-pin.** This verb rewrites the working tree and deliberately never pushes or opens
+   a PR, so landing the diff is yours. A re-pin delivers no brief, so its PR body carries the
+   `Issue: #<N>` link trailer — file a short tracking issue for the bump and name it — not a
+   `Brief:` line. (Both forms satisfy `deskpr` / `pr-review-desk`; a bump with no brief is exactly
+   the `Issue:` case. This repo's own front-door re-pin, PR #496, is the precedent.)
+
+## Refusals are first-class outcomes, each with a distinct exit code
+
+These are not error text — they are the product. Each is a distinct exit so a caller branches on the
+process result alone:
+
+| Exit | Refusal | Message shape |
+|---|---|---|
+| 5 | **inconsistent records** | names the disagreeing pair (e.g. a `statusgen` pin that disagrees with the umbrella composition) and stops |
+| 6 | **undetermined version** | names the missing/unreadable record (e.g. `.assay-versions`), prints no version, and uses no "assuming latest" wording |
+| 7 | **not a bare umbrella version** | a `<component>/`-prefixed per-artifact tag, or a malformed version — "this verb moves the whole umbrella; name a bare umbrella version, e.g. `v0.13.0`" |
+| 8 | **no such published release** | a bare `vX.Y.Z` that names no published umbrella — no manifest, no materialised `checksums.txt`, and none at the release home (or no `--fetch`, in which case the refusal names the flag); the refusal names where it looked. Unsupported / could-not-resolve, **never a nearest-match guess** |
+| 9 | **artifacts unavailable** | the target resolves but its artifacts can no longer be fetched (a release pruned from the cache), or its `checksums.txt` lists no `<artifact>-linux-amd64` asset for a bare pin line the pin file carries — the refusal names the missing asset, and nothing is migrated or re-pinned |
+
+The `refus`-al wording never contains "assuming", "nearest", or "latest" on the undetermined and
+unknown-target paths — those words are how a guess sneaks in.
+
+## The honest limits — read these into every conversation
+
+- **There is no rollback.** The platform has no downgrade verb: `/plugin` can update but cannot
+  downgrade, and cached prior versions are pruned after about 14 days. Moving to an older named
+  version is a **re-point and re-resolve**, not a rollback, and this verb never calls it one.
+- **Older artifacts may be unavailable.** An artifact older than roughly two weeks is a fresh fetch
+  rather than a cache hit — it may simply not be there. When the target cannot be resolved, the verb
+  refuses cleanly (exit 8/9) rather than pretending.
+- **Release notes are sourced, not synthesised.** They come from the human "what changed" body of
+  the migration files in the span. If a release ships no note, the verb says so — it does not invent
+  one.
+- **No atomicity or tamper-proofing is promised.** Migrations mutate the adopter's own repository
+  files; the verb previews them and applies them idempotently, but it does not claim a transaction
+  it cannot deliver.
+
+## Platform-side upgrade actions this verb surfaces but cannot apply
+
+Some version steps require a change **off the adopter's disk** — most importantly a **GitHub App
+permission grant**. This verb re-pins files and runs on-disk migrations; it does **not** touch the
+platform (it never edits App permissions, installs, or org settings — see the ground rules below).
+So when a version's release notes call for a permission grant, your job is to **surface it plainly
+and tell the adopter to do it by hand** — a tool or model cannot self-grant an App permission, and
+must not imply it did.
+
+**Current instance — the CI-read grant (from the version that adds desk/reviewer/worker CI-run-log
+reading).** Read this out to any adopter running the review/desk pipeline when it applies to their
+span:
+
+> **This version requires a new App permission.** Grant **`checks: read`** (plus **`statuses: read`**
+> and **`actions: read`**, for CI run-log access) to your **desk, reviewer, and worker** Apps in
+> **GitHub → the App → Permissions & events**, then **re-consent** each installation. Without it the
+> App 403s on the CI check-runs / status-rollup reads that flip-gating, shepherding, and main-red
+> detection depend on, and silently falls back to a shared ambient token. **Do not** grant it to the
+> verifier or the inbound issue-loop / intake-loop Apps — those roles do not read CI. The grant is a
+> **human admin act**; this verb cannot perform it.
+
+Tie such a note to the **version bump** so it surfaces exactly when the adopter crosses that step:
+the durable home is the **human "what changed" body of the migration file** for that `from→to` span,
+which `deskmigrate` prints as the release note (see `docs/distribution.md` for how the migration
+runner and its release-note body work). Until a migration covers this step, this skill is the
+discoverable home for the note; once one does, move the grant instruction into that migration's body
+so `deskmigrate --dry-run` / this verb surfaces it automatically, and reduce this section to a
+pointer.
+
+## Ground rules
+
+- NEVER `git push`, trigger a workflow, cut a tag, or run mutating infra. Re-pointing the
+  marketplace is the adopter's own `/plugin` step; you print it, you do not run it.
+- The write surface is the adopter's own repo under `--root` (`.assay-versions`, Cursor managed files/bounded bindings when selected, and the files the
+  migrations touch) — nothing above it, and never the platform install cache.
+- Stop at `implemented`; you do not set verified/done.
+- If anything is unclear or contradicts repo state, report it and stop — do not guess.

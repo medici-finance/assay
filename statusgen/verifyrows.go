@@ -24,7 +24,8 @@ import (
 // decidable without judgement. "This assertion is shallow" stays with the
 // reviewer; "this assertion is inert" belongs here.
 //
-// Severity: NOTICE, not PROBLEM — see unfailableRowNotices.
+// Severity: NOTICE, except R1–R10 on a closure the branch makes — see
+// unfailableRowAudit and docs/verify-row-strength.md (verify-integrity/03).
 
 // ---------------------------------------------------------------------------
 // Markdown table cells
@@ -920,8 +921,10 @@ func escapedPipeOutsideBracket(pat string) bool {
 
 // expectsZeroCount reports whether an Expect cell asserts a count of exactly
 // zero. Deliberately narrow: the cell's first token, stripped of markdown, must
-// be exactly "0" ("0", "0 (F-12)", "`0` — forbidden numbers absent"). Anything
-// relational ("≥ 3", "0 or more") is not a zero-count assertion.
+// be exactly "0" ("0", "0 (F-12)", "`0` — forbidden numbers absent"). A cell
+// led by a relation ("≥ 3", "at least 1") is not a zero-count assertion; a cell
+// whose first token is "0" is read as one even when prose follows it, so
+// "0 or more" counts as zero here.
 func expectsZeroCount(expect string) bool {
 	s := strings.TrimSpace(expect)
 	s = strings.NewReplacer("`", "", "*", "", "**", "").Replace(s)
@@ -1734,12 +1737,29 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 // reason (#1808 review: its advice to mark the command is not actionable on a
 // closed record). Every OTHER rule is unscoped by brief status; this scoping
 // applies to these two tags only.
+//
+// This is the R1–R10 family's (and the two scoped tags') NOTICE surface, with no
+// merge-base and without the R11–R13 strength heuristics, which are
+// unfailableRowChecks' (strength.go).
 func unfailableRowNotices(streams []*Stream) []string {
-	var notices []string
+	_, notices := unfailableRowAudit(streams, nil, false, false)
+	return notices
+}
+
+// unfailableRowAudit applies every row rule (rowFindingsCtx) and the per-table
+// R13 check to every brief. With baseOK, a brief whose README status is
+// verified/done and which is NOT in grandfathered is a closure THIS branch made
+// (post-base): its R1–R10 findings are PROBLEMs (verify-integrity/03), and it
+// is exempt from the closed-brief scoping above — the branch closing it is the
+// moment its rows can still be fixed. Every other finding is a NOTICE. With
+// strength false the R11–R13 heuristics are skipped.
+func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK, strength bool) (problems, notices []string) {
 	closedRows := 0
 	closedBriefs := map[string]bool{}
 	closedProseRows := 0
 	closedProseBriefs := map[string]bool{}
+	closedStrength := 0
+	closedStrengthBriefs := map[string]bool{}
 
 	for _, s := range streams {
 		statusByNum := map[string]string{}
@@ -1759,26 +1779,59 @@ func unfailableRowNotices(streams []*Stream) []string {
 				status := statusByNum[num] // "" (no README row) reads as open
 				closed = status == "done" || status == "verified"
 			}
+			postBase := closed && okName && baseOK && !grandfathered[briefID]
+			scoped := closed && !postBase // a pre-existing closed record
+			var cmds []string
 			verifyRowTable(bf.Verify, func(r verifyRowCells) {
 				where := "a Verify row"
 				if r.Num != "" {
 					where = "Verify row " + r.Num
 				}
-				for _, f := range rowFindings(r.Command, r.Expect) {
-					if closed && f.rule == ruleGoTestRunVacuous {
+				if c := verifyCommand(r.Command); c != "" {
+					cmds = append(cmds, c)
+				}
+				for _, f := range rowFindingsCtx(r.Command, r.Expect, bf.DeclaredPaths) {
+					if !strength && (f.rule == ruleTriviallyGreen || f.rule == ruleNoOutputAssert) {
+						continue
+					}
+					if scoped && f.rule == ruleGoTestRunVacuous {
 						closedRows++
 						closedBriefs[briefID] = true
 						continue
 					}
-					if closed && f.rule == ruleProseLedCommand {
+					if scoped && f.rule == ruleProseLedCommand {
 						closedProseRows++
 						closedProseBriefs[briefID] = true
 						continue
 					}
-					notices = append(notices, fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg))
+					if scoped && (f.rule == ruleTriviallyGreen || f.rule == ruleNoOutputAssert) {
+						closedStrength++
+						closedStrengthBriefs[briefID] = true
+						continue
+					}
+					line := fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg)
+					if postBase && promotedRowRules[f.rule] {
+						problems = append(problems, line+" — a PROBLEM because this branch closes the brief (it was not verified/done at the merge-base): an unfailable row cannot be the basis of a new closure. Fix the row and re-run it before closing")
+						continue
+					}
+					notices = append(notices, line)
 				}
 			})
+			msg, cnc := tableFilesCheck(cmds, bf.DeclaredPaths, filesLabelPresent(bf.Body))
+			switch {
+			case !strength, msg == "" && !cnc:
+			case scoped:
+				closedStrength++
+				closedStrengthBriefs[briefID] = true
+			case cnc:
+				notices = append(notices, fmt.Sprintf("%s: [%s] COULD-NOT-CHECK — the `files:` line is present but yields no path, so whether the Verify table touches the deliverable cannot be read (never a pass)", path, ruleTableNoFiles))
+			default:
+				notices = append(notices, fmt.Sprintf("%s: [%s] %s", path, ruleTableNoFiles, msg))
+			}
 		}
+	}
+	if closedStrength > 0 {
+		notices = append(notices, fmt.Sprintf("[%s/%s/%s] %d strength finding(s) in %d closed brief(s) — closed records are not rewritten; the per-row notice covers open briefs and closures this branch makes (docs/verify-row-strength.md)", ruleTriviallyGreen, ruleNoOutputAssert, ruleTableNoFiles, closedStrength, len(closedStrengthBriefs)))
 	}
 	if closedRows > 0 {
 		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) carry an unasserted go test -run selector — closed records are not rewritten; the per-row notice covers open briefs only", ruleGoTestRunVacuous, closedRows, len(closedBriefs)))
@@ -1786,8 +1839,9 @@ func unfailableRowNotices(streams []*Stream) []string {
 	if closedProseRows > 0 {
 		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) have a prose mention as their first code span — closed records are not rewritten, and verifyrun records such a row could-not-run; the per-row notice covers open briefs only", ruleProseLedCommand, closedProseRows, len(closedProseBriefs)))
 	}
+	sort.Strings(problems)
 	sort.Strings(notices)
-	return notices
+	return problems, notices
 }
 
 // rowFinding is one defect found in one Verify row. rule is a stable,
@@ -1830,6 +1884,11 @@ const (
 	// (`cmd: true`, `cmd: :`, `cmd: exit 0`), so the row passes whatever the
 	// tree holds.
 	ruleCmdMarkerVacuous = "cmd-marker-vacuous"
+	// ruleGrepPipeZeroCount — #1862 — a grep that FEEDS a later pipeline stage,
+	// under an Expect of a zero count: the row fails on its own success path under
+	// pipefail (grep exits 1 on no match), and a stray match leaves nothing but
+	// the exit status to decide it.
+	ruleGrepPipeZeroCount = "grep-pipe-zero-count"
 )
 
 // isVacuousCommand reports a marked command that exits 0 without looking at
@@ -1878,7 +1937,7 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		add(ruleShreddedCell, "the Command cell's code span is unterminated — a RAW `|` in the command was read as a table-cell delimiter, cutting the command at the pipe and shifting every column after it (the Expect cell shown is another fragment of the command, not an expectation). The brief therefore prints a command nobody can run, and every other row check goes blind past the cut. Escape shell pipes and regex alternations as `\\|` inside the table cell")
 	}
 
-	// Rule 12 (#1805): the command the witness would execute is a prose mention.
+	// prose-led-command (#1805; not R12 of docs/verify-row-strength.md): the command the witness would execute is a prose mention.
 	// Judged on the CELL, before the lift, because the defect is in which span
 	// gets lifted — every rule below judges whatever the lift returned.
 	if first, why := proseLedCommandWhy(cmdCell); why != "" {
@@ -1963,7 +2022,8 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		add(rulePortability, "uses %s, which is GNU-only — the row is run by whoever verifies, on macOS desks as well as ubuntu CI, and it does not mean the same thing on both. Write it %s", c, gnuOnlySubstitute[c])
 	}
 
-	// Rule 11: a `go test -run` selector with no `--- PASS` assertion.
+	// gotest-run-vacuous (statusgen/14; not R11 of docs/verify-row-strength.md):
+	// a `go test -run` selector with no `--- PASS` assertion.
 	var runSelectors []goTestPattern
 	for _, p := range goTestRunPatterns(toks) {
 		if p.flag != "-run" { // -bench/-fuzz do not print `--- PASS:` lines — out of scope
@@ -2023,5 +2083,116 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 		}
 	}
 
+	// Rule 13 (#1862): a grep feeding a later stage, under a zero-count Expect.
+	// An Expect that also declares a non-zero exit (`output is `0`, exit 1`)
+	// already accounts for grep's no-match status under pipefail, so it is
+	// correct as written and stays silent.
+	if stage := grepFeedingLaterStage(toks); stage != "" && expectsZeroOutput(expect) && !declaresNonZeroExit(expect) {
+		add(ruleGrepPipeZeroCount, "pipes `%s` into a later stage and expects a count of `0` — `statusgen verifyrun` runs every row under `bash -o pipefail`, and grep exits 1 when it matches nothing, so on the SUCCESS path (nothing found) the pipeline exits 1 and the row FAILS; when a match IS present grep exits 0 and a bare `0` Expect is not machine-decidable, so the row can pass on exit status alone. Keep the grep but tolerate only its no-match status — `{ %s || [ $? -eq 1 ]; } | wc -l` — and write the Expect as output is `0`; where the searched path could vanish, add a positive leg that proves it exists (`test -n \"$(git ls-tree --name-only HEAD <dir>)\"`). A plain `|| true` also passes the success path but hides a real grep error", stage, stage)
+	}
+
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// Rule 13 — a grep feeding a later stage, under a zero-count Expect (#1862)
+// ---------------------------------------------------------------------------
+
+// expectsZeroOutput reports whether an Expect cell asserts that the row PRINTS
+// a count of zero: a bare `0` (the shape expectsZeroCount already reads), or
+// "prints `0`" / "output is `0`" with the number after the verb. A cell led by
+// a relation ("≥ 1") or by another word ("exit 1 …") is not a zero-count
+// assertion; a cell whose first token is "0" is, even with prose after it
+// ("0 or more"), because expectsZeroCount reads only that first token.
+func expectsZeroOutput(expect string) bool {
+	if expectsZeroCount(expect) {
+		return true
+	}
+	s := strings.NewReplacer("`", "", "*", "", "**", "").Replace(strings.TrimSpace(expect))
+	f := strings.Fields(strings.ToLower(s))
+	if len(f) < 2 {
+		return false
+	}
+	switch strings.TrimRight(f[0], ":") {
+	case "prints", "printed", "output", "outputs":
+	default:
+		return false
+	}
+	i := 1
+	if f[i] == "is" || f[i] == "=" || f[i] == ":" {
+		i++
+	}
+	if i >= len(f) {
+		return false
+	}
+	return strings.TrimRight(f[i], ".,;:") == "0"
+}
+
+// declaresNonZeroExit reports whether verifyrun reads a non-zero required exit
+// code out of the Expect cell, the same way it does when it runs the row.
+func declaresNonZeroExit(expect string) bool {
+	spec := parseExpect(expect)
+	return spec.exitFrom && spec.exitCode != 0
+}
+
+// grepFeedingLaterStage returns the text of a grep stage (`grep`, `egrep`,
+// `fgrep`, `ggrep` or `git grep`) that feeds a later stage of the command's FINAL
+// pipeline, or "" when there is none. The final pipeline is the part after the
+// last `;`, `&&` or `||` — the only part whose status the row reports. It stays
+// silent on a leading `!` (the negation owns the pipeline's status) and on the
+// guarded `{ grep … || [ $? -eq 1 ]; } | wc -l` form: its `;` ends the final
+// pipeline at `} | wc -l`, which carries no grep.
+func grepFeedingLaterStage(toks []shellTok) string {
+	start := 0
+	for i, t := range toks {
+		if t.op && (t.text == ";" || t.text == "&&" || t.text == "||") {
+			start = i + 1
+		}
+	}
+	var stages [][]shellTok
+	var cur []shellTok
+	for _, t := range toks[start:] {
+		if t.op && t.text == "|" {
+			stages = append(stages, cur)
+			cur = nil
+			continue
+		}
+		cur = append(cur, t)
+	}
+	stages = append(stages, cur)
+	if len(stages) < 2 {
+		return ""
+	}
+	for i, st := range stages[:len(stages)-1] {
+		k := 0
+		for k < len(st) && (st[k].text == "{" || st[k].text == "(" || st[k].text == "!") {
+			if st[k].text == "!" && i == 0 {
+				return "" // `! grep … | wc -l` — the negation owns the pipeline status
+			}
+			k++
+		}
+		if k >= len(st) {
+			continue
+		}
+		name := st[k].text
+		if name == "git" {
+			// `git [-C dir] [-c k=v] grep …`: skip global options to the subcommand.
+			j := k + 1
+			for j < len(st) && strings.HasPrefix(st[j].text, "-") {
+				if st[j].text == "-C" || st[j].text == "-c" {
+					j++
+				}
+				j++
+			}
+			if j >= len(st) || st[j].text != "grep" {
+				continue
+			}
+			name = "git grep"
+		}
+		switch name {
+		case "grep", "egrep", "fgrep", "ggrep", "git grep":
+			return name
+		}
+	}
+	return ""
 }

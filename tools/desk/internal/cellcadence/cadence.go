@@ -70,11 +70,32 @@ type State struct {
 type Lease struct {
 	dir     string
 	file    *os.File
+	root    *os.Root
+	held    *deskkit.HeldLock
 	mu      sync.Mutex
 	running bool
 }
 
-func Acquire(dir string) (*Lease, error) {
+// RoleLock describes a launch's claim on a role lease: which cell and role it is,
+// how long a transient collision may delay it, and whether the operator opted in
+// to ending a proven-stale holder (deskkit.LockSpec has the rules).
+type RoleLock struct {
+	Cell, Role string
+	Wait       time.Duration
+	EndStale   bool
+	OptIn      string
+	Log        io.Writer
+}
+
+// Acquire takes the lease at once or reports ErrBusy; status probes use it.
+func Acquire(dir string) (*Lease, error) { return acquire(dir, nil) }
+
+// AcquireRole takes the lease for a launch. A lasting busy read wraps ErrBusy
+// around a *deskkit.BusyError that names the lock, its holder, whether the holder
+// is current and the action taken or available.
+func AcquireRole(dir string, rl RoleLock) (*Lease, error) { return acquire(dir, &rl) }
+
+func acquire(dir string, rl *RoleLock) (*Lease, error) {
 	if !filepath.IsAbs(dir) {
 		return nil, errors.New("cadence directory must be absolute")
 	}
@@ -98,14 +119,39 @@ func Acquire(dir string) (*Lease, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = deskkit.TryLockExclusive(f); err != nil {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
 		_ = f.Close()
+		return nil, err
+	}
+	spec := deskkit.LockSpec{Name: "role lease", Probe: true}
+	if rl != nil {
+		spec = deskkit.LockSpec{Name: "role lease", Cell: rl.Cell, Role: rl.Role, Wait: rl.Wait, EndStale: rl.EndStale, OptIn: rl.OptIn, Log: rl.Log}
+	}
+	held, err := deskkit.AcquireHeld(root, "owner.lock", f, spec)
+	if err != nil {
+		_ = root.Close()
 		if errors.Is(err, deskkit.ErrLockBusy) {
+			var busy *deskkit.BusyError
+			if errors.As(err, &busy) {
+				return nil, fmt.Errorf("%w: %w", ErrBusy, busy)
+			}
 			return nil, ErrBusy
 		}
 		return nil, err
 	}
-	return &Lease{dir: dir, file: f}, nil
+	return &Lease{dir: dir, file: f, root: root, held: held}, nil
+}
+
+// RecordChild names the role child this lease serves (0 clears it), so a waiter
+// can tell a holder with a live role session from one whose child has exited.
+func (l *Lease) RecordChild(pid int) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.held == nil {
+		return errors.New("lease already released")
+	}
+	return l.held.RecordChild(pid)
 }
 
 func (l *Lease) Close() error {
@@ -117,9 +163,9 @@ func (l *Lease) Close() error {
 	if l.file == nil {
 		return nil
 	}
-	err := deskkit.UnlockFile(l.file)
-	closeErr := l.file.Close()
-	l.file = nil
+	err := l.held.Release()
+	closeErr := l.root.Close()
+	l.file, l.held, l.root = nil, nil, nil
 	return errors.Join(err, closeErr)
 }
 

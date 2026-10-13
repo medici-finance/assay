@@ -6,6 +6,7 @@ wave: 3
 depends:
 - graph-execution/19
 - graph-execution/20
+- graph-execution/28
 unblocks:
 - graph-execution/24
 effort: M
@@ -21,6 +22,8 @@ authored: 2026-10-02 by task-workflow authoring session
 sources:
 - docs/streams/graph-execution/task-workflow-program.md
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
+- docs/proposals/non-ci-architecture/20-amendment-manifest.md — non-CI architecture reconciliation 2026-10-13 (R1 owner row)
+- freshness-checked 2026-10-13 @ a435badbd (origin/main)
 exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
@@ -53,6 +56,17 @@ single-point-of-failure: the candidate freeze (exact commit/tree plus manifest h
 - Offline fixtures/fake providers only in this brief; a concrete adapter does not authorize provider calls.
 - Stop at implemented; independent verification owns verified/done.
 - Preserve one canonical work identity and one claim authority; no credentials in packets or results.
+
+## Non-CI architecture reconciliation — 2026-10-13
+
+The maintainer ratified the non-CI verifier target (medici-finance/assay#2500, revision
+23f655f5d); approval activates nothing. The candidate reference and its acceptance binding are
+now defined once, by graph-execution/28 (`verification-domain-v1`). This brief consumes those
+types: Task 1's candidate reference imports them, and `spec/workflow-candidate-v1.md` (planned), if still
+needed for workspace-specific fields, references `verification-domain-v1` instead of defining a
+second candidate record. Hence the added `depends: graph-execution/28`. The workspace, freeze,
+repair and restore obligations, and the Task and Verify sections below, are unchanged by this
+amendment. See `docs/proposals/non-ci-architecture/20-amendment-manifest.md`.
 
 ## Task
 

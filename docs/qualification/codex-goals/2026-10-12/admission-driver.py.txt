@@ -1,0 +1,65 @@
+import os,pathlib,tempfile,shutil,subprocess,json,threading,queue,time,sys
+mode=sys.argv[1]; assert mode in ('disabled','paused')
+root=pathlib.Path(tempfile.mkdtemp(prefix='goal-refusal-',dir=os.environ['TMPDIR']))
+home=root/'home';home.mkdir();work=root/'work';work.mkdir();ch=home/'.codex';ch.mkdir()
+skill=work/'.agents/skills/worker-desk';skill.mkdir(parents=True)
+(skill/'SKILL.md').write_text('---\nname: assay:worker-desk\ndescription: Harmless local qualification role.\n---\nIf invoked, create counter.txt with ROLE_INVOKED, then report and end. Do not dispatch or access services.\n')
+shutil.copyfile(pathlib.Path(os.environ['CODEX_HOME'])/'auth.json',ch/'auth.json');os.chmod(ch/'auth.json',0o600)
+env={k:v for k,v in os.environ.items() if not k.startswith(('DESK_','ASSAY_','CODEX_'))};env.update(HOME=str(home),CODEX_HOME=str(ch),KUBECONFIG='/dev/null')
+p=subprocess.Popen(['codex','app-server','--stdio','--disable' if mode=='disabled' else '--enable','goals'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1,env=env,cwd=work)
+q=queue.Queue()
+def reader(stream,label):
+ for line in stream:q.put((label,line.rstrip()))
+for stream,label in [(p.stdout,'RECV'),(p.stderr,'STDERR')]:threading.Thread(target=reader,args=(stream,label),daemon=True).start()
+seq=0;thread=None;deadline=time.monotonic()+120
+
+def send(method,params):
+ global seq
+ seq+=1;p.stdin.write(json.dumps({'jsonrpc':'2.0','id':seq,'method':method,'params':params})+'\n');p.stdin.flush();print('SEND',seq,method,json.dumps(params),flush=True);return seq
+
+def recv():
+ if time.monotonic()>deadline:raise TimeoutError('qualification bound reached')
+ try:label,line=q.get(timeout=1)
+ except queue.Empty:return {}
+ print(label,line,flush=True)
+ if label=='STDERR':return {}
+ try:return json.loads(line)
+ except ValueError:return {}
+
+def wait_id(i, allow_error=False):
+ while True:
+  x=recv()
+  if x.get('id')==i:
+   if 'error' in x:
+    if allow_error:return {'error':x['error']}
+    raise RuntimeError(x['error'])
+   return x['result']
+try:
+ wait_id(send('initialize',{'clientInfo':{'name':'assay_goal_refusal','version':'1.0'},'capabilities':{'experimentalApi':True}}))
+ p.stdin.write('{"jsonrpc":"2.0","method":"initialized"}\n');p.stdin.flush()
+ result=wait_id(send('thread/start',{'cwd':str(work),'model':'gpt-6-astra','approvalPolicy':'never','sandbox':'workspace-write','config':{'model_reasoning_effort':'high'},'developerInstructions':'Isolated qualification with local harmless work only. Do not contact services, dispatch agents, or read outside this workspace. Execute commands with shell=/opt/homebrew/bin/bash and login=false. Do not invent a token budget.'}))
+ thread=result['thread']['id']
+ if mode=='paused':wait_id(send('thread/goal/set',{'threadId':thread,'objective':'Unrelated paused qualification objective. Preserve it unchanged.','status':'paused','origin':'user'}))
+ before=wait_id(send('thread/goal/get',{'threadId':thread}), mode=='disabled')
+ wait_id(send('turn/start',{'threadId':thread,'input':[{'type':'text','text':pathlib.Path(__file__).with_name('generated-bootstrap.txt').read_text(),'text_elements':[]}]}))
+ while True:
+  x=recv()
+  if x.get('method')=='turn/completed':break
+ after=wait_id(send('thread/goal/get',{'threadId':thread}), mode=='disabled')
+ invoked=(work/'counter.txt').exists()
+ print('OBSERVED',json.dumps({'mode':mode,'before':before,'after':after,'roleInvoked':invoked}),flush=True)
+ assert not invoked,'role started despite failed admission'
+ assert before==after,'existing state changed'
+ print('PASS native admission refusal/preservation',mode,flush=True)
+finally:
+ deadline=time.monotonic()+10
+ if thread:
+  try:
+   wait_id(send('thread/goal/clear',{'threadId':thread}))
+   print('FINAL_READBACK',json.dumps(wait_id(send('thread/goal/get',{'threadId':thread}), mode=='disabled')),flush=True)
+  except Exception as e:print('CLEANUP_RPC',repr(e),flush=True)
+ p.terminate()
+ try:p.wait(timeout=5)
+ except subprocess.TimeoutExpired:p.kill();p.wait()
+ shutil.rmtree(root)
+ print('CLEANUP own process terminated; isolated workspace and auth copy removed',flush=True)

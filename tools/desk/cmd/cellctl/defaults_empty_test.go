@@ -206,7 +206,7 @@ func TestCellDefaultsEmptyLineInShowAndSet(t *testing.T) {
 	t.Setenv("CELL_HARNESS", "codex")
 	writeDefaults(t, root, "CELL_HARNESS=\nCELL_COCKPIT=\"\"\nASSAY_REPAIR_ADMISSION=\n")
 	envfile := writeCell(t, root, "demo", demoCell)
-	out := captureStdout(t, func() { cmdShow("demo", nil) })
+	out := captureStdout(t, func() { showArgv("demo") })
 	if strings.Contains(out, cellDefaultsFile) {
 		t.Errorf("show names the defaults file as the source of a value its empty lines did not set:\n%s", out)
 	}

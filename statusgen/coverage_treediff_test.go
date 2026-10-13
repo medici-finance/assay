@@ -246,10 +246,16 @@ func TestTreeDiffItemUnresolvable(t *testing.T) {
 // compares trees instead. A future need for ancestry that is NOT a witness
 // judgement must be argued in review and allowlisted here by file, with why.
 func TestNoAncestryWitnessJudge(t *testing.T) {
-	allow := map[string]string{} // file -> why; empty by design
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
+	allow := map[string]string{ // file -> why; each entry argued in review
+		"failfirst_ancestry.go": "fail-first BASE provenance (verify-integrity/03), not witness applicability: the closure gate and the runner ask whether the base a row was shown red on is the merge-base of HEAD and the default branch or an ancestor of it (compared as resolved object ids), because a red on a sibling, branch or stale tree proves nothing about this change. Closures already on main are grandfathered by closedAtBase before the question is asked. Applicability stays witnessTreeApplies' tree comparison",
+	}
+	var files []string
+	for _, pat := range []string{"*.go", "evaluation/*.go"} {
+		m, err := filepath.Glob(pat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, m...)
 	}
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {

@@ -157,6 +157,7 @@ var AllowedInvocations = []Allowance{
 // unresolvedRegister records every exec site whose argv[0] the checker cannot resolve. It is
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
+	{Key: "cmd/cellctl/comms_init.go::Cell.initComms::<unresolved>", Reason: "The Codex executable resolved from PATH is hashed and queried with --version to pin the contained reader. It is a local harness version probe, not a forge CLI; no inference or authentication command is invoked."},
 	{
 		Key: "internal/deskkit/layaadvisor.go::LayaAdvisor.Predict::<unresolved>",
 		Reason: "runs an explicitly approved operator-selected local inference executable, never wired into " +
@@ -278,6 +279,12 @@ var UnresolvedArgv = []Allowance{
 	{
 		Key:    "cmd/deskpreflight/main.go::realOutput::<unresolved>",
 		Reason: "the preflight probe seam; the argv comes from deskkit's preflight probe table, not from a caller.",
+	},
+	{
+		Key: "cmd/muhar/selection.go::coverSelector.Prepare::<unresolved>",
+		Reason: "runs the Go test binaries muhar -select just built with `go test -c -cover -o` into its own " +
+			"temp dir (two sites: `-test.list`, then one `-test.run ^Name$ -test.coverprofile` per test). " +
+			"argv[0] is that freshly built path, never a forge CLI; the build itself is a constant `go`.",
 	},
 	{
 		Key:    "cmd/verifyloop/durable.go::newGitDurable::<unresolved>",

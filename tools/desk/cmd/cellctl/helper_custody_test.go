@@ -40,6 +40,7 @@ func TestDeskdCustodyOverridesCachedOperatorRosterAndRestores(t *testing.T) {
 	home := t.TempDir()
 	c := &Cell{Name: "demo", Home: home, Config: writeCustodyRoster(t, home, "cell-org/project"), Repo: t.TempDir(), Env: envWith(nil)}
 	restore := c.enterDeskCustody()
+	t.Cleanup(restore) // A failed assertion must not strand later tests in this temporary directory.
 	cfg := deskkit.EffectiveConfig()
 	if !cfg.Configured() || cfg.RepoForges["cell-org/project"] != "github" || cfg.RepoForges["operator-org/repo"] != "" {
 		t.Fatal("cell roster not selected")
@@ -47,8 +48,14 @@ func TestDeskdCustodyOverridesCachedOperatorRosterAndRestores(t *testing.T) {
 	if dirs := deskkit.ConfigHomeDirs(); len(dirs) != 1 || dirs[0] != c.Config {
 		t.Fatalf("credential homes = %v", dirs)
 	}
-	if here, _ := os.Getwd(); here != c.Repo {
-		t.Fatalf("cwd = %s", here)
+	here, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotDir, gotErr := os.Stat(here)
+	wantDir, wantErr := os.Stat(c.Repo)
+	if gotErr != nil || wantErr != nil || !os.SameFile(gotDir, wantDir) {
+		t.Fatalf("cwd = %s, want the cell repository %s (stat errors: %v, %v)", here, c.Repo, gotErr, wantErr)
 	}
 	restore()
 	if os.Getenv("HOME") != operator || os.Getenv("ASSAY_CONFIG_HOME") != operatorCfg {
