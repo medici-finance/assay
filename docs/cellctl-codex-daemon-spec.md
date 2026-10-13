@@ -292,7 +292,7 @@ only to Codex launch argv cannot satisfy this spec.
 | Paused or cleared Goal on reconnect | No automatic resume/recreation; actual native state is reported. |
 | Waiting for human approval | Visible pending gate; neither successful completion nor automatic approval. |
 | Lost create/submit response or controller crash | Unfinished binding blocks duplicate creation; recovery reconciles or reports unknown. |
-| Wrong server/home/version/configuration | Refusal before role execution; no opportunistic fallback or secret values in errors. |
+| Wrong server, configuration home, version or settings | Refusal before role execution; no opportunistic fallback or secret values in errors. |
 | Host B disconnected while controlled from A | B remains the execution owner; no replacement on C; status records observation age. |
 | Upgrade or rollback with surviving work | Refused until prior execution is stopped or explicitly handed off. |
 | Contained reader after transport extraction | All forbidden callbacks still refused; its original custody and isolation tests pass. |
