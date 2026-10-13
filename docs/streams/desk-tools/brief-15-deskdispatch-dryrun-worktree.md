@@ -325,7 +325,7 @@ RISK-VALUE: DERIVED — ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.
 
 Gate: model; all four risk answers no. Status left where it is.
 
-**VERIFY: PASS** — 7 of 7 Verify rows checked-clean by hand at 251e9473928e. Rows 2-5 ran with the ambient cell cache policy unset (finding 1). The execution witness records 0 of 7: could-not-run, because the check:ci network-off sandbox is Linux-only and this host is darwin. That witness result is could-not-check, never a pass.
+VERIFY: BLOCKED — the execution witness records 0 of 7: could-not-run, because the check:ci network-off sandbox is Linux-only and this host is darwin (medici-finance/assay#1800, open). That witness result is could-not-check, never a pass. By hand, 7 of 7 Verify rows are checked-clean at 251e9473928e; rows 2-5 ran with the ambient cell cache policy unset (finding 1). Status stays implemented.
 
 
 ## Review
