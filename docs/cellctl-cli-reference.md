@@ -12,7 +12,7 @@ one exception is a help flag after a `scratch` action (`scratch <cell> sweep -h`
 the cell and its scratch policy first, as it did. How this differs from the pre-Cobra surface
 is in [cellctl-cli-compat.md](cellctl-cli-compat.md).
 
-## `cellctl cache <cell> status|clean|recover`
+## `cellctl cache <cell> status|clean|wipe|recover`
 
 report or clean a cell's managed Go caches
 
@@ -36,12 +36,18 @@ audit the preconditions of a cell
   (no flags)
 ```
 
-## `cellctl comms <cell> check|run|recover`
+## `cellctl comms <cell> init|check|run|recover`
 
-check, run or recover a cell's interim comms service
+initialize, check, run or recover a cell's interim comms service
 
 ```
   --confirm-stopped                   recover only: confirm the prior gateway, drain and every owned child have stopped
+  --effort                   string   reader reasoning effort
+  --model                    string   reader model or configured tier (default Codex fast tier)
+  --reader-cmd               string   optional external contained ACP reader as JSON argv
+  --reader-contained                  attest that an external ACP reader has enforced containment
+  --reader-pin               string   external reader version pin
+  --repo                     string   quarantine issue destination owner/repo
 ```
 
 ## `cellctl defaults init|print`
@@ -59,6 +65,7 @@ boot one role window
 ```
   --cadence                  string   role cadence: a duration, or off
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
+  --end-stale-lock-holder             end a proven-stale holder of this role's lease (SIGTERM, bounded wait, re-check)
   --harness                  string   harness for this run (claude|codex|cursor)
   --kind                     string   cell kind for this run (k8s|house|container|scrubbed)
   --model                    string   model for THIS run only, passed through verbatim to the harness
@@ -121,6 +128,14 @@ create the shared providers.json
 
 ```
   (no flags)
+```
+
+## `cellctl reset <cell> [--hard]`
+
+stop and reset a cell; hard also refreshes configured repositories
+
+```
+  --hard                              discard messages, all linked worktrees and local branches; refresh every CELL_ROOTS repository
 ```
 
 ## `cellctl scratch <cell> run|ack|sweep|inventory [flags] [-- command [args]]`
@@ -225,5 +240,6 @@ These verbs are invoked by cellctl's own generated command lines and hooks. They
 argv verbatim (no flag parsing by the command layer) and are not part of the operator surface.
 
 - `cache-run`
+- `comms-reader`
 - `container-run`
 - `model-policy`

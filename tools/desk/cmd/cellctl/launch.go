@@ -149,16 +149,17 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	}
 	var argv []string
 	if harness == "codex" {
-		// The same exported env the claude arm gets; CLAUDE_CONFIG_DIR is irrelevant on this
-		// arm, so it is not passed, and a provider is a claude-endpoint switch with no codex
-		// equivalent, so it is not threaded on either. Under a policy, its -c overrides
+		// The resolved config (including a positional override) goes to the
+		// command environment only, for command-side preflight of other policy
+		// routes; the Codex process env itself is left as inherited. A provider
+		// endpoint has no Codex equivalent. Under a policy, its -c overrides
 		// (model_provider/model_reasoning_effort/agents.default_subagent_*) are propagated —
 		// effort propagation into the actual launch argv, not just the model name.
 		argv = []string{"codex"}
 		if policyRes != nil {
 			argv = append(argv, policyRes.CodexArgs...)
 		}
-		commandArgs, err := c.codexEnvironmentArgs(env)
+		commandArgs, err := c.codexEnvironmentArgs(envSet(env, "CLAUDE_CONFIG_DIR", cfg))
 		if err != nil {
 			die("desk: %v", err)
 		}
@@ -174,6 +175,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		}
 		argv = append(argv, "--sandbox", "danger-full-access", "-C", wt, "-m", model,
 			codexRolePrompt(role, runtime.GOOS, bash))
+		if c.Cadence == nil {
+			argv[len(argv)-1] = codexStandingPrompt(role, argv[len(argv)-1])
+		}
 	} else if harness == "cursor" {
 		if err := c.prepareCursorWorkspace(role, wt); err != nil {
 			die("cursor workspace: %v", err)

@@ -1043,8 +1043,9 @@ func TestFoldBackfillWritesWitnessed(t *testing.T) {
 
 // previewParity runs the read-only `--backfill` form and then the --apply form
 // on one tree and returns both. It pins the shared contract: the preview never
-// writes, and it lists exactly what --apply wrote (nothing, when --apply
-// refused) and carries the refusal --apply exited 3 on.
+// writes, and it lists exactly what --apply wrote; when --apply refused, it
+// lists no row — wouldApply absent, since the run could not look (#2443) — and
+// carries the refusal --apply exited 3 on.
 func previewParity(t *testing.T, root string) (dry reconcileResult, wetCode int, wet reconcileResult) {
 	t.Helper()
 	readme := filepath.Join(root, "docs", "streams", "fx", "README.md")
@@ -1056,20 +1057,20 @@ func previewParity(t *testing.T, root string) (dry reconcileResult, wetCode int,
 	if after, _ := os.ReadFile(readme); string(after) != string(before) {
 		t.Fatalf("the read-only form wrote to the tree")
 	}
-	if dry.WouldApply == nil {
-		t.Fatalf("the read-only form must report wouldApply")
-	}
 	wetCode, wet, _ = foldRun(t, root, "--backfill", "--apply")
 	switch {
 	case wetCode == reconcileCouldNotCheck:
 		if after, _ := os.ReadFile(readme); string(after) != string(before) {
 			t.Errorf("--apply exited %d but wrote to the tree", wetCode)
 		}
-		if len(*dry.WouldApply) != 0 || len(dry.Held) != 0 || dry.WouldRefuse == "" {
-			t.Errorf("--apply refused (exit 3); the preview must list no row and carry the refusal, got wouldApply=%+v held=%+v wouldRefuse=%q",
-				*dry.WouldApply, dry.Held, dry.WouldRefuse)
+		if dry.WouldApply != nil || len(dry.Held) != 0 || dry.WouldRefuse == "" {
+			t.Errorf("--apply refused (exit 3); the preview must list no row (wouldApply absent) and carry the refusal, got wouldApply=%+v held=%+v wouldRefuse=%q",
+				dry.WouldApply, dry.Held, dry.WouldRefuse)
 		}
 	case wetCode == reconcileOK:
+		if dry.WouldApply == nil {
+			t.Fatalf("--apply wrote, so the read-only form must report wouldApply")
+		}
 		if dry.WouldRefuse != "" {
 			t.Errorf("--apply wrote, but the preview says it would refuse: %q", dry.WouldRefuse)
 		}

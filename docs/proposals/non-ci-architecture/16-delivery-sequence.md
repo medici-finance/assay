@@ -27,6 +27,27 @@ Use a manually assembled packet with explicit coverage and bounded authorization
 to bootstrap the first implementation. The future resolver is not a prerequisite
 to building itself. Nor does an unapproved competing proposal freeze approved work.
 
+## Independently useful adoption lane
+
+Extend the [same owners](19-progressive-adoption-and-oversight.md#delivery-changes-to-the-existing-program)
+with a smaller product lane. These are scoped amendments to existing packages,
+not new allocated briefs or another implementation home:
+
+| Slice | Existing owner/package | Prerequisite and acceptance |
+|---|---|---|
+| Pure adoption/oversight contracts | R1, definitions/policy/evidence; existing install-contract owner | Approved bounded meanings and actual module/import closure; neutral positive/negative fixtures |
+| Inspect and advisory Assist | Offline definition/evidence adapters, existing authoring/CLI surfaces | Selected pure contracts and supported pins; cold-host first value and second task without full runtime |
+| Selected installation and actionable output | Cell-operation/config and projection owners | Versioned dependency closure, preview/resume/no-clobber, identical assurance/hold meanings across consumers |
+| Managed oversight | R1 policy; R2 pending decisions; R3/R4 authority; R5/R7 result flow | Full current runtime/custody/effect qualification; presets cannot bypass organization requirements |
+| Sampling/batch delegation and scale | Existing decision, runtime, effects and operations owners | Separately approved scoped contract, anti-evasion/expiry/recovery cases and required capability evidence |
+
+Read-only and advisory slices need neither R2–R8 nor the complete future-state resolver
+merely to be implemented and qualified. Use the bounded manual context bootstrap.
+Their libraries do not acquire provider effects, standing ownership or SQL runtime
+state. Managed writer integration retains the R1–R8 dependency and activation sequence.
+Notification preferences can precede sampling/authority changes because they preserve
+the pending gate. Never wire an installer, skill or cockpit to an unshipped interface.
+
 ## First verifier implementation packages
 
 | Package | Delivers | Dependencies | Proof required for its claim |

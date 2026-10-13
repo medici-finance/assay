@@ -38,7 +38,9 @@ reviewable artifact, not a run.
   this one is **already live**: it was promoted, and the copy in this directory is kept
   as the reviewable edit surface, because no App may push a `.github/workflows/*`
   file. The board-writer Environment/poll migration is included in the live
-  file, and the manifest enforces byte parity with this copy. Every change to that lane
+  file. This copy includes protected completion for already-clean Evidence PRs
+  and is identical to the live workflow; see `tools/evidence-automerge/README.md`.
+  Every change to that lane
   therefore lands here first, and a maintainer re-promotes it by copying the file over the
   live one (`cp ci/staged-workflows/evidence-automerge.yml .github/workflows/evidence-automerge.yml`)
   in a separate maintainer-credentialled commit. Until that copy lands, the merged change
@@ -154,41 +156,47 @@ reviewable artifact, not a run.
   workflow-App PR path has landed, prefer it over a verbatim hand-copy. Re-base this twin on the
   live file at promotion time (three-way) so promoting only ADDS.
 - `assay-statusgen.yml` — the live board workflow plus the hourly `reconcile` job
-  (derived-board/04): a `schedule:` trigger guarded to this repository (a fork's schedule
-  never runs it), a read-only token (`contents`, `pull-requests`, `issues`: read) for the
-  PR-witness reads, and one draft pull request on `board/reconcile` carrying any generated
-  stream-README change. The job runs in two steps. The compute step runs `statusgen`
-  holding only the read token and emits the commit it made. The publish step runs no
-  `statusgen`; it pushes that commit and opens or refreshes the PR. The board-writer App
-  token is minted only when there is a commit, narrowed to `contents` and
-  `pull-requests` write, and only the publish step's environment holds it. The job uses
+  (derived-board/04), landed as generated output per the ruling on assay#2688
+  (desk-tools/36): a `schedule:` trigger guarded to this repository (a fork's schedule
+  never runs it), a read-only token (`contents`, `pull-requests`, `issues`: read) for
+  the PR-witness reads, and any generated stream-README change landed DIRECTLY on the
+  default branch — one commit, fast-forward only, no pull request. The job runs in two
+  steps. The compute step runs `statusgen` holding only the read token and emits the
+  commit it made, parented on the main the tick fetched. The publish step runs no
+  `statusgen`; it pushes that commit to the default branch, and a main that moved
+  between the fetch and the push is a rejected push and a failed tick — the next
+  hourly tick recomputes. The board-writer App
+  token is minted only when there is a commit, narrowed to `contents` write, and
+  only the publish step's environment holds it. The job uses
   the corroborate job's isolation: a job-local, checksum-verified Go toolchain and
-  caches, `GOENV=off`, and a pinned gh (never one already on PATH), plus `GOWORK=off`,
-  so no `go.work` left above `RUNNER_TEMP` chooses the source it builds. It also keeps no
+  caches, `GOENV=off` and `GOWORK=off`,
+  so no `go.work` left above `RUNNER_TEMP` chooses the source it builds, and it runs
+  no `gh` at all — no pull request is opened, read or edited through it. It also keeps no
   state an earlier job on the runner could leave: no checkout into the workspace, but a
   fresh clone of the default branch under `RUNNER_TEMP`, a git configuration of its own
   with hooks off (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`, a discovery ceiling at
   `RUNNER_TEMP`), a job-local `GH_CONFIG_DIR`, a push to the forge URL by name, and a
-  credential helper bound to that host. Its PR is the open one from this repository's
-  own `board/reconcile` into the default branch, whoever opened it; one from that head
-  into another base is skipped, and two into the default branch fail the tick. Its
+  credential helper bound to that host. Its
   clone, compute and publish `run:` texts are tested end to end by
   `statusgen/reconcilejob_test.go`, which extracts them from the staged YAML, runs them
   in a rig that plants hooks, a push address and URL rewrites, and checks that a list of
   edits to the job each turns a named test red, and the workflow-level wiring the job
   depends on (the hourly cron, the scheduled runs' concurrency group, the lint step's test
   selection and its `paths:` entries) is pinned the same way, and the board workflow's
-  PR lint job runs those tests. Two outcomes to expect: a reconcile PR a maintainer closed is not reopened, and
-  the next tick that makes a new commit (main moved, or another row changed) opens a
-  fresh draft PR from the same branch; and a tick whose push lands but whose PR call
-  fails exits red with the branch pushed and no PR, and a tick that finds the branch
-  already carrying its result publishes nothing, so the missing PR is opened only by
-  the next tick that makes a new commit. The same file holds every job that mints the App token to that
+  PR lint job runs those tests. Two outcomes to expect: a tick that loses a race with a
+  concurrent push to main fails and the next tick recomputes on the new main; and a
+  tick on which nothing changed state pushes nothing at all. The same file holds every job that mints the App token to that
   isolation, except `regen` and `model-autoflip`, which are live today without it and
-  are listed as exempt (the list may only shrink). The job never pushes the default branch, and scheduled runs sit in their own concurrency group so they cannot displace a pending push regen. **Already live** — a maintainer
+  are listed as exempt (the list may only shrink). The job pushes the default branch as its single-writer landing — the STATUS.md-regen pattern — and scheduled runs sit in their own concurrency group so they cannot displace a pending push regen. **Already live** — a maintainer
   promoted it, and the manifest declares it `identical`: the job tests read the staged
   copy, so the parity check is what keeps an edit made straight to the live file from
-  leaving them green. The board-writer App needs `Pull requests: write` for the PR step.
+  leaving them green. The conversion to this shape is serialized in
+  `docs/runsheets/reconcile-lane-hunk.diff` (desk-tools/36, assay#2688) with its
+  receipts on that thread; until the driver applies it, the staged and live job still
+  opens the `board/reconcile` draft PR under the standing rules. Once applied, the
+  board-writer App needs `Contents: write` for the push and its `Pull requests: write`
+  grant is no longer used (the conversion removes the PR step); keep that grant until
+  the apply lands, because the live job's token mint still requests it.
 
 ### `windows-ci-leg.yml` status
 
