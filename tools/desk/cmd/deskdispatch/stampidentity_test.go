@@ -450,7 +450,7 @@ func TestStampReplacesAForeignAppliedStamp(t *testing.T) {
 // authored-model half (a worker-kit stamp writes the authored pair, #2760), so the PR
 // carries two model slugs — a conflicting stamp the reader treats as unreadable. Both halves the re-dispatch wants are already standing
 // under the dispatcher, so clearing only FOREIGN labels removes nothing and the conflict
-// survives: re-dispatch reports OK while every verdict on the PR keeps refusing. The re-stamp
+// survives: re-dispatch reports OK while the authored stamp remains unreadable. The re-stamp
 // must therefore drop the stale slug the dispatcher itself left, not just foreign labels.
 func TestStampClearsADispatcherAppliedConflictingStamp(t *testing.T) {
 	s := &stub{}
@@ -470,7 +470,7 @@ func TestStampClearsADispatcherAppliedConflictingStamp(t *testing.T) {
 	}
 	if !gh.removed(staleModel) {
 		t.Errorf("the stale dispatcher-applied slug %s was not removed — the conflicting stamp survives "+
-			"and the floor keeps refusing: %+v", staleModel, gh.requests)
+			"and authored readback stays indeterminate: %+v", staleModel, gh.requests)
 	}
 	// The intended pair, already standing under the dispatcher, must NOT be churned.
 	if gh.removed(model) {

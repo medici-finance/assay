@@ -1807,7 +1807,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	restamped := ""
 	if len(stale) > 0 {
 		restamped = fmt.Sprintf(" (RE-STAMPED: removed %s — a conflicting, stale, or foreign-applied "+
-			"stamp the floor cannot read — before applying the intended stamp, since adding over a "+
+			"stamp its reader cannot accept — before applying the intended stamp, since adding over a "+
 			"present label is a no-op)", strings.Join(stale, " + "))
 	}
 	if stampKind == deskkit.StampAuthored {
