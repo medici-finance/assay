@@ -122,7 +122,7 @@ func TestDispatchUnshippedFallback(t *testing.T) {
 			s := &stub{}
 			home, root := s.install(t)
 			plantScripts(t, root)
-			s.replies = happyReplies("/private/tmp/worker-home")
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
 			withClaimStoreKey(t, home, deskkit.EnvClaimStore+"="+c.store+"\n"+deskkit.EnvClaimSingleHost+"=yes")
 			mints := countMints(t)
 
