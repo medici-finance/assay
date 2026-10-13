@@ -141,16 +141,16 @@ func removeHusk(guard *pathGuard, dir, rt string) (handled bool, detail string, 
 		ownerNote = "; lock retired: " + why
 	}
 
-	// before_remove — same LOGGED failure class as the ordinary path. The hook runs in the
-	// directory when there is one to run in.
-	hookDir := rt
-	if dirMissing {
-		hookDir = ""
-	}
-	if _, herr := deskkit.RunHook(deskkit.HookBeforeRemove, deskkit.HookEnv{
-		RunKey: filepath.Base(rt), Worktree: hookDir, Repo: repoOrEmpty(dir),
-	}); herr != nil {
-		fmt.Fprintln(os.Stderr, "deskwt: before_remove hook failed (deletion proceeds): "+herr.Error())
+	// before_remove — same LOGGED failure class as the ordinary path, and the same contract:
+	// the hook runs with cwd = the worktree about to be removed. When the directory is gone
+	// there is no such cwd and nothing left to clean, so the hook is SKIPPED — never run with
+	// an empty worktree, where it would inherit the caller's checkout as its cwd.
+	if !dirMissing {
+		if _, herr := deskkit.RunHook(deskkit.HookBeforeRemove, deskkit.HookEnv{
+			RunKey: filepath.Base(rt), Worktree: rt, Repo: repoOrEmpty(dir),
+		}); herr != nil {
+			fmt.Fprintln(os.Stderr, "deskwt: before_remove hook failed (deletion proceeds): "+herr.Error())
+		}
 	}
 
 	if isLocked {

@@ -356,3 +356,48 @@ func mustGuard(t *testing.T, dir string) *pathGuard {
 	}
 	return g
 }
+
+// before_remove keeps its contract on the husk arm: it runs with the worktree being removed
+// as its cwd and ASSAY_WORKTREE set, and when the directory is already gone it is SKIPPED —
+// it must never run in the caller's checkout with an empty ASSAY_WORKTREE.
+// regression: #1905
+func TestRemoveHuskHookContract(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		husk    bool
+		wantLog bool
+	}{
+		{"emptydir", true, true},
+		{"dirgone", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := newRepo(t)
+			withEnv(t, work)
+			noHolders(t)
+			target := addWorktree(t, "hook-"+tc.name)
+			if tc.husk {
+				makeHusk(t, target)
+			} else if err := os.RemoveAll(target); err != nil {
+				t.Fatal(err)
+			}
+			logf := filepath.Join(t.TempDir(), "hook.log")
+			plantHooks(t, "before_remove: echo \"cwd=$(pwd -P) wt=[$ASSAY_WORKTREE]\" >> "+logf+"\n")
+
+			if rc, errout := runCapErr(t, []string{"remove", target}); rc != deskkit.ExitOK {
+				t.Fatalf("rc = %d, want 0; stderr:\n%s", rc, errout)
+			}
+			b, _ := os.ReadFile(logf)
+			got := strings.TrimSpace(string(b))
+			if !tc.wantLog {
+				if got != "" {
+					t.Fatalf("before_remove ran for a worktree whose directory is gone: %q", got)
+				}
+				return
+			}
+			want := "cwd=" + resolvePath(target) + " wt=[" + target + "]"
+			if got != want && got != "cwd="+resolvePath(target)+" wt=["+resolvePath(target)+"]" {
+				t.Fatalf("hook log = %q, want cwd = the husk and ASSAY_WORKTREE set (%q)", got, want)
+			}
+		})
+	}
+}

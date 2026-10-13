@@ -130,12 +130,13 @@ identity, and remove/prune refuse a dirty tracked tree or unpushed commits. Ther
 remove also clears a registration whose worktree has NO git link left — an empty-directory
 husk, or a directory already gone — which the gates above cannot open (they exited 6 and left
 the branch registered forever). It does so only when the directory holds nothing, no process
-holds it open (lsof; unavailable = could-not-check, refuse), the admin HEAD is recoverable
+holds it open (lsof — without root it sees only the caller's own processes; unavailable = could-not-check, refuse), the admin HEAD is recoverable
 (a branch that resolves, or a detached commit on a remote-tracking ref), and any lock is the
 caller's own session's or its session is proven gone by the roster. A husk with files, a lock
 naming no session, or git's "initializing" lock is refused. Then it unlocks, runs
 ` + "`git worktree prune`" + `, verifies the registration is gone, and removes the empty directory; a
-failed clear restores the original lock.
+failed clear restores the original lock. before_remove runs only when the directory exists (cwd = the husk); a
+directory already gone has nothing to clean, so the hook is skipped.
 
 prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then handles
 stale registrations whose directory survives but whose .git gitdir file is gone (the shape
