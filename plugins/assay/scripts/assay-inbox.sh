@@ -228,6 +228,26 @@ if [[ -n "$FLOW_SINCE" && ! "$FLOW_SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; th
   exit 1
 fi
 
+# origin_to_slug <url> -- reduce a GitHub remote URL to owner/name. Handles every
+# form `git remote get-url origin` yields for github.com: https/http/git/ssh with
+# an optional user[:password]@ and an optional :port, the scp-style
+# git@github.com:owner/name, a trailing slash and a trailing .git. A URL it does
+# not recognise passes through unchanged so the owner/name validator rejects it
+# loudly (never a silent skip). Pure bash regex: bash 3.2 safe.
+origin_to_slug() {
+  local u="$1" p
+  if [[ "$u" =~ ^[A-Za-z][A-Za-z0-9+.-]*://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$ ]]; then
+    p="${BASH_REMATCH[3]}"
+  elif [[ "$u" =~ ^([^/@:]*@)?github\.com:(.*)$ ]]; then
+    p="${BASH_REMATCH[2]}"
+  else
+    p="$u"
+  fi
+  while [[ "$p" == */ ]]; do p="${p%/}"; done
+  p="${p%.git}"
+  printf '%s\n' "$p"
+}
+
 resolve_repos() {
   if [[ $# -gt 0 ]]; then
     printf '%s\n' "$@"
@@ -246,8 +266,7 @@ resolve_repos() {
     # emit nothing; the caller detects an empty REPOS array and reports + exits.
     return
   fi
-  owner_name=$(printf '%s' "$origin_url" \
-    | sed -E 's#^git@github\.com:##; s#^https://github\.com/##; s#\.git$##')
+  owner_name=$(origin_to_slug "$origin_url")
   printf '%s\n' "$owner_name"
 }
 
@@ -290,7 +309,7 @@ cell_name_for() {
   local url
   url=$(git -C "$1" remote get-url origin 2>/dev/null || true)
   if [[ -n "$url" ]]; then
-    printf '%s' "$url" | sed -E 's#^git@github\.com:##; s#^https://github\.com(:[0-9]+)?/##; s#\.git$##'
+    printf '%s' "$(origin_to_slug "$url")"
     return
   fi
   basename "$(cd "$1" 2>/dev/null && pwd || printf '%s' "$1")"

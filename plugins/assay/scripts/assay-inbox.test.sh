@@ -221,6 +221,21 @@ else
     "no-repo path reports clearly" "stderr: ${ERR:-<empty>}"
 fi
 
+# ---------------------------------------------------------------- origin ----
+# regression: #2724
+echo "origin — the origin fallback resolves every github.com URL form"
+w="$TMPROOT/origin"
+make_gh "$w" 0 '[]' ""
+n=0
+for url in "https://github.com/o/r.git" "https://github.com:443/o/r.git" "https://u:pw@github.com:443/o/r" \
+           "ssh://git@github.com/o/r.git" "ssh://git@github.com:22/o/r" "git@github.com:o/r.git"; do
+  n=$((n + 1)); rd="$w/repo-$n"; mkdir -p "$rd"; git -C "$rd" init -q 2>/dev/null
+  git -C "$rd" remote add origin "$url"; rm -f "$w/argv.log"
+  (cd "$rd" && PATH="$w:$PATH" bash "$SCRIPT" >"$w/out" 2>"$w/err"); rc=$?
+  check "$([[ "$rc" -eq 0 ]] && grep -q -- 'o/r' "$w/argv.log" 2>/dev/null && echo 0 || echo 1)" \
+    "origin '$url' resolves to o/r and is queried" "rc=$rc argv=$(cat "$w/argv.log" 2>/dev/null) stderr=$(cat "$w/err")"
+done
+
 # ---------------------------------------------------------------- F4 --------
 echo "F4 — the fetched url must actually be emitted"
 
