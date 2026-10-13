@@ -66,8 +66,10 @@ func firstLine(s string) string {
 
 // preflightSummary extracts the roster-preflight's OWN verdict from a red run's captured
 // streams, skipping the two preamble lines every desk tool prints on stderr BEFORE its
-// real message: the effective-config echo (`assay-config: …`) and the unpinned-build
-// warning. A naive firstLine over that output quotes the banner's
+// real message: the effective-config echo (`assay-config: …` — by default ONE digest line,
+// `assay-config: class=… configured=… digest=sha256:…`, and the full block in CI, on a
+// change, on a refusal or an unrecognised key, or on ASSAY_CONFIG_ECHO=full) and the
+// unpinned-build warning. Both echo forms share the prefix, so one rule strips either. A naive firstLine over that output quotes the banner's
 // `… configured=true` header instead of the `preflight role=… RED n/6` summary and the
 // per-check `<check>=checked-failed: … → fix: …` remediations, so the failing check never
 // reaches the pod log — the boot logs the banner three ticks running and the real red stays

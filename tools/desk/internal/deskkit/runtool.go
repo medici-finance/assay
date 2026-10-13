@@ -139,7 +139,8 @@ func (r ToolRun) CommandLine() string {
 
 // ToolMessage is what a wrapped desk tool actually SAID, kept whole.
 //
-// Every desk tool opens its stderr with the effective-config echo (`assay-config: …`) and,
+// Every desk tool opens its stderr with the effective-config echo (`assay-config: …` — one
+// digest line by default, the full block when configecho.go's conditions call for it) and,
 // on an unpinned build, the drift warning. A report that shows only the FIRST stderr line
 // therefore shows the config echo and never the tool's own message — which is how a
 // stale-branch collision reached an operator as "worktree-create failed (assay-config: …)"

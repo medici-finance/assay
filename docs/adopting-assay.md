@@ -717,7 +717,9 @@ it does **not** consider the repo set — so a roster carrying `ASSAY_BLESS_LOGI
 `ASSAY_TRUSTED_LOGINS` but no `ASSAY_ALLOWED_REPOS` reports `configured=true` and prints no
 refusal. The gap only surfaces later, when a repo-scoped acting command runs against a repo
 `ASSAY_ALLOWED_REPOS` never named. Fill every surface, and read the `assay-config:` echo rather
-than either the exit code or the board's contents.
+than either the exit code or the board's contents. Outside CI a desk tool prints that echo as one
+digest line once it has shown the current configuration; set `ASSAY_CONFIG_ECHO=full` to read
+every line, including the allowed-repo set.
 
 **The board's root set is separate configuration, not roster-derived.** `deskboard nextup`'s
 default roots (`defaultRoots`, same file) are compiled to a fixed default set of repos. Configuring the

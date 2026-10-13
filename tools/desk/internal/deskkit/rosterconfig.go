@@ -56,7 +56,6 @@ package deskkit
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -2056,7 +2055,9 @@ func (k claimStoreKeys) storeFor(repo string) (value string, set bool, err error
 // because the value lives in repository settings (or a config-home file) rather
 // than in a diff, the RUN is where a change becomes visible — in BOTH directions.
 // A widened roster and a NARROWED trigger list must be equally apparent, so every
-// line renders its full sorted set rather than a count or a digest.
+// line renders its full sorted set rather than a count or a digest. (The default
+// one-line echo is a digest OF this block — configecho.go — and the block itself
+// prints whenever that digest moves.)
 //
 // Logins and paths only — never a token, never a PEM path, never a secret-shaped
 // value (deskpost's bodycheck continues to assert that separately).
@@ -2234,14 +2235,9 @@ func (c Config) EffectiveConfigLines() []string {
 // configured means classed=true — see riskcallout.go.
 func RiskCalloutPath() string { return EffectiveConfig().RiskCallout }
 
-// EchoEffectiveConfig writes the P3 echo. Every tool that makes a trust decision
-// calls this once per run, so a settings change appears in run output and in CI
-// history whether it widened or narrowed the set.
-func EchoEffectiveConfig(w io.Writer) {
-	for _, l := range EffectiveConfig().EffectiveConfigLines() {
-		fmt.Fprintln(w, l)
-	}
-}
+// EchoEffectiveConfig (configecho.go) writes the P3 echo: a one-line digest of the
+// block above by default, the full block in CI, on a change, on a refusal or an
+// unrecognised key, and on ASSAY_CONFIG_ECHO=full.
 
 // ---- the configured knobs, as consumers read them ----------------------------
 

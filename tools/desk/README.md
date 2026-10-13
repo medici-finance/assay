@@ -128,6 +128,25 @@ Each run echoes the effective configuration (`assay-config:` lines) before its o
 the allowed-repo set, the trusted identities, the risk triggers. That echo is the point:
 a widened scope shows up in run output and CI history rather than in someone's memory.
 
+By default the echo is **one line** carrying a digest of the full block:
+
+```
+assay-config: class=write source=config file … configured=true digest=sha256:<12 hex> humans=N bots=N roles=N repos=N (full: ASSAY_CONFIG_ECHO=full)
+```
+
+The digest is sha256 over the full block, so it moves on any change in either direction. The
+**full block** prints instead whenever any of these holds:
+
+- the run is in CI (`CI=true` or `GITHUB_ACTIONS=true`) — CI history keeps every line;
+- the roster carries a `REFUSED` or `unrecognised-keys` line — those are never quieter;
+- the digest differs from the last one this config home saw (recorded in
+  `config-echo.state`, beside the roster) — so the first run after a change shows it whole;
+- that state file cannot be read or written;
+- `ASSAY_CONFIG_ECHO=full` is set (any value other than `compact` counts as `full`); this forced
+  form neither reads nor updates the state file.
+
+To read every line on demand: `ASSAY_CONFIG_ECHO=full deskboard --version`.
+
 ### 3. Learn the exit codes before you run a write verb
 
 This is the single most common new-operator mistake on this toolchain, so learn it here:
