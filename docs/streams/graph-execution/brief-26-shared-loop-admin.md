@@ -103,10 +103,12 @@ per-supervisor embedded journal; every other obligation stands.
   edge to graph-execution/19 is needed (desk-decided default, reversible: adding the edge would
   move these migrations under 19's ledger). Standing mode needs
   the journal schema, not the instance tables, so row 1's "instance store absent" still holds.
-- **Intent before launch, in one store.** Launch intent and its journal receipt now share one
-  database, so they commit in one transaction keyed by caller namespace, invocation ID and
-  owner generation. Task 2's "do not claim a transaction across stores" still applies to the
-  desk queue or instance store on the caller side.
+- **Intent before launch, in one store.** Launch intent and its receipt remain together in
+  the journal; R2 moves that journal to the cell's PostgreSQL database. They commit in one
+  transaction keyed by caller namespace, invocation ID and owner generation. This journal
+  transaction does not make separate caller-intent and journal-receipt commits atomic, even
+  when both use the cell database. Task 2's stable-request-ID reconciliation still applies to
+  the desk queue or instance store on the caller side.
 - **Incarnation.** Before each child launch and receipt delivery, the supervisor checks the
   current operator incarnation from `spec/operator-incarnation-v1.md` (planned) (graph-execution/16)
   against the journal's activation record. A mismatch or missing record starts the supervisor

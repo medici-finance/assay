@@ -123,7 +123,7 @@ stands. Owner row: package R2 in the [amendment manifest](../../proposals/non-ci
 - **Single point of failure (R2).** The transition write's expected-version/generation
   predicate inside the current incarnation. Behind it: the effect boundary's incarnation and
   generation check from graph-execution/16, which refuses a stale capability even when the
-  store is bypassed (row 7).
+  store is bypassed (graph-execution/16's row 7).
 - Risk answers re-checked: unchanged (disposable databases and fixtures only; no live
   contact). Effort rises to L, the ceiling; anything beyond the rows below is a new brief.
 
@@ -164,7 +164,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 
 ## Pre-mortem and dispatch checks
 
-The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Each +mutation row names its mutation, and that mutation must turn the row's named test red. Facts, declared files, risks, consumers and sizing were re-checked against main at 307fe16992caef53fa46c52622753dd400c7b42a on 2026-10-02, after merging main; final implementation design adequacy remains review-only. R2 amendment facts, declared files, edges, consumers and sizing were re-checked against main at 4696d598e on 2026-10-13; rows 5–10 were run at that head and are red because the workflow module and the named tests do not exist yet.
+The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Each +mutation row names its mutation, and that mutation must turn the row's named test red. Facts, declared files, risks, consumers and sizing were re-checked against main at 307fe16992caef53fa46c52622753dd400c7b42a on 2026-10-02, after merging main; final implementation design adequacy remains review-only. R2 amendment facts, declared files, edges, consumers and sizing were re-checked against main at 4696d598e on 2026-10-13; rows 5–11 were run at that head and are red because the workflow module and the named tests do not exist yet.
 
 ## Evidence
 
