@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -349,4 +350,38 @@ func TestNewRefusesBeforeMkdir(t *testing.T) {
 			t.Fatal("k8s new refused after creating the cell directory")
 		}
 	})
+}
+
+// A cells root whose name carries a pattern character must still reveal its
+// sibling cells: a glob built from the root reads "[1]" as a character class
+// and matches none of them.
+func TestCellOwnedSiblingPatternRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture links need symlink rights")
+	}
+	root := filepath.Join(t.TempDir(), "cells[1]")
+	home := filepath.Join(root, "this", "home")
+	other := filepath.Join(root, "other", "home")
+	for _, h := range []string{home, other} {
+		if err := os.MkdirAll(filepath.Join(h, ".config"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	foreign := t.TempDir()
+	cellConfig := filepath.Join(home, ".config", "assay")
+	if err := os.Symlink(foreign, cellConfig); err != nil {
+		t.Fatal(err)
+	}
+	otherConfig := filepath.Join(other, ".config", "assay")
+	if err := os.Symlink(foreign, otherConfig); err != nil {
+		t.Fatal(err)
+	}
+	for name, p := range map[string]string{"sibling-link": otherConfig, "sibling-home": filepath.Join(other, "later"), "own-link": cellConfig} {
+		if !cellOwnedConfig(p, home, cellConfig) {
+			t.Errorf("%s: %s not judged cell-owned under a cells root named with a pattern character", name, p)
+		}
+	}
+	if cellOwnedConfig(t.TempDir(), home, cellConfig) {
+		t.Errorf("an unrelated directory judged cell-owned")
+	}
 }
