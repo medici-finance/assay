@@ -168,6 +168,54 @@
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\tac.repo = repoSlug\n",
       "new": "\tac.repo = repoSlug\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn merr\n\t}\n"
+    },
+    {
+      "name": "skip the register redaction (a non-private register lands a private repository's name and the clear dispatch_ref)",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "redacted, rderr := redactOutcomeFn(rec.Raw, join, facts)",
+      "new": "redacted, rderr := redactOutcomeFn(rec.Raw, join, facts)\n\tredacted = rec.Raw"
+    },
+    {
+      "name": "a non-private register keeps every prs entry in clear (the withheld form is never produced)",
+      "file": "cmd/deskevidence/outcomejoin.go",
+      "old": "if f.Private || e.Public {",
+      "new": "if true || f.Private || e.Public {"
+    },
+    {
+      "name": "a non-private register hashes the dispatch_ref too (the digest of a low-entropy ref is guessable by anyone holding the claim-key list)",
+      "file": "cmd/deskevidence/outcomejoin.go",
+      "old": "\t\tif f.Private {\n\t\t\tb, err := json.Marshal(deskkit.Sha256Hex([]byte(in.DispatchRef)))",
+      "new": "\t\tif true {\n\t\t\tb, err := json.Marshal(deskkit.Sha256Hex([]byte(in.DispatchRef)))"
+    },
+    {
+      "name": "drop the merged check on a prs entry (an unmerged change is recorded as delivered)",
+      "file": "cmd/deskevidence/outcomejoin.go",
+      "old": "\tif !got.Merged {",
+      "new": "\tif false && !got.Merged {"
+    },
+    {
+      "name": "drop the ancestry check on a prs entry (a merge commit outside the record's history is recorded as delivered)",
+      "file": "cmd/deskevidence/outcomejoin.go",
+      "old": "if cmp == nil || (cmp.Status != \"identical\" && cmp.Status != \"ahead\") {",
+      "new": "if false && (cmp == nil || (cmp.Status != \"identical\" && cmp.Status != \"ahead\")) {"
+    },
+    {
+      "name": "drop the TARGET-TIE after redaction (a rewrite that moves brief or ts lands under the wrong admitted target)",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "if terr := tieOutcomeTarget(receipt, admittedBrief, admittedTS, rec, targetRepoPath); terr != nil {",
+      "new": "if terr := error(nil); terr != nil {"
+    },
+    {
+      "name": "drop the key-uniqueness check (a case-variant duplicate key lets the validated and the landed value differ)",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "if kerr := deskkit.CheckRecordKeys(rec.Raw); kerr != nil {",
+      "new": "if kerr := error(nil); kerr != nil {"
+    },
+    {
+      "name": "drop the verifier_tier cross-check against the admitted binding",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "if terr := checkRecordTier(receipt, join); terr != nil {",
+      "new": "if terr := error(nil); terr != nil {"
     }
   ]
 }
