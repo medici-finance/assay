@@ -598,7 +598,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// Decision-gate hold, network layer (lifecycle-v1 §4.5). The lint above carries the
 	// hold's offline layer (a well-formed ruling: link); this landing rides the Contents
 	// API with no pull request, so the check that reads WHO wrote the linked comment runs
-	// here, on the same staged write (decisiongate.go).
+	// here, on the same staged write (decisiongate.go). It judges every board record but
+	// the target from the landing home, so the home must first be shown to carry the
+	// target branch's board (S-2266-6).
+	if herr := decisionGateHomeFreshFn(fg, fr, lintRoot, branch, targetRepoPath); herr != nil {
+		return herr
+	}
 	gateRefused, gerr := decisionGateDiffFn(lintRoot, targetRepoPath, remoteContent, remoteExists, commitContent)
 	if gerr != nil {
 		return gerr

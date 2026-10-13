@@ -55,6 +55,14 @@ type fakeForge struct {
 	// serialisation tests use it to observe what a concurrent invocation can do.
 	onPut func()
 
+	// cmpFiles are the files CompareRefs reports the branch changed since the base ref;
+	// cmpErr is its error; cmpIncomplete marks the commit interval as not fully read;
+	// cmpCalls records "<base>...<head>" per call.
+	cmpFiles      []deskkit.ChangedFile
+	cmpErr        error
+	cmpIncomplete bool
+	cmpCalls      []string
+
 	hits    []string
 	reads   []deskkit.ReadFileInput
 	writes  []deskkit.WriteFileInput
@@ -139,6 +147,16 @@ func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*de
 			&deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: in.File})
 	}
 	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true}, nil
+}
+
+func (f *fakeForge) CompareRefs(_ deskkit.ForgeRepo, base, head string) (*deskkit.RefComparison, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cmpCalls = append(f.cmpCalls, base+"..."+head)
+	if f.cmpErr != nil {
+		return nil, f.cmpErr
+	}
+	return &deskkit.RefComparison{Files: f.cmpFiles, CommitsComplete: !f.cmpIncomplete, Status: "ahead"}, nil
 }
 
 func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*deskkit.WriteFileResult, error) {
@@ -297,6 +315,9 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldDecisionGate := decisionGateDiffFn
 	decisionGateDiffFn = func(string, string, []byte, bool, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
+	oldHomeFresh := decisionGateHomeFreshFn
+	decisionGateHomeFreshFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) error { return nil }
+	t.Cleanup(func() { decisionGateHomeFreshFn = oldHomeFresh })
 	oldOutcome := outcomeGuardFn
 	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
 	t.Cleanup(func() { outcomeGuardFn = oldOutcome })

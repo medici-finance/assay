@@ -441,3 +441,140 @@ func TestDecisionGateLandingWholeVerbRefusesInPlaceEdit(t *testing.T) {
 		})
 	}
 }
+
+// freshHome is a real git root with one commit, so the freshness check can resolve a
+// home HEAD; it returns the root and that HEAD.
+func freshHome(t *testing.T) (root, head string) {
+	t.Helper()
+	root = rootWithFile(t, "docs/streams/sdlc/README.md", "x\n")
+	run := func(args ...string) string {
+		c := exec.Command("git", append([]string{"-C", root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"}, args...)...)
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	run("init", "-q")
+	run("add", "-A")
+	run("commit", "-q", "-m", "home")
+	return root, run("rev-parse", "HEAD")
+}
+
+func freshFiles(names ...string) []deskkit.ChangedFile {
+	var out []deskkit.ChangedFile
+	for _, n := range names {
+		out = append(out, deskkit.ChangedFile{Filename: n, Status: "modified"})
+	}
+	return out
+}
+
+// TestDecisionGateHomeFresh pins the staleness check: the judge reads every board
+// record but the target from the landing home, so a board file the target branch
+// changed since the home's HEAD (other than the target) is could-not-check, and each
+// uncertain read (no HEAD, no compare, a compare that cannot be shown complete) is too.
+// The quiet shapes are the matched controls: nothing changed, only the target, a
+// register, or a file outside the board.
+func TestDecisionGateHomeFresh(t *testing.T) {
+	const target = "docs/streams/sdlc/README.md"
+	root, head := freshHome(t)
+	cases := []struct {
+		name    string
+		mutate  func(f *fakeForge)
+		wantErr string // "" = fresh
+	}{
+		{"nothing changed on the branch", func(f *fakeForge) {}, ""},
+		{"only the target changed", func(f *fakeForge) { f.cmpFiles = freshFiles(target) }, ""},
+		{"a register changed", func(f *fakeForge) {
+			f.cmpFiles = freshFiles("docs/streams/findings/2026-10-12-x.md", "docs/streams/intake/a.md", "docs/streams/verify-outcomes/sdlc/18.json")
+		}, ""},
+		{"a file outside the board changed", func(f *fakeForge) { f.cmpFiles = freshFiles("tools/desk/main.go", "STATUS.md") }, ""},
+		{"a brief changed on the branch", func(f *fakeForge) { f.cmpFiles = freshFiles("docs/streams/sdlc/brief-18.md") }, "changed the board"},
+		{"a brief changed beside the target", func(f *fakeForge) { f.cmpFiles = freshFiles(target, "docs/streams/sdlc/brief-18.md") }, "changed the board"},
+		{"another stream index changed", func(f *fakeForge) { f.cmpFiles = freshFiles("docs/streams/other/README.md") }, "changed the board"},
+		{"an archived record changed", func(f *fakeForge) { f.cmpFiles = freshFiles("docs/archive/sdlc/brief-18.md") }, "changed the board"},
+		{"a board file renamed away", func(f *fakeForge) {
+			f.cmpFiles = []deskkit.ChangedFile{{Filename: "docs/archive/sdlc/brief-18.md", PreviousFilename: "docs/streams/sdlc/brief-18.md", Status: "renamed"}}
+		}, "changed the board"},
+		{"the compare errors", func(f *fakeForge) { f.cmpErr = deskkit.Unverifiable("compare failed", nil) }, "cannot compare"},
+		{"the commit interval is incomplete", func(f *fakeForge) { f.cmpIncomplete = true }, "cannot be shown complete"},
+		{"the file listing may be truncated", func(f *fakeForge) {
+			for i := 0; i < decisionGateCompareFileCap; i++ {
+				f.cmpFiles = append(f.cmpFiles, deskkit.ChangedFile{Filename: "tools/x" + strings.Repeat("a", i%7) + ".go"})
+			}
+		}, "cannot be shown complete"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := &fakeForge{}
+			c.mutate(f)
+			err := decisionGateHomeFresh(f, deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}, root, "refs/heads/main", target)
+			if c.wantErr == "" {
+				if err != nil {
+					t.Fatalf("got %v, want fresh", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+				t.Fatalf("got %v, want an error containing %q", err, c.wantErr)
+			} else if !deskkit.IsUnverifiable(err) {
+				t.Fatalf("got %v, want could-not-check", err)
+			}
+			if len(f.cmpCalls) != 1 || f.cmpCalls[0] != head+"...main" {
+				t.Fatalf("compare calls = %v, want the home HEAD against the bare branch name", f.cmpCalls)
+			}
+		})
+	}
+	t.Run("home HEAD does not resolve", func(t *testing.T) {
+		err := decisionGateHomeFresh(&fakeForge{}, deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}, t.TempDir(), "main", target)
+		if err == nil || !deskkit.IsUnverifiable(err) {
+			t.Fatalf("got %v, want could-not-check", err)
+		}
+	})
+}
+
+// TestDecisionGateLandingWholeVerbRefusesStaleHome drives the whole verb with the real
+// statusgen and the real judge: the landing home's brief is gate: model (the attested
+// commit, fixed at dispatch) while the target branch has since relabelled it gate:
+// human, so the judge, which reads the brief from the home, sees nothing to refuse.
+// With the freshness check bound, the landing exits non-zero and writes nothing; the
+// matched control (the branch changed no board file) lands.
+func TestDecisionGateLandingWholeVerbRefusesStaleHome(t *testing.T) {
+	g := realGateFixture(t, false)
+	briefPath := filepath.Join(g.root, "docs/streams/sdlc/brief-18.md")
+	b, err := os.ReadFile(briefPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if werr := os.WriteFile(briefPath, []byte(strings.Replace(string(b), "gate: human", "gate: model", 1)), 0o644); werr != nil {
+		t.Fatal(werr)
+	}
+	g.git("commit", "-q", "-am", "attested commit: brief is gate: model")
+
+	f, _ := setupFake(t)
+	decisionGateDiffFn = decisionGateDiffAt
+	decisionGateHomeFreshFn = decisionGateHomeFresh
+	f.setFile(g.readme, g.board("todo"))
+	args := []string{"example-org/tracker", "main", "--evidence-file", g.readme, "--root", g.root}
+	g.writeReadme(t, g.board("implemented"))
+
+	// Control: the stale-home judge alone lets the move through (the home brief is gate: model) ...
+	if got, derr := decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("implemented"))); derr != nil || len(got) != 0 {
+		t.Fatalf("premise: the home-only judge got %v, %v; want it to see nothing (that blind spot is what the freshness check closes)", got, derr)
+	}
+	// ... so the freshness check is what refuses, when the branch changed the brief.
+	f.cmpFiles = freshFiles("docs/streams/sdlc/brief-18.md")
+	if code := run(args); code == deskkit.ExitOK {
+		t.Fatalf("exit = %d, want a refusal (the branch relabelled the brief gate: human after the home's commit)", code)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("refused landing still wrote %d time(s)", f.putCalls)
+	}
+	if d := lastAudit(t).Detail; !strings.Contains(d, "changed the board") {
+		t.Fatalf("audit detail = %q, want the stale-home reason", d)
+	}
+
+	// Matched control: the branch changed no board file, so the same landing proceeds.
+	f.cmpFiles = nil
+	if code := run(args); code != deskkit.ExitOK {
+		t.Fatalf("control exit = %d, want %d", code, deskkit.ExitOK)
+	}
+}

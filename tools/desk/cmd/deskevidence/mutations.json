@@ -176,6 +176,30 @@
       "new": "\tif false && len(gateRefused) > 0 {"
     },
     {
+      "name": "landing home freshness not consulted (a brief relabelled gate: human on the target branch after dispatch is invisible to the judge and an unruled move of it lands)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "decisionGateHomeFreshFn(fg, fr, lintRoot, branch, targetRepoPath); herr != nil {",
+      "new": "decisionGateHomeFreshFn(fg, fr, lintRoot, branch, targetRepoPath); false && herr != nil {"
+    },
+    {
+      "name": "home freshness ignores every changed file (a board change on the target branch since the home's commit is not seen)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "|| !decisionGateBoardRe.MatchString(p) ||",
+      "new": "|| true ||"
+    },
+    {
+      "name": "home freshness reads a compare that cannot be shown complete as complete (a truncated file listing hides a board change)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {",
+      "new": "if cmp == nil {"
+    },
+    {
+      "name": "home freshness lets a compare error through (an unreadable branch is read as an unchanged board)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "cmp, err := fg.CompareRefs(fr, head, branch)\n\tif err != nil {",
+      "new": "cmp, err := fg.CompareRefs(fr, head, branch)\n\tif false && err != nil {"
+    },
+    {
       "name": "decision-gate could-not-check swallowed (statusgen missing or too old lets a landing through unchecked)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\tif gerr != nil {\n\t\treturn gerr\n\t}",

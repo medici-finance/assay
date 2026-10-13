@@ -419,7 +419,11 @@ every landing path that bypasses a pull request: an evidence landing or a close-
 transition MUST run the same check on the write it is about to make, and MUST NOT let the
 write through when the check could not run. The hold MUST NOT be applied at a pull
 request's ready-flip: decision latency is a queue's main bottleneck, and blocking the flip
-would wedge every PR behind an unruled decision. A PR that delivers a `gate: human` brief
+would wedge every PR behind an unruled decision. An evidence landing's check MUST judge the
+board the write lands on, not a stale copy of it: when the landing is judged from a checkout
+that is not the target branch's tip, the landing MUST NOT proceed if the target branch has
+changed any board file (other than the one being written) since that checkout's commit, or
+if that cannot be determined. A PR that delivers a `gate: human` brief
 MAY carry an informational banner naming the decision issue and whether a ruling is
 recorded; the banner blocks nothing.
 

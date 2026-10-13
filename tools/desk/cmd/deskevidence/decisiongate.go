@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -166,6 +168,74 @@ func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedEx
 		return fail("commit-tree", err)
 	}
 	return commit, nil
+}
+
+// decisionGateHomeFreshFn is the seam cmdEvidence calls before the judge. setupFake
+// stubs it to "fresh"; decisiongate_test.go drives decisionGateHomeFresh directly and
+// the whole-verb tests restore the production binding.
+var decisionGateHomeFreshFn = decisionGateHomeFresh
+
+// decisionGateCompareFileCap is the number of files the forge's compare read serves
+// before it stops listing (GitHub: 300). A listing that reaches it may be truncated.
+const decisionGateCompareFileCap = 300
+
+// decisionGateBoardRe selects the paths whose change on the target branch the judge
+// would not see from a stale landing home: the board's files under docs/streams and
+// docs/archive, less the registers the board never reads (findings, intake,
+// verify-outcomes), which change on most days and bear on no brief's gate.
+var (
+	decisionGateBoardRe    = regexp.MustCompile(`^docs/(streams|archive)/`)
+	decisionGateRegisterRe = regexp.MustCompile(`^docs/(streams|archive)/(findings|intake|verify-outcomes)/`)
+)
+
+// decisionGateHomeFresh refuses (could-not-check) when the target branch holds a
+// board change the landing home does not.
+//
+// decisionGateDiffAt reads every board record except the write's own target from the
+// landing home: its HEAD for the base, its working tree for the after side. The home
+// is bound to the commit fixed at verifier dispatch, which sits behind the target
+// branch once anything lands there. A brief relabelled gate: human on the branch
+// after dispatch is then invisible to the judge, and an unruled move of it would
+// land. The write lands on the branch (lifecycle-v1 §4.5), so the branch is what it
+// must be judged against; the forge serves no tree read to build that base from, so
+// the check is the other half of the alternative: any board file the branch changed
+// since the home's HEAD, other than the target the write replaces, is could-not-check.
+// Re-run the landing from a home that carries the branch's board.
+//
+// Fail closed throughout: a home HEAD the forge does not know, a compare that cannot
+// be shown complete, or a forge that serves no compare is could-not-check, never a pass.
+func decisionGateHomeFresh(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branch, targetRepoPath string) error {
+	cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	cmd.Dir = os.TempDir()
+	out, err := cmd.Output()
+	head := strings.TrimSpace(string(out))
+	if err != nil || head == "" {
+		return deskkit.Unverifiable("cannot resolve the landing home's HEAD in "+root+" to compare it with "+branch+" (decision-gate hold, lifecycle-v1 §4.5)", err)
+	}
+	branch = strings.TrimPrefix(branch, "refs/heads/")
+	cmp, err := fg.CompareRefs(fr, head, branch)
+	if err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, fr.Slug()), err)
+	}
+	if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
+		return deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, fr.Slug()), nil)
+	}
+	var moved []string
+	for _, f := range cmp.Files {
+		for _, p := range []string{f.Filename, f.PreviousFilename} {
+			if p == "" || p == targetRepoPath || !decisionGateBoardRe.MatchString(p) || decisionGateRegisterRe.MatchString(p) {
+				continue
+			}
+			moved = append(moved, p)
+		}
+	}
+	if len(moved) > 0 {
+		if len(moved) > 5 {
+			moved = append(moved[:5], fmt.Sprintf("… and %d more", len(moved)-5))
+		}
+		return deskkit.Unverifiable(fmt.Sprintf("%s has changed the board since the landing home's HEAD %s (%s), so the decision-gate check — which reads every board record but the target from the home — could judge a stale board; re-run the landing from a home that carries %s", branch, head, strings.Join(moved, ", "), branch), nil)
+	}
+	return nil
 }
 
 // decisionGateRefusedMark is the separator statusgen prints between a board id and
