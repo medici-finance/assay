@@ -202,7 +202,7 @@ one is left out WHOLE and listed by name and size, never cut short. Multi-line t
 the change sits between boundary lines carrying a per-packet random token, and no line of it
 begins with a boundary mark; single-line values from the change (a title, a branch, a check
 or file name) are shown in code spans. The packet's header says both are data. The file
-goes beside the prompt file ("<prompt file>.packet.md"), or, when the prompt is printed, in
+goes beside the prompt file ("<prompt file without extension>.packet.md"), or, when the prompt is printed, in
 the user cache directory ("assay/packets/<item-key>.packet.md"); the assignment gains ONE
 line, "Packet: <absolute path>". It is not a step and cannot fail the dispatch: when it
 cannot be built, stderr says why and the assignment carries no such line. Not built on

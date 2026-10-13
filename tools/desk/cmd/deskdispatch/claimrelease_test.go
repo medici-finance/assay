@@ -43,6 +43,7 @@ func TestGateRefusalReleasesClaim(t *testing.T) {
 	}
 }
 
+// regression: #2749
 func TestPromptWriteFailReleases(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
@@ -55,7 +56,23 @@ func TestPromptWriteFailReleases(t *testing.T) {
 	if err := os.Mkdir(emittedPathFor(promptFile), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	rc, stderr := runCapturingStderr(t, []string{"item-1", "--root", root, "--prompt-file", promptFile})
+	original := []byte("caller task\n")
+	if err := os.WriteFile(promptFile, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, stderr, rc := ddRunCapture(t, []string{"item-1", "--root", root, "--quiet", "--prompt-file", promptFile})
+	if out != "" {
+		t.Errorf("failed prompt write printed a success path: %q", out)
+	}
+	if got, err := os.ReadFile(promptFile); err != nil || string(got) != string(original) {
+		t.Errorf("caller input changed: %q, %v", got, err)
+	}
+	if !s.ran("dispatch-claim.sh acquire") {
+		t.Fatal("write failure did not occur after claim acquisition")
+	}
+	if leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(promptFile), ".packet-*.tmp")); err != nil || len(leftovers) != 0 {
+		t.Errorf("temporary files remain: %v, %v", leftovers, err)
+	}
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("rc = %d, want %d:\n%s", rc, deskkit.ExitUnverifiable, stderr)
 	}

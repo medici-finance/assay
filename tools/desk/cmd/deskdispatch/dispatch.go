@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/packet"
 )
 
 const toolName = "deskdispatch"
@@ -2172,7 +2173,7 @@ func emitPrompt(o dispatchOpts, prompt string) error {
 		return nil
 	}
 	dest := emittedPathFor(o.promptFile)
-	if err := os.WriteFile(dest, []byte(prompt+"\n"), 0o600); err != nil {
+	if err := packet.Write(dest, packet.Packet{Text: prompt + "\n"}); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: cannot write the prompt to %s", stepPromptEmit, dest), err)
 	}

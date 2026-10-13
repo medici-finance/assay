@@ -5597,6 +5597,15 @@ replaced by a re-dispatch), and that path is printed alone on stdout. A caller t
 re-reads its own task file after the dispatch gets what it wrote. The flag must name a file: an
 existing directory is refused before the claim.
 
+The emitted file is replaced atomically through an owner-only temporary file: a link at the
+destination is replaced, never followed, and an existing wider mode is replaced with `0600`.
+Callers must check the exit status and read the path printed by this successful invocation,
+rather than read `F` or infer success from an existing emitted file. A refused re-dispatch can
+leave the previous emitted file in place. Files differing only in extension share the same
+emitted and packet paths; use distinct stems for concurrent dispatches. Keep `F` outside
+the agent worktree, especially a verifier home: the emitted sibling is an additional file
+even when the verifier packet provider declines to write its packet there.
+
 **What a review packet holds, in order:** the head commit and the build time (at the top);
 the change's number, title, author, base, head and draft / mergeable state; its description;
 the brief text, when the dispatch resolves one; check and status states at the head; the
