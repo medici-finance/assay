@@ -275,6 +275,7 @@ func cmdEdit(args []string) (err error) {
 	// No EditChange (nothing to change) and no re-review notice (the notice announces a body
 	// change, and none happened here — the run that changed the body posted its own).
 	if bodyUnchanged {
+		ac.writeAttempted = true
 		if lerr := applyDeskDecidedLabel(fg, fr, pr.Number); lerr != nil {
 			return deskDecidedLabelFailure(pr.URL, "the body already carried its Desk-decided block", lerr)
 		}
@@ -299,6 +300,7 @@ func cmdEdit(args []string) (err error) {
 		editIn.Title = *title
 		changed = append(changed, "title")
 	}
+	ac.writeAttempted = true
 	if eErr := fg.EditChange(fr, pr.Number, editIn); eErr != nil {
 		return deskkit.Unverifiable("edit change failed", eErr)
 	}

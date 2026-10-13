@@ -6861,3 +6861,14 @@ closes #146 end to end: the primitive alone did not help until the skill docs ac
 it instead of the shell idiom the writeguard hook blocks. **Routing, filing, and closing**
 (rows 4, 5, 9) remain the next adopters: closing waits on `deskclose` (#282), and filing
 composes with `deskfile` (#283).
+
+### Local audit receipts and write accounting
+
+Successful scan overrides emit `result: local`. They retain their surface digest,
+reason and identity, but consume no outward-write capacity and cannot reset a
+failure breaker. Readers treat historical `scan_override` / `ok` receipts the
+same way without rewriting the ledger. Unknown event/results still charge.
+
+`deskpr` records failures before a potentially mutating remote call as `unwritten`.
+Once a push, edit or label write has been attempted, an uncertain failure remains
+`unverifiable` and consumes capacity because the write may have reached the remote.

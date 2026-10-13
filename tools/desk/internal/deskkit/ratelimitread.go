@@ -149,7 +149,7 @@ func boundedPointsFor(want string, now time.Time) (mine []auditPoint, ok bool) {
 				undetermined = true
 				return false
 			}
-			p := auditPoint{ts: ts, result: e.Result, repo: e.Repo, pr: e.PR}
+			p := auditPoint{ts: ts, result: meterResult(e), repo: e.Repo, pr: e.PR}
 			mine = append(mine, p)
 
 			recent := !ts.Before(coolCutoff)
@@ -159,9 +159,9 @@ func boundedPointsFor(want string, now time.Time) (mine []auditPoint, ok bool) {
 					w = &breakerWalk{trip: BreakerTrip}
 					walks[key] = w
 				}
-				w.observe(e.Result, recent)
+				w.observe(p.result, recent)
 			}
-			walks["*"].observe(e.Result, recent)
+			walks["*"].observe(p.result, recent)
 			return !done()
 		})
 		if serr != nil && !os.IsNotExist(serr) {
@@ -206,7 +206,7 @@ func pointsFrom(entries []Entry, want, tool string) ([]auditPoint, error) {
 				fmt.Sprintf("audit entry for %q has an unparseable ts %q — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", tool, e.TS),
 				perr)
 		}
-		mine = append(mine, auditPoint{ts: ts, result: e.Result, repo: e.Repo, pr: e.PR})
+		mine = append(mine, auditPoint{ts: ts, result: meterResult(e), repo: e.Repo, pr: e.PR})
 	}
 	return mine, nil
 }
@@ -215,4 +215,14 @@ func pointsFrom(entries []Entry, want, tool string) ([]auditPoint, error) {
 // a whole-second RFC3339 timestamp keep it — the breaker's "consecutive" walk depends on it.
 func sortPoints(mine []auditPoint) {
 	sort.SliceStable(mine, func(i, j int) bool { return mine[i].ts.Before(mine[j].ts) })
+}
+
+// meterResult recognizes historical local scan-override rows without rewriting
+// the append-only ledger. Only successful override receipts qualify; unknown
+// verbs/results retain their conservative charging treatment.
+func meterResult(e Entry) string {
+	if e.Verb == ScanOverrideVerb && e.Result == ResultOK {
+		return ResultLocal
+	}
+	return e.Result
 }

@@ -16,6 +16,9 @@ import (
 
 // Audit result values (the `result` field of an audit line).
 const (
+	// ResultLocal records a completed local audit action. It has no remote effect
+	// and neither consumes write capacity nor resets a failure breaker.
+	ResultLocal        = "local"
 	ResultOK           = "ok"
 	ResultNoop         = "noop"
 	ResultRefused      = "refused"
