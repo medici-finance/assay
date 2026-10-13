@@ -555,7 +555,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	notices = append(notices, ufNotices...)
 	// Fail-first (verify-integrity/03): a closure THIS branch makes must carry,
 	// for each risk-bearing Verify row, a `verifyrun --fail-first` witness that
-	// reds on a base in HEAD's history. See witnessgate.go / failfirst.go.
+	// reds on the merge-base or an ancestor of it that already holds the brief. See witnessgate.go / failfirst.go.
 	ffProblems, ffNotices := failFirstGateChecks(root, checkStreams)
 	problems = append(problems, ffProblems...)
 	notices = append(notices, ffNotices...)

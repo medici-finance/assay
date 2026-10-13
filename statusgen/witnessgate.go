@@ -207,6 +207,9 @@ func failedWitnessRows(findings []checkFinding) []string {
 //   - names a base that is neither the merge-base of HEAD and the default
 //     branch nor an ancestor of it — the red came from some other tree, HEAD's
 //     own commit, or a commit of this branch (the SPOF layer: see failfirst.go);
+//   - names a base that predates the brief (the merge-base holds the brief file
+//     at its current path and the base does not), so the Verify rows did not
+//     exist on that tree — a red there is not about this change;
 //   - is green at base — `non-discriminating`: it passes with or without the
 //     change.
 //
@@ -275,6 +278,10 @@ func failFirstGateChecks(root string, streams []*Stream) (problems, notices []st
 					}
 					if ok, why := commitIsAncestor(root, ff.Base, mergeBase); !ok {
 						problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base is not the merge-base or an ancestor of it (base %s: %s), so its %s is not about the tree without this change. Re-run `statusgen verifyrun --fail-first` (default base, or --base <an ancestor of the merge-base>)", id, br.Status, r.ID, ff.Base, why, ff.State))
+						continue
+					}
+					if why := briefHeldAtBase(root, art.Path, ff.Base, mergeBase); why != "" {
+						problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base %s is not about this change (%s). Re-run `statusgen verifyrun --fail-first --base <a later ancestor of the merge-base>`", id, br.Status, r.ID, ff.Base, why))
 						continue
 					}
 					if ff.State == baseGreen {

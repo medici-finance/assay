@@ -21,9 +21,22 @@ package main
 //   - its base is the merge-base of HEAD and the default branch, or an ancestor
 //     of that merge-base (so HEAD's own commit and any branch commit are
 //     refused, and a post-merge verifier can pass --base <the delivering
-//     change's parent>); and
+//     change's parent>);
+//   - that base holds the brief file at its current path whenever the
+//     merge-base does (briefHeldAtBase), so a base older than the brief, such
+//     as the repository's root commit, where every row reds for reasons that
+//     have nothing to do with any change, is refused; and
 //   - it is the LATEST witness for the row and was run for the row's CURRENT
 //     command (the sibling check checkWitnesses applies the same two rules).
+//
+// THE LIMIT, stated here and wherever the guarantee is claimed (the doc's
+// Fail-first section, the verify-desk step, the PR body): the gate proves only
+// that the base is the merge-base or older and that the brief already existed
+// there. It does NOT prove the base is the tree without THIS change. Which
+// ancestor counts as "without this change" (in a post-merge verify, the parent
+// of the delivering merge) is the verifier's attestation, and the Base cell is
+// self-attested Evidence text like every witness cell. The binding is a design
+// decision tracked on the issue the PR links, not something the lint decides.
 //
 // The ancestry question lives in failfirst_ancestry.go, the one file in this
 // package that asks git for commit ancestry; it is NOT a witness-applicability
@@ -121,17 +134,28 @@ func failFirstRiskyIDs(risk map[string]string, rows []verifyRow) map[string]bool
 }
 
 // verifyUnplacedRows describes what a Verify section holds that verifyRowTable
-// (the runner's enumeration) cannot place: a table whose header names no
-// Command column, and a data row too short to reach the Command cell. Such
-// text is never run and never witnessed, so a closure the branch makes must not
-// pass over it in silence (failFirstGateChecks reports each as a PROBLEM).
+// (the runner's enumeration) cannot place AND that is shaped like Verify rows:
+// a data row too short to reach the Command cell, a Verify-shaped table whose
+// header names no Command column (it has an Expect column, e.g. `# | Cmd |
+// Expect`), and a headerless table whose first line is already a numbered row
+// (a prose paragraph split the Verify table, so its later rows lost the header
+// and the runner takes the first of them for one). Such text is never run and
+// never witnessed, so a closure the branch makes must not pass over it in
+// silence (failFirstGateChecks reports each as a PROBLEM).
+//
+// A table that is NOT Verify-shaped is not reported: the author-brief skill's
+// B5 step sanctions a `Failure mode of the work | Caught by` map "beside the
+// table", and a brief may keep a `Row | The mutation that must redden it` map or
+// a legend in ## Verify. A table is Verify-shaped when its header has an
+// Expect/Expected column, or its first line is a data row whose first cell is a
+// row id (`1`, `#1`, `R1`); the map and legend headers have neither.
 func verifyUnplacedRows(section string) []string {
 	var out []string
 	cmdIdx := -1
 	first := ""
 	flush := func() {
-		if cmdIdx < 0 && first != "" {
-			out = append(out, "a table whose header names no `Command` column ("+truncateRunes(first, 60)+")")
+		if cmdIdx < 0 && first != "" && verifyShapedHeader(first) {
+			out = append(out, "a table that looks like Verify rows but whose header names no `Command` column ("+truncateRunes(first, 60)+")")
 		}
 		cmdIdx, first = -1, ""
 	}
@@ -164,6 +188,27 @@ func verifyUnplacedRows(section string) []string {
 	return out
 }
 
+// verifyRowIDCellRe is a Verify row id as authors write it: `1`, `#1`, `R1`,
+// `1a`.
+var verifyRowIDCellRe = regexp.MustCompile(`^(?i)#?r?[0-9]+[a-z]?$`)
+
+// verifyShapedHeader reports whether the first line of a Command-less table
+// looks like a Verify table's header (an Expect/Expected column) or like a
+// Verify data row that lost its header (its first cell is a row id).
+func verifyShapedHeader(line string) bool {
+	cells := splitRowEscaped(line)
+	for j, c := range cells {
+		c = strings.ToLower(strings.TrimSpace(c))
+		if c == "expect" || c == "expected" {
+			return true
+		}
+		if j == 0 && verifyRowIDCellRe.MatchString(c) {
+			return true
+		}
+	}
+	return false
+}
+
 // truncateRunes shortens s to at most n runes, marking the cut.
 func truncateRunes(s string, n int) string {
 	r := []rune(s)
@@ -178,7 +223,7 @@ func truncateRunes(s string, n int) string {
 // ancestor of it: in a post-merge verify the merge-base already holds the
 // change, so the verifier passes the delivering change's parent), or by
 // default the exact merge-base of HEAD and origin/main.
-func failFirstBaseRev(root, rev string) (string, error) {
+func failFirstBaseRev(root, rev, briefPath string) (string, error) {
 	if rev != "" {
 		if strings.HasPrefix(rev, "-") {
 			return "", fmt.Errorf("--base %q is not a revision", rev)
@@ -194,6 +239,9 @@ func failFirstBaseRev(root, rev string) (string, error) {
 			if ok, why := commitIsAncestor(root, full, mb); !ok {
 				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
 			}
+			if why := briefHeldAtBase(root, briefPath, full, mb); why != "" {
+				return "", fmt.Errorf("--base %q is refused: %s", rev, why)
+			}
 		}
 		return full, nil
 	}
@@ -201,6 +249,56 @@ func failFirstBaseRev(root, rev string) (string, error) {
 		return b, nil
 	}
 	return "", errors.New("the merge-base of HEAD and origin/main cannot be resolved (fetch origin/main, or pass --base <rev>)")
+}
+
+// pathHeldAt reports whether rev's tree holds the file rel (a slash path from
+// the repository root). A package var so tests can stand in for git.
+var pathHeldAt = func(root, rev, rel string) bool {
+	_, err := gitOut(root, "cat-file", "-e", rev+":"+rel)
+	return err == nil
+}
+
+// canonicalPath makes p absolute and resolves symlinks when it can (a macOS
+// /tmp is /private/tmp), so two spellings of one file compare equal.
+func canonicalPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		p = r
+	}
+	return p
+}
+
+// briefHeldAtBase is the in-code half of the fail-first base binding: a base
+// older than the brief is refused, so the repository's root commit (or any
+// commit from before the brief was authored) cannot stand in for "the tree
+// without this change". It returns "" when the base is acceptable and the
+// reason otherwise.
+//
+// The rule is: if the merge-base holds the brief file at its current path, the
+// chosen base must too. When the merge-base does not hold it either, the brief
+// was born on this branch (or the path is outside this clone) and no ancestor
+// could, so nothing is asked of the base.
+//
+// This NARROWS the gap and does not close it: any ancestor from the brief's
+// creation up to the merge-base still passes, and which of them is "without the
+// delivering change" stays the verifier's attestation. A brief renamed since the
+// base is refused; pass a later ancestor.
+func briefHeldAtBase(root, briefPath, base, mergeBase string) string {
+	if briefPath == "" || mergeBase == "" {
+		return ""
+	}
+	absRoot, absBrief := canonicalPath(root), canonicalPath(briefPath)
+	rel, err := filepath.Rel(absRoot, absBrief)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
+	if pathHeldAt(root, base, rel) || !pathHeldAt(root, mergeBase, rel) {
+		return ""
+	}
+	return "the base predates the brief: it does not hold " + rel + ", which the merge-base does, so the Verify rows did not exist on that tree and a red there is not about this change (pass a later ancestor of the merge-base)"
 }
 
 // runFailFirstBase checks base out into a temporary detached worktree, runs

@@ -540,6 +540,7 @@ it is an authoring convention only.
 | `consumers-unrouted` | a `consumers:` entry that names no routing token (`fixed-here` / `follow-up` / `out-of-scope`) | advisory |
 | `eligibility-could-not-check` | a gates: edge (or unsatisfied depends:) the eligibility evaluator could not resolve offline — an unregistered/unpublished alias, an absent sibling checkout, or a forge-backed target — which HOLDS the brief out of Next-up | advisory |
 | `ere-literal-pipe` | a `\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
+| `fail-first-closure` | a risk-bearing Verify row of a closure this branch makes (verified/done, and not so at the merge-base) has no current fail-first witness, is unproven or non-discriminating, was run for an earlier command, or names a base that is not the merge-base or an ancestor of it that already holds the brief (docs/verify-row-strength.md) | fatal |
 | `gnu-only` | a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `gotest-run-vacuous` | a `go test -run` selector with no `--- PASS` assertion in the same command, so the row passes whether or not the named test exists, is built, or was ever renamed away (open briefs only; a closed brief's rows are summarised, not individually flagged) | advisory |
@@ -562,6 +563,7 @@ it is an authoring convention only.
 | `trivially-green` | a command that exits 0 whatever the tree holds — `true`, `echo ok`, a trailing `|| true`, a `git log --grep` with no count, or an existence test on a path the brief itself declares | advisory |
 | `unsubstituted-metavar` | an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `verify-row-portability` | a Verify row hardcodes /tmp, sh/bash -c or findstr without an explicit OS marker (TMPDIR fallback is exempt) | advisory |
+| `verify-unplaced-rows` | a closure this branch makes whose `## Verify` section holds text `statusgen verifyrun` cannot place and that looks like Verify rows: a numbered row that lost its table header (a prose paragraph split the table), a table headed `Expect` with no `Command` column, or a row too short to reach `Command`. A `Failure mode | Caught by` map, a mutation map or a legend is not Verify-shaped and is not reported | fatal |
 
 ## Before dispatch — mistake-proofing the brief itself
 

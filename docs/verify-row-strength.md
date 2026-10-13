@@ -114,8 +114,9 @@ is present but yields no path, the result is **COULD-NOT-CHECK**, never a findin
 `statusgen verifyrun --brief <path> --fail-first` runs each risk-bearing row twice. The first run
 is on the base, checked out into a temporary worktree, with the same sandbox and `--ci` mode as the
 head run. The second is the ordinary run at head. The default base is the merge-base of HEAD and
-`origin/main`. `--base <rev>` may name that merge-base or any ancestor of it, and nothing else:
-a branch commit, HEAD or an unknown object is refused. The witness table gains a `Base` column,
+`origin/main`. `--base <rev>` may name that merge-base or an ancestor of it that already holds the brief file,
+and nothing else: a branch commit, HEAD, an unknown object or a base older than the brief is
+refused. The witness table gains a `Base` column,
 appended to the right of `Runner` (readers of Date and Runner skip it):
 
     base=<sha> red rc=1 · head=<sha>
@@ -133,14 +134,42 @@ commit that already contains the change, so every row is green. The verifier pas
 `--base <the parent of the delivering merge>`. Only the latest witness of a row counts, and it
 must carry the row's current command; a later plain run or an edited command drops the record.
 One parser (`briefVerifyRows`) enumerates the rows for the gate, the risk selection and the
-runner, and a Verify table it cannot place on a closure is a PROBLEM. A live, mutating or
+runner, and Verify-shaped text it cannot place on a closure is a PROBLEM (see "Verify text the
+runner cannot place" below). A live, mutating or
 end-to-end row runs a second time at base, so check it is safe to run twice.
 
 The lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
 a **PROBLEM** when it has no fail-first witness, its witness is `unproven`, its witness is
 non-discriminating, its witness is for an earlier command or has been superseded by a later plain
-run, or its witness names a base that is not the merge-base or an ancestor of it. The last case
-covers a red run on some other tree, or on the branch itself, which proves nothing about this
-change. A non-risk-bearing row
+run, or its witness names a base that is not the merge-base or an ancestor of it, or names a base
+that predates the brief (the merge-base holds the brief file at its current path and the base
+does not). The last two cases cover a red run on some other tree, on the branch itself, or on a
+tree from before the brief existed (the root commit, where every row reds because the files are
+missing), which proves nothing about this change. A non-risk-bearing row
 that is non-discriminating is reported as a NOTICE and never blocks. `verifyrun --fail-first`
 exits 1 when a risk-bearing row is non-discriminating and 2 when one could not run at base.
+
+### What the base check does not prove
+
+The gate proves that the base is the merge-base or older, and that the brief existed there. It
+does not prove that the base is the tree without THIS change. Any ancestor from the brief's
+creation up to the merge-base passes, so which one counts as "without this change" (in a
+post-merge verify, the parent of the delivering merge) is the verifier's attestation, and the
+Base cell is self-attested Evidence text, like every witness cell. Binding the base to the
+delivering change in code is a design decision tracked on the issue linked from the pull request
+that introduced the gate, not something the lint decides today.
+
+### Verify text the runner cannot place
+
+`verifyrun` runs the rows of a table whose header names a `Command` column. On a closure the
+branch makes, `## Verify` text that looks like Verify rows and that the runner cannot place is a
+PROBLEM, because it is never run, witnessed or held to a fail-first record. Three shapes count:
+
+- a numbered row that lost its table header, usually because a prose paragraph split the table;
+- a table headed `Expect` (or `Expected`) with no `Command` column;
+- a row too short to reach the `Command` cell.
+
+Other tables are not reported. The `Failure mode of the work | Caught by` map the author-brief
+skill allows beside the Verify table, a `Row | The mutation that must redden it` map and a legend
+(`Class | Meaning`) are not Verify-shaped, so they stay where the skill tells authors to put them.
+Registry entry: `verify-unplaced-rows`.

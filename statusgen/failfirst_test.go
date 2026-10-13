@@ -212,7 +212,7 @@ func TestFailFirstBaseFlagRefusesNonAncestor(t *testing.T) {
 		name, rev string
 		ok        bool
 	}{{"merge-base", base, true}, {"ancestor of the merge-base", older, true}, {"branch commit", branch, false}, {"HEAD", head, false}} {
-		_, err := failFirstBaseRev(root, c.rev)
+		_, err := failFirstBaseRev(root, c.rev, "")
 		if (err == nil) != c.ok {
 			t.Errorf("--base %s: err=%v, want ok=%v", c.name, err, c.ok)
 		}
@@ -388,5 +388,113 @@ func TestFailFirstRunsAtBase(t *testing.T) {
 	}
 	if unrunMarkerRe.MatchString(inlineCodeRe.ReplaceAllString(row, "")) {
 		t.Errorf("a fail-first row must not carry an UNRUN marker word: %s", row)
+	}
+}
+
+// withBriefHeld stands in for `git cat-file -e <rev>:<path>`: held names the
+// revisions (by prefix) whose tree holds the brief file.
+func withBriefHeld(t *testing.T, held ...string) {
+	t.Helper()
+	prev := pathHeldAt
+	pathHeldAt = func(_, rev, _ string) bool {
+		for _, h := range held {
+			if strings.HasPrefix(rev, h) || strings.HasPrefix(h, rev) {
+				return true
+			}
+		}
+		return false
+	}
+	t.Cleanup(func() { pathHeldAt = prev })
+}
+
+// TestFailFirstBaseMustHoldBrief — F3 (a). The ancestry rule alone accepts any
+// ancestor of the merge-base, the repository's root commit included, where every
+// row reds because the files are missing, not because of any change. A base that
+// does not hold the brief file while the merge-base does is refused by the gate
+// and by the runner; a brief born on the branch (the merge-base lacks it too)
+// asks nothing of the base.
+func TestFailFirstBaseMustHoldBrief(t *testing.T) {
+	withBase(t, true)
+	root, older, base, _, head, _ := ffRepo(t)
+	skip := failFirstCell("", baseNotSelected, -1, head[:12])
+	briefPath := filepath.Join(root, "docs", "streams", "ff", "brief-01-ff.md")
+
+	for _, c := range []struct {
+		name        string
+		held        []string
+		baseRev     string
+		wantProblem bool
+	}{
+		{"older ancestor predates the brief", []string{base}, older, true},
+		{"older ancestor holds the brief", []string{base, older}, older, false},
+		{"the merge-base holds the brief", []string{base}, base, false},
+		{"brief born on the branch: no ancestor holds it", nil, older, false},
+	} {
+		withBriefHeld(t, c.held...)
+		evidence := ffTable(failFirstCell(c.baseRev[:12], baseRed, 1, head[:12]), skip)
+		problems, _ := failFirstGateChecks(root, ffStream(t, root, evidence))
+		if got := containsSub(problems, "predates the brief"); got != c.wantProblem {
+			t.Errorf("gate, %s: PROBLEM=%v, want %v; problems=%v", c.name, got, c.wantProblem, problems)
+		}
+		_, err := failFirstBaseRev(root, c.baseRev, briefPath)
+		if (err != nil) != c.wantProblem {
+			t.Errorf("runner --base, %s: err=%v, want refusal=%v", c.name, err, c.wantProblem)
+		}
+	}
+}
+
+// TestPathHeldAtReadsTheTree — the default probe asks git: a file in the
+// tree is held, a file added later (or never) is not.
+func TestPathHeldAtReadsTheTree(t *testing.T) {
+	root, older, _, _, _, _ := ffRepo(t)
+	if !pathHeldAt(root, older, "flag.txt") {
+		t.Errorf("flag.txt is in the older commit's tree")
+	}
+	if pathHeldAt(root, older, "docs/streams/ff/brief-01-ff.md") {
+		t.Errorf("a file no commit holds must not read as held")
+	}
+}
+
+// TestVerifyUnplacedRowsOnlyVerifyShaped — F5. The author-brief skill sanctions
+// a `Failure mode of the work | Caught by` map beside the Verify table, and
+// briefs keep `Row | The mutation that must redden it` maps and legends there.
+// None is a Verify table, so none is reported. What stays caught: a row-shaped
+// orphan (a prose paragraph split the table, so a numbered row lost its header),
+// a Verify-shaped table headed `Expect` with no Command column, and a row too
+// short to reach Command.
+func TestVerifyUnplacedRowsOnlyVerifyShaped(t *testing.T) {
+	table := "| # | Class | Command | Expect |\n|---|---|---|---|\n| 1 | check | `true` | exit 0 |\n"
+	for _, c := range []struct {
+		name, extra string
+		want        int
+	}{
+		{"B5 failure-mode map", "\n| Failure mode of the work | Caught by |\n|---|---|\n| the flag is ignored | row 1 |\n", 0},
+		{"mutation map", "\n| Row | The mutation that must redden it |\n|---|---|\n| 1 | delete the flag |\n", 0},
+		{"legend", "\n| Class | Meaning |\n|-------|---------|\n| check | runs in CI |\n", 0},
+		{"headerless numbered orphan after prose", "\nA paragraph that splits the table.\n\n| 4 | check:manual | `cat notes.md` | reviewer records agreement |\n", 1},
+		{"Verify-shaped table with no Command column", "\n| # | Cmd | Expect |\n|---|-----|--------|\n| 2 | `true` | exit 0 |\n", 1},
+		{"row too short to reach Command", "| 2 | check |\n", 1},
+	} {
+		got := verifyUnplacedRows("\n" + table + c.extra)
+		if len(got) != c.want {
+			t.Errorf("%s: got %d unplaced (%v), want %d", c.name, len(got), got, c.want)
+		}
+	}
+
+	// The gate: the sanctioned maps do not block a closure, the orphan does.
+	withBase(t, true)
+	withAncestry(t, func(string, string, string) (bool, string) { return true, "" })
+	red := failFirstCell("bbbbbbbbbbbb", baseRed, 1, "aaaaaaaaaaaa")
+	ev := witnessTable([]witness{{ID: "1", Command: "grep -q new flag.txt", State: statePass, Exit: 0, OutHash: "0123456789ab", Date: "2026-10-08", Runner: "human:fixture", Tree: "aaaaaaaaaaaa", Base: red}})
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `grep -q new flag.txt` | exit 0 |\n"
+	root := t.TempDir()
+	problems, _ := failFirstGateChecks(root, ffStreamBrief(t, root, ffBriefRaw("yes", verify+"\n| Failure mode of the work | Caught by |\n|---|---|\n| flag ignored | row 1 |\n", ev)))
+	if len(problems) != 0 {
+		t.Errorf("a sanctioned Caught-by map must not block a closure; got %v", problems)
+	}
+	root = t.TempDir()
+	problems, _ = failFirstGateChecks(root, ffStreamBrief(t, root, ffBriefRaw("yes", verify+"\nA paragraph.\n\n| 2 | `true` | exit 0 |\n", ev)))
+	if !containsSub(problems, "cannot place") {
+		t.Errorf("a row-shaped orphan must stay a PROBLEM; got %v", problems)
 	}
 }

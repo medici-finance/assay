@@ -1877,7 +1877,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	var ff map[string]failFirst
 	var riskyIDs map[string]bool
 	if *failFirstMode {
-		base, berr := failFirstBaseRev(root, *baseRev)
+		base, berr := failFirstBaseRev(root, *baseRev, path)
 		if berr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", berr)
 			return verifyrunExitCouldNot
