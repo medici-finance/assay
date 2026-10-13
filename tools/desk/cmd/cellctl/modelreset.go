@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
 
 // Cheap-default reset: a periodic demand lever on model pins.
@@ -119,7 +121,14 @@ func lockModelPins(dir string) (func(), error) {
 		err := os.Mkdir(lockdir, 0o700)
 		if err == nil {
 			writePid(lockdir, strconv.Itoa(os.Getpid()))
-			return func() { _ = os.RemoveAll(lockdir) }, nil
+			me := strconv.Itoa(os.Getpid())
+			return func() {
+				// Release only a lock still stamped with this pid: after a takeover the
+				// directory belongs to another holder and is not ours to remove.
+				if readPid(lockdir) == me {
+					_ = os.RemoveAll(lockdir)
+				}
+			}, nil
 		}
 		if !os.IsExist(err) {
 			return nil, err
@@ -255,10 +264,10 @@ func (m pinMove) notice() string {
 //     per-role the-desk pin on that harness): the coordinator's resolved model never moves;
 //   - it is not a claude pin on a provider cell (the provider's endpoint rejects tier names);
 //   - cell.env still carries a non-empty line for it, equal to the recorded value (a different
-//     value is a hand edit: the clock restarts), and the record is older than the TTL;
+//     value is a hand edit: the record is dropped and the pin is explicit from then on), and the record is older than the TTL;
 //   - the cheap default ranks known and strictly below the current value.
 //
-// The returned record has stale entries dropped and hand-edited clocks restarted; dirty says
+// The returned record has stale entries dropped and hand-edited pins released; dirty says
 // it changed.
 func (c *Cell) planModelReset(ttl time.Duration, now time.Time, provider string) ([]pinMove, pinFile, bool) {
 	pf := loadPinFile(c.Dir)
@@ -298,7 +307,9 @@ func (c *Cell) planModelReset(ttl time.Duration, now time.Time, provider string)
 			continue // an unreadable stamp is unknown provenance: leave the pin alone
 		}
 		if cur != rec.Value {
-			pf.Pins[k] = pinRecord{Kind: pinKindDefault, Value: cur, At: now.UTC().Format(time.RFC3339)}
+			// A different value is a hand edit: an operator chose it, so it is EXPLICIT like every
+			// other operator-set pin. The record is dropped (no record = never reset).
+			delete(pf.Pins, k)
 			dirty = true
 			continue
 		}
@@ -424,21 +435,9 @@ const modelsUsage = "cellctl models reset <cell> [--model-ttl <Nd|duration>]"
 // cmdModels is `cellctl models reset <cell> [--model-ttl <Nd|duration>]`: the explicit form of
 // the boot-time reset. --model-ttl replaces the cell's TTL for this run, so it also recovers a
 // cell whose CELL_MODEL_TTL_DAYS line is malformed.
-func cmdModels(args []string) {
-	if len(args) == 0 || args[0] != "reset" {
-		die("models: usage: %s", modelsUsage)
-	}
-	cell := needCell(args[1:])
-	var ttlFlag string
-	rest := args[2:]
-	for i := 0; i < len(rest); i++ {
-		switch a := rest[i]; a {
-		case "--model-ttl":
-			ttlFlag = needFlagValue(rest, &i, "--model-ttl needs a value (Nd, e.g. 7d)")
-		default:
-			die("models reset: unknown argument %s (usage: %s)", a, modelsUsage)
-		}
-	}
+func cmdModels(cell string, v *cli.Values) {
+	needValue(v, "model-ttl", "--model-ttl needs a value (Nd, e.g. 7d)")
+	ttlFlag := v.String("model-ttl")
 	c := loadCell(cell)
 	var ttl time.Duration
 	if ttlFlag != "" {

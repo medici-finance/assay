@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cachequiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
@@ -93,6 +94,9 @@ func installFixtureRoster() (cleanup func(), err error) {
 }
 
 func TestMain(m *testing.M) {
+	// No test reaches the operator's live Go-cache root through an inherited policy
+	// (see package cachequiet; #2491).
+	cachequiet.Isolate()
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())

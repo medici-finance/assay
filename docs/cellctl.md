@@ -20,6 +20,12 @@ can also stand up by hand. Nothing else in Assay depends on it.
 
 For local messages between desk roles, see [Host desk communications](cellctl-comms.md).
 
+The command line is Cobra commands with scoped settings resolution: the generated
+[command reference](cellctl-cli-reference.md) lists every verb and flag, and the
+[compatibility table](cellctl-cli-compat.md) lists every way the surface differs from the earlier
+hand-written parser. `cellctl --help`, `cellctl <verb> --help` and `--version` read no cell, no
+credential and no roster.
+
 For an existing container deployment, the **container** kind provides registration and lifecycle
 delegation instead of host worktrees and credential symlinks. See [Container cells](#container-cells).
 For a harness that must run on the host but must NOT inherit the launching shell's credentials, the
@@ -1019,7 +1025,8 @@ the harness's mid-tier model, and people move back up only when they need to.
   the kind. Clearing a pin (`KEY=`) drops its record.
 - **What moves.** A DEFAULT pin moves only when all of these hold: it is older than the TTL; its
   `cell.env` line is still there, non-empty and equal to the record (a different value was
-  hand-edited, and its clock restarts instead); the mid-tier model ranks strictly BELOW it (by the
+  hand-edited: that is an operator's choice, so its record is dropped and the pin is explicit from
+  then on); the mid-tier model ranks strictly BELOW it (by the
   cell's tier map, then by the Claude family name: haiku < sonnet < opus/fable; a model neither
   places is never moved, and the reset never raises a pin); it is not a claude pin on a provider cell
   (`CELL_PROVIDER` or `--provider`, whose endpoint rejects tier names); and it is not the
@@ -1040,6 +1047,16 @@ the harness's mid-tier model, and people move back up only when they need to.
   (temp file and rename) and keeps the previous value in the record (`prev`). Every writer of
   `cell.env` and the record (`set`, a boot, `models reset`) holds `<cell>/.model-pins.lock`; a boot
   that cannot take it within a few seconds skips its reset with one `[model-reset] skipped` line.
+  The lock is a directory holding the owner's pid. A dead owner's lock is taken over, and a release
+  removes the lock only while it still carries the releasing process's pid; two waiters that take
+  over the same dead lock together can both proceed, and the cost is a lost update, never a torn
+  file. A lock directory with no pid file is never taken over: `set` and `models reset` refuse and
+  name the directory to remove by hand once no `cellctl` is running; a boot skips its reset.
+- **Scope of the boot reset.** The boot reset runs early in `cellctl desk`, before the model is
+  resolved and before the boot's later refusals, for every role's DEFAULT pins, under a model policy
+  and under `--model` alike. A boot that is then refused (for its own role's model, say) has
+  already lowered other roles' aged DEFAULT pins, written the backup and updated the record.
+  Only pins recorded with `set --default` are ever touched.
 - **TTL.** `CELL_MODEL_TTL_DAYS` in `cell.env`, default `7` (weekly); `0` turns the reset off for the
   cell. It takes `7d`, a bare number of days (up to five digits, optional fraction) or a Go duration
   (`36h`); anything else, `NaN`, `Inf`, exponents and underscores included, is refused by `set`. A
@@ -1836,11 +1853,12 @@ cells, whose launch is delegated to the operator's own launcher.
 
 ## Host desk cadence
 
-Codex house desks default to repeated bounded passes owned by Go cellctl, with a
-five-minute interval and 20-minute pass budget. `--cadence off` selects interactive
-mode; explicit intervals and budgets override the defaults. Other harnesses retain
-their existing defaults; Orca/Cursor can opt in with `--cadence`. See [Host desk cadence](cellctl-cadence.md) for setup, status,
-stop/recovery and process-lifetime limits.
+Codex desks default to interactive sessions whose bootstrap establishes and reads back
+a native standing Goal before invoking the role. Existing Goals and user pause/clear
+authority are preserved. Explicit `--cadence <duration>` selects repeated bounded
+headless passes; `--cadence off` explicitly selects interactive mode. Claude and Cursor
+retain their existing behavior. See [Host desk cadence](cellctl-cadence.md) for Goal
+admission, container-image limits, cadence setup, status and stop/recovery.
 
 ### Configured comms startup
 

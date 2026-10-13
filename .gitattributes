@@ -21,3 +21,10 @@ docs/streams/** text eol=lf
 # markers. Row order may interleave by merge order rather than timestamp; any consumer that
 # wants chronological order sorts by `ts`. (#588)
 docs/streams/verify-outcomes.jsonl merge=union
+
+# Generator inputs and byte-compared outputs must survive Windows checkout intact.
+plugins/assay/.codex-plugin/plugin.json text eol=lf
+plugins/assay/cursor/assay.mdc text eol=lf
+plugins/assay/hooks/resident-rules.payload.txt text eol=lf
+tools/harnessgen/testdata/payload.golden.txt text eol=lf
+.cursor/** text eol=lf

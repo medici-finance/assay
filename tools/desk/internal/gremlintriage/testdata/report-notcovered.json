@@ -1,0 +1,1 @@
+{"go_module": "example.com/m", "files": [{"file_name": "a.go", "mutations": [{"type": "CONDITIONALS_NEGATION", "status": "NOT COVERED", "line": 4, "column": 7}, {"type": "CONDITIONALS_BOUNDARY", "status": "NOT COVERED", "line": 11, "column": 7}]}]}

@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// regression: #2696
 func TestPrepareTickLaunchPreservesResolvedLaunch(t *testing.T) {
 	for _, tc := range []struct {
 		harness string
@@ -27,7 +28,7 @@ func TestPrepareTickLaunchPreservesResolvedLaunch(t *testing.T) {
 			prefix := append([]string{tc.argv[0]}, tc.mode...)
 			prefix = append(prefix, tc.argv[1:len(tc.argv)-1]...)
 			if tc.harness == "codex" {
-				prefix = append(prefix, "-c", `shell_environment_policy.set.ASSAY_TICK="1"`, "-c", `shell_environment_policy.set.ASSAY_TICK_DEADLINE="1200"`)
+				prefix = append(prefix, "-c", "features.goals=false", "-c", `shell_environment_policy.set.ASSAY_TICK="1"`, "-c", `shell_environment_policy.set.ASSAY_TICK_DEADLINE="1200"`)
 			}
 			if !reflect.DeepEqual(args[:len(args)-1], prefix) {
 				t.Fatalf("resolved argv changed: got %#v, want prefix %#v", args, prefix)

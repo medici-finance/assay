@@ -55,6 +55,25 @@ neither local file exists — materialise the file first for an environment that
 *not pinned here*, not as a disagreement; a re-pin rewrites each `<artifact>-<platform>` line with
 that asset's own digest from `checksums.txt`.
 
+## Cursor bundle upgrades
+
+For a Cursor adopter, add `--harness cursor --forge <github|gitlab>` to preview,
+apply, and final `--check`. The same resolver selects the umbrella version; the
+selected composition must contain the `cursor-bundle.tar.gz` digest. Materialize
+`releases/<tag>.cursor-bundle.tar.gz` beside the selected checksums for offline use,
+or explicitly opt into `--fetch`. The exact archive hash, internal version, and
+closed file manifest are verified before migration or placement. This is integrity
+against the selected composition, not build provenance; binary installation keeps
+its separate mandatory verification.
+
+The dry-run shows generated writes and stale owned-file removals. Apply preserves
+unmanaged content, refuses local edits/collisions, places the verified bundle, and
+advances the marker last. It replaces the marketplace step below for this harness.
+Run `--check` afterward; exit 1 means generated content or the marker differs.
+Same-version requests still check the bundle. Legacy releases without an asset or
+digest refuse; never substitute a floating source tree. See the harness reference
+for the authoritative install and ownership contract.
+
 ## The three marker states are your spine
 
 Before you can move anyone, you ask the marker (`deskversion`, driven inside `upgrade-assay`) one
@@ -153,7 +172,7 @@ pointer.
 
 - NEVER `git push`, trigger a workflow, cut a tag, or run mutating infra. Re-pointing the
   marketplace is the adopter's own `/plugin` step; you print it, you do not run it.
-- The write surface is the adopter's own repo under `--root` (`.assay-versions` and the files the
+- The write surface is the adopter's own repo under `--root` (`.assay-versions`, Cursor managed files/bounded bindings when selected, and the files the
   migrations touch) — nothing above it, and never the platform install cache.
 - Stop at `implemented`; you do not set verified/done.
 - If anything is unclear or contradicts repo state, report it and stop — do not guess.

@@ -598,6 +598,21 @@ passing run — which is why they are lint rules and not review vigilance.
       the PR's own `base.sha`.
     - `refs/remotes/origin/main` is the same moving ref by its long name.
 
+28a. **A zero-count row must not pipe a bare `grep` into a later stage**
+    (`grep-pipe-zero-count`, #1862). `statusgen verifyrun` runs every row under
+    `bash -o pipefail`, and grep exits 1 when it matches nothing. A row like
+    `grep -rn old docs/ | wc -l` with Expect `0` therefore FAILS when the property
+    holds (nothing found), and when a match is present grep exits 0, so a bare `0`
+    Expect leaves the verdict to exit status alone.
+    - Write: `{ grep -rn old docs/ || [ $? -eq 1 ]; } | wc -l`, with Expect
+      ``output is `0` ``. Tolerate only grep's no-match status; a plain `|| true`
+      also hides a real grep error.
+    - Where the searched path could vanish, add a positive leg that proves it
+      exists: `test -n "$(git ls-tree --name-only HEAD docs)" && …`.
+    - A leading `!`, the guarded `{ … || … ; } |` form, a `≥ 1` Expect and an
+      Expect that also declares a non-zero exit (``output is `0`, exit 1``) are
+      silent.
+
 29. **Rows run on macOS too — no GNU-isms** (`gnu-only`, #650). A Verify row is
     run by whoever verifies, on their own machine, and a row that only works on
     ubuntu produces a different verdict per platform with the platform invisible

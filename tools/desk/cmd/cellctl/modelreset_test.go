@@ -112,18 +112,25 @@ func TestModelResetRepinsAgedDefault(t *testing.T) {
 	}
 }
 
-func TestModelResetHandEditRestartsClock(t *testing.T) {
-	// The record says sonnet; cell.env was hand-edited to fable. The old age says nothing about
-	// the new value, so the clock restarts rather than repinning on the stale stamp.
+func TestModelResetHandEditReleasesThePin(t *testing.T) {
+	// The record says sonnet; cell.env was hand-edited to fable. A hand edit is an operator's
+	// choice, so the record is dropped: the pin is explicit from then on and no later pass, however
+	// old the stale stamp, ever lowers it.
 	c := resetCell(t, "DESK_MODEL_worker_desk=fable\n", map[string]pinRecord{
 		"DESK_MODEL_worker_desk": {Kind: pinKindDefault, Value: "sonnet", At: stamp(90)},
 	})
 	if n := liveReset(t, c); len(n) != 0 {
 		t.Fatalf("hand-edited pin repinned on a stale stamp: %v", n)
 	}
-	rec := loadPinFile(c.Dir).Pins["DESK_MODEL_worker_desk"]
-	if rec.Value != "fable" || rec.At != resetNow.Format(time.RFC3339) {
-		t.Errorf("record not restarted: %+v", rec)
+	if rec, has := loadPinFile(c.Dir).Pins["DESK_MODEL_worker_desk"]; has {
+		t.Errorf("hand-edited pin still recorded: %+v", rec)
+	}
+	later := resetNow.AddDate(0, 0, 30)
+	if moves, _, err := c.resetAgedDefaultPins(week, later, true, ""); err != nil || len(moves) != 0 {
+		t.Errorf("a released pin was lowered a month later: %v %v", moves, err)
+	}
+	if got := envLine(t, c, "DESK_MODEL_worker_desk"); got != "fable" {
+		t.Errorf("hand-set value changed to %q", got)
 	}
 }
 
@@ -379,8 +386,8 @@ func TestSetRecordsPinKind(t *testing.T) {
 func TestSetDefaultFlagOnly(t *testing.T) {
 	root := defaultsRoot(t)
 	writeCell(t, root, "demo", demoCell)
-	captureStdout(t, func() { cmdSet("demo", []string{"worker-desk", "--model", "fable"}) })
-	captureStdout(t, func() { cmdSet("demo", []string{"DESK_MODEL_verify_desk=fable", "--default"}) })
+	captureStdout(t, func() { setArgv("demo", []string{"worker-desk", "--model", "fable"}) })
+	captureStdout(t, func() { setArgv("demo", []string{"DESK_MODEL_verify_desk=fable", "--default"}) })
 	pins := loadPinFile(filepath.Join(root, "demo")).Pins
 	if pins["DESK_MODEL_worker_desk"].Kind != pinKindExplicit {
 		t.Errorf("plain role-form set recorded %+v, want explicit", pins["DESK_MODEL_worker_desk"])
@@ -388,7 +395,7 @@ func TestSetDefaultFlagOnly(t *testing.T) {
 	if pins["DESK_MODEL_verify_desk"].Kind != pinKindDefault {
 		t.Errorf("set --default recorded %+v, want default", pins["DESK_MODEL_verify_desk"])
 	}
-	msg := refusal(t, "set --default with no pin", func() { cmdSet("demo", []string{"CELL_COCKPIT=tmux", "--default"}) })
+	msg := refusal(t, "set --default with no pin", func() { setArgv("demo", []string{"CELL_COCKPIT=tmux", "--default"}) })
 	if !strings.Contains(msg, "sets no model pin") {
 		t.Errorf("refusal = %q", msg)
 	}

@@ -136,9 +136,8 @@ func TestUpdateNoLiveHeadFailsClosed(t *testing.T) {
 	}
 }
 
-// TestCreateJudgesWholeRange — create offers no remote tip (no PR head exists yet), so a
-// commit by another App anywhere on the branch is still refused, whatever a local tracking
-// ref says.
+// TestCreateJudgesWholeRange — the destination holds no branch, so every feature
+// commit is new and must be checked, whatever an unconfirmed local tracking ref says.
 func TestCreateJudgesWholeRange(t *testing.T) {
 	work, calls, _ := mixedPRFixture(t)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "")

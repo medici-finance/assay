@@ -19,6 +19,14 @@ import (
 // mirrors the safety gate: locked / dirty / unpushed / unmerged / current / not-under-prefix / shared.
 type skipEntry struct{ path, reason string }
 
+// freshWorktreeSafetyWindow is the minimum admin-entry age a pristine at-tip worktree
+// must reach before a sweep may remove it. `deskwt add` never locks the tree it creates,
+// so a just-created pristine at-tip tree (the verifier/reviewer shape) is
+// content-identical to reclaim residue — only age tells them apart. The window is the
+// roster's session-freshness window: one definition of "a session could still be setting
+// up" governs both.
+const freshWorktreeSafetyWindow = beaconFreshWindow
+
 // pruneResult is the outcome of one sweep.
 type pruneResult struct {
 	bookkept   int // admin entries dropped by `git worktree prune` (dirs already gone)
@@ -27,6 +35,14 @@ type pruneResult struct {
 	skips      []skipEntry
 	reclaimed  []reclaimEntry // locks retired this sweep (only with --reclaim-stale-locks)
 	warns      []string       // things the sweep could not do, said out loud
+
+	// staleRegs are the registrations the STALE-REGISTRATION pass cleared (stalereg.go):
+	// worktree directory present but its .git gitdir file gone. Clearing deletes the
+	// admin dir (.git/worktrees/<id>/), so it happens only behind the pass's three gates:
+	// the scope gates every arm enforces, an admin-HEAD proof that its target remains retained
+	// (a positively resolving branch, or on the remote mainline), and — for a locked husk — a lock the
+	// reclaim pass retired THIS sweep. The directory is always left on disk, untouched.
+	staleRegs []staleRegEntry
 
 	// reaped counts the worktrees the DEAD-SESSION arm removed (deadsession.go). It is
 	// kept apart from `removed` because the two arms cleared different populations under
@@ -38,6 +54,15 @@ type pruneResult struct {
 	// plan is the reap arm's judgement for every worktree it considered, REAP and KEEP
 	// alike — what `--dry-run` prints in full.
 	plan []reapVerdict
+	// branchGC is the LOCAL-BRANCH GC half of the sweep (branchgc.go, Step C): the local
+	// refs the worktree lifecycle leaves behind, collected ONLY when provably on the
+	// remote mainline. branchGC.ran is false when --no-branches skipped the pass.
+	branchGC branchGCResult
+	// cache is the CELL-CACHE pressure pass (cachepressure.go, Step D): a pressure check
+	// per marked cell Go-cache root under the cells root, plus the reap of a root whose
+	// owning directory this sweep removed. cache.ran is false when --no-cache (or
+	// --branches-only) skipped the pass.
+	cache cacheResult
 	// dryRun records which mode produced this result, so the renderer prints the FULL plan
 	// for an inspection run and only the acted-on rows for a live one.
 	dryRun bool
@@ -63,6 +88,20 @@ type pruneOpts struct {
 	// than this ago holds a new one. 0 disables the debounce ONLY — the singleton's lock
 	// is always taken and cannot be disabled (prunesingleton.go).
 	singletonTTL time.Duration
+	// noBranches skips the local-branch GC (Step C, branchgc.go) for this sweep — the
+	// cadence knob for a boot path that wants the worktree arms more often than the
+	// branch pass. Default OFF: the GC runs at the same moments as prune.
+	noBranches bool
+	// branchesOnly runs ONLY the local-branch GC, skipping every worktree arm — the other
+	// half of the cadence split. The opt-in worktree arms (--reclaim-stale-locks,
+	// --reap-dead-sessions) are REFUSED with it, because they would be silently inert.
+	branchesOnly bool
+	// noCache skips the cell-cache pressure pass (Step D, cachepressure.go) for this
+	// sweep. Default OFF: every sweep pressure-checks the marked cell Go-cache roots.
+	noCache bool
+	// cellsRoot is the cells root Step D sweeps, already resolved from --cells-root /
+	// $CELLS_ROOT / the compiled default by cmdPrune. "" skips the pass.
+	cellsRoot string
 }
 
 // cmdPrune implements `deskwt prune [--repo <path>] [--interval <dur>]
@@ -74,6 +113,19 @@ type pruneOpts struct {
 //
 //	Step A (always, safe bookkeeping): `git worktree prune --verbose` drops admin entries
 //	  whose working directories are already gone. This changes no on-disk working tree.
+//
+//	Step A1 (always, safe bookkeeping): the STALE-REGISTRATION sweep (stalereg.go) handles
+//	  the admin entries Step A cannot: worktree directory still present but its .git
+//	  gitdir file gone — a shape `git worktree remove` refuses ("validation failed") and
+//	  a lock makes `git worktree prune` keep forever. It runs the same scope gates as
+//	  every other arm (never the shared checkout, never the current worktree, never
+//	  outside the sanctioned prefixes), and clears a registration only when its admin
+//	  HEAD target is retained (a positively resolving branch, or a detached commit already
+//	  on refs/remotes/origin/main) AND it is not locked — the default sweep never
+//	  retires a lock; a locked husk clears only when --reclaim-stale-locks has proven
+//	  the lock stale this sweep. The directory is always left on disk, untouched. Each
+//	  cleared entry prints its own line, and the summary gains a
+//	  stale-registrations-cleared segment when the pass acted.
 //
 //	Step A2 (OPT-IN, --reclaim-stale-locks): give worktree locks a LIFECYCLE. Nothing else
 //	  ever unlocks a worktree, so a lock taken by a session that has since died is permanent
@@ -104,8 +156,37 @@ type pruneOpts struct {
 //	  tracked-clean, AND fully merged into origin/main (HEAD an ancestor of origin/main → every
 //	  commit reachable from HEAD is already on the remote mainline, so nothing is lost). The
 //	  merge check is the ACTIVE-WORKER guard: an unmerged branch (an open PR still in flight)
-//	  is NOT an ancestor of origin/main, so it is LEFT untouched. Anything failing any check is
+//	  is NOT an ancestor of origin/main, so it is LEFT untouched. A worktree whose HEAD IS
+//	  the origin/main tip (zero landed commits — the fresh-worktree case, and the shape a
+//	  reclaim-by-detach leaves behind) must additionally prove it holds NOTHING the
+//	  mainline does not: the untracked-INCLUSIVE status gate runs for exactly these, so a
+//	  pristine detached-at-main tree is removed while one holding uncommitted or untracked
+//	  work is LEFT. Anything failing any check is
 //	  LEFT and reported as skipped with a reason. There is NO --force anywhere.
+//
+//	Step C (default ON, --no-branches to skip / --branches-only to run alone): the
+//	  LOCAL-BRANCH GC (branchgc.go). Worktrees have this sweep and remote branches have the
+//	  forge's delete-on-merge, but the LOCAL branch a worktree leaves behind has neither —
+//	  they accumulate without bound. Step C collects a local branch ONLY when its content is
+//	  provably on refs/remotes/origin/main: its tip is an ancestor of the mainline (which
+//	  covers the fresh-never-used handle exactly), or every unique commit's patch-id is
+//	  already in the mainline's history (the squash-merge case). main/master, any branch
+//	  checked out in any worktree, and any branch whose proof fails or cannot be completed
+//	  are KEPT — unique-patch branches always. The delete is a compare-and-delete against
+//	  the proven sha (`git update-ref -d <ref> <sha>`), never a force verb.
+//
+//	Step D (default ON, --no-cache to skip): the CELL-CACHE pressure pass
+//	  (cachepressure.go). A cell's managed Go cache (tools/desk/internal/cellcache) is
+//	  otherwise pressure-checked only at launch admission and dispatch, so a long-lived
+//	  cell can sit over its byte budget — or the filesystem under its free-space floor —
+//	  indefinitely. Every sweep runs cellcache.Check over each marked cache root under
+//	  the cells root (--cells-root, then $CELLS_ROOT, then the compiled default), with
+//	  the package's own semantics: reclaim only under pressure, never while a consumer
+//	  holds a lease, never a warm purge. A root whose owning directory this sweep just
+//	  removed is reaped as an orphan, gated on its lease set re-read under its own lock
+//	  at act time. The pass is SILENT when every cache is within policy; the summary
+//	  line gains a cache segment only when it reclaimed, reaped, or found pressure it
+//	  could not clear.
 //
 // Without --interval it runs ONE sweep and exits (the boot-step behavior). With
 // `--interval 30m` it becomes a self-contained ticking loop — sweep, sleep the interval,
@@ -154,6 +235,21 @@ func cmdPrune(args []string) (err error) {
 		"skip the sweep when one completed less than this ago (e.g. 10m); 0 disables the recency check (the singleton lock is always taken)")
 	noSingleton := fs.Bool("no-singleton", false,
 		"disable the singleton's recency check (equivalent to --singleton-ttl 0); the lock is still taken, so a live sweep still holds this one")
+	// --no-branches / --branches-only are the cadence split for the local-branch GC
+	// (Step C, branchgc.go): the GC runs at the same moments as prune by default, and a
+	// boot path that wants the worktree arms more (or less) often than the branch pass
+	// controls that here.
+	noBranches := fs.Bool("no-branches", false,
+		"skip the local-branch GC (run the worktree arms only)")
+	branchesOnly := fs.Bool("branches-only", false,
+		"run ONLY the local-branch GC (skip every worktree arm)")
+	// --no-cache / --cells-root are the cache pressure pass's (Step D,
+	// cachepressure.go) cadence and scope knobs: the pass runs at the same moments as
+	// prune by default, against $CELLS_ROOT unless told otherwise.
+	noCache := fs.Bool("no-cache", false,
+		"skip the cell-cache pressure pass (run the worktree arms and branch GC only)")
+	cellsRootFlag := fs.String("cells-root", "",
+		"cells root the cache pressure pass sweeps for marked cell Go-cache roots (default: $CELLS_ROOT, then the per-user data-directory default)")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
 		// TIER TWO: a help screen is not a refusal and writes no audit row (deskkit/helprequest.go).
@@ -161,7 +257,8 @@ func cmdPrune(args []string) (err error) {
 			return deskkit.ErrHelpRequested
 		}
 		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
-			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl and --no-singleton " +
+			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl, " +
+			"--no-singleton, --no-branches, --branches-only, --no-cache and --cells-root " +
 			"(there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 0 {
@@ -173,6 +270,39 @@ func cmdPrune(args []string) (err error) {
 		reapDeadSessions:  *reapDead,
 		dryRun:            *dryRun,
 		singletonTTL:      defaultSingletonTTL,
+		noBranches:        *noBranches,
+		branchesOnly:      *branchesOnly,
+		noCache:           *noCache,
+		cellsRoot:         cellsRootForSweep(*cellsRootFlag),
+	}
+	// Reaping needs the named lock as ownership evidence. Reclaiming it first
+	// loses that proof in a live sweep while dry-run retains it. Refuse before
+	// constructing the guard, taking the singleton, or mutating bookkeeping.
+	if opts.reclaimStaleLocks && opts.reapDeadSessions {
+		return deskkit.Refused("refused: run --reap-dead-sessions without --reclaim-stale-locks to preserve named owner evidence")
+	}
+	// The split flags are contradictory together, and the opt-in WORKTREE arms under
+	// --branches-only would be silently inert — the exact shape of failure this tool
+	// refuses everywhere else (see --lock-ttl below). Say so instead of accepting a knob
+	// that does nothing.
+	if opts.noBranches && opts.branchesOnly {
+		return deskkit.Refused("refused: --no-branches and --branches-only are contradictory")
+	}
+	if opts.branchesOnly && (opts.reclaimStaleLocks || opts.reapDeadSessions) {
+		return deskkit.Refused("refused: --branches-only runs no worktree arm, so " +
+			"--reclaim-stale-locks and --reap-dead-sessions have no effect with it")
+	}
+	// The cache pass runs no more under --branches-only than the worktree arms do, so its
+	// knobs are silently inert there — and --cells-root scopes nothing a --no-cache sweep
+	// skipped. Refuse both pairings rather than accept a knob that does nothing.
+	if opts.branchesOnly && opts.noCache {
+		return deskkit.Refused("refused: --branches-only runs no cache pressure pass, so --no-cache has no effect with it")
+	}
+	if opts.branchesOnly && *cellsRootFlag != "" {
+		return deskkit.Refused("refused: --branches-only runs no cache pressure pass, so --cells-root has no effect with it")
+	}
+	if opts.noCache && *cellsRootFlag != "" {
+		return deskkit.Refused("refused: --cells-root scopes the cache pressure pass, which --no-cache skips")
 	}
 	if s := strings.TrimSpace(*singletonTTLStr); s != "" {
 		d, derr := time.ParseDuration(s)
@@ -273,7 +403,8 @@ func cmdPrune(args []string) (err error) {
 			fmt.Fprintf(os.Stderr, "  skipped %s — %s\n", s.path, s.reason)
 		}
 		ac.detail = pruneAuditDetail(res)
-		if res.bookkept == 0 && res.removed == 0 && res.reaped == 0 && len(res.reclaimed) == 0 {
+		if res.bookkept == 0 && res.removed == 0 && res.reaped == 0 && len(res.reclaimed) == 0 &&
+			len(res.staleRegs) == 0 && res.branchGC.collected() == 0 && res.cache.reclaimed == 0 && len(res.cache.reaped) == 0 {
 			ac.successResult = deskkit.ResultNoop
 		}
 		return nil
@@ -291,19 +422,52 @@ func cmdPrune(args []string) (err error) {
 // pruneSummaryLine is the ONE line a sweep always emits. It reports the four counts a
 // caller needs to tell a drained repo from a stuck one: what bookkeeping was dropped, what
 // was removed, what was HELD (and how much of that hold is the lock gate specifically — the
-// number that used to grow without bound), and how many locks were retired.
+// number that used to grow without bound), and how many locks were retired. When the
+// local-branch GC ran, the line carries its counts too — collected per proof class, and
+// held — because "no branches collected" and "the branch pass did not run" are different
+// facts and only one of them should ever read as zero. The cache pressure pass's segment
+// appears only when that pass acted or found pressure (cachepressure.go, the noise-floor
+// contract): a sweep whose caches are all within policy says nothing about them.
 func pruneSummaryLine(res pruneResult) string {
-	return fmt.Sprintf(
+	if res.branchGC.only {
+		// --branches-only: the worktree arms did not run, so their zeros are not counts of
+		// anything and the line leads with the half that did.
+		return fmt.Sprintf("deskwt prune: branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
+			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+	}
+	line := fmt.Sprintf(
 		"deskwt prune: pruned %d bookkeeping entr%s, removed %d merged+clean worktree%s, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
 		res.bookkept, plural(res.bookkept, "y", "ies"),
 		res.removed, plural(res.removed, "", "s"),
 		len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
+	line += staleRegSegment(len(res.staleRegs))
+	if res.branchGC.ran {
+		line += fmt.Sprintf(", branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
+			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+	}
+	if res.cache.ran && res.cache.notable() {
+		line += ", " + res.cache.summarySegment()
+	}
+	return line
 }
 
 // pruneAuditDetail is the same counts in the audit line's detail field.
 func pruneAuditDetail(res pruneResult) string {
-	return fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
+	if res.branchGC.only {
+		return fmt.Sprintf("branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
+			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+	}
+	detail := fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
 		res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
+	detail += staleRegSegment(len(res.staleRegs))
+	if res.branchGC.ran {
+		detail += fmt.Sprintf(", branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
+			res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+	}
+	if res.cache.ran && res.cache.notable() {
+		detail += ", " + res.cache.summarySegment()
+	}
+	return detail
 }
 
 // renderSweepDetail writes the lines that must never be reduced to a count: every lock this
@@ -311,6 +475,12 @@ func pruneAuditDetail(res pruneResult) string {
 // the sweep could not do. Both are rare and both change on-disk state or explain why it did
 // not change, so both print in one-shot AND in interval mode.
 func renderSweepDetail(w io.Writer, res pruneResult) {
+	// The stale-registration rows print in BOTH modes and always in full: each names a
+	// registration dropped (or, in a dry run, the one that would be) while its directory
+	// stays on disk — a distinction an operator must never have to guess at.
+	for _, e := range res.staleRegs {
+		fmt.Fprintln(w, "  "+staleRegLine(e, res.dryRun))
+	}
 	for _, r := range res.reclaimed {
 		fmt.Fprintf(w, "  reclaimed lock on %s — reason %s — stale: %s\n", r.path, lockReasonText(r.reason), r.why)
 	}
@@ -327,6 +497,21 @@ func renderSweepDetail(w io.Writer, res pruneResult) {
 			fmt.Fprintf(w, "    deleted stale local branch %s (equal to or behind its upstream)\n", v.branch)
 		}
 	}
+	// The branch-GC plan. A checkout that needs this pass can carry THOUSANDS of candidate
+	// branches, so a LIVE sweep prints only the summary-line counts (the noise-floor
+	// contract); the per-branch plan — the COLLECT rows an operator is signing off, each
+	// with the proof class — is a --dry-run artifact, and a dry run prints nothing it would
+	// not collect.
+	if res.branchGC.ran && res.dryRun {
+		for _, v := range res.branchGC.plan {
+			if v.collect {
+				fmt.Fprintln(w, v.planLine())
+			}
+		}
+	}
+	// The cache pass's per-root rows: the orphaned roots a live sweep reaped (named, never
+	// counted into silence), and the dry-run would-act plan.
+	renderCacheDetail(w, res.cache)
 	for _, warn := range res.warns {
 		fmt.Fprintf(w, "  warning: %s\n", warn)
 	}
@@ -370,8 +555,25 @@ func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, opt
 		} else {
 			totalRemoved += res.removed
 			totalReclaimed += len(res.reclaimed)
-			fmt.Fprintf(os.Stdout, "%s deskwt prune tick %d: bookkept=%d removed=%d held=%d locked_held=%d locks_reclaimed=%d\n",
-				nowStamp(), ticks, res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
+			var tick string
+			if res.branchGC.only {
+				// --branches-only: the worktree arms did not run, so their zeros are not
+				// counts of anything and the tick leads with the half that did.
+				tick = fmt.Sprintf("%s deskwt prune tick %d: branches_gc=%d (merged=%d cherry=%d) branches_held=%d",
+					nowStamp(), ticks,
+					res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+			} else {
+				tick = fmt.Sprintf("%s deskwt prune tick %d: bookkept=%d removed=%d held=%d locked_held=%d locks_reclaimed=%d",
+					nowStamp(), ticks, res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
+				if res.branchGC.ran {
+					tick += fmt.Sprintf(" branches_gc=%d (merged=%d cherry=%d) branches_held=%d",
+						res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
+				}
+				if res.cache.ran && res.cache.notable() {
+					tick += " " + res.cache.summarySegment()
+				}
+			}
+			fmt.Fprintln(os.Stdout, tick)
 			renderSweepDetail(os.Stdout, res)
 		}
 
@@ -539,6 +741,17 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	var res pruneResult
 	res.dryRun = opts.dryRun
 
+	// --branches-only: every worktree arm is skipped and the sweep is the local-branch GC
+	// alone. The flag parse has already refused the opt-in worktree arms with it, so what
+	// is skipped here can never be an arm the caller asked for.
+	if opts.branchesOnly {
+		sc := newSweepCtx(dir)
+		res.branchGC = gcLocalBranches(sc, dir, opts.dryRun)
+		res.branchGC.only = true
+		res.warns = append(res.warns, res.branchGC.warns...)
+		return res, nil
+	}
+
 	// Step A — bookkeeping prune (always safe: only drops entries for dirs already gone).
 	// --verbose prints one line per dropped entry so we can report the count.
 	//
@@ -552,32 +765,10 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	}
 	res.bookkept = dropped
 
-	// Step A2 — OPT-IN lock reclaim. It only UNLOCKS; nothing below this point is relaxed,
-	// so a reclaimed worktree still has to pass every removal gate on its own merits. A
-	// second bookkeeping prune follows any reclaim because Step A cannot drop the dangling
-	// admin entry of a LOCKED worktree — those entries are exactly the ones a permanent lock
-	// makes immortal, and they only become droppable once the lock is gone.
-	//
-	// Under --dry-run this pass REPORTS what it would unlock and unlocks nothing: a dry run
-	// that silently retired locks would be a worse surprise than one that silently pruned
-	// bookkeeping, and both are now off the dry-run path.
-	if opts.reclaimStaleLocks {
-		reclaimed, warns, rerr := reclaimStaleLocksMode(guard, dir, cwd, opts.lockTTL, opts.dryRun)
-		res.reclaimed = reclaimed
-		res.warns = warns
-		if rerr != nil {
-			return res, rerr
-		}
-		if len(reclaimed) > 0 && !opts.dryRun {
-			second, sErr := bookkeepingPrune(dir, false)
-			if sErr != nil {
-				return res, deskkit.Unverifiable("git worktree prune (bookkeeping, after lock reclaim) failed", sErr)
-			}
-			res.bookkept += second
-		}
-	}
-
-	// Enumerate AFTER the bookkeeping prune so already-gone entries are not iterated.
+	// Enumerate AFTER the bookkeeping prune so already-gone entries are not iterated —
+	// but BEFORE the reclaim pass, because Step A1's content judgements (below) must feed
+	// it: a husk the content gate holds is excluded from reclaim, so its lock is still
+	// on when the post-reclaim bookkeeping prune runs.
 	roots, lerr := guard.worktreeRoots(dir)
 	if lerr != nil {
 		return res, lerr
@@ -595,7 +786,9 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	}
 
 	// Per-sweep state: ONE object cache, one repo handle per worktree, and ONE walk of
-	// refs/remotes/origin/main. See sweepCtx.
+	// refs/remotes/origin/main. See sweepCtx. Built before the reclaim pass for the same
+	// reason the enumeration is: Step A1's content gate answers "is this husk's detached
+	// HEAD on the mainline" from this set.
 	sc := newSweepCtx(dir)
 	if sc.mainAncestors == nil {
 		res.warns = append(res.warns,
@@ -603,9 +796,96 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 				errText(sc.ancestorErr))
 	}
 
+	// Step A1, phase 1 — stale-registration CONTENT judgements (stalereg.go; pure reads,
+	// no mutation): the directory EXISTS but its .git gitdir file is GONE. Clearing the
+	// registration deletes the admin dir (.git/worktrees/<id>/ — HEAD, index, reflog), so
+	// a husk whose admin HEAD is DETACHED and not on the mainline is HELD: clearing it
+	// would strand possibly-unpushed commits. The sweep's scope gates (shared checkout,
+	// current worktree, sanctioned prefixes) apply exactly as in every other arm.
+	staleVerdicts := judgeStaleRegistrations(guard, sc, cwd, roots, locked)
+
+	// Step A2 — OPT-IN lock reclaim. It only UNLOCKS; nothing below this point is relaxed,
+	// so a reclaimed worktree still has to pass every removal gate on its own merits. A
+	// second bookkeeping prune follows any reclaim because Step A cannot drop the dangling
+	// admin entry of a LOCKED worktree — those entries are exactly the ones a permanent lock
+	// makes immortal, and they only become droppable once the lock is gone.
+	//
+	// The exclusion is Step A1's content-held LOCKED husks: unlocking one would feed it to
+	// that second bookkeeping prune, which drops the registration (and, for a detached
+	// HEAD, the last ref to its commits) the content gate just held.
+	//
+	// Under --dry-run this pass REPORTS what it would unlock and unlocks nothing: a dry run
+	// that silently retired locks would be a worse surprise than one that silently pruned
+	// bookkeeping, and both are now off the dry-run path.
+	if opts.reclaimStaleLocks {
+		reclaimed, warns, rerr := reclaimStaleLocksMode(guard, dir, cwd, opts.lockTTL, opts.dryRun, staleRegHeldLocked(staleVerdicts))
+		res.reclaimed = reclaimed
+		res.warns = append(res.warns, warns...)
+		if rerr != nil {
+			return res, rerr
+		}
+	}
+
+	// Step A1, phase 2 — ACT on the judgements. The lock rule is absolute: this pass has
+	// no unlock in it. A locked husk is cleared only when the reclaim pass retired its
+	// lock THIS sweep (proven stale by judgeLock); in the default sweep — or behind a
+	// lock that proves nothing, or git's own in-flight "initializing" add lock — it is
+	// HELD with the reason named. The clear is one repo-wide prune plus a positive
+	// verification listing; an entry that survives it after its lock was reclaimed is
+	// re-locked with its original reason; failed restoration stops the sweep.
+	// Cleared AND held entries are skipped by the
+	// candidate loop below (their trees cannot be opened; every gate there would only
+	// fail closed into a misleading reason).
+	reclaimedLocks := make(map[string]string, len(res.reclaimed))
+	for _, r := range res.reclaimed {
+		reclaimedLocks[r.path] = r.reason
+	}
+	staleCleared, staleHeld, staleWarns, staleErr := clearStaleRegistrations(guard, dir, staleVerdicts, reclaimedLocks, opts.dryRun)
+	res.staleRegs = staleCleared
+	res.skips = append(res.skips, staleHeld...)
+	res.warns = append(res.warns, staleWarns...)
+	if staleErr != nil {
+		return res, staleErr
+	}
+	for _, held := range staleHeld {
+		if _, isLocked := locked[held.path]; isLocked {
+			res.lockedHeld++
+		}
+	}
+	staleSet := staleRegSet(staleVerdicts)
+
+	// Clear husks behind their rollback boundary before any later bookkeeping or
+	// inventory read can fail. A failed clear has restored its lock by this point.
+	if len(res.reclaimed) > 0 && !opts.dryRun {
+		second, sErr := bookkeepingPrune(dir, false)
+		if sErr != nil {
+			return res, deskkit.Unverifiable("git worktree prune (bookkeeping, after lock reclaim) failed", sErr)
+		}
+		res.bookkept += second
+		// The reclaim changed the state both views were read from: locks it retired
+		// are gone, and the prune above may have dropped newly-droppable entries.
+		// Re-read so the candidate loop judges the registration as it STANDS, never
+		// iterating a path the prune just dropped or holding a tree by a retired lock.
+		roots, lerr = guard.worktreeRoots(dir)
+		if lerr != nil {
+			return res, lerr
+		}
+		locked, lkErr = guard.lockedWorktrees(dir)
+		if lkErr != nil {
+			return res, lkErr
+		}
+	}
+
+	// The sweep's clock, read once: the fresh-worktree safety window's age test.
+	sweepNow := time.Now()
+
 	// pendingRemoved collects the trees deleted in this loop. Their admin entries are
 	// dropped ONCE after the loop (see the batched deregistration below), not per removal.
 	var pendingRemoved []string
+	// removedPaths is the sweep's removals (and, under --dry-run, its would-removals) from
+	// BOTH arms, for the cache pressure pass's orphan reap (Step D): a marked cache root
+	// whose trust domain binds it to one of these paths lost its owner this sweep.
+	var removedPaths []string
 	// reapedPaths / pendingBranch are the dead-session arm's half of that batch: which of
 	// the deleted trees this arm cleared, and which stale local branch goes with each.
 	// The branch delete CANNOT run inside the loop — git refuses to delete a branch that is
@@ -634,6 +914,12 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	}
 
 	for _, rt := range roots {
+		// Stale registrations — cleared AND held alike — are Step A1's, already reported
+		// there; the candidate loop has nothing left to ask of them (their tree cannot be
+		// opened, so every gate would only fail closed into a misleading reason).
+		if staleSet[rt] {
+			continue
+		}
 		reason, isLocked := locked[rt]
 
 		// The identity gates bind the dead-session arm too, and must therefore be decided
@@ -660,6 +946,7 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 				if opts.dryRun {
 					res.reaped++
 					res.plan = append(res.plan, v)
+					removedPaths = append(removedPaths, rt)
 					continue
 				}
 				branch, rerr := reapWorktree(sc, dir, rt, isLocked)
@@ -697,7 +984,8 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			continue
 		}
 
-		// GATE ORDER. The two ancestry gates run FIRST and the tracked-clean gate last.
+		// GATE ORDER. The tip gate runs FIRST, then the ancestry gate, and the
+		// tracked-clean gate last.
 		//
 		// Every gate below is the one it always was and holds exactly what it always held;
 		// only the order changed. The two ancestry gates are now a hash comparison and a
@@ -712,22 +1000,67 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		// "dirty" and is now reported "unmerged". Both are holds; nothing that was removed
 		// is removed differently, and nothing that was held stops being held.
 
-		// Fresh-worktree guard (prune-only): a worktree whose HEAD is exactly at
-		// origin/main tip (zero landed commits) may hold untracked new work. The
-		// automatic sweep must not delete another session's uncommitted new source
-		// files — dirtyTracked ignores untracked files deliberately (build artifacts
-		// don't block), but in prune this creates a hole: a fresh worktree with
-		// untracked new .go files is "tracked-clean AND merged" and would be removed.
-		// Skip it; a genuine merge-commit/rebase landing has HEAD below the tip and
-		// is still removed. remove (human-named single path) is not gated.
+		// Fresh-worktree guard (prune-only), CONTENT-AWARE: a worktree whose HEAD is
+		// exactly at the origin/main tip (zero landed commits) is removed only when THREE
+		// at-tip gates all pass, each answering a question the ancestry and tracked-clean
+		// gates cannot:
+		//
+		//   1. AGE — the fresh-worktree safety window. `deskwt add` never locks the tree
+		//      it creates, so a JUST-CREATED pristine tree (the verifier/reviewer shape)
+		//      is content-identical to reclaim residue; only the admin entry's age tells
+		//      them apart. Younger than the window → HELD as too fresh. An unreadable age
+		//      fails closed.
+		//   2. CONTENT — the untracked-INCLUSIVE status (the dead-session arm's own
+		//      dirtyAnyIn): tracked-clean deliberately ignores untracked files, so the
+		//      only way an at-tip tree can hold committed-form work is as uncommitted or
+		//      untracked content. Any present → HELD with this guard's reason.
+		//   3. IGNORED PAYLOAD — git-ignored files exist in no commit and no status, so a
+		//      tree carrying them is not byte-redundant with the mainline. Any present →
+		//      HELD. (The dead-session arm's review path checks the same inventory.)
+		//
+		// The blanket hold this design replaced kept EVERY at-tip worktree, pristine ones
+		// included — and a pristine at-tip tree is the exact shape a reclaim-by-detach
+		// flow leaves behind: HEAD detached at the mainline tip, no commits, no files of
+		// its own. Those accumulated without bound because the guard never checked the
+		// one thing it existed to protect. An at-tip tree passing all three gates now
+		// FALLS THROUGH: the merge gate passes it (the tip is a member of its own
+		// ancestor set) and the tracked-clean gate passes it (a fully clean tree is
+		// tracked-clean), so it is removed — losslessly, since everything in it is
+		// either on origin/main or absent. remove (human-named single path) is not gated.
 		atTip, tipErr := headAtOriginMainTip(sc, rt)
 		if tipErr != nil {
 			res.skips = append(res.skips, skipEntry{rt, "unverifiable origin/main position: " + tipErr.Error()})
 			continue
 		}
 		if atTip {
-			res.skips = append(res.skips, skipEntry{rt, "fresh worktree at origin/main (no landed commits — may hold untracked new work)"})
-			continue
+			age, ageErr := guard.adminEntryAge(rt, sweepNow)
+			if ageErr != nil {
+				res.skips = append(res.skips, skipEntry{rt, "unverifiable worktree age: " + errText(ageErr)})
+				continue
+			}
+			if age < freshWorktreeSafetyWindow {
+				res.skips = append(res.skips, skipEntry{rt, "fresh worktree at origin/main (created " + roundAge(age) +
+					" ago — inside the " + freshWorktreeSafetyWindow.String() + " safety window for a just-created worktree)"})
+				continue
+			}
+			anyDirty, aErr := dirtyAnyIn(sc, rt)
+			if aErr != nil {
+				res.skips = append(res.skips, skipEntry{rt, "unverifiable working-tree status: " + errText(aErr)})
+				continue
+			}
+			if anyDirty != "" {
+				res.skips = append(res.skips, skipEntry{rt, "fresh worktree at origin/main (no landed commits — holds uncommitted or untracked work)"})
+				continue
+			}
+			ignored, iErr := ignoredReviewFiles(rt)
+			if iErr != nil {
+				res.skips = append(res.skips, skipEntry{rt, "unverifiable ignored-payload inventory: " + errText(iErr)})
+				continue
+			}
+			if ignored != "" {
+				res.skips = append(res.skips, skipEntry{rt, "fresh worktree at origin/main (no landed commits — holds git-ignored payload the mainline does not)"})
+				continue
+			}
 		}
 
 		// Merge gate — the active-worker protection. HEAD must be an ancestor of origin/main.
@@ -757,6 +1090,7 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		// --dry-run stops here: count it as a would-remove, delete nothing.
 		if opts.dryRun {
 			res.removed++
+			removedPaths = append(removedPaths, rt)
 			continue
 		}
 
@@ -813,6 +1147,7 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			} else {
 				res.removed++
 			}
+			removedPaths = append(removedPaths, rt)
 		}
 
 		// Stale local branches, deleted only now: the branch of a worktree that is still
@@ -832,6 +1167,28 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			}
 			res.branches = append(res.branches, branch)
 		}
+	}
+
+	// Step D — the CELL-CACHE pressure pass (cachepressure.go), default ON, skipped by
+	// --no-cache. It runs AFTER the worktree arms on purpose: a cache root that lived
+	// inside a tree this sweep just removed is already gone — silently absent from
+	// discovery, the best possible outcome — and the orphan reap binds to THIS sweep's
+	// verified removals (removedPaths), never to a removal some earlier run made.
+	if !opts.noCache {
+		cacheRes, cacheWarns := sweepCellCaches(opts.cellsRoot, opts.dryRun, removedPaths)
+		res.cache = cacheRes
+		res.warns = append(res.warns, cacheWarns...)
+	}
+
+	// Step C — the LOCAL-BRANCH GC (branchgc.go), default ON, skipped by --no-branches. It
+	// runs AFTER the worktree arms on purpose: a worktree Step B just removed leaves its
+	// (merged) local branch behind, and this pass collects exactly that residue in the same
+	// sweep. Its candidate view is read FRESH inside the pass (the holder set is re-listed),
+	// so the worktree deletions above are already reflected. The sweep's ONE mainline walk
+	// (sc) is shared, so the ancestry proof costs a map lookup per branch.
+	if !opts.noBranches {
+		res.branchGC = gcLocalBranches(sc, dir, opts.dryRun)
+		res.warns = append(res.warns, res.branchGC.warns...)
 	}
 	return res, nil
 }
@@ -963,7 +1320,11 @@ func unmergedReason(sc *sweepCtx, rt string) string {
 // tip (zero landed commits). Fresh worktrees at the tip may hold untracked new work
 // — `dirtyTracked` intentionally ignores untracked files so build artifacts (node_modules,
 // build/, dist/) don't block, but in an automatic sweep this means a fresh worktree
-// with new source files would be wrongly removed. This guard is prune-only: remove is a
+// with new source files would be wrongly removed. The caller therefore pairs an affirmative
+// answer with three more gates — the fresh-worktree safety window (admin-entry age), the
+// untracked-INCLUSIVE status, and the ignored-payload inventory: an at-tip tree drains only
+// when it is old enough to be no session's just-created workspace and provably holds nothing
+// the mainline does not. This guard is prune-only: remove is a
 // human-named single-path deletion where the caller affirms the path is safe.
 //
 // Like mergedToOriginMain, the tip is spelled FULLY QUALIFIED (`refs/remotes/origin/main`)

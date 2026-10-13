@@ -28,7 +28,7 @@ workflow checks: not one assertion, guard, gate or step is altered in any of the
 | `plugin-drift.yml` | `paths-ignore` on the `pull_request` leg only, same four paths. The `push: main` leg keeps **no** filter — that is the leg the file's own `WHY NO paths: FILTER` note is defending, and it is untouched |
 | `assay-statusgen.yml` | `cancel-in-progress` goes from the constant `false` to `${{ github.event_name == 'pull_request' }}`: the `main` regen job (STATUS.md's single writer) stays uncancellable; superseded PR **lint** runs are cancelled |
 | `assay-qualgen.yml` | the same conditional-cancel change: the `main` regen job (QUALITY.md's single writer) stays uncancellable; superseded PR **render** runs — which discard their output by design — are cancelled |
-| `evidence-automerge.yml` | a job-level `if:` on the pull-request author, in front of the unchanged in-job guard step, so the job no longer starts on pull requests the guard would decline anyway |
+| `evidence-automerge.yml` | superseded by the main-only board-writer poll; see `ci/board-writer-migration/README.md` before activation |
 
 ## The rule these edits were held to
 
@@ -102,7 +102,7 @@ gh run list --repo medici-finance/assay --branch "<that branch>" \
 ```
 
 `ci/push`, `ci/pull_request`, `plugin-drift/pull_request` and
-`evidence-automerge/pull_request` should be absent for a non-verifier author, and the
+`evidence-automerge` is now a default-branch poll; the
 `leak-sweep` status must still be present on the pull request.
 
 ## Rollback
@@ -143,3 +143,8 @@ not have to rediscover them.
    newly eligible. The filter is very likely correct, but this is the lane that opens the
    human sign-off issue for a verified brief, and a missed issue is a brief that never
    reaches its gate. That belongs to whoever owns the verify lane, not to a CI-load change.
+
+The board-writer Environment migration updates these activation candidates too.
+Do not promote their older PR-triggered Evidence lane or omit the writer-job
+Environment restrictions. Prefer `ci/board-writer-migration/workflows.patch` for
+that migration; it does not include the other CI-load activation changes.

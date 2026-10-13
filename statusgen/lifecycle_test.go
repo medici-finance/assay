@@ -104,7 +104,7 @@ func TestLifecycleCellDone(t *testing.T) {
 		LifecycleInput{LookedAt: true,
 			PRs:       []PRRecord{{BriefRef: "h/02", Number: 8, State: prMerged, MergeSHA: "cafef00d222"}},
 			Witnesses: map[string]WitnessInfo{"h/02": {Passed: true, Released: true, Version: 1}},
-			Rulings:   map[string]bool{"h/02": true},
+			Rulings:   map[string]string{"h/02": "human:alex"},
 		})
 	if human.Cell != "done" {
 		t.Fatalf("gate:human want done, got %q", human.Cell)
@@ -182,6 +182,34 @@ func TestLifecycleDemotionDismissedApproval(t *testing.T) {
 		})
 	if got.Cell != "verified" {
 		t.Fatalf("dismissed approval should demote done→verified; got %q", got.Cell)
+	}
+}
+
+func TestLifecycleDemotionApprovalNotAtHead(t *testing.T) {
+	// An approval that is not at the merged head (a later push landed after it)
+	// cannot close done: Approved alone is not enough.
+	got := deriveSingle(t, BriefIdent{ID: "s/01", Gate: "model", Version: 1},
+		LifecycleInput{LookedAt: true,
+			PRs:       []PRRecord{{BriefRef: "s/01", Number: 67, State: prMerged, MergeSHA: "deadbeef111"}},
+			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Released: true, Version: 1}},
+			Approvals: map[string]ApprovalInfo{"s/01": {Approved: true, AtHead: false}},
+		})
+	if got.Cell != "verified" {
+		t.Fatalf("an approval not at the merged head should leave verified; got %q", got.Cell)
+	}
+}
+
+func TestLifecycleDemotionModelGateRuling(t *testing.T) {
+	// A gate:model brief closes only on the App approval: a human stamp in
+	// Rulings is not its done witness.
+	got := deriveSingle(t, BriefIdent{ID: "s/01", Gate: "model", Version: 1},
+		LifecycleInput{LookedAt: true,
+			PRs:       []PRRecord{{BriefRef: "s/01", Number: 67, State: prMerged, MergeSHA: "deadbeef111"}},
+			Witnesses: map[string]WitnessInfo{"s/01": {Passed: true, Released: true, Version: 1}},
+			Rulings:   map[string]string{"s/01": "human:alex"},
+		})
+	if got.Cell != "verified" {
+		t.Fatalf("a human stamp must not close a gate:model brief; got %q", got.Cell)
 	}
 }
 

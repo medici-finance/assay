@@ -9,6 +9,10 @@ import (
 
 const noFollow = 0
 
+// noBlock is inert here: validatePath refuses every candidate on an
+// unsupported platform before any metadata read can reach it.
+const noBlock = 0
+
 func unsupported() error                           { return fmt.Errorf("managed Go cache requires macOS or Linux") }
 func validatePath(string) error                    { return unsupported() }
 func identity(os.FileInfo) (uint64, uint64, error) { return 0, 0, unsupported() }

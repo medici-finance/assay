@@ -46,8 +46,10 @@ case "$1 $2" in
  "kill-session -t") rm -f "$COMMS_CALLS.session"; exit 0;;
  "tab --help") echo "create close list"; exit 0;;
  "pane --help") echo "run"; exit 0;;
- "workspace --help") echo "list create"; exit 0;;
- "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"ws"}]}}'; exit 0;;
+ "workspace --help") echo "list create report-metadata close"; exit 0;;
+ "workspace create") echo '{"result":{"workspace":{"workspace_id":"ws"},"tab":{"tab_id":"default-tab"}}}'; exit 0;;
+ "workspace report-metadata") printf '%s' "${7#cellctl_owner=}" > "$COMMS_CALLS.owner"; exit 0;;
+ "workspace list") printf '{"result":{"workspaces":[{"workspace_id":"ws","tokens":{"cellctl_owner":"%s"}}]}}' "$(cat "$COMMS_CALLS.owner" 2>/dev/null)"; exit 0;;
  "tab create") for word in "$@"; do label="$word"; done; case "$label" in *-comms-*) printf '%s' "$label" > "$COMMS_CALLS.label";; *) echo '{"result":{"tab":{"tab_id":"other-tab"},"root_pane":{"pane_id":"other-pane"}}}'; exit 0;; esac; echo '{"result":{"tab":{"tab_id":"owned-tab"},"root_pane":{"pane_id":"pane"}}}'; exit 0;;
  "tab list") printf '{"result":{"tabs":[{"tab_id":"owned-tab","label":"%s"}]}}\n' "$(cat "$COMMS_CALLS.label")"; exit 0;;
  "list-windows -a") printf '@42\t%s\n' "$(cat "$COMMS_CALLS.label")"; exit 0;;

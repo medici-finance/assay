@@ -586,6 +586,16 @@ func loadCell(name string) *Cell {
 	if c.Repo == "" {
 		die("cell.env: CELL_REPO (the checkout roles worktree from) is not set")
 	}
+	if err := holdMaintenanceAdmission(c); err != nil {
+		die("cell maintenance: %v", err)
+	}
+	if maintenanceCommand != "reset" && maintenanceCommand != "show" && maintenanceCommand != "status" && maintenanceCommand != "check" {
+		if _, err := os.Lstat(filepath.Join(c.Dir, ".reset-in-progress")); err == nil {
+			die("cell %s is being reset; finish or retry cellctl reset %s before launching work", c.Name, c.Name)
+		} else if !os.IsNotExist(err) {
+			die("reset state unreadable: %v", err)
+		}
+	}
 	return c
 }
 
@@ -607,26 +617,6 @@ func isGitCheckout(p string) bool {
 	cmd := exec.Command("git", "-C", p, "rev-parse", "--git-dir")
 	cmd.Stdout, cmd.Stderr = nil, nil
 	return cmd.Run() == nil
-}
-
-// prescanKindOverride applies a `--kind <k>` given anywhere in a verb's arguments BEFORE
-// loadCell runs: loadCell is where the kind's own preconditions are asserted and where every
-// kind-dependent default is set, so the override has to be in force by then. An unknown value is
-// refused here, before anything is loaded.
-func prescanKindOverride(args []string) string {
-	for i := 0; i < len(args); i++ {
-		if args[i] != "--kind" {
-			continue
-		}
-		if i+1 >= len(args) || args[i+1] == "" {
-			die("--kind needs a value (%s)", joinPipe(kindValues))
-		}
-		if !valueIn(args[i+1], kindValues) {
-			die("--kind must be one of %s, got '%s'", joinPipe(kindValues), args[i+1])
-		}
-		return args[i+1]
-	}
-	return ""
 }
 
 // loadCellWithKind is loadCell plus a per-run kind override. Only THIS process may set it — a

@@ -455,6 +455,8 @@ var mkdirAllowed = map[string]string{
 	"new.go:newContainer":                    "oracle `mkdir -m 700 \"$d\"` is exclusive too; the name is one path element",
 	"container_native.go:newNativeContainer": "no oracle counterpart; the config's cell name is one path element",
 	"git.go:fetchMainUnderLock":              "a mkdir LOCK; oracle `mkdir \"$lock\"` is exclusive by design",
+	"reset.go:resetFetchMain":                "same shared repository mkdir-lock protocol as fetchMainUnderLock; exclusive creation owns only this reset's prefetch",
+	"modelreset.go:lockModelPins":            "a mkdir LOCK beside cell.env and its pin record; no oracle counterpart, exclusive creation IS the lock and the parent cell directory already exists",
 	"lock.go:takeSessionLock":                "the session mkdir lock; oracle `mkdir \"$lockdir\"` is exclusive by design",
 }
 
