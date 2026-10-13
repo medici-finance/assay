@@ -9,6 +9,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
 	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // gateway.go — the local cell gateway's loopback CLIENT surface, and the two
@@ -92,29 +93,41 @@ type gwResponse struct {
 // nobody is listening.
 type socketGateway struct {
 	addr    string        // socket path
-	timeout time.Duration // per-exchange dial+IO budget
+	timeout time.Duration // per-exchange dial+IO budget override (tests); zero ⇒ the per-op defaults
 }
 
 // dialTimeout bounds a single request/response exchange. A gateway that does not
 // answer inside it is treated as unreachable — a hung dial must not hang the desk.
 const dialTimeout = 5 * time.Second
 
-func (g socketGateway) exchange(req gwRequest) (gwResponse, error) {
+// submitTimeout bounds a submit exchange. The gateway answers a submission only
+// AFTER its outbound prose gate has run, and that gate is a deskkit consult bounded
+// by deskkit.DefaultDecideTimeout. A client deadline below that bound reports
+// could-not-submit for a message the gateway goes on to accept (or hold), so the
+// exit code disagrees with the gateway's state. The budget is therefore the
+// gateway's consult bound plus the ordinary exchange budget as the margin for
+// everything around the consult — derived, never a second hand-tuned number.
+const submitTimeout = deskkit.DefaultDecideTimeout + dialTimeout
+
+// exchange runs one request/response round trip. ioBudget bounds the whole
+// exchange once connected; the dial itself is always bounded by dialTimeout, so
+// an absent gateway fails fast whatever the op.
+func (g socketGateway) exchange(req gwRequest, ioBudget time.Duration) (gwResponse, error) {
 	if g.addr == "" {
 		return gwResponse{}, fmt.Errorf("%w: no gateway address configured", ErrGatewayUnreachable)
 	}
-	to := g.timeout
-	if to <= 0 {
-		to = dialTimeout
+	dial := dialTimeout
+	if g.timeout > 0 {
+		dial, ioBudget = g.timeout, g.timeout
 	}
-	conn, err := commstransport.Dial(g.addr, to)
+	conn, err := commstransport.Dial(g.addr, dial)
 	if err != nil {
 		// A dial failure is unreachable, full stop — never a fallback to a local
 		// queue. This is the fail-closed branch the GatewayDown test pins.
 		return gwResponse{}, fmt.Errorf("%w: %v", ErrGatewayUnreachable, err)
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(to))
+	_ = conn.SetDeadline(time.Now().Add(ioBudget))
 
 	line, err := json.Marshal(req)
 	if err != nil {
@@ -140,7 +153,7 @@ func (g socketGateway) exchange(req gwRequest) (gwResponse, error) {
 }
 
 func (g socketGateway) Submit(raw []byte) (Receipt, error) {
-	resp, err := g.exchange(gwRequest{Op: "submit", Message: json.RawMessage(raw)})
+	resp, err := g.exchange(gwRequest{Op: "submit", Message: json.RawMessage(raw)}, submitTimeout)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -154,7 +167,7 @@ func (g socketGateway) Submit(raw []byte) (Receipt, error) {
 }
 
 func (g socketGateway) Poll(cell, role string) ([]Notice, error) {
-	resp, err := g.exchange(gwRequest{Op: "poll", Cell: cell, Role: role})
+	resp, err := g.exchange(gwRequest{Op: "poll", Cell: cell, Role: role}, dialTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +178,7 @@ func (g socketGateway) Poll(cell, role string) ([]Notice, error) {
 }
 
 func (g socketGateway) Ack(cell, role, id string) error {
-	resp, err := g.exchange(gwRequest{Op: "ack", Cell: cell, Role: role, ID: id})
+	resp, err := g.exchange(gwRequest{Op: "ack", Cell: cell, Role: role, ID: id}, dialTimeout)
 	if err != nil {
 		return err
 	}

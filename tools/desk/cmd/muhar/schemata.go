@@ -664,10 +664,11 @@ func (h *Harness) schemataFor(root string, p *schemaPlan) *schemaTree {
 
 // runMutation runs spec mutation i in the tree at root: through the tree's
 // schemata build when it carries i and the suite goes red there, otherwise the
-// classic way (runOne). Only CAUGHT is ever taken from schemata.
+// classic way (runOne). Only CAUGHT is ever taken from schemata. A mutant
+// whose suite -select narrows skips schemata (selectNarrows, selection.go).
 func (h *Harness) runMutation(root string, t *schemaTree, i int) (Result, error) {
 	m := h.Mutations[i]
-	if t != nil && t.ids[schemaID(i)] && h.SchemaTest(root, t.overlay, schemaID(i)) {
+	if t != nil && t.ids[schemaID(i)] && !h.selectNarrows(root, m) && h.SchemaTest(root, t.overlay, schemaID(i)) {
 		return Caught, nil
 	}
 	return h.runOne(root, m)

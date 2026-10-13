@@ -42,7 +42,7 @@ func TestOutcomeCannotLandWithoutCurrentEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.setFile(receiptBriefPath, string(base))
-	line := fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":%q,"blocker_kind":"human-action","blocker_ref":"#7"}`, source)
+	line := completeFail(t, fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":%q,"blocker_kind":"human-action","blocker_ref":"#7"}`, source))
 	file := writeRepoFile(t, "record.json", line)
 	code := run([]string{"example-org/tracker", "evidence-branch", "--outcome-record", file, "--root", root})
 	if code != deskkit.ExitRefused {
@@ -105,7 +105,7 @@ func TestOutcomeBindingRequiresCurrentLandedEvidence(t *testing.T) {
 			} else if mode == "unreadable-sha" {
 				sha = strings.Repeat("0", 40)
 			}
-			line := fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":%q,"blocker_kind":"human-action","blocker_ref":"#7"}`, sha)
+			line := completeFail(t, fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":%q,"blocker_kind":"human-action","blocker_ref":"#7"}`, sha))
 			file := writeRepoFile(t, "record.json", line)
 			code := run([]string{"example-org/tracker", "evidence-branch", "--outcome-record", file, "--root", root})
 			if mode == "current" {
@@ -130,7 +130,7 @@ func TestOutcomeBindingKeepsExistingIdenticalRecordIdempotent(t *testing.T) {
 		return raw, nil
 	}
 	t.Cleanup(func() { outcomeReceiptFn = oldDerive })
-	raw := []byte(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","blocker_kind":"human-action","blocker_ref":"#7"}`)
+	raw := []byte(completeFail(t, `{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","blocker_kind":"human-action","blocker_ref":"#7"}`))
 	name, err := deskkit.RecordName(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func TestOutcomeObservationSurvivesRepairBeforeEvidence(t *testing.T) {
 	rvGitIn(t, root, "commit", "-qm", "Evidence")
 	evidence := rvGitIn(t, root, "rev-parse", "HEAD")
 	f.setFile(receiptBriefPath, landed)
-	raw := fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":0,"rows_total":1,"sha":%q,"blocker_kind":"implementation","blocker_ref":"#7"}`, evidence)
+	raw := withRunFields(t, fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":0,"rows_total":1,"sha":%q,"blocker_kind":"implementation","blocker_ref":"#7"}`, evidence))
 	file := writeRepoFile(t, "record.json", raw)
 	if code := run([]string{"example-org/tracker", "main", "--outcome-record", file, "--root", root}); code != 0 || len(f.writes) != 1 {
 		t.Fatalf("backed observation refused: code=%d writes=%d stderr=%s", code, len(f.writes), errBuf.String())
@@ -275,7 +275,7 @@ func TestOutcomeInputShapeChangeRequiresFreshVerification(t *testing.T) {
 			rvGitIn(t, root, "commit", "-qm", "Evidence")
 			evidence := rvGitIn(t, root, "rev-parse", "HEAD")
 			f.setFile(receiptBriefPath, landed)
-			raw := fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":0,"rows_total":1,"sha":%q,"blocker_kind":"implementation","blocker_ref":"#7"}`, evidence)
+			raw := withRunFields(t, fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"verify-fail","rows_passed":0,"rows_total":1,"sha":%q,"blocker_kind":"implementation","blocker_ref":"#7"}`, evidence))
 			file := writeRepoFile(t, "record.json", raw)
 			code := run([]string{"example-org/tracker", "main", "--outcome-record", file, "--root", root})
 			if code != deskkit.ExitRefused || len(f.writes) != 0 || len(f.changes) != 0 || !strings.Contains(errBuf.String(), "fresh independent verification") {

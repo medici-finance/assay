@@ -93,6 +93,63 @@ type WakeReceipt struct {
 	WakePredicate string `json:"wake_predicate,omitempty"` // one of the WakeXxx constants
 	Deadline      string `json:"deadline,omitempty"`       // RFC3339 / date, for declared-deadline-reached
 	RecheckReason string `json:"recheck_reason,omitempty"` // required for explicit-recheck-with-reason
+
+	// --- additive join keys (run metadata + delivered PRs) ---
+	// PRs, DispatchRef and the verifier_tier/started/finished set are VERIFIER-ASSERTED: the
+	// writer checks that a PR exists, is merged and carries the named merge commit, but not that
+	// it delivered this brief, and dispatch_ref has no attested source. A consumer must not read
+	// either join as authenticated. See the verify-wake-v1 schema doc.
+	PRs               []DeliveredPR `json:"prs,omitempty"`                 // merged delivering PRs
+	PRsUnknownReason  string        `json:"prs_unknown_reason,omitempty"`  // closed set; required exactly when prs is an explicit []
+	VerifierTier      string        `json:"verifier_tier,omitempty"`       // any | strong, never a vendor model name
+	Started           string        `json:"started,omitempty"`             // RFC3339; started <= finished <= ts
+	Finished          string        `json:"finished,omitempty"`            // RFC3339
+	RowsPassed        int           `json:"rows_passed,omitempty"`         // Verify rows that passed
+	RowsTotal         int           `json:"rows_total,omitempty"`          // Verify rows the brief carries
+	RowResults        []RowResult   `json:"row_results,omitempty"`         // optional; covers ALL rows_total rows
+	DispatchRef       string        `json:"dispatch_ref,omitempty"`        // INPUT only; never committed in clear
+	DispatchRefSHA256 string        `json:"dispatch_ref_sha256,omitempty"` // WRITER output only, private register only
+}
+
+// DeliveredPR is one entry of a record's prs list: a merged change that delivered the brief's
+// deliverables. Withheld is the form ONLY the writer produces for a change in a repository the
+// register's audience may not see: sha256("<canonical repo>#<number>@<merge_sha>"), with the
+// clear fields omitted. Withheld is never valid input.
+type DeliveredPR struct {
+	Repo     string `json:"repo,omitempty"`
+	Number   int    `json:"number,omitempty"`
+	MergeSHA string `json:"merge_sha,omitempty"`
+	Withheld string `json:"withheld,omitempty"`
+}
+
+// RowResult is one entry of a record's row_results list.
+type RowResult struct {
+	Row    int    `json:"row"`
+	Result string `json:"result"`
+}
+
+// PRsUnknownReasonNoPRDelivery is the one value of prs_unknown_reason today: the brief's
+// deliverables landed with no pull request (a direct push, or a deliverable that is not code).
+const PRsUnknownReasonNoPRDelivery = "no-pr-delivery"
+
+// Row result vocabulary of row_results.
+const (
+	RowPass        = "pass"
+	RowFail        = "fail"
+	RowCouldNotRun = "could-not-run"
+	RowDeferred    = "deferred"
+)
+
+// ValidPRsUnknownReason reports whether s is in the closed prs_unknown_reason set.
+func ValidPRsUnknownReason(s string) bool { return s == PRsUnknownReasonNoPRDelivery }
+
+// ValidRowResult reports whether s is in the closed row_results result set.
+func ValidRowResult(s string) bool {
+	switch s {
+	case RowPass, RowFail, RowCouldNotRun, RowDeferred:
+		return true
+	}
+	return false
 }
 
 // ParseWakeReceipt unmarshals one JSONL sidecar line into a receipt. A malformed line, or one
@@ -139,6 +196,45 @@ func (r WakeReceipt) Complete() bool {
 		return strings.TrimSpace(r.RecheckReason) != ""
 	}
 	return false
+}
+
+// FirstIncompleteField returns the name of the FIRST field Complete would fail on, in
+// Complete's own check order, or "" when the receipt is complete. A caller that refuses an
+// incomplete receipt names this field, so the refusal tells the verifier what to fix first
+// rather than that "something" is missing. Complete stays the single yes/no gate;
+// TestFirstIncompleteFieldAgreesWithComplete holds the two together.
+func (r WakeReceipt) FirstIncompleteField() string {
+	if r.Schema != SchemaWakeV1 {
+		return "wake_schema"
+	}
+	if strings.TrimSpace(r.ID) == "" {
+		return "receipt_id"
+	}
+	if !blockerKinds[r.BlockerKind] {
+		return "blocker_kind"
+	}
+	if !wakePredicates[r.WakePredicate] {
+		return "wake_predicate"
+	}
+	switch r.WakePredicate {
+	case WakeRelevantInputChanged:
+		if len(r.Inputs) == 0 {
+			return "inputs"
+		}
+	case WakeReferencedActionDone:
+		if strings.TrimSpace(r.BlockerRef) == "" {
+			return "blocker_ref"
+		}
+	case WakeDeadlineReached:
+		if strings.TrimSpace(r.Deadline) == "" {
+			return "deadline"
+		}
+	case WakeExplicitRecheck:
+		if strings.TrimSpace(r.RecheckReason) == "" {
+			return "recheck_reason"
+		}
+	}
+	return ""
 }
 
 // NextActor names who owns the next action for this receipt's blocker kind. It is a scheduling
