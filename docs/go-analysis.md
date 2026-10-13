@@ -69,7 +69,7 @@ No floating source or binary fallback is provided.
 
 ## Coverage and policy
 
-Discovery uses tracked `*go.mod` paths, including paths with spaces. At the initial
+Discovery uses tracked `*go.mod` paths, including paths with spaces. At the migration
 source revision, 21 modules yielded 24 scans: Linux amd64 for every module, plus
 desk Windows amd64, Darwin arm64 and Linux amd64 with the `parity` tag. Tests are
 included. The `untrustscan_broken_unicode` tag is an intentional mutation, not a
@@ -82,9 +82,9 @@ pre-existing bare suppressions are debt, not a mass-edit requirement. Upstream
 strict generated-file detection is the only generated-code exclusion. Default
 exclusion presets, path exclusions and issue truncation are disabled.
 
-The complete initial measurement at source
-`c82135abc7453c6e7a7ad877b6affb11a7059ce1` contained **8,216 occurrences**:
-6,975 errcheck, 993 staticcheck, 228 unused, 12 nolintlint and 8 govet. These counts
+The complete measurement at the current migration source (which includes the
+latest `main` sync, listed in the PR body) contains **8,873 occurrences**:
+7,531 errcheck, 1,073 staticcheck, 249 unused, 12 nolintlint and 8 govet. These counts
 include separate configurations of the same source, not distinct physical defects.
 The eight govet observations are upstream's newer inline analyzer on two sites
 across four desk configurations; they do not override the existing Go 1.25 vet gate.
@@ -109,9 +109,12 @@ remediation work. Review the initial inventory once. Subsequently:
    migration with before/after evidence. CI never automatically rebaselines.
 
 Identity uses source content and distinguishing context, not line numbers or
-counts. Blank/comment movement preserves ordinary code anchors; edits to nearby
-source can conservatively produce a new identity. Ambiguous identities fail for
-review. See the [report contract](go-analysis-report-v1.md) for exact fields.
+counts. The anchor is scoped to the enclosing top-level declaration: fixing,
+adding or removing a finding in another function never re-identifies an untouched
+finding, even when the two lines are textually identical. Within one declaration,
+identical lines are told apart by the smallest distinguishing neighborhood, so
+editing next to such a line can conservatively produce a new identity. Blank/comment
+movement preserves ordinary code anchors. Ambiguous identities fail for review. See the [report contract](go-analysis-report-v1.md) for exact fields.
 The baseline does not exempt failures from any already-enforced test, vet or
 security gate. Findings are analyzer observations, not confirmed vulnerabilities.
 
@@ -128,7 +131,7 @@ gate result. Incomplete scans cannot resolve debt or report measured zero.
 Desk-tools/35 consumes this same artifact into qualgen; ingestion, vulnerability
 analysis and historical rendering are not implemented by this correctness change.
 
-The committed harness runs 11 tests and 11 guard mutations, with real upstream
+The committed harness runs 13 tests and 13 guard mutations, with real upstream
 analyzer red/green controls. It proves module discovery, source movement, baseline
 monotonicity, duplicate refusal, policy changes, checksum rejection and failure
 propagation in the first/middle/last scan. The action has its own separate wrapper

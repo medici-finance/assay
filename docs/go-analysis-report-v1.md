@@ -21,7 +21,7 @@ Schema identifier: `go-analysis/v1`. The corresponding reviewed debt file uses
 | `scanned_at` | UTC observation time in ISO 8601 format. This is not the date a defect was introduced. |
 | `family` | `lint` for this implementation. Security families require their declared extension before ingestion. |
 | `contract` | SHA-256 over the exact analyzer config bytes, pin bytes and fingerprint version, joined with NUL separators in that order. Changed contracts are not silently comparable. |
-| `fingerprint` | `source-window/v1`; a change requires a reviewed contract migration. |
+| `fingerprint` | `source-window/v2`; a change requires a reviewed contract migration. |
 | `tool` | Acquired-tool receipt: pins digest, analyzer binary digest, analyzer version, build-Go version and analysis-Go version. Absent if qualification could not complete. |
 | `module_count`, `expected_scans` | Discovered tracked modules and planned module/configuration scans. Absent when discovery itself failed. |
 | `coverage` | Every attempted module/configuration scan and its outcome. |
@@ -56,8 +56,9 @@ are not public report fields.
 
 The identity is the SHA-256 of canonical JSON over analyzer, rule, module,
 configuration, path and anchor. Canonical JSON sorts keys with compact separators.
-The anchor hashes the smallest distinguishing neighborhood of trimmed source
-lines (up to 64 significant lines on each side), plus the trimmed source prefix
+The anchor hashes the enclosing top-level declaration's symbol, the smallest
+distinguishing neighborhood of trimmed source lines inside that declaration (up to
+64 significant lines on each side), plus the trimmed source prefix
 before the diagnostic column. Blank lines and standalone `//` comments outside
 the diagnostic line are excluded. Line/column numbers are display coordinates,
 not identity; the source prefix distinguishes repeated calls on one line. Ambiguous identical anchors fail comparison instead of sharing an

@@ -97,6 +97,26 @@
       "reason": "plan and triage helper built and run only by tools/gremlins/run.sh (issue #2647); not released and not an operator entrypoint"
     },
     {
+      "class": "test",
+      "pattern": "actions/go-analysis/test_action.py",
+      "reason": "offline wrapper tests for the go-analysis composite action (desk-tools/34); CI and verifiers run them, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis.py",
+      "reason": "offline ratchet, discovery and real-analyzer negative controls for the pinned go-analysis runner (desk-tools/34); run through scripts/tests/go-analysis.sh, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis.sh",
+      "reason": "launcher for the go-analysis harness (desk-tools/34); CI and verifiers run it, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis-mutations.py",
+      "reason": "developer mutation runner that removes each go-analysis guard from a disposable runner copy and requires its focused test to fail (desk-tools/34); not an operator entrypoint"
+    },
+    {
       "class": "fixture",
       "pattern": "**/testdata/**",
       "reason": "Go testdata convention: the go tool ignores these packages; they are inputs to tests"
@@ -2220,6 +2240,57 @@
       "complexity": "simple",
       "basis": "714 lines at 3ad1ad83c871",
       "owner": "desktools-v2/54",
+      "state": "pending"
+    },
+    {
+      "executable": "run.py",
+      "path": "actions/go-analysis/run.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "composite GitHub Action (actions/go-analysis); run by its action.yml at the consumer's pinned ref",
+      "consumers": [
+        "actions/go-analysis/action.yml",
+        "actions/go-analysis/README.md",
+        "actions/go-analysis/test_action.py"
+      ],
+      "parser": "Python environment variables set by action.yml",
+      "complexity": "simple",
+      "basis": "139 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "go-analysis.sh",
+      "path": "scripts/go-analysis.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked as bash scripts/go-analysis.sh",
+      "consumers": [
+        "docs/go-analysis.md",
+        "actions/go-analysis/action.yml",
+        "actions/go-analysis/run.py"
+      ],
+      "parser": "bash arguments passed through to the runner",
+      "complexity": "simple",
+      "basis": "5 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "runner.py",
+      "path": "tools/go-analysis/runner.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "repo tooling; run by scripts/go-analysis.sh, the go-analysis action and its harness",
+      "consumers": [
+        "scripts/go-analysis.sh",
+        "docs/go-analysis.md",
+        "scripts/tests/go-analysis.py"
+      ],
+      "parser": "Python argparse (acquire, lint)",
+      "complexity": "simple",
+      "basis": "406 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
       "state": "pending"
     }
   ]
