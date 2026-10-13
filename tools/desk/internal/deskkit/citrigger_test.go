@@ -221,6 +221,18 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads: []string{
+				"docs/streams/forge-neutral/check_env_imports.go",
+				"docs/streams/forge-neutral/check_env_imports_test.go",
+				"docs/streams/forge-neutral/brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md",
+				"docs/streams/forge-neutral/brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md",
+			},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
+		},
+		{
 			test: "tools/desk/cmd/deskinstall/cursor_sync_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"plugins/assay", ".cursor", "AGENTS.md"},
@@ -2512,8 +2524,8 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 			}
 		}
 	}
-	if count != 4 {
-		t.Fatalf("floor has %d CI registry entries, want 4 (manifest, shell, Evidence and changelog suites)", count)
+	if count != 5 {
+		t.Fatalf("floor has %d CI registry entries, want 5 (manifest, shell, Evidence, changelog and mirror import suites)", count)
 	}
 }
 

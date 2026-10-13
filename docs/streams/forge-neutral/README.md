@@ -579,4 +579,3 @@ activation stays gated per `docs/proposals/non-ci-architecture/16-delivery-seque
 - **Frozen surface.** 37 adds exactly two read operations to the frozen inventory on both
   backends. Their consuming call site is the mirror source composition, not a verb, and 37's
   human review covers that. 38 adds no operation.
-
