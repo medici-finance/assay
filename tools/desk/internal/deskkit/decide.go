@@ -362,13 +362,16 @@ type Consult struct {
 	// Budget bounds consult frequency. A nil Budget is unbounded (still kill-switch
 	// gated). Share ONE Budget across a loop's items so the per-hour axis is fleet-wide.
 	Budget *Budget
-	// Timeout bounds one advisor call. Zero means defaultDecideTimeout.
+	// Timeout bounds one advisor call. Zero means DefaultDecideTimeout.
 	Timeout time.Duration
 }
 
-// defaultDecideTimeout bounds an advisor call when Consult.Timeout is zero. A consult
+// DefaultDecideTimeout bounds an advisor call when Consult.Timeout is zero. A consult
 // that cannot answer promptly must fall to the default rather than stall the loop.
-const defaultDecideTimeout = 30 * time.Second
+// Exported because a synchronous consumer of a consult bounds its own wait on it:
+// the deskcomms client sizes its submit deadline above it, since the cell gateway
+// runs its outbound prose gate (a Decide) before it replies to a submission.
+const DefaultDecideTimeout = 30 * time.Second
 
 // Decide consults the valve and returns a member of the Question's vocabulary — the
 // advised answer when the agent returned a valid one and it was journalled, otherwise
@@ -418,7 +421,7 @@ func (q *Question) Decide(ctx context.Context, c Consult) (string, error) {
 
 	timeout := c.Timeout
 	if timeout <= 0 {
-		timeout = defaultDecideTimeout
+		timeout = DefaultDecideTimeout
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

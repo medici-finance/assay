@@ -146,7 +146,11 @@ type ProseGate struct {
 	// Journal receives each consult's DecisionRecord. Nil ⇒ the shared
 	// desk-tools audit log, which journals only the context DIGEST.
 	Journal deskkit.Journal
-	// Timeout bounds one advisor consult. Zero ⇒ deskkit's default.
+	// Timeout bounds one advisor consult. Zero ⇒ deskkit.DefaultDecideTimeout.
+	// The gateway replies to a submission only after this consult, and the
+	// deskcomms client sizes its submit deadline above deskkit's default: a
+	// value ABOVE that default would let a client give up on (and report as
+	// could-not-submit) a message this gateway then accepts.
 	Timeout time.Duration
 	// Root is the queue root a held message is written under.
 	Root string

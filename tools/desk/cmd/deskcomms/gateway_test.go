@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // slowGateway listens on a fresh protected local endpoint and answers every
@@ -70,3 +71,11 @@ func TestSubmitOutlastsSlowGate(t *testing.T) {
 	}
 }
 
+// The submit budget is derived from the gateway's consult bound, so a change to
+// that bound moves the client with it. A hand-set budget at or below the bound
+// is the defect class this pins.
+func TestSubmitBudgetCoversGate(t *testing.T) {
+	if submitTimeout <= deskkit.DefaultDecideTimeout {
+		t.Fatalf("submitTimeout %v must exceed the gateway's consult bound %v", submitTimeout, deskkit.DefaultDecideTimeout)
+	}
+}

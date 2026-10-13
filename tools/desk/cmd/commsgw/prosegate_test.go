@@ -427,3 +427,16 @@ func TestProseGateBoot(t *testing.T) {
 		}
 	})
 }
+
+// The deskcomms client sizes its submit deadline above deskkit's default
+// consult bound. A gateway consult bound above that default would let the
+// client report could-not-submit for a message this gateway then accepts.
+func TestGateBoundWithinClient(t *testing.T) {
+	gate, err := NewGate(func(string) string { return "" }, Config{Cell: "cell-a", QueueDir: t.TempDir()}, &captureFiler{})
+	if err != nil {
+		t.Fatalf("NewGate: %v", err)
+	}
+	if gate.Timeout > deskkit.DefaultDecideTimeout {
+		t.Fatalf("gate consult bound %v exceeds deskkit.DefaultDecideTimeout %v the client deadline is derived from", gate.Timeout, deskkit.DefaultDecideTimeout)
+	}
+}
