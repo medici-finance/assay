@@ -5506,6 +5506,19 @@ verifier App, but that App never becomes stamp authority. Configurations binding
 and verifier to the same actor refuse this attestation. Existing PR self-stamp rules stay
 unchanged. No record claims execution surveillance or a verification result.
 
+**Cross-repository tracking limitation (#2485).** A brief can be tracked in one
+repository while its deliverable belongs to another. The current verifier path
+requires the allocated home to be in the deliverable repository, but its packet and
+attestation readers also require the brief inside that home. Those requirements
+cannot both hold for an external tracking brief. Such a refusal means admission did
+not succeed; it is not a verification verdict. Keep the failed run and its retained
+home for recovery. Copying the tracking brief into the deliverable tree, changing
+repository identities or substituting a fresh run does not repair the association.
+A supported repair must bind the tracking brief and deliverable source explicitly,
+validate each against its own immutable source, and preserve pre-work and landing
+checks. It must also keep private tracking content out of public artifacts. Runtime
+support for this case remains outstanding in #2485.
+
 Successful readback closes the record before the prompt is emitted. `ListOpenIssues`
 excludes its reserved typed title only when authored by the bound dispatcher, across
 issueboard, deskread, deskinbox, deskmonitor and deskboard intake/work scans, including
