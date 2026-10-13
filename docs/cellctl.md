@@ -8,9 +8,15 @@ Spelling a location through a symbolic link must not change that decision.
 Paths that cannot be resolved safely must produce an explicit refusal rather
 than an assumption that the location is outside the protected tree.
 
-Issue #2718 tracks the implementation gap in these comparisons. Regression
-coverage should construct symbolic links explicitly, exercise planning against
-temporary repositories, and leave real cells and repositories untouched.
+Planning resolves both sides of directory comparisons, including aliases of
+cell and worktree paths. Hard reset refuses nested cell configuration, repository
+roots, and comms storage. Soft reset selects only the cell's worktrees, and
+execution uses that same selection. Missing optional storage is allowed; broken
+links, unreadable paths, and non-directory paths are errors. The worktree
+directory itself must still be a real directory before cleanup.
+
+`DRY_RUN=1` prints the plan without executing cleanup. The planning and preflight
+regressions use explicit symbolic links and temporary repositories.
 
 For opt-in stable Go caches and disk budgets, see [Managed Go caches](cellctl-go-cache.md).
 
