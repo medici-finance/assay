@@ -187,8 +187,9 @@
 # default, or codex), `--harness` on `desk`/`up` overrides it for one run without touching cell.env.
 # The claude arm is unchanged (this script execs `claude --model <m> "/assay:<role>"`); the codex
 # arm execs `codex --sandbox danger-full-access -C <worktree> -m <model> "<invoke-by-name prompt>"`
-# with the same DESK_LOOP/DESK_SESSION/DESK_ROOTS/shim-PATH env — CLAUDE_CONFIG_DIR is irrelevant
-# there. The Opus refusal below binds the claude arm ONLY: on codex it refuses nothing and prints
+# with the same DESK_LOOP/DESK_SESSION/DESK_ROOTS/shim-PATH env; cellctl sets no
+# CLAUDE_CONFIG_DIR on the codex process (one the shell exports is inherited unchanged), while its
+# command subprocesses carry the resolved one, including a positional override, for policy rechecks. The Opus refusal below binds the claude arm ONLY: on codex it refuses nothing and prints
 # the resolved model, because Opus is a Claude-family alias with no meaning to codex. See Harnesses
 # in docs/cellctl.md.
 #

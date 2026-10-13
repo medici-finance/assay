@@ -1,0 +1,4 @@
+# Declaration-lint selection only; no launcher or runtime roster configuration.
+schema: 1
+bindings:
+  assay.harness: assay/harness-claude-code

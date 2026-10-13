@@ -1,7 +1,7 @@
 package main
 
 // outcomereceipt_test.go — verify-reset/03: --outcome-record derives the verify-wake-v1 receipt
-// for every verify-fail / blocked record, from the brief's files: block at the record's sha.
+// for every verify-fail / blocked record, from the brief's files: block at admitted Source.
 
 import (
 	"encoding/json"
@@ -43,7 +43,7 @@ func TestDeriveReceiptFromGit(t *testing.T) {
 	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"` + sha +
 		`","blocker_kind":"implementation","blocker_ref":"#7"}`
 
-	out, err := deriveOutcomeReceipt([]byte(line), root, issueForge{f}, fr, "main")
+	out, err := deriveOutcomeReceipt([]byte(line), root, issueForge{f}, fr, "main", sha)
 	if err != nil {
 		t.Fatalf("derive: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestDeriveReceiptFromGit(t *testing.T) {
 	}
 
 	pass := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verified","sha":"` + sha + `"}`
-	if got, err := deriveOutcomeReceipt([]byte(pass), root, issueForge{f}, fr, "main"); err != nil || string(got) != pass {
+	if got, err := deriveOutcomeReceipt([]byte(pass), root, issueForge{f}, fr, "main", sha); err != nil || string(got) != pass {
 		t.Errorf("a verified record must pass through unchanged: %s, %v", got, err)
 	}
 }
@@ -80,6 +80,9 @@ func TestOutcomeWriteLandsReceipt(t *testing.T) {
 		return deskkit.OutboundChecked(issueForge{f}, "verifier"), deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
 	root, sha := receiptGitRoot(t)
+	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Source: sha}}, nil
+	}
 	f.setFile(receiptBriefPath, briefWithFiles("foo/bar.go", "foo/pkg/", "foo/planned.go"))
 	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":"` + sha +
 		`","blocker_kind":"human-action","blocker_ref":"example-org/tracker#7"}`
@@ -110,6 +113,9 @@ func TestOutcomeWriteRefusesBadRef(t *testing.T) {
 	f, errBuf := setupFake(t)
 	outcomeReceiptFn = deriveOutcomeReceipt
 	root, sha := receiptGitRoot(t)
+	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Source: sha}}, nil
+	}
 	f.setFile(receiptBriefPath, briefWithFiles("foo/bar.go"))
 	for _, extra := range []string{
 		`"blocker_kind":"implementation","blocker_ref":"to file"`,
@@ -143,7 +149,7 @@ func TestReceiptStampsLandingRepo(t *testing.T) {
 	} {
 		line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"` + sha +
 			`","blocker_kind":"implementation","blocker_ref":"#7"` + c.extra + `}`
-		out, err := deriveOutcomeReceipt([]byte(line), root, issueForge{f}, fr, "main")
+		out, err := deriveOutcomeReceipt([]byte(line), root, issueForge{f}, fr, "main", sha)
 		if err != nil {
 			t.Fatalf("derive: %v", err)
 		}
@@ -178,7 +184,7 @@ func TestOutcomeRefusesIncompleteReceipt(t *testing.T) {
 	fr := deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}
 
 	ok, _ := json.Marshal(completeSupplied(sha))
-	if got, err := deriveOutcomeReceipt(ok, root, issueForge{f}, fr, "main"); err != nil || string(got) != string(ok) {
+	if got, err := deriveOutcomeReceipt(ok, root, issueForge{f}, fr, "main", sha); err != nil || string(got) != string(ok) {
 		t.Fatalf("a complete supplied receipt must pass through unchanged: %s, %v", got, err)
 	}
 
@@ -198,7 +204,7 @@ func TestOutcomeRefusesIncompleteReceipt(t *testing.T) {
 		m := completeSupplied(sha)
 		c.mut(m)
 		raw, _ := json.Marshal(m)
-		_, err := deriveOutcomeReceipt(raw, root, issueForge{f}, fr, "main")
+		_, err := deriveOutcomeReceipt(raw, root, issueForge{f}, fr, "main", sha)
 		if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), c.field) {
 			t.Errorf("missing/invalid %s: err = %v, want refused (exit %d) naming %s", c.field, err, deskkit.ExitRefused, c.field)
 		}

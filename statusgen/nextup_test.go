@@ -433,12 +433,9 @@ func TestGatesNeverHumanPass(t *testing.T) {
 	gated.LastTouch = day(0)
 	streams := []*Stream{gated, blocker}
 
-	if state, why := resolveInRepoBriefRef("blocker/01", streams); state != StateUnsatisfied || why == "" {
-		t.Fatalf("gates:/feathers: resolution of a gate:human implemented PASS target: want unsatisfied with a reason, got %s %q", state, why)
-	}
 	elig := evaluateEligibility(streams, nil, "")
-	if ev := elig["target/02"]; ev.Verdict != VerdictHeld || len(ev.Holds) != 1 || ev.Holds[0].State != StateUnsatisfied {
-		t.Fatalf("gates: edge on a gate:human implemented PASS target must HOLD; got %+v", ev)
+	if ev := elig["target/02"]; ev.Verdict != VerdictHeld || len(ev.Holds) != 1 || ev.Holds[0].State != StateUnsatisfied || ev.Holds[0].Why == "" {
+		t.Fatalf("gates: edge on a gate:human implemented PASS target must HOLD unsatisfied with a reason; got %+v", ev)
 	}
 	if ev := elig["target/03"]; ev.Verdict != VerdictEligibleWithNotice || len(ev.Notices) != 1 {
 		t.Fatalf("feathers: edge on a gate:human implemented PASS target must stay a notice; got %+v", ev)

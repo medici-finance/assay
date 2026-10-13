@@ -2,6 +2,10 @@
   "evidence-automerge.yml": {
     "mode": "identical"
   },
+  "gremlins-daily.yml": {
+    "mode": "pending",
+    "reason": "New Gremlins daily discovery sweep; pending maintainer activation (README Contents)."
+  },
   "loopadmin.yml": {
     "mode": "pending",
     "reason": "New loopadmin test workflow; pending maintainer activation (README Contents)."

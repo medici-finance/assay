@@ -64,8 +64,8 @@
     {
       "name": "skip sweep exclusion",
       "file": "internal/cellscratch/store.go",
-      "old": "if err = deskkit.TryLockExclusive(f); err != nil {",
-      "new": "if err = deskkit.TryLockExclusive(f); false {"
+      "old": "f, err := s.openLock(sweepLockName)",
+      "new": "f, err := s.openLock(sweepLockName + time.Now().Format(time.RFC3339Nano))"
     },
     {
       "name": "unbounded snapshots",

@@ -37,7 +37,7 @@ func prepareTickLaunch(harness string, argv, env []string, budget time.Duration)
 	args = append(args, mode...)
 	args = append(args, argv[1:len(argv)-1]...)
 	if harness == "codex" {
-		args = append(args, "-c", `shell_environment_policy.set.ASSAY_TICK="1"`, "-c",
+		args = append(args, "-c", "features.goals=false", "-c", `shell_environment_policy.set.ASSAY_TICK="1"`, "-c",
 			`shell_environment_policy.set.ASSAY_TICK_DEADLINE="`+strconv.FormatInt(int64(budget/time.Second), 10)+`"`)
 	}
 	args = append(args, argv[len(argv)-1]+"\nRun this skill in tick mode (--tick): exactly one bounded pass, print its tick summary line, and exit. Do not arm a wake or wait for another cadence.")

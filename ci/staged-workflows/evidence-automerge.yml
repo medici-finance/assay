@@ -1,5 +1,5 @@
 name: evidence-automerge
-# Enables GitHub AUTO-MERGE on verifier-App Evidence PRs — nothing more.
+# Completes reviewed verifier-App Evidence PRs, including already-clean PRs.
 #
 # WHAT THIS IS FOR
 #
@@ -25,9 +25,10 @@ name: evidence-automerge
 #   3. The branch ruleset's required status check for withheld content.
 #   4. Every other required check on the branch, unchanged.
 #
-# This workflow NEVER approves, NEVER merges directly, and NEVER touches a
-# ruleset. It cannot merge anything a human or the reviewer App has not already
-# cleared; the most it can do is stop a cleared PR from needing a merge click.
+# The clean-PR completion step rechecks scope, both current-head review lanes
+# and checks, then merges the inspected SHA with github.token. This identity
+# has no board-writer ruleset bypass; GitHub re-enforces protection at the write.
+# The workflow never approves, flips a draft ready, or changes a ruleset.
 #
 # REVOCATION: delete or disable THIS ONE FILE and the lane is gone. Evidence PRs
 # keep opening and keep waiting for a human merge; nothing else changes. That is
@@ -49,9 +50,8 @@ concurrency:
   cancel-in-progress: false
 
 # Least privilege. The default token READS the PR and its file list; it has no
-# write of any kind. The auto-merge request itself is made with a token minted
-# from the board-writer App, which is the only identity in this workflow that
-# can write anything.
+# write of any kind. Only the main-only enable job gains contents/pull-requests
+# write for protected clean-PR completion. Discovery remains read-only.
 permissions:
   contents: read
   pull-requests: read
@@ -126,6 +126,9 @@ jobs:
     needs: discover
     if: github.ref == 'refs/heads/main' && needs.discover.outputs.eligible == 'true'
     environment: board-writer
+    permissions:
+      contents: write
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
@@ -320,6 +323,7 @@ jobs:
       # Merge method `merge`, so the two-parent history the fleet requires is
       # preserved and no commit is rewritten.
       - name: Request auto-merge
+        id: request
         if: steps.guard.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -379,3 +383,15 @@ jobs:
           SELF_CHECK="$SELF_CHECK" \
           PR="$PR" \
             bash tools/evidence-automerge/automerge-refusal.sh
+
+      # The board App has a ruleset bypass; it is never the direct merger.
+      # The normal workflow token must satisfy GitHub's protection rules.
+      - name: Complete clean Evidence merge
+        if: steps.guard.outputs.eligible == 'true' && steps.request.outputs.clean == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NODE_ID: ${{ matrix.node_id }}
+          PR: ${{ matrix.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 -B -c 'import sys; sys.path.insert(0, "tools/evidence-automerge"); import merge_clean; sys.exit(merge_clean.run())'

@@ -264,7 +264,7 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    title, `needs-decision` label, composed body, and a hidden `<!-- needs-decision: <stream>/<NN> -->`
    marker that dedupes, so a brief that ever had one never gets a second — and the
    `<decision-issue filer>` your repo's instructions file names is what actually files it. (Same shape
-   as `human:<name>`: a capability the adopting repo binds, because filing is tracker-specific.)
+   as `human:<name>`: a capability the adopting repo binds, because filing depends on the tracker.)
    Record the resulting number back in the brief's `decision-issue:` frontmatter field; `statusgen
    --lint` NOTICEs a gate:human brief in flight without one. WHEN it files is a per-brief judgement
    you record as `decision-trigger:` (see the template): ask *"could the reader pick an option from
@@ -542,6 +542,7 @@ it is an authoring convention only.
 | `gnu-only` | a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on | advisory |
 | `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success | advisory |
 | `gotest-run-vacuous` | a `go test -run` selector with no `--- PASS` assertion in the same command, so the row passes whether or not the named test exists, is built, or was ever renamed away (open briefs only; a closed brief's rows are summarised, not individually flagged) | advisory |
+| `grep-pipe-zero-count` | a grep feeding a later pipeline stage under a zero-count Expect fails on its own success path under pipefail (grep exits 1 on no match), and passes on exit status alone when a match is present | advisory |
 | `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing | advisory |
 | `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it | advisory |
 | `pattern-effect-exceeds-role` | a pattern node whose declared effect kind is not permitted for its role, per the role-to-effect-kind table in spec/workflow-pattern-v1.md §7 — a generated instance would carry a permission its role does not hold | fatal |

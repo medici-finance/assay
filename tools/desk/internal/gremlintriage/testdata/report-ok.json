@@ -1,0 +1,22 @@
+{
+  "go_module": "example.com/m",
+  "test_efficacy": 25,
+  "mutants_total": 9,
+  "elapsed_time": 1.5,
+  "files": [
+    {"file_name": "a.go", "mutations": [
+      {"type": "CONDITIONALS_BOUNDARY", "status": "LIVED", "line": 4, "column": 7},
+      {"type": "CONDITIONALS_NEGATION", "status": "KILLED", "line": 11, "column": 7},
+      {"type": "CONDITIONALS_NEGATION", "status": "LIVED", "line": 14, "column": 7},
+      {"type": "CONDITIONALS_NEGATION", "status": "TIMED OUT", "line": 14, "column": 7},
+      {"type": "INVERT_LOGICAL", "status": "LIVED", "line": 23, "column": 5},
+      {"type": "CONDITIONALS_NEGATION", "status": "LIVED", "line": 30, "column": 11},
+      {"type": "CONDITIONALS_NEGATION", "status": "NOT COVERED", "line": 30, "column": 11},
+      {"type": "CONDITIONALS_BOUNDARY", "status": "LIVED", "line": 33, "column": 25},
+      {"type": "CONDITIONALS_BOUNDARY", "status": "NOT VIABLE", "line": 33, "column": 25}
+    ]},
+    {"file_name": "b.go", "mutations": [
+      {"type": "CONDITIONALS_BOUNDARY", "status": "LIVED", "line": 4, "column": 11}
+    ]}
+  ]
+}
