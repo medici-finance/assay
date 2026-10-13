@@ -38,8 +38,8 @@ the shipped-corpus guard (`TestCorpusHasNoWithheldStreamPaths`) forbids stream b
 resolved to another store — is unchanged; the clause is kept as ruled and this note records the
 wording the merge lands.
 
-**Amendment (2026-10-13, medici-finance/assay#2753 — a change to the third clause, pending the
-maintainer's ratification there).** The third `accepted:` clause says a `file` / `service`
+**Amendment (2026-10-13, medici-finance/assay#2753 — a change to the third clause, ratified by
+the maintainer there).** The third `accepted:` clause says a `file` / `service`
 value set before its store ships resolves to a refusal. Operators setting the key ahead of an
 upgrade were stopped at dispatch with exit 6, though a build that does not ship a store cannot
 hold a claim in it. The amendment: a VALID value naming a store the running build does not ship
@@ -50,8 +50,10 @@ whose preconditions fail still refuses (exit 6) and never moves on to another st
 malformed value still refuses; `forge-ref` still cannot be selected. Because an older build now
 keeps claiming on the forge while `ASSAY_CLAIM_STORE=file` is set, the mixed-store refusal of
 forge-neutral/23 must ship in both directions in the same release as the `file` store. The
-clauses above are kept as ruled; this note is not a ruling — the human act is the maintainer's
-ratification on medici-finance/assay#2753 and the merge of the pull request that lands it.
+clauses above are kept as ruled; where the third differs, this amendment governs. The maintainer
+ratified it under the maintainer's own login (`ratify a`, 2026-10-13T14:19:36Z): https://github.com/medici-finance/assay/issues/2753#issuecomment-6147676148
+This note transcribes that ratification and does not mint one: the human acts are that comment
+and the merge of the pull request that lands this note.
 
 **The decision.** `docs/streams/forge-neutral/brief-21-claim-store-seam-and-resolver.md` lifts
 the claim tool's storage interface into `deskkit` as `ClaimStore`, adds the roster keys

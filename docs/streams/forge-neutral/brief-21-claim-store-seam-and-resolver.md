@@ -58,9 +58,8 @@ build does not ship — refused every dispatch with exit 6, and the legacy NOTIC
 to set exactly that value. An operator following the NOTICE stopped their own fleet. A build
 that does not ship a store cannot hold a claim in it, so refusing protects nothing.
 
-**What changes (version 1 → 2).** The issue's fork test was answered with default **a**; the
-maintainer's ratification is pending on medici-finance/assay#2753 and the change merges only
-after it.
+**What changes (version 1 → 2).** The issue's fork test was answered with default **a**, which
+the maintainer ratified on 2026-10-13 (`ratify a`): https://github.com/medici-finance/assay/issues/2753#issuecomment-6147676148
 
 - A valid but unshipped store resolves to the legacy forge-ref resolution: exit 0, `Legacy`
   set, the forge credential needed, a NOTICE naming the configured store and saying it takes
