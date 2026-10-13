@@ -6,7 +6,7 @@ why: >-
   takes no argv today. The move gives them standard help while signing keys and the gateway
   address stay sourced exactly as now.
 wave: 3
-depends: ["desktools-v2/16"]
+depends: ["desktools-v2/16", "comms-core/02", "comms-core/03"]
 unblocks: ["desktools-v2/17"]
 effort: "L"
 gate: "human"
@@ -14,10 +14,11 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 2
 id: "6e384661-b193-4ab4-804e-a9cde6dace44"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
+  - "docs/proposals/non-ci-architecture/20-communications.md — 2026-10-13 extraction-first amendment"
   - "https://github.com/medici-finance/assay/issues/2111"
   - "docs/streams/desktools-v2/spec.md §9"
   - "docs/streams/desktools-v2/cli-contract.md"
@@ -69,7 +70,7 @@ facts:
 layering: Cobra constructs the command tree and passes validated typed options into the existing handlers; a fresh command-local Viper resolves only declared keys. Domain checks, custody and external effects keep their current owners.
 single-point-of-failure: signature verification on receipt — it stays in the handler; TestCLIAdmissionBoundary sends an unsigned message through Cobra and directly.
 design-fit:
-  owner: each command's own package; domain owners unchanged
+  owner: command packages own parsing; comms/server and comms/client own the extracted use cases
   contract: none — consumes cli-contract.md delivered by /15
   retires: [hand-rolled flag loops and usage strings]
   weight: verbs +0 except Cobra's standard help; flags +0 except conventional help spellings; refusals +0
@@ -96,7 +97,19 @@ CLI library is not a new authority source. Independent verification owns Evidenc
 lifecycle advancement. Proposed tests and files below are deliverables, not claims that
 they already exist.
 
+## 2026-10-13 architecture amendment
+
+This pending CLI migration consumes the service and client extracted by comms-core/02
+and /03. Preserve the existing CLI contract and review gate; do not reimplement domain
+handlers inside Cobra. Refresh the dated source inventory above after those dependencies
+land. Completed work and its evidence are not reopened by this amendment.
+
 ## Task
+
+0. Bind the command trees to `comms/server` composition and `comms/client` delivered by
+   comms-core/02 and /03. `commsloop` remains an adapter to shared messaging behavior
+   and the existing runtime owner. TestCLIAdmissionBoundary must bypass Cobra and call
+   the extracted service; a client preflight failure alone does not prove enforcement.
 
 1. Build a Cobra command tree for `commsgw`, `deskcomms`, `commsloop`: root, every current verb and sub-verb, hidden internal entrypoints where they exist. Cobra/pflag does the parsing, argument validation and help. Remove the old parser once equivalent coverage exists; never run two parsers.
 2. Root and nested `-h`, `--help`, `help <verb>` and version exit 0 before any config, roster, credential or network read, lock, worktree or child process, even with absent or malformed configuration. Required-argument checks apply to execution, not to help. Disable Cobra's completion command unless deliberately added with tests and docs.

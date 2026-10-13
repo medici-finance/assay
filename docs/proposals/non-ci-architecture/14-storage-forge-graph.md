@@ -164,3 +164,13 @@ Standalone Inspect/Assist has canonical local records/observations, without in-f
 leases, authority grants or another coordination database. Offline output remains
 usable without PostgreSQL; it cannot publish governed evidence. Notification batching
 coalesces presentation only, preserving distinct pending decisions and their subjects.
+
+## Message transport ownership
+
+The [communications target](20-communications.md#storage-boundary-and-broker-decision)
+assigns durable message transport to a selected broker. PostgreSQL owns the application
+transaction and its outbox/inbox deduplication bridge, not a competing mailbox engine.
+Broker acceptance, recipient acknowledgment and completed business effect are distinct.
+Messages that exist only in the broker cannot be reconstructed from Git/forge; the
+selected profile must qualify its own persistence, replication, backup and loss policy.
+The current file backend remains a transition implementation until explicit migration.

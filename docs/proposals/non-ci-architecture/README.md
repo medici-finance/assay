@@ -1,6 +1,6 @@
 # Unified non-CI architecture for Assay
 
-**Status: draft proposal, 10 October 2026; workspace-lifecycle revision 11 October 2026.** This directory is the public home of
+**Status: draft proposal, 10 October 2026; workspace-lifecycle revision 11 October 2026; communications target revision 13 October 2026.** This directory is the public home of
 the proposed product architecture. Approval must name its reviewed revision and
 scope. Publishing or merging these documents does not activate a runtime, grant
 credentials, amend existing briefs or implement an authoring interface.
@@ -13,6 +13,7 @@ Verification is the first end-to-end test.
 
 | Document | Purpose |
 |---|---|
+| [Communications future state](20-communications.md) | Reusable client/server, broker-owned delivery, config CLI and applied backlog dependencies |
 | [Target architecture](11-target-architecture.md) | Domain ownership, authority, public service/cockpit and disposition of existing tools |
 | [Future-state model](12-future-state-model.md) | Observed, approved, transition and proposal views; shared discovery and authoring handoff |
 | [Migration and decisions](13-migration-and-decisions.md) | Supported-path fixes, verifier transaction, cutover, rollback and unresolved decisions |

@@ -121,3 +121,20 @@ The architecture reduces duplicate semantic and runtime owners by design, but ad
 database operation, migration, discovery and qualification work. Net savings remain
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
+
+## Communications extraction and existing-work amendments
+
+The [communications target](20-communications.md) and [comms-core briefs](../../streams/comms-core/README.md)
+add a concrete extraction path: 01 contract/policy → 02 server/file backend → 03 client;
+04 shared configuration follows 02 and desktools-v2/16. Existing desktools-v2/42 now
+depends on 02/03 and remains the sole owner of Cobra migration for the comms commands.
+This is actual brief amendment work, not an inventory-only promise. Adopters reconcile
+their own unfinished mode/activation plans against these public interfaces.
+
+R1 consumes the versioned message/receipt contract only where its flow sends messages.
+R2 owns transactional SQL outbox and business inbox deduplication; it does not implement
+a second durable broker. R7's comms host integration follows 02 and a qualified public
+service/custody seam; its unrelated UI work stays independent. R8's messaging cutover
+requires selected-broker proof and an accepted/held/acked state reconciliation manifest.
+Broker qualification, adapter, host composition and cutover need subsequent bounded
+briefs; the four extraction briefs neither select a broker nor enable native firing.
