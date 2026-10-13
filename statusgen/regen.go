@@ -106,10 +106,12 @@ func regenDriftNotices(boardRoot string, streams []*Stream, repo string, offline
 		in.PRs = prs
 		in.LookedAt = lookedAt
 		in.Reason = reason
+		_, authoringUndecided, _ := admitPRWitnesses(&in, client, repo, boardRoot, stderr)
 		// The witness fold (#1787): the drift comparator compares against the
 		// SAME derivation the reconcile verb prints, so it shares the verb's
 		// wiring — the client seam included — rather than rebuilding it.
 		_ = wireFoldInputs(&in, boardRoot, client, repo, stderr) // each disclosure is already on stderr
+		mergeUndecided(&in, authoringUndecided)
 	}
 	derived := DeriveLifecycle(in)
 	byStream := map[string][]BriefCell{}

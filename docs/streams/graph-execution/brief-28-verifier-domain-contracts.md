@@ -47,7 +47,7 @@ facts (a435badbd, 2026-10-13):
   `EvaluateCoverage` are pure functions over supplied observations; a value the caller cannot
   supply is could-not-check, never pass. `Identity` reports evaluator version plus policy digest.
 - graph-execution/09 owns instance/node/attempt identity and pinned acceptance references
-  (`spec/workflow-instance-v1.md` (planned), planned). This brief keys its records on those IDs and does
+  (`spec/workflow-instance-v1.md` (planned)). This brief keys its records on those IDs and does
   not mint a second identity scheme.
 - graph-execution/23 planned its own candidate record (`spec/workflow-candidate-v1.md` (planned)). The
   candidate/acceptance binding is defined once, here; graph-execution/23 consumes it (its
@@ -95,7 +95,8 @@ design-fit:
 ## Task
 
 1. Write `spec/verification-domain-v1.md` (planned) and `schemas/verification-domain-v1.json` defining
-   these records: qualified work identity (repository, stream, brief number, plus the
+   these records: qualified work identity (the four-segment `<cell>:<repo>:<stream>:<NN>` brief
+   ID, with elided references expanded against the declaring brief, plus the
    graph-execution/09 instance/attempt IDs; a file path is never an identity); candidate
    (repository, base and candidate commit and tree, artifact manifest digest); acceptance
    binding (acceptance version and digest bound to exactly one candidate); fact set with an

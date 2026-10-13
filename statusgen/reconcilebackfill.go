@@ -197,6 +197,17 @@ func advancedHandState(state string) bool {
 // (witnessedImplemented keys on MergedPR). in is the fold input the cells were
 // derived from. The hand-said fallback applies to a plain todo only.
 func applyReconcileBackfill(cells []BriefCell, in LifecycleInput, pulls []ghPull, pullsLookedAt bool, lookup handSaidLookup) []BriefCell {
+	out, _ := applyReconcileBackfillWith(cells, in, pulls, pullsLookedAt, lookup, nil)
+	return out
+}
+
+// applyReconcileBackfillWith is applyReconcileBackfill with the authoring exemption
+// (briefauthoring.go): a merged pull that only AUTHORED the brief is not a match, so a
+// docs-only briefs-authoring PR can no longer be the witness that flips a row. authoring nil
+// classifies nothing. The second result lists every match left unresolved because a candidate's
+// file list could not be read (the brief stays as the fold left it; --apply refuses on it).
+func applyReconcileBackfillWith(cells []BriefCell, in LifecycleInput, pulls []ghPull, pullsLookedAt bool, lookup handSaidLookup, authoring backfillAuthoring) ([]BriefCell, []string) {
+	var unread []string
 	idents := map[string]BriefIdent{}
 	for _, b := range in.Briefs {
 		idents[b.ID] = b
@@ -214,7 +225,12 @@ func applyReconcileBackfill(cells []BriefCell, in LifecycleInput, pulls []ghPull
 			continue
 		}
 		if pullsLookedAt {
-			if pr, matched := matchBackfillPR(pulls, stream, num); matched {
+			pr, matched, why := matchBackfillPRChecked(pulls, stream, num, authoring)
+			if why != "" {
+				unread = append(unread, why)
+				continue // unresolved, not "no match": the brief stays as the fold left it
+			}
+			if matched {
 				merged := fmt.Sprintf("PR #%d (merged %s) — backfill: branch/body match, no trailer", pr.Number, shortSHA(pr.MergeCommitSHA))
 				c := out[i]
 				c.Cell = "implemented"
@@ -253,7 +269,7 @@ func applyReconcileBackfill(cells []BriefCell, in LifecycleInput, pulls []ghPull
 		out[i].Reason = fmt.Sprintf("no witness — hand-asserted %s at %s", state, shortSHA(sha))
 		out[i].Witness = fmt.Sprintf("no PR carries a trailer; last hand edit %s", shortSHA(sha))
 	}
-	return out
+	return out, unread
 }
 
 // backfillModelDoneUndecided is the reason a gate:model brief re-derived over a

@@ -68,9 +68,14 @@ second candidate record. Hence the added `depends: graph-execution/28`. The work
 repair and restore obligations, and the Task and Verify sections below, are unchanged by this
 amendment. See `docs/proposals/non-ci-architecture/20-amendment-manifest.md`.
 
+Review follow-up, 2026-10-13: Task 1 now carries a one-clause pointer to graph-execution/28's
+candidate and acceptance-binding types, so a literal reader of Task 1 does not mint a second
+candidate record (review advisory A3 on medici-finance/assay#2739). No other Task or Verify text
+changed.
+
 ## Task
 
-1. Define candidate references binding repository, base/candidate commit and tree, acceptance version and artifact manifest. Consume an injected workspace/effect port; the profile supplies the existing git library/role executor implementation. Do not vendor a second git/claim implementation.
+1. Define candidate references binding repository, base/candidate commit and tree, acceptance version and artifact manifest by importing graph-execution/28's candidate and acceptance-binding types (`verification-domain-v1`), never a second candidate record. Consume an injected workspace/effect port; the profile supplies the existing git library/role executor implementation. Do not vendor a second git/claim implementation.
 2. Allow one implementation writer per mutable attempt. Freeze a candidate before checks/review; provide independent immutable/read-only snapshots. Dirty or incomplete snapshots cannot be candidates. Parallel checks may read the same frozen input; concurrent code writers are excluded from this profile.
 3. Repairs produce a new candidate identity and leave prior evidence immutable. Dependency/acceptance changes invalidate affected claims; file non-overlap does not establish applicability. Preserve evidence artifacts until retention policy permits deletion.
 4. Test reviewer input while implementation changes, foreign-repository candidate, artifact tampering and restored reference integrity through real workspace port fixtures. Update lifecycle docs and module/path CI.

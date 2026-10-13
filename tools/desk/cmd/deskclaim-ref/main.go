@@ -101,8 +101,10 @@ progress  advance an acquired claim to state=dispatched (TTL 20m -> 120m).
 release   delete the claim ref (branch-as-claim takes over). A missing claim is a no-op.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable
           takeover, not a hand-delete.
-show      print the claim's holder/state/branch/age, or FREE.
-list      show every dispatch claim in the repo.
+show      print the claim's holder/state/branch/age, or FREE. A claim still at state=claimed
+          past CLAIMED_TTL_MIN (default 20m) carries a trailing PREPARED-NOT-LAUNCHED note:
+          its dispatch was prepared and never progressed, so no agent is known to run behind it.
+list      show every dispatch claim in the repo, with the same note.
 
 CLAIM STORE. Where the claims are kept is resolved from the roster, never chosen here — no
 flag selects a store. Roster keys:
