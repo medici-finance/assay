@@ -13,7 +13,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -68,89 +67,14 @@ var (
 	quoteOrTableLineRe = regexp.MustCompile(`^[|>]`)
 	unblocksLineRe     = regexp.MustCompile(`(?i)^(unblocks|blocks|depends|gates)\b`)
 	desknoteAuthorRe   = regexp.MustCompile(`(?i)\[bot\]$|desk`)
-
-	// Reply shape's command line (the oracle's $answerPhrase / $forkLetters /
-	// $defaultFull / $driverLogin, assay-inbox.sh JQFMT).
-	answerHeadingRe = regexp.MustCompile(`(?i)^[ \t]*#{1,6}[ \t]*How[ \t]+to[ \t]+(answer|reply|respond)\b`)
-	quotedPhraseRe  = regexp.MustCompile(`["“]([^"“”]+)["”]`)
-	optLetterRe     = regexp.MustCompile(`^(?:[Oo]ption[[:space:]]+)?([A-Da-d1-4])(?:$|[.)!:,]|[[:space:]]*[—–-])`)
-	forkOptionRe    = regexp.MustCompile(`(?i)^option:[[:space:]]*`)
-	forkDefaultRe   = regexp.MustCompile(`(?i)^default:[[:space:]]*`)
-	loginShapeRe    = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`)
 )
 
-// commandNotDerivable is Reply shape's command line when the issue states no ruling
-// phrase: the desk fills it; the renderer never composes a ruling of its own.
+// commandNotDerivable is Reply shape's command line whenever no ruling command can be
+// derived. deskinbox ALWAYS renders it: the oracle derives a command only from a body whose
+// author the roster trusts (its $bodyTrusted), and deskinbox reads no roster, so it has no
+// way to tell a trusted body from one anyone could have filed. Until it gains a roster,
+// issue-body text never becomes a ruling here; the desk fills the line.
 const commandNotDerivable = "not derivable — desk to fill"
-
-// optLetter is the oracle's optletter def: the upper-cased option letter a fork-test
-// `option:` / `default:` value leads with, or "" when it leads with none.
-func optLetter(s string) string {
-	m := optLetterRe.FindStringSubmatch(s)
-	if m == nil {
-		return ""
-	}
-	return strings.ToUpper(m[1])
-}
-
-// shQuote is jq's @sh on a string: wrapped in single quotes, each embedded single quote
-// closed, backslash-escaped and reopened.
-func shQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// replyCommand is the oracle's $command: the copy-pasteable ruling comment for the
-// recommended option, derived ONLY from a phrase the issue itself states — the first
-// non-blank double-quoted phrase of a "How to answer/reply/respond" section, else a fork-test
-// `default:` value naming one of the block's own `option:` letters. GH_TOKEN is SET to
-// the driver's own token so the comment cannot post under an exported App token or the
-// wrong active account. The login is $DRIVER_LOGIN when login-shaped, else the
-// `<driver-login>` placeholder.
-func replyCommand(it item, bl []string) string {
-	ruling := ""
-	found := false
-phrases:
-	for _, l := range section(bl, answerHeadingRe) {
-		for _, m := range quotedPhraseRe.FindAllStringSubmatch(cleanText(demd(l)), -1) {
-			if p := stripWS(m[1]); p != "" {
-				ruling, found = p, true
-				break phrases
-			}
-		}
-	}
-	if !found {
-		var forkLetters []string
-		defaultFull, haveDefault := "", false
-		for _, l := range nonblankLines(bl) {
-			v := cleanText(demd(stripWS(l)))
-			if forkOptionRe.MatchString(v) {
-				if ol := optLetter(forkOptionRe.ReplaceAllString(v, "")); ol != "" {
-					forkLetters = append(forkLetters, ol)
-				}
-			}
-			if !haveDefault && forkDefaultRe.MatchString(v) {
-				defaultFull, haveDefault = stripWS(forkDefaultRe.ReplaceAllString(v, "")), true
-			}
-		}
-		if dl := optLetter(defaultFull); dl != "" {
-			for _, fl := range forkLetters {
-				if fl == dl {
-					ruling, found = defaultFull, true
-					break
-				}
-			}
-		}
-	}
-	if !found {
-		return commandNotDerivable
-	}
-	login := os.Getenv("DRIVER_LOGIN")
-	if !loginShapeRe.MatchString(login) {
-		login = "<driver-login>"
-	}
-	return fmt.Sprintf(`GH_TOKEN="$(gh auth token --user %s)" gh issue comment %d -R %s --body %s`,
-		login, it.Number, it.Repo, shQuote(ruling))
-}
 
 // toLines is the oracle's `lines` def: strip every \r, then split on \n.
 func toLines(s string) []string {
@@ -395,7 +319,7 @@ func buildRendered(it item, d issueDetail, k, n int, now time.Time) rendered {
 		Options:       options,
 		OptionsStated: stated,
 		Reply:         reply,
-		Command:       replyCommand(it, bl),
+		Command:       commandNotDerivable,
 		Verification:  verification,
 		Unread:        d.Unavailable,
 	}

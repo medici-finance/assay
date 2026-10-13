@@ -822,37 +822,77 @@ def loginlist: (try fromjson catch [])
    end) as $classEvidence
 
 # ------------------------------------------------- the recommended option's command --
-# Reply shape carries a copy-pasteable command that records the recommended option, but
-# ONLY where the issue itself states the ruling phrase. Two sources, in this order:
-#   1. a "How to answer" (or "How to reply" / "How to respond") section: its FIRST
-#      non-blank double-quoted phrase, e.g.  Reply "ratify A" to accept the recommendation.
-#   2. else a fork-test `default:` line whose value names one of the block's own `option:`
-#      letters: the value exactly as stated ("B", or "B — keep the cron").
-# Anything else is `not derivable — desk to fill`: this program never composes a ruling the
-# issue did not state.
-# The command SETS GH_TOKEN to the driver's own token (`gh auth token --user <login>`), so
-# the comment cannot post under an exported App token or whichever account happens to be
-# active — a ruling posted under an App identity fails a human gate. The login comes from
-# $DRIVER_LOGIN when it is set and login-shaped; otherwise the `<driver-login>` placeholder
-# stays for the desk to fill. The phrase is single-quoted for the shell (@sh), so a `$`, a
-# backtick or a quote inside it stays text.
+# Reply shape carries a copy-pasteable command that records the RECOMMENDED option, but only
+# where a TRUSTED author's issue visibly states the ruling phrase. Every gate must hold, else
+# the line is `not derivable — desk to fill`: this program never composes a ruling, and never
+# turns text a stranger wrote, or text the issue page does not show, into one.
+#   a. the body author is trusted ($bodyTrusted): anyone can open an issue on a public repo,
+#      so an untrusted body is never evidence (see resolve_roster);
+#   b. there is a recommended letter, and the ruling names it. The letter is the Options
+#      section's option marked "recommend", by its ORIGINAL letter (the walk re-letters it
+#      A); with no Options section, it is a fork-test `default:` naming one of the block's
+#      own `option:` letters. The ruling is the first double-quoted phrase in a "How to
+#      answer" (or "How to reply" / "How to respond") section that names that letter
+#      ("A", "B — drop it", "ratify B"), else the fork-test default when its letter is the
+#      recommended one, verbatim;
+#   c. the phrase is VISIBLE: HTML comments, which GitHub does not render, are cut out of
+#      the body first, multi-line and unterminated ones included;
+#   d. the ruling holds no \p{Cf} format character (a bidi override or zero-width
+#      character makes the displayed command differ from the posted bytes) and no
+#      `<placeholder>` (template text is not a ruling).
+# The command fails CLOSED on identity: it reads the driver's own token into a variable and
+# runs `gh` only when that read succeeded with a non-empty token. An empty GH_TOKEN makes gh
+# fall back to whichever account is active, so the bare `GH_TOKEN="$(…)" gh …` form would
+# post under that account when the lookup fails; this form posts nothing instead. The login
+# comes from $DRIVER_LOGIN when it is set and login-shaped (\z: a trailing newline is not);
+# otherwise the `<driver-login>` placeholder stays for the desk to fill. The ruling is
+# single-quoted for the shell (@sh), so a `$`, a backtick or a quote inside it stays text.
 | def optletter:
     [capture("^(?:[Oo]ption[[:space:]]+)?(?<l>[A-Da-d1-4])(?:$|[.)!:,]|[[:space:]]*[—–-])") | .l | ascii_upcase] | first;
-  ([section("^[[:space:]]*#{1,6}[[:space:]]*How[[:space:]]+to[[:space:]]+(answer|reply|respond)\\b") | .[]
-    | demd | clean
-    | scan("[\"“]([^\"“”]+)[\"”]") | .[0] | strip
-    | select(. != "")] | first) as $answerPhrase
-| ($blc | map(select(test("^option:"; "i")) | sub("^option:[[:space:]]*"; ""; "i") | optletter | select(. != null))) as $forkLetters
-| ((($defaultLines[0] // "") | sub("^default:[[:space:]]*"; ""; "i") | strip)) as $defaultFull
+  def phraseletter:
+    sub("^(?:[Ii][[:space:]]+)?(?:[Rr]atif(?:y|ied)|[Aa]pproved?)[[:space:]:,]+"; "") | optletter;
+  def sectionin($ls; $re):
+    ($ls | to_entries | map(select(.value | test($re; "i"))) | first) as $h
+    | if $h == null then []
+      else ($ls[($h.key + 1):]) as $rest
+        | ($rest | map(isheading) | index(true)) as $stop
+        | (if $stop == null then $rest else $rest[:$stop] end)
+      end;
+  ((($d.body // "") | gsub("\r"; "") | gsub("<!--[\\s\\S]*?-->"; "") | sub("<!--[\\s\\S]*$"; "")
+    | split("\n"))) as $vis
+| ($vis | nonblank | map(strip | demd | clean)) as $visc
+| ($visc | map(select(test("^option:"; "i")) | sub("^option:[[:space:]]*"; ""; "i") | optletter | select(. != null))) as $forkLetters
+| ((($visc | map(select(test("^default:"; "i"))) | .[0]) // "") | sub("^default:[[:space:]]*"; ""; "i") | strip) as $defaultFull
 | ($defaultFull | optletter) as $defaultLetter
-| (if $answerPhrase != null then $answerPhrase
-   elif ($defaultLetter != null) and ($forkLetters | any(. == $defaultLetter)) then $defaultFull
+| (($defaultLetter != null) and ($forkLetters | any(. == $defaultLetter))) as $defaultNamesFork
+| ($oraw | to_entries | map(select(.value.txt | test("recommend"; "i"))) | first) as $recMarked
+# A marked option whose text cleans to empty is dropped from the walk (see $opts), so it is
+# not the option the walk presents as recommended: no letter.
+| (if ($recMarked != null)
+       and (($recMarked.value.txt | demd | clean | strip
+             | sub("[[:space:]]*[—-]?[[:space:]]*\\(?[Rr]ecommended\\)?[[:space:]]*$"; "")
+             | sub("^\\(?[Rr]ecommended\\)?[[:space:],:;—-]*"; "") | strip) != "")
+   then ($recMarked.value.let | ascii_upcase)
+   elif (($oraw | length) == 0) and $defaultNamesFork then $defaultLetter
    else null
-   end) as $rulingText
+   end) as $recLetter
+| (if $recLetter == null then null
+   else [sectionin($vis; "^[[:space:]]*#{1,6}[[:space:]]*How[[:space:]]+to[[:space:]]+(answer|reply|respond)\\b") | .[]
+         | demd | clean
+         | scan("[\"“]([^\"“”]+)[\"”]") | .[0] | strip
+         | select(. != "")
+         | select(phraseletter == $recLetter)] | first
+   end) as $answerPhrase
+| (if ($bodyTrusted | not) or ($recLetter == null) then null
+   elif $answerPhrase != null then $answerPhrase
+   elif $defaultNamesFork and ($defaultLetter == $recLetter) then $defaultFull
+   else null
+   end
+   | if (. != null) and ((test("\\p{Cf}") or test("<[^>]*>")) | not) then . else null end) as $rulingText
 | (($ENV.DRIVER_LOGIN // "") as $dl
-   | if ($dl | test("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")) then $dl else "<driver-login>" end) as $driverLogin
+   | if ($dl | test("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\\z")) then $dl else "<driver-login>" end) as $driverLogin
 | (if $rulingText == null then "not derivable — desk to fill"
-   else "GH_TOKEN=\"$(gh auth token --user " + $driverLogin + ")\" gh issue comment "
+   else "t=\"$(gh auth token --user " + $driverLogin + ")\" && [ -n \"$t\" ] && GH_TOKEN=\"$t\" gh issue comment "
         + ($it.number | tostring) + " -R " + $it.repo + " --body " + ($rulingText | @sh)
    end) as $command
 

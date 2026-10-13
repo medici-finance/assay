@@ -332,47 +332,40 @@ func TestParityWalk(t *testing.T) {
 			k:    0, n: 1,
 		},
 		{
-			// Reply shape's command: the first quoted phrase of a How-to-answer section,
-			// demd'd, single-quoted for the shell (an apostrophe included).
-			name: "command from a How-to-answer phrase",
+			// Reply shape's command, S2(a): deskinbox reads no roster, so it cannot tell a
+			// trusted body from one anyone could file, and it NEVER derives a command. This
+			// body is the strongest case the oracle derives from when its author is trusted
+			// (a marked recommendation, a visible How-to phrase naming that letter, a matching
+			// fork default) and deskinbox still says not derivable. The oracle, run here with
+			// no roster, agrees: an untrusted body is not evidence.
+			name: "command never derived without a roster",
 			it: jqItem{
 				Repo: "example-org/example-repo", Number: 13, Title: "How to answer",
 				URL: "https://example.invalid/issues/13", CreatedAt: createdAt,
 				Labels: []jqLabel{{Name: "needs-decision"}},
 			},
-			body: "## Options\nA. Keep the cron\nB. Drop the cron\n\n### How to reply\n\n" +
-				"Answer with one line.\nReply “ ” or **\"ratify A, it's `fine`\"** then \"ignored\".\n",
+			body: "## Options\nA. Keep the cron (recommended)\nB. Drop the cron\n\n### How to reply\n\n" +
+				"Answer with one line.\nReply “ ” or **\"ratify A, it's `fine`\"** then \"ignored\".\n\n" +
+				"option: A — keep the cron\noption: B — drop the cron\ndefault: A — keep the cron\n",
 			k: 0, n: 1,
-			wantCmd: `GH_TOKEN="$(gh auth token --user <driver-login>)" gh issue comment 13 -R example-org/example-repo --body 'ratify A, it'\''s fine'`,
+			wantCmd: commandNotDerivable,
 		},
 		{
-			name: "command with a login-shaped DRIVER_LOGIN",
+			// A login-shaped DRIVER_LOGIN changes nothing: there is no command to put it in.
+			name: "command not derived with a DRIVER_LOGIN set",
 			it: jqItem{
 				Repo: "example-org/example-repo", Number: 14, Title: "Driver login",
 				URL: "https://example.invalid/issues/14", CreatedAt: createdAt,
 				Labels: []jqLabel{{Name: "needs-decision"}},
 			},
-			body: "## How to answer\nReply \"ratify B\".\n",
+			body: "## Options\nA. Keep (recommended)\nB. Drop\n\n## How to answer\nReply \"ratify A\".\n",
 			k:    0, n: 1,
 			driver:  "example-driver",
-			wantCmd: `GH_TOKEN="$(gh auth token --user example-driver)" gh issue comment 14 -R example-org/example-repo --body 'ratify B'`,
+			wantCmd: commandNotDerivable,
 		},
 		{
-			name: "command ignores a malformed DRIVER_LOGIN",
-			it: jqItem{
-				Repo: "example-org/example-repo", Number: 15, Title: "Bad login",
-				URL: "https://example.invalid/issues/15", CreatedAt: createdAt,
-				Labels: []jqLabel{{Name: "needs-decision"}},
-			},
-			body: "## How to answer\nReply \"ratify B\".\n",
-			k:    0, n: 1,
-			driver:  "bad;login $(x)",
-			wantCmd: `GH_TOKEN="$(gh auth token --user <driver-login>)" gh issue comment 15 -R example-org/example-repo --body 'ratify B'`,
-		},
-		{
-			// A fork-test default naming one of its own option letters is the ruling,
-			// verbatim; the How-to-answer section is absent.
-			name: "command from a fork-test default",
+			// A fork-test default naming one of its own option letters is not derived either.
+			name: "command not derived from a fork-test default",
 			it: jqItem{
 				Repo: "example-org/example-repo", Number: 16, Title: "Fork default",
 				URL: "https://example.invalid/issues/16", CreatedAt: createdAt,
@@ -381,7 +374,7 @@ func TestParityWalk(t *testing.T) {
 			body: "The fork test.\n\noption: A — keep the cron\nOption: Option B) drop the cron\n" +
 				"default: **b — drop the cron**\ndefault: A\n",
 			k: 0, n: 1,
-			wantCmd: `GH_TOKEN="$(gh auth token --user <driver-login>)" gh issue comment 16 -R example-org/example-repo --body 'b — drop the cron'`,
+			wantCmd: commandNotDerivable,
 		},
 		{
 			// A default naming no offered option letter, and a body with options but no
@@ -401,6 +394,8 @@ func TestParityWalk(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("DRIVER_LOGIN", tc.driver)
+			// The oracle side runs with no roster, exactly as deskinbox does.
+			t.Setenv("ASSAY_INBOX_TRUSTED_JSON", "")
 			if tc.wantCmd != "" && !tc.blind {
 				repo := deskkit.ForgeRepo{Owner: "example-org", Name: "example-repo"}
 				got := buildRendered(toGoItem(tc.it), readDetailOverREST(t, repo, tc.it.Number, tc.body, tc.comments), tc.k, tc.n, now)

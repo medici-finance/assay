@@ -129,7 +129,7 @@ func htmlFixtureItems() []jqHTMLItem {
 			}{{Letter: "A", Text: "Do the risky thing", Recommended: true}, {Letter: "B", Text: "Do the safe thing"}},
 			OptionsStated: true,
 			Reply:         "reply with one letter (A/B) — nothing else is needed.",
-			Command:       `GH_TOKEN="$(gh auth token --user <driver-login>)" gh issue comment 42 -R example-org/example-repo --body 'it'\''s A & <b>'`,
+			Command:       `t="$(gh auth token --user <driver-login>)" && [ -n "$t" ] && GH_TOKEN="$t" gh issue comment 42 -R example-org/example-repo --body 'it'\''s A & <b>'`,
 			Verification:  "the desk records the ruling on example-org/example-repo#42 as a relayed decision, presents question 2 of 3.",
 		},
 		{
