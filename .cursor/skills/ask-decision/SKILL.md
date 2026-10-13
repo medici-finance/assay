@@ -184,8 +184,10 @@ restate it.
   joins the command before it, in every shell. In the header only the guard comes before it,
   so nothing reads that status and no continuation reaches it: each comment line there prints
   `command not found: #` and changes nothing, provided the first code line does not test `$?`,
-  which in zsh still holds the last comment's failure. A step's `echo` line reads the same in every
-  shell.
+  which in zsh still holds the last comment's failure. Where `extendedglob` is set a lone `#` is a
+  bad pattern instead, and the paste stops before the function is defined; nothing runs, and a
+  second paste works once `interactive_comments` is on. A step's `echo` line reads the same in
+  every shell.
 - **The zsh comment guard comes first.** The block's first line is
   `[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments`, ahead of any `#` line. It covers
   only what zsh reads after the guard has run. A terminal delivers a paste to zsh as one

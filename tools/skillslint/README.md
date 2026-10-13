@@ -361,7 +361,9 @@ or `shell` fence that defines a function named `driver_act…`) to five rules:
    a `#`-led line inside a multi-line quote or heredoc body, which errs strict.
    In the header only the guard comes before it, so no status reads the
    comment's failure and no continuation reaches it, unless the first code
-   line tests `$?` (the lint does not check that; write none). A step inside the act
+   line tests `$?` (the lint does not check that; write none). Where zsh has
+   `extendedglob` set a lone `#` is a bad pattern and the first paste stops
+   before the function is defined; nothing runs. A step inside the act
    function opens with `echo '<n>. <text>'` instead;
 3. the block's first non-blank line is the zsh comment guard;
 4. the act function has a per-act name, `driver_act_<id>`, never the bare
