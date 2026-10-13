@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -136,6 +137,99 @@ func TestEchoFullOnOverride(t *testing.T) {
 	echoOnce(t)
 	if _, err := os.Stat(configEchoStatePath()); !os.IsNotExist(err) {
 		t.Fatalf("%s=full must not write the state file (stat err %v)", EnvConfigEcho, err)
+	}
+}
+
+// An echo nobody sees (a harness hook) must not count as having shown a changed configuration.
+// regression: #2713
+func TestEchoUnsurfacedNoRecord(t *testing.T) {
+	quietEchoEnv(t)
+	home := withRoster(t, goldenRoster())
+	echoOnce(t)
+	before, err := os.ReadFile(configEchoStatePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrowed := goldenRoster()
+	narrowed[EnvTrustedLogins] = "ada:2001"
+	rewriteRoster(t, home, narrowed)
+	var b bytes.Buffer
+	EchoEffectiveConfigUnsurfaced(&b)
+	if !isFullEcho(b.String()) {
+		t.Fatalf("the unsurfaced echo is always the full block:\n%s", b.String())
+	}
+	if after, err := os.ReadFile(configEchoStatePath()); err != nil || !bytes.Equal(after, before) {
+		t.Fatalf("the unsurfaced echo rewrote the state file (err %v)", err)
+	}
+	if out := echoOnce(t); !isFullEcho(out) {
+		t.Fatalf("the first SEEN run after a change must print the full block, an unseen echo notwithstanding:\n%s", out)
+	}
+}
+
+// A child whose stderr Run captures and strips must not count as having shown a change either.
+// regression: #2713
+func TestEchoRunChildStateless(t *testing.T) {
+	quietEchoEnv(t)
+	home := withRoster(t, goldenRoster())
+	echoOnce(t)
+	t.Setenv(EnvConfigEcho, "compact")
+	var got []string
+	for _, base := range [][]string{nil, {"K=V", EnvConfigEcho + "=compact"}} {
+		var cmd *exec.Cmd
+		Run(ToolCall{Name: "assay-no-such-binary", Env: base, Start: func(n string, a ...string) *exec.Cmd {
+			cmd = exec.Command(n, a...)
+			return cmd
+		}})
+		got = append(got, configEchoIn(cmd.Env))
+	}
+	for i, v := range got {
+		if v != "full" {
+			t.Fatalf("Run case %d gave the child %s=%q; a captured child must get the stateless full echo", i, EnvConfigEcho, v)
+		}
+	}
+	// What that child then does: the narrowed config, echoed under the child's environment,
+	// leaves the next seen run full.
+	narrowed := goldenRoster()
+	narrowed[EnvTrustedLogins] = "ada:2001"
+	rewriteRoster(t, home, narrowed)
+	t.Setenv(EnvConfigEcho, got[0])
+	echoOnce(t)
+	t.Setenv(EnvConfigEcho, "")
+	if out := echoOnce(t); !isFullEcho(out) {
+		t.Fatalf("the first SEEN run after a change must print the full block, a captured child notwithstanding:\n%s", out)
+	}
+}
+
+// configEchoIn is the value os/exec gives the child for ASSAY_CONFIG_ECHO: the last one.
+func configEchoIn(env []string) string {
+	v := "(unset)"
+	for _, kv := range env {
+		if val, ok := strings.CutPrefix(kv, EnvConfigEcho+"="); ok {
+			v = val
+		}
+	}
+	return v
+}
+
+// The state file is opened no-follow: a symlink planted on it is a bad state, never followed.
+// regression: #2713
+func TestEchoStateNoFollow(t *testing.T) {
+	quietEchoEnv(t)
+	withRoster(t, goldenRoster())
+	echoOnce(t)
+	path := configEchoStatePath()
+	target := path + ".real"
+	if err := os.Rename(path, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+	if _, err := readConfigEchoState(path); err == nil {
+		t.Fatal("readConfigEchoState followed a symlink on the state path")
+	}
+	if out := echoOnce(t); !isFullEcho(out) {
+		t.Fatalf("a symlinked state file must print the full block:\n%s", out)
 	}
 }
 

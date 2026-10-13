@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -38,7 +39,8 @@ type ToolCall struct {
 	// Dir is the working directory; empty inherits the parent's.
 	Dir string
 	// Env, when non-nil, REPLACES the child's environment (the os/exec contract). A caller
-	// that means to add one variable passes append(os.Environ(), "K=V").
+	// that means to add one variable passes append(os.Environ(), "K=V"). Either way Run sets
+	// ASSAY_CONFIG_ECHO=full in it (UnsurfacedEchoEnv).
 	Env []string
 	// Start is the command constructor. Nil means exec.Command. It exists so a package that
 	// already owns a recording seam (`var execCommand = exec.Command`, which its tests wrap
@@ -78,9 +80,16 @@ func Run(c ToolCall) ToolRun {
 	if c.Dir != "" {
 		cmd.Dir = c.Dir
 	}
-	if c.Env != nil {
-		cmd.Env = c.Env
+	// The child's stderr is captured and its echo stripped as preamble (ToolMessage), so the
+	// child must not record a config digest nobody saw: it gets the stateless full echo.
+	env := c.Env
+	if env == nil {
+		env = cmd.Env
 	}
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = UnsurfacedEchoEnv(env)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

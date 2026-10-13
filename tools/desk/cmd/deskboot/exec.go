@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // execCommand is the single seam through which EVERY child process this verb starts
@@ -39,6 +42,13 @@ func runCmd(dir, name string, args ...string) runResult {
 	if dir != "" {
 		cmd.Dir = dir
 	}
+	// The child's stderr is captured and its echo stripped (preflightSummary), so the child
+	// prints the stateless full echo and records no config digest nobody saw.
+	env := cmd.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = deskkit.UnsurfacedEchoEnv(env)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

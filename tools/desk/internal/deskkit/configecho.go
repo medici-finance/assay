@@ -24,6 +24,15 @@ package deskkit
 //   - that state file cannot be read or cannot be written: a run that cannot prove it has
 //     already shown this configuration shows it.
 //
+// A run whose stderr nobody sees neither reads nor records the state: a harness hook calls
+// EchoEffectiveConfigUnsurfaced, and a caller that captures a child's stderr and strips the echo
+// gives the child UnsurfacedEchoEnv. Otherwise the unseen run would mark the digest "seen", and
+// the next run someone does see would print compact after a change. A desk tool's OTHER captured
+// children (its per-verb token mint, for one) start after the tool's own echo at the top of main,
+// from the same config home and, outside CI, the same write class: the parent has already shown
+// that digest (or printed in full without recording, which the child inherits when forced), so
+// the child is never the first run to see it.
+//
 // The digest is sha256 over the canonical full block (EffectiveConfigLines, newline-joined and
 // newline-terminated — exactly the bytes the full echo prints), so the one-line form still
 // moves on every change, in both directions, on every run.
@@ -74,6 +83,32 @@ func configEchoStatePath() string {
 // calls this once per run.
 func EchoEffectiveConfig(w io.Writer) {
 	writeConfigEcho(w, EffectiveConfig(), configEchoStatePath())
+}
+
+// EchoEffectiveConfigUnsurfaced writes the full block and never reads or records the state file.
+// A tool whose stderr nobody sees on success calls it instead of EchoEffectiveConfig — a harness
+// hook (writeguard; the cellctl model-policy hook), whose stderr Claude Code does not show when it
+// exits 0. Recording there would mark a digest "seen" that nobody saw, and the next run someone
+// does see would print compact.
+func EchoEffectiveConfigUnsurfaced(w io.Writer) {
+	for _, l := range EffectiveConfig().EffectiveConfigLines() {
+		fmt.Fprintln(w, l)
+	}
+}
+
+// UnsurfacedEchoEnv returns env with ASSAY_CONFIG_ECHO=full in place of any existing setting. A
+// caller that captures a child's stderr and strips the echo preamble from it (Run, deskboot's
+// runner, the token minter) gives the child this environment, so the child prints the stateless
+// full block and records no digest nobody saw. The value is appended last, which is the one
+// os/exec keeps when a name repeats.
+func UnsurfacedEchoEnv(env []string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, EnvConfigEcho+"=") {
+			out = append(out, kv)
+		}
+	}
+	return append(out, EnvConfigEcho+"=full")
 }
 
 // writeConfigEcho is EchoEffectiveConfig with its inputs explicit, so the decision is testable
@@ -149,9 +184,11 @@ func configEchoFull(c Config, sum, statePath string) bool {
 }
 
 // readConfigEchoState returns the recorded digest. Any failure — absent, unreadable, oversized,
-// malformed — is an error, and the caller prints in full.
+// malformed, a symlink, a reparse point or any other non-regular file — is an error, and the
+// caller prints in full. It opens the file the way the roster beacon is opened (no-follow,
+// non-blocking, checked regular by handle).
 func readConfigEchoState(path string) (string, error) {
-	f, err := os.Open(path)
+	f, err := openRosterBeaconFile(path, false)
 	if err != nil {
 		return "", err
 	}

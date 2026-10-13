@@ -141,9 +141,12 @@ The digest is sha256 over the full block, so it moves on any change in either di
   every line;
 - the roster carries a `REFUSED` or `unrecognised-keys` line — those are never quieter;
 - the digest differs from the last recorded one (in `config-echo.state`, beside the roster) —
-  so the first run after a change shows it whole. Only a default-form run records; a forced, CI
-  or refused run prints the full block without recording;
-- that state file cannot be read or written;
+  so the first run after a change shows it whole. Only a default-form run whose output someone
+  sees records; a forced, CI or refused run prints the full block without recording;
+- the run is one whose stderr nobody sees: a harness hook (`writeguard`, the `cellctl
+  model-policy hook`) and a child whose stderr a desk tool captures (it is given
+  `ASSAY_CONFIG_ECHO=full`) print the full block and never read or record the state;
+- that state file cannot be read or written, or is not a regular file (a symlink is not followed);
 - `ASSAY_CONFIG_ECHO=full` is set (any value other than `compact` counts as `full`); this forced
   form neither reads nor updates the state file.
 

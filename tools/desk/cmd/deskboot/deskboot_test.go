@@ -957,3 +957,18 @@ func TestCurrentWorktreeWithEqualPinsBoots(t *testing.T) {
 		t.Error("a green boot never read FETCH_HEAD's pin — the pin comparison did not run")
 	}
 }
+
+// A boot step's stderr is captured and its echo stripped, so the child gets the stateless full
+// echo and records no config digest nobody saw.
+// regression: #2713
+func TestRunCmdChildEchoStateless(t *testing.T) {
+	t.Setenv(deskkit.EnvConfigEcho, "compact")
+	old := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", `printf %s "$ASSAY_CONFIG_ECHO"`)
+	}
+	t.Cleanup(func() { execCommand = old })
+	if r := runCmd("", "deskroster", "preflight"); r.err != nil || r.stdout != "full" {
+		t.Fatalf("child saw ASSAY_CONFIG_ECHO=%q (err %v), want full", r.stdout, r.err)
+	}
+}

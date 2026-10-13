@@ -67,7 +67,17 @@ func main() {
 // echoEffectiveConfig is P3: echo the effective roster once per run. A control surface that
 // lives in settings rather than in a diff is visible only at RUN time; without the echo a
 // NARROWING is invisible.
-func echoEffectiveConfig() { deskkit.EchoEffectiveConfig(os.Stderr) }
+//
+// The model-policy hook's stderr is not shown when it exits 0, so that line prints the full
+// block and records nothing (deskkit.EchoEffectiveConfigUnsurfaced): a digest it recorded would
+// count as "seen" for the next run someone does see.
+func echoEffectiveConfig() {
+	if hookVerb(os.Args[1:]) {
+		deskkit.EchoEffectiveConfigUnsurfaced(os.Stderr)
+		return
+	}
+	deskkit.EchoEffectiveConfig(os.Stderr)
+}
 
 // run parses and executes os.Args[1:] through the Cobra tree and returns the exit code.
 func run() int { return runTree(os.Args[1:]) }
