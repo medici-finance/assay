@@ -821,6 +821,41 @@ def loginlist: (try fromjson catch [])
    else ""
    end) as $classEvidence
 
+# ------------------------------------------------- the recommended option's command --
+# Reply shape carries a copy-pasteable command that records the recommended option, but
+# ONLY where the issue itself states the ruling phrase. Two sources, in this order:
+#   1. a "How to answer" (or "How to reply" / "How to respond") section: its FIRST
+#      non-blank double-quoted phrase, e.g.  Reply "ratify A" to accept the recommendation.
+#   2. else a fork-test `default:` line whose value names one of the block's own `option:`
+#      letters: the value exactly as stated ("B", or "B — keep the cron").
+# Anything else is `not derivable — desk to fill`: this program never composes a ruling the
+# issue did not state.
+# The command SETS GH_TOKEN to the driver's own token (`gh auth token --user <login>`), so
+# the comment cannot post under an exported App token or whichever account happens to be
+# active — a ruling posted under an App identity fails a human gate. The login comes from
+# $DRIVER_LOGIN when it is set and login-shaped; otherwise the `<driver-login>` placeholder
+# stays for the desk to fill. The phrase is single-quoted for the shell (@sh), so a `$`, a
+# backtick or a quote inside it stays text.
+| def optletter:
+    [capture("^(?:[Oo]ption[[:space:]]+)?(?<l>[A-Da-d1-4])(?:$|[.)!:,]|[[:space:]]*[—–-])") | .l | ascii_upcase] | first;
+  ([section("^[[:space:]]*#{1,6}[[:space:]]*How[[:space:]]+to[[:space:]]+(answer|reply|respond)\\b") | .[]
+    | demd | clean
+    | scan("[\"“]([^\"“”]+)[\"”]") | .[0] | strip
+    | select(. != "")] | first) as $answerPhrase
+| ($blc | map(select(test("^option:"; "i")) | sub("^option:[[:space:]]*"; ""; "i") | optletter | select(. != null))) as $forkLetters
+| ((($defaultLines[0] // "") | sub("^default:[[:space:]]*"; ""; "i") | strip)) as $defaultFull
+| ($defaultFull | optletter) as $defaultLetter
+| (if $answerPhrase != null then $answerPhrase
+   elif ($defaultLetter != null) and ($forkLetters | any(. == $defaultLetter)) then $defaultFull
+   else null
+   end) as $rulingText
+| (($ENV.DRIVER_LOGIN // "") as $dl
+   | if ($dl | test("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")) then $dl else "<driver-login>" end) as $driverLogin
+| (if $rulingText == null then "not derivable — desk to fill"
+   else "GH_TOKEN=\"$(gh auth token --user " + $driverLogin + ")\" gh issue comment "
+        + ($it.number | tostring) + " -R " + $it.repo + " --body " + ($rulingText | @sh)
+   end) as $command
+
 | {
     repo: $it.repo,
     number: $it.number,
@@ -836,6 +871,7 @@ def loginlist: (try fromjson catch [])
     options: $options,
     optionsStated: $stated,
     reply: $reply,
+    command: $command,
     verificationBase: $verificationBase,
     verification: $verification,
     unread: $blind,
@@ -896,6 +932,7 @@ render_walk() {
         "",
         "Reply shape",
         "  " + .reply,
+        "  command: " + (.command // "not derivable — desk to fill"),
         "",
         "Verification",
         "  " + .verification
@@ -931,6 +968,7 @@ render_walk_genuine() {
         "",
         "Reply shape",
         "  " + $item.reply,
+        "  command: " + ($item.command // "not derivable — desk to fill"),
         "",
         "Verification",
         "  " + $verification
@@ -1211,6 +1249,7 @@ def flowsection($f):
       "</ul>",
       "<h3>Reply shape</h3>",
       ("<p>" + (.reply | esc) + "</p>"),
+      ("<p class=\"cmd\">command: <code>" + ((.command // "not derivable — desk to fill") | esc) + "</code></p>"),
       "<h3>Verification</h3>",
       ("<p>" + (.verification | esc) + "</p>"),
       "</article>"

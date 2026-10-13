@@ -95,6 +95,9 @@ trap 'rm -rf "$TMPROOT"' EXIT
 export ASSAY_CONFIG_HOME="$TMPROOT/empty-config-home"
 mkdir -p "$ASSAY_CONFIG_HOME"
 unset ASSAY_BLESS_LOGIN ASSAY_TRUSTED_LOGINS ASSAY_TRUSTED_BOT_SLUGS ASSAY_HUMAN_LOGIN_MAP
+# Reply shape's command line names the driver's login from DRIVER_LOGIN; a developer's own
+# value must not leak into the output the cases compare.
+unset DRIVER_LOGIN
 
 echo "assay-inbox regression suite ($(bash --version | head -1))"
 
@@ -1523,6 +1526,113 @@ check "$(contains "$ERR" "YYYY-MM-DD" && echo 0 || echo 1)" \
   "stderr says what --since should look like" "stderr: ${ERR:-<empty>}"
 run_case "$TMPROOT/fl1" --root
 check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "--root with no path exits 1" "got $RC"
+
+# ============================================================================
+# Reply shape's `command:` line (issue #2759). Where the issue itself states the ruling
+# phrase, the walk and the page carry a copy-pasteable `gh issue comment` that records the
+# recommended option, with GH_TOKEN SET to the driver's own token so the ruling can never
+# post under an exported App token. Where the issue states no phrase, the line says so and
+# leaves it to the desk; it never composes a ruling of its own. No roster here: every
+# fixture is presented, so the screen never hides the line under test.
+# ============================================================================
+
+BODY_HOWTO='## Options
+
+A. keep the cron
+B. drop the cron
+
+## How to answer
+
+Reply "ratify A" to accept the recommendation, or name the other letter.
+'
+BODY_HOWTO_QUOTE='## How to answer
+
+Reply "it'"'"'s A, ship it" on this issue.
+'
+BODY_FORK_DEFAULT='The fork test for this item.
+
+option: A — keep the cron
+option: B — drop the cron
+default: B — drop the cron
+'
+BODY_FORK_STRAY_DEFAULT='The fork test for this item.
+
+option: A — keep the cron
+option: B — drop the cron
+default: C
+'
+CMD_PREFIX='command: GH_TOKEN="$(gh auth token --user '
+CMD_NONE='command: not derivable — desk to fill'
+
+# ---------------------------------------------------------------- CMD1 ------
+echo "CMD1 — a How-to-answer phrase yields the ruling command; no DRIVER_LOGIN keeps the placeholder"
+
+w="$TMPROOT/cmd-howto"
+screen_gh "$w" "[]" "$BODY_HOWTO"
+unset DRIVER_LOGIN
+run_case "$w" --walk o/r
+check "$(ordered_contains "$OUT" "^Reply shape\$" "^  command: " && ordered_contains "$OUT" "^  command: " "^Verification\$" && echo 0 || echo 1)" \
+  "the command line sits inside Reply shape" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "${CMD_PREFIX}<driver-login>)\" gh issue comment 10 -R o/r --body 'ratify A'" && echo 0 || echo 1)" \
+  "the stated phrase becomes the --body, single-quoted, under the <driver-login> placeholder" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "env -u" && echo 1 || echo 0)" \
+  "the command sets GH_TOKEN; it never relies on unsetting it" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD2 ------
+echo "CMD2 — DRIVER_LOGIN names the token's account; a malformed one falls back to the placeholder"
+
+DRIVER_LOGIN=example-driver run_case "$w" --walk o/r
+check "$(contains "$OUT" "${CMD_PREFIX}example-driver)\" gh issue comment 10 -R o/r --body 'ratify A'" && echo 0 || echo 1)" \
+  "a login-shaped DRIVER_LOGIN is used as --user" "stdout was: ${OUT:-<empty>}"
+DRIVER_LOGIN='bad;login $(x)' run_case "$w" --walk o/r
+check "$(contains "$OUT" "${CMD_PREFIX}<driver-login>)\"" && ! contains "$OUT" "bad;login" && echo 0 || echo 1)" \
+  "a DRIVER_LOGIN that is not login-shaped never reaches the command" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD3 ------
+echo "CMD3 — a quote inside the phrase stays text: single-quoted with the '\\'' escape"
+
+w="$TMPROOT/cmd-howto-quote"
+screen_gh "$w" "[]" "$BODY_HOWTO_QUOTE"
+run_case "$w" --walk o/r
+check "$(contains "$OUT" "--body 'it'\\''s A, ship it'" && echo 0 || echo 1)" \
+  "an apostrophe in the phrase is shell-escaped" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD4 ------
+echo "CMD4 — a fork-test default naming one of its own options yields that default as the ruling"
+
+w="$TMPROOT/cmd-fork-default"
+screen_gh "$w" "[]" "$BODY_FORK_DEFAULT"
+run_case "$w" --walk o/r
+check "$(contains "$OUT" "gh issue comment 10 -R o/r --body 'B — drop the cron'" && echo 0 || echo 1)" \
+  "'default: B — drop the cron' is the --body, verbatim" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD5 ------
+echo "CMD5 — no stated phrase: the line says not derivable, never an invented ruling"
+
+w="$TMPROOT/cmd-stray-default"
+screen_gh "$w" "[]" "$BODY_FORK_STRAY_DEFAULT"
+run_case "$w" --walk o/r
+check "$(contains "$OUT" "  $CMD_NONE" && ! contains "$OUT" "gh issue comment" && echo 0 || echo 1)" \
+  "a default naming no offered option is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-none"
+screen_gh "$w" "[]" "$BODY_2OPT"
+run_case "$w" --walk o/r
+check "$(contains "$OUT" "  $CMD_NONE" && ! contains "$OUT" "gh issue comment" && echo 0 || echo 1)" \
+  "options with no How-to-answer phrase and no default are not derivable" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD6 ------
+echo "CMD6 — --html carries the same command line in the card's Reply shape, escaped"
+
+w="$TMPROOT/cmd-howto"
+run_case "$w" --html "$w/inbox.html" o/r
+PAGE=$(cat "$w/inbox.html" 2>/dev/null || true)
+check "$(contains "$PAGE" '<p class="cmd">command: <code>GH_TOKEN=&quot;$(gh auth token --user &lt;driver-login&gt;)&quot; gh issue comment 10 -R o/r --body &apos;ratify A&apos;</code></p>' && echo 0 || echo 1)" \
+  "the page renders the derived command, HTML-escaped" "page: ${PAGE:-<empty>}"
+w="$TMPROOT/cmd-none"
+run_case "$w" --html "$w/inbox.html" o/r
+PAGE=$(cat "$w/inbox.html" 2>/dev/null || true)
+check "$(contains "$PAGE" "<p class=\"cmd\">command: <code>not derivable — desk to fill</code></p>" && echo 0 || echo 1)" \
+  "the page says not derivable where the issue states no phrase" "page: ${PAGE:-<empty>}"
 
 # ------------------------------------------------------------------ done ----
 echo
