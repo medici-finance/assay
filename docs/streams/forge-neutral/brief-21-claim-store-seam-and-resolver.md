@@ -86,6 +86,9 @@ claim. Across builds — one process upgraded to the release that ships `file`, 
 an older one with the same key set — the old process keeps claiming on the forge while the
 new one claims in the directory. The control for that window is brief 23's mixed-store
 refusal (both directions), which therefore ships in the same release as the `file` store.
+That refusal runs only in builds that ship `file`; when the upgraded process claims first,
+it detects the mix on an upgraded process's next resolve, after both holders exist, and does
+not prevent it.
 
 **Verify rows changed.** Rows 2, 3, 4 and 6 keep their commands; their Expect text is updated
 below. Rows 11–13 are new.

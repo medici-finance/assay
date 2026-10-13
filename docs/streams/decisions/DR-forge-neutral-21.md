@@ -49,7 +49,10 @@ release that ships it, with provenance recording both the configured value and t
 whose preconditions fail still refuses (exit 6) and never moves on to another store; a
 malformed value still refuses; `forge-ref` still cannot be selected. Because an older build now
 keeps claiming on the forge while `ASSAY_CLAIM_STORE=file` is set, the mixed-store refusal of
-forge-neutral/23 must ship in both directions in the same release as the `file` store. The
+forge-neutral/23, both its directions, must ship in the same release as the `file` store. That
+refusal runs only in builds that ship `file`, and the older process never refuses: when the
+upgraded process claims first, the mix is detected on an upgraded process's next resolve,
+after both holders exist, so it is made loud, not prevented. The
 clauses above are kept as ruled; where the third differs, this amendment governs. The maintainer
 ratified it under the maintainer's own login (`ratify a`, 2026-10-13T14:19:36Z): https://github.com/medici-finance/assay/issues/2753#issuecomment-6147676148
 This note transcribes that ratification and does not mint one: the human acts are that comment
@@ -66,7 +69,10 @@ select the forge store, and leaves existing installs exactly as they are apart f
 **The constraint behind it.** The dispatch claim is the fleet's mutual exclusion. A resolver
 that fell back to another store instead of refusing would double-dispatch without failing a
 single happy-path test, which is why refusal is the only fallback and why a key set early —
-before the store it names ships — fails loudly. The brief's `single-point-of-failure` line
+before the store it names ships — fails loudly. *(Superseded on the early key by the
+2026-10-13 amendment above: a valid key naming a store the running build does not ship now
+resolves to the legacy forge-ref store under a NOTICE naming that store; refusal stays the only
+fallback for a store the build ships.)* The brief's `single-point-of-failure` line
 names the resolver's order as the one control; behind it sit each store's own atomic create
 and the mixed-store refusal of forge-neutral/23, which detects two live stores for one repo
 from the forge side.

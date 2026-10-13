@@ -337,6 +337,9 @@ forge-side half of this check is deleted with the store. Both directions of this
 in the **same release** as the `file` store, never after it: since §5 step 1a
 (medici-finance/assay#2753, 2026-10-13), a process still on an older build keeps claiming on
 the forge while `ASSAY_CLAIM_STORE=file` is set, and this check is what makes that mix loud.
+It runs only in builds that ship `file`, and the older process never refuses: when the
+upgraded process claims first, the mix is detected on an upgraded process's next resolve,
+after both holders exist — loud, not prevented.
 
 **Second layer.** None of this replaces the supervisor's staleness reclaim, which frees a
 slot on elapsed time plus no live branch — a different signal in a different component — nor
