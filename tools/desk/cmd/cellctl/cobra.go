@@ -634,11 +634,16 @@ func deskCmd() *cobra.Command {
 			"override given (the model pin, CELL_HARNESS, CELL_PROVIDER, CELL_KIND, CELL_COCKPIT) through the same\n" +
 			"one-backup path `cellctl set` uses; an override not given is never re-written. --kind, --cockpit and\n" +
 			"--provider override cell.env's CELL_KIND, CELL_COCKPIT and CELL_PROVIDER for this run; a --kind the cell\n" +
-			"is not provisioned for is refused naming the missing key.",
+			"is not provisioned for is refused naming the missing key.\n\n" +
+			"When the role lease is busy the refusal names the lock, its holder and whether the holder is current.\n" +
+			"--end-stale-lock-holder lets the launch send SIGTERM (never SIGKILL) to a holder proven to be this cell's\n" +
+			"own cellctl for this role whose role child has exited, wait a bounded time, and re-check the lock. Any\n" +
+			"other holder is reported and left alone.",
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,
 	}
-	set := declare(cmd, launchBindings()...)
+	set := declare(cmd, append(launchBindings(),
+		bBool("end-stale-lock-holder", "end a proven-stale holder of this role's lease (SIGTERM, bounded wait, re-check)"))...)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cellArg(args)
 		if len(args) < 2 || args[1] == "" {
@@ -652,7 +657,9 @@ func deskCmd() *cobra.Command {
 		}
 		v := resolve(set, c)
 		launchNeeds(v)
-		cmdDesk(c, args[1], deskInputsFrom(v, lastBare(args[2:])))
+		in := deskInputsFrom(v, lastBare(args[2:]))
+		in.EndStaleLockHolder = v.Bool("end-stale-lock-holder") // declared on `desk` only, never `up`
+		cmdDesk(c, args[1], in)
 		return nil
 	}
 	return cmd

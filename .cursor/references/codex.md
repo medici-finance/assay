@@ -7,9 +7,9 @@ set is **Codex CLI only for v1**; the hosted Codex App is a later, separately-ru
 surface. Both rulings are recorded in the harness-target ruling (Decision A1 + C,
 human:<name> 2026-08-16).
 
-Every mechanism and degradation cell below cites the measured Codex capability
-matrix (HP/01, documentary + prior-art, 2026-08-08 — **no live Codex environment**;
-the live-harness rows stay BLOCKED until human:<name> provides one). Harness tool names
+The baseline is the Codex capability matrix (HP/01, documentary + prior-art,
+2026-08-08). Later measurements are dated separately below; the native Goal
+qualification does not re-measure unrelated capabilities. Harness tool names
 are legal here — that is this file's purpose — and illegal in a skill body.
 
 Source of the capability set: the closed vocabulary block in
@@ -35,6 +35,30 @@ reliable background notification) may degrade — explicitly, and in-session.
 | `capability:stop-worker` | V1 `close_agent(id)` / V2 `interrupt_agent(id)` (§3.5/§3.6) — terminate one dispatched child by id. Where parallel dispatch is unavailable there are no children to stop and the desk window runs the fan-out serially, so a per-run stop reaches its single in-flight worker as the cooperative STOP.run.<key> flag alone (Guard refuses that run's next desk verb) — the convenience-degradation floor, stated in-session; the flag layer is never degraded. |
 | `capability:durable-monitor` | **No reliable durable cross-turn wake signal (§3.6/§3.7 `absent`).** V2 child agents are process-local — resume is broken across process restarts (Issues #19140, #33002) — and an in-subagent `run_in_background: true` task is silently killed when its turn ends (§3.7), so there is no re-arming poll that survives a session restart. A durable wake-signal is a **convenience**, not one of the three never-degrade guarantees (isolation / evidence / gates) → the convenience floor applies: the capability **degrades**. The skill falls back to the **event-driven + fixed-cadence board sweep** (the same backstop Claude Code pairs with its monitor — it is the real liveness safeguard, the durable monitor was only best-effort on either harness) and **states the gap in-session**. The durable liveness home is the always-on observability service, not the harness. |
 | `capability:cadence-tick` | **No in-session recurring prompt (§3.6/§3.7): the tick comes from OUTSIDE the session.** The Codex CLI has no mechanism that re-prompts a standing session on a clock, so a standing window cannot arm this capability itself. The binding is the **cell launcher's interval / an outer scheduler** — a cron or container job that invokes the role in tick mode every cadence interval (`codex exec … --tick`, or `ASSAY_TICK=1` in the job's environment; the trigger, bounded pass and summary line are [`tick-contract.md`](./tick-contract.md)), where each fire IS one "fresh sweep → drain → one quiet line" pass. The cadence and the prompt are the role body's, unchanged. A standing window with no such outer schedule reports `cadence-tick: could-not-check — no in-session scheduler` at boot and FILES it, exactly as the role's boot step says — it never runs keystroke-driven in silence. This is the fixed-cadence sweep the `durable-monitor` row already falls back to; it is a **convenience** (never one of the three never-degrade guarantees), so the capability **degrades** to the outer schedule, stated in-session. |
+
+## Interactive standing Goals
+
+On **codex-cli 0.162.1**, native Goals can continue an active objective after an
+ordinary final response. An isolated native app-server qualification on 2026-10-12
+observed Goal creation/readback, an automatic next turn, and human steering that
+paused the Goal. This is engine evidence, not qualification of a deployed cockpit.
+The [retained primary transcripts](../../../docs/qualification/codex-goals/2026-10-12/README.md)
+include the generated bootstrap, native tool arguments/readbacks, continuation,
+steering, admission controls, cleanup and explicit logging limits.
+
+`cellctl` requests the standing objective before invoking a Codex desk: `get_goal`,
+`create_goal` only if absent with no token budget, then `get_goal` readback. A
+matching active Goal is required; any existing differing or inactive Goal remains
+unchanged and awaits user direction. Missing tools or failed readback report
+could-not-check. A completed batch or empty queue does not finish a standing Goal.
+The user retains `/goal`, `/goal pause`, `/goal resume` and `/goal clear` controls.
+
+Goals do not supply the fixed-time `cadence-tick` capability or a process-restart
+monitor. Those rows' scheduler and durability limits remain in force. Explicit
+cellctl cadence uses bounded exec passes with Goals disabled. Native continuation
+can stop for blocking conditions, interruption or continuation limits; it is not a
+promise of permanent unattended service. See the official [Goals guide](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)
+and [native Goal RPC](https://learn.chatgpt.com/docs/app-server).
 
 ## Degradation — per skill (Codex CLI, v1 target)
 
@@ -66,7 +90,7 @@ session states the ruled posture rather than improvising it.
 
 ## Freshness
 
-This binding is behavioural fact about a live harness, measured documentarily on
-2026-08-08 with no live environment. It is registered in `freshness.yaml`
-(harness-portability/07) so it expires on a clock, and the live-harness rows are
-re-measured once a Codex environment exists (the stream's true head).
+The baseline was measured documentarily on 2026-08-08. The explicitly dated
+0.154.0 rows and the 0.162.1 native Goal qualification above are later measurements.
+The binding is registered in `freshness.yaml` (harness-portability/07); an isolated
+Goal probe does not refresh the other capabilities.

@@ -220,3 +220,14 @@ test requires every other byte of those recorded diagnostics to stay identical.
 
 `reset` and `comms init` are additional commands. The contained `comms-reader`
 entrypoint consumes an opaque argv. See [cell maintenance](cellctl-maintenance.md).
+
+## Interactive Codex desks
+
+Issue #2696 changes the default after harness resolution. `desk-house/8` and
+`desk-set-round-trip/3`, and `desk-policy/4` omit the former implicit five-minute cadence diagnostic;
+`up/4` removes those implicit cadence arguments from each role command;
+all other output and persistence behavior remains identical. `desk-scrubbed/2`
+replaces only the skill prompt argument with native Goal admission and readback.
+The original pre-migration transcripts are retained, and every other byte still
+must match. Explicit cadence durations and other harnesses keep their behavior.
+See [the cadence contract](cellctl-cadence.md) for continuation limits.

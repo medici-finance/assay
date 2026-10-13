@@ -2,13 +2,13 @@
   "schema": 1,
   "files": {
     ".cursor/references/claude-code.md": "54247c41cd6dd76081d52ba87c01007a692197ed56171b634820d053981cc5d8",
-    ".cursor/references/codex.md": "74e50e7d2a0f17df97456295f54aa6f4fc0e3bbdeee02b354df3b51a8836ed71",
+    ".cursor/references/codex.md": "7a2aea649083c6309befc9e8118fa026b9be9806b0e6655859faee972cfd04e7",
     ".cursor/references/cursor.md": "eb2529e42aa4689ae6c3815e85086a28c28764d256933a889938ec4660ada30e",
     ".cursor/references/desk-common.md": "e795440312655548488b37a957c43204228e8da9df72e31ee4fd67284e94a21a",
     ".cursor/references/desk-shell.md": "5d28c32756a9e021c3c6324b1a44e665de3af8533dba4fdbd7e91e44628246a3",
     ".cursor/references/standing-note.md": "2f2868fdd8f122903e30e1b720a0efb7940165946e379adad2e6378a4d4e58c0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "553df8d7af0dd954b0ef64cbc104a4aa85ab6113409801ca178197643e48a9b7",
+    ".cursor/rules/assay.mdc": "51046e2b433624e5e5fe55673343494045bc44d2538bb9f07edba4f351efd50a",
     ".cursor/skills/adopt/SKILL.md": "066571118dd5a97994e4fc59ea9f6f7e48fba23e5ab04bb497e91dfdfcd5d9d1",
     ".cursor/skills/ask-decision/SKILL.md": "1ab334b6d2b0a5986dcc1f6d6f3e6c5d5565f356f65a755d176295e221e86090",
     ".cursor/skills/author-brief/SKILL.md": "8e3b989777fe3e854aa7674f86b48a69a2227d3d2ff2c45b9c441718c7f7b843",
@@ -37,5 +37,5 @@
     ".cursor/skills/worker-desk/SKILL.md": "909631f006724779c7df21e27a7f0d773b899eb56ffb9c92310852d2a8a2c2f1",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "c3743162f6aa5abec98d36da4d76d8125ba5bc7820712102df22884afdecf619"
   },
-  "bindingsSha256": "ad0ff9ba2388a266e4d1679a2b0ff682bf492a6989b5b9cf4df8f873eecdd4c7"
+  "bindingsSha256": "1d30bdd9f09a9e7c1230434b0cef6bd7e4b0fb2242497d1d93319704682a7635"
 }

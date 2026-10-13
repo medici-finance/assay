@@ -402,6 +402,7 @@ func runGoldenCase(t *testing.T, bin string, c goldenCase) []cliRun {
 type deliberateDiff struct {
 	code          int
 	stderrReplace []string
+	stdoutReplace func() []string
 	stderr        string
 	why           string
 	stdoutHas     []string
@@ -423,6 +424,22 @@ func unknownCmd(name string) string {
 func shapeErr(msg string) string { return "cellctl: " + msg + "\nRun 'cellctl --help' for usage.\n" }
 
 var deliberateDiffs = map[string]deliberateDiff{
+	// #2696 deliberately replaces the implicit Codex cadence and adds native
+	// admission. Retain the original transcript and compare all other bytes.
+	"desk-house/8": {code: 0, stdoutReplace: func() []string {
+		return []string{"[cadence] interval=5m0s budget=20m0s owner=cellctl (planned; not armed)\n", ""}
+	}, stderrReplace: []string{"", ""}, why: "#2696: Codex desks default to interactive native Goals"},
+	"desk-policy/4": {code: 0, stdoutReplace: func() []string {
+		return []string{"[cadence] interval=5m0s budget=20m0s owner=cellctl (planned; not armed)\n", ""}
+	}, stderrReplace: []string{"", ""}, why: "#2696: Codex desks default to interactive native Goals"},
+	"desk-set-round-trip/3": {code: 0, stdoutReplace: func() []string {
+		return []string{"[cadence] interval=5m0s budget=20m0s owner=cellctl (planned; not armed)\n", ""}
+	}, stderrReplace: []string{"", ""}, why: "#2696: dry-run persistence retains the interactive default"},
+	"up/4": {code: 0, stdoutReplace: func() []string { return []string{" --cadence '5m0s' --tick-budget '20m0s'", ""} }, stderrReplace: []string{"", ""}, why: "#2696: up commands retain the interactive default"},
+	"desk-scrubbed/2": {code: 0, stdoutReplace: func() []string {
+		return []string{bashQuote(`Invoke the "assay:worker-desk" skill now.`), bashQuote(codexStandingPrompt("worker-desk", `Invoke the "assay:worker-desk" skill now.`))}
+	}, stderrReplace: []string{"", ""}, why: "#2696: scrubbed Codex argv carries the qualified native bootstrap"},
+
 	// Maintenance adds wipe to cache diagnostics; all other transcript bytes stay identical.
 	"cache-enabled/0": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
 	"cache-enabled/1": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
@@ -484,7 +501,12 @@ func diffHolds(d deliberateDiff, got, old cliRun) bool {
 	if got.Code != d.code {
 		return false
 	}
-	if d.stdoutHas == nil {
+	if d.stdoutReplace != nil {
+		pair := d.stdoutReplace()
+		if got.Stdout != strings.ReplaceAll(old.Stdout, pair[0], pair[1]) {
+			return false
+		}
+	} else if d.stdoutHas == nil {
 		if got.Stdout != old.Stdout {
 			return false
 		}
@@ -509,6 +531,7 @@ func diffHolds(d deliberateDiff, got, old cliRun) bool {
 	return true
 }
 
+// regression: #2696
 func TestCLINonHelpParity(t *testing.T) {
 	cases := goldenCases()
 	if rec := os.Getenv("CELLCTL_GOLDEN_RECORD"); rec != "" {
