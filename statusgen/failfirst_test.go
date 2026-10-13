@@ -536,6 +536,39 @@ func TestFailFirstBriefHeldRealGit(t *testing.T) {
 	}
 }
 
+// TestVerifyrunFailFirstRefusesAncestorBaseOfBranchBornBrief — the runner
+// wiring, end to end through `verifyrun --fail-first --base`: a brief created on
+// the branch refuses the root commit as the base before any row runs, and the
+// merge-base itself is not refused.
+func TestVerifyrunFailFirstRefusesAncestorBaseOfBranchBornBrief(t *testing.T) {
+	root := t.TempDir()
+	gitInit(t, root, "t", "t@example.com")
+	writeTemp(t, root, "flag.txt", "old\n")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "root")
+	rootCommit := gitOutT(t, root, "rev-parse", "HEAD")
+	writeTemp(t, root, "other.txt", "x\n")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "merge-base")
+	mergeBase := gitOutT(t, root, "rev-parse", "HEAD")
+	writeTemp(t, root, "flag.txt", "new\n")
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `grep -q new flag.txt` | exit 0 |\n"
+	ffStreamBrief(t, root, ffBriefRaw("yes", verify, ""))
+	brief := filepath.Join(root, "docs", "streams", "ff", "brief-01-ff.md")
+	prev := failFirstMergeBase
+	failFirstMergeBase = func(string) string { return mergeBase }
+	t.Cleanup(func() { failFirstMergeBase = prev })
+
+	res, stderr := captureVerifyrun(t, []string{"--fail-first", "--dry-run", "--root", root, "--base", rootCommit, "--brief", brief})
+	if res.code != verifyrunExitCouldNot || !strings.Contains(stderr, "cannot be shown to hold the brief") {
+		t.Errorf("--base <root commit> for a brief born on the branch must be refused; code=%d stderr=%s", res.code, stderr)
+	}
+	_, stderr = captureVerifyrun(t, []string{"--fail-first", "--dry-run", "--root", root, "--base", mergeBase, "--brief", brief})
+	if strings.Contains(stderr, "cannot be shown to hold the brief") || strings.Contains(stderr, "predates the brief") {
+		t.Errorf("--base <merge-base> must not be refused on the brief-held rule; stderr=%s", stderr)
+	}
+}
+
 // TestPathHeldAtReadsTheTree — the default probe asks git: a file in the
 // tree is held, a file added later (or never) is not.
 func TestPathHeldAtReadsTheTree(t *testing.T) {
