@@ -363,8 +363,17 @@ func (ca *ContainedAdvisor) Advise(ctx context.Context, c deskkit.Consultation) 
 		return deskkit.Advice{}, fmt.Errorf("commsloop router: decider prompt failed: %w", perr)
 	}
 
-	answer := parseAction(report.String(), c.Vocabulary)
-	return deskkit.Advice{Answer: answer, Justification: firstLine(report.String())}, nil
+	return adviceFrom(report.String(), c.Vocabulary), nil
+}
+
+// adviceFrom maps the decider's whole reply onto an Advice: the answer is the
+// single action parseAction finds (or "" — Decide then bounds it to the
+// default), and the justification is the reply line naming that answer
+// (deskkit.ReplyJustification), never a fixed line position. Split out
+// of Advise so the reply handling is testable without spawning an agent.
+func adviceFrom(reply string, actions []string) deskkit.Advice {
+	answer := parseAction(reply, actions)
+	return deskkit.Advice{Answer: answer, Justification: deskkit.ReplyJustification(reply, answer)}
 }
 
 // renderPrompt frames the consultation for the decider. The untrusted message
@@ -403,12 +412,4 @@ func parseAction(reply string, actions []string) string {
 		}
 	}
 	return found
-}
-
-func firstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return deskkit.StripControl(s[:i])
-	}
-	return deskkit.StripControl(s)
 }

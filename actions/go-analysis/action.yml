@@ -1,0 +1,128 @@
+name: Ratcheted Go analysis
+description: Run pinned all-module Go lint, preserve accepted debt, fail regressions and publish a qualgen-ready report.
+inputs:
+  root:
+    description: Analyzed Git checkout path, relative to the workspace or absolute.
+    default: '.'
+  base-ref:
+    description: Trusted baseline ref in the calling repository. Pin a base SHA when available.
+    default: main
+  bootstrap-revision:
+    description: Human-reviewed full commit SHA for initial baseline admission only; ignored after main contains the gate.
+    default: ''
+  allow-downloads:
+    description: Explicit consent to fetch pinned tools and module dependencies from printed public sources.
+    required: true
+    default: 'false'
+outputs:
+  report-path:
+    description: Absolute path to the sanitized report, also uploaded on failure.
+    value: ${{ steps.summary.outputs.report-path }}
+  state:
+    description: complete or could-not-check; missing reports fail the action.
+    value: ${{ steps.summary.outputs.state }}
+  gate:
+    description: pass or fail; accepted legacy debt can pass while remaining visible.
+    value: ${{ steps.summary.outputs.gate }}
+  existing:
+    description: Accepted outstanding findings; unset for incomplete scans.
+    value: ${{ steps.summary.outputs.existing }}
+  new:
+    description: New findings; unset for incomplete scans.
+    value: ${{ steps.summary.outputs.new }}
+  worsened:
+    description: Changed findings at accepted identities; unset for incomplete scans.
+    value: ${{ steps.summary.outputs.worsened }}
+  resolved:
+    description: Findings resolved by a complete comparable scan; unset for incomplete scans.
+    value: ${{ steps.summary.outputs.resolved }}
+runs:
+  using: composite
+  steps:
+    - name: Allocate isolated action state
+      id: prepare
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_ROOT: ${{ inputs.root }}
+        BOOTSTRAP_REV: ${{ inputs.bootstrap-revision }}
+      run: python3 "$ACTION_PATH/run.py" prepare
+    - name: Check out the trusted baseline
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ github.repository }}
+        ref: ${{ inputs.base-ref }}
+        path: ${{ steps.prepare.outputs.base-directory }}
+        persist-credentials: false
+    - name: Resolve baseline trust
+      id: trust
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        ANALYZED: ${{ steps.prepare.outputs.root }}
+        BASE_DIR: ${{ github.workspace }}/${{ steps.prepare.outputs.base-directory }}
+        BOOTSTRAP_REV: ${{ inputs.bootstrap-revision }}
+      run: python3 "$ACTION_PATH/run.py" trust
+    - name: Check out the approved bootstrap baseline
+      if: steps.trust.outputs.bootstrap == 'true'
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ github.repository }}
+        ref: ${{ inputs.bootstrap-revision }}
+        path: ${{ steps.prepare.outputs.bootstrap-directory }}
+        persist-credentials: false
+    - name: Acquire pinned tools and module caches
+      shell: bash
+      env:
+        CODE_ROOT: ${{ steps.prepare.outputs.code-root }}
+        ANALYZED: ${{ steps.prepare.outputs.root }}
+        CACHE: ${{ steps.prepare.outputs.cache }}
+        ALLOW_DOWNLOADS: ${{ inputs.allow-downloads }}
+      run: |
+        set -euo pipefail
+        if [ "$ALLOW_DOWNLOADS" != true ]; then
+          echo 'Explicit allow-downloads: true is required to prepare the isolated tool cache' >&2
+          exit 2
+        fi
+        bash "$CODE_ROOT/scripts/go-analysis.sh" acquire --allow-downloads --root "$ANALYZED" --cache "$CACHE"
+    - name: Exercise trusted harness and real analyzer controls
+      shell: bash
+      env:
+        CODE_ROOT: ${{ steps.prepare.outputs.code-root }}
+        GO_ANALYSIS_TEST_CACHE: ${{ steps.prepare.outputs.cache }}
+      run: |
+        set -euo pipefail
+        cd "$CODE_ROOT"
+        python3 -m unittest discover -s actions/go-analysis -p 'test_*.py'
+        bash scripts/tests/go-analysis.sh lint
+    - name: Scan and enforce the ratchet
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CODE_ROOT: ${{ steps.prepare.outputs.code-root }}
+        ANALYZED: ${{ steps.prepare.outputs.root }}
+        CACHE: ${{ steps.prepare.outputs.cache }}
+        BASE_SHA: ${{ steps.trust.outputs.base-sha }}
+        BOOTSTRAP: ${{ steps.trust.outputs.bootstrap }}
+        BOOTSTRAP_REV: ${{ inputs.bootstrap-revision }}
+        BOOTSTRAP_DIR: ${{ github.workspace }}/${{ steps.prepare.outputs.bootstrap-directory }}
+        GO_ANALYSIS_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        GO_ANALYSIS_PR_BASE: ${{ github.event.pull_request.base.sha }}
+      run: python3 "$ACTION_PATH/run.py" scan
+    - name: Expose report outputs and job summary
+      id: summary
+      if: always() && steps.prepare.outcome == 'success'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CACHE: ${{ steps.prepare.outputs.cache }}
+      run: python3 "$ACTION_PATH/run.py" summary
+    - name: Publish sanitized findings even on failure
+      if: always() && steps.prepare.outcome == 'success'
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      with:
+        name: go-analysis-lint-${{ steps.prepare.outputs.source-sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ steps.prepare.outputs.cache }}/report.json
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
