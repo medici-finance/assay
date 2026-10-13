@@ -1701,7 +1701,7 @@ var reconcileMutants = []struct {
 	{"repository guard dropped",
 		` && github.repository == 'medici-finance/assay' }}`, ` }}`, "TestReconcileJobTriggerAndScope"},
 	{"contents widened",
-		"witness reads. The writes below use the App token.\n    permissions:\n      contents: read\n", "witness reads. The writes below use the App token.\n    permissions:\n      contents: write\n", "TestReconcileJobTriggerAndScope"},
+		"      contents: read\n      pull-requests: read\n      issues: read", "      contents: write\n      pull-requests: read\n      issues: read", "TestReconcileJobTriggerAndScope"},
 	{"mint not narrowed",
 		"          permission-contents: write\n", "", "TestReconcileJobTriggerAndScope"},
 	{"detached checkout of fetched main removed",

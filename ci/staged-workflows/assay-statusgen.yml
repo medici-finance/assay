@@ -149,8 +149,8 @@ jobs:
     # decision-gate step reads the decision issue and its ruling comment.
     permissions:
       contents: read
-      pull-requests: read
       issues: read
+      pull-requests: read
     # GOENV=off: Go's per-user env file (written by `go env -w`, which an
     # earlier job on a reused runner could have run) is ignored. GOTOOLCHAIN=local:
     # the job-local toolchain builds, never one a go.mod line asks to download.
