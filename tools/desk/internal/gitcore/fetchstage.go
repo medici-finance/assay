@@ -11,8 +11,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/storage/filesystem/dotgit"
 )
 
 // fetchstage.go — how Fetch decides what a fetch WRITES.
@@ -285,12 +287,25 @@ func looseRefPath(refsDir, name string) string {
 // binary then fails to update that ref on every run. removed reports whether the ref itself
 // went; err names whatever could not be removed.
 func (r *Repo) removeRef(name plumbing.ReferenceName) (removed bool, err error) {
-	if err := r.repo.Storer.RemoveReference(name); err != nil {
-		return false, err
-	}
 	gitDir, err := r.commonGitDir()
 	if err != nil {
-		return true, fmt.Errorf("removed, but its reflog could not be located: %w", err)
+		return false, fmt.Errorf("could not locate the common git directory: %w", err)
+	}
+	// Remove the ref through storage rooted at the COMMON git directory, never through the
+	// worktree-split storage the repository was opened with: from a linked worktree go-git
+	// rewrites packed-refs through a temp file created at the root of that split filesystem,
+	// which lands in the worktree's own git directory (where nothing reads it), leaves the
+	// common packed-refs untouched, and returns nil. Rooted at the common directory the
+	// rewrite is the one git itself does.
+	if err := dotgit.New(osfs.New(gitDir)).RemoveRef(name); err != nil {
+		return false, err
+	}
+	// Trust the repository, not the nil: the ref must no longer resolve before it is reported
+	// removed or its reflog is touched.
+	if _, rerr := r.repo.Storer.Reference(name); rerr == nil {
+		return false, errors.New("the reference still resolves after its removal")
+	} else if !errors.Is(rerr, plumbing.ErrReferenceNotFound) {
+		return false, fmt.Errorf("cannot confirm the removal: %w", rerr)
 	}
 	removeEmptyParents(filepath.Join(gitDir, "refs"), name.String())
 	logsDir := filepath.Join(gitDir, "logs", "refs")

@@ -1412,6 +1412,48 @@ func TestDeleteLocalRefRemovesReflog(t *testing.T) {
 	mustGit2(t, f, "update-ref", "refs/heads/gone", sha)
 }
 
+// From a linked worktree, DeleteLocalRef must remove a PACKED ref from the common packed-refs
+// (go-git, handed the worktree-split filesystem, rewrites packed-refs into the worktree's own
+// git directory and reports success with the ref still there), and must not touch the reflog
+// of a ref that is still there.
+func TestDeleteLocalRefPackedFromLinkedWorktree(t *testing.T) {
+	f := gittest.NewFixture(t)
+	sha := mustGitOutput(t, f, "rev-parse", "HEAD")
+	mustGit2(t, f, "update-ref", "refs/heads/gone/x", sha)
+	mustGit2(t, f, "update-ref", "refs/heads/keep", sha)
+	mustGit2(t, f, "pack-refs", "--all")
+	log := filepath.Join(f.Dir, ".git", "logs", "refs", "heads", "gone", "x")
+	if err := os.MkdirAll(filepath.Dir(log), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(log, []byte("0 "+sha+" t <t@t> 0 +0000\tfixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	mustGit2(t, f, "worktree", "add", "-q", "--detach", wt, "HEAD")
+
+	repo, err := Open(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteLocalRef("refs/heads/gone/x"); err != nil {
+		t.Fatalf("DeleteLocalRef: %v", err)
+	}
+	if out, err := f.Git("rev-parse", "--verify", "-q", "refs/heads/gone/x"); err == nil {
+		t.Fatalf("refs/heads/gone/x still resolves in the main checkout after DeleteLocalRef from a linked worktree: %s", out)
+	}
+	if got := mustGitOutput(t, f, "rev-parse", "refs/heads/keep"); got != sha {
+		t.Fatalf("refs/heads/keep = %s, want %s (an unrelated packed ref)", got, sha)
+	}
+	if _, err := os.Lstat(log); !os.IsNotExist(err) {
+		t.Fatalf("DeleteLocalRef left the reflog (%v)", err)
+	}
+	if _, err := os.Lstat(filepath.Join(f.Dir, ".git", "worktrees", filepath.Base(wt), "packed-refs")); !os.IsNotExist(err) {
+		t.Fatalf("a stray packed-refs was written into the worktree's git directory (%v)", err)
+	}
+	mustGit2(t, f, "update-ref", "refs/heads/gone", sha)
+}
+
 // TestUpdateRemoteTracking — the tracking ref is the one origin's fetch refspec maps the
 // pushed ref to (here a non-default layout, so the default is not assumed); an unmapped ref
 // writes nothing, and a short or malformed hash is refused.

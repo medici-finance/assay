@@ -270,6 +270,52 @@ func TestFetchPruneRemovesReflog(t *testing.T) {
 	}
 }
 
+// Prune from a linked worktree removes a packed tracking ref from the common packed-refs and
+// leaves no stray packed-refs in the worktree's git directory, with and without a name
+// conflict against the branch that replaces it.
+func TestFetchPruneFromLinkedWorktreeRemovesPackedRef(t *testing.T) {
+	for _, names := range [][2]string{{"stale", ""}, {"x", "x/a"}, {"y/a", "y"}} {
+		old, nu := names[0], names[1]
+		t.Run(strings.ReplaceAll(old+"->"+nu, "/", "_"), func(t *testing.T) {
+			origin := gittest.NewFixture(t)
+			work := cloneFixture(t, origin.Dir)
+			mustFixtureGit(t, origin, "branch", old)
+			mustFixtureGit(t, work, "fetch", "origin")
+			mustFixtureGit(t, work, "pack-refs", "--all")
+			wt := filepath.Join(t.TempDir(), "wt")
+			mustFixtureGit(t, work, "worktree", "add", "-q", "--detach", wt, "HEAD")
+			mustFixtureGit(t, origin, "branch", "-D", old)
+			if nu != "" {
+				mustFixtureGit(t, origin, "branch", nu)
+			}
+
+			repo, err := Open(wt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.Fetch(FetchOpts{URL: origin.Dir, Prune: true, RefSpecs: []string{trackingSpec}}); err != nil {
+				t.Fatalf("Fetch(prune) from a linked worktree: %v", err)
+			}
+			if out, err := work.Git("rev-parse", "--verify", "-q", "refs/remotes/origin/"+old); err == nil {
+				t.Fatalf("refs/remotes/origin/%s still resolves after the prune: %s", old, out)
+			}
+			if _, err := os.Lstat(filepath.Join(work.Dir, ".git", "worktrees", filepath.Base(wt), "packed-refs")); !os.IsNotExist(err) {
+				t.Fatalf("a stray packed-refs was written into the worktree's git directory (%v)", err)
+			}
+			if nu == "" {
+				return
+			}
+			// The prune left no packed ancestor/descendant behind, so git's own fetch works.
+			if out, err := work.Git("fetch", "origin"); err != nil {
+				t.Fatalf("git fetch origin after the prune: %v: %s", err, out)
+			}
+			if got, want := mustFixtureGit(t, work, "rev-parse", "refs/remotes/origin/"+nu), mustFixtureGit(t, origin, "rev-parse", nu); got != want {
+				t.Fatalf("refs/remotes/origin/%s = %s, want %s", nu, got, want)
+			}
+		})
+	}
+}
+
 // Two destinations of one fetch whose names conflict: the first lands, the second is refused
 // as a name conflict (git: "'…' exists; cannot create '…'"), not attempted as a write.
 func TestFetchRefusesConflictingNewNames(t *testing.T) {

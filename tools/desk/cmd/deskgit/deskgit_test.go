@@ -750,15 +750,14 @@ func TestFetch_PruneKeepsOriginHEAD(t *testing.T) {
 // and requires the same outcome and the same refs — and refs/remotes/origin/main current.
 func TestFetch_RefNameConflictMatchesGit(t *testing.T) {
 	for _, names := range [][2]string{{"feat", "feat/a"}, {"feat/a", "feat"}, {"zed", "zed/a"}, {"zed/a", "zed"}} {
-		for _, packed := range []bool{false, true} {
+		// Each shape runs from the main checkout and, with packed refs, from a linked worktree:
+		// there go-git's packed-refs rewrite used to land in the worktree's own git directory
+		// and report success with the ref still packed.
+		for _, shape := range []string{"loose", "packed", "packed-linked"} {
+			packed, linked := shape != "loose", shape == "packed-linked"
 			for _, prune := range []bool{true, false} {
 				old, nu := names[0], names[1]
-				name := old + "->" + nu
-				if packed {
-					name += "/packed"
-				} else {
-					name += "/loose"
-				}
+				name := old + "->" + nu + "/" + shape
 				if prune {
 					name += "/prune"
 				}
@@ -784,6 +783,14 @@ func TestFetch_RefNameConflictMatchesGit(t *testing.T) {
 							t.Fatalf("fixture: %s loose = %v, want %v", loose, err == nil, !packed)
 						}
 					}
+					// The twins' working directories: the clones, or a linked worktree of each.
+					dirs := twins
+					if linked {
+						for k, c := range twins {
+							dirs[k] = c + "-wt"
+							mustGit(t, c, "worktree", "add", "-q", "-b", "side", dirs[k])
+						}
+					}
 					// Upstream swaps the branch, moves main and adds a branch named after both.
 					mustGit(t, upstream, "branch", "-D", old)
 					mustGit(t, upstream, "branch", nu, "main")
@@ -795,15 +802,15 @@ func TestFetch_RefNameConflictMatchesGit(t *testing.T) {
 					if prune {
 						args = append(args, "--prune")
 					}
-					withEnv(t, twins[1])
+					withEnv(t, dirs[1])
 					for i := 1; i <= 2; i++ {
-						gitErr := exec.Command("git", append([]string{"-C", twins[0]}, append(args, "origin")...)...).Run()
+						gitErr := exec.Command("git", append([]string{"-C", dirs[0]}, append(args, "origin")...)...).Run()
 						code := run(args)
 						if wantCode := map[bool]int{true: deskkit.ExitOK, false: deskkit.ExitUnverifiable}[gitErr == nil]; code != wantCode {
 							t.Fatalf("run %d: deskgit %v exit = %d, want %d (git: %v)", i, args, code, wantCode, gitErr)
 						}
 						refs := [2]string{}
-						for j, c := range twins {
+						for j, c := range dirs {
 							refs[j] = mustGit(t, c, "for-each-ref", "--format=%(refname) %(objectname) %(symref)")
 							if got := mustGit(t, c, "rev-parse", "refs/remotes/origin/main"); got != want {
 								t.Fatalf("run %d: %s refs/remotes/origin/main = %s, want %s", i, filepath.Base(c), got, want)
@@ -821,7 +828,7 @@ func TestFetch_RefNameConflictMatchesGit(t *testing.T) {
 					// ("unable to append to …/logs/…" or "there are still logs under …").
 					mustGit(t, work, "push", "-q", "origin", "HEAD:refs/heads/"+nu)
 					moved := mustGit(t, upstream, "rev-parse", "refs/heads/"+nu)
-					for _, c := range twins {
+					for _, c := range dirs {
 						if out, err := exec.Command("git", "-C", c, "fetch", "origin").CombinedOutput(); err != nil {
 							t.Fatalf("%s: git fetch origin after the prune: %v\n%s", filepath.Base(c), err, out)
 						}
