@@ -23,6 +23,19 @@ tools/desk/
 Everything after that is the deep reference, one section per tool, and you do not need
 it on day one.
 
+## Review planner state contract
+
+`reviewloop plan` proposes review dispatches and draft-to-ready operations from the
+supplied board; it does not execute either operation. A posted review verdict is
+not evidence that a reviewer is currently assigned, and verdict kinds and outcomes
+must remain distinct. The audit ledger records completed writes; planning must not
+reparse its complete history separately for each proposed operation.
+
+The current repeated-history lookup and its generic `review` key are tracked in
+[issue #2793](https://github.com/medici-finance/assay/issues/2793). The repair must
+preserve execution-time duplicate-write checks, retain audit history, and validate
+its state queries against the records the posting and dispatch tools actually emit.
+
 ## Tool reference
 
 | Tool | Verb(s) | Class | Write budget + breaker |
