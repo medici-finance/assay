@@ -489,6 +489,31 @@ func (q *Question) finalize(journal Journal, rec DecisionRecord) (string, error)
 	return rec.Answer, nil
 }
 
+// ReplyJustification picks the one-line justification out of an advisor's raw
+// reply: the last line that names answer (matched case-insensitively, as the
+// advisors' vocabulary parse matches), else the last non-empty line, with control
+// sequences stripped. It never takes a fixed line position, because a runner CLI
+// may print warnings before (or after) the agent's reply, and a position-based
+// pick journals that noise as the decision's reason. Decide still truncates it.
+func ReplyJustification(reply, answer string) string {
+	lines := strings.Split(reply, "\n")
+	last := ""
+	low := strings.ToLower(answer)
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(StripControl(lines[i]))
+		if line == "" {
+			continue
+		}
+		if low != "" && strings.Contains(strings.ToLower(line), low) {
+			return line
+		}
+		if last == "" {
+			last = line
+		}
+	}
+	return last
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

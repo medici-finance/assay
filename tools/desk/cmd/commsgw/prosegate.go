@@ -411,10 +411,12 @@ func (ca *ContainedAdvisor) Advise(ctx context.Context, c deskkit.Consultation) 
 
 // adviceFrom maps the decider's whole reply onto an Advice: the answer is the
 // single vocabulary member parseVerdict finds (or "" — Decide then bounds it to
-// the default), and the justification is the reply's own account of it. Split
+// the default), and the justification is the reply line naming that answer
+// (deskkit.ReplyJustification), never a fixed line position. Split
 // out of Advise so the reply handling is testable without spawning an agent.
 func adviceFrom(reply string, vocabulary []string) deskkit.Advice {
-	return deskkit.Advice{Answer: parseVerdict(reply, vocabulary), Justification: firstLine(reply)}
+	answer := parseVerdict(reply, vocabulary)
+	return deskkit.Advice{Answer: answer, Justification: deskkit.ReplyJustification(reply, answer)}
 }
 
 // renderPrompt frames the consultation for the decider. The untrusted message
@@ -452,12 +454,4 @@ func parseVerdict(reply string, vocabulary []string) string {
 		}
 	}
 	return found
-}
-
-func firstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return deskkit.StripControl(s[:i])
-	}
-	return deskkit.StripControl(s)
 }
