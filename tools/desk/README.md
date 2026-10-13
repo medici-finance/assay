@@ -1270,10 +1270,68 @@ covered, so silence can never be mistaken for health.
 **Read cost.** The probe is 2 `gh api` GETs per watched repo on the common path (one
 `commits?`, one `check-runs`), worst case 1 + 5 when every commit in the lookback window
 is check-less. `actions` is the desk's hot path, so this is the budget to watch as the
-watched-repo set grows; nothing is cached.
+watched-repo set grows. These GETs ride the conditional-request cache below: an unchanged
+`main` answers 304 and is not charged.
 
 **It annotates; it does not block.** deskpost owns the ready-flip gate. Whether a red
 `main` should hard-block a flip on that repo is the open human call on #295.
+
+## deskboard read cost — conditional reads, the per-PR skip, and the refuse-floor (#2421)
+
+An App installation's REST quota is 5000 calls an hour and a watcher sweeps `actions`
+every few minutes. Before #2421 every sweep re-read every open PR in full, so the
+per-sweep cost grew with the open-PR count (measured on a fake forge: 15 charged calls at
+5 PRs, 105 at 50, on EVERY sweep of an unchanged board) and a busy board exhausted the
+quota. Now a repeat sweep of an unchanged board costs a constant handful of charged calls
+for PRs by trusted authors (the same fake forge, all PRs by one trusted author: 1 charged
+call at 5 PRs and at 50). Each open PR by an untrusted author still costs one uncached
+GraphQL trust-blessing read per sweep, so that part of the cost grows with the number of
+such PRs.
+
+**Conditional reads (every deskboard verb).** deskboard — and only deskboard; no other
+tool's transport changes — installs a transport on the resolved GitHub backend. A GET whose
+last `200` carried an `ETag` or `Last-Modified` is re-sent with `If-None-Match` /
+`If-Modified-Since`; on a `304` (which GitHub does not charge against the core quota) the
+cached body is served as the `200` it was. A cached body is served ONLY after the forge
+itself answered `304` for that exact validator — there is no time-to-live, so a cached
+"approved" or "green" can never be served without the forge confirming it is current.
+The cache lives under the desk-tools state dir at `<state dir>/deskboard-cache/`
+(`http/` for response entries, `prfacts/` for the per-PR skip); entries unused for 7 days
+are pruned after a successful `actions` sweep. A missing, unreadable, corrupt or
+mismatched entry is a miss — the read goes out unconditionally. Writes are temp-file +
+rename, so concurrent deskboard runs never read a torn entry. Bodies over 4 MiB pass
+through uncached. GraphQL (POST) reads are never cached. The GitLab backend is unchanged.
+
+**Per-PR skip (`actions`).** The changed-file set and the reviewed-sha→head file interval
+are reused from the previous sweep only when the PR's head sha, `updatedAt`, base branch
+AND a digest of its check rollup all match; the review set and the check rollup themselves
+are always fresh from the sweep's one repo-level snapshot. A backend that reports no
+`updatedAt` never skips. Only complete, error-free reads are remembered. The trust-gate
+blessing read for an untrusted author is never skipped. When unsure, it re-reads.
+
+**Cost report (`actions`).** The JSON header carries `cost` — `requests`, `charged`,
+`notModified`, `skipped`, `byClass` (requests and 304s per endpoint class), `rateLimit`
+(lowest `X-RateLimit-Remaining` seen per resource, with its limit and reset time) and the
+`floor` in force — and stderr gets exactly one line:
+
+```
+deskboard: cost requests=5 charged=1 notModified=4 skipped=10 byClass[requests/304]=... core.remaining=4890 reset=... floor=500
+```
+
+**Refuse-floor (`actions`).** When a response during the sweep reports the core or graphql
+quota below the floor, the sweep stops sending, prints no board, and exits **4**
+(rate-limited) with a message naming the reset time. A sweep that stopped part-way never
+prints: a board missing the PRs it could not read would look complete, and a could-not-read
+is never an empty board.
+
+```sh
+deskboard actions                       # floor 500 (10% of the hourly App quota)
+deskboard actions --rate-floor 1000     # flag wins over the env var
+DESKBOARD_RATE_FLOOR=200 deskboard actions
+deskboard actions --rate-floor 0        # disable the floor
+```
+
+A malformed floor (flag or env) refuses with exit 5 before any read.
 
 ## deskboard zero-CI disambiguation (#1652)
 

@@ -735,7 +735,7 @@ const (
 // is selected so both reads render one run to the same RollupNode.ID / CheckRun.ID (via
 // checkRunID), which is the CI-check history's attempt key (ci-check-v1). It is a scalar on a
 // node already requested — no extra request, and no scope beyond `checks:read`.
-const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // ghListChangesQuery is the states-scoped, cursor-paginated changes read behind ListChanges. It
 // requests EXACTLY the ChangeRef fields — number, state, head oid, source branch (headRefName),
@@ -765,7 +765,7 @@ const ghReviewQueueReviewsSel = `reviews(first:100){pageInfo{hasNextPage} nodes{
 // rollup contexts and every change's reviews — so the head a change is classified at and the
 // reviews reduced against it come from one consistent read. Its point cost is the open-changes
 // read's plus one nested connection per change (see the stream's query-cost record).
-const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const ghReviewQueueQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName reviews(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename ...on User{databaseId} ...on Bot{databaseId}} state commit{oid} body submittedAt}} labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // forgeQueueReviewsCap is the per-change review bound of ghReviewQueueReviewsSel's first:.
 const forgeQueueReviewsCap = 100
@@ -782,6 +782,7 @@ type ghOpenChangeNode struct {
 	IsDraft      bool   `json:"isDraft"`
 	CreatedAt    string `json:"createdAt"`
 	LastEditedAt string `json:"lastEditedAt"`
+	UpdatedAt    string `json:"updatedAt"`
 	Author       *struct {
 		Login    string `json:"login"`
 		Typename string `json:"__typename"`
@@ -877,8 +878,9 @@ func (g *GitHubForge) openChangesRead(repo ForgeRepo, query, what string) ([]ghO
 func ghOpenChange(n ghOpenChangeNode) OpenChange {
 	oc := OpenChange{
 		Number: n.Number, Title: n.Title, Body: n.Body, State: n.State, Draft: n.IsDraft,
-		CreatedAt: n.CreatedAt, LastEditedAt: n.LastEditedAt, MergeStateStatus: n.MergeStateStatus,
-		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, BaseRef: n.BaseRefName,
+		CreatedAt: n.CreatedAt, LastEditedAt: n.LastEditedAt, UpdatedAt: n.UpdatedAt,
+		MergeStateStatus: n.MergeStateStatus,
+		HeadSHA:          n.HeadRefOid, HeadRef: n.HeadRefName, BaseRef: n.BaseRefName,
 	}
 	if n.Author != nil {
 		// A GraphQL Bot actor carries the BARE slug as login; re-suffix it to

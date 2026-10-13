@@ -90,7 +90,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: fdf556f 2026-10-13T19:26:46Z_
+_last regen: c437352 2026-10-13T16:41:03-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -111,7 +111,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: fdf556f 2026-10-13T19:26:46Z_
+_last regen: c437352 2026-10-13T16:41:03-05:00_
 
 **Progress:** 16/72 brief items done.
 
@@ -184,7 +184,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| graph-execution | 02 [exec:strong] | implemented | 12500 | 21 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
+| graph-execution | 02 [exec:strong] | implemented | 14000 | 24 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 8500 | 13 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | worker | fix, cite medici-finance/assay#1606 | — | — |
 | windows-port | 00 | implemented | 5000 | 8 | — | worker | fix, cite #2297 | — | — |
@@ -587,29 +587,29 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — implemented (wave 1)
-- 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
-- 05 Offline two-pattern experiment on frozen fixtures — todo (wave 5)
-- 06 Run records and the replay/learning loop — todo (wave 6)
+- 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 4)
+- 05 Offline two-pattern experiment on frozen fixtures — todo (wave 8)
+- 06 Run records and the replay/learning loop — todo (wave 9)
 - 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — implemented (wave 1)
 - 08 Signal-triggered pattern — incident and regression — todo (wave 1)
 - 09 Versioned workflow instances and shared identity — todo (wave 1)
 - 11 Optional pinned Laya provider with explicit CPU and GPU profiles — todo (wave 1)
 - 12 Reproducible decision evaluation and calibration manifests — todo (wave 2)
 - 13 Deterministic admission over facts and bounded probabilistic advice — implemented (wave 1)
-- 14 Bind admission and graph eligibility at the dispatch boundary — todo (wave 3)
-- 15 Control profiles and complete scoped evidence exports — todo (wave 7)
-- 16 Cell ownership, cumulative budgets and restoration fencing — todo (wave 2)
-- 17 Graph-linked release and outcome records without new authority — todo (wave 7)
-- 18 Offline graph, advice and assurance integration proof — todo (wave 9)
-- 19 Durable instance store and production coverage binding — todo (wave 2)
+- 14 Bind admission and graph eligibility at the dispatch boundary — todo (wave 6)
+- 15 Control profiles and complete scoped evidence exports — todo (wave 10)
+- 16 Cell ownership, cumulative budgets and restoration fencing — todo (wave 5)
+- 17 Graph-linked release and outcome records without new authority — todo (wave 10)
+- 18 Offline graph, advice and assurance integration proof — todo (wave 12)
+- 19 Durable instance store and production coverage binding — todo (wave 6)
 - 20 Shared loop-admin runner protocol and offline conformance kit — implemented (wave 0)
-- 21 Deterministic task controller with durable dispatch and waits — todo (wave 4)
-- 22 First pinned local harness adapter and qualification fixtures — todo (wave 2)
-- 23 Immutable candidate workspaces and independent check inputs — todo (wave 3)
-- 24 Versioned author implement review pattern with bounded repair — todo (wave 7)
-- 25 Exact-candidate publication and independent review evidence bridge — todo (wave 8)
-- 26 Shared loop-admin launch supervision for desks and workflows — todo (wave 1)
-- 27 Standing desk clients for the shared loop-admin — todo (wave 3)
+- 21 Deterministic task controller with durable dispatch and waits — todo (wave 7)
+- 22 First pinned local harness adapter and qualification fixtures — todo (wave 7)
+- 23 Immutable candidate workspaces and independent check inputs — todo (wave 7)
+- 24 Versioned author implement review pattern with bounded repair — todo (wave 10)
+- 25 Exact-candidate publication and independent review evidence bridge — todo (wave 11)
+- 26 Shared loop-admin launch supervision for desks and workflows — todo (wave 6)
+- 27 Standing desk clients for the shared loop-admin — todo (wave 8)
 - 28 Verifier domain contracts with qualified identities and candidate-bound acceptance — todo (wave 2)
 - 29 Old and new regression floor for the verifier domain contracts — todo (wave 3)
 
@@ -634,9 +634,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 - 07 Release by merge — the human merge is the cut and the authorizer — blocked (wave 2)
 - 08 Versioned source obligations and project applicability — todo (wave 0)
-- 09 Prepare project assurance reviews from canonical evidence — todo (wave 8)
-- 10 Reassess affected project reviews after source changes — todo (wave 9)
-- 11 Qualify project assurance preparation on an offline corpus — todo (wave 10)
+- 09 Prepare project assurance reviews from canonical evidence — todo (wave 11)
+- 10 Reassess affected project reviews after source changes — todo (wave 12)
+- 11 Qualify project assurance preparation on an offline corpus — todo (wave 13)
 
 ### measured-status (6 open)
 
