@@ -65,6 +65,7 @@ boot one role window
 ```
   --cadence                  string   role cadence: a duration, or off
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
+  --end-stale-lock-holder             end a proven-stale holder of this role's lease (SIGTERM, bounded wait, re-check)
   --harness                  string   harness for this run (claude|codex|cursor)
   --kind                     string   cell kind for this run (k8s|house|container|scrubbed)
   --model                    string   model for THIS run only, passed through verbatim to the harness
