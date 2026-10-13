@@ -88,6 +88,15 @@ executing it — the mention is not the check, and a word like `gh` exits 0; the
 NOTICE covers open briefs, and a closed brief's rows collapse into one summary line;
 the check:ci verdict re-execution lane refuses such a row unrun, and `--check` does not
 audit an old pass witness on it as pass).
+An inline heading in a procedure is not a command. For example, a row asking a
+reviewer to inspect `## Coverage` requires the review evidence; executing that span
+as a shell comment does not perform the check. Issue #2684 records a current gap:
+this multiword mention can escape the prose classifier and produce an empty-output
+pass witness. Treat that result as unperformed. Mark an actual executable check
+with `cmd:` where one exists; otherwise retain the manual procedure and its evidence
+obligation. Do not replace a procedure with a command that merely exits zero.
+`--dry-run` still executes rows, so use an isolated fixture to investigate this case.
+
 A marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`) is NOTICEd as
 `cmd-marker-vacuous`. A marker counts only where the rendered table shows it as code:
 spans are found as CommonMark renders them (escaped backticks are literal), and a cell
