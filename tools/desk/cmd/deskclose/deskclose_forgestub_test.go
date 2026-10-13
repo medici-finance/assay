@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -26,6 +28,7 @@ type stubIssueWire struct {
 	PullRequest *struct {
 		MergedAt *string `json:"merged_at"`
 	} `json:"pull_request"`
+	CreatedAt string `json:"created_at"`
 }
 
 type stubPullWire struct {
@@ -47,6 +50,8 @@ type stubCommentWire struct {
 	IssueURL  string `json:"issue_url"`
 	Body      string `json:"body"`
 	Minimized bool   `json:"minimized"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 	User      struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
@@ -108,7 +113,7 @@ func (s *stubRemote) stubIssueAt(key string) (*deskkit.Issue, error) {
 	}
 	return &deskkit.Issue{
 		Number: w.Number, Title: w.Title, State: w.State, Body: w.Body,
-		Labels: labels, IsPullRequest: w.PullRequest != nil,
+		Labels: labels, IsPullRequest: w.PullRequest != nil, CreatedAt: w.CreatedAt,
 	}, nil
 }
 
@@ -185,7 +190,28 @@ func (s *stubRemote) ListCommentsTyped(fr deskkit.ForgeRepo, n int, kind deskkit
 		}
 	}
 	s.typedThreads = append(s.typedThreads, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
+	s.threadReads[key]++
+	if from := s.threadFailFrom[key]; from > 0 && s.threadReads[key] >= from {
+		return nil, errors.New("HTTP 502: bad gateway")
+	}
 	return s.listCommentsAt(fr, n, key)
+}
+
+// IssueTrustEvents serves the issue body's last-edit time — the only part of the trust payload
+// deskclose reads (the decision record's edit check). Events are not modelled.
+func (s *stubRemote) IssueTrustEvents(fr deskkit.ForgeRepo, n int) (*deskkit.TrustPayload, error) {
+	if s.bodyEditUnknown {
+		return &deskkit.TrustPayload{Complete: true}, nil
+	}
+	tp := &deskkit.TrustPayload{BodyHistoryKnown: true, Complete: true}
+	if at := s.bodyEdited[fmt.Sprintf("%s#%d", fr.Slug(), n)]; at != "" {
+		t, err := time.Parse(time.RFC3339, at)
+		if err != nil {
+			return nil, err
+		}
+		tp.BodyEdited = t
+	}
+	return tp, nil
 }
 
 func (s *stubRemote) GetPullRequest(fr deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
@@ -304,9 +330,20 @@ func (s *stubRemote) listCommentsAt(fr deskkit.ForgeRepo, n int, key string) ([]
 			Body:       w.Body,
 			URL:        w.HTMLURL,
 			Minimized:  w.Minimized,
+			CreatedAt:  w.CreatedAt,
+			UpdatedAt:  w.UpdatedAt,
 			Author:     deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
 		})
 	}
+	// A real thread is chronological; the fixture map is not. Order by creation time, then id,
+	// so a reader that walks the thread (the decision record's anchor and relay search) sees a
+	// deterministic, forge-shaped order.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt < out[j].CreatedAt
+		}
+		return out[i].DatabaseID < out[j].DatabaseID
+	})
 	// Proposal-thread comments (the two-role superseded reader walks these).
 	for _, j := range s.threads[key] {
 		var w stubCommentWire
@@ -314,8 +351,9 @@ func (s *stubRemote) listCommentsAt(fr deskkit.ForgeRepo, n int, key string) ([]
 			return nil, err
 		}
 		out = append(out, deskkit.Comment{
-			Body:   w.Body,
-			Author: deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
+			Body:      w.Body,
+			CreatedAt: w.CreatedAt,
+			Author:    deskkit.Account{Login: stubRenderLogin(w.User.Login, w.User.Type), ID: w.User.ID},
 		})
 	}
 	return out, nil
@@ -349,6 +387,10 @@ func (s *stubRemote) PostComment(fr deskkit.ForgeRepo, n int, body string) (*des
 func (s *stubRemote) PostCommentTyped(fr deskkit.ForgeRepo, n int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error) {
 	if kind != deskkit.TargetIssue && kind != deskkit.TargetChange {
 		return nil, deskkit.Refused(fmt.Sprintf("refused: unknown target kind %q", string(kind)))
+	}
+	s.postAttempts++
+	if s.failPost[fmt.Sprintf("%s#%d", fr.Slug(), n)] {
+		return nil, fmt.Errorf("stub: forge returned 502 posting a comment on %s#%d", fr.Slug(), n)
 	}
 	s.typedComments = append(s.typedComments, fmt.Sprintf("%s#%d:%s", fr.Slug(), n, string(kind)))
 	return s.PostComment(fr, n, body)
@@ -444,4 +486,37 @@ func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.Lab
 		added = append(added, l.Name)
 	}
 	return &deskkit.LabelOutcome{Added: added}, nil
+}
+
+// SearchIssues serves the repair-issue dedupe (postcondition.go) from s.openIssues the way a
+// backend that forwards the query VERBATIM as search text does (GitLab's `search=`): an issue
+// matches only when every whitespace-separated query word appears literally in its title. A
+// qualifier or a quoted phrase is then literal text no title contains, so a query carrying
+// search syntax finds nothing here — the shape that would refile on every re-run.
+func (s *stubRemote) SearchIssues(fr deskkit.ForgeRepo, in deskkit.SearchIssuesInput) ([]deskkit.IssueSearchResult, error) {
+	s.calls = append(s.calls, []string{"search", "issues", "-R", fr.Slug(), in.Query})
+	if s.failSearch {
+		return nil, errors.New("HTTP 503: search unavailable")
+	}
+	var out []deskkit.IssueSearchResult
+	for _, iss := range s.openIssues {
+		title, all := strings.ToLower(iss.Title), true
+		for _, w := range strings.Fields(in.Query) {
+			all = all && strings.Contains(title, w)
+		}
+		if all {
+			out = append(out, iss)
+		}
+	}
+	return out, nil
+}
+
+// FileIssue records the repair issue a close that did not take files (postcondition.go).
+func (s *stubRemote) FileIssue(fr deskkit.ForgeRepo, in deskkit.IssueInput) (*deskkit.IssueRef, error) {
+	if s.failFile {
+		return nil, errors.New("HTTP 403: resource not accessible by integration")
+	}
+	s.calls = append(s.calls, []string{"issue", "create", "-R", fr.Slug(), "--title", in.Title})
+	s.filed = append(s.filed, in.Title)
+	return &deskkit.IssueRef{Number: 900 + len(s.filed)}, nil
 }

@@ -321,7 +321,19 @@ func renderPassReport(w io.Writer, loop *ScanLoop) {
 	if parked := loop.Parked(); len(parked) > 0 {
 		fmt.Fprintf(w, "\nEMITTED — awaiting a routing decision from the model tier (%d):\n", len(parked))
 		for _, id := range parked {
+			kind, opened := loop.ParkedEvent(id)
 			fmt.Fprintf(w, "  %-28s route to exactly one of: %s\n", id, strings.Join(exitNames(), " · "))
+			// The land command for THIS event. --opened is the event half of the record key: an
+			// issue that already left once (say as a new issue) and is now parked as an update is
+			// a second event, and it is recorded against this time, not the first one's.
+			hint := "scanloop land --item " + id
+			if !opened.IsZero() {
+				hint += " --opened " + opened.UTC().Format(time.RFC3339)
+			}
+			if kind != "" {
+				hint += " --kind " + kind
+			}
+			fmt.Fprintf(w, "    record it: %s --exit <exit> --artifact <ref> --tier any|strong\n", hint)
 		}
 		fmt.Fprintf(w, "  these are NOT recorded as exited — the item leaves the front door when its exit is recorded, not when it is emitted.\n")
 	}

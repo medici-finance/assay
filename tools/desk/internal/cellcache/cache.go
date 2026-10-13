@@ -120,7 +120,7 @@ func open(p Policy, create bool) (*manager, error) {
 	}
 	// Bounded wait for short measurement/cleanup transactions. Busy is unknown,
 	// never permission to proceed without custody.
-	until := time.Now().Add(5 * time.Second)
+	until := time.Now().Add(time.Minute)
 	for {
 		err = deskkit.TryLockExclusive(lock)
 		if err == nil {
@@ -217,6 +217,10 @@ func pressure(v Measurement, p Policy) bool {
 	return v.LogicalBytes != nil && v.AvailableBytes != nil && (*v.LogicalBytes > p.Budget || *v.AvailableBytes < p.Floor)
 }
 func (m *manager) check(dry bool) Report {
+	return m.checkMode(dry, false)
+}
+
+func (m *manager) checkMode(dry, wipe bool) Report {
 	r := Report{Schema: schema, Policy: m.p, Filesystem: filesystemName(m.dev), DryRun: dry, Outcome: "checked-clean"}
 	r.Before, r.Failures = m.measure()
 	var err error
@@ -225,7 +229,7 @@ func (m *manager) check(dry bool) Report {
 		r.Failures = append(r.Failures, "active custody: "+err.Error())
 	}
 	removed := false
-	if len(r.Failures) == 0 && pressure(r.Before, m.p) && len(r.SkippedActive) == 0 && !dry {
+	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) == 0 && !dry {
 		// Whole inactive roots only. Consumers are enrolled under this same lock;
 		// no Go clean subprocess can race a build or module reader.
 		for _, name := range []string{"build", "mod"} {
@@ -245,11 +249,22 @@ func (m *manager) check(dry bool) Report {
 	if len(r.Failures) > 0 {
 		r.Outcome = "could-not-check"
 		r.Reason = "partial cache measurement or cleanup; inspect failures"
-	} else if pressure(r.After, m.p) {
+	} else if (wipe && len(r.SkippedActive) > 0) || pressure(r.After, m.p) {
 		r.Outcome = "storage-deferred"
 		r.Reason = fmt.Sprintf("cache uses %d logical bytes (budget %d); filesystem has %d available bytes (floor %d); active consumers %d", *r.After.LogicalBytes, m.p.Budget, *r.After.AvailableBytes, m.p.Floor, len(r.SkippedActive))
 	}
 	return r
+}
+
+// Wipe is explicit disposal, independent of the configured pressure threshold.
+// The same custody lock excludes enrollment and protects live consumers.
+func Wipe(p Policy, dry bool) (Report, error) {
+	m, err := open(p, false)
+	if err != nil {
+		return Report{Schema: schema, Policy: p, Outcome: "could-not-check", Reason: err.Error(), DryRun: dry}, err
+	}
+	defer m.close()
+	return finish(m, m.checkMode(dry, true))
 }
 
 // Go module directories are read-only. Open each verified directory and chmod
@@ -337,6 +352,85 @@ func Check(p Policy, dry bool) (Report, error) {
 		return r, &Deferred{r}
 	}
 	defer m.close()
+	return finish(m, m.check(dry))
+}
+
+// recordedPolicy re-reads the root's recorded policy through the verified
+// root, under the root's lock, bound to the marker's trust domain and to this
+// root's path. It is the under-lock half of CheckRecorded.
+func (m *manager) recordedPolicy() (*Policy, error) {
+	b, err := readMetaBounded(m.r, m.dev, "report.json", 64<<10)
+	if err != nil {
+		return nil, fmt.Errorf("no recorded policy readable under the root's lock: %v", err)
+	}
+	var rep Report
+	if err := json.Unmarshal(b, &rep); err != nil || rep.Schema != schema {
+		return nil, fmt.Errorf("cache report is not parseable or not in this schema")
+	}
+	p := rep.Policy
+	if p.Domain != m.p.Domain {
+		return nil, fmt.Errorf("recorded policy's trust domain does not match the root's ownership marker")
+	}
+	root, rerr := filepath.EvalSymlinks(m.p.Root)
+	recorded, perr := filepath.EvalSymlinks(p.Root)
+	if rerr != nil || perr != nil || filepath.Clean(root) != filepath.Clean(recorded) {
+		return nil, fmt.Errorf("recorded policy names a different cache root")
+	}
+	if err := p.Validate(); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// betweenLockAndReread is the test seam CheckRecorded calls between taking
+// the root's lock and re-reading the recorded policy. See
+// TestCheckRecordedInterleave.
+var betweenLockAndReread = func() {}
+
+// CheckRecorded is Check for a caller that DISCOVERED the root (a sweep
+// walking a cells root) rather than resolved it from a cell's environment.
+// The policy enforced is the one the root itself last recorded, re-read under
+// the root's own lock in the same transaction as the check.
+//
+// Why the re-read is not optional: a caller that reads report.json first and
+// checks second enforces a snapshot, and record() then writes the ENFORCED
+// policy back — so a launch that recorded a new budget between the two reads
+// is silently overwritten with the old one, and every later pass restores it
+// again. Reading and enforcing in one transaction keeps the convergence the
+// report provides: the newest recorded policy is the one applied, and the one
+// written back.
+//
+// The root is never created: a sweep initializes nothing. A dry run still
+// writes no report.
+func CheckRecorded(root string, dry bool) (Report, error) {
+	advisory, err := LoadMarkedPolicy(root)
+	if err == nil && advisory == nil {
+		err = fmt.Errorf("no marked cache root at %s", root)
+	}
+	if err != nil {
+		now := time.Now().UTC()
+		r := Report{Schema: schema, DryRun: dry, Outcome: "could-not-check", Reason: err.Error(), Failures: []string{err.Error()}, Before: Measurement{At: now}, After: Measurement{At: now}}
+		return r, &Deferred{r}
+	}
+	m, err := open(*advisory, false)
+	if err != nil {
+		now := time.Now().UTC()
+		r := Report{Schema: schema, Policy: *advisory, DryRun: dry, Outcome: "could-not-check", Reason: err.Error(), Failures: []string{err.Error()}, Before: Measurement{At: now}, After: Measurement{At: now}}
+		return r, &Deferred{r}
+	}
+	defer m.close()
+	// betweenLockAndReread is a test seam between the lock acquisition and the
+	// under-lock policy re-read — the only window in which a launch can record
+	// a newer policy that a stale enforcement would then write back over.
+	// Production code never sets it.
+	betweenLockAndReread()
+	fresh, err := m.recordedPolicy()
+	if err != nil {
+		now := time.Now().UTC()
+		r := Report{Schema: schema, Policy: *advisory, Filesystem: filesystemName(m.dev), DryRun: dry, Outcome: "could-not-check", Reason: err.Error(), Failures: []string{err.Error()}, Before: Measurement{At: now}, After: Measurement{At: now}}
+		return r, &Deferred{r}
+	}
+	m.p = *fresh
 	return finish(m, m.check(dry))
 }
 

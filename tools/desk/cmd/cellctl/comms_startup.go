@@ -23,14 +23,16 @@ func (c *Cell) commsLaunchDir() string { return filepath.Join(c.Dir, "run", "com
 // A receipt reserves a single surface while its shell starts. An incomplete
 // receipt after partial creation is uncertainty, never permission to duplicate.
 type commsSurface struct {
-	Cockpit   string `json:"cockpit"`
-	Handle    string `json:"handle"`
-	Label     string `json:"label"`
-	RuntimeID string `json:"runtime_id,omitempty"`
+	Cockpit     string `json:"cockpit"`
+	Handle      string `json:"handle"`
+	Label       string `json:"label"`
+	RuntimeID   string `json:"runtime_id,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
 }
 
 func (c *Cell) commsCmdIn(sh paneShell, self string) string {
-	return sh.invoke(sh.quote(self)) + " --cells-root " + sh.quote(filepath.Dir(c.Dir)) + " comms " + sh.quote(c.Name) + " run"
+	root, name := c.reenter()
+	return sh.invoke(sh.quote(self)) + " --cells-root " + sh.quote(root) + " comms " + sh.quote(name) + " run"
 }
 
 func (c *Cell) commsPreflight() (bool, error) {
@@ -267,11 +269,12 @@ func (c *Cell) openCommsSurface(surface *commsSurface) error {
 		if !helpHas("create", "herdr", "tab") || !helpHas("run", "herdr", "pane") {
 			return fmt.Errorf("herdr cannot create and run a comms tab")
 		}
-		ws := herdrWindowID()
-		defaultTab := ""
-		if ws == "" {
-			ws, defaultTab = c.herdrStartWindow(label)
+		w, err := c.ensureHerdrWorkspace()
+		if err != nil {
+			return err
 		}
+		ws, defaultTab := w.ID, w.DefaultTab
+		surface.WorkspaceID = ws
 		out, err := exec.Command("herdr", "tab", "create", "--workspace", ws, "--label", label).Output()
 		if err != nil {
 			return err
@@ -294,7 +297,9 @@ func (c *Cell) openCommsSurface(surface *commsSurface) error {
 			return err
 		}
 		if defaultTab != "" {
-			_ = exec.Command("herdr", "tab", "close", defaultTab).Run()
+			if err := c.dropHerdrDefault(w); err != nil {
+				return err
+			}
 		}
 		return nil
 	case "orca":
@@ -502,7 +507,25 @@ func (c *Cell) closeCommsSurface(s *commsSurface) error {
 		}
 		return nil // an enumerated absence, not a failed inspection
 	case "herdr":
-		out, err := exec.Command("herdr", "tab", "list").Output()
+		args := []string{"tab", "list"}
+		if s.WorkspaceID != "" {
+			w, err := c.readHerdrWorkspace()
+			if err != nil {
+				return err
+			}
+			if w == nil || w.ID != s.WorkspaceID {
+				return fmt.Errorf("comms Herdr workspace receipt missing or changed")
+			}
+			live, err := verifyHerdrWorkspace(w)
+			if err != nil {
+				return err
+			}
+			if !live {
+				return nil
+			}
+			args = append(args, "--workspace", w.ID)
+		}
+		out, err := exec.Command("herdr", args...).Output()
 		if err != nil {
 			return fmt.Errorf("cannot inspect comms herdr tab: %w", err)
 		}

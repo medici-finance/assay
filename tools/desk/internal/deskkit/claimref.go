@@ -155,6 +155,36 @@ func ValidateReviewClaimKey(key, repo string, pr int) error {
 		key, repo, pr, strings.Join(families, ", ")))
 }
 
+// ReviewClaimSecuritySegment is the claim-key segment that names the security lane.
+const ReviewClaimSecuritySegment = "security"
+
+// ReviewClaimKeyIsSecurity reports whether a review-dispatch claim key names the security
+// lane: one of the `--`-separated segments after the last `--pr-<N>` is `security`, in any
+// letter case. Any other key names the correctness lane.
+//
+// This is a NAMING convention and nothing more. The key is chosen by whoever dispatches the
+// review, and no record behind the key states a lane, so a security review dispatched under a
+// key without that segment reads here as the correctness lane. Both readers of the lane —
+// the review dispatch packet's layout and `deskpost finish`'s lane check — call this one
+// function, so they cannot disagree about a key.
+func ReviewClaimKeyIsSecurity(key string, pr int) bool {
+	marker := fmt.Sprintf("--pr-%d", pr)
+	i := strings.LastIndex(key, marker)
+	if i < 0 {
+		return false
+	}
+	suffix := key[i+len(marker):]
+	if suffix != "" && !strings.HasPrefix(suffix, "--") {
+		return false // "--pr-770" is another change's key, not a suffix of this one's
+	}
+	for _, seg := range strings.Split(suffix, "--") {
+		if strings.EqualFold(seg, ReviewClaimSecuritySegment) {
+			return true
+		}
+	}
+	return false
+}
+
 // ReadReviewClaims is the shared reader for every review-authority adapter. One
 // observed family member proves Held. Released requires every candidate listing to
 // succeed and be empty; an unreadable candidate is Unknown, never positive release.

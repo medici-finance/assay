@@ -103,3 +103,15 @@ func codexBashPath() (string, error) {
 	}
 	return filepath.Abs(path)
 }
+
+// Native Goal tools own persisted state and continuation. A launch prompt is a
+// request, not a receipt: require tool readback before claiming a standing desk.
+// Keep this wrapper out of explicit cadence, smoke and non-desk invocations.
+func codexStandingPrompt(role, prompt string) string {
+	objective := fmt.Sprintf("Run assay:%s as a standing desk: keep handling its authorized queue across turns until the user stops, pauses, or changes this assignment.", role)
+	return fmt.Sprintf(`Before invoking the desk skill, establish its native Codex Goal. The user explicitly requests this standing objective: %q
+Call get_goal first. Only if no Goal exists, call create_goal with that exact objective and omit token_budget, then call get_goal again. Verify the returned objective and active status; report the actual readback, not a promise to continue. If a Goal already exists, preserve its objective, status, budget, and usage: do not replace, reset, resume, or reactivate it. Continue this bootstrap only if the existing Goal is active and has the exact requested objective; otherwise report the existing state and wait for user direction before starting the desk.
+If native Goal tools are unavailable, creation fails, or readback cannot confirm the active objective, report could-not-check: standing Goal not established, and wait for user direction. Do not substitute a prose promise or a headless loop.
+Once verified, invoke the skill below. A completed batch, ordinary final response, or empty queue does not complete this standing objective. Continue authorized desk work across native Goal turns, using the skill's idle and stop rules. Human steering, pause/clear, stop flags, approvals, and protected-action boundaries remain authoritative; do not resume or recreate a Goal after the user pauses or clears it. Native continuation is not a durable timer or a guarantee of permanent service.
+%s`, objective, prompt)
+}

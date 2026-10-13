@@ -158,7 +158,15 @@ func storageAt(gitDir string, objects ObjectCache) (storage.Storer, alternates) 
 	// readAlternates for the resolution rules and the boundary this keeps.
 	alt := readAlternates(objectsDir)
 	st := filesystem.NewStorageWithOptions(repoFS, objects, filesystem.Options{AlternatesFS: alt.fs})
-	return extensionTolerantStorer{st}, alt
+	var store storage.Storer = st
+	if alt.fs != nil {
+		store = alternateStorer{Storer: st, reader: &alternateReader{
+			objects: &st.ObjectStorage,
+			dir:     dotgit.NewWithOptions(repoFS, dotgit.Options{AlternatesFS: alt.fs}),
+			cache:   objects,
+		}}
+	}
+	return extensionTolerantStorer{store}, alt
 }
 
 // commonDirOf reads gitDir's own "commondir" pointer file (present only for a linked
@@ -579,6 +587,8 @@ type PushOpts struct {
 	RefSpecs []string
 	Auth     transport.AuthMethod
 	Force    bool
+	// RequireRemoteRefs pins advertised refs without allowing a forced update.
+	RequireRemoteRefs []string
 }
 
 // Push pushes RefSpecs from the repo to URL, entirely in-process. Force is off unless
@@ -590,14 +600,20 @@ func (r *Repo) Push(opts PushOpts) error {
 	if err != nil {
 		return err
 	}
+	requires, err := buildRefSpecs(opts.RequireRemoteRefs, false)
+	if err != nil {
+		return err
+	}
+
 	remote := git.NewRemote(r.repo.Storer, &config.RemoteConfig{
 		Name: transientRemoteName,
 		URLs: []string{opts.URL},
 	})
 	err = remote.Push(&git.PushOptions{
-		RefSpecs: specs,
-		Auth:     opts.Auth,
-		Force:    opts.Force,
+		RefSpecs:          specs,
+		Auth:              opts.Auth,
+		Force:             opts.Force,
+		RequireRemoteRefs: requires,
 	})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return fmt.Errorf("gitcore: push: %w", err)

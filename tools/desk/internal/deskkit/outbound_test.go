@@ -48,6 +48,7 @@ func obRoster(t *testing.T) {
 	r[EnvHumanLoginMap] = "alex:ada"
 	withRoster(t, r)
 	t.Setenv(EnvWithheldIdentifiers, obWithheld)
+	t.Setenv(EnvOutboundCalloutRequired, "") // an ambient requirement would refuse the compiled table's passes
 }
 
 func obRepo(slug string) ForgeRepo {

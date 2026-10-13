@@ -231,6 +231,19 @@ var dispatchRequirements = []dispatchRequirement{
 			"a verifier to read a CI run's refusal line instead of flipping a stuck row by " +
 			"hand. Surfaced by the kit reconciliation.",
 	},
+	{
+		// Kit § "Packet first — a reading aid, never evidence" — prose, one clause.
+		ID:      "packet-first-reading-aid-never-evidence",
+		Anchors: []string{"packet: <absolute path>", "reading aid only"},
+		How:     notYetCarried,
+		Probes:  []string{"Packet: "},
+		Issue:   2439,
+		Note: "The clause is conditional: it binds only when the assignment carries a packet " +
+			"line, and is inert without one. This template writes no packet and emits no such " +
+			"line, so nothing here switches it on. The probe is the line itself: the day this " +
+			"loop emits one, the carriage test goes red until the clause comes with it — the " +
+			"never-evidence half above all, since a result comes only from running the row.",
+	},
 }
 
 // renderDispatchPrompt builds the per-item verifier prompt from the fixed template + the

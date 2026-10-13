@@ -228,8 +228,22 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 // stdout/stderr.
 func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Helper()
+	// General writer tests isolate this independent gate. The outcome-binding
+	// suite restores the captured production implementation and drives run().
+	oldObservationBinding := outcomeObservationBindingFn
+	outcomeObservationBindingFn = func(string, deskkit.Forge, deskkit.ForgeRepo, string, deskkit.VerifierReceipt, deskkit.WakeReceipt) error {
+		return nil
+	}
+	t.Cleanup(func() { outcomeObservationBindingFn = oldObservationBinding })
+	oldEvidenceBinding := outcomeEvidenceBindingFn
+	outcomeEvidenceBindingFn = func(string, deskkit.Forge, deskkit.ForgeRepo, string, deskkit.VerifierReceipt, string) error {
+		return nil
+	}
+	t.Cleanup(func() { outcomeEvidenceBindingFn = oldEvidenceBinding })
 	oldAdmission := verifierEvidenceAdmissionFn
-	verifierEvidenceAdmissionFn = func(string, string, string) (deskkit.VerifierReceipt, error) { return deskkit.VerifierReceipt{}, nil }
+	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		return deskkit.VerifierReceipt{}, nil
+	}
 	t.Cleanup(func() { verifierEvidenceAdmissionFn = oldAdmission })
 
 	home := t.TempDir()
@@ -256,7 +270,7 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	// verify-reset/03: the receipt derivation reads git history at the record's sha, which
 	// the plain-directory test roots do not have; outcomereceipt_test.go restores the real one.
 	oldReceipt := outcomeReceiptFn
-	outcomeReceiptFn = func(raw []byte, _ string, _ deskkit.Forge, _ deskkit.ForgeRepo, _ string) ([]byte, error) {
+	outcomeReceiptFn = func(raw []byte, _ string, _ deskkit.Forge, _ deskkit.ForgeRepo, _, _ string) ([]byte, error) {
 		return raw, nil
 	}
 	t.Cleanup(func() { outcomeReceiptFn = oldReceipt })
@@ -505,7 +519,9 @@ func TestSecretScanRefusedNoRemote(t *testing.T) {
 	}
 }
 
-// TestOversizeRefused: a local file over the byte cap is refused before any forge call.
+// TestOversizeRefused: a local file over the byte cap is refused before the landing reads the
+// branch. It runs after the mint and admission (admitLanding), which this suite stubs, so
+// "reached the forge" below means the landing's own forge, not admission's record read.
 func TestOversizeRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	big := strings.Repeat("x", maxBytes+1)
@@ -1228,7 +1244,8 @@ func TestAppendOnlyFlagBlocksNonJSONLShrink(t *testing.T) {
 // statusgen PROBLEM or lands outside docs/streams/) ---
 
 // TestTargetOutsideDocsStreamsRefused: a target path at the repo root (the "stray root
-// file" main-red shape the issue names) is refused before any network call.
+// file" main-red shape the issue names) is refused before the landing reads the branch —
+// after the mint and admission (admitLanding), which this suite stubs.
 func TestTargetOutsideDocsStreamsRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	target := "STRAY-ROOT-FILE.md"

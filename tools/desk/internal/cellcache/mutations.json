@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch -run 'TestCache|TestStorage' -count=1 -timeout=60s",
+  "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch -run 'TestCache|TestStorage|TestReap|TestLoadMarkedPolicy|TestDomainFor|TestCheckRecorded' -count=1 -timeout=60s",
   "control": {
     "name": "CONTROL — an invalid CELL_GO_CACHE mode is accepted as off",
     "file": "internal/cellcache/policy.go",
@@ -52,8 +52,14 @@
     {
       "name": "omit dispatch storage gate",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "if err := storageAdmission(o.dryRun); err != nil {",
-      "new": "if err := storageAdmission(o.dryRun); false && err != nil {"
+      "old": "if err := storageAdmission(o.dryRun, o.root); err != nil {",
+      "new": "if err := storageAdmission(o.dryRun, o.root); false && err != nil {"
+    },
+    {
+      "name": "omit destination-volume floor",
+      "file": "cmd/deskdispatch/storage.go",
+      "old": "if free < floor {",
+      "new": "if false && free < floor {"
     },
     {
       "name": "lose process custody",
@@ -90,6 +96,36 @@
       "file": "cmd/cellctl/launch.go",
       "old": "if err := c.cacheAdmission(); err != nil {",
       "new": "if err := c.cacheAdmission(); false && err != nil {"
+    },
+    {
+      "name": "reap a root under an active consumer lease (the at-act-time lease check is skipped)",
+      "file": "internal/cellcache/discovery.go",
+      "old": "\tif aerr == nil && len(active) > 0 {",
+      "new": "\tif aerr == nil && false {"
+    },
+    {
+      "name": "accept a recorded policy whose domain contradicts the ownership marker",
+      "file": "internal/cellcache/discovery.go",
+      "old": "\tif p.Domain != domain {",
+      "new": "\tif false && p.Domain != domain {"
+    },
+    {
+      "name": "the metadata open blocks on a FIFO swapped in after the checks",
+      "file": "internal/cellcache/discovery.go",
+      "old": "\tf, err := r.OpenFile(name, os.O_RDONLY|noBlock, 0)",
+      "new": "\tf, err := r.OpenFile(name, os.O_RDONLY, 0)"
+    },
+    {
+      "name": "the candidate's path boundary is checked after the content read instead of before it",
+      "file": "internal/cellcache/discovery.go",
+      "old": "\tif err := validatePath(root); err != nil {\n\t\treturn nil, err\n\t}",
+      "new": "\tif err := validatePath(root); false && err != nil {\n\t\treturn nil, err\n\t}"
+    },
+    {
+      "name": "the sweep enforces the advisory pre-lock policy and writes it back over a launch's newer one",
+      "file": "internal/cellcache/cache.go",
+      "old": "\tm.p = *fresh",
+      "new": "\t_ = fresh"
     }
   ]
 }
