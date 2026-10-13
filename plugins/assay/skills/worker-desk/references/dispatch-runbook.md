@@ -50,6 +50,17 @@ starves the queue.
 
 ## The tick sweep — the queries, and the three pre-resume guards
 
+Refresh and plan each absolute BOARD ROOT using the role-bound transport:
+
+```bash
+(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"
+```
+
+Select the directory before invoking `deskgit`; passing `-C` to the tool is refused.
+Keep the fetch and plan in one chain and record its exit status before processing
+output. A refused or unreadable root is could-not-check, never an empty plan.
+This refresh updates remote-tracking refs; it does not regenerate another root's board.
+
 Two shapes run every tick: the **board-wide instruments**, once for the whole scan set, and the
 **per-slug PR reads**. `SKILL.md` §Sources of work says which source each answers.
 
