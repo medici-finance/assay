@@ -182,7 +182,11 @@ func runFakeContainedReader(mode string) {
 						},
 					})
 				}
-				report = fmt.Sprintf("fs-outcome=%s perm-outcome=%s\n%s\n", fsOut, permOut, os.Getenv("COMMSGW_FAKE_REPLY"))
+				// The outcomes ride on the answer's own line (the advisor
+				// journals the line naming its answer as the justification),
+				// behind a runner-CLI warning line, as a real runner can print.
+				report = fmt.Sprintf("Warning: Code Mode is unavailable; tool calls will fail closed.\nfs-outcome=%s perm-outcome=%s %s\n",
+					fsOut, permOut, os.Getenv("COMMSGW_FAKE_REPLY"))
 			default:
 				report = os.Getenv("COMMSGW_FAKE_REPLY") + "\n"
 			}

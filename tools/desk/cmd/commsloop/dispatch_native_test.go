@@ -207,14 +207,18 @@ func runFakeExecutorAgent(mode string) {
 				// The bypass battery's containment drill: a contained READER
 				// (the prose router's decider) tries to escape — an fs read and
 				// a tool permission — then answers with COMMSLOOP_FAKE_REPLY.
-				// Its own view of each escape's outcome is echoed first so the
-				// test can assert the client refused both.
+				// Its own view of each escape's outcome is echoed on the
+				// answer's own line (the advisor journals the line naming its
+				// answer as the justification) so the test can assert the
+				// client refused both — behind a runner-CLI warning line, as
+				// a real runner can print.
 				fsOut, permOut := "not-attempted", "not-attempted"
 				if modeDefault {
 					fsOut = requestFSRead("/etc/hostname")
 					permOut = requestPermission("execute", "run shell")
 				}
-				report = "fs-outcome=" + fsOut + " perm-outcome=" + permOut + "\n" + os.Getenv("COMMSLOOP_FAKE_REPLY") + "\n"
+				report = "Warning: Code Mode is unavailable; tool calls will fail closed.\n" +
+					"fs-outcome=" + fsOut + " perm-outcome=" + permOut + " " + os.Getenv("COMMSLOOP_FAKE_REPLY") + "\n"
 			default:
 				report = "VERDICT: BLOCKED\n"
 			}
