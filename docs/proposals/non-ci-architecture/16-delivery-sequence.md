@@ -121,3 +121,13 @@ The architecture reduces duplicate semantic and runtime owners by design, but ad
 database operation, migration, discovery and qualification work. Net savings remain
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
+
+## CI and directory migration lane
+
+The [CI extension](20-ci-tooling.md) adds a separately deliverable lane: directory/staging
+contract → public shared libraries → in-place consumer cutover → qualified command moves
+and action adoption → source retirement. Build the first reusable actions before or beside
+the first workflow cutover. The [ci-tooling stream](../../streams/ci-tooling/README.md)
+owns this decomposition; it does not wait for the runtime controller. R8 retains the
+desk/operator/service relocation work routed by the layout inventory and must qualify
+module visibility, authority and lifecycle before retiring their old paths.

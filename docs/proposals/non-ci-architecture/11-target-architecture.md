@@ -170,3 +170,11 @@ This design makes a cell service central to **online operation**, while keeping 
 Preserve separate role authority, operator-only credential custody, pure library reuse and retirement after consumers move. A shared online coordination/API service and any unified operator CLI need precise amendments to existing command/process contracts; permission for command breaks does not approve pooling credentials. The [public library-first contract](https://github.com/medici-finance/assay/blob/f9327a5954d57e786464e244a8e9c06f695d980d/docs/library-first.md) keeps online statusgen reads behind `deskread`; replacing that particular command seam needs an explicit contract amendment before activation.
 
 Do not retain every old constraint by inertia, or erase it by implication. The [migration proposal](13-migration-and-decisions.md) names the decisions and affected plans to reconcile. The [future-state model](12-future-state-model.md) makes subsequent amendments discoverable and revision-bound.
+
+## Tool families and CI
+
+The [CI extension](20-ci-tooling.md) separates desk and operator clients, services,
+and CI entry points while retaining these domain owners. CI produces attributed
+check observations through shared libraries; acceptance stays with the existing
+evaluator. Its independent delivery lane is specified in
+[ci-tooling](../../streams/ci-tooling/spec.md).

@@ -1,4 +1,4 @@
-# Unified non-CI architecture for Assay
+# Unified product architecture for Assay
 
 **Status: draft proposal, 10 October 2026; workspace-lifecycle revision 11 October 2026.** This directory is the public home of
 the proposed product architecture. Approval must name its reviewed revision and
@@ -23,6 +23,7 @@ Verification is the first end-to-end test.
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
 | [Amendment manifest](20-amendment-manifest.md) | Owners, paths, dependencies and active-work treatment for the ratified packages; brief patches for R1 and step 2 |
+| [Tool families and CI integration](20-ci-tooling.md) | Desk/service/CI placement, shared mechanisms and the migration stream |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Requested direction and proposed mechanisms
@@ -52,10 +53,11 @@ appropriate phase. A graph explains relationships; it never grants runtime autho
 
 ## Scope and public boundary
 
-This covers non-CI product tooling, including installation/configuration,
-communications, monitors, role clients and support tools that share the affected
-contracts. Existing CI is touched later only where needed to run the selected
-regression suite; redesigning CI is not this program's objective.
+This covers product tooling, including installation/configuration, communications,
+monitors, role clients and support tools. The 2026-10-13 [CI extension](20-ci-tooling.md)
+adds directory separation, two layers of shared mechanisms, reusable actions and
+adopter-source migration. CI remains independently runnable; it does not acquire
+runtime acceptance or credential authority. The directory name is retained for link stability.
 
 Adopters retain deployment configuration, secrets references, private policy
 overlays, incident evidence and local brief reconciliation. They may reference
