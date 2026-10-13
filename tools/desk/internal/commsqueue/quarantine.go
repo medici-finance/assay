@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // quarantine.go — held mailbox + a filed issue, never a silent drop
@@ -45,13 +48,20 @@ func Quarantine(root string, env comms.Envelope, reason string, now time.Time, f
 		return fmt.Errorf("%w: %s: %s", ErrQuarantined, env.ID, reason)
 	}
 	if err := filer.File(env, reason); err != nil {
+		// Callers treat ErrQuarantined as informational and discard it (the
+		// message is safe), so a failed filing would otherwise leave a held
+		// message nobody is told about. Say so here, once, on one line.
+		fmt.Fprintf(os.Stderr, "commsqueue: message %s is held, but its quarantine issue failed to file: %s\n",
+			oneLine(env.ID), oneLine(err.Error()))
 		return fmt.Errorf("%w: %s: held, but its quarantine issue failed to file: %v", ErrQuarantined, env.ID, err)
 	}
 	return fmt.Errorf("%w: %s: %s", ErrQuarantined, env.ID, reason)
 }
 
-// RaisedByRole is the desk role commsgw/commsloop's own filings are
-// attributed to, per house convention (`deskfile new --raised-by <role>`).
+// RaisedByRole is the desk loop commsgw/commsloop's own filings are
+// attributed to. It is a LOOP name (it also addresses envelopes); the
+// `deskfile new --raised-by` flag takes the roster ROLE that loop runs as,
+// which FileDeskIssue resolves through deskkit.TokenRoleForLoop.
 const RaisedByRole = "worker-desk"
 
 // deskfileBin is the sibling binary DeskfileIssueFiler.File shells out to,
@@ -73,17 +83,67 @@ type DeskfileIssueFiler struct {
 
 func (f DeskfileIssueFiler) File(env comms.Envelope, reason string) error {
 	title := fmt.Sprintf("comms quarantine: message %s (%s -> %s, verb %s)", env.ID, env.From.Cell, env.To.Cell, env.Verb)
-	body := fmt.Sprintf("A cell-gateway message was quarantined (held, never dropped).\n\n"+
-		"- id: %s\n- from: %s/%s\n- to: %s/%s\n- verb: %s\n- reason: %s\n",
-		env.ID, env.From.Cell, env.From.Role, env.To.Cell, env.To.Role, env.Verb, reason)
-	args := []string{"new", "--raised-by", RaisedByRole, "--repo", f.Repo, "--title", title, "--label", "help wanted", "--body", body}
-	cmd := exec.Command(deskfileBin, args...)
+	return FileDeskIssue(f.Repo, title, "A cell-gateway message was quarantined (held, never dropped).", []string{
+		"id: " + env.ID,
+		"from: " + env.From.Cell + "/" + env.From.Role,
+		"to: " + env.To.Cell + "/" + env.To.Role,
+		"verb: " + env.Verb,
+		"reason: " + reason,
+	})
+}
+
+// filingLabel is the escalation label every comms filing carries: a held
+// message or a sweep finding needs a human's hands.
+const filingLabel = "help wanted"
+
+// FileDeskIssue is the ONE shell-to-deskfile site for the comms tools' filings
+// (quarantine here, commsloop's lane-violation sweep): `deskfile new` with the
+// argv that verb accepts — -R, the body in a --body-file, the escalation
+// label, and --raised-by as the roster role RaisedByRole runs as. facts are
+// the record the filing is about; they go in the `### Evidence` fenced block a
+// "help wanted" filing must carry. It sets no environment: the credentials and
+// loop marker deskfile needs are the calling process's own.
+func FileDeskIssue(repo, title, summary string, facts []string) error {
+	role, ok := deskkit.TokenRoleForLoop(RaisedByRole)
+	if !ok {
+		return fmt.Errorf("deskfile new not run: loop %q has no roster role to raise as", RaisedByRole)
+	}
+	var body strings.Builder
+	body.WriteString(summary)
+	body.WriteString("\n\n### Evidence\n\n```text\n")
+	for _, f := range facts {
+		// One line per fact inside the fence: a stray fence marker or a
+		// control sequence must not close the block early or reach a terminal.
+		body.WriteString("- " + strings.ReplaceAll(oneLine(f), "```", "` ` `") + "\n")
+	}
+	body.WriteString("```\n")
+
+	bf, err := os.CreateTemp("", "comms-filing-*.md")
+	if err != nil {
+		return fmt.Errorf("deskfile new not run: cannot create a body file: %w", err)
+	}
+	defer os.Remove(bf.Name())
+	if _, err := bf.WriteString(body.String()); err != nil {
+		bf.Close()
+		return fmt.Errorf("deskfile new not run: cannot write the body file: %w", err)
+	}
+	if err := bf.Close(); err != nil {
+		return fmt.Errorf("deskfile new not run: cannot close the body file: %w", err)
+	}
+
+	cmd := exec.Command(deskfileBin, "new", "-R", repo, "--title", title,
+		"--body-file", bf.Name(), "--label", filingLabel, "--raised-by", role)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("deskfile new failed: %w: %s", err, stderr.String())
+		return fmt.Errorf("deskfile new failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return nil
+}
+
+// oneLine flattens s onto a single control-free line.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(deskkit.StripControl(s)), " ")
 }
 
 // AppendJournal appends one line to the queue's append-only journal
