@@ -99,6 +99,36 @@ class Ratchet(unittest.TestCase):
             issue['Pos']['Line'] = 8
             self.assertNotEqual(first['id'], r.normalize(root, '.', 'linux', issue)['id'])
 
+    # regression: F-go-analysis-sibling-identity
+    def test_sibling_independence(self):
+        # A repair or addition elsewhere in the file must not re-identify an untouched finding.
+        close = '\tdefer resp.Close()'
+        fixed = '\tdefer func() { _ = resp.Close() }()'
+        head = 'package p\n\n'
+
+        def func(name, line):
+            return 'func ' + name + '(resp R) {\n' + line + '\n}\n\n'
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+
+            def ident(text, function):
+                # Identity of the Close finding inside the named function.
+                (root / 'a.go').write_text(text)
+                rows = text.splitlines()
+                start = next(i for i, row in enumerate(rows) if row.startswith('func ' + function))
+                line = next(i for i in range(start, len(rows)) if rows[i] == close) + 1
+                issue = dict(FromLinter='errcheck', Text='error ignored', Pos=dict(Filename='a.go', Line=line, Column=2))
+                return r.normalize(root, '.', 'linux', issue)['id']
+
+            both = head + func('Alpha', close) + func('Beta', close)
+            alpha, beta = ident(both, 'Alpha'), ident(both, 'Beta')
+            self.assertNotEqual(alpha, beta)
+            self.assertEqual(alpha, ident(head + func('Alpha', close) + func('Beta', fixed), 'Alpha'))
+            self.assertEqual(beta, ident(head + func('Alpha', fixed) + func('Beta', close), 'Beta'))
+            self.assertEqual(alpha, ident(head + func('Alpha', close) + func('Gamma', close) + func('Beta', close), 'Alpha'))
+            self.assertEqual(beta, ident(head + func('Gamma', close) + func('Alpha', close) + func('Beta', close), 'Beta'))
+
 
 class Harness(unittest.TestCase):
     def setUp(self):

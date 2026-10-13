@@ -18,7 +18,7 @@ OWNER = Path(__file__).resolve().parents[2]
 BASELINE = 'tools/go-analysis/baseline.json'
 POLICY = ['.golangci.yml', 'tools/go-analysis/pins.env']
 SCHEMA = 'go-analysis/v1'
-FINGERPRINT = 'source-window/v1'
+FINGERPRINT = 'source-window/v2'
 
 
 def digest(data):
@@ -174,6 +174,27 @@ def contract(owner):
     return digest(b'\0'.join([(owner / f).read_bytes() for f in POLICY] + [FINGERPRINT.encode()]))
 
 
+DECLARATION = re.compile(r'(?:func|var|const|type|import)\b')
+RECEIVER = re.compile(r'func\s*\(\s*(?:\w+\s+)?\*?\s*([\w.]+)')
+NAME = re.compile(r'func\s*(?:\([^)]*\)\s*)?(\w+)')
+
+
+def declaration_scopes(lines):
+    """Per source line: (index of its top-level declaration, stable declaration symbol)."""
+    result = []
+    start, symbol = -1, 'package'
+    for number, text in enumerate(lines):
+        if DECLARATION.match(text):
+            start = number
+            if text.startswith('func'):
+                receiver, name = RECEIVER.match(text), NAME.match(text)
+                symbol = 'func ' + (receiver.group(1) + '.' if receiver else '') + (name.group(1) if name else '')
+            else:
+                symbol = ' '.join(text.split('=', 1)[0].split('{', 1)[0].split())
+        result.append((start, symbol))
+    return result
+
+
 def normalize(root, module, conf, issue):
     analyzer = issue['FromLinter']
     if analyzer not in ['errcheck', 'staticcheck', 'unused', 'govet', 'nolintlint']:
@@ -190,21 +211,32 @@ def normalize(root, module, conf, issue):
     if not 1 <= line <= len(lines):
         raise ValueError('diagnostic source location invalid')
     # Stable source context is independent of line numbers and blank/comment shifts.
-    # Identical calls in one file require the smallest distinguishing neighborhood;
-    # a source edit that makes an identity ambiguous fails for review, never count-matches.
+    # Identity is scoped to the enclosing top-level declaration, so a repair or addition
+    # elsewhere in the file never re-identifies an untouched finding. Identical lines inside
+    # one declaration need the smallest distinguishing neighborhood; a source edit that makes
+    # an identity ambiguous fails for review, never count-matches.
+    scopes = declaration_scopes(lines)
     significant = [(i, text.strip()) for i, text in enumerate(lines)
                    if text.strip() and (i == line - 1 or not text.lstrip().startswith('//'))]
-    indexes = [i for i, (number, _) in enumerate(significant) if number == line - 1]
+    indexes = [n for n, (number, _) in enumerate(significant) if number == line - 1]
     if not indexes:
         raise ValueError('diagnostic has no source anchor')
     index = indexes[0]
-    text_lines = [text for _, text in significant]
-    matches = [i for i, text in enumerate(text_lines) if text == text_lines[index]]
+    segments = {}
+    for number, text in significant:
+        segments.setdefault(scopes[number][0], []).append(text)
+    own = scopes[line - 1][0]
+    seg = segments[own]
+    at = sum(1 for number, _ in significant[:index] if scopes[number][0] == own)
+    peers = [segments[start] for start in segments if scopes[start][1] == scopes[line - 1][1]]
     window = None
     for radius in range(0, 65):
-        candidate = text_lines[max(0, index - radius):index + radius + 1]
-        equals = [i for i in matches if text_lines[max(0, i - radius):i + radius + 1] == candidate]
-        if len(equals) == 1:
+        def around(rows, position):
+            return (min(position, radius), rows[max(0, position - radius):position + radius + 1])
+        candidate = around(seg, at)
+        equals = sum(1 for rows in peers for i, text in enumerate(rows)
+                     if text == seg[at] and around(rows, i) == candidate)
+        if equals == 1:
             window = candidate
             break
     if window is None:
@@ -216,7 +248,7 @@ def normalize(root, module, conf, issue):
     rule = re.match(r'(SA\d+|S\d+|ST\d+|QF\d+):', text)
     rule = rule.group(1) if rule else analyzer
     identity = {'analyzer': analyzer, 'rule': rule, 'module': module,
-                'configuration': conf, 'path': rel, 'anchor': digest(encoded([window, prefix]))}
+                'configuration': conf, 'path': rel, 'anchor': digest(encoded([scopes[line - 1][1], window, prefix]))}
     # Message hash distinguishes changed diagnostic severity/content at the same location.
     return dict(identity, id=digest(encoded(identity)), diagnostic=digest(text.encode()),
                 line=line, column=pos.get('Column', 0))
