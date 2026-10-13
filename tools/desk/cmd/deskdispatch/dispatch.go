@@ -1274,9 +1274,8 @@ type heldClaim struct {
 	// home is the worktree THIS run created, set once deskwt has named it and cleared when the
 	// run deliberately retains it. A post-claim abort leaves that worktree in place (removing
 	// it is `deskwt remove`'s decision, never this verb's — the allocation boundary admits no
-	// removal), and a re-dispatch of the same key in the same session lands on the same
-	// directory and dies with "target already exists" (#2746). settle therefore names the
-	// worktree and the exact command that reclaims it.
+	// removal). Worker/verifier names are deterministic within a session; review homes
+	// are fresh per pass. settle names cleanup without making it a retry prerequisite.
 	home string
 }
 
@@ -1301,8 +1300,8 @@ func (h *heldClaim) settle(err error) error {
 		note = fmt.Sprintf(" The dispatch claim %s was %s, so a re-run is not refused behind it.", h.key, h.release())
 	}
 	if h.home != "" {
-		note += fmt.Sprintf(" The worktree %s created by this run is still in place; reclaim it before "+
-			"re-dispatching this key: `deskwt remove %s`.", h.home, h.home)
+		note += fmt.Sprintf(" The worktree %s created by this run is still in place; reclaim it with %s. "+
+			"Cleanup is needed before reusing this directory name; review passes use fresh names.", h.home, removeCommand(h.home))
 	}
 	if note == "" {
 		return err

@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -227,9 +228,8 @@ func kitRole(kit string) (role string, ok bool) {
 
 // staleTargetRe captures the path in deskwt's target-directory refusal,
 // "refused: target already exists (never clobbered): <target>". The path is a `tracker-*`
-// name deskwt validated to a single safe segment under a sanctioned prefix, so it carries no
-// whitespace or shell metacharacter.
-var staleTargetRe = regexp.MustCompile(`never clobbered\): (\S+)`)
+// name deskwt validated to a single safe segment; its parent can contain spaces.
+var staleTargetRe = regexp.MustCompile(`(?m)never clobbered\): ([^\r\n]+)`)
 
 // reclaimCommand is the exact command that reclaims the stale target deskwt named in its
 // refusal, so the operator pastes it instead of reconstructing a path (#2746). It is a
@@ -239,9 +239,24 @@ var staleTargetRe = regexp.MustCompile(`never clobbered\): (\S+)`)
 // right first move either way and its refusal says what to inspect next.
 func reclaimCommand(deskwtSaid string) string {
 	if m := staleTargetRe.FindStringSubmatch(deskwtSaid); m != nil && homeIsAbsolute(m[1]) {
-		return "`deskwt remove " + m[1] + "`"
+		return removeCommand(m[1])
 	}
 	return "`deskwt remove <path>`"
+}
+
+// removeCommand quotes a path as one shell argument, including a spaced parent.
+// Single quotes work in POSIX shells and PowerShell; an embedded quote needs the
+// platform's escape spelling. Simple paths retain the existing copyable spelling.
+func removeCommand(path string) string {
+	arg := path
+	if strings.ContainsAny(path, " \t\r\n'\"`$;&|()<>*?[]{}!#~") || (runtime.GOOS != "windows" && strings.Contains(path, "\\")) {
+		if runtime.GOOS == "windows" {
+			arg = "'" + strings.ReplaceAll(path, "'", "''") + "'"
+		} else {
+			arg = "'" + strings.ReplaceAll(path, "'", "'\"'\"'") + "'"
+		}
+	}
+	return "`deskwt remove " + arg + "`"
 }
 
 // worktreeCreateHint returns the "commonest cause" sentence for a failed worktree-create

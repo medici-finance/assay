@@ -1,41 +1,71 @@
 package main
 
 import (
+	"fmt"
 	"os"
-	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// rollbackFailedAdd closes the "failed add leaves its target behind" defect class (#2746).
-//
-// `git worktree add` can fail AFTER it has created the target directory and registered the
-// worktree: a post-checkout hook that exits non-zero is the reproducible case — git
-// deliberately keeps the worktree then, and exits non-zero. cmdAdd refused to clobber an
-// existing target, so the directory it was left holding made the very next `deskwt add` of
-// the same name (a corrected re-dispatch) die with "target already exists" until an
-// operator found and removed it by hand. Every later step of cmdAdd already rolls back what
-// it made; this is the same rollback for the git step itself, shared by all three arms so
-// no arm can be the one that forgets.
-//
-// OWNERSHIP. cmdAdd proved the target did not exist before git ran (the never-clobbered
-// Lstat), so whatever sits there now was made by this invocation. The one way that proof can
-// be stale is a concurrent `add` of the same name winning the race; git then says the path
-// "already" exists or is registered, and that worktree is NOT ours. Any "already" in git's
-// stderr therefore skips the rollback, and so does a target that is absent (git cleaned up
-// after itself — nothing to do).
-//
-// The returned string is appended to the caller's error message; "" when nothing was done.
-// A rollback that itself fails is reported, never swallowed: the operator then has the exact
-// path to remove.
-func rollbackFailedAdd(guard *pathGuard, dir, target, gitStderr string) string {
-	if strings.Contains(gitStderr, "already") {
+// addTarget is the directory this invocation exclusively reserved. Keeping its root
+// open pins its identity even if the path is removed and its inode could be reused.
+// Git accepts an empty existing directory; competing deskwt invocations cannot reserve it.
+type addTarget struct {
+	path string
+	root *os.Root
+}
+
+func reserveAddTarget(target string) (*addTarget, error) {
+	if err := os.Mkdir(target, 0o700); err != nil {
+		if os.IsExist(err) {
+			return nil, deskkit.Refused("refused: target already exists (never clobbered): " + target)
+		}
+		return nil, deskkit.Unverifiable("cannot reserve worktree target "+target, err)
+	}
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot retain worktree target identity; inspect "+target, err)
+	}
+	return &addTarget{path: target, root: root}, nil
+}
+
+// rollbackFailedAdd covers every failure after reservation, including git, identity,
+// transport and hooks. Ownership never depends on git's localized stderr. Missing
+// targets need no deletion; foreign, replaced or symlink targets are left for inspection.
+func rollbackFailedAdd(guard *pathGuard, dir, target string, owned *addTarget) string {
+	if owned == nil {
 		return ""
 	}
-	rt := resolvePath(target)
-	if _, err := os.Lstat(rt); err != nil {
+	fail := func(err error) string {
+		return "; rollback of " + target + " stopped (" + err.Error() + "); target retained for inspection"
+	}
+	if owned.path != target {
+		return fail(fmt.Errorf("target was not reserved by this add"))
+	}
+	fi, err := os.Lstat(target) // unresolved: never follow a substituted leaf symlink
+	if os.IsNotExist(err) {
 		return ""
+	}
+	if err != nil {
+		return fail(err)
+	}
+	original, err := owned.root.Stat(".")
+	if err != nil {
+		return fail(err)
+	}
+	if !fi.IsDir() || !os.SameFile(original, fi) {
+		return fail(fmt.Errorf("reserved directory was replaced"))
+	}
+	rt, err := guard.check(target) // the sanctioned-prefix/identity gate still binds cleanup
+	if err != nil {
+		return fail(err)
+	}
+	current, err := os.Lstat(rt)
+	if err != nil || !current.IsDir() || !os.SameFile(original, current) {
+		return fail(fmt.Errorf("reserved directory no longer matches the checked target"))
 	}
 	if err := removeWorktreeDir(guard, dir, rt); err != nil {
-		return "; rollback of " + target + " failed (" + err.Error() + ") — remove it with `deskwt remove " + target + "` before retrying"
+		return fail(err)
 	}
-	return "; worktree " + target + " ROLLED BACK (the failed add left it behind)"
+	return "; worktree rolled back: " + target + " (ROLLED BACK; this add reserved it)"
 }

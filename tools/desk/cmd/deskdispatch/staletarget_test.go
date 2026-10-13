@@ -63,3 +63,25 @@ func TestCreateRefusalNamesNoWorktree(t *testing.T) {
 		t.Fatalf("a run that created no worktree named one to remove: %v", err)
 	}
 }
+
+// regression: #2746
+func TestReclaimWhitespace(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "parent space", "worktree")
+	want := "`deskwt remove '" + target + "'`"
+	if got := reclaimCommand("refused: target already exists (never clobbered): " + target + "\n"); got != want {
+		t.Fatalf("reclaim = %s, want %s", got, want)
+	}
+	h := &heldClaim{phrase: "released", home: target}
+	if got := h.settle(deskkit.Refused("abort")).Error(); !strings.Contains(got, want) {
+		t.Fatalf("settle does not quote path: %s", got)
+	}
+}
+
+// regression: #2746
+func TestSettleFreshHome(t *testing.T) {
+	h := &heldClaim{phrase: "released", home: t.TempDir()}
+	got := h.settle(deskkit.Refused("abort")).Error()
+	if strings.Contains(got, "before re-dispatching") {
+		t.Fatalf("fresh review home incorrectly blocks retry: %s", got)
+	}
+}

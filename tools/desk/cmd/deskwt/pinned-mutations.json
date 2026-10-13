@@ -28,8 +28,8 @@
     {
       "name": "tracking failure leaves worktree",
       "file": "cmd/deskwt/deskwt.go",
-      "old": "if rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {\n\t\t\t\treturn fmt.Errorf(\"%w; rollback failed: %v\", uerr, rerr)",
-      "new": "if rerr := error(nil); rerr != nil {\n\t\t\t\treturn fmt.Errorf(\"%w; rollback failed: %v\", uerr, rerr)"
+      "old": "if note := rollbackFailedAdd(guard, dir, target, owned); note != \"\" {",
+      "new": "if note := \"\"; note != \"\" {"
     },
     {
       "name": "upstream flag restrictions ignored",
