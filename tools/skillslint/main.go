@@ -228,7 +228,8 @@ func main() {
 	// a first paste into an interactive zsh safe), opens with the zsh comment
 	// guard (later pastes),
 	// names its act function per act, and reads secrets in the clear-first,
-	// stop-on-failure shape (actblock.go). No act block at all is
+	// stop-on-failure shape, a syntactic best-effort check with named
+	// unmodelled forms (actblock.go, actread.go). No act block at all is
 	// could-not-check, never a quiet pass.
 	abBlocks, abIssues, abErr := ActBlockIssues(*root)
 	switch {
@@ -247,7 +248,7 @@ func main() {
 			exit = 1
 		}
 	default:
-		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments in the header only, the zsh guard, a per-act name and the one-line safe secret read (cleared, -rs, exit 1-255, run by the act function's own shell)\n", abBlocks)
+		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments in the header only, the zsh guard, a per-act name and the one-line secret-read shape (cleared, -rs, exit 1-255; a syntactic check, not in a subshell, pipe or background it models; README §5 lists the forms it does not model)\n", abBlocks)
 	}
 
 	// posix-token: advisory (never exit-affecting, per the lint-debt cadence a hard

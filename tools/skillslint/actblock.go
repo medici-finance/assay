@@ -49,17 +49,20 @@
 //     in a heredoc delimiter; a ${ followed by a blank or |; and a few more);
 //  5. every read in the block is the whole shape NAME=; read -rs NAME || exit N
 //     or NAME=; read -rs NAME || { …; exit N; } on one line (N from 1 to 255;
-//     -r and -s both given, no other option; the clear in command position),
-//     run by the act function's own shell: not in a subshell, command
-//     substitution, pipeline or background, nor in another function, on this
-//     line or any other. A shell whose read has no -s fails without assigning,
-//     so an inherited value would pass as the secret, and an exit that runs in a
-//     child shell ends only that child. The block is tokenized whole (quotes,
-//     backslashes, $( ), backticks, ( ), { } and compound commands across
-//     lines), and any word that is read once quotes and backslashes are removed
-//     counts as a read wherever it sits, so the check errs strict. It does not
-//     see a read run through eval, sh -c or a command name built from an
-//     expansion.
+//     -r and -s both given, no other option; the clear in command position).
+//     A shell whose read has no -s fails without assigning, so an inherited
+//     value would pass as the secret, and an exit that runs in a child shell
+//     ends only that child. This is a syntactic shape check, best effort, not a
+//     proof that the exit stops the act: the block is tokenized whole (quotes,
+//     backslashes, $( ), backticks, ( ), { } and compound commands), and a read
+//     the tokenizer sees inside a ( ) subshell, $( ), backticks, a | pipeline,
+//     a background & or another function is flagged, on its line or across
+//     lines. It does NOT model |& piping, a backslash line continuation before
+//     a | or &, a redirect whose target is a command substitution, a heredoc
+//     body fed to a shell, a # straight after an operator, an operator inside
+//     ${X:-…}, $'…' quoting, a function that shadows exit, or a read run
+//     through eval, sh -c or a command name built from an expansion; a read in
+//     one of those can pass (actread.go lists why).
 //
 // An act block is recognised as an sh, bash, zsh or shell fence whose body
 // defines an act function (actFuncRe). HARD check: a violation is exit 1.
@@ -745,7 +748,7 @@ func actBlockLines(rel, raw string) (int, []Issue) {
 				continue
 			}
 			if badReads[i] {
-				add(l.n, "act block read is not in the shape NAME=; read -rs NAME || exit 1, or NAME=; read -rs NAME || { ...; exit 1; }, run by the act function's own shell — clear the variable first, read with -r and -s only, end the failure branch with an exit from 1 to 255, and keep it out of any subshell, command substitution, pipeline or background, or a shell whose read has no -s keeps an inherited value as the secret")
+				add(l.n, "act block read is not in the shape NAME=; read -rs NAME || exit 1, or NAME=; read -rs NAME || { ...; exit 1; }, outside a subshell, pipeline or background — clear the variable first, read with -r and -s only, end the failure branch with an exit from 1 to 255, and keep it out of any subshell, command substitution, pipeline or background, or a shell whose read has no -s keeps an inherited value as the secret")
 			}
 		}
 	}

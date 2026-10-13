@@ -226,13 +226,17 @@ restate it.
 This plugin's own skill lint checks the shipped example below against the comment rule (plain
 text, header only, no trailing comment), the guard line, the per-act name and the secret-read shape, in
 every `sh`, `bash`, `zsh` or `shell` fence that defines an act function. For the read, it
-accepts only the whole shape on one line: the clear first, `read` with `-r` and `-s` and no
-other option, and a failure branch that ends in an `exit` from 1 to 255, run by the act
-function's own shell rather than in a subshell, command substitution, pipeline or background
-(an `exit` there ends only that child). It reads the block whole, across lines, and flags any
-other word that is `read` once quotes and backslashes are removed. It does not see a read run
-through `eval`, `sh -c` or a command name built from an expansion. A block a desk composes at
-run time gets no lint; it rests on these rules alone.
+checks the syntactic shape only, best effort: the whole shape on one line, the clear first,
+`read` with `-r` and `-s` and no other option, and a failure branch that ends in an `exit`
+from 1 to 255. It flags a read it sees inside a `( )` subshell, `$( )`, backticks, a `|`
+pipeline, a background `&` or another function (an `exit` there ends only that child), and
+any other word that is `read` once quotes and backslashes are removed. It does not prove the
+read runs in the act function's own shell. It does not model `|&` piping, a backslash line
+continuation before a `|` or `&`, a redirect whose target is a command substitution, a
+heredoc body fed to a shell, a `#` straight after an operator, an operator inside
+`${X:-…}`, `$'…'` quoting, a function that shadows `exit`, or a read run through `eval`,
+`sh -c` or a command name built from an expansion; a read in one of those can pass. A block a
+desk composes at run time gets no lint; it rests on these rules alone.
 
 ```sh
 [ -n "${ZSH_VERSION-}" ] && setopt interactive_comments

@@ -555,8 +555,9 @@ func withLines(i int, lines ...string) []string {
 }
 
 // TestActBlockLintFlagsUnsafeReadAcrossLines — the read check reads the whole block, not one
-// line: a subshell, pipeline or background that a read sits in is seen wherever it opens or
-// closes, and a read outside the act function, which the dry paste would run, is flagged.
+// line: a ( ) subshell, | pipeline or & background that a read sits in is seen when it opens or
+// closes on another line, and a read outside the act function, which the dry paste would run, is
+// flagged. The forms README rule 5 lists as unmodelled are not covered here.
 func TestActBlockLintFlagsUnsafeReadAcrossLines(t *testing.T) {
 	for _, c := range []struct {
 		name  string
@@ -581,7 +582,7 @@ func TestActBlockLintFlagsUnsafeReadAcrossLines(t *testing.T) {
 }
 
 // TestActBlockLintSafeReadAcrossLines — the shape passes inside an if, a loop or a group
-// that the act function runs in its own shell, wherever those open and close.
+// that no modelled subshell, pipeline or background wraps, across lines.
 func TestActBlockLintSafeReadAcrossLines(t *testing.T) {
 	for _, c := range [][]string{
 		{"  if true; then :", "  else printf 'token: '", "    T=; read -rs T || { echo; echo \"no token read; nothing changed\" >&2; exit 1; }", "  fi"},

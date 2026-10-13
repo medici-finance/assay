@@ -373,15 +373,34 @@ or `shell` fence that defines a function named `driver_act…`) to five rules:
    `NAME=; read -rs NAME || exit N` or `NAME=; read -rs NAME || { ...; exit N; }`:
    the clear comes first in command position (never after `&&`, `||` or a
    pipe), the read carries `-r` and `-s` and no other option, and the failure
-   branch ends with `exit N`, `N` from 1 to 255, closing the list. The shape
-   must run in the act function's own shell: not inside a subshell, `$( )`,
-   backticks, a pipeline or a background job, nor in another function, whether
-   that opens on the read's line or on another one. A shell whose `read` has no
-   `-s` fails without assigning, so an inherited value would pass as the
-   secret, and an `exit` in a child shell ends only that child. Any word that
-   is `read` once quotes and backslashes are removed (`read`, `\read`,
-   `"read"`, `r''ead`) counts as a read wherever it sits, so the rule errs
-   strict.
+   branch ends with `exit N`, `N` from 1 to 255, closing the list. A shell
+   whose `read` has no `-s` fails without assigning, so an inherited value
+   would pass as the secret, and an `exit` in a child shell ends only that
+   child. This rule is a syntactic shape check, best effort: it does not
+   prove the read runs in the act function's own shell. It flags a read it
+   sees inside a `( )` subshell, `$( )`, backticks, a `|` pipeline, a
+   background `&` or another function, on the read's line or across lines.
+   Any word the tokenizer sees that is `read` once quotes and backslashes are
+   removed (`read`, `\read`, `"read"`, `r''ead`) is a read candidate. It
+   does **not** model the forms below, and a read inside one of them can pass
+   while a shell runs it in a child shell or past a failed read:
+   - `|&` piping (`echo x |& { T=; read -rs T || exit 1; }`);
+   - a backslash line continuation before a `|` or `&` after a closing
+     construct (`} \` then `| cat` on the next line);
+   - a redirect whose target is a command substitution, before a `|` or `&`
+     (`{ …; } >"$(printf f)" | cat`);
+   - a heredoc body fed to a shell (`sh <<'EOF'`), whose body it reads as act
+     code;
+   - a `#` straight after an operator (`;#`, `|#`), which it reads as a word;
+   - an operator inside `${X:-…}` (`${X:-;}`);
+   - `$'…'` quoting with an escaped quote inside it (`$'\''`);
+   - a function that shadows `exit` (`exit() { :; }`);
+   - a read run through `eval`, `sh -c` or a command name built from an
+     expansion.
+
+   Rule 1's floor refuses a `#` after an operator, and its scanner refuses
+   `\'` inside `$'…'`, so a block holding either fails by rule 1; the read
+   rule itself still does not see them. The others can pass every rule.
 
 A violation is exit 1, naming the file and line. Finding no act block at all is
 could-not-check (exit 2), never a pass: the `ask-decision` example must exist.
@@ -393,12 +412,12 @@ driver_act_1 {`, or a name on a continuation line) is not counted and gets none
 of the rules. Its fence finder matches the opening character and a
 closing run at least as long, but applies no indentation or list rule, so a
 four-space-indented example is still checked, which errs strict. The read rule
-tokenizes the block whole (quotes, backslashes and line continuations, `$( )`,
-backticks, `( )`, `{ }`, pipes, `&` and the compound commands), so a subshell or
-pipe that opens or closes on another line is seen. It does not see a read run
-through `eval`, `sh -c` or a command name built from an expansion, and it takes
-a full line that starts with `#` as a comment even inside a multi-line quoted
-string; rule 2 then refuses that line unless it sits in the header.
+tokenizes the block whole (quotes, backslashes, `$( )`, backticks, `( )`,
+`{ }`, `|`, `&` and the compound commands), so a `( )` subshell, `$( )`,
+backticks or `|` pipe that opens or closes on another line is seen; the forms
+rule 5 lists are not. It takes a full line that starts with `#` as a comment
+even inside a multi-line quoted string; rule 2 then refuses that line unless it
+sits in the header.
 
 ## Fixtures
 

@@ -3,16 +3,33 @@
 //	NAME=; read -rs NAME || exit N
 //	NAME=; read -rs NAME || { …; exit N; }
 //
-// run by the act function's own shell, so its exit really stops the act.
+// on one line, and is not inside a construct the check models as a child shell.
 //
-// The check reads the whole block as one stream of shell tokens, not one line
-// at a time, so a subshell, command substitution, pipeline or background that a
-// read sits in is seen wherever it opens or closes. It is a small tokenizer and
-// a structure walk, not a shell parser: it knows quotes, backslashes, $( ),
+// This is a syntactic shape check, best effort, and not a proof that the exit
+// stops the act. The check reads the whole block as one stream of shell
+// tokens, so it flags a read it sees inside a ( ) subshell, a $( ) or backtick
+// span, a pipeline built with |, a background & or another function, where
+// that construct opens or closes on another line too. It is a small tokenizer
+// and a structure walk, not a shell parser: it knows quotes, backslashes, $( ),
 // backticks, ( ), the group braces, if/fi, the loops, case/esac, function
-// definitions and the list and pipe operators — what decides whether an exit
-// ends the act or only a subshell inside it. It errs strict: a construct it
-// does not model leaves a read unproved, so the read is flagged.
+// definitions and the list and pipe operators. It does NOT model these forms,
+// and a read inside one of them can pass while a shell runs it in a child
+// shell, or past a failed read:
+//
+//   - |& piping (read as | then &, so the group or loop after it is not seen
+//     as piped);
+//   - a backslash line continuation before a | or & after a closing construct;
+//   - a redirect whose target is a command substitution, before a | or &;
+//   - a heredoc body fed to a shell (sh <<EOF), whose body it reads as act code;
+//   - a # straight after an operator (;# or |#), which it reads as a word;
+//   - an operator inside ${X:-…};
+//   - $'…' quoting (an escaped quote inside it);
+//   - a function that shadows exit (exit() { :; });
+//   - a read run through eval, sh -c or a command name built from an expansion.
+//
+// The trailing-comment floor refuses a # after an operator, and the scanner
+// refuses \' inside $'…', so a block holding either fails by those rules; the
+// read check itself still does not see them.
 package main
 
 import (
@@ -206,8 +223,9 @@ var actAssignRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=$`)
 var actReadOptsRe = regexp.MustCompile(`^-[rs]+$`)
 
 // actUnsafeReadLines returns the block lines holding a read that is not proved
-// to be a whole safe shape run by the act function's own shell. A read is any
-// word whose text, quotes and backslashes removed, is read — wherever it sits.
+// to be a whole safe shape outside the child-shell constructs the walk models
+// (see the file comment for the forms it does not model). A read is any word
+// the tokenizer sees whose text, quotes and backslashes removed, is read.
 func actUnsafeReadLines(lines []string, actName string) map[int]bool {
 	toks := actTokens(lines)
 	safe := map[int]bool{}
