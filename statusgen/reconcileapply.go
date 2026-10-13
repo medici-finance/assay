@@ -4,9 +4,10 @@ package main
 // (derived-board/07 follow-on; trailer-only mode and the lint hold,
 // derived-board/04).
 //
-// `reconcile --backfill [--report]` (reconcile.go, reconcilebackfill.go) is
-// READ-ONLY: it derives a cell and can write a drift REPORT, but nothing
-// writes the derived value back into a stream README's Status column — a
+// `reconcile --backfill [--report]` without --apply (reconcile.go,
+// reconcilebackfill.go) derives a cell and writes a drift report only with
+// --report. It writes no stream README: nothing writes the derived value
+// back into a stream README's Status column — a
 // confirmed wiring gap (a downstream regen workflow expected --backfill to
 // flip stale board rows and it never does). --apply closes exactly that gap,
 // under conditions narrow enough to stay safe unattended:
@@ -44,17 +45,24 @@ package main
 //
 // The read-only form (#2440): `reconcile --backfill` WITHOUT --apply reports, as
 // `wouldApply`, the rows --apply would write, so a reviewer can reproduce a
-// board promotion with no tree write. It is not a second implementation: both
+// board promotion with no stream-README write (the verb's own `--report` flag,
+// when also given, still writes its drift report file; that is not this
+// function). It is not a second implementation: both
 // forms run reconcileWrites, and only its last step — write to disk, or keep
 // the edited README in memory — differs. Nothing about which rows are admitted
 // changes between them, the lint hold included: both forms evaluate it the same
 // way, against the edited README held in memory, so wouldApply never lists a row
-// --apply would hold and the hold never writes to disk to decide.
+// --apply would hold and the hold never writes to disk to decide. The parity is
+// per path string: the overlay is keyed by the README path as spelled, so on a
+// case-insensitive filesystem two stream names differing only in letter case
+// (a board the lint already rejects) reach one file, and the plan would report
+// both rows where --apply, reading the file back, writes one.
 //
 // The whole-run admission decision is shared too (#2472 C10): an unread input
 // that makes --apply refuse every row (reconcileWriteRefusal in reconcile.go)
-// makes the read-only form list none and report the refusal as wouldRefuse,
-// so wouldApply never lists a row --apply refuses with exit 3.
+// makes the read-only form list none — wouldApply absent, since the run could
+// not look (#2443) — and report the refusal as wouldRefuse, so wouldApply never
+// lists a row --apply refuses with exit 3.
 
 import (
 	"fmt"

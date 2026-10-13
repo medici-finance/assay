@@ -435,7 +435,7 @@ func deskToolsBin(e *Env) string {
 // realConfigHome is the OPERATOR's config home — the one holding the App private keys a k8s or
 // house cell symlinks to. A scrubbed cell never reads it, by construction.
 func realConfigHome(e *Env) string {
-	return mustResolve(configHomeFor(runtime.GOOS, e))
+	return mustResolve(operatorConfigHomeFor(runtime.GOOS, e))
 }
 
 // cellDir is the directory of the cell named name, which must be a name under the cells root
@@ -585,6 +585,16 @@ func loadCell(name string) *Cell {
 	c.Repo = e.Get("CELL_REPO")
 	if c.Repo == "" {
 		die("cell.env: CELL_REPO (the checkout roles worktree from) is not set")
+	}
+	if err := holdMaintenanceAdmission(c); err != nil {
+		die("cell maintenance: %v", err)
+	}
+	if maintenanceCommand != "reset" && maintenanceCommand != "show" && maintenanceCommand != "status" && maintenanceCommand != "check" {
+		if _, err := os.Lstat(filepath.Join(c.Dir, ".reset-in-progress")); err == nil {
+			die("cell %s is being reset; finish or retry cellctl reset %s before launching work", c.Name, c.Name)
+		} else if !os.IsNotExist(err) {
+			die("reset state unreadable: %v", err)
+		}
 	}
 	return c
 }

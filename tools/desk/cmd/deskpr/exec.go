@@ -40,7 +40,7 @@ var publishIdentityGateFn = deskkit.PublishIdentityMatchesRole
 var productionPublishIdentityGateFn = publishIdentityGateFn
 
 // publishIdentityGate refuses (exit 5) when any commit the push would publish —
-// refs/remotes/origin/<base>..HEAD, minus what remoteTip already holds — is not authored AND
+// refs/remotes/origin/<base>..<source>, minus what remoteTip already holds — is not authored AND
 // committed by this session role's bound identity (#1490 lane B: the push-time layer that
 // stops a mis-attributed commit reaching the forge however the worktree acquired its stale
 // identity). The role is resolved from the session loop identity, the same resolution
@@ -50,13 +50,14 @@ var productionPublishIdentityGateFn = publishIdentityGateFn
 // remoteTip (#1967) is the commit the remote branch this push updates already holds, so the
 // gate judges only the commits the push ADDS; "" judges the whole range. deskkit uses it only
 // when it passes the gate's fail-closed rules, and widens to the whole range otherwise. Each
-// caller's choice is pinned by TestPubIdentityCallersTip.
-func publishIdentityGate(dir, base, remoteTip string) error {
+// caller's choice is pinned by TestPubIdentityCallersTip. Source is the immutable
+// hash used by both the identity walk and the eventual push.
+func publishIdentityGate(dir, base, remoteTip, source string) error {
 	role, _, rerr := deskkit.SessionTokenRole("deskpr")
 	if rerr != nil {
 		return rerr
 	}
-	return publishIdentityGateFn(deskkit.PublishIdentityInput{Dir: dir, Base: base, RemoteTip: remoteTip, Role: role})
+	return publishIdentityGateFn(deskkit.PublishIdentityInput{Dir: dir, Base: base, RemoteTip: remoteTip, Source: source, Role: role})
 }
 
 // remoteTrackingTip is the offline stand-in for the remote PR head: the fully-qualified

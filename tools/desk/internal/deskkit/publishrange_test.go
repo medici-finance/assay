@@ -198,7 +198,7 @@ func TestPubRangeFailsClosed(t *testing.T) {
 		r, _ := foreignTip(t)
 		r.git("update-ref", "refs/remotes/origin/feat", "refs/remotes/origin/main")
 		wantRefusedNaming(t, r.gate("refs/remotes/origin/feat"), "foreign commit to hide")
-		commits, err := defaultPublishCommits(r.dir, resolvePublishRange(r.dir, "main", "refs/remotes/origin/feat"))
+		commits, err := defaultPublishCommits(r.dir, resolvePublishRange(r.dir, "main", "refs/remotes/origin/feat", "HEAD"))
 		if err != nil || len(commits) != 2 {
 			t.Fatalf("a lagging tip must judge both the earlier and the new commit, got %d commits (err %v)", len(commits), err)
 		}
@@ -225,15 +225,40 @@ func TestPubRangeResolve(t *testing.T) {
 	r := newRangeRepo(t)
 	r.commitAs(workerEmail, "Assay Worker", "one.txt", "own")
 
-	if rng := resolvePublishRange(r.dir, "main", ""); rng.Narrowed() || rng.Widened != "" {
+	if rng := resolvePublishRange(r.dir, "main", "", "HEAD"); rng.Narrowed() || rng.Widened != "" {
 		t.Errorf("no tip offered: want the whole range and no widening note, got %+v", rng)
 	}
-	if rng := resolvePublishRange(r.dir, "main", "refs/remotes/origin/feat"); !rng.Narrowed() || rng.Tip != r.remote {
+	if rng := resolvePublishRange(r.dir, "main", "refs/remotes/origin/feat", "HEAD"); !rng.Narrowed() || rng.Tip != r.remote {
 		t.Errorf("valid tracking ref: want narrowed to %s, got %+v", r.remote, rng)
 	}
 	for _, bad := range []string{"HEAD", "feat", "origin/feat", "refs/heads/feat", "refs/remotes/origin/", "-x", "refs/remotes/origin/feat~1"} {
-		if rng := resolvePublishRange(r.dir, "main", bad); rng.Narrowed() || rng.Widened == "" {
+		if rng := resolvePublishRange(r.dir, "main", bad, "HEAD"); rng.Narrowed() || rng.Widened == "" {
 			t.Errorf("tip %q must widen with a note, got %+v", bad, rng)
+		}
+	}
+}
+
+// regression: #1967
+func TestPubSourceSnapshot(t *testing.T) {
+	r := newRangeRepo(t)
+	source := r.commitAs(workerEmail, "Assay Worker", "own.txt", "checked source")
+	err := PublishIdentityMatchesRole(PublishIdentityInput{
+		Dir: r.dir, Base: "main", RemoteTip: r.remote, Source: source, Role: "worker",
+		Commits: func(dir string, rng PublishRange) ([]PublishCommit, error) {
+			if rng.Source != source {
+				t.Fatalf("reader source=%s, want checked hash %s", rng.Source, source)
+			}
+			r.commitAs(issueLoopEmail, "Assay Issue Loop", "later.txt", "after the snapshot")
+			return defaultPublishCommits(dir, rng)
+		},
+	})
+	if err != nil {
+		t.Fatalf("reader followed mutable HEAD instead of checked source: %v", err)
+	}
+	for _, bad := range []string{"HEAD", source[:12], strings.Repeat("ab", 20)} {
+		err := PublishIdentityMatchesRole(PublishIdentityInput{Dir: r.dir, Base: "main", RemoteTip: r.remote, Source: bad, Role: "worker"})
+		if ExitCodeOf(err) != ExitUnverifiable {
+			t.Fatalf("invalid source %q: want could-not-check, got %v", bad, err)
 		}
 	}
 }

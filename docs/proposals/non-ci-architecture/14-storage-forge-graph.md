@@ -149,3 +149,18 @@ Qualify this with the actual queries: current and future consumers of a contract
 Apache AGE is a credible PostgreSQL graph-extension candidate if Cypher-style matching materially improves those queries. Its published packages are version-specific, so choosing it adds an extension/image/upgrade/recovery qualification obligation for local Docker and CNPG. Pin and qualify the actual supported extension/database release pair before adoption. [Apache AGE releases](https://age.apache.org/download/)
 
 I recommend PostgreSQL graph tables and the query contract from day one, with a small SQL-versus-AGE comparison before freezing the schema if the real workload needs complex pattern matching. Do not add a separate graph database or two graph write owners speculatively. Either representation remains rebuildable from the same source records. Semantic owners and public/private traversal rules belong above the storage engine.
+
+## Oversight state uses the existing authority and recovery owners
+
+The [oversight contract](19-progressive-adoption-and-oversight.md) adds policy bindings,
+approval units, sampling decisions and pending human gates to the existing transactional
+coordination/decision/outbox owners. Canonical approvals and required audit records
+follow their retained-record policy. Ordinary restart preserves sampling/consumption;
+after reconstruction unknown history is held for authorized reconciliation rather
+than treated as fresh permission or unsampled work. Old capability/incarnation
+refusal and notification delivery-unknown/deduplication remain controlling.
+
+Standalone Inspect/Assist has canonical local records/observations, without in-flight
+leases, authority grants or another coordination database. Offline output remains
+usable without PostgreSQL; it cannot publish governed evidence. Notification batching
+coalesces presentation only, preserving distinct pending decisions and their subjects.
