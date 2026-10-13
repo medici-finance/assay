@@ -69,25 +69,20 @@ func procCommand(pid int) (string, error) {
 	return string(c), nil
 }
 
+// lsofPath is where macOS ships lsof. It is a fixed system path rather than a
+// PATH lookup so a planted lsof earlier on PATH is never consulted.
+const lsofPath = "/usr/sbin/lsof"
+
 // procHoldsFile asks lsof which processes have f's path open. Only a listing
 // that names pid is "yes"; lsof missing, failing or timing out is could-not-check.
 func procHoldsFile(pid int, f *os.File) (bool, error) {
-	lsof, err := exec.LookPath("lsof")
-	if err != nil {
-		for _, p := range []string{"/usr/sbin/lsof", "/usr/bin/lsof"} {
-			if _, e := os.Stat(p); e == nil {
-				lsof, err = p, nil
-				break
-			}
-		}
-	}
-	if err != nil {
-		return false, fmt.Errorf("%w: lsof not found", errCouldNotCheck)
+	if _, err := os.Stat(lsofPath); err != nil {
+		return false, fmt.Errorf("%w: lsof not found at %s", errCouldNotCheck, lsofPath)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	var stdout bytes.Buffer
-	cmd := exec.CommandContext(ctx, lsof, "-n", "-P", "-w", "-F", "p", "--", lockPath(f))
+	cmd := exec.CommandContext(ctx, lsofPath, "-n", "-P", "-w", "-F", "p", "--", lockPath(f))
 	cmd.Stdout = &stdout
 	runErr := cmd.Run()
 	for _, line := range strings.Split(stdout.String(), "\n") {
