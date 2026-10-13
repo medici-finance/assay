@@ -53,6 +53,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -66,6 +67,13 @@ const DefaultReleaseHome = "medici-finance/assay"
 
 // ChecksumsAsset is the release asset the composition is derived from.
 const ChecksumsAsset = "checksums.txt"
+
+// CursorBundleAsset is a non-platform payload; it contributes integrity data,
+// not a binary component that every adopter must pin.
+const CursorBundleAsset = "cursor-bundle.tar.gz"
+
+// CursorBundleMaxBytes bounds local files, HTTP bodies, and archive verification.
+const CursorBundleMaxBytes = 16 << 20
 
 // ChecksumsFileName is the local name a materialised checksums.txt takes under a
 // releases dir: `<umbrella>.checksums.txt`, with `/` mapped to `-` exactly as the
@@ -96,6 +104,16 @@ var ErrNotFound = errors.New("not found")
 // external tool. A 404 is reported as ErrNotFound so the caller can tell "no such
 // release asset" from "could not reach the release home".
 func HTTPFetch(url string) ([]byte, error) {
+	return httpFetchBounded(url, 1<<20)
+}
+
+// HTTPFetchCursorBundle admits the archive size supported by the verifier while
+// metadata keeps its smaller bound. Neither reader returns successful truncation.
+func HTTPFetchCursorBundle(url string) ([]byte, error) {
+	return httpFetchBounded(url, CursorBundleMaxBytes)
+}
+
+func httpFetchBounded(url string, limit int64) ([]byte, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -108,7 +126,14 @@ func HTTPFetch(url string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: status %s", url, resp.Status)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > limit {
+		return nil, fmt.Errorf("GET %s: response exceeds %d-byte limit", url, limit)
+	}
+	return raw, nil
 }
 
 // ParseChecksums derives umbrellaTag's composition from the bytes of its
@@ -153,6 +178,10 @@ func ParseChecksums(umbrellaTag string, raw []byte) (Composition, error) {
 				"checksums for %s: asset %q listed twice", umbrellaTag, asset), nil)
 		}
 		seen[asset] = true
+		if asset == CursorBundleAsset {
+			c.AssetSHA256[asset] = digest
+			continue
+		}
 		component := ComponentOf(asset)
 		if component == asset {
 			continue // not a <component>-<os>-<arch> asset: not a pinnable artifact
@@ -188,6 +217,9 @@ type CompositionSource struct {
 	ReleasesDir string
 	ReleaseHome string
 	Fetch       Fetcher
+	// CursorFetch separately opts into archive acquisition with its larger bound.
+	// nil remains offline even if metadata fetching is enabled.
+	CursorFetch Fetcher
 	// Announce receives one `fetching <url>` line immediately BEFORE every Fetch
 	// call, regardless of its outcome. nil means os.Stderr. It is never silenced:
 	// an operator must be able to see every remote the tool contacted.
@@ -339,4 +371,31 @@ func (s CompositionSource) LatestReleaseTag() (string, bool, error) {
 		return "", false, Unverifiable("latest-release answer from "+url+" carries no tag_name", err)
 	}
 	return body.TagName, true, nil
+}
+
+// CursorBundle reads the already-selected release's payload. A materialized
+// file wins even when broken; absence never selects a different version.
+func (s CompositionSource) CursorBundle(umbrellaTag string) ([]byte, error) {
+	if valid, _ := regexp.MatchString(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`, umbrellaTag); !valid {
+		return nil, Unverifiable("invalid Cursor bundle umbrella version", nil)
+	}
+	local := filepath.Join(s.ReleasesDir, umbrellaTag+"."+CursorBundleAsset)
+	if info, err := os.Stat(local); err == nil {
+		if !info.Mode().IsRegular() || info.Size() > CursorBundleMaxBytes {
+			return nil, Unverifiable("invalid or oversized materialized Cursor bundle", nil)
+		}
+		return os.ReadFile(local)
+	} else if !os.IsNotExist(err) {
+		return nil, Unverifiable("cannot read materialized Cursor bundle", err)
+	}
+	if s.CursorFetch == nil {
+		return nil, Unverifiable("Cursor bundle unavailable locally; materialize releases/<version>.cursor-bundle.tar.gz or explicitly allow --fetch", nil)
+	}
+	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", s.home(), umbrellaTag, CursorBundleAsset)
+	s.announce(url)
+	raw, err := s.CursorFetch(url)
+	if err != nil {
+		return nil, Unverifiable("could not acquire the selected release Cursor bundle", err)
+	}
+	return raw, nil
 }

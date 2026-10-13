@@ -53,6 +53,7 @@ env:
 
 jobs:
   close:
+    environment: board-writer
     runs-on: medici-builder-public
     if: contains(github.event.issue.labels.*.name, 'verify-gate')
     env:

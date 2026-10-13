@@ -120,8 +120,9 @@ func TestEnforcementStatusRegistryCoversVerifyRowRules(t *testing.T) {
 	for _, tag := range []string{
 		ruleERELiteralPipe, ruleGrepZeroCount, ruleExitSwallowed, ruleRE2LiteralPipe,
 		ruleMetavar, ruleGoRunExit, ruleBREAlternation, ruleShreddedCell,
-		ruleMovingRef, rulePortability, ruleGoTestRunVacuous,
+		ruleMovingRef, rulePortability, ruleGoTestRunVacuous, ruleGrepPipeZeroCount,
 		ruleProseLedCommand, ruleCmdMarkerAmbiguous, ruleCmdMarkerOverrides, ruleCmdMarkerNotHonoured, ruleCmdMarkerVacuous,
+		ruleTriviallyGreen, ruleNoOutputAssert, ruleTableNoFiles,
 	} {
 		if !registered[tag] {
 			t.Errorf("Verify-row rule %q is not in lintRuleRegistry — it would be invisible in the generated block", tag)

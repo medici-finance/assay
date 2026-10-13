@@ -347,3 +347,20 @@ func TestValveOff(t *testing.T) {
 		t.Fatalf("valve off must resolve every message to quarantine (held), held=%d want %d", len(held), len(msgs))
 	}
 }
+
+// A runner CLI can print a warning before the decider's reply. The action
+// parse already skips it; the journalled justification must too, or every
+// decision record carries the CLI's warning instead of the decider's reason.
+//
+// regression: #2726
+func TestAdviceSkipsCLIPreamble(t *testing.T) {
+	reply := "Warning: Code Mode is unavailable in this environment; tool calls will fail closed.\n" +
+		"land-report — a worker's completion report for the board\n"
+	got := adviceFrom(reply, routerActions())
+	if got.Answer != ActionLandReport {
+		t.Fatalf("answer = %q, want %q", got.Answer, ActionLandReport)
+	}
+	if want := "land-report — a worker's completion report for the board"; got.Justification != want {
+		t.Fatalf("justification = %q, want %q", got.Justification, want)
+	}
+}

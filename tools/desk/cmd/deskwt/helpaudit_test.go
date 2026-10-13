@@ -39,6 +39,7 @@ func TestHelpWritesNoAuditRow(t *testing.T) {
 		{"add -h", []string{"add", "-h"}},
 		{"remove --help", []string{"remove", "--help"}},
 		{"prune --help", []string{"prune", "--help"}},
+		{"maintain --help", []string{"maintain", "--help"}},
 		{"role-init --help", []string{"role-init", "--help"}},
 		{"role-clean --help", []string{"role-clean", "--help"}},
 		// Tier two: help after a positional or another flag reaches the subcommand's
@@ -46,6 +47,7 @@ func TestHelpWritesNoAuditRow(t *testing.T) {
 		{"add name --help", []string{"add", "wt-name", "--help"}},
 		{"add --dry-run -h", []string{"add", "--dry-run", "-h"}},
 		{"remove name --help", []string{"remove", "wt-name", "--help"}},
+		{"maintain --apply --help", []string{"maintain", "--apply", "--help"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			withEnv(t, t.TempDir())

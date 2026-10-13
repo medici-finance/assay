@@ -8,7 +8,7 @@ package main
 //
 //   - `statusgen regen --readmes` PRESERVES the lifecycle columns (Status / Verified /
 //     Reviewed) on every render — it never derives them (statusgen/readmetable.go header),
-//   - the ONLY writer of a Status cell is `statusgen reconcile --backfill --apply`, under
+//   - the writer that flips a Status cell to implemented is `statusgen reconcile --apply`, under
 //     the narrow, safe conditions its own header states — only todo|in-progress ->
 //     implemented, only with a real merged-PR witness, Status cell only
 //     (statusgen/reconcileapply.go header), and
@@ -16,7 +16,7 @@ package main
 //     .github/workflows/*.yml), while the workflow change that WOULD (#1175 / PR #428) is
 //     blocked because no App may push workflow files.
 //
-// deskreconcile removes the workflow dependency: it runs that one writer from a desk verb
+// deskreconcile removes the workflow dependency: it runs that command from a desk verb
 // the desk/worker App CAN run, and carries the result as ONE draft PR on a FIXED branch,
 // so a scheduled invocation never opens a second PR.
 //
@@ -215,7 +215,7 @@ func Run(o Options) (Result, error) {
 		}
 	}
 
-	// 3. run the ONE writer. --json so the flips can be named; the worktree diff is the
+	// 3. run the reconcile writer. --json so the flips can be named; the worktree diff is the
 	//    authoritative "did anything change". --repo lets it witness merged PRs.
 	sgArgs := []string{"reconcile", "--backfill", "--apply", "--root", ".", "--json", "--repo", repo}
 	if o.TokenFile != "" {

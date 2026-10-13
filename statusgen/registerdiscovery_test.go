@@ -57,6 +57,7 @@ func writeDiscoveryFixture(t *testing.T) string {
 // self-declaring register directory whose name is not reserved must be SKIPPED,
 // leaving discovery to succeed (exit 0) and return only the real stream — never
 // aborted on the register's absent frontmatter.
+// regression: #616
 func TestLoadSkipsRegister(t *testing.T) {
 	root := writeDiscoveryFixture(t)
 

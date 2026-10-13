@@ -45,8 +45,9 @@ schema: brief-v2                    # required on every brief in a v2 tree — a
                                     # REFUSES a v2 tree instead of silently ignoring it (fail-closed).
 blocked-by: env                     # OPTIONAL, and `env` is the ONLY accepted value (anything else fails --lint).
                                     # Says the blocker is infrastructure/environment — not an agent, not a human
-                                    # decision. The Awaiting board files the brief under `Env-blocked` and the
-                                    # desk-actionable headline stops counting it. Omit it unless that is literally true:
+                                    # decision. The Awaiting board files the brief under `Environment-blocked`
+                                    # (owner: operator) and the desk's count stops including it (docs/board.md).
+                                    # Omit it unless that is literally true:
                                     # the field's whole job is to keep the desk from re-triaging what it cannot move.
 gates: []                           # RESERVED, OPTIONAL-but-KNOWN (brief-v2): behavioural/ordering edges —
                                     # parsed, type-checked, lint-validated, NOT yet gating (gating behaviour
@@ -96,7 +97,7 @@ sources: []                         # provenance: scoping doc / finding IDs / in
 files: <exact paths the implementer touches — no repo exploration should be needed>
 facts: <the 3-5 project facts required to execute — key: value, no narrative>
 design-fit:                         # REQUIRED on every NEW brief (spec/brief-v1.md §4.1); legacy briefs are not back-filled.
-  owner: statusgen/eligibility.go   # example — the ONE module that owns the meaning this brief touches, or n/a
+  owner: statusgen/evaluation/eligibility.go   # example — the ONE module that owns the meaning this brief touches, or n/a
   contract: S-eligibility           # example — that meaning's row id in docs/contracts.md §"Semantic owners", or `none — <why>`
   retires: []                       # mechanisms/refusals/flags/tests this brief removes; [] is an answer
   weight: verbs 0, flags 0, refusals 0, rule-text lines 0   # signed delta per ratcheted dimension

@@ -559,6 +559,26 @@ func checkClaudeMinVersion() error {
 	return checkClaudeVersionOutput(string(out))
 }
 
+// claudeVersionTriple reads the installed version for callers that only need to compare it
+// (the role-context floor) and treat an unreadable version as "unknown" rather than a refusal.
+// It lives in this file, beside claudeBinary, because the forge-CLI-shellout ban resolves an
+// exec site's argv[0] only against a constant declared in the SAME file.
+func claudeVersionTriple() ([3]int, bool) {
+	var v [3]int
+	out, err := exec.Command(claudeBinary, "--version").Output()
+	if err != nil {
+		return v, false
+	}
+	m := semverRe.FindStringSubmatch(string(out))
+	if m == nil {
+		return v, false
+	}
+	for i := 0; i < 3; i++ {
+		v[i], _ = strconv.Atoi(m[i+1])
+	}
+	return v, true
+}
+
 // checkClaudeVersionOutput is the pure (no exec) half: parse a `claude --version` transcript
 // and compare it to the floor. Split out so tests exercise the parsing/comparison logic
 // directly, without needing a binary literally named "claude" resolvable on PATH for every

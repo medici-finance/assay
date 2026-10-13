@@ -29,8 +29,11 @@ first-class principles (see [spec.md](spec.md) §2):
 2. **The read path covers statusgen — across the `deskread` verb boundary.** statusgen shells
    `gh` directly (the `scanloop`-in-container break, #628). It reaches the seam by RUNNING the
    `deskread` verb, never by importing `deskkit` (`statusgen/forgeread.go`), and that migration
-   is owned by the sibling brief `forge-neutral/18`. v2 does not redo it: it brings
-   `statusgen/**` under the ban so the progress is measurable, then holds the zero.
+   is owned by the sibling briefs `forge-neutral/18` and, for the control-feeding reads, `/35`.
+   v2 does not redo it: it brings `statusgen/**` under the ban so the progress is measurable,
+   then holds the zero. The [library-first amendment](../../library-first.md), ruled on #2395
+   (`DR-forge-neutral-36`), lets statusgen link a narrow module's offline and frozen packages;
+   every online forge read keeps the verb and `deskkit` stays internal.
 3. **Purpose-built queries** — typed access-pattern operations (review-queue snapshot, head-sha
    batch, board sweep), each backend one tuned query: N+1 → one round-trip, rate-limit headroom,
    and one consistent snapshot (freshness), with the GraphQL document never crossing the seam.
@@ -59,15 +62,15 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 04 | [deskclose reads an authorizing comment by its stated kind — retire the kind-less default (#1019)](brief-04-deskclose-authorization-read-kind.md) | 2 | S | done | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1320 @ f6a6b8fcb28a03884f90590a5ad6557258f3c6f0) |
 | 05 | [the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884)](brief-05-push-guards-judge-the-real-remote.md) | 2 | M | verified | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | 06 | [installation-token scoping — explicit repo-scoped custody across Go, cellctl and dispatch](brief-06-installation-token-scoping.md) | 4 | M | todo | — | — |
-| 08 | [hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present](brief-08-hold-statusgen-at-zero.md) | 6 | S | todo | — | — |
+| 08 | [hold statusgen at zero — the gh ban fails on statusgen and the scan is proven with no gh present](brief-08-hold-statusgen-at-zero.md) | 7 | M | todo | — | — |
 | 09 | [purpose-built access-pattern query operations (one tuned snapshot, not N per-item calls)](brief-09-access-pattern-queries.md) | 3 | L | verified | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | 10 | [one outbound-write check at the forge write seam, keyed on the target's visibility](brief-10-one-outbound-write-check.md) | 2 | L | implemented | — | — |
-| 11 | [a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools](brief-11-outbound-house-callout.md) | 3 | M | todo | — | — |
+| 11 | [a house callout for the outbound-write check — deployment vocabulary stays out of the shipped tools](brief-11-outbound-house-callout.md) | 3 | M | implemented | — | — |
 | 12 | [platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS](brief-12-platform-compatibility-suite.md) | 2 | L | implemented | — | — |
 | 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | implemented | — | — |
 | 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | verified | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 | 15 | [Cobra and Viper foundation and complete CLI migration routing](brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md) | 1 | L | verified | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
-| 16 | [Migrate cellctl to Cobra commands and Viper configuration](brief-16-migrate-cellctl-to-cobra-commands-and-viper-configuration.md) | 2 | L | todo | — | — |
+| 16 | [Migrate cellctl to Cobra commands and Viper configuration](brief-16-migrate-cellctl-to-cobra-commands-and-viper-configuration.md) | 2 | L | implemented | — | — |
 | 17 | [Enforce complete Cobra and Viper adoption across the tool suite](brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md) | 5 | L | todo | — | — |
 | 18 | [Migrate statusgen to Cobra and Viper](brief-18-migrate-statusgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
@@ -106,6 +109,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 52 | [Port the changelog and release check scripts](brief-52-port-the-changelog-and-release-check-scripts.md) | 3 | M | todo | — | — |
 | 53 | [Port the CI and regression floor scripts](brief-53-port-the-ci-and-regression-floor-scripts.md) | 3 | M | todo | — | — |
 | 54 | [Port the security control scripts](brief-54-port-the-security-control-scripts.md) | 4 | M | todo | — | — |
+| 55 | [Port the go-analysis adapter entrypoints](brief-55-port-the-go-analysis-adapter-entrypoints.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -130,9 +134,12 @@ An earlier draft of this README put a different chain here — promote `deskkit`
 library, then port statusgen onto it. That was the tempting-but-wrong first step: it was derived
 without reading `statusgen/forgeread.go` or `forge-neutral/18`, which record the opposite
 decision and already own that migration ([spec.md](spec.md) §2 Principle 2, §4). Brief 07 is
-withdrawn and its number is not reused. `desktools-v2/08` is the one brief here that waits on
-another stream: it cannot start until `forge-neutral/18` reaches zero `gh` sites in statusgen
-(26 remained on 2026-09-17), which is why it sits in the last wave and on no critical path.
+withdrawn and its number is not reused. The 2026-10-08 library-first amendment is not that
+chain: as ruled (`DR-forge-neutral-36`, spec §2 Principle 2) it covers offline and frozen
+inputs only, keeps `deskkit` internal and keeps statusgen's online reads on the verb. `desktools-v2/08` is the one brief here that waits on
+another stream: it cannot start until `forge-neutral/18` and `/35` together reach zero `gh`
+sites in statusgen (26 remained on 2026-09-17), which is why it sits in the last wave and on
+no critical path.
 
 ## Dependency waves
 
@@ -149,16 +156,18 @@ another stream: it cannot start until `forge-neutral/18` reaches zero `gh` sites
   exceptions; depends 01+02 — human-gated), `desktools-v2/09` (purpose-built access-pattern
   queries; depends 02) and `desktools-v2/11` (the house callout; depends 10 — human-gated).
 - **Wave 4** — `desktools-v2/06` (installation-token scoping; depends 02+03 — human-gated).
-- **Wave 6** — `desktools-v2/08` (hold statusgen at zero; depends 02 and the sibling
-  `forge-neutral/18`, which is wave 5 of its own stream — the wave number follows that edge).
+- **Wave 7** — `desktools-v2/08` (hold statusgen at zero; depends 02 and the siblings
+  `forge-neutral/18` and `/35`, waves 5 and 6 of their own stream — the wave number follows
+  the later edge).
 
 Critical path: `01 → 02 → 03 → 06`, with the outbound-write chain `01 → 10 → 11` beside it.
 
 ## Relationship to the sibling streams
 
 - **`forge-neutral`** owns the forge *write* path, the resolver/custody (`forge-neutral/01`)
-  **and statusgen's forge path** (`forge-neutral/07`, `/08`, and `/18` — statusgen off `gh`
-  through the `deskread` verb, in progress). v2 consumes the resolver, waits on `/18`, and
+  **and statusgen's forge path** (`forge-neutral/07`, `/08`, `/18` — statusgen off `gh`
+  through the `deskread` verb, in progress — and `/35`, the ruling resolvers). v2 consumes the
+  resolver, waits on `/18` and `/35`, and
   re-implements neither. v2's own contribution is the *ban* (extended to statusgen), the
   *custody contract* on the native read client, the *access-pattern query layer* and the
   *outbound-write check*. See [spec.md](spec.md) §4.
@@ -197,12 +206,12 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.
 - **Wave 2 — /16:** cellctl reference migration, preserving launch/custody behavior while
   making root and nested help work offline without configuration or credentials.
-- **Wave 3 — /18–/28, /30–/53:** the migration children authored by /15, each depending
+- **Wave 3 — /18–/28, /30–/53, /55:** the migration children authored by /15, each depending
   only on /16's reference adapter. One complex entrypoint per child (statusgen, qualgen,
   deskboard, deskdispatch, deskwt, deskfleet, desksupervise, deskapps, deskclose, deskpost,
   deskroster, the GitLab fleet provisioner) or at most five simple ones (guards, custody,
   transport, install, merge authority, writers, loops, comms, metrics, readers, release,
-  admin, standalone modules, lints, plugin scripts, changelog and CI scripts). Human-gated
+  admin, standalone modules, lints, plugin scripts, changelog and CI scripts, the go-analysis adapter). Human-gated
   children: /25–/28, /30–/37, /42, /54 — each carries credentials, refusals or authority.
 - **Wave 4 — /29, /54:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
   it; /54 adds token renewal to the GitLab command /30 creates.

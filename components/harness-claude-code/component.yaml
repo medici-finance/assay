@@ -5,11 +5,9 @@ version: 0.28.0
 # component injects assay.harness (flavour claude-code) to depend on. Files
 # stay where they are; this manifest just names the ownership.
 #
-# `evidence` names the repo-root marketplace listing that makes this adapter
-# genuinely bound in a given tree — until the desired-state record (§7,
-# planned) exists, "presence of exactly one adapter's installed shape selects
-# the binding" (§9) is decided this way: for this repo, only
-# .claude-plugin/marketplace.json is present, so only this adapter is ACTIVE.
+# Installed-shape evidence remains necessary. This source repository now carries
+# several harness payloads; components/bindings.yaml selects its existing Claude
+# declaration for lint. That selection does not configure a running harness.
 provides:
   - key: assay.harness
     flavour: claude-code

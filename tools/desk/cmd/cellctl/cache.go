@@ -11,17 +11,6 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
 )
 
-const cacheUsage = `
-# Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env; macOS/Linux):
-#   cellctl cache <cell> status           (dry-run JSON; no cleanup)
-#   cellctl cache <cell> clean            (inactive caches, only under pressure)
-#   cellctl cache <cell> recover --confirm-stopped
-# Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor.
-# Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE.
-# Recovery requires external proof ALL cache consumers have stopped.
-# See docs/cellctl-go-cache.md for custody, reports and platform limitations.
-`
-
 func (c *Cell) cachePolicy() (*cellcache.Policy, error) {
 	return cellcache.Resolve(c.Dir, c.Env.Get)
 }
@@ -68,11 +57,14 @@ func (c *Cell) cacheAdmission() error {
 func cmdCache(cell string, args []string) {
 	c := loadCell(cell)
 	p, err := c.cachePolicy()
+	if len(args) == 1 && args[0] == "wipe" {
+		p, err = c.maintenanceCachePolicy()
+	}
 	if err != nil {
 		die("Go cache policy: %v", err)
 	}
 	if p == nil {
-		die("cache requires CELL_GO_CACHE=on in cell.env")
+		die("cache requires CELL_GO_CACHE=on in cell.env, or in the cells root's %s (%s)", cellDefaultsFile, c.goCacheSupply())
 	}
 	if len(args) == 2 && args[0] == "recover" && args[1] == "--confirm-stopped" {
 		if err = cellcache.Recover(*p, true); err != nil {
@@ -80,10 +72,23 @@ func cmdCache(cell string, args []string) {
 		}
 		return
 	}
-	if len(args) != 1 || (args[0] != "status" && args[0] != "clean") {
-		die("cache <cell> status|clean|recover --confirm-stopped (status is dry-run)")
+	if len(args) != 1 || (args[0] != "status" && args[0] != "clean" && args[0] != "wipe") {
+		die("cache <cell> status|clean|wipe|recover --confirm-stopped (status is dry-run)")
 	}
-	report, err := cellcache.Check(*p, args[0] == "status")
+	if args[0] == "wipe" {
+		if _, err := os.Lstat(p.Root); os.IsNotExist(err) {
+			fmt.Println("[go-cache] no managed cache to wipe")
+			return
+		} else if err != nil {
+			die("cache wipe: %v", err)
+		}
+	}
+	var report cellcache.Report
+	if args[0] == "wipe" {
+		report, err = cellcache.Wipe(*p, c.Env.Get("DRY_RUN") == "1")
+	} else {
+		report, err = cellcache.Check(*p, args[0] == "status")
+	}
 	if e := json.NewEncoder(os.Stdout).Encode(report); e != nil {
 		die("cache report: %v", e)
 	}
@@ -112,4 +117,21 @@ func runCachedForeground(args, env []string, dir string) {
 		code = 6
 	}
 	exitWith(code)
+}
+
+// Maintenance resolves retained cache custody even after launch opt-in is off.
+func (c *Cell) maintenanceCachePolicy() (*cellcache.Policy, error) {
+	return cellcache.Resolve(c.Dir, func(k string) string {
+		switch k {
+		case "CELL_GO_CACHE":
+			return "on"
+		case "CELL_GO_CACHE_ROOT":
+			return c.Env.Get("CELL_GO_CACHE_ROOT")
+		case "CELL_GO_CACHE_BYTES":
+			return c.Env.Get("CELL_GO_CACHE_BYTES")
+		case "CELL_GO_CACHE_MIN_FREE":
+			return c.Env.Get("CELL_GO_CACHE_MIN_FREE")
+		}
+		return ""
+	})
 }

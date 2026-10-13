@@ -271,8 +271,23 @@ var designGateStatuses = map[string]bool{
 // `root` resolves the DECISIONS register; `streams` supplies the brief files and
 // their README-row status (the file↔row join attributionProblems uses).
 func designGateProblems(root string, streams []*Stream) []string {
+	problems, known, ok := designGateRegister(root)
+	if !ok {
+		return problems
+	}
+	for _, s := range streams {
+		problems = append(problems, designGateStreamProblems(s, known)...)
+	}
+	return problems
+}
+
+// designGateRegister is designGateProblems' register half: the register-shape
+// PROBLEMs (independent of any brief, always reported first) and the set of
+// record ids a design: reference may dereference to. ok is false when the
+// register is unreadable, in which case the gate reports the shape PROBLEMs only.
+func designGateRegister(root string) (problems []string, known map[string]bool, ok bool) {
 	// Register-shape problems are independent of any brief and always apply.
-	problems := decisionRegisterProblems(root)
+	problems = decisionRegisterProblems(root)
 
 	entries, err := parseDecisionsDir(root)
 	if err != nil {
@@ -281,53 +296,57 @@ func designGateProblems(root string, streams []*Stream) []string {
 		// would double-report one fault and turn a could-not-check into a corpus of
 		// reds. The gate degrades to "cannot confirm a record dereferences"
 		// (NOTICE, in designGateNotices), which is the honest three-state answer.
-		return problems
+		return problems, nil, false
 	}
-	known := map[string]bool{}
+	known = map[string]bool{}
 	for _, e := range entries {
 		if e.ID != "" {
 			known[e.ID] = true
 		}
 	}
+	return problems, known, true
+}
 
-	for _, s := range streams {
-		for _, path := range briefFilePaths(s) {
-			bf, ok, perr := parseBriefFile(path)
-			if perr != nil || !ok {
-				continue // malformed reported by checkBriefFiles; legacy exempt
+// designGateStreamProblems is the gate over ONE stream's brief files, in the
+// stream's file order: the per-stream half designGateProblems concatenates.
+func designGateStreamProblems(s *Stream, known map[string]bool) []string {
+	var problems []string
+	for _, path := range briefFilePaths(s) {
+		bf, ok, perr := parseBriefFile(path)
+		if perr != nil || !ok {
+			continue // malformed reported by checkBriefFiles; legacy exempt
+		}
+		if !riskGated(bf) {
+			continue // scoped: gate: model all-risks-no briefs are untouched
+		}
+		after, dateOK := authoredAfterCutover(bf.Authored)
+		if !dateOK || !after {
+			continue // grandfathered (authored on/before cutover) or unparseable date
+		}
+		_, num, okName := expectedBriefID(path)
+		if !okName {
+			continue
+		}
+		var row *Brief
+		for i := range s.Briefs {
+			if s.Briefs[i].Num == num {
+				row = &s.Briefs[i]
+				break
 			}
-			if !riskGated(bf) {
-				continue // scoped: gate: model all-risks-no briefs are untouched
-			}
-			after, dateOK := authoredAfterCutover(bf.Authored)
-			if !dateOK || !after {
-				continue // grandfathered (authored on/before cutover) or unparseable date
-			}
-			_, num, okName := expectedBriefID(path)
-			if !okName {
-				continue
-			}
-			var row *Brief
-			for i := range s.Briefs {
-				if s.Briefs[i].Num == num {
-					row = &s.Briefs[i]
-					break
-				}
-			}
-			if row == nil || !designGateStatuses[row.Status] {
-				continue // no row, or a status before the guarded transition (todo)
-			}
-			label := fmt.Sprintf("%s/brief-%s", s.Name, num)
-			ref := strings.TrimSpace(bf.Design)
-			switch {
-			case ref == "":
-				add := fmt.Sprintf("%s: risk-gated brief at %q has no design: record — a brief authored after %s may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4)", label, row.Status, designGateCutover)
-				problems = append(problems, add)
-			case !designRefRe.MatchString(ref):
-				problems = append(problems, fmt.Sprintf("%s: design: %q is not a valid design-decision reference (want DR-<slug>, slug 10-20 chars of [a-z0-9-] starting and ending alphanumeric)", label, ref))
-			case !known[ref]:
-				problems = append(problems, fmt.Sprintf("%s: design: %q dereferences to no record under docs/streams/decisions/ — a dangling design reference gates nothing (spec/lifecycle-v1.md §4.4)", label, ref))
-			}
+		}
+		if row == nil || !designGateStatuses[row.Status] {
+			continue // no row, or a status before the guarded transition (todo)
+		}
+		label := fmt.Sprintf("%s/brief-%s", s.Name, num)
+		ref := strings.TrimSpace(bf.Design)
+		switch {
+		case ref == "":
+			add := fmt.Sprintf("%s: risk-gated brief at %q has no design: record — a brief authored after %s may not move to in-progress until an approved design-decision record (DR-<slug> under docs/streams/decisions/) is cited (spec/lifecycle-v1.md §4.4)", label, row.Status, designGateCutover)
+			problems = append(problems, add)
+		case !designRefRe.MatchString(ref):
+			problems = append(problems, fmt.Sprintf("%s: design: %q is not a valid design-decision reference (want DR-<slug>, slug 10-20 chars of [a-z0-9-] starting and ending alphanumeric)", label, ref))
+		case !known[ref]:
+			problems = append(problems, fmt.Sprintf("%s: design: %q dereferences to no record under docs/streams/decisions/ — a dangling design reference gates nothing (spec/lifecycle-v1.md §4.4)", label, ref))
 		}
 	}
 	return problems

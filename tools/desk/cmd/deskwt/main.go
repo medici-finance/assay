@@ -32,8 +32,10 @@ const usage = `deskwt — add, remove, or prune git worktrees, only under sancti
 USAGE:
   deskwt add <name> [--branch B | --detach] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]
   deskwt remove <path>
+  deskwt maintain [--repo <path>] [--apply] [--min-interval <dur>] [--timeout <dur>]
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
+               [--no-branches | --branches-only] [--no-cache] [--cells-root <path>]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
   deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
   deskwt --version
@@ -52,6 +54,13 @@ foreign-repo path is refused, never re-pointed. The
 LAST line on stdout is the worktree's absolute path — the launcher contract:
 ` + "`cd \"$(deskwt role-init <role> --repo-root <checkout>)\"`" + `.
 role-clean unlocks and removes it under the same safety guards as remove.
+
+maintain plans offline repository index work and prints JSON. --apply packs refs and writes
+a split commit graph, with before/after counts. A common-directory lock and attempt cadence
+(default 6h, minimum 1h) coalesce worktrees and roles. --timeout bounds all Git commands
+(default 30s, range 1s..5m). No scheduler is installed. Object reclamation is held because
+external borrowers cannot be inventoried reliably; refs, objects and reflogs are preserved.
+This verb operates on the shared repository indexes, not worktree directories.
 
 <role> is EVERY desk role desktoken mints (desk, worker, reviewer, verifier, issue-loop,
 intake-loop), spelled either as that token role or as the loop name deskboot boots
@@ -118,13 +127,48 @@ deskwt is safe by construction: every verb acts ONLY on paths that RESOLVE under
 identity, and remove/prune refuse a dirty tracked tree or unpushed commits. There is NO
 --force flag. On any state it cannot positively verify it refuses.
 
-prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then removes
+prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then handles
+stale registrations whose directory survives but whose .git gitdir file is gone (the shape
+` + "`git worktree remove`" + ` refuses and a lock makes ` + "`git worktree prune`" + ` keep forever). It
+clears the REGISTRATION only — the directory is left on disk — and only behind three
+gates: the scope gates every arm enforces (never the shared checkout, the current
+worktree, or outside the sanctioned prefixes), an admin-HEAD target retained by a branch that positively resolves to a commit,
+or by a detached commit already on refs/remotes/origin/main,
+and the lock rule — the default sweep never retires a lock, so a locked husk clears only
+when --reclaim-stale-locks has proven its lock stale this sweep. Then it removes
 ONLY worktrees it can prove safe: tracked-clean AND fully merged into origin/main. An
 UNMERGED branch (an open PR in flight) is LEFT untouched — that is the active-worker guard.
+A worktree whose HEAD IS the origin/main tip (zero landed commits — the fresh-worktree case,
+and the shape a reclaim-by-detach leaves behind) must additionally pass three at-tip gates:
+old enough to be no session's just-created workspace (the fresh-worktree safety window),
+nothing uncommitted or untracked (the untracked-inclusive status), and no git-ignored
+payload. An at-tip tree passing all three drains; any other is LEFT with the reason named.
 With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s desk pod's
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
 Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
-dead-session-reaped, and branches-deleted.
+dead-session-reaped, and branches-deleted — plus, when it acted, stale-registrations-cleared.
+
+Every sweep ALSO runs the CELL-CACHE pressure pass (Step D, default ON; --no-cache skips it):
+for each marked cell Go-cache root under the cells root (--cells-root, then $CELLS_ROOT,
+then the compiled per-user default) it runs the managed cache's own pressure check —
+reclaiming only over the byte budget or under the free-space floor, never while a consumer
+holds a lease — and it reaps a cache root whose owning directory this same sweep removed,
+gated on the root's lease set re-read under its own lock at act time. The pass is SILENT
+when every cache is within policy; the summary gains a cache segment only when it
+reclaimed, reaped, or found pressure it could not clear.
+
+Every sweep ALSO garbage-collects LOCAL branches (Step C — the worktree lifecycle leaves a
+stale local ref behind per worktree, and nothing else reaps them). A branch is collected
+ONLY when its content is provably on refs/remotes/origin/main: its tip is an ancestor of
+the mainline (a fresh, never-used handle is exactly this), or every unique commit's
+patch-id is already in the mainline's history (the squash-merge case). Never collected:
+main/master, any branch checked out in any worktree (guarded by the worktree-list holder
+set, re-read immediately before each delete — git's ref-update layer has NO checked-out
+refusal to lean on), and anything whose proof fails or cannot be completed — a branch with
+unique patches is KEPT, always. The delete is a compare-and-delete against the proven sha
+(git update-ref -d --no-deref), never a force verb. --no-branches skips this pass;
+--branches-only runs it alone, so the boot path can control cadence. Live sweeps print the
+per-class COUNTS only; --dry-run prints the per-branch COLLECT plan and deletes nothing.
 
 A LOCKED worktree is always held — and nothing else ever unlocks one, so a lock taken by a
 session that has since died is permanent and the locked population only grows.
@@ -224,6 +268,8 @@ func run(args []string) int {
 		err = cmdRemove(rest)
 	case "prune":
 		err = cmdPrune(rest)
+	case "maintain":
+		err = cmdMaintain(rest)
 	case "role-init":
 		err = cmdRoleInit(rest)
 	case "role-clean":

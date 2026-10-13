@@ -41,9 +41,22 @@ type Store struct {
 	root  *os.Root
 	Path  string
 	owner string
+	// cell and role label the sweep lock's owner record so a busy launch can name
+	// its holder; lockWait bounds how long a sibling's sweep may delay this one.
+	cell, role string
+	lockWait   time.Duration
 	// Tests inject deletion failure at this single destruction boundary.
 	remove func(string) error
 }
+
+// sweepLockName is the cell-wide lock that serialises Open, Begin, Acknowledge
+// and Sweep across every role sharing one scratch root.
+const sweepLockName = "sweep.lock"
+
+// SweepLockWait bounds how long one launch waits for a sibling launch's scratch
+// transaction. A sweep walks every retained task tree under this lock, so a
+// routine multi-desk boot needs minutes of headroom, not seconds.
+var SweepLockWait = 2 * time.Minute
 
 func Open(path string) (*Store, error) {
 	if !filepath.IsAbs(path) {
@@ -63,14 +76,14 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{root: r, Path: path}
+	s := &Store{root: r, Path: path, lockWait: SweepLockWait}
 	s.remove = r.RemoveAll
-	lock, err := s.lock("sweep.lock")
+	lock, err := s.sweepLock()
 	if err != nil {
 		r.Close()
 		return nil, err
 	}
-	defer lock.Close()
+	defer lock.Release()
 	b, err := s.read("owner", 128)
 	if os.IsNotExist(err) {
 		token := make([]byte, 16)
@@ -92,7 +105,33 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.root.Close() }
+
+// Label names the cell and role this store serves; they go into the sweep lock's
+// owner record so a sibling that waits on it can name the holder.
+func (s *Store) Label(cell, role string) { s.cell, s.role = cell, role }
 func (s *Store) lock(name string) (*os.File, error) {
+	f, err := s.openLock(name)
+	if err != nil {
+		return nil, err
+	}
+	if err = deskkit.TryLockExclusive(f); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+// sweepLock waits, with backoff, for a sibling's scratch transaction and names
+// the lock and its holder when the wait runs out.
+func (s *Store) sweepLock() (*deskkit.HeldLock, error) {
+	f, err := s.openLock(sweepLockName)
+	if err != nil {
+		return nil, err
+	}
+	return deskkit.AcquireHeld(s.root, sweepLockName, f, deskkit.LockSpec{Name: "cell scratch sweep", Cell: s.cell, Role: s.role, Wait: s.lockWait, Log: os.Stderr})
+}
+
+func (s *Store) openLock(name string) (*os.File, error) {
 	st, err := s.root.Lstat(name)
 	if err == nil && !st.Mode().IsRegular() {
 		return nil, errors.New("scratch lock is not regular")
@@ -108,10 +147,6 @@ func (s *Store) lock(name string) (*os.File, error) {
 	if err != nil || st != nil && !os.SameFile(st, opened) {
 		f.Close()
 		return nil, errors.New("scratch lock identity changed")
-	}
-	if err = deskkit.TryLockExclusive(f); err != nil {
-		f.Close()
-		return nil, err
 	}
 	return f, nil
 }
@@ -229,11 +264,11 @@ func (s *Store) Begin(session, task, revision string) (*Run, error) {
 	if session == "" || task == "" || revision == "" || len(session)+len(task)+len(revision) > 2048 {
 		return nil, errors.New("session, task and source revision are required (2048 bytes maximum)")
 	}
-	lock, err := s.lock("sweep.lock")
+	lock, err := s.sweepLock()
 	if err != nil {
 		return nil, err
 	}
-	defer lock.Close()
+	defer lock.Release()
 	nonce := make([]byte, 8)
 	if _, err = rand.Read(nonce); err != nil {
 		return nil, err
@@ -300,11 +335,11 @@ func (s *Store) Acknowledge(id, receipt string, resumable bool) error {
 	if strings.TrimSpace(receipt) == "" || len(receipt) > 4096 {
 		return errors.New("a bounded canonical evidence receipt is required")
 	}
-	lock, err := s.lock("sweep.lock")
+	lock, err := s.sweepLock()
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
+	defer lock.Release()
 	r, err := s.record(id)
 	if err != nil {
 		return err
@@ -354,11 +389,11 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 	if p.MaxAge < 0 || p.MaxBytes < 0 {
 		return rep, errors.New("negative scratch budget")
 	}
-	lock, err := s.lock("sweep.lock")
+	lock, err := s.sweepLock()
 	if err != nil {
 		return rep, err
 	}
-	defer lock.Close()
+	defer lock.Release()
 	entries, err := fs.ReadDir(s.root.FS(), ".")
 	if err != nil {
 		return rep, err
@@ -373,7 +408,7 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 	var candidates []candidate
 	var errs []error
 	for _, e := range entries {
-		if e.Name() == "owner" || e.Name() == "sweep.lock" {
+		if e.Name() == "owner" || e.Name() == sweepLockName || strings.HasPrefix(e.Name(), sweepLockName+".holder") {
 			continue
 		}
 		size, allGit, sizeErr := s.measure(e.Name())
@@ -481,7 +516,19 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 			}
 			growthWritten += c.growth
 		}
-		if err = s.remove(target); err != nil {
+		// Remove the workspace before retiring its ownership record and receipt.
+		// RemoveAll(task) may otherwise unlink record.json first and fail on a
+		// workspace file, leaving a large tree that no later sweep may authorize.
+		targets := []string{c.r.ID + "/work"}
+		if entire {
+			targets = append(targets, target)
+		}
+		for _, next := range targets {
+			if err = s.remove(next); err != nil {
+				break
+			}
+		}
+		if err != nil {
 			left, _, measureErr := s.measure(target)
 			if measureErr == nil {
 				row.Reclaimed = planned - left

@@ -11,13 +11,20 @@
 //	    desk-tools-windows-<arch>.tar.gz) for that tag
 //	  → compute sha256 and compare; a mismatch is a hard REFUSE, not a warning,
 //	    so no unverified bytes are ever placed
+//	  → download the asset's Sigstore attestation bundle (<asset>.sigstore.json)
+//	    and verify it attests THESE bytes as built by this repo's release
+//	    workflow, run by the push of the pinned tag or by workflow_dispatch
+//	    from main; any failure is a hard REFUSE (attest.go)
 //	  → place the verified binaries on a PATH-resolvable dir.
 //
-// The sha256-verify-or-refuse step is the single load-bearing control on this
-// surface: it is the one thing standing between a substituted release asset and
-// a Windows adopter running unverified bytes. It runs FIRST, after the download
-// and before ANY placement — a mismatch leaves nothing installed. The value it
-// checks against is itself pinned in the reviewed, version-committed
+// The attestation check is a second control that fails for a different reason
+// than the sha256 check: the pin proves the bytes are the bytes the manifest
+// names, the attestation proves the bytes the manifest names came out of the
+// release workflow. No flag or option skips it.
+//
+// The sha256-verify-or-refuse step runs FIRST, after the download and before
+// ANY placement — a mismatch leaves nothing installed. The value it checks
+// against is itself pinned in the reviewed, version-committed
 // paired-versions.yaml, so the check and the pin fail for different reasons.
 //
 // For the very first install (chicken-and-egg: you need a binary to run this
@@ -29,9 +36,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/medici-finance/assay/tools/desk/internal/cursorbundle"
 	"io"
 	"os"
+	"path/filepath"
+	"regexp"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -41,19 +52,25 @@ import (
 // installer never resolves a floating or rolling release ref.
 const manifestName = "paired-versions.yaml"
 
-const usage = `deskinstall — Go-native, version-pinned, sha256-verified toolchain installer.
+const usage = `deskinstall — Go-native, version-pinned, sha256- and attestation-verified toolchain installer.
 
 usage:
   deskinstall --manifest <paired-versions.yaml> --dest <dir> [--platform <os-arch>]
   deskinstall --harness cursor --forge <github|gitlab> --repo <path> [--bundle <dir>] [--check]
+  deskinstall --harness cursor --forge <github|gitlab> --repo <path> --release vX.Y.Z [--releases <dir>] [--fetch] [--release-home <owner/repo>] [--dry-run|--check]
+  deskinstall --harness cursor --bundle <dir> --release vX.Y.Z --pack <archive-path>
   deskinstall --version
   deskinstall -h | --help
 
 MODE 1 — acquire, verify, place (the pinned toolchain binaries). It resolves the
 pinned tag + per-platform sha256 from the manifest (a pinned repo tag, never a
 floating ref), downloads the release assets for the detected platform, VERIFIES
-their sha256 and REFUSES on any mismatch (nothing is placed), then installs the
-verified binaries into --dest.
+their sha256 and REFUSES on any mismatch, then VERIFIES each asset's build
+attestation (<asset>.sigstore.json from the same release: SLSA provenance signed
+by this repo's release workflow, run by the push of the pinned tag or by
+workflow_dispatch from main, logged in the transparency log) and REFUSES on any
+failure, then installs the verified binaries into --dest.
+Any refusal places nothing. The attestation check is mandatory — no flag skips it.
 
 Windows assets (from the release build matrix):
   statusgen-windows-amd64.exe      / statusgen-windows-arm64.exe
@@ -88,6 +105,20 @@ a second identical run changes no byte.
                writes nothing. Exit 0 clean, 1 drift (names every drifted path
                and its kind: missing / extra / content-differs), 2 could-not-check.
 
+  --release    acquire the exact selected umbrella Cursor bundle, verify its
+               published SHA-256, internal version and closed file manifest.
+               This verifies integrity, not build provenance. Legacy releases
+               without a bundle digest refuse; no floating checkout is used.
+  --releases   local version.checksums.txt and version.cursor-bundle.tar.gz dir.
+  --fetch      explicitly permit release-asset downloads; URLs print first.
+  --release-home override the release home (default medici-finance/assay).
+  --dry-run    preview exact writes and retirement of unchanged managed files.
+  --pack       generate a release archive from --bundle at matching --release.
+
+Managed ownership is recorded in .cursor/assay-managed.json. Unrelated content is
+preserved; modified managed files and unmanaged collisions refuse before writes.
+AGENTS.md content outside the bounded Assay block is preserved. --check is read-only.
+
 --harness is mutually exclusive with --manifest/--dest: supplying both is a
 refusal naming both modes, never a silent precedence.
 
@@ -111,7 +142,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	var manifest, dest, platform, harness, forge, repo, bundle string
-	var checkFlag bool
+	var checkFlag, dryRun, fetch bool
+	var release, releases, releaseHome, pack string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--manifest":
@@ -165,6 +197,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 			bundle = args[i]
 		case "--check":
 			checkFlag = true
+		case "--dry-run":
+			dryRun = true
+		case "--fetch":
+			fetch = true
+		case "--release", "--releases", "--release-home", "--pack":
+			flag := args[i]
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "deskinstall: %s needs a value\n", flag)
+				return deskkit.ExitRefused
+			}
+			i++
+			switch flag {
+			case "--release":
+				release = args[i]
+			case "--releases":
+				releases = args[i]
+			case "--release-home":
+				releaseHome = args[i]
+			case "--pack":
+				pack = args[i]
+			}
 		default:
 			fmt.Fprintf(stderr, "deskinstall: unknown argument %q\n%s\n", args[i], usage)
 			return deskkit.ExitRefused
@@ -177,7 +230,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 				"--manifest/--dest (acquire→verify→place mode) — refusing: two install modes given, choose one\n"+usage)
 			return deskkit.ExitRefused
 		}
+		if platform != "" {
+			fmt.Fprintln(stderr, "deskinstall: --platform is only valid for binary installation")
+			return deskkit.ExitRefused
+		}
+		if release != "" || pack != "" || dryRun || fetch || releases != "" || releaseHome != "" {
+			return runVersionedHarness(harness, forge, repo, bundle, release, releases, releaseHome, pack, checkFlag, dryRun, fetch, stdout, stderr)
+		}
 		return runHarness(harness, forge, repo, bundle, checkFlag, stdout, stderr)
+	}
+	if dryRun || fetch || release != "" || releases != "" || releaseHome != "" || pack != "" {
+		fmt.Fprintln(stderr, "deskinstall: release and preview options require --harness cursor")
+		return deskkit.ExitRefused
 	}
 	if checkFlag {
 		fmt.Fprintln(stderr, "deskinstall: --check is only meaningful with --harness cursor\n"+usage)
@@ -253,4 +317,85 @@ func runHarness(harness, forge, repo, bundle string, check bool, stdout, stderr 
 		return deskkit.ExitRefused
 	}
 	return deskkit.ExitOK
+}
+
+func runVersionedHarness(harness, forge, repo, bundle, release, releases, home, pack string, check, dryRun, fetch bool, stdout, stderr io.Writer) int {
+	if harness != "cursor" {
+		fmt.Fprintln(stderr, "deskinstall: only cursor supports versioned harness placement")
+		return deskkit.ExitRefused
+	}
+	if pack != "" {
+		if release == "" || check || dryRun || fetch || repo != "" || releases != "" || home != "" || forge != "" {
+			fmt.Fprintln(stderr, "deskinstall: --pack requires --release and optional --bundle only")
+			return deskkit.ExitRefused
+		}
+		if bundle == "" {
+			bundle = bundleDirDefault
+		}
+		var encoded bytes.Buffer
+		if err := cursorbundle.Pack(bundle, release, &encoded); err != nil {
+			fmt.Fprintln(stderr, err)
+			return deskkit.ExitRefused
+		}
+		if err := os.WriteFile(pack, encoded.Bytes(), 0o644); err != nil {
+			fmt.Fprintln(stderr, err)
+			return deskkit.ExitRefused
+		}
+		fmt.Fprintf(stdout, "generated %s for %s; publish with its composition SHA-256\n", cursorbundle.AssetName, release)
+		return deskkit.ExitOK
+	}
+	if repo == "" || (forge != "github" && forge != "gitlab") || (check && dryRun) {
+		fmt.Fprintln(stderr, "deskinstall: require --repo and --forge github|gitlab; choose at most one of --check and --dry-run")
+		return deskkit.ExitRefused
+	}
+	if release != "" {
+		if bundle != "" {
+			fmt.Fprintln(stderr, "deskinstall: --release cannot use checkout --bundle")
+			return deskkit.ExitRefused
+		}
+		if releases == "" {
+			releases = filepath.Join(repo, deskkit.ReleasesDir)
+		}
+		src := deskkit.CompositionSource{ReleasesDir: releases, ReleaseHome: home, Announce: stderr}
+		if fetch {
+			src.Fetch = deskkit.HTTPFetch
+			src.CursorFetch = deskkit.HTTPFetchCursorBundle
+		}
+		if !validRelease(release) {
+			fmt.Fprintln(stderr, "deskinstall: --release requires strict vX.Y.Z")
+			return deskkit.ExitRefused
+		}
+		comp, found, err := src.Load(release)
+		if err != nil || !found || comp.Umbrella != release {
+			fmt.Fprintf(stderr, "deskinstall: selected Cursor release unavailable or inconsistent: %v\n", err)
+			return deskkit.ExitRefused
+		}
+		var cleanup func()
+		bundle, cleanup, err = cursorbundle.Acquire(src, comp)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return deskkit.ExitRefused
+		}
+		defer cleanup()
+	} else if fetch || releases != "" || home != "" {
+		fmt.Fprintln(stderr, "deskinstall: acquisition options require --release")
+		return deskkit.ExitRefused
+	}
+	if bundle == "" {
+		bundle = bundleDirDefault
+	}
+	if dryRun {
+		plan, err := cursorbundle.Prepare(cursorbundle.Options{BundleDir: bundle, RepoRoot: repo, Forge: forge})
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return deskkit.ExitRefused
+		}
+		fmt.Fprintln(stdout, "DRY-RUN Cursor placement (writing nothing under --repo)")
+		plan.Report(stdout)
+		return deskkit.ExitOK
+	}
+	return runHarness(harness, forge, repo, bundle, check, stdout, stderr)
+}
+func validRelease(tag string) bool {
+	return regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`).MatchString(tag)
 }

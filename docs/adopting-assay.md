@@ -103,8 +103,9 @@ never-autonomous escalation points below.
 - **macOS, Linux, or native Windows.** The statusgen binary acquisition is Unix-first via that
   HTTPS fetch; on a **native Windows** host follow the **[Windows adopters](#windows-adopters)**
   section — the pinned `statusgen-windows-<arch>.exe` is acquired through the PowerShell
-  bootstrap + Go-native `deskinstall` path (same sha256-verify-or-refuse control), with the
-  SessionStart-hook `bash`+`jq` workaround and the arm64-native-smoke caveat stated there.
+  bootstrap + Go-native `deskinstall` path (same sha256-verify-or-refuse control; a
+  `deskinstall` built from this tree also refuses any asset whose build attestation does not
+  verify — see that section), with the SessionStart-hook `bash`+`jq` workaround and the arm64-native-smoke caveat stated there.
 
 **What the skill does** — it DELEGATES every PRIMITIVE and every human-gate to the manual runbook
 below; the two are **one story with one mechanism**, not two implementations:
@@ -681,7 +682,8 @@ refuse on a malformed value: every acting command refuses exactly as described a
 as; a malformed entry refuses the whole roster, not only `deskrun` (unset stays valid: no repo is
 bound and `deskrun` dispatches nothing). The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
-`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS` — no longer collapse the
+`ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`,
+`ASSAY_OS_USER_LOGIN_MAP` — no longer collapse the
 whole roster when one of them is malformed: the loader records the rejection against that ONE
 key, the key's own feature falls back to its shipped default (exactly the unset behaviour), and
 only the desk unit that actually declares a dependency on that key deactivates and reports why —
@@ -689,6 +691,13 @@ every unrelated acting command keeps running. This is the fix for the outage cla
 paragraph's typo bullet still describes for an **unrecognised** key name: a stray unrecognised
 `ASSAY_*` key still collapses the whole roster today (that bullet is unchanged), but a
 **recognised** extension key's own bad VALUE no longer does.
+
+`ASSAY_OS_USER_LOGIN_MAP` carries comma-separated `osuser:login` entries binding an OS
+account name to the roster login the scan-override audit row names (the desk tools'
+`OverrideIdentity`). The login half must be a trusted human of the same roster — one
+present in `ASSAY_TRUSTED_LOGINS`, never a configured App slug; anything else invalidates
+the key. An OS account name containing a list separator (space, comma, semicolon) cannot
+be expressed and always lands on the audit row's marked `os:<username>` fallback.
 
 #### Failure mode 2 — a PARTIAL roster looks like a normal board, not an empty one
 
@@ -1124,7 +1133,13 @@ rather than warning and continuing on a sha256 mismatch, but they signal it diff
   `powershell -File` that is a non-zero exit (not `5`), and nothing is placed.
   `scripts/windows-bootstrap-hashcheck-smoke.ps1` asserts on that refusal's message text (for
   example `sha256 mismatch`), not on the `REFUSED:` prefix.
-- **`deskinstall`** exits `5` (refused, nothing placed).
+- **`deskinstall`** exits `5` (refused, nothing placed). A `deskinstall` built from this tree
+  runs a second check after the sha256 one: it downloads each asset's Sigstore build attestation
+  (`<asset>.sigstore.json`, from the same release) and refuses unless it verifies as SLSA
+  provenance for those exact bytes, signed by this repo's release workflow (run by the push of
+  the pinned tag, or by `workflow_dispatch` from `main`) and recorded in the public transparency
+  log. A missing or failing attestation is the same exit `5`, and no flag skips the check. A
+  `deskinstall` taken from an older release runs the checks that release shipped (sha256 only).
 
 #### The first `deskinstall` on a clean host — an open gap
 
@@ -1140,7 +1155,13 @@ file it places in `--dest`, and Windows does not let a running `.exe` overwrite 
   `go build -C tools/desk -o $env:TEMP\deskinstall.exe ./cmd/deskinstall`, then run step 1's
   second command as `& $env:TEMP\deskinstall.exe --manifest …`. That run places the pinned,
   sha256-verified release build of the whole toolchain, `deskinstall.exe` included, into `--dest`,
-  and that copy serves step 2.
+  and that copy serves step 2. **Read before using this route:** a `deskinstall` built from the
+  current tree also requires each asset's build attestation, and **no release pinned today
+  publishes one**, so this build refuses every currently pinned release (exit `5`, the refusal
+  names the missing `.sigstore.json`). It works again once the release workflow uploads the
+  attestation bundles and the pins move to a release that carries them. Until then, use the
+  route below, or build from the pinned release's tag
+  (`git checkout <tag>` before `go build`), which builds the installer that release shipped.
 - **Without Go.** Download the asset for the pinned tag from
   `https://github.com/medici-finance/assay/releases/download/<tag>/desk-tools-windows-<arch>.tar.gz`,
   where `<tag>` and the sha256 are the `desk-tools:` block's `windows-<arch>` line in
@@ -1156,19 +1177,18 @@ file it places in `--dest`, and Windows does not let a running `.exe` overwrite 
 Neither route runs in CI today. Both are read from the tree (the bootstrap script, the release
 workflow's asset list, and `deskinstall`'s own install code), not observed on a Windows host.
 
-**2. Place the Cursor harness.** No manual copy of the skills/references tree, no hand-written
-`AGENTS.md` block (`windows-port/07`). Run it **from the assay clone root**: `--bundle` defaults to
-`plugins/assay` relative to the current directory. From anywhere else, pass
-`--bundle <clone>\plugins\assay`.
+**2. Place the Cursor harness.** For a release that publishes the versioned bundle,
+use its exact tag (replace `vX.Y.Z`):
 
 ```powershell
-deskinstall --harness cursor --forge gitlab --repo C:\src\myrepo
+deskinstall --harness cursor --release vX.Y.Z --forge gitlab --repo C:\src\myrepo --fetch --dry-run
+deskinstall --harness cursor --release vX.Y.Z --forge gitlab --repo C:\src\myrepo --fetch
+deskinstall --harness cursor --release vX.Y.Z --forge gitlab --repo C:\src\myrepo --fetch --check
 ```
 
-*What it proves:* `deskinstall --harness cursor --forge gitlab --repo C:\src\myrepo --check` exits
-`0` (clean, nothing left to place). The adopter repo then has `.cursor/skills/`, a sibling
-`references/` tree, and the `AGENTS.md` `assay:bindings` block naming `glab`/`--forge gitlab`, not
-bare `gh`.
+The last command must exit 0. See [the Cursor install contract](#running-assay-on-cursor--a-second-first-class-harness)
+for offline materialization, integrity checks, ownership, upgrades, and the explicit
+source route for legacy releases without a bundle.
 
 **3. Run the turnkey install.** Invoke `assay:install` inside Cursor. It scaffolds
 (`statusgen init`), wires CI, and proves itself (`--lint == 0`, `--version` prints the pinned tag);
@@ -1273,14 +1293,17 @@ places nothing; it never warns-and-continues.
 3. **Install the rest with the Go-native installer.** `deskinstall` resolves the pinned tag +
    per-platform sha256 from the plugin-shipped `paired-versions.yaml` (never a floating ref),
    downloads `statusgen-windows-<arch>.exe` and `desk-tools-windows-<arch>.tar.gz`, **verifies each
-   sha256 and refuses on any mismatch** (nothing placed on a bad hash), then installs the verified
-   binaries into a `PATH`-resolvable dir:
+   sha256 and refuses on any mismatch** (nothing placed on a bad hash), then — in a `deskinstall`
+   built from this tree — **verifies each asset's build attestation** (`<asset>.sigstore.json`
+   from the same release) **and refuses on any failure**, then installs the verified binaries
+   into a `PATH`-resolvable dir:
 
    ```powershell
    deskinstall --manifest paired-versions.yaml --dest $env:LOCALAPPDATA\Assay\bin
    ```
 
-   Exit `0` = installed & verified; exit `5` = refused (hash mismatch, absent pin, or bad input).
+   Exit `0` = installed & verified; exit `5` = refused (hash mismatch, missing or failing
+   attestation, absent pin, or bad input).
    On a clean host nothing above has placed `deskinstall` itself (step 2 fetches only
    `statusgen`). See
    **[The first `deskinstall` on a clean host](#the-first-deskinstall-on-a-clean-host--an-open-gap)**
@@ -1579,7 +1602,8 @@ those commands actually does underneath. Nothing here is retired by the collapse
    home, PATH, and child processes** above.
 4. **Run `deskinstall` for the rest of the toolchain.** `deskinstall --manifest
    plugins/assay/paired-versions.yaml --dest $env:LOCALAPPDATA\Assay\bin` — downloads and
-   sha256-verifies `desk-tools-windows-<arch>.tar.gz`, refusing on any mismatch. Step 2 does not
+   sha256-verifies `desk-tools-windows-<arch>.tar.gz`, refusing on any mismatch, then (in a
+   `deskinstall` built from this tree) verifies its build attestation, refusing on any failure. Step 2 does not
    place `deskinstall` itself. For how to get the first one, see
    **[The first `deskinstall` on a clean host](#the-first-deskinstall-on-a-clean-host--an-open-gap)**.
 5. **Pin the Windows assets in `.assay-versions`** — see **Pin the Windows assets** above; one
@@ -1666,34 +1690,54 @@ automation/smoke surface (brief 13) and is **not** a prerequisite for copying sk
 back here rather than carrying a second copy of the steps (`windows-port/09`) — read that file for
 the capability bindings, this section for the install steps.
 
-**Install — one command (`windows-port/07`).** `deskinstall --harness cursor --forge
-<github|gitlab> --repo <path>` places the skills/references tree and writes the `AGENTS.md`
-bindings in one idempotent, native command — on Windows this is [step 2 of the
-three-command install](#the-three-command-install-cursor--gitlab-channel-e) above; it runs
-identically on macOS/Linux. Run it from the assay clone root, or pass `--bundle
-<clone>/plugins/assay`: `--bundle` defaults to `plugins/assay` relative to the current directory.
-It runs **before** `assay:install`, because it is what places that skill into Cursor. `--check`
-reports drift (missing / extra / content-differs) without writing. This automates steps 1-3 below; step 4 (desk binaries on PATH) is `deskinstall`'s
-existing acquire mode / the [three-command install](#the-three-command-install-cursor--gitlab-channel-e)'s
-step 1; step 5 never blocks either path.
+**Versioned install.** Releases that publish `cursor-bundle.tar.gz` support placement
+without an Assay checkout. Select a published umbrella version explicitly:
 
-**Install (IDE agent) — the manual steps, what the command above actually does:**
+```sh
+deskinstall --harness cursor --release vX.Y.Z --repo <repo> --forge github --fetch --dry-run
+deskinstall --harness cursor --release vX.Y.Z --repo <repo> --forge github --fetch
+deskinstall --harness cursor --release vX.Y.Z --repo <repo> --forge github --fetch --check
+```
 
-1. From this repository's `plugins/assay/skills/` (or the plugin cache on a Claude host), copy the
-   skill directories into the **adopter repo** at `.cursor/skills/` (or `.agents/skills/`).
-2. Copy `plugins/assay/references/*.md` to `.cursor/references/` (or a sibling of `skills/` that
-   keeps the skills' `../../references/*.md` includes resolvable). Copying **only** `skills/`
-   leaves those includes dead.
-3. Bindings stay in the adopter `AGENTS.md` / `CLAUDE.md` stub from `statusgen init`. Optional:
-   `.cursor/rules/*.mdc`. Cursor does **not** run Assay's Claude `SessionStart` hooks; Git-Bash
-   is not required for Cursor resident rules.
-4. Put desk binaries on PATH (Windows: `%LOCALAPPDATA%\Assay\bin`). On GitLab, the desk verbs
-   resolve the forge from the repo (`desktoken` takes `--forge gitlab`); neither `gh` nor `glab` is
-   required (both are optional convenience CLIs), and skill text that says `gh` is GitHub-shaped
-   leftover, not a Cursor requirement.
-5. Generated `harnessgen cursor` / `plugins/assay/cursor/` output is **not** required for the copy
-   path above. If those artifacts are absent from the tree you cloned, do not block the install
-   on them.
+Use `--forge gitlab` for GitLab. Without `--fetch`, materialize the selected release's
+`checksums.txt` as `releases/vX.Y.Z.checksums.txt` and its bundle as
+`releases/vX.Y.Z.cursor-bundle.tar.gz`; `--releases <directory>` changes that location.
+Every network request is opt-in and announces its exact target before contact.
+The selected composition's SHA-256, the internal version, and a closed per-file
+manifest must all match before any adopter file is written. This proves integrity
+against that composition, **not build provenance**. Binary installation remains a
+separate operation with its existing mandatory Sigstore verification.
+
+Legacy releases without the bundle or its digest refuse; there is no fallback to a
+floating checkout. The source route remains available explicitly:
+`deskinstall --harness cursor --bundle <clone>/plugins/assay --repo <repo> --forge github`.
+That route uses local source, without claiming release verification. It permits a
+missing optional rule for older source trees; versioned bundles require the rule.
+Both routes run before `assay:install`, because they place that skill into Cursor.
+
+**Upgrade an existing adopter.** Use the existing version resolver and migration
+runner through `upgrade-assay --root <repo> --harness cursor --to vX.Y.Z --fetch --dry-run`.
+Inspect the plan, then apply the same command without `--dry-run`; finish with
+`--check`. A Cursor upgrade places the verified bundle before advancing
+`.assay-versions` and does not print Claude marketplace commands. `--check` is
+read-only and reports drift with exit 1; unavailable or unverifiable bundles refuse.
+A same-version upgrade still verifies the bundle and checks/repairs missing generated
+files. It never silently overwrites local edits.
+
+**Ownership.** `.cursor/skills/`, sibling `.cursor/references/`, and
+`.cursor/rules/assay.mdc` come from the canonical bundle. Generated text identifies
+its source. `.cursor/assay-managed.json` records owned file hashes; it is generated,
+not an authorization boundary against a writer who can change the repository.
+Sync retires only previously owned, unchanged files no longer in the source set.
+Unrelated files and bytes outside the bounded `AGENTS.md` bindings are preserved.
+Unmanaged collisions, edited owned files, malformed bindings, and symlinked paths
+refuse before placement. Keep repository-specific instructions outside that block.
+The operation is preflighted and retryable, not a cross-file transaction.
+
+**Desk binaries on PATH** are still required (Windows:
+`%LOCALAPPDATA%\Assay\bin`). Cursor does not need Claude's SessionStart hooks or
+Git-Bash for resident rules. Its native `AGENTS.md` and `.cursor/rules` channels
+carry them; `gh`/`glab` remain optional convenience CLIs.
 
 **Isolation** — Cursor's background agents run in isolated git worktrees, so parallel workers
 isolate natively there; on the headless CLI, worker isolation follows the same `git worktree`

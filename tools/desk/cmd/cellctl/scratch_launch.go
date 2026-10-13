@@ -48,6 +48,7 @@ func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string
 	if err != nil {
 		return nil, env, err
 	}
+	s.Label(c.Name, role)
 	report, err := s.Sweep(policy, true)
 	if err != nil {
 		s.Close()
@@ -61,7 +62,8 @@ func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string
 		s.Close()
 		return nil, env, err
 	}
-	for k, v := range map[string]string{"TMPDIR": r.Work(), "TMP": r.Work(), "TEMP": r.Work(), "ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": s.Path, "ASSAY_SCRATCH_CELL": c.Name, "CELLS_ROOT": filepath.Dir(c.Dir)} {
+	cellsRoot, cellName := c.reenter()
+	for k, v := range map[string]string{"TMPDIR": r.Work(), "TMP": r.Work(), "TEMP": r.Work(), "ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": s.Path, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot} {
 		env = envSet(env, k, v)
 	}
 	return &scratchLaunch{s, r, r.Tail(), policy}, env, nil

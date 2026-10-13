@@ -64,6 +64,49 @@ func briefFrontmatterGate(root, brief string) string {
 	return strings.Trim(strings.TrimSpace(m[1]), `"'`)
 }
 
+// briefExecTierRe / briefEffortRe match the top-level `exec-tier:` and `effort:` frontmatter
+// lines the dispatch record carries; `brief:` is deliverable.go's briefIDRe.
+var (
+	briefExecTierRe = regexp.MustCompile(`(?m)^exec-tier:[ \t]*(.*)$`)
+	briefEffortRe   = regexp.MustCompile(`(?m)^effort:[ \t]*(.*)$`)
+)
+
+// briefRecordFields is what the dispatch record reads from the brief's OWN frontmatter, with the
+// same extractor as `gate:`. Each is nil when the brief cannot be read, has no frontmatter fence,
+// or names no value — never a guess.
+type briefRecordFields struct {
+	id, execTier, effort *string
+}
+
+// readBriefRecordFields reads `brief:`, `exec-tier:` and `effort:` from the brief (resolved
+// against root when relative, like briefFrontmatterGate).
+func readBriefRecordFields(root, brief string) briefRecordFields {
+	var f briefRecordFields
+	if strings.TrimSpace(brief) == "" {
+		return f
+	}
+	path := brief
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, brief)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return f
+	}
+	front := briefFrontmatterBlock(string(raw))
+	if front == "" {
+		return f
+	}
+	opt := func(re *regexp.Regexp) *string {
+		if v := briefField(front, re); v != "" {
+			return &v
+		}
+		return nil
+	}
+	f.id, f.execTier, f.effort = opt(briefIDRe), opt(briefExecTierRe), opt(briefEffortRe)
+	return f
+}
+
 // briefFrontmatterBlock returns the text between the leading `---` fences, or "" if the
 // content does not open with one. Mirrors verifyloop.frontmatterBlock.
 func briefFrontmatterBlock(content string) string {
