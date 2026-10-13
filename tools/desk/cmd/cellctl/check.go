@@ -366,8 +366,20 @@ func (c *Cell) checkK8s(k *checker) {
 // installed, and the assay plugin is enabled for the checkout the windows will open in.
 func (c *Cell) checkHouse(k *checker, cfgArg string) {
 	k.chk(isGitCheckout(c.Repo), "cell.env CELL_REPO is a git checkout: %s", c.Repo)
-	link, _ := os.Readlink(c.Config)
-	k.chk(link == realConfigHome(c.Env), "config home linked to the operator's: %s -> %s", c.Config, realConfigHome(c.Env))
+	// Require an independent expected resource: one that is not cell-owned (the
+	// cell link under any spelling, or anything inside a cell home), the same
+	// test capture applies. Active desk-tool config must agree with it.
+	// Directory identity still permits relative links and alternate spellings.
+	real := realConfigHome(c.Env)
+	active := mustResolve(configHomeFor(runtime.GOOS, c.Env))
+	linkNode, nodeErr := os.Lstat(filepath.Clean(c.Config))
+	linked, linkErr := os.Stat(c.Config)
+	target, targetErr := os.Stat(real)
+	used, usedErr := os.Stat(active)
+	k.chk(nodeErr == nil && linkNode.Mode()&os.ModeSymlink != 0 &&
+		!cellOwnedConfig(real, c.Home, c.Config) && linkErr == nil && targetErr == nil && usedErr == nil &&
+		linked.IsDir() && target.IsDir() && os.SameFile(linked, target) && os.SameFile(used, target),
+		"config home linked to the operator's: %s -> %s", c.Config, real)
 	k.chk(exists(filepath.Join(c.Home, ".gitconfig")), "gitconfig linked: %s/.gitconfig", c.Home)
 	k.chk(exists(filepath.Join(c.Home, ghConfigRelPath)), "gh config linked: %s/.config/gh", c.Home)
 	k.chk(c.rosterParses(), "roster parses under the cell home: deskroster repos --scope scan")

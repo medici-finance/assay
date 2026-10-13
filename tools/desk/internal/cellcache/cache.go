@@ -36,7 +36,7 @@ type Report struct {
 type manager struct {
 	p    Policy
 	r    *os.Root
-	lock *os.File
+	lock *deskkit.HeldLock
 	dev  uint64
 	// Instance-local seams make unavailable measurements/removal deterministic
 	// in fixtures without mutating globals or touching host caches.
@@ -118,25 +118,21 @@ func open(p Policy, create bool) (*manager, error) {
 		lock.Close()
 		return fail(err)
 	}
-	// Bounded wait for short measurement/cleanup transactions. Busy is unknown,
-	// never permission to proceed without custody.
-	until := time.Now().Add(time.Minute)
-	for {
-		err = deskkit.TryLockExclusive(lock)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, deskkit.ErrLockBusy) || time.Now().After(until) {
-			lock.Close()
-			return fail(err)
-		}
-		time.Sleep(10 * time.Millisecond)
+	// Bounded wait, with backoff, for short measurement/cleanup transactions.
+	// Busy is unknown, never permission to proceed without custody; a lasting
+	// busy read names the lock and its holder and says it is retryable.
+	held, err := deskkit.AcquireHeld(r, "lock", lock, deskkit.LockSpec{Name: "cell Go cache", Wait: LockWait, Log: os.Stderr})
+	if err != nil {
+		return fail(err)
 	}
-	m := &manager{p: p, r: r, lock: lock, dev: dev, free: diskFree}
+	m := &manager{p: p, r: r, lock: held, dev: dev, free: diskFree}
 	m.remove = m.removeTree
 	return m, nil
 }
-func (m *manager) close() { deskkit.UnlockFile(m.lock); m.lock.Close(); m.r.Close() }
+func (m *manager) close() { m.lock.Release(); m.r.Close() }
+
+// LockWait bounds how long one cache transaction waits for a sibling's.
+var LockWait = time.Minute
 
 func (m *manager) measure() (Measurement, []string) {
 	v := Measurement{At: time.Now().UTC()}
