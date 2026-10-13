@@ -293,6 +293,8 @@ func buildEnvKeys() []envKey {
 			why: "is set by cellctl in a managed task's environment and read back by `cellctl scratch` there"},
 		envKey{key: "DESK_SESSION", class: envNotLever, from: envInternal,
 			why: "is set by cellctl in each role window and read back by `cellctl scratch` there"},
+		envKey{key: "CELLCTL_OPERATOR_CONFIG_HOME", class: envNotLever, from: envInternal,
+			why: "is the operator config path cellctl captures before a launch moves the home, and a file-carried value would be an expectation the launch did not capture"},
 		envKey{key: "CELLCTL_PARITY_MUTATE", class: envNotLever, from: envInternal,
 			why: "is a test hook compiled only under the parity build tag"},
 	)
