@@ -398,6 +398,7 @@ func TestActFloorAnyWordEnd(t *testing.T) {
 		{"greater-than in double quotes", []string{`  echo "a>#b"`}, 0},
 		{"open paren in double quotes", []string{`  echo "a(#b"`}, 0},
 		{"carriage return in double quotes", []string{"  echo \"a\r#b\""}, 0},
+		{"tab in double quotes", []string{"  echo \"a\t#b\""}, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, issues := lintOne(t, "sh", withLines(actRowAt, c.lines...))
@@ -727,5 +728,46 @@ func TestActCommentPlacement(t *testing.T) {
 		if len(issues) != 0 {
 			t.Fatalf("issues=%+v, want none for comments in the header", issues)
 		}
+	})
+}
+
+// TestActHeaderRows — rows around the header the placement rule defines: what
+// stays clean in it (an indented guard and comments, a `#` inside a comment
+// word) and what is refused (a header line that only starts like the guard,
+// a comment word that starts with `=`, which zsh reads as a command path and
+// stops the whole paste on).
+func TestActHeaderRows(t *testing.T) {
+	indent := func(prefix string) []string {
+		lines := append([]string{}, cleanActLines...)
+		lines[0] = prefix + lines[0]
+		lines[1] = prefix + lines[1]
+		return append(lines[:2], append([]string{prefix + "# second header line"}, lines[2:]...)...)
+	}
+	for _, c := range []struct {
+		name  string
+		lines []string
+	}{
+		{"indented guard and header with spaces", indent("  ")},
+		{"indented guard and header with a tab", indent("\t")},
+		{"a # inside a header comment", withLines(2, "# see step #2")},
+	} {
+		t.Run(c.name+" is clean", func(t *testing.T) {
+			_, issues := lintOne(t, "sh", c.lines)
+			if len(issues) != 0 {
+				t.Fatalf("issues=%+v, want none", issues)
+			}
+		})
+	}
+	t.Run("a header line that only starts like the guard ends the header", func(t *testing.T) {
+		_, issues := lintOne(t, "sh", withLines(2, actBlockGuardLine+" && echo LIVE", "# note"))
+		wantIssues(t, issues, cleanActLine(2), actWant{1, actPlaceMsg})
+	})
+	t.Run("a comment word that starts with an equals sign", func(t *testing.T) {
+		_, issues := lintOne(t, "sh", withLines(2, "# == act 78 =="))
+		wantIssues(t, issues, cleanActLine(2), actWant{0, "comment carries"})
+	})
+	t.Run("an equals sign in the middle of a comment is refused too", func(t *testing.T) {
+		_, issues := lintOne(t, "sh", withLines(2, "# a=b"))
+		wantIssues(t, issues, cleanActLine(2), actWant{0, "comment carries"})
 	})
 }

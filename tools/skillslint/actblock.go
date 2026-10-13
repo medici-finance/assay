@@ -593,11 +593,11 @@ func actCommentAllowed(r rune) bool {
 	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 		return true
 	}
-	return strings.ContainsRune(" \t.,:-/_+=#", r)
+	return strings.ContainsRune(" \t.,:-/_+#", r)
 }
 
 // actCommentRuleText names the allowed set in every comment-rule issue.
-const actCommentRuleText = "a comment line holds only letters, digits, spaces, tabs and . , : - / _ + = #"
+const actCommentRuleText = "a comment line holds only letters, digits, spaces, tabs and . , : - / _ + #"
 
 // actCommentInHeader reports whether the full-line comment at texts[i] stands
 // in the block's header: every non-blank line before it is the zsh comment

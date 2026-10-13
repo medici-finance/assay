@@ -166,8 +166,9 @@ restate it.
 - **Comments in plain text, in the header only; each step opens with an `echo`.** The block's
   `#` lines stand together straight after the guard line, before any code: what the act does,
   how to run it live, and the `# fill:` markers. A comment line holds only letters, digits,
-  spaces, tabs and `. , : - / _ + = #`: no `;`, `&`, `|`, backtick, `$`, parenthesis, `<`,
-  `>`, quote or apostrophe, backslash, `*`, `?`, `[` or `]`. Write "do not", never "don't". No
+  spaces, tabs and `. , : - / _ + #`: no `;`, `&`, `|`, backtick, `$`, parenthesis, `<`,
+  `>`, quote or apostrophe, backslash, `*`, `?`, `[`, `]` or `=` (zsh reads a word that starts
+  with `=` as a command path and stops the paste when it fails). Write "do not", never "don't". No
   comment follows code on the same line. Inside the act function there is no `#` line at all:
   each step opens with `echo '<n>. <what it does>'`, its text in single quotes, in the same
   plain characters and with no `#`, so the driver can read the block before running it and
@@ -181,7 +182,8 @@ restate it.
   tested, it can change which branch runs, and after a line that ends in a backslash its text
   joins the command before it, in every shell. In the header only the guard comes before it,
   so nothing reads that status and no continuation reaches it: each comment line there prints
-  `command not found: #` and changes nothing. A step's `echo` line reads the same in every
+  `command not found: #` and changes nothing, provided the first code line does not test `$?`,
+  which in zsh still holds the last comment's failure. A step's `echo` line reads the same in every
   shell.
 - **The zsh comment guard comes first.** The block's first line is
   `[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments`, ahead of any `#` line. It covers

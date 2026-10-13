@@ -322,7 +322,7 @@ pastes and lines typed after it, never the paste that carries it. The
 or `shell` fence that defines a function named `driver_act…`) to five rules:
 
 1. every full-line comment holds only letters, digits, spaces, tabs and
-   `. , : - / _ + = #`, indented or not, and no code line carries a trailing
+   `. , : - / _ + #`, indented or not, and no code line carries a trailing
    `#` comment, so a comment's words run nothing even where zsh reads it as a
    command (rule 2 keeps its failing status from mattering).
    Two checks find a trailing comment, and a line either one flags fails.
@@ -360,7 +360,8 @@ or `shell` fence that defines a function named `driver_act…`) to five rules:
    function, after the call, or after any code line, it is refused, and so is
    a `#`-led line inside a multi-line quote or heredoc body, which errs strict.
    In the header only the guard comes before it, so no status reads the
-   comment's failure and no continuation reaches it. A step inside the act
+   comment's failure and no continuation reaches it, unless the first code
+   line tests `$?` (the lint does not check that; write none). A step inside the act
    function opens with `echo '<n>. <text>'` instead;
 3. the block's first non-blank line is the zsh comment guard;
 4. the act function has a per-act name, `driver_act_<id>`, never the bare
@@ -383,7 +384,11 @@ or `shell` fence that defines a function named `driver_act…`) to five rules:
 A violation is exit 1, naming the file and line. Finding no act block at all is
 could-not-check (exit 2), never a pass: the `ask-decision` example must exist.
 The check reads only the examples the plugin ships. An act block a desk writes
-at run time gets no lint. Its fence finder matches the opening character and a
+at run time gets no lint. It finds an act block by one spelling of the function
+definition, a line that starts `driver_act…()`, which the skill prescribes; a
+shipped fence that defines the function another valid way (`function
+driver_act_1 {`, or a name on a continuation line) is not counted and gets none
+of the rules. Its fence finder matches the opening character and a
 closing run at least as long, but applies no indentation or list rule, so a
 four-space-indented example is still checked, which errs strict. The read rule
 tokenizes the block whole (quotes, backslashes and line continuations, `$( )`,
