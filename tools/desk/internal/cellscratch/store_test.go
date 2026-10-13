@@ -212,6 +212,7 @@ func TestScratchSweepLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.lockWait = 100 * time.Millisecond
 	if _, err = s.Sweep(Policy{}, true); err == nil {
 		t.Fatal("overlapping sweep admitted")
 	}
