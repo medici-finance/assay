@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	muhar -spec mutations.json [-j N] [-shard i/n]
+//	muhar -spec mutations.json [-j N] [-shard i/n] [-select]
 //
 // -j is how many mutations to have in flight at once. The default, 1, runs the
 // sweep sequentially in place — the historical behaviour. -j 0 sizes the pool to
@@ -28,6 +28,20 @@
 // (the selection is echoed to stderr so a partial report is never mistaken for
 // a complete one).
 //
+// -select (opt-in, #2636) runs each mutation against only the tests that can
+// catch it: after the baseline, one coverage profile per top-level test records
+// which tests execute which functions, and each mutant runs the tests that
+// executed the function it lands in, plus the spec's select.always list. It
+// only ever REMOVES tests, and each distinct narrowed set must pass on pristine
+// source first (a red one runs the full command); the control runs under
+// selection too. selection.go states the safety property, the residual it does
+// not close (a narrowed run changes which tests precede each selected test, so
+// -select can report CAUGHT for a mutant the full command survives; re-run a
+// parity check against the full sweep whenever the suite or spec changes), and
+// what falls back to the full command. Baseline, control, exit
+// codes, the report and -shard/-j are unchanged. It needs the spec's `test` to
+// be a plain `go test [flags] <packages>` command and refuses anything else.
+//
 // The spec is JSON:
 //
 //	{
@@ -39,6 +53,7 @@
 //	    "old": "n == p",
 //	    "new": "n == p + 1"
 //	  },
+//	  "select": {"always": ["TestReadsSource"]}, // optional; -select only
 //	  "mutations": [
 //	    {"name": "breaker-active check", "file": "...", "old": "...", "new": "..."}
 //	  ],
@@ -72,6 +87,8 @@ type spec struct {
 	Test      string     `json:"test"`
 	Control   Mutation   `json:"control"`
 	Mutations []Mutation `json:"mutations"`
+	// Select configures -select; it has no effect without the flag.
+	Select *selectSpec `json:"select,omitempty"`
 	// Schemata opts this spec into mutant schemata (#2635). Off unless set:
 	// schemata assumes the suite never cross-checks the running code against
 	// its source on disk or against a child that drops the environment (see
@@ -193,6 +210,7 @@ func main() {
 	specPath := flag.String("spec", "", "path to the mutation spec JSON")
 	jobs := flag.Int("j", 1, "mutations in flight at once (1 = sequential, in place; 0 = one per CPU, capped at 2 to bound peak memory)")
 	shard := flag.String("shard", "", `run only this invocation's share of the spec: "i/n" (0-based shard i of n; the n shards partition the spec's mutations). Baseline + control still run in full per shard.`)
+	useSelect := flag.Bool("select", false, "run each mutation against only the tests that execute the mutated function (plus the spec's select.always list); opt-in")
 	flag.Parse()
 
 	if *specPath == "" {
@@ -263,6 +281,7 @@ func main() {
 	go func() {
 		<-sig
 		_ = os.RemoveAll(gocache)
+		selectTemps.removeAll() // -select's coverage binaries, if a pass is running
 		os.Exit(130)
 	}()
 
@@ -288,6 +307,25 @@ func main() {
 			// Non-zero exit == suite failed == mutation caught.
 			return cmd.Run() != nil
 		},
+	}
+	if *useSelect {
+		cmd, err := parseGoTest(s.Test)
+		if err != nil {
+			_ = os.RemoveAll(gocache) // os.Exit skips the deferred cleanup
+			fmt.Fprintf(os.Stderr, "muhar: %v\n", err)
+			os.Exit(1)
+		}
+		env := envWithGOCACHE(os.Environ(), gocache)
+		h.Selector = newCoverSelector(s, cmd, n, env, os.Stderr, func(root string, args []string) bool {
+			c := exec.Command("go", args...)
+			if root != "" {
+				c.Dir = root
+			}
+			c.Env = env
+			c.Stdout = os.Stderr
+			c.Stderr = os.Stderr
+			return c.Run() != nil // non-zero exit == narrowed suite failed == caught
+		})
 	}
 	// Mutant schemata (#2635), for a spec that opts in: eligible mutants share
 	// one build per worker and are picked per run by an environment selector,

@@ -49,3 +49,9 @@
 # committed inside this repository, and which must not resolve against this
 # repository's own history. See that script's header.
 /tools/changelog/testdata/credits-fixture-repo/
+
+# Pinned development analyzers, caches and raw scan evidence (not source).
+/.go-analysis/
+/tools/go-analysis/__pycache__/
+/scripts/tests/__pycache__/
+/actions/go-analysis/__pycache__/

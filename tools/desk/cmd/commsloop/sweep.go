@@ -70,12 +70,11 @@ package main
 //
 // FINDINGS never mutate anything: this sweep is read-only over held/ and
 // journal.log, and routes every finding as a filed issue via the shared
-// deskfile-issue-filing convention (commsqueue.RaisedByRole) — never a
+// deskfile-issue-filing site (commsqueue.FileDeskIssue) — never a
 // console-only report (silent desk).
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -83,7 +82,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -572,23 +570,18 @@ type sweepIssueFiler interface {
 	File(cell string, f Finding) error
 }
 
-// deskfileSweepFiler is the concrete filer: it shells out to `deskfile new`,
-// the desk write verb every filing goes through (never a hand-rolled `gh
-// issue create`) — same convention as commsqueue.DeskfileIssueFiler.
+// deskfileSweepFiler is the concrete filer: it files through
+// commsqueue.FileDeskIssue, the one shell-to-deskfile site the comms tools
+// share (never a hand-rolled `gh issue create`, never a second argv).
 type deskfileSweepFiler struct{ Repo string }
 
 func (d deskfileSweepFiler) File(cell string, f Finding) error {
 	title := fmt.Sprintf("lane-violation sweep: %s (cell %s, id %s)", f.Kind, cell, f.ID)
-	body := fmt.Sprintf("The daily lane-violation sweep found a %s.\n\n"+
-		"- cell: %s\n- id: %s\n- detail: %s\n", f.Kind, cell, f.ID, f.Detail)
-	cmd := exec.Command("deskfile", "new", "--raised-by", commsqueue.RaisedByRole, "--repo", d.Repo,
-		"--title", title, "--label", "help wanted", "--body", body)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("deskfile new failed: %w: %s", err, stderr.String())
-	}
-	return nil
+	return commsqueue.FileDeskIssue(d.Repo, title, fmt.Sprintf("The daily lane-violation sweep found a %s.", f.Kind), []string{
+		"cell: " + cell,
+		"id: " + f.ID,
+		"detail: " + f.Detail,
+	})
 }
 
 // loadSweepTrustStore reads a JSON {cell: base64-pubkey} file into a

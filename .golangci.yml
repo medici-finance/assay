@@ -1,0 +1,32 @@
+version: "2"
+run:
+  timeout: 10m
+  tests: true
+  modules-download-mode: readonly
+  relative-path-mode: gomod
+  go: "1.25.0"
+linters:
+  default: none
+  enable:
+    - errcheck
+    - staticcheck
+    - unused
+    - govet
+    - nolintlint
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+  exclusions:
+    generated: strict
+    presets: []
+    paths: []
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false
+output:
+  formats:
+    text:
+      path: ""
