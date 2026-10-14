@@ -654,6 +654,110 @@ func TestPushcredClassUnit(t *testing.T) {
 	}
 }
 
+// TestPushcredMaskShapes plants one sentinel of each token shape the mask
+// claims to cover. The shapes are assembled at run time so no token-shaped
+// literal sits in the source.
+//
+// regression: #2910
+func TestPushcredMaskShapes(t *testing.T) {
+	requirePushTools(t)
+	src, err := filepath.Abs("pushcred.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fine := "github" + "_pat_" + strings.Repeat("A", 11) + "_" + strings.Repeat("b", 59)
+	dotted := "gl" + "pat-" + strings.Repeat("C", 27) + ".01." + "SUFFIXSENTINEL"
+	shapes := map[string]string{
+		"classic":     "gh" + "s_" + strings.Repeat("D", 36),
+		"fine":        fine,
+		"gl-classic":  "gl" + "pat-" + strings.Repeat("E", 20),
+		"gl-dotted":   dotted,
+		"gl-deploy":   "gl" + "dt-" + strings.Repeat("F", 20),
+		"url-userinf": "https://x-access-token:" + urlSecretSentinel + "@forge.test/o/r.git",
+	}
+	for _, sh := range []string{"bash", "sh"} {
+		for name, tok := range shapes {
+			in := "fatal: Authentication failed with " + tok + " for refs/heads/main\n"
+			cmd := exec.Command(sh, "-c", `. "$1"; pushcred_mask`, sh, src)
+			cmd.Stdin = strings.NewReader(in)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("%s %s: %v\n%s", sh, name, err, out)
+			}
+			got := string(out)
+			for _, part := range []string{tok, "SUFFIXSENTINEL", urlSecretSentinel, strings.Repeat("b", 59)} {
+				if strings.Contains(tok, part) && strings.Contains(got, part) {
+					t.Errorf("%s: %s shape survived masking: %q", sh, name, got)
+				}
+			}
+			if !strings.Contains(got, "***") || !strings.Contains(got, "refs/heads/main") {
+				t.Errorf("%s: %s: want the token masked and the rest kept, got %q", sh, name, got)
+			}
+		}
+	}
+}
+
+// modeShim is `git` for TestPushcredRawLogMode: on push it records the mode of
+// every file in TMPDIR (the raw log is open for writing at that moment), then
+// fails with a credential-bearing line.
+const modeShim = `#!/bin/sh
+for f in "$TMPDIR"/*; do
+  [ -f "$f" ] && ls -l "$f" | cut -c1-10 >>"$MODE_LOG"
+done
+echo "fatal: Authentication failed for https://u:${URL_SECRET}@forge.test/o/r.git/" >&2
+exit 1
+`
+
+// TestPushcredRawLogMode pins that the unmasked push output and the masked
+// log are owner-only under a permissive umask: the raw file is a mktemp file
+// and the masked log is written under umask 077.
+//
+// regression: #2910
+func TestPushcredRawLogMode(t *testing.T) {
+	requirePushTools(t)
+	src, err := filepath.Abs("pushcred.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sh := range []string{"bash", "sh"} {
+		bin, tmp, logs := t.TempDir(), t.TempDir(), t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "git"), []byte(modeShim), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		modeLog := filepath.Join(logs, "modes")
+		caller := filepath.Join(tmp, "caller.log")
+		for _, preset := range []string{"", caller} {
+			cmd := exec.Command(sh, "-c", `umask 022; . "$1"; PUSHCRED_LOG=$2; pushcred_push origin HEAD:main 2>/dev/null; echo "rc=$?"`, sh, src, preset)
+			cmd.Env = append(scrubbedEnv(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+				"TMPDIR="+tmp, "MODE_LOG="+modeLog, "URL_SECRET="+urlSecretSentinel)
+			out, err := cmd.CombinedOutput()
+			if err != nil || !strings.Contains(string(out), "rc=1") {
+				t.Fatalf("%s: pushcred_push: %v\n%s", sh, err, out)
+			}
+		}
+		b, err := os.ReadFile(modeLog)
+		if err != nil || len(b) == 0 {
+			t.Fatalf("%s: the shim saw no file in TMPDIR during the push (%v)", sh, err)
+		}
+		for _, m := range strings.Fields(string(b)) {
+			if m != "-rw-------" {
+				t.Errorf("%s: a push log was %s while git wrote to it under umask 022, want -rw-------", sh, m)
+			}
+		}
+		st, err := os.Stat(caller)
+		if err != nil {
+			t.Fatalf("%s: caller-named PUSHCRED_LOG not written: %v", sh, err)
+		}
+		if st.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s: caller-named PUSHCRED_LOG has mode %v, want owner-only", sh, st.Mode().Perm())
+		}
+		if c, _ := os.ReadFile(caller); strings.Contains(string(c), urlSecretSentinel) {
+			t.Errorf("%s: masked log carries the URL secret: %q", sh, c)
+		}
+		_ = os.Remove(caller)
+	}
+}
+
 // pushRetryWording marks a run: block that retries a push to main as a race.
 var pushRetryWording = regexp.MustCompile(`main moved|lost a race|moving faster than`)
 
@@ -740,7 +844,7 @@ func TestPushRetryCallsPushcred(t *testing.T) {
 	}
 	// These tests run on the board workflow's PR lint job, or nowhere: the
 	// repo-wide CI job builds and vets statusgen without testing it.
-	const sel = `-run '^(TestBoardPush|TestGitlabRegen|TestPushcredClassUnit|TestPushRetryCallsPushcred)' .`
+	const sel = `-run '^(TestBoardPush|TestGitlabRegen|TestPushcred|TestPushRetryCallsPushcred)' .`
 	ran := false
 	for _, st := range stagedWorkflow(t).Jobs["lint"].Steps {
 		ran = ran || strings.Contains(st.Run, sel)

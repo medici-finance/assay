@@ -25,7 +25,9 @@
 #   PUSHCRED_TOKEN_VAR  NAME of the variable holding the push token. When set,
 #                       pushes authenticate through an inline credential helper
 #                       that reads it, so the value never enters a URL or argv.
-#   PUSHCRED_LOG        where the masked output of the last push lands.
+#   PUSHCRED_LOG        where the masked output of the last push lands
+#                       (default: a mktemp file; a path that does not exist yet
+#                       is created mode 0600).
 
 # pushcred_valid_var NAME — true when NAME is a plain shell variable name.
 pushcred_valid_var() {
@@ -35,12 +37,16 @@ pushcred_valid_var() {
   return 0
 }
 
-# pushcred_mask — stdin to stdout with credentials masked.
+# pushcred_mask — stdin to stdout with credentials masked: URL userinfo,
+# GitHub token shapes (classic gh?_ and fine-grained github_pat_), GitLab token
+# shapes including the dotted suffix of the routable format, and the exact
+# value of the variable PUSHCRED_TOKEN_VAR names.
 pushcred_mask() {
   sed -E \
     -e 's#(://)[^/@[:space:]]+@#\1***@#g' \
     -e 's#gh[opsur]_[A-Za-z0-9]{16,}#***#g' \
-    -e 's#glpat-[A-Za-z0-9_-]{16,}#***#g' |
+    -e 's#github_pat_[A-Za-z0-9_]{16,}#***#g' \
+    -e 's#(glpat|gldt|glrt|glcbt|glptt|glft|glimt|glagent|gloas|glsoat|glffct)-[A-Za-z0-9_.-]{16,}#***#g' |
     awk -v v="${PUSHCRED_TOKEN_VAR:-}" '{
       if (v != "") {
         t = ENVIRON[v]
@@ -100,7 +106,9 @@ pushcred_push() {
   if [ -z "${PUSHCRED_LOG:-}" ]; then
     PUSHCRED_LOG=$(mktemp "${TMPDIR:-/tmp}/pushcred.XXXXXX") || return 1
   fi
-  _pc_raw="$PUSHCRED_LOG.raw"
+  # The unmasked output lands in its own mktemp file (mode 0600 by
+  # construction, whatever the umask) and is removed once masked.
+  _pc_raw=$(mktemp "${TMPDIR:-/tmp}/pushcred-raw.XXXXXX") || return 1
   _pc_rc=0
   if [ -n "${PUSHCRED_TOKEN_VAR:-}" ]; then
     if ! pushcred_valid_var "$PUSHCRED_TOKEN_VAR"; then
@@ -115,7 +123,7 @@ pushcred_push() {
   else
     GIT_TERMINAL_PROMPT=0 git push "$@" >"$_pc_raw" 2>&1 || _pc_rc=$?
   fi
-  pushcred_mask <"$_pc_raw" >"$PUSHCRED_LOG"
+  (umask 077 && pushcred_mask <"$_pc_raw" >"$PUSHCRED_LOG")
   rm -f "$_pc_raw"
   cat "$PUSHCRED_LOG" >&2
   return "$_pc_rc"

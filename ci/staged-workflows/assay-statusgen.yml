@@ -144,7 +144,7 @@ jobs:
         run: |
           set -euo pipefail
           cd statusgen
-          go test -count=1 -timeout 600s -run '^(TestBoardPush|TestGitlabRegen|TestPushcredClassUnit|TestPushRetryCallsPushcred)' .
+          go test -count=1 -timeout 600s -run '^(TestBoardPush|TestGitlabRegen|TestPushcred|TestPushRetryCallsPushcred)' .
 
   # Findings-register transition corroboration (statusgen/06, deliverable 7).
   # A job of its own, so no PR-authored code runs before or beside the guard:
