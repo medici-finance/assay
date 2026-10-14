@@ -182,6 +182,49 @@ class CacheTests(unittest.TestCase):
             self.assertTrue(Path(lines['GOMODCACHE']).is_dir())
             self.assertEqual(list(Path(lines['GOCACHE']).iterdir()),[])
 
+    # regression: #138
+    def test_truncated_is_cold(self):
+        # A transport failure that is not OSError (http.client.IncompleteRead
+        # from a truncated chunked body) must still be a cold miss, both inside
+        # the candidate loop and before it, and still write GITHUB_ENV.
+        responses={'/actions/workflows/release.yml':dict(path=cache.WORKFLOW,state='active',id=7),
+                   '/actions/workflows/release.yml/runs?branch=main&event=workflow_dispatch&status=success&per_page=5':dict(workflow_runs=[self.run]),
+                   '/actions/runs/42/attempts/1/jobs?per_page=100':dict(total_count=1,jobs=[self.job])}
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version='HTTP/1.1'
+            def do_GET(self):
+                value=responses.get(self.path)
+                if value is None:
+                    # Announce a 0x400-byte chunk, send 5 bytes, close.
+                    self.send_response(200);self.send_header('Transfer-Encoding','chunked')
+                    self.send_header('Connection','close');self.end_headers()
+                    self.wfile.write(b'400\r\npartl');self.wfile.flush();self.close_connection=True;return
+                body=json.dumps(value).encode()
+                self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers()
+                self.wfile.write(body)
+            def log_message(self,*args): pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        actual=cache.API
+        def api(repo,token):
+            obj=actual(repo,token);obj.base='http://127.0.0.1:'+str(server.server_port);return obj
+        try:
+            for case in ('job-log','workflow'):
+                if case=='workflow': responses.pop('/actions/workflows/release.yml')
+                with self.subTest(case=case), tempfile.TemporaryDirectory() as d:
+                    envfile=Path(d)/'env'
+                    env={'RUNNER_TEMP':d,'GITHUB_ENV':str(envfile),'GITHUB_REPOSITORY':'example/project',
+                         'GH_TOKEN':'fixture','GITHUB_RUN_ID':'99'}
+                    with mock.patch.dict(os.environ,env), mock.patch.object(cache,'API',side_effect=api), \
+                         mock.patch.object(cache,'same_producer'), \
+                         mock.patch.object(cache.subprocess,'check_output',return_value='fixture'):
+                        cache.main('restore')
+                    lines=dict(line.split('=',1) for line in envfile.read_text().splitlines())
+                    self.assertEqual(set(lines),{'GOCACHE','GOMODCACHE'})
+                    self.assertEqual(list(Path(lines['GOCACHE']).iterdir()),[])
+        finally:
+            server.shutdown();server.server_close();thread.join()
+
     def test_workflow_wiring(self):
         repo=Path(__file__).resolve().parents[2]
         for path in ['.github/workflows/release.yml','tools/release/release.yml.proposed','ci/staged-workflows/release.yml']:

@@ -37,7 +37,10 @@ job-log endpoint returned HTTP 403 during qualification. The
 
 Restore creates isolated job-local `GOCACHE` and `GOMODCACHE` directories before
 release Go commands. Test and mutation jobs never use them. Missing, expired,
-unreadable, incompatible or corrupt cache data is a cold miss. Reads have a
+unreadable, incompatible or corrupt cache data is a cold miss, and so is any
+transport or decoding failure, including a truncated response. The one refusal
+is a cache directory that already exists on the runner before restore: it is
+never adopted unvalidated, and the step fails instead. Reads have a
 60-second total deadline, individual network timeouts, five-candidate limit,
 2 GiB archive limit and 8 GiB expanded limit. Extraction rejects traversal,
 links, duplicate members and unexpected roots, then exposes the result atomically.
@@ -92,7 +95,9 @@ human-authorized releases must compare restore/save overhead and total build tim
 The first run is necessarily cold; no workflow was dispatched for this change.
 
 [Retained measurement data](qualification/release-cache/measurements.json) records
-flags, inventories, per-binary hashes and observed version output. The native
+flags, inventories, per-binary hashes and observed version output. Each case's
+`inventory_sha256` list holds the SHA-256 of the binary at the same position
+in its `inventory` list. The native
 commands were equivalent to the workflow's original per-command loop and the
 new `go build -ldflags "$LDFLAGS" -o "$stage/" ./cmd/...` batch, with explicit
 `GOOS`/`GOARCH` per target and fresh owned caches/output directories.
@@ -119,7 +124,8 @@ Run `python3 -B -m unittest discover -s tools/release -p go_cache_test.py -v`
 and `python3 -B tools/release/go_cache_mutation.py` from the repository root.
 The existing unconditional `build-test` job also runs this suite through the desk
 regression package. It covers producer metadata and receipts, real loopback HTTP,
-cache failures, extraction and all three workflow consumers. Seven planted
+cache failures (a truncated response included), extraction and all three
+workflow consumers. Seven planted
 mutations removing workflow/job/ID/expiry/digest/path/source-contract checks each
 made the relevant fixture fail. CLI inventory, trigger coverage and existing
 release-stamp checks remain enforced.

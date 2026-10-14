@@ -3,7 +3,10 @@
 Only a completed main dispatch with this producer revision may seed a build.
 A receipt in the *release job's* log binds the immutable artifact ID and digest;
 a same-named artifact from a mutation job or another workflow is not a producer.
-All failures are cold misses. GitHub Actions read permission is required.
+Every failure to obtain or validate a prior artifact (forge, transport,
+decoding, archive) is a cold miss: restore still exports empty job-local
+caches. A pre-existing cache directory on the runner is refused rather than
+adopted unvalidated. GitHub Actions read permission is required.
 """
 import hashlib
 import contextlib
@@ -233,7 +236,9 @@ def restore(root, key, env):
                 unpack(archive,root,artifact['digest'].removeprefix('sha256:'),key)
             print('release Go cache: restored run=%s artifact=%s' % (run['id'],artifact['id']))
             return
-        except (Miss, KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
+        except Exception:
+            # Any candidate failure (http.client.HTTPException included) is a
+            # miss for that candidate; validation is never relaxed to recover.
             continue
     raise Miss('no admissible cache artifact')
 
@@ -250,7 +255,7 @@ def main(mode):
     require(not root.exists(), 'release cache directory already exists')
     try:
         restore(root,key,os.environ)
-    except (Miss, KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError) as e:
+    except Exception as e:
         # Do not print remote content, redirect URLs, tokens, or local paths.
         print('release Go cache: cold build (%s)' % type(e).__name__)
     (root/'build').mkdir(parents=True,exist_ok=True)
