@@ -275,6 +275,15 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	if pinProblem, has := sameTagPinLint(root); has {
 		problems = append(problems, pinProblem)
 	}
+	// Ignored board paths (#2915): a .gitignore rule that makes git refuse the
+	// regen job's path-scoped add of STATUS.md or docs/streams fails every push
+	// to main. Lint mode only — the regen run itself must still write the board
+	// so the commit step can name the rule (boardadd.sh). See boardignore.go.
+	if mode == "lint" {
+		ignoreProblems, ignoreNotices := boardIgnoreLint(root)
+		problems = append(problems, ignoreProblems...)
+		notices = append(notices, ignoreNotices...)
+	}
 	// The per-stream done/ archive checks — a NOTICE for a
 	// retired placeholder still at the stream root (archive candidate) and a
 	// PROBLEM for any non-done brief/placeholder parked under done/. Additive,
