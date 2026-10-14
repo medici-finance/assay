@@ -3,8 +3,8 @@ brief: assay:assay:performance-collection:04
 title: "Authenticated performance ingestion API"
 why: "Remote producers need an authenticated, bounded collector that acknowledges durable storage. Without a served-boundary contract, retries can inflate reports or one source can write another source's history."
 wave: 2
-depends: ["assay:assay:performance-collection:03"]
-unblocks: ["assay:assay:performance-collection:06"]
+depends: ["performance-collection/03"]
+unblocks: ["performance-collection/06"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

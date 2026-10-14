@@ -3,8 +3,8 @@ brief: assay:assay:performance-collection:02
 title: "Producer adapters for workflow, usage and local performance"
 why: "A logger with only synthetic input cannot explain desk delays or rework. Bounded adapters should turn existing performance, dispatch, historian and runner observations into locally useful measurements without waiting for the full cell runtime."
 wave: 1
-depends: ["assay:assay:performance-collection:01"]
-unblocks: ["assay:assay:performance-collection:06"]
+depends: ["performance-collection/01"]
+unblocks: ["performance-collection/06"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

@@ -4,7 +4,7 @@ title: "Local performance event contract, spool and offline report"
 why: "Operators need useful local measurements before a collector or database exists. A versioned local record and reader establish the consent, identity and coverage seam that later storage and transport can consume without changing old telemetry promises."
 wave: 0
 depends: []
-unblocks: ["assay:assay:performance-collection:02", "assay:assay:performance-collection:03", "assay:assay:performance-collection:05"]
+unblocks: ["performance-collection/02", "performance-collection/03", "performance-collection/05"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

@@ -3,7 +3,7 @@ brief: assay:assay:performance-collection:06
 title: "Collection replay, retention, recovery and release qualification"
 why: "Passing logger, database and HTTP tests separately does not prove a usable history. A complete-path replay and recovery exercise must demonstrate truthful totals, bounded loss and independent cell operation before optional remote collection is offered."
 wave: 3
-depends: ["assay:assay:performance-collection:02", "assay:assay:performance-collection:04", "assay:assay:performance-collection:05"]
+depends: ["performance-collection/02", "performance-collection/04", "performance-collection/05"]
 unblocks: []
 effort: M
 gate: human

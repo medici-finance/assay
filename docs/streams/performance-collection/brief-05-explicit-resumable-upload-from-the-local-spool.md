@@ -3,8 +3,8 @@ brief: assay:assay:performance-collection:05
 title: "Explicit resumable upload from the local spool"
 why: "Local logs and a collector do not move data by themselves. Explicit, resumable upload lets operators choose what leaves the machine while bounded retry and stable identities prevent silent loss or duplicate accounting."
 wave: 1
-depends: ["assay:assay:performance-collection:01"]
-unblocks: ["assay:assay:performance-collection:06"]
+depends: ["performance-collection/01"]
+unblocks: ["performance-collection/06"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

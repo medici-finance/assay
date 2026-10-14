@@ -3,8 +3,8 @@ brief: assay:assay:performance-collection:03
 title: "Separate TimescaleDB performance database and storage adapter"
 why: "Optional history needs independent retention, access and failure behavior. A dedicated time-series database preserves useful analysis without turning cell coordination into a telemetry dependency."
 wave: 1
-depends: ["assay:assay:performance-collection:01"]
-unblocks: ["assay:assay:performance-collection:04"]
+depends: ["performance-collection/01"]
+unblocks: ["performance-collection/04"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
