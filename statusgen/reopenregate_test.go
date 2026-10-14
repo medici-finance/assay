@@ -59,10 +59,10 @@ func assertRegated(t *testing.T, path, wantGate string, wantLabels []string) {
 	}
 }
 
-// regression: F-scan-reopen-frontmatter
 // TestReopenArchiveRegates — archived placeholder (stored gate: model, labels
 // [bug]) whose issue reopens carrying risk:high comes back gate: human with the
 // live label set.
+// regression: F-scan-reopen-frontmatter
 func TestReopenArchiveRegates(t *testing.T) {
 	root, dir := reopenFixture(t)
 	archived := writeTemp(t, filepath.Join(dir, archiveDirName), "issue-661.md",
@@ -83,10 +83,10 @@ func TestReopenArchiveRegates(t *testing.T) {
 	}
 }
 
-// regression: F-scan-reopen-frontmatter
 // TestReopenInPlaceRegates — a retired placeholder still at the stream root
 // with NO gate line (read as model from its stale labels) whose issue reopens
 // with a security label gains gate: human and the live labels.
+// regression: F-scan-reopen-frontmatter
 func TestReopenInPlaceRegates(t *testing.T) {
 	root, dir := reopenFixture(t)
 	path := writeTemp(t, dir, "issue-662.md", closedPlaceholderFile("issue-loop", 662, "bug"))
@@ -107,6 +107,7 @@ func TestReopenInPlaceRegates(t *testing.T) {
 // never relaxed on reactivate (it may be a human override), while the labels
 // still follow the live issue — a block-style list is replaced whole, and an
 // issue with no labels left drops the line.
+// regression: F-scan-reopen-frontmatter
 func TestReopenKeepsHumanGate(t *testing.T) {
 	root, dir := reopenFixture(t)
 	body := "---\nschema: placeholder-v1\nbrief: issue-loop/issue-663\nissue: 663\n" +
@@ -137,9 +138,9 @@ func TestReopenKeepsHumanGate(t *testing.T) {
 	}
 }
 
-// regression: F-scan-reopen-frontmatter
 // TestReopenTranscribeRegates — the same-repo transcription lane has its own
 // two reactivate sites (in place and from done/); both re-derive from live state.
+// regression: F-scan-reopen-frontmatter
 func TestReopenTranscribeRegates(t *testing.T) {
 	scanWithRoster(t, transcribeRoster())
 	root, dir := reopenFixture(t)
@@ -165,11 +166,11 @@ func TestReopenTranscribeRegates(t *testing.T) {
 	assertRegated(t, filepath.Join(dir, "issue-665.md"), "human", []string{"bug"})
 }
 
-// regression: F-scan-reopen-frontmatter
 // TestReactivateNeedsLiveGate — the choke point: applyCloseOut refuses a
 // reactivate plan built without the live issue (no Gate), leaving the file
 // untouched, so a future reactivate site that bypasses reactivatePlan fails
 // loudly instead of re-surfacing stale frontmatter.
+// regression: F-scan-reopen-frontmatter
 func TestReactivateNeedsLiveGate(t *testing.T) {
 	_, dir := reopenFixture(t)
 	before := closedPlaceholderFile("issue-loop", 666, "bug", "gate: model")
