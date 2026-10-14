@@ -52,7 +52,7 @@ it on day one.
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
-| `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
+| `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `maintain objects` inventories and compacts the common Git directory offline; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); inspection takes `--dry-run` | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
 | `deskapps` | `init` — the GitHub App Manifest-flow installer: serves the loopback page, posts the tier's manifests, converts the callback code, writes the PEM/records/role bindings. `resume`/`status`/`avatar` are later briefs (03/04/06) | local-only + loopback HTTP (no outward GitHub write of its own — the App is created by GitHub on the person's own click) | no |
@@ -2438,7 +2438,7 @@ format.
 
 `cmd/deskwt` makes the isolate-first rule (CLAUDE.md "Parallel sessions & worktrees") the
 path of least resistance, and makes cleanup safe by construction. Every verb acts ONLY on
-paths that RESOLVE under the sanctioned prefixes `/private/tmp/tracker-*` or
+paths that RESOLVE under the sanctioned temporary-root prefix or
 `<repo-root>/.claude/worktrees/`, refuses the shared checkout by IDENTITY (git-common-dir's
 parent), and there is **no `--force` flag anywhere**. It is a local-only verb class: it
 takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate limit.
@@ -2485,7 +2485,7 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   `cellctl desk <cell> <role>` when `cellctl` is on PATH.
 
 - **`add`** creates `tracker-<name>` on a new tracking branch, under the sanctioned prefix
-  that is PORTABLE on the host OS: `/private/tmp/tracker-<name>` on POSIX, and
+  that is PORTABLE on the host OS: `tracker-<name>` beneath `/private/tmp` on POSIX, and
   `<repo-root>/.claude/worktrees/tracker-<name>` on Windows (`role-init` follows the same rule
   for its session-scoped worktree). Both prefixes are already in the allowlist above; the OS
   only decides WHICH one is targeted, never widening it. `/private/tmp` is not a usable
@@ -2602,6 +2602,102 @@ that is draining from one that is stuck, and on which gate. The cache pass adds 
 (**cache-checked** / **cache-reclaimed** / **cache-deferred** / **cache-orphans-reaped**)
 only when it acted or found pressure it could not clear.
 
+### Offline repository maintenance
+
+Deleting finished branches and worktrees does not consolidate the object store.
+Every ordinary prune invocation also attempts one bounded maintenance pass, coalesced
+across linked worktrees by a lock and attempt/success stamps in their canonical common
+Git directory. The default attempt interval is **24 hours** and the total inventory
+plus task budget is **two minutes**. An overlapping coordinator or recent attempt
+is reported as held, including failed attempts so a persistent late failure cannot
+repeat expensive packing on every prune loop. `--no-maintenance` skips this pass; `--branches-only` continues
+to run only branch cleanup. A maintenance failure prints `could-not-check` without
+preventing the lifecycle sweep or desk boot.
+
+Inspect before applying:
+
+```sh
+deskwt maintain objects --repo .                  # read-only inventory and plan
+deskwt maintain objects --repo . --json           # full machine-readable inventory
+deskwt maintain objects --repo . --apply          # apply if the shared cadence is due
+deskwt maintain objects --apply --min-interval 48h --timeout 1m
+```
+
+The report includes ref namespace counts, registered worktree heads and locks,
+dispatch claims, declared alternate object stores, effective reflog recovery settings, task
+outcomes and before/after loose-object and pack counts/bytes. Inspection creates no
+repository lock, stamp, config, scheduled job or pack. A preflight-approved attempt is stamped before mutation; successful apply separately
+stamps only after every task and the final inventory complete; malformed, unreadable or future
+state refuses maintenance rather than authorizing another pass.
+
+The fixed offline tasks pack refs, write a reachable commit graph, pack at most 1,000
+loose objects per pass, and consolidate small packs through Git's multi-pack index.
+Incremental consolidation uses a positive selection threshold capped at 64 MiB;
+the threshold selects input packs, rather than imposing an output-byte limit. One
+packing thread, bounded delta memory, the time budget and a 500,000-object / 2 GiB
+packed-store eligibility cap limit work. Registered worktree metadata is bounded
+to 4,096 holders; pack-directory enumeration separately admits at most 4,096
+entries, including junk. Metadata files use bounded regular-file reads. Stores above those
+caps are reported as held for a separate maintenance window. Reference/shared clones
+with declared alternates are also held: local object counts cannot bound traversal of
+their borrowed history. Both inspection and apply report that hold without running tasks.
+Providers with unknown reverse borrowers can still consolidate duplicate storage while
+retaining every object ID. Process supervision kills and observes the entire
+Unix process group or Windows job before releasing repository ownership. A crash or
+unproven child cleanup leaves `assay-maintenance-active.json` in the common Git
+directory; subsequent maintenance refuses. An operator must confirm all owned Git
+children stopped before removing that custody marker. Its age alone never clears it.
+
+These tasks retain **every object ID**, including unreachable objects that an
+unregistered reference clone may still borrow. Git removes only duplicate loose
+copies and packs whose objects are retained in other indexed packs. Maintenance
+never runs GC, expires reflogs, prunes unreachable objects, rewrites history,
+removes a worktree or deletes a branch/dispatch claim. Actual object reclamation
+requires a separate borrower-aware operator procedure; compacting duplicates does
+not reclaim all history retained for recovery.
+
+Tool-owned merge fetches use unique `refs/deskmerge/tmp/` refs with ownership receipts.
+Completed receipts may be recovered with compare-and-delete against their observed
+object ID. One shared cleanup lock serializes receipt transitions with maintenance.
+A producer can durably declare completion while that lock is busy; deletion waits
+for a later pass. Pending child cleanup blocks all maintenance until operator
+confirmation, even if the ref is already absent. More than 256 receipt-directory entries
+refuses automatic maintenance because complete custody cannot be proved within
+the inspection budget. Changed refs, worktree holders, active/incomplete receipts and legacy
+unowned refs are held. No ref is deleted merely for being old. Dispatch claim
+release remains exclusively owned by the claim protocol.
+The producer's completion declaration ends consumption of its private nonce ref;
+the holder check covers registered heads at that gate. This protocol does not
+synchronize an external actor manually assigning a HEAD to that private ref
+during cleanup. A detached checkout's object remains available because every
+object ID is retained. A worktree on an unborn (fresh or orphan) branch holds no
+object; a branch file that exists but cannot be read stays held as could-not-check.
+
+Producer cleanup is best-effort: deskmerge answers from the base and head SHAs it
+observed before completion, so a hook refusal or missing native `git hook list`
+never changes its verdict. It warns on stderr naming the retained ref, and the
+completed receipt stays for a later `deskwt maintain objects --apply` pass.
+
+Remote-tracking refresh stays a separate, explicit forge operation:
+
+```sh
+deskgit fetch --prune --as worker
+deskwt maintain objects --apply
+```
+
+`deskgit` selects the role's sanctioned forge credentials and confines pruning to
+its explicit `refs/heads/*:refs/remotes/origin/*` refspec. Maintenance never fetches,
+prefetches or installs Git's default maintenance strategy. Ambient Git overrides,
+global/system task config and credential helpers are excluded. Before creating a
+maintenance lock and before every mutation, Git's effective global, repository and
+worktree hook settings are inspected. Any configured reference-transaction hook
+refuses maintenance; its configuration is preserved. Native `git hook list` is
+required, and unsupported Git versions refuse before mutation. Repository config
+includes, filtered repacks, partial clones and unreadable alternates refuse apply.
+Managed publishing clones should copy their objects (`git clone --no-hardlinks`);
+if a reference optimization is necessary, use `--reference … --dissociate` and prove
+the resulting clone works with the provider unavailable before publishing.
+
 ### `--reclaim-stale-locks` — giving the lock a lifecycle
 
 A locked worktree is always held: git refuses to deregister it, so deleting its directory
@@ -2714,8 +2810,11 @@ one hour). A held or recent attempt reports `held` or `recent` without repeating
 or work. Each invocation has a 30-second total command budget (`--timeout`, one second to
 five minutes). The lock is kernel-released on exit; its file must never be unlinked during
 operation. Unreadable/corrupt timestamps fail closed and require operator inspection.
-A killed native Git write may leave its own lockfile; that is reported as a failure on the
-next eligible attempt, never automatically removed.
+Apply also owns the shared temporary-ref lock and records durable child custody before
+launching either index task. Process supervision owns the Unix group or Windows job;
+a coordinator crash or uncertain cleanup leaves the shared active marker and holds both
+maintenance modes until an operator confirms all owned Git children stopped. Native Git
+lockfiles are never automatically removed.
 
 This is an explicit command for the repository supervisor to invoke; it does not install
 a scheduler or add work to every agent boot. It disables lazy fetching and all network
@@ -2723,8 +2822,8 @@ protocols for its Git children, ignores ambient `GIT_*` redirects, and never inv
 configured maintenance strategies, prefetch, full GC, reflog expiry or object deletion.
 Object reclamation is explicitly **held**: a source repository cannot enumerate every
 external clone borrowing its objects. Even an empty alternates list does not prove there
-are no borrowers. Loose-object/incremental-pack reclamation and a managed borrower registry
-remain follow-up work. Branch/worktree retirement stays in `deskwt prune`, claims in their
+are no borrowers. For bounded consolidation that retains every object ID, use `deskwt maintain objects`.
+A managed borrower registry and object deletion remain separate work. Branch/worktree retirement stays in `deskwt prune`, claims in their
 claim protocol, and remote-tracking refresh in the sanctioned transport.
 
 Maintenance requires native `git hook list` support. Before the attempt stamp and again
@@ -5093,7 +5192,7 @@ this; it is the fail-safe working as designed, not a regression (main behaves th
 and the fix is to name the destination literally or `cd` there along an `&&`-chain first.
 
 The shape you are most likely to meet first is a **`;`-separated `cd`**:
-`cd /private/tmp && … ; cd /private/tmp/wg && git fetch … && git checkout …`. The `;` makes
+`cd <temporary-root> && … ; cd <worktree> && git fetch … && git checkout …`. The `;` makes
 the second `cd` non-honorable, so the frame stays at the payload cwd — and if that cwd is
 the shared checkout, the `git fetch`/`git checkout` read as targeting it and block. Correct
 and unchanged by this PR: only an `&&`-chain guarantees the `cd` actually succeeded. Chain
@@ -6730,7 +6829,7 @@ single point of failure:
 | **Sentinel + fragment sweep** | A sentinel planted in a fixture transcript, and every ≥12-character substring of every fixture message, is absent from the artifact — and a **control** test plants a leak to prove the scanner still detects one. | `TestLeakNoTranscriptContentReachesTheArtifact`, `TestLeakScannerSeesPlantedLeak` |
 
 A `reason` is a machine CODE, never a sentence — sentences are where paths leak
-(`cannot read /Users/<name>/.claude/…` is a home-directory disclosure committed to a
+(`cannot read <home>/.claude/…` is a home-directory disclosure committed to a
 repo). Human-readable detail goes to stderr, which nobody commits.
 
 **Read-only against its inputs**, measured rather than promised:

@@ -544,9 +544,15 @@ func TestPruneStaleRegistrationNotDoubleReported(t *testing.T) {
 		t.Fatalf("cleared stale registration was ALSO reported as a candidate-loop skip; got:\n%s", errout)
 	}
 	// The held one is reported ONCE, with its stale-registration reason — never twice.
-	if strings.Count(errout, resolvePath(held)) != 1 {
+	// The sweep report ends where the read-only maintenance plan begins; that plan
+	// legitimately lists every worktree holder, so it is not part of this count.
+	sweep := errout
+	if i := strings.Index(sweep, "deskwt maintenance plan:"); i >= 0 {
+		sweep = sweep[:i]
+	}
+	if strings.Count(sweep, resolvePath(held)) != 1 {
 		t.Fatalf("held stale registration was reported %d times, want 1; got:\n%s",
-			strings.Count(errout, resolvePath(held)), errout)
+			strings.Count(sweep, resolvePath(held)), errout)
 	}
 }
 

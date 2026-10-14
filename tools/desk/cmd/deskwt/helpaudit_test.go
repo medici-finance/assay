@@ -48,6 +48,8 @@ func TestHelpWritesNoAuditRow(t *testing.T) {
 		{"add --dry-run -h", []string{"add", "--dry-run", "-h"}},
 		{"remove name --help", []string{"remove", "wt-name", "--help"}},
 		{"maintain --apply --help", []string{"maintain", "--apply", "--help"}},
+		{"maintain objects --help", []string{"maintain", "objects", "--help"}},
+		{"maintain objects --apply --help", []string{"maintain", "objects", "--apply", "--help"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			withEnv(t, t.TempDir())
