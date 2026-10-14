@@ -1,2 +1,0 @@
-### Added
-- Brief `forge-gitlab/18` (design only, human-gated): `deskfleet push-token`, a planned one-process rotation of the GitLab board-push credential. It rotates the project access token, writes the new value straight into the masked, protected CI/CD variable, re-reads the variable's flags and revokes the new token if they disagree, and proves the new token active, correctly scoped and not close to expiry before the next regen. The value never passes through a shell, transcript, log or argv. Part B of #2910.

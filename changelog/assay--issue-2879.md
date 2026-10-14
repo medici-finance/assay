@@ -1,2 +1,0 @@
-### Fixed
-- The managed cell Go cache can shrink while desks are running. Under budget or free-space pressure, `clean`, `deskdispatch` admission, launch admission and the `deskwt prune` sweep (and an explicit `wipe`, with or without pressure) now trim compiler-cache (`build/`) entries older than `CELL_GO_CACHE_BUILD_MAX_AGE` (default `24h`, at least `2h`) even while consumer records are held. The module cache and `gopath` stay protected by the records exactly as before. Reports carry `trimmed_build_entries` and `trimmed_build_bytes`.

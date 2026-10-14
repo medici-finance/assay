@@ -9,7 +9,7 @@
 # actually ships, so a cold install silently downloaded a stale tool. The drift was invisible
 # because both files were individually well-formed.
 #
-# Three assertions, all offline and all on the tree as committed:
+# Four assertions, all offline and all on the tree as committed:
 #
 #   A  PAIRING       `plugin:` in paired-versions.yaml == `version` in plugin.json.
 #                    This is the whole point of the manifest: the LEFT side of the pairing must
@@ -22,6 +22,10 @@
 #                    the RIGHT one without the network — that is the release job's and the
 #                    re-pin author's evidence — but it does catch a truncated, upper-cased or
 #                    placeholder digest before an adopter's verification fails on it.
+#   D  IMAGE AGREEMENT  `containers/base/Dockerfile`'s `DESK_TOOLS_IMAGE` default names the
+#                    harness section's `image:tag@digest` exactly. The base image copies the desk
+#                    binaries out of that image, so a re-pin that moves the manifest but not the
+#                    Dockerfile ships the old tools in the container only.
 #
 # Not checked HERE: whether the pinned tag is current with the latest release. That needs the
 # network, so it is assertion (d) of the online checker `tools/pairedversions` (`make
@@ -142,6 +146,30 @@ else
     fi
   done <<< "$pin_lines"
   [[ "$fail" -eq 0 ]] && ok "hash shape: $n sha256 values are 64 lowercase hex"
+fi
+
+# -------------------------------------------------------- D  IMAGE AGREEMENT
+# The harness section's `image:`, `tag:` and `digest:` (the only section carrying image/digest),
+# against the `ARG DESK_TOOLS_IMAGE=<image>:<tag>@<digest>` default in the base Dockerfile.
+DOCKERFILE="$ROOT/containers/base/Dockerfile"
+harness=$(printf '%s\n' "$uncommented" | awk '/^harness:/{on=1; next} /^[^[:space:]]/{on=0} on')
+h_image=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*image:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | head -1)
+h_tag=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*tag:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | head -1)
+h_digest=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*digest:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | head -1)
+if [[ -z "$h_image" || -z "$h_tag" || -z "$h_digest" ]]; then
+  bad "paired-versions.yaml harness section lacks image/tag/digest — could-not-check the Dockerfile pin"
+elif [[ ! -r "$DOCKERFILE" ]]; then
+  bad "could not read ${DOCKERFILE#"$ROOT"/} — could-not-check is a failure, not a pass"
+else
+  want="${h_image}:${h_tag}@${h_digest}"
+  got=$(sed -n 's/^ARG[[:space:]]\{1,\}DESK_TOOLS_IMAGE=\([^[:space:]]*\)[[:space:]]*$/\1/p' "$DOCKERFILE" | head -1)
+  if [[ -z "$got" ]]; then
+    bad "containers/base/Dockerfile has no \`ARG DESK_TOOLS_IMAGE=\` default — could-not-check"
+  elif [[ "$got" != "$want" ]]; then
+    bad "image drift: containers/base/Dockerfile DESK_TOOLS_IMAGE=${got} but the harness pin is ${want}"
+  else
+    ok "image agreement: containers/base/Dockerfile DESK_TOOLS_IMAGE == harness ${h_image}:${h_tag}@<digest>"
+  fi
 fi
 
 if [[ "$fail" -ne 0 ]]; then
