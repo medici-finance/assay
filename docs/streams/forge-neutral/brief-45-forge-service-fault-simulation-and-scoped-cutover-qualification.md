@@ -17,7 +17,7 @@ version: 1
 id: 5306ce94-4e21-44af-82e4-d552eaca0ff5
 authored: 2026-10-14 by forge-service authoring
 sources:
-  - https://github.com/medici-finance/assay/blob/11495ed016574a24ea89481d0bb8ba2dab3d2aac/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
+  - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
@@ -67,7 +67,7 @@ design-fit:
 
 ## Read first
 
-Read [the bounded architecture amendment](https://github.com/medici-finance/assay/blob/11495ed016574a24ea89481d0bb8ba2dab3d2aac/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md), the stream README's dated forge-service
+Read [the bounded architecture amendment](https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md), the stream README's dated forge-service
 section, and each dependency brief's current contract. All load-bearing requirements for this
 brief are restated here. The architecture draft is not activation approval; refresh its revision,
 source paths, active claims and existing decisions before dispatch. Missing required contracts

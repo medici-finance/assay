@@ -17,7 +17,7 @@ version: 1
 id: a2814dbf-4d0c-4cef-bfc6-aceaf50dd255
 authored: 2026-10-14 by forge-service authoring
 sources:
-  - https://github.com/medici-finance/assay/blob/11495ed016574a24ea89481d0bb8ba2dab3d2aac/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
+  - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
@@ -66,7 +66,7 @@ design-fit:
 
 ## Read first
 
-Read [the bounded architecture amendment](https://github.com/medici-finance/assay/blob/11495ed016574a24ea89481d0bb8ba2dab3d2aac/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md), the stream README's dated forge-service
+Read [the bounded architecture amendment](https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md), the stream README's dated forge-service
 section, and each dependency brief's current contract. All load-bearing requirements for this
 brief are restated here. The architecture draft is not activation approval; refresh its revision,
 source paths, active claims and existing decisions before dispatch. Missing required contracts
@@ -96,7 +96,7 @@ webhook payload decisions are not answered by this section.
 
 1. Publish forge-service-v1 and independent literal fixtures for bounded mirror queries, FileAt/Diff/MergeBase source queries, issue creation, change comment creation, operation lookup and observation-token reads. Restrict fields/count/bytes, reject unknown required schema/operations and keep provider-specific facts. Translate existing qualified work/effect identities at application composition; do not invent a competing work namespace.
 
-2. Define caller/source admission, access epoch, observed source revision, completeness/freshness, request identity and minimum observation token. Tokens express observation progress, not authorization or a total provider version. Define older, confirmed, newer, projection-pending, unavailable and permission outcomes, without turning unknown into empty/success.
+2. Define caller/source admission, access epoch, observed source revision, completeness/freshness, request identity and minimum observation token. Observation tokens are opaque and scope-bound; no global SQL sequence/LSN or inaccessible activity count is exported. Tokens express observation progress, not authorization or a total provider version. Define older, confirmed, newer, projection-pending, unavailable and permission outcomes, without turning unknown into empty/success.
 
 3. Define effect-result transport over R2/R4 operation identities: provider outcome succeeded/failed/unknown, projection status current/pending/unavailable, confirmed provider object identity, payload digest and bounded provenance. A retry of one logical operation retrieves/reconciles it; a different payload conflicts. No universal exactly-once or conditional-write claim.
 

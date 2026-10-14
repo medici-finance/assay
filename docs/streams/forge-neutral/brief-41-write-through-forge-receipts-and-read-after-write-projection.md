@@ -17,7 +17,7 @@ version: 1
 id: 1fc36b0b-e3d0-4497-8863-0a039180a0f3
 authored: 2026-10-14 by forge-service authoring
 sources:
-  - https://github.com/medici-finance/assay/blob/11495ed016574a24ea89481d0bb8ba2dab3d2aac/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
+  - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
@@ -68,7 +68,7 @@ design-fit:
 
 ## Read first
 
-Read [the bounded architecture amendment](https://github.com/medici-finance/assay/blob/11495ed016574a24ea89481d0bb8ba2dab3d2aac/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md), the stream README's dated forge-service
+Read [the bounded architecture amendment](https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md), the stream README's dated forge-service
 section, and each dependency brief's current contract. All load-bearing requirements for this
 brief are restated here. The architecture draft is not activation approval; refresh its revision,
 source paths, active claims and existing decisions before dispatch. Missing required contracts
@@ -100,7 +100,7 @@ webhook payload decisions are not answered by this section.
 
 2. Add adapters to the existing workflow/store effect and mirror transactions; do not introduce a second journal, inbox/outbox or database. On confirmed success, atomically persist the receipt and confirmed mirror fields where possible. Preserve exact source admission and per-object refresh generation so an earlier in-flight read cannot overwrite the receipt. Confirm only returned fields; do not fabricate missing labels/reviews/checks.
 
-3. Return separate provider and projection outcomes plus the observation token. If the provider succeeded but SQL/mirror update failed, report projection pending/unavailable and preserve an unknown ledger interval where necessary. Minimum-token queries must return effect-containing/newer authoritative data or pending/unavailable, never silently older rows.
+3. Return separate provider and projection outcomes plus the scoped opaque observation token; never export global database progress or another admission's activity. If the provider succeeded but SQL/mirror update failed, report projection pending/unavailable and preserve an unknown ledger interval where necessary. Minimum-token queries must return effect-containing/newer authoritative data or pending/unavailable, never silently older rows.
 
 4. Implement operation-specific reconciliation for lost replies/crashes and retain held unknown when no trustworthy proof exists. Use provider idempotency only when the endpoint documents it. A marker aids lookup but is not an atomic uniqueness guarantee; partial enumeration cannot prove absence. Replaying a valid authorization may retrieve an authorized receipt, not execute a second request.
 

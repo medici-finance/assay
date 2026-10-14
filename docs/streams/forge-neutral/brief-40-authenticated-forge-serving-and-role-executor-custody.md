@@ -17,7 +17,7 @@ version: 1
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
-  - https://github.com/medici-finance/assay/blob/11495ed016574a24ea89481d0bb8ba2dab3d2aac/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
+  - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
@@ -69,7 +69,7 @@ design-fit:
 
 ## Read first
 
-Read [the bounded architecture amendment](https://github.com/medici-finance/assay/blob/11495ed016574a24ea89481d0bb8ba2dab3d2aac/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md), the stream README's dated forge-service
+Read [the bounded architecture amendment](https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md), the stream README's dated forge-service
 section, and each dependency brief's current contract. All load-bearing requirements for this
 brief are restated here. The architecture draft is not activation approval; refresh its revision,
 source paths, active claims and existing decisions before dispatch. Missing required contracts
@@ -97,7 +97,7 @@ webhook payload decisions are not answered by this section.
 
 ## Task
 
-1. Compose the typed 39 handlers in the desk module behind authenticated local ingress and injected current-authority/policy ports. Expose a thin forgeserve command configured by the operator, initially on a private local channel. Authenticate signed launcher capabilities; peer credentials/socket ACL constrain access but do not distinguish roles sharing a UID. Bind stable caller, audience, cell, provider/host/repo, admitted source, operation, candidate where required, incarnation/generation, policy/access epoch and expiry.
+1. Compose the typed 39 handlers in the desk module behind authenticated local ingress and injected current-authority/policy ports. Expose a thin forgeserve command configured by the operator, initially on a private local channel. Authenticate signed launcher capabilities; peer credentials/socket ACL constrain access but do not distinguish roles sharing a UID. Bind stable caller, audience, cell, provider/host/repo, admitted source, operation, logical effect identity and payload digest for writes, candidate where required, incarnation/generation, policy/access epoch and expiry.
 
 2. Authorize every query and receipt lookup server-side, including cache hits, joins, counts, errors and pagination. Map principal to the exact composition-derived mirror admission; reject a different admission even if it covers the repo. Never accept a caller-selected role/admission as a grant or infer human visibility from the ingestion App. Keep source-access policy and mirror retention separate.
 
