@@ -44,7 +44,7 @@ component list, build/run topology, and open questions.
 | 12 | [Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob](brief-12-unattended-tick-mode-cronjob-component.md) | 4 | M | todo | — | — |
 | 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |
 | 14 | [Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay](brief-14-flux-install-example.md) | 6 | M | todo | — | — |
-| 15 | [`cellctl desk --force` — diagnose a failed desk boot, repair what it can, ask before each destructive step, `-y` answers yes](brief-15-desk-force-repair.md) | 2 | M | todo | — | — |
+| 25 | [`cellctl desk --force` — diagnose a failed desk boot, repair what it can, ask before each destructive step, `-y` answers yes](brief-25-desk-force-repair.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

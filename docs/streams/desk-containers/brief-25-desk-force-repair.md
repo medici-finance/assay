@@ -1,5 +1,5 @@
 ---
-brief: assay:assay:desk-containers:15
+brief: assay:assay:desk-containers:25
 title: "`cellctl desk --force` — diagnose a failed desk boot, repair what it can, ask before each destructive step, `-y` answers yes"
 why: >-
   A `cellctl desk` boot fails for a dozen different reasons — a stale role lease, an unfinished
@@ -28,10 +28,10 @@ sources:
   - freshness-checked 2026-10-13 @ bcc02252e (origin/main) — no `--force`, `-y` or `--yes` on `cellctl desk`; no y/N prompt helper anywhere in cellctl
 domain: complicated
 consumers:
-  - "docs/cellctl.md (the `desk` verb gains `--force` and `-y/--yes`): follow-up desk-containers/15 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "docs/cellctl.md (the `desk` verb gains `--force` and `-y/--yes`): follow-up desk-containers/25 (this brief; flips to fixed-here when the implementation edits the path)"
 ---
 
-# Brief 15 — `cellctl desk --force`: repair a failed desk boot
+# Brief 25 — `cellctl desk --force`: repair a failed desk boot
 
 ## Context
 files:
@@ -40,7 +40,7 @@ files:
 - `tools/desk/cmd/cellctl/repair.go` (planned) (new — the repair table, the prompt helper, the repair log)
 - `tools/desk/cmd/cellctl/repair_test.go` (planned) (new)
 - `docs/cellctl.md` — the `desk` verb's `--force` / `-y` section
-- `changelog/desk-containers-15-desk-force.md` (planned)
+- `changelog/desk-containers-25-desk-force.md` (planned)
 
 facts:
 - Today every boot failure ends in `die()` (exit 3) with a message that names the manual fix. `--force` turns that list of messages into a table of `{detect, classify, repair}` rows. A failure with no row stays exactly as it is today: same message, same exit code.
@@ -89,7 +89,7 @@ facts:
 | 8 | check | `cd tools/desk && go test ./cmd/cellctl/ -count=1` | exit 0. The whole package passes, including the CLI docs-parity and shape tests. |
 | 9 | check | `cd tools/desk && go test ./internal/deskkit/ -run 'Lock' -count=1` | exit 0. The stale-holder path the repair calls is unchanged. |
 | 10 | check | `statusgen --root . --lint` | exit 0 |
-| 10a | check | `statusgen --root . --consumers --brief desk-containers/15` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 10a | check | `statusgen --root . --consumers --brief desk-containers/25` | exit 0 — the `consumers:` routing holds against the branch diff |
 | 11 | gate:model +flow | On a scratch cell: induce a stale lease (kill -STOP a prior `cellctl desk`, then let it be found stale), plus a dirty role worktree behind main. Run `cellctl desk example-cell worker-desk --force`, answering each prompt `y`. | Two prompts appear, each naming its action and the rescue location. The desk launches. `run/repair.log` holds both lines. Record the transcript. No scratch cell available → could-not-check. |
 
 ## Evidence
