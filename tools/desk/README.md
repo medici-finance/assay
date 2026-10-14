@@ -23,6 +23,28 @@ tools/desk/
 Everything after that is the deep reference, one section per tool, and you do not need
 it on day one.
 
+## Review planner state contract
+
+`reviewloop plan` proposes review dispatches and draft-to-ready operations from the
+supplied board; it does not execute either operation. A posted review verdict is
+not evidence that a reviewer is currently assigned, and verdict kinds and outcomes
+must remain distinct. The audit ledger records completed writes; planning must not
+reparse its complete history separately for each proposed operation.
+
+Planning uses only the supplied board observations and performs zero audit-history
+loads ([issue #2793](https://github.com/medici-finance/assay/issues/2793)). Historical
+review verdicts, including legacy generic `review` entries, cannot suppress a new
+review dispatch. Historical `ready` entries cannot suppress a current `FLIP`: a
+still-draft PR needs the retry that `deskpost ready` already permits (#805).
+
+Coalescing suppresses repeated keys within a plan and operations whose head is
+unresolved. It does not reserve a reviewer or authorize a write. Before execution,
+`deskdispatch` must acquire a live reviewer claim; `deskpost` must validate history
+under its outward lock and recheck current forge state and exact write identity.
+Missing, unreadable or corrupt audit history does not change a plan, and still
+retains its existing meaning at those write boundaries. No retained history is
+changed or discarded.
+
 ## Tool reference
 
 | Tool | Verb(s) | Class | Write budget + breaker |
