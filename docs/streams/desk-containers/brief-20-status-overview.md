@@ -9,7 +9,7 @@ why: >-
   2026-10-14 recovery.
 wave: 8
 depends: ["desk-containers/15"]
-unblocks: ["desk-containers/21", "desk-containers/25"]
+unblocks: ["desk-containers/21", "desk-containers/23", "desk-containers/25"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

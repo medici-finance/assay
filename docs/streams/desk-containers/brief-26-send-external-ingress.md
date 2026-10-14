@@ -24,9 +24,12 @@ sources:
   - "tools/desk/cmd/commsgw/a2a.go — an existing cross-cell A2A JSON-RPC server fronted by mutual TLS (`RequireAndVerifyClientCert` against a configured client CA), not started in local-only mode; the handshake refuses an unauthenticated peer before application code runs"
   - "docs/cellctl-comms.md — local-only by default; 'no cross-cell listener'; standalone gateways keep their mTLS requirements"
   - "desk-containers/25 — the sender-class model and the Tier A responder this brief exposes"
+  - "Driver's stated preference 2026-10-14 (in session, relayed by the coordinator): support both mTLS client certificates for machine callers and signed tokens for lighter clients — pending ratification on the decision issue"
   - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no external sender class, no per-sender rate limit, no external-safe status projection"
 gate-why: >-
-  sensitive-data: yes. This is the first network-reachable path into a cell. A reply that
+  sensitive-data: yes. The authentication choice is pending: the driver's stated preference
+  (in-session, 2026-10-14) is both mTLS and signed tokens; it is pending ratification on the
+  decision issue, and a relayed answer does not satisfy this gate. This is the first network-reachable path into a cell. A reply that
   carried a filesystem path, a token, a pid tied to a host, a private repository name or a
   personal login would leak private cell state to an untrusted party. What the human confirms:
   the authentication choice; that the listener is off unless explicitly configured; that an
@@ -58,7 +61,10 @@ single-point-of-failure: the caller credential check at the listener — behind 
 
 facts:
 - **Off by default.** The listener starts only when the manifest has an `external` block with a bind address, credential material and a rate limit. A missing or partial block means no listener. `cellctl comms <cell> check` reports which applies.
-- **Authentication (the human decision below).** The recommended option reuses the existing A2A mutual-TLS front with a separate external-caller client CA. Each caller gets its own client certificate, the certificate's subject is the caller id, and revocation means removing it from that CA bundle. The handshake refuses an unauthenticated peer before any application code runs.
+- **Authentication (the human decision below).** Driver's stated preference (in-session, 2026-10-14), pending ratification on the decision issue: support **both** paths, each with its own controls. Build against this; the gate stays open until ratified.
+  - **mTLS client certificates (machine callers).** These reuse the existing A2A mutual-TLS front with a separate external-caller client CA. The certificate subject is the caller id. The handshake refuses an unauthenticated peer before application code runs. Revocation removes the certificate from the CA bundle, effective on reload.
+  - **Signed tokens (lighter clients).** These are presented over server-side TLS on the same listener. A token is an Ed25519 signature by a dedicated external-token issuer key (not the cell's message key, and not an operator key) over `{caller id, cell, issued, expiry ≤ 24h, token id}`. The verifier checks signature, issuer key, cell, expiry and a revoked-token-id list before the request reaches the ACL. Tokens are never logged; the audit records the token id.
+  - Both paths yield the same `external` class with the same Tier A-only ACL, projection, scrub, rate limit (keyed by caller id) and audit. Neither path can reach the `operator` class.
 - **The `external` class** is assigned only from a verified caller credential. External callers may send only `ask status` in this brief. Any other verb is refused by the ACL, and free text is brief 27.
 - **External-safe projection.** An allow-list, not a deny-list: role name; state (`up` | `down` | `paused` | `unknown`); heartbeat age bucket; queue depth; cell outcome. It excludes paths, pids, model names, repository or issue names, logins, token or cache detail, and error text. The reply is built by code from these fields only.
 - **Outbound scrub.** Every external reply passes a scrub that refuses (rather than redacts) a reply containing any configured withheld token, an absolute path, a token-shaped string, or an email/login shape. A refusal is audited, and the caller gets a fixed `unavailable` answer.
@@ -71,9 +77,10 @@ Should a cell be able to open an opt-in network door so outside callers can ask 
 The door is closed unless the operator configures it. Callers can only ask "status". The answer is built by code from a short allow-list (role, up/down, heartbeat age, queue depth) and is checked again before it leaves, so it cannot include paths, tokens, private names or error text. Every caller is rate-limited, and every request and reply is logged.
 
 Options:
-1. **Mutual TLS client certificates** (recommended) — reuses the gateway's existing mTLS front. Each caller holds its own certificate. The handshake rejects strangers before any code runs. Revoke a caller by removing their certificate. This costs certificate issuance per caller.
-2. **Signed bearer tokens** — the operator issues each caller a token signed with a cell key, carrying an expiry and a caller id, over server-side TLS only. Easier to hand out, but a leaked token works until it expires, and rejection happens in application code rather than at the handshake.
-3. **Do not open external ingress** — external status stays unavailable; briefs 26 and 27 are not built.
+1. **Both — mTLS for machine callers and signed tokens for lighter clients** (recommended; driver's stated preference in-session 2026-10-14, pending ratification here). Machine callers hold their own client certificate, and the handshake rejects strangers before any code runs. Lighter clients get a short-lived signed token (at most 24 hours) naming the caller and this cell, checked against a revocation list. Both kinds of caller get the same status-only access, rate limit and audit, and neither can act as the operator. This costs certificate issuance for machine callers and a token issuer key to guard.
+2. **Mutual TLS only** — strongest rejection point, but every caller needs a certificate.
+3. **Signed tokens only** — easiest to hand out; a leaked token works until it expires or is revoked, and rejection happens in application code.
+4. **Do not open external ingress** — external status stays unavailable; briefs 26 and 27 are not built.
 
 Default if no answer: none — blocks until answered.
 
@@ -84,7 +91,7 @@ Default if no answer: none — blocks until answered.
 
 ## Task
 1. Add the opt-in `external` manifest block and its `check` validation.
-2. Implement the chosen authentication on the listener; derive the caller id and the `external` class from it.
+2. Implement the ratified authentication paths on the listener (both, per the recorded preference, if ratified so); derive the caller id and the `external` class from either. Add the token issuer key's custody and the revocation list to the manifest and `check`.
 3. Add the `external` class (Tier A only) to the ACL, the projection, the outbound scrub, the rate limiter and the audit log.
 4. Docs (issuing and revoking a caller credential, the projection fields, the audit format); changelog fragment.
 
@@ -93,6 +100,9 @@ Default if no answer: none — blocks until answered.
 |---|-------|---------|--------|
 | 1 | check | `go -C tools/desk test ./cmd/commsgw/ ./internal/comms/ ./internal/cellop/ -run 'TestExternal' -count=1` | exit 0 |
 | 2 | check | `go -C tools/desk test ./cmd/commsgw/ -run 'TestExternalUnauthenticatedRefusedAtIngress' -count=1` | exit 0 — a caller with no credential, an unknown credential, or a revoked one is refused at the listener; the audit log shows the refusal and no request reaches the ACL |
+| 2a | check | `go -C tools/desk test ./cmd/commsgw/ -run 'TestExternalMTLSRevokedOrForeignCA' -count=1` | exit 0 — a client certificate signed by the cell's cross-cell CA (not the external-caller CA), and a revoked certificate after reload, are both refused at the handshake |
+| 2b | check | `go -C tools/desk test ./cmd/commsgw/ -run 'TestExternalTokenRefusals' -count=1` | exit 0 — tokens that are expired, signed by the cell message key or an operator key instead of the issuer key, minted for another cell, carry a revoked token id, or have a tampered caller id are each refused before the ACL; the audit records the token id, never the token |
+| 2c | check | `go -C tools/desk test ./internal/comms/ -run 'TestExternalNeverOperator' -count=1` | exit 0 — no credential on either path (including a token whose payload claims `operator`) yields the `operator` class |
 | 3 | check | `go -C tools/desk test ./cmd/commsgw/ -run 'TestExternalListenerOffByDefault' -count=1` | exit 0 — with no `external` block, or a partial one, nothing binds (port probe fails) |
 | 4 | check | `go -C tools/desk test ./internal/comms/ -run 'TestExternalClassTierAOnly' -count=1` | exit 0 — an authenticated external caller sending any verb other than `ask status` is refused by the ACL, even with the listener's own verb check stubbed out |
 | 5 | check +mutation | `go -C tools/desk test ./cmd/commsgw/ -run 'TestOutboundScrubBlocksWithheldToken' -count=1` | exit 0 — a projection deliberately seeded with a configured withheld token, an absolute path and a token-shaped string is refused by the scrub, and the caller gets `unavailable`; a mutant that skips the scrub fails |

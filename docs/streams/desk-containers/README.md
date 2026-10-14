@@ -161,8 +161,9 @@ but not shipped. #2879 (cache), #2880 (`up` reconcile preflight) and #2881 (idle
 are the issue-sized pieces already in flight. This chain is the verb surface around them.
 
 - **Wave 7** — `desk-containers/15` (the machine seam: one `--json` result contract and the
-  plan-id → apply confirmation every later verb adopts, so the console cockpit can drive them
-  and a human still clicks) and `desk-containers/16` (cell-scoped stop flags, so a pause can be
+  plan-id → apply confirmation every later verb adopts, with a 10-minute plan TTL and an apply
+  that verifies an operator-signed approval before re-measuring, so the console cockpit can
+  drive the verbs and a human still approves each plan) and `desk-containers/16` (cell-scoped stop flags, so a pause can be
   aimed at one cell; **human gate**, because it changes the tool Guard). They are independent, and both are heads.
 - **Wave 8** — `desk-containers/17` (`up` converges; uses #2880's reconcile),
   `desk-containers/18` (`drain`/`pause`/`resume` and the handoff note; needs 16),
@@ -189,7 +190,9 @@ with sender classes decided by authenticated identity only, never by message con
   answered by code from 20's status document with no model reading the request.
   **Human gate**: the first non-desk sender allowed to instruct a desk.
 - **Wave 10** — `desk-containers/26`: the opt-in external listener (authentication is the
-  human decision: mutual TLS reusing the gateway's existing mTLS front, or signed tokens),
+  human decision; the recommended option is both mutual TLS for machine callers and signed
+  tokens for lighter clients, the driver's stated preference, pending ratification on the
+  decision issue),
   the untrusted `external` class limited to Tier A, an allow-listed status projection, an
   outbound scrub, per-caller rate limits and a request/reply audit log. **Human gate**,
   sensitive-data.
@@ -219,5 +222,6 @@ steps, and it leaves the same unfinished checkpoints behind.
   self-flip a leak-sweep.
 - Cell-operator verbs (briefs 15–27) share one output and confirmation contract, brief 15:
   `--json` emits a `cell-op-result-v1` document, and every confirmation has a TTY prompt plus
-  a non-TTY `--plan` → `--apply <plan-id>` form, re-verified at apply. No verb defines a
+  a non-TTY `--plan` → `--apply <plan-id>` form, which needs an approval signed by an operator
+  key over the plan id and digest and is re-verified at apply. No verb defines a
   blanket `--yes`.

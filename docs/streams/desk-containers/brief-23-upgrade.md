@@ -8,7 +8,7 @@ why: >-
   the install and the restart as one verified operation, so moving a cell onto a release is
   one command and a running pipeline never fully stops.
 wave: 10
-depends: ["desk-containers/19"]
+depends: ["desk-containers/19", "desk-containers/20"]
 unblocks: []
 effort: M
 gate: model
@@ -22,6 +22,7 @@ sources:
   - "tools/desk/cmd/deskinstall — installs the pinned desk-tools tarball and verifies each asset's sha256 against the pin (`<asset> <tag> <sha256>`)"
   - "tools/desk/cmd/upgrade-assay and deskversion — the umbrella version marker and its dry-run-first upgrade; this verb drives them, never a second resolver"
   - "desk-containers/19 — the rolling restart"
+  - "Driver answer 2026-10-14 (in session, relayed by the coordinator): the plan names every other cell sharing the binaries, and apply refuses while any of them has live desks unless they are drained first or included explicitly (`--cells a,b`)"
   - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no cell-level upgrade verb"
 exec-tier: strong
 exec-tier-why: (b) crosses the installer, the version marker, the plugin cache and the restart; (c) a partially applied upgrade (new binary, old plugin) is a state unit tests do not model
@@ -50,7 +51,7 @@ facts:
   4. verify that `cellctl version` and each desk tool's `--version` report the target;
   5. `restart` (rolling).
   A failure at 2–4 stops before 5, with the old binaries still in place or restored, and says which.
-- The installed binaries are machine-wide: every cell on the machine uses them. The plan lists the other registered cells, and the confirmation names them. Upgrading one cell restarts only that cell; other cells pick up the binaries at their next restart.
+- **Other cells share the binaries.** The installed binaries are machine-wide, so every cell on the machine runs them. The plan names every other registered cell and, for each, whether it has live desks (from desk-containers/20's inventory). **Apply refuses (`shared-cells-live`, exit 5) while any other cell has a live desk**, unless that cell is either drained first (no live desks at apply time) or included explicitly with `--cells a,b`. An included cell is drained and rolling-restarted onto the new binaries in the same run, after the target cell. The other cells' liveness is re-measured at apply (desk-containers/15 layer 2), so a cell that came up after the plan was approved also refuses.
 - TTY: one `[y/N]` on the plan. Off a TTY: `--plan` then `--apply <id>` (desk-containers/15). `--dry-run` is the plan only.
 
 ## Ground rules
@@ -67,6 +68,9 @@ facts:
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradePlan' -count=1` | exit 0 — the plan lists versions, asset hashes, the roles to restart, and the other cells sharing the binaries |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradeShaMismatchStops' -count=1` | exit 0 — a fixture asset with a wrong sha256 stops before any binary is replaced and before any restart |
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradeVersionVerifyGatesRestart' -count=1` | exit 0 — when post-install `--version` reports the old tag, restart is never called |
+| 3a | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradeRefusesLiveSharedCells' -count=1` | exit 0 — with a second fixture cell holding a live desk lease, `upgrade <cell>` apply refuses `shared-cells-live` naming that cell, and no binary is replaced; a mutant that only warns fails |
+| 3b | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradeSharedCellsDrainedOrIncluded' -count=1` | exit 0 — the same apply proceeds when the other cell has no live desks, and with `--cells <other>` it drains and rolling-restarts the other cell after the target |
+| 3c | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradeSharedCellCameUpAfterPlan' -count=1` | exit 0 — a cell with no live desks at plan time that has one at apply time makes the apply refuse (re-measured, not taken from the plan) |
 | 4 | gate:model +flow +dereference | On a disposable house cell pinned one release back: `cellctl upgrade <cell>` on a TTY, answer `y` | every desk tool reports the target version; all roles return up through a rolling restart; record the before and after `cellctl version` |
 | 5 | check | `statusgen --root . --lint` | exit 0 |
 | 5a | check | `statusgen --root . --consumers --brief desk-containers/23` | exit 0 — the `consumers:` routing holds against the branch diff |
@@ -76,4 +80,4 @@ facts:
      (command, exit code, output line(s) or hash, date, runner). -->
 
 ## Review
-Gate: model. All four risk answers are no: installs are pinned and hash-verified, and the previous release can be re-pinned and reinstalled. The reviewer checks rows 2 and 3, and that the plan names the other cells sharing the binaries.
+Gate: model. All four risk answers are no: installs are pinned and hash-verified, the previous release can be re-pinned and reinstalled, and no other cell's live desks are ever swapped under. The reviewer checks rows 2, 3 and 3a–3c.

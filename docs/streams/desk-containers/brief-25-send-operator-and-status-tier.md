@@ -59,6 +59,7 @@ files:
 single-point-of-failure: operator identity is derived from local-socket custody — behind it, the cell signing key on every message, the gateway's authoritative ACL re-check, and the desk's own rule that an operator message is attributed and may be declined.
 
 facts:
+- **Operator keys are shared with desk-containers/15.** Operator public keys live in the comms trust store as operator-tagged entries; brief 15's signed plan approvals verify against the same entries. Whichever brief lands first adds that trust-store shape.
 - **Sender classes are decided by authenticated identity, never by content.** In this brief there are two: `desk:<role>` (today) and `operator`. A message is `operator` only when it arrives on the cell's local socket from the socket-owning OS user, is signed with the cell key, and is sent by `cellctl send` (which sets no identity field: the gateway derives it). Any identity-like field in the payload is ignored and logged.
 - **Tier A** is `cellctl send <cell> <role|all> --ask status`. The gateway answers it from the desk-containers/20 status document for the named roles, rendered by code. No model and no desk session sees the request, and the reply is the desk-containers/15 result. This is the default and only form of `--ask`.
 - **Operator messages** (`cellctl send <cell> <role> --verb note|instruct < text`) are delivered to the desk's lane as `from: operator`. The desk acts only within its normal skill rules and may decline. Every send and delivery is in the existing comms audit trail.
