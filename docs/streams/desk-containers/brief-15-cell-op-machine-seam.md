@@ -84,7 +84,7 @@ facts:
   A failure after consumption leaves the plan consumed with a failed result.
 - **What the confirm is, honestly.** It is a guard against operator mistakes and concurrent races, not an authorization control. A same-account process can drive a terminal and can delete the consumed marker; a deleted marker allows another interactive apply of the same plan within its remaining expiry, still subject to the re-measure. This limit is stated in `spec/cell-op-v1.md` (planned) and in each verb's `--help`.
 - **Deferred, not built here:** an operator key, a key registry, enrollment, a signed approval payload, `cellctl approve`, `--apply --approval`, and any non-interactive or API apply. The future design and its five gating properties are in amendment 21; nothing in this brief may implement part of it.
-- **Desk-driven apply is out of contract.** A desk driving `--apply` through a pseudo-terminal (for example `script` or `expect`) is out of contract, and the spec says so. As a mistake guard only, never as a control, `--apply` refuses `desk-session` when the desk-session markers are set (the cell marker, `DESK_LOOP`, `DESK_SESSION`); a determined process can unset them.
+- **Desk-driven apply is out of contract.** A desk driving `--apply` through a pseudo-terminal (for example `script` or `expect`) is out of contract, and the spec says so. As a mistake guard only, never as a control, `--apply` refuses `desk-session` when the desk-session markers are set (`ASSAY_CELL`, `DESK_LOOP`, `DESK_SESSION`); a determined process can unset them.
 - **No blanket consent.** There is no `--yes` and no flag that skips the confirm, the re-measure or the consume.
 
 ## Human decision

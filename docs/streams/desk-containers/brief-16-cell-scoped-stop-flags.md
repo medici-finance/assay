@@ -28,7 +28,7 @@ sources:
   - "tools/desk/README.md §Runtime state — `STOP` halts every loop at its next iteration boundary, `STOP.<loop-name>` halts one loop, precedence `DISABLED` > `STOP` > `STOP.<name>`, flags are not self-clearing, names resolved through `tools/desk/internal/deskkit/loopnames.go`"
   - "plugins/assay/skills/{pr-review-desk,verify-desk,worker-desk}/SKILL.md — each loop's iteration-boundary check reads `$HOME/.config/assay/STOP` and `STOP.$DESK_LOOP`; `deskkit.Guard()` enforces the same flags independently before every outward verb"
   - "docs/cellctl.md — a house cell's `home/.config/assay` is a symlink to the operator's real config home, so today's flags are machine-wide for every house cell"
-  - "#2880 — introduces a cell marker in the environment of every child `cellctl` launches (proposed `ASSAY_CELL=<cell>` plus the role); this brief reads that marker and must use the name #2880 lands"
+  - "#2880 (PR #2884) — sets the cell marker `ASSAY_CELL` (plus `ASSAY_CELL_DIR`, `ASSAY_CELL_ROLE`) on every process cellctl launches, whether or not comms is configured; `DESK_CELL`/`DESK_ROLE` stay comms-only. The marker name is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge)"
   - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no cell-scoped stop flag exists; `deskkit.Guard()` knows `DISABLED`, `STOP`, `STOP.<name>`, `STOP.run.<key>` and `HEARTBEAT`"
 gate-why: >-
   This changes `deskkit.Guard()`, the tool-layer kill switch every desk verb consults. The risk
@@ -47,7 +47,7 @@ consumers:
   - "plugins/assay/skills/{intake-desk,the-desk}/SKILL.md: out-of-scope (they have no iteration-boundary STOP check today; adding one is new loop behaviour this brief does not take on — for these two the Guard is the only layer, as it already is for STOP and STOP.<loop>)"
   - ".cursor/skills/** (generated mirror of the skill bodies): follow-up desk-containers/16 (this brief; regenerated with `deskinstall --harness cursor`, never hand-edited)"
   - "tools/desk/cmd/deskboard (STOP display, inert-name marking): follow-up desk-containers/16 (this brief; shows cell-scoped flags and marks an unknown cell inert)"
-  - "tools/desk/cmd/cellctl launch environment (the cell marker): out-of-scope (#2880 adds it; this brief only reads it)"
+  - "tools/desk/cmd/cellctl launch environment (`ASSAY_CELL`, `ASSAY_CELL_DIR`, `ASSAY_CELL_ROLE`): out-of-scope (#2880 / PR #2884 sets them; this brief only reads `ASSAY_CELL` and `ASSAY_CELL_ROLE`)"
   - "tools/desk/README.md §Runtime state: follow-up desk-containers/16 (this brief)"
 ---
 
@@ -65,7 +65,7 @@ files:
 facts:
 - **Interim, not the design.** This is the first implementation of the lifecycle `pause` / `resume` transitions defined in the proposed amendment 21. The runner lifecycle contract replaces it, and the replacement must keep this brief's two guarantees: a pause aimed at one cell never stops another cell, and a stop only ever adds.
 - New flags, in the same directory as today's: `STOP.cell.<cell>` stops every loop of that cell; `STOP.cell.<cell>.<loop>` stops one loop of that cell. `<loop>` resolves through `loopnames.go` exactly as `STOP.<loop>` does.
-- A session belongs to a cell only through the cell marker env var that #2880 adds. A session with no marker is unaffected by cell flags. Cell flags only ever add stops; they never clear or override `DISABLED`, `STOP` or `STOP.<loop>`.
+- A session belongs to a cell only through `ASSAY_CELL` (its role through `ASSAY_CELL_ROLE`), which #2880 sets on every launched process. `DESK_CELL` is comms-only and is not read. A session with no marker is unaffected by cell flags. Cell flags only ever add stops; they never clear or override `DISABLED`, `STOP` or `STOP.<loop>`.
 - Precedence: `DISABLED` > `STOP` > `STOP.cell.<cell>` > `STOP.<loop>` = `STOP.cell.<cell>.<loop>`. Any one present is a stop.
 - **Baseline (checked 2026-10-14 @ 7bb318197):** `grep -c 'config/assay/STOP'` is 2 in pr-review-desk, verify-desk and worker-desk, and 0 in intake-desk and the-desk. Only those three loops have an iteration-boundary STOP check today, and only they gain the cell line. intake-desk and the-desk keep relying on the Guard alone, as they already do for `STOP` and `STOP.<loop>`.
 - **Threat model (same OS account).** Any desk on the machine can write `STOP.cell.<other-cell>` and pause another cell, and a session can drop its own marker. Neither is an escalation over today's machine-wide `STOP`, which any desk can already write.
@@ -88,7 +88,6 @@ Default if no answer: none — blocks until answered.
 ## Ground rules
 - NEVER git push / trigger workflows. Stop at `implemented`.
 - Do not change the semantics of any existing flag.
-- If #2880's marker name differs from `ASSAY_CELL`, use #2880's name and say so in the PR body.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task

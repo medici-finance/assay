@@ -147,14 +147,15 @@ A proposed `send` verb is withdrawn as a separate ingress. Its requirements beco
 
 The verb briefs live in the `desk-containers` stream on today's tools. Target-owned work is recorded as owner rows in the [amendment manifest](20-amendment-manifest.md#cell-operator-surface-amendment-21). No brief is allocated to an owner that does not exist yet.
 
-Owner mappings (settled and unsettled):
+Owner mappings:
 
 - **Lifecycle ownership: settled as a split.** R2 records the requested transition and the handoff record; R3 executes it on processes. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
   Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174524523
 - **R7 owner: settled.** A new stream, `cell-api`, owns R7 (the public Cell API and thin cockpit). It ships `status: parked` at creation, per the manifest, and scaffolding it is a follow-up PR. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
   Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174752870
 - **Approvals are deferred.** The five properties above are owned by R7 (served route) and R3 (isolation). The decision owner's contract shapes the final record.
-- **The cell marker.** The marker that scopes an interim cell stop (`#2880` proposes one; desks already receive the cell name when comms is configured) should be settled once, by the cell-operation owner.
+- **The cell marker: settled.** `ASSAY_CELL` (plus `ASSAY_CELL_DIR` and `ASSAY_CELL_ROLE`) is set on every process cellctl launches, whether or not comms is configured, as #2880 (PR #2884) ships it; `DESK_CELL`/`DESK_ROLE` stay comms-only. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
+  Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174769826
 
 ## Human decision and ratification
 
