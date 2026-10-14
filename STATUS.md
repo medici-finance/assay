@@ -62,6 +62,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-14 |
 | [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-14 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-14 |
+| [performance-collection](docs/streams/performance-collection/README.md) | P2 | 0/6 | 2026-10-14 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-14 |
 
 ## Next up
@@ -90,7 +91,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: b2050d8 2026-10-14T11:14:55-05:00_
+_last regen: 977375c 2026-10-14T12:04:14-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -111,7 +112,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: b2050d8 2026-10-14T11:14:55-05:00_
+_last regen: 977375c 2026-10-14T12:04:14-05:00_
 
 **Progress:** 16/73 brief items done.
 
@@ -649,6 +650,15 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish — todo (wave 1)
 - 06 model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login — todo (wave 1)
 
+### performance-collection (6 open)
+
+- 01 Local performance event contract, spool and offline report — todo (wave 0)
+- 02 Producer adapters for workflow, usage and local performance — todo (wave 1)
+- 03 Separate TimescaleDB performance database and storage adapter — todo (wave 1)
+- 04 Authenticated performance ingestion API — todo (wave 2)
+- 05 Explicit resumable upload from the local spool — todo (wave 1)
+- 06 Collection replay, retention, recovery and release qualification — todo (wave 3)
+
 ### quality (3 open)
 
 - 17 regression suite — TestRegression_ naming convention + count-can't-drop / vacuous-selector CI gate — todo (wave 0)
@@ -853,4 +863,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**26** streams (**20** active, **0** paused, **6** parked) · **106/394** briefs done · completed initiatives: see `docs/archive/`
+**27** streams (**20** active, **0** paused, **7** parked) · **106/400** briefs done · completed initiatives: see `docs/archive/`
