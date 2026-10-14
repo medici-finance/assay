@@ -46,6 +46,23 @@ Equivalent filesystem paths cannot bypass retention checks: existing entries and
 ancestors are compared by filesystem identity. Uncertain identity lookups refuse
 reset; distinct entries on a case-sensitive filesystem remain distinct.
 
+A reset plan must compare filesystem locations consistently when deciding whether
+cell configuration is inside a repository or a worktree belongs to the cell.
+Spelling a location through a symbolic link must not change that decision.
+Paths that cannot be resolved safely must produce an explicit refusal rather
+than an assumption that the location is outside the protected tree.
+
+Planning resolves both sides of directory comparisons, including aliases of
+cell and worktree paths. Hard reset refuses nested cell configuration, repository
+roots, and comms storage. Soft reset selects only the cell's worktrees, and
+execution uses that same selection. Missing optional storage is allowed; broken
+links, unreadable paths, and non-directory paths are errors. The worktree
+directory itself must still be a real directory before cleanup.
+
+`DRY_RUN=1` prints the plan without executing cleanup. The planning, preflight and
+execution regressions use explicit symbolic links, temporary repositories and a
+symlinked `TMPDIR`, so Linux runs exercise the path spelling macOS produces by default.
+
 Unix cache/reset support initially covers macOS and Linux. Unsupported platforms
 refuse before mutation. Existing owner, no-link and single-filesystem cache checks
 remain in force. The cache lock wait must accommodate full measurements and cleanup

@@ -314,8 +314,8 @@ reviewloop plan --actions "$ACTIONS" --prs "$PRS"
 ```
 
 `reviewloop plan` classifies every board row against an action table required by test to be
-exhaustive over `deskboard`'s own constants, coalesces outward verbs on (repo, pr, head, verb)
-under the same audit-keyed idempotency the `deskpost` verbs use, and states the idle verdict
+exhaustive over `deskboard`'s own constants, coalesces verbs on (repo, pr, head, verb) from the
+board alone (claims and write idempotency are checked at execution), and states the idle verdict
 three-state. It spawns nothing and writes nothing outward — the desk executes the verbs. Exit 6
 (board unreadable, an ACTION the table does not know, an idle question the board cannot answer) is
 BLIND, never "all clear"; without `--prs` every outward verb is SUPPRESSED as could-not-check.

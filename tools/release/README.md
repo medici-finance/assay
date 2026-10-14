@@ -92,3 +92,14 @@ git show <tag>:spec/brief-v1.md | grep 'Describes reference implementation'
 ```
 
 Once that holds, `#1192` can close, citing the ruling.
+
+## Release Go cache
+
+`go_cache.py` is an internal, standard-library workflow adapter. The live release
+workflow imports it for restore and pack; `go_cache_test.py` runs through the
+existing desk regression floor. See [the design and measurements](../../docs/release-build-cache.md).
+
+The cache and batching delta is mirrored in `release.yml.proposed` and
+`ci/staged-workflows/release.yml`, preserving each proposal's other changes.
+The old changelog proposal is a historical snapshot, not a promotion source.
+No whole-file proposal should replace the current live workflow.
