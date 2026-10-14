@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"testing"
 	"time"
 )
 
@@ -28,19 +30,75 @@ const (
 // run-stop layer without a real git worktree. It is deliberately NOT wired to any env var
 // or flag — the run key must come from the worktree the verb is running in, never from an
 // operator-supplied value, or a caller could name another run's key and stop it.
-var runKeyResolver = gitWorktreeRunKey
+//
+// The key is resolved once per process: a verb that guards more than once pays one lookup.
+var runKeyResolver = onceRunKey(processRunKey)
+
+// onceRunKey memoises read: the first call runs it, every later call returns that answer.
+func onceRunKey(read func() string) func() string {
+	var once sync.Once
+	var key string
+	return func() string {
+		once.Do(func() { key = read() })
+		return key
+	}
+}
+
+// processRunKey is the production resolver. Inside a `go test` binary it returns "" without
+// running git, so no package's tests read the run key of whatever worktree the developer
+// runs them from — the default covers every test binary, with no per-package stub to forget.
+// testing.Testing is fixed by the go test link step, never by an env var or flag, so a
+// shipped binary always takes the real read below.
+func processRunKey() string {
+	if testing.Testing() {
+		return ""
+	}
+	return gitWorktreeRunKey()
+}
 
 // gitWorktreeRunKey returns the assay.runKey recorded in the current worktree's git config,
 // or "" when there is none — a verb run OUTSIDE any worktree, or in one deskdispatch never
 // stamped, has no run key and skips the per-run stop layer entirely (no false refusals). A
-// git error (not a worktree, extension not enabled, key absent) is "" for the same reason:
-// could-not-read a run key is "this verb is not a stoppable run", never a refusal.
+// git error (not a worktree, key absent) is "" for the same reason: could-not-read a run key
+// is "this verb is not a stoppable run", never a refusal.
 func gitWorktreeRunKey() string {
-	out, err := exec.Command("git", "config", "--worktree", "assay.runKey").Output()
+	return worktreeRunKeyIn("")
+}
+
+// worktreeRunKeyIn reads assay.runKey from the per-worktree config file of the worktree at
+// dir ("" = the current directory), and from nothing else: no repository-local, global,
+// system or environment-supplied value can name the key.
+//
+// It reads the file directly rather than running `git config --worktree`, which walks every
+// registered worktree of the repository before it reads anything — about 2 s per call on a
+// repository with hundreds of worktrees. The file `rev-parse --git-path` names is the one
+// `--worktree` reads whenever extensions.worktreeConfig is on, the mode deskdispatch stamps
+// under. Without the extension `--worktree` read the repository config instead (single
+// worktree) or failed (several); this read returns "" there unless the file exists.
+func worktreeRunKeyIn(dir string) string {
+	git := func(args ...string) (string, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.Output()
+		return strings.TrimSpace(string(out)), err
+	}
+	path, err := git("rev-parse", "--git-path", "config.worktree")
+	if err != nil || path == "" {
+		return ""
+	}
+	// A relative path is relative to dir, the directory both git calls run in.
+	stat := path
+	if !filepath.IsAbs(stat) && dir != "" {
+		stat = filepath.Join(dir, stat)
+	}
+	if _, err := os.Stat(stat); err != nil {
+		return "" // never stamped: no per-worktree config file
+	}
+	key, err := git("config", "--file", path, "--get", "assay.runKey")
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	return key
 }
 
 // dirOverride, when non-empty, replaces the real ~/.config/assay directory.
