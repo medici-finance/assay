@@ -44,6 +44,9 @@ facts:
   `/run/secrets/assay/app.pem` (defaultMode 0400); model credentials via `envFrom:
   secretRef`. `secret.example.yaml` documents the shape with obviously-fake values;
   real Secrets are created out-of-band by the operator, never committed.
+  `secret.example.yaml` is documentation only: it is NOT listed in `kustomization.yaml`'s
+  `resources:`, so `kubectl apply -k` never creates a placeholder Secret over an operator's
+  real one, and a build of the base (or of an overlay on it) contains no `kind: Secret`.
 - Baseline pod hardening: runAsNonRoot, no privilege escalation, resources
   requests/limits set; the desks need outbound network only (GitHub + model
   endpoints) — no Service/Ingress.
