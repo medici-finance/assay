@@ -216,6 +216,7 @@ func UnnumberedCapFor(tool string) int {
 // The rule is "may have reached the remote", not "succeeded", and the difference is
 // load-bearing:
 //
+//   - ResultLocal is a local audit receipt: no remote write, and no breaker reset.
 //   - ResultOK charges: the write landed.
 //   - ResultUnverifiable charges: the call was SENT and its outcome could not be
 //     confirmed — a timeout, or a GitHub 5xx returned after the comment actually
@@ -255,7 +256,7 @@ func UnnumberedCapFor(tool string) int {
 // classified deliberately here, and until it is, the safe default is to count it.
 func chargesBudget(result string) bool {
 	switch result {
-	case ResultRefused, ResultNoop, ResultRateLimited, ResultDisabled, ResultDryRun, ResultUnwritten:
+	case ResultLocal, ResultRefused, ResultNoop, ResultRateLimited, ResultDisabled, ResultDryRun, ResultUnwritten:
 		return false
 	default:
 		return true // ResultOK, ResultUnverifiable, and anything unclassified
@@ -321,7 +322,7 @@ func nonProgress(result string) bool {
 // run and hold the loop stop disarmed. Ignored, it neither trips the breaker nor rescues a
 // caller from it.
 func breakerIgnores(result string) bool {
-	return result == ResultRateLimited || result == ResultDisabled || result == ResultDryRun || result == ResultNoop
+	return result == ResultLocal || result == ResultRateLimited || result == ResultDisabled || result == ResultDryRun || result == ResultNoop
 }
 
 // AllowWrite enforces the outward-write gate as of now. See AllowWriteAt.
