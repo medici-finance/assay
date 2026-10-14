@@ -12,7 +12,7 @@ why: >-
   meaning when the lifecycle contract replaces the mechanism underneath.
 wave: 8
 depends: ["desk-containers/15", "desk-containers/16"]
-unblocks: ["desk-containers/19"]
+unblocks: ["desk-containers/19", "desk-containers/21"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -33,6 +33,7 @@ exec-tier: strong
 exec-tier-why: (b) spans the stop flags, dispatch claims, cadence supervisors and the skill bodies against a transition vocabulary another owner will implement; (c) wait/timeout/shutdown ordering is concurrency
 domain: complicated
 consumers:
+  - ".cursor/skills/** (generated mirror of the skill bodies): follow-up desk-containers/18 (this brief; regenerated with `deskinstall --harness cursor`)"
   - "tools/desk/cmd/cellctl (drain/pause/resume adapters): follow-up desk-containers/18 (this brief)"
   - "plugins/assay/skills/{the-desk,pr-review-desk,verify-desk,worker-desk,intake-desk}/SKILL.md (write the handoff record on a cell drain; read it at boot): follow-up desk-containers/18 (this brief)"
   - "plugins/assay/references/handoff-note.md (planned): follow-up desk-containers/18 (this brief)"
@@ -61,9 +62,10 @@ facts:
   - the handoff record: a file under the cell.
 
   When the runner lifecycle contract ships, `lifecycle.go` is re-pointed at it and the verbs do not change.
-- `pause <cell> [role...]` moves the targeted roles to `paused` once their loops reach the next iteration boundary. `resume` clears exactly what `pause` set and moves them back to `running`. Both are idempotent.
+- `pause <cell> [role...]` moves the targeted roles to `paused` once their loops reach the next iteration boundary. It creates a cell flag only if that flag does not already exist, and it records each flag it created (path, inode, creation time) in `run/lifecycle/pause-record.json` under the cell.
+- **`resume` lifts only its own stops.** It removes exactly the flags listed in that record whose identity still matches, then moves those roles back to `running`. It never removes `DISABLED`, `STOP`, `STOP.<loop>`, a cell flag that existed before the pause (for example one an incident responder set), or another cell's flag. Lifting a stop that `pause` did not set needs its own authority: `resume --foreign <flag>` only through an approved desk-containers/15 plan naming that exact flag. Both verbs are idempotent.
 - `drain <cell> [role...] [--timeout 20m]` runs `pause`, then waits (polling at most every 10s, bounded by the timeout) for each targeted role to be idle with no in-flight work, collects the handoff record, then runs `stop`. **Invariant from the architecture:** draining never cancels an external effect already in flight. Work still running at timeout is listed, and the role stays up. The command exits 1 with `next[]` naming `drain --now` and `resume`.
-- `drain --now` stops after a 60s handoff bound. It always goes through a desk-containers/15 plan, which lists every in-flight claim that will be abandoned as an unknown outcome to reconcile, and needs an approval. On a TTY that approval is the local signed `[y/N]`.
+- `drain --now` stops after a 60s handoff bound. It always goes through a desk-containers/15 plan, which lists every in-flight claim that will be abandoned as an unknown outcome to reconcile, and needs an approval. On a TTY the verb prints the plan and runs `cellctl approve` inline, which needs the operator's presence prompt (desk-containers/15); a typed `y` is never an approval.
 - **Handoff record** (interim form: `run/handoff/<role>.md` under the cell). It holds the time; the claims the desk held and their state; open PRs it was driving; the decision it was waiting on; and one paragraph on what it was doing. A desk reads its record at boot before its first sweep, then marks it read. The shape is stated once in `plugins/assay/references/handoff-note.md` (planned). In the target, the durable resume state lives in the runtime coordination store, because "a terminal or agent chat must not be its memory". This file is the interim carrier, and amendment 21 records the migration.
 - Abandonment is never silent: every claim still held at stop appears in the result's `actions[]` and in the handoff record.
 
@@ -83,12 +85,14 @@ facts:
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLifecycleTransitions' -count=1` | exit 0 — role states move running → pausing → paused → running and running → draining → drained → stopped as amendment 21 defines; an illegal transition (resume from stopped) is refused |
+| 1b | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestResumeLeavesForeignStops' -count=1 -v` | `--- PASS` — with `DISABLED`, `STOP`, `STOP.worker-desk`, a pre-existing `STOP.cell.<cell>` and `STOP.cell.<other>` present, `pause` then `resume` leaves every one of them in place and removes only the flag `pause` created; `resume --foreign` without an approved plan is refused; a mutant that removes all cell flags fails |
 | 2 | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainWaitsForInFlight' -count=1` | exit 0 — with a fixture claim held by the cell's session, `stop` is not invoked until the claim releases; a mutant that stops right after pause fails |
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainTimeoutDoesNotStop' -count=1` | exit 0 — on timeout the roles stay up, outcome is `partial`, and `next[]` names `drain --now` and `resume` |
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainNowRequiresApprovedPlan' -count=1` | exit 0 — `drain --now` without a valid approval is refused `approval-invalid`; with one, the result lists every abandoned claim as an unknown outcome |
 | 5 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestInterimMappingPinned' -count=1` | exit 0 — the single test that names the interim mechanism (cell flag, cadence checkpoint, handoff file) passes, and no other test references the flag path |
 | 6 | check +dereference | `grep -l 'references/handoff-note.md' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md \| wc -l` | 5 |
-| 7 | gate:model +flow +dereference | On a disposable house cell with stub desks holding one fixture claim: `cellctl drain <cell> --timeout 2m` while the claim releases after 30s | the claim releases; a handoff record exists per role; the cell is stopped; `cellctl cadence <cell> status` shows no `unfinished`; a following `cellctl up <cell>` boots with no reconcile prompt and each desk reports reading its record |
+| 7 | gate:model +flow +dereference | On a disposable house cell with stub desks holding one fixture claim: `cellctl drain <cell> --timeout 2m` while the claim releases after 30s | the claim releases; a handoff record exists per role; the cell is stopped; `cellctl cadence <cell> status` shows no `unfinished`; a following `cellctl up <cell>` exits 0 with every role `up` and each desk reports reading its record |
+| 8j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainEmitsCellOpV1' -count=1 -v` | `--- PASS` — `drain --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 8 | check | `statusgen --root . --lint` | exit 0 |
 | 8a | check | `statusgen --root . --consumers --brief desk-containers/18` | exit 0 — the `consumers:` routing holds against the branch diff |
 

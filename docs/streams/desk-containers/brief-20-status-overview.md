@@ -8,7 +8,7 @@ why: >-
   `doctor`, `gc` and the console cockpit read, removes most of the manual digging from the
   2026-10-14 recovery.
 wave: 8
-depends: ["desk-containers/15"]
+depends: ["desk-containers/15", "desk-containers/16"]
 unblocks: ["desk-containers/21", "desk-containers/23"]
 effort: M
 gate: model
@@ -46,7 +46,7 @@ facts:
 - **Interim bridge.** In the target, cell status is an authenticated Cell API query over projections that carry their revision, watermark and coverage. `cellop.Inventory` and this verb are the interim reader. Its `--json` document is the desk-containers/15 result, so the API can serve the same document. Fields that read today's interim state (cadence checkpoints, flag files) are named as such in `evidence{}`.
 - Per role: window present in the recorded cockpit (yes/no/could-not-check); harness pid + process start time; model and harness from the launch record; cadence `running`, `last`, heartbeat age; dispatch claims held by the role's session (count, oldest age); stop state (machine-wide, cell, role, from desk-containers/16).
 - Cell rows: comms (checkpoint outcome, gateway pid alive, queued/held counts); go cache (logical bytes vs budget, available vs floor, active consumer records); lock holders (every lock under the cell's `run/` plus `.reset.lock`, with holder pid, command and start time, or "free"); tool version (`cellctl version` vs the pin the cell was booted with, flagging an older binary).
-- Read-only. Every probe that cannot measure reports `null` + could-not-check, never a default. Exit 0 unless the cell fails to load (unchanged).
+- Read-only. Every probe that cannot measure reports `null` + could-not-check, never a default. The result is `ok` with per-field nulls when probes could not measure; exit 6 only when the cell itself cannot be loaded (the read-verb rule in desk-containers/15).
 - Text output keeps today's per-role cadence line first, unchanged, then the new columns. `--json` is the desk-containers/15 result with `evidence{}` carrying every field.
 - The probe set is one function, `cellop.Inventory(cell)`, so `doctor` and `gc` never re-measure differently.
 
@@ -68,6 +68,7 @@ facts:
 | 3 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNullNotZero' -count=1` | exit 0 — an unreadable cache root yields `null` and could-not-check, not 0 bytes |
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestStatusLegacyPrefix' -count=1` | exit 0 — the first line per role is byte-identical to the pre-change format |
 | 5 | gate:model +flow +dereference | On a live cell: `cellctl status <cell> --json`, then check three of its claims by hand (one harness pid with `ps -o lstart=`, one lock holder with `lsof`, the cache bytes against `cellctl cache <cell> status`) | all three match. Record the commands and outputs. |
+| 6j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestStatusEmitsCellOpV1' -count=1 -v` | `--- PASS` — `status --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
 | 6a | check | `statusgen --root . --consumers --brief desk-containers/20` | exit 0 — the `consumers:` routing holds against the branch diff |
 

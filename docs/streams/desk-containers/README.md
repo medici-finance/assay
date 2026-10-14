@@ -44,16 +44,16 @@ component list, build/run topology, and open questions.
 | 12 | [Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob](brief-12-unattended-tick-mode-cronjob-component.md) | 4 | M | todo | — | — |
 | 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |
 | 14 | [Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay](brief-14-flux-install-example.md) | 6 | M | todo | — | — |
-| 15 | [The cell-operation contract — one versioned result, plan and plan-approval schema shared by the future Cell API and the CLI, with the CLI as the first adapter](brief-15-cell-op-machine-seam.md) | 7 | M | todo | — | — |
+| 15 | [The cell-operation contract — one versioned result, plan and plan-approval schema shared by the future Cell API and the CLI, with operator-key custody outside the desks' reach and the CLI as the first adapter](brief-15-cell-op-machine-seam.md) | 7 | M | todo | — | — |
 | 16 | [Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker](brief-16-cell-scoped-stop-flags.md) | 7 | M | todo | — | — |
 | 17 | [`cellctl up <cell>` converges the cell — already-up roles are skipped, stale ones reconciled, launches serialized, one summary table](brief-17-up-converges-the-cell.md) | 8 | M | todo | — | — |
 | 18 | [`cellctl drain\|pause\|resume <cell> [role...]` — CLI adapter onto the runner-lifecycle drain/pause/resume transitions and the handoff record, implemented on today's stop flags and cadence as the interim mechanism](brief-18-drain-pause-resume-handoff.md) | 8 | M | todo | — | — |
 | 19 | [`cellctl restart <cell> [role...]` — CLI adapter onto the runner-lifecycle restart sequence (drain → stop → start per role, rolling), so the pipeline never fully stops](brief-19-restart-rolling.md) | 9 | S | todo | — | — |
 | 20 | [`cellctl status <cell>` as a cell overview — per-role liveness, model, heartbeat, claims, stop state, plus comms, cache, locks and tool version](brief-20-status-overview.md) | 8 | M | todo | — | — |
-| 21 | [`cellctl doctor <cell>` — diagnose every known way a cell gets stuck, name the cause, and offer the fix as one confirmed plan](brief-21-doctor.md) | 9 | M | todo | — | — |
+| 21 | [`cellctl doctor <cell>` — diagnose every known way a cell gets stuck, name the cause, and offer the fix as one confirmed plan](brief-21-doctor.md) | 11 | M | todo | — | — |
 | 22 | [`cellctl logs <cell> [role] [--lines N]` — read a desk window's recent output from whichever cockpit holds it](brief-22-logs.md) | 8 | S | todo | — | — |
 | 23 | [`cellctl upgrade <cell>` — install the pinned desk-tools release and plugin, verify them, then rolling-restart the cell onto them](brief-23-upgrade.md) | 10 | M | todo | — | — |
-| 24 | [`cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans](brief-24-gc.md) | 10 | M | todo | — | — |
+| 24 | [`cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans](brief-24-gc.md) | 12 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -171,26 +171,35 @@ classifies every verb here:
 The amendment is proposed and needs the maintainer's own ratification.
 
 - **Wave 7** — `desk-containers/15` (the shared cell-op contract: result, plan, and a plan
-  approval mapped onto the human-decision model, with a 10-minute TTL, verified before an
-  independent re-measure; the CLI is the first adapter and the Cell API the second) and
-  `desk-containers/16` (the interim mechanism for the lifecycle `pause` transition, a
-  cell-scoped stop flag; **human gate**, because it changes the tool Guard). They are
-  independent, and both are heads.
-- **Wave 8** — `desk-containers/17` (`up` converges; uses #2880's reconcile),
+  approval mapped onto the human-decision model. It is signed by a presence-bound operator key
+  outside the desks' reach, over pinned domain-tagged bytes, and consumed atomically before any
+  effect. The CLI is the first adapter and the Cell API the second, read/plan-only until R7
+  qualifies. **Human gate**: the key custody) and `desk-containers/16` (the interim
+  mechanism for the lifecycle `pause` transition, a cell-scoped stop flag; **human gate**,
+  because it changes the tool Guard). They are independent, and both are heads.
+- **Wave 8** — `desk-containers/17` (`up` converges; reconcile through the contract),
   `desk-containers/18` (drain/pause/resume adapters onto the lifecycle transitions, plus the
-  handoff record; needs 16), `desk-containers/20` (`status` and the shared
-  `cellop.Inventory`), `desk-containers/22` (`logs`).
+  handoff record; `resume` lifts only its own stops; needs 16), `desk-containers/20` (`status`
+  and the shared `cellop.Inventory`; reads 16's stop state), `desk-containers/22` (`logs`).
 - **Wave 9** — `desk-containers/19` (`restart`, the lifecycle drain → stop → start sequence per
-  role) and `desk-containers/21` (`doctor`, over 20's inventory).
-- **Wave 10** — `desk-containers/23` (`upgrade`: pinned install, then 19; refuses under another
-  cell's live desks) and `desk-containers/24` (`gc`, reusing 21's classification).
+  role; `--now` is one batch approval over per-role plans).
+- **Wave 10** — `desk-containers/23` (`upgrade`: pins from a reviewed ref, sha256 plus
+  signature/attestation where published, pinned plugin, restore on failure, then 19; refuses
+  under another cell's live or unknown desks, and needs authority for every included cell).
+- **Wave 11** — `desk-containers/21` (`doctor`, over 20's inventory; its fixes point at 18's
+  `resume` and 23's `upgrade`).
+- **Wave 12** — `desk-containers/24` (`gc`, reusing 21's classification).
 
-Critical path: `15 → 18 → 19 → 23` (16 joins at 18). The head was checked: nothing in the
-chain can expose a result or a confirmation to a client before 15 fixes their shape, and 18
-cannot aim a pause before 16, because today's `STOP` flags live in the operator's config home,
-which every house cell shares through a symlink. #2880 is a dependency of 17 and 21 as an
-issue, not a brief: if its PR changes its function names, 17 and 21 report NEEDS_CONTEXT
-rather than re-implement it.
+Critical path: `15 → 18 → 19 → 23 → 21 → 24` (16 joins at 18 and 20). The head was checked:
+nothing in the chain can expose a result or a confirmation to a client before 15 fixes their
+shape, and 18 cannot aim a pause before 16, because today's `STOP` flags live in the operator's
+config home, which every house cell shares through a symlink. #2880 (its PR is #2884, still a
+draft) is a dependency of 16 (its cell marker), 17, 21 and 24 as an issue, not a brief: if its
+PR changes its marker or function names, those briefs report NEEDS_CONTEXT rather than
+re-implement it. #2881's fix (#2882) has merged.
+
+Numbering: briefs 15–24 keep their numbers. Other open drafts that propose desk-containers
+15–17 renumber on their side.
 
 **`send` is not a brief here.** Status for external parties is an authenticated Cell API
 query, and operator talk-to-desk is a scoped Cell API request (R7, which has no owner yet).
@@ -214,6 +223,7 @@ steps, and it leaves the same unfinished checkpoints behind.
   self-flip a leak-sweep.
 - Cell-operator verbs (briefs 15–24) share one contract, `cell-op-v1` (brief 15): the CLI's
   `--json` emits its result document, and every confirmation is a plan applied only with a
-  plan approval (a human decision record signed by an operator key over the plan id and
-  digest) and re-verified at apply. The future Cell API serves the same documents. No verb
+  plan approval (a human decision record signed by a presence-bound operator key over the
+  contract's domain-tagged payload of every bound field) that is verified, re-measured and
+  consumed before any effect. The future Cell API serves the same documents. No verb
   defines a blanket `--yes`.

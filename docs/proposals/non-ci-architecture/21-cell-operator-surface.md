@@ -41,7 +41,7 @@ The amendment adds no new owner. It places each verb under the existing semantic
 | `status` | Interim bridge | `cellop.Inventory` reader | Projection, served as an authenticated Cell API query | `desk-containers/20` |
 | `doctor` | Interim bridge | Finding catalogue over the inventory | Projection (hold reasons, recovery actions) and the owning domains' actions | `desk-containers/21` |
 | `logs` | Interim bridge | Cockpit pane read | Projection and interaction (terminals) via the Cell API | `desk-containers/22` |
-| `upgrade` | Interim bridge | Pinned install, then rolling restart; refuses under live shared cells | Cell operation; release/pin migration under R8 | `desk-containers/23` |
+| `upgrade` | Interim bridge | Pinned, provenance-verified install (tools and plugin), then rolling restart; refuses under live or unknown shared cells | Cell operation; release/pin migration under R8 | `desk-containers/23` |
 | `gc` | Interim bridge | Plan-first composition of today's per-item instruments | Continuing operations: workspace-lifecycle slice and maintenance owner | `desk-containers/24` |
 | Status queries and operator requests (`send`) | Target-owned | **Not shipped as a cellctl verb or a comms listener** | R7 Cell API | none; requirements below |
 
@@ -63,6 +63,7 @@ Invariants, from the target's runtime-durability rules:
 - A transition never cancels an external effect already in flight. A drain that times out leaves the role up and lists the remaining work.
 - Abandoning in-flight work (`drain --now`) needs an approved plan. Each abandoned item is recorded as an unknown outcome to reconcile, never as cancelled.
 - A pause aimed at one cell never stops another cell, and a pause only ever adds a stop.
+- `resume` lifts only the stops its own `pause` set. Lifting any other stop (machine-wide, per-loop, another cell's, or one an incident responder set) needs its own approved authority.
 - The **handoff/resume record** (claims held, open changes being driven, pending decision, current activity) is runtime state. In the target it lives in the coordination store, so that "a terminal or agent chat must not be its memory". Recovery reads it like any other durable state.
 
 **Interim mapping (today's mechanism, explicitly not the design):**
@@ -78,28 +79,65 @@ The cellctl verbs bind to one internal transition interface, so the mechanism ca
 
 ## Plan approval in the decision model
 
-The operator verbs that confirm (up reconcile, drain `--now`, doctor and gc fixes, upgrade) share one plan → approve → apply contract (`desk-containers/15`). The approval is a human decision record in the evidence-and-decisions owner's model. It binds:
+The operator verbs that confirm share one plan → approve → apply contract (`desk-containers/15`). They are:
+
+- up reconcile;
+- drain `--now`;
+- restart `--now`, as a batch;
+- doctor and gc fixes;
+- `resume --foreign`;
+- upgrade.
+
+The approval is a human decision record in the evidence-and-decisions owner's model. It binds:
 
 - **actor:** the approving operator's key id;
-- **subject:** cell and plan id;
+- **subject:** every affected cell and the plan id;
 - **revision:** the plan digest;
-- **permitted act:** apply exactly the planned actions;
+- **permitted act:** the verb;
 - **expiry:** 10 minutes;
 - **consumption:** once.
 
-It carries a signature by an operator-tagged trust-store key. Agent-facing surfaces hold no operator key, which preserves the human-action absences. Apply verifies the approval, then independently re-measures every precondition; either check alone refuses. When the decision owner's contract ships, the approval becomes a profile of it.
+A batch approval binds ordered child plans by digest. Each child is re-measured and consumed immediately before its own step.
+
+**Signed bytes.** The signature covers a domain-tagged (`cell-op-approval/v1`), length-prefixed payload of every bound field. The exact layout and golden vectors are in the contract, so every producer, including an out-of-repo cockpit, signs identical bytes.
+
+**Custody.** The operator signing key lives outside anything the desks' OS account and cell environment can read or use, and a signature needs human presence (an OS-keychain or hardware key prompt). A keystroke in a terminal is never an approval, because desk panes are terminals. Verification uses a public-key-only operator registry, separate from the comms trust store, listing the cells each key may approve for. Placement detail for a particular deployment is the adopter's concern. Agent-facing surfaces hold no operator key, which preserves the human-action absences.
+
+**Apply order.** Apply runs these steps in order, and each failure refuses without running anything:
+
+1. verify the approval (all fields, the signature, the registry, and every cell in the subject);
+2. re-measure every precondition;
+3. **consume atomically, before any effect**;
+4. run the actions.
+
+**Interim threat boundary.** The approval gates the CLI and API paths. It does not stop a same-account process acting on files directly; that belongs to the runtime-isolation owner (R3). When the decision owner's contract ships, the approval becomes a profile of it.
 
 ## Cell API requirements carried from `send`
 
-A proposed `send` verb is withdrawn as a separate ingress. Its requirements become requirements on the R7 Cell API:
+A proposed `send` verb is withdrawn as a separate ingress. Its requirements, together with the apply-path requirements from the contract above, become requirements on the R7 Cell API:
 
-1. **Sender classes from authenticated identity only:** `operator` (trusted, may make scoped requests to a desk) and `external` (untrusted: queries only, and content is data, never instructions). Never decided by message content.
+1. **Sender classes from authenticated identity only:**
+   - `operator`: trusted; may make scoped requests to a desk, and may apply plans;
+   - `external`: untrusted; may make queries only, and its content is data, never instructions.
+
+   **The class is resolved server-side from the verified credential against an operator registry.** It is never decided by message content, a header, a token claim the client minted, or any field the client controls.
 2. **Status for external parties is an authenticated query** answered deterministically from an allow-listed status projection. No model reads the request text.
-3. **Operator talk-to-desk is a scoped request.** Free text first passes the contained reader (no credentials, no tools), producing a typed, size-capped, labelled summary. A desk handling an external message is under an answer-only lock enforced at the effect boundary, not only by the desk's instructions. Every reply passes the contained reader's outbound check and a withheld-token/personal-data scrub. A failed consultation quarantines the message; it is never delivered.
-4. **Authentication: mTLS client certificates for machine callers and signed tokens for lighter clients.** This is the driver's stated preference (in-session, 14 October 2026), pending ratification on the decision issue. Both paths need per-caller rate limits and an audit record of every request and reply digest.
-5. **No comms listener for external callers.** Comms stays desk-to-desk plus the contained reader. The Cell API is the only ingress.
-6. **Negative qualification cases, each with the layer above it bypassed:**
+3. **Operator talk-to-desk is a scoped request.**
+   - Free text first passes the contained reader (no credentials, no tools), which produces a typed, size-capped, labelled summary.
+   - A desk handling an external message is under an answer-only lock enforced at the effect boundary, not only by the desk's instructions.
+   - Every reply passes the contained reader's outbound check and a withheld-token/personal-data scrub.
+   - A failed consultation quarantines the message; it is never delivered.
+4. **Authentication: mTLS client certificates for machine callers and signed tokens for lighter clients.** This is the driver's stated preference (in-session, 14 October 2026), pending ratification on the decision issue.
+   - Signed tokens carry a server-side issuer, an audience equal to one cell, an expiry and a token id, checked against a revocation list.
+   - Both paths need per-caller rate limits and an audit record of every request and reply digest.
+5. **The served apply route runs every check server-side.** It verifies the signed approval, re-measures preconditions, consumes once atomically before any effect, and authorizes each affected cell. Apply is `operator`-class only. **The API path is read/plan-only until R7 qualifies this.** The cockpit produces approvals client-side under operator presence and never holds the operator key on the server.
+6. **Terminal output (`logs`) is operator-class only.** It is scrubbed for withheld tokens and personal data before it is served.
+7. **No comms listener for external callers.** Comms stays desk-to-desk plus the contained reader. The Cell API is the only ingress.
+8. **Negative qualification cases, each with the layer above it bypassed:**
    - an unauthenticated or unknown caller is refused at the served route;
+   - an `external` credential that claims `operator` in any field it controls is still handled as `external`;
+   - invalid, stale, replayed and foreign-cell approvals sent by a direct HTTP call to the apply route, with the cockpit bypassed, are each refused;
+   - an `external` caller's apply is refused;
    - an injected instruction in an external message is not acted on, with the reader bypassed;
    - a withheld token emitted by a desk is blocked by the outbound filter;
    - the rate limit trips.

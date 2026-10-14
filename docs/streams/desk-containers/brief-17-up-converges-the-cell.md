@@ -55,12 +55,12 @@ files:
 facts:
 - **Interim bridge.** `up` stays the operator's cell-lifecycle verb in the target (cellctl is 'operator surface for cell lifecycle and configuration'). Its per-role launch is today's process supervision, which the architecture moves behind the shared runner contract. When that ships, `up` keeps its converge semantics and calls the lifecycle `start` transition instead of launching windows itself.
 - A role is **up** when its cadence role lease (`run/cadence/<role>/owner.lock`, `cellcadence.AcquireRole`) is held by a live process. Probe it non-blockingly; a held lease is "already up", never an error. Re-check 2026-10-14: `cellctl cadence <cell> status` prints `running=true` per held role.
-- A role is **stale** when its checkpoint says `running=true` (or comms `outcome != ok`) and no live holder exists. Stale roles go through #2880's reconcile for THAT role. `up` never clears state itself, and never on a non-TTY (#2880's rule: non-TTY refuses with the inventory).
+- A role is **stale** when its checkpoint says `running=true` (or comms `outcome != ok`) and no live holder exists. Stale roles are reconciled with #2880's classification and actions for THAT role, but **the confirmation goes through the desk-containers/15 contract**: `up` wraps the reconcile actions in a `cell-op-plan` and applies it only with an approval. On a TTY the verb prints the plan and runs `cellctl approve` inline, which needs the operator's presence prompt (desk-containers/15); a typed `y` is never an approval. #2880's own one-prompt path stays as it is for #2880 until this brief lands; after that, `up` is the only reconcile entry point, and it never clears state itself.
 - Launches are **serialized**: open role N+1 only after role N's launch has passed its lease acquisition and scratch sweep (or failed). This holds even with #2709's wait-for-lock fix, because the summary must attribute each failure to one role.
 - `--role <name>` (repeatable) limits convergence to the named roles. With no `--role`, `ROLES` from cell.env is the target set.
 - The final table has one row per targeted role: `up` (launched now) / `already-up` (pid, since) / `reconciled+up` / `failed` (the first error line, verbatim). Exit 0 when every targeted role ends `up`, `already-up` or `reconciled+up`; otherwise exit 1.
 - `DRY_RUN=1` prints each role's disposition from the same probes and launches nothing.
-- **Machine seam (desk-containers/15):** `--json` emits the summary as the contract's `cell-op-result` document, with one entry per role. When stale roles need reconciling and stdin is not a TTY, `up --plan` writes the reconcile plan and prints its id; `up --apply <plan-id>` re-verifies every record and runs it. There is no other non-interactive path.
+- **Machine seam (desk-containers/15):** `--json` emits the summary as the contract's `cell-op-result` document, with one entry per role. When stale roles need reconciling, `up --plan` writes the reconcile plan and prints its id, and `up --apply <plan-id> --approval <file>` verifies the approval, re-measures every record, consumes the plan and runs it. On a TTY the same plan is approved inline.
 
 ## Ground rules
 - NEVER git push / trigger workflows. Stop at `implemented`.
@@ -83,10 +83,11 @@ facts:
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpConvergeSerialLaunch' -count=1` | exit 0 — a recording cockpit stub shows role N+1's launch starting only after role N's lease step returned; a mutant that launches all roles at once fails this test |
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestCLINonHelpParity|TestCLICompatDoc' -count=1` | exit 0 — the changed `up` plans are recorded deliberate diffs with a compat-doc section |
 | 5 | check | `sh tools/cellctl/tests/parity.test.sh` with `PARITY_ONLY` set to each `up` cell | exit 0 for every claude cell; any pre-existing codex-cell differences are the same set as at base |
+| 6j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpEmitsCellOpV1' -count=1 -v` | `--- PASS` — `up --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
 | 6a | check | `statusgen --root . --consumers --brief desk-containers/17` | exit 0 — the `consumers:` routing holds against the branch diff |
 | 6b | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpPlanApply' -count=1` | exit 0 — `up --apply <id>` on a plan whose stale role came alive between plan and apply refuses with `plan-stale`, naming the role; `--json` output validates against the brief-15 schema |
-| 7 | gate:model +flow +dereference | On a disposable house cell with stub harnesses: `cellctl up <cell>`, kill one role's harness, run `cellctl up <cell>` again on a TTY and answer `y` | the second run's table shows four `already-up` and one `reconciled+up`; exit 0. Record both tables. |
+| 7 | gate:model +flow +dereference | On a disposable house cell with stub harnesses: `cellctl up <cell>`, kill one role's harness, run `cellctl up <cell>` again on a TTY and approve at the presence prompt | the second run's table shows four `already-up` and one `reconciled+up`; exit 0. Record both tables. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

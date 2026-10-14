@@ -12,7 +12,7 @@ why: >-
   the tool Guard.
 wave: 7
 depends: []
-unblocks: ["desk-containers/18"]
+unblocks: ["desk-containers/18", "desk-containers/20"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -43,7 +43,9 @@ domain: complicated
 consumers:
   - "the runner lifecycle and ownership contract (target owner of pause/resume): out-of-scope (graph-execution runtime-coordination/runner packages R2/R3; this brief is the interim adapter and is retired when that contract ships, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
   - "tools/desk/internal/deskkit (Guard and the stop-flag reader): follow-up desk-containers/16 (this brief)"
-  - "plugins/assay/skills/{pr-review-desk,verify-desk,worker-desk,intake-desk,the-desk}/SKILL.md iteration-boundary check: follow-up desk-containers/16 (this brief; one added line each, in the same shape as the existing two)"
+  - "plugins/assay/skills/{pr-review-desk,verify-desk,worker-desk}/SKILL.md iteration-boundary check (the three with an existing STOP check): follow-up desk-containers/16 (this brief; one added line each, beside the existing two)"
+  - "plugins/assay/skills/{intake-desk,the-desk}/SKILL.md: out-of-scope (they have no iteration-boundary STOP check today; adding one is new loop behaviour this brief does not take on — for these two the Guard is the only layer, as it already is for STOP and STOP.<loop>)"
+  - ".cursor/skills/** (generated mirror of the skill bodies): follow-up desk-containers/16 (this brief; regenerated with `deskinstall --harness cursor`, never hand-edited)"
   - "tools/desk/cmd/deskboard (STOP display, inert-name marking): follow-up desk-containers/16 (this brief; shows cell-scoped flags and marks an unknown cell inert)"
   - "tools/desk/cmd/cellctl launch environment (the cell marker): out-of-scope (#2880 adds it; this brief only reads it)"
   - "tools/desk/README.md §Runtime state: follow-up desk-containers/16 (this brief)"
@@ -54,7 +56,8 @@ consumers:
 ## Context
 files:
 - `tools/desk/internal/deskkit/` — the stop-flag reader behind `Guard()`, plus tests
-- `plugins/assay/skills/{pr-review-desk,verify-desk,worker-desk,intake-desk,the-desk}/SKILL.md` — the iteration-boundary check
+- `plugins/assay/skills/{pr-review-desk,verify-desk,worker-desk}/SKILL.md` — the iteration-boundary check (and the regenerated `.cursor/skills/` mirror)
+- `tools/desk/internal/deskkit/skillstop_test.go` (planned) — runs the three skills' extracted iteration-boundary snippet with the Guard absent
 - `tools/desk/cmd/deskboard/` — the stop display
 - `tools/desk/README.md` — §Runtime state
 - `changelog/desk-containers-16-cell-stop-flags.md` (planned)
@@ -64,7 +67,9 @@ facts:
 - New flags, in the same directory as today's: `STOP.cell.<cell>` stops every loop of that cell; `STOP.cell.<cell>.<loop>` stops one loop of that cell. `<loop>` resolves through `loopnames.go` exactly as `STOP.<loop>` does.
 - A session belongs to a cell only through the cell marker env var that #2880 adds. A session with no marker is unaffected by cell flags. Cell flags only ever add stops; they never clear or override `DISABLED`, `STOP` or `STOP.<loop>`.
 - Precedence: `DISABLED` > `STOP` > `STOP.cell.<cell>` > `STOP.<loop>` = `STOP.cell.<cell>.<loop>`. Any one present is a stop.
-- Layer 1 is the loop's own iteration-boundary check in each skill body. Layer 2 is `Guard()` before every outward verb. They fail for different reasons in different components: a skill that skips its check is still refused by the Guard; a binary that predates this brief still stops at the skill check.
+- **Baseline (checked 2026-10-14 @ 7bb318197):** `grep -c 'config/assay/STOP'` is 2 in pr-review-desk, verify-desk and worker-desk, and 0 in intake-desk and the-desk. Only those three loops have an iteration-boundary STOP check today, and only they gain the cell line. intake-desk and the-desk keep relying on the Guard alone, as they already do for `STOP` and `STOP.<loop>`.
+- **Threat model (same OS account).** Any desk on the machine can write `STOP.cell.<other-cell>` and pause another cell, and a session can drop its own marker. Neither is an escalation over today's machine-wide `STOP`, which any desk can already write.
+- Layer 1 is the loop's own iteration-boundary check in the three skill bodies above. Layer 2 is `Guard()` before every outward verb. They fail for different reasons in different components: a skill that skips its check is still refused by the Guard; a binary that predates this brief still stops at the skill check.
 - A cell flag naming a cell that has no registration under the cells root is reported **inert** by `deskboard`, the same treatment an unknown loop name gets today.
 - Cell names are validated (`[a-z0-9-]`, the existing cell-name rule) before any path is built from them.
 
@@ -74,7 +79,7 @@ Should desks be stoppable one cell at a time, by adding a cell-scoped stop flag 
 Today a stop switch either stops every desk on the machine or every desk with a given role, across all cells, because host cells share one settings folder. This adds a switch aimed at one cell (and one for one role in one cell). It can only add stops; it never lifts an existing stop or the master kill switch. A desk belongs to a cell only through a marker the launcher sets. A switch naming a cell that does not exist is shown as having no effect, rather than silently ignored.
 
 Options:
-1. **Approve** — add both cell-scoped flags to the safety check and to each desk's own loop check. Drain and pause (brief 18) build on it.
+1. **Approve** — add both cell-scoped flags to the safety check and to the loop check of the three desks that have one. Drain and pause (brief 18) build on it.
 2. **Approve the loop check only** — desks honour the cell flag in their own loop, but the tool-level safety check is unchanged. Weaker: a desk that skips its own check keeps writing.
 3. **Reject** — drain and pause use the machine-wide flags, stopping every cell's matching desks.
 
@@ -88,7 +93,7 @@ Default if no answer: none — blocks until answered.
 
 ## Task
 1. Extend the deskkit stop reader and `Guard()` with the two cell-scoped flags and the precedence above.
-2. Add the cell-flag line to the five skill bodies' iteration-boundary checks.
+2. Add the cell-flag line to the three skill bodies that have an iteration-boundary check; regenerate the `.cursor/skills/` mirror.
 3. Show cell flags in `deskboard`, with the inert marking.
 4. Document the flags in `tools/desk/README.md` §Runtime state; write the changelog fragment.
 
@@ -98,7 +103,8 @@ Default if no answer: none — blocks until answered.
 | 1 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestGuardCellStop' -count=1` | exit 0 — with the marker `cell=a`: `STOP.cell.a` stops; `STOP.cell.a.worker-desk` stops worker-desk only; `STOP.cell.b` does not stop it; with no marker, no cell flag stops it |
 | 2 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestGuardCellStopNeverClears' -count=1` | exit 0 — `STOP` present plus a cell marker for a different cell is still a stop |
 | 3 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestCellNameRejectsTraversal' -count=1` | exit 0 — a marker value of `../x` or `a/b` is refused exit 6 and builds no path |
-| 4 | check +dereference | `grep -c 'STOP.cell.' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md plugins/assay/skills/the-desk/SKILL.md` | every file ≥ 1 |
+| 4 | check +dereference | `grep -c 'STOP.cell.' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md` | every file ≥ 1 |
+| 4b | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestSkillStopSnippetGuardBypassed' -count=1 -v` | `--- PASS` — the iteration-boundary snippet extracted from each of the three SKILL.md files, run in a temp HOME with the marker `cell=a`, `STOP.cell.a` present and no Guard on PATH, exits the loop and names the flag (the skill layer holds with the Guard layer absent) |
 | 5 | gate:model +flow | In a temp HOME: set the marker `cell=a`, touch `STOP.cell.a`, then run an outward verb such as `deskfile check` with `DESK_LOOP=worker-desk` | the Guard refuses with the stop exit code, naming `STOP.cell.a`. Remove the flag and the same command proceeds. With the skill-body check bypassed, the Guard alone still refuses. |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
 | 6a | check | `statusgen --root . --consumers --brief desk-containers/16` | exit 0 — the `consumers:` routing holds against the branch diff |
@@ -108,4 +114,4 @@ Default if no answer: none — blocks until answered.
      (command, exit code, output line(s) or hash, date, runner). -->
 
 ## Review
-Gate: human (see gate-why). All four risk answers are no; the gate is for the safety-plumbing path. The reviewer checks that rows 1, 2 and 5 exercise the Guard and the skill check independently.
+Gate: human (see gate-why). All four risk answers are no; the gate is for the safety-plumbing path. Rows 1, 2 and 5 exercise the Guard; row 4b exercises the skill-layer check with the Guard absent. The reviewer checks that the two layers are proven independently.

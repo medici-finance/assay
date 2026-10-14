@@ -7,7 +7,7 @@ why: >-
   that outlived their session, and old operation plans. Each has its own cleanup command today,
   and the operator has to know all of them. `gc` measures all of it, shows one plan with the
   bytes and items it would reclaim, and runs only what the operator approves.
-wave: 10
+wave: 12
 depends: ["desk-containers/15", "desk-containers/21"]
 unblocks: []
 effort: M
@@ -52,7 +52,7 @@ facts:
   - dispatch claims that `desksupervise` classes reclaim-eligible;
   - orphaned marked processes, via #2880;
   - expired or consumed desk-containers/15 plans.
-- Applying: on a TTY, `gc <cell> --run` shows the plan and asks one `[y/N]`. Off a TTY, `--plan` / `--apply <id>`. `--only <category>` (repeatable) narrows the run.
+- Applying: `gc <cell> --run` shows the plan. On a TTY the verb prints the plan and runs `cellctl approve` inline, which needs the operator's presence prompt (desk-containers/15); a typed `y` is never an approval. Off a TTY, `--plan` / `--apply <id>`. `--only <category>` (repeatable) narrows the run.
 - Every item is re-classified at apply; anything now alive or could-not-check is skipped and reported. gc never deletes a worktree with uncommitted changes or an unmerged, unpushed branch (the `deskwt` rule), and never releases a claim whose session is alive.
 - The result reports bytes reclaimed (logical, as `cache` reports them) and items per category, plus skipped items with reasons.
 
@@ -72,7 +72,8 @@ facts:
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCPlan' -count=1` | exit 0 — plain `gc` lists all six categories and leaves the file tree hash unchanged |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCSkipsAliveAtApply' -count=1` | exit 0 — a claim whose session comes alive between plan and apply is skipped and reported, not released |
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCKeepsDirtyWorktree' -count=1` | exit 0 — a worktree with an uncommitted file survives `gc --run` |
-| 4 | gate:model +flow +dereference | On a disposable house cell seeded with an over-budget cache, a dead claim, a merged-branch worktree and a marked orphan: `cellctl gc <cell>`, then `cellctl gc <cell> --run` on a TTY, answer `y` | the plan lists every seeded item; after the run, `cellctl doctor <cell>` reports none of them; record bytes reclaimed |
+| 4 | gate:model +flow +dereference | On a disposable house cell seeded with an over-budget cache, a dead claim, a merged-branch worktree and a marked orphan: `cellctl gc <cell>`, then `cellctl gc <cell> --run` on a TTY, approve at the presence prompt | the plan lists every seeded item; after the run, `cellctl doctor <cell>` reports none of them; record bytes reclaimed |
+| 5j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGcEmitsCellOpV1' -count=1 -v` | `--- PASS` — `gc --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 5 | check | `statusgen --root . --lint` | exit 0 |
 | 5a | check | `statusgen --root . --consumers --brief desk-containers/24` | exit 0 — the `consumers:` routing holds against the branch diff |
 
