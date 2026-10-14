@@ -319,7 +319,10 @@ normalise(){
   # command lines print exactly that resolved form.
   local implreal; implreal="$(cd "$(dirname "$impl")" && pwd -P)/$(basename "$impl")"
   # The P3 effective-config echo is deskkit's, not cellctl's grammar. Every roster-reading main in
-  # tools/desk writes it to stderr once per run, and the Go port is one of those mains: it consults
+  # tools/desk writes it to stderr once per run — one `assay-config: … digest=sha256:…` line by
+  # default, the full block in CI, on a change, on a refusal or on ASSAY_CONFIG_ECHO=full; both
+  # forms carry the same prefix, so the one rule below drops either — and the Go port is one of
+  # those mains: it consults
   # the cell home's roster for `check`'s write-authorisation rows, so
   # TestEveryRosterReadingMainDeclaresClassAndEchoes requires the echo (the alternative — a name
   # that hides the read from that guard's detector — was ruled out). The shell oracle predates the

@@ -16,15 +16,22 @@ package deskkit
 //  1. NO CALLER CHOICE. The store is never chosen by a caller. ResolveClaimStore takes the
 //     repo and nothing else; no exported symbol in this package takes a store name; and no
 //     command-line flag selects one. The only input is the roster (ASSAY_CLAIM_STORE).
-//  2. REFUSAL IS THE ONLY FALLBACK. A configured store whose preconditions do not hold is a
-//     refusal (exit 6) naming the store, the missing precondition and the remedy. It never
-//     moves on to another store — a resolver that fell back instead of refusing would
-//     double-dispatch without failing a single happy-path test.
-//  3. THE LEGACY RESOLUTION. For one release window, and ONLY when ASSAY_CLAIM_STORE is
-//     unset, the answer is today's forge-ref store with a NOTICE naming the key, its two
-//     valid values and the release in which the unset key stops resolving. `forge-ref` is
-//     not a valid VALUE: set explicitly it is refused like any unknown value, so the legacy
-//     store is what silence means, never something that can be selected.
+//  2. REFUSAL IS THE ONLY FALLBACK FOR A SHIPPED STORE. A configured store that this build
+//     ships, but whose preconditions do not hold, is a refusal (exit 6) naming the store, the
+//     missing precondition and the remedy. It never moves on to another store — a resolver
+//     that fell back instead of refusing would double-dispatch without failing a single
+//     happy-path test.
+//  3. THE LEGACY RESOLUTION. For one release window the answer is today's forge-ref store,
+//     in exactly two cases: ASSAY_CLAIM_STORE is unset (with a NOTICE naming the key, its two
+//     valid values and the release in which the unset key stops resolving), or it names a
+//     VALID store this build does not ship yet (amended 2026-10-13, medici-finance/assay#2753:
+//     an operator may set the key before upgrading; the NOTICE then names the configured
+//     store and says it takes effect in the release that ships it). A build that does not
+//     ship a store cannot write a claim to it, so this fallback cannot split one repo's claims
+//     across two stores inside one build; the upgrade window between builds is the
+//     mixed-store refusal's job, which ships with the file store. `forge-ref` is not a valid
+//     VALUE: set explicitly it is refused like any unknown value, and a malformed value is
+//     refused, never treated as unshipped.
 //
 // SINGLE-POINT-OF-FAILURE. The resolver's order is the one control between a wrong
 // resolution and two holders of one claim. Behind it: each store's own atomic create (a
@@ -126,11 +133,24 @@ const (
 const ClaimStoreLegacyRemovalRelease = "N+1"
 
 // ClaimStoreLegacyNotice is the removal NOTICE printed on every run of a dispatching role that
-// resolved the legacy store. It names the key, the two valid values and the removal release.
+// resolved the legacy store because the key is unset. It names the key, the two valid values and
+// the removal release, and says the keys may be set now: a build that does not ship the named
+// store keeps the legacy store, and the value takes effect on upgrade to the release that ships it.
 const ClaimStoreLegacyNotice = "NOTICE: " + EnvClaimStore + " is unset, so dispatch claims use the legacy " +
 	ClaimStoreForgeRef + " store, which needs repository write; an unset " + EnvClaimStore +
-	" stops resolving in release " + ClaimStoreLegacyRemovalRelease + " — set " + EnvClaimStore + "=" +
-	ClaimStoreFile + " or " + EnvClaimStore + "=" + ClaimStoreService + " in the roster."
+	" stops resolving in release " + ClaimStoreLegacyRemovalRelease + ". " + EnvClaimStore + "=" +
+	ClaimStoreFile + " or " + EnvClaimStore + "=" + ClaimStoreService + " (with " + EnvClaimSingleHost +
+	"=yes for " + ClaimStoreFile + ") may be set in the roster now: a build that does not ship the named store " +
+	"keeps using " + ClaimStoreForgeRef + ", and the setting takes effect on upgrade to the release that ships it."
+
+// claimStoreUnshippedNotice is the NOTICE printed on every run of a dispatching role whose
+// configured store is valid but not shipped in this build, so the legacy store was resolved.
+// It names the configured store and the release that ships it.
+func claimStoreUnshippedNotice(value, shippedBy string) string {
+	return "NOTICE: " + EnvClaimStore + "=" + value + " is set, but this build does not ship the " + value +
+		" store, so dispatch claims stay in the legacy " + ClaimStoreForgeRef + " store, which needs repository " +
+		"write; " + EnvClaimStore + "=" + value + " takes effect in " + shippedBy + "."
+}
 
 // ClaimStoreResolution is ResolveClaimStore's answer: the store, its name, and where every
 // input to the decision came from.
@@ -142,7 +162,8 @@ type ClaimStoreResolution struct {
 	Store ClaimStore
 	// Name is the resolved store's name (ClaimStoreForgeRef for the legacy resolution).
 	Name string
-	// Legacy is true only for the one-window legacy resolution of an unset key.
+	// Legacy is true only for the one-window legacy resolution: an unset key, or a valid key
+	// naming a store this build does not ship.
 	Legacy bool
 	// NeedsForgeCredential reports whether writing a claim to this store needs a forge
 	// credential — true for the forge-ref store, which writes refs on the forge.
@@ -180,9 +201,10 @@ func SetForgeRefClaimStoreOpener(open func(repo string) (ClaimStore, error)) {
 }
 
 // claimStoreBackend is one valid value of ASSAY_CLAIM_STORE as this build knows it. A backend
-// whose open is nil is VALID but not shipped in this build: resolving to it is a refusal that
-// names the release that ships it, so a key set early fails loudly instead of quietly resolving
-// to something else.
+// whose open is nil is VALID but not shipped in this build: resolving to it yields the legacy
+// resolution under a NOTICE naming the configured store and the release that ships it, so an
+// operator can set the key before upgrading (medici-finance/assay#2753). A backend whose open
+// is set is shipped, and its open failing is a refusal — never another store.
 type claimStoreBackend struct {
 	shippedBy string
 	open      func(repo string, keys claimStoreKeys) (ClaimStore, error)
@@ -199,9 +221,11 @@ var claimStoreBackends = map[string]claimStoreBackend{
 //
 // Order:
 //  1. a claim-store key that cannot be read or does not parse → refusal;
-//  2. ASSAY_CLAIM_STORE set for repo → that store, or a refusal when its preconditions do
-//     not hold — never another store;
-//  3. ASSAY_CLAIM_STORE unset → the legacy forge-ref store plus ClaimStoreLegacyNotice.
+//  2. ASSAY_CLAIM_STORE set for repo to a store this build ships → that store, or a refusal
+//     when its preconditions do not hold — never another store;
+//  3. ASSAY_CLAIM_STORE set for repo to a valid store this build does not ship → the legacy
+//     forge-ref store plus a NOTICE naming the configured store and the release that ships it;
+//  4. ASSAY_CLAIM_STORE unset → the legacy forge-ref store plus ClaimStoreLegacyNotice.
 //
 // Every refusal is exit 6 and says which store, what is missing and the remedy. The caller
 // resolves BEFORE it cuts a worktree or mints a credential.
@@ -234,8 +258,10 @@ func ResolveClaimStore(repo string) (ClaimStoreResolution, error) {
 	return resolveLegacyClaimStore(repo, prov)
 }
 
-// resolveConfiguredClaimStore resolves an explicitly configured store. Every unmet
-// precondition is a refusal; this function has no path that returns a different store.
+// resolveConfiguredClaimStore resolves an explicitly configured store. A store this build does
+// not ship resolves to the legacy store under its own NOTICE (it cannot hold a claim here, so
+// nothing is split); for a shipped store every unmet precondition is a refusal, and this
+// function has no path that returns a different store.
 func resolveConfiguredClaimStore(repo, value string, keys claimStoreKeys, prov string) (ClaimStoreResolution, error) {
 	b, ok := claimStoreBackends[value]
 	if !ok {
@@ -245,11 +271,10 @@ func resolveConfiguredClaimStore(repo, value string, keys claimStoreKeys, prov s
 			repo, EnvClaimStore, value, ClaimStoreFile, ClaimStoreService), nil)
 	}
 	if b.open == nil {
-		return ClaimStoreResolution{}, Unverifiable(fmt.Sprintf(
-			"claim store for %s: %s=%s is a valid store, but this build does not ship it — it ships in "+
-				"%s. The configured store is never replaced by another one: upgrade to a release that "+
-				"ships it, or remove the key until then (%s)",
-			repo, EnvClaimStore, value, b.shippedBy, prov), nil)
+		return legacyClaimStore(repo,
+			prov+" → "+EnvClaimStore+"="+value+" is not shipped in this build (it ships in "+b.shippedBy+
+				") → legacy resolution: "+ClaimStoreForgeRef,
+			claimStoreUnshippedNotice(value, b.shippedBy))
 	}
 	s, err := b.open(repo, keys)
 	if err != nil {
@@ -262,12 +287,19 @@ func resolveConfiguredClaimStore(repo, value string, keys claimStoreKeys, prov s
 
 // resolveLegacyClaimStore is the one-window legacy resolution of an UNSET key.
 func resolveLegacyClaimStore(repo, prov string) (ClaimStoreResolution, error) {
+	return legacyClaimStore(repo, prov+" → legacy resolution: "+ClaimStoreForgeRef, ClaimStoreLegacyNotice)
+}
+
+// legacyClaimStore builds the legacy forge-ref resolution: of an UNSET key, or of a valid key
+// naming a store this build does not ship. provenance and notice are the caller's, so each case
+// reports what was configured and why the legacy store was resolved.
+func legacyClaimStore(repo, provenance, notice string) (ClaimStoreResolution, error) {
 	res := ClaimStoreResolution{
 		Name:                 ClaimStoreForgeRef,
 		Legacy:               true,
 		NeedsForgeCredential: true,
-		Provenance:           prov + " → legacy resolution: " + ClaimStoreForgeRef,
-		Notice:               ClaimStoreLegacyNotice,
+		Provenance:           provenance,
+		Notice:               notice,
 	}
 	forgeRefOpenerMu.Lock()
 	open := forgeRefOpener

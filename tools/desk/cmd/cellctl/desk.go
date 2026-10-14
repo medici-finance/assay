@@ -314,6 +314,13 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		}
 	}
 
+	// The reconcile preflight (#2880): stale state a previous session of this role left behind is
+	// inventoried once, by pid and start time, and on a terminal cleared on one confirmation —
+	// before the lease below is taken, since recovery takes it itself.
+	if c.Kind == "house" {
+		c.reconcilePreflight("desk", []string{role}, nil, dryRun, "desk: unfinished cadence pass; inspect and reconcile before restarting")
+	}
+
 	if dryRun {
 		c.printCachePolicy()
 		if c.Cadence != nil {

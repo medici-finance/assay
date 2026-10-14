@@ -99,6 +99,12 @@ no model is inferred from existing labels. The original kit selects the same dis
 role as ordinary dispatch. The session role must match it and be roster-bound; the worker
 cannot self-attest. No item key, claim, worktree, roster registration, hook, queue label or
 prompt is involved. This does not launch an agent or renew review-claim authority.
+The worker kits (the default) write the authoring pair, authored-model:<slug> +
+authored-tier:<tier>, and never read, remove or write a dispatched-* label; --kit review
+writes the dispatched-* pair and never touches authored-*. The capability floor reads
+dispatched-* only, so an authoring stamp does not satisfy a review floor. The verifier
+kit retains dispatched-* for validation and stamp-only; normal verifier dispatch stamps
+its issue through the separate verifier-admission path.
 
 The shared model vocabulary is open: gpt-6-astra and gpt-6.1-sol round-trip unchanged.
 gpt-6-1-sol is also a valid opaque slug, not an alias for gpt-6.1-sol. Use the identifier
@@ -107,8 +113,8 @@ actually selected by the harness, never a guessed provider/model mapping.
 The shared stamp step reads current labels and their standing appliers, repairs partial,
 conflicting or foreign/unattributed stamps using the explicitly selected pair, and leaves
 an identical accepted stamp unchanged. Read failures stop before writes. After a write it
-re-reads labels AND timeline with the capability-floor reader; only the exact accepted pair
-returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
+re-reads labels AND timeline with the applier-aware reader for the kit's pair; only the
+exact accepted pair returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
 change is required for --stamp-only. Its --dry-run reads and prints the removal/application
 plan without writes or a local audit append; a plan is not a verified stamp.
 
@@ -178,9 +184,13 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       credential (GH_TOKEN in its environment, from the same resolution
                       the claim uses), never the ambient login; with none it refuses.
   5 model-stamp       computes and validates the dispatcher's attestation labels
-                      (dispatched-model:<slug>, dispatched-tier:<tier>) and applies them
-                      when --pr is known. The stamp attests what the DISPATCHER launched;
-                      a self-applied stamp is worthless by design.
+                      and applies them when --pr is known: a --kit review dispatch
+                      writes dispatched-model:<slug> + dispatched-tier:<tier> (the
+                      review-session attestation the floor reads); worker kits
+                      write authored-model:<slug> + authored-tier:<tier> and never
+                      touches dispatched-*, so neither stamp overwrites the other.
+                      The stamp attests what the DISPATCHER launched; a self-applied
+                      stamp is worthless by design.
   6 queue-label       on a --kit review dispatch with --pr known, applies the review-lane
                       queue label authorization-needed to the change through the resolved
                       forge (idempotent create+apply under the reviewer role's own
@@ -188,7 +198,8 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       the same queue signal a GitHub PR does. Non-fatal: a label the forge
                       would not accept is a provisioning gap to file, not a failed dispatch.
                       SKIPPED for a worker/verifier dispatch; DEFERRED when no --pr is known.
-  7 prompt-emit       writes the assembled agent prompt to stdout, or to --prompt-file.
+  7 prompt-emit       prints the assembled agent prompt to stdout; with --prompt-file F writes it to the NEW
+                      sibling <F without extension>.emitted.md and prints that path. F itself is never written.
 
 THE PACKET. Between the before_run hook and step 7, a --kit review dispatch with --pr known
 reads the change ONCE and writes one owner-only Markdown file: the change's facts and
@@ -201,7 +212,7 @@ one is left out WHOLE and listed by name and size, never cut short. Multi-line t
 the change sits between boundary lines carrying a per-packet random token, and no line of it
 begins with a boundary mark; single-line values from the change (a title, a branch, a check
 or file name) are shown in code spans. The packet's header says both are data. The file
-goes beside the prompt file ("<prompt file>.packet.md"), or, when the prompt is printed, in
+goes beside the prompt file ("<prompt file without extension>.packet.md"), or, when the prompt is printed, in
 the user cache directory ("assay/packets/<item-key>.packet.md"); the assignment gains ONE
 line, "Packet: <absolute path>". It is not a step and cannot fail the dispatch: when it
 cannot be built, stderr says why and the assignment carries no such line. Not built on
@@ -297,6 +308,11 @@ unchanged. Reach for it when a step reports an exit code and you cannot tell whi
 deskwt, the claim tool or the forge backend produced it. See tools/desk/README.md, "Diagnostics —
 DESK_TRACE".`
 
+// perfVerbs is deskdispatch's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+var perfVerbs = []string{"--stamp-only", "--check-verifier", "--attest-verifier", "--kits", "--version", "--help"}
+
 func main() {
 	// Explicit roster class: deskdispatch ACTS (it claims, it stamps, it registers), so
 	// ciEligible=false — it reads the config-home file and never the environment.
@@ -316,7 +332,7 @@ func main() {
 	// ...and the review round's reads: the pre-dispatch gate and the lane's scope and round
 	// number (reviewroundread.go). Unwired, a review dispatch holds nothing and states a full pass.
 	reviewRoundForgeFn = liveReviewRoundForge
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskdispatch", perfVerbs, os.Args[1:], run))
 }
 
 func run(args []string) int {

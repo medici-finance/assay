@@ -146,7 +146,7 @@ func TestCrossRepoDeliverableRepoResolvesWorktreeClaimAndToken(t *testing.T) {
 	if !s.ran("deskwt add example-stream-05") {
 		t.Error("no worktree was cut from the deliverable checkout")
 	}
-	prompt := readPrompt(t, promptFile)
+	prompt := readPrompt(t, emittedPathFor(promptFile))
 	absTrk, _ := filepath.Abs(trk)
 	for _, want := range []string{
 		"**Target repo:** `medici-finance/assay`",
@@ -471,7 +471,7 @@ func TestReworkAfterMergeIsFollowUp(t *testing.T) {
 			t.Errorf("the worktree was cut under the MERGED branch's own name: %s", j)
 		}
 	}
-	prompt := readPrompt(t, promptFile)
+	prompt := readPrompt(t, emittedPathFor(promptFile))
 	for _, want := range []string{"FOLLOW-UP", "`medici-finance/assay#372`", "never a resume",
 		"**Branch:** `feat/example-stream-05-followup-372`"} {
 		if !strings.Contains(prompt, want) {
@@ -565,7 +565,7 @@ func TestCrossRepoRegistryValuesAreValidatedBeforeUse(t *testing.T) {
 			if len(s.calls) != 0 {
 				t.Errorf("a malformed registry reached a child process: %v", s.calls)
 			}
-			if _, statErr := os.Stat(promptFile); statErr == nil {
+			if _, statErr := os.Stat(emittedPathFor(promptFile)); statErr == nil {
 				t.Error("a prompt was emitted from a malformed registry")
 			}
 		})
@@ -615,7 +615,7 @@ func TestCrossRepoGateHumanBriefUnderClaimRootFiresTheDecisionGate(t *testing.T)
 	if !s.ran("decision-issue.sh ensure " + absBrief + " ") {
 		t.Errorf("the decision gate was not ensured from the tracking checkout's brief %s; calls: %v", absBrief, s.calls)
 	}
-	prompt := readPrompt(t, promptFile)
+	prompt := readPrompt(t, emittedPathFor(promptFile))
 	for _, want := range []string{"Human-gated item", "**Specification:** `" + absBrief + "` (in the tracking checkout"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt is missing %q", want)
@@ -722,7 +722,7 @@ func TestDeclaredTagAdmitsRepo(t *testing.T) {
 			if !s.ran("deskwt add") {
 				t.Error("no worktree was cut from the --repo checkout")
 			}
-			prompt := readPrompt(t, promptFile)
+			prompt := readPrompt(t, emittedPathFor(promptFile))
 			absTrk, _ := filepath.Abs(trk)
 			for _, want := range []string{
 				"**Target repo:** `medici-finance/assay`",

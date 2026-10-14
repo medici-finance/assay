@@ -209,6 +209,7 @@ open one window per role in the resolved cockpit
   --automate                 string   orca only: schedule one automation per role (a 5-field cron string or a preset)
   --cadence                  string   role cadence: a duration, or off
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
+  --dry-run                           print the reconcile inventory and plan, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)
   --harness                  string   harness for this run (claude|codex|cursor)
   --kind                     string   cell kind for this run (k8s|house|container|scrubbed)
   --model                    string   model for THIS run only, passed through verbatim to the harness

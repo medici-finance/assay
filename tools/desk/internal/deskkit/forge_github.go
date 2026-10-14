@@ -111,7 +111,7 @@ func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {
 	rc, err := ghapi.NewRESTClient(ghapi.ClientOptions{
 		Host:      host,
 		AuthToken: g.Token,
-		Transport: transport,
+		Transport: countRoundTrips(transport), // perf forgeCalls; counts and delegates
 	})
 	if err != nil {
 		return nil, Unverifiable("cannot build go-gh REST client", err)
@@ -2305,7 +2305,7 @@ func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 	if g.Client != nil && g.Client.Transport != nil {
 		transport = g.Client.Transport
 	}
-	resp, derr := (&http.Client{Transport: transport}).Do(req)
+	resp, derr := (&http.Client{Transport: countRoundTrips(transport)}).Do(req)
 	if derr != nil {
 		return "", Unverifiable(fmt.Sprintf("GET %s (diff) failed", path), derr)
 	}
