@@ -182,8 +182,11 @@ type claimBranchRead struct {
 }
 
 // claimBranchesForRun shares the external observation, including its
-// could-not-check state, only while run() owns a git read session. A later run
-// always re-reads. Direct callers outside a session retain their fresh reads.
+// could-not-check state, per root for the life of one git read session. Two
+// owners open one: run(), and reconcileWritesWith (reconcileapply.go), so every
+// hold evaluation in one reconcile pass shares a single claim read too. A later
+// session always re-reads. Direct callers outside a session retain their fresh
+// reads.
 func claimBranchesForRun(root string) ([]string, ClaimSource) {
 	s := activeGitReads
 	if s == nil {
