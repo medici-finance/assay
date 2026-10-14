@@ -18,12 +18,14 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this verb as an interim bridge and names its target owner"
   - "Incident 2026-10-14: four role panes each held `cellctl: interactive launch: deskkit: advisory lock is held by another process`, found by reading every pane through the cockpit's pane-read command"
   - "tools/desk/cmd/cellctl/herdr_workspace.go — each cell owns a herdr workspace receipt; role tabs are labelled by role; tmux windows are named by role in session `<cell>-cell`"
   - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no logs verb"
 exec-tier: any
 domain: clear
 consumers:
+  - "target owner — projection and interaction (terminals), served through the R7 Cell API: out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
   - "tools/desk/cmd/cellctl (new logs verb): follow-up desk-containers/22 (this brief)"
   - "docs/cellctl.md: follow-up desk-containers/22 (this brief)"
   - "the console cockpit (the side panel's log view): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
@@ -39,6 +41,7 @@ files:
 - `changelog/desk-containers-22-logs.md` (planned)
 
 facts:
+- **Interim bridge.** logs is an interim bridge: it reads today's cockpit panes. In the target, terminal attachment and output are projection-and-interaction concerns served through the Cell API; 'notifications and terminal attachment are not durable ownership'.
 - tmux: `tmux capture-pane -p -t <cell>-cell:<role> -S -<N>`. herdr: read the pane of the role's tab in the cell's recorded workspace, using herdr's pane-read command (re-check its exact flags against the installed herdr before writing; do not use memory). orca: the terminal's scrollback via orca's read command where one exists, otherwise could-not-check naming the gap.
 - Only panes in the cell's own recorded session or workspace are read, never another cell's. The ownership check is the same receipt `up`/`down` use.
 - No role means every role in `ROLES` plus comms, each under a header. `--lines` defaults to 50.

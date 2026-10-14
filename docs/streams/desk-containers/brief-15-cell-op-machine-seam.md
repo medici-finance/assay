@@ -1,17 +1,18 @@
 ---
 brief: assay:assay:desk-containers:15
-title: "The cell-operation machine seam — one `--json` result contract and a plan-id → apply confirmation that a program can drive and a human still clicks"
+title: "The cell-operation contract — one versioned result, plan and plan-approval schema shared by the future Cell API and the CLI, with the CLI as the first adapter"
 why: >-
-  The cell-level verbs this stream adds (up, drain, restart, status, doctor, logs, gc,
-  upgrade) are also going to be driven by an operator window, not only typed in a terminal.
-  If each verb invents its own output and its own "are you sure?", that window has to
-  screen-scrape eight formats and fake a TTY to answer prompts, which removes the human from
-  the confirmation. This brief fixes the seam once. Every verb gets a versioned JSON result,
-  and every confirmation becomes a two-step plan → apply: the program shows the plan, a human
-  approves that exact plan id, and the tool re-checks state before acting.
+  The cell-level operator verbs (up, drain, restart, status, doctor, logs, gc, upgrade) will
+  be driven both from a terminal and, later, from the Cell API that the cockpit and other
+  clients use. If the CLI invents its own output and its own confirmation, the API will
+  either copy it or diverge, and the cockpit will screen-scrape or fake a TTY, which removes
+  the human from the confirmation. This brief defines the operation result, the plan, and
+  the plan approval once, as a versioned contract that both surfaces consume. The approval
+  is a human decision record in the architecture's existing decision model, not a new
+  approval mechanism. The CLI is the first adapter over it.
 wave: 7
 depends: []
-unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24", "desk-containers/25"]
+unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -20,82 +21,92 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
-  - "Driver direction 2026-10-14 (relayed by the coordinator): every new cell verb must be driveable from the console cockpit, with a stable `--json` contract and a non-TTY two-step plan-id → apply form that is still a human click, re-verifies at apply, and never offers a blanket `--yes`"
-  - "#2880 — the reconcile preflight's TTY-only prompt and its 'no --yes, ever' boundary; this brief gives that boundary a non-TTY form without weakening it"
-  - "docs/cellctl-go-cache.md — `cellctl cache <cell> status` already emits a versioned JSON document (`schema: cell-go-cache-v1`, before/after measurements, typed outcome, could-not-check as null): the precedent this contract generalises"
-  - "tools/desk/cmd/cellctl/cache.go and status.go — the existing JSON and line outputs this brief does not break"
-  - "Driver answers 2026-10-14 (in session, relayed by the coordinator): plan TTL is 10 minutes; `--apply` must verify an approval signed over the plan id and digest with an operator key from the trust store — recording `--approved-by` alone is not enough"
-  - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no cross-verb result schema, no plan file, no `--plan`/`--apply` flag exists in `tools/desk/cmd/cellctl`"
+  - "docs/proposals/non-ci-architecture/11-target-architecture.md §Public Assay includes the control plane and cockpit — 'Use one versioned HTTP/JSON contract for UI and remote clients … CLI and MCP are adapters over those capabilities, with different allowed operations. Keep the existing human-action absences on agent-facing surfaces'"
+  - "docs/proposals/non-ci-architecture/11-target-architecture.md §Runtime durability — 'A human decision binds a human actor, subject, revision and permitted act; agent/MCP surfaces cannot fabricate that act'"
+  - "docs/proposals/non-ci-architecture/19-progressive-adoption-and-oversight.md §Sampling and batching — a decision binds explicit subject/revision/action/policy tuples, the authorized actor, expiry, revocation and consumption semantics, revalidated before each applicable effect"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this contract as target-owned: the result/plan types serve the R7 Cell API and the CLI; the approval record belongs to the evidence-and-decisions owner"
+  - "Driver answers 2026-10-14 (in session, relayed by the coordinator): plan TTL is 10 minutes; apply must verify an approval signed over the plan id and digest by an operator key — recording an `--approved-by` name alone is not enough; driver ruling the same day: define these types once for both the future API and the CLI, aligned with the existing human-action model"
+  - "docs/cellctl-go-cache.md — `cellctl cache <cell> status` already emits a versioned JSON document (`schema: cell-go-cache-v1`, could-not-check as null): the precedent for the result type"
+  - "#2880 — the reconcile preflight's 'no --yes, ever' boundary, which this contract keeps"
+  - "freshness-checked 2026-10-14 @ caca38a58 (origin/main) — no cross-verb result schema, plan record or plan-approval record exists; the decision domain's actor/subject/revision/act binding is architecture, not yet code"
 exec-tier: strong
-exec-tier-why: (a) the schema, plan lifecycle and approval signature are design decisions later briefs build on; (c) signature verification and apply-time re-verification are safety plumbing where a stale plan acting on changed state survives happy-path tests
+exec-tier-why: (a) the schema, plan lifecycle and decision-record mapping are design decisions the API and later briefs build on; (b) two consumers (CLI now, API later) must read identical meanings; (c) approval verification and apply-time re-verification are safety plumbing
 domain: complicated
 consumers:
-  - "comms trust store shape (operator-tagged keys): follow-up desk-containers/15 (this brief; shared seam with desk-containers/25 — whichever lands first adds it)"
-  - "tools/desk/internal/cellop (planned; result types, plan store, apply re-verification): follow-up desk-containers/15 (this brief; new package)"
-  - "docs/cellctl-machine-seam.md (planned): follow-up desk-containers/15 (this brief)"
-  - "tools/desk/cmd/cellctl verbs up/drain/restart/status/doctor/logs/gc/upgrade: follow-up desk-containers/17, desk-containers/18, desk-containers/19, desk-containers/20, desk-containers/21, desk-containers/22, desk-containers/23, desk-containers/24 (each adopts the contract in its own brief)"
-  - "the console cockpit (an operator window per cell that renders results and posts plan approvals): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
+  - "schemas/cell-op-v1.json and spec/cell-op-v1.md (planned; the shared contract): follow-up desk-containers/15 (this brief)"
+  - "tools/desk/internal/cellop (planned; Go types, plan store, approval verification, apply harness): follow-up desk-containers/15 (this brief)"
+  - "tools/desk/cmd/cellctl (the CLI adapter: `--json`, `--plan`, `--apply`, `approve`): follow-up desk-containers/15 (this brief), then each verb brief adopts it"
+  - "the R7 Cell API (authenticated queries and scoped requests; HTTP/JSON over the same contract): out-of-scope (no owner yet per the amendment manifest; docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) records the requirement)"
+  - "the evidence-and-decisions human-decision record (actor, subject, revision, permitted act): out-of-scope (architecture owner; this brief maps the plan approval onto it and does not define a rival record — reconciled when that owner's contract ships)"
+  - "the console cockpit (renders results, produces plan approvals from a human click): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
 ---
 
-# Brief 15 — The cell-operation machine seam
+# Brief 15 — The cell-operation contract
 
 ## Context
 files:
-- `tools/desk/internal/cellop/` (planned) — `result.go` (the `cell-op-result` types), `plan.go` (plan store + lifecycle), `apply.go` (re-verify-then-act harness), tests
-- `tools/desk/internal/cellop/testdata/cell-op-result-v1.schema.json` (planned) — JSON Schema for the result document
-- `tools/desk/internal/cellop/testdata/cell-op-plan-v1.schema.json` (planned) — JSON Schema for the plan document
-- `docs/cellctl-machine-seam.md` (planned) — the contract, written for a program author
-- `tools/desk/cmd/cellctl/consent_flag_test.go` (planned) — the no-blanket-consent flag walk (row 6), which every later verb brief inherits
-- `tools/desk/internal/cellop/approval.go` (planned) — approval signing/verification against operator keys in the comms trust store
+- `spec/cell-op-v1.md` (planned) — the contract: result, plan, plan-approval, exit codes, lifecycle
+- `schemas/cell-op-v1.json` (planned) — JSON Schema for the three documents
+- `tools/desk/internal/cellop/` (planned) — `result.go`, `plan.go` (store + lifecycle), `approval.go` (verify), `apply.go` (verify-then-re-measure-then-run harness), tests
 - `tools/desk/cmd/cellctl/approve.go` (planned) — `cellctl approve`
-- `tools/desk/cmd/cellctl/plan_roundtrip_test.go` (planned) — the end-to-end plan → apply flow through the built binary (row 5a)
-- `changelog/desk-containers-15-machine-seam.md` (planned)
+- `tools/desk/cmd/cellctl/consent_flag_test.go` (planned) — the no-blanket-consent flag walk
+- `tools/desk/cmd/cellctl/plan_roundtrip_test.go` (planned) — end-to-end plan → approve → apply through the built binary
+- `docs/cellctl-machine-seam.md` (planned) — CLI-adapter usage of the contract
+- `changelog/desk-containers-15-cell-op-contract.md` (planned)
+
+single-point-of-failure: the plan approval check at apply — behind it, apply-time re-measurement of every precondition (an independent layer that refuses a correctly approved but stale plan), single consumption, and the TTL.
 
 facts:
-- **Result document** (`schema: cell-op-result-v1`), emitted on stdout by every cell verb given `--json`, and nothing else on stdout: `verb`, `cell`, `started`/`finished` (UTC RFC 3339), `outcome` (`ok` | `partial` | `refused` | `failed` | `could-not-check`), `roles[]` (`role`, `state`, `detail`, `evidence{}`), `actions[]` (what was done, each with its own outcome), `plan_id` (when a plan was produced), and `next[]` (exact follow-up commands). Human-readable text goes to stderr. An unmeasured value is JSON `null` with a could-not-check outcome, never zero (the go-cache precedent).
-- **Exit codes** are unchanged by `--json`: 0 ok, 1 failed/partial, 5 refused, 6 could-not-check.
-- **Plan → apply.** Any verb whose interactive form asks a confirmation question gains `--plan`. On a TTY, `--plan` is optional and the existing prompt stands. Off a TTY, the confirmation can only be given this way:
-  1. `<verb> <cell> --plan [--json]` measures and writes `run/plans/<plan-id>.json` (owner-only, mode 0600, under the cell's `run/`). It contains the verb, the exact action list, each action's **precondition evidence** (pid + process start time, checkpoint sequence, lock holder, byte counts), creation time, and a fixed TTL of **10 minutes** (the contract value, not configurable per verb). It prints the id and the plan's **digest** (sha256 over the plan's canonical JSON). It changes nothing else.
-  2. `<verb> <cell> --apply <plan-id> --approval <file>` first **verifies the signed approval**, then re-measures every precondition. These are two independent layers, each able to refuse on its own:
-     - **Layer 1, signed approval.** `<file>` holds an Ed25519 signature over `cell || plan-id || plan-digest` and the signing key's id. The key must be an **operator key in the cell's comms trust store** (`docs/cellctl-comms.md` custody rules). A missing approval, an unknown or non-operator key, a bad signature, or a signature over a different plan id or digest is refused `approval-invalid` (exit 5) before any probe runs. `cellctl approve <cell> <plan-id> --key <operator-key-file>` (planned) produces the file. The console cockpit produces the same file from its human click, with the operator key held on the operator's side.
-     - **Layer 2, apply-time re-verify.** If any precondition differs from the plan, it refuses `plan-stale` (exit 5), naming the action, and acts on nothing.
+- **One contract, two adapters.** `cell-op-v1` defines three documents. The CLI emits and consumes them now; the future R7 Cell API serves the same documents over HTTP/JSON. Neither adapter may add a field the other cannot carry. The Go types in `cellop` are the in-process API.
+- **Result** (`cell-op-result`): `verb`, `cell`, `started`/`finished` (UTC RFC 3339), `outcome` (`ok` | `partial` | `refused` | `failed` | `could-not-check`), `roles[]` (`role`, `state`, `detail`, `evidence{}`), `actions[]`, `plan_id`, `next[]`. An unmeasured value is `null` with could-not-check, never zero. In the CLI, `--json` puts exactly this document on stdout; human text goes to stderr. Exit codes are unchanged: 0 ok, 1 failed/partial, 5 refused, 6 could-not-check.
+- **Plan** (`cell-op-plan`): verb, cell, the exact action list, each action's **precondition evidence** (pid + process start time, checkpoint sequence, lock holder, byte counts), created time, a fixed **10-minute TTL**, and a **digest** (sha256 of the canonical JSON). It is stored owner-only (0600) under the cell's `run/plans/`. Creating a plan changes nothing else.
+- **Plan approval is a human decision record**, mapped onto the architecture's decision model rather than invented beside it. A `cell-op-approval` binds:
+  - **actor**: the approving operator's key id;
+  - **subject**: cell + plan id;
+  - **revision**: the plan digest;
+  - **permitted act**: apply exactly this plan's actions;
+  - **expiry**: the plan TTL;
+  - **consumption**: once.
 
-     Otherwise it performs exactly the planned actions, records the approving key id and the result into the plan file, and marks the plan consumed. A plan applies at most once.
-- **Operator keys are a shared seam with desk-containers/25.** This brief defines how operator public keys are provisioned in the trust store (a role-tagged entry beside the cell key, same custody checks). Brief 25's `operator` sender class authenticates against the same entries. Whichever brief lands first adds the trust-store shape; the other reuses it.
-- **No blanket consent.** There is no `--yes`, no `--force` that skips either layer, and no apply without an id and a valid signed approval. The human click lives in the driving program, and the contract states that a driver must not call `--apply` without an explicit per-plan human action.
-- Expired, consumed, malformed or foreign-cell plans are refused (exit 5) with the reason. Plans are pruned by `gc` (desk-containers/24).
+  It carries an Ed25519 signature by an **operator-tagged key** provisioned in the cell's trust store under the existing comms custody rules. Agent-facing surfaces never hold an operator key, so they cannot fabricate the act; the cockpit produces the record from a human click. When the evidence-and-decisions owner ships its decision contract, `cell-op-approval` becomes a profile of it. That reconciliation is a recorded follow-up, not a rival schema.
+- **Apply** (`<verb> --apply <plan-id> --approval <file>` in the CLI; the same request in the API) runs two independent layers:
+  - **Layer 1, approval:** a missing approval, an unknown or non-operator key, a bad signature, or a signature over another plan id or digest is refused `approval-invalid` (exit 5) before any probe runs.
+  - **Layer 2, re-measure:** any precondition that differs from the plan is refused `plan-stale` (exit 5), and nothing runs.
+
+  If both pass, it performs exactly the planned actions, records the approval and the result in the plan, and marks the plan consumed.
+- **No blanket consent.** There is no `--yes`, no flag that skips either layer, and no apply without an approval record. On a TTY the CLI may keep a typed `[y/N]` prompt for the operator at that terminal; that path still goes through a plan internally, with the approval signed locally by the operator's key.
+- Expired, consumed, malformed or foreign-cell plans and approvals are refused (exit 5), with the reason.
 
 ## Ground rules
 - NEVER git push / trigger workflows. Stop at `implemented`.
-- This brief ships the package, schemas and doc. Adopting the contract in each verb belongs to that verb's brief. Do not edit existing verb output here.
+- This brief ships the contract, the package and the CLI adapter mechanics. Adopting the contract in each verb belongs to that verb's brief. No HTTP server is built here.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
-1. Write the result and plan types with JSON Schemas, and a writer that guarantees stdout carries only the document.
-2. Write the plan store (atomic create, 0600, 10-minute TTL, digest, single-consume), the signed-approval verifier and `cellctl approve`, and the apply harness (verify approval, then re-measure through caller-supplied probes, refuse stale, then run).
-3. Write `docs/cellctl-machine-seam.md` (planned): both documents, the exit codes, the plan lifecycle, the rule against apply without a human action, and a worked plan → apply example.
-4. Changelog fragment.
+1. Write `spec/cell-op-v1.md` (planned) and `schemas/cell-op-v1.json` (planned) for result, plan and approval, including the decision-model mapping above.
+2. Implement `cellop`: types, plan store (atomic create, 0600, 10-minute TTL, digest, single consume), approval verification against operator-tagged trust-store keys, and the apply harness.
+3. Implement the CLI adapter mechanics (`--json` writer, `--plan`, `--apply --approval`, `cellctl approve`) and the flag-walk test.
+4. Write `docs/cellctl-machine-seam.md` (planned) with a worked plan → approve → apply example; changelog fragment.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `go -C tools/desk test ./internal/cellop/ -count=1` | exit 0 |
-| 2 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestApplyRefusesStale' -count=1` | exit 0 — a plan whose recorded pid + start time no longer matches is refused `plan-stale` and none of its actions run, including actions whose preconditions still hold |
-| 2a | check | `go -C tools/desk test ./internal/cellop/ -run 'TestApplyRefusesUnsignedApproval' -count=1` | exit 0 — `--apply <id>` with no approval file, or an empty one, is refused `approval-invalid` and no precondition probe is even called |
-| 2b | check | `go -C tools/desk test ./internal/cellop/ -run 'TestApplyRefusesWrongKey' -count=1` | exit 0 — a valid signature by a key absent from the trust store, and one by a trust-store key that is not tagged operator (the cell's desk key), are both refused `approval-invalid` |
-| 2c | check +mutation | `go -C tools/desk test ./internal/cellop/ -run 'TestApplyRefusesApprovalForOtherPlan' -count=1` | exit 0 — an operator signature over plan A presented with plan B, and one over plan A's id with a changed digest (plan file edited after signing), are refused; a mutant that verifies the id but not the digest fails |
-| 2d | check | `go -C tools/desk test ./internal/cellop/ -run 'TestValidApprovalStillReverifies' -count=1` | exit 0 — a correctly signed approval for a plan whose precondition changed is still refused `plan-stale` (layer 2 holds with layer 1 passed) |
-| 3 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestPlanSingleUseAndTTL' -count=1` | exit 0 — a second apply of the same id, an apply after TTL, and an apply with another cell's id are each refused exit 5 |
-| 4 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestStdoutOnlyDocument' -count=1` | exit 0 — a verb harness that logs progress still leaves stdout parseable as exactly one schema-valid document |
-| 5 | check +dereference | `go -C tools/desk test ./internal/cellop/ -run 'TestDocExampleValidates' -count=1` | exit 0 — the worked example JSON in `docs/cellctl-machine-seam.md` (planned) is extracted and validated against the shipped schemas, so the doc cannot drift from the code |
-| 5a | check +flow | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPlanApplyRoundTrip' -count=1` | exit 0 — a fixture verb run through the built `cellctl` binary writes a plan with `--plan --json`, a second process applies it with `--apply <id>`, and a third apply of the same id is refused: CLI → plan store → `cellctl approve` → signed apply → result document end to end |
-| 6 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestNoBlanketConsentFlag' -count=1` | exit 0 — walks every registered cellctl command and fails if any defines a `yes`, `y`, `assume-yes` or `skip-verify` flag |
-| 7 | check | `statusgen --root . --lint` | exit 0 |
-| 7a | check | `statusgen --root . --consumers --brief desk-containers/15` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 2 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestApplyRefusesUnsignedApproval' -count=1` | exit 0 — no approval or an empty one is refused `approval-invalid`, and no precondition probe is called |
+| 3 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestApplyRefusesWrongKey' -count=1` | exit 0 — a signature by a key absent from the trust store, and one by the cell's desk (non-operator) key, are both refused |
+| 4 | check +mutation | `go -C tools/desk test ./internal/cellop/ -run 'TestApplyRefusesApprovalForOtherPlan' -count=1` | exit 0 — an approval for plan A presented with plan B, and an approval whose plan file was edited after signing (digest changed), are refused; a mutant that checks the id but not the digest fails |
+| 5 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestValidApprovalStillReverifies' -count=1` | exit 0 — a correctly signed approval for a plan whose precondition changed is refused `plan-stale` (layer 2 holds with layer 1 passed) |
+| 6 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestPlanSingleUseAndTTL' -count=1` | exit 0 — a second apply, an apply after 10 minutes, and an apply of another cell's plan are each refused |
+| 7 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestStdoutOnlyDocument' -count=1` | exit 0 — a harness that logs progress still leaves stdout parseable as exactly one schema-valid result |
+| 8 | check +dereference | `go -C tools/desk test ./internal/cellop/ -run 'TestContractExamplesValidate' -count=1` | exit 0 — every JSON example in `spec/cell-op-v1.md` (planned) and `docs/cellctl-machine-seam.md` (planned) is extracted and validated against `schemas/cell-op-v1.json` (planned) |
+| 9 | check +flow | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPlanApplyRoundTrip' -count=1` | exit 0 — through the built binary: `--plan --json`, `cellctl approve` with a fixture operator key, `--apply --approval` in a second process; a third apply is refused |
+| 10 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestNoBlanketConsentFlag' -count=1` | exit 0 — no registered cellctl command defines `yes`, `y`, `assume-yes` or `skip-verify` |
+| 11 | check | `statusgen --root . --lint` | exit 0 |
+| 11a | check | `statusgen --root . --consumers --brief desk-containers/15` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
 ## Review
-Gate: model. All four risk answers are no: the package acts on nothing by itself. The reviewer checks that rows 2 and 3 fail against a mutant that skips re-measurement.
+Gate: model. All four risk answers are no: the package acts on nothing by itself. The reviewer checks that rows 2–5 fail against a mutant that skips either layer, and that the approval record maps onto actor/subject/revision/act without adding a second decision schema.

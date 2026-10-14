@@ -24,6 +24,7 @@ Verification is the first end-to-end test.
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
 | [Amendment manifest](20-amendment-manifest.md) | Owners, paths, dependencies and active-work treatment for the ratified packages; brief patches for R1 and step 2 |
+| [Cell operator surface](21-cell-operator-surface.md) | **Proposed, not approved.** Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; plan approval as a human decision record; Cell API requirements carried from `send` |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify

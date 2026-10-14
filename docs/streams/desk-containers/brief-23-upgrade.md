@@ -21,13 +21,16 @@ sources:
   - "Incident 2026-10-14: installed v1.0.41 lacked the #2709 launch-lock fix (6d576a565, merged after the tag); four of five desks failed at launch on that bug"
   - "tools/desk/cmd/deskinstall — installs the pinned desk-tools tarball and verifies each asset's sha256 against the pin (`<asset> <tag> <sha256>`)"
   - "tools/desk/cmd/upgrade-assay and deskversion — the umbrella version marker and its dry-run-first upgrade; this verb drives them, never a second resolver"
-  - "desk-containers/19 — the rolling restart"
+  - "desk-containers/19 — the rolling restart, itself an adapter onto the runner-lifecycle restart sequence"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies `upgrade` as an interim bridge on today's installer; the target owner of upgrades is the cell-operation domain, with release/pin migration under R8"
+  - "docs/proposals/non-ci-architecture/11-target-architecture.md §One semantic owner — Cell operation owns installation, resolved configuration, upgrades, recovery and revocation"
   - "Driver answer 2026-10-14 (in session, relayed by the coordinator): the plan names every other cell sharing the binaries, and apply refuses while any of them has live desks unless they are drained first or included explicitly (`--cells a,b`)"
   - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no cell-level upgrade verb"
 exec-tier: strong
 exec-tier-why: (b) crosses the installer, the version marker, the plugin cache and the restart; (c) a partially applied upgrade (new binary, old plugin) is a state unit tests do not model
 domain: complicated
 consumers:
+  - "the cell-operation domain owner (target owner of upgrades; R8 release/pin migration): out-of-scope (this verb is an interim bridge on deskinstall; amendment 21 records the mapping)"
   - "tools/desk/cmd/cellctl (new upgrade verb): follow-up desk-containers/23 (this brief)"
   - "docs/cellctl.md: follow-up desk-containers/23 (this brief)"
   - "the console cockpit (an 'update available' affordance over `upgrade --plan`): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
@@ -43,13 +46,14 @@ files:
 - `changelog/desk-containers-23-upgrade.md` (planned)
 
 facts:
+- **Interim bridge.** `upgrade` drives today's installer (`deskinstall`, `upgrade-assay`). In the target, upgrades belong to the cell-operation domain, with release/pin migration qualified under R8. The verb stays an operator trigger over that owner and adds no upgrade logic of its own beyond sequencing and the shared-cells check.
 - Target: the pin the cell already declares (the repo's pin file the cell was booted against), or `--to vX.Y.Z` (an umbrella version only, the `upgrade-assay` rule). `upgrade` never resolves "latest" on its own.
 - Steps:
   1. **plan**: show the current and target versions, the assets with their sha256 values, and the roles to restart;
   2. install through `deskinstall` (sha256-verified; any mismatch stops before anything is replaced);
   3. update the plugin through the harness's own plugin update command;
   4. verify that `cellctl version` and each desk tool's `--version` report the target;
-  5. `restart` (rolling).
+  5. the runner-lifecycle restart sequence for the cell's roles, through `restart` (rolling). Upgrade never stops or starts a role itself.
   A failure at 2–4 stops before 5, with the old binaries still in place or restored, and says which.
 - **Other cells share the binaries.** The installed binaries are machine-wide, so every cell on the machine runs them. The plan names every other registered cell and, for each, whether it has live desks (from desk-containers/20's inventory). **Apply refuses (`shared-cells-live`, exit 5) while any other cell has a live desk**, unless that cell is either drained first (no live desks at apply time) or included explicitly with `--cells a,b`. An included cell is drained and rolling-restarted onto the new binaries in the same run, after the target cell. The other cells' liveness is re-measured at apply (desk-containers/15 layer 2), so a cell that came up after the plan was approved also refuses.
 - TTY: one `[y/N]` on the plan. Off a TTY: `--plan` then `--apply <id>` (desk-containers/15). `--dry-run` is the plan only.

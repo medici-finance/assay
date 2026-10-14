@@ -20,6 +20,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this verb as an interim bridge and names its target owner"
   - "Driver request 2026-10-14: `up <cell>` is the intent to bring up ALL the desks; some already up is fine; failing ones should be resolved interactively where possible"
   - "Incident 2026-10-14 (house cell, five roles hand-closed): five per-role `desk: unfinished cadence pass` refusals, one `comms last shutdown failed`, then four of five roles failing `interactive launch: deskkit: advisory lock is held by another process` when `up` opened them together"
   - "#2880 — the reconcile preflight (inventory, dead/alive/could-not-check by pid + start time, one TTY prompt, marker-only orphan stop). In flight as its own PR; this brief CALLS it per role and does not re-implement it"
@@ -32,6 +33,7 @@ exec-tier: strong
 exec-tier-why: (b) correctness spans the cockpit layer, the cadence lease and #2880's reconcile across three cockpits; (c) a launch-ordering or lease-probe error is a race that unit tests do not surface
 domain: complicated
 consumers:
+  - "target owner — cell operation (cell lifecycle) for the verb; the runner lifecycle and ownership contract for each role's `start` transition (graph-execution R2/R3): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
   - "tools/desk/cmd/cellctl/up.go: follow-up desk-containers/17 (this brief)"
   - "tools/cellctl/testdata/cellctl-shell-oracle.sh: follow-up desk-containers/17 (this brief; the oracle's `up` plan mirrors the new per-role ordering so parity holds)"
   - "tools/desk/cmd/cellctl/testdata/cli-nonhelp-golden.json: follow-up desk-containers/17 (this brief; dry-run `up` output gains the per-role disposition lines, recorded as deliberate diffs)"
@@ -51,6 +53,7 @@ files:
 - `changelog/desk-containers-17-up-converges.md` (planned)
 
 facts:
+- **Interim bridge.** `up` stays the operator's cell-lifecycle verb in the target (cellctl is 'operator surface for cell lifecycle and configuration'). Its per-role launch is today's process supervision, which the architecture moves behind the shared runner contract. When that ships, `up` keeps its converge semantics and calls the lifecycle `start` transition instead of launching windows itself.
 - A role is **up** when its cadence role lease (`run/cadence/<role>/owner.lock`, `cellcadence.AcquireRole`) is held by a live process. Probe it non-blockingly; a held lease is "already up", never an error. Re-check 2026-10-14: `cellctl cadence <cell> status` prints `running=true` per held role.
 - A role is **stale** when its checkpoint says `running=true` (or comms `outcome != ok`) and no live holder exists. Stale roles go through #2880's reconcile for THAT role. `up` never clears state itself, and never on a non-TTY (#2880's rule: non-TTY refuses with the inventory).
 - Launches are **serialized**: open role N+1 only after role N's launch has passed its lease acquisition and scratch sweep (or failed). This holds even with #2709's wait-for-lock fix, because the summary must attribute each failure to one role.

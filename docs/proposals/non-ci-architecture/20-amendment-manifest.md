@@ -92,6 +92,19 @@ paths follows the installed-consumer inventory, never brief counts.
 | Managed oversight | R1 policy, R2 pending decisions, R3/R4 authority, R5/R7 result flow (owners above) | Keeps the R1–R8 dependency and activation sequence |
 | Sampling/batch delegation and scale | decisions stream plus the runtime, effect and operations owners above | Needs a separately approved scoped contract |
 
+## Cell operator surface (amendment 21)
+
+Owner rows for the **proposed** [cell operator surface amendment](21-cell-operator-surface.md). It is not ratified; these rows record where its work would land and apply no brief patch to any owner below. The verb briefs themselves are in `desk-containers` on today's tools.
+
+| Work | Owner | Brief(s) / treatment | Status |
+|---|---|---|---|
+| Result / plan / plan-approval contract (`cell-op-v1`) | desk-containers for the schema and CLI adapter now; the R7 owner serves it; evidence-and-decisions profiles the approval | `desk-containers/15` | Authored; approval profile reconciled when the decision contract ships |
+| Interim verbs: up, status, doctor, logs, gc, upgrade | desk-containers (interim bridges) | `desk-containers/17`, `/20`, `/21`, `/22`, `/24`, `/23` | Authored; each names its target owner |
+| Lifecycle transitions (pause, resume, drain, stop, start, restart) and handoff record | graph-execution runner lifecycle / runtime coordination (R2 and/or R3; split unsettled) | Interim adapters `desk-containers/16`, `/18`, `/19`; owner amendment is a follow-up after ratification | Owner amendment not authored |
+| Cell API status queries and scoped operator requests (from `send`) | R7 (owner undecided: derived-board or a new stream) | No brief; requirements recorded in amendment 21 | Waits on the R7 owner decision and ratification |
+| Workspace retirement behind `gc` | continuing-operations workspace-lifecycle slice (row above) | gc is a trigger only | Reconciled with that slice's follow-up |
+| Upgrade / release-pin migration behind `upgrade` | cell operation; R8 (composability/03) | upgrade is a trigger only | Reconciled with the R8 follow-up |
+
 ## Conflicts and follow-ups
 
 - **Storage routing.** graph-execution's 2026-10-02 routing permits an embedded SQLite store (19)

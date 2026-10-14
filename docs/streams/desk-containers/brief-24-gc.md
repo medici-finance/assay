@@ -18,6 +18,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this verb as an interim bridge and names its target owner"
   - "Incident 2026-10-14: 70.5 GB of go cache, ten orphaned background loops (some three days old), and held claims waiting out their TTL, each cleaned by a different hand-run command"
   - "existing per-item instruments: `cellctl cache <cell> clean`; `cellctl scratch <cell> sweep`; `deskwt prune`; `desksupervise tick` (reclaim-eligible dispatch claims); #2880's marker-only orphan stop; desk-containers/15's plan store"
   - "#2879 — build-cache age trim and per-record recovery; gc picks them up through `cache clean` when they land"
@@ -27,6 +28,7 @@ exec-tier: strong
 exec-tier-why: (c) gc releases claims and stops processes; a misclassified live item is the error that survives fixture tests
 domain: complicated
 consumers:
+  - "target owner — continuing operations — the workspace-lifecycle-completion slice and the single maintenance owner (retirement, maintenance cadence): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
   - "tools/desk/cmd/cellctl (new gc verb): follow-up desk-containers/24 (this brief)"
   - "docs/cellctl.md: follow-up desk-containers/24 (this brief)"
   - "the console cockpit (a housekeeping panel over `gc --plan`): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
@@ -42,6 +44,7 @@ files:
 - `changelog/desk-containers-24-gc.md` (planned)
 
 facts:
+- **Interim bridge.** gc is an interim bridge composing today's per-item instruments. In the target, resource retirement and storage reclamation belong to the workspace-lifecycle slice of continuing operations, with one maintenance owner per common Git store and resumable retirement. gc must not become a second maintenance owner: it stays a plan-first operator trigger over whatever that owner exposes.
 - Plain `gc <cell>` is the plan only (dry-run): per category, the items, the bytes, and the instrument that would run. Categories:
   - go cache, via `cache clean`;
   - scratch, via `scratch sweep`;

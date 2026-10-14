@@ -9,7 +9,7 @@ why: >-
   2026-10-14 recovery.
 wave: 8
 depends: ["desk-containers/15"]
-unblocks: ["desk-containers/21", "desk-containers/23", "desk-containers/25"]
+unblocks: ["desk-containers/21", "desk-containers/23"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -18,6 +18,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this verb as an interim bridge and names its target owner"
   - "Driver request 2026-10-14: cell-level verbs so an operator does not run things per desk"
   - "Incident 2026-10-14: the recovery needed `cadence status`, the comms checkpoint, `cache status`, `lsof` on the cell's lock files, the dispatch-claim list and `ps` to find two `cellctl` processes holding `.reset.lock` and a scratch task lock"
   - "tools/desk/cmd/cellctl/status.go — house cell: one cadence line per role; scrubbed cell: running/stopped/stale-lock"
@@ -25,6 +26,7 @@ sources:
 exec-tier: any
 domain: complicated
 consumers:
+  - "target owner — projection and interaction, served through the R7 Cell API (authenticated queries; no owner yet): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
   - "tools/desk/cmd/cellctl/status.go: follow-up desk-containers/20 (this brief; the existing per-role cadence line stays as the first column set, so current readers keep working)"
   - "tools/desk/internal/cellop (planned) inventory reader: follow-up desk-containers/20 (this brief; doctor and gc reuse it)"
   - "docs/cellctl.md: follow-up desk-containers/20 (this brief)"
@@ -41,6 +43,7 @@ files:
 - `changelog/desk-containers-20-status-overview.md` (planned)
 
 facts:
+- **Interim bridge.** In the target, cell status is an authenticated Cell API query over projections that carry their revision, watermark and coverage. `cellop.Inventory` and this verb are the interim reader. Its `--json` document is the desk-containers/15 result, so the API can serve the same document. Fields that read today's interim state (cadence checkpoints, flag files) are named as such in `evidence{}`.
 - Per role: window present in the recorded cockpit (yes/no/could-not-check); harness pid + process start time; model and harness from the launch record; cadence `running`, `last`, heartbeat age; dispatch claims held by the role's session (count, oldest age); stop state (machine-wide, cell, role, from desk-containers/16).
 - Cell rows: comms (checkpoint outcome, gateway pid alive, queued/held counts); go cache (logical bytes vs budget, available vs floor, active consumer records); lock holders (every lock under the cell's `run/` plus `.reset.lock`, with holder pid, command and start time, or "free"); tool version (`cellctl version` vs the pin the cell was booted with, flagging an older binary).
 - Read-only. Every probe that cannot measure reports `null` + could-not-check, never a default. Exit 0 unless the cell fails to load (unchanged).
