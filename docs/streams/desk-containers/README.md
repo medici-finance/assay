@@ -44,6 +44,16 @@ component list, build/run topology, and open questions.
 | 12 | [Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob](brief-12-unattended-tick-mode-cronjob-component.md) | 4 | M | todo | — | — |
 | 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |
 | 14 | [Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay](brief-14-flux-install-example.md) | 6 | M | todo | — | — |
+| 15 | [The cell-operation contract — one versioned result and plan schema shared by the future Cell API and the CLI; apply only as an interactive-terminal confirmation, with approval-based apply deferred](brief-15-cell-op-machine-seam.md) | 7 | M | todo | — | — |
+| 16 | [Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker](brief-16-cell-scoped-stop-flags.md) | 7 | M | todo | — | — |
+| 17 | [`cellctl up <cell>` converges the cell — already-up roles are skipped, stale ones reconciled, launches serialized, one summary table](brief-17-up-converges-the-cell.md) | 8 | M | todo | — | — |
+| 18 | [`cellctl drain\|pause\|resume <cell> [role...]` — CLI adapter onto the runner-lifecycle drain/pause/resume transitions and the handoff record, implemented on today's stop flags and cadence as the interim mechanism](brief-18-drain-pause-resume-handoff.md) | 9 | M | todo | — | — |
+| 19 | [`cellctl restart <cell> [role...]` — CLI adapter onto the runner-lifecycle restart sequence (drain → stop → start per role, rolling), so the pipeline never fully stops](brief-19-restart-rolling.md) | 10 | S | todo | — | — |
+| 20 | [`cellctl status <cell>` as a cell overview — per-role liveness, model, heartbeat, claims, stop state, plus comms, cache, locks and tool version](brief-20-status-overview.md) | 8 | M | todo | — | — |
+| 21 | [`cellctl doctor <cell>` — diagnose every known way a cell gets stuck, name the cause, and offer the fix as one confirmed plan](brief-21-doctor.md) | 12 | M | todo | — | — |
+| 22 | [`cellctl logs <cell> [role] [--lines N]` — read a desk window's recent output from whichever cockpit holds it](brief-22-logs.md) | 10 | S | todo | — | — |
+| 23 | [`cellctl upgrade <cell>` — install the pinned desk-tools release and plugin, verify them, then rolling-restart the cell onto them](brief-23-upgrade.md) | 11 | M | todo | — | — |
+| 24 | [`cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans](brief-24-gc.md) | 13 | M | todo | — | — |
 | 25 | [`cellctl desk --force` — diagnose a failed desk boot, repair what it can, ask before each destructive step, `-y` answers yes](brief-25-desk-force-repair.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
@@ -137,6 +147,76 @@ until 09 gives the launcher the kind the bridge was standing in for; 10 is the p
 goes the release after the port lands, not with it. Native-Windows `cellctl` is a named
 consequence of 10 for the `windows-port` stream, delivered there, not here.
 
+### The cell-operator chain — `15/16 → 17/20 → 18 → 19/22 → 23 → 21 → 24` (2026-10-14)
+
+A third chain, also in the host launcher, and independent of both chains above. It makes
+`cellctl` usable at the level an operator thinks in, the CELL, rather than one desk at a time.
+The trigger was a routine restart on 2026-10-14. Five hand-closed desk windows needed eleven
+per-desk recovery commands: five `unfinished cadence pass` refusals, a failed comms
+checkpoint, ten orphaned background loops, a 70.5 GB go cache pinned by dead sessions'
+records, and four of five desks failing at launch on a lock race (#2709) whose fix had merged
+but not shipped. #2879 (cache), #2880 (`up` reconcile preflight) and #2881 (idle deskd pane)
+are the issue-sized pieces already in flight. This chain is the verb surface around them.
+
+**Aligned with the future architecture.** Amendment
+[21-cell-operator-surface.md](../../proposals/non-ci-architecture/21-cell-operator-surface.md)
+classifies every verb here:
+
+- **Interim bridges on today's tools, each naming its target owner:** `up`, `status`,
+  `doctor`, `logs`, `gc`, `upgrade`.
+- **Adapters onto target-owned capabilities:** drain, pause, resume, restart and the handoff
+  record are runner-lifecycle transitions (graph-execution), and today's stop-flag and cadence
+  mechanism is labelled interim. The shared result and plan contract (15) is consumed by both
+  the CLI and the future Cell API; approval-based apply is deferred until R7/R3 meet the five
+  approval properties in amendment 21, and apply is an interactive convenience confirm meanwhile.
+
+Amendment 21 is proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer.
+
+- **Wave 7** — `desk-containers/15` (the shared cell-op contract: result and plan, shipping
+  now for read, plan, status and `--json`. Apply is an interactive-terminal confirm only,
+  honestly described as a convenience, not an authorization control. Approvals are deferred.
+  **Human gate**: the honest SPOF and the deferral) and `desk-containers/16` (the interim
+  mechanism for the lifecycle `pause` transition, a cell-scoped stop flag; **human gate**,
+  because it changes the tool Guard). They are independent, and both are heads.
+- **Wave 8** — `desk-containers/17` (`up` converges; reconcile through the contract) and
+  `desk-containers/20` (`status` and the shared `cellop.Inventory`; reads 16's stop state).
+- **Wave 9** — `desk-containers/18` (drain/pause/resume adapters onto the lifecycle transitions,
+  the handoff record, and the per-role interim stop `down <cell> <role...>`. The stop closes a
+  window only after re-verifying its live identity against the receipt, and uses a per-mode
+  idle signal. `resume` lifts only its own stops. Needs 16 and 17, because it records the
+  per-role surface receipts at launch in 17's `up`).
+- **Wave 10** — `desk-containers/19` (`restart`, the lifecycle drain → stop → start sequence per
+  role; `--now` is one batch plan over per-role plans, consumed before its first role) and
+  `desk-containers/22` (`logs`, through 18's identity-bound receipt).
+- **Wave 11** — `desk-containers/23` (`upgrade`: pins from a ref fetched from the forge in this
+  run, sha256 plus signature/attestation where published, pinned plugin, restore on failure,
+  then 19; refuses under another cell's live or unknown desks).
+- **Wave 12** — `desk-containers/21` (`doctor`, over 20's inventory; its fixes point at 18's
+  `resume` and 23's `upgrade`).
+- **Wave 13** — `desk-containers/24` (`gc`, reusing 21's classification).
+
+Critical path: `15 → 17 → 18 → 19 → 23 → 21 → 24` (16 joins at 18 and 20). The head was checked:
+nothing in the chain can expose a result or a confirmation to a client before 15 fixes their
+shape, and 18 cannot aim a pause before 16, because today's `STOP` flags live in the operator's
+config home, which every house cell shares through a symlink. #2880 (its PR is #2884, still a
+draft) is a dependency of 16 (its cell marker), 17, 21 and 24 as an issue, not a brief: if its
+PR changes its marker or function names, those briefs report NEEDS_CONTEXT rather than
+re-implement it. #2881's fix (#2882) has merged.
+
+Numbering: briefs 15–24 keep their numbers. Other open drafts that propose desk-containers
+15–17 renumber on their side.
+
+**`send` is not a brief here.** Status for external parties is an authenticated Cell API
+query, and operator talk-to-desk is a scoped Cell API request (R7, owned by the new `cell-api` stream, parked at creation).
+The requirements (sender classes from authenticated identity, a deterministic status
+projection, contained-reader free text with an answer-only lock and outbound scrub, mTLS plus
+signed tokens pending ratification, rate limits, audit) are recorded in amendment 21. No comms
+listener is added for external callers: comms stays desk-to-desk plus the contained reader.
+
+Tempting-but-wrong first step: building `restart` straight on `down`/`up`. Without 16's
+aimed stop and 18's wait for in-flight work, a restart is today's hand-close with extra
+steps, and it leaves the same unfinished checkpoints behind.
+
 ## Shared conventions
 
 - All container assets live under `containers/`; docs land in `docs/docker.md`
@@ -146,3 +226,8 @@ consequence of 10 for the `windows-port` stream, delivered there, not here.
   credentials only per the brief-02 contract.
 - Feature branch + draft PR per brief; never commit `STATUS.md` on a branch; never
   self-flip a leak-sweep.
+- Cell-operator verbs (briefs 15–24) share one contract, `cell-op-v1` (brief 15): the CLI's
+  `--json` emits its result document, and `--plan` writes its plan, anywhere. Applying a plan
+  is an interactive-terminal confirm only (typed confirm code, then re-measure, then atomic
+  consume before any effect). It is a convenience, not an authorization control.
+  Approval-based apply is deferred (amendment 21). No verb defines a blanket `--yes`.
