@@ -2057,7 +2057,7 @@ func (k claimStoreKeys) storeFor(repo string) (value string, set bool, err error
 // A widened roster and a NARROWED trigger list must be equally apparent, so every
 // line renders its full sorted set rather than a count or a digest. (The default
 // one-line echo is a digest OF this block — configecho.go — and the block itself
-// prints whenever that digest moves.)
+// prints whenever that digest differs from the last recorded one.)
 //
 // Logins and paths only — never a token, never a PEM path, never a secret-shaped
 // value (deskpost's bodycheck continues to assert that separately).

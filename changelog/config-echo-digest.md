@@ -7,5 +7,6 @@
   unreadable, unwritable or non-regular state file keeps the full block), and whenever
   `ASSAY_CONFIG_ECHO=full` is set. A run whose output nobody sees — the `writeguard` and
   `cellctl model-policy` hooks, and a child whose stderr a desk tool captures — prints the full
-  block and records nothing, so it never marks a changed configuration as already shown. Adopter Verify steps that grep individual echo lines now set
-  `ASSAY_CONFIG_ECHO=full`.
+  block and records nothing, so it never marks a changed configuration as already shown. Nor
+  does a run whose full block failed to write (a closed or broken stderr). Adopter Verify steps
+  that grep individual echo lines now set `ASSAY_CONFIG_ECHO=full`.

@@ -166,6 +166,81 @@ func TestEchoUnsurfacedNoRecord(t *testing.T) {
 	}
 }
 
+// failingWriter accepts its first `left` bytes, then refuses every write with os.ErrClosed — a
+// closed stderr (left 0) or one that breaks partway through the block.
+type failingWriter struct{ left int }
+
+func (f *failingWriter) Write(p []byte) (int, error) {
+	if len(p) <= f.left {
+		f.left -= len(p)
+		return len(p), nil
+	}
+	n := f.left
+	f.left = 0
+	return n, os.ErrClosed
+}
+
+// A full block the writer refused, in whole or in part, was not shown: it must not record the
+// changed digest, so the next visible run still prints the full block.
+// regression: #2713
+func TestEchoFailedWriteNoRecord(t *testing.T) {
+	// "partial" refuses halfway through the block, after its first lines were written whole.
+	for name, half := range map[string]bool{"closed": false, "partial": true} {
+		t.Run(name, func(t *testing.T) {
+			quietEchoEnv(t)
+			home := withRoster(t, goldenRoster())
+			echoOnce(t)
+			before, err := os.ReadFile(configEchoStatePath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			narrowed := goldenRoster()
+			narrowed[EnvTrustedLogins] = "ada:2001"
+			rewriteRoster(t, home, narrowed)
+			left := 0
+			if half {
+				full := strings.Join(EffectiveConfig().EffectiveConfigLines(), "\n") + "\n"
+				left = len(full) / 2
+			}
+			EchoEffectiveConfig(&failingWriter{left: left})
+			if after, err := os.ReadFile(configEchoStatePath()); err != nil || !bytes.Equal(after, before) {
+				t.Fatalf("a refused full block rewrote the state file (err %v)", err)
+			}
+			if out := echoOnce(t); !isFullEcho(out) {
+				t.Fatalf("the first visible run after a refused full block must print it in full:\n%s", out)
+			}
+		})
+	}
+}
+
+// A full block written to the null device was not shown either. A closed stderr lands here: the
+// Go runtime reopens a closed fd 0-2 on /dev/null at startup, so `2>&-` writes succeed.
+// regression: #2713
+func TestEchoNullSinkNoRecord(t *testing.T) {
+	quietEchoEnv(t)
+	home := withRoster(t, goldenRoster())
+	echoOnce(t)
+	before, err := os.ReadFile(configEchoStatePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrowed := goldenRoster()
+	narrowed[EnvTrustedLogins] = "ada:2001"
+	rewriteRoster(t, home, narrowed)
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Skipf("no null device here: %v", err)
+	}
+	defer null.Close()
+	EchoEffectiveConfig(null)
+	if after, err := os.ReadFile(configEchoStatePath()); err != nil || !bytes.Equal(after, before) {
+		t.Fatalf("a full block sent to the null device rewrote the state file (err %v)", err)
+	}
+	if out := echoOnce(t); !isFullEcho(out) {
+		t.Fatalf("the first visible run after a discarded full block must print it in full:\n%s", out)
+	}
+}
+
 // A child whose stderr Run captures and strips must not count as having shown a change either.
 // regression: #2713
 func TestEchoRunChildStateless(t *testing.T) {

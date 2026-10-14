@@ -19,8 +19,10 @@ package deskkit
 //     exactly the echo before the digest existed: it neither reads nor writes the state file;
 //   - the digest differs from the last RECORDED digest, kept in a small state file beside the
 //     roster — so the first stateful run after a change prints in full. Only that stateful
-//     path records: a forced, CI or refused run prints in full without recording, so a return
-//     to the recorded configuration after such a run prints compact (its digest still shows);
+//     path records, and only once every line of the full block was written without error (a
+//     closed or failing stderr leaves the previous record, so the next run prints in full too).
+//     A forced, CI or refused run prints in full without recording, so a return to the
+//     recorded configuration after such a run prints compact (its digest still shows);
 //   - that state file cannot be read or cannot be written: a run that cannot prove it has
 //     already shown this configuration shows it.
 //
@@ -113,16 +115,52 @@ func UnsurfacedEchoEnv(env []string) []string {
 
 // writeConfigEcho is EchoEffectiveConfig with its inputs explicit, so the decision is testable
 // without the process cache.
+//
+// It is also the ONE place the digest is recorded, and it records only after every line of the
+// full block was written without error to something other than the null device. A writer that
+// refuses the block — or breaks partway through — has not shown it, and neither has the null
+// device, which is where a closed stderr lands (the Go runtime reopens a closed fd 0-2 on
+// /dev/null at startup, so those writes succeed). Either way the previous record stands and the
+// next run prints in full too.
 func writeConfigEcho(w io.Writer, c Config, statePath string) {
 	lines := c.EffectiveConfigLines()
 	sum := ConfigDigest(lines)
-	if !configEchoFull(c, sum, statePath) {
+	full, record := configEchoForm(c, sum, statePath)
+	if !full {
 		fmt.Fprintln(w, compactConfigLine(c, sum))
 		return
 	}
+	var werr error
 	for _, l := range lines {
-		fmt.Fprintln(w, l)
+		if _, err := fmt.Fprintln(w, l); err != nil && werr == nil {
+			werr = err
+		}
 	}
+	if record && werr == nil && !nullSink(w) {
+		// A failed state write is harmless: nothing recorded the digest, so the next run
+		// prints in full as well.
+		_ = writeConfigEchoState(statePath, sum)
+	}
+}
+
+// nullSink reports whether w is the null device, so the echo written to it was seen by no one. A
+// writer that is a file it cannot stat counts as one too (it cannot be shown to be visible); any
+// other writer — a pipe, a terminal, a regular file, a buffer — does not. Where the platform's
+// null device cannot be matched by identity, this answers false and the echo records as before.
+func nullSink(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return true
+	}
+	null, err := os.Stat(os.DevNull)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(fi, null)
 }
 
 // ConfigDigest is the hex sha256 of the full echo block exactly as printed: the lines joined
@@ -155,32 +193,30 @@ func echoInCI() bool {
 	return ci == "true" || ci == "1" || InCI()
 }
 
-// configEchoFull decides the echo form and records the digest when the full block is shown
-// outside CI. It returns true (full) on every condition the file comment lists.
-func configEchoFull(c Config, sum, statePath string) bool {
+// configEchoForm decides the echo form: full is true on every condition the file comment lists,
+// and record is true only when the full block is due on the stateful default path because the
+// digest differs from the last recorded one (or the record is unreadable). It reads the state file
+// but never writes it; writeConfigEcho records once the block is out.
+func configEchoForm(c Config, sum, statePath string) (full, record bool) {
 	if len(c.Problems) > 0 || len(c.UnknownKeys) > 0 {
-		return true
+		return true, false
 	}
 	if echoInCI() {
 		// CI history keeps the whole block; a runner's home is not a place to keep state.
-		return true
+		return true, false
 	}
 	if !configEchoStateful {
-		return true
+		return true, false
 	}
 	if mode := strings.ToLower(strings.TrimSpace(os.Getenv(EnvConfigEcho))); mode != "" && mode != "compact" {
 		// Forced full: the pre-digest echo, with no state read or written.
-		return true
+		return true, false
 	}
 	last, err := readConfigEchoState(statePath)
 	if err != nil || last != sum {
-		// The full block is being shown, so this digest is now "seen". A failed write is
-		// harmless here (the block prints anyway) and keeps the next run full as well,
-		// because nothing recorded the digest.
-		_ = writeConfigEchoState(statePath, sum)
-		return true
+		return true, true
 	}
-	return false
+	return false, false
 }
 
 // readConfigEchoState returns the recorded digest. Any failure — absent, unreadable, oversized,
