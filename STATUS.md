@@ -11,26 +11,26 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-10-13 |  |
-| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-13 |  |
-| [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-13 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-13 |  |
-| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-13 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-13 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-13 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/35 | 2026-10-13 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/34 | 2026-10-13 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-13 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/54 | 2026-10-13 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-13 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/34 | 2026-10-13 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/29 | 2026-10-13 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-13 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-13 |  |
-| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-13 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-13 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/21 | 2026-10-13 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-10-13 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-10-14 |  |
+| [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-14 |  |
+| [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-14 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-14 |  |
+| [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-14 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-14 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-14 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/35 | 2026-10-14 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/34 | 2026-10-14 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-14 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/54 | 2026-10-14 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-14 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/34 | 2026-10-14 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/29 | 2026-10-14 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-14 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-14 |  |
+| [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-14 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-14 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/21 | 2026-10-14 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-10-14 |  |
 
 ### Stuck auto-flips (12)
 
@@ -57,12 +57,12 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-10-13 |
-| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-13 |
-| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-13 |
-| [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-13 |
-| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-13 |
-| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-13 |
+| [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-10-14 |
+| [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-14 |
+| [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-14 |
+| [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-14 |
+| [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-14 |
+| [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-14 |
 
 ## Next up
 
@@ -90,7 +90,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: e8783a7 2026-10-13T16:58:35-05:00_
+_last regen: 63f9ca1 2026-10-14T01:52:38Z_
 
 **Progress:** 10/13 brief items done.
 
@@ -111,7 +111,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: e8783a7 2026-10-13T16:58:35-05:00_
+_last regen: 63f9ca1 2026-10-14T01:52:38Z_
 
 **Progress:** 16/72 brief items done.
 

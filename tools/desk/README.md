@@ -5708,9 +5708,25 @@ Packet: <absolute path>
 
 ```bash
 deskdispatch project--pr-42 --kit review --pr 42 --repo example-org/project --prompt-file /work/pr-42.md
-# → /work/pr-42.md          the assignment, carrying "Packet: /work/pr-42.packet.md"
-# → /work/pr-42.packet.md   the packet, mode 0600
+# stdout: /work/pr-42.emitted.md   the path of the assignment, carrying "Packet: /work/pr-42.packet.md"
+# → /work/pr-42.packet.md          the packet, mode 0600
+# /work/pr-42.md itself is the caller's file and is never written
 ```
+
+**`--prompt-file` names the caller's file and is never modified (#2749).** The assembled
+assignment (tens of KB) goes to a NEW sibling, `<F without extension>.emitted.md` (mode `0600`,
+replaced by a re-dispatch), and that path is printed alone on stdout. A caller that hashes or
+re-reads its own task file after the dispatch gets what it wrote. The flag must name a file: an
+existing directory is refused before the claim.
+
+The emitted file is replaced atomically through an owner-only temporary file: a link at the
+destination is replaced, never followed, and an existing wider mode is replaced with `0600`.
+Callers must check the exit status and read the path printed by this successful invocation,
+rather than read `F` or infer success from an existing emitted file. A refused re-dispatch can
+leave the previous emitted file in place. Files differing only in extension share the same
+emitted and packet paths; use distinct stems for concurrent dispatches. Keep `F` outside
+the agent worktree, especially a verifier home: the emitted sibling is an additional file
+even when the verifier packet provider declines to write its packet there.
 
 **What a review packet holds, in order:** the head commit and the build time (at the top);
 the change's number, title, author, base, head and draft / mergeable state; its description;
@@ -5744,7 +5760,7 @@ always knows what it was not shown and reads that item at the source.
 A removed file, or a path that is not safe to put in a forge request, is listed and not
 read; a file that is not text is listed and not shown.
 
-**Where the packet goes.** Beside the assignment: with `--prompt-file F`, `<F without extension>.packet.md`;
+**Where the packet goes.** Beside the emitted assignment: with `--prompt-file F`, `<F without extension>.packet.md`;
 when the prompt is printed, `<user cache dir>/assay/packets/<item-key>.packet.md` (packets
 there older than a week are removed as new ones are written). Never in the agent's worktree
 — an untracked file would dirty a read-only review tree — and never in the configuration
@@ -6467,16 +6483,30 @@ ones. Resolution order:
 
 1. A claim-store key that cannot be read (an unusable roster file) or does not parse →
    refused. An unreadable key is never treated as unset.
-2. `ASSAY_CLAIM_STORE` set → that store, or a refusal when its preconditions do not hold. It
-   never moves on to another store. In this release `file` and `service` parse as valid but
-   are not shipped yet, so setting either is refused naming the release that ships it (the
-   file store, the served store) — a key set early fails loudly.
-3. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
+2. `ASSAY_CLAIM_STORE` set to a store this build ships → that store, or a refusal when its
+   preconditions do not hold. It never moves on to another store.
+3. `ASSAY_CLAIM_STORE` set to a valid store this build does not ship → the legacy forge-ref
+   store, exactly as for an unset key, under a NOTICE naming the configured store and the
+   release that ships it (amended 2026-10-13, medici-finance/assay#2753). In this release
+   `file` and `service` both parse as valid and are not shipped yet, so an operator can set
+   the key before upgrading and it takes effect on the upgrade. A build that does not ship a
+   store cannot write a claim to it, so this never splits one repo's claims inside one
+   build; across builds during an upgrade, the mixed-store refusal that ships with the
+   `file` store is the guard. `ASSAY_CLAIM_SINGLE_HOST=yes` is accepted and has no effect
+   while the store is unset or unshipped. A malformed value is still refused, never treated
+   as unshipped.
+4. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
    written under the dispatching role's credential), exactly as before, for one release
    window. Every run of `deskclaim-ref` and `deskdispatch` then prints the removal NOTICE:
 
 ```
-NOTICE: ASSAY_CLAIM_STORE is unset, so dispatch claims use the legacy forge-ref store, which needs repository write; an unset ASSAY_CLAIM_STORE stops resolving in release N+1 — set ASSAY_CLAIM_STORE=file or ASSAY_CLAIM_STORE=service in the roster.
+NOTICE: ASSAY_CLAIM_STORE is unset, so dispatch claims use the legacy forge-ref store, which needs repository write; an unset ASSAY_CLAIM_STORE stops resolving in release N+1. ASSAY_CLAIM_STORE=file or ASSAY_CLAIM_STORE=service (with ASSAY_CLAIM_SINGLE_HOST=yes for file) may be set in the roster now: a build that does not ship the named store keeps using forge-ref, and the setting takes effect on upgrade to the release that ships it.
+```
+
+For a set but unshipped value the NOTICE instead reads, for `file`:
+
+```
+NOTICE: ASSAY_CLAIM_STORE=file is set, but this build does not ship the file store, so dispatch claims stay in the legacy forge-ref store, which needs repository write; ASSAY_CLAIM_STORE=file takes effect in the release that ships the file store.
 ```
 
 The release it names is one constant, `deskkit.ClaimStoreLegacyRemovalRelease`; it reads

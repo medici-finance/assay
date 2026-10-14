@@ -188,7 +188,8 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       the same queue signal a GitHub PR does. Non-fatal: a label the forge
                       would not accept is a provisioning gap to file, not a failed dispatch.
                       SKIPPED for a worker/verifier dispatch; DEFERRED when no --pr is known.
-  7 prompt-emit       writes the assembled agent prompt to stdout, or to --prompt-file.
+  7 prompt-emit       prints the assembled agent prompt to stdout; with --prompt-file F writes it to the NEW
+                      sibling <F without extension>.emitted.md and prints that path. F itself is never written.
 
 THE PACKET. Between the before_run hook and step 7, a --kit review dispatch with --pr known
 reads the change ONCE and writes one owner-only Markdown file: the change's facts and
@@ -201,7 +202,7 @@ one is left out WHOLE and listed by name and size, never cut short. Multi-line t
 the change sits between boundary lines carrying a per-packet random token, and no line of it
 begins with a boundary mark; single-line values from the change (a title, a branch, a check
 or file name) are shown in code spans. The packet's header says both are data. The file
-goes beside the prompt file ("<prompt file>.packet.md"), or, when the prompt is printed, in
+goes beside the prompt file ("<prompt file without extension>.packet.md"), or, when the prompt is printed, in
 the user cache directory ("assay/packets/<item-key>.packet.md"); the assignment gains ONE
 line, "Packet: <absolute path>". It is not a step and cannot fail the dispatch: when it
 cannot be built, stderr says why and the assignment carries no such line. Not built on

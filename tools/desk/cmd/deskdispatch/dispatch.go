@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/packet"
 )
 
 const toolName = "deskdispatch"
@@ -189,7 +190,7 @@ func cmdDispatch(args []string) error {
 	brief := fs.String("brief", "", "path to the item's specification file, for the decision-issue gate and the prompt")
 	gateHuman := fs.Bool("gate-human", false, "the item is human-gated: ensure its decision issue exists before dispatch")
 	pr := fs.Int("pr", 0, "an ALREADY-OPEN PR for this item; enables the roster work entry and the label stamp")
-	promptFile := fs.String("prompt-file", "", "write the assembled prompt here instead of stdout")
+	promptFile := fs.String("prompt-file", "", "the caller's own prompt/task file path; never written. The assembled prompt goes to a NEW sibling <name>.emitted.md (next to <name>.packet.md) and that path is printed. Default: the prompt is printed to stdout")
 	quiet := fs.Bool("quiet", false, "suppress the per-step OK lines")
 	dryRun := fs.Bool("dry-run", false, "print the plan and the prompt; touch nothing")
 	worktree := fs.String("worktree", "", "with --dry-run ONLY: render the prompt against this operator-stated, "+
@@ -895,10 +896,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	}
 
 	// WHERE the claim is kept is the resolver's answer, read from the roster
-	// and never from a flag. A configured store that cannot be used is a refusal HERE — exit 6,
+	// and never from a flag. A shipped store that cannot be used is a refusal HERE — exit 6,
 	// before any child process, any worktree and any credential mint — and is never replaced by
-	// another store. An unset key is the one-window legacy resolution, whose removal NOTICE is
-	// printed on every run.
+	// another store. An unset key, or a valid key naming a store this build does not ship
+	// (medici-finance/assay#2753), is the one-window legacy resolution, whose NOTICE is printed
+	// on every run.
 	store, serr := deskkit.ResolveClaimStore(repo)
 	if serr != nil {
 		return plan, deskkit.Unverifiable(fmt.Sprintf(
@@ -1095,6 +1097,14 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			return plan, deskkit.Refused(fmt.Sprintf(
 				"step %s: --prompt-file %q sits under %s, which is not a directory.",
 				stepPromptEmit, p, dir))
+		}
+		// The flag names a FILE (the caller's own task file; the emitted prompt goes to a sibling
+		// of it). A directory here would send the prompt to a sibling of the directory — never
+		// what was meant — so refuse it while nothing durable exists.
+		if pi, err := os.Stat(p); err == nil && pi.IsDir() {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --prompt-file %q is a directory; name a file (the prompt is written beside it as <name>%s).",
+				stepPromptEmit, p, emittedSuffix))
 		}
 	}
 
@@ -2138,19 +2148,38 @@ func (o dispatchOpts) say(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "deskdispatch: "+format+"\n", args...)
 }
 
-// emitPrompt writes the assembled prompt to --prompt-file or stdout. The file is written
-// with 0600 and never appended to: a prompt file that accumulated two dispatches would
-// hand the second agent the first one's item.
+// emittedSuffix names the file the assembled prompt is written to when --prompt-file is given.
+const emittedSuffix = ".emitted.md"
+
+// emittedPathFor is where the assembled prompt goes for a --prompt-file value: the sibling
+// "<prompt file without extension>.emitted.md", next to the packet. --prompt-file names the
+// caller's own file, and that file is NEVER written: a caller who re-reads its task file after
+// the dispatch must get what it wrote, not the ~40 KB expanded assignment. The result always
+// differs from its input (it ends in ".emitted.md" after the extension is stripped), so no
+// spelling of the flag can make the emitted file alias the caller's.
+func emittedPathFor(promptFile string) string {
+	if abs, err := filepath.Abs(promptFile); err == nil {
+		promptFile = abs
+	}
+	return strings.TrimSuffix(promptFile, filepath.Ext(promptFile)) + emittedSuffix
+}
+
+// emitPrompt writes the assembled prompt to stdout, or — with --prompt-file F — to the NEW
+// file emittedPathFor(F) and prints that path alone on stdout. The emitted file is written with
+// 0600 and never appended to: an emitted file that accumulated two dispatches would hand the
+// second agent the first one's item. A re-dispatch replaces it.
 func emitPrompt(o dispatchOpts, prompt string) error {
 	if strings.TrimSpace(o.promptFile) == "" {
 		fmt.Println(prompt)
 		return nil
 	}
-	if err := os.WriteFile(o.promptFile, []byte(prompt+"\n"), 0o600); err != nil {
+	dest := emittedPathFor(o.promptFile)
+	if err := packet.Write(dest, packet.Packet{Text: prompt + "\n"}); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: cannot write the prompt to %s", stepPromptEmit, o.promptFile), err)
+			"step %s: cannot write the prompt to %s", stepPromptEmit, dest), err)
 	}
-	o.say("%s OK: prompt written to %s (%d bytes)", stepPromptEmit, o.promptFile, len(prompt))
+	o.say("%s OK: prompt written to %s (%d bytes)", stepPromptEmit, dest, len(prompt))
+	fmt.Println(dest)
 	return nil
 }
 
