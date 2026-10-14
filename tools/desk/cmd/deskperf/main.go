@@ -10,8 +10,10 @@
 // It is a separate binary rather than a deskaudit subcommand because the two datasets make
 // opposite promises: the audit ledger never loses a row and is read by the budget and
 // idempotency paths; the perf history is opt-in, pruned to 7 UTC days on write, and read by
-// nobody but a human or a desk. deskperf reads only <state dir>/perf/ — never audit.jsonl —
-// writes nothing, and opens no network connection.
+// nobody but a human or a desk. deskperf's own code reads only <state dir>/perf/ and never
+// audit.jsonl. The one exception is the shared kill-switch guard (deskkit.Guard) every desk
+// verb runs under: it writes its audit row, and reads the ledger tail when disarmed. Apart
+// from that row deskperf writes nothing, and it opens no network connection.
 //
 // An empty history is a REFUSAL that names its reason, never an all-zeroes report: "nothing
 // was slow" and "nobody was looking" are different facts.

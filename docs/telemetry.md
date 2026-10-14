@@ -126,11 +126,18 @@ Every record carries exactly these fields and no field capable of holding free t
 | `cpuMs` | int, optional | Process user+system CPU; **omitted** where it cannot be measured (Windows, boot steps), so "unmeasured" never reads as zero. |
 | `exit` | int | The verb's exit code. |
 | `result` | string | The exit code mapped onto a fixed word (`ok`, `disabled`, `refused`, `unverifiable`); never the input. |
-| `childProcs` | int | Child processes the invocation started. |
-| `childWallMs` | int | Their summed wall time. |
-| `forgeCalls` | int | Forge HTTP round-trips made (counted, never inspected). |
+| `childProcs` | int | Child processes the invocation started through the shared subprocess runner (`deskkit.Run`). |
+| `childWallMs` | int | The summed wall time of those counted children. |
+| `forgeCalls` | int | HTTP round-trips through the forge client's counting transport (counted, never inspected). |
 | `sourceSHA` | string | The binary's build stamp when it is hex, else `unpinned`. |
 | `install` | string | 32 random hex characters minted once per state directory. Identifies nothing but the install. |
+
+`childProcs` and `forgeCalls` count only what passes through those two shared seams, so
+they are lower bounds, not totals. A verb that starts its own children or makes its own
+HTTP calls outside them is not counted. The known cases: `deskboot` starts its boot-step
+children through its own runner; `desktoken`'s token mint and `deskpost`'s posts use their
+own direct HTTP client; and the repository-visibility read uses one when no client is
+injected. A `0` from those tools means "not counted", not "none made".
 
 Never recorded: argv, flag values, repo, PR or issue numbers, branch, path, title, body,
 error text, session tag, environment values, hostname, user name, or tokens. A test plants a

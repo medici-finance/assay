@@ -52,7 +52,7 @@ it on day one.
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
-| `deskperf` | `report` (per-tool p50 / p90 / max / total wall, share of total wall, refusal ratio, top-N slowest), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local files only; no network) | no |
+| `deskperf` | `report` (per-tool p50 / p90 / max / total wall, share of total wall, refusal ratio, top-N slowest), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
@@ -400,8 +400,14 @@ second-resolution UTC timestamp, the tool (canonical key, else `other`), the ver
 own registered subcommand, else `other`; boot steps as `step:<name>`), the role (`$DESK_LOOP`
 canonical name, else `none`), wall ms, process CPU ms (omitted where unmeasurable, e.g.
 Windows), the exit code and its fixed result word, how many child processes the verb started
-and their summed wall ms, how many forge HTTP round-trips it made, the build stamp (hex, else
+through the shared runner (`deskkit.Run`) and their summed wall ms, how many HTTP
+round-trips went through the forge client's counting transport, the build stamp (hex, else
 `unpinned`), and a random per-install id.
+
+**The two counts are lower bounds.** A verb's own child-process runner or its own direct
+HTTP client is outside both seams and is not counted: `deskboot`'s boot-step children,
+`desktoken`'s token mint, `deskpost`'s posts, and the repository-visibility read when no
+client is injected. A `0` from those means "not counted", not "none made".
 
 **What is never recorded:** argv, flags or their values, repo, PR or issue numbers, branch,
 path, title, body, error text, session tag, any environment value, hostname, user name, or
