@@ -280,22 +280,31 @@ func Wipe(p Policy, dry bool) (Report, error) {
 	return finish(m, m.checkMode(dry, true))
 }
 
-// trimBuild removes compiler-cache entries whose mtime is before cutoff, with
-// the selection cmd/go's own Trim uses: only "*-a" (action) and "*-d" (output)
-// files inside the 256 two-hex-digit subdirectories of build/. Nothing else
-// under build/ (README, trim.txt, a foreign file) and nothing outside it is
-// ever selected. It is safe while consumers hold records because:
-//   - cmd/go refreshes an entry's mtime whenever it reads one stamped more
-//     than an hour ago, so an entry a running build used is never older than
-//     about an hour, and the policy age is at least MinBuildMaxAge;
-//   - a missing entry is a cache miss for cmd/go, which rebuilds it: the cost
-//     of a wrong guess is a recompile, never a failed or wrong build.
+// trimBuild removes compiler-cache entries whose mtime is before cutoff. It
+// selects what cmd/go's own trimSubdir selects: names ending "-a" (action) or
+// "-d" (output) inside the 256 two-hex-digit subdirectories of build/. A "-d"
+// output is a regular file, or, for the executables `go run` and `go tool`
+// cache, a directory; cmd/go removes an aged one of either shape, and so does
+// this. Nothing else under build/ (README, trim.txt, a foreign file) and
+// nothing outside it is ever selected. It is safe while consumers hold
+// records because:
+//   - cmd/go refreshes an entry's mtime when it looks up one stamped more than
+//     an hour ago, so an entry a running build looked up is at most about an
+//     hour old, and the policy age is at least MinBuildMaxAge;
+//   - an entry missing at lookup is a cache miss that cmd/go rebuilds.
 //
 // Module directories have neither property (no use stamp, no refetch mid
-// build), so mod/ is never trimmed. Every directory and entry passes the same
-// checkEntry discipline as measurement, and an entry that fails it stops the
-// trim with an error rather than being skipped or followed. Entries are
-// unlinked through the verified root; Remove never follows a final symlink.
+// build), so mod/ is never trimmed.
+//
+// Custody: every directory and entry passes checkEntry, the discipline
+// measurement uses. A directory entry is walked in full before anything in it
+// is removed, and any foreign, linked, cross-device or other-writable member
+// refuses the WHOLE directory. A refused entry is skipped, never followed,
+// and the trim continues with the next one: each entry's verdict is its own,
+// so skipping one cannot widen what another removal touches. Every refusal is
+// returned in the error, so the pass still reports could-not-check. Removal
+// goes through the verified root: Remove for a file (never follows a final
+// symlink) and removeTree, the inactive-cleanup path, for a directory.
 func (m *manager) trimBuild(cutoff time.Time) (int, int64, error) {
 	const dir = "build"
 	st, err := m.r.Lstat(dir)
@@ -309,55 +318,110 @@ func (m *manager) trimBuild(cutoff time.Time) (int, int64, error) {
 		return 0, 0, fmt.Errorf("invalid compiler cache directory")
 	}
 	n, total := 0, int64(0)
+	var refused []error
 	for i := 0; i < 256; i++ {
 		sub := fmt.Sprintf("%s/%02x", dir, i)
-		st, err := m.r.Lstat(sub)
-		if os.IsNotExist(err) {
+		names, err := m.subdirNames(sub)
+		if err != nil {
+			refused = append(refused, err)
 			continue
-		}
-		if err != nil {
-			return n, total, err
-		}
-		if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
-			return n, total, fmt.Errorf("invalid compiler cache subdirectory %s", sub)
-		}
-		f, err := m.r.OpenFile(sub, os.O_RDONLY|noFollow, 0)
-		if err != nil {
-			return n, total, err
-		}
-		names, err := f.Readdirnames(-1)
-		f.Close()
-		if err != nil {
-			return n, total, err
 		}
 		for _, name := range names {
 			if !strings.HasSuffix(name, "-a") && !strings.HasSuffix(name, "-d") {
 				continue
 			}
-			path := sub + "/" + name
-			st, err := m.r.Lstat(path)
-			if os.IsNotExist(err) {
-				continue // a concurrent go command's own trim got there first
-			}
+			size, removed, err := m.trimEntry(sub+"/"+name, cutoff)
 			if err != nil {
-				return n, total, err
-			}
-			if err = checkEntry(st, m.dev); err != nil || !st.Mode().IsRegular() {
-				return n, total, fmt.Errorf("invalid compiler cache entry %s", path)
-			}
-			if !st.ModTime().Before(cutoff) {
+				refused = append(refused, err)
 				continue
 			}
-			if err = m.r.Remove(path); err != nil && !os.IsNotExist(err) {
-				return n, total, err
-			}
-			if err == nil {
+			if removed {
 				n++
-				total += st.Size()
+				total += size
 			}
 		}
 	}
-	return n, total, nil
+	return n, total, errors.Join(refused...)
+}
+
+// subdirNames lists one verified build/<xx> subdirectory; a missing one is empty.
+func (m *manager) subdirNames(sub string) ([]string, error) {
+	st, err := m.r.Lstat(sub)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
+		return nil, fmt.Errorf("invalid compiler cache subdirectory %s", sub)
+	}
+	f, err := m.r.OpenFile(sub, os.O_RDONLY|noFollow, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Readdirnames(-1)
+}
+
+// trimEntry removes one selected entry if it is older than cutoff, returning
+// the logical bytes it held. A concurrent removal (cmd/go's own trim) is not
+// an error.
+func (m *manager) trimEntry(path string, cutoff time.Time) (int64, bool, error) {
+	st, err := m.r.Lstat(path)
+	if os.IsNotExist(err) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if err = checkEntry(st, m.dev); err != nil || (!st.Mode().IsRegular() && !st.IsDir()) {
+		return 0, false, fmt.Errorf("invalid compiler cache entry %s", path)
+	}
+	if !st.ModTime().Before(cutoff) {
+		return 0, false, nil
+	}
+	if st.IsDir() {
+		size, err := m.verifiedTreeSize(path)
+		if err != nil {
+			return 0, false, fmt.Errorf("refused compiler cache directory %s: %w", path, err)
+		}
+		if err = m.removeTree(path); err != nil {
+			return 0, false, err
+		}
+		return size, true, nil
+	}
+	if err = m.r.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	return st.Size(), true, nil
+}
+
+// verifiedTreeSize walks a directory entry through the verified root, applying
+// checkEntry to every member, and sums its regular files. Any violation
+// refuses the whole directory before a byte of it is removed.
+func (m *manager) verifiedTreeSize(name string) (int64, error) {
+	var total int64
+	err := fs.WalkDir(m.r.FS(), name, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		st, err := m.r.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if err = checkEntry(st, m.dev); err != nil {
+			return err
+		}
+		if st.Mode().IsRegular() {
+			total += st.Size()
+		}
+		return nil
+	})
+	return total, err
 }
 
 // Go module directories are read-only. Open each verified directory and chmod
@@ -527,8 +591,11 @@ func CheckRecorded(root string, dry bool) (Report, error) {
 	return finish(m, m.check(dry))
 }
 
-// Lease is durable custody of both compiler and module caches, even if the
-// supervisor crashes. No PID or age is accepted as proof that consumers exited.
+// Lease is durable custody, even if the supervisor crashes: while any record
+// is held, mod/ and gopath/ are never reclaimed and no root is removed whole;
+// only compiler-cache entries older than the policy's trim age may be trimmed
+// under pressure (trimBuild). No PID or age is accepted as proof that
+// consumers exited.
 type Lease struct {
 	policy Policy
 	record string

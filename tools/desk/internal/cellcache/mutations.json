@@ -166,8 +166,8 @@
     {
       "name": "trim follows a linked entry",
       "file": "internal/cellcache/cache.go",
-      "old": "if err = checkEntry(st, m.dev); err != nil || !st.Mode().IsRegular() {\n\t\t\t\treturn n, total, fmt.Errorf(\"invalid compiler cache entry %s\", path)",
-      "new": "if false {\n\t\t\t\treturn n, total, fmt.Errorf(\"invalid compiler cache entry %s\", path)"
+      "old": "if err = checkEntry(st, m.dev); err != nil || (!st.Mode().IsRegular() && !st.IsDir()) {\n\t\treturn 0, false, fmt.Errorf(\"invalid compiler cache entry %s\", path)",
+      "new": "if false {\n\t\treturn 0, false, fmt.Errorf(\"invalid compiler cache entry %s\", path)"
     },
     {
       "name": "trimmed bytes not reported",
@@ -198,6 +198,30 @@
       "file": "internal/cellcache/policy.go",
       "old": "`json:\"build_max_age_seconds,omitempty\"`",
       "new": "`json:\"build_max_age_seconds\"`"
+    },
+    {
+      "name": "directory-form entries refused (go run / go tool executables stall the trim)",
+      "file": "internal/cellcache/cache.go",
+      "old": "(!st.Mode().IsRegular() && !st.IsDir())",
+      "new": "!st.Mode().IsRegular()"
+    },
+    {
+      "name": "a refused entry stops the whole trim",
+      "file": "internal/cellcache/cache.go",
+      "old": "\t\t\tif err != nil {\n\t\t\t\trefused = append(refused, err)\n\t\t\t\tcontinue\n\t\t\t}",
+      "new": "\t\t\tif err != nil {\n\t\t\t\treturn n, total, err\n\t\t\t}"
+    },
+    {
+      "name": "a refused entry is not reported",
+      "file": "internal/cellcache/cache.go",
+      "old": "return n, total, errors.Join(refused...)",
+      "new": "return n, total, nil"
+    },
+    {
+      "name": "directory entry members not walked before removal (bytes unmeasured)",
+      "file": "internal/cellcache/cache.go",
+      "old": "size, err := m.verifiedTreeSize(path)",
+      "new": "size, err := int64(0), error(nil)"
     }
   ]
 }

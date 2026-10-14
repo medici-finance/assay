@@ -105,18 +105,28 @@ at all, so the budget would only delay the next storage hold. Under the same
 per-root lock, and only under byte-budget or free-space pressure, every live
 (non-dry-run) check removes compiler-cache entries whose modification time is
 older than `CELL_GO_CACHE_BUILD_MAX_AGE`, whether or not consumer records are
-held. It selects exactly what the Go toolchain's own trim selects: files named
-`*-a` or `*-d` inside the 256 two-hex-digit subdirectories of `build/`. Other
-files under `build/`, the whole of `mod/` and `gopath/` are never selected.
+held. It selects the same names the Go toolchain's own trim selects: entries
+named `*-a` or `*-d` inside the 256 two-hex-digit subdirectories of `build/`.
+A `*-d` entry is usually a file, but the executables that `go run` and `go tool`
+cache are `*-d` **directories**; an aged one is removed whole, as the toolchain
+removes it. Other files under `build/`, the whole of `mod/` and `gopath/` are
+never selected. Where it differs from the toolchain is custody: the toolchain
+removes whatever it selects, while this trim first applies the checks below and
+skips anything that fails them.
 
 This is safe with consumers live because of how the Go toolchain uses its cache:
 
-- `go` refreshes an entry's modification time when it reads one that is more
-  than an hour old, so an entry a running build has used is at most about an
+- `go` refreshes an entry's modification time when it looks up one that is more
+  than an hour old, so an entry a running build has looked up is at most about an
   hour old. The trim age is refused below `2h`, which leaves that refresh an
   hour of margin.
-- A missing compiler-cache entry is a cache miss: `go` rebuilds it. A wrongly
-  trimmed entry costs a recompile, never a failed or wrong build.
+- An entry missing at lookup is a cache miss: `go` rebuilds it, and never
+  produces a wrong build from it. Two narrow windows remain. The first is a
+  lookup that lands between the trim's age check and its removal. The second is
+  a build step that opens an entry's path more than the trim age minus an hour
+  after looking it up. Either can fail that one build step, which is then
+  retried. The Go toolchain's own trim accepts the same windows, with a 5-day
+  margin where this one uses the configured age.
 - Removing a file another process has open does not disturb that process on
   macOS or Linux.
 
@@ -124,10 +134,14 @@ Module directories have neither property: they carry no use stamp, and a module
 removed under a running build cannot be refetched mid-build. That is why `mod/`
 stays behind the consumer records.
 
-The trim uses the same checks as measurement. An entry that is linked, foreign,
-on another device or not a regular file stops the trim, which is reported as
-could-not-check, and nothing is followed through it. Entries are removed through
-the verified root. If the trim clears pressure, admission passes with consumers
+The trim uses the same checks as measurement. An entry, or any member of a
+directory entry, that is linked, foreign, on another device or writable by
+others is refused. A directory entry is checked in full before any of it is
+removed, and one bad member refuses the whole directory. A refused entry is
+skipped, never followed. The trim continues with the next entry and reports
+every refusal, so the pass ends `could-not-check` and the failures name each
+entry. Files are unlinked through the verified root, and directories are removed
+by the same verified-descriptor path as inactive cleanup. If the trim clears pressure, admission passes with consumers
 still running. If it does not, the result is `storage-deferred` as before.
 Without pressure nothing is trimmed, so warm caches stay warm; an explicit
 `cellctl cache <cell> wipe` that finds live records runs the same trim and still
