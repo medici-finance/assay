@@ -19,7 +19,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
-  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this verb as an interim bridge and names its target owner"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — classifies this verb as an interim bridge and names its target owner"
   - "Incident 2026-10-14: `interactive launch: deskkit: advisory lock is held by another process` with no holder named; five `unfinished cadence pass` refusals; `comms last shutdown failed`; go cache at 70.5 GB against a 64 GiB budget pinned by ten consumer records, five from dead sessions; an installed v1.0.41 missing the #2709 fix (6d576a565, merged two minutes after the tag)"
   - "#2880 — reconcile classification (dead/alive/could-not-check by pid + start time) and marker-only orphan stop; doctor calls it, never re-implements it"
   - "#2879 — stale go-cache consumer records; doctor reports them, and once #2879 lands per-record recovery doctor offers it"
@@ -29,7 +29,7 @@ exec-tier: strong
 exec-tier-why: (b) every finding crosses a different store (cadence, comms, cache, locks, pins, tokens) and the fixes reuse three other verbs; (c) offering a fix on a misclassified record is the error tests built on clean fixtures miss
 domain: complicated
 consumers:
-  - "target owner — projection and interaction (explanations, hold reasons, recovery actions) and cell operation (recovery): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
+  - "target owner — projection and interaction (explanations, hold reasons, recovery actions) and cell operation (recovery): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md)"
   - "tools/desk/cmd/cellctl (new doctor verb): follow-up desk-containers/21 (this brief)"
   - "docs/cellctl.md: follow-up desk-containers/21 (this brief)"
   - "the console cockpit (a doctor panel rendering findings and showing fix plans (read/plan-only)): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"

@@ -157,7 +157,7 @@ records, and four of five desks failing at launch on a lock race (#2709) whose f
 but not shipped. #2879 (cache), #2880 (`up` reconcile preflight) and #2881 (idle deskd pane)
 are the issue-sized pieces already in flight. This chain is the verb surface around them.
 
-**Aligned with the future architecture.** The proposed amendment
+**Aligned with the future architecture.** Amendment
 [21-cell-operator-surface.md](../../proposals/non-ci-architecture/21-cell-operator-surface.md)
 classifies every verb here:
 
@@ -169,7 +169,7 @@ classifies every verb here:
   the CLI and the future Cell API; approval-based apply is deferred until R7/R3 meet the five
   approval properties in amendment 21, and apply is an interactive convenience confirm meanwhile.
 
-The amendment is proposed and needs the maintainer's own ratification.
+The maintainer's merge of the PR that adds amendment 21 (medici-finance/assay#2890) ratifies its option 1.
 
 - **Wave 7** — `desk-containers/15` (the shared cell-op contract: result and plan, shipping
   now for read, plan, status and `--json`. Apply is an interactive-terminal confirm only,

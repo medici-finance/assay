@@ -24,7 +24,7 @@ authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-
 sources:
   - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): drain/pause/resume/restart/handoff are runner-lifecycle states and transitions, with today's STOP-flag/cadence mechanism labelled interim"
   - "docs/proposals/non-ci-architecture/11-target-architecture.md §What happens to today's tools — 'loopengine, drainloop, cellctl cadence, loopadmin, graph controller → One runner lifecycle and ownership contract; reuse implementations against it'"
-  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — defines the lifecycle states and transitions and maps `pause`/`resume` to this interim mechanism"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — defines the lifecycle states and transitions and maps `pause`/`resume` to this interim mechanism"
   - "tools/desk/README.md §Runtime state — `STOP` halts every loop at its next iteration boundary, `STOP.<loop-name>` halts one loop, precedence `DISABLED` > `STOP` > `STOP.<name>`, flags are not self-clearing, names resolved through `tools/desk/internal/deskkit/loopnames.go`"
   - "plugins/assay/skills/{pr-review-desk,verify-desk,worker-desk}/SKILL.md — each loop's iteration-boundary check reads `$HOME/.config/assay/STOP` and `STOP.$DESK_LOOP`; `deskkit.Guard()` enforces the same flags independently before every outward verb"
   - "docs/cellctl.md — a house cell's `home/.config/assay` is a symlink to the operator's real config home, so today's flags are machine-wide for every house cell"
@@ -41,7 +41,7 @@ exec-tier: strong
 exec-tier-why: (b) the flag is a shared value read by the Guard, three skill bodies and cellctl; (c) safety plumbing, where a silent no-op stop is the failure that unit tests miss
 domain: complicated
 consumers:
-  - "the runner lifecycle and ownership contract (target owner of pause/resume): out-of-scope (graph-execution runtime-coordination/runner packages R2/R3; this brief is the interim adapter and is retired when that contract ships, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
+  - "the runner lifecycle and ownership contract (target owner of pause/resume): out-of-scope (graph-execution runtime-coordination/runner packages R2/R3; this brief is the interim adapter and is retired when that contract ships, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md)"
   - "tools/desk/internal/deskkit (Guard and the stop-flag reader): follow-up desk-containers/16 (this brief)"
   - "plugins/assay/skills/{pr-review-desk,verify-desk,worker-desk}/SKILL.md iteration-boundary check (the three with an existing STOP check): follow-up desk-containers/16 (this brief; one added line each, beside the existing two)"
   - "plugins/assay/skills/{intake-desk,the-desk}/SKILL.md: out-of-scope (they have no iteration-boundary STOP check today; adding one is new loop behaviour this brief does not take on — for these two the Guard is the only layer, as it already is for STOP and STOP.<loop>)"
@@ -63,7 +63,7 @@ files:
 - `changelog/desk-containers-16-cell-stop-flags.md` (planned)
 
 facts:
-- **Interim, not the design.** This is the first implementation of the lifecycle `pause` / `resume` transitions defined in the proposed amendment 21. The runner lifecycle contract replaces it, and the replacement must keep this brief's two guarantees: a pause aimed at one cell never stops another cell, and a stop only ever adds.
+- **Interim, not the design.** This is the first implementation of the lifecycle `pause` / `resume` transitions defined in amendment 21. The runner lifecycle contract replaces it, and the replacement must keep this brief's two guarantees: a pause aimed at one cell never stops another cell, and a stop only ever adds.
 - New flags, in the same directory as today's: `STOP.cell.<cell>` stops every loop of that cell; `STOP.cell.<cell>.<loop>` stops one loop of that cell. `<loop>` resolves through `loopnames.go` exactly as `STOP.<loop>` does.
 - A session belongs to a cell only through `ASSAY_CELL` (its role through `ASSAY_CELL_ROLE`), which #2880 sets on every launched process. `DESK_CELL` is comms-only and is not read. A session with no marker is unaffected by cell flags. Cell flags only ever add stops; they never clear or override `DISABLED`, `STOP` or `STOP.<loop>`.
 - Precedence: `DISABLED` > `STOP` > `STOP.cell.<cell>` > `STOP.<loop>` = `STOP.cell.<cell>.<loop>`. Any one present is a stop.

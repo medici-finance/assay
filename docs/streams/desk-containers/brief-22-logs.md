@@ -18,14 +18,14 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
-  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this verb as an interim bridge and names its target owner"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — classifies this verb as an interim bridge and names its target owner"
   - "Incident 2026-10-14: four role panes each held `cellctl: interactive launch: deskkit: advisory lock is held by another process`, found by reading every pane through the cockpit's pane-read command"
   - "tools/desk/cmd/cellctl/herdr_workspace.go — each cell owns a herdr workspace receipt; role tabs are labelled by role; tmux windows are named by role in session `<cell>-cell`"
   - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no logs verb"
 exec-tier: any
 domain: clear
 consumers:
-  - "target owner — projection and interaction (terminals), served through the R7 Cell API: out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
+  - "target owner — projection and interaction (terminals), served through the R7 Cell API: out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md)"
   - "tools/desk/cmd/cellctl (new logs verb): follow-up desk-containers/22 (this brief)"
   - "docs/cellctl.md: follow-up desk-containers/22 (this brief)"
   - "the console cockpit (the side panel's log view): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"

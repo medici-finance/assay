@@ -18,7 +18,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
-  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this verb as an interim bridge and names its target owner"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — classifies this verb as an interim bridge and names its target owner"
   - "Driver request 2026-10-14: cell-level verbs so an operator does not run things per desk"
   - "Incident 2026-10-14: the recovery needed `cadence status`, the comms checkpoint, `cache status`, `lsof` on the cell's lock files, the dispatch-claim list and `ps` to find two `cellctl` processes holding `.reset.lock` and a scratch task lock"
   - "tools/desk/cmd/cellctl/status.go — house cell: one cadence line per role; scrubbed cell: running/stopped/stale-lock"
@@ -26,7 +26,7 @@ sources:
 exec-tier: any
 domain: complicated
 consumers:
-  - "target owner — projection and interaction, served through the R7 Cell API (authenticated queries; stream `cell-api`, parked): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
+  - "target owner — projection and interaction, served through the R7 Cell API (authenticated queries; stream `cell-api`, parked): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md)"
   - "tools/desk/cmd/cellctl/status.go: follow-up desk-containers/20 (this brief; the existing per-role cadence line stays as the first column set, so current readers keep working)"
   - "tools/desk/internal/cellop (planned) inventory reader: follow-up desk-containers/20 (this brief; doctor and gc reuse it)"
   - "docs/cellctl.md: follow-up desk-containers/20 (this brief)"

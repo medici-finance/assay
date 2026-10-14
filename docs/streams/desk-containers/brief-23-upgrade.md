@@ -22,7 +22,7 @@ sources:
   - "tools/desk/cmd/deskinstall — installs the pinned desk-tools tarball and verifies each asset's sha256 against the pin (`<asset> <tag> <sha256>`)"
   - "tools/desk/cmd/upgrade-assay and deskversion — the umbrella version marker and its dry-run-first upgrade; this verb drives them, never a second resolver"
   - "desk-containers/19 — the rolling restart, itself an adapter onto the runner-lifecycle restart sequence"
-  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies `upgrade` as an interim bridge on today's installer; the target owner of upgrades is the cell-operation domain, with release/pin migration under R8"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — classifies `upgrade` as an interim bridge on today's installer; the target owner of upgrades is the cell-operation domain, with release/pin migration under R8"
   - "docs/proposals/non-ci-architecture/11-target-architecture.md §One semantic owner — Cell operation owns installation, resolved configuration, upgrades, recovery and revocation"
   - "The driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): the plan names every other cell sharing the binaries, and apply refuses while any of them has live desks unless they are drained first or included explicitly (`--cells a,b`)"
   - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no cell-level upgrade verb"

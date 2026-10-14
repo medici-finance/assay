@@ -1,6 +1,6 @@
 # Cell operator surface
 
-**Proposed architectural amendment, 14 October 2026. Not approved.** Extends the [target](11-target-architecture.md), [delivery sequence](16-delivery-sequence.md) and [amendment manifest](20-amendment-manifest.md). It classifies a set of cell-level operator verbs as either interim bridges on today's tools or target-owned capabilities, defines the runner-lifecycle states and transitions they need, and records requirements for the Cell API. It implements nothing, allocates no owner where the manifest has none, and activates nothing. Future-architecture changes need the maintainer's own revision-bound ratification (see [Ratification](#human-decision-and-ratification)).
+**Architectural amendment, 14 October 2026, carried by medici-finance/assay#2890; ratified as option 1 below by the maintainer's merge of that PR, unless this file is edited before the merge to record another option.** Extends the [target](11-target-architecture.md), [delivery sequence](16-delivery-sequence.md) and [amendment manifest](20-amendment-manifest.md). It classifies a set of cell-level operator verbs as either interim bridges on today's tools or target-owned capabilities, defines the runner-lifecycle states and transitions they need, and records requirements for the Cell API. It implements nothing, allocates no owner where the manifest has none, and activates nothing. Future-architecture changes need the maintainer's own revision-bound ratification (see [Ratification](#human-decision-and-ratification)).
 
 ## Outcome and architectural delta
 
@@ -64,6 +64,7 @@ Invariants, from the target's runtime-durability rules:
 - Abandoning in-flight work (`drain --now`) needs a plan confirmed interactively at the operator's terminal. Each abandoned item is recorded as an unknown outcome to reconcile, never as cancelled.
 - A pause aimed at one cell never stops another cell, and a pause only ever adds a stop.
 - `resume` lifts only the stops its own `pause` set. Lifting any other stop (machine-wide, per-loop, another cell's, or one an incident responder set) is a separate, deliberate operator act on a plan naming that flag.
+- **A recorded transition is a request, not authority.** R2 records the requested transition and R3 executes it, but a record is never permission. While approvals are deferred, R3 executes from a record only the stop-adding transitions: `pause`, a timed `drain` (never `--now`), and `resume` of a stop the same caller set. The gated transitions, `drain --now`, lifting a foreign stop and a `restart --now` sequence, stay interactive cellctl adapters, and later need the verified approval in §Approvals: deferred. Qualification case: a gated-transition request written straight into the coordination store by a desk or runner identity, with the CLI bypassed, is not executed by R3.
 - The **handoff/resume record** (claims held, open changes being driven, pending decision, current activity) is runtime state. In the target it lives in the coordination store, so that "a terminal or agent chat must not be its memory". Recovery reads it like any other durable state.
 
 **Interim mapping (today's mechanism, explicitly not the design):**
@@ -147,21 +148,21 @@ A proposed `send` verb is withdrawn as a separate ingress. Its requirements beco
 
 The verb briefs live in the `desk-containers` stream on today's tools. Target-owned work is recorded as owner rows in the [amendment manifest](20-amendment-manifest.md#cell-operator-surface-amendment-21). No brief is allocated to an owner that does not exist yet.
 
-Owner mappings:
+Recorded preferences (pending ratification via the medici-finance/assay#2890 merge):
 
-- **Lifecycle ownership: settled as a split.** R2 records the requested transition and the handoff record; R3 executes it on processes. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
-  Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174524523
-- **R7 owner: settled.** A new stream, `cell-api`, owns R7 (the public Cell API and thin cockpit). It ships `status: parked` at creation, per the manifest, and scaffolding it is a follow-up PR. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
-  Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174752870
+- **Lifecycle ownership (proposed split).** R2 records the requested transition and the handoff record; R3 executes it on processes. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
+  Source: the relayed in-session answer, https://github.com/medici-finance/assay/pull/2890#issuecomment-6174524523
+- **R7 owner (proposed).** A new stream, `cell-api`, owns R7 (the public Cell API and thin cockpit). It ships `status: parked` at creation, per the manifest, and scaffolding it is a follow-up PR. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
+  Source: the relayed in-session answer, https://github.com/medici-finance/assay/pull/2890#issuecomment-6174752870
 - **Approvals are deferred.** The five properties above are owned by R7 (served route) and R3 (isolation). The decision owner's contract shapes the final record.
-- **The cell marker: settled.** `ASSAY_CELL` (plus `ASSAY_CELL_DIR` and `ASSAY_CELL_ROLE`) is set on every process cellctl launches, whether or not comms is configured, as #2880 (PR #2884) ships it; `DESK_CELL`/`DESK_ROLE` stay comms-only. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
-  Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174769826
+- **The cell marker (proposed).** `ASSAY_CELL` (plus `ASSAY_CELL_DIR` and `ASSAY_CELL_ROLE`) is set on every process cellctl launches, whether or not comms is configured, as #2880 (PR #2884) ships it; `DESK_CELL`/`DESK_ROLE` stay comms-only. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
+  Source: the relayed in-session answer, https://github.com/medici-finance/assay/pull/2890#issuecomment-6174769826
 
 ## Human decision and ratification
 
-This amendment changes future architecture: it adds lifecycle vocabulary, a deferred approval design with its gating properties, and Cell API requirements. Those changes need the maintainer's own revision-bound ratification, in their own identity; the venue is the maintainer's merge of the PR that carries this amendment. A relayed answer does not satisfy that gate. Each of the following is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge):
+This amendment changes future architecture: it adds lifecycle vocabulary, a deferred approval design with its gating properties, and Cell API requirements. Those changes need the maintainer's own revision-bound ratification, in their own identity. **The venue is the maintainer's merge of the PR that carries this amendment, and merging ratifies option 1 below.** Option 2 or 3 is recorded by editing this file, in that PR, before the merge. A relayed answer does not satisfy the gate. Each of the following is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge):
 
-- lifecycle transitions belong to the runner contract, split R2 (record) / R3 (execute);
+- lifecycle transitions belong to the runner contract, split R2 (record) / R3 (execute), and a record is a request, never authority;
 - `send` folds into the Cell API;
 - external authentication uses mTLS plus signed tokens;
 - the plan TTL is 10 minutes;
@@ -173,4 +174,4 @@ The decision to ratify:
 2. **Ratify the classification only:** keep the interim bridges and the verb briefs; leave the lifecycle vocabulary and the Cell API requirements as input for those owners to decide.
 3. **Reject:** keep the verbs as cellctl features with no architectural standing.
 
-Until ratified, this file stays **proposed**. Interim-bridge briefs may still be dispatched under their own gates. Nothing here grants authority, changes a lifecycle in force, or activates a runtime.
+Before that merge, this file is a proposal; the merge itself is the ratification record. Interim-bridge briefs may still be dispatched under their own gates. Nothing here grants authority, changes a lifecycle in force, or activates a runtime.

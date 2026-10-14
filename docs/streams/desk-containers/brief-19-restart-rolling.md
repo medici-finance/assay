@@ -21,7 +21,7 @@ version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `restart <cell>` that cycles the desks; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): restart is a runner-lifecycle sequence and cellctl is an adapter"
-  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — restart = drain → stop → start per role, defined there as a lifecycle sequence"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — restart = drain → stop → start per role, defined there as a lifecycle sequence"
   - "desk-containers/17 — the converging `up --role`; desk-containers/18 — `drain <cell> [role...]`, `--now`, and the handoff record"
   - "freshness-checked 2026-10-14 @ caca38a58 (origin/main) — no restart verb; the nearest is `reset`, which also removes worktrees and caches (#2670)"
 exec-tier: any
@@ -66,6 +66,7 @@ facts:
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRolling' -count=1 -v` | `--- PASS` — the recorded call order is drain r1, up r1, drain r2, up r2, …, the-desk last; at no point are two roles drained together |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartStopsOnFailure' -count=1 -v` | `--- PASS` — when role 2's `up` fails, roles 3+ are never drained and the result names role 2's error |
 | 2b | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartNowBatchPlan' -count=1 -v` | `--- PASS` — `--now --plan` writes per-role plans plus a batch plan binding their digests; two concurrent applies of the batch: exactly one proceeds; a drifted role is refused `plan-stale` and later roles are untouched; a consumed role plan stops the sequence (never skip-and-continue); a step not started before expiry is not run (`partial`); a mutant that skips consumed roles fails |
+| 2c | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartNowRefusesOffTTY' -count=1 -v` | `--- PASS` — `restart <cell> --now` with stdin or stdout not a TTY is refused `not-interactive`, and no role is drained |
 | 3 | gate:model +flow +dereference | On a disposable house cell with stub desks: `cellctl restart <cell>` while polling `cellctl cadence <cell> status` every 2s | every poll shows at least four of five roles `running=true`; the run ends with all five up and a fresh handoff note read by each |
 | 4j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartEmitsCellOpV1' -count=1 -v` | `--- PASS` — `restart --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 4 | check | `statusgen --root . --lint` | exit 0 |

@@ -18,7 +18,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
-  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — classifies this verb as an interim bridge and names its target owner"
+  - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — classifies this verb as an interim bridge and names its target owner"
   - "Incident 2026-10-14: 70.5 GB of go cache, ten orphaned background loops (some three days old), and held claims waiting out their TTL, each cleaned by a different hand-run command"
   - "existing per-item instruments: `cellctl cache <cell> clean`; `cellctl scratch <cell> sweep`; `deskwt prune`; `desksupervise tick` (reclaim-eligible dispatch claims); #2880's marker-only orphan stop; desk-containers/15's plan store"
   - "#2879 — build-cache age trim and per-record recovery; gc picks them up through `cache clean` when they land"
@@ -28,7 +28,7 @@ exec-tier: strong
 exec-tier-why: (c) gc releases claims and stops processes; a misclassified live item is the error that survives fixture tests
 domain: complicated
 consumers:
-  - "target owner — continuing operations — the workspace-lifecycle-completion slice and the single maintenance owner (retirement, maintenance cadence): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
+  - "target owner — continuing operations — the workspace-lifecycle-completion slice and the single maintenance owner (retirement, maintenance cadence): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md)"
   - "tools/desk/cmd/cellctl (new gc verb): follow-up desk-containers/24 (this brief)"
   - "docs/cellctl.md: follow-up desk-containers/24 (this brief)"
   - "the console cockpit (a housekeeping panel over `gc --plan`): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
@@ -52,7 +52,7 @@ facts:
   - dispatch claims that `desksupervise` classes reclaim-eligible;
   - orphaned marked processes, via #2880;
   - expired or consumed desk-containers/15 plans.
-- Applying: `gc <cell> --run` shows the plan. Applying is an interactive-terminal confirmation only (desk-containers/15): the verb shows the plan and the operator types its confirm code. That is a convenience confirm, not an authorization control. Off a TTY, `gc --plan` writes the plan; `--apply` off a TTY is refused `not-interactive` (desk-containers/15 row 8). `--only <category>` (repeatable) narrows the run.
+- Applying: `gc <cell> --run` shows the plan. Applying is an interactive-terminal confirmation only (desk-containers/15): the verb shows the plan and the operator types its confirm code. That is a convenience confirm, not an authorization control. Off a TTY, `gc --plan` writes the plan, and `gc --run` (an apply entry point) is refused `not-interactive` (desk-containers/15 row 8). `--only <category>` (repeatable) narrows the run.
 - Every item is re-classified at apply; anything now alive or could-not-check is skipped and reported. gc never deletes a worktree with uncommitted changes or an unmerged, unpushed branch (the `deskwt` rule), and never releases a claim whose session is alive.
 - The result reports bytes reclaimed (logical, as `cache` reports them) and items per category, plus skipped items with reasons.
 
@@ -73,6 +73,7 @@ facts:
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCSkipsAliveAtApply' -count=1 -v` | `--- PASS` — a claim whose session comes alive between plan and apply is skipped and reported, not released |
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCKeepsDirtyWorktree' -count=1 -v` | `--- PASS` — a worktree with an uncommitted file survives `gc --run` |
 | 4 | gate:model +flow +dereference | On a disposable house cell seeded with an over-budget cache, a dead claim, a merged-branch worktree and a marked orphan: `cellctl gc <cell>`, then `cellctl gc <cell> --run` on a TTY, type the plan's confirm code | the plan lists every seeded item; after the run, `cellctl doctor <cell>` reports none of them; record bytes reclaimed |
+| 3b | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCRunRefusesOffTTY' -count=1 -v` | `--- PASS` — `gc <cell> --run` with stdin or stdout not a TTY is refused `not-interactive`, and nothing is reclaimed |
 | 5j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGcEmitsCellOpV1' -count=1 -v` | `--- PASS` — `gc --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 5 | check | `statusgen --root . --lint` | exit 0 |
 | 5a | check | `statusgen --root . --consumers --brief desk-containers/24` | exit 0 — the `consumers:` routing holds against the branch diff |
