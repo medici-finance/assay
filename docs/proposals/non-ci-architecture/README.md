@@ -1,6 +1,6 @@
 # Unified non-CI architecture for Assay
 
-**Status: future architecture we are moving towards. Updated 13 October 2026; includes portfolio and drift.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
+**Status: future architecture we are moving towards. Updated 14 October 2026; includes portfolio, drift and the write-through forge-service amendment.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
 
 Read the [implemented foundations and remaining work](11-target-architecture.md#implemented-foundations-and-work-still-to-build) alongside the target. Portfolio allocation, target/context drift and continuing observation are included in the destination; their integrated automation remains work to build and qualify.
 
@@ -24,6 +24,7 @@ Verification is the first end-to-end test.
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
 | [Amendment manifest](20-amendment-manifest.md) | Owners, paths, dependencies and active-work treatment for the ratified packages; brief patches for R1 and step 2 |
+| [Forge service and source queries](21-forge-service-and-source-queries.md) | Write-through visibility, caller/executor authorization, immutable source caches and Scion-inspired qualification |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify
@@ -42,7 +43,10 @@ architecture specifies their delivery but changes no skill body or executable in
 PostgreSQL coordinates in-flight work and holds query projections; reviewed Git
 records retain canonical intent and published evidence for this phase. Recovery
 should reconstruct useful state, allowing declared transient loss and safe repeated
-work. Forge records are mirrored with attributed coverage and freshness. Active
+work. Forge records are mirrored with attributed coverage and freshness. The
+[forge-service amendment](21-forge-service-and-source-queries.md) routes authorized writes
+through existing role-bound executors and projects confirmed results immediately; it also
+provides SHA-bound source queries and scoped cache reuse. Active
 verification publishes through a governed role-bound path.
 
 The ratified target includes one mutating cell per external repository, separate

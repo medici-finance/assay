@@ -1,6 +1,6 @@
 # Assay’s future architecture
 
-**Status: future architecture we are moving towards. Updated 13 October 2026.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
+**Status: future architecture we are moving towards. Updated 14 October 2026.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
 
 The target starts with one host containing multiple isolated cells, permits command breaks where they simplify the design, reconciles affected unfinished plans together, and includes the service and cockpit in public Assay. PostgreSQL coordinates runtime work; recovery should reconstruct useful state while permitting classified transient loss and safe repeated work. See [storage and recovery](14-storage-forge-graph.md).
 
@@ -49,6 +49,25 @@ flowchart TB
 ```
 
 The diagram shows logical responsibilities; the provider-read arrow uses an authorized adapter, never ambient credentials. It does not put every box in a daemon. A planning graph is read-side context; it cannot authorize a runtime action.
+
+## Forge service and source queries — amendment of 14 October 2026
+
+Extend provider-effects and projection owners with one typed forge-service capability.
+Agents and cockpit query an admission-bound mirror or exact-commit source view; writes go
+through the existing role executor and R2 effect ledger. Confirmed provider results update
+the mirror in the receipt transaction, with explicit pending/unknown outcomes and
+read-after-write observation tokens. GitHub/GitLab remain authoritative for their records.
+The service is initially composed in the desk module so its internal custody and Git
+adapters are reused without exporting their entire capability surface.
+
+Caller authentication, per-request scope/role authorization and provider credentials are
+separate boundaries. The query service has no universal publisher credential; caches filter
+current authorized inputs before private joins or counts. Immutable source results are keyed
+by exact inputs and derivation version, while mutable forge facts retain freshness. Incremental
+indexes reuse semantic owners, and shared Git fetch/object reuse is measured before a daemon
+is introduced. See the controlling [bounded amendment](21-forge-service-and-source-queries.md)
+for custody, failure, cost and rollout contracts. This later mechanism is not claimed to have
+been included in the earlier whole-target ratification or to be implemented.
 
 ## Progressive deployment and human involvement
 

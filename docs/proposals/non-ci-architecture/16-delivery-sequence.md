@@ -121,3 +121,20 @@ The architecture reduces duplicate semantic and runtime owners by design, but ad
 database operation, migration, discovery and qualification work. Net savings remain
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
+
+## Scion-derived forge-service extension — 14 October 2026
+
+The [forge-service amendment](21-forge-service-and-source-queries.md) extends R6 alongside
+R4 and the read portion of R7; it is not a second mirror or authority program. Reuse the
+pending forge-neutral/37–38 briefs from PR 2743. Author 39–45 for typed service contracts,
+authenticated serving and role-executor custody, write-through receipts, exact-commit source
+queries, incremental derived indexes, a shared-Git reuse trial, and served/recovery/cutover
+qualification. Their source contracts can be tested offline; the managed writer still needs
+R1–R4 and the mirror store before activation. The public cockpit and remote OIDC ingress
+remain R7 work, consuming the same authorization and observation contract.
+
+Do not make a shared-object daemon or broad source checkout redesign a prerequisite for the
+first mirror/service. The reuse trial is a bounded go/no-go comparison, while request coalescing
+and bounded upstream fallback are already mirror obligations. Necessary PR branches and the
+existing candidate/retirement owners stay. Cross-provider qualification must cover operation
+unknowns, admission-bound private data and exact candidate currency, not only read speed.

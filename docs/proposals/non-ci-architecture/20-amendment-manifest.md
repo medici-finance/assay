@@ -108,3 +108,27 @@ paths follows the installed-consumer inventory, never brief counts.
 
 Adopters make their corresponding local amendments separately; nothing in this manifest edits an
 adopter repository or names private repositories, credentials or deployment details.
+
+## Forge-service follow-on — amendment of 14 October 2026
+
+The new [bounded design](21-forge-service-and-source-queries.md) extends R6/R4 and R7's
+read interface. The original dated manifest above remains its source account. Draft
+PR 2743 owns forge-neutral/37–38 (mirror and event adapter); the requested follow-on adds
+forge-neutral/39–45 in that same authoring lane. Reconcile its reciprocal edges and waves
+against the landed R2 amendments before delivery. Do not duplicate the mirror or silently
+rebind in-progress forge-neutral/18, populated Evidence or historical decisions.
+
+| Extension | Owner/delivery | Dependencies and active-work treatment |
+|---|---|---|
+| Typed service contract and SDK | forge-neutral/39; `forgeread/service/`, separate `forgeread/client/` | Pure contract first; root/offline reader and implemented 36 are preserved |
+| Authenticated serving and executor custody | forge-neutral/40; `tools/desk/internal/forgeservice/`, private role executor, thin commands | 39 and R2/R3 incarnation/ownership contract; preserve role-specific custody and guards |
+| Write-through receipt/projection | forge-neutral/41; service composition plus `workflow/store/` adapters | 37, 40, graph-execution/04 and /19; no second intent/outbox or issue authority |
+| SHA-bound source queries | forge-neutral/42; pure query contract plus trusted Git/provider adapters | 39–40; consume existing gitcore and exact-candidate meanings |
+| Incremental indexes and invalidation | forge-neutral/43; mirror-derived indexes and application query composition | 37 and 42; domain evaluators unchanged; explicit access/time/input dependencies |
+| Shared Git reuse trial | forge-neutral/44; gitcore test harness and public experiment report | 42; reuse existing maintenance/retirement owners, no daemon or live fetch required |
+| Served flow, recovery and cutover | forge-neutral/45; disposable integration harness and operator runsheet | 38, 41, 43, 44 and R3/R4 proofs; write activation independent of read release |
+
+The existing R7 owner choice still governs full remote ingress/cockpit work. This amendment
+supplies a narrow reusable local forge surface, not an alternative application framework.
+The source baseline and pending draft state are pinned in doc 21; implementation workers
+refresh current source/claims and resolve existing human decisions before starting.
