@@ -44,8 +44,8 @@ component list, build/run topology, and open questions.
 | 12 | [Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob](brief-12-unattended-tick-mode-cronjob-component.md) | 4 | M | todo | — | — |
 | 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |
 | 14 | [Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay](brief-14-flux-install-example.md) | 6 | M | todo | — | — |
-| 16 | [Local PostgreSQL in Docker for a multi-cell host — pinned image, one database and restricted role per cell, runtime credentials, backup and restore drill, and the `cell.env` keys a cell reads its DSN from](brief-16-local-docker-postgres.md) | 3 | M | todo | — | — |
-| 17 | [PostgreSQL on Kubernetes with CloudNativePG — a Kustomize component with one Cluster, a database and role per cell, out-of-band Secrets, object-store backups, and the explicit local-to-CNPG migration procedure](brief-17-cnpg-kubernetes-postgres.md) | 4 | L | todo | — | — |
+| 26 | [Local PostgreSQL in Docker for a multi-cell host — pinned image, one database and restricted role per cell, runtime credentials, backup and restore drill, and the `cell.env` keys a cell reads its DSN from](brief-26-local-docker-postgres.md) | 3 | M | todo | — | — |
+| 27 | [PostgreSQL on Kubernetes with CloudNativePG — a Kustomize component with one Cluster, a database and role per cell, out-of-band Secrets, object-store backups, and the explicit local-to-CNPG migration procedure](brief-27-cnpg-kubernetes-postgres.md) | 4 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -109,7 +109,7 @@ Rows that dereference a pinned release tag stay could-not-check until a release 
 Path: `02 → 03 → 04 → 07`, with `01 → 03` joining at wave 2 and `05`/`06` fanning out
 beside `04`. `08` hangs off no edge at all.
 
-### The PostgreSQL path — `16 → 17` (added 2026-10-14)
+### The PostgreSQL path — `26 → 27` (added 2026-10-14)
 
 The non-CI target keeps each cell's operational state in PostgreSQL, run first in local
 Docker and then on CloudNativePG (`docs/proposals/non-ci-architecture/14-storage-forge-graph.md`).
@@ -117,11 +117,11 @@ These two briefs ship the server side only. The consumer, graph-execution/19, ow
 schema, migrations and reconstruction, and its own tests use a separate disposable server, so
 neither brief blocks it.
 
-- **Wave 3** — `desk-containers/16`: the local server, its own compose project beside brief
+- **Wave 3** — `desk-containers/26`: the local server, its own compose project beside brief
   05's planned desk compose file, one database and restricted role per cell, dump backups
   with a restore drill, and the `cell.env` keys a cell reads its database from. It depends
   on nothing in this stream.
-- **Wave 4** — `desk-containers/17` (depends on `desk-containers/06` and `desk-containers/16`): <!-- graph: encoded desk-containers/16→desk-containers/17 -->
+- **Wave 4** — `desk-containers/27` (depends on `desk-containers/06` and `desk-containers/26`): <!-- graph: encoded desk-containers/26→desk-containers/27 -->
   the CloudNativePG component beside 06's base, object-store backups, and the explicit
   local-to-CNPG migration procedure.
 
