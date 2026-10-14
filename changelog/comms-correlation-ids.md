@@ -1,2 +1,0 @@
-- Generate comms message IDs in UUID v4 format so they can be quoted as correlation references in replies without changing credential scanning. Document the same format for caller-generated run IDs; existing mailbox IDs remain readable.
-- Temporarily run the Cursor generation gate only on the internal Linux runner; retain its native Windows build step for a later qualified internal Windows matrix entry.
