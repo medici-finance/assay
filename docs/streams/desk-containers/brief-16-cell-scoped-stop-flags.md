@@ -12,8 +12,9 @@ wave: 7
 depends: []
 unblocks: ["desk-containers/18"]
 effort: M
-gate: model
+gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+decision-trigger: creation
 issues: []
 schema: brief-v2
 version: 1
@@ -25,6 +26,13 @@ sources:
   - "docs/cellctl.md — a house cell's `home/.config/assay` is a symlink to the operator's real config home, so today's flags are machine-wide for every house cell"
   - "#2880 — introduces a cell marker in the environment of every child `cellctl` launches (proposed `ASSAY_CELL=<cell>` plus the role); this brief reads that marker and must use the name #2880 lands"
   - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no cell-scoped stop flag exists; `deskkit.Guard()` knows `DISABLED`, `STOP`, `STOP.<name>`, `STOP.run.<key>` and `HEARTBEAT`"
+gate-why: >-
+  This changes `deskkit.Guard()`, the tool-layer kill switch every desk verb consults. The risk
+  answers are all no, but the path is the suite's safety plumbing, and a stop flag that
+  silently matches nothing reads as "stopped" while desks keep writing. What the human
+  confirms: cell flags only ever ADD stops (never clear or outrank DISABLED, STOP or
+  STOP.<loop>); cell membership comes only from the launcher-set marker; an unknown cell name
+  is reported inert, not honoured silently; and both the skill check and the Guard enforce it.
 exec-tier: strong
 exec-tier-why: (b) the flag is a shared value read by the Guard, five skill bodies and cellctl; (c) safety plumbing, where a silent no-op stop is the failure that unit tests miss
 domain: complicated
@@ -54,6 +62,18 @@ facts:
 - A cell flag naming a cell that has no registration under the cells root is reported **inert** by `deskboard`, the same treatment an unknown loop name gets today.
 - Cell names are validated (`[a-z0-9-]`, the existing cell-name rule) before any path is built from them.
 
+## Human decision
+Should desks be stoppable one cell at a time, by adding a cell-scoped stop flag to the safety check every desk tool runs?
+
+Today a stop switch either stops every desk on the machine or every desk with a given role, across all cells, because host cells share one settings folder. This adds a switch aimed at one cell (and one for one role in one cell). It can only add stops; it never lifts an existing stop or the master kill switch. A desk belongs to a cell only through a marker the launcher sets. A switch naming a cell that does not exist is shown as having no effect, rather than silently ignored.
+
+Options:
+1. **Approve** — add both cell-scoped flags to the safety check and to each desk's own loop check. Drain and pause (brief 18) build on it.
+2. **Approve the loop check only** — desks honour the cell flag in their own loop, but the tool-level safety check is unchanged. Weaker: a desk that skips its own check keeps writing.
+3. **Reject** — drain and pause use the machine-wide flags, stopping every cell's matching desks.
+
+Default if no answer: none — blocks until answered.
+
 ## Ground rules
 - NEVER git push / trigger workflows. Stop at `implemented`.
 - Do not change the semantics of any existing flag.
@@ -75,10 +95,11 @@ facts:
 | 4 | check +dereference | `grep -c 'STOP.cell.' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md plugins/assay/skills/the-desk/SKILL.md` | every file ≥ 1 |
 | 5 | gate:model +flow | In a temp HOME: set the marker `cell=a`, touch `STOP.cell.a`, then run an outward verb such as `deskfile check` with `DESK_LOOP=worker-desk` | the Guard refuses with the stop exit code, naming `STOP.cell.a`. Remove the flag and the same command proceeds. With the skill-body check bypassed, the Guard alone still refuses. |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
+| 6a | check | `statusgen --root . --consumers --brief desk-containers/16` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
 ## Review
-Gate: model. All four risk answers are no: the change only adds stops and is removed with `rm`. The reviewer checks that rows 1, 2 and 5 exercise the Guard and the skill check independently.
+Gate: human (see gate-why). All four risk answers are no; the gate is for the safety-plumbing path. The reviewer checks that rows 1, 2 and 5 exercise the Guard and the skill check independently.

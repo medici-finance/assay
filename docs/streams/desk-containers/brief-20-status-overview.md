@@ -9,7 +9,7 @@ why: >-
   2026-10-14 recovery.
 wave: 8
 depends: ["desk-containers/15"]
-unblocks: ["desk-containers/21"]
+unblocks: ["desk-containers/21", "desk-containers/25"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -64,8 +64,9 @@ facts:
 | 2 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNeverTryLocks' -count=1` | exit 0 — with a fixture process holding a cell lock, inventory names the holder and never acquires or contends for the lock |
 | 3 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNullNotZero' -count=1` | exit 0 — an unreadable cache root yields `null` and could-not-check, not 0 bytes |
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestStatusLegacyPrefix' -count=1` | exit 0 — the first line per role is byte-identical to the pre-change format |
-| 5 | gate:model +dereference | On a live cell: `cellctl status <cell> --json`, then check three of its claims by hand (one harness pid with `ps -o lstart=`, one lock holder with `lsof`, the cache bytes against `cellctl cache <cell> status`) | all three match. Record the commands and outputs. |
+| 5 | gate:model +flow +dereference | On a live cell: `cellctl status <cell> --json`, then check three of its claims by hand (one harness pid with `ps -o lstart=`, one lock holder with `lsof`, the cache bytes against `cellctl cache <cell> status`) | all three match. Record the commands and outputs. |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
+| 6a | check | `statusgen --root . --consumers --brief desk-containers/20` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

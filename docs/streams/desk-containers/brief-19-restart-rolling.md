@@ -56,8 +56,9 @@ facts:
 |---|-------|---------|--------|
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRolling' -count=1` | exit 0 — the recorded call order is drain r1, up r1, drain r2, up r2, …, the-desk last; at no point are two roles drained together |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartStopsOnFailure' -count=1` | exit 0 — when role 2's `up` fails, roles 3+ are never drained and the result names role 2's error |
-| 3 | gate:model +flow | On a disposable house cell with stub desks: `cellctl restart <cell>` while polling `cellctl cadence <cell> status` every 2s | every poll shows at least four of five roles `running=true`; the run ends with all five up and a fresh handoff note read by each |
+| 3 | gate:model +flow +dereference | On a disposable house cell with stub desks: `cellctl restart <cell>` while polling `cellctl cadence <cell> status` every 2s | every poll shows at least four of five roles `running=true`; the run ends with all five up and a fresh handoff note read by each |
 | 4 | check | `statusgen --root . --lint` | exit 0 |
+| 4a | check | `statusgen --root . --consumers --brief desk-containers/19` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

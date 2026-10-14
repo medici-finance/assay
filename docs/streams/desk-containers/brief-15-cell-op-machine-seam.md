@@ -11,7 +11,7 @@ why: >-
   approves that exact plan id, and the tool re-checks state before acting.
 wave: 7
 depends: []
-unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24"]
+unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24", "desk-containers/25"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -44,6 +44,7 @@ files:
 - `tools/desk/internal/cellop/testdata/cell-op-plan-v1.schema.json` (planned) — JSON Schema for the plan document
 - `docs/cellctl-machine-seam.md` (planned) — the contract, written for a program author
 - `tools/desk/cmd/cellctl/consent_flag_test.go` (planned) — the no-blanket-consent flag walk (row 6), which every later verb brief inherits
+- `tools/desk/cmd/cellctl/plan_roundtrip_test.go` (planned) — the end-to-end plan → apply flow through the built binary (row 5a)
 - `changelog/desk-containers-15-machine-seam.md` (planned)
 
 facts:
@@ -74,8 +75,10 @@ facts:
 | 3 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestPlanSingleUseAndTTL' -count=1` | exit 0 — a second apply of the same id, an apply after TTL, and an apply with another cell's id are each refused exit 5 |
 | 4 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestStdoutOnlyDocument' -count=1` | exit 0 — a verb harness that logs progress still leaves stdout parseable as exactly one schema-valid document |
 | 5 | check +dereference | `go -C tools/desk test ./internal/cellop/ -run 'TestDocExampleValidates' -count=1` | exit 0 — the worked example JSON in `docs/cellctl-machine-seam.md` (planned) is extracted and validated against the shipped schemas, so the doc cannot drift from the code |
+| 5a | check +flow | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPlanApplyRoundTrip' -count=1` | exit 0 — a fixture verb run through the built `cellctl` binary writes a plan with `--plan --json`, a second process applies it with `--apply <id>`, and a third apply of the same id is refused: CLI → plan store → apply harness → result document end to end |
 | 6 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestNoBlanketConsentFlag' -count=1` | exit 0 — walks every registered cellctl command and fails if any defines a `yes`, `y`, `assume-yes` or `skip-verify` flag |
 | 7 | check | `statusgen --root . --lint` | exit 0 |
+| 7a | check | `statusgen --root . --consumers --brief desk-containers/15` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

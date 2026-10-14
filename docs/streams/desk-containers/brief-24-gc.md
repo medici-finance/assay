@@ -69,8 +69,9 @@ facts:
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCPlan' -count=1` | exit 0 — plain `gc` lists all six categories and leaves the file tree hash unchanged |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCSkipsAliveAtApply' -count=1` | exit 0 — a claim whose session comes alive between plan and apply is skipped and reported, not released |
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestGCKeepsDirtyWorktree' -count=1` | exit 0 — a worktree with an uncommitted file survives `gc --run` |
-| 4 | gate:model +flow | On a disposable house cell seeded with an over-budget cache, a dead claim, a merged-branch worktree and a marked orphan: `cellctl gc <cell>`, then `cellctl gc <cell> --run` on a TTY, answer `y` | the plan lists every seeded item; after the run, `cellctl doctor <cell>` reports none of them; record bytes reclaimed |
+| 4 | gate:model +flow +dereference | On a disposable house cell seeded with an over-budget cache, a dead claim, a merged-branch worktree and a marked orphan: `cellctl gc <cell>`, then `cellctl gc <cell> --run` on a TTY, answer `y` | the plan lists every seeded item; after the run, `cellctl doctor <cell>` reports none of them; record bytes reclaimed |
 | 5 | check | `statusgen --root . --lint` | exit 0 |
+| 5a | check | `statusgen --root . --consumers --brief desk-containers/24` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

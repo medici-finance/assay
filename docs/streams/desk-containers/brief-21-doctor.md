@@ -72,8 +72,9 @@ facts:
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorNeverTouchesAlive' -count=1` | exit 0 — an alive or could-not-check record is reported but absent from the fix plan; a mutant that plans a fix for it fails |
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorApplyRestale' -count=1` | exit 0 — a record that comes alive between `--plan` and `--apply` makes the apply refuse `plan-stale` |
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorNonTTYReadOnly' -count=1` | exit 0 — off a TTY, plain `doctor` writes nothing (file-tree hash unchanged) |
-| 5 | gate:model +flow | Reproduce the 2026-10-14 incident on a disposable house cell: start five stub desks, kill their windows, leave a stub background loop carrying the marker, and hold a cell lock with a stale own-cell process; then `cellctl doctor <cell>` on a TTY and answer `y` | findings name each injected fault; after `y`, a second `doctor` reports none and `cellctl up <cell>` starts all roles with no prompt |
+| 5 | gate:model +flow +dereference | Reproduce the 2026-10-14 incident on a disposable house cell: start five stub desks, kill their windows, leave a stub background loop carrying the marker, and hold a cell lock with a stale own-cell process; then `cellctl doctor <cell>` on a TTY and answer `y` | findings name each injected fault; after `y`, a second `doctor` reports none and `cellctl up <cell>` starts all roles with no prompt |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
+| 6a | check | `statusgen --root . --consumers --brief desk-containers/21` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

@@ -54,6 +54,9 @@ component list, build/run topology, and open questions.
 | 22 | [`cellctl logs <cell> [role] [--lines N]` — read a desk window's recent output from whichever cockpit holds it](brief-22-logs.md) | 8 | S | todo | — | — |
 | 23 | [`cellctl upgrade <cell>` — install the pinned desk-tools release and plugin, verify them, then rolling-restart the cell onto them](brief-23-upgrade.md) | 10 | M | todo | — | — |
 | 24 | [`cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans](brief-24-gc.md) | 10 | M | todo | — | — |
+| 25 | [`cellctl send <cell> <role\|all>` for the local operator — an authenticated `operator` sender class on comms, and Tier A `--ask status` answered deterministically with no model reading the request](brief-25-send-operator-and-status-tier.md) | 9 | M | todo | — | — |
+| 26 | [External ingress for `send` — an opt-in authenticated listener, the untrusted `external` sender class, per-sender rate limits, a request/reply audit log, and Tier A status with an external-safe projection](brief-26-send-external-ingress.md) | 10 | M | todo | — | — |
+| 27 | [Tier B for `send` — free-text questions through the contained reader as labelled untrusted data, answer-only desk handling enforced at the tool layer, and every reply through the outbound filter](brief-27-send-free-text-tier-b.md) | 11 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -146,7 +149,7 @@ until 09 gives the launcher the kind the bridge was standing in for; 10 is the p
 goes the release after the port lands, not with it. Native-Windows `cellctl` is a named
 consequence of 10 for the `windows-port` stream, delivered there, not here.
 
-### The cell-operator chain — `15/16 → 17/18/20/22 → 19/21 → 23/24` (2026-10-14)
+### The cell-operator chain — `15/16 → 17/18/20/22 → 19/21/25 → 23/24/26 → 27` (2026-10-14)
 
 A third chain, also in the host launcher, and independent of both chains above. It makes
 `cellctl` usable at the level an operator thinks in, the CELL, rather than one desk at a time.
@@ -160,7 +163,7 @@ are the issue-sized pieces already in flight. This chain is the verb surface aro
 - **Wave 7** — `desk-containers/15` (the machine seam: one `--json` result contract and the
   plan-id → apply confirmation every later verb adopts, so the console cockpit can drive them
   and a human still clicks) and `desk-containers/16` (cell-scoped stop flags, so a pause can be
-  aimed at one cell). They are independent, and both are heads.
+  aimed at one cell; **human gate**, because it changes the tool Guard). They are independent, and both are heads.
 - **Wave 8** — `desk-containers/17` (`up` converges; uses #2880's reconcile),
   `desk-containers/18` (`drain`/`pause`/`resume` and the handoff note; needs 16),
   `desk-containers/20` (`status` overview and the shared `cellop.Inventory`),
@@ -177,10 +180,29 @@ config home, which every house cell shares through a symlink. #2880 is a depende
 21 as an issue, not a brief: if its PR changes its function names, 17 and 21 report
 NEEDS_CONTEXT rather than re-implement it.
 
-Not authored: `send <cell> <role|all> <msg>`, an operator message into desk sessions. The
-comms lane ACL derives the sender from the session's own desk role and has no operator lane,
-so a `send` verb first needs an operator-lane decision. That is a design question for the
-comms owners, not a brief.
+**`send` — `20 → 25 → 26 → 27` (driver ruling 2026-10-14).** Messaging a desk is built on
+the existing comms service (signed messages, local-only socket, a pinned contained reader
+already doing inbound routing and outbound filtering, quarantine on a failed consultation),
+with sender classes decided by authenticated identity only, never by message content.
+
+- **Wave 9** — `desk-containers/25`: the local `operator` class and Tier A `--ask status`,
+  answered by code from 20's status document with no model reading the request.
+  **Human gate**: the first non-desk sender allowed to instruct a desk.
+- **Wave 10** — `desk-containers/26`: the opt-in external listener (authentication is the
+  human decision: mutual TLS reusing the gateway's existing mTLS front, or signed tokens),
+  the untrusted `external` class limited to Tier A, an allow-listed status projection, an
+  outbound scrub, per-caller rate limits and a request/reply audit log. **Human gate**,
+  sensitive-data.
+- **Wave 11** — `desk-containers/27`: Tier B free text. A contained reader turns untrusted text
+  into a typed, capped, labelled summary; a Guard-enforced answer-only lock means a desk
+  answering an external message cannot act, whatever the model decides; every reply passes the
+  reader's outbound consultation and 26's scrub; anything that fails is quarantined. **Human
+  gate**, sensitive-data.
+
+Each layer has its own negative-path Verify row with the layer above it bypassed: an unsigned
+or unknown sender refused at ingress, an injected instruction refused by the Guard with the
+reader bypassed, a withheld token blocked by the scrub when the desk emits it, and the rate
+limit tripping.
 
 Tempting-but-wrong first step: building `restart` straight on `down`/`up`. Without 16's
 aimed stop and 18's wait for in-flight work, a restart is today's hand-close with extra
@@ -195,7 +217,7 @@ steps, and it leaves the same unfinished checkpoints behind.
   credentials only per the brief-02 contract.
 - Feature branch + draft PR per brief; never commit `STATUS.md` on a branch; never
   self-flip a leak-sweep.
-- Cell-operator verbs (briefs 15–24) share one output and confirmation contract, brief 15:
+- Cell-operator verbs (briefs 15–27) share one output and confirmation contract, brief 15:
   `--json` emits a `cell-op-result-v1` document, and every confirmation has a TTY prompt plus
   a non-TTY `--plan` → `--apply <plan-id>` form, re-verified at apply. No verb defines a
   blanket `--yes`.

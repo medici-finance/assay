@@ -67,8 +67,9 @@ facts:
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradePlan' -count=1` | exit 0 — the plan lists versions, asset hashes, the roles to restart, and the other cells sharing the binaries |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradeShaMismatchStops' -count=1` | exit 0 — a fixture asset with a wrong sha256 stops before any binary is replaced and before any restart |
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpgradeVersionVerifyGatesRestart' -count=1` | exit 0 — when post-install `--version` reports the old tag, restart is never called |
-| 4 | gate:model +flow | On a disposable house cell pinned one release back: `cellctl upgrade <cell>` on a TTY, answer `y` | every desk tool reports the target version; all roles return up through a rolling restart; record the before and after `cellctl version` |
+| 4 | gate:model +flow +dereference | On a disposable house cell pinned one release back: `cellctl upgrade <cell>` on a TTY, answer `y` | every desk tool reports the target version; all roles return up through a rolling restart; record the before and after `cellctl version` |
 | 5 | check | `statusgen --root . --lint` | exit 0 |
+| 5a | check | `statusgen --root . --consumers --brief desk-containers/23` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

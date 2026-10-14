@@ -81,8 +81,9 @@ facts:
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestCLINonHelpParity|TestCLICompatDoc' -count=1` | exit 0 — the changed `up` plans are recorded deliberate diffs with a compat-doc section |
 | 5 | check | `sh tools/cellctl/tests/parity.test.sh` with `PARITY_ONLY` set to each `up` cell | exit 0 for every claude cell; any pre-existing codex-cell differences are the same set as at base |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
-| 6a | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpPlanApply' -count=1` | exit 0 — `up --apply <id>` on a plan whose stale role came alive between plan and apply refuses with `plan-stale`, naming the role; `--json` output validates against the brief-15 schema |
-| 7 | gate:model +flow | On a disposable house cell with stub harnesses: `cellctl up <cell>`, kill one role's harness, run `cellctl up <cell>` again on a TTY and answer `y` | the second run's table shows four `already-up` and one `reconciled+up`; exit 0. Record both tables. |
+| 6a | check | `statusgen --root . --consumers --brief desk-containers/17` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 6b | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestUpPlanApply' -count=1` | exit 0 — `up --apply <id>` on a plan whose stale role came alive between plan and apply refuses with `plan-stale`, naming the role; `--json` output validates against the brief-15 schema |
+| 7 | gate:model +flow +dereference | On a disposable house cell with stub harnesses: `cellctl up <cell>`, kill one role's harness, run `cellctl up <cell>` again on a TTY and answer `y` | the second run's table shows four `already-up` and one `reconciled+up`; exit 0. Record both tables. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

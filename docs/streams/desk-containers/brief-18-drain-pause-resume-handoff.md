@@ -79,6 +79,7 @@ facts:
 | 5 | check +dereference | `grep -l 'references/handoff-note.md' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md \| wc -l` | 5 |
 | 6 | gate:model +flow | On a disposable house cell with stub desks that hold one fixture claim: `cellctl drain <cell> --timeout 2m` while the claim releases after 30s | the claim releases, a handoff note exists for every role, the cell is down, the cadence status has no `unfinished`, and a following `cellctl up <cell>` boots with no reconcile prompt. Record the result JSON. |
 | 7 | check | `statusgen --root . --lint` | exit 0 |
+| 7a | check | `statusgen --root . --consumers --brief desk-containers/18` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
