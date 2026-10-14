@@ -704,7 +704,7 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 			fmt.Printf("would create %s  (%s#%d, gate:%s)\n", p.Rel, p.Repo, p.Issue, p.Gate)
 		}
 		for _, c := range closeOuts {
-			fmt.Printf("would %s %s  (%s#%d, %s)\n", c.Action, c.Rel, c.Repo, c.Issue, closeOutReason(c.Action))
+			fmt.Printf("would %s %s  (%s#%d, %s%s)\n", c.Action, c.Rel, c.Repo, c.Issue, closeOutReason(c.Action), closeOutGateNote(c))
 		}
 		if len(unblockPlans) == 0 && len(plans) == 0 && len(closeOuts) == 0 && !partial {
 			fmt.Println("scan-issues: no changes — nothing to create or retire")
@@ -825,8 +825,8 @@ func closeOutPastTense(action string) string {
 // reactivate the same way a reopen does. For "reactivate": changes status to
 // "todo" and removes any "resolved:" field (regardless of which retire path wrote
 // it), and re-derives the placeholder from the LIVE issue: the `gate:` line is
-// rewritten from c.Gate (inserted when absent; a stored `gate: human` is never
-// relaxed — see reactivateGate) and the `labels:` line is replaced by c.Labels
+// rewritten from c.Gate (inserted when absent; a stored human gate, as the
+// reader decodes it, is never relaxed — see reactivateGate) and the `labels:` line is replaced by c.Labels
 // (dropped when the issue now has none). A reactivate plan with no Gate is
 // REFUSED: it could only re-surface the stale frontmatter. The body prose is
 // left intact.
@@ -852,6 +852,10 @@ func applyCloseOut(c closeOutPlan) error {
 
 	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 	lines := strings.Split(content, "\n")
+	storedGate := ""
+	if c.Action == "reactivate" {
+		storedGate = storedEffectiveGate(c.Path)
+	}
 	var out []string
 	inFrontmatter := false
 	frontmatterClosed := false
@@ -902,14 +906,14 @@ func applyCloseOut(c closeOutPlan) error {
 				}
 				if reactivate && strings.HasPrefix(trimmed, "gate:") {
 					hasGate = true
-					stored := strings.TrimSpace(strings.TrimPrefix(trimmed, "gate:"))
-					out = append(out, "gate: "+reactivateGate(stored, c.Gate))
+					out = append(out, "gate: "+reactivateGate(storedGate, c.Gate))
 					continue
 				}
 				if reactivate && strings.HasPrefix(trimmed, "labels:") {
 					hasLabels = true
-					if strings.TrimSpace(strings.TrimPrefix(trimmed, "labels:")) == "" {
-						skipLabelItems = true // block list: drop its `- item` lines too
+					val := strings.TrimSpace(strings.TrimPrefix(trimmed, "labels:"))
+					if val == "" || (strings.HasPrefix(val, "[") && !strings.Contains(val, "]")) {
+						skipLabelItems = true // block list, or a flow list wrapped onto further lines: drop those too
 					}
 					if len(c.Labels) > 0 {
 						out = append(out, "labels: "+yamlFlowList(c.Labels))
@@ -953,7 +957,7 @@ func applyCloseOut(c closeOutPlan) error {
 	if reactivate && (!hasGate || (!hasLabels && len(c.Labels) > 0)) {
 		var add []string
 		if !hasGate {
-			add = append(add, "gate: "+c.Gate)
+			add = append(add, "gate: "+reactivateGate(storedGate, c.Gate))
 		}
 		if !hasLabels && len(c.Labels) > 0 {
 			add = append(add, "labels: "+yamlFlowList(c.Labels))
@@ -975,11 +979,25 @@ func applyCloseOut(c closeOutPlan) error {
 	return writeCloseOut(c, []byte(strings.Join(out, "\n")))
 }
 
+// storedEffectiveGate is the gate the placeholder at path carries as its reader
+// sees it: the YAML-decoded `gate:` value (so `"human"`, `'human'` and
+// `human # note` all read as human), or, when there is no gate line, the gate
+// derived from the stored labels. A file the reader cannot parse yields "human":
+// the rewrite can only tighten what it cannot read.
+func storedEffectiveGate(path string) string {
+	ph, ok, err := parsePlaceholderFile(path)
+	if err != nil || !ok {
+		return "human"
+	}
+	return ph.Gate
+}
+
 // reactivateGate is the gate a reactivated placeholder carries: the gate
-// derived from the live issue, except that a stored `gate: human` is never
-// relaxed to model. The stored value may be a deliberate human override, and a
-// reopen is no evidence the risk went away; tightening is automatic, loosening
-// stays a human edit.
+// derived from the live issue, except that a stored human gate (the effective
+// gate from storedEffectiveGate, not the raw line text) is never relaxed to
+// model. The stored value may be a deliberate human override, and a reopen is
+// no evidence the risk went away; tightening is automatic, loosening stays a
+// human edit.
 func reactivateGate(stored, live string) string {
 	if strings.EqualFold(stored, "human") {
 		return "human"
@@ -1274,4 +1292,13 @@ func unblockPlaceholderFile(path string) error {
 		out = append(out, line)
 	}
 	return os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644)
+}
+
+// closeOutGateNote names the live gate a reactivate plan will write (a stored
+// human gate still wins at write time), so a dry run shows the change.
+func closeOutGateNote(c closeOutPlan) string {
+	if c.Action != "reactivate" || c.Gate == "" {
+		return ""
+	}
+	return ", gate:" + c.Gate
 }

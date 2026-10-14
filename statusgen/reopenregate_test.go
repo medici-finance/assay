@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -135,6 +136,52 @@ func TestReopenKeepsHumanGate(t *testing.T) {
 	}
 	if code := run(root, "lint", nil, nil, ""); code != 0 {
 		t.Fatalf("lint after reactivate exited %d, want 0", code)
+	}
+}
+
+// TestReopenKeepsHumanGateAnyYAMLForm — "stored is human" is decided from the
+// value the reader decodes, not the raw line text: a quoted or commented human
+// gate parses as human everywhere downstream, so reactivation must keep it, and
+// a placeholder with no gate line whose stored labels derive human keeps that too.
+// regression: F-scan-reopen-frontmatter
+func TestReopenKeepsHumanGateAnyYAMLForm(t *testing.T) {
+	cases := []struct {
+		name   string
+		gate   string // the frontmatter gate line ("" = none)
+		labels string
+	}{
+		{"double-quoted", `gate: "human"`, "labels: [bug]\n"},
+		{"single-quoted", `gate: 'human'`, "labels: [bug]\n"},
+		{"trailing-comment", `gate: human  # override: reviewed by hand`, "labels: [bug]\n"},
+		{"multi-line-flow-labels", "gate: human", "labels: [bug,\n  funds]\n"},
+		{"no-gate-line-risky-stored-labels", "", "labels: [bug, funds]\n"},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root, dir := reopenFixture(t)
+			n := 700 + i
+			gateLine := ""
+			if tc.gate != "" {
+				gateLine = tc.gate + "\n"
+			}
+			body := fmt.Sprintf("---\nschema: placeholder-v1\nbrief: issue-loop/issue-%d\nissue: %d\n"+
+				"repo: example-org/tracker\nwave: 0\nstatus: done\n%s%sresolved: issue-close\n---\nSee issue #%d.\n",
+				n, n, gateLine, tc.labels, n)
+			archived := writeTemp(t, filepath.Join(dir, archiveDirName), fmt.Sprintf("issue-%d.md", n), body)
+			data := map[string][]ghIssue{
+				scanHomeRepo(): {{Number: n, Title: "reopened", Labels: lbl("bug")}},
+			}
+			if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll); code != 0 {
+				t.Fatalf("scan exited %d, want 0", code)
+			}
+			if _, err := os.Stat(archived); !os.IsNotExist(err) {
+				t.Fatalf("placeholder must move out of done/ (stat err=%v)", err)
+			}
+			assertRegated(t, filepath.Join(dir, fmt.Sprintf("issue-%d.md", n)), "human", []string{"bug"})
+			if code := run(root, "lint", nil, nil, ""); code != 0 {
+				t.Fatalf("lint after reactivate exited %d, want 0", code)
+			}
+		})
 	}
 }
 

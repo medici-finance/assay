@@ -556,8 +556,8 @@ func runTranscribeScan(root string, dryRun bool,
 		fmt.Printf("transcribe-scan: CREATE %s  (%s#%d, gate:%s)\n", p.Rel, p.Repo, p.Issue, p.Gate)
 	}
 	for _, c := range delta.CloseOuts {
-		fmt.Printf("transcribe-scan: %s %s  (%s#%d, %s)\n",
-			strings.ToUpper(c.Action), c.Rel, c.Repo, c.Issue, closeOutReason(c.Action))
+		fmt.Printf("transcribe-scan: %s %s  (%s#%d, %s%s)\n",
+			strings.ToUpper(c.Action), c.Rel, c.Repo, c.Issue, closeOutReason(c.Action), closeOutGateNote(c))
 	}
 	for _, u := range delta.Unblocks {
 		fmt.Printf("transcribe-scan: AWAIT-FLIP %s  (%s#%d, block cleared)\n", u.Path, u.Repo, u.Issue)
