@@ -139,7 +139,7 @@ directory entry, that is linked, foreign, on another device or writable by
 others is refused, and nothing is followed through it. Measurement runs first
 and applies those checks to all of `build/` and `mod/`. A bad entry anywhere
 there therefore makes the pass `could-not-check` **before the trim runs**:
-nothing is trimmed, and the failure names the first bad member. Such an entry
+nothing is trimmed, and the failure names the failing check. Such an entry
 keeps admission `could-not-check` until it is removed. This fails safe: the
 trim never runs on a cache it could not measure. Inside the trim, a directory
 entry is checked in full before any of it is removed, and one bad member refuses

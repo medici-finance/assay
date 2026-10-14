@@ -890,11 +890,12 @@ func cacheCmd() *cobra.Command {
 		Long: "Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env or defaults.env; macOS/Linux).\n\n" +
 			"  cellctl cache <cell> status    dry-run JSON; no cleanup\n" +
 			"  cellctl cache <cell> clean     inactive caches, only under pressure\n" +
-			"  cellctl cache <cell> wipe      discard inactive build/module caches regardless of pressure\n" +
+			"  cellctl cache <cell> wipe      discard build/module caches regardless of pressure (live consumers: aged build entries only)\n" +
 			"  cellctl cache <cell> recover --confirm-stopped\n\n" +
 			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor, 24h compiler-cache trim age.\n" +
 			"Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE / CELL_GO_CACHE_BUILD_MAX_AGE.\n" +
-			"Under pressure with live consumers, only compiler-cache entries older than the trim age are removed.\n" +
+			"With live consumers, clean (under pressure) and wipe (always) remove only compiler-cache entries\n" +
+			"older than the trim age; module caches, gopath and whole roots stay protected.\n" +
 			"Recovery requires external proof ALL cache consumers have stopped. See docs/cellctl-go-cache.md.",
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,

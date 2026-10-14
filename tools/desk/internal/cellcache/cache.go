@@ -232,9 +232,11 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 	}
 	removed := false
 	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) > 0 && !dry {
-		// Live consumers hold both roots, so only the age trim may act: it
-		// takes compiler-cache entries no running build can have used within
-		// the policy's age, and leaves mod/ and gopath/ to the records.
+		// Live consumer records protect mod/, gopath/ and whole-root removal,
+		// so only the age trim may act (under pressure, or always on a wipe):
+		// it takes compiler-cache entries past the policy's age, which cmd/go's
+		// use stamp keeps older than any entry a running build looked up within
+		// the last hour, and leaves mod/ and gopath/ to the records.
 		n, bytes, err := m.trimBuild(time.Now().Add(-m.p.BuildAge()))
 		r.TrimmedBuild, r.TrimmedBuildBytes = n, bytes
 		removed = n > 0
