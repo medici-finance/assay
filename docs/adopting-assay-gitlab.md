@@ -348,8 +348,11 @@ it, and `ASSAY_ALLOWED_REPOS` already listing the adopter project does not set i
 - **Verify.** Run the tool and read the effective value it echoes to **stderr**:
 
   ```
-  issueboard 2>&1 >/dev/null | grep -E 'ASSAY_SCAN_REPOS=|configured='
+  ASSAY_CONFIG_ECHO=full issueboard 2>&1 >/dev/null | grep -E 'ASSAY_SCAN_REPOS=|configured='
   ```
+
+  `ASSAY_CONFIG_ECHO=full` makes the tool print the whole echo; without it, a run whose
+  configuration was already shown prints one digest line with no `ASSAY_SCAN_REPOS=`.
 
   A non-empty `ASSAY_SCAN_REPOS=` listing at least the adopter slug is the pass; `exit 6`
   with an empty value is the silent half-configured state this step exists to close.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -38,7 +39,8 @@ type ToolCall struct {
 	// Dir is the working directory; empty inherits the parent's.
 	Dir string
 	// Env, when non-nil, REPLACES the child's environment (the os/exec contract). A caller
-	// that means to add one variable passes append(os.Environ(), "K=V").
+	// that means to add one variable passes append(os.Environ(), "K=V"). Either way Run sets
+	// ASSAY_CONFIG_ECHO=full in it (UnsurfacedEchoEnv).
 	Env []string
 	// Start is the command constructor. Nil means exec.Command. It exists so a package that
 	// already owns a recording seam (`var execCommand = exec.Command`, which its tests wrap
@@ -78,9 +80,16 @@ func Run(c ToolCall) ToolRun {
 	if c.Dir != "" {
 		cmd.Dir = c.Dir
 	}
-	if c.Env != nil {
-		cmd.Env = c.Env
+	// The child's stderr is captured and its echo stripped as preamble (ToolMessage), so the
+	// child must not record a config digest nobody saw: it gets the stateless full echo.
+	env := c.Env
+	if env == nil {
+		env = cmd.Env
 	}
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = UnsurfacedEchoEnv(env)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
@@ -139,7 +148,8 @@ func (r ToolRun) CommandLine() string {
 
 // ToolMessage is what a wrapped desk tool actually SAID, kept whole.
 //
-// Every desk tool opens its stderr with the effective-config echo (`assay-config: …`) and,
+// Every desk tool opens its stderr with the effective-config echo (`assay-config: …` — one
+// digest line by default, the full block when configecho.go's conditions call for it) and,
 // on an unpinned build, the drift warning. A report that shows only the FIRST stderr line
 // therefore shows the config echo and never the tool's own message — which is how a
 // stale-branch collision reached an operator as "worktree-create failed (assay-config: …)"

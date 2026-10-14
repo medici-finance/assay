@@ -2,13 +2,17 @@
 brief: assay:assay:graph-execution:16
 title: Cell ownership, cumulative budgets and restoration fencing
 why: Recovery can repeat effects or restart a paused Cell if ownership, budgets and stop state exist only in process memory. Durable state must constrain the old worker as well as its replacement.
-wave: 2
+wave: 5
 depends:
 - graph-execution/04
 - graph-execution/09
+- graph-execution/28
+- graph-execution/29
 unblocks:
 - graph-execution/14
 - graph-execution/25
+- graph-execution/19
+- graph-execution/26
 effort: L
 gate: human
 risk:
@@ -28,6 +32,12 @@ sources:
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
+- docs/proposals/non-ci-architecture/20-amendment-manifest.md — R2 owner row and R2 amendment scope (operator incarnation binding)
+- docs/proposals/non-ci-architecture/14-storage-forge-graph.md — lines 50-56 (fresh authority incarnation and key; held outside PostgreSQL; mismatch starts paused)
+- docs/proposals/non-ci-architecture/15-regression-from-day-one.md — lines 51, 58 (rollback with a surviving old capability; failover with stale generation)
+- docs/proposals/non-ci-architecture/16-delivery-sequence.md — line 56 (R2 operator incarnation binding)
+- "medici-finance/assay#2500 — maintainer ratification of the whole target @ 23f655f5d (approval activates nothing)"
+- freshness-checked 2026-10-13 @ 4696d598e58820806d0bcf8c9b2dd87f29115400
 exec-tier: strong
 exec-tier-why: Cross-component contracts and independent failure controls must agree; the implementation requires design judgment.
 domain: complicated
@@ -36,7 +46,9 @@ consumers:
 - 'tools/desk: follow-up graph-execution/14'
 - 'workflow/store: follow-up graph-execution/19'
 - 'workflow/controller: follow-up graph-execution/21'
-version: 3
+- 'spec/operator-incarnation-v1.md: follow-up graph-execution/16 (this brief; flips to fixed-here when the implementation edits the path)'
+- 'loopadmin supervisor launch admission (checks the current incarnation): follow-up graph-execution/26'
+version: 4
 id: db922112-28f0-44c0-b120-9d6c4f56e103
 ---
 
@@ -44,7 +56,7 @@ id: db922112-28f0-44c0-b120-9d6c4f56e103
 
 ## Context
 
-files: `drainloop/ownership.go` (planned), `drainloop/ownership_test.go` (planned), `drainloop/budget.go` (planned), `drainloop/budget_test.go` (planned), `drainloop/restore_test.go` (planned), `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md` (planned)
+files: `drainloop/ownership.go` (planned), `drainloop/ownership_test.go` (planned), `drainloop/budget.go` (planned), `drainloop/budget_test.go` (planned), `drainloop/restore_test.go` (planned), `drainloop/README.md`, `docs/enforcement-model.md`, `changelog/graph-execution-16-cell-ownership-budgets.md` (planned). Added by the R2 amendment (2026-10-13): `spec/operator-incarnation-v1.md` (planned), `drainloop/incarnation.go` (planned), `drainloop/incarnation_test.go` (planned).
 
 facts: 04 owns basic effect receipts and reconcile-before-retry. This extension adds ownership/budgets without replacing that protocol or widening the six-method Loop interface.
 
@@ -86,12 +98,52 @@ Persist backend ownership/transfer generation, outstanding launch reservations, 
 
 Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
 
+## Non-CI R2 amendment — 2026-10-13 (operator incarnation binding)
+
+The maintainer ratified the non-CI target (medici-finance/assay#2500, revision 23f655f5d);
+approval activates nothing. Owner row: package R2 in the
+[amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md). The
+2026-10-02 amendment above stands; this section adds the incarnation that makes it hold
+across database deletion and rollback.
+
+- **What is added.** Every ownership generation is valid only inside one **operator
+  incarnation**: a fresh random identity and capability-signing key minted on every complete
+  reconstruction, point-in-time rollback and ownership transfer (target 14:50). The trusted
+  operator holds the current incarnation outside PostgreSQL, in protected host control state
+  beside the repository assignment; a database backup or a Git configuration revision cannot
+  restore an old incarnation as current.
+- **Where it is checked.** At the effect boundary this brief already fences: every new effect
+  admission checks the current incarnation together with owner and generation, so a stale
+  queued request or capability fails even when its old SQL row and generation reappear
+  (14:52, 15:51). Evidence keeps the old incarnation as provenance without reactivating it.
+- **Start paused.** A mismatched or missing incarnation, or a missing activation record,
+  starts admission paused (14:56). Restore rotates the incarnation and key and requires the
+  operator's confirmation that the whole execution group was stopped before admission
+  reopens; a list of attempts recovered from SQL is not that confirmation (14:52).
+- **Contract.** `spec/operator-incarnation-v1.md` (planned) states the incarnation fields,
+  the rotation triggers, the paused-start rule and how a consumer reads the current value.
+  graph-execution/19 stores the activation record; graph-execution/26 checks it before a
+  launch. Neither imports `drainloop`; they conform to the contract.
+- **Unchanged.** The drainloop seam stays store-neutral (fake stores in this brief's tests);
+  the real PostgreSQL rollback proof is graph-execution/19 row 7. Read Task 4's "not assumed from
+  SQLite transactions" as "not assumed from database transactions": the runtime store is
+  PostgreSQL (graph-execution/19's R2 amendment), and its transactions prove no fencing.
+- Risk answers and gate unchanged (`irreversible: yes`, human). The decision issue filed at
+  `spec` pickup now also carries the incarnation storage location and rotation procedure.
+
+## R3 follow-up — not in this amendment
+
+Package R3 later amends this brief for **exclusive repository assignment**: operator admission
+rejects overlapping mutating assignment of one external repository before capabilities issue
+(15:49). That is not authored here; do not implement it under these rows.
+
 ## Task
 
 1. Define durable reservation and ownership-generation seams, cancellation intent, cumulative attempt budgets and stop/override retention. Use existing storage where possible; adapter conformance must reject non-durable required stores.
 2. Fence stale workers at the effect boundary. Require cohort cutover to remove legacy direct credentials or prove equivalent provider restrictions; a database lease alone is insufficient. Keep provider outcome unknown until authoritative reconciliation.
 3. Add crash/restore/concurrent-owner fixtures with a separately enforcing fake provider. Bypass the scheduler to prove stale-generation rejection at the provider boundary; preserve pauses and unknown effects across restore. No production credentials or cluster calls.
 4. Document limitations for providers without fencing or idempotency: hold and require authorized resolution, never claim exactly-once. Restore/failover is a tested adapter capability, not assumed from SQLite transactions.
+5. (R2, 2026-10-13) Write `spec/operator-incarnation-v1.md` (planned) and extend the ownership-generation seam so effect admission checks the current operator incarnation with owner and generation. Mint a fresh incarnation and key on reconstruction, rollback and transfer; start paused on a mismatched or missing incarnation; keep the old incarnation as evidence provenance only. Prove it at the effect boundary with the scheduler bypassed. Add a test that resolves the contract's named fields against the incarnation type.
 
 ## Interface contract
 
@@ -109,6 +161,9 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 4 | check:ci +mutation | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetConcurrentReservations.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetConcurrentReservations$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetConcurrentReservations " "$wi_out")` | exit 0; named PASS; concurrent admissions cannot spend the same available allowance; mutation: exclude outstanding reservations from available allowance — the named test must fail |
 | 5 | check:ci +flow | `(cd drainloop && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestCellBudgetRestoreAllAttempts.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBudgetRestoreAllAttempts$" ./... > "$wi_out" && grep -q -- "--- PASS: TestCellBudgetRestoreAllAttempts " "$wi_out")` | exit 0; named PASS; failed-attempt spend, reservations, unknown usage and stop state survive restore |
 | 6 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestOwnershipBackendHandbackUnknown$" ./... > "$routing_out" && grep -q -- "--- PASS: TestOwnershipBackendHandbackUnknown " "$routing_out")` | exit 0; named PASS; transfer with unknown effect holds, restore retains usage/stop, stale backend cannot write; mutation: release ownership on handback while an effect is unknown — the named test must fail |
+| 7 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationStaleRefused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationStaleRefused " "$routing_out")` | exit 0; named PASS; with the scheduler bypassed, a capability minted under an earlier incarnation is refused at the effect boundary even when its owner and generation reappear from a restored store, and no effect is applied; mutation: compare only owner and generation, ignoring the incarnation — the named test must fail |
+| 8 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationMismatchPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationMismatchPaused " "$routing_out")` | exit 0; named PASS; a missing or mismatched operator incarnation starts admission paused, a store snapshot cannot set the current incarnation, and reopening requires rotation plus confirmed execution-group stop; mutation: take the current incarnation from the restored store's activation record — the named test must fail |
+| 9 | check:ci +dereference +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationSpecMatchesFields$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationSpecMatchesFields " "$routing_out")` | exit 0; named PASS; every field `spec/operator-incarnation-v1.md` (planned) names exists on the incarnation type in `drainloop/incarnation.go` (planned), and every exported field is named in the contract; mutation: rename one field in the contract text — the named test must fail |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.

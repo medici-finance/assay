@@ -2,7 +2,7 @@
 brief: assay:assay:iso-9001:11
 title: Qualify project assurance preparation on an offline corpus
 why: A well-formed review packet can still make unsupported claims or miss the useful next action. A frozen task corpus and independently reviewed rubric make those limits visible before a project relies on the procedure.
-wave: 10
+wave: 13
 depends:
 - iso-9001/10
 unblocks: []
