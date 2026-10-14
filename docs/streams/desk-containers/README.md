@@ -44,6 +44,16 @@ component list, build/run topology, and open questions.
 | 12 | [Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob](brief-12-unattended-tick-mode-cronjob-component.md) | 4 | M | todo | — | — |
 | 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |
 | 14 | [Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay](brief-14-flux-install-example.md) | 6 | M | todo | — | — |
+| 15 | [The cell-operation machine seam — one `--json` result contract and a plan-id → apply confirmation that a program can drive and a human still clicks](brief-15-cell-op-machine-seam.md) | 7 | M | todo | — | — |
+| 16 | [Cell-scoped stop flags — `STOP.cell.<cell>` and `STOP.cell.<cell>.<loop>`, honoured by the Guard for any session carrying the cell marker](brief-16-cell-scoped-stop-flags.md) | 7 | M | todo | — | — |
+| 17 | [`cellctl up <cell>` converges the cell — already-up roles are skipped, stale ones reconciled, launches serialized, one summary table](brief-17-up-converges-the-cell.md) | 8 | M | todo | — | — |
+| 18 | [`cellctl drain\|pause\|resume <cell> [role...]` — stop new work, let in-flight work finish, write a handoff note, then shut down](brief-18-drain-pause-resume-handoff.md) | 8 | M | todo | — | — |
+| 19 | [`cellctl restart <cell> [role...]` — rolling drain → down → up, one role at a time, so the pipeline never fully stops](brief-19-restart-rolling.md) | 9 | S | todo | — | — |
+| 20 | [`cellctl status <cell>` as a cell overview — per-role liveness, model, heartbeat, claims, stop state, plus comms, cache, locks and tool version](brief-20-status-overview.md) | 8 | M | todo | — | — |
+| 21 | [`cellctl doctor <cell>` — diagnose every known way a cell gets stuck, name the cause, and offer the fix as one confirmed plan](brief-21-doctor.md) | 9 | M | todo | — | — |
+| 22 | [`cellctl logs <cell> [role] [--lines N]` — read a desk window's recent output from whichever cockpit holds it](brief-22-logs.md) | 8 | S | todo | — | — |
+| 23 | [`cellctl upgrade <cell>` — install the pinned desk-tools release and plugin, verify them, then rolling-restart the cell onto them](brief-23-upgrade.md) | 10 | M | todo | — | — |
+| 24 | [`cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans](brief-24-gc.md) | 10 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -136,6 +146,46 @@ until 09 gives the launcher the kind the bridge was standing in for; 10 is the p
 goes the release after the port lands, not with it. Native-Windows `cellctl` is a named
 consequence of 10 for the `windows-port` stream, delivered there, not here.
 
+### The cell-operator chain — `15/16 → 17/18/20/22 → 19/21 → 23/24` (2026-10-14)
+
+A third chain, also in the host launcher, and independent of both chains above. It makes
+`cellctl` usable at the level an operator thinks in, the CELL, rather than one desk at a time.
+The trigger was a routine restart on 2026-10-14. Five hand-closed desk windows needed eleven
+per-desk recovery commands: five `unfinished cadence pass` refusals, a failed comms
+checkpoint, ten orphaned background loops, a 70.5 GB go cache pinned by dead sessions'
+records, and four of five desks failing at launch on a lock race (#2709) whose fix had merged
+but not shipped. #2879 (cache), #2880 (`up` reconcile preflight) and #2881 (idle deskd pane)
+are the issue-sized pieces already in flight. This chain is the verb surface around them.
+
+- **Wave 7** — `desk-containers/15` (the machine seam: one `--json` result contract and the
+  plan-id → apply confirmation every later verb adopts, so the console cockpit can drive them
+  and a human still clicks) and `desk-containers/16` (cell-scoped stop flags, so a pause can be
+  aimed at one cell). They are independent, and both are heads.
+- **Wave 8** — `desk-containers/17` (`up` converges; uses #2880's reconcile),
+  `desk-containers/18` (`drain`/`pause`/`resume` and the handoff note; needs 16),
+  `desk-containers/20` (`status` overview and the shared `cellop.Inventory`),
+  `desk-containers/22` (`logs`).
+- **Wave 9** — `desk-containers/19` (rolling `restart` = 18 then 17, per role) and
+  `desk-containers/21` (`doctor`, over 20's inventory).
+- **Wave 10** — `desk-containers/23` (`upgrade` = pinned install then 19) and
+  `desk-containers/24` (`gc`, reusing 21's classification).
+
+Critical path: `15 → 18 → 19 → 23` (16 joins at 18). The head was checked: nothing in the
+chain can expose a result or a confirmation to the console cockpit before 15 fixes their
+shape, and 18 cannot aim a pause before 16, because today's `STOP` flags live in the operator's
+config home, which every house cell shares through a symlink. #2880 is a dependency of 17 and
+21 as an issue, not a brief: if its PR changes its function names, 17 and 21 report
+NEEDS_CONTEXT rather than re-implement it.
+
+Not authored: `send <cell> <role|all> <msg>`, an operator message into desk sessions. The
+comms lane ACL derives the sender from the session's own desk role and has no operator lane,
+so a `send` verb first needs an operator-lane decision. That is a design question for the
+comms owners, not a brief.
+
+Tempting-but-wrong first step: building `restart` straight on `down`/`up`. Without 16's
+aimed stop and 18's wait for in-flight work, a restart is today's hand-close with extra
+steps, and it leaves the same unfinished checkpoints behind.
+
 ## Shared conventions
 
 - All container assets live under `containers/`; docs land in `docs/docker.md`
@@ -145,3 +195,7 @@ consequence of 10 for the `windows-port` stream, delivered there, not here.
   credentials only per the brief-02 contract.
 - Feature branch + draft PR per brief; never commit `STATUS.md` on a branch; never
   self-flip a leak-sweep.
+- Cell-operator verbs (briefs 15–24) share one output and confirmation contract, brief 15:
+  `--json` emits a `cell-op-result-v1` document, and every confirmation has a TTY prompt plus
+  a non-TTY `--plan` → `--apply <plan-id>` form, re-verified at apply. No verb defines a
+  blanket `--yes`.

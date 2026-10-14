@@ -1,0 +1,67 @@
+---
+brief: assay:assay:desk-containers:19
+title: "`cellctl restart <cell> [role...]` — rolling drain → down → up, one role at a time, so the pipeline never fully stops"
+why: >-
+  Restarting desks is routine: a new tool release, a changed model pin, a session that has
+  run out of context. Today it is a full stop of every window followed by a hand-run recovery.
+  A rolling restart cycles one desk at a time. The others keep reviewing, verifying and
+  dispatching, and each restarted desk starts from the handoff note its predecessor wrote.
+wave: 9
+depends: ["desk-containers/17", "desk-containers/18"]
+unblocks: ["desk-containers/23"]
+effort: S
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+schema: brief-v2
+version: 1
+authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
+sources:
+  - "Driver request 2026-10-14: a `restart <cell>` that cycles the desks"
+  - "desk-containers/17 — the converging `up --role`; desk-containers/18 — `drain --role`, `--now`, and the handoff note"
+  - "freshness-checked 2026-10-14 @ 0cb900584 (origin/main) — no restart verb; the nearest is `reset`, which also removes worktrees and caches (#2670)"
+exec-tier: any
+domain: clear
+consumers:
+  - "tools/desk/cmd/cellctl (new restart verb): follow-up desk-containers/19 (this brief)"
+  - "docs/cellctl.md: follow-up desk-containers/19 (this brief)"
+  - "the console cockpit (per-role and whole-cell restart actions): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
+---
+
+# Brief 19 — `cellctl restart`, rolling
+
+## Context
+files:
+- `tools/desk/cmd/cellctl/restart.go` (planned), `restart_test.go` (planned)
+- `tools/desk/cmd/cellctl/cobra.go` — register `restart`
+- `docs/cellctl.md`
+- `changelog/desk-containers-19-restart.md` (planned)
+
+facts:
+- `restart <cell> [role...]` runs, for each targeted role in `ROLES` order with the-desk LAST: `drain --role <r>`, then `up --role <r>`, and waits for that role's `up` to report `up` before moving on.
+- `--all-at-once` drains every targeted role together and then runs one `up`, for when the pipeline should stop. `--now` passes through to drain.
+- If a role fails to come back, restart stops there. It does not restart further roles, it reports the failed role with `up`'s error, and it exits 1. The roles not yet touched keep running.
+- It composes the two verbs and adds no new state. Output is a desk-containers/15 result with one `roles[]` entry per role, carrying both phases. Off a TTY, a `--now` restart goes through plan → apply.
+
+## Ground rules
+- NEVER git push / trigger workflows. Stop at `implemented`.
+- Compose `drain` and `up`; do not re-implement either.
+- If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
+
+## Task
+1. Implement `restart` as above; register it; docs; changelog fragment.
+
+## Verify (executable — no prose-only DoD items)
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRolling' -count=1` | exit 0 — the recorded call order is drain r1, up r1, drain r2, up r2, …, the-desk last; at no point are two roles drained together |
+| 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartStopsOnFailure' -count=1` | exit 0 — when role 2's `up` fails, roles 3+ are never drained and the result names role 2's error |
+| 3 | gate:model +flow | On a disposable house cell with stub desks: `cellctl restart <cell>` while polling `cellctl cadence <cell> status` every 2s | every poll shows at least four of five roles `running=true`; the run ends with all five up and a fresh handoff note read by each |
+| 4 | check | `statusgen --root . --lint` | exit 0 |
+
+## Evidence
+<!-- appended at implementation time by a NON-implementer: one row per Verify item
+     (command, exit code, output line(s) or hash, date, runner). -->
+
+## Review
+Gate: model. All four risk answers are no. The reviewer checks that row 3 shows the pipeline never fully stopped.
