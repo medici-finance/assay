@@ -136,11 +136,16 @@ stays behind the consumer records.
 
 The trim uses the same checks as measurement. An entry, or any member of a
 directory entry, that is linked, foreign, on another device or writable by
-others is refused. A directory entry is checked in full before any of it is
-removed, and one bad member refuses the whole directory. A refused entry is
-skipped, never followed. The trim continues with the next entry and reports
-every refusal, so the pass ends `could-not-check` and the failures name each
-entry. Files are unlinked through the verified root, and directories are removed
+others is refused, and nothing is followed through it. Measurement runs first
+and applies those checks to all of `build/` and `mod/`. A bad entry anywhere
+there therefore makes the pass `could-not-check` **before the trim runs**:
+nothing is trimmed, and the failure names the first bad member. Such an entry
+keeps admission `could-not-check` until it is removed. This fails safe: the
+trim never runs on a cache it could not measure. Inside the trim, a directory
+entry is checked in full before any of it is removed, and one bad member refuses
+the whole directory. An entry that turns bad between measurement and the trim
+is skipped, never followed, and reported, and the trim continues with the next
+entry; the pass still ends `could-not-check`. Files are unlinked through the verified root, and directories are removed
 by the same verified-descriptor path as inactive cleanup. If the trim clears pressure, admission passes with consumers
 still running. If it does not, the result is `storage-deferred` as before.
 Without pressure nothing is trimmed, so warm caches stay warm; an explicit
@@ -197,8 +202,9 @@ for next-cleanup comparisons. Each complete JSON record includes policy,
 filesystem identity, UTC before/after timestamps, logical usage, available bytes,
 skipped active records, reclaimed logical bytes, the number and summed logical
 bytes of compiler-cache entries the age trim removed (`trimmed_build_entries`,
-`trimmed_build_bytes`) and cleanup failures. The trimmed counts are exactly
-what was deleted; reclaimed bytes are a before/after difference that concurrent
+`trimmed_build_bytes`) and cleanup failures. The trimmed counts are what the
+trim removed, barring a concurrent removal or a partially failed directory
+removal; reclaimed bytes are a before/after difference that concurrent
 builds can blur. Retention
 is bounded; export reports if longer history is needed. Status and dispatch also
 emit current JSON. Failure to persist a live report refuses admission.
