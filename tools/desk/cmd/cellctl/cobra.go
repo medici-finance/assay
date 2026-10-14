@@ -675,8 +675,11 @@ func upCmd() *cobra.Command {
 			"--model, --harness, --kind and --provider override the pin for EVERY role window this run opens (per run,\n" +
 			"not persisted, the same precedence as `cellctl desk`). --set persists every override given, with one cell.env\n" +
 			"backup first. --automate '<cron>' is an ORCA-only shape: one scheduled automation per role, fronted by an\n" +
-			"exit-code precheck, instead of a live terminal. DRY_RUN=1 prints the resolved cockpit and the per-role\n" +
-			"commands and launches nothing.\n\n" +
+			"exit-code precheck, instead of a live terminal. --dry-run (or DRY_RUN=1) prints the reconcile inventory,\n" +
+			"the resolved cockpit and the per-role commands and changes and launches nothing.\n\n" +
+			"On a house cell, up first runs a reconcile preflight: stale cadence/comms checkpoints and orphaned\n" +
+			"processes carrying the cell marker are inventoried by pid and start time; on a terminal it asks once\n" +
+			"before clearing them, and otherwise refuses with the inventory and the exact recovery commands.\n\n" +
 			"On a container or scrubbed cell up hands the single desk the same typed options; the host-cockpit flags\n" +
 			"(--no-the-desk, --with-the-desk, --no-attach, --automate) are refused there.",
 		Annotations: map[string]string{leadingArgsKey: "1"},
@@ -687,12 +690,16 @@ func upCmd() *cobra.Command {
 		bBool("with-the-desk", "open the the-desk window (the default; accepted for compatibility)"),
 		bBool("no-attach", "do not attach to the session after opening it"),
 		bStr("automate", "orca only: schedule one automation per role (a 5-field cron string or a preset)"),
+		bBool("dry-run", "print the reconcile inventory and plan, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)"),
 	)
 	set := declare(cmd, bs...)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		c := loadCellWithKind(cell, kindScan(cmd, verbWords))
 		v := resolve(set, c)
+		if v.Bool("dry-run") {
+			c.Env.Put("DRY_RUN", "1")
+		}
 		launchNeeds(v)
 		needValue(v, "automate", "--automate needs a trigger (a 5-field cron string or a preset)")
 		cmdUp(c, v, lastBare(args[1:]))

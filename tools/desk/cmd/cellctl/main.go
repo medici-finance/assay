@@ -58,6 +58,7 @@ func main() {
 	// The model-policy hook's deadline starts before anything that can block, the roster echo
 	// included (policy_enforce.go, armHookDeadline).
 	armHookDeadline(commandArgs(os.Args[1:]))
+	dropInheritedCellMarker()
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	// The roster echo (deskkit.EchoEffectiveConfig) runs from the command tree's pre-run hook
 	// (cobra.go), once per run, so that --help and --version stay pure introspection.
