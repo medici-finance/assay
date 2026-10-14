@@ -42,7 +42,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
-  GO_VERSION: "1.25.0"
+  GO_VERSION: "1.27.2"
 
 jobs:
   # ── The repo's own test corpus ──────────────────────────────────────────────
@@ -65,7 +65,7 @@ jobs:
           # here) — a GO_VERSION change without a matching digest fails this step CLOSED
           # rather than trusting the fetch. This suite is a trust-establishing baseline,
           # so it verifies the toolchain before unpacking, same as release.yml.
-          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -160,7 +160,7 @@ jobs:
           # here) — a GO_VERSION change without a matching digest fails this step CLOSED
           # rather than trusting the fetch. This suite is a trust-establishing baseline,
           # so it verifies the toolchain before unpacking, same as release.yml.
-          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
