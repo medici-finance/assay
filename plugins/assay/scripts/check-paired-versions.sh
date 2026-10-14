@@ -23,9 +23,9 @@
 #                    re-pin author's evidence — but it does catch a truncated, upper-cased or
 #                    placeholder digest before an adopter's verification fails on it.
 #
-# Deliberately NOT checked: whether the pinned tag is the LATEST release. Pinning is the design
-# (never a floating tag), so "behind latest" is a re-pin decision, not a defect this script can
-# rule on. What it enforces is internal consistency, which is what silently rotted.
+# Not checked HERE: whether the pinned tag is current with the latest release. That needs the
+# network, so it is assertion (d) of the online checker `tools/pairedversions` (`make
+# paired-versions`), which fails a pin left behind by a newer release past its grace window.
 #
 # THREE-STATE: could-not-check is a FAILURE, never a quiet pass. A missing or unreadable file,
 # an absent key, or a section with no platform pins all exit non-zero — a guard that cannot see
