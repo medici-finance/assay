@@ -88,7 +88,7 @@ worker and run boundaries differ from a local Codex daemon.
 | Backend candidate | Session/execution owner | Initial cellctl disposition |
 | --- | --- | --- |
 | Codex owned app server | Server owns threads and turns; cell owns the server binding | First daemon adapter to qualify, local host first; existing Claude process-adapter plan remains |
-| Claude CLI / Agent SDK | Owned process hosts a resumable conversation | Retain process adapter; qualify SDK lifecycle before expanding |
+| Claude CLI / Agent SDK | Owned process hosts a resumable conversation | Retain process adapter; qualify the SDK control mapping below (S4 Claude lane) before expanding |
 | Claude Remote Control | Serving host executes; vendor connection supplies remote UI | Optional operator attachment, not the admission authority |
 | Cursor local CLI | Existing cellctl process/cadence integration | Retain current behavior |
 | Cursor managed or self-hosted agents | Vendor owns agent/run lifecycle; selected worker executes | Separate adapter and trust review; do not pretend it is a local PID |
@@ -99,6 +99,43 @@ submit, interrupt, enumerate descendants, list/stop background work, preserve
 continuation state, and confirm quiescence. Unsupported means unavailable, not
 success. A standing desk requires a qualified continuation policy; a persistent
 server alone supplies neither a timer nor a permanent-service guarantee.
+
+### Claude Agent SDK control mapping
+
+The Agent SDK's documented interfaces cover most of that capability list from inside a
+process cellctl owns. No vendor patch or private endpoint is needed. Names below are
+from the TypeScript SDK, and the Python SDK lacks some of the hooks. Every row is a
+candidate for the S4 Claude lane to qualify at a pinned version. None of them has been
+verified yet. [Hooks](https://code.claude.com/docs/en/agent-sdk/hooks),
+[sessions](https://code.claude.com/docs/en/agent-sdk/sessions),
+[permissions](https://code.claude.com/docs/en/agent-sdk/permissions),
+[TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript).
+
+| celld capability | Agent SDK surface | Qualification note |
+| --- | --- | --- |
+| Bind session | `query()` with a caller-chosen `sessionId`, or the `session_id` of the init system message | The SDK process owns the conversation. If the process exits, the in-flight turn ends with it. |
+| Submit / steer | streaming input (`prompt` as an `AsyncIterable`) and `streamInput()` | Streaming mode only. |
+| Observe / attach | the message stream, plus lifecycle events from `includeHookEvents` | Clients attach through celld, never to the SDK process directly. |
+| Interrupt | `Query.interrupt()` | Streaming mode only. The result message confirms the interrupt; the request alone does not. |
+| Stop background work | `Query.stopTask(taskId)` | Documented. Whether every owned task can be enumerated is unproven. |
+| Admission gate (drain) | `PreToolUse` hook that consults celld admission and returns `permissionDecision: "deny"` or `"defer"` | Hooks run before the permission rules, and a hook deny holds even under `bypassPermissions`. `defer` ends the turn with `stop_reason: "tool_deferred"` so the call can be resumed later. |
+| Continuation policy | `Stop` hook that returns `decision: "block"` with a `reason` | Replaces a native standing Goal. celld owns the policy, so freezing it changes no vendor state. A timed-out Stop callback lets the agent stop. |
+| Waiting for approval | `canUseTool` callback or `PermissionRequest` hook; `Notification` of type `permission_prompt` | celld reports the wait and never approves it automatically. |
+| Descendants / quiescence | `SubagentStart`/`SubagentStop` and `SessionStart` (with `source`)/`SessionEnd` hooks | The `SessionStart`/`SessionEnd` callbacks are TypeScript-only. |
+| Resume | `resume: <id>` (or `forkSession`); a `sessionStore` adapter for another host | Restores the conversation only. Files, running commands and pending approvals are not restored. |
+
+This keeps Claude an owned-process adapter, and the drain gate becomes mechanical
+rather than prompt-only. The existing [model-policy](cellctl-model-policy.md) hooks
+are the in-repo precedent: settings-injected hooks that call back into the launcher.
+The admission hook must follow the same rules: fail closed when its binary is
+missing, and never hang. Timeout handling differs by hook event and by version, so S4
+records the timeout behaviour observed at the pinned version.
+
+The limits stay explicit:
+
+- A controller crash loses the in-flight turn and its background commands.
+- There is no remote placement other than running the SDK process on the target host.
+- Remote Control remains an optional, view-only operator attachment.
 
 Three different cross-host operations must remain explicit:
 
@@ -225,6 +262,9 @@ Report drained only when captured obligations are completed or explicitly handed
 off, no new admissions occurred, and no owned turn or background work can continue
 admitting work. Freeze continuation at that boundary without marking a standing
 objective complete. Prompt-only compliance is insufficient for the admission gate.
+On the Claude lane the gate is the `PreToolUse` admission hook (section 3), which
+refuses or defers each tool call while admission is closed. Continuation freezes
+because the celld-owned `Stop` hook stops blocking.
 
 **Stop** is a distinct, explicitly requested interruption: close admissions, inhibit
 automatic continuation, interrupt owned turns and descendants, and terminate owned
@@ -310,6 +350,9 @@ The human driver owns these consequential decisions:
   drain/stop after preservation tests. Alternative: keep native Goal control solely
   with the user; then cellctl must expose the remaining human action and cannot
   claim unattended daemon drain/stop. Update the cadence contract only with the ruling.
+  D1 concerns native Goals only. Claude has no native Goal, and its continuation is
+  the celld-owned `Stop` hook, so the Claude lane neither needs nor implies D1's
+  authority. Its policy still has to pass S4.
 - **D2 — Initial boundary:** recommend local, opt-in Codex servers per cell/policy
   domain. Wider operator sharing requires additional isolation evidence; remote/cloud
   rollout is a later decision. Credential provisioning remains an implementation
@@ -386,7 +429,7 @@ into a production implementation or silently add another service/database.
 | **S1 — Codex server boundary** | Can one owned server preserve two roles' distinct model, command environment, MCP/plugin access and approval settings? Use two synthetic roles, two clients and one pinned server; detach/reattach each and inspect children. Compare with separate servers. | Actual effective settings and served-model records, endpoint/home identity, denied cross-role access, and the same bound session after reconnect. Decide shared-per-cell versus separate-per-policy-domain servers. Any process-wide setting that widens a role rejects sharing. CLI schema presence is insufficient. |
 | **S2 — Mixed-harness candidate handoff** | Can a Cursor worker produce a candidate that a Codex reviewer independently checks through the shared runner contract? Use one planted defect, immutable candidate hash and isolated author/reviewer workspaces. Characterize a Claude process fixture through the same contract; real Claude qualification remains owned by the existing first-adapter brief. | Preserve role, actual harness/model, candidate and attempt identity end to end; the reviewer detects the planted defect. A changed candidate invalidates review currency. Record supported and unsupported operations separately per harness. Decide the minimal adapter/profile extension, including how Cursor joins per-role policy without bypassing its present refusals. |
 | **S3 — Durable controller and supervisor** | Can the existing owners support a celld client/service split? Use disposable PostgreSQL, one cell owner, two fake runners and two clients. Inject a lost Start reply, duplicate invocation/registration, controller restart, unavailable database and backup rollback. | No duplicate accepted launch; unknown survives restart; stale generation/incarnation cannot produce an accepted effect even when bypassing the upper controller. Database failure refuses new admission; rollback starts paused. Decide the required changes to the runner contract, supervisor journal and ownership interfaces. Fake-provider success proves no vendor fencing. |
-| **S4 — Drain, stop and native continuation** | Can real runtime state prove quiescence? Exercise a synthetic Codex Goal with child agents/background commands and a Cursor run, including approval wait, lost cancellation reply and a client disconnect. Test drain during existing work and attempts to refill after completion. | Drain rejects new admission while accepted work finishes; stop confirms the owned execution tree ceased; unrelated sessions survive. Goal objective, budget and usage remain intact and paused/cleared state never revives. Decide D1 and each harness's stop capability. Unconfirmed cancellation stays unknown. Changes to real session Goal state require the driver's explicit trial authorization. |
+| **S4 — Drain, stop and native continuation** | Can real runtime state prove quiescence? Exercise a synthetic Codex Goal with child agents/background commands and a Cursor run, including approval wait, lost cancellation reply and a client disconnect. **Claude lane:** with one owned Agent SDK process, drain through the `PreToolUse` admission hook (deny and defer), continue and freeze through the `Stop` hook, interrupt a turn, stop a background task with `stopTask`, wait on an approval, and resume by session ID after a controller restart. Test drain during existing work and attempts to refill after completion. | Drain rejects new admission while accepted work finishes; stop confirms the owned execution tree ceased; unrelated sessions survive. Goal objective, budget and usage remain intact and paused/cleared state never revives. Decide D1 and each harness's stop capability. Unconfirmed cancellation stays unknown. Changes to real session Goal state require the driver's explicit trial authorization. For Claude, also record hook-timeout behaviour, which owned tasks can be enumerated, and what resume does not restore, each as verified, unavailable or could-not-check. |
 | **S5 — Remote registration and attachment** | Does the same ownership contract work on two disposable hosts? Register an operator-bound runner, connect two clients, cut the transport, replay an old registration and restart the runner. | Unauthorized/cross-cell registration is rejected; host identity and owner generation remain bound; reconnect finds the original session; contact loss cannot cause a duplicate on another host. Decide transport, credential provisioning and supported recovery. This does not qualify automatic failover. |
 | **S6 — Kubernetes lifecycle** | Does cluster packaging preserve the qualified contract? In a separately authorized disposable cluster, run one celld owner and two runner pods; delete a runner, exhaust termination grace, restart the controller and test both retained and lost workspace/session volumes. | Ready is not reported before registration and reconciliation; termination receipts distinguish confirmed stop from unknown; replacement cannot revive an old owner or reset budget/drain/Goal state. Retained artifacts identify the exact candidate after replacement; lost state causes a visible hold. Decide the pod/PVC/probe contract and whether a pilot is supportable. No production cluster access or HA claim. |
 
@@ -395,7 +438,8 @@ S2 follows S1's runtime characterization and S3's fixture contract. S4 follows S
 and explicit authorization for synthetic Goal changes; its evidence informs the
 production authority decision D1. S5 requires S3/S4, and S6 requires
 S5 plus separate cluster-trial authorization. The existing Claude-first adapter brief
-is not replaced by this experimental ordering.
+is not replaced by this experimental ordering. The S4 Claude lane qualifies that brief's SDK
+control mapping (section 3) and pairs with it; it neither supersedes it nor waits on it.
 
 The first useful delivery milestone is **S1–S4 locally**, with a thin client rather
 than a new desktop UI. A failure to preserve role policy or prove scoped stop blocks
