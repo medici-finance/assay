@@ -126,6 +126,78 @@
       "file": "internal/cellcache/cache.go",
       "old": "\tm.p = *fresh",
       "new": "\t_ = fresh"
+    },
+    {
+      "name": "trim the module cache under a live consumer",
+      "file": "internal/cellcache/cache.go",
+      "old": "\tconst dir = \"build\"",
+      "new": "\tconst dir = \"mod\""
+    },
+    {
+      "name": "trim ignores the age cutoff",
+      "file": "internal/cellcache/cache.go",
+      "old": "if !st.ModTime().Before(cutoff) {",
+      "new": "if false && !st.ModTime().Before(cutoff) {"
+    },
+    {
+      "name": "trim selects files that are not cache entries",
+      "file": "internal/cellcache/cache.go",
+      "old": "if !strings.HasSuffix(name, \"-a\") && !strings.HasSuffix(name, \"-d\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "no trim while a consumer record is held",
+      "file": "internal/cellcache/cache.go",
+      "old": "&& len(r.SkippedActive) > 0 && !dry {",
+      "new": "&& len(r.SkippedActive) > 0 && false {"
+    },
+    {
+      "name": "trim under a dry run",
+      "file": "internal/cellcache/cache.go",
+      "old": "&& len(r.SkippedActive) > 0 && !dry {",
+      "new": "&& len(r.SkippedActive) > 0 {"
+    },
+    {
+      "name": "trim without pressure",
+      "file": "internal/cellcache/cache.go",
+      "old": "(wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) > 0",
+      "new": "true && len(r.SkippedActive) > 0"
+    },
+    {
+      "name": "trim follows a linked entry",
+      "file": "internal/cellcache/cache.go",
+      "old": "if err = checkEntry(st, m.dev); err != nil || !st.Mode().IsRegular() {\n\t\t\t\treturn n, total, fmt.Errorf(\"invalid compiler cache entry %s\", path)",
+      "new": "if false {\n\t\t\t\treturn n, total, fmt.Errorf(\"invalid compiler cache entry %s\", path)"
+    },
+    {
+      "name": "trimmed bytes not reported",
+      "file": "internal/cellcache/cache.go",
+      "old": "r.TrimmedBuild, r.TrimmedBuildBytes = n, bytes",
+      "new": "r.TrimmedBuild, r.TrimmedBuildBytes = n, 0*bytes"
+    },
+    {
+      "name": "a fractional-second trim age is silently truncated",
+      "file": "internal/cellcache/policy.go",
+      "old": "d%time.Second != 0",
+      "new": "false"
+    },
+    {
+      "name": "recorded trim age below the floor accepted",
+      "file": "internal/cellcache/policy.go",
+      "old": "p.BuildMaxAge < int64(MinBuildMaxAge/time.Second) ||",
+      "new": "p.BuildMaxAge < 0 ||"
+    },
+    {
+      "name": "policy age ignored, default always used",
+      "file": "internal/cellcache/policy.go",
+      "old": "\tif p.BuildMaxAge == 0 {\n\t\treturn DefaultBuildMaxAge",
+      "new": "\tif true {\n\t\treturn DefaultBuildMaxAge"
+    },
+    {
+      "name": "legacy policy serialization changes",
+      "file": "internal/cellcache/policy.go",
+      "old": "`json:\"build_max_age_seconds,omitempty\"`",
+      "new": "`json:\"build_max_age_seconds\"`"
     }
   ]
 }

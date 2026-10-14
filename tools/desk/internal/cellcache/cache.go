@@ -31,7 +31,13 @@ type Report struct {
 	After         Measurement `json:"after"`
 	SkippedActive []string    `json:"skipped_active"`
 	Reclaimed     int64       `json:"reclaimed_logical_bytes"`
-	Failures      []string    `json:"failures"`
+	// TrimmedBuild counts compiler-cache entries removed by the age trim, and
+	// TrimmedBuildBytes their summed logical sizes. Unlike Reclaimed (a
+	// before/after difference that concurrent builds can blur), these are
+	// exactly what this pass deleted.
+	TrimmedBuild      int      `json:"trimmed_build_entries"`
+	TrimmedBuildBytes int64    `json:"trimmed_build_bytes"`
+	Failures          []string `json:"failures"`
 }
 type manager struct {
 	p    Policy
@@ -225,6 +231,17 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 		r.Failures = append(r.Failures, "active custody: "+err.Error())
 	}
 	removed := false
+	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) > 0 && !dry {
+		// Live consumers hold both roots, so only the age trim may act: it
+		// takes compiler-cache entries no running build can have used within
+		// the policy's age, and leaves mod/ and gopath/ to the records.
+		n, bytes, err := m.trimBuild(time.Now().Add(-m.p.BuildAge()))
+		r.TrimmedBuild, r.TrimmedBuildBytes = n, bytes
+		removed = n > 0
+		if err != nil {
+			r.Failures = append(r.Failures, "trim build: "+err.Error())
+		}
+	}
 	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) == 0 && !dry {
 		// Whole inactive roots only. Consumers are enrolled under this same lock;
 		// no Go clean subprocess can race a build or module reader.
@@ -261,6 +278,86 @@ func Wipe(p Policy, dry bool) (Report, error) {
 	}
 	defer m.close()
 	return finish(m, m.checkMode(dry, true))
+}
+
+// trimBuild removes compiler-cache entries whose mtime is before cutoff, with
+// the selection cmd/go's own Trim uses: only "*-a" (action) and "*-d" (output)
+// files inside the 256 two-hex-digit subdirectories of build/. Nothing else
+// under build/ (README, trim.txt, a foreign file) and nothing outside it is
+// ever selected. It is safe while consumers hold records because:
+//   - cmd/go refreshes an entry's mtime whenever it reads one stamped more
+//     than an hour ago, so an entry a running build used is never older than
+//     about an hour, and the policy age is at least MinBuildMaxAge;
+//   - a missing entry is a cache miss for cmd/go, which rebuilds it: the cost
+//     of a wrong guess is a recompile, never a failed or wrong build.
+//
+// Module directories have neither property (no use stamp, no refetch mid
+// build), so mod/ is never trimmed. Every directory and entry passes the same
+// checkEntry discipline as measurement, and an entry that fails it stops the
+// trim with an error rather than being skipped or followed. Entries are
+// unlinked through the verified root; Remove never follows a final symlink.
+func (m *manager) trimBuild(cutoff time.Time) (int, int64, error) {
+	const dir = "build"
+	st, err := m.r.Lstat(dir)
+	if os.IsNotExist(err) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
+		return 0, 0, fmt.Errorf("invalid compiler cache directory")
+	}
+	n, total := 0, int64(0)
+	for i := 0; i < 256; i++ {
+		sub := fmt.Sprintf("%s/%02x", dir, i)
+		st, err := m.r.Lstat(sub)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return n, total, err
+		}
+		if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
+			return n, total, fmt.Errorf("invalid compiler cache subdirectory %s", sub)
+		}
+		f, err := m.r.OpenFile(sub, os.O_RDONLY|noFollow, 0)
+		if err != nil {
+			return n, total, err
+		}
+		names, err := f.Readdirnames(-1)
+		f.Close()
+		if err != nil {
+			return n, total, err
+		}
+		for _, name := range names {
+			if !strings.HasSuffix(name, "-a") && !strings.HasSuffix(name, "-d") {
+				continue
+			}
+			path := sub + "/" + name
+			st, err := m.r.Lstat(path)
+			if os.IsNotExist(err) {
+				continue // a concurrent go command's own trim got there first
+			}
+			if err != nil {
+				return n, total, err
+			}
+			if err = checkEntry(st, m.dev); err != nil || !st.Mode().IsRegular() {
+				return n, total, fmt.Errorf("invalid compiler cache entry %s", path)
+			}
+			if !st.ModTime().Before(cutoff) {
+				continue
+			}
+			if err = m.r.Remove(path); err != nil && !os.IsNotExist(err) {
+				return n, total, err
+			}
+			if err == nil {
+				n++
+				total += st.Size()
+			}
+		}
+	}
+	return n, total, nil
 }
 
 // Go module directories are read-only. Open each verified directory and chmod

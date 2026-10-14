@@ -892,9 +892,10 @@ func cacheCmd() *cobra.Command {
 			"  cellctl cache <cell> clean     inactive caches, only under pressure\n" +
 			"  cellctl cache <cell> wipe      discard inactive build/module caches regardless of pressure\n" +
 			"  cellctl cache <cell> recover --confirm-stopped\n\n" +
-			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor. Configure CELL_GO_CACHE_ROOT /\n" +
-			"CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE. Recovery requires external proof ALL cache consumers have\n" +
-			"stopped. See docs/cellctl-go-cache.md.",
+			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor, 24h compiler-cache trim age.\n" +
+			"Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE / CELL_GO_CACHE_BUILD_MAX_AGE.\n" +
+			"Under pressure with live consumers, only compiler-cache entries older than the trim age are removed.\n" +
+			"Recovery requires external proof ALL cache consumers have stopped. See docs/cellctl-go-cache.md.",
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,
 	}

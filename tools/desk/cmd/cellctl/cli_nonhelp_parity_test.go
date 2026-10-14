@@ -444,6 +444,10 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"cache-enabled/0": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
 	"cache-enabled/1": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
 	"cache-enabled/2": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
+	// #2879 records the compiler-cache trim age in the policy and the trimmed
+	// entries and bytes in every report; all other transcript bytes stay identical.
+	"cache-enabled/3": {code: 6, stdoutReplace: cacheTrimFields, stderrReplace: []string{"", ""}, why: "#2879: reports carry the build trim age and trimmed bytes"},
+	"cache-enabled/4": {code: 0, stdoutReplace: cacheTrimFields, stderrReplace: []string{"", ""}, why: "#2879: reports carry the build trim age and trimmed bytes"},
 	"version-flag/0":  {code: 0, stderr: "", why: whyNoEcho},
 	"version-verb/0":  {code: 0, stderr: "", why: whyNoEcho},
 	"unknown-verb/0":  {code: 3, stderr: "cellctl: unknown command \"frobnicate\" for \"cellctl\"\nRun 'cellctl --help' for usage.\n", why: whyParseText},
@@ -497,13 +501,24 @@ var deliberateDiffs = map[string]deliberateDiff{
 }
 
 // diffHolds reports whether a listed difference still has exactly the recorded new shape.
+func cacheTrimFields() []string {
+	return []string{
+		`"minimum_free_bytes":10737418240}`, `"minimum_free_bytes":10737418240,"build_max_age_seconds":86400}`,
+		`"reclaimed_logical_bytes":0,`, `"reclaimed_logical_bytes":0,"trimmed_build_entries":0,"trimmed_build_bytes":0,`,
+	}
+}
+
 func diffHolds(d deliberateDiff, got, old cliRun) bool {
 	if got.Code != d.code {
 		return false
 	}
 	if d.stdoutReplace != nil {
-		pair := d.stdoutReplace()
-		if got.Stdout != strings.ReplaceAll(old.Stdout, pair[0], pair[1]) {
+		// Pairs of old, new, applied in order: one pair per changed span.
+		pairs, want := d.stdoutReplace(), old.Stdout
+		for i := 0; i+1 < len(pairs); i += 2 {
+			want = strings.ReplaceAll(want, pairs[i], pairs[i+1])
+		}
+		if got.Stdout != want {
 			return false
 		}
 	} else if d.stdoutHas == nil {
