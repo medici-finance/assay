@@ -66,7 +66,10 @@ func main() {
 	// does not surface to the user — so the visibility is there for a debug run and
 	// for anyone diagnosing a refusal, without narrating every tool call. A callout
 	// that has been silently unconfigured is exactly the change this makes visible.
-	deskkit.EchoEffectiveConfig(os.Stderr)
+	// Because nobody sees it on success, it is the full block and records nothing: the
+	// stateful digest echo would mark this configuration "seen" for the next run someone
+	// does see (deskkit configecho.go).
+	deskkit.EchoEffectiveConfigUnsurfaced(os.Stderr)
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}

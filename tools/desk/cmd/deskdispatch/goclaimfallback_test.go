@@ -67,7 +67,7 @@ func TestDispatchFallsBackToTheGoClaimBinaryWhenNoScriptIsPresent(t *testing.T) 
 		}
 	}
 
-	body, err := os.ReadFile(promptFile)
+	body, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatalf("prompt: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestGoClaimBinaryIsPreferredOverTheLegacyScriptWhenBothExist(t *testing.T) 
 	if s.ran("dispatch-claim.sh") {
 		t.Error("the legacy script was invoked although the Go binary was on PATH")
 	}
-	body, _ := os.ReadFile(promptFile)
+	body, _ := os.ReadFile(emittedPathFor(promptFile))
 	if !strings.Contains(string(body), goClaimBinary+" release") {
 		t.Errorf("the release hint does not name the Go claim binary:\n%s", string(body))
 	}
@@ -152,7 +152,7 @@ func TestLegacyScriptIsTheFallbackWhenTheGoBinaryIsAbsent(t *testing.T) {
 	if s.ran(goClaimBinary + " acquire") {
 		t.Error("the Go binary was invoked although it is not on PATH")
 	}
-	body, _ := os.ReadFile(promptFile)
+	body, _ := os.ReadFile(emittedPathFor(promptFile))
 	if !strings.Contains(string(body), claimScriptRel+" release") {
 		t.Errorf("the release hint is not the repo-relative script path:\n%s", string(body))
 	}

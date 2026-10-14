@@ -99,7 +99,7 @@ func TestPacketWrittenBesideTheAssignmentWithOneLine(t *testing.T) {
 			t.Errorf("packet lacks %q:\n%s", w, body)
 		}
 	}
-	prompt, err := os.ReadFile(promptFile)
+	prompt, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestPacketBuildFailureNeverFailsTheDispatch(t *testing.T) {
 				prompt = captureStdout(t, func() { rc, stderr = runCapturingStderr(t, args) })
 			} else {
 				rc, stderr = runCapturingStderr(t, append(args, "--prompt-file", promptFile))
-				raw, err := os.ReadFile(promptFile)
+				raw, err := os.ReadFile(emittedPathFor(promptFile))
 				if err != nil {
 					t.Fatalf("the prompt was not written: %v", err)
 				}
@@ -223,7 +223,7 @@ func TestPacketNotBuiltOnDryRunOrWithoutAProvider(t *testing.T) {
 		if rc != deskkit.ExitOK || called != 0 {
 			t.Fatalf("rc = %d, provider calls = %d; a dry run builds no packet", rc, called)
 		}
-		if prompt, _ := os.ReadFile(promptFile); strings.Contains(string(prompt), packet.AssignmentPrefix) {
+		if prompt, _ := os.ReadFile(emittedPathFor(promptFile)); strings.Contains(string(prompt), packet.AssignmentPrefix) {
 			t.Error("a dry-run prompt names a packet")
 		}
 	})
@@ -246,7 +246,7 @@ func TestPacketNotBuiltOnDryRunOrWithoutAProvider(t *testing.T) {
 		if rc != deskkit.ExitOK || strings.Contains(stderr, "packet:") {
 			t.Fatalf("rc = %d; a kit with no provider must be silent about packets:\n%s", rc, stderr)
 		}
-		prompt, _ := os.ReadFile(promptFile)
+		prompt, _ := os.ReadFile(emittedPathFor(promptFile))
 		if strings.Contains(string(prompt), packet.AssignmentPrefix) {
 			t.Error("the prompt names a packet nothing built")
 		}

@@ -2,7 +2,7 @@
 brief: assay:assay:graph-execution:14
 title: Bind admission and graph eligibility at the dispatch boundary
 why: A correct policy is ineffective if one dispatcher can bypass it or use a stale assessment. Every admitted attempt needs the same readiness decision and an enforceable runtime binding.
-wave: 3
+wave: 6
 depends:
 - graph-execution/01
 - graph-execution/09

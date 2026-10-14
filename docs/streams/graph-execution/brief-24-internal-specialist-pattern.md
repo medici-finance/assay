@@ -3,7 +3,7 @@ brief: assay:assay:graph-execution:24
 title: Versioned author implement review pattern with bounded repair
 why: A program should converge on a reviewable candidate without hiding failed attempts or letting implementation
   approve itself.
-wave: 7
+wave: 10
 depends:
 - graph-execution/21
 - graph-execution/23

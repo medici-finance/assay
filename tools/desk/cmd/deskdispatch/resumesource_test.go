@@ -157,7 +157,7 @@ func TestResumeRefusals(t *testing.T) {
 			if s.ran("acquire") || s.ran("deskwt") || s.ran("deskroster") {
 				t.Fatalf("refusal created durable state: %v", s.calls)
 			}
-			if _, err := os.Stat(prompt); !os.IsNotExist(err) {
+			if _, err := os.Stat(emittedPathFor(prompt)); !os.IsNotExist(err) {
 				t.Fatal("refusal emitted prompt")
 			}
 		})
