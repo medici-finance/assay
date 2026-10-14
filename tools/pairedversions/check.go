@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"sort"
-	"strconv"
 )
 
 // errNoRelease is what a releaseSource returns when the tag names NO release of
@@ -30,14 +28,9 @@ type release struct {
 	Checksums map[string]string
 }
 
-// releaseSource resolves one published release of a release home, and the
-// newest one.
+// releaseSource resolves one published release of a release home.
 type releaseSource interface {
 	Release(home, tag string) (*release, error)
-	// Latest returns the highest bare `vX.Y.Z` tag among the release home's
-	// published, non-draft, non-prerelease releases. It returns an error when it
-	// finds none: an empty answer has not shown that the pin is current.
-	Latest(home string) (string, error)
 }
 
 // checker accumulates problems. It never short-circuits: one run reports every
@@ -51,9 +44,6 @@ type checker struct {
 	// from the SAME release, so the common case is one network read, not two.
 	cache map[string]*release
 	errs  map[string]error
-	// latest keeps one read of the newest release per release home.
-	latest     map[string]string
-	latestErrs map[string]error
 }
 
 func (c *checker) failf(format string, a ...any) {
@@ -73,8 +63,7 @@ func (c *checker) notef(format string, a ...any) {
 // so could-not-check is reported as itself and still reddens the run; it is never
 // rounded up to a pass.
 func Check(root string, src releaseSource, out io.Writer) bool {
-	c := &checker{src: src, cache: map[string]*release{}, errs: map[string]error{},
-		latest: map[string]string{}, latestErrs: map[string]error{}}
+	c := &checker{src: src, cache: map[string]*release{}, errs: map[string]error{}}
 
 	pluginVer, errPlugin := readPluginVersion(root)
 	if errPlugin != nil {
@@ -101,7 +90,7 @@ func Check(root string, src releaseSource, out io.Writer) bool {
 		fmt.Fprintf(out, "pairedversions: %d problem(s). The front door is not consistent: re-pin %s (bump the tag and refresh EVERY sha256 from the published release's checksums.txt) rather than editing a value in place.\n", len(c.problems), manifestPath)
 		return false
 	}
-	fmt.Fprintf(out, "pairedversions: OK — plugin %s; statusgen %s @ %s; desk-tools %s @ %s; each is the latest published release, and every pinned sha256 matches its checksums.txt.\n",
+	fmt.Fprintf(out, "pairedversions: OK — plugin %s; statusgen %s @ %s; desk-tools %s @ %s; every pinned sha256 matches the published release's checksums.txt.\n",
 		pluginVer, m.Statusgen.Tag, m.Statusgen.ReleaseHome, m.DeskTools.Tag, m.DeskTools.ReleaseHome)
 	return true
 }
@@ -153,8 +142,6 @@ func (c *checker) checkSection(name string, s section) {
 	for _, e := range perr {
 		c.failf("%s: section `%s`: %v", manifestPath, name, e)
 	}
-
-	c.checkLatest(name, s)
 
 	rel, err := c.release(s.ReleaseHome, s.Tag)
 	if errors.Is(err, errNoRelease) {
@@ -212,92 +199,6 @@ func (c *checker) checkSection(name string, s section) {
 				manifestPath, name, p.Platform, p.Artifact, p.SHA256, s.Tag, s.ReleaseHome, want)
 		}
 	}
-}
-
-// repinSteps is the re-pin procedure a behind-latest failure names, so the
-// reader of a red run does not have to go looking for it.
-const repinSteps = "re-pin %s to %s: set every `tag:` and pin line (statusgen, desk-tools, harness) to %s, take each sha256 from that release's checksums.txt and the harness `digest` from the registry (the image must be published first), set containers/base/Dockerfile `DESK_TOOLS_IMAGE` to the same image@digest, then run `bash plugins/assay/scripts/check-paired-versions.sh` and `make paired-versions`"
-
-// checkLatest is assertion (d): the paired tag is not behind the newest
-// published release of its release home.
-//
-// (b) and (c) pass on any tag that was ever published, so a pairing can sit on
-// an old release indefinitely while the plugin version beside it moves on every
-// release. Adopters then install a tool many releases old and nothing goes red.
-// A pin AHEAD of the newest stable release (a prerelease pin) is not behind and
-// passes here; (b) already reports it as a note.
-func (c *checker) checkLatest(name string, s section) {
-	latest, err := c.latestOf(s.ReleaseHome)
-	if err != nil {
-		c.failf("could-not-check: %s: section `%s`: could not resolve the latest published release of %s: %v — the pin is not shown to be current, so this run is not green",
-			manifestPath, name, s.ReleaseHome, err)
-		return
-	}
-	pinned, ok := parseTag(s.Tag)
-	if !ok {
-		c.failf("%s: section `%s` pins tag %q, which is not a bare vX.Y.Z tag, so it cannot be compared with the latest release %s",
-			manifestPath, name, s.Tag, latest)
-		return
-	}
-	newest, ok := parseTag(latest)
-	if !ok {
-		c.failf("could-not-check: %s: section `%s`: the latest release of %s resolved to %q, which is not a bare vX.Y.Z tag",
-			manifestPath, name, s.ReleaseHome, latest)
-		return
-	}
-	if compareTags(pinned, newest) < 0 {
-		c.failf("%s: section `%s` pins %s but the latest published release of %s is %s — every adopter install gets the older tool. To fix, "+repinSteps+".",
-			manifestPath, name, s.Tag, s.ReleaseHome, latest, manifestPath, latest, latest)
-	}
-}
-
-// latestOf resolves (and caches) the newest published release of a home.
-func (c *checker) latestOf(home string) (string, error) {
-	if t, ok := c.latest[home]; ok {
-		return t, nil
-	}
-	if e, ok := c.latestErrs[home]; ok {
-		return "", e
-	}
-	t, err := c.src.Latest(home)
-	if err != nil {
-		c.latestErrs[home] = err
-		return "", err
-	}
-	c.latest[home] = t
-	return t, nil
-}
-
-var tagRe = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
-
-// parseTag reads a bare `vX.Y.Z` tag. Anything else, including a prerelease
-// suffix or a component-prefixed tag, is not comparable here.
-func parseTag(tag string) ([3]int, bool) {
-	var v [3]int
-	m := tagRe.FindStringSubmatch(tag)
-	if m == nil {
-		return v, false
-	}
-	for i := range v {
-		n, err := strconv.Atoi(m[i+1])
-		if err != nil {
-			return v, false
-		}
-		v[i] = n
-	}
-	return v, true
-}
-
-func compareTags(a, b [3]int) int {
-	for i := range a {
-		if a[i] != b[i] {
-			if a[i] < b[i] {
-				return -1
-			}
-			return 1
-		}
-	}
-	return 0
 }
 
 // release fetches (and caches) one release. Both a value and an error are

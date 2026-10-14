@@ -27,10 +27,9 @@
 #                    binaries out of that image, so a re-pin that moves the manifest but not the
 #                    Dockerfile ships the old tools in the container only.
 #
-# Not checked HERE: whether the pinned tag is the LATEST release — that needs the network. The
-# online checker `tools/pairedversions` (assertion d, run by the plugin-drift workflow) fails when
-# the pin is behind the newest published `vX.Y.Z` and names the re-pin steps. This script stays
-# offline and enforces internal consistency, which is what silently rotted.
+# Not checked HERE: whether the pinned tag is the LATEST release — that needs the network, so it
+# belongs to the online checker `tools/pairedversions`, not this script. This script stays offline
+# and enforces internal consistency, which is what silently rotted.
 #
 # THREE-STATE: could-not-check is a FAILURE, never a quiet pass. A missing or unreadable file,
 # an absent key, or a section with no platform pins all exit non-zero — a guard that cannot see

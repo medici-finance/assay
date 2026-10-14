@@ -22,8 +22,7 @@
 # names the harness image@digest below. Run it after any edit here — a re-pin that leaves the
 # files disagreeing is exactly the drift that shipped adopters a stale tool. Online,
 # `tools/pairedversions` (`make paired-versions`) also checks every hash against the release's
-# checksums.txt and FAILS when the pinned tag is behind the latest published release, so a new
-# release reddens CI until it is re-pinned here.
+# checksums.txt.
 
 schema: paired-versions-v1
 

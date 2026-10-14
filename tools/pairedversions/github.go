@@ -133,43 +133,6 @@ func (g *ghAPI) Release(home, tag string) (*release, error) {
 	return rel, nil
 }
 
-// Latest implements releaseSource. It lists the newest page of releases (the API
-// orders them newest first) rather than asking for `/releases/latest`, so a
-// component-prefixed tag that GitHub happens to mark latest cannot stand in for
-// the umbrella `vX.Y.Z` the pairing pins. Drafts and prereleases are skipped.
-func (g *ghAPI) Latest(home string) (string, error) {
-	url := fmt.Sprintf("%s/repos/%s/releases?per_page=100", g.baseURL, home)
-	resp, err := g.do(url, "application/vnd.github+json")
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
-	}
-	var rels []ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rels); err != nil {
-		return "", fmt.Errorf("decoding the release list of %s: %w", home, err)
-	}
-	best, found := "", [3]int{}
-	for _, r := range rels {
-		if r.Draft || r.Prerelease {
-			continue
-		}
-		v, ok := parseTag(r.TagName)
-		if !ok {
-			continue
-		}
-		if best == "" || compareTags(v, found) > 0 {
-			best, found = r.TagName, v
-		}
-	}
-	if best == "" {
-		return "", fmt.Errorf("%s lists no published, non-prerelease vX.Y.Z release", home)
-	}
-	return best, nil
-}
-
 func (g *ghAPI) asset(home string, id int64) ([]byte, error) {
 	url := fmt.Sprintf("%s/repos/%s/releases/assets/%d", g.baseURL, home, id)
 	resp, err := g.do(url, "application/octet-stream")

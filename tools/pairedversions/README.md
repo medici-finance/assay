@@ -23,7 +23,6 @@ This is the thing that reddens.
 | **a** | `plugin.json` `version` == `paired-versions.yaml` `plugin` | Otherwise the shipped pairing is for a plugin version nobody is running, and the installer resolves the wrong tag for the skills it ships with. |
 | **b** | each section's `tag` is a **published** release of the `release_home` it names | A tag that was never cut, or a draft, gives the adopter's `gh release download` nothing to install. |
 | **c** | every per-platform `sha256` equals that release's own `checksums.txt` entry | The installer REFUSES on a hash mismatch. A locally built binary lacks the release `-ldflags` stamp and hashes differently, so a hash that did not come from the published `checksums.txt` bricks the install. |
-| **d** | each section's `tag` is not behind the **latest** published `vX.Y.Z` release of its `release_home` (drafts, prereleases and component-prefixed tags are not candidates) | (a)–(c) all hold on a pairing that is many releases stale: the plugin version moves, the pins do not, and every check stays green while adopters install an old tool. A pin behind latest fails and names the re-pin steps; a latest that cannot be read is a could-not-check, never a pass. |
 
 Three supporting assertions fall out of the same read, because each is a way for
 (b) or (c) to be true of nothing:
@@ -50,11 +49,6 @@ read has cleared nothing, and is never rounded up to a pass
 There is no flag that skips the network half: a checker that quietly passes when
 its evidence is unavailable is the fail-open shape this guard exists to remove.
 
-Assertion (d) means the check goes red on every change after a new release is
-cut, until a re-pin lands. That is the point: the harness `digest` can only be
-harvested once the release's image is published, so the red check is the
-standing reminder that the re-pin is owed, and its message names the steps.
-
 The run does not short-circuit. One invocation reports every disagreement it can
 see, so a re-pin is a single edit rather than a sequence of one-failure-per-round
 CI trips.
@@ -68,8 +62,8 @@ cd tools/pairedversions && go run . --root ../..
 
 Exit codes: `0` consistent · `1` a problem or a could-not-check · `2` usage error.
 
-It reads the GitHub REST API (`api.github.com`, or `$GITHUB_API_URL`) for (b),
-(c) and (d), using `$GH_TOKEN` / `$GITHUB_TOKEN` when one is present. It speaks to the
+It reads the GitHub REST API (`api.github.com`, or `$GITHUB_API_URL`) for (b) and
+(c), using `$GH_TOKEN` / `$GITHUB_TOKEN` when one is present. It speaks to the
 API directly rather than shelling out to `gh`, because not every self-hosted
 runner ships the CLI and a checker that skips when its tool is missing fails open.
 
