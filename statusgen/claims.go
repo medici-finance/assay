@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // requireClaims turns a failed claim read into a hard failure instead of a
@@ -161,9 +162,50 @@ func lintClaims(root, mode string, streams []*Stream) (map[string]bool, ClaimSou
 // produce an identical empty map, and treating them alike is what let a 3s
 // timeout silently widen the board.
 func resolveClaims(root string, streams []*Stream) (map[string]bool, ClaimSource) {
+	branches, source := claimBranchesForRun(root)
+	if !source.Known {
+		return map[string]bool{}, source
+	}
+	claimed := claimedBriefs(streams, branches)
+	// Derive the map for THIS stream universe, never cache a caller's mutable
+	// claim map or let an earlier subset hide a newly supplied placeholder.
+	for k := range claimedPlaceholders(streams, branches) {
+		claimed[k] = true
+	}
+	return claimed, source
+}
+
+type claimBranchRead struct {
+	once     sync.Once
+	branches []string
+	source   ClaimSource
+}
+
+// claimBranchesForRun shares the external observation, including its
+// could-not-check state, only while run() owns a git read session. A later run
+// always re-reads. Direct callers outside a session retain their fresh reads.
+func claimBranchesForRun(root string) ([]string, ClaimSource) {
+	s := activeGitReads
+	if s == nil {
+		return readClaimBranches(root)
+	}
+	s.mu.Lock()
+	r, found := s.claims[root]
+	if !found {
+		r = &claimBranchRead{}
+		s.claims[root] = r
+	}
+	s.mu.Unlock()
+	// Do not hold the object-reader mutex over a network call. Once also
+	// prevents concurrent consumers from issuing duplicate reads.
+	r.once.Do(func() { r.branches, r.source = readClaimBranches(root) })
+	return append([]string(nil), r.branches...), r.source
+}
+
+func readClaimBranches(root string) ([]string, ClaimSource) {
 	branches, err := listRemoteBranches(root)
 	if err != nil {
-		return map[string]bool{}, ClaimSource{Reason: err.Error()}
+		return nil, ClaimSource{Reason: err.Error()}
 	}
 	// Decay dead claims: a branch whose PR/merge request has already merged or
 	// closed is not an in-flight claim — drop it before it consumes its stream's
@@ -172,13 +214,7 @@ func resolveClaims(root string, streams []*Stream) (map[string]bool, ClaimSource
 	// a live claim — and hands back the reason, which travels on the ClaimSource
 	// so the run and the board both wear the could-not-check.
 	branches, decayReason := decayDeadClaims(root, branches)
-	claimed := claimedBriefs(streams, branches)
-	// Placeholder claim-awareness: an open fix/issue-<NN>
-	// branch excludes that issue's placeholder from Next-up.
-	for k := range claimedPlaceholders(streams, branches) {
-		claimed[k] = true
-	}
-	return claimed, ClaimSource{Known: true, DecayReason: decayReason}
+	return append([]string(nil), branches...), ClaimSource{Known: true, DecayReason: decayReason}
 }
 
 // This repo's brief-branch conventions (CLAUDE.md "one brief = one branch = one PR"),

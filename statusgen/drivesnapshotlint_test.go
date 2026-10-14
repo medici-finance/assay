@@ -3,9 +3,50 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestDriveLintReusesHydratedBoardAndClaimRead(t *testing.T) {
+	root, _ := driveManyRowBoard(t)
+	streams, _, err := loadHydratedStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := listRemoteBranches
+	t.Cleanup(func() { listRemoteBranches = prev })
+	reads := 0
+	listRemoteBranches = func(string) ([]string, error) {
+		reads++
+		return nil, nil
+	}
+	stubMergedClosedBranches(t, nil, nil)
+	ctx := &driveLintCtx{root: root, loaded: true, streams: streams}
+	first, rc := ctx.section("d1", driveTestNow)
+	if rc != 0 {
+		t.Fatalf("first render failed: %d", rc)
+	}
+	second, rc := ctx.section("d1", driveTestNow)
+	if rc != 0 || first != second || reads != 1 {
+		t.Fatalf("shared render changed or reread claims: rc=%d reads=%d", rc, reads)
+	}
+	wantProblems, wantNotices := driveRegionLintFromBoard(root, streams, driveTestNow)
+	if len(wantProblems) != 0 {
+		t.Fatalf("hydrated fixture must lint clean: %v", wantProblems)
+	}
+	// The source board has already passed hydration. Removing its fixture
+	// READMEs proves the renderer consumes those rows, rather than reloading.
+	for _, s := range streams {
+		if err := os.Remove(filepath.Join(s.Dir, "README.md")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gotProblems, gotNotices := driveRegionLintFromBoard(root, streams, driveTestNow)
+	if !reflect.DeepEqual(gotProblems, wantProblems) || !reflect.DeepEqual(gotNotices, wantNotices) {
+		t.Fatalf("validated board was reloaded: problems=%v notices=%v; want %v %v", gotProblems, gotNotices, wantProblems, wantNotices)
+	}
+}
 
 // activeActOnlyManifest is an operator-act-only active drive: it applies and
 // renders (WAITING-ON-YOU) without naming any stream, so the lint fixtures need

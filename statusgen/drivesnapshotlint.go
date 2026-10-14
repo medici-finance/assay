@@ -31,7 +31,20 @@ import (
 // driveRegionLintProblems checks every drive-plan .md under root. It never reads
 // or writes STATUS.md and takes no live infrastructure.
 func driveRegionLintProblems(root string, now time.Time) (problems, notices []string) {
-	return driveRegionLint(root, func(slug string) (string, int) { return driveSnapshotSection(root, slug, now) })
+	return driveRegionLintWithContext(root, &driveLintCtx{root: root}, now)
+}
+
+// driveRegionLintFromBoard reuses the full board already hydrated by run().
+// Scoped validation must use the ordinary loader instead: rows outside that
+// scope have not had their frontmatter attached yet.
+func driveRegionLintFromBoard(root string, streams []*Stream, now time.Time) (problems, notices []string) {
+	return driveRegionLintWithContext(root, &driveLintCtx{
+		root: root, loaded: true, streams: streams,
+	}, now)
+}
+
+func driveRegionLintWithContext(root string, ctx *driveLintCtx, now time.Time) (problems, notices []string) {
+	return driveRegionLint(root, func(slug string) (string, int) { return ctx.section(slug, now) })
 }
 
 // driveRegionLint is driveRegionLintProblems with the fresh render supplied by
