@@ -139,6 +139,59 @@ func TestResetSymlinkedTMPDIR(t *testing.T) {
 }
 
 // regression: #2718
+// Execution must remove exactly the Git registrations the plan selected when
+// the cell directory is spelled through a symlink; deleting the directories
+// alone would strand locked registrations and their checked-out branches.
+func TestResetExecAliasedCell(t *testing.T) {
+	for _, hard := range []bool{false, true} {
+		t.Run(map[bool]string{false: "soft", true: "hard"}[hard], func(t *testing.T) {
+			c, _, _ := commsFixture(t)
+			realCell, err := filepath.EvalSymlinks(filepath.Dir(c.Dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			realCell = filepath.Join(realCell, filepath.Base(c.Dir))
+			c.Dir = filepath.Join(resetAlias(t, filepath.Dir(realCell)), filepath.Base(realCell))
+			base, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := resetFixtureRepo(t, base, "one")
+			c.Repo = root
+			c.Env.Put("CELL_ROOTS", "example/one="+root)
+			owned := filepath.Join(realCell, "worktrees", "owned")
+			foreign := filepath.Join(base, "foreign")
+			resetFixtureGit(t, root, "worktree", "add", "-q", "-b", "owned", owned, "main")
+			resetFixtureGit(t, root, "worktree", "lock", owned)
+			resetFixtureGit(t, root, "worktree", "add", "-q", "-b", "foreign", foreign, "main")
+			p, err := c.planReset(hard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = c.resetCell(p); err != nil {
+				t.Fatal(err)
+			}
+			registered := map[string]bool{}
+			for _, field := range strings.Split(resetFixtureGit(t, root, "worktree", "list", "--porcelain"), "\n") {
+				if path, ok := strings.CutPrefix(field, "worktree "); ok {
+					resolved, err := filepath.EvalSymlinks(path)
+					if err != nil {
+						resolved = path
+					}
+					registered[resolved] = true
+				}
+			}
+			if registered[owned] {
+				t.Fatalf("hard=%t left the cell-owned worktree registered: %v", hard, registered)
+			}
+			if registered[foreign] == hard {
+				t.Fatalf("hard=%t foreign registration scope wrong: %v", hard, registered)
+			}
+		})
+	}
+}
+
+// regression: #2718
 func TestResetPlanPathErrors(t *testing.T) {
 	base := t.TempDir()
 	root := resetFixtureRepo(t, base, "repo")
@@ -176,6 +229,10 @@ func TestResetPlanPathErrors(t *testing.T) {
 				}
 			}
 		})
+	}
+	// The directory requirement holds on its own, not only through ENOTDIR on a child.
+	if _, err := resetDirectoryPath(file); err == nil || !strings.Contains(err.Error(), "requires a directory") {
+		t.Fatalf("non-directory accepted as reset directory: %v", err)
 	}
 	// Absent optional worktree storage is valid, including beneath an alias.
 	cell := filepath.Join(base, "cell")
