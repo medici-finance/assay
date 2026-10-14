@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen --scan-issues` and `--transcribe-scan` now re-derive a reactivated placeholder's `gate:` and `labels:` from the live issue when it reopens (or loses an excluded label), instead of carrying the retired file's stale frontmatter forward — a reopened issue that gained a risk label now comes back `gate: human` rather than staying `gate: model`. A stored `gate: human` is never relaxed on reactivation, and a reactivate built without the live issue is refused.
