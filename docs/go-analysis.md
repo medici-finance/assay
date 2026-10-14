@@ -41,8 +41,11 @@ run project tests or generators.
 [Admission #2649](https://github.com/medici-finance/assay/issues/2649) records the
 risk assessment. The scanner is golangci-lint **2.14.0**, released 24 September 2026,
 built with **Go 1.27.1** (released 1 September 2026). Project package loading uses
-**Go 1.25.0**, matching the existing CI target. These are separate toolchains;
-no module directive or existing CI job is upgraded.
+**Go 1.25.0**. These are separate toolchains. The rest of the fleet has since moved
+to one Go version (1.27.2, `go 1.27.0`; #2918); these analysis pins lag it on purpose
+and are listed exceptions in that single-version guard
+(`tools/desk/internal/deskkit/goversion_test.go`) until a separately reviewed
+baseline migration moves them (see "Maintain the ratchet").
 
 The runner cannot reach GitHub's release-asset CDN. It therefore uses the
 [upstream source-install route](https://golangci-lint.run/docs/welcome/install/local/),
