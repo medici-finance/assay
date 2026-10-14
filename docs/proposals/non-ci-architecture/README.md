@@ -24,7 +24,9 @@ Verification is the first end-to-end test.
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
 | [Amendment manifest](20-amendment-manifest.md) | Owners, paths, dependencies and active-work treatment for the ratified packages; brief patches for R1 and step 2 |
-| [Forge service and source queries](21-forge-service-and-source-queries.md) | Write-through visibility, caller/executor authorization, immutable source caches and Scion-inspired qualification |
+| [Cell operator surface](21-cell-operator-surface.md) | Proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer. Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; a deferred plan-approval design gated on five properties; Cell API requirements carried from `send` |
+| [Forge service and source queries](22-forge-service-and-source-queries.md) | Write-through visibility, caller/executor authorization, immutable source caches and Scion-inspired qualification |
+| [Runtime contract alignment](23-runtime-contract-alignment.md) | One public runtime: PostgreSQL coordination, existing Git/forge evidence owners, requirement-to-owner coverage and remaining gaps |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify
@@ -44,7 +46,7 @@ PostgreSQL coordinates in-flight work and holds query projections; reviewed Git
 records retain canonical intent and published evidence for this phase. Recovery
 should reconstruct useful state, allowing declared transient loss and safe repeated
 work. Forge records are mirrored with attributed coverage and freshness. The
-[forge-service amendment](21-forge-service-and-source-queries.md) routes authorized writes
+[forge-service amendment](22-forge-service-and-source-queries.md) routes authorized writes
 through existing role-bound executors and projects confirmed results immediately; it also
 provides SHA-bound source queries and scoped cache reuse. Active
 verification publishes through a governed role-bound path.
@@ -137,7 +139,7 @@ PostgreSQL remains the operational transaction owner; reviewed Git records retai
 
 ## One public runtime — 14 October 2026
 
-The [runtime alignment](22-runtime-contract-alignment.md) reconciles earlier refs-first
+The [runtime alignment](23-runtime-contract-alignment.md) reconciles earlier refs-first
 ideas into the existing R1–R8 implementation in public Assay. PostgreSQL coordinates
 runtime effects; Git retains definitions/evidence; the forge service owns scoped provider
 observations and effects. There is no second runtime, native SCM prerequisite or new signer

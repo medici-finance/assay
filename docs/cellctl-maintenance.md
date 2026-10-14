@@ -9,7 +9,7 @@ These commands replace that sequence with explicit operations:
 
 | Command | Result |
 | --- | --- |
-| `cellctl cache CELL wipe` | Remove this cell's disposable build and module caches regardless of pressure. Keep policy, ownership, installed GOPATH binaries and other cell data. Active consumers still refuse deletion. |
+| `cellctl cache CELL wipe` | Remove this cell's disposable build and module caches regardless of pressure. Keep policy, ownership, installed GOPATH binaries and other cell data. Active consumer records protect `mod/`, `gopath/` and whole-root removal; with records held, wipe removes only compiler-cache (`build/`) entries older than the trim age (`CELL_GO_CACHE_BUILD_MAX_AGE`), with or without pressure, and reports `storage-deferred`. |
 | `cellctl reset CELL` | Stop this cell's owned processes and cockpit surfaces, clear stopped role/comms/cache custody, wipe caches, and remove all cell-owned worktrees. Preserve repository branches, comms messages, configuration, keys and login stores. |
 | `cellctl reset CELL --hard` | Also discard comms messages and refresh every repository in `CELL_ROOTS`: fetch origin/main, remove all linked worktrees, reset the primary checkout to main, remove other local branches and untracked/ignored files. Preserve remote branches and operator configuration outside repositories. |
 | `cellctl comms CELL init` | Generate the private signing seed, matching trust store, role bindings, reader and manifest, then select the manifest. Never print or commit credentials. Repeated init validates and reuses the existing setup. |
@@ -81,7 +81,7 @@ An explicitly supplied external ACP reader requires command, model, version pin 
 the existing containment attestation and custody checks still apply.
 
 Acceptance: wipe below budget actually empties disposable caches; a live consumer
-prevents wipe; reset kills a detached fixture child but leaves another cell alive;
+prevents a whole-cache wipe (wipe then trims only aged compiler-cache entries); reset kills a detached fixture child but leaves another cell alive;
 soft reset preserves mailbox contents and local branches; hard reset affects all
 configured fixture repositories and no outside repository; dry-run performs no
 mutation; failed fetch precedes Git destruction; init creates matching Ed25519

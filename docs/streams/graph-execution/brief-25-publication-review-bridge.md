@@ -26,7 +26,7 @@ authored: 2026-10-02 by task-workflow authoring session
 sources:
 - docs/streams/graph-execution/task-workflow-program.md
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
-- docs/proposals/non-ci-architecture/22-runtime-contract-alignment.md — 2026-10-14 consumer amendment
+- docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md — 2026-10-14 consumer amendment
 exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
@@ -69,7 +69,7 @@ independent-review check; retain exact candidate, current role/capability and di
 controls. Separate common issuing infrastructure from accountable principals. Different keys
 or Apps for one principal are not independent, and bot-for-human is not a human decision.
 Uncorroborated stronger proof holds; no automatic one-human waiver or new signer is introduced.
-Add `TestBridgeDutyContext` in the existing publication test surface, with permitted independent
+Add `TestBridgeDutyContext` in the planned publication test surface (new with this brief), with permitted independent
 principals sharing an issuer, refusal on overlapping delegation, and a bypass of upper validation
 that leaves trusted identity selection and role-executor controls refusing caller-selected
 provenance. Preserve historical Evidence and the human activation gate.

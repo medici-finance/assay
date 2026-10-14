@@ -65,7 +65,7 @@ separate boundaries. The query service has no universal publisher credential; ca
 current authorized inputs before private joins or counts. Immutable source results are keyed
 by exact inputs and derivation version, while mutable forge facts retain freshness. Incremental
 indexes reuse semantic owners, and shared Git fetch/object reuse is measured before a daemon
-is introduced. See the controlling [bounded amendment](21-forge-service-and-source-queries.md)
+is introduced. See the controlling [bounded amendment](22-forge-service-and-source-queries.md)
 for custody, failure, cost and rollout contracts. This later mechanism is not claimed to have
 been included in the earlier whole-target ratification or to be implemented.
 
@@ -73,7 +73,7 @@ been included in the earlier whole-target ratification or to be implemented.
 
 Keep one runtime implementation in public Assay. Earlier refs-first source-control proposals
 supply requirements and provenance, not another controller/store/cockpit. The
-[runtime alignment](22-runtime-contract-alignment.md) selects PostgreSQL coordination,
+[runtime alignment](23-runtime-contract-alignment.md) selects PostgreSQL coordination,
 existing Git evidence and forge ownership; preserves exact-candidate acceptance and narrow
 role authority; separates offline inspection from managed admission; and routes the uncovered
 evaluation-context and accountable-principal contracts. Signing, federation and a native SCM

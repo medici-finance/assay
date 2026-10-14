@@ -311,7 +311,7 @@ R4 later amends 04 and 25. Those sections are marked in the briefs and are not a
 
 ## Public runtime alignment and gap routing — 2026-10-14
 
-The [runtime contract](../../proposals/non-ci-architecture/22-runtime-contract-alignment.md)
+The [runtime contract](../../proposals/non-ci-architecture/23-runtime-contract-alignment.md)
 selects one public Assay implementation. Existing PostgreSQL, recovery, candidate, runner,
 evidence and controller briefs remain owners; Scion source/cache work is forge-neutral/39–45.
 Only /30 (context/validity) and /31 (principal/proof provenance) are newly authored here.

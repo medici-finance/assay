@@ -22,7 +22,7 @@ issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
 sources:
-- docs/proposals/non-ci-architecture/22-runtime-contract-alignment.md — 2026-10-14 provenance consumption
+- docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md — 2026-10-14 provenance consumption
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 exec-tier: strong

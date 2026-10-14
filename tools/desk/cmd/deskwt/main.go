@@ -151,8 +151,9 @@ dead-session-reaped, and branches-deleted — plus, when it acted, stale-registr
 Every sweep ALSO runs the CELL-CACHE pressure pass (Step D, default ON; --no-cache skips it):
 for each marked cell Go-cache root under the cells root (--cells-root, then $CELLS_ROOT,
 then the compiled per-user default) it runs the managed cache's own pressure check —
-reclaiming only over the byte budget or under the free-space floor, never while a consumer
-holds a lease — and it reaps a cache root whose owning directory this same sweep removed,
+reclaiming only over the byte budget or under the free-space floor; active consumer records
+protect mod/ and gopath/, while build/ entries older than the policy's trim age are trimmed
+regardless — and it reaps a cache root whose owning directory this same sweep removed,
 gated on the root's lease set re-read under its own lock at act time. The pass is SILENT
 when every cache is within policy; the summary gains a cache segment only when it
 reclaimed, reaped, or found pressure it could not clear.

@@ -19,8 +19,8 @@ version: 1
 id: 83d2df63-42b8-4e12-9b6a-c202e0a0a2aa
 authored: 2026-10-14 by worker-desk (author-brief)
 sources:
-  - docs/proposals/non-ci-architecture/22-runtime-contract-alignment.md
-  - docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md — requester, represented actor and provider identity
+  - docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md
+  - docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md — requester, represented actor and provider identity
   - docs/streams/graph-execution/brief-25-publication-review-bridge.md — independent verdict binding
   - docs/contracts.md — S-identity, S-evidence-coverage and S-review-verdict
   - freshness-checked 2026-10-14 @ 9a8df91dc; attribution/role checks exist but no responsible-principal domain contract
@@ -83,7 +83,7 @@ Default if no answer: no activation or new independence claim; contract/tests ma
 
 ## Read first
 
-- [Runtime alignment](../../proposals/non-ci-architecture/22-runtime-contract-alignment.md).
+- [Runtime alignment](../../proposals/non-ci-architecture/23-runtime-contract-alignment.md).
 - /28 domain records, /14 admission, /25 publication, /15 scoped control exports.
 - `docs/contracts.md` identity/evidence/review owner rows and `docs/enforcement-model.md`.
 

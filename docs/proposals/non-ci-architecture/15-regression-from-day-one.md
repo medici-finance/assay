@@ -139,7 +139,7 @@ repair effort. Read-only release acceptance is independent of managed writer act
 
 ## Write-through and source-cache qualification — 14 October 2026
 
-Carry the [forge-service amendment](21-forge-service-and-source-queries.md) into the same
+Carry the [forge-service amendment](22-forge-service-and-source-queries.md) into the same
 regression ledger. Exercise provider success followed by SQL failure, death after send,
 conflicting operation payload, stale pre-write refresh, caller loss of a reply, and receipt
 lookup after authorization revocation. Unknown does not replay; read-after-write requests

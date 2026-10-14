@@ -1155,7 +1155,7 @@ need a `deskinstall` that nothing above has placed. #1693 tracks closing this. U
 first `deskinstall` **outside** `--dest`. It must be outside because `deskinstall` rewrites every
 file it places in `--dest`, and Windows does not let a running `.exe` overwrite itself. Two ways:
 
-- **With a Go 1.25 toolchain.** From the clone root, run
+- **With a Go 1.27 toolchain.** From the clone root, run
   `go build -C tools/desk -o $env:TEMP\deskinstall.exe ./cmd/deskinstall`, then run step 1's
   second command as `& $env:TEMP\deskinstall.exe --manifest …`. That run places the pinned,
   sha256-verified release build of the whole toolchain, `deskinstall.exe` included, into `--dest`,
@@ -1211,7 +1211,7 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
 | Lane | When | What you pin | Need Go? |
 |---|---|---|---|
 | **Channel E (release)** | Adopter wants the published tag (example: `v0.26.0`) | `statusgen-windows-<arch>.exe` + `desk-tools-windows-<arch>.tar.gz` **tag + sha256** in `.assay-versions` | **No.** Bootstrap + `deskinstall` download verified assets. |
-| **Channel D (source SHA)** | Adopter asked for `main` (or any commit that is **not** a release asset) | the assay commit SHA your CI clones and rebuilds — recorded in CI config, **not** as a `-source` `.assay-versions` line (see the channel-D lane below) | **Yes.** A Go 1.25 toolchain, `go build` of `statusgen` and the desk-tools, and CI that clones that SHA and rebuilds. Copying a release sha256 onto a source lane is a lie. |
+| **Channel D (source SHA)** | Adopter asked for `main` (or any commit that is **not** a release asset) | the assay commit SHA your CI clones and rebuilds — recorded in CI config, **not** as a `-source` `.assay-versions` line (see the channel-D lane below) | **Yes.** A Go 1.27 toolchain, `go build` of `statusgen` and the desk-tools, and CI that clones that SHA and rebuilds. Copying a release sha256 onto a source lane is a lie. |
 
 `gh` is not required to *install* either lane. GitHub-shaped *desk* work still wants `gh`; GitLab-shaped desk work wants `glab` / `--forge gitlab`, not a GitHub App PEM path.
 
@@ -1223,7 +1223,7 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
 - **Channel E:** **No Go toolchain and no `gh` are required to install.** The adopter downloads the
   *pinned release binary*, not a from-source build: the bootstrap fetches over `Invoke-WebRequest`
   and the Go-native installer over `net/http`.
-- **Channel D:** a **Go 1.25** toolchain on `PATH` (or a documented portable install) **is**
+- **Channel D:** a **Go 1.27** toolchain on `PATH` (or a documented portable install) **is**
   required. There is no checksummed Windows asset for an unpublished SHA.
 - **`git`** — needed to clone Assay (bootstrap script lives **in this repo**, not on a blank
   adopter machine) and to run desks. `gh` is GitHub-desk only.

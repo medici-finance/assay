@@ -124,9 +124,10 @@ retirement count is not an engineering-effort estimate.
 
 ## Scion-derived forge-service extension — 14 October 2026
 
-The [forge-service amendment](21-forge-service-and-source-queries.md) extends R6 alongside
+The [forge-service amendment](22-forge-service-and-source-queries.md) extends R6 alongside
 R4 and the read portion of R7; it is not a second mirror or authority program. Reuse the
-pending forge-neutral/37–38 briefs from PR 2743. Author 39–45 for typed service contracts,
+forge-neutral/37–38 briefs and the forge-neutral/39–45 briefs merged in PR 2743 (merge commit
+`6b479a573`). Those briefs cover typed service contracts,
 authenticated serving and role-executor custody, write-through receipts, exact-commit source
 queries, incremental derived indexes, a shared-Git reuse trial, and served/recovery/cutover
 qualification. Their source contracts can be tested offline; the managed writer still needs
@@ -142,7 +143,7 @@ unknowns, admission-bound private data and exact candidate currency, not only re
 
 ## Public runtime contract gaps — 14 October 2026
 
-The [runtime alignment](22-runtime-contract-alignment.md) maps prior requirements onto
+The [runtime alignment](23-runtime-contract-alignment.md) maps prior requirements onto
 existing R1–R8 owners. Add graph-execution/30 (complete evaluation context/time validity)
 and /31 (accountable-principal and proof provenance) after /28, independently at wave 3.
 They add no second runtime or signer. /14 consumes both, /19 consumes /30 and /25 consumes

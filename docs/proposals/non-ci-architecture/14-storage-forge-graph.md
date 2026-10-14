@@ -133,7 +133,7 @@ Forge history and deletion need an explicit retention policy. Re-polling the pro
 ### Write-through service — amendment of 14 October 2026
 
 The mirror remains view-only to clients, but authorized forge writes feed confirmed results
-back into it through the [forge-service contract](21-forge-service-and-source-queries.md).
+back into it through the [forge-service contract](22-forge-service-and-source-queries.md).
 R2's existing effect-intent/receipt ledger owns retries and ambiguous outcomes. When the
 provider confirms an effect, commit its receipt and the confirmed mirror fields together;
 return provider outcome and projection availability separately if that transaction fails.

@@ -33,7 +33,7 @@ sources:
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
-- docs/proposals/non-ci-architecture/22-runtime-contract-alignment.md — 2026-10-14 consumer amendment
+- docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md — 2026-10-14 consumer amendment
 exec-tier: strong
 exec-tier-why: Cross-component contracts and independent failure controls must agree; the implementation requires design judgment.
 domain: complicated
@@ -103,8 +103,8 @@ composition; a cached eligible result or model-supplied actor cannot authorize w
 Expired bounds, changed membership/policy, incomplete context and missing independence
 corroboration hold the affected action. Offline results are snapshot-bound advice.
 
-Add `TestAdmissionContext` and `TestAdmissionDuty` to the existing graphadmission test
-surface: the former changes time/access without changing source hashes; the latter supplies
+Add `TestAdmissionContext` and `TestAdmissionDuty` to the planned graphadmission test
+surface (the file is itself new in this brief): the former changes time/access without changing source hashes; the latter supplies
 different keys for one responsible principal and bypasses the model-facing check to exercise
 trusted provenance selection. Both must refuse the affected admission. Keep a permitted
 positive case. No stronger custody claim or one-human waiver is added. Existing human

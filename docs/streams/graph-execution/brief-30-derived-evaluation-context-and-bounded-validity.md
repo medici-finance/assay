@@ -17,7 +17,7 @@ version: 1
 id: e9baecf8-fffd-47a9-9fe2-6a28c4f3f2dd
 authored: 2026-10-14 by worker-desk (author-brief)
 sources:
-  - docs/proposals/non-ci-architecture/22-runtime-contract-alignment.md
+  - docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md
   - docs/streams/graph-execution/work-input-amendment.md — WI-2 applicability
   - statusgen/evaluation/coverage_api.go — DependencyManifest and explicit CoverageInput
   - statusgen/evaluation/identity.go — canonical evaluator Identity
@@ -42,7 +42,7 @@ files: `spec/evaluation-context-v1.md` (planned), `schemas/evaluation-context-v1
 
 facts (9a8df91dc, 2026-10-14):
 - /28 creates the domain records; no domain package exists on this main baseline.
-- Existing `evaluation.EvaluateCoverage` takes a revision and dependency manifest;
+- Existing `evaluation.EvaluateCoverage(in CoverageInput, repo Repo)` takes a `CoverageInput` that carries the revision and dependency manifest;
   WI-2 source/policy/build/environment reuse remains its owner. Do not fork that algorithm.
 - `evaluation.EvaluateEligibility` consumes explicit graph facts. It has no live clock,
   credentials or runtime lease authority. The caller must establish current runtime facts.
@@ -66,7 +66,7 @@ design-fit:
 
 ## Read first
 
-- [Runtime alignment](../../proposals/non-ci-architecture/22-runtime-contract-alignment.md).
+- [Runtime alignment](../../proposals/non-ci-architecture/23-runtime-contract-alignment.md).
 - /28 domain contract and `statusgen/evaluation/coverage_api.go`, `identity.go`.
 - /14 admission and /19 store, including their dated context amendments.
 

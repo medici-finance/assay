@@ -225,7 +225,20 @@ func TestCommsUpPreflight(t *testing.T) {
 				os.WriteFile(filepath.Join(c.commsDir(), "checkpoint.json"), b, 0600)
 				l.Close()
 			}
+			if mode == "stale" {
+				// regression: #2880 — the dry run prints the reconcile inventory and changes nothing.
+				before, _ := os.ReadFile(filepath.Join(c.commsDir(), "checkpoint.json"))
+				dry := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-the-desk", "--no-attach", "--dry-run")
+				after, _ := os.ReadFile(filepath.Join(c.commsDir(), "checkpoint.json"))
+				if !strings.Contains(dry.stdout, "[reconcile] comms class=could-not-check") || !strings.Contains(dry.stdout, "dry run: nothing was changed") || string(before) != string(after) {
+					t.Fatalf("dry run did not inventory the stale comms record or changed it: %+v", dry)
+				}
+			}
 			r := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-the-desk", "--no-attach")
+			if mode == "stale" && (!strings.Contains(r.stdout, "[reconcile] refusing to clear anything") || !strings.Contains(r.stdout, "comms 'example' recover --confirm-stopped") || !strings.Contains(r.stderr, "up: stale cell state")) {
+				// regression: #2880 — the refusal carries the inventory and the exact commands.
+				t.Fatalf("stale refusal without inventory and commands: %+v", r)
+			}
 			if mode == "unset" || mode == "disabled" {
 				if r.code != 0 {
 					t.Fatal(r)

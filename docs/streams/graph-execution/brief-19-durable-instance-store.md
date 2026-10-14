@@ -8,6 +8,9 @@ depends: ["graph-execution/09", "graph-execution/03", "statusgen/15", "graph-exe
 unblocks:
 - graph-execution/23
 - graph-execution/21
+- "forge-neutral/37"
+- "forge-neutral/38"
+- "forge-neutral/41"
 effort: L
 gate: model
 risk:
@@ -29,7 +32,7 @@ sources:
 - docs/proposals/non-ci-architecture/19-progressive-adoption-and-oversight.md — line 49 (no SQLite runtime)
 - "medici-finance/assay#2500 — maintainer ratification of the whole target @ 23f655f5d (approval activates nothing)"
 - freshness-checked 2026-10-13 @ 4696d598e58820806d0bcf8c9b2dd87f29115400
-- docs/proposals/non-ci-architecture/22-runtime-contract-alignment.md — 2026-10-14 consumer amendment
+- docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md — 2026-10-14 consumer amendment
 exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated

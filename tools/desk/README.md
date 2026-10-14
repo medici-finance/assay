@@ -2678,8 +2678,9 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      roots under the cells root (`--cells-root`, then `$CELLS_ROOT`, then the compiled
      per-user default; a custom `CELL_GO_CACHE_ROOT` outside it is out of the sweep's
      sight) and runs the package's own `Check` against each root's last recorded policy:
-     reclaim only under pressure, never while a consumer record exists, never a warm
-     purge. A root whose owning directory the same sweep removed is reaped as an orphan,
+     reclaim only under pressure, never a warm purge. Active consumer records protect
+     `mod/` and `gopath/`; `build/` entries older than the policy's trim age
+     (`CELL_GO_CACHE_BUILD_MAX_AGE`) are trimmed under pressure regardless. A root whose owning directory the same sweep removed is reaped as an orphan,
      gated on its lease set re-read under its own lock at act time. The pass is silent
      when every cache is within policy; the summary gains a cache segment only when it
      reclaimed, reaped, or found pressure it could not clear.
