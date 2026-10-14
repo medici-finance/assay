@@ -308,6 +308,11 @@ unchanged. Reach for it when a step reports an exit code and you cannot tell whi
 deskwt, the claim tool or the forge backend produced it. See tools/desk/README.md, "Diagnostics —
 DESK_TRACE".`
 
+// perfVerbs is deskdispatch's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+var perfVerbs = []string{"--stamp-only", "--check-verifier", "--attest-verifier", "--kits", "--version", "--help"}
+
 func main() {
 	// Explicit roster class: deskdispatch ACTS (it claims, it stamps, it registers), so
 	// ciEligible=false — it reads the config-home file and never the environment.
@@ -327,7 +332,7 @@ func main() {
 	// ...and the review round's reads: the pre-dispatch gate and the lane's scope and round
 	// number (reviewroundread.go). Unwired, a review dispatch holds nothing and states a full pass.
 	reviewRoundForgeFn = liveReviewRoundForge
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskdispatch", perfVerbs, os.Args[1:], run))
 }
 
 func run(args []string) int {

@@ -150,9 +150,10 @@ func (g *GitLabForge) client() (*gitlab.Client, error) {
 		gitlab.WithoutRetries(),
 		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
 	}
-	if g.Client != nil {
-		opts = append(opts, gitlab.WithHTTPClient(g.Client))
-	}
+	// The client is always constructed here (when the caller supplied none) so the counting
+	// transport sees every round-trip: perf forgeCalls means the same on both backends.
+	// countingClient copies, never mutates, the caller's client.
+	opts = append(opts, gitlab.WithHTTPClient(countingClient(g.Client)))
 	cl, err := gitlab.NewClient(g.Token, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab API client", err)
@@ -4151,9 +4152,10 @@ func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
 		gitlab.WithoutRetries(),
 		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
 	}
-	if g.Client != nil {
-		opts = append(opts, gitlab.WithHTTPClient(g.Client))
-	}
+	// The client is always constructed here (when the caller supplied none) so the counting
+	// transport sees every round-trip: perf forgeCalls means the same on both backends.
+	// countingClient copies, never mutates, the caller's client.
+	opts = append(opts, gitlab.WithHTTPClient(countingClient(g.Client)))
 	cl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab trigger client", err)

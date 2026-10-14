@@ -620,7 +620,12 @@ cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
 
 One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
 otherwise standing it — see *How far the attended affirmation carries* above), in whichever
-**cockpit** resolves for this run — see *Cockpits* below. On the default tmux cockpit that is a
+**cockpit** resolves for this run — see *Cockpits* below. A cell with no deskd (a house cell
+without `DESKD=1`) has no `deskd` window and no placeholder in its place: `up` opens only the role
+windows (plus the comms window when comms is configured), the comms window or else the first role
+window creates the tmux session, and the one-line "no deskd" note is printed once on `up`'s stderr.
+When there is nothing at all to open (no deskd, no comms, and no role after `--no-the-desk`), `up`
+says so on stderr, creates no session, and exits 0. On the default tmux cockpit that is a
 session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re-attach later with
 `tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
 arrive at the fetch lock together.
@@ -762,8 +767,8 @@ seconds, 5 by default) once per window, dry runs included.
 
 | Cockpit | What `up` opens |
 |---|---|
-| **tmux** | a session `<cell>-cell`: the `deskd`/`cell` window plus one window per role. Unchanged |
-| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The first (`deskd`/`cell`) window is a tab too. If herdr has no window (a "workspace" in herdr's own grammar) open yet, `up` starts one first — the same trigger point and create-if-absent shape as tmux's `<cell>-cell` session — before any tab lands; an already-open window is unchanged |
+| **tmux** | a session `<cell>-cell`: the `deskd` window (only when the cell has one, i.e. `DESKD=1` on a house cell), the comms window when comms is configured, then one window per role. Whichever window comes first creates the session; a cell with no deskd gets no placeholder window |
+| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The `deskd` window is a tab too when the cell has one (`DESKD=1` on a house cell); a cell with no deskd gets no placeholder tab. If herdr has no window (a "workspace" in herdr's own grammar) open yet, `up` starts one first — the same trigger point and create-if-absent shape as tmux's `<cell>-cell` session — before any tab lands; an already-open window is unchanged |
 | **orca** | one **terminal per role** under the cell directory (registered with Orca via `orca repo add` first — Orca 404s an unregistered path), running the same `cellctl desk` command; or, with `--automate`, one scheduled automation per role instead |
 
 ### The `--automate` recipe (orca only)
