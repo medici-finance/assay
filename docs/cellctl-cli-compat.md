@@ -218,6 +218,13 @@ exit codes, roster echo and empty stdout. Their usage diagnostic adds `wipe` to
 `status|clean|wipe|recover`, reflecting the new supported cache action. The parity
 test requires every other byte of those recorded diagnostics to stay identical.
 
+`cache-enabled/3` (`cache example status`) and `cache-enabled/4`
+(`cache example clean`) keep their exit codes and stderr. Their JSON report adds
+the policy's compiler-cache trim age (`build_max_age_seconds`, 86400 by
+default) and the age trim's counts (`trimmed_build_entries`,
+`trimmed_build_bytes`). See [managed Go caches](cellctl-go-cache.md). The parity
+test requires every other byte of those reports to stay identical.
+
 `reset` and `comms init` are additional commands. The contained `comms-reader`
 entrypoint consumes an opaque argv. See [cell maintenance](cellctl-maintenance.md).
 
