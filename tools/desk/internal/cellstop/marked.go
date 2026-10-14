@@ -59,6 +59,10 @@ type Marked struct {
 	// Orphan is true when the process was re-parented to pid 1 (its launching
 	// harness is gone), or descends from such a process through marked parents.
 	Orphan bool
+	// Shielded is true when it is, is above, or is hosted alongside something live: it is
+	// listed so that its role's record can never be classed dead while it runs, and it is
+	// never a signal target.
+	Shielded bool
 }
 
 // Unattributed is a live process in a dead role child's process group that does not carry a
@@ -77,11 +81,15 @@ func Scan(m Marker, protect []int, groups []int) ([]Marked, map[int][]Unattribut
 	if m.Cell == "" || !filepath.IsAbs(m.Dir) {
 		return nil, nil, fmt.Errorf("invalid cell marker")
 	}
-	all, err := inventory()
+	all, err := inventoryAll()
 	if err != nil {
 		return nil, nil, err
 	}
-	marked, err := withKernelStart(markedIn(all, m, ancestors(all), protect))
+	listedRaw, err := markedIn(all, m, ancestors(all), protect)
+	if err != nil {
+		return nil, nil, err
+	}
+	marked, err := withKernelStart(listedRaw)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -120,11 +128,15 @@ func MarkedProcesses(m Marker, protect []int) ([]Marked, error) {
 	if m.Cell == "" || !filepath.IsAbs(m.Dir) {
 		return nil, fmt.Errorf("invalid cell marker")
 	}
-	all, err := inventory()
+	all, err := inventoryAll()
 	if err != nil {
 		return nil, err
 	}
-	return withKernelStart(markedIn(all, m, ancestors(all), protect))
+	listed, err := markedIn(all, m, ancestors(all), protect)
+	if err != nil {
+		return nil, err
+	}
+	return withKernelStart(listed)
 }
 
 // withKernelStart records each listed process's kernel start time, dropping any that exited.
@@ -133,6 +145,9 @@ func MarkedProcesses(m Marker, protect []int) ([]Marked, error) {
 func withKernelStart(listed []Marked) ([]Marked, error) {
 	out := listed[:0]
 	for _, p := range listed {
+		if p.PID == os.Getpid() {
+			continue // the invoker: its exec-time marker is the one it inherited and dropped
+		}
 		start, gone, err := deskkit.ProcessStart(p.PID)
 		if gone {
 			continue
@@ -146,24 +161,38 @@ func withKernelStart(listed []Marked) ([]Marked, error) {
 	return out, nil
 }
 
-func markedIn(all map[int]process, m Marker, excluded map[int]bool, protect []int) []Marked {
-	// A process is shielded when it is, sits above, or sits below a live lease holder or the
-	// invoking process: a holder's ancestors (a terminal-multiplexer server and the pane hosting a
-	// live window) are as live as the holder, and so is everything else they host. Shielding
-	// therefore runs over the full tree both ways — up from every root, then down from every
-	// shielded process. Pid 1 is never a shielding root for its subtree: it is everyone's parent.
+func markedIn(all map[int]process, m Marker, excluded map[int]bool, protect []int) ([]Marked, error) {
+	// A process is shielded when it is, sits above, or is hosted alongside anything that may be
+	// live and not this cell's: the invoking process, this cell's live lease holders, and — for
+	// every other cell and user on the host, whose leases cannot be enumerated from here — every
+	// process of another uid, every cellctl (any cell's supervisor), and every process whose
+	// environment was READ and does not carry this cell's marker (another cell's role child, an
+	// unrelated program). A process whose environment is withheld (a macOS platform binary) is
+	// not a root: it cannot be told apart, and every live window has a readable cellctl
+	// supervisor above it, which is. Shielding runs over the full tree of every uid, both ways —
+	// up from every root, then down from every shielded process. Pid 1 is never a shielding root
+	// for its subtree: it is everyone's parent. A walk that meets a parent missing from the
+	// listing cannot prove what it would have shielded: could-not-check.
 	shielded := map[int]bool{}
 	var roots []int
 	for pid := range excluded {
 		roots = append(roots, pid)
 	}
 	roots = append(roots, protect...)
+	for pid, p := range all {
+		if p.foreign || filepath.Base(p.comm) == "cellctl" || p.envRead && !m.carries(p) {
+			roots = append(roots, pid)
+		}
+	}
 	for _, pid := range roots {
-		for seen := 0; pid > 0 && seen <= len(all); seen++ {
+		for seen := 0; pid > 1 && seen <= len(all); seen++ {
+			if shielded[pid] {
+				break // the rest of this chain was walked from another root
+			}
 			shielded[pid] = true
 			p, ok := all[pid]
-			if !ok || pid == 1 {
-				break
+			if !ok {
+				return nil, fmt.Errorf("could-not-check: pid %d is not in the process listing, so what it hosts cannot be shielded", pid)
 			}
 			pid = p.parent
 		}
@@ -179,14 +208,14 @@ func markedIn(all map[int]process, m Marker, excluded map[int]bool, protect []in
 	}
 	orphan := map[int]bool{}
 	for pid, p := range all {
-		if !shielded[pid] && m.carries(p) && p.parent == 1 {
+		if !shielded[pid] && !p.foreign && m.carries(p) && p.parent == 1 {
 			orphan[pid] = true
 		}
 	}
 	for changed := true; changed; {
 		changed = false
 		for pid, p := range all {
-			if !shielded[pid] && !orphan[pid] && orphan[p.parent] && m.carries(p) {
+			if !shielded[pid] && !p.foreign && !orphan[pid] && orphan[p.parent] && m.carries(p) {
 				orphan[pid] = true
 				changed = true
 			}
@@ -194,13 +223,13 @@ func markedIn(all map[int]process, m Marker, excluded map[int]bool, protect []in
 	}
 	var out []Marked
 	for pid, p := range all {
-		if shielded[pid] || !m.carries(p) {
+		if p.foreign || !m.carries(p) {
 			continue
 		}
-		out = append(out, Marked{PID: pid, Parent: p.parent, Identity: p.identity, Role: p.env[EnvCellRole], Orphan: orphan[pid]})
+		out = append(out, Marked{PID: pid, Parent: p.parent, Identity: p.identity, Role: p.env[EnvCellRole], Orphan: orphan[pid], Shielded: shielded[pid]})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].PID < out[j].PID })
-	return out
+	return out, nil
 }
 
 // StopMarked ends the given marked processes: SIGTERM to each, a bounded
@@ -209,7 +238,16 @@ func markedIn(all map[int]process, m Marker, excluded map[int]bool, protect []in
 // still show the same pid with the same start identity carrying the same
 // marker, so a reused pid is never signalled. It returns an error naming any
 // process that is still running when the bound expires.
-func StopMarked(ctx context.Context, m Marker, targets []Marked, grace time.Duration) error {
+//
+// reprove recomputes the whole listing — live holders, their ancestors and hosted trees, every
+// shield root — and is called immediately before EACH signal: the prompt in front of this call
+// can wait for any length of human time, and a live window may open beneath a listed process in
+// the meantime. A target that is still running but is no longer listed as the same orphan (same
+// pid, identity and kernel start) stops the run with nothing further signalled.
+func StopMarked(ctx context.Context, m Marker, targets []Marked, grace time.Duration, reprove func() ([]Marked, error)) error {
+	if reprove == nil {
+		return fmt.Errorf("refusing to signal: no way to re-prove the shield at signal time")
+	}
 	if len(targets) == 0 {
 		return nil
 	}
@@ -218,13 +256,19 @@ func StopMarked(ctx context.Context, m Marker, targets []Marked, grace time.Dura
 	}
 	procs := make([]process, 0, len(targets))
 	for _, t := range targets {
-		if t.PID <= 1 || t.PID == os.Getpid() || t.Identity == "" || t.Start == "" || !t.Orphan {
+		if t.PID <= 1 || t.PID == os.Getpid() || t.Identity == "" || t.Start == "" || !t.Orphan || t.Shielded {
 			return fmt.Errorf("refusing to signal pid %d: not a provable cell orphan", t.PID)
 		}
 		procs = append(procs, process{pid: t.PID, parent: t.Parent, identity: t.Identity, start: t.Start})
 	}
+	signal := func(p process, sig signalKind) error {
+		if err := stillOrphan(p, reprove); err != nil {
+			return err
+		}
+		return signalMarked(p, m, sig)
+	}
 	for _, p := range procs {
-		if err := signalMarked(p, m, sigTerm); err != nil {
+		if err := signal(p, sigTerm); err != nil {
 			return err
 		}
 	}
@@ -232,7 +276,7 @@ func StopMarked(ctx context.Context, m Marker, targets []Marked, grace time.Dura
 		return err
 	}
 	for _, p := range procs {
-		if err := signalMarked(p, m, sigKill); err != nil {
+		if err := signal(p, sigKill); err != nil {
 			return err
 		}
 	}
@@ -269,4 +313,27 @@ func waitGone(ctx context.Context, procs []process, bound time.Duration) ([]int,
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+// stillOrphan re-proves, from a fresh listing, that p is still the same unshielded orphan. A
+// target that has exited (or whose pid now names another process) is not an error: signalMarked
+// will not signal it. A target still running but no longer listed as that orphan is.
+func stillOrphan(p process, reprove func() ([]Marked, error)) error {
+	listed, err := reprove()
+	if err != nil {
+		return fmt.Errorf("re-proving the shield before signalling pid %d: %w", p.pid, err)
+	}
+	for _, t := range listed {
+		if t.PID == p.pid && t.Orphan && !t.Shielded && t.Identity == p.identity && t.Start == p.start {
+			return nil
+		}
+	}
+	all, err := inventory()
+	if err != nil {
+		return err
+	}
+	if cur, ok := all[p.pid]; ok && cur.identity == p.identity {
+		return fmt.Errorf("pid %d is no longer a provable orphan (it is now shielded by a live window or holder); nothing further was signalled", p.pid)
+	}
+	return nil
 }

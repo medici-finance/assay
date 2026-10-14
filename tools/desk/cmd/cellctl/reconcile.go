@@ -305,7 +305,11 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 			eligible[m.Role] = e
 		}
 		e.Class = reconcileAlive
-		e.Evidence = append(e.Evidence, fmt.Sprintf("marked process pid %d (%s) is still running under live parent pid %d, so it is not proven orphaned (on a Linux host with a child subreaper a real orphan looks like this too); it is never signalled", m.PID, m.Identity, m.Parent))
+		why := fmt.Sprintf("is still running under live parent pid %d, so it is not proven orphaned (on a Linux host with a child subreaper a real orphan looks like this too)", m.Parent)
+		if m.Shielded {
+			why = "is still running and is shielded (it is, sits above, or is hosted alongside something live)"
+		}
+		e.Evidence = append(e.Evidence, fmt.Sprintf("marked process pid %d (%s) %s; the record cannot be dead while it runs, and it is never signalled", m.PID, m.Identity, why))
 	}
 	return plan
 }
@@ -453,8 +457,26 @@ func (c *Cell) reconcileApply(plan *reconcilePlan, roles []string, comms *deskCo
 					return fmt.Errorf("role %s gained a live owner; nothing further was signalled", o.Role)
 				}
 			}
+			// Immediately before EACH signal, the whole shield is recomputed from scratch: the
+			// orphans' role leases must still be free, and a fresh listing over every live holder
+			// (this cell's leases, plus every other cell's cellctl and every readable process that
+			// is not this cell's) must still name the target as the same orphan.
+			orphanRoles := plan.Orphans
+			reprove := func() ([]cellstop.Marked, error) {
+				for _, o := range orphanRoles {
+					dir := c.cadenceDir(o.Role)
+					if o.Role == "comms" {
+						dir = c.commsDir()
+					}
+					if busy, err := cellcadence.Probe(dir); err != nil || busy {
+						return nil, fmt.Errorf("role %s gained a live owner", o.Role)
+					}
+				}
+				marked, _, err := cellstop.Scan(m, c.liveLeaseHolders(), nil)
+				return marked, err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), orphanGrace+15*time.Second)
-			err := cellstop.StopMarked(ctx, m, plan.Orphans, orphanGrace)
+			err := cellstop.StopMarked(ctx, m, plan.Orphans, orphanGrace, reprove)
 			cancel()
 			if err != nil {
 				return err

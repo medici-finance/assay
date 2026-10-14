@@ -6,8 +6,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -73,24 +75,42 @@ func writeStale(t *testing.T, c *Cell, role string, pid int, start string, child
 }
 
 func init() {
-	if os.Getenv("CELLCTL_RECONCILE_SLEEPER") == "1" {
-		time.Sleep(5 * time.Minute)
-		os.Exit(0)
+	if os.Getenv("CELLCTL_RECONCILE_SLEEPER") != "1" {
+		return
 	}
+	// On SIGUSR1 the sleeper opens a "window" beneath itself: a child whose readable environment
+	// carries no cell marker, as another cell's role child or any unrelated program would.
+	usr := make(chan os.Signal, 1)
+	signal.Notify(usr, syscall.SIGUSR1)
+	go func() {
+		<-usr
+		exe, _ := os.Executable()
+		child := exec.Command(exe)
+		for _, kv := range os.Environ() {
+			if !strings.HasPrefix(kv, "ASSAY_CELL") {
+				child.Env = append(child.Env, kv)
+			}
+		}
+		if child.Start() == nil {
+			os.WriteFile(os.Getenv("CELLCTL_RECONCILE_CHILD_OUT"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
+		}
+	}()
+	time.Sleep(5 * time.Minute)
+	os.Exit(0)
 }
 
 // startOrphan leaves a marked process re-parented to pid 1, as a background loop of a closed
 // window is. It skips when this host re-parents to a subreaper instead. The orphan is this test
 // binary, not a system binary: macOS withholds the environment of its platform binaries from
 // other processes, and a process whose marker cannot be read is never a candidate.
-func startOrphan(t *testing.T, c *Cell, role string) int {
+func startOrphan(t *testing.T, c *Cell, role string, extraEnv ...string) int {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("/bin/sh", "-c", cockpitQuote(exe)+" </dev/null >/dev/null 2>&1 & echo $!")
-	cmd.Env = c.stampCellMarker([]string{"PATH=/usr/bin:/bin", "CELLCTL_RECONCILE_SLEEPER=1"}, role)
+	cmd.Env = c.stampCellMarker(append([]string{"PATH=/usr/bin:/bin", "CELLCTL_RECONCILE_SLEEPER=1"}, extraEnv...), role)
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +315,8 @@ func TestCockpitLaunchCarriesNoMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := f.run(t, []string{"PATH=" + bin + ":/usr/bin:/bin", "ASSAY_CELL=example", "ASSAY_CELL_DIR=" + f.cellDir, "ASSAY_CELL_ROLE=the-desk"},
-		"up", "example", "--cockpit", "tmux", "--no-the-desk", "--no-attach")
+		"up", "example", "--cockpit", "tmux", "--no-attach") // the-desk window: up must reach tmux
+
 	if r.code != 0 {
 		t.Fatalf("up: %+v", r)
 	}
@@ -355,6 +376,101 @@ func TestReconcileUnattributedGroupMember(t *testing.T) {
 	}
 	if !alive(member) {
 		t.Fatal("unattributed group member was signalled")
+	}
+	if _, err := cellcadence.Read(c.cadenceDir("worker-desk")); err != nil {
+		t.Fatalf("checkpoint cleared: %v", err)
+	}
+}
+
+// windowOpener is the prompt answer that, before answering, has a live window open beneath
+// the listed orphan — the human-time gap between listing and signalling.
+type windowOpener struct {
+	t      *testing.T
+	orphan int
+	out    string
+	done   bool
+	answer []byte
+}
+
+func (w *windowOpener) Read(b []byte) (int, error) {
+	if !w.done {
+		w.done = true
+		syscall.Kill(w.orphan, syscall.SIGUSR1)
+		for deadline := time.Now().Add(3 * time.Second); ; {
+			if raw, err := os.ReadFile(w.out); err == nil && len(raw) > 0 {
+				child, _ := strconv.Atoi(string(raw))
+				w.t.Cleanup(func() { syscall.Kill(child, syscall.SIGKILL) })
+				// the child must be visible to the process listing before the answer lands
+				time.Sleep(300 * time.Millisecond)
+				break
+			}
+			if time.Now().After(deadline) {
+				w.t.Fatal("window beneath the orphan never opened")
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	if w.answer == nil {
+		w.answer = []byte("y\n")
+	}
+	if len(w.answer) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(b, w.answer)
+	w.answer = w.answer[n:]
+	return n, nil
+}
+
+// regression: #2880 (security round 2, S2) — a window that opens beneath a listed orphan while
+// the prompt waits shields it: the shield is recomputed immediately before the signal, the
+// orphan is never signalled, and nothing is cleared.
+func TestReconcileShieldReprovedAfterPrompt(t *testing.T) {
+	c := reconcileCell(t)
+	writeStale(t, c, "worker-desk", deadPID(t), "1.000000", 0, "")
+	out := filepath.Join(t.TempDir(), "child")
+	orphan := startOrphan(t, c, "worker-desk", "CELLCTL_RECONCILE_CHILD_OUT="+out)
+	var buf bytes.Buffer
+	err := c.reconcile([]string{"worker-desk"}, nil, reconcileIO{TTY: true, In: &windowOpener{t: t, orphan: orphan, out: out}, Out: &buf})
+	if !errors.Is(err, errReconcileRefused) || !strings.Contains(buf.String(), "no longer a provable orphan") {
+		t.Fatalf("signalled after a window opened beneath it: %v\n%s", err, buf.String())
+	}
+	time.Sleep(200 * time.Millisecond)
+	if !alive(orphan) {
+		t.Fatal("orphan hosting a newly opened window was signalled")
+	}
+	if _, err := cellcadence.Read(c.cadenceDir("worker-desk")); err != nil {
+		t.Fatalf("checkpoint cleared: %v", err)
+	}
+}
+
+// regression: #2880 (correctness round 2, F2) — a marked process of the stale role that is
+// alive but cannot be signalled (here shielded as part of the invoking process's tree; on a
+// Linux subreaper host an orphan looks the same) keeps the record alive: it is named, never
+// signalled, and the checkpoint is not cleared over it.
+func TestReconcileShieldedMarkedKeepsRecordAlive(t *testing.T) {
+	c := reconcileCell(t)
+	writeStale(t, c, "worker-desk", deadPID(t), "1.000000", 0, "")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe)
+	cmd.Env = c.stampCellMarker([]string{"PATH=/usr/bin:/bin", "CELLCTL_RECONCILE_SLEEPER=1"}, "worker-desk")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
+	time.Sleep(300 * time.Millisecond) // past exec, so its environment is the stamped one
+	var buf bytes.Buffer
+	err = c.reconcile([]string{"worker-desk"}, nil, reconcileIO{TTY: true, In: strings.NewReader("y\n"), Out: &buf})
+	if !errors.Is(err, errReconcileRefused) {
+		t.Fatalf("cleared while a marked process of the role still runs: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "marked process pid "+strconv.Itoa(cmd.Process.Pid)) || !strings.Contains(buf.String(), "worker-desk class=alive") {
+		t.Fatalf("live marked process not named:\n%s", buf.String())
+	}
+	if !alive(cmd.Process.Pid) {
+		t.Fatal("shielded marked process was signalled")
 	}
 	if _, err := cellcadence.Read(c.cadenceDir("worker-desk")); err != nil {
 		t.Fatalf("checkpoint cleared: %v", err)

@@ -16,7 +16,10 @@ type Scope struct {
 }
 type process struct {
 	pid, parent int
-	group       int // process group id
+	group       int    // process group id
+	foreign     bool   // owned by another uid: listed for the tree walk only, never a candidate
+	envRead     bool   // its environment was actually readable (not withheld)
+	comm        string // the process table's command name
 	identity    string
 	start       string // kernel start time (deskkit.ProcessStart); set only for a signal target
 	env         map[string]string

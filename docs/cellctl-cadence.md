@@ -163,9 +163,17 @@ one answer instead of one recovery per role. The preflight:
    (`comms` for the service), and descendants inherit them. A process is an orphan only
    if it carries this cell's marker for a role whose lease is free, and it was re-parented
    to pid 1 (or descends, through marked processes, from one that was). Nothing related to
-   a live lease holder or to the invoking process is ever a candidate: not the process
-   itself, not its descendants, not its ancestors (a terminal-multiplexer server hosting a
-   live window), and not anything else those ancestors host. cellctl drops an inherited
+   anything that may be live and not this cell's is ever a candidate. The shield roots are
+   the invoking process, this cell's live lease holders, every process of another user, every
+   `cellctl` (any cell's supervisor), and every process whose environment was read and does
+   not carry this cell's marker (another cell's role child, an unrelated program). Shielded
+   are the roots, their descendants, their ancestors (a terminal-multiplexer server hosting a
+   live window) and anything else those ancestors host, walked across processes of every
+   user. A parent missing from the process listing is could-not-check. A process whose
+   environment is withheld is not a root: every live window has a readable `cellctl`
+   supervisor above it, which is. Any live marked process of a role that is not a signal
+   candidate (shielded, under a live parent, or under a subreaper) keeps that role's record
+   `alive`: a record is `dead` only when no marked process of the role is left running. cellctl drops an inherited
    marker from its own environment at start, so the cockpit processes it starts (a tmux
    server or window, a herdr or orca surface) never carry one. Only the role child and the
    comms service are stamped. Paths and command lines are never ownership proof.
@@ -183,7 +191,10 @@ one answer instead of one recovery per role. The preflight:
    each by pid and start time. Before signalling it re-checks that each orphan's role
    lease is still free, and every signal is preceded by a fresh check that the pid still
    has the same start time and marker, then by a check of the kernel's own start time
-   recorded at listing (an unreadable one is could-not-check, and nothing is signalled). It
+   recorded at listing (an unreadable one is could-not-check, and nothing is signalled).
+   Immediately before every signal the whole shield is also recomputed from a fresh
+   listing, because a window can open while the prompt waits: a target no longer listed as
+   the same orphan stops the run with nothing further signalled. It
    then closes a recorded comms surface whose identity still matches, runs the same code
    as `cadence recover --confirm-stopped` and `comms recover --confirm-stopped`, re-reads
    the state and continues the launch.

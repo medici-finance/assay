@@ -13,7 +13,24 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// inventory is the invoking user's processes, the only ones ever attributed or signalled.
 func inventory() (map[int]process, error) {
+	all, err := inventoryAll()
+	if err != nil {
+		return nil, err
+	}
+	for pid, p := range all {
+		if p.foreign {
+			delete(all, pid)
+		}
+	}
+	return all, nil
+}
+
+// inventoryAll is every listed process of every uid. Processes of other uids carry no
+// environment and are never candidates; they are listed so that a walk up the process tree is
+// not cut short at the first one (a root-owned login or sudo between a window and its host).
+func inventoryAll() (map[int]process, error) {
 	metadata, err := exec.Command("ps", "-axo", "uid=,pid=,ppid=,pgid=,lstart=,stat=,comm=").Output()
 	if err != nil {
 		return nil, fmt.Errorf("cannot inspect process ownership: %w", err)
@@ -27,22 +44,23 @@ func inventory() (map[int]process, error) {
 		group, _ := strconv.Atoi(f[3])
 		f = append(f[:3:3], f[4:]...) // the identity layout below predates the pgid column
 		uid, _ := strconv.Atoi(f[0])
-		if uid != os.Geteuid() {
-			continue
-		}
+		foreign := uid != os.Geteuid()
 		pid, e := strconv.Atoi(f[1])
 		if e != nil {
 			continue
 		}
 		parent, _ := strconv.Atoi(f[2])
-		result[pid] = process{pid: pid, parent: parent, group: group, identity: strings.Join(append(f[3:8:8], f[9:]...), " "), env: map[string]string{}}
+		result[pid] = process{pid: pid, parent: parent, group: group, foreign: foreign, comm: strings.Join(f[9:], " "), identity: strings.Join(append(f[3:8:8], f[9:]...), " "), env: map[string]string{}}
 	}
 	for pid, p := range result {
-		env, err := processEnvironment(pid)
+		if p.foreign {
+			continue
+		}
+		env, readable, err := processEnvironmentRead(pid)
 		if err != nil {
 			continue
 		} // exits and inaccessible unrelated processes have no attribution
-		p.env = env
+		p.env, p.envRead = env, readable
 		result[pid] = p
 	}
 	return result, nil
@@ -111,6 +129,8 @@ func signalMarked(p process, m Marker, sig syscall.Signal) error {
 	}
 	return nil
 }
+
+type signalKind = syscall.Signal
 
 const (
 	sigTerm = syscall.SIGTERM
