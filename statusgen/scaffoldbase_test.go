@@ -90,7 +90,10 @@ func glLintFetchesBase(gl string) string {
 // --lint and the check that proves its lint job resolves the base.
 var scaffoldLintChecks = map[string]func(string) string{
 	"initWorkflow": ghLintFetchesBase,
-	"initGitlabCI": glLintFetchesBase,
+	// The GitLab lint job lives in initGitlabCITail, the part of the composed
+	// initGitlabCI after the embedded pushcred anchor (#2910);
+	// TestGitLabLintFetchesBase runs the check on the composed file.
+	"initGitlabCITail": glLintFetchesBase,
 }
 
 func TestInitLintFetchesBase(t *testing.T) {

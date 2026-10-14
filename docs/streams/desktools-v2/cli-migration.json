@@ -155,6 +155,11 @@
       "class": "library",
       "pattern": "tools/fleet-gitlab-roles.sh",
       "reason": "role table sourced by the two GitLab fleet scripts; no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "statusgen/pushcred.sh",
+      "reason": "board-push credential functions sourced by the board-writer workflow steps and embedded in the GitLab CI template statusgen init writes; no shebang, never executed"
     }
   ],
   "entrypoints": [

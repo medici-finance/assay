@@ -22,7 +22,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/34 | 2026-10-14 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-14 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/55 | 2026-10-14 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/17 | 2026-10-14 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-10-14 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/34 | 2026-10-14 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/29 | 2026-10-14 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-14 |  |
@@ -86,12 +86,13 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By 
 | measured-status | 01 — Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test | 0 | 2000 |
 | statusgen | 19 — Context handoff contracts and synthetic fixtures [exec:strong] | 1 | 2000 |
 | desk-tools | 34 — Pinned golangci-lint across every Go module [exec:strong] | 1 | 1500 |
+| forge-gitlab | 18 — Rotate the board-push credential in one process — the new value never reaches a shell, a transcript, a log or argv [exec:strong] | 5 | 1000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: d3be689 2026-10-14T13:04:20-05:00_
+_last regen: 08ffee2 2026-10-14T18:20:24Z_
 
 **Progress:** 10/13 brief items done.
 
@@ -112,7 +113,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: d3be689 2026-10-14T13:04:20-05:00_
+_last regen: 08ffee2 2026-10-14T18:20:24Z_
 
 **Progress:** 16/73 brief items done.
 
@@ -537,13 +538,14 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 55 Port the go-analysis adapter entrypoints — todo (wave 3)
 - 56 Migrate deskperf to Cobra and Viper — todo (wave 3)
 
-### forge-gitlab (5 open)
+### forge-gitlab (6 open)
 
 - 05 Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked — implemented (wave 4)
 - 11 Guard-read custody — the last gh shell-outs onto the Forge seam — implemented (wave 4)
 - 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — implemented (wave 5)
 - 13 Board reads degrade per row, never per sweep — the GitLab empty-field class — implemented (wave 3)
 - 16 The review-tick conformance walk — one live GitLab review tick, every verb, zero hand-built calls — todo (wave 5)
+- 18 Rotate the board-push credential in one process — the new value never reaches a shell, a transcript, a log or argv — todo (wave 5)
 
 ### forge-neutral (29 open)
 
@@ -863,4 +865,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**27** streams (**20** active, **0** paused, **7** parked) · **106/400** briefs done · completed initiatives: see `docs/archive/`
+**27** streams (**20** active, **0** paused, **7** parked) · **106/401** briefs done · completed initiatives: see `docs/archive/`
