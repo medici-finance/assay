@@ -42,8 +42,9 @@ func commsUpFixture(t *testing.T) (*repairFixture, *Cell, *deskCommsConfig, stri
 printf '%s\n' "$*" >> "$COMMS_CALLS"
 case "$1 $2" in
  "has-session -t") test -f "$COMMS_CALLS.session"; exit $?;;
- "new-session -d") touch "$COMMS_CALLS.session"; exit 0;;
+ "new-session -d") touch "$COMMS_CALLS.session"; case " $* " in *" -P "*) ;; *) exit 0;; esac;;
  "kill-session -t") rm -f "$COMMS_CALLS.session"; exit 0;;
+ "new-window -P"|"new-window -t") test -f "$COMMS_CALLS.session" || { echo "can't find session: example-cell" >&2; exit 1; };;
  "tab --help") echo "create close list"; exit 0;;
  "pane --help") echo "run"; exit 0;;
  "workspace --help") echo "list create report-metadata close"; exit 0;;
@@ -63,7 +64,7 @@ if test "$1 $2 $3" = 'terminal create --help'; then
  echo '--worktree --command --title --json'; exit 0
 fi
 command=''
-if test "$1" = new-window; then
+if test "$1" = new-window || test "$1" = new-session; then
  last=''
  for word in "$@"; do
   if test "$last" = -n; then printf '%s' "$word" > "$COMMS_CALLS.label"; fi
@@ -307,5 +308,25 @@ func TestCommsArgvRoundTrip(t *testing.T) {
 	want := []string{"--cells-root", filepath.Dir(c.Dir), "comms", "example", "run"}
 	if string(out) != strings.Join(want, "\n")+"\n" {
 		t.Fatalf("argv changed: %s", out)
+	}
+}
+
+// regression: #2881
+func TestUpTmuxNoDeskdRoleFirst(t *testing.T) {
+	f, _, _, log, env := commsUpFixture(t)
+	f.run(t, env, "set", "example", "CELL_COMMS_CONFIG=")
+	r := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-attach")
+	if r.code != 0 || strings.Count(r.stderr, "with no deskd") != 1 {
+		t.Fatalf("up: %+v", r)
+	}
+	b, _ := os.ReadFile(log)
+	var creates []string
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "new-session") || strings.HasPrefix(line, "new-window") {
+			creates = append(creates, line)
+		}
+	}
+	if len(creates) != 1 || !strings.HasPrefix(creates[0], "new-session -d -s example-cell -n the-desk ") {
+		t.Fatalf("want the first role window to create the session and no placeholder window, got %q", creates)
 	}
 }

@@ -23,6 +23,28 @@ tools/desk/
 Everything after that is the deep reference, one section per tool, and you do not need
 it on day one.
 
+## Review planner state contract
+
+`reviewloop plan` proposes review dispatches and draft-to-ready operations from the
+supplied board; it does not execute either operation. A posted review verdict is
+not evidence that a reviewer is currently assigned, and verdict kinds and outcomes
+must remain distinct. The audit ledger records completed writes; planning must not
+reparse its complete history separately for each proposed operation.
+
+Planning uses only the supplied board observations and performs zero audit-history
+loads ([issue #2793](https://github.com/medici-finance/assay/issues/2793)). Historical
+review verdicts, including legacy generic `review` entries, cannot suppress a new
+review dispatch. Historical `ready` entries cannot suppress a current `FLIP`: a
+still-draft PR needs the retry that `deskpost ready` already permits (#805).
+
+Coalescing suppresses repeated keys within a plan and operations whose head is
+unresolved. It does not reserve a reviewer or authorize a write. Before execution,
+`deskdispatch` must acquire a live reviewer claim; `deskpost` must validate history
+under its outward lock and recheck current forge state and exact write identity.
+Missing, unreadable or corrupt audit history does not change a plan, and still
+retains its existing meaning at those write boundaries. No retained history is
+changed or discarded.
+
 ## Tool reference
 
 | Tool | Verb(s) | Class | Write budget + breaker |
@@ -52,6 +74,7 @@ it on day one.
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
+| `deskperf` | `report` (per-tool p50 / p90 / max / total wall, share of total wall, refusal ratio, top-N slowest), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
@@ -380,6 +403,71 @@ assertions. A verb opts into the whole contract by routing its terminal error th
 Retrofitted so far: `deskdispatch`, `deskwt`, `desktoken`, `deskfile`. Other verbs are
 unaffected and keep their current behaviour until they are moved over.
 
+### Local performance history — `deskperf`
+
+The audit ledger records WHAT a verb did; it records nothing about how long it took. With
+`ASSAY_TELEMETRY=1` exported (exactly `1` — `true`, `yes` or an empty value are all OFF), the
+first-wave verbs — `deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`, `deskdispatch`
+and `deskboot` — each append ONE `perf-v1` line per invocation to a local day file:
+
+```sh
+export ASSAY_TELEMETRY=1        # opt in; unset it to stop — the history then ages out
+deskperf report                 # last 7 UTC days, every wrapped tool
+deskperf report --tool deskpr --days 2 --top 5
+deskperf boot --role worker-desk --json
+```
+
+**What is recorded** — and nothing else, enforced by the record's type: the schema tag, a
+second-resolution UTC timestamp, the tool (canonical key, else `other`), the verb (the verb's
+own registered subcommand, else `other`; boot steps as `step:<name>`), the role (`$DESK_LOOP`
+canonical name, else `none`), wall ms, process CPU ms (omitted where unmeasurable, e.g.
+Windows), the exit code and its fixed result word, how many child processes the verb started
+through the shared runner (`deskkit.Run`) and their summed wall ms, how many HTTP
+round-trips went through the forge client's counting transport, the build stamp (hex, else
+`unpinned`), and a random per-install id.
+
+**The two counts are lower bounds.** A verb's own child-process runner or its own direct
+HTTP client is outside both seams and is not counted: `deskboot`'s boot-step children,
+`desktoken`'s token mint, `deskpost`'s posts, and the repository-visibility read when no
+client is injected. A `0` from those means "not counted", not "none made".
+
+**What is never recorded:** argv, flags or their values, repo, PR or issue numbers, branch,
+path, title, body, error text, session tag, any environment value, hostname, user name, or
+any token. Every string field passes through a mapper whose return is one of its OWN
+constants — an unknown input becomes `other` / `none`, never the input.
+
+**Where it lives:** `<state dir>/perf/<YYYY-MM-DD>.jsonl` (state dir: `~/.config/assay`), files
+0600 in a 0700 directory, plus `perf/install-id`. With the switch off, nothing is created —
+no directory, no file, no id. Nothing is ever sent anywhere: no file this adds opens a
+network connection.
+
+**Retention: 7 UTC days, pruned on write.** The first record a process writes removes day
+files older than today and the six days before it. The pruner removes only a name that is
+EXACTLY `YYYY-MM-DD.jsonl`; `install-id`, anything else in `perf/`, and everything outside it
+— the audit ledger and its segments included — are never touched.
+
+**It is not the audit ledger, and never touches it.** The ledger is load-bearing (the
+rate-limit counter, the circuit breaker and the idempotency store read its rows) and is never
+pruned; the perf history is opt-in, disposable and read by nobody but you. A perf write is
+best-effort and silent: a full disk or an unwritable directory never changes a verb's exit
+code or its output. Per-invocation agent usage (tokens, cost) is the agent runner's to report
+(`loopadmin/runner`'s `Usage`), not this record's.
+
+`deskperf` reads it:
+
+- `deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]` — per tool: count,
+  p50 / p90 / max wall ms (nearest-rank), total wall ms, share of total wall, and refusal ratio
+  (refused + unwritten + unverifiable over count); then the N slowest invocations (default
+  10) as ts / tool / verb / wall ms. Boot-step records are excluded (they subdivide a
+  `deskboot` run already counted once).
+- `deskperf boot [--days N] [--role R] [--json]` — `deskboot`'s per-step p50 / p90 / max, in
+  boot order, and the summed boot cost per role.
+
+`--days` defaults to 7 and refuses anything above it (exit 5): there is no eighth day to read.
+An empty history is a REFUSAL (exit 6) that names its reason — logging off, or on but nothing
+recorded yet — never an all-zeroes report; a filter matching nothing is exit 5; unparseable
+lines (a truncated final line) are counted and reported, never silently dropped.
+
 ### Runtime state (NOT created by this repo)
 
 At runtime the tools read/write, under `~/.config/assay/`:
@@ -417,6 +505,10 @@ At runtime the tools read/write, under `~/.config/assay/`:
   kind, name, attempt, conclusion). A check name is whatever the check's poster supplied:
   unauthenticated, sanitize before display. Schema: [`ci-check-v1`](internal/deskkit/ci-check-v1.md);
   fail-first: `muhar -spec internal/deskkit/cicheckhistory-mutations.json`.
+- `perf/` — the OPT-IN local perf history (`ASSAY_TELEMETRY=1` only; absent otherwise):
+  `perf/<YYYY-MM-DD>.jsonl` day files kept 7 UTC days and pruned on write, plus
+  `perf/install-id`. Separate from the audit ledger by design — see
+  [Local performance history](#local-performance-history--deskperf).
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing
   `result=disabled`. Its first line is shown as the reason.

@@ -198,6 +198,11 @@ chain, every child process with its command line, exit status and elapsed time, 
 failing child's stderr in full. Credentials are redacted. With it off, output is
 unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 
+// perfVerbs is deskwt's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+var perfVerbs = []string{"add", "remove", "prune", "maintain", "role-init", "role-clean", "--version", "--help"}
+
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
 	// (a correctness review found: SetToolClass had no caller anywhere,
@@ -212,7 +217,7 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskwt", perfVerbs, os.Args[1:], run))
 }
 
 func run(args []string) int {
