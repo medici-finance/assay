@@ -293,7 +293,7 @@ pass at assessment (row 13). A reader admitted for one repository reads rows adm
 admission, or a covered but different admission receives complete-empty (row 15). Request input
 impersonates an admission instead of composition deriving it (row 9). The chosen retention option is left unimplemented (row 16). `forgeread` gains a
 dependency on statusgen and a module cycle forms (row 17). A mirror file reads configuration or a
-secret from the environment under a name the ambient-token rule does not know (row 18). Partial
+secret through a direct `os` or `syscall` import under a name the ambient-token rule does not know (row 18; cgo is outside that check). Partial
 coverage maps to a present fact (row 19). Retention of private content after access loss remains the
 human decision above; row 16 pins whichever option is chosen.
 

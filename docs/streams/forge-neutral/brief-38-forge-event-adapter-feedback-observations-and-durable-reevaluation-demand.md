@@ -72,8 +72,8 @@ facts (4696d598e, 2026-10-13):
 
 layering: `forgeread/events` is pure. It takes a delivery's header values, body bytes and a secret
 supplied by composition, and returns an authenticated hint or a refusal. It has no HTTP server,
-no client, no process launch and no environment read: no shipped `events` file imports `os` or
-`syscall`. HTTP framing, secret custody and mounting belong to the host that later exposes it.
+no client, no process launch and no direct environment read: no shipped `events` file imports `os` or
+`syscall`. A cgo route through the `"C"` pseudo-package is outside what the import check parses. HTTP framing, secret custody and mounting belong to the host that later exposes it.
 Rows 2, 9, 10 and 13 hold the split; row 13 parses and decodes import paths to enforce this direct-import boundary.
 
 design-fit:
@@ -227,8 +227,8 @@ a gap is reported as complete (row 5). An older run clears newer feedback, or a 
 completion and enqueue loses it (row 6). An event is treated as approval (row 7). Missing check
 permission reads as green (row 8). The library grows a server or driver (row 9). statusgen starts
 linking event or mirror code (row 10). A new operation slips in, or a forge token is read from the
-environment (row 11). The webhook secret or other configuration is read from the environment under
-any name (row 13). `forgeread` gains a dependency on statusgen and a module cycle forms (row 14). A
+environment (row 11). The webhook secret or other configuration is read through a direct `os` or
+`syscall` import under any name (row 13; cgo is outside that check). `forgeread` gains a dependency on statusgen and a module cycle forms (row 14). A
 captured body replayed under a fresh delivery ID creates a second requirement (row 3). Payload
 retention remains the human decision above; row 15 pins whichever option is chosen.
 

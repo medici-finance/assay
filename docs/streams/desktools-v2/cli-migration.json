@@ -7,6 +7,11 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "class": "test",
+      "pattern": "tools/forge-import-check",
+      "reason": "source-only verification instrument run explicitly by go run or go test from forge-neutral briefs 37 and 38 verify rows; it parses a target tree, never builds or executes it, and is never installed or released as an operator CLI (#2743)"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/go_cache.py",
       "reason": "internal release workflow cache adapter imported by fixed workflow calls; no shebang, main guard, argument parser or independent operator entrypoint (#138)"
