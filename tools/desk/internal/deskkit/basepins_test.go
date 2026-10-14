@@ -32,6 +32,9 @@ var knownToolTarballs = map[string]map[string]toolTarball{
 	"GO": {"1.25.0": {
 		amd64: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613",
 		arm64: "05de75d6994a2783699815ee553bd5a9327d8b79991de36e38b66862782f54ae",
+	}, "1.27.2": {
+		amd64: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5",
+		arm64: "94f3e30b8e374bc285e7dadc11e0865726b9bc6e85b841ccceaabc0214c6b7c8",
 	}},
 	"GH": {"2.63.2": {
 		amd64: "912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00",

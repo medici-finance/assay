@@ -17,7 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-14 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-14 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-14 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/14 | 2026-10-14 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/24 | 2026-10-14 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/35 | 2026-10-14 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/34 | 2026-10-14 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-14 |  |
@@ -76,6 +76,8 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| desk-containers | 15 — The cell-operation contract — one versioned result and plan schema shared by the future Cell API and the CLI; apply only as an interactive-terminal confirmation, with approval-based apply deferred [exec:strong] | 7 | 5000 |
+| desk-containers | 16 — Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker [exec:strong] | 7 | 4500 |
 | iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
@@ -92,7 +94,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 08ffee2 2026-10-14T18:20:24Z_
+_last regen: 716a745 2026-10-14T15:35:07-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -113,7 +115,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 08ffee2 2026-10-14T18:20:24Z_
+_last regen: 716a745 2026-10-14T15:35:07-05:00_
 
 **Progress:** 16/73 brief items done.
 
@@ -408,7 +410,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1 — implemented (wave 3)
 - 07 per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills — in-progress (wave 4)
 
-### desk-containers (12 open)
+### desk-containers (22 open)
 
 - 02 runtime credential contract (PEM + model env) + image layer-secret scan — implemented (wave 1)
 - 04 interactive desktop launch script (desk-run.sh) — todo (wave 3)
@@ -422,6 +424,16 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 12 Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob — todo (wave 4)
 - 13 Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release — todo (wave 5)
 - 14 Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay — todo (wave 6)
+- 15 The cell-operation contract — one versioned result and plan schema shared by the future Cell API and the CLI; apply only as an interactive-terminal confirmation, with approval-based apply deferred — todo (wave 7)
+- 16 Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker — todo (wave 7)
+- 17 `cellctl up <cell>` converges the cell — already-up roles are skipped, stale ones reconciled, launches serialized, one summary table — todo (wave 8)
+- 18 `cellctl drain\|pause\|resume <cell> [role...]` — CLI adapter onto the runner-lifecycle drain/pause/resume transitions and the handoff record, implemented on today's stop flags and cadence as the interim mechanism — todo (wave 9)
+- 19 `cellctl restart <cell> [role...]` — CLI adapter onto the runner-lifecycle restart sequence (drain → stop → start per role, rolling), so the pipeline never fully stops — todo (wave 10)
+- 20 `cellctl status <cell>` as a cell overview — per-role liveness, model, heartbeat, claims, stop state, plus comms, cache, locks and tool version — todo (wave 8)
+- 21 `cellctl doctor <cell>` — diagnose every known way a cell gets stuck, name the cause, and offer the fix as one confirmed plan — todo (wave 12)
+- 22 `cellctl logs <cell> [role] [--lines N]` — read a desk window's recent output from whichever cockpit holds it — todo (wave 10)
+- 23 `cellctl upgrade <cell>` — install the pinned desk-tools release and plugin, verify them, then rolling-restart the cell onto them — todo (wave 11)
+- 24 `cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans — todo (wave 13)
 
 ### desk-supervision (28 open)
 
@@ -865,4 +877,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**27** streams (**20** active, **0** paused, **7** parked) · **106/401** briefs done · completed initiatives: see `docs/archive/`
+**27** streams (**20** active, **0** paused, **7** parked) · **106/411** briefs done · completed initiatives: see `docs/archive/`
