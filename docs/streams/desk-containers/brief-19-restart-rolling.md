@@ -9,7 +9,7 @@ why: >-
   Restart is a sequence of runner-lifecycle transitions, not a mechanism of its own, so the
   verb is a thin adapter: it composes `drain` and `up` and inherits whatever implements
   those transitions, interim today and the lifecycle contract later.
-wave: 9
+wave: 10
 depends: ["desk-containers/17", "desk-containers/18"]
 unblocks: ["desk-containers/23"]
 effort: S
@@ -51,7 +51,7 @@ facts:
   - The batch expiry bounds the **start** of each step. A step not started within 10 minutes is not run; the result is `partial`, and `next[]` names a fresh `restart --now --plan` for the remaining roles.
 - If a role fails to come back, restart stops there. It does not restart further roles, it reports the failed role with `up`'s error, and it exits 1. The roles not yet touched keep running.
 - **Off a TTY, `restart` in every form except `--plan` is refused (plan-only):** `restart` and `restart --now` are refused `not-interactive` (desk-containers/15 row 8), and `restart --now --plan` works anywhere.
-- **Per-role stop.** Each step drains one role with brief 18's `drain <cell> <role>`, which ends in the per-role `down <cell> <role>`, then starts it with `up --role`. Siblings' windows, cadences and work are never touched, which is what lets row 3's "at least four of five running on every poll" hold. The cell-wide `down <cell>` is never used.
+- **Per-role stop.** Each step drains one role with brief 18's `drain <cell> <role>`, which ends in the per-role `down <cell> <role>`, then starts it with `up --role`. The per-role stop re-verifies the window's identity before closing it and refuses on a mismatch or stale receipt, so siblings' windows, cadences and work are not touched. That is what lets row 3's "at least four of five live on every poll" hold. An interactive-mode role (the default) measures harness idleness as could-not-check, so `restart` stops it only through the operator's interactive confirm, which states that. The cell-wide `down <cell>` is never used.
 - It is a composition of lifecycle transitions through `drain` and `up` and adds no state or mechanism of its own; the interim mechanism belongs to desk-containers/18. Output is a desk-containers/15 result with one `roles[]` entry per role, carrying both phases. A `--now` restart is applied only by interactive confirm; off a TTY it is plan-only.
 
 ## Ground rules
@@ -69,7 +69,7 @@ facts:
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartStopsOnFailure' -count=1 -v` | `--- PASS` — when role 2's `up` fails, roles 3+ are never drained and the result names role 2's error |
 | 2b | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartNowBatchPlan' -count=1 -v` | `--- PASS` — `--now --plan` writes per-role plans plus a batch plan binding their digests; two concurrent applies of the batch: exactly one proceeds; a drifted role is refused `plan-stale` and later roles are untouched; a consumed role plan stops the sequence (never skip-and-continue); a step not started before expiry is not run (`partial`); a mutant that skips consumed roles fails |
 | 2c | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRefusesOffTTY' -count=1 -v` | `--- PASS` — `restart <cell>` and `restart <cell> --now`, each with stdin or stdout not a TTY, are refused `not-interactive`, and no role is drained |
-| 3 | gate:model +flow +dereference | On a disposable house cell with stub desks: `cellctl restart <cell>` while polling `cellctl cadence <cell> status` every 2s | every poll shows at least four of five roles `running=true`; the run ends with all five up and a fresh handoff note read by each |
+| 3 | gate:model +flow +dereference | On a disposable house cell with stub desks (cadence and interactive mode): `cellctl restart <cell>` on a TTY, confirming, while polling every 2 s each role's liveness (the harness pid and start time from its surface receipt, alive) | every poll shows at least four of five roles live; no poll shows a role other than the one being restarted down; the run ends with all five live and a fresh handoff record read by each. `running=true` is not used as liveness, because it marks a cadence pass in flight and holds for an interactive role's whole life |
 | 4j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartEmitsCellOpV1' -count=1 -v` | `--- PASS` — `restart --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 4 | check | `statusgen --root . --lint` | exit 0 |
 | 4a | check | `statusgen --root . --consumers --brief desk-containers/19` | exit 0 — the `consumers:` routing holds against the branch diff |

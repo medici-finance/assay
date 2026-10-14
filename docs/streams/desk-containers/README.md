@@ -47,13 +47,13 @@ component list, build/run topology, and open questions.
 | 15 | [The cell-operation contract — one versioned result and plan schema shared by the future Cell API and the CLI; apply only as an interactive-terminal confirmation, with approval-based apply deferred](brief-15-cell-op-machine-seam.md) | 7 | M | todo | — | — |
 | 16 | [Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker](brief-16-cell-scoped-stop-flags.md) | 7 | M | todo | — | — |
 | 17 | [`cellctl up <cell>` converges the cell — already-up roles are skipped, stale ones reconciled, launches serialized, one summary table](brief-17-up-converges-the-cell.md) | 8 | M | todo | — | — |
-| 18 | [`cellctl drain\|pause\|resume <cell> [role...]` — CLI adapter onto the runner-lifecycle drain/pause/resume transitions and the handoff record, implemented on today's stop flags and cadence as the interim mechanism](brief-18-drain-pause-resume-handoff.md) | 8 | M | todo | — | — |
-| 19 | [`cellctl restart <cell> [role...]` — CLI adapter onto the runner-lifecycle restart sequence (drain → stop → start per role, rolling), so the pipeline never fully stops](brief-19-restart-rolling.md) | 9 | S | todo | — | — |
+| 18 | [`cellctl drain\|pause\|resume <cell> [role...]` — CLI adapter onto the runner-lifecycle drain/pause/resume transitions and the handoff record, implemented on today's stop flags and cadence as the interim mechanism](brief-18-drain-pause-resume-handoff.md) | 9 | M | todo | — | — |
+| 19 | [`cellctl restart <cell> [role...]` — CLI adapter onto the runner-lifecycle restart sequence (drain → stop → start per role, rolling), so the pipeline never fully stops](brief-19-restart-rolling.md) | 10 | S | todo | — | — |
 | 20 | [`cellctl status <cell>` as a cell overview — per-role liveness, model, heartbeat, claims, stop state, plus comms, cache, locks and tool version](brief-20-status-overview.md) | 8 | M | todo | — | — |
-| 21 | [`cellctl doctor <cell>` — diagnose every known way a cell gets stuck, name the cause, and offer the fix as one confirmed plan](brief-21-doctor.md) | 11 | M | todo | — | — |
-| 22 | [`cellctl logs <cell> [role] [--lines N]` — read a desk window's recent output from whichever cockpit holds it](brief-22-logs.md) | 8 | S | todo | — | — |
-| 23 | [`cellctl upgrade <cell>` — install the pinned desk-tools release and plugin, verify them, then rolling-restart the cell onto them](brief-23-upgrade.md) | 10 | M | todo | — | — |
-| 24 | [`cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans](brief-24-gc.md) | 12 | M | todo | — | — |
+| 21 | [`cellctl doctor <cell>` — diagnose every known way a cell gets stuck, name the cause, and offer the fix as one confirmed plan](brief-21-doctor.md) | 12 | M | todo | — | — |
+| 22 | [`cellctl logs <cell> [role] [--lines N]` — read a desk window's recent output from whichever cockpit holds it](brief-22-logs.md) | 10 | S | todo | — | — |
+| 23 | [`cellctl upgrade <cell>` — install the pinned desk-tools release and plugin, verify them, then rolling-restart the cell onto them](brief-23-upgrade.md) | 11 | M | todo | — | — |
+| 24 | [`cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans](brief-24-gc.md) | 13 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -146,7 +146,7 @@ until 09 gives the launcher the kind the bridge was standing in for; 10 is the p
 goes the release after the port lands, not with it. Native-Windows `cellctl` is a named
 consequence of 10 for the `windows-port` stream, delivered there, not here.
 
-### The cell-operator chain — `15/16 → 17/18/20/22 → 19 → 23 → 21 → 24` (2026-10-14)
+### The cell-operator chain — `15/16 → 17/20 → 18 → 19/22 → 23 → 21 → 24` (2026-10-14)
 
 A third chain, also in the host launcher, and independent of both chains above. It makes
 `cellctl` usable at the level an operator thinks in, the CELL, rather than one desk at a time.
@@ -177,20 +177,24 @@ Amendment 21 is proposed in medici-finance/assay#2890; ratified when that PR is 
   **Human gate**: the honest SPOF and the deferral) and `desk-containers/16` (the interim
   mechanism for the lifecycle `pause` transition, a cell-scoped stop flag; **human gate**,
   because it changes the tool Guard). They are independent, and both are heads.
-- **Wave 8** — `desk-containers/17` (`up` converges; reconcile through the contract),
-  `desk-containers/18` (drain/pause/resume adapters onto the lifecycle transitions, plus the
-  handoff record; `resume` lifts only its own stops; needs 16), `desk-containers/20` (`status`
-  and the shared `cellop.Inventory`; reads 16's stop state), `desk-containers/22` (`logs`).
-- **Wave 9** — `desk-containers/19` (`restart`, the lifecycle drain → stop → start sequence per
-  role; `--now` is one batch plan over per-role plans, consumed before its first role).
-- **Wave 10** — `desk-containers/23` (`upgrade`: pins from a ref fetched from the forge in this run, sha256 plus
-  signature/attestation where published, pinned plugin, restore on failure, then 19; refuses
-  under another cell's live or unknown desks; every included cell is named in the plan and the confirm).
-- **Wave 11** — `desk-containers/21` (`doctor`, over 20's inventory; its fixes point at 18's
+- **Wave 8** — `desk-containers/17` (`up` converges; reconcile through the contract) and
+  `desk-containers/20` (`status` and the shared `cellop.Inventory`; reads 16's stop state).
+- **Wave 9** — `desk-containers/18` (drain/pause/resume adapters onto the lifecycle transitions,
+  the handoff record, and the per-role interim stop `down <cell> <role...>`. The stop closes a
+  window only after re-verifying its live identity against the receipt, and uses a per-mode
+  idle signal. `resume` lifts only its own stops. Needs 16 and 17, because it records the
+  per-role surface receipts at launch in 17's `up`).
+- **Wave 10** — `desk-containers/19` (`restart`, the lifecycle drain → stop → start sequence per
+  role; `--now` is one batch plan over per-role plans, consumed before its first role) and
+  `desk-containers/22` (`logs`, through 18's identity-bound receipt).
+- **Wave 11** — `desk-containers/23` (`upgrade`: pins from a ref fetched from the forge in this
+  run, sha256 plus signature/attestation where published, pinned plugin, restore on failure,
+  then 19; refuses under another cell's live or unknown desks).
+- **Wave 12** — `desk-containers/21` (`doctor`, over 20's inventory; its fixes point at 18's
   `resume` and 23's `upgrade`).
-- **Wave 12** — `desk-containers/24` (`gc`, reusing 21's classification).
+- **Wave 13** — `desk-containers/24` (`gc`, reusing 21's classification).
 
-Critical path: `15 → 18 → 19 → 23 → 21 → 24` (16 joins at 18 and 20). The head was checked:
+Critical path: `15 → 17 → 18 → 19 → 23 → 21 → 24` (16 joins at 18 and 20). The head was checked:
 nothing in the chain can expose a result or a confirmation to a client before 15 fixes their
 shape, and 18 cannot aim a pause before 16, because today's `STOP` flags live in the operator's
 config home, which every house cell shares through a symlink. #2880 (its PR is #2884, still a

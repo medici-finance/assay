@@ -7,7 +7,7 @@ why: >-
   that outlived their session, and old operation plans. Each has its own cleanup command today,
   and the operator has to know all of them. `gc` measures all of it, shows one plan with the
   bytes and items it would reclaim, and runs only what the operator confirms at the terminal.
-wave: 12
+wave: 13
 depends: ["desk-containers/15", "desk-containers/21"]
 unblocks: []
 effort: M

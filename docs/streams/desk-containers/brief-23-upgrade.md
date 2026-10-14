@@ -7,7 +7,7 @@ why: >-
   launch-lock fix sat unreleased while four desks failed on exactly that bug. `upgrade` does
   the install and the restart as one verified operation, so moving a cell onto a release is
   one command and a running pipeline never fully stops.
-wave: 10
+wave: 11
 depends: ["desk-containers/19", "desk-containers/20"]
 unblocks: ["desk-containers/21"]
 effort: M

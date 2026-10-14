@@ -8,7 +8,7 @@ why: >-
   Working out the cause took a process listing and the source code every time. `doctor` runs
   every known check at once, names the cause in operator terms, and offers each safe fix in
   one plan the operator confirms at the terminal.
-wave: 11
+wave: 12
 depends: ["desk-containers/15", "desk-containers/18", "desk-containers/20", "desk-containers/23"]
 unblocks: ["desk-containers/24"]
 effort: M
