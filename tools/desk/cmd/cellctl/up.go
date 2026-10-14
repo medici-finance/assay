@@ -161,8 +161,10 @@ func selfPath() string {
 	return p
 }
 
-// firstWindow decides the window that is NOT a role: the deskd watcher, the deskd itself, or (on
-// a cell with no deskd) a line saying so.
+// firstWindow decides the window that is NOT a role: the deskd watcher or the deskd itself. A cell
+// with no deskd (a house cell without DESKD=1) has NO such window — name and cmd come back empty,
+// the one-line "no deskd" note goes to up's own stderr exactly once, and every cockpit opens only
+// the role windows (tmux creates its session with the first role window instead).
 //
 // STANDING deskd FROM `up` — the attended affirmation, and how far it carries. `cellctl deskd`
 // stands live cross-org reads and so refuses without CELL_ATTENDED=1: the affirmation is the
@@ -181,7 +183,8 @@ func selfPath() string {
 func (c *Cell) firstWindow(sh paneShell) (name, cmd string) {
 	switch {
 	case c.Deskd != "1":
-		return "cell", sh.echo(fmt.Sprintf("[cell] %s is a %s cell with no deskd (DESKD=1 in cell.env to stand one)", c.Name, c.Kind))
+		fmt.Fprintf(os.Stderr, "[cell] %s is a %s cell with no deskd (DESKD=1 in cell.env to stand one)\n", c.Name, c.Kind)
+		return "", ""
 	case c.deskdUp():
 		return "deskd", deskdWatchCmd(sh, c.DeskdAddr)
 	case isTTY(os.Stdin) || c.Env.GetOr("CELL_ATTENDED", "0") == "1":
@@ -420,6 +423,9 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		die("up comms: %v; no windows launched", err)
 	}
 	firstName, firstCmd := c.firstWindow(paneShellFor(runtime.GOOS, res.Cockpit))
+	if firstName == "" && len(roles) == 0 && automate == "" {
+		die("up: nothing to open on %s — no deskd window (DESKD is not 1) and no role window (ROLES is empty after --no-the-desk)", c.Name)
+	}
 
 	if c.Env.Get("DRY_RUN") == "1" {
 		kindShown := c.Kind
@@ -444,7 +450,9 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		if o.Comms {
 			fmt.Printf("[dry-run] comms: %s\n", c.commsCmdIn(paneShellFor(runtime.GOOS, res.Cockpit), selfPath()))
 		}
-		fmt.Printf("[dry-run] %s: %s\n", firstName, firstCmd)
+		if firstName != "" {
+			fmt.Printf("[dry-run] %s: %s\n", firstName, firstCmd)
+		}
 		for _, r := range roles {
 			if automate != "" {
 				fmt.Printf("[dry-run] %s: orca automations create --name %s-%s --repo path:%s --trigger '%s' --precheck '%s check %s' --provider claude --prompt /assay:%s\n",
@@ -490,12 +498,15 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		}
 		return
 	}
-	_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", firstName, "-c", c.Dir,
-		firstCmd+"; echo '["+firstName+"] exited'; exec $SHELL").Run()
-	if o.Comms {
-		if err := c.startComms("tmux"); err != nil {
-			die("up comms: %v", err)
-		}
+	// The session is created with its FIRST window: the deskd window when there is one, else the
+	// first role window — a cell with no deskd gets no placeholder pane to hold the session open.
+	type tmuxWindow struct {
+		name, cmd, label string
+		role             bool
+	}
+	var wins []tmuxWindow
+	if firstName != "" {
+		wins = append(wins, tmuxWindow{name: firstName, cmd: firstCmd, label: firstName})
 	}
 	for _, role := range roles {
 		name := strings.TrimSuffix(role, "-desk")
@@ -505,14 +516,28 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		case "the-desk":
 			name = "the-desk"
 		}
-		_ = exec.Command("tmux", "new-window", "-t", c.Session, "-n", name, "-c", c.Dir,
-			c.paneRoleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL").Run()
-		// Stagger the windows: each one fetches the shared .git, and starting them at once puts
-		// every window into the fetch lock's retry loop at the same moment.
-		time.Sleep(2 * time.Second)
+		wins = append(wins, tmuxWindow{name: name, cmd: c.paneRoleCmd(role, cfg, o), label: role, role: true})
+	}
+	for i, w := range wins {
+		line := w.cmd + "; echo '[" + w.label + "] exited'; exec $SHELL"
+		if i == 0 {
+			_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", w.name, "-c", c.Dir, line).Run()
+			if o.Comms {
+				if err := c.startComms("tmux"); err != nil {
+					die("up comms: %v", err)
+				}
+			}
+		} else {
+			_ = exec.Command("tmux", "new-window", "-t", c.Session, "-n", w.name, "-c", c.Dir, line).Run()
+		}
+		if w.role {
+			// Stagger the role windows: each one fetches the shared .git, and starting them at once
+			// puts every window into the fetch lock's retry loop at the same moment.
+			time.Sleep(2 * time.Second)
+		}
 	}
 	_ = exec.Command("tmux", "select-window", "-t", c.Session+":the-desk").Run()
-	fmt.Printf("[cell] %s up: %s +%s (config=%s)\n", c.Session, firstName, strings.Join(roles, " "), cfg)
+	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, "", roles), cfg)
 	fmt.Printf("[cell] attach: tmux attach -t %s   ·   down: cellctl down %s\n", c.Session, c.Name)
 	if attach {
 		runForeground([]string{"tmux", "attach", "-t", c.Session}, os.Environ(), "")
@@ -541,7 +566,9 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 		die("herdr workspace: %v", err)
 	}
 	newWsID, newDefaultTab := w.ID, w.DefaultTab
-	c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
+	if firstName != "" {
+		c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
+	}
 	for _, role := range roles {
 		c.herdrWindow(c.Name+"-"+role, c.paneRoleCmd(role, cfg, o), newWsID)
 		time.Sleep(2 * time.Second)
@@ -554,7 +581,7 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 			die("Herdr default tab: %v", err)
 		}
 	}
-	fmt.Printf("[cell] %s up in herdr: %s-%s +%s (config=%s)\n", c.Name, c.Name, firstName, strings.Join(roles, " "), cfg)
+	fmt.Printf("[cell] %s up in herdr: %s (config=%s)\n", c.Name, upWindowList(firstName, c.Name+"-", roles), cfg)
 	fmt.Printf("[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down %s\n", c.Name)
 }
 
@@ -644,8 +671,19 @@ func (c *Cell) upOrca(cfg string, roles []string, automate, firstCmd string, o u
 		time.Sleep(2 * time.Second)
 	}
 	fmt.Printf("[cell] %s up in orca: one terminal per role (%s), config=%s\n", c.Name, strings.Join(roles, " "), cfg)
-	fmt.Printf("[cell] the first window's command is not opened in orca — run it yourself if you want it: %s\n", firstCmd)
+	if firstCmd != "" {
+		fmt.Printf("[cell] the first window's command is not opened in orca — run it yourself if you want it: %s\n", firstCmd)
+	}
 	fmt.Printf("[cell] down: cellctl down %s\n", c.Name)
+}
+
+// upWindowList is the summary line's window list: "<prefix><first> +<roles>" when there is a
+// first (deskd) window, else the role windows alone — a cell with no deskd names no first window.
+func upWindowList(firstName, prefix string, roles []string) string {
+	if firstName == "" {
+		return strings.Join(roles, " ")
+	}
+	return prefix + firstName + " +" + strings.Join(roles, " ")
 }
 
 func orcaTerminalVerb() (string, bool) {

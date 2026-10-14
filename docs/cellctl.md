@@ -620,7 +620,10 @@ cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
 
 One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
 otherwise standing it — see *How far the attended affirmation carries* above), in whichever
-**cockpit** resolves for this run — see *Cockpits* below. On the default tmux cockpit that is a
+**cockpit** resolves for this run — see *Cockpits* below. A house cell without `DESKD=1` has no
+`deskd` window and no placeholder in its place: `up` opens only the role windows (plus the comms
+window when comms is configured), the first role window creates the tmux session, and the one-line
+"no deskd" note is printed once on `up`'s stderr. On the default tmux cockpit that is a
 session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re-attach later with
 `tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
 arrive at the fetch lock together.

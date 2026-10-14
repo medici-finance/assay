@@ -399,9 +399,13 @@ func runGoldenCase(t *testing.T, bin string, c goldenCase) []cliRun {
 // A line the old binary refused and the new one runs has output of its own, so such an entry
 // names fragments instead: stdoutHas replaces the stdout-must-match rule, and stderrHas replaces
 // the exact-stderr rule (the roster echo is in it, and is world-specific).
+//
+// stdoutReplace returns old/new PAIRS (any even count), applied in order to the old stdout;
+// stderrAppend is text the new binary prints after the whole old stderr.
 type deliberateDiff struct {
 	code          int
 	stderrReplace []string
+	stderrAppend  string
 	stdoutReplace func() []string
 	stderr        string
 	why           string
@@ -416,6 +420,22 @@ const (
 	whyHookBlocks = "a refused line that names the model-policy hook exits with the hook's blocking 2, where the legacy unknown-verb exit 3 was non-blocking"
 	echoFragment  = "assay-config:"
 )
+
+const whyNoDeskdPane = "#2881: a house cell with no deskd opens no placeholder 'cell' window; the one-line note goes to up's stderr"
+
+func noDeskdNote(cell string) string {
+	return "[cell] " + cell + " is a house cell with no deskd (DESKD=1 in cell.env to stand one)\n"
+}
+
+// noDeskdPane is the dry-run line the pre-migration binary printed for the placeholder window.
+func noDeskdPane(cell string) string {
+	return "[dry-run] cell: echo '" + strings.TrimSuffix(noDeskdNote(cell), "\n") + "'\n"
+}
+
+func noDeskdDiff(cell string) deliberateDiff {
+	return deliberateDiff{code: 0, stdoutReplace: func() []string { return []string{noDeskdPane(cell), ""} },
+		stderrAppend: noDeskdNote(cell), why: whyNoDeskdPane}
+}
 
 func unknownCmd(name string) string {
 	return shapeErr("unknown command \"" + name + "\" for \"cellctl\"")
@@ -435,7 +455,17 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"desk-set-round-trip/3": {code: 0, stdoutReplace: func() []string {
 		return []string{"[cadence] interval=5m0s budget=20m0s owner=cellctl (planned; not armed)\n", ""}
 	}, stderrReplace: []string{"", ""}, why: "#2696: dry-run persistence retains the interactive default"},
-	"up/4": {code: 0, stdoutReplace: func() []string { return []string{" --cadence '5m0s' --tick-budget '20m0s'", ""} }, stderrReplace: []string{"", ""}, why: "#2696: up commands retain the interactive default"},
+	"up/4": {code: 0, stdoutReplace: func() []string {
+		return []string{" --cadence '5m0s' --tick-budget '20m0s'", "", noDeskdPane("example"), ""}
+	}, stderrAppend: noDeskdNote("example"), why: "#2696: up commands retain the interactive default; " + whyNoDeskdPane},
+
+	// #2881: a house cell with no deskd opens only its role windows; the note moves to stderr.
+	"up/0":              noDeskdDiff("example"),
+	"up/1":              noDeskdDiff("example"),
+	"up/2":              noDeskdDiff("example"),
+	"up/3":              noDeskdDiff("example"),
+	"kind-whole-line/1": noDeskdDiff("example"),
+	"kind-whole-line/9": noDeskdDiff("scrub"),
 	"desk-scrubbed/2": {code: 0, stdoutReplace: func() []string {
 		return []string{bashQuote(`Invoke the "assay:worker-desk" skill now.`), bashQuote(codexStandingPrompt("worker-desk", `Invoke the "assay:worker-desk" skill now.`))}
 	}, stderrReplace: []string{"", ""}, why: "#2696: scrubbed Codex argv carries the qualified native bootstrap"},
@@ -502,8 +532,11 @@ func diffHolds(d deliberateDiff, got, old cliRun) bool {
 		return false
 	}
 	if d.stdoutReplace != nil {
-		pair := d.stdoutReplace()
-		if got.Stdout != strings.ReplaceAll(old.Stdout, pair[0], pair[1]) {
+		pairs, want := d.stdoutReplace(), old.Stdout
+		for i := 0; i+1 < len(pairs); i += 2 {
+			want = strings.ReplaceAll(want, pairs[i], pairs[i+1])
+		}
+		if got.Stdout != want {
 			return false
 		}
 	} else if d.stdoutHas == nil {
@@ -517,8 +550,12 @@ func diffHolds(d deliberateDiff, got, old cliRun) bool {
 			}
 		}
 	}
-	if d.stderrReplace != nil {
-		return got.Stderr == strings.ReplaceAll(old.Stderr, d.stderrReplace[0], d.stderrReplace[1])
+	if d.stderrReplace != nil || d.stderrAppend != "" {
+		want := old.Stderr
+		if d.stderrReplace != nil {
+			want = strings.ReplaceAll(want, d.stderrReplace[0], d.stderrReplace[1])
+		}
+		return got.Stderr == want+d.stderrAppend
 	}
 	if d.stderrHas == nil {
 		return got.Stderr == d.stderr
