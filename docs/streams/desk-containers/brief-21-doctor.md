@@ -54,7 +54,7 @@ facts:
   - `binary-behind-pin` / `binary-behind-known-fix`: installed `cellctl version` older than the cell's pin, or a known-fix list naming a later release. The fix is "no automatic fix" naming `upgrade` (desk-containers/23).
   - `token-expired`: a role's minted token past expiry. The fix is "no automatic fix"; the token re-mints on the desk's next verb, so this is informational.
   - `stop-flag-held`: a machine-wide, cell or role stop is set, which is why loops are idle. The fix is "no automatic fix" naming `resume`.
-- On a TTY: print the findings, then the whole fix plan. Applying is an interactive-terminal confirmation only (desk-containers/15): the verb shows the plan and the operator types its confirm code. That is a convenience confirm, not an authorization control. Off a TTY the verb is plan-only. Off a TTY, `doctor` is read-only and `--plan` writes the fix plan; `--apply` off a TTY is refused `not-interactive` (desk-containers/15 row 8). Every fix's precondition evidence is re-measured at apply.
+- **Bare `doctor` is read-only, on a TTY or off one.** It prints the findings and the fix plan's id and changes nothing. Fixes apply **only** through `doctor --apply <plan-id>`: on a TTY it shows the plan, the operator types its confirm code (a convenience confirm, not an authorization control), and every fix's precondition evidence is re-measured. Off a TTY, `doctor --apply` is refused `not-interactive` (desk-containers/15 row 8). `doctor --plan` works anywhere.
 - `doctor` never kills a process or clears a record that the inventory classes `alive` or could-not-check.
 - Exit 0 when there are no findings, 1 when findings remain after the run, 6 when a probe could not check.
 
@@ -65,7 +65,7 @@ facts:
 
 ## Task
 1. Implement the finding catalogue over `cellop.Inventory`.
-2. Implement the plan and interactive-apply path.
+2. Implement bare `doctor` as read-only, and the `doctor --apply` interactive path.
 3. Docs (catalogue with codes and fixes); changelog fragment.
 
 ## Verify (executable — no prose-only DoD items)
@@ -74,8 +74,9 @@ facts:
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorFindings' -count=1 -v` | `--- PASS` — one fixture per finding code produces that code and its evidence |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorNeverTouchesAlive' -count=1 -v` | `--- PASS` — an alive or could-not-check record is reported but absent from the fix plan; a mutant that plans a fix for it fails |
 | 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorApplyRestale' -count=1 -v` | `--- PASS` — a record that comes alive between `--plan` and `--apply` makes the apply refuse `plan-stale` |
+| 4b | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestBareDoctorChangesNothing' -count=1 -v` | `--- PASS` — bare `doctor` on a pseudo-terminal, with every finding fixable, changes nothing (file-tree and process-table snapshots unchanged) and prints the plan id; `doctor --apply` off a TTY is refused `not-interactive` |
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorNonTTYReadOnly' -count=1 -v` | `--- PASS` — off a TTY, plain `doctor` writes nothing (file-tree hash unchanged) |
-| 5 | gate:model +flow +dereference | Reproduce the 2026-10-14 incident on a disposable house cell: start five stub desks, kill their windows, leave a stub background loop carrying the marker, and hold a cell lock with a stale own-cell process; then `cellctl doctor <cell>` on a TTY and type the plan's confirm code | findings name each injected fault; after the confirm, a second `doctor` reports none and `cellctl up <cell>` starts all roles with no prompt |
+| 5 | gate:model +flow +dereference | Reproduce the 2026-10-14 incident on a disposable house cell: start five stub desks, kill their windows, leave a stub background loop carrying the marker, and hold a cell lock with a stale own-cell process; then `cellctl doctor <cell>`, then `cellctl doctor <cell> --apply <plan-id>` on a TTY, typing the plan's confirm code | findings name each injected fault; after the confirm, a second `doctor` reports none and `cellctl up <cell>` starts all roles with no prompt |
 | 6j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDoctorEmitsCellOpV1' -count=1 -v` | `--- PASS` — `doctor --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
 | 6a | check | `statusgen --root . --consumers --brief desk-containers/21` | exit 0 — the `consumers:` routing holds against the branch diff |

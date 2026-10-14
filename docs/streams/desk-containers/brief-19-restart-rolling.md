@@ -50,7 +50,7 @@ facts:
   - At each step, immediately before that role's `drain --now`, its role plan is re-measured and consumed. A drifted role is refused `plan-stale`, and a role plan found already consumed stops the sequence; the sequence never skips ahead.
   - The batch expiry bounds the **start** of each step. A step not started within 10 minutes is not run; the result is `partial`, and `next[]` names a fresh `restart --now --plan` for the remaining roles.
 - If a role fails to come back, restart stops there. It does not restart further roles, it reports the failed role with `up`'s error, and it exits 1. The roles not yet touched keep running.
-- **Off a TTY, `restart` in every form is plan-only:** `restart` and `restart --now` are refused `not-interactive` (desk-containers/15 row 8), and `restart --now --plan` works anywhere.
+- **Off a TTY, `restart` in every form except `--plan` is refused (plan-only):** `restart` and `restart --now` are refused `not-interactive` (desk-containers/15 row 8), and `restart --now --plan` works anywhere.
 - It is a composition of lifecycle transitions through `drain` and `up` and adds no state or mechanism of its own; the interim mechanism belongs to desk-containers/18. Output is a desk-containers/15 result with one `roles[]` entry per role, carrying both phases. A `--now` restart is applied only by interactive confirm; off a TTY it is plan-only.
 
 ## Ground rules

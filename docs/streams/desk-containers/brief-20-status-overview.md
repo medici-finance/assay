@@ -63,7 +63,7 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `go -C tools/desk test ./cmd/cellctl/ ./internal/cellop/ -run 'TestStatusOverview|TestInventory' -count=1 -v` | `--- PASS` |
+| 1 | check | `go -C tools/desk test ./cmd/cellctl/ ./internal/cellop/ -run 'TestStatusOverview\|TestInventory' -count=1 -v` | `--- PASS` |
 | 2 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNeverTryLocks' -count=1 -v` | `--- PASS` — with a fixture process holding a cell lock, inventory names the holder and never acquires or contends for the lock |
 | 3 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNullNotZero' -count=1 -v` | `--- PASS` — an unreadable cache root yields `null` and could-not-check, not 0 bytes |
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestStatusLegacyPrefix' -count=1 -v` | `--- PASS` — the first line per role is byte-identical to the pre-change format |
