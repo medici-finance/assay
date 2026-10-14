@@ -74,6 +74,12 @@ func writeStale(t *testing.T, c *Cell, role string, pid int, start string, child
 }
 
 func init() {
+	if os.Getenv("CELLCTL_RECONCILE_WINDOW") == "1" {
+		// The "window" a sleeper opens: it only sleeps. It never watches a trigger, so it can
+		// never spawn further processes of its own.
+		time.Sleep(5 * time.Minute)
+		os.Exit(0)
+	}
 	if os.Getenv("CELLCTL_RECONCILE_SLEEPER") != "1" {
 		return
 	}
@@ -93,10 +99,11 @@ func init() {
 			if err == nil {
 				child := exec.Command(exe)
 				for _, kv := range os.Environ() {
-					if !strings.HasPrefix(kv, "ASSAY_CELL") {
+					if !strings.HasPrefix(kv, "ASSAY_CELL") && !strings.HasPrefix(kv, "CELLCTL_RECONCILE_") {
 						child.Env = append(child.Env, kv)
 					}
 				}
+				child.Env = append(child.Env, "CELLCTL_RECONCILE_WINDOW=1")
 				if err = child.Start(); err == nil {
 					report = strconv.Itoa(child.Process.Pid)
 				}
@@ -458,6 +465,36 @@ func TestReconcileShieldReprovedAfterPrompt(t *testing.T) {
 	if _, err := cellcadence.Read(c.cadenceDir("worker-desk")); err != nil {
 		t.Fatalf("checkpoint cleared: %v", err)
 	}
+	// The fixture leaves exactly the one window beneath the orphan, and nothing beneath that.
+	time.Sleep(300 * time.Millisecond)
+	under := childrenOf(t, orphan)
+	if len(under) != 1 {
+		t.Fatalf("want exactly one window under the orphan, got %v", under)
+	}
+	if more := childrenOf(t, under[0]); len(more) != 0 {
+		t.Fatalf("the window spawned further processes: %v", more)
+	}
+}
+
+// childrenOf lists the live direct children of pid.
+func childrenOf(t *testing.T, pid int) []int {
+	t.Helper()
+	raw, err := exec.Command("ps", "-axo", "pid=,ppid=,stat=").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []int
+	for _, line := range strings.Split(string(raw), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 || strings.HasPrefix(f[2], "Z") {
+			continue
+		}
+		if parent, _ := strconv.Atoi(f[1]); parent == pid {
+			child, _ := strconv.Atoi(f[0])
+			out = append(out, child)
+		}
+	}
+	return out
 }
 
 // regression: #2880 (correctness round 2, F2) — a marked process of the stale role that is

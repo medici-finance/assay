@@ -153,7 +153,8 @@ one answer instead of one recovery per role. The preflight:
      process is left in the dead role child's process group. A reused pid is never
      signalled.
    - `alive`: a recorded process still matches its pid and start time; or a process
-     carrying the role's marker is still running under a live parent; or a process without
+     carrying the role's marker is still running and is not a signal candidate (shielded, or
+     not re-parented to pid 1); or a process without
      a readable marker is still in the dead role child's process group. Such a process
      descends from the role but is not proven ours: it is named and never signalled.
    - `could-not-check`: something could not be measured, including a running pid with no
@@ -183,8 +184,9 @@ one answer instead of one recovery per role. The preflight:
    `alive`. One that left that group (its own process group or session) is not seen at all,
    and neither is anything descended from a session with no recorded role child; the record
    can then be cleared while it runs. On a Linux host where orphans re-parent to a child
-   subreaper rather than pid 1, a real orphan reads as running under a live parent: the
-   record is `alive` and the preflight refuses, the safe direction.
+   subreaper rather than pid 1, a real orphan is shielded (the subreaper is an ancestor of the
+   invoking process) and is never signalled, but it is still listed: the record is `alive`
+   and the preflight refuses, the safe direction.
 4. **Asks once, on a terminal:** it prints the plan and asks
    `Clear stale state and stop N orphaned processes? [y/N]`. On `y` it sends SIGTERM to
    each orphan, waits a bounded five seconds, sends SIGKILL to survivors, and re-checks
