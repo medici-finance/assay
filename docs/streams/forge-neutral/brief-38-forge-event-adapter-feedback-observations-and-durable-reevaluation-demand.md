@@ -2,9 +2,9 @@
 brief: assay:assay:forge-neutral:38
 title: Forge event adapter, feedback observations and durable reevaluation demand
 why: "Review feedback that arrives while work is running is easy to lose: a missed notification, an out-of-order delivery or a crash at the wrong moment means the comment is never acted on, or is acted on twice by competing writers. Turning each refreshed piece of feedback into one durable, generation-bound reevaluation requirement means it is acted on once, by the right attempt, even across restarts and lost events."
-wave: 5
+wave: 8
 depends: ["forge-neutral/37", "graph-execution/28", "graph-execution/29", "graph-execution/19", "graph-execution/04"]
-unblocks: []
+unblocks: ["forge-neutral/45"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -241,3 +241,11 @@ Gate: human (sensitive-data). The reviewer confirms that unauthenticated deliver
 that events stay prompts and never authority, and records the payload-retention option chosen.
 Approval activates nothing; the adapter ships disabled and exposure stays with R7 and the
 activation sequence in `docs/proposals/non-ci-architecture/16-delivery-sequence.md`.
+
+## Write-through follow-on — 2026-10-14
+
+The new forge-neutral/39–45 briefs consume this contract. The service maps an authenticated
+principal to this mirror's exact composition-derived admission; it does not relax the
+query-time/store admission rule or answer the existing retention/payload decision. Confirmed
+provider receipts feed mirror updates through the existing R2/R4 owners. This dated note and
+reciprocal edges change no historical Task, Verify, Evidence or human decision.

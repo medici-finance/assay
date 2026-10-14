@@ -2,9 +2,9 @@
 brief: assay:assay:forge-neutral:37
 title: Scoped forge mirror with persisted freshness, coverage and polling repair
 why: "Every desk, status run and planning read asks the forge the same questions again, one verb at a time, and a throttled or partial read can look like an empty queue. One scoped mirror that records what it read, when, and how completely lets those readers share one answer and see when it is stale or incomplete, without each of them polling the forge."
-wave: 4
+wave: 7
 depends: ["graph-execution/28", "graph-execution/29", "graph-execution/19", "forge-neutral/36", "forge-neutral/33", "desktools-v2/09"]
-unblocks: ["forge-neutral/38"]
+unblocks: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -305,3 +305,11 @@ human decision above; row 16 pins whichever option is chosen.
 Gate: human (sensitive-data). The reviewer confirms the coverage states stay honest under partial,
 refused and failed reads, and records the permission-loss retention option chosen. Approval
 activates nothing; activation stays gated per `docs/proposals/non-ci-architecture/16-delivery-sequence.md`.
+
+## Write-through follow-on — 2026-10-14
+
+The new forge-neutral/39–45 briefs consume this contract. The service maps an authenticated
+principal to this mirror's exact composition-derived admission; it does not relax the
+query-time/store admission rule or answer the existing retention/payload decision. Confirmed
+provider receipts feed mirror updates through the existing R2/R4 owners. This dated note and
+reciprocal edges change no historical Task, Verify, Evidence or human decision.
