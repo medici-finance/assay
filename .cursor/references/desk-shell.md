@@ -193,6 +193,19 @@ role-bound `--as <role>` form. Their flags, output, refusal texts and exit codes
 documented in `tools/desk/README.md` §"Authenticated transport — `--as <role>` (fetch and
 push)", not in this file.
 
+`deskgit` binds to the current working directory; it does not accept git's `-C`
+option or a repository operand. Select the already-resolved repository directory
+before invoking it, in the same shell call. For a worker's board-root refresh:
+
+```bash
+(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"
+```
+
+`root` is an absolute path from the configured board-root inventory. The subshell
+keeps the caller's worktree as its working directory after the read. The `&&`
+prevents a failed directory selection or fetch from producing a stale plan. Select
+the bound role for other desks; never infer supported flags from `git`'s interface.
+
 Never hand-roll the credential-helper recipe these verbs replace: they have no raw fallback,
 whatever they exit with. When one refuses or cannot verify a step, fix the cause it names if
 that cause is the session's own state (for example, check out a branch instead of working on a
@@ -228,7 +241,13 @@ committed). The client preflight (reserved-verb → identity → parse → lane 
 rate limit → mint → submit) calls the same functions the gateway re-runs authoritatively, so a
 refusal here is behaviour-identical to the gateway's — and an agent that never runs the client
 verb meets the whole stack at the gateway anyway. There is no local-spool fallback: an
-unreachable gateway is a refusal, not a queue. Which verb a hand-off uses, and the five hand-off
+unreachable gateway is a refusal, not a queue. New message IDs use hyphenated UUID v4
+format so a recipient can quote the ID in a reply without a bare secret-shaped hex run.
+Caller-generated correlation/run IDs should use the same UUID format, preserving the
+separators end to end. IDs identify messages; they grant no authority. Older opaque IDs
+remain valid for poll/ack. The payload scan still applies: a field named correlation ID
+is not a secret exemption, and a refused payload is never reformatted and retried to bypass
+its refusal. Which verb a hand-off uses, and the five hand-off
 kinds, are stated once in the "Cross-desk hand-offs — the lane verbs" section every desk-role
 skill carries; this file owns only the transport.
 

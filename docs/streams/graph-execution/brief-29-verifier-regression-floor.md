@@ -4,7 +4,7 @@ title: Old and new regression floor for the verifier domain contracts
 why: "Replacing the verifier must not quietly lose behaviour that already protects us: unavailable evidence is not a pass, advice cannot stand in for a witness, offline reads never answer empty. A pinned inventory run against both the old and new code makes any lost case or unreviewed difference fail before the old path is retired."
 wave: 3
 depends: ["graph-execution/28"]
-unblocks: []
+unblocks: ["graph-execution/04", "graph-execution/16", "graph-execution/19", "graph-execution/26"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -25,7 +25,7 @@ outcome: none
 consumers:
   - "statusgen/regressionfloor_test.go, statusgen/testdata/regressionfloor: follow-up graph-execution/29"
   - "loopadmin/runner/conformance: out-of-scope (selected and run unchanged; a real-adapter subject arrives with the non-CI R3 follow-up)"
-  - "tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent transfers to the non-CI R2 coordination follow-up; recorded as an inventory disposition only)"
+  - "tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent transfers to graph-execution/19 row 8, TestPGClaimHolderSemantics, per the non-CI R2 amendment of 2026-10-13; recorded here as an inventory disposition only)"
 id: 233d898c-9498-4a14-84af-ae489d113c3c
 ---
 

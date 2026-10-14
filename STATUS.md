@@ -90,7 +90,7 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: f783f1b 2026-10-13T10:12:12-05:00_
+_last regen: e8783a7 2026-10-13T16:58:35-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -111,7 +111,7 @@ _none_
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: f783f1b 2026-10-13T10:12:12-05:00_
+_last regen: e8783a7 2026-10-13T16:58:35-05:00_
 
 **Progress:** 16/72 brief items done.
 
@@ -144,7 +144,7 @@ _none_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (17 for the desk · 25 for the driver · 35 for workers · 21 for an operator · 13 runner-pending — of 114 total; 3 could-not-check)
+## Awaiting verification / review (17 for the desk · 25 for the driver · 34 for workers · 22 for an operator · 13 runner-pending — of 114 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -167,11 +167,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 11 [exec:strong] | implemented | 2000 | 0 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#1554 | — | — |
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | driver | human action, cite medici-finance/assay#997 | — | — |
 | windows-port | 08 [exec:strong] | implemented | 2000 | 2 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#1795 — rows 3-14, 16, 17 mis-specified for the execution witness; row 18 vacuous on merged main; row 17 live human run and the NAMED, NOT DERIVED 365-day --pat-expiry-days ceiling (provision.go:88) await the human gate | — | — |
-| desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | driver | human action, cite #1897 | — | — |
+| desk-supervision | 17 [exec:strong] | implemented | 1500 | 1 | — | driver | human action, cite medici-finance/assay#1897 | — | — |
 | desktools-v2 | 03 [exec:strong] | implemented | 1500 | 1 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | — | driver | close the sign-off card | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | driver | human action, cite medici-finance/assay#1794 | — | — |
-| desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | driver | human action, cite #1185 | — | — |
+| desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | driver | human action, cite medici-finance/assay#1185 | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | driver | human action, cite medici-finance/assay#1794 | — | — |
 | forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | driver | human action, cite #1794 | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | driver | human action, cite medici-finance/assay#1834 | — | — |
@@ -180,24 +180,22 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 09 | implemented | 1000 | 0 | — | driver | resolve the recorded blocker before sign-off: hold (no recognised kind), no blocker ref recorded | — | — |
 | windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 
-### Awaiting implementer rework (35)
+### Awaiting implementer rework (34)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| graph-execution | 02 [exec:strong] | implemented | 12500 | 21 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
+| graph-execution | 02 [exec:strong] | implemented | 14000 | 24 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 8500 | 13 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | worker | fix, cite medici-finance/assay#1606 | — | — |
 | windows-port | 00 | implemented | 5000 | 8 | — | worker | fix, cite #2297 | — | — |
-| apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | worker | fix, cite #1915 | — | — |
-| derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | worker | fix, cite #1787 | — | — |
+| apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | worker | fix, cite medici-finance/assay#1915 | — | — |
+| derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | worker | fix, cite medici-finance/assay#1909 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
-| forge-neutral | 33 [exec:strong] | implemented | 3500 | 3 | — | worker | fix, cite #2389 | — | — |
 | desk-supervision | 28 [exec:strong] | implemented | 3000 | 4 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | measured-status | 03 [exec:strong] | implemented | 2200 | 0 | — | worker | fix, cite #1915 | — | — |
-| contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite #1281 | — | — |
-| desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite #1355 | — | — |
-| desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite #1281 | — | — |
-| desk-supervision | 24 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite #1927 | — | — |
+| contributor-trust | 04 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
+| desk-supervision | 13 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
+| desk-supervision | 24 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | measured-status | 02 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite medici-finance/assay#1915 | — | — |
 | measured-status | 04 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite #2241 | — | — |
@@ -207,8 +205,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-go-git | 06 | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#2337 | — | — |
 | forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
 | harness-portability | 17 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite #1657 | — | — |
-| desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite #1363 | — | — |
-| desk-supervision | 22 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite #1927 | — | — |
+| desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1363 | — | — |
+| desk-supervision | 18 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1922 | — | — |
+| desk-supervision | 22 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1546 | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1792 — row 5 is a prose PR-body check the witness cannot execute (check-definition); row 1 environment flake #612/#1232; row 4 vacuous post-merge self-diff (#1657 class) | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1784 | — | — |
@@ -220,28 +219,29 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 12 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite #2325 | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 
-### Environment-blocked (21)
+### Environment-blocked (22)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| graph-execution | 20 [exec:strong] | implemented | 9500 | 15 | — | operator | environment blocker, cite #1800 | — | — |
+| graph-execution | 20 [exec:strong] | implemented | 9500 | 15 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | graph-execution | 13 [exec:strong] | implemented | 8000 | 12 | — | operator | environment blocker, cite #1800 | — | — |
 | statusgen | 15 [exec:strong] | implemented | 7500 | 13 | — | operator | environment blocker, cite #2665 | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | operator | environment blocker, cite medici-finance/assay#2045 | — | — |
 | build-less-brittle | 11 [exec:strong] | implemented | 4000 | 2 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
+| forge-neutral | 33 [exec:strong] | implemented | 3500 | 3 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | iso-9001 | 03 [exec:strong] | implemented | 3000 | 4 | — | operator | environment blocker, cite medici-finance/assay#2175 | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 2500 | 3 | — | operator | environment blocker, cite #1800 | — | — |
 | graph-execution | 07 [exec:strong] | implemented | 2500 | 1 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
+| desk-containers | 09 [exec:strong] | implemented | 2000 | 2 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 14 [exec:strong] | implemented | 2000 | 0 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | desk-supervision | 31 [exec:strong] | implemented | 1500 | 1 | — | operator | environment blocker, cite medici-finance/assay#2665 | — | — |
 | desk-supervision | 33 [exec:strong] | implemented | 1500 | 1 | — | operator | environment blocker, cite medici-finance/assay#2665 | — | — |
-| desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | operator | environment blocker, cite #1800 | — | — |
+| desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | statusgen | 17 | implemented | 1500 | 1 | — | operator | environment blocker, cite medici-finance/assay#2665 | — | — |
 | windows-port | 12 | implemented | 1500 | 1 | — | operator | environment blocker, cite #1942 | — | — |
 | windows-port | 15 [exec:strong] | implemented | 1500 | 1 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
-| desk-supervision | 18 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1800 | — | — |
-| desk-tools | 15 | implemented | 1000 | 0 | — | operator | environment blocker, cite #1800 | — | — |
+| desk-tools | 15 | implemented | 1000 | 0 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | operator | `cd tools/desk && go build ./... && go vet ./...` | — | — |
 | desktools-v2 | 13 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1631 | — | — |
 | quality | 19 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
@@ -587,29 +587,29 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 - 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — implemented (wave 1)
-- 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 1)
-- 05 Offline two-pattern experiment on frozen fixtures — todo (wave 5)
-- 06 Run records and the replay/learning loop — todo (wave 6)
+- 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 4)
+- 05 Offline two-pattern experiment on frozen fixtures — todo (wave 8)
+- 06 Run records and the replay/learning loop — todo (wave 9)
 - 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — implemented (wave 1)
 - 08 Signal-triggered pattern — incident and regression — todo (wave 1)
 - 09 Versioned workflow instances and shared identity — todo (wave 1)
 - 11 Optional pinned Laya provider with explicit CPU and GPU profiles — todo (wave 1)
 - 12 Reproducible decision evaluation and calibration manifests — todo (wave 2)
 - 13 Deterministic admission over facts and bounded probabilistic advice — implemented (wave 1)
-- 14 Bind admission and graph eligibility at the dispatch boundary — todo (wave 3)
-- 15 Control profiles and complete scoped evidence exports — todo (wave 7)
-- 16 Cell ownership, cumulative budgets and restoration fencing — todo (wave 2)
-- 17 Graph-linked release and outcome records without new authority — todo (wave 7)
-- 18 Offline graph, advice and assurance integration proof — todo (wave 9)
-- 19 Durable instance store and production coverage binding — todo (wave 2)
+- 14 Bind admission and graph eligibility at the dispatch boundary — todo (wave 6)
+- 15 Control profiles and complete scoped evidence exports — todo (wave 10)
+- 16 Cell ownership, cumulative budgets and restoration fencing — todo (wave 5)
+- 17 Graph-linked release and outcome records without new authority — todo (wave 10)
+- 18 Offline graph, advice and assurance integration proof — todo (wave 12)
+- 19 Durable instance store and production coverage binding — todo (wave 6)
 - 20 Shared loop-admin runner protocol and offline conformance kit — implemented (wave 0)
-- 21 Deterministic task controller with durable dispatch and waits — todo (wave 4)
-- 22 First pinned local harness adapter and qualification fixtures — todo (wave 2)
-- 23 Immutable candidate workspaces and independent check inputs — todo (wave 3)
-- 24 Versioned author implement review pattern with bounded repair — todo (wave 7)
-- 25 Exact-candidate publication and independent review evidence bridge — todo (wave 8)
-- 26 Shared loop-admin launch supervision for desks and workflows — todo (wave 1)
-- 27 Standing desk clients for the shared loop-admin — todo (wave 3)
+- 21 Deterministic task controller with durable dispatch and waits — todo (wave 7)
+- 22 First pinned local harness adapter and qualification fixtures — todo (wave 7)
+- 23 Immutable candidate workspaces and independent check inputs — todo (wave 7)
+- 24 Versioned author implement review pattern with bounded repair — todo (wave 10)
+- 25 Exact-candidate publication and independent review evidence bridge — todo (wave 11)
+- 26 Shared loop-admin launch supervision for desks and workflows — todo (wave 6)
+- 27 Standing desk clients for the shared loop-admin — todo (wave 8)
 - 28 Verifier domain contracts with qualified identities and candidate-bound acceptance — todo (wave 2)
 - 29 Old and new regression floor for the verifier domain contracts — todo (wave 3)
 
@@ -634,9 +634,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 - 07 Release by merge — the human merge is the cut and the authorizer — blocked (wave 2)
 - 08 Versioned source obligations and project applicability — todo (wave 0)
-- 09 Prepare project assurance reviews from canonical evidence — todo (wave 8)
-- 10 Reassess affected project reviews after source changes — todo (wave 9)
-- 11 Qualify project assurance preparation on an offline corpus — todo (wave 10)
+- 09 Prepare project assurance reviews from canonical evidence — todo (wave 11)
+- 10 Reassess affected project reviews after source changes — todo (wave 12)
+- 11 Qualify project assurance preparation on an offline corpus — todo (wave 13)
 
 ### measured-status (6 open)
 

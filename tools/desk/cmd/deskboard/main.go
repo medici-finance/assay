@@ -8,14 +8,16 @@
 // PATH-shim test. Fail-closed: any gh/API/parse error on ANY repo fails the
 // whole run (exit 6, repo named) — never a partial board that reads as "nothing open".
 //
-// Exit codes (deskkit contract): 0 ok · 3 disabled · 5 refused (bad repo/args) ·
+// Exit codes (deskkit contract): 0 ok · 3 disabled · 4 rate-limited (`actions` stopped
+// at the --rate-floor; the message names the quota reset time) · 5 refused (bad repo/args) ·
 // 6 unverifiable (a read failed / precondition could not be positively verified).
 //
 // Banners (STALE, audit-age): the JSON output (default; the loops consume it)
-// carries the drift/reset signal AS FIELDS in its header — the machine path writes
-// NOTHING to stderr, so `deskboard prs | json-parser` stays clean. The --table (human)
-// path additionally prints the two banners to stderr. This split is deliberate: an
-// unconditional stderr banner would corrupt every JSON consumer.
+// carries the drift/reset signal AS FIELDS in its header, so stdout stays clean JSON.
+// The --table (human) path additionally prints the two banners to stderr. `actions`
+// also prints one `deskboard: cost …` line to stderr (#2421) — stderr, never stdout, so
+// `deskboard actions | json-parser` still reads only the JSON, where the same numbers
+// ride as Header.cost.
 package main
 
 import (
@@ -101,6 +103,10 @@ flags:
                             which already default to JSON.
   --min-age-hours N         stalled: the stall window in hours (default 48).
   --merge-now-threshold D   MERGE-NOW approved-age decay threshold (default 20m)
+  --rate-floor N            actions: stop the sweep (exit 4, naming the quota reset time)
+                            once the forge reports fewer than N core or graphql requests
+                            remaining. Default 500; env DESKBOARD_RATE_FLOOR sets it when the
+                            flag is absent; 0 disables. A stopped sweep prints no board.
   --unreviewed-threshold D  age past which an open PR with NO reviewer verdict is named
                             in an UNREVIEWED line (default 30m; #359 temporal axis).
                             A NEGLECT alarm, not the review trigger — a fresh PR is
@@ -196,6 +202,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// half an hour instead of two.
 	unreviewedThreshold := 30 * time.Minute
 	outPath := ""
+	rateFloorFlag := ""
+	lastSweepCost = nil
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -215,6 +223,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 				return deskkit.ExitRefused
 			}
 			outPath = args[i]
+		case "--rate-floor":
+			i++
+			if i >= len(args) {
+				fmt.Fprintln(stderr, "deskboard: --rate-floor requires a non-negative integer argument (e.g. 500)")
+				return deskkit.ExitRefused
+			}
+			rateFloorFlag = args[i]
+			if rateFloorFlag == "" {
+				fmt.Fprintln(stderr, "deskboard: --rate-floor: empty value: must be a non-negative integer")
+				return deskkit.ExitRefused
+			}
 		case "--min-age-hours":
 			i++
 			if i >= len(args) {
@@ -269,11 +288,22 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return deskkit.ExitRefused
 	}
 
+	floor, ferr := resolveRateFloor(rateFloorFlag)
+	if ferr != nil {
+		fmt.Fprintln(stderr, ferr)
+		return deskkit.ExitCodeOf(ferr)
+	}
+	rateFloor = floor
+
 	sub := pos[0]
 	rest := pos[1:]
 	hdr := buildHeader()
 
 	rep, err := dispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours)
+	// #2421: one read-cost line per actions sweep, on success and on refusal alike.
+	if sub == "actions" && lastSweepCost != nil {
+		fmt.Fprintln(stderr, lastSweepCost.line())
+	}
 	if err != nil {
 		logRun(sub, resultFor(err), err.Error())
 		fmt.Fprintln(stderr, err)

@@ -32,6 +32,10 @@ func TestGoalHostLaunch(t *testing.T) {
 				"Call get_goal first.", "Only if no Goal exists, call create_goal", "omit token_budget, then call get_goal again",
 				"preserve its objective, status, budget, and usage", "otherwise report the existing state and wait for user direction",
 				"could-not-check: standing Goal not established", "do not resume or recreate a Goal after the user pauses or clears it",
+				"An inactive Goal gates standing desk continuation, not separately authorized corrective work.",
+				"complete the authorized correction first, then call get_goal again",
+				"If readback is still inactive and no native resume tool is available, give the user the exact /goal resume control",
+				"A plain-language resume request is authorization, not evidence that native status changed.",
 				`Invoke the "assay:worker-desk" skill now.`, "model_reasoning_effort=", "login=false",
 			} {
 				if !strings.Contains(r.stdout, want) {
