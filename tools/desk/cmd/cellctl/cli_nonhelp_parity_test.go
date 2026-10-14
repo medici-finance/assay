@@ -500,7 +500,7 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"cells-root-spellings/4": {code: 2, stderr: unknownCmd("-cells-root"), why: whyParseText + "; " + whyHookBlocks},
 }
 
-// diffHolds reports whether a listed difference still has exactly the recorded new shape.
+// cacheTrimFields is the #2879 report change, as old/new replacement pairs.
 func cacheTrimFields() []string {
 	return []string{
 		`"minimum_free_bytes":10737418240}`, `"minimum_free_bytes":10737418240,"build_max_age_seconds":86400}`,
@@ -508,6 +508,7 @@ func cacheTrimFields() []string {
 	}
 }
 
+// diffHolds reports whether a listed difference still has exactly the recorded new shape.
 func diffHolds(d deliberateDiff, got, old cliRun) bool {
 	if got.Code != d.code {
 		return false

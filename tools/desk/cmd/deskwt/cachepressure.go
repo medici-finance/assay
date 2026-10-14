@@ -207,7 +207,7 @@ func sweepCellCaches(cellsRoot string, dryRun bool, reapedPaths []string) (cache
 			if dryRun {
 				row := "  RECLAIM cache root " + p.Root + " — " + rep.Reason
 				if len(rep.SkippedActive) > 0 {
-					row = fmt.Sprintf("  HOLD cache root %s — under pressure but %d active consumer record(s): the lease set is the authority for the module cache; at act time only compiler-cache entries older than %s are trimmed",
+					row = fmt.Sprintf("  HOLD cache root %s — under pressure but %d active consumer record(s): active records protect mod/ and gopath/; at act time only build/ entries older than %s are trimmed",
 						p.Root, len(rep.SkippedActive), rep.Policy.BuildAge())
 				}
 				res.plan = append(res.plan, row)
