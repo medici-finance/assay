@@ -7,6 +7,21 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "class": "library",
+      "pattern": "tools/release/go_cache.py",
+      "reason": "internal release workflow cache adapter imported by fixed workflow calls; no shebang, main guard, argument parser or independent operator entrypoint (#138)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/go_cache_test.py",
+      "reason": "offline release cache provenance and archive fixtures executed by build-test through the regression package (#138)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/go_cache_mutation.py",
+      "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
+    },
+    {
       "class": "test",
       "pattern": "docs/qualification/codex-goals/2026-10-12/validate.py",
       "reason": "offline assertions over retained native Goal qualification artifacts for issue #2696; invoked by readers of that evidence index, never installed or released as an operator CLI"
