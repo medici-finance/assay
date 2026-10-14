@@ -133,3 +133,13 @@ Public research inputs, inspected 10 October 2026:
 - Recent public Assay fixes are mapped in the [migration obligations](13-migration-and-decisions.md#preserve-recent-repository-hygiene-behavior), with new [continuous-work qualification](15-regression-from-day-one.md#continuous-work-and-resource-qualification).
 
 PostgreSQL remains the operational transaction owner; reviewed Git records retain canonical intent and published evidence. These lessons introduce neither a mandatory Git append per operation nor a replacement authoritative store.
+
+
+## One public runtime — 14 October 2026
+
+The [runtime alignment](22-runtime-contract-alignment.md) reconciles earlier refs-first
+ideas into the existing R1–R8 implementation in public Assay. PostgreSQL coordinates
+runtime effects; Git retains definitions/evidence; the forge service owns scoped provider
+observations and effects. There is no second runtime, native SCM prerequisite or new signer
+deployment. The coverage table maps existing owners and routes only two new contract gaps
+(graph-execution/30–31), with amendments to their existing admission/store/publication consumers.

@@ -9,6 +9,7 @@ depends:
 - graph-execution/04
 - graph-execution/14
 - graph-execution/16
+- graph-execution/31
 unblocks:
 - graph-execution/18
 effort: M
@@ -25,13 +26,14 @@ authored: 2026-10-02 by task-workflow authoring session
 sources:
 - docs/streams/graph-execution/task-workflow-program.md
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
+- docs/proposals/non-ci-architecture/22-runtime-contract-alignment.md — 2026-10-14 consumer amendment
 exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
 consumers:
 - 'adopting reviewer executor: out-of-scope (owner-approved activation consumes this report-only contract)'
 - 'statusgen/assuranceexperiment.go: follow-up graph-execution/18'
-version: 1
+version: 2
 id: 57b837cb-e6dd-495f-9349-8addeee220ad
 ---
 
@@ -60,6 +62,18 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 - Stop at implemented; independent verification owns verified/done.
 - Preserve one canonical work identity and one claim authority; no credentials in packets or results.
 
+## Public runtime duty-provenance amendment — 2026-10-14
+
+Consume /31's corroborated responsible/delegating principals and proof class in the existing
+independent-review check; retain exact candidate, current role/capability and disabled-profile
+controls. Separate common issuing infrastructure from accountable principals. Different keys
+or Apps for one principal are not independent, and bot-for-human is not a human decision.
+Uncorroborated stronger proof holds; no automatic one-human waiver or new signer is introduced.
+Add `TestBridgeDutyContext` in the existing publication test surface, with permitted independent
+principals sharing an issuer, refusal on overlapping delegation, and a bypass of upper validation
+that leaves trusted identity selection and role-executor controls refusing caller-selected
+provenance. Preserve historical Evidence and the human activation gate.
+
 ## Task
 
 1. Publish the exact frozen candidate through an injected narrow worker effect port. Record durable intent and authoritative receipt, reconcile unknown and partial outcomes, and revalidate head/base/acceptance/policy at consequential boundaries. Never publish unrelated dirty state.
@@ -79,6 +93,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPublicationForgedOrStaleReviewDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPublicationForgedOrStaleReviewDenied " "$routing_out")` | exit 0; named PASS; implementer impersonation, changed policy or moved head cannot approve; mutation: skip the head comparison on the review subject — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPublicationPartialAndReportOnly$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPublicationPartialAndReportOnly " "$routing_out")` | exit 0; named PASS; partial outcome holds; default report-only never emits a reviewer/ready effect; mutation: default the bridge to the publishing profile — the named test must fail |
 | 4 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPublicationActivationDisabledByDefault$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPublicationActivationDisabledByDefault " "$routing_out")` | exit 0; named PASS; the publishing profile is disabled in the shipped default, and controller, worker or task input that tries to enable it is refused with no reviewer effect emitted; mutation: read the activation flag from the controller's run input — the named test must fail |
+| 5 | check:ci +flow +mutation | `(cd workflow && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestBridgeDutyContext$" ./publication/ > "$out" && grep -F -- "--- PASS: TestBridgeDutyContext " "$out")` | exit 0; named PASS; same responsible principal under different keys is refused; independent principals sharing an issuer remain permitted; mutation: count different Apps as independence |
 
 ## Pre-mortem and dispatch checks
 

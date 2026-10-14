@@ -4,7 +4,7 @@ title: Durable instance store and production coverage binding
 why: A task must survive its parent process without losing intent, artifacts or the evidence obligations that make
   it acceptable.
 wave: 6
-depends: ["graph-execution/09", "graph-execution/03", "statusgen/15", "graph-execution/28", "graph-execution/29", "graph-execution/04", "graph-execution/16"]
+depends: ["graph-execution/09", "graph-execution/03", "statusgen/15", "graph-execution/28", "graph-execution/29", "graph-execution/04", "graph-execution/16", "graph-execution/30"]
 unblocks:
 - graph-execution/23
 - graph-execution/21
@@ -29,6 +29,7 @@ sources:
 - docs/proposals/non-ci-architecture/19-progressive-adoption-and-oversight.md — line 49 (no SQLite runtime)
 - "medici-finance/assay#2500 — maintainer ratification of the whole target @ 23f655f5d (approval activates nothing)"
 - freshness-checked 2026-10-13 @ 4696d598e58820806d0bcf8c9b2dd87f29115400
+- docs/proposals/non-ci-architecture/22-runtime-contract-alignment.md — 2026-10-14 consumer amendment
 exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
@@ -42,7 +43,7 @@ consumers:
 - 'loopadmin execution journal: follow-up graph-execution/26 (same engine, own schema; no Go dependency on workflow)'
 - 'tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent is carried here as TestPGClaimHolderSemantics per graph-execution/29 inventory; the command is unchanged)'
 - 'forge-neutral file/served claim store (forge-neutral/22-32): out-of-scope (supported legacy desk-tools claim path; applicability note in the forge-neutral README; retirement is the non-CI R8 decision)'
-version: 3
+version: 4
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
 ---
 
@@ -132,6 +133,17 @@ stands. Owner row: package R2 in the [amendment manifest](../../proposals/non-ci
 Exclusive repository assignment (R3) and publication/effect identity (R4) amend other briefs;
 nothing here pre-empts them.
 
+## Public runtime context amendment — 2026-10-14
+
+Persist /30's versioned context, dependency/coverage fingerprint and validity bounds beside
+existing candidate/acceptance bindings; no new coordination ledger or operational backend.
+Restoring an old valid-looking result cannot renew its time/access/ownership validity.
+Return source cutoff and incomplete context explicitly through the binding adapter; /14
+still performs current authority checks. Add `TestPGContextRestore` to the existing real
+PostgreSQL suite: store a context, restore/reload it after its lease/access bound, and prove
+its binding-to-evaluator flow cannot admit the action. A valid positive case must remain.
+No mandatory Git journal or signature infrastructure is introduced. Existing Evidence remains.
+
 ## Task
 
 1. Create the workflow Go module and a single-controller SQLite store (engine superseded 2026-10-13: PostgreSQL per the R2 amendment above) with transactions, versioned migrations and content-addressed artifact references. Select and pin a maintained driver; document supported filesystem/durability assumptions. Persist canonical instance/node/attempt IDs, revisions, wait/stop state and artifact manifests. No second work identity or claim authority.
@@ -161,6 +173,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 9 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGPendingFeedbackDurable$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPGPendingFeedbackDurable " "$routing_out")` | exit 0; named PASS; feedback racing attempt completion survives each crash boundary and is not cleared with the previous generation, and retirement resumes from its last recorded step; mutation: clear pending feedback by work ID instead of by generation — the named test must fail |
 | 10 | check:ci +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoSQLiteRuntimeStore$" ./... > "$routing_out" && grep -q -- "--- PASS: TestNoSQLiteRuntimeStore " "$routing_out")` | exit 0; named PASS; no package under `workflow/store` imports a SQLite or other embedded database driver, and an unreachable database refuses rather than falling back; mutation: add an embedded-driver import under `workflow/store` — the named test must fail |
 | 11 | check:ci +dereference +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoordinationSpecMatchesMigrations$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCoordinationSpecMatchesMigrations " "$routing_out")` | exit 0; named PASS; every table and column `spec/coordination-store-v1.md` (planned) names exists in `workflow/store/migrations/` (planned), and every migrated table is named in the contract; mutation: drop one column from the contract text — the named test must fail |
+| 12 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGContextRestore$" ./store/ > "$out" && grep -F -- "--- PASS: TestPGContextRestore " "$out")` | exit 0; named PASS; real PostgreSQL reload/restore retains old cutoff and expiry; binding flow holds stale context and accepts current context; mutation: replace expiry with restore time |
 
 ## Pre-mortem and dispatch checks
 

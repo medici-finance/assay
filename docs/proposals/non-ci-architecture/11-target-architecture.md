@@ -69,6 +69,16 @@ is introduced. See the controlling [bounded amendment](21-forge-service-and-sour
 for custody, failure, cost and rollout contracts. This later mechanism is not claimed to have
 been included in the earlier whole-target ratification or to be implemented.
 
+## One public runtime — amendment of 14 October 2026
+
+Keep one runtime implementation in public Assay. Earlier refs-first source-control proposals
+supply requirements and provenance, not another controller/store/cockpit. The
+[runtime alignment](22-runtime-contract-alignment.md) selects PostgreSQL coordination,
+existing Git evidence and forge ownership; preserves exact-candidate acceptance and narrow
+role authority; separates offline inspection from managed admission; and routes the uncovered
+evaluation-context and accountable-principal contracts. Signing, federation and a native SCM
+remain separately qualified later capabilities. Historical decisions and Evidence remain.
+
 ## Progressive deployment and human involvement
 
 The running cell is the deployment unit for managed coordination and effects. Pure

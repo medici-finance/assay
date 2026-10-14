@@ -138,3 +138,17 @@ first mirror/service. The reuse trial is a bounded go/no-go comparison, while re
 and bounded upstream fallback are already mirror obligations. Necessary PR branches and the
 existing candidate/retirement owners stay. Cross-provider qualification must cover operation
 unknowns, admission-bound private data and exact candidate currency, not only read speed.
+
+
+## Public runtime contract gaps — 14 October 2026
+
+The [runtime alignment](22-runtime-contract-alignment.md) maps prior requirements onto
+existing R1–R8 owners. Add graph-execution/30 (complete evaluation context/time validity)
+and /31 (accountable-principal and proof provenance) after /28, independently at wave 3.
+They add no second runtime or signer. /14 consumes both, /19 consumes /30 and /25 consumes
+/31 through dated Task/Verify amendments; existing human activation gates remain.
+
+The real head is still independent verification of /02 before /09 -> /28. /30–31 contract
+fixtures do not need a deployed PostgreSQL controller; their managed consumers still require
+their existing R2–R5 prerequisites and separate activation proof. R3–R8 package amendments
+remain with their existing owners; this revision does not mark their implementation complete.
