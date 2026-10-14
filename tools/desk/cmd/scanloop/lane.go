@@ -161,7 +161,26 @@ type scanCarrierPRLane struct {
 
 func (l scanCarrierPRLane) Name() LaneName { return LaneScanCarrierPR }
 
+// Execute carries the delta, then removes the lane's own title and body files whatever happened —
+// a failed carry must not leave them behind either.
 func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
+	out, err := l.carry(req)
+	// The cleanup is keyed to the worktree path, so it runs only for a path the isolation guard
+	// accepts: an empty or relative one would resolve against whatever directory this runs in.
+	if !req.DryRun && assertIsolatedScanRoot(req.Root, req.Worktree) == nil {
+		titleFile, bodyFile := scanMetaFiles(req.Worktree)
+		for _, p := range []string{titleFile, bodyFile} {
+			if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
+				// A leftover metadata file sits BESIDE the worktree and blocks nothing, so it is
+				// reported, never allowed to turn a landed carry into a dispatch error.
+				out.Steps = append(out.Steps, "# WARNING: could not remove the scan metadata file "+p+": "+rmErr.Error())
+			}
+		}
+	}
+	return out, err
+}
+
+func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	out := LaneOutcome{Lane: LaneScanCarrierPR, Exit: ExitPlaceholder}
 
 	if err := assertIsolatedScanRoot(req.Root, req.Worktree); err != nil {
@@ -246,8 +265,7 @@ func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
 	// The title and body are DERIVED from the branch's own diff on EVERY push, never hand-written
 	// and never carried over from the previous push: the counts describe a diff that grows with
 	// each coalesced commit.
-	titleFile := filepath.Join(req.Worktree, scanTitleFile)
-	bodyFile := filepath.Join(req.Worktree, scanBodyFile)
+	titleFile, bodyFile := scanMetaFiles(req.Worktree)
 	var title string
 	regenerate := func() error {
 		t, err := capture(req.Worktree, "deskscanbody", "emit", "--base", diffBase, "--format", "title")
@@ -433,18 +451,30 @@ func renderStep(dir, name string, args []string) string {
 	return "(" + dir + ") " + name + " " + strings.Join(args, " ")
 }
 
-// scanTitleFile / scanBodyFile are the derived title and body, captured INSIDE the per-run isolated
-// worktree rather than at a fixed shared path. A fixed path under the system temp directory is
-// shared machine-wide, so two parallel scans clobber each other's PR body; a path inside a worktree
-// that exists only for this run cannot collide.
+// scanTitleSuffix / scanBodySuffix name the derived title and body files. They sit BESIDE the per-run
+// isolated worktree (its path plus the suffix), never inside it and never at a fixed shared path:
+//
+//   - a fixed path under the system temp directory is shared machine-wide, so two parallel scans
+//     clobber each other's PR body; a path keyed to a worktree that exists only for this run cannot
+//     collide;
+//   - a file the lane writes INSIDE the worktree is untracked there, and `git worktree remove`
+//     refuses a worktree holding untracked files — every carry then ended in a dispatch error with
+//     the worktree left behind. The worktree holds only what the scan derives and commits.
 const (
-	scanTitleFile = ".scan-title"
-	scanBodyFile  = ".scan-body"
+	scanTitleSuffix = ".scan-title"
+	scanBodySuffix  = ".scan-body"
 	// derivedTitlePlaceholder stands in for the real title on the dry-run path, where no derivation
 	// verb actually ran. It is deliberately not a plausible title: a dry-run step an operator could
 	// mistake for the real one is worse than an obviously synthetic one.
 	derivedTitlePlaceholder = "<derived from the branch diff at run time>"
 )
+
+// scanMetaFiles returns the title and body file paths for a scan worktree: siblings of it, never
+// inside it.
+func scanMetaFiles(worktree string) (title, body string) {
+	wt := filepath.Clean(worktree)
+	return wt + scanTitleSuffix, wt + scanBodySuffix
+}
 
 func writeTextFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
