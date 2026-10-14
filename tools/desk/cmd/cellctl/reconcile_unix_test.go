@@ -310,7 +310,7 @@ func TestCockpitLaunchCarriesNoMarker(t *testing.T) {
 	f.writeCellEnv(t, "ROLES=the-desk\n")
 	bin := t.TempDir()
 	out := filepath.Join(bin, "env-seen")
-	script := "#!/bin/sh\nenv | grep '^ASSAY_CELL' >> " + cockpitQuote(out) + "\necho called >> " + cockpitQuote(out+".calls") + "\ncase \"$1\" in has-session) exit 1;; esac\nexit 0\n"
+	script := "#!/bin/sh\nenv | grep '^ASSAY_CELL' >> " + cockpitQuote(out) + "\necho \"$1\" >> " + cockpitQuote(out+".calls") + "\ncase \"$1\" in has-session) exit 1;; esac\nexit 0\n"
 	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -320,8 +320,8 @@ func TestCockpitLaunchCarriesNoMarker(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("up: %+v", r)
 	}
-	if calls, _ := os.ReadFile(out + ".calls"); len(calls) == 0 {
-		t.Fatal("fixture tmux was never started")
+	if calls, _ := os.ReadFile(out + ".calls"); !strings.Contains(string(calls), "new-session") {
+		t.Fatalf("fixture tmux never opened a session: %q", calls)
 	}
 	if seen, _ := os.ReadFile(out); len(seen) != 0 {
 		t.Fatalf("cockpit launch inherited the cell marker:\n%s", seen)

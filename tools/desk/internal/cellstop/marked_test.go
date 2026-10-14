@@ -163,3 +163,27 @@ func orphansOf(got []Marked) []int {
 	}
 	return out
 }
+
+// regression: #2880 (correctness round 2, F2) — shielding means never signal, not never see.
+// Behind a Linux child subreaper shared with the invoker, marked processes of a free role are
+// still listed (non-orphan, shielded), so their record can never be classed dead.
+func TestMarkedSubreaperStillListed(t *testing.T) {
+	m := Marker{Cell: "a", Dir: "/cells/a"}
+	mark := map[string]string{EnvCell: "a", EnvCellDir: "/cells/a", EnvCellRole: "worker-desk"}
+	all := map[int]process{
+		1:   {pid: 1, identity: "init", env: map[string]string{}},
+		50:  {pid: 50, parent: 1, identity: "systemd --user", env: map[string]string{}},
+		60:  {pid: 60, parent: 50, identity: "terminal", env: map[string]string{}},
+		800: {pid: 800, parent: 60, identity: "shell", env: map[string]string{}},
+		900: {pid: 900, parent: 800, identity: "invoker", env: map[string]string{}},
+		300: {pid: 300, parent: 50, identity: "marked loop", env: mark},
+		301: {pid: 301, parent: 300, identity: "marked child", env: mark},
+	}
+	got, err := markedIn(all, m, map[int]bool{900: true, 800: true, 60: true, 50: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].PID != 300 || got[1].PID != 301 || got[0].Orphan || got[1].Orphan {
+		t.Fatalf("subreaper-hosted marked processes must be listed as non-orphans, got %+v", got)
+	}
+}
