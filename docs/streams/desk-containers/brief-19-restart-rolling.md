@@ -51,6 +51,7 @@ facts:
   - The batch expiry bounds the **start** of each step. A step not started within 10 minutes is not run; the result is `partial`, and `next[]` names a fresh `restart --now --plan` for the remaining roles.
 - If a role fails to come back, restart stops there. It does not restart further roles, it reports the failed role with `up`'s error, and it exits 1. The roles not yet touched keep running.
 - **Off a TTY, `restart` in every form except `--plan` is refused (plan-only):** `restart` and `restart --now` are refused `not-interactive` (desk-containers/15 row 8), and `restart --now --plan` works anywhere.
+- **Per-role stop.** Each step drains one role with brief 18's `drain <cell> <role>`, which ends in the per-role `down <cell> <role>`, then starts it with `up --role`. Siblings' windows, cadences and work are never touched, which is what lets row 3's "at least four of five running on every poll" hold. The cell-wide `down <cell>` is never used.
 - It is a composition of lifecycle transitions through `drain` and `up` and adds no state or mechanism of its own; the interim mechanism belongs to desk-containers/18. Output is a desk-containers/15 result with one `roles[]` entry per role, carrying both phases. A `--now` restart is applied only by interactive confirm; off a TTY it is plan-only.
 
 ## Ground rules
