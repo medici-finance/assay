@@ -616,6 +616,10 @@ func TestInstanceCredentialRejected(t *testing.T) {
 		func(m map[string]any) {
 			m["budget"].(map[string]any)["ref"] = "https://user:" + secret + "@example.invalid/b"
 		},
+		func(m map[string]any) {
+			dash := strings.Repeat("-", 5)
+			m["work"].(map[string]any)["intent"] = dash + "BEGIN " + "PRIVATE KEY" + dash
+		},
 	} {
 		var m map[string]any
 		b, _ := json.Marshal(canonicalInstance(inst))

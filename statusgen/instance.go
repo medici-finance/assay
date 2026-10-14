@@ -399,7 +399,7 @@ var (
 		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
 		regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{20,}`),
 		regexp.MustCompile(`\bxox[abpr]-[A-Za-z0-9-]{10,}`),
-		regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY`),
+		regexp.MustCompile(`-{5}BEGIN [A-Z ]*PRIVATE KEY`),
 		regexp.MustCompile(`(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}`),
 		regexp.MustCompile(`(?i)^\s*authorization\s*:`),
 		regexp.MustCompile(`(?i)://[^/\s:@]+:[^/\s@]+@`),
