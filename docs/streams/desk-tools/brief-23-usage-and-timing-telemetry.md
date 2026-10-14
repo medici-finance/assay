@@ -9,7 +9,8 @@ why: >-
   verb is eating the window, and is it slower than it was last week?") has no answer on
   the machine that could answer it. Nor can the audit log grow one: it is load-bearing
   state — the rate-limit counter counts its rows and the idempotency store reads them —
-  so it is append-only, never rotated, and on one operating desk host it stood at
+  so it is append-only and never truncated (the daily rotation desk-tools/24 later added
+  only renames a finished day aside, and every reader spans the segments), and on one operating desk host it stood at
   108,122,055 bytes across 204,252 rows after 32 days of use. Adding a duration field to
   a file with those properties is the wrong move twice: it changes a ledger whose schema
   other code depends on, and it puts an unbounded performance dataset behind a file that
@@ -31,8 +32,8 @@ authored: 2026-09-14 by a worker-desk authoring session, from an operator reques
 sources:
   - "Operator request, 2026-09-14: when telemetry is on, log non-PII tool usage and execution times; make the tool capable of logging it, and keep a 7-day history it can get performance information from next time."
   - "freshness-checked 2026-09-14 @ 48725dc0 (origin/main) — every fact below re-read against the source at that commit. Brief 21's deliverables are PRESENT in the tree at this commit (`tools/desk/internal/deskkit/runtool.go`, `trace.go`, `scrub.go` all exist), which is why the child-timing hook has a runner to attach to rather than needing one written here."
-  - "The ledger this does NOT extend: `tools/desk/internal/deskkit/audit.go` § `Entry` / `Log` / `LoadEntries` — one JSON row per invocation, `O_APPEND` only, never truncated or rewritten, and read back whole by `LoadEntries` under the outward-write flock. The struct's fields are `ts, tool, verb, argsDigest, bodyDigest?, repo, pr, headSHA, result, detail, sourceSHA, builtAt, sessionTag, title?` — no duration, no exit code, no child count."
-  - "Why the ledger cannot simply be extended or rotated: `tools/desk/internal/deskkit/ratelimit.go` counts audit rows for the per-tool write budget and the circuit breaker, and `tools/desk/internal/deskkit/idempotent.go`'s `AlreadyDoneIn` reads them for idempotency; `tools/desk/internal/deskkit/auditrecover.go` exists precisely because a plain move of the file resets both. Growth measured on one operating desk host, 2026-09-14: 108,122,055 bytes / 204,252 rows spanning ts 2026-08-13T12:09:25Z to 2026-09-14T14:30:35Z (~6,400 rows/day, ~529 bytes/row)."
+  - "The ledger this does NOT extend: `tools/desk/internal/deskkit/audit.go` § `Entry` / `Log` / `LoadEntries` — one JSON row per invocation, `O_APPEND` only, never truncated or rewritten, and read back whole by `LoadEntries` under the outward-write flock (re-read 2026-10-13 @ bcc02252e: since desk-tools/24, `LoadEntries` at `audit.go:367` reads every rotated segment plus the live file, in order). The struct's fields are `ts, tool, verb, argsDigest, bodyDigest?, repo, pr, headSHA, result, detail, sourceSHA, builtAt, sessionTag, title?` — no duration, no exit code, no child count."
+  - "Why the ledger cannot simply be extended or moved aside: `tools/desk/internal/deskkit/ratelimit.go` counts audit rows for the per-tool write budget and the circuit breaker, and `tools/desk/internal/deskkit/idempotent.go`'s `AlreadyDoneIn` reads them for idempotency; `tools/desk/internal/deskkit/auditrecover.go` exists precisely because a plain move of the file resets both. Growth measured on one operating desk host, 2026-09-14: 108,122,055 bytes / 204,252 rows spanning ts 2026-08-13T12:09:25Z to 2026-09-14T14:30:35Z (~6,400 rows/day, ~529 bytes/row)."
   - "The promise this inherits: `docs/telemetry.md` — off by default, counts only and never content, the payload visible before anything is sent, and TWO independent switches so no inherited environment can arm it silently. `statusgen/telemetry.go` § `telemetryEnvVar` / `telemetryArmed` is the implementation: the env half is `ASSAY_TELEMETRY` compared EXACTLY to \"1\"."
   - "The leak-proofing pattern reused verbatim in spirit: `statusgen/telemetry.go` § `normalizeStatus` — a mapper whose return is ALWAYS one of its own constants, never any part of its input, so a hand-edited value cannot travel through a key. The desk-side equivalents already exist as compiled-in rosters: `tools/desk/internal/deskkit/audittoolkey.go` § `canonicalToolKeys` / `CanonicalToolKey` and `tools/desk/internal/deskkit/loopnames.go` § `CanonicalLoopName`."
   - "The subprocess seam child timing attaches to: `tools/desk/internal/deskkit/runtool.go` § `Run` / `ToolRun` — the ONE runner (brief 21), already measuring `Elapsed` and recovering `ExitCode` for every child on both the success and failure path, and already calling a single sink (`traceRecord`) on the way out."
@@ -56,7 +57,7 @@ consumers:
   - "`tools/desk/internal/deskkit/runtool.go`, `forge_github.go`, `forge_gitlab.go`, `audittoolkey.go` and the seven first-wave verb `main()`s: fixed-here (each a bounded additive change named under `files:` — two counter lines at the existing runner sink, one counting transport per backend, one registry line, and a one-line wrap per verb)."
   - "Every OTHER desk verb's `main()`: out-of-scope (a verb that is not wrapped records nothing and behaves exactly as it does today, so the retrofit is additive and per-verb; widening it past the first wave is untracked follow-up, not a gap this brief leaves open)."
   - "A remote telemetry sink for the perf record: out-of-scope (nothing here opens a socket, Verify row 10 asserts the absence by grep, and standing up a receiver is the Console-side work `docs/telemetry.md` § 'No receiver yet' already tracks; only the ON-DISK shape is fixed here so a later sender reads it unchanged)."
-version: 1
+version: 2
 id: 28b33fa3-d433-4318-a57e-2e269c8d5f82
 ---
 
@@ -149,7 +150,24 @@ facts (read at `48725dc0`, 2026-09-14):
   breaker, and `idempotent.go`'s `AlreadyDoneIn` reads them for idempotency — which is why
   `Log` is `O_APPEND` only and why `auditrecover.go` exists at all (its doc comment states
   that a plain move of the file resets the counter and the idempotency store). A file with
-  those properties can be neither rotated nor re-shaped for a performance dataset.
+  those properties cannot be re-shaped for a performance dataset, nor pruned like one.
+  **Correction, re-read 2026-10-13 @ `bcc02252e` (origin/main), recorded rather than
+  dropped:** the ledger IS now rotated. desk-tools/24 landed daily rotation: `Log`
+  (`tools/desk/internal/deskkit/audit.go:301`) calls `rotateIfNeeded` (`audit.go:173`),
+  which renames `audit.jsonl` to `audit.jsonl.<YYYY-MM-DD>[.N]` on the first append of a new
+  UTC day (`rotationDue`, `audit.go:154`; the exact segment-name match is `audit.go:101`).
+  It deletes nothing, and every reader spans the segments (`segmentPaths`, `audit.go:123`;
+  `LoadEntries`, `audit.go:367`), so the counter and the idempotency store still see every
+  row ever written — the rows are still load-bearing and still never pruned. The conclusion
+  is unchanged: a rename that keeps every row is not a retention policy, and the perf
+  history still needs its own 7-day-pruned files under `perf/`, a path neither the rotation
+  nor the segment match can name. Row 9 now also asserts a rotated segment is untouched.
+- **Agent usage is not this record's job.** The perf record times desk CLI verbs on the
+  CLIENT side — wall, CPU, child processes, forge round-trips. Per-invocation agent usage
+  (tokens, cost) belongs to the runner contract — `loopadmin/runner/usage.go`'s
+  `runner.Usage`, verified present at `bcc02252e` — and to the planned execution journal of
+  graph-execution/26. This record neither reads nor duplicates those figures, and no
+  `PerfRecord` field may carry them.
 - **Its growth is real and unbounded.** Measured on one operating desk host on 2026-09-14:
   108,122,055 bytes across 204,252 rows, first row ts `2026-08-13T12:09:25Z`, last
   `2026-09-14T14:30:35Z` — 32 days, ~6,400 rows/day, ~529 bytes/row. The largest single

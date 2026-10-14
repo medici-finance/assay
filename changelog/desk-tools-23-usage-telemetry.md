@@ -1,0 +1,2 @@
+### Added
+- Opt-in, local-only desk-tools perf history: with `ASSAY_TELEMETRY=1`, `deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`, `deskdispatch` and `deskboot` (per boot step too) each append one non-PII `perf-v1` record (timing, child-process and forge-call counts, exit result — never argv, repo, PR, branch or path) to `~/.config/assay/perf/`, kept 7 UTC days; the new `deskperf report` / `deskperf boot` verbs turn it into per-tool percentiles and a per-role boot-cost breakdown. Off by default, nothing leaves the machine, and the audit ledger is untouched.
