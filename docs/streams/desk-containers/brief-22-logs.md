@@ -42,7 +42,7 @@ files:
 
 facts:
 - **Interim bridge.** logs is an interim bridge: it reads today's cockpit panes. In the target, terminal attachment and output are projection-and-interaction concerns served through the Cell API; 'notifications and terminal attachment are not durable ownership'.
-- tmux: `tmux capture-pane -p -t <cell>-cell:<role> -S -<N>`. herdr: read the pane of the role's tab in the cell's recorded workspace, using herdr's pane-read command (re-check its exact flags against the installed herdr before writing; do not use memory). orca: the terminal's scrollback via orca's read command where one exists, otherwise could-not-check naming the gap.
+- tmux: `tmux capture-pane -p -t <window_id> -S -<N>`, using the window id verified below (role windows are named `<cell>-<role>`, desk-containers/18). herdr: read the pane of the role's tab in the cell's recorded workspace, using herdr's pane-read command (re-check its exact flags against the installed herdr before writing; do not use memory). orca: the terminal's scrollback via orca's read command where one exists, otherwise could-not-check naming the gap.
 - Only panes in the cell's own recorded session or workspace are read, never another cell's. Before reading, `logs` re-verifies the same identity binding as desk-containers/18's per-role stop: session, cell-qualified `<cell>-<role>` name, and the harness pid and start time. Any mismatch or stale receipt refuses `surface-identity-mismatch` / `surface-stale`, and nothing is read.
 - No role means every role in `ROLES` plus comms, each under a header. `--lines` defaults to 50.
 - `--json` returns the desk-containers/15 result with each role's lines in `evidence.lines[]`. An absent window is `state: absent`, not an error.

@@ -73,7 +73,7 @@ Invariants, from the target's runtime-durability rules:
 | Transition / record | Interim implementation | Retired when |
 |---|---|---|
 | pause / resume | Cell-scoped stop flag honoured by the tool Guard, and by the iteration check of the three loops that have one; intake-desk and the-desk have no iteration check yet (`desk-containers/16`) | The runner lifecycle contract exposes pause/resume for the cell's runners |
-| drain | Pause, then wait for the cadence checkpoint and zero in-flight dispatch claims owned by the cell's sessions | Drain is a coordination-store transition over attempts |
+| drain | Pause, then wait until each role is idle per mode (cadence: between passes; interactive: no claim and no extra harness child, harness idleness could-not-check, so stopped only after the operator's TTY confirm; desk-containers/18) | Drain is a coordination-store transition over attempts |
 | stop / start | Per-role `cellctl down <cell> <role>` (closes only that role's recorded surface) / per-role window launch | Process supervision sits behind the shared runner contract |
 | handoff record | A file per role under the cell's run directory, read at desk boot | The record moves into the coordination store, migrated with its history |
 
