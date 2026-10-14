@@ -160,6 +160,11 @@
       "class": "library",
       "pattern": "statusgen/pushcred.sh",
       "reason": "board-push credential functions sourced by the board-writer workflow steps and embedded in the GitLab CI template statusgen init writes; no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "statusgen/boardadd.sh",
+      "reason": "board-staging function (board_add) embedded verbatim in both CI templates statusgen init writes (issue #2915); no shebang, never executed"
     }
   ],
   "entrypoints": [
