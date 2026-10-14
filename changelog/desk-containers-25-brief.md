@@ -1,2 +1,2 @@
 ### Added
-- desk-containers/25 brief: `cellctl desk --force` diagnoses a failed desk boot and applies the matching repair. Safe repairs run at once; destructive ones are confirmed first (`-y` confirms all) and always preserve what they displace. A live session is never ended. Authoring only; nothing is implemented.
+- desk-containers/25 brief: `cellctl desk --force` diagnoses a failed desk boot and applies the matching repair. Safe repairs run at once. Destructive ones are confirmed first and always preserve what they displace; `-y` confirms them, but it never answers the reconcile preflight. Repairs that `cellctl reset`, the reconcile preflight or `deskwt` already own stay with those verbs, and a live session is never ended. Authoring only; nothing is implemented.
