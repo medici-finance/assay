@@ -43,6 +43,11 @@ on:
       # The reconcile job's run: texts below are what statusgen's job tests
       # execute, so a change to this file's staged copy runs those tests too.
       - "ci/staged-workflows/assay-statusgen.yml"
+      # The board-push classification tests read the qualgen and activation
+      # copies' push steps too (#2910).
+      - "ci/staged-workflows/assay-qualgen.yml"
+      - "tools/ci-load/activation/assay-statusgen.yml"
+      - "tools/ci-load/activation/assay-qualgen.yml"
   push:
     branches: [main]
     # STATUS.md is deliberately NOT listed and lives at the repo root (outside
@@ -131,6 +136,15 @@ jobs:
           set -euo pipefail
           cd statusgen
           go test -count=1 -timeout 600s -run '^(TestReconcileJob|TestCredentialedJobIsolation|TestIsolationGuardFlagsPlant|TestStatusKeyedLintRulesRegistered)' .
+      # The board-push classification tests (statusgen/pushcred_test.go, #2910):
+      # every staged board writer's push step, and the scaffolded GitLab regen
+      # job, run against a stub forge answering expired / revoked / scope / auth /
+      # race. Hermetic: a local bare origin, a git shim, stub curl, no token.
+      - name: Board-push classification tests
+        run: |
+          set -euo pipefail
+          cd statusgen
+          go test -count=1 -timeout 600s -run '^(TestBoardPush|TestGitlabRegen|TestPushcredClassUnit|TestPushRetryCallsPushcred)' .
 
   # Findings-register transition corroboration (statusgen/06, deliverable 7).
   # A job of its own, so no PR-authored code runs before or beside the guard:
@@ -324,6 +338,15 @@ jobs:
           # Never `git pull --rebase`: STATUS.md is a generated artifact, so a
           # rebase conflict in it is meaningless — regeneration against the new
           # head IS the resolution.
+          # CLASSIFIED PUSH (#2910). Only a non-fast-forward rejection is a race
+          # with main and earns a retry; an expired, revoked, under-scoped or
+          # otherwise refused credential fails ONCE with its own line, spends no
+          # retry, and never says main moved. The credential is preflighted (a
+          # dry-run push) before the commit is written and before every retry.
+          # git's output is shown masked. statusgen/pushcred.sh is the one
+          # testable home of the classes (statusgen/pushcred_test.go).
+          . statusgen/pushcred.sh
+          pushcred_preflight "statusgen board regen" || exit 1
           attempts=3
           attempt=1
           while : ; do
@@ -338,9 +361,14 @@ jobs:
               exit 0
             fi
             git commit -m 'chore(status): regenerate [skip-status-regen]'
-            if git push; then
+            if pushcred_push; then
               echo "STATUS.md pushed on attempt ${attempt}/${attempts}"
               exit 0
+            fi
+            class="$(pushcred_classify)"
+            if [ "${class}" != nonff ]; then
+              pushcred_fail "${class}" "statusgen board regen"
+              exit 1
             fi
             if [ "${attempt}" -ge "${attempts}" ]; then
               echo "::error::statusgen board regen: push rejected on all ${attempts} attempts — main is moving faster than the regen can re-sync. Re-run this job once the merge burst settles."
@@ -351,6 +379,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             "${RUNNER_TEMP}/statusgen" --root .
+            pushcred_preflight "statusgen board regen" || exit 1
           done
   # verified→done auto-flip for `gate: model` briefs (the third half of the
   # single-writer shape; wired per the 2026-09-02 ruling on the house tracker).
@@ -441,8 +470,16 @@ jobs:
           set -uo pipefail
           git config user.name  'assay-board-writer[bot]'
           git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          # CLASSIFIED PUSH (#2910): only a non-fast-forward rejection is a
+          # race and earns a retry; a credential failure fails ONCE with its own
+          # line. Preflighted before any flip is committed and before each retry.
+          . statusgen/pushcred.sh
+          pushcred_preflight "model-path auto-flip" origin HEAD:main || exit 1
           flip_rc=0
           for attempt in 1 2 3 4 5; do
+            if [ "$attempt" -gt 1 ]; then
+              pushcred_preflight "model-path auto-flip" origin HEAD:main || exit 1
+            fi
             git fetch --no-tags origin main
             git reset --hard FETCH_HEAD
             flip_rc=0
@@ -456,9 +493,14 @@ jobs:
             # Path-scoped add: never STATUS.md (single writer = the regen job).
             git add -- docs/streams
             git commit -m "chore(verify): auto-flip gate:model briefs verified→done from the App approval at head [skip-autoflip]"
-            if git push origin HEAD:main; then
+            if pushcred_push origin HEAD:main; then
               echo "pushed model-path flips (attempt $attempt)"
               break
+            fi
+            class="$(pushcred_classify)"
+            if [ "$class" != nonff ]; then
+              pushcred_fail "$class" "model-path auto-flip"
+              exit 1
             fi
             echo "push attempt $attempt lost a race with a concurrent push — retrying"
           done
