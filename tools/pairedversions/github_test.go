@@ -20,11 +20,14 @@ type stubAPI struct {
 	status      int
 	assetBody   []byte
 	assetStatus int
+	listJSON    string
 }
 
 func (s stubAPI) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases"):
+			fmt.Fprint(w, s.listJSON)
 		case strings.Contains(r.URL.Path, "/releases/tags/"):
 			st := s.status
 			if st == 0 {
@@ -149,6 +152,32 @@ func TestParseChecksums(t *testing.T) {
 	} {
 		if _, err := parseChecksums([]byte(bad)); err == nil {
 			t.Errorf("parseChecksums(%q) should have failed", bad)
+		}
+	}
+}
+
+// The newest stable umbrella tag wins: numeric order, not list order or string
+// order, and drafts, prereleases and component-prefixed tags are skipped.
+func TestGHAPILatestPicksHighest(t *testing.T) {
+	g := newTestGH(t, stubAPI{listJSON: `[
+	  {"tag_name": "v1.3.0", "draft": true},
+	  {"tag_name": "v1.2.10-rc.1", "prerelease": true},
+	  {"tag_name": "statusgen/v9.0.0"},
+	  {"tag_name": "v1.2.9"},
+	  {"tag_name": "v1.2.10"},
+	  {"tag_name": "v1.2.2"}
+	]`})
+	got, err := g.Latest("o/r")
+	if err != nil || got != "v1.2.10" {
+		t.Fatalf("want v1.2.10, got %q (err %v)", got, err)
+	}
+}
+
+func TestGHAPILatestNoneIsAnError(t *testing.T) {
+	for _, list := range []string{`[]`, `[{"tag_name": "v1.0.0", "prerelease": true}]`} {
+		g := newTestGH(t, stubAPI{listJSON: list})
+		if got, err := g.Latest("o/r"); err == nil {
+			t.Errorf("list %s: want an error, got %q", list, got)
 		}
 	}
 }

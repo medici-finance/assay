@@ -19,6 +19,9 @@ var errUnreachable = errors.New("dial tcp: connection refused")
 type fakeSource struct {
 	rels map[string]*release
 	err  error
+	// latest is the newest published tag; empty means the fixture's v1.2.3.
+	latest    string
+	latestErr error
 }
 
 func (f fakeSource) Release(home, tag string) (*release, error) {
@@ -30,6 +33,26 @@ func (f fakeSource) Release(home, tag string) (*release, error) {
 		return nil, errNoRelease
 	}
 	return r, nil
+}
+
+func (f fakeSource) Latest(home string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.latestErr != nil {
+		return "", f.latestErr
+	}
+	if f.latest == "" {
+		return "v1.2.3", nil
+	}
+	return f.latest, nil
+}
+
+// behind serves v1.2.3 as published but names a newer release as the latest.
+func behind(latest string) fakeSource {
+	s := srcWith(publishedV123())
+	s.latest = latest
+	return s
 }
 
 const (
@@ -258,5 +281,56 @@ func TestPrereleaseIsANoteNotAFailure(t *testing.T) {
 	}
 	if !strings.Contains(out, "PRE-release") {
 		t.Errorf("a prerelease pin must not be silent:\n%s", out)
+	}
+}
+
+// regression: #2916
+func TestPinBehindLatestFails(t *testing.T) {
+	for _, latest := range []string{"v1.2.4", "v1.10.0", "v2.0.0"} {
+		t.Run(latest, func(t *testing.T) {
+			ok, out := run(t, tree(t, "ok.yaml", "plugin-0.5.0.json"), behind(latest))
+			if ok {
+				t.Fatalf("a pin behind the latest release %s passed:\n%s", latest, out)
+			}
+			// Every section is checked, not only the first one read.
+			for _, sec := range []string{"`statusgen` pins v1.2.3", "`desk-tools` pins v1.2.3"} {
+				want := sec + " but the latest published release of " + fakeHome + " is " + latest
+				if !strings.Contains(out, want) {
+					t.Errorf("want %q in:\n%s", want, out)
+				}
+			}
+			if !strings.Contains(out, "check-paired-versions.sh") {
+				t.Errorf("a behind-latest failure must name the re-pin steps:\n%s", out)
+			}
+		})
+	}
+}
+
+// A pin ahead of the newest stable release (a prerelease pin) is not stale.
+func TestPinAheadOfLatestPasses(t *testing.T) {
+	ok, out := run(t, tree(t, "ok.yaml", "plugin-0.5.0.json"), behind("v1.2.0"))
+	if !ok {
+		t.Fatalf("a pin ahead of the latest release failed:\n%s", out)
+	}
+}
+
+// regression: #2916
+func TestLatestUnresolvedFails(t *testing.T) {
+	unread := srcWith(publishedV123())
+	unread.latestErr = errUnreachable
+	for name, src := range map[string]fakeSource{
+		"latest unreadable":   unread,
+		"latest not vX.Y.Z":   behind("statusgen/v9.0.0"),
+		"latest a prerelease": behind("v9.0.0-rc.1"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			ok, out := run(t, tree(t, "ok.yaml", "plugin-0.5.0.json"), src)
+			if ok {
+				t.Fatalf("an unresolved latest release passed:\n%s", out)
+			}
+			if !strings.Contains(out, "could-not-check") {
+				t.Errorf("want could-not-check in:\n%s", out)
+			}
+		})
 	}
 }
