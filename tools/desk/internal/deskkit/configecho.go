@@ -57,6 +57,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -145,9 +146,14 @@ func writeConfigEcho(w io.Writer, c Config, statePath string) {
 
 // nullSink reports whether w is the null device, so the echo written to it was seen by no one. A
 // writer that is a file it cannot stat counts as one too (it cannot be shown to be visible); any
-// other writer — a pipe, a terminal, a regular file, a buffer — does not. Where the platform's
-// null device cannot be matched by identity, this answers false and the echo records as before.
+// other writer — a pipe, a terminal, a regular file, a buffer — does not. On Windows it always
+// answers false: there os.SameFile reports every character device (a console included) as the
+// same file as NUL, and the runtime does not reopen a closed standard handle on NUL, so the
+// echo records there as it did before this check.
 func nullSink(w io.Writer) bool {
+	if runtime.GOOS == "windows" {
+		return false
+	}
 	f, ok := w.(*os.File)
 	if !ok {
 		return false

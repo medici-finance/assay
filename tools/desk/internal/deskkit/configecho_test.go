@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -227,6 +228,9 @@ func TestEchoNullSinkNoRecord(t *testing.T) {
 	narrowed := goldenRoster()
 	narrowed[EnvTrustedLogins] = "ada:2001"
 	rewriteRoster(t, home, narrowed)
+	if runtime.GOOS == "windows" {
+		t.Skip("the null-device check is Unix-only (see nullSink)")
+	}
 	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		t.Skipf("no null device here: %v", err)
