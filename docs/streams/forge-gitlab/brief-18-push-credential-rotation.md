@@ -26,9 +26,10 @@ gate-why: >-
   CI/CD variables. The human confirms the choices in `## Human decision`. These are the
   mechanism; the token level; who holds that rotator credential and whether a desk may run
   the verb; the token lifetime and the minimum remaining lifetime the proof demands; whether
-  the variable is made hidden; and what counts as proof when the forge refuses
-  self-introspection to a repository-only token. The design-approval record is owed before
-  this brief leaves `todo`.
+  the variable is made hidden; what counts as proof when the forge refuses
+  self-introspection to a repository-only token; and whether the old token is revoked before
+  or after the new one is proven. The design-approval record is owed before this brief leaves
+  `todo`.
 decision-trigger: creation
 issues: [2910]
 schema: brief-v2
@@ -121,7 +122,7 @@ design-fit:
   owner: tools/desk/cmd/deskfleet (the Go owner of GitLab fleet provisioning, its API client and its credential-file custody)
   contract: none — no semantic-owner row covers CI-variable credential custody; S-identity is about which identity a session resolves to, not how a stored credential is replaced
   retires: ["the by-hand paste of a rotated value into the CI/CD variable (§2c), for rotation and first creation"]
-  weight: "verbs +1 (`deskfleet push-token`, two modes); flags +6 (`--project`, `--rotator-token-file`, `--token-name`, `--days`, `--min-days`, `--create`; `--dry-run` reused); refusals +9 (Task 2); rule-text lines about +25 in §2c"
+  weight: "verbs +1 (`deskfleet push-token`, two modes); flags +7 (`--project`, `--rotator-token-file`, `--reader-token-file`, `--token-name`, `--days`, `--min-days`, `--create`; `--dry-run` reused); refusals +12 (Task 2, including the advisory session-marker refusal); rule-text lines about +25 in §2c"
   why-add: >-
     It cannot live in the role-PAT renewal script or its port. Those end in an owner-only
     file, and a shell transport would put the value into a variable-update command's argv or
@@ -132,7 +133,7 @@ design-fit:
     is not the default because instance support and its interaction with protected branches
     are not established.
 
-single-point-of-failure: the verb's in-process handling of the new value, the only place the plaintext exists outside the forge — behind it, three layers that fail on different signals in different components: (1) the forge's own masked and protected flags on the variable, re-read after every write and contained by revoking the new token when the read-back disagrees, so the value is redacted from job logs and reaches only protected-branch pipelines whatever the verb sent; (2) forge-side lifetime, because rotation revokes the predecessor and the new token carries a short expiry, so a value that escapes dies at the next rotation or at expiry; (3) for liveness, part A's pre-push credential check inside the regen job, which uses the token itself at regen time and names an expired or revoked token even when this verb's proof never ran.
+single-point-of-failure: the verb's in-process handling of the new value, for confidentiality — NONE that detects a leak: forge-side lifetime only bounds the damage (rotation revokes the predecessor at once, and a leaked value dies at the next rotation or at expiry, at most `--days` away), and a second detecting layer is infeasible because outside the forge the plaintext exists only inside this one process, so no other component can see a copy without itself holding the value; the forge's masked and protected flags govern a different exposure path (CI job logs and unprotected pipelines), not the verb's own output. For flag integrity the control is the read-back plus containment, which runs in the same process as the write and is therefore not independent of it. For liveness the control is the three proof probes, and the one genuinely independent layer behind them is part A's pre-push credential check, which runs in a different component (the regen job), under a different credential (the token itself), at a different time (every regen).
 
 facts:
 - **Credential shape** (§2c, 2026-10-14 @ 9a8df91dc): a project or group access token,
@@ -170,14 +171,30 @@ Defended:
   URL, a redirect, a cleartext base.
 - A token is installed that is revoked, inactive, wrongly scoped or close to expiry, and this
   is found only when the next regen fails.
-- A rotation fails halfway: rotated but not installed, or installed but with wrong flags.
-- A desk runs the verb by accident, or under an ambient credential.
+- A rotation fails halfway: rotated but not installed, rotated with the response lost, or
+  installed but with wrong flags.
+- Containment itself fails: the revoke of a wrongly installed token errors or does not take,
+  and the run reports success anyway.
+- A token value that the forge returns in a response (the predecessor's value in the preflight
+  read of an unhidden variable, the new value echoed by the variable write or the read-back, or
+  a forge error message that quotes the submitted value) reaches the output.
+- The verb runs under an ambient credential instead of the named file.
 
 Not defended, accepted as the trust root:
 - Whoever holds the rotator credential. A Maintainer with `api` can rotate this token, read
   the project's unhidden variables and push directly. The verb narrows how that power is used
   for this one job; it does not reduce the power. Choice 3 decides who holds it.
-- A compromised machine that can read the verb's process memory.
+- An automated session that runs the verb on purpose or by accident. Any process that runs
+  as the same operating-system user as the rotator file's owner can read that file and run the
+  verb. The owner-only mode check (`ClassifyCustodyOwnerOnly`) tests the file's mode, not
+  which principal is calling. Under Human decision choice 3 A this is held back only by
+  operational custody: the rotator file must sit where no automated session's operating-system
+  user can read it, for example under a separate account or in a credential store that needs
+  an interactive unlock. Task 2's session-marker refusal is advisory only. A session that
+  unsets the marker passes it, so it is not counted as a defended layer.
+- A compromised machine that can read the verb's process memory. Zeroing the secret's bytes
+  at the end of the run is best-effort hygiene, not a control: response buffers and encoder
+  copies hold the plaintext too.
 - A compromised forge.
 
 Every defended item maps to a Verify row in the pre-mortem table below.
@@ -187,11 +204,14 @@ Every defended item maps to a Verify row in the pre-mortem table below.
 `files:` sits under `tools/desk/cmd/deskfleet/`, a credential-handling path. The four answers
 were read against it, not defaulted:
 - **sensitive-data: yes.** The verb holds a repository-write credential in memory, and the
-  rotator credential it runs under has `api` scope.
+  rotator credential it runs under has `api` scope. `check` runs under a separate read-only
+  reader credential.
 - **regulatory: no.** No regulated data is involved.
 - **customer: no.** The only behaviour that changes is how one CI credential is replaced.
 - **irreversible: no.** Rotation revokes the predecessor on purpose. A failed install is
   recovered by running the verb again, and the containment revoke is recovered by `--create`.
+  A containment revoke that cannot be confirmed exits 6 with `containment-failed`, and the
+  operator revokes that token by hand.
   Nothing outside the token and the variable changes.
 
 ## Edition
@@ -213,7 +233,7 @@ is one command that rotates the token and writes the new value into the variable
 single process. The value is never printed, never placed in a command line, an environment
 variable or a file, and never shown to the person or session running the command. The command
 keeps the variable masked and protected, and proves the new token is live and not about to
-expire. Six choices need a human answer. Each has a recommended default.
+expire. Seven choices need a human answer. Each has a recommended default.
 
 1. **Mechanism.** (A) A new subcommand of the existing Go provisioning tool that calls the
    forge's rotate endpoint and writes the variable in-process. (B) Extend the existing shell
@@ -230,7 +250,12 @@ expire. Six choices need a human answer. Each has a recommended default.
    service account whose credential sits in automation custody, so an automated session may
    run it. (C) An existing automation role account: rejected, because no role should gain
    project-variable access as a side effect. **Recommended: A**. B is a later decision once A
-   has run cleanly.
+   has run cleanly. Under A, the command cannot tell the person from an automated session
+   running as the same operating-system user: such a session can read the credential file and
+   run the command. A only holds if the file is kept where no automated session's user can
+   read it, for example under a separate account or in a credential store that needs an
+   interactive unlock. The command's refusal when it sees an automation-session marker is
+   advisory only, because a session can unset the marker.
 4. **Lifetime and threshold.** **Recommended: 30-day tokens; the command refuses more than 90;
    the proof requires at least 7 days remaining and an expiry no earlier than one day before
    the requested date**; the read-only check mode alarms below 7 days.
@@ -242,9 +267,19 @@ expire. Six choices need a human answer. Each has a recommended default.
    this token" endpoint for a repository-only token, (A) accept the rotator-side read of the
    same token record plus a live push-permission probe as proof, and say so in the output; or
    (B) fail the rotation. **Recommended: A**. Any other self-introspection failure still fails.
+7. **Order of replacement.** (A) Rotate first: the forge issues the new token and revokes the
+   old one in one call, then the command installs and proves the new one. At most one valid
+   push credential exists at any moment. But any failure between the rotate and a proven
+   install (a crash, a lost response, a failed write, a containment revoke) leaves the board job
+   unable to push until someone re-runs the command. (B) Create a second token, install it,
+   prove it, then revoke the old one: the old token keeps working through any failure, at the
+   cost of two valid credentials for the length of a run, and a crash mid-run leaves an extra
+   token that the next run refuses until a person revokes it. **Recommended: A**, matching the
+   existing rule that at most one credential is valid; the board job's own pre-push check names
+   the outage if a re-run is forgotten.
 
 Options:
-1. **Approve as briefed.** All six recommended defaults. The command is built as designed, and
+1. **Approve as briefed.** All seven recommended defaults. The command is built as designed, and
    a design record is written from this answer.
 2. **Approve with changes.** Name the choice and the option. The brief is revised before
    dispatch.
@@ -277,34 +312,60 @@ Default if no answer: none — blocks until answered.
 ```
 deskfleet push-token rotate --project <path-or-id> --rotator-token-file <file> --token-name <name>
                             [--days N] [--min-days N] [--create] [--dry-run]
-deskfleet push-token check  --project <path-or-id> --rotator-token-file <file> --token-name <name>
+deskfleet push-token check  --project <path-or-id> --reader-token-file <file> --token-name <name>
                             [--min-days N]
 ```
+
+- The verb handles a **project-level** variable and a **project** access token only. A
+  group-level variable or group token, which §2c also allows, is out of scope and is refused
+  (Task 3).
+- `check` takes its own `--reader-token-file`, so a monitor that may run often does not need
+  the `api` rotator credential. A credential with read-only API scope at Maintainer is enough
+  for the token list and the by-id read. `check` refuses `--rotator-token-file`, and `rotate`
+  refuses `--reader-token-file`.
 
 - The variable key is the constant `STATUSGEN_PUSH_TOKEN`, not a flag, so the verb cannot be
   pointed at another variable.
 - The returned value is decoded straight into a dedicated unexported type. Its `String`,
   `GoString`, `Format`, `MarshalJSON` and `MarshalText` all render `[redacted]`. The only way to
-  read the bytes is one unexported method, which feeds two consumers: the variable-write body
-  encoder and the probe request's credential. The byte slice is zeroed when the run ends.
+  read the bytes is one unexported method, which feeds three consumers: the variable-write body
+  encoder, the probe requests' credential, and the read-back's constant-time compare. Zeroing
+  the byte slice at the end of the run is best-effort hygiene, not a control (Threat model).
+- **Every response that can carry a token value decodes into a type with no plaintext field.**
+  That covers the variable reads (preflight and read-back), the variable write's response, and
+  the rotate and create responses. The variable type's `value` field is the redacting type,
+  never a `string`. The preflight never reads the predecessor's value at all. The read-back
+  reads it only for the compare. For these endpoints a non-2xx response is reported by HTTP
+  status alone. The forge's `message` or `error` body is never printed, because a forge error
+  can quote the value that was submitted. This extends deskfleet's existing rule that a
+  token-minting response never goes through `forgeMessage` to the variable write, the variable
+  reads, and rotate.
 - `pushtoken.go` calls no `os.Setenv`, `os.WriteFile`, `os.Create` or `os.OpenFile`, and no
   non-test file of the package imports `os/exec`. Row 3 guards this.
 
 ### 2. Refusals before any network contact (exit 5, zero requests)
 
-`GITLAB_API_BASE` unset, not absolute, or not https outside loopback. The rotator file is not
-owner-only, or is missing. `--days` is outside 1..90. `--min-days` is not below `--days`. A
-`--token` or `--value` style flag is a usage error (exit 2), because the flag set has none. The
-ambient variables `GITLAB_TOKEN` and `PRIVATE_TOKEN` are never read: setting them changes
-nothing.
+`GITLAB_API_BASE` unset, not absolute, not https outside loopback, or not ending in `/api/v4`
+(Task 5 derives the probe URL from it). The credential file is
+not owner-only, or is missing. `--days` is outside 1..90. `--min-days` is not below `--days`. A
+`--token` or `--value` style flag, or the wrong mode's credential flag, is a usage error (exit
+2), because the flag set has none. The ambient variables `GITLAB_TOKEN` and `PRIVATE_TOKEN` are
+never read: setting them changes nothing.
+
+**Advisory, not a control:** `rotate` also refuses when the environment carries the desk
+loop's session marker (`DESK_LOOP` set and non-empty), naming it. This catches an automated
+session that runs the verb without meaning to. It does not stop one that means to, because the
+marker is self-declared. The Threat model and Human decision choice 3 say so.
 
 ### 3. `rotate`: preflight reads, under the rotator credential
 
 All of these come before any write. Any failure exits 5 with zero writes.
-- **The variable.** Read the variable's metadata (any value field in the response is discarded
-  unread). It must exist with environment scope `*`, masked true and protected true. The
-  `hidden` state is recorded to be preserved. If the variable is missing, refuse unless
-  `--create`.
+- **The variable.** Read the project-level variable into the no-plaintext type of Task 1. The
+  predecessor's value, if the forge returns one, is never read or formatted. The variable must
+  exist with environment scope `*`, masked true and protected true. The `hidden` state is
+  recorded to be preserved. If the variable is missing, refuse unless `--create`. A group-level
+  variable of the same key does not count: the check is on the project-level variable. A refusal
+  message names the failed field, never the decoded response.
 - **The token.** List the project's active access tokens. Exactly one must carry
   `--token-name`, with scopes exactly `[write_repository]` and access level 40. Zero is refused
   unless `--create`. Two or more are refused, with a message saying the forge holds more than
@@ -316,20 +377,33 @@ All of these come before any write. Any failure exits 5 with zero writes.
 
 1. Rotate the token with `expires_at` = today + `--days`. With `--create` and no active token,
    create one instead: name, `[write_repository]`, level 40, the same expiry. Keep the new
-   token's id. The value lives only in the secret type.
+   token's id. The value lives only in the secret type. If the connection drops or the
+   response is unreadable after the rotate was sent, exit 1 with `rotate-response-lost`. The
+   report says the predecessor may already be revoked and the new value is unrecoverable, and
+   that re-running `rotate` is the recovery: the re-run finds the one active token by name,
+   which is the new one, rotates it again, and installs that value (Human decision choice 7).
 2. Update the variable with value, `masked: true`, `protected: true` and scope `*` sent
    explicitly on every write. When creating the variable with `--create`, also send
    `masked_and_hidden: true` if Human decision choice 5 is yes and the instance supports it.
-   Retry a transport error or 5xx at most twice. On final failure, exit 1 with
-   `rotated-not-installed`. The report says the variable still holds the revoked predecessor
+   Retry a transport error or 5xx at most twice. A 4xx is not retried. On final failure, exit
+   1 with `rotated-not-installed`, reporting the HTTP status only (Task 1). The report says the variable still holds the revoked predecessor
    and that re-running `rotate` is the recovery, because the new token is active and is found
    by name.
 3. **Read back.** Re-read the variable. It must show masked true, protected true, scope `*` and
    the recorded hidden state. If a value is returned (an unhidden variable), compare it to the
    secret in constant time without printing either. **Containment**: on any read-back
-   mismatch, revoke the new token by id at once, then exit 1 with `contained: revoked`, naming
-   the field that disagreed. The variable then holds a dead value, and recovery is fixing the
-   flags and re-running with `--create`.
+   mismatch, revoke the new token by id at once, then **confirm** the revoke with a by-id read
+   under the rotator credential. The read must show revoked true or active false, or answer
+   404. Only then does the run exit 1 with `contained: revoked <id>`, naming the field that
+   disagreed. The variable then holds a dead value, and recovery is fixing the flags and
+   re-running with `--create`.
+4. **Containment failure.** The revoke can answer non-2xx or fail in transport, or the
+   confirming read can fail or still show the token active. Then the run exits 6
+   (`deskkit.ExitUnverifiable`, because the token's death could not be positively verified)
+   and prints `containment-failed: revoke <id> by hand`. It also names the field that
+   disagreed. It never prints `contained:`. The variable may now hold a **live** token with
+   wrong flags, so this line is the operator's action item. Exit 6 keeps it distinct from
+   `contained: revoked` (exit 1).
 
 ### 5. `rotate` and `check`: the proof
 
@@ -342,13 +416,15 @@ the fields it compared, never a value:
   equals the new id, so the proof cannot pass on the predecessor's record. A 403 naming
   insufficient scope prints `self: not-permitted-by-scope` and counts as passed only under
   Human decision choice 6 A. Any other failure fails the run.
-- **push**, under the new token, `GET <API host>/<project path>.git/info/refs?service=git-receive-pack`
-  with HTTP Basic: it must answer 200. The probe URL is built from `GITLAB_API_BASE`'s scheme
-  and host and the project's path. A clone URL from any response is never used. A 3xx is a
-  failure.
+- **push**, under the new token, `GET <web root>/<project path>.git/info/refs?service=git-receive-pack`:
+  it must answer 200. The web root is `GITLAB_API_BASE` with its trailing `/api/v4` removed, so
+  the scheme, host and any path prefix the instance is served under are kept. The base must
+  end in `/api/v4`; otherwise the run refuses before any request. The credential goes in an
+  HTTP Basic `Authorization` header, never in URL userinfo. A clone URL from any response is
+  never used. A 3xx is a failure.
 
-`check` makes reads only: no POST, PUT or DELETE. It finds the token by name and runs the by-id
-probe against `--min-days`. Exit 0 healthy, 1 below threshold, revoked, inactive or wrongly
+`check` makes reads only: no POST, PUT or DELETE. Under the reader credential, it finds the
+token by name and runs the by-id probe against `--min-days`. Exit 0 healthy, 1 below threshold, revoked, inactive or wrongly
 scoped, 6 when a read fails. It is the out-of-band monitor between rotations. It shares the
 by-id comparator with `rotate`, so against a comparator defect it is not independent; part A
 is the independent layer.
@@ -360,10 +436,12 @@ is the independent layer.
 - Every network mode prints its target before its first request, as `deskfleet` already does.
 - `--dry-run` enumerates the steps with zero requests.
 - `docs/adopting-assay-gitlab.md` §2c: a "Rotating it" subsection with the procedure, the
-  chosen defaults from the Human decision, the containment and recovery outcomes, and the
-  `check` mode. §5: one line saying this credential rotates through `deskfleet push-token`, not
+  chosen defaults from the Human decision, the containment, containment-failed and recovery
+  outcomes, and the `check` mode with its reader credential. The subsection says the verb
+  handles a project-level variable and a project access token only; a group-level variable,
+  which §2c also allows, is out of this verb's scope and is rotated by hand. §5: one line saying this credential rotates through `deskfleet push-token`, not
   the role-PAT path.
-- `cmd/deskfleet/mutations.json`: add M1-M8 below. The existing control stays.
+- `cmd/deskfleet/mutations.json`: add M1-M11 below. The existing control stays.
 
 ## Verify (executable — no prose-only DoD items)
 
@@ -393,24 +471,24 @@ Test names are this brief's planned deliverables, all under `tools/desk/cmd/desk
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check:ci | `cd tools/desk && go build ./... && go vet ./cmd/deskfleet/ && go test ./cmd/deskfleet/ -count=1 > "${TMPDIR:-/tmp}/b18-r1.out" 2>&1 && grep -E -e '^ok' "${TMPDIR:-/tmp}/b18-r1.out"` | exit 0; output contains one `ok` line for the deskfleet package |
-| 2 | check:ci +flow +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenNeverEscapes$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r2.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenNeverEscapes' "${TMPDIR:-/tmp}/b18-r2.out"` | exit 0, `--- PASS:` printed. A full `rotate` against the fake forge, plus the `rotated-not-installed` and `contained: revoked` runs. Neither the new-value sentinel nor the rotator sentinel appears in stdout, stderr, the report, the process environment, or any file created under the out dir or `TMPDIR` during the run. The fake records the new value in exactly three places: the variable-write body, and the credential of the self and push probe requests, all on the fake's host. Mutation M1 turns it red |
+| 2 | check:ci +flow +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenNeverEscapes$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r2.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenNeverEscapes' "${TMPDIR:-/tmp}/b18-r2.out"` | exit 0, `--- PASS:` printed. Three sentinels: the new value, the rotator credential, and the variable's existing (predecessor) value, planted on an unhidden variable so the fake returns it on every variable read and echoes the new value in the write response. Runs: a full `rotate`; the `rotated-not-installed` run; a variable write answering 400 whose `message` quotes the submitted value; the `contained: revoked` run; the `containment-failed` run. No sentinel appears in stdout, stderr, the report, the process environment, or any file created under the out dir or `TMPDIR` during the run. The fake records the new value in exactly three places: the variable-write body, and the credential of the self and push probe requests, all on the fake's host. Mutations M1 and M11 turn it red |
 | 3 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenSourceGuard$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r3.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenSourceGuard' "${TMPDIR:-/tmp}/b18-r3.out"` | exit 0, `--- PASS:` printed. A `go/parser` walk: no non-test file in the package imports `os/exec`, and `pushtoken.go` calls none of `os.Setenv`, `os.WriteFile`, `os.Create`, `os.OpenFile`. **Negative path**: the same walker, run over a fixture file that plants each forbidden call, reports every one |
 | 4 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenRedacts$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r4.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenRedacts' "${TMPDIR:-/tmp}/b18-r4.out"` | exit 0, `--- PASS:` printed. The secret type rendered through the verbs `%v`, `%+v`, `%#v`, `%s`, `%q`, through `json.Marshal` and through `encoding.TextMarshaler`, alone and inside a struct, yields `[redacted]` and never the sentinel. Mutation M2 turns it red |
-| 5 | check:ci | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenRefusesInputs$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r5.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenRefusesInputs' "${TMPDIR:-/tmp}/b18-r5.out"` | exit 0, `--- PASS:` printed. Cases: base unset, non-https non-loopback base, rotator file mode 0644, rotator file missing, `--days 0`, `--days 91`, `--min-days` equal to `--days`. Each exits 5 with zero fake requests. A `--token` flag exits 2. `GITLAB_TOKEN` and `PRIVATE_TOKEN` set to valid-looking sentinels with no rotator file still exit 5, and neither sentinel reaches the fake |
-| 6 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenPreflight$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r6.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenPreflight' "${TMPDIR:-/tmp}/b18-r6.out"` | exit 0, `--- PASS:` printed. **Negative paths**, each with every other precondition met: variable unmasked; variable unprotected; variable scope not `*`; variable missing without `--create`; no active token by name without `--create`; two active tokens by name; scopes `write_repository` plus `api`; scopes `read_repository`; access level 30; default branch unprotected. Each exits 5 naming the failed check, and the fake records zero rotate, create, variable-write and revoke requests. Mutation M7 turns it red |
+| 5 | check:ci | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenRefusesInputs$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r5.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenRefusesInputs' "${TMPDIR:-/tmp}/b18-r5.out"` | exit 0, `--- PASS:` printed. Cases: base unset; non-https non-loopback base; base not ending in `/api/v4`; rotator file mode 0644; rotator file missing; reader file mode 0644 for `check`; `--days 0`; `--days 91`; `--min-days` equal to `--days`. Each exits 5 with zero fake requests. A `--token` flag, `check` given `--rotator-token-file`, and `rotate` given `--reader-token-file` each exit 2. `GITLAB_TOKEN` and `PRIVATE_TOKEN` set to valid-looking sentinels with no credential file still exit 5, and neither sentinel reaches the fake. **Advisory only**: `rotate` with `DESK_LOOP` set and every other input valid exits 5 naming the session marker, with zero requests; this proves the refusal fires, not that an automated session is stopped (Threat model) |
+| 6 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenPreflight$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r6.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenPreflight' "${TMPDIR:-/tmp}/b18-r6.out"` | exit 0, `--- PASS:` printed. **Negative paths**, each with every other precondition met: variable unmasked; variable unprotected; variable scope not `*`; variable missing without `--create`; group-level variable only; no active token by name without `--create`; two active tokens by name; scopes `write_repository` plus `api`; scopes `read_repository`; access level 30; default branch unprotected. Each exits 5 naming the failed check, and the fake records zero rotate, create, variable-write and revoke requests. In every case the variable, where present, is unhidden and holds the predecessor sentinel as its value, and no refusal's output contains it. Mutations M7 and M10 turn it red |
 | 7 | check:ci +flow +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenPreservesFlags$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r7.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenPreservesFlags' "${TMPDIR:-/tmp}/b18-r7.out"` | exit 0, `--- PASS:` printed. The fake implements update-resets-omitted-flags. Every variable write the fake records carries masked true, protected true and scope `*`. A hidden variable stays hidden, its value is never returned, and the run still exits 0 on the self and push probes. With `--create` and the hidden choice on, the create body carries the hidden flag. Mutation M3 turns it red |
-| 8 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenReadbackCatches$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r8.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenReadbackCatches' "${TMPDIR:-/tmp}/b18-r8.out"` | exit 0, `--- PASS:` printed. **Lower layer with the upper bypassed**: the verb sends correct flags, but the fake stores and reports protected false, then masked false, then hidden false on a hidden variable, then a different value. Each case exits 1 with `contained: revoked` naming the field. The fake records one revoke of the new token id and holds no active token by that name afterwards. Mutations M4 and M8 turn it red |
+| 8 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenReadbackCatches$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r8.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenReadbackCatches' "${TMPDIR:-/tmp}/b18-r8.out"` | exit 0, `--- PASS:` printed. **Single-control negative test** (read-back and write are in the same process, so this is not a layering proof): the verb sends correct flags, but the fake stores and reports protected false, then masked false, then hidden false on a hidden variable, then a different value. With the revoke and its confirming read healthy, each case exits 1 with `contained: revoked <id>` naming the field, the fake records one revoke of the new token id, and it holds no active token by that name afterwards. **Containment failure**, one fault each on the protected-false case: the revoke answers 500; the fake drops the connection on the revoke; the revoke answers 2xx but the confirming by-id read still shows the token active. Each exits 6, prints `containment-failed: revoke <id> by hand` with the new token's id, and prints no `contained:` line. Mutations M4, M8 and M9 turn it red |
 | 9 | check:ci +flow +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenProvesLiveness$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r9.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenProvesLiveness' "${TMPDIR:-/tmp}/b18-r9.out"` | exit 0, `--- PASS:` printed. Healthy run: exit 0 and three proof lines, `by-id`, `self` and `push`. **Negative paths**, one fault each: by-id revoked; by-id inactive; by-id scopes widened; by-id expiry 3 days away with `--min-days 7`; by-id expiry 5 days earlier than requested; self id equal to the predecessor's id; push probe 401; push probe 403. Each exits 1 naming the probe and field, never a value. Mutation M5 turns it red |
 | 10 | check:ci | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenSelfScope$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r10.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenSelfScope' "${TMPDIR:-/tmp}/b18-r10.out"` | exit 0, `--- PASS:` printed. A self answer of 403 insufficient scope, with by-id and push healthy, exits 0 and prints `self: not-permitted-by-scope`. A self answer of 401, or 403 with any other message, exits 1 |
-| 11 | check:ci +flow +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenProbeHostBound$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r11.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenProbeHostBound' "${TMPDIR:-/tmp}/b18-r11.out"` | exit 0, `--- PASS:` printed. The fake's project record names a clone URL on a second `httptest` server B. The push probe still goes to the API host: the fake records it, a precondition without which B's count proves nothing, and B records zero requests. A push probe that the fake answers with a 3xx to B exits 1, and B records zero requests. Mutation M6 turns it red |
-| 12 | check:ci | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenInstallFails$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r12.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenInstallFails' "${TMPDIR:-/tmp}/b18-r12.out"` | exit 0, `--- PASS:` printed. The variable write answers 500 three times: the run exits 1 with `rotated-not-installed` and the re-run instruction, after exactly three write attempts. A second run against the same fake state rotates the active token again, installs, proves and exits 0. At the end the fake holds exactly one active token by that name |
-| 13 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenCheckMode$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r13.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenCheckMode' "${TMPDIR:-/tmp}/b18-r13.out"` | exit 0, `--- PASS:` printed. `check` makes zero POST, PUT and DELETE requests. Healthy exits 0; revoked exits 1; a token list answering 500 exits 6. **Lower layer with the upper bypassed**: the fake is seeded directly with a token expiring in 2 days, as if installed without `rotate`'s proof. `check` with `--min-days 7` exits 1 naming `expires_at`. Mutation M5 turns it red |
+| 11 | check:ci +flow +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenProbeHostBound$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r11.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenProbeHostBound' "${TMPDIR:-/tmp}/b18-r11.out"` | exit 0, `--- PASS:` printed. The fake's project record names a clone URL on a second `httptest` server B. The push probe still goes to the API host: the fake records it, a precondition without which B's count proves nothing, and B records zero requests. A push probe that the fake answers with a 3xx to B exits 1, and B records zero requests. With a base of `<fake>/prefix/api/v4`, the fake records the push probe at `/prefix/<project path>.git/info/refs`. Every push probe the fake records has no userinfo in its URL and carries its credential in the `Authorization` header. Mutation M6 turns it red |
+| 12 | check:ci | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenInstallFails$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r12.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenInstallFails' "${TMPDIR:-/tmp}/b18-r12.out"` | exit 0, `--- PASS:` printed. The variable write answers 500 three times: the run exits 1 with `rotated-not-installed` and the re-run instruction, after exactly three write attempts. A second run against the same fake state rotates the active token again, installs, proves and exits 0. **Lost rotate response**: the fake performs the rotate (revokes the predecessor, issues the new token) and then drops the connection before responding. The run exits 1 with `rotate-response-lost`, and a re-run recovers to exit 0. In both cases, at the end the fake holds exactly one active token by that name, and the variable holds the value of that token |
+| 13 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenCheckMode$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r13.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenCheckMode' "${TMPDIR:-/tmp}/b18-r13.out"` | exit 0, `--- PASS:` printed. `check` runs under `--reader-token-file`; the fake records every request under the reader sentinel and none under the rotator sentinel, and zero POST, PUT and DELETE requests. Healthy exits 0; revoked exits 1; a token list answering 500 exits 6. **Out-of-band read, not an independent layer** (it shares the by-id comparator with `rotate`): the fake is seeded directly with a token expiring in 2 days, as if installed without `rotate`'s proof. `check` with `--min-days 7` exits 1 naming `expires_at`. Mutation M5 turns it red |
 | 14 | check:ci | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestPushTokenDryRun$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r14.out" 2>&1 && grep -F -e '--- PASS: TestPushTokenDryRun' "${TMPDIR:-/tmp}/b18-r14.out"` | exit 0, `--- PASS:` printed. `rotate --dry-run` names every step of Task 3-5 and the fake records zero requests |
 | 15 | check:ci | `cd tools/desk && go test ./cmd/deskfleet/ -run '^TestFleetTokenNeverEscapes$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r15a.out" 2>&1 && grep -F -e '--- PASS: TestFleetTokenNeverEscapes' "${TMPDIR:-/tmp}/b18-r15a.out" && go test ./cmd/deskfleet/ -run '^TestNoAPIHostLiteral$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r15b.out" 2>&1 && grep -F -e '--- PASS: TestNoAPIHostLiteral' "${TMPDIR:-/tmp}/b18-r15b.out" && go test ./internal/deskkit/ -run '^TestNoAmbientEnvTokenRead$' -count=1 -v > "${TMPDIR:-/tmp}/b18-r15c.out" 2>&1 && grep -F -e '--- PASS: TestNoAmbientEnvTokenRead' "${TMPDIR:-/tmp}/b18-r15c.out"` | exit 0, each `--- PASS:` line printed. The existing escape, host-literal and ambient-token guards stay green |
 | 16 | check | `git fetch -q origin main && git diff --name-only "$(git merge-base FETCH_HEAD HEAD)" HEAD -- statusgen .github ci tools/desk/internal/deskkit/ambienttoken_guard_test.go tools/renew-fleet-gitlab-tokens.sh \| wc -l` | prints `0`: no scaffold, workflow or staged-workflow file, no ambient-token ratchet and no role-PAT script changed |
-| 17 | check +mutation | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskfleet/mutations.json` | exit 0. Baseline green, control caught, and M1-M8 each `CAUGHT`, with zero `NOT_CAUGHT` and zero could-not-mutate |
+| 17 | check +mutation | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskfleet/mutations.json` | exit 0. Baseline green, control caught, and M1-M11 each `CAUGHT`, with zero `NOT_CAUGHT` and zero could-not-mutate |
 | 18 | check:ci +dereference | `cd tools/desk && go build -o "${TMPDIR:-/tmp}/b18-deskfleet" ./cmd/deskfleet && cd ../.. && "${TMPDIR:-/tmp}/b18-deskfleet" --help > "${TMPDIR:-/tmp}/b18-r18.out" 2>&1; grep -F -e 'deskfleet push-token rotate' "${TMPDIR:-/tmp}/b18-r18.out" && grep -F -e 'deskfleet push-token rotate' docs/adopting-assay-gitlab.md && grep -F -e 'deskfleet push-token check' docs/adopting-assay-gitlab.md && "${TMPDIR:-/tmp}/b18-deskfleet" push-token rotate --project p --rotator-token-file /nonexistent --token-name t --value x > "${TMPDIR:-/tmp}/b18-r18b.out" 2>&1; test "$?" -eq 2` | exit 0. The usage line the runbook quotes is the one the built binary prints, both modes are in §2c, and a value-bearing flag is a usage error on the real binary |
-| 19 | gate:human +dereference | `GITLAB_API_BASE="$PT_API_BASE" deskfleet push-token check --project "$PT_PROJECT" --rotator-token-file "$PT_ROTATOR_FILE" --token-name "$PT_TOKEN_NAME"` | Run by the human on the target instance before ratifying, after reading the instance version and tier off its help page. Exit 0 or 1, with a `by-id` line and no value printed. The human records the version, whether hidden variables are offered, and the verdict on Human decision choices 5 and 6 |
+| 19 | gate:human +dereference | `GITLAB_API_BASE="$PT_API_BASE" deskfleet push-token check --project "$PT_PROJECT" --reader-token-file "$PT_READER_FILE" --token-name "$PT_TOKEN_NAME"` | Run by the human on the target instance before ratifying, after reading the instance version and tier off its help page. Exit 0 or 1, with a `by-id` line and no value printed, which also shows that a read-only reader credential is enough for `check` on that instance. The human records the version, whether hidden variables are offered, and the verdict on Human decision choices 5 and 6 |
 | 20 | gate:human +dereference | `GITLAB_API_BASE="$PT_API_BASE" deskfleet push-token rotate --project "$PT_PROJECT" --rotator-token-file "$PT_ROTATOR_FILE" --token-name "$PT_TOKEN_NAME"` | Run by the human after implementation. Exit 0, three proof lines and a flags line showing masked, protected and the chosen hidden state. The terminal shows no value. The next `statusgen-regen` run on the default branch completes its push with no credential failure from part A's pre-push check |
 | 21 | check | `statusgen --root . --consumers` | exit 0 on the implementing change; the two entries routed `follow-up forge-gitlab/18` are flipped to `fixed-here` there and corroborate against its diff, and the out-of-scope entries carry a reason |
 
@@ -428,6 +506,11 @@ Each one goes into `cmd/deskfleet/mutations.json`.
   `write_repository`, instead of one that equals it.
 - **M8**, row 8: the containment revoke is deleted, so a mismatched read-back exits 1 and leaves
   the new token active.
+- **M9**, row 8: containment prints `contained: revoked` and exits 1 without checking the revoke
+  response or making the confirming read.
+- **M10**, row 6: the variable type's value field becomes a plain `string`, and a preflight
+  refusal formats the decoded variable with `%+v`.
+- **M11**, row 2: the variable-write error path appends the forge's `message` to its error line.
 
 ## Pre-mortem → detection map
 
@@ -438,23 +521,30 @@ Each one goes into `cmd/deskfleet/mutations.json`.
 | The new value is printed by a debug line, an error wrap or the report | rows 2, 4; M1, M2 |
 | The value reaches argv, the environment, a temp file or a subprocess | rows 2, 3; Ground rules |
 | A desk transcript shows the value because the desk ran the verb | row 2 (stdout and stderr are the transcript); row 20 live |
+| A live predecessor value, or the new value, is printed from a variable response | rows 2, 6; M10 |
+| A forge error body quotes the submitted value and the verb prints it | row 2, M11 |
 | The variable loses protected or masked because an update omitted it | row 7, M3 |
 | The forge stores different flags than were sent, and the verb reports success | row 8, M4; containment revokes the token, M8 |
+| The containment revoke fails, and the verb reports the token contained | row 8, M9 (`containment-failed`, exit 6) |
 | Hidden is lost on update | rows 7, 8 |
 | The value is sent to a host named in a response or a redirect | row 11, M6 |
+| The probe drops the instance's path prefix, or puts the credential in the URL | row 11 |
 | A cleartext base sends the rotator credential or the value in the clear | row 5 |
 | An ambient token is used instead of the rotator file | rows 5, 15 |
+| `check` needs the `api` rotator credential, widening its exposure | rows 5, 13 (reader credential only) |
 | A widened or wrong token is rotated and installed | row 6, M7 |
 | The installed token is revoked, inactive or close to expiry, and nobody knows until the regen | row 9, M5; row 13 out of band; part A in the job |
 | The proof reads the predecessor's record and passes | row 9 (self id must equal the new id) |
 | Self-introspection is refused for a repository-only token, so every rotation fails | row 10; Human decision choice 6; row 19 live |
 | Rotated but the install failed, and the verb reports success or loses the token | row 12 |
+| The forge rotated but the response was lost, leaving the job without a working value | row 12 (`rotate-response-lost`, re-run recovers to one active token) |
 | Rotation silently runs during `--dry-run` | row 14 |
 | The implementation edits the regen job or weakens a guard | rows 15, 16 |
 | The runbook quotes a usage line the binary does not have | row 18 |
 | A consumer of the change is left unrouted | row 21 |
 | The vendor behaviour the fake encodes is wrong on the target instance | rows 19, 20 (human, live); **no CI row**, because offline tests cannot prove vendor behaviour |
 | The rotator credential holder misuses it | **no row**: accepted trust root (Threat model; Human decision choice 3) |
+| An automated session under the operator's account runs `rotate` with the operator's rotator file | **no row**: not defended; choice 3 A relies on operational custody (Threat model; Human decision choice 3). Row 5 tests only the advisory session-marker refusal |
 | Part A's pre-push check misclassifies an expired token | **no row here**: part A's own pull request carries its tests; this brief does not re-test another change |
 
 ## Dispatch checklist
@@ -464,7 +554,7 @@ Each one goes into `cmd/deskfleet/mutations.json`.
 [x] 2. Facts dated: repo facts @ 9a8df91dc on 2026-10-14; vendor facts marked undereferenced, with rows 19 and 20 dereferencing them.
 [x] 3. Self-contained: endpoints, flags, exit codes, refusals and probe rules are all in Task.
 [x] 4. Risk answers match files: a credential path; sensitive-data yes, the rest read and recorded no.
-[x] 5. gate-why names the rotator credential's power and the six choices.
+[x] 5. gate-why names the rotator credential's power and the seven choices.
 [x] 6. Effort M, exec-tier strong (a, c).
 [x] 7. No shared value changes; consumers names the scaffold as part A's.
 [x] 8. design-fit answered; why-add names the retire-the-credential alternative.
@@ -484,16 +574,22 @@ key at authoring because no human has decided yet.
 
 A reviewer of this credential-handling design answers both questions in the verdict:
 1. What single control stands between a fault and the damage, and is it acceptable? Expected
-   answer: for confidentiality, the verb's in-process handling of the value. The forge's
-   masked and protected flags, checked by read-back with containment, and the short forge-side
-   lifetime stand behind it. For liveness, the verb's three-probe proof, with part A's
-   in-job check and the `check` mode behind it.
+   answer, per property, matching the single-point-of-failure line:
+   - **Confidentiality**: the verb's in-process handling of the value. No layer behind it
+     detects a leak. The token's short lifetime and revoke-on-next-rotate only bound the
+     damage, to at most `--days`. Acceptable for a short-lived, `write_repository`-only,
+     project-level token, with the reasons a detecting layer is infeasible as stated.
+   - **Flag integrity**: the read-back with containment. It runs in the same process as the
+     write, so it is not independent of it.
+   - **Liveness**: the three probes, with part A's in-job pre-push check behind them as the one
+     genuinely independent layer.
 2. Does any Verify row prove a lower layer catches the fault with the upper layer bypassed?
-   Expected answer: row 8 (the verb sends correct flags, the forge stores wrong ones, and
-   read-back plus containment catch it); row 13 (a token installed without `rotate`'s proof is
-   caught by `check`); row 11 (a response that names another host is not obeyed, and the probe
-   still goes to the configured host). Part A's in-job layer is proven by its own pull request,
+   Expected answer: **no row in this brief does.** Rows 8, 11 and 13 are single-control
+   negative tests. Row 8's read-back runs in the same process as the write. Row 11 tests one
+   control. Row 13's `check` shares the by-id comparator with `rotate`. The only genuinely
+   independent layer is part A's in-job check, which is tested in part A's own pull request,
    not here.
 
 The reviewer also confirms from the diff that nothing under `statusgen/`, `.github/` or `ci/`
-changed, and that no credential input other than `--rotator-token-file` exists.
+changed, and that no credential input other than `--rotator-token-file` and `check`'s `--reader-token-file`
+exists.
