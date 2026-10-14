@@ -568,6 +568,43 @@ RISK-VALUE: NAMED, NOT DERIVED — runtime effect of both values on a Windows ho
 **VERIFY: BLOCKED (no execution witness)** — 16 of 16 rows meet Expect by hand and no defect was found in the deliverable, but no valid witness can be written for this table yet (first bullet), so this run is recorded as a hold and not as a pass. The marker is deliberately not a pass marker. The board's verdict readers act on the last pass or fail marker, and a hand result with no witness should neither move this row out of the rework segment nor answer the 2026-10-07 fail marker above for a later close. Rows 7 and 8, the two rows that failed on 2026-10-07, both meet Expect in the table above.
 
 **The board row is not changed by this run and stays `implemented`.** A verified row needs a witness for every Verify row, and this table cannot take a valid one yet (first bullet). Row 8 was also re-authored by the change that turned it green (second bullet), so the status change is left to a maintainer. Review notes recorded internally; maintainer follow-up required (#2392).
+### Non-implementer verifier run — 2026-10-14 claude-opus-5-5 verifier at 946fd67330e5 (14/16 green; row 7 red on a flaky deskkit test from #2707, row 14a stale x/sys anchor after #2707; deliverable itself sound)
+
+Verification-Attestation: medici-finance/assay#2936 run=ee6b566cc3a3389000ada8c185bf382e951f77ebdd35b9d019c24d5e9866445f source=946fd67330e5bbc6acc0fe3e0bbe9521d7786caa brief=docs/streams/windows-port/brief-00-unix-windows-build-tag-split.md model=claude-opus-5-5 tier=strong
+
+Fresh non-implementer pass on darwin/arm64 (go1.27.2, git 2.56.0), detached at merged main 946fd67330e5, admitted by the verifier pre-work check (rc 0). Rows ran as written; rows 3-4 wrote their .exe outputs to run scratch instead of /tmp. Every split this brief owns holds. Both reds trace to #2707 (merged 2026-10-14, after the last pass, outside this brief's diff): it bumped golang.org/x/sys to v0.47.0 (row 14a's anchor is now stale), and it added a second GO row to the reviewed tarball map, which the deskkit base-image pin test picks by ranging over a Go map, so the test is order-dependent (4/20 isolated runs fail). A second row-7 red, Test Skill Repo List Scanner Fails On A Positive Control, was environment only: it matches "verify-desk" against the absolute temp path, and this runner's scratch path contains that word.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | Verify row 1 command as written (pair existence loop) | PASS | exit 0; `OK` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 2 | Verify row 2 command as written (go list IgnoredGoFiles, windows amd64+arm64) | PASS | exit 0; `OK 49` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 3 | Verify row 3 command, output paths moved from /tmp to run scratch | PASS | exit 0; both lines `PE32+ executable (console) x86-64 / Aarch64, for MS Windows` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 4 | Verify row 4 command, output paths moved from /tmp to run scratch | PASS | exit 0; deskpost both lines `PE32+ executable (console) x86-64 / Aarch64, for MS Windows` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 5 | Verify row 5 command as written (windows amd64 build of tools/desk ./...) | PASS | exit 0; `0` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 6 | Verify row 6 command as written (windows amd64 go vet, both modules) | PASS | exit 0; `sg=0` `dt=0` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 7 | Verify row 7 command as written (host suites under temp HOME) | FAIL | exit 1; `sg=0` `dt=1` `pass-lines=2`; `--- FAIL: Test Base Image Pins Tarballs` (anchor `GO_SHA256_AMD64=2852af…` for 1.25.0 not in the Dockerfile, which pins 1.27.2; map-order flake, 4/20 isolated) plus the scanner positive-control test (environment: temp path contains "verify-desk") | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 8 | Verify row 8 command as written (syscall grep + go list, both arches) | PASS | exit 0; `OK 25` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 9 | Verify row 9 command as written (positive control count) | PASS | exit 0; `22` (>= 4) | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 10 | Verify row 10 command as written (ACL wiring + Test Evaluate Roster ACL, both modules) | PASS | exit 0; `wired=OK` `sg-test=OK` `dt-test=OK` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 11 | `grep -qiE -e 'grandchild' -e 'process group' -e 'orphan' statusgen/procgroup_windows.go; r=$?; echo "$r"; test "$r" -eq 0` | PASS | exit 0; `0` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 12 | `grep -qF 'ErrLockBusy' tools/desk/internal/deskkit/filelock_windows.go; r=$?; echo "$r"; test "$r" -eq 0` | PASS | exit 0; `0` | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 13 | Verify row 13 command as written (pinned range, prune.go untouched) | PASS | exit 0; no output | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 14 | Verify row 14 command as written (pinned range, go.sum and statusgen module untouched) | PASS | exit 0; no output | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 14a | `c=$(grep -c 'golang.org/x/sys v0.46.0' tools/desk/go.mod); echo "$c"; test "$c" -eq 1` | FAIL | exit 1; `0` — go.mod now reads `golang.org/x/sys v0.47.0` (bumped by #2707, outside this brief's range; row 14 still proves the implementing diff did not bump it) | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+| 15 | Verify row 15 command as written (consumers routing vs pinned range) | PASS | exit 0; no output | 2026-10-14 | assay-verifier-app[bot] @ 946fd67330e5 (on-behalf-of human:ian) (git-config) |
+
+No row needs a native Windows host to execute; native-Windows runtime behaviour of the lock and ACL paths is could-not-check on this darwin host beyond the cross-compiles, vet, and the platform-neutral ACL evaluator test.
+
+RISK-VALUE: DERIVED — LockFileEx range (offsetLow, offsetHigh, lenLow, lenHigh) = 0, 0, 1, 0 @ tools/desk/internal/deskkit/filelock_windows.go:29 and the unlock @ :43 — an advisory lock needs one agreed byte range that every locker uses; all five sites go through this one helper, and lock and unlock name the same range, so nothing leaks.
+RISK-VALUE: DERIVED — lock flags = LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY @ tools/desk/internal/deskkit/filelock_windows.go:28 — the Win32 equivalent of LOCK_EX|LOCK_NB @ filelock_unix.go:26; the callers' 50 ms retry loop needs a non-blocking exclusive try.
+RISK-VALUE: DERIVED — busy binding = ERROR_LOCK_VIOLATION → ErrLockBusy @ tools/desk/internal/deskkit/filelock_windows.go:34 (EWOULDBLOCK @ filelock_unix.go:30) — the documented contention error of a fail-immediately lock; any other error returns raw, never nil (fails closed).
+RISK-VALUE: DERIVED — owner binding = int(st.Uid) != os.Getuid() @ statusgen/rosterowner_unix.go:40 (deskkit :39) — the sshd StrictModes owner rule, moved byte-for-byte (all four error literals match the pre-split block).
+RISK-VALUE: DERIVED — process-group kill = Setpgid: true @ statusgen/procgroup_unix.go:21 + Kill(-pid, SIGKILL) @ :23 — a negative pid signals the whole group the child leads, which reaches orphaned remote helpers; verbatim move.
+RISK-VALUE: DERIVED — world SID = "S-1-1-0" @ statusgen/rosterowner_windows.go:62 (deskkit :81) — the Windows well-known Everyone SID, so a nil DACL is treated as world-writable and refused.
+
+Filed: row 7 → #2942 (deskkit test defects); row 14a → #2297 (re-baseline tracker).
+
+**VERIFY: FAIL** — rows 7 and 14a (16 rows: 14 pass, 2 fail); both reds come from #2707 after the last pass, neither is a regression in this brief's deliverable
 
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a compile-target
