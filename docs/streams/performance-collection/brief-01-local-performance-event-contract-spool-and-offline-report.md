@@ -113,7 +113,7 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 6. Publish the API input and acknowledgment contract as fixtures now so database, server and sender can develop independently. Include partial results, committed ACK semantics, identical duplicate and conflicting-identity responses, bounded replay horizon, consent revision and authenticated source binding requirements; no server is implemented here.
 
-7. Update the architecture storage table and delivery mapping to the separate optional database; add a semantic-owner entry for collection only. Reconcile O02/O04 transport consumption without claiming their metric-definition program is implemented. Publish consent/retention limitations and local build/use commands; the local executable must build independently before any PostgreSQL/HTTP adapter exists. Leave remote activation and existing telemetry endpoints untouched.
+7. Update the architecture storage table and delivery mapping to the separate optional database; add a semantic-owner entry for collection only. Reconcile O02/O04 transport consumption without claiming their metric-definition program is implemented. Publish consent/retention limitations and local build/use commands; state plainly in docs/telemetry.md that ASSAY_TELEMETRY=1 together with an explicit profile now also gates a pseudonymous local record class, and scope the existing anonymized, counts-only promise to telemetry-v1 only; the local executable must build independently before any PostgreSQL/HTTP adapter exists. Leave remote activation and existing telemetry endpoints untouched.
 
 ## Interface contract
 

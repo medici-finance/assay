@@ -117,8 +117,9 @@ Workflow events reuse aliased canonical work/candidate/contract/attempt/invocati
 parent/retry links and actor role. A session can serve several items: preserve unattributed
 or shared overhead instead of fabricating a split. Source epoch changes after mapping loss
 prevent false joins. Usage snapshots are cumulative or delta **explicitly**; repeated polls
-must never add the same cumulative usage again. Preserve actual model/profile and unknown
-values from `runner.Usage`; monetary estimates carry source/currency/pricing revision.
+must never add the same cumulative usage again. Preserve the actual model/profile from
+`runner.Profile` and unknown (nil) token/cost values from `runner.Usage`; monetary estimates
+carry source/currency/pricing revision.
 Human decision latency, decision count and declared hands-on duration are distinct fields.
 Measured or estimated duration records its method; no transcript mining to invent minutes.
 

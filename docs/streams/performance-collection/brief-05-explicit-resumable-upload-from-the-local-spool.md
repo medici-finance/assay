@@ -84,7 +84,7 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 ## Task
 
-1. Add perfdata send --upload with explicit bounded source/date window and operator-owned destination/auth profile. Both ASSAY_TELEMETRY=1 and the command-line upload action must be present for every batch. Dry-run validates and prints the exact event payload with zero DNS/socket/HTTP attempts. Default command behavior never transmits; do not populate statusgen's empty endpoint or turn on an automatic daemon.
+1. Add perfdata send --upload with explicit bounded source/date window and operator-owned destination/auth profile. Both ASSAY_TELEMETRY=1 and the command-line upload action must be present for every batch. Dry-run validates and prints the exact event payload with zero DNS/socket/HTTP attempts. Before first contact, print the resolved destination origin and auth-profile name (never the credential). Refuse a plain-http destination that is not loopback, so a source credential is never sent unencrypted. Default command behavior never transmits; do not populate statusgen's empty endpoint or turn on an automatic daemon.
 
 2. Use the common event serializer and batch fixtures. Copy records into a stable batch before sending, preview exactly those bytes, and reject unsupported profile/schema. Destination credentials stay in the sender; source paths and alias mappings never enter a batch. Reject cross-origin redirects and credential forwarding; bound HTTPS timeouts and retry-after/backoff/jitter under a per-run work/time limit.
 

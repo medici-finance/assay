@@ -85,15 +85,15 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 ## Task
 
-1. Implement POST /v1/performance/batches and a bounded health/readiness surface over the existing validation/storage interfaces. Separate pure validation/dedup meaning from HTTP and PostgreSQL effects. Do not introduce another event schema or duplicate serializer; share fixtures with the local writer and sender.
+1. Implement POST /v1/performance/batches and a bounded health/readiness surface over the existing validation/storage interfaces. Separate pure validation/dedup meaning from HTTP and PostgreSQL effects. Do not introduce another event schema or duplicate serializer; share fixtures with the local writer and sender. Any unauthenticated readiness probe returns a bare status only, so the health surface cannot list enrolled sources.
 
-2. Authenticate each request with an operator-provisioned source-scoped credential and server-side source/profile policy. Use TLS for non-loopback traffic, explicit endpoint configuration, credential expiry/revocation and rotation; never accept a namespace solely from a payload/header. A unauthenticated caller cannot enroll or expand permissions. No credential material, raw body or private mapping in server/error/access logs.
+2. Authenticate each request with an operator-provisioned source-scoped credential and server-side source/profile policy. Use TLS for non-loopback traffic, explicit endpoint configuration, credential expiry/revocation and rotation; never accept a namespace solely from a payload/header. An unauthenticated caller cannot enroll or expand permissions. No credential material, raw body or private mapping in server/error/access logs.
 
 3. Apply byte, event-count, decompression, concurrency, timeout and per-source admission limits before costly decoding or database work. Reject unknown schema/fields and invalid policy/profile bindings with bounded fixed error codes. A valid event cannot smuggle free text through arbitrary metadata; the DB writer independently enforces source scope and validated typed records.
 
 4. Acknowledge only committed events with per-event identity and disposition. Return repeatable accepted/duplicate/conflict/rejected outcomes; describe partial batches precisely. A disconnect after commit is recoverable by identical resend. Retryable storage unavailability/rate pressure never returns a durable ACK. Fail readiness when storage is unavailable without affecting cell APIs.
 
-5. Provide operator-only configuration/enrollment documentation, payload preview examples and health counters for accepted, duplicate, conflicting, rejected and unavailable outcomes. Use bounded dimensions in metrics, with no work IDs as monitoring labels. Do not add a general read API, queue scheduler, hosted registration UI or deployment automation.
+5. Provide operator-only configuration/enrollment documentation, payload preview examples and operator-only health counters for accepted, duplicate, conflicting, rejected and unavailable outcomes; per-outcome and per-source counters are never exposed on the unauthenticated surface. Use bounded dimensions in metrics, with no work IDs as monitoring labels. Do not add a general read API, queue scheduler, hosted registration UI or deployment automation.
 
 6. Run actual served HTTP tests with synthetic credentials, TLS and the real database. Bypass client validation to exercise server and storage boundaries independently. Pin all fixtures; no test contacts a live endpoint. Publish the versioned API and supported client/schema matrix.
 
@@ -113,17 +113,23 @@ Each command requires the named PASS line, so a missing test cannot pass through
 "no tests to run" behavior. Each test also includes the planted failing control stated
 below, exercising production code rather than an independently reimplemented checker.
 
-Database rows require ASSAY_TEST_PERF_DSN pointing to an explicitly disposable local
-Timescale database provisioned from the pinned profile. Missing DSN fails qualification;
-tests must never skip to green or fall back to a live/default database. Isolation rows also
-provision a separate synthetic cell database and actual restricted roles on that instance.
+Database rows are classed `check` (env-bound, [brief rule 45](../../brief-rules.md)), not
+`check:ci`: they require ASSAY_TEST_PERF_DSN pointing to an explicitly disposable local
+Timescale database provisioned from the pinned profile, which CI does not provision, so the
+verifier runs them against that database. Missing DSN fails qualification; tests must never
+skip to green or fall back to a live/default database. Before any write or destructive step
+(crash, restore, role or privilege change, database removal) the harness mechanically refuses
+a non-disposable target: it must read back a sentinel the pinned disposable profile writes at
+provisioning, and the DSN host must be loopback or the local container host. A mis-set DSN
+refuses instead of acting on a real instance. Isolation rows also provision a separate
+synthetic cell database and actual restricted roles on that instance.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedIngest$' ./ingest/... > "$o" && grep -F -- '--- PASS: TestServedIngest ' "$o")` | exit 0; named PASS. Real HTTP/TLS to real disposable database persists a valid local-writer batch and returns only committed identities; lost response followed by replay yields one event. |
-| 2 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedIsolation$' ./ingest/... > "$o" && grep -F -- '--- PASS: TestServedIsolation ' "$o")` | exit 0; named PASS. Forged source, missing/expired/revoked credentials, disallowed profile and unknown fields cannot insert; direct storage scope checks remain independent. |
-| 3 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedBounds$' ./ingest/... > "$o" && grep -F -- '--- PASS: TestServedBounds ' "$o")` | exit 0; named PASS. Oversized/compressed/slow requests, source rate pressure and concurrent batches are bounded with stable errors; no secret or event body in captured logs. |
-| 4 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStoreDownNoAck$' ./ingest/... > "$o" && grep -F -- '--- PASS: TestStoreDownNoAck ' "$o")` | exit 0; named PASS. Database outage and commit failure yield retryable non-ACK outcomes; restart/redelivery preserves commit meaning and cells remain independent. |
+| 1 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedIngest$' ./ingest/... > "$o" && grep -F -- '--- PASS: TestServedIngest ' "$o")` | exit 0; named PASS. Real HTTP/TLS to real disposable database persists a valid local-writer batch and returns only committed identities; lost response followed by replay yields one event. |
+| 2 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedIsolation$' ./ingest/... > "$o" && grep -F -- '--- PASS: TestServedIsolation ' "$o")` | exit 0; named PASS. Forged source, missing/expired/revoked credentials, disallowed profile and unknown fields cannot insert; direct storage scope checks remain independent. |
+| 3 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedBounds$' ./ingest/... > "$o" && grep -F -- '--- PASS: TestServedBounds ' "$o")` | exit 0; named PASS. Oversized/compressed/slow requests, source rate pressure and concurrent batches are bounded with stable errors; no secret or event body in captured logs. |
+| 4 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStoreDownNoAck$' ./ingest/... > "$o" && grep -F -- '--- PASS: TestStoreDownNoAck ' "$o")` | exit 0; named PASS. Database outage and commit failure yield retryable non-ACK outcomes; restart/redelivery preserves commit meaning and cells remain independent. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/04` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 
 ## Pre-mortem and detection

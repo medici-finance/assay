@@ -120,16 +120,22 @@ Each command requires the named PASS line, so a missing test cannot pass through
 "no tests to run" behavior. Each test also includes the planted failing control stated
 below, exercising production code rather than an independently reimplemented checker.
 
-Database rows require ASSAY_TEST_PERF_DSN pointing to an explicitly disposable local
-Timescale database provisioned from the pinned profile. Missing DSN fails qualification;
-tests must never skip to green or fall back to a live/default database. Isolation rows also
-provision a separate synthetic cell database and actual restricted roles on that instance.
+Database rows are classed `check` (env-bound, [brief rule 45](../../brief-rules.md)), not
+`check:ci`: they require ASSAY_TEST_PERF_DSN pointing to an explicitly disposable local
+Timescale database provisioned from the pinned profile, which CI does not provision, so the
+verifier runs them against that database. Missing DSN fails qualification; tests must never
+skip to green or fall back to a live/default database. Before any write or destructive step
+(crash, restore, role or privilege change, database removal) the harness mechanically refuses
+a non-disposable target: it must read back a sentinel the pinned disposable profile writes at
+provisioning, and the DSN host must be loopback or the local container host. A mis-set DSN
+refuses instead of acting on a real instance. Isolation rows also provision a separate
+synthetic cell database and actual restricted roles on that instance.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCollectionJourney$' ./integration/... > "$o" && grep -F -- '--- PASS: TestCollectionJourney ' "$o")` | exit 0; named PASS. Actual producer → local report → sender → served API → real DB/export agrees with independent oracle, with stale evidence, retry and unknown usage visible. |
-| 2 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCollectionFaults$' ./integration/... > "$o" && grep -F -- '--- PASS: TestCollectionFaults ' "$o")` | exit 0; named PASS. Crash matrix, consent changes and lost ACKs do not inflate totals; optional outages/deletion do not alter cell authority, budget or required audit state. |
-| 3 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestHistoryWindow$' ./integration/... > "$o" && grep -F -- '--- PASS: TestHistoryWindow ' "$o")` | exit 0; named PASS. Simulated 90-day retention, corrections and restore retain valid aggregates and explicit gaps; old replay never resurrects discarded data. |
+| 1 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCollectionJourney$' ./integration/... > "$o" && grep -F -- '--- PASS: TestCollectionJourney ' "$o")` | exit 0; named PASS. Actual producer → local report → sender → served API → real DB/export agrees with independent oracle, with stale evidence, retry and unknown usage visible. |
+| 2 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCollectionFaults$' ./integration/... > "$o" && grep -F -- '--- PASS: TestCollectionFaults ' "$o")` | exit 0; named PASS. Crash matrix, consent changes and lost ACKs do not inflate totals; optional outages/deletion do not alter cell authority, budget or required audit state. |
+| 3 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestHistoryWindow$' ./integration/... > "$o" && grep -F -- '--- PASS: TestHistoryWindow ' "$o")` | exit 0; named PASS. Simulated 90-day retention, corrections and restore retain valid aggregates and explicit gaps; old replay never resurrects discarded data. |
 | 4 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalPackageOnly$' ./integration/... > "$o" && grep -F -- '--- PASS: TestLocalPackageOnly ' "$o")` | exit 0; named PASS. Clean external consumer/local command runs with no database, server, cell or network dependency at runtime; unsupported versions refuse explicitly. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/06` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 

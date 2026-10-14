@@ -119,17 +119,23 @@ Each command requires the named PASS line, so a missing test cannot pass through
 "no tests to run" behavior. Each test also includes the planted failing control stated
 below, exercising production code rather than an independently reimplemented checker.
 
-Database rows require ASSAY_TEST_PERF_DSN pointing to an explicitly disposable local
-Timescale database provisioned from the pinned profile. Missing DSN fails qualification;
-tests must never skip to green or fall back to a live/default database. Isolation rows also
-provision a separate synthetic cell database and actual restricted roles on that instance.
+Database rows are classed `check` (env-bound, [brief rule 45](../../brief-rules.md)), not
+`check:ci`: they require ASSAY_TEST_PERF_DSN pointing to an explicitly disposable local
+Timescale database provisioned from the pinned profile, which CI does not provision, so the
+verifier runs them against that database. Missing DSN fails qualification; tests must never
+skip to green or fall back to a live/default database. Before any write or destructive step
+(crash, restore, role or privilege change, database removal) the harness mechanically refuses
+a non-disposable target: it must read back a sentinel the pinned disposable profile writes at
+provisioning, and the DSN host must be loopback or the local container host. A mis-set DSN
+refuses instead of acting on a real instance. Isolation rows also provision a separate
+synthetic cell database and actual restricted roles on that instance.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStoreDedupe$' ./postgres/... > "$o" && grep -F -- '--- PASS: TestStoreDedupe ' "$o")` | exit 0; named PASS. Real database: concurrent duplicates, conflict, crash between event/receipt writes and retry leave one committed logical event and stable result. |
-| 2 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestDatabaseSeparation$' ./postgres/... > "$o" && grep -F -- '--- PASS: TestDatabaseSeparation ' "$o")` | exit 0; named PASS. Actual SQL roles cannot connect to/read cell data; collector outage or performance DB removal leaves disposable cell operations working. |
-| 3 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestRetentionReplay$' ./postgres/... > "$o" && grep -F -- '--- PASS: TestRetentionReplay ' "$o")` | exit 0; named PASS. Advance fixture time through raw and dedup expiry, replay too-old and late events, and verify rollups do not double-count or vanish unexpectedly. |
-| 4 | check:ci +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStoreRestore$' ./postgres/... > "$o" && grep -F -- '--- PASS: TestStoreRestore ' "$o")` | exit 0; named PASS. Real backup restore of source metadata, events and receipts preserves known totals/coverage and exposes the declared recovery gap. |
+| 1 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStoreDedupe$' ./postgres/... > "$o" && grep -F -- '--- PASS: TestStoreDedupe ' "$o")` | exit 0; named PASS. Real database: concurrent duplicates, conflict, crash between event/receipt writes and retry leave one committed logical event and stable result. |
+| 2 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestDatabaseSeparation$' ./postgres/... > "$o" && grep -F -- '--- PASS: TestDatabaseSeparation ' "$o")` | exit 0; named PASS. Actual SQL roles cannot connect to/read cell data; collector outage or performance DB removal leaves disposable cell operations working. |
+| 3 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestRetentionReplay$' ./postgres/... > "$o" && grep -F -- '--- PASS: TestRetentionReplay ' "$o")` | exit 0; named PASS. Advance fixture time through raw and dedup expiry, replay too-old and late events, and verify rollups do not double-count or vanish unexpectedly. |
+| 4 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStoreRestore$' ./postgres/... > "$o" && grep -F -- '--- PASS: TestStoreRestore ' "$o")` | exit 0; named PASS. Real backup restore of source metadata, events and receipts preserves known totals/coverage and exposes the declared recovery gap. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/03` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 
 ## Pre-mortem and detection

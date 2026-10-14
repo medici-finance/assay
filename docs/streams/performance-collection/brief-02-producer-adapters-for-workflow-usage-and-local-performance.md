@@ -98,7 +98,7 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 1. Add version-selected read-only adapters for perf-v1 files, dispatch-record-v1, historian records and an explicit manually supplied observation file. Source readers take exact configured paths and scopes, never search home directories/transcripts. Re-import keeps stable source-event identity and an explicit cutoff; truncation, rotation, duplicate rows, schema changes and source loss retain coverage. Preserve source timestamps and their known resolution.
 
-2. At the existing dispatch-record seam, emit an optional bounded observation with the same canonical attempt identity through the alias mapper. Keep the canonical dispatch/audit records and their current semantics unchanged. Domain success never depends on optional emission; old tools are supported by file import. When desk-tools/23 is available, consume its files; do not modify its seven-day privacy contract.
+2. At the existing dispatch-record seam, emit an optional bounded observation with the same canonical attempt identity through the alias mapper. Keep the canonical dispatch/audit records and their current semantics unchanged. Domain success never depends on optional emission; old tools are supported by file import. When desk-tools/23 is available, consume its files; do not modify its seven-day privacy contract. <!-- graph: not-a-gate — desk-tools/23 is an optional input adapter, not an implementation prerequisite; fixture import works without its merge. -->
 
 3. Add an optional observer to the existing runner Client with an unchanged default constructor path. Emit launch request/observed running/terminal/unknown/cancel and usage snapshots from actual protocol observations; distinguish requested start from confirmed execution. Preserve current authority, model, budget and cancellation rules. The sink never calls back into admission or blocks under the client lock; dropped notifications are explicit coverage. Do not implement a second launcher, sampler, process journal or supervisor.
 
@@ -109,8 +109,6 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 6. Document a producer coverage matrix: which stage/review/CI/resource facts are measured, proxies, manually supplied or unavailable. Emit gap summaries alongside local reports. Add a dated compatibility amendment to graph-execution/26 so the future supervisor carries the optional sink over its own canonical process facts; preserve its existing Task/Evidence and do not require that journal for these adapters.
 
 7. Validate module packaging and the production-to-local-report flow with actual runner and dispatch seams, preserving all source authority tests. Build source adapters without DB/server packages. Provide local rollout and revert instructions without enabling collection on the authoring machine.
-
-<!-- graph: desk-tools/23 is an optional input adapter, not an implementation prerequisite; fixture import works without its merge. -->
 
 ## Interface contract
 
