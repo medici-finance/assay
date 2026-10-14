@@ -1,0 +1,77 @@
+{
+  "test": "go test . -run '^TestInstance' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL \u2014 import accepts a document altered after export (seal not checked)",
+    "file": "instance.go",
+    "old": "if got := sealDigest(inst); got != inst.Digest {",
+    "new": "if got := sealDigest(inst); false && got != inst.Digest {"
+  },
+  "mutations": [
+    {
+      "name": "row 2: import no longer refuses an instance from another Cell (lower boundary)",
+      "file": "instance.go",
+      "old": "if inst.Work.Cell != expectCell {",
+      "new": "if false && inst.Work.Cell != expectCell {"
+    },
+    {
+      "name": "row 2: a node actor bound in another Cell is accepted",
+      "file": "instance.go",
+      "old": "if n.Actor.Cell != inst.Work.Cell {",
+      "new": "if false && n.Actor.Cell != inst.Work.Cell {"
+    },
+    {
+      "name": "row 5: acceptance takes a stale dependency fingerprint (only a missing observation is stale)",
+      "file": "instance.go",
+      "old": "if !ok || now != d.Fingerprint {",
+      "new": "if !ok || now == \"\" {"
+    },
+    {
+      "name": "row 6: export drops the assignment generation",
+      "file": "instance.go",
+      "old": "Generation:    in.Assignment.Generation,",
+      "new": "Generation:    0,"
+    },
+    {
+      "name": "row 6: a same-generation backend change is not a substitution",
+      "file": "instance.go",
+      "old": "case na.Generation == pa.Generation && (na.Backend != pa.Backend || na.RunnerProfile != pa.RunnerProfile):",
+      "new": "case false:"
+    },
+    {
+      "name": "row 1: same id with a changed contract is accepted as a revision",
+      "file": "instance.go",
+      "old": "if pc, nc := contractDigest(prior), contractDigest(next); pc != nc {",
+      "new": "if pc, nc := contractDigest(prior), contractDigest(next); false && pc != nc {"
+    },
+    {
+      "name": "row 1: an unknown required capability is ignored instead of refused",
+      "file": "instance.go",
+      "old": "if !instanceReaderCapabilities[s] {",
+      "new": "if false && !instanceReaderCapabilities[s] {"
+    },
+    {
+      "name": "row 4: a reporter label may stand as a disposition",
+      "file": "instance.go",
+      "old": "if in.Trust.Source == \"reporter\" && in.Trust.Disposition != \"unresolved\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: acceptance takes evidence with no returned artifact",
+      "file": "instance.go",
+      "old": "if e.Claim == c.Claim && e.Artifact != \"\" && arts[e.Artifact] {",
+      "new": "if e.Claim == c.Claim {"
+    },
+    {
+      "name": "row 4: a handoff answering another acceptance revision is accepted",
+      "file": "instance.go",
+      "old": "if h.AcceptanceVersion != inst.Acceptance.Version || h.AcceptanceRef != inst.Acceptance.Ref {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: credential-shaped values pass the scan",
+      "file": "instance.go",
+      "old": "for _, re := range instanceCredentialValue {",
+      "new": "for _, re := range instanceCredentialValue[:0] {"
+    }
+  ]
+}
