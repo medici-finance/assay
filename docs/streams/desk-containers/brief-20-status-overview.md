@@ -63,10 +63,10 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `go -C tools/desk test ./cmd/cellctl/ ./internal/cellop/ -run 'TestStatusOverview|TestInventory' -count=1` | exit 0 |
-| 2 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNeverTryLocks' -count=1` | exit 0 — with a fixture process holding a cell lock, inventory names the holder and never acquires or contends for the lock |
-| 3 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNullNotZero' -count=1` | exit 0 — an unreadable cache root yields `null` and could-not-check, not 0 bytes |
-| 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestStatusLegacyPrefix' -count=1` | exit 0 — the first line per role is byte-identical to the pre-change format |
+| 1 | check | `go -C tools/desk test ./cmd/cellctl/ ./internal/cellop/ -run 'TestStatusOverview|TestInventory' -count=1 -v` | `--- PASS` |
+| 2 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNeverTryLocks' -count=1 -v` | `--- PASS` — with a fixture process holding a cell lock, inventory names the holder and never acquires or contends for the lock |
+| 3 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestInventoryNullNotZero' -count=1 -v` | `--- PASS` — an unreadable cache root yields `null` and could-not-check, not 0 bytes |
+| 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestStatusLegacyPrefix' -count=1 -v` | `--- PASS` — the first line per role is byte-identical to the pre-change format |
 | 5 | gate:model +flow +dereference | On a live cell: `cellctl status <cell> --json`, then check three of its claims by hand (one harness pid with `ps -o lstart=`, one lock holder with `lsof`, the cache bytes against `cellctl cache <cell> status`) | all three match. Record the commands and outputs. |
 | 6j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestStatusEmitsCellOpV1' -count=1 -v` | `--- PASS` — `status --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 6 | check | `statusgen --root . --lint` | exit 0 |

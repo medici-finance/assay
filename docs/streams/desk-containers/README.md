@@ -44,7 +44,7 @@ component list, build/run topology, and open questions.
 | 12 | [Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob](brief-12-unattended-tick-mode-cronjob-component.md) | 4 | M | todo | — | — |
 | 13 | [Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release](brief-13-argo-cd-install-example.md) | 5 | M | todo | — | — |
 | 14 | [Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay](brief-14-flux-install-example.md) | 6 | M | todo | — | — |
-| 15 | [The cell-operation contract — one versioned result, plan and plan-approval schema shared by the future Cell API and the CLI, with operator-key custody outside the desks' reach and the CLI as the first adapter](brief-15-cell-op-machine-seam.md) | 7 | M | todo | — | — |
+| 15 | [The cell-operation contract — one versioned result and plan schema shared by the future Cell API and the CLI; apply only as an interactive-terminal confirmation, with approval-based apply deferred](brief-15-cell-op-machine-seam.md) | 7 | M | todo | — | — |
 | 16 | [Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker](brief-16-cell-scoped-stop-flags.md) | 7 | M | todo | — | — |
 | 17 | [`cellctl up <cell>` converges the cell — already-up roles are skipped, stale ones reconciled, launches serialized, one summary table](brief-17-up-converges-the-cell.md) | 8 | M | todo | — | — |
 | 18 | [`cellctl drain\|pause\|resume <cell> [role...]` — CLI adapter onto the runner-lifecycle drain/pause/resume transitions and the handoff record, implemented on today's stop flags and cadence as the interim mechanism](brief-18-drain-pause-resume-handoff.md) | 8 | M | todo | — | — |
@@ -146,7 +146,7 @@ until 09 gives the launcher the kind the bridge was standing in for; 10 is the p
 goes the release after the port lands, not with it. Native-Windows `cellctl` is a named
 consequence of 10 for the `windows-port` stream, delivered there, not here.
 
-### The cell-operator chain — `15/16 → 17/18/20/22 → 19/21 → 23/24` (2026-10-14)
+### The cell-operator chain — `15/16 → 17/18/20/22 → 19 → 23 → 21 → 24` (2026-10-14)
 
 A third chain, also in the host launcher, and independent of both chains above. It makes
 `cellctl` usable at the level an operator thinks in, the CELL, rather than one desk at a time.
@@ -165,16 +165,16 @@ classifies every verb here:
   `doctor`, `logs`, `gc`, `upgrade`.
 - **Adapters onto target-owned capabilities:** drain, pause, resume, restart and the handoff
   record are runner-lifecycle transitions (graph-execution), and today's stop-flag and cadence
-  mechanism is labelled interim; plan approval is a human decision record. The shared result,
-  plan and approval contract (15) is consumed by both the CLI and the future Cell API.
+  mechanism is labelled interim. The shared result and plan contract (15) is consumed by both
+  the CLI and the future Cell API; approval-based apply is deferred until R7/R3 meet the five
+  approval properties in amendment 21, and apply is an interactive convenience confirm meanwhile.
 
 The amendment is proposed and needs the maintainer's own ratification.
 
-- **Wave 7** — `desk-containers/15` (the shared cell-op contract: result, plan, and a plan
-  approval mapped onto the human-decision model. It is signed by a presence-bound operator key
-  outside the desks' reach, over pinned domain-tagged bytes, and consumed atomically before any
-  effect. The CLI is the first adapter and the Cell API the second, read/plan-only until R7
-  qualifies. **Human gate**: the key custody) and `desk-containers/16` (the interim
+- **Wave 7** — `desk-containers/15` (the shared cell-op contract: result and plan, shipping
+  now for read, plan, status and `--json`. Apply is an interactive-terminal confirm only,
+  honestly described as a convenience, not an authorization control. Approvals are deferred.
+  **Human gate**: the honest SPOF and the deferral) and `desk-containers/16` (the interim
   mechanism for the lifecycle `pause` transition, a cell-scoped stop flag; **human gate**,
   because it changes the tool Guard). They are independent, and both are heads.
 - **Wave 8** — `desk-containers/17` (`up` converges; reconcile through the contract),
@@ -182,7 +182,7 @@ The amendment is proposed and needs the maintainer's own ratification.
   handoff record; `resume` lifts only its own stops; needs 16), `desk-containers/20` (`status`
   and the shared `cellop.Inventory`; reads 16's stop state), `desk-containers/22` (`logs`).
 - **Wave 9** — `desk-containers/19` (`restart`, the lifecycle drain → stop → start sequence per
-  role; `--now` is one batch approval over per-role plans).
+  role; `--now` is one batch plan over per-role plans, consumed before its first role).
 - **Wave 10** — `desk-containers/23` (`upgrade`: pins from a reviewed ref, sha256 plus
   signature/attestation where published, pinned plugin, restore on failure, then 19; refuses
   under another cell's live or unknown desks, and needs authority for every included cell).
@@ -222,8 +222,7 @@ steps, and it leaves the same unfinished checkpoints behind.
 - Feature branch + draft PR per brief; never commit `STATUS.md` on a branch; never
   self-flip a leak-sweep.
 - Cell-operator verbs (briefs 15–24) share one contract, `cell-op-v1` (brief 15): the CLI's
-  `--json` emits its result document, and every confirmation is a plan applied only with a
-  plan approval (a human decision record signed by a presence-bound operator key over the
-  contract's domain-tagged payload of every bound field) that is verified, re-measured and
-  consumed before any effect. The future Cell API serves the same documents. No verb
-  defines a blanket `--yes`.
+  `--json` emits its result document, and `--plan` writes its plan, anywhere. Applying a plan
+  is an interactive-terminal confirm only (typed confirm code, then re-measure, then atomic
+  consume before any effect). It is a convenience, not an authorization control.
+  Approval-based apply is deferred (amendment 21). No verb defines a blanket `--yes`.

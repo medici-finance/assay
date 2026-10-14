@@ -45,12 +45,12 @@ files:
 facts:
 - `restart <cell> [role...]` runs, for each targeted role in `ROLES` order with the-desk LAST: `drain <cell> <r>` (18's positional role), then `up <cell> --role <r>` (17), and waits for that role's `up` to report `up` before moving on.
 - `--all-at-once` drains every targeted role together and then runs one `up`, for when the pipeline should stop.
-- **`restart --now` plan shape: one batch approval over per-role plans** (the decision model's batch form). `restart --now --plan` writes one `cell-op-plan` per role, each with that role's own precondition evidence (its in-flight claims, which `drain --now` would abandon), plus a batch plan listing the ordered role plan ids and digests. One approval signs the batch plan, which binds every role plan by digest.
-  - At each step, immediately before that role's `drain --now`, its role plan is re-measured. A role whose evidence drifted (for example, it took a new claim) is refused `plan-stale`. The sequence stops there, and later roles are not touched; it never skips ahead.
-  - The batch expiry bounds the **start** of each step. A step not started within 10 minutes of approval is not run; the result is `partial`, and `next[]` names a fresh `restart --now --plan` for the remaining roles.
-  - Each role plan is consumed atomically just before its step, so a replayed batch approval cannot re-run a finished role.
+- **`restart --now` plan shape: one batch plan over per-role plans.** `restart --now --plan` writes one `cell-op-plan` per role, each with that role's own precondition evidence (its in-flight claims, which `drain --now` would abandon), plus a batch plan listing the ordered role plan ids and digests.
+  - Applying is one interactive confirm of the batch's code. The batch plan is consumed atomically **before** the first role runs, so a concurrent second apply of the same batch is refused `already-consumed`.
+  - At each step, immediately before that role's `drain --now`, its role plan is re-measured and consumed. A drifted role is refused `plan-stale`, and a role plan found already consumed stops the sequence; the sequence never skips ahead.
+  - The batch expiry bounds the **start** of each step. A step not started within 10 minutes is not run; the result is `partial`, and `next[]` names a fresh `restart --now --plan` for the remaining roles.
 - If a role fails to come back, restart stops there. It does not restart further roles, it reports the failed role with `up`'s error, and it exits 1. The roles not yet touched keep running.
-- It is a composition of lifecycle transitions through `drain` and `up` and adds no state or mechanism of its own; the interim mechanism belongs to desk-containers/18. Output is a desk-containers/15 result with one `roles[]` entry per role, carrying both phases. Off a TTY, a `--now` restart goes through plan → apply.
+- It is a composition of lifecycle transitions through `drain` and `up` and adds no state or mechanism of its own; the interim mechanism belongs to desk-containers/18. Output is a desk-containers/15 result with one `roles[]` entry per role, carrying both phases. A `--now` restart is applied only by interactive confirm; off a TTY it is plan-only.
 
 ## Ground rules
 - NEVER git push / trigger workflows. Stop at `implemented`.
@@ -63,9 +63,9 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRolling' -count=1` | exit 0 — the recorded call order is drain r1, up r1, drain r2, up r2, …, the-desk last; at no point are two roles drained together |
-| 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartStopsOnFailure' -count=1` | exit 0 — when role 2's `up` fails, roles 3+ are never drained and the result names role 2's error |
-| 2b | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartNowBatchPlan' -count=1 -v` | `--- PASS` — `--now --plan` writes one role plan per role plus a batch plan binding their digests; a role whose evidence drifts mid-sequence is refused `plan-stale` and later roles are untouched; a step not started before the expiry is not run (`partial`); replaying the batch approval re-runs no consumed role |
+| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRolling' -count=1 -v` | `--- PASS` — the recorded call order is drain r1, up r1, drain r2, up r2, …, the-desk last; at no point are two roles drained together |
+| 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartStopsOnFailure' -count=1 -v` | `--- PASS` — when role 2's `up` fails, roles 3+ are never drained and the result names role 2's error |
+| 2b | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartNowBatchPlan' -count=1 -v` | `--- PASS` — `--now --plan` writes per-role plans plus a batch plan binding their digests; two concurrent applies of the batch: exactly one proceeds; a drifted role is refused `plan-stale` and later roles are untouched; a consumed role plan stops the sequence (never skip-and-continue); a step not started before expiry is not run (`partial`); a mutant that skips consumed roles fails |
 | 3 | gate:model +flow +dereference | On a disposable house cell with stub desks: `cellctl restart <cell>` while polling `cellctl cadence <cell> status` every 2s | every poll shows at least four of five roles `running=true`; the run ends with all five up and a fresh handoff note read by each |
 | 4j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartEmitsCellOpV1' -count=1 -v` | `--- PASS` — `restart --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 4 | check | `statusgen --root . --lint` | exit 0 |

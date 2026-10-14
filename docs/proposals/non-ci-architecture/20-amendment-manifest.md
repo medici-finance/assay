@@ -98,7 +98,8 @@ Owner rows for the **proposed** [cell operator surface amendment](21-cell-operat
 
 | Work | Owner | Brief(s) / treatment | Status |
 |---|---|---|---|
-| Result / plan / plan-approval contract (`cell-op-v1`) | desk-containers for the schema and CLI adapter now; the R7 owner serves it; evidence-and-decisions profiles the approval | `desk-containers/15` | Authored; approval profile reconciled when the decision contract ships |
+| Result / plan contract (`cell-op-v1`) | desk-containers for the schema and CLI adapter now (apply only by interactive confirm); the R7 owner serves it read/plan-only | `desk-containers/15` | Authored |
+| Approval-based apply (deferred) | R7 (served route) and R3 (isolation from the desk account); evidence-and-decisions shapes the record | Gated on amendment 21's five approval properties; no brief | Deferred by driver preference, pending ratification |
 | Interim verbs: up, status, doctor, logs, gc, upgrade | desk-containers (interim bridges) | `desk-containers/17`, `/20`, `/21`, `/22`, `/24`, `/23` | Authored; each names its target owner |
 | Lifecycle transitions (pause, resume, drain, stop, start, restart) and handoff record | graph-execution runner lifecycle / runtime coordination (R2 and/or R3; split unsettled) | Interim adapters `desk-containers/16`, `/18`, `/19`; owner amendment is a follow-up after ratification | Owner amendment not authored |
 | Cell API status queries and scoped operator requests (from `send`) | R7 (owner undecided: derived-board or a new stream) | No brief; requirements recorded in amendment 21 | Waits on the R7 owner decision and ratification |

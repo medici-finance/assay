@@ -59,9 +59,9 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLogs' -count=1` | exit 0 — stub tmux/herdr binaries record the exact read invocation per cockpit |
-| 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLogsOwnCellOnly' -count=1` | exit 0 — a role tab in another cell's workspace is never read; the call is refused |
-| 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLogsNeverWrites' -count=1` | exit 0 — no send-keys/input call is ever made |
+| 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLogs' -count=1 -v` | `--- PASS` — stub tmux/herdr binaries record the exact read invocation per cockpit |
+| 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLogsOwnCellOnly' -count=1 -v` | `--- PASS` — a role tab in another cell's workspace is never read; the call is refused |
+| 3 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLogsNeverWrites' -count=1 -v` | `--- PASS` — no send-keys/input call is ever made |
 | 4 | gate:model +flow +dereference | On a live herdr cell: `cellctl logs <cell> worker-desk --lines 20` | output matches what the worker-desk tab shows on screen; record both |
 | 5j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLogsEmitsCellOpV1' -count=1 -v` | `--- PASS` — `logs --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 5 | check | `statusgen --root . --lint` | exit 0 |

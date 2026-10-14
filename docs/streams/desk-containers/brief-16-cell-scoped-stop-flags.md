@@ -36,7 +36,7 @@ gate-why: >-
   silently matches nothing reads as "stopped" while desks keep writing. What the human
   confirms: cell flags only ever ADD stops (never clear or outrank DISABLED, STOP or
   STOP.<loop>); cell membership comes only from the launcher-set marker; an unknown cell name
-  is reported inert, not honoured silently; and both the skill check and the Guard enforce it.
+  is reported inert, not honoured silently; and the Guard enforces it for every loop, with the iteration check of the three loops that have one (pr-review-desk, verify-desk, worker-desk) as a second layer; intake-desk and the-desk have no iteration check yet, so for them the Guard is the only layer.
 exec-tier: strong
 exec-tier-why: (b) the flag is a shared value read by the Guard, five skill bodies and cellctl; (c) safety plumbing, where a silent no-op stop is the failure that unit tests miss
 domain: complicated
@@ -100,9 +100,9 @@ Default if no answer: none — blocks until answered.
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestGuardCellStop' -count=1` | exit 0 — with the marker `cell=a`: `STOP.cell.a` stops; `STOP.cell.a.worker-desk` stops worker-desk only; `STOP.cell.b` does not stop it; with no marker, no cell flag stops it |
-| 2 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestGuardCellStopNeverClears' -count=1` | exit 0 — `STOP` present plus a cell marker for a different cell is still a stop |
-| 3 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestCellNameRejectsTraversal' -count=1` | exit 0 — a marker value of `../x` or `a/b` is refused exit 6 and builds no path |
+| 1 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestGuardCellStop' -count=1 -v` | `--- PASS` — with the marker `cell=a`: `STOP.cell.a` stops; `STOP.cell.a.worker-desk` stops worker-desk only; `STOP.cell.b` does not stop it; with no marker, no cell flag stops it |
+| 2 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestGuardCellStopNeverClears' -count=1 -v` | `--- PASS` — `STOP` present plus a cell marker for a different cell is still a stop |
+| 3 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestCellNameRejectsTraversal' -count=1 -v` | `--- PASS` — a marker value of `../x` or `a/b` is refused exit 6 and builds no path |
 | 4 | check +dereference | `grep -c 'STOP.cell.' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md` | every file ≥ 1 |
 | 4b | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestSkillStopSnippetGuardBypassed' -count=1 -v` | `--- PASS` — the iteration-boundary snippet extracted from each of the three SKILL.md files, run in a temp HOME with the marker `cell=a`, `STOP.cell.a` present and no Guard on PATH, exits the loop and names the flag (the skill layer holds with the Guard layer absent) |
 | 5 | gate:model +flow | In a temp HOME: set the marker `cell=a`, touch `STOP.cell.a`, then run an outward verb such as `deskfile check` with `DESK_LOOP=worker-desk` | the Guard refuses with the stop exit code, naming `STOP.cell.a`. Remove the flag and the same command proceeds. With the skill-body check bypassed, the Guard alone still refuses. |
