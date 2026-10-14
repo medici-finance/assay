@@ -12,7 +12,7 @@ gate-why: "sensitive-data is yes because inbound forge deliveries and the commen
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 2
 id: 3542bd60-8abe-4927-ae46-fb3cd5d3e1f8
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
@@ -37,13 +37,14 @@ consumers:
   - "workflow/store/ (as planned by graph-execution/19 after its R2 amendment): follow-up forge-neutral/38 (the delivery inbox table, the use of R2's pending-feedback record and the mapping from a mirror observation to the graph-execution/28 work identity; no second demand table)"
   - "statusgen/: out-of-scope (forge-neutral/18 owns statusgen's forge reads; this brief adds no statusgen link and no deskread kind)"
   - "a mounted receiver route, network listener or deployment: out-of-scope (R7's public API and the activation sequence own mounting and exposure; this brief ships a library and an in-process test handler only)"
+  - "tools/forge-import-check/: fixed-here (source-only verification helper relocation; not a runtime mirror implementation)"
 ---
 
 # Brief 38 — Forge event adapter, feedback observations and durable reevaluation demand
 
 ## Context
 
-files: `forgeread/events/` (new), `forgeread/mirror/` (feedback kinds, hint intake),
+files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/events/` (new), `forgeread/mirror/` (feedback kinds, hint intake),
 `tools/desk/internal/deskkit/mirrorsource.go` (planned) and tests, `workflow/store/` (planned by
 graph-execution/19; delivery inbox, the pending-feedback use and the graph-execution/28 mapping),
 `forgeread/README.md`,
@@ -214,7 +215,7 @@ transports only.
 | 10 | check +dereference +mutation | `test -d statusgen && { grep -rnE --include='*.go' --exclude='*_test.go' '"([^"]*/)?forgeread/[^"]+"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: statusgen links no `forgeread` subpackage, `events` and `mirror` included, so forge-neutral/18 is not rebound. **Mutation**: a planted statusgen import of `.../forgeread/events` counts `1` |
 | 11 | check:ci +mutation | `(cd tools/desk && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestForgeSurfaceUnchangedByDeskread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestForgeSurfaceUnchangedByDeskread " "$result" && GOWORK=off go test -count=1 -v -run "^TestAmbientTokenGuardCoversForgeread$" ./internal/deskkit/ > "$result" && grep -F -- "--- PASS: TestAmbientTokenGuardCoversForgeread " "$result")` | exit 0: the forge surface is unchanged by this brief (no new operation), and the ambient-token rule finds no forge-token read in `forgeread/`. That rule recognises only six forge-token variable names, so it does not guard the webhook secret; row 13 does. **Mutation**: add an operation to the forge surface, and the surface test fails. **Mutation**: an events file reading `GH_TOKEN` from the environment produces a finding, and the guard test fails |
 | 12 | check:ci +dereference | `statusgen --consumers --root .` | exit 0: the diff-aware consumers gate corroborates every routing token against the implementing branch's diff (each `follow-up forge-neutral/38` self-reference is satisfied by this brief's own changes and flips to `fixed-here` at implementation) |
-| 13 | check:ci +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run docs/streams/forge-neutral/check_env_imports.go forgeread/events` | exit 0 and output `0`: the shared source-only checker parses every non-test Go file below the target and decodes each import path with `strconv.Unquote`. No decoded `os` or `syscall` import is allowed, including raw, escaped, plain, aliased and dot imports. Build-constrained files are scanned regardless of the current platform; `*_test.go` files remain excluded. Missing/empty targets, parse/decode/walk errors and symbolic links fail closed with no clean count. It fails at authoring because the target package is absent. The companion `check_env_imports_test.go` compiles synthetic raw/escaped imports offline without calling their environment-read functions, then runs both rows' exact commands; ordinary aliases, build-tagged files, excluded tests and clean imports remain controls. **Mutation**: use the former literal matcher or stop decoding import literals; compiler-valid raw/escaped `os` and `syscall` plants evade rejection and the fixture test fails. **Mutation**: plant any of those imports in shipped `events` source; the row reports a nonzero count and exit status |
+| 13 | check:ci +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/events` | exit 0 and output `0`: the shared source-only checker parses every non-test Go file below the target and decodes each import path with `strconv.Unquote`. No decoded `os` or `syscall` import is allowed, including raw, escaped, plain, aliased and dot imports. Build-constrained files are scanned regardless of the current platform; `*_test.go` files remain excluded. Missing/empty targets, parse/decode/walk errors and symbolic links fail closed with no clean count. It fails at authoring because the target package is absent. The companion `check_env_imports_test.go` compiles synthetic raw/escaped imports offline without calling their environment-read functions, then runs both rows' exact commands; ordinary aliases, build-tagged files, excluded tests and clean imports remain controls. **Mutation**: use the former literal matcher or stop decoding import literals; compiler-valid raw/escaped `os` and `syscall` plants evade rejection and the fixture test fails. **Mutation**: plant any of those imports in shipped `events` source; the row reports a nonzero count and exit status |
 | 14 | check +mutation | `test -f forgeread/go.mod && { grep -n -w -e require -e replace forgeread/go.mod \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: `forgeread` keeps no module dependency, so `events` cannot import `statusgen/domain` or a `workflow` package, and the graph-execution/28 mapping stays in `workflow`. Passes at authoring as an invariant guard. **Mutation**: a planted `require github.com/medici-finance/assay/statusgen v0.0.0` line counts `1` |
 | 15 | check:ci +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEventsPayloadRetentionPostgres$" ./store/... > "$result" && grep -F -- "--- PASS: TestEventsPayloadRetentionPostgres " "$result")` | exit 0; named PASS (a skip prints no PASS and fails the row). **Decision-conditional**: the worker implements only after the human decision is recorded, and the edit that records it deletes the unchosen option's sentence and mutation from this cell. Against real PostgreSQL in the graph-execution/19 harness, signed fixture deliveries carry private canary strings in their bodies. Option 1 (hints only): after acceptance and processing, a scan of every table the adapter writes finds no canary. Option 2 (retained snapshots): each canary is present within the configured window and absent after the purge runs past it. **Mutation (option 1)**: store the body in the inbox row, and a canary is found and the test fails. **Mutation (option 2)**: make the purge a no-op, and a canary survives the window and the test fails |
 
@@ -249,3 +250,13 @@ principal to this mirror's exact composition-derived admission; it does not rela
 query-time/store admission rule or answer the existing retention/payload decision. Confirmed
 provider receipts feed mirror updates through the existing R2/R4 owners. This dated note and
 reciprocal edges change no historical Task, Verify, Evidence or human decision.
+
+## Checker packaging correction — 2026-10-14
+
+Move the unchanged source-only checker and its compiler-fixture harness to
+`tools/forge-import-check/`. The exact Verify commands now name that path. The desk CI
+bridge references this neutral developer-tool path; its dependency registry covers the
+helper plus the actual authored-row input through whole-stream-root coverage. No withheld
+stream name ships in desk source, and neither corpus nor secret guard is exempted or weakened.
+The standalone harness still reads and executes the actual two Verify commands and all
+22 compiler cases. Human retention choices and historical Evidence remain unchanged.

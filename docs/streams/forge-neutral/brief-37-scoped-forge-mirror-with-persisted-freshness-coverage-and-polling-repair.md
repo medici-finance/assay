@@ -12,7 +12,7 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 2
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
@@ -40,13 +40,14 @@ consumers:
   - "statusgen/testdata/regressionfloor/ (as planned by graph-execution/29): follow-up forge-neutral/37 (one frozen mirror-coverage case under 29's inventory rules)"
   - "statusgen/: out-of-scope (forge-neutral/18 owns statusgen's forge reads; this brief adds no statusgen link and no deskread kind)"
   - "comments, check and status observations, event delivery and reevaluation demand: follow-up forge-neutral/38"
+  - "tools/forge-import-check/: fixed-here (source-only verification helper relocation; not a runtime mirror implementation)"
 ---
 
 # Brief 37 — Scoped forge mirror with persisted freshness, coverage and polling repair
 
 ## Context
 
-files: `forgeread/mirror/` (new), `forgeread/mirror/mirrortest/` (new), `forgeread/adapters/access.go`,
+files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/mirror/` (new), `forgeread/mirror/mirrortest/` (new), `forgeread/adapters/access.go`,
 `forgeread/adapters/github/`, `forgeread/adapters/gitlab/`, `forgeread/README.md`,
 `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`,
 `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/sharedread.go`,
@@ -276,7 +277,7 @@ provider transports only.
 | 15 | check:ci +flow +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorQueryAdmissionScope$" ./mirror/... > "$result" && grep -F -- "--- PASS: TestMirrorQueryAdmissionScope " "$result")` | exit 0; named PASS. A complete scope under admission A contains a canary row; currently authorized A reads it as a positive control. Missing or invalid admission, uncovered B, and **covered-but-different B** each answer `unavailable: permission` with zero rows, never complete-empty. The library refuses before any scope-data query (spy call count zero). With the library check bypassed, the store independently returns the same typed permission refusal for those cases, not just a filtered empty list; with a permissive store double, the library still refuses. After A's coverage is withdrawn, its next query is refused in each layer. Only authorized A querying a genuinely empty scope may receive complete-empty. This production-path case is part of `mirrortest`, including PostgreSQL under row 7. **Mutation**: remove library admission equality while retaining coverage; covered B reaches the store and the zero-call assertion fails. **Mutation**: turn the store's nonmatching-admission refusal into a successful empty result; the bypass case fails on coverage/reason even though zero rows remain. **Mutation**: drop the store admission predicate with the library bypassed; B receives A's canary and the test fails. **Mutation**: cache authorization at ingestion; A still reads after withdrawal and the test fails |
 | 16 | check:ci +mutation | `(cd forgeread && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorPermissionLossRetention$" ./mirror/... > "$result" && grep -F -- "--- PASS: TestMirrorPermissionLossRetention " "$result")` | exit 0; named PASS. **Decision-conditional**: the worker implements only after the human decision is recorded, and the edit that records it deletes the unchosen option's sentence and mutation from this cell. Option 1 (stale, access-checked history): after confirmed permission loss every prior row remains, marked stale and permission-lost, served only with that coverage and only through row 15's query-time admission check; rows past the configured history window are gone. Option 2 (purge to tombstones): after confirmed permission loss, a scan of every stored field of the scope finds none of the fixture's private canary strings (titles, bodies, labels, review text), while identities, the coverage gap and the loss time remain. The case is part of `mirrortest`, so it also runs against PostgreSQL under row 7. **Mutation (option 1)**: serve stale rows without the admission check, and the test fails. **Mutation (option 2)**: make the purge a no-op, and a canary is found and the test fails |
 | 17 | check +mutation | `test -f forgeread/go.mod && { grep -n -w -e require -e replace forgeread/go.mod \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: `forgeread` keeps no module dependency, so no subpackage can import `statusgen/domain` or a `workflow` package, and no forgeread-to-statusgen require cycle can form. The graph-execution/28 mapping stays in `workflow`. Passes at authoring as an invariant guard. **Mutation**: a planted `require github.com/medici-finance/assay/statusgen v0.0.0` line counts `1` |
-| 18 | check:ci +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run docs/streams/forge-neutral/check_env_imports.go forgeread/mirror` | exit 0 and output `0`: the shared source-only checker parses every non-test Go file below the target and decodes each import path with `strconv.Unquote`. No decoded `os` or `syscall` import is allowed, including raw, escaped, plain, aliased and dot imports. Build-constrained files are scanned regardless of the current platform; `*_test.go` files remain excluded. Missing/empty targets, parse/decode/walk errors and symbolic links fail closed with no clean count. It fails at authoring because the target package is absent. The companion `check_env_imports_test.go` compiles synthetic raw/escaped imports offline without calling their environment-read functions, then runs both rows' exact commands; ordinary aliases, build-tagged files, excluded tests and clean imports remain controls. **Mutation**: use the former literal matcher or stop decoding import literals; compiler-valid raw/escaped `os` and `syscall` plants evade rejection and the fixture test fails. **Mutation**: plant any of those imports in shipped `mirror` source; the row reports a nonzero count and exit status |
+| 18 | check:ci +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/mirror` | exit 0 and output `0`: the shared source-only checker parses every non-test Go file below the target and decodes each import path with `strconv.Unquote`. No decoded `os` or `syscall` import is allowed, including raw, escaped, plain, aliased and dot imports. Build-constrained files are scanned regardless of the current platform; `*_test.go` files remain excluded. Missing/empty targets, parse/decode/walk errors and symbolic links fail closed with no clean count. It fails at authoring because the target package is absent. The companion `check_env_imports_test.go` compiles synthetic raw/escaped imports offline without calling their environment-read functions, then runs both rows' exact commands; ordinary aliases, build-tagged files, excluded tests and clean imports remain controls. **Mutation**: use the former literal matcher or stop decoding import literals; compiler-valid raw/escaped `os` and `syscall` plants evade rejection and the fixture test fails. **Mutation**: plant any of those imports in shipped `mirror` source; the row reports a nonzero count and exit status |
 | 19 | check:ci +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorCoverageFactMapping$" ./store/... > "$result" && grep -F -- "--- PASS: TestMirrorCoverageFactMapping " "$result")` | exit 0; named PASS. Every mirror coverage state maps to exactly one graph-execution/28 fact-completeness value, and only `complete` inside the freshness window maps to present: `never-read`, `partial`, each `unavailable` reason class and a stale `complete` never do. The mapping lives in `workflow/store/`, not in `forgeread`. **Mutation**: map `partial` to present, and the test fails |
 
 ## Pre-mortem
@@ -313,3 +314,13 @@ principal to this mirror's exact composition-derived admission; it does not rela
 query-time/store admission rule or answer the existing retention/payload decision. Confirmed
 provider receipts feed mirror updates through the existing R2/R4 owners. This dated note and
 reciprocal edges change no historical Task, Verify, Evidence or human decision.
+
+## Checker packaging correction — 2026-10-14
+
+Move the unchanged source-only checker and its compiler-fixture harness to
+`tools/forge-import-check/`. The exact Verify commands now name that path. The desk CI
+bridge references this neutral developer-tool path; its dependency registry covers the
+helper plus the actual authored-row input through whole-stream-root coverage. No withheld
+stream name ships in desk source, and neither corpus nor secret guard is exempted or weakened.
+The standalone harness still reads and executes the actual two Verify commands and all
+22 compiler cases. Human retention choices and historical Evidence remain unchanged.

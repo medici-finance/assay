@@ -652,3 +652,14 @@ local surface is a narrow R6/R4 capability; full remote OIDC ingress/cockpit rem
 real local SQL/executor/recovery; inventory old publishers; accept read and write release
 separately; perform one operator-controlled repository cutover. No direct/raw fallback on
 service failure, no SQL UPDATE publication path and no inferred permission from cache warmth.
+
+### Verification packaging correction — 2026-10-14
+
+The mirror/event source checker and compiler fixtures now live in
+`tools/forge-import-check/`, outside the shipped desk tree. Their exact Verify commands
+are updated (brief versions 2); the source-only harness still compiles and runs every
+selected literal/escaped import case. The desk bridge reads this neutral helper path,
+and its CI registry declares the whole stream-root input without publishing a withheld
+stream name. Disclosure/secret guards retain their rules and negative controls. These
+command-path corrections supersede the earlier unchanged-Verify statement for these two
+rows only; existing human decisions and historical Evidence remain intact.

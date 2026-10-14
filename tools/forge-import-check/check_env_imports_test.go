@@ -36,7 +36,7 @@ func TestEnvImportRows(t *testing.T) {
 		{"brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md", "18"},
 		{"brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md", "13"},
 	} {
-		data, err := os.ReadFile(row.brief)
+		data, err := os.ReadFile(filepath.Join("..", "..", "docs", "streams", "forge-neutral", row.brief))
 		if err != nil {
 			t.Fatal(err)
 		}
