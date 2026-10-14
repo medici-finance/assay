@@ -9,19 +9,23 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 func inventory() (map[int]process, error) {
-	metadata, err := exec.Command("ps", "-axo", "uid=,pid=,ppid=,lstart=,stat=,comm=").Output()
+	metadata, err := exec.Command("ps", "-axo", "uid=,pid=,ppid=,pgid=,lstart=,stat=,comm=").Output()
 	if err != nil {
 		return nil, fmt.Errorf("cannot inspect process ownership: %w", err)
 	}
 	result := map[int]process{}
 	for _, line := range strings.Split(string(metadata), "\n") {
 		f := strings.Fields(line)
-		if len(f) < 10 || strings.HasPrefix(f[8], "Z") {
+		if len(f) < 11 || strings.HasPrefix(f[9], "Z") {
 			continue
 		}
+		group, _ := strconv.Atoi(f[3])
+		f = append(f[:3:3], f[4:]...) // the identity layout below predates the pgid column
 		uid, _ := strconv.Atoi(f[0])
 		if uid != os.Geteuid() {
 			continue
@@ -31,7 +35,7 @@ func inventory() (map[int]process, error) {
 			continue
 		}
 		parent, _ := strconv.Atoi(f[2])
-		result[pid] = process{pid: pid, parent: parent, identity: strings.Join(append(f[3:8:8], f[9:]...), " "), env: map[string]string{}}
+		result[pid] = process{pid: pid, parent: parent, group: group, identity: strings.Join(append(f[3:8:8], f[9:]...), " "), env: map[string]string{}}
 	}
 	for pid, p := range result {
 		env, err := processEnvironment(pid)
@@ -90,6 +94,17 @@ func signalMarked(p process, m Marker, sig syscall.Signal) error {
 	current, ok := all[p.pid]
 	if !ok || current.identity != p.identity || !m.carries(current) {
 		return nil
+	}
+	// The ps identity has one-second resolution. Immediately before the signal, the kernel's own
+	// start time (microseconds on macOS, clock ticks on Linux) must still match the one recorded
+	// at listing time; a changed one is a different process, and an unreadable one is
+	// could-not-check — neither is ever signalled.
+	start, gone, err := deskkit.ProcessStart(p.pid)
+	switch {
+	case gone || err == nil && start != p.start:
+		return nil
+	case err != nil:
+		return fmt.Errorf("could-not-check pid %d's start time before signalling: %w", p.pid, err)
 	}
 	if err := syscall.Kill(p.pid, sig); err != nil && err != syscall.ESRCH {
 		return fmt.Errorf("cannot signal owned process %d: %w", p.pid, err)

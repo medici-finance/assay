@@ -139,35 +139,51 @@ evidence before launching anything, so a cell whose windows were closed by hand 
 one answer instead of one recovery per role. The preflight:
 
 1. **Inventories** every role's checkpoint and, for `up`, the comms checkpoint and its
-   launch receipt. It lists each unfinished or failed record with its pid, recorded start
-   time, last heartbeat and recorded surface.
+   launch receipt. It lists each unfinished (`running`) record with its pid, recorded start
+   time, last heartbeat and recorded surface. A finished record with a failed outcome was
+   written by a supervisor that reaped its own child; it is not stale and blocks nothing, as
+   before.
 2. **Classifies** each record by pid *and* start time, never by pid alone. The start times
    come from the role lease's owner record, which a crashed owner leaves behind (the
    preflight reads it without taking the lease, so the evidence survives the read).
    - `owned`: a live process holds the role lease. That is a running window; it is listed
      and never touched.
    - `dead`: the lease is free, and the recorded supervisor and role child have each
-     exited or now belong to a process with a different start time (pid reuse). A reused
-     pid is never signalled.
-   - `alive`: a recorded process still matches its pid and start time, or a process
-     carrying the role's marker is still running under a live parent.
+     exited or now belong to a process with a different start time (pid reuse), and no
+     process is left in the dead role child's process group. A reused pid is never
+     signalled.
+   - `alive`: a recorded process still matches its pid and start time; or a process
+     carrying the role's marker is still running under a live parent; or a process without
+     a readable marker is still in the dead role child's process group. Such a process
+     descends from the role but is not proven ours: it is named and never signalled.
    - `could-not-check`: something could not be measured, including a running pid with no
      recorded start time. It is never treated as dead.
 3. **Finds orphans the cell owns.** Every child cellctl launches for a role carries
    `ASSAY_CELL=<cell>`, `ASSAY_CELL_DIR=<cell directory>` and `ASSAY_CELL_ROLE=<role>`
    (`comms` for the service), and descendants inherit them. A process is an orphan only
    if it carries this cell's marker for a role whose lease is free, and it was re-parented
-   to pid 1 (or descends, through marked processes, from one that was). Live lease holders
-   and their process trees, the invoking process and its ancestors are never candidates.
-   Paths and command lines are never ownership proof. Where the OS withholds a process's
-   environment (macOS does for its own platform binaries, such as a bare `sleep`), the
-   marker cannot be read and the process is left alone.
+   to pid 1 (or descends, through marked processes, from one that was). Nothing related to
+   a live lease holder or to the invoking process is ever a candidate: not the process
+   itself, not its descendants, not its ancestors (a terminal-multiplexer server hosting a
+   live window), and not anything else those ancestors host. cellctl drops an inherited
+   marker from its own environment at start, so the cockpit processes it starts (a tmux
+   server or window, a herdr or orca surface) never carry one. Only the role child and the
+   comms service are stamped. Paths and command lines are never ownership proof.
+   Where the OS withholds a process's environment (macOS does for its own platform
+   binaries, such as a bare `sleep`), the marker cannot be read and the process is never
+   signalled. One that stayed in the dead role child's process group keeps the record
+   `alive`. One that left that group (its own process group or session) is not seen at all,
+   and neither is anything descended from a session with no recorded role child; the record
+   can then be cleared while it runs. On a Linux host where orphans re-parent to a child
+   subreaper rather than pid 1, a real orphan reads as running under a live parent: the
+   record is `alive` and the preflight refuses, the safe direction.
 4. **Asks once, on a terminal:** it prints the plan and asks
    `Clear stale state and stop N orphaned processes? [y/N]`. On `y` it sends SIGTERM to
    each orphan, waits a bounded five seconds, sends SIGKILL to survivors, and re-checks
    each by pid and start time. Before signalling it re-checks that each orphan's role
    lease is still free, and every signal is preceded by a fresh check that the pid still
-   has the same start time and marker. It
+   has the same start time and marker, then by a check of the kernel's own start time
+   recorded at listing (an unreadable one is could-not-check, and nothing is signalled). It
    then closes a recorded comms surface whose identity still matches, runs the same code
    as `cadence recover --confirm-stopped` and `comms recover --confirm-stopped`, re-reads
    the state and continues the launch.

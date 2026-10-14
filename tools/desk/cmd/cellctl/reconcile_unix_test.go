@@ -208,7 +208,7 @@ func TestReconcileNonTTYRefusesWithCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	b, _ := json.Marshal(cellcadence.State{Schema: cellcadence.Schema, Mode: "interactive", Cell: c.Name, Role: "comms", PID: deadPID(t), Sequence: 1, NextDue: now, Heartbeat: now, LastStart: now, LastFinish: now, Outcome: "could-not-check"})
+	b, _ := json.Marshal(cellcadence.State{Schema: cellcadence.Schema, Mode: "interactive", Cell: c.Name, Role: "comms", PID: deadPID(t), Running: true, Sequence: 1, NextDue: now, Heartbeat: now, LastStart: now, Outcome: "running"})
 	if err := os.WriteFile(filepath.Join(c.commsDir(), "checkpoint.json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestReconcileNonTTYRefusesWithCommands(t *testing.T) {
 				"cellctl --cells-root " + root + " cadence 'example' recover worker-desk --confirm-stopped",
 				"cellctl --cells-root " + root + " cadence 'example' recover intake-desk --confirm-stopped",
 				"cellctl --cells-root " + root + " comms 'example' recover --confirm-stopped",
-				"comms class=dead record=failed(could-not-check)",
+				"comms class=dead record=unfinished",
 			} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatalf("%+v: missing %q:\n%s", rio, want, out.String())
@@ -280,5 +280,83 @@ func TestStampCellMarkerReplacesInherited(t *testing.T) {
 	comms := strings.Join(c.commsServiceEnv(&deskCommsConfig{}), "\n")
 	if !strings.Contains(comms, "ASSAY_CELL_ROLE=comms") || !strings.Contains(comms, "ASSAY_CELL=example") {
 		t.Fatalf("comms service is not marked: %q", comms)
+	}
+}
+
+// regression: #2880 (security S1) — a cockpit process cellctl starts never inherits a cell
+// marker, even when cellctl itself was started from inside a role window.
+func TestCockpitLaunchCarriesNoMarker(t *testing.T) {
+	f := newRepairFixture(t)
+	f.writeCellEnv(t, "ROLES=the-desk\n")
+	bin := t.TempDir()
+	out := filepath.Join(bin, "env-seen")
+	script := "#!/bin/sh\nenv | grep '^ASSAY_CELL' >> " + cockpitQuote(out) + "\necho called >> " + cockpitQuote(out+".calls") + "\ncase \"$1\" in has-session) exit 1;; esac\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	r := f.run(t, []string{"PATH=" + bin + ":/usr/bin:/bin", "ASSAY_CELL=example", "ASSAY_CELL_DIR=" + f.cellDir, "ASSAY_CELL_ROLE=the-desk"},
+		"up", "example", "--cockpit", "tmux", "--no-the-desk", "--no-attach")
+	if r.code != 0 {
+		t.Fatalf("up: %+v", r)
+	}
+	if calls, _ := os.ReadFile(out + ".calls"); len(calls) == 0 {
+		t.Fatal("fixture tmux was never started")
+	}
+	if seen, _ := os.ReadFile(out); len(seen) != 0 {
+		t.Fatalf("cockpit launch inherited the cell marker:\n%s", seen)
+	}
+}
+
+// regression: #2880 (correctness F1) — a FINISHED comms checkpoint with a failed outcome (the
+// supervisor was signal-stopped and reaped its own child) is not stale custody: up launches comms
+// exactly as before, even when the recorded pid has since been reused.
+func TestReconcileFinishedCommsNotStale(t *testing.T) {
+	c := reconcileCell(t)
+	reused := liveChild(t)
+	if err := os.MkdirAll(c.commsDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	b, _ := json.Marshal(cellcadence.State{Schema: cellcadence.Schema, Mode: "interactive", Cell: c.Name, Role: "comms", PID: reused.Process.Pid, Sequence: 1, NextDue: now, Heartbeat: now, LastStart: now, LastFinish: now, Outcome: "could-not-check"})
+	if err := os.WriteFile(filepath.Join(c.commsDir(), "checkpoint.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := c.reconcile(nil, &deskCommsConfig{Socket: filepath.Join(t.TempDir(), "gw.sock")}, reconcileIO{Out: &out}); err != nil || out.Len() != 0 {
+		t.Fatalf("finished comms record blocked or printed: %v %q", err, out.String())
+	}
+}
+
+// regression: #2880 (correctness A1) — a live process left in the dead role child's process
+// group without a readable marker keeps the record alive: it is named, never signalled, and the
+// checkpoint is not cleared over it.
+func TestReconcileUnattributedGroupMember(t *testing.T) {
+	c := reconcileCell(t)
+	leader := exec.Command("/bin/sh", "-c", "/bin/sleep 300 </dev/null >/dev/null 2>&1 & echo $!")
+	leader.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	out, err := leader.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { syscall.Kill(member, syscall.SIGKILL) })
+	writeStale(t, c, "worker-desk", deadPID(t), "1.000000", leader.Process.Pid, "2.000000")
+	var buf bytes.Buffer
+	err = c.reconcile([]string{"worker-desk"}, nil, reconcileIO{TTY: true, In: strings.NewReader("y\n"), Out: &buf})
+	if !errors.Is(err, errReconcileRefused) {
+		t.Fatalf("cleared over a live group member: %v\n%s", err, buf.String())
+	}
+	want := "pid " + strconv.Itoa(member) + " ("
+	if !strings.Contains(buf.String(), want) || !strings.Contains(buf.String(), "process group") || strings.Contains(buf.String(), "[y/N]") {
+		t.Fatalf("group member not named, or asked anyway:\n%s", buf.String())
+	}
+	if !alive(member) {
+		t.Fatal("unattributed group member was signalled")
+	}
+	if _, err := cellcadence.Read(c.cadenceDir("worker-desk")); err != nil {
+		t.Fatalf("checkpoint cleared: %v", err)
 	}
 }

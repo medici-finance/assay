@@ -37,3 +37,27 @@ func TestMarkedOrphanOwnership(t *testing.T) {
 		}
 	}
 }
+
+// regression: #2880 (security S1) — a marked parent-1 process ABOVE a live lease holder (a tmux
+// server started from inside a role window, its pane shells, another cell's supervisor on it) is
+// never an orphan: anything with a shielded descendant is shielded too.
+func TestMarkedNeverAboveLiveHolder(t *testing.T) {
+	m := Marker{Cell: "a", Dir: "/cells/a"}
+	mark := map[string]string{EnvCell: "a", EnvCellDir: "/cells/a", EnvCellRole: "the-desk"}
+	all := map[int]process{
+		1:   {pid: 1, identity: "init", env: map[string]string{}},
+		100: {pid: 100, parent: 1, identity: "tmux server", env: mark},
+		101: {pid: 101, parent: 100, identity: "pane shell", env: mark},
+		102: {pid: 102, parent: 101, identity: "other cell supervisor", env: mark},
+		201: {pid: 201, parent: 100, identity: "pane shell of live holder", env: mark},
+		202: {pid: 202, parent: 201, identity: "live worker-desk holder", env: mark},
+		203: {pid: 203, parent: 202, identity: "live role child", env: mark},
+		300: {pid: 300, parent: 1, identity: "real orphan", env: mark},
+		800: {pid: 800, parent: 1, identity: "invoker shell", env: map[string]string{}},
+		900: {pid: 900, parent: 800, identity: "invoker", env: map[string]string{}},
+	}
+	got := markedIn(all, m, map[int]bool{900: true, 800: true}, []int{202})
+	if len(got) != 1 || got[0].PID != 300 || !got[0].Orphan {
+		t.Fatalf("want only the real orphan 300, got %+v", got)
+	}
+}

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // The cell marker cellctl stamps on every child it launches for a role (and on
@@ -52,16 +54,67 @@ func sameDir(a, b string) bool {
 type Marked struct {
 	PID, Parent int
 	Identity    string // start time and command, as the process table reports them
+	Start       string // the kernel's start time, re-checked immediately before any signal
 	Role        string
 	// Orphan is true when the process was re-parented to pid 1 (its launching
 	// harness is gone), or descends from such a process through marked parents.
 	Orphan bool
 }
 
+// Unattributed is a live process in a dead role child's process group that does not carry a
+// readable cell marker (macOS withholds the environment of its platform binaries; a process
+// started before the marker existed carries none). Its descent from the role child is evident,
+// its ownership is not: it is reported, and it is never signalled.
+type Unattributed struct {
+	PID, Parent, Group int
+	Identity           string
+}
+
+// Scan is MarkedProcesses plus, for each process-group id in groups (the recorded, now-dead
+// role children: each was its own group leader), the live members that are not listed as
+// marked. One inventory serves both.
+func Scan(m Marker, protect []int, groups []int) ([]Marked, map[int][]Unattributed, error) {
+	if m.Cell == "" || !filepath.IsAbs(m.Dir) {
+		return nil, nil, fmt.Errorf("invalid cell marker")
+	}
+	all, err := inventory()
+	if err != nil {
+		return nil, nil, err
+	}
+	marked, err := withKernelStart(markedIn(all, m, ancestors(all), protect))
+	if err != nil {
+		return nil, nil, err
+	}
+	listed := map[int]bool{}
+	for _, p := range marked {
+		listed[p.PID] = true
+	}
+	want := map[int]bool{}
+	for _, g := range groups {
+		if g > 1 {
+			want[g] = true
+		}
+	}
+	var unattributed map[int][]Unattributed
+	for pid, p := range all {
+		if !want[p.group] || listed[pid] || pid == os.Getpid() {
+			continue
+		}
+		if unattributed == nil {
+			unattributed = map[int][]Unattributed{}
+		}
+		unattributed[p.group] = append(unattributed[p.group], Unattributed{PID: pid, Parent: p.parent, Group: p.group, Identity: p.identity})
+	}
+	for _, u := range unattributed {
+		sort.Slice(u, func(i, j int) bool { return u[i].PID < u[j].PID })
+	}
+	return marked, unattributed, nil
+}
+
 // MarkedProcesses lists every live process of the invoking user that carries
-// m's marker. The invoking process, its ancestors and every process in
-// protect (with their descendants) are never listed: protect holds the
-// verified live lease holders, which are never ended. An error is
+// m's marker. The invoking process and every process in protect (the verified
+// live lease holders) are never listed, nor is anything above them or anything
+// else hosted by what is above them. An error is
 // could-not-check, never an empty cell.
 func MarkedProcesses(m Marker, protect []int) ([]Marked, error) {
 	if m.Cell == "" || !filepath.IsAbs(m.Dir) {
@@ -71,22 +124,54 @@ func MarkedProcesses(m Marker, protect []int) ([]Marked, error) {
 	if err != nil {
 		return nil, err
 	}
-	return markedIn(all, m, ancestors(all), protect), nil
+	return withKernelStart(markedIn(all, m, ancestors(all), protect))
+}
+
+// withKernelStart records each listed process's kernel start time, dropping any that exited.
+// An unreadable start time is could-not-check for the whole listing: nothing is signalled on
+// an identity that could not be measured.
+func withKernelStart(listed []Marked) ([]Marked, error) {
+	out := listed[:0]
+	for _, p := range listed {
+		start, gone, err := deskkit.ProcessStart(p.PID)
+		if gone {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("could-not-check pid %d's start time: %w", p.PID, err)
+		}
+		p.Start = start
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 func markedIn(all map[int]process, m Marker, excluded map[int]bool, protect []int) []Marked {
+	// A process is shielded when it is, sits above, or sits below a live lease holder or the
+	// invoking process: a holder's ancestors (a terminal-multiplexer server and the pane hosting a
+	// live window) are as live as the holder, and so is everything else they host. Shielding
+	// therefore runs over the full tree both ways — up from every root, then down from every
+	// shielded process. Pid 1 is never a shielding root for its subtree: it is everyone's parent.
 	shielded := map[int]bool{}
+	var roots []int
 	for pid := range excluded {
-		shielded[pid] = true
+		roots = append(roots, pid)
 	}
-	for _, pid := range protect {
-		shielded[pid] = true
+	roots = append(roots, protect...)
+	for _, pid := range roots {
+		for seen := 0; pid > 0 && seen <= len(all); seen++ {
+			shielded[pid] = true
+			p, ok := all[pid]
+			if !ok || pid == 1 {
+				break
+			}
+			pid = p.parent
+		}
 	}
-	// Descendants of a protected holder are part of its live session.
 	for changed := true; changed; {
 		changed = false
 		for pid, p := range all {
-			if !shielded[pid] && shielded[p.parent] && !excluded[p.parent] {
+			if !shielded[pid] && p.parent > 1 && shielded[p.parent] {
 				shielded[pid] = true
 				changed = true
 			}
@@ -133,10 +218,10 @@ func StopMarked(ctx context.Context, m Marker, targets []Marked, grace time.Dura
 	}
 	procs := make([]process, 0, len(targets))
 	for _, t := range targets {
-		if t.PID <= 1 || t.PID == os.Getpid() || t.Identity == "" {
+		if t.PID <= 1 || t.PID == os.Getpid() || t.Identity == "" || t.Start == "" || !t.Orphan {
 			return fmt.Errorf("refusing to signal pid %d: not a provable cell orphan", t.PID)
 		}
-		procs = append(procs, process{pid: t.PID, parent: t.Parent, identity: t.Identity})
+		procs = append(procs, process{pid: t.PID, parent: t.Parent, identity: t.Identity, start: t.Start})
 	}
 	for _, p := range procs {
 		if err := signalMarked(p, m, sigTerm); err != nil {

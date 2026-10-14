@@ -34,11 +34,20 @@ func Probe(dir string) (busy bool, err error) {
 	if !st.Mode().IsRegular() {
 		return false, errors.New("cadence lock is not a regular file")
 	}
-	f, err := os.OpenFile(p, os.O_RDWR, 0)
+	// No-follow and non-blocking, then the opened file must be the regular file just inspected:
+	// a lock path swapped for a symlink or a FIFO between the two calls is refused, never waited on.
+	f, err := os.OpenFile(p, os.O_RDWR|probeOpenFlags, 0)
 	if err != nil {
 		return false, err
 	}
 	defer f.Close()
+	opened, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(st, opened) {
+		return false, errors.New("cadence lock changed while it was probed")
+	}
 	if err := deskkit.TryLockExclusive(f); err != nil {
 		if errors.Is(err, deskkit.ErrLockBusy) {
 			return true, nil

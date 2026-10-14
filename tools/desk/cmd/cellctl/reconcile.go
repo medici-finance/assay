@@ -55,6 +55,9 @@ type reconcileEntry struct {
 	PIDs     []int  // recorded processes that are still alive: never signalled
 	Evidence []string
 	Surface  *commsSurface
+	// group is the recorded role child's process-group id once that child is proven gone: its
+	// surviving members are the descendants the marker cannot always attribute.
+	group int
 }
 
 type reconcilePlan struct {
@@ -84,6 +87,18 @@ func (c *Cell) stampCellMarker(env []string, role string) []string {
 		env = envSet(env, k, v)
 	}
 	return env
+}
+
+// dropInheritedCellMarker removes a cell marker this cellctl inherited (it was started from
+// inside a role window) from its own environment, before anything is launched. Every process
+// cellctl starts without composing an environment — a tmux server or window, a herdr or orca
+// surface, deskd — inherits os.Environ, and a long-lived cockpit process carrying a role's
+// marker would read as that role's orphan once the role's lease is free. Only the role child and
+// the comms service are stamped, explicitly (stampCellMarker).
+func dropInheritedCellMarker() {
+	for _, k := range []string{cellstop.EnvCell, cellstop.EnvCellDir, cellstop.EnvCellRole} {
+		_ = os.Unsetenv(k)
+	}
 }
 
 // reconcilePreflight runs the preflight for a launch and dies on refusal. verb names the
@@ -232,7 +247,15 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 		add("comms", c.commsDir(), true)
 	}
 	plan.protected = c.liveLeaseHolders()
-	marked, err := cellstop.MarkedProcesses(c.cellMarker(), plan.protected)
+	var groups []int
+	byGroup := map[int]*reconcileEntry{}
+	for _, e := range plan.Entries {
+		if e.group > 1 {
+			groups = append(groups, e.group)
+			byGroup[e.group] = e
+		}
+	}
+	marked, unattributed, err := cellstop.Scan(c.cellMarker(), plan.protected, groups)
 	if err != nil {
 		// Could-not-check matters only when there is stale state to clear: a clean launch was
 		// never gated on a process listing and is not now.
@@ -245,6 +268,16 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 		return plan
 	}
 	plan.scanned = true
+	// A live member of a dead role child's process group descends from that child, but without a
+	// readable marker its ownership is not proven: it keeps the record alive (refuse, never kill).
+	for g, members := range unattributed {
+		e := byGroup[g]
+		for _, u := range members {
+			e.Class = reconcileAlive
+			e.PIDs = append(e.PIDs, u.PID)
+			e.Evidence = append(e.Evidence, fmt.Sprintf("pid %d (%s) is still in the dead role child's process group %d with no readable cell marker; it is never signalled", u.PID, u.Identity, g))
+		}
+	}
 	recorded := map[int]bool{}
 	for _, e := range plan.Entries {
 		for _, pid := range e.PIDs {
@@ -272,7 +305,7 @@ func (c *Cell) reconcileInventory(roles []string, comms *deskCommsConfig) *recon
 			eligible[m.Role] = e
 		}
 		e.Class = reconcileAlive
-		e.Evidence = append(e.Evidence, fmt.Sprintf("marked process pid %d (parent %d, %s) is still running and was not orphaned", m.PID, m.Parent, m.Identity))
+		e.Evidence = append(e.Evidence, fmt.Sprintf("marked process pid %d (%s) is still running under live parent pid %d, so it is not proven orphaned (on a Linux host with a child subreaper a real orphan looks like this too); it is never signalled", m.PID, m.Identity, m.Parent))
 	}
 	return plan
 }
@@ -317,8 +350,10 @@ func (c *Cell) inventoryRecord(role, dir string, isComms bool) (e *reconcileEntr
 		e.Evidence = append(e.Evidence, "the checkpoint belongs to another cell or role")
 		return e, true
 	}
-	stale := state.Running || isComms && state.Outcome != "ok"
-	if !stale {
+	// Only an unfinished (running) record is stale custody. A finished record with a failed
+	// outcome was written by a supervisor that reaped its own child; it never blocked a launch
+	// and does not now.
+	if !state.Running {
 		return nil, true
 	}
 	if _, err := os.Lstat(c.commsLaunchDir()); isComms && err == nil {
@@ -362,6 +397,9 @@ func (c *Cell) inventoryRecord(role, dir string, isComms bool) (e *reconcileEntr
 		check("supervisor", holder.PID, holder.Start)
 		if holder.ChildPID > 0 {
 			check("role child", holder.ChildPID, holder.ChildStart)
+			if _, gone, err := deskkit.ProcessStart(holder.ChildPID); gone && err == nil {
+				e.group = holder.ChildPID // the child led its own process group
+			}
 		}
 	} else {
 		e.Evidence = append(e.Evidence, "no owner record survived with a start time for the checkpoint's pid")

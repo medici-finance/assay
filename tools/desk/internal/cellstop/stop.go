@@ -16,7 +16,9 @@ type Scope struct {
 }
 type process struct {
 	pid, parent int
+	group       int // process group id
 	identity    string
+	start       string // kernel start time (deskkit.ProcessStart); set only for a signal target
 	env         map[string]string
 }
 
