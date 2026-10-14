@@ -1,0 +1,1 @@
+{"schema":"perf-v1","ts":"2026-10-05T08:00:00Z","tool":"deskpr","verb":"create","role":"worker-desk","wallMs":99999,"cpuMs":1,"exit":0,"result":"ok","childProcs":0,"childWallMs":0,"forgeCalls":0,"sourceSHA":"abc1234","install":"fixture-install"}

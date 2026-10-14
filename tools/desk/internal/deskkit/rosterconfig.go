@@ -56,7 +56,6 @@ package deskkit
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -450,7 +449,9 @@ const (
 	// directly rather than through parseConfig, and is strictly parsed by
 	// parseClaimStoreKeys below: an unknown value — `forge-ref` included — is a refusal
 	// that prints the two valid values. UNSET is the one-window legacy resolution to the
-	// forge-ref store, under a NOTICE naming the release in which it stops resolving.
+	// forge-ref store, under a NOTICE naming the release in which it stops resolving; a VALID
+	// value naming a store this build does not ship is the same legacy resolution, under a
+	// NOTICE naming that store and the release that ships it (medici-finance/assay#2753).
 	// Decides which store holds the fleet's mutual exclusion, so a malformed value is a
 	// refusal of the resolution, never a silent default. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvClaimStore and the coupling vector.
@@ -2056,7 +2057,9 @@ func (k claimStoreKeys) storeFor(repo string) (value string, set bool, err error
 // because the value lives in repository settings (or a config-home file) rather
 // than in a diff, the RUN is where a change becomes visible — in BOTH directions.
 // A widened roster and a NARROWED trigger list must be equally apparent, so every
-// line renders its full sorted set rather than a count or a digest.
+// line renders its full sorted set rather than a count or a digest. (The default
+// one-line echo is a digest OF this block — configecho.go — and the block itself
+// prints whenever that digest differs from the last recorded one.)
 //
 // Logins and paths only — never a token, never a PEM path, never a secret-shaped
 // value (deskpost's bodycheck continues to assert that separately).
@@ -2234,14 +2237,9 @@ func (c Config) EffectiveConfigLines() []string {
 // configured means classed=true — see riskcallout.go.
 func RiskCalloutPath() string { return EffectiveConfig().RiskCallout }
 
-// EchoEffectiveConfig writes the P3 echo. Every tool that makes a trust decision
-// calls this once per run, so a settings change appears in run output and in CI
-// history whether it widened or narrowed the set.
-func EchoEffectiveConfig(w io.Writer) {
-	for _, l := range EffectiveConfig().EffectiveConfigLines() {
-		fmt.Fprintln(w, l)
-	}
-}
+// EchoEffectiveConfig (configecho.go) writes the P3 echo: a one-line digest of the
+// block above by default, the full block in CI, on a change, on a refusal or an
+// unrecognised key, and on ASSAY_CONFIG_ECHO=full.
 
 // ---- the configured knobs, as consumers read them ----------------------------
 
