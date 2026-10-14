@@ -132,6 +132,59 @@ cellctl cadence house recover pr-review-desk --confirm-stopped
 The confirmation is an operator assertion, not a PID-based proof. Recovery does not
 kill an arbitrary recorded PID. Ordinary resume never clears this condition.
 
+### Reconcile preflight
+
+`cellctl up <cell>`, and `cellctl desk <cell> <role>` for its one role, gather that
+evidence before launching anything, so a cell whose windows were closed by hand needs
+one answer instead of one recovery per role. The preflight:
+
+1. **Inventories** every role's checkpoint and, for `up`, the comms checkpoint and its
+   launch receipt. It lists each unfinished or failed record with its pid, recorded start
+   time, last heartbeat and recorded surface.
+2. **Classifies** each record by pid *and* start time, never by pid alone. The start times
+   come from the role lease's owner record, which a crashed owner leaves behind (the
+   preflight reads it without taking the lease, so the evidence survives the read).
+   - `owned`: a live process holds the role lease. That is a running window; it is listed
+     and never touched.
+   - `dead`: the lease is free, and the recorded supervisor and role child have each
+     exited or now belong to a process with a different start time (pid reuse). A reused
+     pid is never signalled.
+   - `alive`: a recorded process still matches its pid and start time, or a process
+     carrying the role's marker is still running under a live parent.
+   - `could-not-check`: something could not be measured, including a running pid with no
+     recorded start time. It is never treated as dead.
+3. **Finds orphans the cell owns.** Every child cellctl launches for a role carries
+   `ASSAY_CELL=<cell>`, `ASSAY_CELL_DIR=<cell directory>` and `ASSAY_CELL_ROLE=<role>`
+   (`comms` for the service), and descendants inherit them. A process is an orphan only
+   if it carries this cell's marker for a role whose lease is free, and it was re-parented
+   to pid 1 (or descends, through marked processes, from one that was). Live lease holders
+   and their process trees, the invoking process and its ancestors are never candidates.
+   Paths and command lines are never ownership proof. Where the OS withholds a process's
+   environment (macOS does for its own platform binaries, such as a bare `sleep`), the
+   marker cannot be read and the process is left alone.
+4. **Asks once, on a terminal:** it prints the plan and asks
+   `Clear stale state and stop N orphaned processes? [y/N]`. On `y` it sends SIGTERM to
+   each orphan, waits a bounded five seconds, sends SIGKILL to survivors, and re-checks
+   each by pid and start time. Before signalling it re-checks that each orphan's role
+   lease is still free, and every signal is preceded by a fresh check that the pid still
+   has the same start time and marker. It
+   then closes a recorded comms surface whose identity still matches, runs the same code
+   as `cadence recover --confirm-stopped` and `comms recover --confirm-stopped`, re-reads
+   the state and continues the launch.
+5. **Otherwise refuses as before.** That covers a non-terminal stdin or stdout, an answer
+   other than `y`, and any `alive` or `could-not-check` record. The refusal prints the
+   full inventory and the exact commands to run by hand, not just the first refusal it
+   hits. Orphans with no stale record never blocked a launch, so declining to stop them
+   lets the launch continue as it always has.
+
+There is deliberately no `--yes` flag: clearing stays a human act, as `--confirm-stopped`
+intends. `cellctl up <cell> --dry-run` (or `DRY_RUN=1`) prints the inventory and the plan
+and changes nothing. The preflight never touches queued, held or acknowledged comms
+messages, keys, configuration, worktrees, branches or the Go cache. When its plan stops or
+clears anything, it points at `cellctl cache <cell> status` and
+`cellctl cache <cell> recover --confirm-stopped` for a cache consumer record left by a process
+it proved dead.
+
 ## Codex command environment
 
 Host Codex launches use explicit command-environment settings instead of generated

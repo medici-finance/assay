@@ -1,0 +1,284 @@
+//go:build darwin || linux
+
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
+
+// reconcileCell is a house cell whose role directories hold what a crashed session leaves:
+// an unfinished checkpoint and the lease's surviving owner record.
+func reconcileCell(t *testing.T) *Cell {
+	t.Helper()
+	orphanGrace = time.Second
+	root := t.TempDir()
+	return &Cell{Name: "example", Dir: filepath.Join(root, "example"), Config: t.TempDir(), Kind: "house"}
+}
+
+// deadPID is the pid of a process that has exited and been reaped.
+func deadPID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("/bin/sh", "-c", "exit 0")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	return cmd.Process.Pid
+}
+
+// liveChild is a running process that is NOT marked as the cell's: it must never be signalled.
+func liveChild(t *testing.T) *exec.Cmd {
+	t.Helper()
+	cmd := exec.Command("/bin/sleep", "300")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
+	return cmd
+}
+
+func alive(pid int) bool { return syscall.Kill(pid, 0) == nil }
+
+func writeStale(t *testing.T, c *Cell, role string, pid int, start string, childPID int, childStart string) {
+	t.Helper()
+	dir := c.cadenceDir(role)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "owner.lock"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	s := cellcadence.State{Schema: cellcadence.Schema, Mode: "interactive", Cell: c.Name, Role: role, PID: pid, Running: true, Sequence: 1, NextDue: now, Heartbeat: now, LastStart: now, Outcome: "running"}
+	b, _ := json.Marshal(s)
+	if err := os.WriteFile(filepath.Join(dir, "checkpoint.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := json.Marshal(deskkit.LockHolder{Schema: "deskkit-lock-holder-v1", PID: pid, Start: start, Command: "cellctl", Lock: "role lease", Cell: c.Name, Role: role, Acquired: now, ChildPID: childPID, ChildStart: childStart})
+	if err := os.WriteFile(filepath.Join(dir, "owner.lock.holder"), h, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func init() {
+	if os.Getenv("CELLCTL_RECONCILE_SLEEPER") == "1" {
+		time.Sleep(5 * time.Minute)
+		os.Exit(0)
+	}
+}
+
+// startOrphan leaves a marked process re-parented to pid 1, as a background loop of a closed
+// window is. It skips when this host re-parents to a subreaper instead. The orphan is this test
+// binary, not a system binary: macOS withholds the environment of its platform binaries from
+// other processes, and a process whose marker cannot be read is never a candidate.
+func startOrphan(t *testing.T, c *Cell, role string) int {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("/bin/sh", "-c", cockpitQuote(exe)+" </dev/null >/dev/null 2>&1 & echo $!")
+	cmd.Env = c.stampCellMarker([]string{"PATH=/usr/bin:/bin", "CELLCTL_RECONCILE_SLEEPER=1"}, role)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
+	for deadline := time.Now().Add(3 * time.Second); ; {
+		ps, _ := exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
+		if strings.TrimSpace(string(ps)) == "1" {
+			return pid
+		}
+		if time.Now().After(deadline) {
+			t.Skipf("orphan fixture pid %d was re-parented to %q, not pid 1, on this host", pid, strings.TrimSpace(string(ps)))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// regression: #2880
+func TestReconcileHandClosedWindows(t *testing.T) {
+	c := reconcileCell(t)
+	writeStale(t, c, "worker-desk", deadPID(t), "1.000000", deadPID(t), "2.000000")
+	writeStale(t, c, "verify-desk", deadPID(t), "3.000000", 0, "")
+	orphan := startOrphan(t, c, "worker-desk")
+	roles := []string{"worker-desk", "verify-desk"}
+	var out bytes.Buffer
+	err := c.reconcile(roles, nil, reconcileIO{TTY: true, In: strings.NewReader("y\n"), Out: &out})
+	if err != nil {
+		t.Fatalf("reconcile: %v\n%s", err, out.String())
+	}
+	if n := strings.Count(out.String(), "[y/N]"); n != 1 {
+		t.Fatalf("want exactly one prompt, got %d:\n%s", n, out.String())
+	}
+	for _, want := range []string{"worker-desk class=dead", "verify-desk class=dead", "orphan pid=" + strconv.Itoa(orphan), "Clear stale state and stop 1 orphaned processes?"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q:\n%s", want, out.String())
+		}
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for alive(orphan) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if alive(orphan) {
+		t.Fatalf("orphan %d still running", orphan)
+	}
+	for _, r := range roles {
+		if _, err := cellcadence.Read(c.cadenceDir(r)); !errors.Is(err, cellcadence.ErrNoState) {
+			t.Fatalf("%s checkpoint not recovered: %v", r, err)
+		}
+	}
+	// The next start finds nothing: no prompt, no output, no refusal.
+	out.Reset()
+	if err := c.reconcile(roles, nil, reconcileIO{Out: &out}); err != nil || out.Len() != 0 {
+		t.Fatalf("second start: %v %q", err, out.String())
+	}
+}
+
+// regression: #2880
+func TestReconcileLiveRoleChildRefuses(t *testing.T) {
+	c := reconcileCell(t)
+	child := liveChild(t)
+	start, gone, err := deskkit.ProcessStart(child.Process.Pid)
+	if err != nil || gone {
+		t.Fatalf("child start: %v %v", gone, err)
+	}
+	writeStale(t, c, "worker-desk", deadPID(t), "1.000000", child.Process.Pid, start)
+	var out bytes.Buffer
+	err = c.reconcile([]string{"worker-desk"}, nil, reconcileIO{TTY: true, In: strings.NewReader("y\n"), Out: &out})
+	if !errors.Is(err, errReconcileRefused) {
+		t.Fatalf("live role child accepted: %v\n%s", err, out.String())
+	}
+	want := "role child pid " + strconv.Itoa(child.Process.Pid) + " is still running"
+	if !strings.Contains(out.String(), want) || !strings.Contains(out.String(), "class=alive") || strings.Contains(out.String(), "[y/N]") {
+		t.Fatalf("refusal must name the live child and never ask:\n%s", out.String())
+	}
+	if !alive(child.Process.Pid) {
+		t.Fatal("live role child was signalled")
+	}
+	if _, err := cellcadence.Read(c.cadenceDir("worker-desk")); err != nil {
+		t.Fatalf("checkpoint cleared under a live child: %v", err)
+	}
+}
+
+// regression: #2880
+func TestReconcileReusedPidNeverKilled(t *testing.T) {
+	c := reconcileCell(t)
+	reused := liveChild(t)
+	// Same pid, different start time: the recorded supervisor is gone and the pid was reused.
+	writeStale(t, c, "worker-desk", reused.Process.Pid, "1.000000", 0, "")
+	var out bytes.Buffer
+	if err := c.reconcile([]string{"worker-desk"}, nil, reconcileIO{TTY: true, In: strings.NewReader("y\n"), Out: &out}); err != nil {
+		t.Fatalf("reconcile: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "worker-desk class=dead") || !strings.Contains(out.String(), "pid reuse") {
+		t.Fatalf("reused pid not classed dead:\n%s", out.String())
+	}
+	if !alive(reused.Process.Pid) {
+		t.Fatal("the process now holding the reused pid was killed")
+	}
+	if _, err := cellcadence.Read(c.cadenceDir("worker-desk")); !errors.Is(err, cellcadence.ErrNoState) {
+		t.Fatalf("dead record not recovered: %v", err)
+	}
+}
+
+// regression: #2880
+func TestReconcileNonTTYRefusesWithCommands(t *testing.T) {
+	c := reconcileCell(t)
+	writeStale(t, c, "worker-desk", deadPID(t), "1.000000", 0, "")
+	writeStale(t, c, "intake-desk", deadPID(t), "1.000000", 0, "")
+	cfg := &deskCommsConfig{Socket: filepath.Join(t.TempDir(), "gw.sock")}
+	if err := os.MkdirAll(c.commsDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	b, _ := json.Marshal(cellcadence.State{Schema: cellcadence.Schema, Mode: "interactive", Cell: c.Name, Role: "comms", PID: deadPID(t), Sequence: 1, NextDue: now, Heartbeat: now, LastStart: now, LastFinish: now, Outcome: "could-not-check"})
+	if err := os.WriteFile(filepath.Join(c.commsDir(), "checkpoint.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, rio := range []reconcileIO{{TTY: false}, {TTY: true, In: strings.NewReader("n\n")}, {DryRun: true, TTY: true, In: strings.NewReader("y\n")}} {
+		var out bytes.Buffer
+		rio.Out = &out
+		err := c.reconcile([]string{"worker-desk", "intake-desk"}, cfg, rio)
+		if rio.DryRun {
+			if err != nil || !strings.Contains(out.String(), "dry run: nothing was changed") || strings.Contains(out.String(), "[y/N]") {
+				t.Fatalf("dry run: %v\n%s", err, out.String())
+			}
+		} else {
+			if !errors.Is(err, errReconcileRefused) {
+				t.Fatalf("%+v: refused nothing: %v\n%s", rio, err, out.String())
+			}
+			if !rio.TTY && strings.Contains(out.String(), "[y/N]") {
+				t.Fatalf("asked without a terminal:\n%s", out.String())
+			}
+			root := cockpitQuote(filepath.Dir(c.Dir))
+			for _, want := range []string{
+				"cellctl --cells-root " + root + " cadence 'example' recover worker-desk --confirm-stopped",
+				"cellctl --cells-root " + root + " cadence 'example' recover intake-desk --confirm-stopped",
+				"cellctl --cells-root " + root + " comms 'example' recover --confirm-stopped",
+				"comms class=dead record=failed(could-not-check)",
+			} {
+				if !strings.Contains(out.String(), want) {
+					t.Fatalf("%+v: missing %q:\n%s", rio, want, out.String())
+				}
+			}
+		}
+		for _, r := range []string{"worker-desk", "intake-desk"} {
+			if _, err := cellcadence.Read(c.cadenceDir(r)); err != nil {
+				t.Fatalf("%+v: %s changed without confirmation: %v", rio, r, err)
+			}
+		}
+		if _, err := c.commsState(); err != nil {
+			t.Fatalf("%+v: comms changed without confirmation: %v", rio, err)
+		}
+	}
+}
+
+// regression: #2880
+func TestReconcileLeavesOwnedRoleAlone(t *testing.T) {
+	c := reconcileCell(t)
+	l, err := cellcadence.AcquireRole(c.cadenceDir("worker-desk"), cellcadence.RoleLock{Cell: c.Name, Role: "worker-desk"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	writeStale(t, c, "worker-desk", os.Getpid(), "", 0, "")
+	var out bytes.Buffer
+	if err := c.reconcile([]string{"worker-desk"}, nil, reconcileIO{Out: &out}); err != nil || out.Len() != 0 {
+		t.Fatalf("a running window is not stale state: %v %q", err, out.String())
+	}
+}
+
+func TestStampCellMarkerReplacesInherited(t *testing.T) {
+	c := &Cell{Name: "example", Dir: "/cells/example", Env: envWith(map[string]string{})}
+	env := c.stampCellMarker([]string{"ASSAY_CELL=other", "ASSAY_CELL_ROLE=the-desk", "KEEP=1"}, "worker-desk")
+	got := strings.Join(env, "\n")
+	for _, want := range []string{"ASSAY_CELL=example", "ASSAY_CELL_DIR=/cells/example", "ASSAY_CELL_ROLE=worker-desk", "KEEP=1"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "the-desk") || strings.Contains(got, "ASSAY_CELL=other") {
+		t.Fatalf("inherited marker survived: %q", got)
+	}
+	comms := strings.Join(c.commsServiceEnv(&deskCommsConfig{}), "\n")
+	if !strings.Contains(comms, "ASSAY_CELL_ROLE=comms") || !strings.Contains(comms, "ASSAY_CELL=example") {
+		t.Fatalf("comms service is not marked: %q", comms)
+	}
+}

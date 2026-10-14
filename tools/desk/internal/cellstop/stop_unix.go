@@ -78,3 +78,26 @@ func terminate(p process, force bool) error {
 	}
 	return nil
 }
+
+// signalMarked sends sig to p only if a fresh inventory still shows the same
+// process (pid AND start identity) carrying the same cell marker. A pid alone
+// is never authority: a reused pid fails the identity comparison.
+func signalMarked(p process, m Marker, sig syscall.Signal) error {
+	all, err := inventory()
+	if err != nil {
+		return err
+	}
+	current, ok := all[p.pid]
+	if !ok || current.identity != p.identity || !m.carries(current) {
+		return nil
+	}
+	if err := syscall.Kill(p.pid, sig); err != nil && err != syscall.ESRCH {
+		return fmt.Errorf("cannot signal owned process %d: %w", p.pid, err)
+	}
+	return nil
+}
+
+const (
+	sigTerm = syscall.SIGTERM
+	sigKill = syscall.SIGKILL
+)

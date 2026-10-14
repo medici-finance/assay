@@ -632,8 +632,14 @@ cockpit's `cellctl desk <cell> <role>` invocation itself that carries `--model`,
 actually boots resolves the same override the plan named. `--provider <name>` threads onto every
 role window the same way, for the same reason — see *Providers* below.
 
-`DRY_RUN=1 cellctl up <cell>` prints the resolved cockpit and the per-role commands and launches
-nothing. `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
+`cellctl up <cell> --dry-run` (or `DRY_RUN=1 cellctl up <cell>`) prints the resolved cockpit and
+the per-role commands and launches nothing. On a house cell, `up` first runs a **reconcile
+preflight**. Stale role and comms checkpoints left by hand-closed or crashed windows, and
+orphaned processes carrying the cell's marker, are inventoried by pid and start time. On a
+terminal you are asked once before they are cleared. Otherwise the refusal prints the whole
+inventory and the exact recovery commands. A dry run prints the inventory and plan and changes
+nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
+[Reconcile preflight](cellctl-cadence.md#reconcile-preflight). `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
 included — there is no per-role `--harness-<role>` form) by threading `--harness <h>` onto each
 role's own `cellctl desk <cell> <role>` invocation; `[dry-run] harness=<h> — applied to every role
 window below` announces it once. See *Harnesses* below.

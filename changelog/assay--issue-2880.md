@@ -1,0 +1,2 @@
+### Added
+- `cellctl up` (and `cellctl desk` for its one role) runs a reconcile preflight on house cells. Stale cadence and comms checkpoints and orphaned processes carrying the new `ASSAY_CELL` / `ASSAY_CELL_DIR` / `ASSAY_CELL_ROLE` marker are inventoried by pid and start time. One `[y/N]` on a terminal stops proven orphans and runs the existing `recover --confirm-stopped` code. Any other outcome refuses with the full inventory and exact commands. `up --dry-run` prints the plan and changes nothing.

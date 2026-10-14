@@ -415,6 +415,16 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		}
 	}
 
+	// The reconcile preflight (#2880): every role's and the comms service's stale state is
+	// inventoried by pid and start time BEFORE anything launches, and on a terminal cleared on one
+	// confirmation; otherwise the refusal carries the whole inventory and the exact commands.
+	if c.Kind == "house" {
+		commsCfg, cfgErr := c.loadDeskComms()
+		if cfgErr != nil {
+			commsCfg = nil // commsPreflight below refuses the configuration in its own words
+		}
+		c.reconcilePreflight("up", roles, commsCfg, c.Env.Get("DRY_RUN") == "1", "")
+	}
 	o.Comms, err = c.commsPreflight()
 	if err != nil {
 		die("up comms: %v; no windows launched", err)
