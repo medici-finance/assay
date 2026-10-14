@@ -162,7 +162,7 @@ func selfPath() string {
 }
 
 // firstWindow decides the window that is NOT a role: the deskd watcher or the deskd itself. A cell
-// with no deskd (a house cell without DESKD=1) has NO such window — name and cmd come back empty,
+// with no deskd (DESKD is not 1 — the house default) has NO such window — name and cmd come back empty,
 // the one-line "no deskd" note goes to up's own stderr exactly once, and every cockpit opens only
 // the role windows (tmux creates its session with the first role window instead).
 //
@@ -423,8 +423,11 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
 		die("up comms: %v; no windows launched", err)
 	}
 	firstName, firstCmd := c.firstWindow(paneShellFor(runtime.GOOS, res.Cockpit))
-	if firstName == "" && len(roles) == 0 && automate == "" {
-		die("up: nothing to open on %s — no deskd window (DESKD is not 1) and no role window (ROLES is empty after --no-the-desk)", c.Name)
+	if firstName == "" && len(roles) == 0 && automate == "" && !o.Comms {
+		// Nothing to open is not an error (the operator asked for --no-the-desk on a cell whose only
+		// role is the-desk), but it is never silent, and no empty session is created for it.
+		fmt.Fprintf(os.Stderr, "[cell] %s: nothing to open — no deskd window (DESKD is not 1), no comms window, and no role window (ROLES is empty after --no-the-desk)\n", c.Name)
+		return
 	}
 
 	if c.Env.Get("DRY_RUN") == "1" {
@@ -498,15 +501,17 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		}
 		return
 	}
-	// The session is created with its FIRST window: the deskd window when there is one, else the
-	// first role window — a cell with no deskd gets no placeholder pane to hold the session open.
-	type tmuxWindow struct {
-		name, cmd, label string
-		role             bool
-	}
-	var wins []tmuxWindow
+	// The order is fixed — the deskd window, then comms, then the roles — and whichever window
+	// comes first creates the session. A cell with no deskd gets no placeholder pane to hold the
+	// session open: comms creates it when configured (openCommsSurface), else the first role window.
 	if firstName != "" {
-		wins = append(wins, tmuxWindow{name: firstName, cmd: firstCmd, label: firstName})
+		_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", firstName, "-c", c.Dir,
+			firstCmd+"; echo '["+firstName+"] exited'; exec $SHELL").Run()
+	}
+	if o.Comms {
+		if err := c.startComms("tmux"); err != nil {
+			die("up comms: %v", err)
+		}
 	}
 	for _, role := range roles {
 		name := strings.TrimSuffix(role, "-desk")
@@ -516,25 +521,15 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		case "the-desk":
 			name = "the-desk"
 		}
-		wins = append(wins, tmuxWindow{name: name, cmd: c.paneRoleCmd(role, cfg, o), label: role, role: true})
-	}
-	for i, w := range wins {
-		line := w.cmd + "; echo '[" + w.label + "] exited'; exec $SHELL"
-		if i == 0 {
-			_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", w.name, "-c", c.Dir, line).Run()
-			if o.Comms {
-				if err := c.startComms("tmux"); err != nil {
-					die("up comms: %v", err)
-				}
-			}
-		} else {
-			_ = exec.Command("tmux", "new-window", "-t", c.Session, "-n", w.name, "-c", c.Dir, line).Run()
+		verb := []string{"new-window", "-t", c.Session}
+		if exec.Command("tmux", "has-session", "-t", c.Session).Run() != nil {
+			verb = []string{"new-session", "-d", "-s", c.Session}
 		}
-		if w.role {
-			// Stagger the role windows: each one fetches the shared .git, and starting them at once
-			// puts every window into the fetch lock's retry loop at the same moment.
-			time.Sleep(2 * time.Second)
-		}
+		_ = exec.Command("tmux", append(verb, "-n", name, "-c", c.Dir,
+			c.paneRoleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL")...).Run()
+		// Stagger the windows: each one fetches the shared .git, and starting them at once puts
+		// every window into the fetch lock's retry loop at the same moment.
+		time.Sleep(2 * time.Second)
 	}
 	_ = exec.Command("tmux", "select-window", "-t", c.Session+":the-desk").Run()
 	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, "", roles), cfg)

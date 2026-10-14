@@ -232,12 +232,14 @@ The original pre-migration transcripts are retained, and every other byte still
 must match. Explicit cadence durations and other harnesses keep their behavior.
 See [the cadence contract](cellctl-cadence.md) for continuation limits.
 
-## House cells without a deskd
+## Cells without a deskd
 
-Issue #2881 drops the placeholder `cell` window that `up` opened on a house cell with no
-deskd (`DESKD` unset or `0`). That window only echoed a note and then sat at an idle shell,
+Issue #2881 drops the placeholder `cell` window that `up` opened on a cell with no deskd (on a
+house cell, `DESKD` unset or `0`). That window only echoed a note and then sat at an idle shell,
 which read as a deskd window that had failed to start. `up` now opens only the role windows (and
-the comms window when comms is configured); on tmux, the first role window creates the session.
+the comms window when comms is configured); on tmux, the comms window or else the first role window
+creates the session. With nothing at all to open, `up` says so on stderr and exits 0 without
+creating a session.
 The one-line note (`[cell] <cell> is a house cell with no deskd (DESKD=1 in cell.env to stand
 one)`) is printed once to `up`'s own stderr instead.
 

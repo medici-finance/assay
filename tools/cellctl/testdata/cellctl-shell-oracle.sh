@@ -2794,8 +2794,11 @@ cmd_up(){
     fi
   fi
   first_window
-  [[ -n "$FIRST_NAME" || -n "${roles// /}" || -n "$automate" ]] \
-    || die "up: nothing to open on $CELL — no deskd window (DESKD is not 1) and no role window (ROLES is empty after --no-the-desk)"
+  # Nothing to open is not an error, but it is never silent, and no empty session is created for it.
+  if [[ -z "$FIRST_NAME" && -z "${roles// /}" && -z "$automate" ]]; then
+    echo "[cell] $CELL: nothing to open — no deskd window (DESKD is not 1), no comms window, and no role window (ROLES is empty after --no-the-desk)" >&2
+    return 0
+  fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} cockpit=$COCKPIT session=$SESSION config=$cfg"
     if [[ "$persist" == "1" ]]; then
