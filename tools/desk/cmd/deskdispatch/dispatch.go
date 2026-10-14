@@ -833,7 +833,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// but its INPUT is a caller flag: discovering a malformed slug at step 5 would mean
 	// discovering it with the claim held and the worktree built.
 	if strings.TrimSpace(o.model) != "" {
-		if _, err := deskkit.ModelStampLabels(o.model, o.tier); err != nil {
+		if _, err := stampKindForKit(o.kit).Labels(o.model, o.tier); err != nil {
 			return plan, deskkit.Refused(fmt.Sprintf("step %s: %v", stepModelStamp, err))
 		}
 	}
@@ -1696,7 +1696,8 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	// claim existed; this re-derives the labels from the same inputs. An error here would
 	// mean the two calls disagreed, which is a defect rather than a caller mistake — so it
 	// is UNVERIFIABLE, not a refusal, and it names the contradiction.
-	labels, err := deskkit.ModelStampLabels(o.model, o.tier)
+	stampKind := stampKindForKit(o.kit)
+	labels, err := stampKind.Labels(o.model, o.tier)
 	if err != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: the model stamp validated before the claim was taken but will not build now (%v) — "+
@@ -1752,18 +1753,18 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	forge := string(res.Kind)
 
 	// RE-STAMP, NOT ADD-ON-TOP. Labels are a SET, so applying a label the PR already carries
-	// is a NO-OP — and a stamp the floor cannot read is exactly the state it refuses.
+	// is a NO-OP — the kind-scoped reader must instead verify a complete, trusted pair.
 	// Re-running this step therefore changed nothing on the PRs that needed it most. A
 	// forge's label history is APPEND-ONLY, so the only repair it offers is to REMOVE the
 	// offending labels and re-apply the intended pair under the dispatcher; that is what the
-	// floor's reader resolves (the actor of the last standing application event), so it is
-	// what this step must do. The set to remove comes from deskkit.ReStampRemovals(labels):
-	// every present dispatched-* label that is not part of the pair being applied (a
+	// kind-scoped reader resolves (the actor of the last standing application event), so it is
+	// what this step must do. The set to remove comes from stampKind.ReStampRemovals:
+	// every present label of this kind that is not part of the pair being applied (a
 	// conflicting, stale, or malformed stamp — INCLUDING one an earlier run of the dispatcher
 	// itself left), plus any half of the pair whose standing application is foreign. Clearing
 	// only the foreign labels (the old ForeignStampLabels set) left a dispatcher-applied
-	// conflicting label standing, so the re-dispatch reported OK while the floor kept
-	// refusing — the present-but-unreadable deadlock this recovery exists to break. Reader
+	// conflicting label standing, so the re-dispatch reported OK while readback kept
+	// failing — the present-but-unreadable deadlock this recovery exists to break. Reader
 	// and writer project the standing-applier resolution from one place — and read it through
 	// the same two enumerated operations (GetPullRequest for the present set, ListLabelEvents
 	// for who applied each) — so they cannot disagree about it.
@@ -1794,7 +1795,9 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
-	stale := deskkit.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
+	// Only labels of THIS kit's pair are read, removed or verified: an authoring re-stamp
+	// never removes a review session's dispatched-* pair, and the reverse (#2760).
+	stale := stampKind.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
 	if o.dryRun {
 		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s); nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge), nil
 	}
@@ -1805,7 +1808,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 		return fmt.Sprintf("OK: verified %s already standing on %s#%d under accepted stamp authority (%s) — an identical stamp is a no-op, nothing was written",
 			strings.Join(labels, " + "), repo, o.pr, forge), nil
 	}
-	if err := deskkit.ApplyVerifiedModelStamp(fg, fr, o.pr, deskkit.TargetChange, labels, deskkit.IsStampAuthorityLogin); err != nil {
+	if err := deskkit.ApplyVerifiedStamp(fg, fr, o.pr, deskkit.TargetChange, stampKind, labels, deskkit.IsStampAuthorityLogin); err != nil {
 		return "", err
 	}
 	// BOTH events are reported. A silent removal is a label disappearing from a PR with no
@@ -1814,8 +1817,13 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	restamped := ""
 	if len(stale) > 0 {
 		restamped = fmt.Sprintf(" (RE-STAMPED: removed %s — a conflicting, stale, or foreign-applied "+
-			"stamp the floor cannot read — before applying the intended stamp, since adding over a "+
+			"stamp its reader cannot accept — before applying the intended stamp, since adding over a "+
 			"present label is a no-op)", strings.Join(stale, " + "))
+	}
+	if stampKind == deskkit.StampAuthored {
+		return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App — the authoring attestation; "+
+			"no dispatched-* label was read or written, and the capability floor does not read this pair (%s)%s",
+			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
 	}
 	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
 		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
@@ -1936,6 +1944,18 @@ func stampRoleForKit(kit string) string {
 		return deskkit.ReviewDispatcherRole
 	}
 	return deskkit.DispatcherRole
+}
+
+// stampKindForKit picks the label pair a kit's stamp is written to (#2760). The review
+// and verifier kits write dispatched-*, the session attestation their readers consume.
+// Worker kits stamp the session that AUTHORS the change, so they write authored-* and
+// never touch dispatched-*. Verifier issue admission retains its separate apply path.
+// When both used dispatched-*, whichever stamp ran later replaced the other.
+func stampKindForKit(kit string) deskkit.StampKind {
+	if reviewKit(kit) || verifierKit(kit) {
+		return deskkit.StampDispatch
+	}
+	return deskkit.StampAuthored
 }
 
 // tokenPathForMessage renders the token file path for a step report or refusal. The PATH is
