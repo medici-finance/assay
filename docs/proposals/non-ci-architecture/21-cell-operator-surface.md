@@ -43,7 +43,7 @@ The amendment adds no new owner. It places each verb under the existing semantic
 | `logs` | Interim bridge | Cockpit pane read | Projection and interaction (terminals) via the Cell API | `desk-containers/22` |
 | `upgrade` | Interim bridge | Pinned, provenance-verified install (tools and plugin), then rolling restart; refuses under live or unknown shared cells | Cell operation; release/pin migration under R8 | `desk-containers/23` |
 | `gc` | Interim bridge | Plan-first composition of today's per-item instruments | Continuing operations: workspace-lifecycle slice and maintenance owner | `desk-containers/24` |
-| Status queries and operator requests (`send`) | Target-owned | **Not shipped as a cellctl verb or a comms listener** | R7 Cell API | none; requirements below |
+| Status queries and operator requests (`send`) | Target-owned | **Not shipped as a cellctl verb or a comms listener** | R7 Cell API (stream `cell-api`, parked) | none; requirements below |
 
 ## Lifecycle states and transitions
 
@@ -151,7 +151,8 @@ Owner mappings (settled and unsettled):
 
 - **Lifecycle ownership: settled as a split.** R2 records the requested transition and the handoff record; R3 executes it on processes. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
   Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174524523
-- **R7 has no owner.** The manifest leaves the choice between derived-board and a new stream open; this amendment adds requirements to whichever is chosen.
+- **R7 owner: settled.** A new stream, `cell-api`, owns R7 (the public Cell API and thin cockpit). It ships `status: parked` at creation, per the manifest, and scaffolding it is a follow-up PR. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
+  Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174752870
 - **Approvals are deferred.** The five properties above are owned by R7 (served route) and R3 (isolation). The decision owner's contract shapes the final record.
 - **The cell marker.** The marker that scopes an interim cell stop (`#2880` proposes one; desks already receive the cell name when comms is configured) should be settled once, by the cell-operation owner.
 

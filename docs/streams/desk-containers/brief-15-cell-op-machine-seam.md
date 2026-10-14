@@ -45,7 +45,7 @@ consumers:
   - "tools/desk/internal/cellop (planned; result and plan types, plan store, atomic consume, confirm-time re-measure harness): follow-up desk-containers/15 (this brief)"
   - "tools/desk/cmd/cellctl (CLI adapter mechanics: `--json`, `--plan`, interactive `--apply`; the build-tagged fixture verb): follow-up desk-containers/15 (this brief), then each verb brief adopts the contract with its own rows (17–24)"
   - "the future approval design (operator key, registry, enrollment, signed payload) and its five gating properties: out-of-scope (owned by R7/R3; recorded in docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) §Approvals: deferred)"
-  - "the R7 Cell API (serves the same result and plan documents; read/plan-only, no apply): out-of-scope (no owner yet; requirements in docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
+  - "the R7 Cell API (serves the same result and plan documents; read/plan-only, no apply): out-of-scope (stream `cell-api`, parked; requirements in docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
   - "the console cockpit (renders results and plans; does not apply): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
 ---
 

@@ -202,7 +202,7 @@ Numbering: briefs 15–24 keep their numbers. Other open drafts that propose des
 15–17 renumber on their side.
 
 **`send` is not a brief here.** Status for external parties is an authenticated Cell API
-query, and operator talk-to-desk is a scoped Cell API request (R7, which has no owner yet).
+query, and operator talk-to-desk is a scoped Cell API request (R7, owned by the new `cell-api` stream, parked at creation).
 The requirements (sender classes from authenticated identity, a deterministic status
 projection, contained-reader free text with an answer-only lock and outbound scrub, mTLS plus
 signed tokens pending ratification, rate limits, audit) are recorded in amendment 21. No comms

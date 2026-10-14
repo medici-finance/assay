@@ -26,7 +26,7 @@ sources:
 exec-tier: any
 domain: complicated
 consumers:
-  - "target owner — projection and interaction, served through the R7 Cell API (authenticated queries; no owner yet): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
+  - "target owner — projection and interaction, served through the R7 Cell API (authenticated queries; stream `cell-api`, parked): out-of-scope (this verb is an interim bridge on today's tools, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
   - "tools/desk/cmd/cellctl/status.go: follow-up desk-containers/20 (this brief; the existing per-role cadence line stays as the first column set, so current readers keep working)"
   - "tools/desk/internal/cellop (planned) inventory reader: follow-up desk-containers/20 (this brief; doctor and gc reuse it)"
   - "docs/cellctl.md: follow-up desk-containers/20 (this brief)"
