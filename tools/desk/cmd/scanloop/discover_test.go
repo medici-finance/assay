@@ -171,6 +171,9 @@ func TestRun_UnreadOpenPRsFailClosed(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a pass that could not read the open scan PRs exited 0:\n%s", out)
 	}
+	if got := deskkit.ExitCodeOf(err); got != deskkit.ExitUnverifiable {
+		t.Fatalf("a pass blind to the open scan PRs exited %d, want %d (unverifiable): %v", got, deskkit.ExitUnverifiable, err)
+	}
 	if strings.Contains(out, "deskpr create") || strings.Contains(out, "deskpr update") {
 		t.Fatalf("a pass blind to the open scan PRs still carried the delta:\n%s", out)
 	}
@@ -287,7 +290,11 @@ func TestDiscover_UnboundRoleRefuses(t *testing.T) {
 		return nil, nil
 	}
 	t.Cleanup(func() { listOpenChangesFn = old })
-	if pr, err := discoverOpenScanPR("medici-finance/assay", coalesceNow, DefaultCoalesceWindow); err == nil {
+	pr, err := discoverOpenScanPR("medici-finance/assay", coalesceNow, DefaultCoalesceWindow)
+	if err == nil {
 		t.Fatalf("an unbound role read as %+v — that is a guess, not an answer", pr)
+	}
+	if got := deskkit.ExitCodeOf(err); got != deskkit.ExitUnverifiable {
+		t.Fatalf("an unbound role exited %d, want %d (unverifiable): %v", got, deskkit.ExitUnverifiable, err)
 	}
 }

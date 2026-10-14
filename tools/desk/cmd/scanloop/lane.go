@@ -232,12 +232,18 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 		return out, err
 	}
 	cutFrom := base
+	// A fresh branch name is new, so -b. The open scan branch is NOT: the pass that opened the PR
+	// cut it, and `git worktree remove` deletes the worktree but not its branch, so a local branch
+	// of that name is still there on the next tick and -b would refuse every coalesce in the window
+	// ("a branch named … already exists"). -B resets it to the fetched remote head instead.
+	branchFlag := "-b"
 	if decision.Act() == CoalesceInto {
 		// Re-cut from the open scan branch, with the remote head merged in first: never scan a
 		// base that is behind the default branch.
 		cutFrom = "origin/" + req.Open.Branch
+		branchFlag = "-B"
 	}
-	if err := step(req.Root, "git", "worktree", "add", req.Worktree, "-b", req.Branch, cutFrom); err != nil {
+	if err := step(req.Root, "git", "worktree", "add", req.Worktree, branchFlag, req.Branch, cutFrom); err != nil {
 		return out, err
 	}
 	if decision.Act() == CoalesceInto {
