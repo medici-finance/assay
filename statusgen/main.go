@@ -464,7 +464,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		// snapshot region has drifted from a fresh render, or that has no manifest
 		// beside it. --lint only (the PR gate); STATUS.md-free and offline. Absent
 		// docs/roadmap/drives ⇒ inert.
-		dp, dn := driveRegionLintProblems(root, nowFunc())
+		var dp, dn []string
+		if effScope == "" {
+			dp, dn = driveRegionLintFromBoard(root, streams, nowFunc())
+		} else {
+			// Snapshot frontiers use the full board, including rows outside
+			// the product-scoped checks above. Hydrate those once per sweep.
+			dp, dn = driveRegionLintProblems(root, nowFunc())
+		}
 		problems = append(problems, dp...)
 		notices = append(notices, dn...)
 	}
