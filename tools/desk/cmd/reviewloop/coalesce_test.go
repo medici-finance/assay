@@ -11,9 +11,6 @@ func headed(t *testing.T, action string, num int, head string) Row {
 	return r
 }
 
-// neverDone is the "audit ledger has no record" stub — every verb is fresh.
-func neverDone(string, int, string, string) bool { return false }
-
 // TestCoalesceCollapsesRepeatDeltas — the brief's Verify row 3. N sweeps observing the
 // SAME (repo, pr, head) must produce exactly ONE outward verb. Between two dispatch
 // decisions a standing review window sees every cadence tick plus every event wake; without
@@ -25,7 +22,7 @@ func TestCoalesceCollapsesRepeatDeltas(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		sweeps = append(sweeps, healthyBoard(t, headed(t, "NEEDS-REVIEW", 42, "aaaaaaaaaaaa")))
 	}
-	got := Dispatched(Coalesce(sweeps, neverDone))
+	got := Dispatched(Coalesce(sweeps))
 	t.Logf("5 board deltas on one (pr,head) -> dispatched=%d", len(got))
 	if len(got) != 1 {
 		t.Fatalf("dispatched %d verbs from 5 deltas on one (pr,head), want 1", len(got))
@@ -43,7 +40,7 @@ func TestCoalesceReArmsOnHeadAdvance(t *testing.T) {
 		healthyBoard(t, headed(t, "NEEDS-REVIEW", 42, "aaaaaaaaaaaa")),
 		healthyBoard(t, headed(t, "RE-REVIEW", 42, "bbbbbbbbbbbb")), // head advanced mid-cycle
 	}
-	got := Dispatched(Coalesce(sweeps, neverDone))
+	got := Dispatched(Coalesce(sweeps))
 	if len(got) != 2 {
 		t.Fatalf("dispatched %d verbs across a head advance, want 2 — a PR at a new head is new work, not a completed item", len(got))
 	}
@@ -58,7 +55,7 @@ func TestCoalesceHonoursTheBoardsMergeCurrVsReReview(t *testing.T) {
 	benign := Dispatched(Coalesce([]*Board{
 		healthyBoard(t, headed(t, "NEEDS-REVIEW", 42, "aaaaaaaaaaaa")),
 		healthyBoard(t, headed(t, "MERGE-CURR", 42, "bbbbbbbbbbbb")),
-	}, neverDone))
+	}))
 	if len(benign) != 1 {
 		t.Fatalf("a MERGE-CURR head advance dispatched %d verbs, want 1 (only the original NEEDS-REVIEW) — "+
 			"the board said the advance was benign and the reactor must not overrule it upward", len(benign))
@@ -66,37 +63,19 @@ func TestCoalesceHonoursTheBoardsMergeCurrVsReReview(t *testing.T) {
 	real := Dispatched(Coalesce([]*Board{
 		healthyBoard(t, headed(t, "NEEDS-REVIEW", 42, "aaaaaaaaaaaa")),
 		healthyBoard(t, headed(t, "RE-REVIEW", 42, "bbbbbbbbbbbb")),
-	}, neverDone))
+	}))
 	if len(real) != 2 {
 		t.Fatalf("a RE-REVIEW head advance dispatched %d verbs, want 2", len(real))
 	}
 }
 
-// TestCoalesceSuppressesAlreadyDone — the audit-ledger idempotency gate, on the same key
-// the coalescer groups by, so the two cannot disagree.
-func TestCoalesceSuppressesAlreadyDone(t *testing.T) {
-	done := func(repo string, pr int, head, verb string) bool {
-		return pr == 42 && head == "aaaaaaaaaaaa" && verb == "review"
-	}
-	got := Coalesce([]*Board{healthyBoard(t, headed(t, "NEEDS-REVIEW", 42, "aaaaaaaaaaaa"))}, done)
-	if len(got) != 1 {
-		t.Fatalf("planned %d verbs, want 1", len(got))
-	}
-	if !got[0].Suppressed {
-		t.Fatal("a verb already recorded ok/noop at this head was not suppressed — the reactor would post twice")
-	}
-	if len(Dispatched(got)) != 0 {
-		t.Fatal("a suppressed verb still reached the dispatch set")
-	}
-}
-
 // TestCoalesceRefusesAnUnresolvedHead is the could-not-check arm of the idempotency gate.
 // `deskboard actions` carries no head SHA; when the `prs` join cannot supply one, the
-// (repo,pr,head,verb) key does not exist, so AlreadyDone cannot be asked. The verb is
+// (repo,pr,head,verb) key does not exist. The verb is
 // SUPPRESSED — never emitted on the assumption it is probably fine, and never counted as
 // already done either.
 func TestCoalesceRefusesAnUnresolvedHead(t *testing.T) {
-	got := Coalesce([]*Board{healthyBoard(t, headed(t, "NEEDS-REVIEW", 42, HeadUnresolved))}, neverDone)
+	got := Coalesce([]*Board{healthyBoard(t, headed(t, "NEEDS-REVIEW", 42, HeadUnresolved))})
 	if len(got) != 1 {
 		t.Fatalf("planned %d verbs, want 1", len(got))
 	}
@@ -118,7 +97,33 @@ func TestCoalesceIgnoresVerblessRows(t *testing.T) {
 		headed(t, "READY", 4, "dddddddddddd"),
 		headed(t, "MERGE-CURR", 5, "eeeeeeeeeeee"),
 	)
-	if got := Coalesce([]*Board{b}, neverDone); len(got) != 0 {
+	if got := Coalesce([]*Board{b}); len(got) != 0 {
 		t.Fatalf("verbless rows produced %d outward verb(s): %v", len(got), got)
+	}
+}
+
+// regression: #2793
+func TestCoalesceKeyScope(t *testing.T) {
+	original := headed(t, "NEEDS-REVIEW", 42, "aaaaaaaaaaaa")
+	repo := original
+	repo.Repo = "example-org/another-repo"
+	pr := original
+	pr.Number++
+	head := original
+	head.Head = "bbbbbbbbbbbb"
+	ready := headed(t, "FLIP", 42, "aaaaaaaaaaaa")
+	unresolved := headed(t, "NEEDS-REVIEW", 42, HeadUnresolved)
+	got := Coalesce([]*Board{nil, healthyBoard(t, original, repo, pr, head, ready, unresolved, original)})
+	if len(got) != 6 || len(Dispatched(got)) != 5 {
+		t.Fatalf("distinct keys or unresolved suppression lost: %+v", got)
+	}
+	repeats := 0
+	for _, v := range got {
+		if v.Observations == 2 {
+			repeats++
+		}
+	}
+	if repeats != 1 {
+		t.Fatalf("duplicate key counted %d times, want one", repeats)
 	}
 }
