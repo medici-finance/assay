@@ -312,8 +312,8 @@ not gating it):
 - **Wave 5** — `forge-gitlab/18` (depends on 15, whose board-push credential section it extends;
   **human-gated** — `deskfleet push-token`, an in-process rotation of that credential that writes
   the new value straight into the masked, protected CI/CD variable and proves it live before the
-  next regen. Beside 16 and 17, not under them; the regen job's own pre-push credential check is a
-  separate fix on #2910, not a brief).
+  next regen. Beside 16 and 17, not under them; the regen job's own pre-push credential check is
+  part A of #2910, open as #2913 and not yet merged, not a brief).
 
 ## Issue → brief map
 
@@ -349,7 +349,7 @@ dispatched. Measured 2026-09-14 @ `2c67b34f`; the 2026-09-15 field reports added
 | #1124 | no brief — fixed by PR #1133, **closed 2026-09-15**; the walk's verdict + board rows replay it | A GitLab request-changes verdict posted a note the board did not read as CHANGES_REQUESTED. Fixed on the backend; pinned offline by the `post_review_request_changes` golden and the verdict-lane tests. The live verdict row and the board read that follows it are what prove the standing rejection is visible on a real project |
 | #1125 | `forge-gitlab/16` — the flip row; fixed by PR #1134 (merged 2026-09-15); **awaiting close** | `deskflip` required a GitHub status check named `pipeline` that never reports on GitLab. The fix publishes the head pipeline into the check rollup; pinned offline by the `checks_at_head` / `checks_at_head_no_pipeline` goldens. The live flip row is what proves it on a real project; the issue stays open until that row or a desk close records it |
 | #1142 | no brief — **dispatched** 2026-09-15 | `desktoken` should verify the rotated GitLab PAT with a live read before returning it. A mint-time defect that precedes the tick; the walk boots under a minted token, so a recurrence shows as a boot failure, not a verb row |
-| #2910 | `forge-gitlab/18` (part B); part A is a one-site fix | Added 2026-10-14. The regen job pushed with an expired board-push token and reported a racing default branch. Part A, the push-failure classifier in the regen job, is a separate fix with its own pull request. Part B, rotating the credential without the value passing through a shell, transcript, log or argv, is `forge-gitlab/18` |
+| #2910 | `forge-gitlab/18` (part B); part A is #2913, not a brief | Added 2026-10-14. The regen job pushed with an expired board-push token and reported a racing default branch. Part A, the push-failure classifier in the regen job, is open as #2913 and not yet merged. Part B, rotating the credential without the value passing through a shell, transcript, log or argv, is `forge-gitlab/18` |
 
 ### Out of scope for the review-desk finish line
 
