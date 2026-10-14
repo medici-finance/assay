@@ -523,7 +523,7 @@ Verification-Attestation: medici-finance/assay#2894 run=b894832148ba82d615881bc5
 - How the rows ran: every row ran by hand under bash from the repository root, in a no-hardlinks scratch clone detached at the target SHA. The home stayed untouched.
 - Row 13 credential: a verifier App installation token (/installation/repositories answers; /user returns 403), with an isolated gh config, GITHUB_TOKEN unset, and the system gh called directly, so no ambient operator credential could serve the read.
 - Expectations were taken from the brief's Verify and DoD text before earlier Evidence was read.
-- Prior hold: the last outcome record (2026-10-06, blocked, environment, medici-finance/assay#1631) held row 13 on a verifier-credential 401. Row 13 now reads cleanly under the verifier App credential, so that hold is cleared for this run. medici-finance/assay#1631 itself stays open. The credential fault stays tracked by medici-finance/assay#1631.
+- Prior hold: the last outcome record (2026-10-06, blocked, environment, medici-finance/assay#1631) held row 13 on a verifier-credential 401. Row 13 now reads cleanly under the verifier App credential, so that hold is cleared for this run. medici-finance/assay#1631 itself stays open.
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
