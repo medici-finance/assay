@@ -129,6 +129,31 @@ Each run echoes the effective configuration (`assay-config:` lines) before its o
 the allowed-repo set, the trusted identities, the risk triggers. That echo is the point:
 a widened scope shows up in run output and CI history rather than in someone's memory.
 
+By default the echo is **one line** carrying a digest of the full block:
+
+```
+assay-config: class=write source=config file … configured=true digest=sha256:<12 hex> humans=N bots=N roles=N repos=N (full: ASSAY_CONFIG_ECHO=full)
+```
+
+The digest is sha256 over the full block, so it moves on any change in either direction. The
+**full block** prints instead whenever any of these holds:
+
+- the run is in CI (`CI=true` or `CI=1`, any case, or `GITHUB_ACTIONS=true`) — CI history keeps
+  every line;
+- the roster carries a `REFUSED` or `unrecognised-keys` line — those are never quieter;
+- the digest differs from the last recorded one (in `config-echo.state`, beside the roster) —
+  so the first run after a change shows it whole. Only a default-form run whose output someone
+  sees records, and only after the whole block was written without error (a closed or failing
+  stderr records nothing); a forced, CI or refused run prints the full block without recording;
+- the run is one whose stderr nobody sees: a harness hook (`writeguard`, the `cellctl
+  model-policy hook`) and a child whose stderr a desk tool captures (it is given
+  `ASSAY_CONFIG_ECHO=full`) print the full block and never read or record the state;
+- that state file cannot be read or written, or is not a regular file (a symlink is not followed);
+- `ASSAY_CONFIG_ECHO=full` is set (any value other than `compact` counts as `full`); this forced
+  form neither reads nor updates the state file.
+
+To read every line on demand: `ASSAY_CONFIG_ECHO=full deskboard --version`.
+
 ### 3. Learn the exit codes before you run a write verb
 
 This is the single most common new-operator mistake on this toolchain, so learn it here:
@@ -5599,6 +5624,15 @@ claim, allocates no worktree, invokes no lifecycle hook, registers no roster ent
 launches no worker. It does not revive a released review claim. `--model` and `--tier`
 are explicit, never inferred from an old stamp or a model-name lookup.
 
+**Two label pairs (#2760).** A worker kit (the default) writes the AUTHORING pair,
+`authored-model:<slug>` + `authored-tier:<tier>`: which model the coordinator launched to
+write the change. `--kit review` writes `dispatched-model:<slug>` + `dispatched-tier:<tier>`:
+the review session's attestation. Each stamp reads, removes and verifies only its own pair,
+so neither overwrites the other. Before the split both wrote `dispatched-*`, and whichever
+ran later replaced the other. A full worker dispatch with `--pr` writes the authoring pair
+too. The verifier kit retains `dispatched-*` for validation and stamp-only; normal
+verifier dispatch uses its separate issue-attestation path.
+
 The model slug vocabulary remains open. `gpt-6-astra` and `gpt-6.1-sol` are preserved;
 `gpt-6-1-sol` is a distinct accepted literal, not an alias. Use the exact harness selection.
 Existing label normalization (lowercase and trim) remains shared with ordinary dispatch.
@@ -5607,15 +5641,16 @@ The existing stamp step owns both modes: absent stamps are applied, an identical
 pair is a verified no-op, and partial/conflicting/foreign/unattributed stamps are repaired
 from the supplied selection through `ReStampRemovals`. A failed label or timeline read
 returns unverifiable before mutation. Writes are followed by label and timeline readback;
-only the exact pair accepted by `AttestedModelStampOf` produces an applied-and-verified
-receipt. Failed or unobserved writes return exit 6; retry with the same selection after
+only the exact pair accepted by the applier-aware reader for that kit's pair
+(`AttestedModelStampOf` for `dispatched-*`) produces an applied-and-verified receipt. Failed or unobserved writes return exit 6; retry with the same selection after
 investigating the failure. No receipt claims execution surveillance or invented provenance.
 `--dry-run` prints the read-derived plan without mutation or audit append.
 
 Real invocations record `verb=stamp-only` in the standard desk audit log, including the
 repo, PR, requested model/tier/kit and the verified result or refusal. The downstream
-capability floor (including review posting and ready-flip) and auto-lane reader retain
-their existing shared applier-aware semantics. Legacy `deskrestamp` remains the separate,
+capability floor (including review posting and ready-flip) and auto-lane reader still read
+`dispatched-*` only, with their existing applier-aware semantics. They never read
+`authored-*`, so an authoring stamp does not satisfy a review floor. Legacy `deskrestamp` remains the separate,
 cutoff-gated migration that preserves existing content; its provenance rules are unchanged.
 
 **Verifier pre-work admission.** A verifier has no result yet and needs no PR to start.
