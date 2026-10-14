@@ -81,7 +81,8 @@ separate authorities and are not implicitly added to this surface.
 3. Persist confirmed provider identity/result and the mirror's confirmed fields in one local
    transaction when possible. Update using the mirror's admission and refresh ordering rules;
    a late pre-write refresh cannot overwrite a newer observation. Treat webhook data as a hint.
-4. Return an operation receipt plus a local observation token. A read requesting that token
+4. Return an operation receipt plus a scoped opaque local observation token. Do not expose
+   a global SQL sequence/LSN or a cross-scope activity counter. A read requesting that token
    receives an observation containing the effect, a newer authoritative observation, or explicit
    pending/unavailable coverage. It must not silently read an older cached result.
 
@@ -119,7 +120,8 @@ label nor a forge credential's broad scope supplies application authority.
 | Forge | Enforce configured App/token repository scope, endpoint permissions and branch protection/approval rules. Provider authorization is an independent ceiling; coarse provider permissions still require our narrower operation policy. |
 
 Capabilities bind issuer/audience, stable caller, cell, provider/host/repository identity,
-role, allowed operation, work/attempt/candidate where applicable, authority incarnation,
+role, allowed operation, logical operation identity and payload digest for writes,
+work/attempt/candidate where applicable, authority incarnation,
 generation, policy/access epoch and expiry. The existing R2/R3 authority owner issues them;
 this service cannot mint itself a stronger role. Reusable read grants and single logical-write
 authorizations have different replay rules. Re-presenting a write authorization can retrieve
