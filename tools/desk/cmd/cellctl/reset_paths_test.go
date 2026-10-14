@@ -95,6 +95,50 @@ func TestResetWorktreeAliases(t *testing.T) {
 }
 
 // regression: #2718
+// Fixtures built from t.TempDir() beneath a symlinked TMPDIR (macOS's /var ->
+// /private/var) must plan exactly as they do beneath a resolved one, so a
+// Linux runner sees the class a macOS default temp directory exposes.
+func TestResetSymlinkedTMPDIR(t *testing.T) {
+	real, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := resetAlias(t, real)
+	t.Setenv("TMPDIR", alias)
+	fixture := func(t *testing.T) string {
+		base := t.TempDir()
+		if !strings.HasPrefix(base, alias+string(filepath.Separator)) {
+			t.Fatalf("fixture not beneath symlinked TMPDIR %s: %s", alias, base)
+		}
+		return base
+	}
+	t.Run("hard-nested-cell", func(t *testing.T) {
+		root := resetFixtureRepo(t, fixture(t), "one")
+		c := &Cell{Name: "fixture", Dir: filepath.Join(root, "cell"), Repo: root, Env: envWith(map[string]string{"CELL_ROOTS": "example/one=" + root})}
+		if err := os.Mkdir(c.Dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.planReset(true); err == nil || !strings.Contains(err.Error(), "outside repository") {
+			t.Fatalf("hard reset accepted nested cell: %v", err)
+		}
+	})
+	t.Run("soft-owned-worktree", func(t *testing.T) {
+		base := fixture(t)
+		root := resetFixtureRepo(t, base, "one")
+		cell := filepath.Join(base, "cell")
+		resetFixtureGit(t, root, "worktree", "add", "-q", "-b", "owned", filepath.Join(cell, "worktrees", "owned"), "main")
+		c := &Cell{Name: "fixture", Dir: cell, Repo: root, Env: envWith(map[string]string{})}
+		p, err := c.planReset(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(p.Worktrees) != 1 || p.Worktrees[0].Branch != "owned" {
+			t.Fatalf("soft reset selected %+v, want the cell-owned worktree", p.Worktrees)
+		}
+	})
+}
+
+// regression: #2718
 func TestResetPlanPathErrors(t *testing.T) {
 	base := t.TempDir()
 	root := resetFixtureRepo(t, base, "repo")
