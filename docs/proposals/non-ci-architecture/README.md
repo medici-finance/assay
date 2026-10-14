@@ -24,7 +24,7 @@ Verification is the first end-to-end test.
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
 | [Amendment manifest](20-amendment-manifest.md) | Owners, paths, dependencies and active-work treatment for the ratified packages; brief patches for R1 and step 2 |
-| [Cell operator surface](21-cell-operator-surface.md) | Ratified by the merge of the PR that adds it (medici-finance/assay#2890), as option 1 unless edited before that merge. Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; a deferred plan-approval design gated on five properties; Cell API requirements carried from `send` |
+| [Cell operator surface](21-cell-operator-surface.md) | Proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer. Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; a deferred plan-approval design gated on five properties; Cell API requirements carried from `send` |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify

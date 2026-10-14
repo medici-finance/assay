@@ -50,6 +50,7 @@ facts:
   - At each step, immediately before that role's `drain --now`, its role plan is re-measured and consumed. A drifted role is refused `plan-stale`, and a role plan found already consumed stops the sequence; the sequence never skips ahead.
   - The batch expiry bounds the **start** of each step. A step not started within 10 minutes is not run; the result is `partial`, and `next[]` names a fresh `restart --now --plan` for the remaining roles.
 - If a role fails to come back, restart stops there. It does not restart further roles, it reports the failed role with `up`'s error, and it exits 1. The roles not yet touched keep running.
+- **Off a TTY, `restart` in every form is plan-only:** `restart` and `restart --now` are refused `not-interactive` (desk-containers/15 row 8), and `restart --now --plan` works anywhere.
 - It is a composition of lifecycle transitions through `drain` and `up` and adds no state or mechanism of its own; the interim mechanism belongs to desk-containers/18. Output is a desk-containers/15 result with one `roles[]` entry per role, carrying both phases. A `--now` restart is applied only by interactive confirm; off a TTY it is plan-only.
 
 ## Ground rules
@@ -66,7 +67,7 @@ facts:
 | 1 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRolling' -count=1 -v` | `--- PASS` — the recorded call order is drain r1, up r1, drain r2, up r2, …, the-desk last; at no point are two roles drained together |
 | 2 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartStopsOnFailure' -count=1 -v` | `--- PASS` — when role 2's `up` fails, roles 3+ are never drained and the result names role 2's error |
 | 2b | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartNowBatchPlan' -count=1 -v` | `--- PASS` — `--now --plan` writes per-role plans plus a batch plan binding their digests; two concurrent applies of the batch: exactly one proceeds; a drifted role is refused `plan-stale` and later roles are untouched; a consumed role plan stops the sequence (never skip-and-continue); a step not started before expiry is not run (`partial`); a mutant that skips consumed roles fails |
-| 2c | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartNowRefusesOffTTY' -count=1 -v` | `--- PASS` — `restart <cell> --now` with stdin or stdout not a TTY is refused `not-interactive`, and no role is drained |
+| 2c | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartRefusesOffTTY' -count=1 -v` | `--- PASS` — `restart <cell>` and `restart <cell> --now`, each with stdin or stdout not a TTY, are refused `not-interactive`, and no role is drained |
 | 3 | gate:model +flow +dereference | On a disposable house cell with stub desks: `cellctl restart <cell>` while polling `cellctl cadence <cell> status` every 2s | every poll shows at least four of five roles `running=true`; the run ends with all five up and a fresh handoff note read by each |
 | 4j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartEmitsCellOpV1' -count=1 -v` | `--- PASS` — `restart --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 4 | check | `statusgen --root . --lint` | exit 0 |

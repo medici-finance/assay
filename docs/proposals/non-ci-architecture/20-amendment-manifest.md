@@ -94,7 +94,7 @@ paths follows the installed-consumer inventory, never brief counts.
 
 ## Cell operator surface (amendment 21)
 
-Owner rows for the [cell operator surface amendment](21-cell-operator-surface.md), which the merge of the PR that adds it (medici-finance/assay#2890) ratifies as its option 1. These rows record where its work lands and apply no brief patch to any owner below. The verb briefs themselves are in `desk-containers` on today's tools.
+Owner rows for the [cell operator surface amendment](21-cell-operator-surface.md), proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer. These rows record where its work lands and apply no brief patch to any owner below. The verb briefs themselves are in `desk-containers` on today's tools.
 
 | Work | Owner | Brief(s) / treatment | Status |
 |---|---|---|---|

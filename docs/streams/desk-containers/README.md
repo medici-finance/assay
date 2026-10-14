@@ -169,7 +169,7 @@ classifies every verb here:
   the CLI and the future Cell API; approval-based apply is deferred until R7/R3 meet the five
   approval properties in amendment 21, and apply is an interactive convenience confirm meanwhile.
 
-The maintainer's merge of the PR that adds amendment 21 (medici-finance/assay#2890) ratifies its option 1.
+Amendment 21 is proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer.
 
 - **Wave 7** — `desk-containers/15` (the shared cell-op contract: result and plan, shipping
   now for read, plan, status and `--json`. Apply is an interactive-terminal confirm only,

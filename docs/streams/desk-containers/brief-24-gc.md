@@ -52,7 +52,7 @@ facts:
   - dispatch claims that `desksupervise` classes reclaim-eligible;
   - orphaned marked processes, via #2880;
   - expired or consumed desk-containers/15 plans.
-- Applying: `gc <cell> --run` shows the plan. Applying is an interactive-terminal confirmation only (desk-containers/15): the verb shows the plan and the operator types its confirm code. That is a convenience confirm, not an authorization control. Off a TTY, `gc --plan` writes the plan, and `gc --run` (an apply entry point) is refused `not-interactive` (desk-containers/15 row 8). `--only <category>` (repeatable) narrows the run.
+- Applying: `gc <cell> --run` shows the plan. Applying is an interactive-terminal confirmation only (desk-containers/15): the verb shows the plan and the operator types its confirm code. That is a convenience confirm, not an authorization control. Off a TTY, gc is plan-only: `gc --plan` writes the plan, and `gc --run` and `gc --apply` (state-changing) are refused `not-interactive` (desk-containers/15 row 8). `--only <category>` (repeatable) narrows the run.
 - Every item is re-classified at apply; anything now alive or could-not-check is skipped and reported. gc never deletes a worktree with uncommitted changes or an unmerged, unpushed branch (the `deskwt` rule), and never releases a claim whose session is alive.
 - The result reports bytes reclaimed (logical, as `cache` reports them) and items per category, plus skipped items with reasons.
 

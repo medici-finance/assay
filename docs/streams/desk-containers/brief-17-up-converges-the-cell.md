@@ -60,7 +60,7 @@ facts:
 - `--role <name>` (repeatable) limits convergence to the named roles. With no `--role`, `ROLES` from cell.env is the target set.
 - The final table has one row per targeted role: `up` (launched now) / `already-up` (pid, since) / `reconciled+up` / `failed` (the first error line, verbatim). Exit 0 when every targeted role ends `up`, `already-up` or `reconciled+up`; otherwise exit 1.
 - `DRY_RUN=1` prints each role's disposition from the same probes and launches nothing.
-- **Machine seam (desk-containers/15):** `--json` emits the summary as the contract's `cell-op-result` document, with one entry per role. When stale roles need reconciling, `up --plan` writes the reconcile plan and prints its id (this works anywhere). `up --apply <plan-id>` on a TTY shows it, takes the typed confirm code, re-measures every record, consumes the plan and runs it.
+- **Machine seam (desk-containers/15):** `--json` emits the summary as the contract's `cell-op-result` document, with one entry per role. When stale roles need reconciling, `up --plan` writes the reconcile plan and prints its id (this works anywhere). `up --apply <plan-id>` on a TTY shows it, takes the typed confirm code, re-measures every record, consumes the plan and runs it. Off a TTY, reconcile is plan-only: `up --apply` is refused `not-interactive`, and `up` without `--apply` launches only absent roles and reports stale ones with the plan id.
 
 ## Ground rules
 - NEVER git push / trigger workflows. Stop at `implemented`.
