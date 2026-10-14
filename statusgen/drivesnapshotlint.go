@@ -44,7 +44,7 @@ func driveRegionLintFromBoard(root string, streams []*Stream, now time.Time) (pr
 }
 
 func driveRegionLintWithContext(root string, ctx *driveLintCtx, now time.Time) (problems, notices []string) {
-	return driveRegionLint(root, func(slug string) (string, int) { return ctx.section(slug, now) })
+	return driveRegionLint(root, func(slug string) (string, int) { return driveLintSection(ctx, slug, now) })
 }
 
 // driveRegionLint is driveRegionLintProblems with the fresh render supplied by
