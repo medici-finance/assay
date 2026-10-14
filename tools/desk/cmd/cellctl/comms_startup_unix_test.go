@@ -44,6 +44,7 @@ case "$1 $2" in
  "has-session -t") test -f "$COMMS_CALLS.session"; exit $?;;
  "new-session -d") touch "$COMMS_CALLS.session"; case " $* " in *" -P "*) ;; *) exit 0;; esac;;
  "kill-session -t") rm -f "$COMMS_CALLS.session"; exit 0;;
+ "new-window -P"|"new-window -t") test -f "$COMMS_CALLS.session" || { echo "can't find session: example-cell" >&2; exit 1; };;
  "tab --help") echo "create close list"; exit 0;;
  "pane --help") echo "run"; exit 0;;
  "workspace --help") echo "list create report-metadata close"; exit 0;;
