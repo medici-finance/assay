@@ -2,7 +2,7 @@
 brief: assay:assay:iso-9001:09
 title: Prepare project assurance reviews from canonical evidence
 why: Evidence exports still leave a reviewer to reconstruct applicability, omissions and required acts. A repeatable preparation procedure can reduce that effort while keeping machine evidence, model assessments and human decisions distinct.
-wave: 8
+wave: 11
 depends:
 - iso-9001/08
 - iso-9001/03

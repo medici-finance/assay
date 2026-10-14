@@ -845,6 +845,9 @@ jobs:
     environment: release
     permissions:
       contents: write
+      # Read prior-run artifacts and the producing job log receipt.
+      # No Actions cache service or write permission is used.
+      actions: read
       # READ-ONLY, and only so the credit step can ask the forge who authored the
       # pull request a fragment arrived on (contributor-trust/09). It grants no
       # write of any kind and authorizes nothing.
@@ -1036,6 +1039,13 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
+      # Own cache directories are never shared with the test/mutation jobs.
+      # Missing or rejected remote input starts a correct cold build.
+      - name: Restore release Go cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -c 'from tools.release import go_cache; go_cache.main("restore")'
+
       # PLUGIN MANIFEST STAMP (#789). The tree the tag is cut from must carry
       # plugin version X.Y.Z for tag vX.Y.Z — in plugin.json, the marketplace
       # catalog entry, paired-versions.yaml's `plugin:` pairing, and the four
@@ -1203,15 +1213,13 @@ jobs:
           for platform in darwin-arm64 darwin-amd64 linux-amd64 windows-amd64 windows-arm64; do
             os="${platform%-*}"
             arch="${platform#*-}"
-            ext=""
-            [ "$os" = windows ] && ext=".exe"
             stage="${RUNNER_TEMP:-/tmp}/desk-$platform"
             rm -rf "$stage"; mkdir -p "$stage"
-            for cmd in cmd/*/; do
-              name=$(basename "$cmd")
-              GOOS="$os" GOARCH="$arch" go build -ldflags "$LDFLAGS" \
-                -o "$stage/$name$ext" "./$cmd"
-            done
+            # Share package loading across commands. Directory output keeps
+            # command names and adds .exe on Windows. Platforms stay serial;
+            # Go already schedules compilation and linking within each build.
+            GOOS="$os" GOARCH="$arch" go build -ldflags "$LDFLAGS" \
+              -o "$stage/" ./cmd/...
             # Include the pre-push hook so consumers can install the main-commit
             # backstop alongside the binaries.
             mkdir -p "$stage/hooks"
@@ -1285,6 +1293,38 @@ jobs:
             -out "${GITHUB_WORKSPACE}"
           ls -l "${GITHUB_WORKSPACE}/tool-validation-${RELEASE_TAG}.md" \
                 "${GITHUB_WORKSPACE}/tool-validation-${RELEASE_TAG}.json"
+
+      # Optional save never runs during a dry run. Readers accept only a
+      # successful main dispatch with matching producer source, job receipt,
+      # artifact ID and digest. Mutation jobs cannot supply that job's receipt.
+      - name: Package release Go cache
+        id: release-cache-pack
+        timeout-minutes: 2
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.dry_run
+        continue-on-error: true
+        run: python3 -c 'from tools.release import go_cache; go_cache.main("pack")'
+
+      - name: Save release Go cache
+        id: release-cache-save
+        timeout-minutes: 2
+        if: steps.release-cache-pack.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: release-go-cache-v1
+          path: ${{ runner.temp }}/go-cache.tar
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+          overwrite: false
+
+      - name: Record release cache receipt
+        if: steps.release-cache-save.outcome == 'success'
+        env:
+          CACHE_ID: ${{ steps.release-cache-save.outputs.artifact-id }}
+          CACHE_DIGEST: ${{ steps.release-cache-save.outputs.artifact-digest }}
+        run: |
+          printf 'ASSAY_RELEASE_CACHE_V1 %s %s %s %s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$CACHE_ID" "$CACHE_DIGEST"
 
       # A dry run has now built + checksummed the artifacts (proving build, guard
       # and tests all pass) and stops here: the two mutating steps below both

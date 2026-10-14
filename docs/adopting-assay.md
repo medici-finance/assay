@@ -717,7 +717,9 @@ it does **not** consider the repo set — so a roster carrying `ASSAY_BLESS_LOGI
 `ASSAY_TRUSTED_LOGINS` but no `ASSAY_ALLOWED_REPOS` reports `configured=true` and prints no
 refusal. The gap only surfaces later, when a repo-scoped acting command runs against a repo
 `ASSAY_ALLOWED_REPOS` never named. Fill every surface, and read the `assay-config:` echo rather
-than either the exit code or the board's contents.
+than either the exit code or the board's contents. Outside CI a desk tool prints that echo as one
+digest line once it has shown the current configuration; set `ASSAY_CONFIG_ECHO=full` to read
+every line, including the allowed-repo set.
 
 **The board's root set is separate configuration, not roster-derived.** `deskboard nextup`'s
 default roots (`defaultRoots`, same file) are compiled to a fixed default set of repos. Configuring the
@@ -784,12 +786,14 @@ done
 ```
 
 No output. Then the tools agree —
-`deskboard --version 2>&1 >/dev/null | grep -E 'configured=|role-bindings=|ASSAY_ALLOWED_REPOS='`
+`ASSAY_CONFIG_ECHO=full deskboard --version 2>&1 >/dev/null | grep -E 'configured=|role-bindings=|ASSAY_ALLOWED_REPOS='`
 shows `configured=true`, a **non-empty** `ASSAY_ALLOWED_REPOS=`, and every `role=` you rely on in
 `role-bindings=` (an unbound role refuses the check it exists for). This deliberately uses
 `--version`, not `nextup`: it needs no `DESK_ROOTS`, and it does not tempt you into widening your
 own `ASSAY_ALLOWED_REPOS` with the maintainer's repo just to get a command to exit 0 (see the caveat
-above).
+above). `ASSAY_CONFIG_ECHO=full` makes the check print the whole echo on every run; without it, a
+run whose configuration was already shown prints only the one digest line, which carries no
+`role-bindings=` or `ASSAY_ALLOWED_REPOS=`. The forced form reads and writes no echo state.
 
 Finally, prove failure mode 2 is live rather than decorative — drop one surface and watch the tools
 stay quiet:
@@ -804,7 +808,7 @@ stay quiet:
 unset DESK_ROOTS
 cp ~/.config/assay/roster.env ~/.config/assay/roster.env.full
 grep -v '^ASSAY_ALLOWED_REPOS=' ~/.config/assay/roster.env.full > ~/.config/assay/roster.env
-deskboard nextup 2>&1 >/dev/null | grep -E 'configured=|ASSAY_ALLOWED_REPOS='   # configured=true, repos EMPTY
+ASSAY_CONFIG_ECHO=full deskboard nextup 2>&1 >/dev/null | grep -E 'configured=|ASSAY_ALLOWED_REPOS='   # configured=true, repos EMPTY
 deskboard nextup >/dev/null 2>&1; echo "exit=$?"                                # exit=0 — the silent state
 cp ~/.config/assay/roster.env.full ~/.config/assay/roster.env && rm ~/.config/assay/roster.env.full
 ```

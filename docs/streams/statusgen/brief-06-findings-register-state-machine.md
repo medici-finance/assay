@@ -45,7 +45,7 @@ why: >-
   identically whether a finding is neglected or consciously parked, so "park" as a disposition does
   nothing. A register that cannot distinguish a silenced finding from a resolved one, nor a parked
   finding from a neglected one, is not a register you can orient on.
-version: 2
+version: 3
 id: 9976ad4e-63f3-4359-907b-f07b6f5fdf3d
 ---
 
@@ -244,7 +244,7 @@ mechanism lands; do not resolve it in this brief.
 | 1 | check | `grep -rl '^parked-until:' docs/streams/findings/ 2>/dev/null; echo done` | lists every bounded-parked file (none on a fresh board) then `done` — parks use the bounded `parked-until` form, not the free-text `parked:` marker |
 | 2 | check | `grep -rn -e '^parked:' docs/streams/findings/ 2>/dev/null; echo rc=$?` | no free-text `parked:` key survives the migration |
 | 3 | check | `statusgen --root . --lint` | exit 0; a park missing `parked-until` PROBLEMs; an expired park emits the louder re-annunciation NOTICE |
-| 4 | check | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | empty output — STATUS.md NOT modified on the branch |
+| 4 | check | `M=cc5ca5f930e393d9bb38a06f8a4df79faf38e1f3 && BASE=$(git merge-base "$M^1" "$M^2") && ! git diff --quiet "$BASE" "$M^2" && git diff --quiet "$BASE" "$M^2" -- STATUS.md` | exit 0 — STATUS.md NOT modified on the implementing branch. Judged against the implementing branch itself: M is PR #84's merge commit, `M^2` the branch tip, `BASE` its fork point from main, so the range is the real change and not the empty `merge-base HEAD origin/main..HEAD` (HEAD on merged main). The `!` leg is the positive control: the same range DOES change other files, so the empty `STATUS.md` diff is a real absence, not a vacuous empty range |
 | 5 | check +flow | `cd statusgen && GOWORK=off go test .` | exit 0 with the new park tests present: authorized park suppresses the standing NOTICE, a park missing a required field PROBLEMs, an expired park re-annunciates, self-park / self-resolve / self-gut FAIL, a park past the 90-day horizon FAILs, `authorized-by` alone never authorizes a park, an unresolvable base refuses register transitions offline, corroborated transitions PASS |
 | 6 | check +mutation | inject `resolved: no→yes` on a merge-base finding with no corroboration, run the guard | exit 1 (hard-fail, fail-closed) |
 

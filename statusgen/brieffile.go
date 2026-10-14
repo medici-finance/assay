@@ -1076,6 +1076,11 @@ func extractContextDeclaredPaths(body string) (paths []string, found bool) {
 	}
 
 	if inline != "" {
+		// An explicit `files: none — <why>` declares no path; its prose is not
+		// one (a trailing "implemented." is not a file).
+		if f := strings.Fields(strings.ToLower(inline)); len(f) > 0 && strings.Trim(f[0], "—–-:;,.") == "none" {
+			return nil, false
+		}
 		// INLINE form: recover link text, then split on comma/space/backtick.
 		inline = mdLinkTextRe.ReplaceAllString(inline, "$1")
 		for _, tok := range strings.FieldsFunc(inline, func(r rune) bool {

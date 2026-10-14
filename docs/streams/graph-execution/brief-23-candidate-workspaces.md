@@ -2,10 +2,11 @@
 brief: assay:assay:graph-execution:23
 title: Immutable candidate workspaces and independent check inputs
 why: Review cannot establish a result if the implementer can alter the files while the reviewer reads them.
-wave: 3
+wave: 7
 depends:
 - graph-execution/19
 - graph-execution/20
+- graph-execution/28
 unblocks:
 - graph-execution/24
 effort: M
@@ -21,6 +22,8 @@ authored: 2026-10-02 by task-workflow authoring session
 sources:
 - docs/streams/graph-execution/task-workflow-program.md
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
+- docs/proposals/non-ci-architecture/20-amendment-manifest.md — non-CI architecture reconciliation 2026-10-13 (R1 owner row)
+- freshness-checked 2026-10-13 @ a435badbd (origin/main)
 exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
@@ -54,9 +57,25 @@ single-point-of-failure: the candidate freeze (exact commit/tree plus manifest h
 - Stop at implemented; independent verification owns verified/done.
 - Preserve one canonical work identity and one claim authority; no credentials in packets or results.
 
+## Non-CI architecture reconciliation — 2026-10-13
+
+The maintainer ratified the non-CI verifier target (medici-finance/assay#2500, revision
+23f655f5d); approval activates nothing. The candidate reference and its acceptance binding are
+now defined once, by graph-execution/28 (`verification-domain-v1`). This brief consumes those
+types: Task 1's candidate reference imports them, and `spec/workflow-candidate-v1.md` (planned), if still
+needed for workspace-specific fields, references `verification-domain-v1` instead of defining a
+second candidate record. Hence the added `depends: graph-execution/28`. The workspace, freeze,
+repair and restore obligations, and the Task and Verify sections below, are unchanged by this
+amendment. See `docs/proposals/non-ci-architecture/20-amendment-manifest.md`.
+
+Review follow-up, 2026-10-13: Task 1 now carries a one-clause pointer to graph-execution/28's
+candidate and acceptance-binding types, so a literal reader of Task 1 does not mint a second
+candidate record (review advisory A3 on medici-finance/assay#2739). No other Task or Verify text
+changed.
+
 ## Task
 
-1. Define candidate references binding repository, base/candidate commit and tree, acceptance version and artifact manifest. Consume an injected workspace/effect port; the profile supplies the existing git library/role executor implementation. Do not vendor a second git/claim implementation.
+1. Define candidate references binding repository, base/candidate commit and tree, acceptance version and artifact manifest by importing graph-execution/28's candidate and acceptance-binding types (`verification-domain-v1`), never a second candidate record. Consume an injected workspace/effect port; the profile supplies the existing git library/role executor implementation. Do not vendor a second git/claim implementation.
 2. Allow one implementation writer per mutable attempt. Freeze a candidate before checks/review; provide independent immutable/read-only snapshots. Dirty or incomplete snapshots cannot be candidates. Parallel checks may read the same frozen input; concurrent code writers are excluded from this profile.
 3. Repairs produce a new candidate identity and leave prior evidence immutable. Dependency/acceptance changes invalidate affected claims; file non-overlap does not establish applicability. Preserve evidence artifacts until retention policy permits deletion.
 4. Test reviewer input while implementation changes, foreign-repository candidate, artifact tampering and restored reference integrity through real workspace port fixtures. Update lifecycle docs and module/path CI.

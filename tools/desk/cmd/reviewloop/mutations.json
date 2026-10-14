@@ -80,10 +80,10 @@
       "new": "\t\tcase false && k.Head == HeadUnresolved:"
     },
     {
-      "name": "the AlreadyDone idempotency gate stops suppressing — the desk posts the same verb twice at one head",
-      "file": "cmd/reviewloop/coalesce.go",
-      "old": "\t\tcase done != nil && done(k.Repo, k.PR, k.Head, k.Verb):",
-      "new": "\t\tcase false && done != nil && done(k.Repo, k.PR, k.Head, k.Verb):"
+      "name": "the planner regains a full-history decoder dependency instead of using board observations only",
+      "file": "cmd/reviewloop/plan.go",
+      "old": "\tverbs := Coalesce([]*Board{board})",
+      "new": "\t_, _ = deskkit.LoadEntries()\n\tverbs := Coalesce([]*Board{board})"
     },
     {
       "name": "MERGE-NOW acquires an outward verb — the review desk starts acting on a merge signal that is the human's",
