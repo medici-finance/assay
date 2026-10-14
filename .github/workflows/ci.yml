@@ -227,14 +227,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Restore a native Windows matrix entry after an internal runner is qualified.
+        os: [medici-builder-public]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
+      - name: Install Go
+        env:
+          # Keep this download pin in sync with GO_VERSION, as in release.yml.
+          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
       # No generator or line-ending rewrite precedes these clean-checkout checks.
       - name: Native harnessgen suite on fresh checkout
         working-directory: tools/harnessgen
@@ -246,7 +257,25 @@ jobs:
         run: go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check
       - name: Build all tracked modules and desk executables (Unix)
         if: runner.os != 'Windows'
-        run: make build-all
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The internal Linux runner has no make. Match build-all discovery
+          # and binary output using the installed Go toolchain directly.
+          modules="$(git ls-files -- '*go.mod')"
+          test -n "$modules"
+          while IFS= read -r module; do
+            (cd "$(dirname "$module")" && go build ./...)
+          done <<< "$modules"
+          mkdir -p tools/desk/dist
+          source_sha="$(git rev-parse --short HEAD)"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          stamp="-X github.com/medici-finance/assay/tools/desk/internal/deskkit.SourceSHA=${source_sha} -X github.com/medici-finance/assay/tools/desk/internal/deskkit.BuiltAt=${built_at}"
+          for directory in tools/desk/cmd/*; do
+            test -d "$directory" || continue
+            name="$(basename "$directory")"
+            (cd tools/desk && go build -ldflags "$stamp" -o "dist/$name" "./cmd/$name")
+          done
       - name: Build all tracked modules and desk executables (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

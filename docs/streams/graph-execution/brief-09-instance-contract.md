@@ -9,6 +9,7 @@ unblocks:
 - graph-execution/14
 - graph-execution/16
 - graph-execution/19
+- graph-execution/28
 effort: M
 gate: model
 risk:
@@ -26,6 +27,8 @@ sources:
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
+- docs/proposals/non-ci-architecture/20-amendment-manifest.md — non-CI architecture reconciliation 2026-10-13 (R1 owner row)
+- freshness-checked 2026-10-13 @ a435badbd (origin/main)
 exec-tier: strong
 exec-tier-why: Cross-component contracts and independent failure controls must agree; the implementation requires design judgment.
 domain: complicated
@@ -80,6 +83,16 @@ No semantic dependency inference or provider-specific model client is in scope.
 Extend the existing instance contract with backend-assignment/generation and runner-profile references, plus a versioned execution-state projection. IDs and acceptance remain canonical. 19 owns persisted instances and the real coverage-binding adapter; a declared instance with a missing binding cannot degrade to no-pattern behavior. Keep packet schemas provider-neutral.
 
 Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
+
+## Non-CI architecture reconciliation — 2026-10-13
+
+The maintainer ratified the non-CI verifier target (medici-finance/assay#2500, revision
+23f655f5d); approval activates nothing. Package R1 (domain contracts and regression floor) is
+owned by graph-execution/28 and graph-execution/29, which key their qualified-identity,
+candidate and acceptance-binding records on the instance, node and attempt IDs this brief
+defines. This brief stays the single owner of those IDs; graph-execution/28 adds no second
+identity scheme. The Task and Verify sections below are unchanged by this amendment. See
+`docs/proposals/non-ci-architecture/20-amendment-manifest.md`.
 
 ## Task
 

@@ -475,6 +475,27 @@ func ciCrossModuleRegistry() []ciEntry {
 				"gate a PR is classed by and the gate a brief is checked against silently disagree",
 		},
 		{
+			// The briefs-authoring exemption coupling (#1502).
+			// briefauthoring_coupling_test.go reads the shared vector out of statusgen's
+			// tree and runs it through THIS module's BriefAuthoringOnly; statusgen's twin
+			// runs the same file through its duplicate (briefauthoring.go). A
+			// statusgen-only diff to the vector or the duplicate must run this job.
+			test:     "tools/desk/internal/deskkit/briefauthoring_coupling_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/tools.yml",
+			prJob:    toolsDeskJob,
+			pushJob:  toolsDeskJob,
+			reads: []string{
+				// The SHARED cross-tree authoring-vs-delivery vectors; statusgen reads
+				// them in-module, this module's read is the cross-module one.
+				"statusgen/testdata/brief_authoring_vectors.json",
+			},
+			why: "the rule that a docs-only briefs-authoring PR is not a delivery is DUPLICATED " +
+				"into statusgen's reconcile reader; the two copies are bound only by this shared " +
+				"vector, so a statusgen-only diff that drifts the rule must run this job or " +
+				"deskdispatch and reconcile silently disagree on what counts as delivered",
+		},
+		{
 			test:     "tools/desk/internal/deskkit/citrigger_test.go",
 			module:   "tools/desk",
 			workflow: ".github/workflows/tools.yml",

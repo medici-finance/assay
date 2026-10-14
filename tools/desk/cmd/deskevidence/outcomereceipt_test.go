@@ -76,16 +76,20 @@ func TestDeriveReceiptFromGit(t *testing.T) {
 func TestOutcomeWriteLandsReceipt(t *testing.T) {
 	f, errBuf := setupFake(t)
 	outcomeReceiptFn = deriveOutcomeReceipt
+	// setupFake stubs the receipt validator; restore the real one so run() is covered end to end.
+	receiptValidateFn = validateReceipt
 	forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		return deskkit.OutboundChecked(issueForge{f}, "verifier"), deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
 	root, sha := receiptGitRoot(t)
-	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
-		return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Source: sha}}, nil
+	verifierEvidenceAdmissionFn = func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		r := stubAdmittedReceipt(target)
+		r.Binding.Source = sha
+		return r, nil
 	}
 	f.setFile(receiptBriefPath, briefWithFiles("foo/bar.go", "foo/pkg/", "foo/planned.go"))
-	line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":"` + sha +
-		`","blocker_kind":"human-action","blocker_ref":"example-org/tracker#7"}`
+	line := withRunFields(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":"`+sha+
+		`","blocker_kind":"human-action","blocker_ref":"example-org/tracker#7"}`)
 	plain, _ := deskkit.RecordName([]byte(line))
 	recFile := writeRepoFile(t, "record.json", line+"\n")
 
@@ -113,8 +117,10 @@ func TestOutcomeWriteRefusesBadRef(t *testing.T) {
 	f, errBuf := setupFake(t)
 	outcomeReceiptFn = deriveOutcomeReceipt
 	root, sha := receiptGitRoot(t)
-	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
-		return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Source: sha}}, nil
+	verifierEvidenceAdmissionFn = func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		r := stubAdmittedReceipt(target)
+		r.Binding.Source = sha
+		return r, nil
 	}
 	f.setFile(receiptBriefPath, briefWithFiles("foo/bar.go"))
 	for _, extra := range []string{
@@ -123,7 +129,7 @@ func TestOutcomeWriteRefusesBadRef(t *testing.T) {
 		`"blocker_ref":"#7"`,
 	} {
 		errBuf.Reset()
-		line := `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"` + sha + `",` + extra + `}`
+		line := withRunFields(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"`+sha+`",`+extra+`}`)
 		recFile := writeRepoFile(t, "record.json", line+"\n")
 		code := run([]string{"example-org/tracker", "main", "--outcome-record", recFile, "--root", root})
 		if code != deskkit.ExitRefused || !strings.Contains(errBuf.String(), "blocker_") {

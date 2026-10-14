@@ -46,7 +46,7 @@ func TestBeforeRunFailureAbortsAndReleases(t *testing.T) {
 		t.Fatalf("before_run failure rc = %d, want %d (unverifiable)", rc, deskkit.ExitUnverifiable)
 	}
 	// No prompt may be emitted — the agent's "run" never begins.
-	if _, err := os.Stat(promptFile); err == nil {
+	if _, err := os.Stat(emittedPathFor(promptFile)); err == nil {
 		t.Error("a prompt was emitted after before_run failed — the attempt must abort with no prompt")
 	}
 	// The claim must be released via the consumer claim script's own release verb.
@@ -76,7 +76,7 @@ func TestBeforeRunSuccessEmitsPrompt(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("before_run success rc = %d, want 0", rc)
 	}
-	if _, err := os.Stat(promptFile); err != nil {
+	if _, err := os.Stat(emittedPathFor(promptFile)); err != nil {
 		t.Errorf("no prompt was emitted though before_run succeeded: %v", err)
 	}
 	if s.ran("dispatch-claim.sh release") {

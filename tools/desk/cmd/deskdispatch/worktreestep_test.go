@@ -92,7 +92,7 @@ func TestWorktreeCreateSurfacesDeskwtsOwnMessageVerbatim(t *testing.T) {
 	if !s.ran("dispatch-claim.sh release") {
 		t.Error("the durable claim was not released after the worktree-create failure — it is orphaned")
 	}
-	if _, err := os.Stat(promptFile); err == nil {
+	if _, err := os.Stat(emittedPathFor(promptFile)); err == nil {
 		t.Error("a prompt was emitted for a dispatch with no worktree")
 	}
 }

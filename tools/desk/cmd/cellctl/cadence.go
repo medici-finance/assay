@@ -72,7 +72,8 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 			}
 		}
 		childArgs := scratchArgv(harness, argv, childEnv)
-		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), scratch.run.Started)
+		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), c.childStarted(scratch))
+		c.recordRoleChild(0)
 		result := cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
 		scratch.finish(&result)
 		return result
@@ -116,6 +117,24 @@ func (c *Cell) runCadencedHarness(role, harness string, argv, env []string, wt s
 	}
 }
 
+// childStarted records a pass's role child on the role lease, then in the scratch
+// record. The lease record is what lets a blocked sibling launch tell a holder
+// with a live role session (current) from one whose child has exited (stale).
+func (c *Cell) childStarted(scratch *scratchLaunch) func(int) error {
+	return func(pid int) error {
+		c.recordRoleChild(pid)
+		return scratch.run.Started(pid)
+	}
+}
+
+// recordRoleChild is diagnostic evidence only: a failed write leaves the holder
+// reading as current or unknown, never as stale, so it is safe to ignore.
+func (c *Cell) recordRoleChild(pid int) {
+	if c.cadenceLease != nil {
+		_ = c.cadenceLease.RecordChild(pid)
+	}
+}
+
 func (c *Cell) cadenceGuard(role string) error {
 	for _, p := range []string{filepath.Join(c.cadenceDir(role), "STOP"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP."+role)} {
 		_, err := os.Lstat(p)
@@ -153,7 +172,8 @@ func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, arg
 		f.Close()
 		runArgs = append(runArgs[:len(runArgs)-1], "--output-last-message", resultFile, runArgs[len(runArgs)-1])
 	}
-	exit, uncertain, err := cellprocess.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), scratch.run.Started)
+	exit, uncertain, err := cellprocess.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), c.childStarted(scratch))
+	c.recordRoleChild(0)
 	result = cellcadence.Result{Outcome: "could-not-check", ExitCode: exit, Uncertain: uncertain, Err: err}
 	if err != nil || exit != 0 || uncertain {
 		return result

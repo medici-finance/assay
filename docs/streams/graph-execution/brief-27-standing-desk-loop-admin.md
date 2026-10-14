@@ -3,7 +3,7 @@ brief: assay:assay:graph-execution:27
 title: Standing desk clients for the shared loop-admin
 why: The existing specialist desks should gain the shared launcher before workflow adoption, while keeping their
   queue rules and human gates.
-wave: 3
+wave: 8
 depends:
 - graph-execution/26
 - graph-execution/22

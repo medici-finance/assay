@@ -542,3 +542,27 @@ not its sign-off. It blocks nothing. /18 keeps its dependencies and its `deskrea
 every online read, and /35 retains its control-specific human gate. Final no-forge-CLI
 enforcement in desktools-v2/08 waits for both /18 and /35.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.
+
+## Non-CI coordination applicability — 2026-10-13
+
+The ratified non-CI target (medici-finance/assay#2500, revision 23f655f5d) puts runtime
+coordination for the non-CI runtime in the cell's PostgreSQL database, owned by
+graph-execution/19 with operator incarnation in graph-execution/16 (package R2 in the
+[amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md), lines 49 and
+101–102). This note dispositions this stream's claim store against that record. **It is an
+applicability note only.** No brief here is retired, reprioritised or re-gated, and no Task,
+Verify or Evidence text changes.
+
+- **Supported legacy path.** forge-neutral/22–32 (claim readers on the seam, the file and
+  served claim stores, their guards, scaffold defaults, docs, cutover and the release-N+1
+  deletion) stay the supported claim path for the existing desk tools, building on the
+  implemented seam (/20, /21). Urgent claim fixes continue to land here.
+- **Not the coordination owner.** This claim store is not the non-CI runtime's lease or
+  attempt authority. No `workflow/` or `loopadmin/` code binds to it as lease authority; the
+  coordination record lives in graph-execution/19's store.
+- **/32 keeps its gate.** Its human gate and scope are unchanged.
+- **Retirement is decided later.** Whether this path is retired, migrated or adapted is decided
+  in R8 against the installed-consumer inventory, the release and pin migration and the recovery
+  window ([delivery sequence](../../proposals/non-ci-architecture/16-delivery-sequence.md),
+  lines 98–104). Until then a command break fails clearly and never falls back silently to a
+  different state store.

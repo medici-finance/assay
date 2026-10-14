@@ -10,8 +10,8 @@
     {
       "name": "the decorator removed from ResolveForge's GitHub return (a verb holds an unchecked backend)",
       "file": "internal/deskkit/forgeresolve.go",
-      "old": "\t\treturn OutboundChecked(&GitHubForge{Token: tok, BaseURL: base}, role), res, nil",
-      "new": "\t\treturn &GitHubForge{Token: tok, BaseURL: base}, res, nil"
+      "old": "\t\treturn OutboundChecked(&GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient()}, role), res, nil",
+      "new": "\t\treturn &GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient()}, res, nil"
     },
     {
       "name": "the decorator removed from ResolveForge's GitLab return",
