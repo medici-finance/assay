@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -78,23 +77,36 @@ func init() {
 	if os.Getenv("CELLCTL_RECONCILE_SLEEPER") != "1" {
 		return
 	}
-	// On SIGUSR1 the sleeper opens a "window" beneath itself: a child whose readable environment
-	// carries no cell marker, as another cell's role child or any unrelated program would.
-	usr := make(chan os.Signal, 1)
-	signal.Notify(usr, syscall.SIGUSR1)
-	go func() {
-		<-usr
-		exe, _ := os.Executable()
-		child := exec.Command(exe)
-		for _, kv := range os.Environ() {
-			if !strings.HasPrefix(kv, "ASSAY_CELL") {
-				child.Env = append(child.Env, kv)
+	// When its trigger file appears, the sleeper opens a "window" beneath itself: a child whose
+	// readable environment carries no cell marker, as another cell's role child or any unrelated
+	// program would. It reports the child's pid, or why it could not start one.
+	if out := os.Getenv("CELLCTL_RECONCILE_CHILD_OUT"); out != "" {
+		go func() {
+			for {
+				if _, err := os.Stat(out + ".trigger"); err == nil {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
 			}
-		}
-		if child.Start() == nil {
-			os.WriteFile(os.Getenv("CELLCTL_RECONCILE_CHILD_OUT"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
-		}
-	}()
+			report := "error: "
+			exe, err := os.Executable()
+			if err == nil {
+				child := exec.Command(exe)
+				for _, kv := range os.Environ() {
+					if !strings.HasPrefix(kv, "ASSAY_CELL") {
+						child.Env = append(child.Env, kv)
+					}
+				}
+				if err = child.Start(); err == nil {
+					report = strconv.Itoa(child.Process.Pid)
+				}
+			}
+			if err != nil {
+				report += err.Error()
+			}
+			os.WriteFile(out, []byte(report), 0o600)
+		}()
+	}
 	time.Sleep(5 * time.Minute)
 	os.Exit(0)
 }
@@ -395,10 +407,15 @@ type windowOpener struct {
 func (w *windowOpener) Read(b []byte) (int, error) {
 	if !w.done {
 		w.done = true
-		syscall.Kill(w.orphan, syscall.SIGUSR1)
-		for deadline := time.Now().Add(3 * time.Second); ; {
+		if err := os.WriteFile(w.out+".trigger", nil, 0o600); err != nil {
+			w.t.Fatal(err)
+		}
+		for deadline := time.Now().Add(15 * time.Second); ; {
 			if raw, err := os.ReadFile(w.out); err == nil && len(raw) > 0 {
-				child, _ := strconv.Atoi(string(raw))
+				child, err := strconv.Atoi(string(raw))
+				if err != nil {
+					w.t.Fatalf("window beneath the orphan: %s", raw)
+				}
 				w.t.Cleanup(func() { syscall.Kill(child, syscall.SIGKILL) })
 				// the child must be visible to the process listing before the answer lands
 				time.Sleep(300 * time.Millisecond)
