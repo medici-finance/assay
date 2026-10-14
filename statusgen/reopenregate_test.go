@@ -153,6 +153,9 @@ func TestReopenKeepsHumanGateAnyYAMLForm(t *testing.T) {
 		{"double-quoted", `gate: "human"`, "labels: [bug]\n"},
 		{"single-quoted", `gate: 'human'`, "labels: [bug]\n"},
 		{"trailing-comment", `gate: human  # override: reviewed by hand`, "labels: [bug]\n"},
+		{"padded-quoted", `gate: "  human  "`, "labels: [bug]\n"},
+		{"mixed-case", `gate: Human`, "labels: [bug]\n"},
+		{"folded-block-scalar", "gate: >-\n  human", "labels: [bug]\n"},
 		{"multi-line-flow-labels", "gate: human", "labels: [bug,\n  funds]\n"},
 		{"no-gate-line-risky-stored-labels", "", "labels: [bug, funds]\n"},
 	}
@@ -230,5 +233,64 @@ func TestReactivateNeedsLiveGate(t *testing.T) {
 	}
 	if raw, _ := os.ReadFile(path); string(raw) != before {
 		t.Errorf("a refused reactivate must not touch the file:\n%s", raw)
+	}
+}
+
+// TestReactivateGateOnlyModelRelaxes — fail toward the stricter gate: only a
+// stored gate that is exactly `model` takes the live derivation; any other
+// stored value (human in any case, padded, folded, empty, unreadable) stays human.
+// regression: F-scan-reopen-frontmatter
+func TestReactivateGateOnlyModelRelaxes(t *testing.T) {
+	for _, tc := range []struct{ stored, live, want string }{
+		{"model", "model", "model"},
+		{"model", "human", "human"},
+		{"human", "model", "human"},
+		{"Human", "model", "human"},
+		{"  human  ", "model", "human"},
+		{"human human", "model", "human"},
+		{"Model", "model", "human"},
+		{"", "model", "human"},
+	} {
+		if got := reactivateGate(tc.stored, tc.live); got != tc.want {
+			t.Errorf("reactivateGate(%q, %q) = %q, want %q", tc.stored, tc.live, got, tc.want)
+		}
+	}
+	root, dir := reopenFixture(t)
+	path := writeTemp(t, dir, "issue-690.md", closedPlaceholderFile("issue-loop", 690, "bug", "gate: model"))
+	if got := storedEffectiveGate(path); got != "model" {
+		t.Errorf("storedEffectiveGate(model file) = %q, want model", got)
+	}
+	if got := storedEffectiveGate(filepath.Join(root, "absent.md")); got != "human" {
+		t.Errorf("storedEffectiveGate(unreadable) = %q, want human", got)
+	}
+}
+
+// TestReopenDryRunPrintsWrittenGate — the dry run names the gate the reactivation
+// WILL WRITE: a stored human gate over a live model derivation prints gate:human,
+// and a stored model gate with a live model derivation prints gate:model.
+// regression: F-scan-reopen-frontmatter
+func TestReopenDryRunPrintsWrittenGate(t *testing.T) {
+	for _, tc := range []struct{ name, gate, want string }{
+		{"stored-human-live-model", "gate: human", "gate:human)"},
+		{"stored-model-live-model", "gate: model", "gate:model)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, dir := reopenFixture(t)
+			body := "---\nschema: placeholder-v1\nbrief: issue-loop/issue-691\nissue: 691\n" +
+				"repo: example-org/tracker\nwave: 0\nstatus: done\n" + tc.gate + "\nlabels: [bug]\n" +
+				"resolved: issue-close\n---\nSee issue #691.\n"
+			writeTemp(t, filepath.Join(dir, archiveDirName), "issue-691.md", body)
+			data := map[string][]ghIssue{
+				scanHomeRepo(): {{Number: 691, Title: "reopened", Labels: lbl("bug")}},
+			}
+			out := captureStdout(t, func() {
+				if code := runScanIssues(root, true, fixtureLister(data, ""), nilCommentLister, blessAll); code != 0 {
+					t.Errorf("dry run exited %d, want 0", code)
+				}
+			})
+			if !strings.Contains(out, "would reactivate") || !strings.Contains(out, tc.want) {
+				t.Errorf("dry run must print %q on the reactivate line:\n%s", tc.want, out)
+			}
+		})
 	}
 }

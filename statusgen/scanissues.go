@@ -906,6 +906,9 @@ func applyCloseOut(c closeOutPlan) error {
 				}
 				if reactivate && strings.HasPrefix(trimmed, "gate:") {
 					hasGate = true
+					if val := strings.TrimSpace(strings.TrimPrefix(trimmed, "gate:")); strings.HasPrefix(val, ">") || strings.HasPrefix(val, "|") {
+						skipLabelItems = true // block scalar: drop its continuation lines with the header
+					}
 					out = append(out, "gate: "+reactivateGate(storedGate, c.Gate))
 					continue
 				}
@@ -993,16 +996,17 @@ func storedEffectiveGate(path string) string {
 }
 
 // reactivateGate is the gate a reactivated placeholder carries: the gate
-// derived from the live issue, except that a stored human gate (the effective
-// gate from storedEffectiveGate, not the raw line text) is never relaxed to
-// model. The stored value may be a deliberate human override, and a reopen is
+// derived from the live issue, except that any stored gate other than exactly
+// `model` (the effective gate from storedEffectiveGate, not the raw line text:
+// human in any case, padded, folded or otherwise unreadable) is kept as human,
+// failing toward the stricter gate. The stored value may be a deliberate human override, and a reopen is
 // no evidence the risk went away; tightening is automatic, loosening stays a
 // human edit.
 func reactivateGate(stored, live string) string {
-	if strings.EqualFold(stored, "human") {
-		return "human"
+	if stored == "model" {
+		return live
 	}
-	return live
+	return "human"
 }
 
 // writeCloseOut persists a closeOutPlan's transformed body. When c.Dest is set
@@ -1294,11 +1298,11 @@ func unblockPlaceholderFile(path string) error {
 	return os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644)
 }
 
-// closeOutGateNote names the live gate a reactivate plan will write (a stored
-// human gate still wins at write time), so a dry run shows the change.
+// closeOutGateNote names the gate a reactivate plan will write (the live gate,
+// unless the stored gate keeps it human), so a dry run shows the real change.
 func closeOutGateNote(c closeOutPlan) string {
 	if c.Action != "reactivate" || c.Gate == "" {
 		return ""
 	}
-	return ", gate:" + c.Gate
+	return ", gate:" + reactivateGate(storedEffectiveGate(c.Path), c.Gate)
 }
