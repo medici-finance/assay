@@ -28,7 +28,7 @@ sources:
   - "docs/proposals/non-ci-architecture/11-target-architecture.md §Runtime durability — 'A human decision binds a human actor, subject, revision and permitted act; agent/MCP surfaces cannot fabricate that act. Exact custody deployment remains a design decision before activation'"
   - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) §Approvals: deferred — the future approval design and the five properties that gate ever enabling approval-based apply, owned by R7/R3"
   - "Security reviews 5521033873 and 5521336354, correctness reviews 5521049854 and 5521344748 — every approval design reviewed so far was reachable by a desk running under the operator's own OS account (presence is not intent; a desk-authored registry; an unpinned enrollment root; a desk-writable consumed set)"
-  - "Driver ruling 2026-10-14 (in session, relayed by the coordinator): defer approvals — no approval-based or non-interactive apply until R7/R3 provide real isolation from the desk account; keep the result/plan contract shipping now"
+  - "The driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): defer approvals; no approval-based or non-interactive apply until R7/R3 provide real isolation from the desk account; keep the result/plan contract shipping now"
   - "docs/cellctl-go-cache.md — `cellctl cache <cell> status` already emits a versioned JSON document (could-not-check as null): the precedent for the result type"
   - "freshness-checked 2026-10-14 @ 9a8df91dc (origin/main) — no cross-verb result or plan schema exists in tools/desk/cmd/cellctl"
 gate-why: >-
@@ -84,6 +84,7 @@ facts:
   A failure after consumption leaves the plan consumed with a failed result.
 - **What the confirm is, honestly.** It is a guard against operator mistakes and concurrent races, not an authorization control. A same-account process can drive a terminal and can delete the consumed marker; a deleted marker allows another interactive apply of the same plan within its remaining expiry, still subject to the re-measure. This limit is stated in `spec/cell-op-v1.md` (planned) and in each verb's `--help`.
 - **Deferred, not built here:** an operator key, a key registry, enrollment, a signed approval payload, `cellctl approve`, `--apply --approval`, and any non-interactive or API apply. The future design and its five gating properties are in amendment 21; nothing in this brief may implement part of it.
+- **Desk-driven apply is out of contract.** A desk driving `--apply` through a pseudo-terminal (for example `script` or `expect`) is out of contract, and the spec says so. As a mistake guard only, never as a control, `--apply` refuses `desk-session` when the desk-session markers are set (the cell marker, `DESK_LOOP`, `DESK_SESSION`); a determined process can unset them.
 - **No blanket consent.** There is no `--yes` and no flag that skips the confirm, the re-measure or the consume.
 
 ## Human decision
@@ -91,7 +92,7 @@ Should applying a cell-operation plan stay an interactive confirmation at the op
 
 Several designs for a signed operator approval were reviewed. Each one could be defeated by an AI desk running under the operator's own user account: by raising a real presence prompt the operator cannot tell apart, by pointing verification at a key list it wrote, or by deleting the record that a plan was used. Until desks run with real isolation from that account, an approval would look stronger than it is.
 
-The driver's stated preference (in-session, 14 October 2026), pending ratification on the decision issue, is option 1.
+Option 1 is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
 
 Options:
 1. **Defer approvals** (recommended) — ship plans, results and status now. Applying a plan is a typed confirmation at the operator's own terminal, documented as a convenience rather than a security control. Signed approvals wait until the five properties in amendment 21 can be met by the isolation work (R7/R3).
@@ -121,7 +122,8 @@ Default if no answer: none — blocks until answered.
 | 5 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestPlanExpiryAndForeignCell' -count=1 -v` | `--- PASS` — apply after 10 minutes, and apply of another cell's plan, are refused |
 | 6 | check | `go -C tools/desk test ./internal/cellop/ -run 'TestMarkerResetBound' -count=1 -v` | `--- PASS` — after the consumed marker is deleted, a second interactive apply of the same plan within expiry runs only if every precondition still matches (the stated bound); after expiry it is refused |
 | 7 | check +mutation | `go -C tools/desk test ./internal/cellop/ -run 'TestBatchConsumedFirstAndStops' -count=1 -v` | `--- PASS` — two concurrent applies of one batch plan: exactly one proceeds, because the batch is consumed before its first child; a run that finds a child already consumed stops the sequence; a mutant that skips consumed children fails |
-| 8 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestApplyRequiresTTY' -count=1 -v` | `--- PASS` — `--apply` with stdin or stdout not a TTY is refused `not-interactive`; a wrong confirm code is refused; no flag bypasses either |
+| 8 | check +mutation | `go -C tools/desk test ./cmd/cellctl/ -run 'TestEveryApplyVerbRequiresTTY' -count=1 -v` | `--- PASS` — walks every registered cellctl command that defines `--apply` (the same flag walk as row 9) and runs each with stdin or stdout not a TTY: every one is refused `not-interactive`, and a wrong confirm code is refused; a mutant that exempts any one verb fails |
+| 8b | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestApplyRefusesDeskSession' -count=1 -v` | `--- PASS` — with `DESK_LOOP` or `DESK_SESSION` set, `--apply` on a pseudo-terminal is refused `desk-session` (a mistake guard, stated as such) |
 | 9 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestNoApprovalSurface' -count=1 -v` | `--- PASS` — no registered cellctl command defines `approve`, `--approval`, `yes`, `y`, `assume-yes` or `skip-verify` |
 | 10 | check +flow | `go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestPlanApplyRoundTrip' -count=1 -v` | `--- PASS` — through the binary built with the fixture verb, on a pseudo-terminal: `--plan --json`, then `--apply` typing the confirm code, then a second apply refused `already-consumed` |
 | 11 | check | `go -C tools/desk run ./cmd/cellctl/ cellop-fixture 2>&1 \| grep -c 'unknown command "cellop-fixture"'` | 1 — a default build compiles and reports the fixture verb as unknown (a compile failure prints no such line and fails this row) |

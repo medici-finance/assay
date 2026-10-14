@@ -21,7 +21,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
-  - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down, with a handoff note; driver ruling the same day: these are runner-lifecycle states/transitions; cellctl verbs are adapters; today's STOP-flag/cadence mechanism is the interim first implementation, not the design"
+  - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down, with a handoff note; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): these are runner-lifecycle states/transitions; cellctl verbs are adapters; today's STOP-flag/cadence mechanism is the interim first implementation, not the design"
   - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) §Lifecycle states and transitions — the state set, transitions, invariants and the interim mapping this brief implements"
   - "docs/proposals/non-ci-architecture/11-target-architecture.md §Runtime durability — 'a terminal or agent chat must not be its memory'; 'A lease timeout does not cancel an external request already in flight'; a failed acknowledgment is 'an unknown outcome to reconcile'"
   - "Incident 2026-10-14: five hand-closed desk windows left five unfinished cadence checkpoints, a failed comms checkpoint, held dispatch claims waiting out their TTL, and ten orphaned background loops"
@@ -39,7 +39,7 @@ consumers:
   - "plugins/assay/references/handoff-note.md (planned): follow-up desk-containers/18 (this brief)"
   - "docs/cellctl.md: follow-up desk-containers/18 (this brief)"
   - "the runner lifecycle and ownership contract (target owner of these transitions and of the durable handoff record): out-of-scope (graph-execution R2/R3 packages; this brief's mechanism is interim and is replaced there, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
-  - "the console cockpit (drain/pause/resume actions via the shared cell-op contract): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
+  - "the console cockpit (renders drain/pause/resume results and plans only via the shared cell-op contract; never applies): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
 ---
 
 # Brief 18 — `drain`, `pause`, `resume` adapters and the handoff record

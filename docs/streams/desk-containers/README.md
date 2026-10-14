@@ -183,9 +183,9 @@ The amendment is proposed and needs the maintainer's own ratification.
   and the shared `cellop.Inventory`; reads 16's stop state), `desk-containers/22` (`logs`).
 - **Wave 9** — `desk-containers/19` (`restart`, the lifecycle drain → stop → start sequence per
   role; `--now` is one batch plan over per-role plans, consumed before its first role).
-- **Wave 10** — `desk-containers/23` (`upgrade`: pins from a reviewed ref, sha256 plus
+- **Wave 10** — `desk-containers/23` (`upgrade`: pins from a ref fetched from the forge in this run, sha256 plus
   signature/attestation where published, pinned plugin, restore on failure, then 19; refuses
-  under another cell's live or unknown desks, and needs authority for every included cell).
+  under another cell's live or unknown desks; every included cell is named in the plan and the confirm).
 - **Wave 11** — `desk-containers/21` (`doctor`, over 20's inventory; its fixes point at 18's
   `resume` and 23's `upgrade`).
 - **Wave 12** — `desk-containers/24` (`gc`, reusing 21's classification).

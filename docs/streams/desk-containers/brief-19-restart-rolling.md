@@ -20,7 +20,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
-  - "Driver request 2026-10-14: a `restart <cell>` that cycles the desks; driver ruling the same day: restart is a runner-lifecycle sequence and cellctl is an adapter"
+  - "Driver request 2026-10-14: a `restart <cell>` that cycles the desks; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): restart is a runner-lifecycle sequence and cellctl is an adapter"
   - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — restart = drain → stop → start per role, defined there as a lifecycle sequence"
   - "desk-containers/17 — the converging `up --role`; desk-containers/18 — `drain <cell> [role...]`, `--now`, and the handoff record"
   - "freshness-checked 2026-10-14 @ caca38a58 (origin/main) — no restart verb; the nearest is `reset`, which also removes worktrees and caches (#2670)"
@@ -30,7 +30,7 @@ consumers:
   - "the runner lifecycle and ownership contract (target owner of the restart sequence): out-of-scope (graph-execution R2/R3; this verb is an adapter and needs no change when the mechanism moves)"
   - "tools/desk/cmd/cellctl (new restart verb): follow-up desk-containers/19 (this brief)"
   - "docs/cellctl.md: follow-up desk-containers/19 (this brief)"
-  - "the console cockpit (per-role and whole-cell restart actions): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
+  - "the console cockpit (renders per-role and whole-cell restart results and plans only; never applies): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
 ---
 
 # Brief 19 — `cellctl restart`, rolling

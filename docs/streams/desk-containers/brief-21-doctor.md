@@ -54,7 +54,7 @@ facts:
   - `binary-behind-pin` / `binary-behind-known-fix`: installed `cellctl version` older than the cell's pin, or a known-fix list naming a later release. The fix is "no automatic fix" naming `upgrade` (desk-containers/23).
   - `token-expired`: a role's minted token past expiry. The fix is "no automatic fix"; the token re-mints on the desk's next verb, so this is informational.
   - `stop-flag-held`: a machine-wide, cell or role stop is set, which is why loops are idle. The fix is "no automatic fix" naming `resume`.
-- On a TTY: print the findings, then the whole fix plan. Applying is an interactive-terminal confirmation only (desk-containers/15): the verb shows the plan and the operator types its confirm code. That is a convenience confirm, not an authorization control. Off a TTY the verb is plan-only. Off a TTY: read-only by default; `--plan` writes the fix plan and `--apply <id>` runs it (desk-containers/15). Every fix's precondition evidence is re-measured at apply.
+- On a TTY: print the findings, then the whole fix plan. Applying is an interactive-terminal confirmation only (desk-containers/15): the verb shows the plan and the operator types its confirm code. That is a convenience confirm, not an authorization control. Off a TTY the verb is plan-only. Off a TTY, `doctor` is read-only and `--plan` writes the fix plan; `--apply` off a TTY is refused `not-interactive` (desk-containers/15 row 8). Every fix's precondition evidence is re-measured at apply.
 - `doctor` never kills a process or clears a record that the inventory classes `alive` or could-not-check.
 - Exit 0 when there are no findings, 1 when findings remain after the run, 6 when a probe could not check.
 

@@ -22,7 +22,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
-  - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down; driver ruling the same day: drain/pause/resume/restart/handoff are runner-lifecycle states and transitions, with today's STOP-flag/cadence mechanism labelled interim"
+  - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): drain/pause/resume/restart/handoff are runner-lifecycle states and transitions, with today's STOP-flag/cadence mechanism labelled interim"
   - "docs/proposals/non-ci-architecture/11-target-architecture.md §What happens to today's tools — 'loopengine, drainloop, cellctl cadence, loopadmin, graph controller → One runner lifecycle and ownership contract; reuse implementations against it'"
   - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed) (added by this PR) — defines the lifecycle states and transitions and maps `pause`/`resume` to this interim mechanism"
   - "tools/desk/README.md §Runtime state — `STOP` halts every loop at its next iteration boundary, `STOP.<loop-name>` halts one loop, precedence `DISABLED` > `STOP` > `STOP.<name>`, flags are not self-clearing, names resolved through `tools/desk/internal/deskkit/loopnames.go`"
@@ -38,7 +38,7 @@ gate-why: >-
   STOP.<loop>); cell membership comes only from the launcher-set marker; an unknown cell name
   is reported inert, not honoured silently; and the Guard enforces it for every loop, with the iteration check of the three loops that have one (pr-review-desk, verify-desk, worker-desk) as a second layer; intake-desk and the-desk have no iteration check yet, so for them the Guard is the only layer.
 exec-tier: strong
-exec-tier-why: (b) the flag is a shared value read by the Guard, five skill bodies and cellctl; (c) safety plumbing, where a silent no-op stop is the failure that unit tests miss
+exec-tier-why: (b) the flag is a shared value read by the Guard, three skill bodies and cellctl; (c) safety plumbing, where a silent no-op stop is the failure that unit tests miss
 domain: complicated
 consumers:
   - "the runner lifecycle and ownership contract (target owner of pause/resume): out-of-scope (graph-execution runtime-coordination/runner packages R2/R3; this brief is the interim adapter and is retired when that contract ships, per docs/proposals/non-ci-architecture/21-cell-operator-surface.md (proposed))"
@@ -79,8 +79,8 @@ Should desks be stoppable one cell at a time, by adding a cell-scoped stop flag 
 Today a stop switch either stops every desk on the machine or every desk with a given role, across all cells, because host cells share one settings folder. This adds a switch aimed at one cell (and one for one role in one cell). It can only add stops; it never lifts an existing stop or the master kill switch. A desk belongs to a cell only through a marker the launcher sets. A switch naming a cell that does not exist is shown as having no effect, rather than silently ignored.
 
 Options:
-1. **Approve** — add both cell-scoped flags to the safety check and to the loop check of the three desks that have one. Drain and pause (brief 18) build on it.
-2. **Approve the loop check only** — desks honour the cell flag in their own loop, but the tool-level safety check is unchanged. Weaker: a desk that skips its own check keeps writing.
+1. **Adopt** — add both cell-scoped flags to the safety check and to the loop check of the three desks that have one. Drain and pause (brief 18) build on it.
+2. **Adopt the loop check only** — desks honour the cell flag in their own loop, but the tool-level safety check is unchanged. Weaker: a desk that skips its own check keeps writing.
 3. **Reject** — drain and pause use the machine-wide flags, stopping every cell's matching desks.
 
 Default if no answer: none — blocks until answered.

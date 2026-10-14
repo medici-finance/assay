@@ -20,7 +20,7 @@ The amendment adds no new owner. It places each verb under the existing semantic
 
 | Existing architectural owner | Amendment | Consumer / preservation obligation |
 |---|---|---|
-| Runtime coordination (runner lifecycle and ownership contract) | Role lifecycle states and transitions: pause, resume, drain, stop, start, restart sequence; a durable handoff/resume record | cellctl verbs are adapters onto the transitions; cadence, loopengine, drainloop and loopadmin implement them, not rival launchers |
+| Runtime coordination (runner lifecycle and ownership contract) | Role lifecycle states and transitions: pause, resume, drain, stop, start, restart sequence; a durable handoff/resume record. **R2 (coordination) records the requested transition and the handoff record; R3 (isolated runner and cell authority) executes it on processes** | cellctl verbs are adapters onto the transitions; cadence, loopengine, drainloop and loopadmin implement them, not rival launchers |
 | Evidence and decisions | A future plan approval as a human decision record (actor, subject, revision, permitted act, expiry, consumption), **deferred** until the five approval properties hold | No approval mechanism ships before then; apply is an interactive-terminal convenience confirm, not an authorization control |
 | Projection and interaction | Cell status, hold reasons, recovery actions and terminal output as projections | Same documents for CLI and API; interim readers label interim fields |
 | Public API (R7) | Requirements for authenticated status queries and scoped operator requests, carried from the proposed `send` design | No second ingress: comms stays desk-to-desk plus the contained reader |
@@ -35,9 +35,9 @@ The amendment adds no new owner. It places each verb under the existing semantic
 |---|---|---|---|---|
 | Result / plan types | Target-owned contract | `cell-op-v1` schema + `cellop` package + CLI adapter; apply only by interactive-terminal confirm | R7 Cell API (wire, read/plan-only); approvals deferred to R7/R3 | `desk-containers/15` |
 | `up` (converge) | Interim bridge | cellctl over today's per-role launch and #2880's reconcile | Cell operation (cell lifecycle); runner lifecycle `start` | `desk-containers/17` |
-| `pause` / `resume` | Target-owned transitions | Interim cell-scoped stop flag | Runner lifecycle contract | `desk-containers/16`, `desk-containers/18` |
-| `drain` + handoff record | Target-owned transition and record | Stop flag + cadence wait + `down`; handoff file under the cell | Runner lifecycle contract; runtime coordination store for the record | `desk-containers/18` |
-| `restart` | Target-owned sequence | Composition of `drain` and `up` | Runner lifecycle contract | `desk-containers/19` |
+| `pause` / `resume` | Target-owned transitions | Interim cell-scoped stop flag | R2 records the transition; R3 executes it | `desk-containers/16`, `desk-containers/18` |
+| `drain` + handoff record | Target-owned transition and record | Stop flag + cadence wait + `down`; handoff file under the cell | R2 records the transition and the handoff record; R3 executes it | `desk-containers/18` |
+| `restart` | Target-owned sequence | Composition of `drain` and `up` | R2 records the sequence; R3 executes each step | `desk-containers/19` |
 | `status` | Interim bridge | `cellop.Inventory` reader | Projection, served as an authenticated Cell API query | `desk-containers/20` |
 | `doctor` | Interim bridge | Finding catalogue over the inventory | Projection (hold reasons, recovery actions) and the owning domains' actions | `desk-containers/21` |
 | `logs` | Interim bridge | Cockpit pane read | Projection and interaction (terminals) via the Cell API | `desk-containers/22` |
@@ -128,7 +128,7 @@ A proposed `send` verb is withdrawn as a separate ingress. Its requirements beco
    - A desk handling an external message is under an answer-only lock enforced at the effect boundary, not only by the desk's instructions.
    - Every reply passes the contained reader's outbound check and a withheld-token/personal-data scrub.
    - A failed consultation quarantines the message; it is never delivered.
-4. **Authentication: mTLS client certificates for machine callers and signed tokens for lighter clients.** This is the driver's stated preference (in-session, 14 October 2026), pending ratification on the decision issue.
+4. **Authentication: mTLS client certificates for machine callers and signed tokens for lighter clients.** This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
    - Signed tokens carry a server-side issuer, an audience equal to one cell, an expiry and a token id, checked against a revocation list.
    - Both paths need per-caller rate limits and an audit record of every request and reply digest.
 5. **The API is read/plan-only.** It serves results, status and plans, and no apply route exists until the five approval properties above hold. When it does, the served apply route must run every check server-side: approval verification, re-measure, single atomic consume before any effect, and per-cell authorization. It must be `operator`-class only. The cockpit never holds an operator key on the server.
@@ -147,18 +147,19 @@ A proposed `send` verb is withdrawn as a separate ingress. Its requirements beco
 
 The verb briefs live in the `desk-containers` stream on today's tools. Target-owned work is recorded as owner rows in the [amendment manifest](20-amendment-manifest.md#cell-operator-surface-amendment-21). No brief is allocated to an owner that does not exist yet.
 
-Unsettled mappings, for the respective owners to decide:
+Owner mappings (settled and unsettled):
 
-- **Lifecycle transitions: R2 or R3?** Whether pause/drain/resume land in R2 (coordination records: schedules, cancellation) or R3 (runner/supervisor: `graph-execution/26`), or split between them.
+- **Lifecycle ownership: settled as a split.** R2 records the requested transition and the handoff record; R3 executes it on processes. This is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge).
+  Source: the relay comment https://github.com/medici-finance/assay/pull/2890#issuecomment-6174524523
 - **R7 has no owner.** The manifest leaves the choice between derived-board and a new stream open; this amendment adds requirements to whichever is chosen.
 - **Approvals are deferred.** The five properties above are owned by R7 (served route) and R3 (isolation). The decision owner's contract shapes the final record.
 - **The cell marker.** The marker that scopes an interim cell stop (`#2880` proposes one; desks already receive the cell name when comms is configured) should be settled once, by the cell-operation owner.
 
 ## Human decision and ratification
 
-This amendment changes future architecture: it adds lifecycle vocabulary, a deferred approval design with its gating properties, and Cell API requirements. Those changes need the maintainer's own revision-bound ratification, in their own identity, on a decision issue. A relayed or in-session answer does not satisfy that gate. The driver's in-session preferences (14 October 2026) are recorded above as preferences:
+This amendment changes future architecture: it adds lifecycle vocabulary, a deferred approval design with its gating properties, and Cell API requirements. Those changes need the maintainer's own revision-bound ratification, in their own identity; the venue is the maintainer's merge of the PR that carries this amendment. A relayed answer does not satisfy that gate. Each of the following is the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge):
 
-- lifecycle transitions belong to the runner contract;
+- lifecycle transitions belong to the runner contract, split R2 (record) / R3 (execute);
 - `send` folds into the Cell API;
 - external authentication uses mTLS plus signed tokens;
 - the plan TTL is 10 minutes;

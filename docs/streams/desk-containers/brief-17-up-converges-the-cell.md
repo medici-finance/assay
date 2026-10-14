@@ -38,7 +38,7 @@ consumers:
   - "tools/cellctl/testdata/cellctl-shell-oracle.sh: follow-up desk-containers/17 (this brief; the oracle's `up` plan mirrors the new per-role ordering so parity holds)"
   - "tools/desk/cmd/cellctl/testdata/cli-nonhelp-golden.json: follow-up desk-containers/17 (this brief; dry-run `up` output gains the per-role disposition lines, recorded as deliberate diffs)"
   - "docs/cellctl.md: follow-up desk-containers/17 (this brief)"
-  - "the console cockpit (drives `up --json` and `up --plan`/`--apply`): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
+  - "the console cockpit (renders `up --json` results and `up --plan` plans only; never applies): out-of-scope (the console cockpit lives in a separate repository; follow-up PR there)"
 ---
 
 # Brief 17 — `cellctl up <cell>` converges the cell
