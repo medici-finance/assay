@@ -249,6 +249,17 @@ PROBLEM it would cause, never written. The read-only form reports the same `held
 rows, decided the same way with nothing written. When the pulls cannot be read,
 `--apply` exits 3 and writes nothing.
 
+A move on a driven stream changes generated output too: the drive-snapshot
+region of each `docs/roadmap/drives/<slug>.md` page whose drive names it. The
+hold judges the complete proposed output — the README edit plus each such region
+re-rendered (`statusgen --drive-snapshot <slug>`) against the moved board — with
+every lint rule, the drive-region drift check included. A clean move lists the
+regions it re-renders under the row's `generated` (`path`, `drive`,
+`regionBefore`, `regionAfter`, the text between the fences); `--apply` writes
+them beside the README, keeping the begin marker's `@<sha> <date>` stamp as it
+was, and the read-only form writes neither. A region that was already drifting
+(a hand edit inside the fences) is never re-rendered by the writer.
+
 ```bash
 # Read-only: which board rows would --apply promote? No stream README is written
 # (add --report and the drift report file is written too).

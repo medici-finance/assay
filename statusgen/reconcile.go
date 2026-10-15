@@ -372,6 +372,14 @@ func reconcileDetail(b BriefCell) string {
 	}
 }
 
+// printRegenerated prints the generated output a row's move re-renders with it
+// (#2694): the page and the drive whose snapshot region changes.
+func printRegenerated(w *os.File, a appliedRow, verb string) {
+	for _, g := range a.Generated {
+		fmt.Fprintf(w, "      %s: %s (drive-snapshot region, `statusgen --drive-snapshot %s`)\n", verb, g.Path, g.Drive)
+	}
+}
+
 func printReconcileTable(w *os.File, res reconcileResult) {
 	if !res.LookedAt {
 		fmt.Fprintf(w, "reconcile: could-not-check — %s\n", res.Reason)
@@ -394,12 +402,14 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 		fmt.Fprintf(w, "%s: --apply would write %d row(s)\n", label, len(*res.WouldApply))
 		for _, a := range *res.WouldApply {
 			fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
+			printRegenerated(w, a, "would regenerate")
 		}
 	}
 	if len(res.Applied) > 0 {
 		fmt.Fprintf(w, "reconcile --apply: wrote %d row(s)\n", len(res.Applied))
 		for _, a := range res.Applied {
 			fmt.Fprintf(w, "  %-40s %s -> %s   %s   [%s]\n", a.ID, a.From, a.To, a.Path, a.Witness)
+			printRegenerated(w, a, "regenerated")
 		}
 	}
 	// Held rows print whether or not anything was written: a tick that holds
