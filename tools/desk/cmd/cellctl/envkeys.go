@@ -301,6 +301,8 @@ func buildEnvKeys() []envKey {
 			why: "is the operator config path cellctl captures before a launch moves the home, and a file-carried value would be an expectation the launch did not capture"},
 		envKey{key: "CELLCTL_PARITY_MUTATE", class: envNotLever, from: envInternal,
 			why: "is a test hook compiled only under the parity build tag"},
+		envKey{key: "CELLOP_FIXTURE_TRACE", class: envNotLever, from: envInternal,
+			why: "is a test hook compiled only under the cellopfixture build tag"},
 	)
 	return keys
 }
