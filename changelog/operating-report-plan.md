@@ -1,0 +1,2 @@
+- Extend optional performance collection with a collection-first, on-demand and daily three-report plan: completion history, stream progress and tool cost trends.
+- Scope a later bounded issue/draft-repair proposal loop using existing runtime, assessment and desk owners.

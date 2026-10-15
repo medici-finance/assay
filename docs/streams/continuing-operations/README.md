@@ -115,3 +115,11 @@ owners. No runtime gate is satisfied by this diagram or a proposed wave number.
 The approving change records the decisions in spec §13. An approved spec still needs
 real brief authoring, risk assessment and external prerequisite verification. Delivery
 ends at implemented; independent verification remains separate from outcome assessment.
+
+## Early operating-report consumer — 15 October 2026
+
+The collection-first three-report delivery is scoped in
+[performance-collection](../performance-collection/README.md), executable briefs 01/02/07/08.
+It does not wait for this general framework or activate this parked stream. Its later
+bounded issue/draft-repair profile (09) reuses the same runtime, effects and outcomes owners.
+O10/O11 adopt that integration instead of inventing another scheduler or remediation authority.

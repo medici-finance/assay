@@ -166,7 +166,7 @@ that named implementation tests or commands already exist.
 - **Depends on:** O05, O10. **External:** graph-execution/04, graph-execution/09, graph-execution/14, graph-execution/16.
 - **Unblocks:** cadence-enabled adopter/client rollout.
 - **Why:** Automate due assessments without introducing a second scheduler or duplicate interventions.
-- **Deliverables:** Bind practice triggers/windows/deadlines to existing admission, claims, recovery and budget machinery. Define occurrence identity, restart, coalescing, overdue behavior and stale-input handling. No automatic remediation or policy self-modification.
+- **Deliverables:** Bind practice triggers/windows/deadlines to existing admission, claims, recovery and budget machinery. Define occurrence identity, restart, coalescing, overdue behavior and stale-input handling. Reuse performance-collection/09 for a separately activated, bounded issue/draft-repair proposal profile through existing desks; no autonomous merge/deployment or policy self-modification. Do not duplicate that profile or its effect lineage.
 - **Owning surfaces:** Practice-to-`workflow-instance-v1` adapter at existing graph admission/dispatch boundary; recovery, coalescing and budget conformance fixtures. No second scheduler.
 - **Acceptance scenarios:** Repeated triggers and a crash resume one logical occurrence; cumulative budget survives restart; stale sources cannot initiate an unjustified intervention. Existing permission denial remains binding.
 - **Review / activation considerations:** Require prerequisite contract acceptance and an explicit activation decision. Derive risk from actual scheduled effects; no production access is implied by the outline.
@@ -233,3 +233,12 @@ also a separate automation branch: O12/O13 deliberately prove manual adoption wi
   verification. Leave Evidence empty until execution; never mark this outline delivered.
 - Generate the README Briefs table from actual authored briefs. Keep proposed scopes out
   of lifecycle rows until then; central boards remain generated.
+
+## Operating-report delivery amendment — 15 October 2026
+
+The three concrete reports and local collection are independently deliverable under
+performance-collection/01, /02, /07 and /08. O02/O04 adopt their source/coverage contracts;
+O07 consumes their typed report result; O10/O11 reuse /09 assessment/proposal lineage and
+retain general subject/practice ownership. These draft outlines do not hold local reporting
+behind the whole framework. Full managed cadence/effects still require their existing
+runtime prerequisites, policy and qualification; the amendment grants no activation.

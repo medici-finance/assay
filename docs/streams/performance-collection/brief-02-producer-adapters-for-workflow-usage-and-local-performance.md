@@ -4,7 +4,7 @@ title: "Producer adapters for workflow, usage and local performance"
 why: "A logger with only synthetic input cannot explain desk delays or rework. Bounded adapters should turn existing performance, dispatch, historian and runner observations into locally useful measurements without waiting for the full cell runtime."
 wave: 1
 depends: ["performance-collection/01"]
-unblocks: ["performance-collection/06"]
+unblocks: ["performance-collection/06", "performance-collection/07"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -12,7 +12,7 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 20aa552e-a2cf-4e0d-959c-0b47c9091d0a
 authored: 2026-10-13 by performance collection authoring
 sources:
@@ -98,7 +98,7 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 1. Add version-selected read-only adapters for perf-v1 files, dispatch-record-v1, historian records and an explicit manually supplied observation file. Source readers take exact configured paths and scopes, never search home directories/transcripts. Re-import keeps stable source-event identity and an explicit cutoff; truncation, rotation, duplicate rows, schema changes and source loss retain coverage. Preserve source timestamps and their known resolution.
 
-2. At the existing dispatch-record seam, emit an optional bounded observation with the same canonical attempt identity through the alias mapper. Keep the canonical dispatch/audit records and their current semantics unchanged. Domain success never depends on optional emission; old tools are supported by file import. When desk-tools/23 is available, consume its files; do not modify its seven-day privacy contract. <!-- graph: not-a-gate — desk-tools/23 is an optional input adapter, not an implementation prerequisite; fixture import works without its merge. -->
+2. At the existing dispatch-record seam, emit an optional bounded observation with the same canonical attempt identity through the alias mapper. Keep the canonical dispatch/audit records and their current semantics unchanged. Domain success never depends on optional emission; old tools are supported by file import. Consume the perf-v1 hooks and files present on the inspected main; do not modify its seven-day privacy contract. <!-- graph: not-a-gate — desk-tools/23 is an optional input adapter, not an implementation prerequisite; fixture import works without its merge. -->
 
 3. Add an optional observer to the existing runner Client with an unchanged default constructor path. Emit launch request/observed running/terminal/unknown/cancel and usage snapshots from actual protocol observations; distinguish requested start from confirmed execution. Preserve current authority, model, budget and cancellation rules. The sink never calls back into admission or blocks under the client lock; dropped notifications are explicit coverage. Do not implement a second launcher, sampler, process journal or supervisor.
 
@@ -109,6 +109,8 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 6. Document a producer coverage matrix: which stage/review/CI/resource facts are measured, proxies, manually supplied or unavailable. Emit gap summaries alongside local reports. Add a dated compatibility amendment to graph-execution/26 so the future supervisor carries the optional sink over its own canonical process facts; preserve its existing Task/Evidence and do not require that journal for these adapters.
 
 7. Validate module packaging and the production-to-local-report flow with actual runner and dispatch seams, preserving all source authority tests. Build source adapters without DB/server packages. Provide local rollout and revert instructions without enabling collection on the authoring machine.
+
+8. Supply saved inputs for all three reports: qualified completion/stage transitions and current stream snapshots, explicit hold-reason/owner/source references, and perf-v1 invocation/cpu/child/forge samples. Preserve first-sighting opening balances, duplicate/reopen identity and known observation precision. Import does not guess stall causes, descendant CPU, bypassed HTTP calls or tokens. Export a coverage manifest for sources/versions/epochs and explicit unknown historical intervals. Add TestOperatingReportSourceCoverage for duplicated imports, opening balances, unknown hold reasons and unsupported counters; no forge polling is added here.
 
 ## Interface contract
 
@@ -133,6 +135,7 @@ below, exercising production code rather than an independently reimplemented che
 | 3 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestImportsAndCoverage$' ./adapters/... > "$o" && grep -F -- '--- PASS: TestImportsAndCoverage ' "$o")` | exit 0; named PASS. Legacy perf-v1 fixture, incomplete history, manual effort, late CI and evidence invalidation import preserve basis and cutoff; missing source is visibly unavailable. |
 | 4 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestObserverAuthority$' ./runner/... > "$o" && grep -F -- '--- PASS: TestObserverAuthority ' "$o")` | exit 0; named PASS. Runner sink failures and callbacks cannot alter fencing, cancellation, limits or acceptance; callbacks cannot block under the client lock. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/02` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
+| 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && go test -count=1 -v -run '^TestOperatingReportSourceCoverage$' ./... > "$o" && grep -F -- '--- PASS: TestOperatingReportSourceCoverage ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
 
 ## Pre-mortem and detection
 
@@ -151,3 +154,7 @@ Gate: human. Review actual disclosure/identity boundaries, loss visibility and s
 flow evidence. Required operational records must still function with optional collection
 disabled. Human acceptance changes no live destination, credential, collection switch or
 retention policy.
+
+## Reporting amendment provenance
+
+2026-10-15: three operating reports requested; collection precedes on-demand and daily generation. Source inspection: public main d430e8f18. Existing status and independent Evidence are unchanged.

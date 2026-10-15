@@ -163,5 +163,15 @@ rows remain owners; no separate implementation programme is opened. Actual patch
 | Publication/review | /25 depends on /31, version 2; dated provenance consumption and Verify row | existing exact-candidate, role and disabled-profile controls retained |
 
 Historical Evidence is byte-preserved. /28 receives reciprocal unblocks only, not Task/Verify
-changes. The merged forge-neutral/39–45 and performance-collection/01–06 are reused unchanged.
+changes. The merged forge-neutral/39–45 and performance-collection/01–06 retain their collection/storage boundaries; the 15 October operating-report amendment extends 01/02/06 and adds 07–09 without changing runtime authority.
 R3/R4 custody and R5/R7/R8 integration/migration remain their existing proof obligations.
+
+### Operating-report owner routing — 15 October 2026
+
+| Slice | Owner and delivery | Runtime boundary |
+|---|---|---|
+| Capture and retained coverage/distributions | performance-collection/01–02; preserve /03–06 separate database/transport qualification | Local-first optional observations, no operational authority |
+| On-demand command/skill and daily three-report bundle | performance-collection/07–08; existing flow/lifecycle meanings retained | R7 consumes the same projection; local report-pack host can precede R2–R8 |
+| Later issue/draft-repair proposal loop | performance-collection/09; continuing-operations assessment and existing desk consumers | Managed activation depends on R2/R3/R4 and the brief's typed graph prerequisites; no new scheduler or autonomous merge |
+
+This is a requested specification/brief amendment, not implementation or activation evidence.
