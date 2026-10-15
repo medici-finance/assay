@@ -69,6 +69,29 @@ bundle was expected to contain could not be collected, and `manifest.json`'s `om
 array says what. A non-zero exit here is deliberate: a silently incomplete compliance
 bundle is a worse outcome than a failed export.
 
+### Runtime receipts as an evidence kind
+
+A **runtime receipt** is the evidence kind for an effect on a runtime resource, such as a
+database branch, a snapshot, an eval corpus, an object-storage prefix, or a disposable
+app backend ([`runtime-adapters.md`](runtime-adapters.md)). It is the adapter's typed
+statement of what it observed: the resource's own reference, when the adapter looked, and
+whether the resource was `present` or `absent`. The record's effect id ties it to one
+effect, and the owning run ties that effect to one run. A runtime receipt sits beside the
+other evidence kinds a reviewer reads (a command run, a review, an execution witness) and
+answers a question none of them can: did the state this change was tested against
+actually exist, under whose authority, and was it cleaned up.
+
+Two rules carry over from the contract into how a reviewer reads one:
+
+- An acknowledged effect without a runtime receipt is not evidence.
+- An effect whose acknowledgment was lost counts only once a later reconcile receipt
+  resolves it. Success is never inferred from absence.
+
+`statusgen runtime-resource --lint` checks a set of resource records against these rules
+offline. The `--export-evidence` exporter does **not** collect runtime-resource records
+today. An adopter who keeps them includes them in a review alongside the bundle, and the
+bundle's manifest says nothing about them either way.
+
 ## SOC2 change-management mapping
 
 SOC2's Change Management common criterion (**CC8.1** in the 2017 trust services

@@ -1,2 +1,0 @@
-### Fixed
-- `scanloop run`: once the scan carrier PR is published, a failed `git worktree remove` no longer fails the dispatch. The carrier is recorded as the item's exit (the leak check stays clean), and the cleanup failure appears as its own `WARNING:` line in the pass report. The worktree is kept for diagnosis without `--force`, and its HEAD is detached so the next pass in the coalesce window pushes onto the existing carrier instead of failing or opening a duplicate (#512).
