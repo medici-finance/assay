@@ -32,7 +32,14 @@ const (
 // operator-supplied value, or a caller could name another run's key and stop it.
 //
 // The key is resolved once per process: a verb that guards more than once pays one lookup.
-var runKeyResolver = onceRunKey(processRunKey)
+var runKeyResolver = defaultRunKeyResolver()
+
+// defaultRunKeyResolver builds the production resolver: processRunKey, memoised. It is a
+// named factory so a test can build a FRESH default and check its wiring; reading the
+// shared runKeyResolver instead would return whatever an earlier Guard() call cached.
+func defaultRunKeyResolver() func() string {
+	return onceRunKey(processRunKey)
+}
 
 // onceRunKey memoises read: the first call runs it, every later call returns that answer.
 func onceRunKey(read func() string) func() string {
@@ -75,6 +82,10 @@ func gitWorktreeRunKey() string {
 // `--worktree` reads whenever extensions.worktreeConfig is on, the mode deskdispatch stamps
 // under. Without the extension `--worktree` read the repository config instead (single
 // worktree) or failed (several); this read returns "" there unless the file exists.
+//
+// A missing file needs no pre-check: `git config --file <missing> --get` exits 1, which is
+// "" below, the same answer as a file without the key. A relative path from rev-parse is
+// relative to dir, and the second git call runs in dir too, so it resolves the same file.
 func worktreeRunKeyIn(dir string) string {
 	git := func(args ...string) (string, error) {
 		cmd := exec.Command("git", args...)
@@ -85,14 +96,6 @@ func worktreeRunKeyIn(dir string) string {
 	path, err := git("rev-parse", "--git-path", "config.worktree")
 	if err != nil || path == "" {
 		return ""
-	}
-	// A relative path is relative to dir, the directory both git calls run in.
-	stat := path
-	if !filepath.IsAbs(stat) && dir != "" {
-		stat = filepath.Join(dir, stat)
-	}
-	if _, err := os.Stat(stat); err != nil {
-		return "" // never stamped: no per-worktree config file
 	}
 	key, err := git("config", "--file", path, "--get", "assay.runKey")
 	if err != nil {

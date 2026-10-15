@@ -137,17 +137,32 @@ func TestRunKeyNoWorktreeWalk(t *testing.T) {
 	}
 }
 
+// TestRunKeyStampedMainRelativeDir — a stamped MAIN worktree, read through a relative dir.
+// There `rev-parse --git-path` prints a path relative to dir, and the second git call must
+// resolve it against dir too, not against the process's own directory.
+func TestRunKeyStampedMainRelativeDir(t *testing.T) {
+	isolateRunKeyConfig(t)
+	main, _, _ := runKeyRepo(t, 1)
+	runKeyGit(t, main, "config", "--worktree", "assay.runKey", "main-key")
+	t.Chdir(filepath.Dir(main))
+	if got := worktreeRunKeyIn(filepath.Base(main)); got != "main-key" {
+		t.Fatalf("stamped main worktree via relative dir: run key %q, want %q", got, "main-key")
+	}
+}
+
 // regression: #2864
 // TestRunKeyTestBinaryInert — inside a test binary the default resolver reads no worktree:
 // run from a stamped worktree it returns "" and runs no git at all, so a command package's
-// tests that drive Guard() never exec git against the developer's own worktree.
+// tests that drive Guard() never exec git against the developer's own worktree. It builds a
+// FRESH default resolver: the shared runKeyResolver caches its first answer, which an
+// earlier Guard() test has usually already filled, so reading it here could not fail.
 func TestRunKeyTestBinaryInert(t *testing.T) {
 	isolateRunKeyConfig(t)
 	_, linked, _ := runKeyRepo(t, 3)
 	t.Chdir(linked[len(linked)/2])
 	trace := filepath.Join(t.TempDir(), "trace")
 	t.Setenv("GIT_TRACE", trace)
-	if got := runKeyResolver(); got != "" {
+	if got := defaultRunKeyResolver()(); got != "" {
 		t.Fatalf("test binary in a stamped worktree: run key %q, want \"\"", got)
 	}
 	if cmds := gitTraceCommands(t, trace); len(cmds) != 0 {
