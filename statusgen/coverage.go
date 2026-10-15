@@ -153,7 +153,7 @@ func evaluateCoverage(root string, streams []*Stream, opts coverageOptions) map[
 	}
 	var repo evaluation.Repo
 	if root != "" {
-		repo = newCoverageRepo(root)
+		repo = newMemoRepo(newCoverageRepo(root))
 	}
 	return evaluation.EvaluateCoverage(in, repo)
 }
