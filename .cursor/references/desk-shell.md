@@ -249,7 +249,10 @@ bash and zsh. The role comes from `$DESK_LOOP` and nowhere else: a role named by
 differ from the loop's. The `case` arms mirror the compiled loop-to-role table (`loopTokenRoles`
 in `tools/desk/internal/deskkit/roletoken.go`, retired loop names included), and a test holds
 the two in step. The recipe stops before any `gh` call unless `desktoken` exits 0, prints a
-path, and that path names a non-empty file.
+path, and that path names a file holding a token: something other than whitespace. A size
+check alone is not enough. A file holding only a newline has a non-zero size but yields an
+empty `GH_TOKEN`, and `gh` treats an empty `GH_TOKEN` as unset and runs as the host's stored
+login, which is a human's, and exits 0.
 
 ```bash
 repo='<owner>/<repo>'
@@ -267,8 +270,8 @@ if [ -z "$role" ]; then
 elif ! tokfile="$(desktoken "$role" --repo "$repo")"; then
   printf '%s\n' "desk-auth: unauthenticated: role App custody for '$role' is unavailable (desktoken failed; its stderr names the cause)" >&2
   false
-elif [ -z "$tokfile" ] || [ ! -f "$tokfile" ] || [ ! -s "$tokfile" ]; then
-  printf '%s\n' "desk-auth: unauthenticated: role App custody for '$role' is unavailable (desktoken printed no path, or the file is missing or empty)" >&2
+elif [ -z "$tokfile" ] || [ ! -f "$tokfile" ] || ! grep -q '[^[:space:]]' "$tokfile"; then
+  printf '%s\n' "desk-auth: unauthenticated: role App custody for '$role' is unavailable (desktoken printed no path, or the file is missing, empty or whitespace only)" >&2
   false
 else
   GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json number
@@ -278,25 +281,30 @@ fi
 Prefix each further `gh` call in the same shell call the same way. Scope `GH_TOKEN` to one
 command. Never `export` it, and never leave it set in a long-lived or shared shell. Never print,
 echo, copy or log the token or the custody file's contents. Only the path may appear in output.
+Never run the recipe under shell tracing (`set -x`, `zsh -x`): a trace prints the expanded
+`GH_TOKEN=` assignment.
 In PowerShell, set the variable for the one call and remove it afterwards:
 
 ```powershell
-try { $env:GH_TOKEN = (Get-Content -Raw -LiteralPath $tokfile).Trim(); gh issue list -R $repo --limit 1 --json number }
-finally { Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue }
+$tok = (Get-Content -Raw -LiteralPath $tokfile)
+if ([string]::IsNullOrWhiteSpace($tok)) { throw "desk-auth: unauthenticated: role App custody for '$role' is unavailable (the file is empty or whitespace only)" }
+try { $env:GH_TOKEN = $tok.Trim(); gh issue list -R $repo --limit 1 --json number }
+finally { Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue; Remove-Variable tok -ErrorAction SilentlyContinue }
 ```
 
-Before that line, apply the same checks as the bash form: the `$env:DESK_LOOP` role mapping, a
-zero `$LASTEXITCODE` from `desktoken`, and a path that names a non-empty file.
+Before those lines, apply the same checks as the bash form: the `$env:DESK_LOOP` role mapping,
+a zero `$LASTEXITCODE` from `desktoken`, and a path that names an existing file. The
+`IsNullOrWhiteSpace` test is the value check: never set `GH_TOKEN` from a value that fails it.
 
 **Two failures, two diagnoses.** Keep them apart. A report that merges them sends the repair to
 the wrong identity.
 
 - **Desk unauthenticated.** `desktoken` exits non-zero, prints no path, or names a missing or
-  empty file. This is the ONLY desk-authentication failure. Report it as `desk-auth:
-  unauthenticated: role App custody for '<role>' is unavailable`, with the refusal `desktoken`
-  wrote to stderr, then stop and escalate the custody gap under the desk's escalation rules. A
-  token that mints but is refused on the target repository is a coverage gap, not a custody
-  one (§Which repositories a role can see).
+  empty file, or one holding only whitespace. This is the ONLY desk-authentication failure.
+  Report it as `desk-auth: unauthenticated: role App custody for '<role>' is unavailable`,
+  with the refusal `desktoken` wrote to stderr, then stop and escalate the custody gap under
+  the desk's escalation rules. A token that mints but is refused on the target repository
+  is a coverage gap, not a custody one (§Which repositories a role can see).
 - **No human CLI login.** `gh auth status` reports no login, or `gh auth token` fails for a
   roster human. That is a fact about the host, not about the desk. Report it, if at all, as
   `no human gh login on this host: not a desk-authentication failure`, and carry on under the
